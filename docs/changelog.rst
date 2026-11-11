@@ -910,7 +910,9 @@ Unreleased
 - Arguments that, given by position, were silently read as something
   else now warn, with a ``FutureWarning`` (shown wherever the call is
   made) that says what the value was taken as and the keyword to use.
-  Nothing else changes: each call returns exactly what it did before.
+  Nothing else changes: each call returns exactly what it did before,
+  and the arguments stay positional (making them keyword-only, or
+  refusing the call, would be a breaking change, which waits for 2.0).
   Passing the argument by name silences the warning.
 
   - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
@@ -929,29 +931,39 @@ Unreleased
     ``fit_from_df``. The ids stay a positional data argument
     (``fit(x, i, c)`` is unchanged), so the warning fires only for the
     call that cannot be told apart: ``i`` given by position, no ``c``, and
-    values of 0s and 1s. That call will be refused from v0.28; name the
-    argument (``c=`` or ``i=``).
+    values of 0s and 1s. Name the argument (``c=`` or ``i=``).
   - ``Parametric.mean(defective, tau)`` and
     ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
     as ``defective`` and ignored it (6.524 on a Weibull fitted to
     ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
-    mean restricted to 5 (``mean(tau=5)`` is 4.671). ``defective`` will be
-    keyword-only from v0.28.
+    mean restricted to 5 (``mean(tau=5)`` is 4.671). Pass ``defective``
+    by name.
   - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
-    ``mean_cb`` takes ``tau`` first. ``alpha_ci`` and the arguments after
-    it will be keyword-only from v0.28.
+    ``mean_cb`` takes ``tau`` first. Pass ``alpha_ci`` by name.
   - ``Parametric.random(size, a, b)`` and ``random_data``: every other
     model's ``random(size, random_state)`` takes the seed second, so
     ``model.random(10, 42)`` truncated the draws below 42 (every draw
-    ``inf`` on that Weibull). ``a`` and ``b`` will be keyword-only from
-    v0.28.
+    ``inf`` on that Weibull). Pass ``a`` and ``b`` by name.
   - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
-    axes first, so ``plot(ax)`` drew stacked curves on new axes.
-    ``stacked`` and the arguments after it will be keyword-only from
-    v0.28.
+    axes first, so ``plot(ax)`` drew stacked curves on new axes. Pass
+    ``stacked`` by name.
 
 **Changed.**
 
+- **What 1.0 will promise is now written down.** :doc:`Deprecation Policy`
+  says that from 1.0 SurPyval follows semantic versioning (no breaking
+  change to the public interface before 2.0), that a deprecated public
+  name keeps working, with a warning, for at least two minor releases and
+  at least six months, whichever is later, and what a 1.x release may
+  still change (corrected numbers, the oldest supported Python or numpy).
+  The rules before 1.0 are unchanged. The dictionary ``to_dict`` writes is
+  documented key by key, for every class, on :doc:`surpyval.serialisation`
+  (:ref:`saved-model-dictionary`), and a test keeps the page and the code
+  in step: from 1.0 keys may be added but are not renamed or removed. The
+  conventions page documents ``on="R"`` and ``on="F"`` as accepted
+  spellings of ``"sf"`` and ``"ff"``. Custom distributions are written
+  with ``autograd.numpy``, and the policy now says that is part of the
+  interface. No change to any result.
 - **The recurrent models' standard errors are steadier under a change of
   time unit (an intentional numerical change, in the seventh digit or
   beyond).** The finite-difference Hessian behind the Poisson-process,
