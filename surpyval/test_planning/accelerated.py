@@ -20,7 +20,6 @@ Reliability Data*, ch. 20; Nelson, *Accelerated Testing*, ch. 6):
   less hurt when the life-stress model is wrong.
 """
 
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -43,6 +42,7 @@ from surpyval.test_planning.estimation import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_alpha_ci
+from surpyval.utils.warnings import ignoring_warnings
 
 
 @dataclass(frozen=True, repr=False)
@@ -192,8 +192,7 @@ class AcceleratedTestPlan:
             if np.sum(c == 0) < 3:
                 unusable += 1
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 fitted = surpyval.AcceleratedLife(fitter, model).fit(x, Z, c=c)
             value = fitted.qf(self.p, self.use_stress)
             logs.append(float(np.log(np.asarray(value).item())))

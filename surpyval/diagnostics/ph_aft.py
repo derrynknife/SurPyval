@@ -121,7 +121,6 @@ its pseudo-likelihood cannot be compared between models.
 from __future__ import annotations
 
 import re
-import warnings
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
@@ -134,6 +133,7 @@ from surpyval.univariate.regression._fit_skeleton import (
     LogLinearPhi,
 )
 from surpyval.univariate.regression._likelihood import regression_neg_ll
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
     CATEGORICAL_LEVELS,
@@ -468,8 +468,7 @@ def _maximise(
     g, h = grad(obj), hessian(obj)
     u0 = to_u(start[idx])
     best = None
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         # BFGS on the exact gradient first, started with the exact
         # Hessian: from near the maximum it needs a few cheap steps, where
         # each Newton step needs a Hessian (a dozen gradients' work); the
@@ -548,8 +547,7 @@ def _covariance(f: Callable[[Any], Any], theta: Any, free: Any) -> np.ndarray:
         E[idx, np.arange(idx.size)] = 1.0
         return f(np.where(np.asarray(free), 0.0, theta) + anp.dot(E, v))
 
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         H = np.asarray(hessian(sub)(theta[idx]), dtype=float)
     try:
         if not np.all(np.isfinite(H)) or np.any(np.linalg.eigvalsh(H) <= 0):
@@ -1238,8 +1236,7 @@ def _dfbeta(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
             f = _neg_ll(b.fitter, _view(b, b.Z, w))
             return grad(f)(theta)[idx]
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             # d(grad of -loglik)/d(weight of row i) is -n_i u_i, u_i the
             # score of one unit of row i: the likelihood is linear in the
             # weights, so this is exact.
@@ -1468,8 +1465,7 @@ def _refit(ctx: Context, fitter: Any) -> tuple[float, str, str]:
     if b.model._has_center():
         kwargs["center"] = True
     try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             if b.tvc:
                 # The same rows, as the model's fit_tvc was given them.
                 g = b.model._tvc_fit_rows
@@ -1788,8 +1784,7 @@ def _plotting_points(res: dict, rows: Any = None) -> tuple:
     tl, tr = res["tl"][keep], res["tr"][keep]
     if not np.any(c != 1):
         return np.array([]), np.array([])
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         entry = tl if np.any(np.isfinite(tl)) else None
         if np.all(np.isin(c, (0, 1))) and not np.any(np.isfinite(tr)):
             fit = surpyval.KaplanMeier.fit(lo, c=c, n=n, tl=entry)
@@ -1833,8 +1828,7 @@ def _draw_probability(
     res = _residual_data(ctx, kind)
     groups = groups or [("", None)]
     xs = []
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         for k, (name, rows) in enumerate(groups):
             x, F = _plotting_points(res, rows)
             if not x.size:

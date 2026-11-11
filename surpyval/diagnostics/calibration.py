@@ -114,13 +114,14 @@ for a family that chooses its times otherwise.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 from scipy.stats import norm
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt, _is_cox, _note
 from .registry import AdviceRule, Check, Context, Panel
@@ -498,8 +499,7 @@ def calibration_curve(
         knots = weighted_quantile(cll, n, [0.5])
     B = cll[:, None] if linear else rcs_basis(cll, knots)
     entry = {"tl": tl} if np.isfinite(tl).any() else {}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         cal = CoxPH.fit(x, B, c=c, n=n, center=True, **entry)
         if not linear and np.isnan(np.asarray(cal.beta, float)).any():
             # the spline's term is aliased with the predictions'

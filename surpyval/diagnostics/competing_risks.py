@@ -110,7 +110,6 @@ cause-specific and the Fine-Gray model.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -126,6 +125,7 @@ from surpyval.univariate.competing_risks.regression.fine_gray_diagnostics import
     fine_gray_martingale_residuals,
     fine_gray_zph_test,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from . import cox as _cox
 from ._shared import _covariate_kind, _fmt, _note, _source, _trend_sign
@@ -1248,8 +1248,7 @@ def incidence_distance(
     x = np.asarray(x, dtype=float)
     e = np.asarray(e, dtype=object)
     entry = {} if tl is None else {"tl": tl}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         aj = CompetingRisks.fit(x, e, c=c, n=n, **entry)
     origin = _origin(tl)
     failed = (
@@ -1391,8 +1390,7 @@ def incidence_bootstrap(
         e = first.astype(object)
         e[censored] = None
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 fits = {
                     j: model.models[k].dist.fit(
                         x,
@@ -1590,8 +1588,7 @@ def _incidence_panels(ctx: Context) -> list[Panel]:
         return []
     tl = _entry(data)
     entry = {} if tl is None else {"tl": tl}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         aj = CompetingRisks.fit(
             data["x"], data["e"], c=data["c"], n=data["n"], **entry
         )
@@ -1609,8 +1606,7 @@ def _incidence_panels(ctx: Context) -> list[Panel]:
             from surpyval.plotting import BAND_ALPHA, INK, PALETTE
 
             step = np.asarray(aj.cif(times, cause), dtype=float)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 band = np.asarray(
                     aj.cb(
                         times, event=cause, on="cif", alpha_ci=options.alpha

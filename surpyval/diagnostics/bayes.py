@@ -101,11 +101,12 @@ exactly). Weighted data cannot arise: the Bayesian fits refuse weights.
 
 from __future__ import annotations
 
-import warnings
 from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from . import univariate
 from ._shared import _fmt, _note
@@ -231,8 +232,7 @@ def posterior_predictive(
     observed = np.empty(n_draws)
     replicated = np.empty(n_draws)
     counts = np.empty((n_draws, edges.size + 1))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         drawn = model.draw_models(n_draws, random_state=rng)
     for i, m in enumerate(drawn):
         with np.errstate(all="ignore"):
@@ -400,8 +400,7 @@ def _ml_context(ctx: Context) -> Context | None:
     apply."""
 
     def build() -> Context | None:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             mle = ctx.model.mle
         if mle is None:
             _note(
@@ -463,8 +462,7 @@ def _prior_moments(model: Any, bound: Any) -> tuple[list[str], Any, Any]:
     if bound.proper:
         from surpyval.bayes.fitting import prior_model
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             prior = prior_model(
                 model.dist,
                 model.priors,
@@ -561,8 +559,7 @@ def prior_data_conflict(model: Any) -> dict:
             "the data could disagree with"
         )
         return out
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         mle = model.mle
     if mle is None or getattr(mle, "maximum", None) == "no finite maximum":
         out["names"] = names
@@ -755,8 +752,7 @@ def _refit(model: Any, method: str, points: int | None) -> Any:
     fixed = {
         k: v for k, v in model.fixed.items() if k not in model.priors.fixed()
     }
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         return model.dist.fit_bayes(
             model.data,
             priors=model.priors,

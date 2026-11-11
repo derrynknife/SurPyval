@@ -66,7 +66,7 @@ from surpyval.utils.validation import (
     unit_interval_range,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import (
     _LN_MAX,
@@ -347,8 +347,7 @@ def _sf_area(
     def sf(u: float) -> float:
         return float(onp.ravel(dist.sf(onp.array([u]), *core))[0])
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         value, _ = quad(sf, a, b, epsabs=0.0, epsrel=1e-11, limit=200)
     return area + float(value)
 
@@ -4150,9 +4149,8 @@ class Parametric(
                 ]
             )
 
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # a warning of the band's is given once, not once per count
-            warnings.simplefilter("ignore")
             lower = np.full(len(p), np.nan)
             upper = np.full(len(p), np.nan)
             if bound in ("two-sided", "lower"):
@@ -4739,10 +4737,7 @@ class Parametric(
             def _cb_func(x_model: npt.NDArray) -> Any:
                 # (the plot's band is drawn as the bound is, and an offset
                 # model's caveat is the bound's to give, not the plot's)
-                with warnings.catch_warnings():
-                    warnings.filterwarnings(
-                        "ignore", message=_OFFSET_WALD_START
-                    )
+                with ignoring_warnings(message=_OFFSET_WALD_START):
                     return self.cb(
                         x_model, on="ff", alpha_ci=alpha_ci, method=method
                     )

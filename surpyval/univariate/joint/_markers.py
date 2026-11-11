@@ -21,7 +21,6 @@ fit starts.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as anp
@@ -31,6 +30,7 @@ from autograd import value_and_grad
 from scipy.optimize import minimize
 
 from surpyval.utils.linalg import psd_floor
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._likelihood import (
     JointArrays,
@@ -57,8 +57,7 @@ def per_item_fits(
         if len(np.unique(t)) < P:
             continue
         try:
-            with warnings.catch_warnings(), np.errstate(all="ignore"):
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), np.errstate(all="ignore"):
                 theta = np.asarray(path_model.fit(t, y), dtype=float)
         except (ValueError, RuntimeError, np.linalg.LinAlgError):
             continue
@@ -151,8 +150,7 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
         ]
     )
     c = np.where(arrays.d > 0, 0, np.where(left, -1, np.where(interval, 2, 1)))
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         try:
             plain = Weibull.fit(
                 x,
@@ -232,8 +230,7 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
         return -anp.sum(arrays.w * ll) / anp.sum(arrays.w)
 
     v0 = np.concatenate([[np.log(alpha), np.log(beta)], np.zeros(k + 1)])
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         result = minimize(
             value_and_grad(objective), v0, jac=True, method="BFGS"
         )

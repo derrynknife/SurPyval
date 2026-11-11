@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -22,7 +21,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import warn_no_covariance
+from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
     MAX_VARYING,
@@ -757,8 +756,7 @@ def _fit(
                 return np.inf, np.zeros_like(v)
             return f, S.T @ grad
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             result = minimize(
                 whitened,
                 np.zeros(u.size),

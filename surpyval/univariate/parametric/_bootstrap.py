@@ -67,7 +67,7 @@ from surpyval.univariate.regression._bootstrap import (
 )
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 
 @dataclass
@@ -141,8 +141,7 @@ def jackknife(model: Any, fits: Refits) -> Jackknife:
             kwargs["tl"] = t[keep, 0]
             kwargs["tr"] = t[keep, 1]
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.dist.fit(
                     x[keep],
                     offset=model.offset,
@@ -575,8 +574,7 @@ def _draw(
                 kwargs["tl"] = design.tl
                 kwargs["tr"] = design.tr
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.dist.fit(
                     x,
                     offset=model.offset,

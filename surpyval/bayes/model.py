@@ -46,6 +46,7 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 _SIDES = ("two-sided", "lower", "upper")
 #: The most times qf's root bracket is widened before it gives up (each
@@ -694,6 +695,28 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             return float(a), float(b)
         return None
 
+    @staticmethod
+    def _lomax_predict(
+        fname: str, xs: npt.NDArray, a: float, b: float
+    ) -> npt.NDArray:
+        """The Exponential-Gamma predictive (a Lomax of shape ``a`` and
+        scale ``b``) on the log scale: ``H(x) = a log(1 + x / b)``. The
+        plain form, ``a b^a / (b + x)^(a + 1)``, overflows once ``b^a``
+        passes 1e308, which a prior on a rate per hour (``b`` near 1e9
+        hours) does at ``a`` of about 34."""
+        xp = np.maximum(xs, 0.0)
+        with np.errstate(all="ignore"):
+            H = a * np.log1p(xp / b)
+            h = np.where(xs >= 0, a / (b + xp), 0.0)
+            out = {
+                "sf": lambda: np.exp(-H),
+                "ff": lambda: -np.expm1(-H),
+                "Hf": lambda: H,
+                "df": lambda: h * np.exp(-H),
+                "hf": lambda: h,
+            }[fname]()
+        return np.asarray(out, dtype=float)
+
     def _expect(self, fname: str, x: npt.NDArray) -> npt.NDArray:
         # (not ``weights @ v``: a matrix product's summation order depends
         # on a query point's place in x, Posterior.expectation's does not)
@@ -710,17 +733,14 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         nan = np.isnan(x)
         xs = np.where(nan, 0.0, x)
         lomax = self._lomax()
+        if lomax is not None:
+            out = self._lomax_predict(fname, xs, *lomax)
+            return np.where(nan, np.nan, out)
         with np.errstate(all="ignore"):
-            if lomax is not None:
-                a, b = lomax
-                xp = np.maximum(xs, 0.0)
-                s = (b / (b + xp)) ** a
-                f = np.where(xs >= 0, a * b**a / (b + xp) ** (a + 1), 0.0)
-            else:
-                need_s = fname in ("sf", "ff", "Hf", "hf")
-                need_f = fname in ("df", "hf")
-                s = self._expect("sf", xs) if need_s else np.ones_like(xs)
-                f = self._expect("df", xs) if need_f else np.zeros_like(xs)
+            need_s = fname in ("sf", "ff", "Hf", "hf")
+            need_f = fname in ("df", "hf")
+            s = self._expect("sf", xs) if need_s else np.ones_like(xs)
+            f = self._expect("df", xs) if need_f else np.zeros_like(xs)
             out = {
                 "sf": lambda: s,
                 "ff": lambda: 1 - s,
@@ -843,7 +863,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             if lomax is not None:
                 a, b = lomax
                 with np.errstate(divide="ignore"):
-                    out[i] = b * ((1 - ui) ** (-1 / a) - 1)
+                    out[i] = b * np.expm1(-np.log1p(-ui) / a)
                 continue
             out[i] = self._qf_one(float(ui))
         return out
@@ -1113,8 +1133,17 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         predictive survival function."""
         xs = np.atleast_1d(np.asarray(x, dtype=float))
         out = np.empty(xs.shape)
+        lomax = self._lomax()
         for i, xi in enumerate(xs):
             s = float(self.sf(xi))
+            if lomax is not None and s > 0:
+                # The Lomax's is linear in x, (b + x) / (a - 1) (infinite
+                # with its mean, for a <= 1); before 0 the unit has all
+                # of its life to come, and the wait to 0
+                a, b = lomax
+                rest = (b + max(xi, 0.0)) / (a - 1) if a > 1 else np.inf
+                out[i] = rest + max(-xi, 0.0)
+                continue
             if s <= 0 or np.isnan(s):
                 out[i] = np.nan
                 continue
@@ -1601,8 +1630,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                         )
                     else:
                         mle_val = float(getattr(mle, name))
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings():
                         iv = np.asarray(
                             mle.param_cb(name, alpha_ci=alpha_ci), float
                         )
@@ -2292,8 +2320,7 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
         lines.append(f"  {name:<10}{_fmt(med):>10}   {_fmt(lo)} - {_fmt(hi)}")
     life = float(model.dist.support[0]) == 0
     lab = "B10 life" if life else "10% point"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         try:
             b10 = float(model.quantile_cri(0.1, point=True))
             b_lo, b_hi = model.quantile_cri(0.1, alpha_ci=alpha_ci)
@@ -2341,8 +2368,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
                 v = float(mle.params[model.dist.parameter_names.index(name)])
             else:
                 v = float(getattr(mle, name))
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 iv = np.asarray(mle.param_cb(name, alpha_ci=alpha_ci), float)
         except (ValueError, AttributeError, KeyError):
             continue

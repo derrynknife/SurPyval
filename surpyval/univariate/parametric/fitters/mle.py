@@ -1,4 +1,3 @@
-import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -24,6 +23,7 @@ from surpyval.univariate.parametric.fitters.runaway import (
     runaway_coefficients,
     search_derivatives,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 # The optimiser ladder: gradient methods first, then the derivative-free
 # fallbacks. ``None`` stands for "no derivative"; "jac" and "hess" for the
@@ -252,8 +252,10 @@ def _runaway(
     ``keep`` holds (see ``_Judge.keep``). ``derivatives`` are the Hessian
     and gradient at ``x``, where the caller has them, and ``floor`` the
     parameters' least sizes for its gate (see ``_cleared``)."""
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         runaway = tuple(
             runaway_coefficients(
                 lambda u: fun(u, *args),
@@ -605,8 +607,7 @@ class _Judge(NamedTuple):
         def held(v: Any) -> Any:
             return fun(np.concatenate([head, v]), *args)
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             try:
                 f0 = float(held(u[1:]))
                 res = minimize_with_gradient(
@@ -859,8 +860,7 @@ def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
                 return None
             from surpyval.utils.no_maximum import quiet_maximum_warnings
 
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 try:
                     limit = family.fit_from_surpyval_data(model.surv_data)
                 except (ValueError, ArithmeticError):

@@ -15,7 +15,6 @@ only let a runaway pass unseen, never call a maximum a runaway. The
 univariate fit adds its own conditions (``_Judge.keep`` in ``mle.py``).
 """
 
-import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +23,8 @@ import numpy.typing as npt
 from autograd import grad, hessian, value_and_grad
 from autograd.differential_operators import make_hvp
 from scipy.optimize import minimize
+
+from surpyval.utils.warnings import ignoring_warnings
 
 #: The largest linear predictor exp can take, log(largest float).
 LOG_MAX = float(np.log(np.finfo(float).max))
@@ -95,8 +96,10 @@ def search_derivatives(
     keeps the Hessian for its covariance (:func:`keep_information`)."""
     at = np.asarray(x, dtype=float)
     try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             hvp, g = make_hvp(neg_ll)(at)
             H = np.array([hvp(e) for e in np.eye(at.size)], dtype=float)
             return H, np.asarray(g, dtype=float)
@@ -573,8 +576,7 @@ def _flat_outwards(
         )
         return float(min(res.fun, holding(start[others])))
 
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         try:
             f0 = float(neg_ll(x))
             ahead = profile(outwards)
@@ -741,8 +743,7 @@ def _schur_by_products(
     there are parameters, plus one."""
     others = [i for i in range(H.shape[0]) if i != j and np.any(H[i] != 0.0)]
     try:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with ignoring_warnings(message="Output seems independent"):
             hvp = make_hvp(neg_ll)(point)[0]
             w = np.zeros(point.size)
             w[j] = 1.0
@@ -787,8 +788,10 @@ def _start_derivatives(
     finite."""
     x0 = np.asarray(start, dtype=float)
     try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             g0 = np.asarray(grad(neg_ll)(x0), dtype=float)
             H0 = np.asarray(hessian(neg_ll)(x0), dtype=float)
     except (TypeError, ValueError, ArithmeticError):
@@ -893,10 +896,9 @@ def _line_derivatives(
     out: "tuple[float, ...]"
     for along in (line,) if moving.all() else (line, moving_only):
         try:
-            with warnings.catch_warnings():
+            with ignoring_warnings(message="Output seems independent"):
                 # autograd says so of a derivative that is constant (a
                 # likelihood linear along the line); it is 0, not a fault
-                warnings.filterwarnings("ignore", "Output seems independent")
                 if order == 2:
                     d1, d2 = value_and_grad(grad(along))(0.0)
                     out = float(d1), float(d2)

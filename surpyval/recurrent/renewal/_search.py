@@ -13,7 +13,6 @@ search) and ``settle`` (to carry a maximum next to a bound onto it).
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +23,7 @@ from surpyval.univariate.parametric.fitters import (
     Gradient,
     preconditioned_bfgs,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 
 class SearchMap:
@@ -133,8 +133,7 @@ class GradientSearch:
         """BFGS from ``u0`` (``preconditioned_bfgs``) for at most
         ``MAX_ITERATIONS``; ``usable`` says whether it ended at a finite
         point inside the model's support."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             found = preconditioned_bfgs(
                 self.gradient.fun,
                 np.asarray(u0, dtype=float),

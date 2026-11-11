@@ -106,7 +106,6 @@ right-censored data, with application to time-varying covariate data.
 *Biostatistics*, 18(2), pp.352-369.
 """
 
-import warnings
 from collections.abc import Callable, Iterable
 
 import numpy as np
@@ -114,17 +113,17 @@ from numpy.typing import NDArray
 
 from surpyval.univariate.nonparametric.turnbull import turnbull
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 
 def pooled_cumulative_hazard(data: SurpyvalData) -> tuple[NDArray, NDArray]:
     """The ladder of the pooled Turnbull NPMLE of ``data``: its times and
     the Nelson-Aalen cumulative hazard of its expected risk sets and
     events at each (the hazard just after the time)."""
-    with warnings.catch_warnings():
+    with ignoring_warnings(UserWarning):
         # The EM converges slowly where the NPMLE is not unique; the
         # scores only rank candidate splits, and a nearly converged
         # estimate ranks them the same.
-        warnings.simplefilter("ignore", UserWarning)
         out = turnbull(
             data.x, data.c, data.n, data.t, estimator="Kaplan-Meier"
         )
