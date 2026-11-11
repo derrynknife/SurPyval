@@ -756,8 +756,10 @@ class OnQuantities(JointPrior):
 def quantity_at(dist: Any, spec: tuple, theta: dict[str, Any]) -> Any:
     """A quantity of the model at parameter points ``theta`` (``{name:
     array}``): ``("q", p)`` the ``p`` quantile, ``("R", t)`` the
-    reliability at ``t``, ``("mean",)`` the mean, ``("param", name)`` a
-    parameter; with the offset, limited-failure and zero-inflated forms.
+    reliability at ``t``, ``("F", t)`` the failure probability at ``t``
+    (computed as itself, not as ``1 - R``, so it keeps its digits where it
+    is small), ``("mean",)`` the mean, ``("param", name)`` a parameter;
+    with the offset, limited-failure and zero-inflated forms.
 
     Examples
     --------
@@ -793,18 +795,23 @@ def quantity_at(dist: Any, spec: tuple, theta: dict[str, Any]) -> Any:
             # Before 0 nothing has failed, the mass at 0 included.
             r = np.where(np.asarray(spec[1]) < 0, 1.0, r)
         return r
+    if kind == "F":
+        f = f0 + (lfp - f0) * shifted(dist, "ff", spec[1] - gamma, dp)
+        if "f0" in theta:
+            f = np.where(np.asarray(spec[1]) < 0, 0.0, f)
+        return f
     if kind == "mean":
         return gamma + lfp * _vector_mean(dist, dp)
     raise ValueError(f"Unknown quantity {spec!r}.")
 
 
 def shifted(dist: Any, fname: str, xg: Any, dp: list) -> Any:
-    """The base distribution's ``sf`` or ``df`` at ``xg``, the query less
-    the offset, held to its support: below the support's lower edge the
-    distribution has not started, so ``sf`` is 1 and ``df`` 0 there (as
-    ``Parametric`` clamps them, #256), not the base function evaluated
-    outside its support (NaN for most, more than 1 for an
-    Exponential)."""
+    """The base distribution's ``sf``, ``ff``, ``df`` or ``log_sf`` at
+    ``xg``, the query less the offset, held to its support: below the
+    support's lower edge the distribution has not started, so ``sf`` is 1
+    and ``ff``, ``df`` and ``log_sf`` are 0 there (as ``Parametric``
+    clamps them, #256), not the base function evaluated outside its
+    support (NaN for most, more than 1 for an Exponential)."""
     with np.errstate(all="ignore"):
         v = getattr(dist, fname)(xg, *dp)
     s0 = getattr(dist, "support", (-np.inf, np.inf))[0]
