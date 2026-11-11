@@ -5,7 +5,7 @@ repos:
 
 # Organise imports (configured via [tool.isort] in pyproject.toml)
 -   repo: https://github.com/PyCQA/isort
-    rev: '8.0.1'
+    rev: '9.0.2'
     hooks:
     -   id: isort
 

@@ -15,9 +15,7 @@ from surpyval.tests._helpers import dropped_row_messages
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards as CR,
 )
-from surpyval.univariate.competing_risks import (
-    FineGray,
-)
+from surpyval.univariate.competing_risks import FineGray
 
 
 def _data(seed=0, n=150):
