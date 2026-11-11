@@ -759,6 +759,22 @@ def _recurrent_tvc_path(fitter, marks=False):
     return run
 
 
+def _recurrent_cox_tvc_path(fitter, **kw):
+    """The fixture's rows as start-stop rows, each from the item's
+    previous row (0 for its first), fitted by ``fit_tvc``."""
+
+    def run(d):
+        x, i = np.asarray(d["x"], dtype=float), np.asarray(d["i"])
+        xl = np.zeros_like(x)
+        for item in np.unique(i):
+            rows = np.flatnonzero(i == item)
+            rows = rows[np.argsort(x[rows], kind="stable")]
+            xl[rows[1:]] = x[rows[:-1]]
+        return fitter.fit_tvc(i, xl, x, d["c"], d["Z"], **kw)
+
+    return run
+
+
 def _counting_draw(m, s):
     return m.count_terminated_simulation(3, items=2, random_state=s)
 
@@ -844,6 +860,53 @@ def _recurrent():
                     3, items=2, random_state=s, Z=[0.5]
                 ),
                 explicit_seed=True,
+            )
+        )
+    # The semi-parametric recurrent-event regressions: Cox fits of a
+    # layout of each item's rows, with a robust covariance by item.
+    recurrent_cox = (
+        ("AndersenGill", "AndersenGill", {}, {}),
+        ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}, {}),
+        (
+            "PrenticeWilliamsPeterson[gap]",
+            "PrenticeWilliamsPeterson",
+            {"time_scale": "gap"},
+            {},
+        ),
+        ("WeiLinWeissfeld", "WeiLinWeissfeld", {}, {}),
+    )
+    for label, name, kw, _ in recurrent_cox:
+        fitter = getattr(rc, name)
+        stratified = name != "AndersenGill"
+        paths = {}
+        if name != "WeiLinWeissfeld":
+            # fit_tvc with the item's covariates on every row is fit
+            paths["fit_tvc"] = _recurrent_cox_tvc_path(fitter, **kw)
+        out.append(
+            Case(
+                name=label,
+                fitters=(
+                    (f"surpyval.recurrent.{name}",) if "[" not in label else ()
+                ),
+                model_class=(
+                    "surpyval.recurrent.regression.recurrent_cox"
+                    ".RecurrentCoxModel"
+                ),
+                interface=COUNTING_REGRESSION,
+                data=functools.partial(recurrent_data, True),
+                fit=_fit(fitter, **kw),
+                functions=("cif",),
+                call_kwargs={"stratum": 2} if stratified else {},
+                x=X_REC,
+                Z=Z_REC,
+                paths=paths,
+                rows=("x", "Z", "i", "c", "n"),
+                covariates="Z",
+                drops_missing_covariate=False,
+                coefficients=lambda m: m.params,
+                # The unspecified baseline absorbs a constant.
+                intercept=True,
+                rtol=1e-6,
             )
         )
     renewals = (
@@ -1112,55 +1175,72 @@ def _joint_coefficients(model):
 
 
 def _joint():
-    """The joint model, predicting for one item read four times and still
+    """The joint models, predicting for one item read four times and still
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
-    markers=..., given=...)``: one covariate vector a call."""
-    case = regression(
-        "WeibullJointPH",
-        sp.WeibullJointPH,
-        model_class="surpyval.JointModel",
-        data=joint_data,
-        x=X_JOINT,
-        Z=np.ones((X_JOINT.size, 1)),
-        functions=("sf", "ff"),
-        z_style="single",
-        paths={
-            "fit_from_df": lambda d: sp.WeibullJointPH.fit_from_df(
-                pd.DataFrame(
-                    {
-                        "x": d["x"],
-                        "c": d["c"],
-                        "n": d["n"],
-                        "z0": np.asarray(d["Z"])[:, 0],
-                        "markers": list(d["markers"]),
-                    }
-                ),
-                x_col="x",
-                markers_col="markers",
-                c_col="c",
-                n_col="n",
-                Z_cols=["z0"],
-            )
-        },
-        rows=("x", "Z", "c", "n", "markers"),
-        coefficients=_joint_coefficients,
-        intercept=True,
-        draw=None,
-        exclude={
-            "random_sf": "an item's draws depend on its readings: "
-            "JointModel.predict(...).random(size) draws for one item",
-            "row_independence": "one item a call (Z is its covariate "
-            "vector), so there are no rows to mix up",
-        },
-    )
-    return [
-        replace(
-            case,
-            times=("x", "markers"),
-            call_kwargs=dict(JOINT_ITEM),
-            call_times=("markers", "given"),
+    markers=..., given=...)``: one covariate vector a call. The hazard
+    follows the marker's current value (``WeibullJointPH``), its slope,
+    the area under it, or its value and slope together."""
+    fitters = {
+        "WeibullJointPH": sp.WeibullJointPH,
+        "WeibullJointPH[slope]": sp.JointPH(sp.Weibull, link="slope"),
+        "WeibullJointPH[cumulative]": sp.JointPH(
+            sp.Weibull, link="cumulative"
+        ),
+        "WeibullJointPH[value+slope]": sp.JointPH(
+            sp.Weibull, link=["value", "slope"]
+        ),
+    }
+    out = []
+    for name, fitter in fitters.items():
+        case = regression(
+            name,
+            fitter,
+            # the links are ways of calling the one public factory
+            fitters=("surpyval.WeibullJointPH",) if "[" not in name else (),
+            model_class="surpyval.JointModel",
+            data=joint_data,
+            x=X_JOINT,
+            Z=np.ones((X_JOINT.size, 1)),
+            functions=("sf", "ff"),
+            z_style="single",
+            paths={
+                "fit_from_df": lambda d, fitter=fitter: fitter.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "c": d["c"],
+                            "n": d["n"],
+                            "z0": np.asarray(d["Z"])[:, 0],
+                            "markers": list(d["markers"]),
+                        }
+                    ),
+                    x_col="x",
+                    markers_col="markers",
+                    c_col="c",
+                    n_col="n",
+                    Z_cols=["z0"],
+                )
+            },
+            rows=("x", "Z", "c", "n", "markers"),
+            coefficients=_joint_coefficients,
+            intercept=True,
+            draw=None,
+            exclude={
+                "random_sf": "an item's draws depend on its readings: "
+                "JointModel.predict(...).random(size) draws for one item",
+                "row_independence": "one item a call (Z is its covariate "
+                "vector), so there are no rows to mix up",
+            },
         )
-    ]
+        out.append(
+            replace(
+                case,
+                times=("x", "markers"),
+                call_kwargs=dict(JOINT_ITEM),
+                call_times=("markers", "given"),
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1491,6 +1571,17 @@ def _df_paths():
     paths["ARI"] = _col_df(rc.ARI, m=1)
     paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    for label, name, kw in (
+        ("AndersenGill", "AndersenGill", {}),
+        ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}),
+        (
+            "PrenticeWilliamsPeterson[gap]",
+            "PrenticeWilliamsPeterson",
+            {"time_scale": "gap"},
+        ),
+        ("WeiLinWeissfeld", "WeiLinWeissfeld", {}),
+    ):
+        paths[label] = _col_df(getattr(rc, name), ("x", "i", "c", "n"), **kw)
     paths["CauseSpecificProportionalIntensity"] = _col_df(
         rc.CauseSpecificProportionalIntensity
     )
@@ -2508,6 +2599,7 @@ def _starve(case):
         "FineGrayModel",
         "ProportionalOddsModel",
         "CoxFrailtyModel",
+        "RecurrentCoxModel",
     ):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":

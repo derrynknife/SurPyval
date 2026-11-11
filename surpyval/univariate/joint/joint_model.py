@@ -32,6 +32,7 @@ from surpyval.utils.validation import (
 )
 
 from ._likelihood import (
+    EFFECTS,
     GH_PREDICT,
     JointArrays,
     Layout,
@@ -53,6 +54,13 @@ if TYPE_CHECKING:
 
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
 _CB_ON = ("sf", "R", "ff", "F")
+
+#: Each link in words, for the printout.
+_LINK_WORDS = {
+    "value": "current value",
+    "slope": "slope",
+    "cumulative": "cumulative area",
+}
 
 #: The formula of each built-in path model, by its name, for the
 #: printout; a path model of one's own may give its ``formula``.
@@ -161,13 +169,16 @@ def parameter_names(
     covariates: list[str],
     shifts: dict[str, list[str]] | None = None,
     hazard: list[str] | None = None,
+    links: tuple = ("value",),
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
     ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
     ``sd_b``, ..., then ``corr_a_b``, ...); ``sd_noise``; the Weibull
     ``alpha`` and ``beta``; the hazard's covariate coefficients
-    (``<cov>``); and ``marker_effect``. ``shifts`` and ``hazard`` (as
+    (``<cov>``); and the effect of each of ``links``, what of the path
+    the hazard follows (``marker_effect`` of its value, ``slope_effect``,
+    ``cumulative_effect``). ``shifts`` and ``hazard`` (as
     :func:`covariate_parts` gives them) say which covariates enter which
     part; default every one in both."""
     if shifts is None:
@@ -183,7 +194,8 @@ def parameter_names(
         for i, a in enumerate(varying)
         for b in varying[i + 1 :]
     ]
-    return out + ["sd_noise", "alpha", "beta", *hazard, "marker_effect"]
+    effects = [EFFECTS[link] for link in links]
+    return out + ["sd_noise", "alpha", "beta", *hazard, *effects]
 
 
 def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
@@ -215,9 +227,10 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         ]
         if corr:
             parts.append(anp.stack(corr))
-    beta, gamma, zeta = theta["beta"], theta["gamma"], theta["zeta"]
+    beta, gamma = theta["beta"], theta["gamma"]
+    zeta = anp.reshape(theta["zeta"], (layout.n_links,))
     alpha = theta["alpha"] * anp.exp(
-        (anp.dot(gamma, zbar) - zeta * (r - c)) / beta
+        (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c)) / beta
     )
     parts.append(anp.stack([theta["sigma"], alpha, beta]))
     if layout.hazard.all():
@@ -226,8 +239,17 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         parts.append(
             anp.stack([gamma[k] for k in np.flatnonzero(layout.hazard)])
         )
-    parts.append(anp.reshape(zeta, (1,)))
+    parts.append(zeta)
     return anp.concatenate(parts)
+
+
+def _reference_shift(zeta: Any, layout: Layout, r: float, c: float) -> Any:
+    """The log hazard between the marker's reference ``r`` and the
+    centre ``c`` of the internal hazard: the value's effect times ``r -
+    c``, and 0 where the hazard does not follow the value."""
+    if "value" not in layout.links:
+        return 0.0
+    return zeta[layout.links.index("value")] * (r - c)
 
 
 def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
@@ -273,14 +295,17 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
     sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
     n_hazard = layout.n_hazard
     gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
-    zeta = params[i + 3 + n_hazard]
+    zeta = params[i + 3 + n_hazard : i + 3 + n_hazard + layout.n_links]
     return {
         "mu": anp.stack(mus),
         "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
         "L": L,
         "sigma": sigma,
         "alpha": alpha_r
-        * anp.exp(-(anp.dot(gamma, zbar) - zeta * (r - c)) / beta),
+        * anp.exp(
+            -(anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
+            / beta
+        ),
         "beta": beta,
         "gamma": gamma,
         "zeta": zeta,
@@ -339,7 +364,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     so ``alpha`` and ``beta`` are the baseline of an item with its
     marker at ``marker_reference`` (:math:`r`; the mean reading of the
-    data unless the fit was given one) and its covariates at 0.
+    data unless the fit was given one) and its covariates at 0. With
+    another ``link`` the hazard follows the path's slope
+    (``slope_effect`` times :math:`m'(t)`) or the area under it from age
+    0 (``cumulative_effect`` times :math:`\\int_0^t m(s) ds`), in place
+    of the value or beside it; the baseline is then at a slope and an
+    area of 0.
 
     ``params`` holds, in the order of ``parameter_names``: each path
     parameter's mean (by the path model's own names: ``a``, ``b``, ...)
@@ -348,7 +378,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     ``corr_a_b``, ...); ``sd_noise``; the Weibull ``alpha`` and
     ``beta``; the hazard's covariate coefficients (``<cov>``); and
     ``marker_effect`` (:math:`\\zeta`, the change in the log hazard per
-    unit of the marker). An aliased covariate's entries are ``nan``
+    unit of the marker; ``slope_effect`` and ``cumulative_effect`` for
+    those links). An aliased covariate's entries are ``nan``
     (``aliased``). ``neg_ll()`` is the negative log-likelihood of the
     readings and the lifetimes together (so ``aic()`` and ``bic()``
     compare joint models of the same data).
@@ -400,8 +431,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: ``hazard_covariates``).
     path_covariates: dict[str, list[str]] | None = None
     hazard_covariates: list[str] | None = None
-    #: The marker value at which ``alpha`` is reported.
-    marker_reference: float
+    #: What of the marker's path the hazard follows: ``"value"`` (its
+    #: current value), ``"slope"`` (its rate of change), ``"cumulative"``
+    #: (the area under it from age 0), one or more.
+    link: tuple = ("value",)
+    #: The marker value at which ``alpha`` is reported (``None`` where
+    #: the hazard does not follow the value).
+    marker_reference: float | None
     #: The number of estimated parameters, the ``k`` of the criteria.
     k: int
     #: What the fit reached (``surpyval.utils.no_maximum``).
@@ -418,7 +454,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     _covariance: npt.NDArray | None = None
     _neg_ll: float
 
-    kind = "Joint (Weibull proportional hazards, current value)"
+    @property
+    def kind(self) -> str:
+        return "Joint (Weibull proportional hazards, {})".format(
+            ", ".join(_LINK_WORDS[link] for link in self.link)
+        )
 
     # -- the parts -------------------------------------------------------
 
@@ -453,6 +493,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 dtype=bool,
             ).reshape(len(names), len(kept)),
             np.array([cov in hazard for cov in kept], dtype=bool),
+            tuple(self.link),
+        )
+
+    def _likelihood_model(self) -> Model:
+        return Model(
+            self._layout,
+            PathFunction(self.path_model, tuple(self.link)),
+            self._centre,
         )
 
     @property
@@ -462,7 +510,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def _refs(self) -> tuple:
-        return (self._centre, self._zbar, self.marker_reference)
+        reference = self.marker_reference
+        return (
+            self._centre,
+            self._zbar,
+            self._centre if reference is None else reference,
+        )
 
     def _theta(self, params: Any = None) -> dict:
         if params is None:
@@ -502,6 +555,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         path = list(range(n_path))
         spread = list(range(n_path, n_path + q + q * (q - 1) // 2))
         i = spread[-1] + 1 if spread else n_path
+        at = {
+            "value": "marker = {:.6g}".format(
+                np.nan
+                if self.marker_reference is None
+                else self.marker_reference
+            ),
+            "slope": "slope = 0",
+            "cumulative": "area = 0",
+        }
         return [
             (
                 "path: {} ({})".format(
@@ -512,12 +574,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ("spread between items", spread),
             ("noise", [i]),
             (
-                "survival: {} PH, alpha at marker = {:.6g}".format(
-                    self.dist.name, self.marker_reference
+                "survival: {} PH, alpha at {}".format(
+                    self.dist.name, ", ".join(at[link] for link in self.link)
                 ),
                 list(range(i + 1, i + 3 + p)),
             ),
-            ("link: current value", [i + 3 + p]),
+            (
+                "link: " + ", ".join(_LINK_WORDS[link] for link in self.link),
+                list(range(i + 3 + p, i + 3 + p + len(self.link))),
+            ),
         ]
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
@@ -607,6 +672,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def __repr__(self) -> str:
         from surpyval.univariate.regression._summary import format_table
 
+        followed = " and ".join(_LINK_WORDS[link] for link in self.link)
         out = (
             "Joint SurPyval Model"
             "\n===================="
@@ -614,7 +680,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"{path_formula(self.path_model)}; varying between items: "
             f"{', '.join(self.varying)}"
             f"\nSurvival            : {self.dist.name} proportional hazards "
-            "in the marker's current value"
+            f"in the marker's {followed}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : maximum {self.maximum}"
@@ -807,9 +873,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             [ages] * M,
             [values] * M,
         )
-        model = Model(
-            self._layout, PathFunction(self.path_model), self._centre
-        )
+        model = self._likelihood_model()
         theta = self._theta()
         with np.errstate(all="ignore"):
             mode, root = continued_modes(
@@ -842,9 +906,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             [ages],
             [values],
         )
-        model = Model(
-            self._layout, PathFunction(self.path_model), self._centre
-        )
+        model = self._likelihood_model()
         theta = self._theta()
         t = np.array([u])
         with np.errstate(all="ignore"):
@@ -949,9 +1011,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             [ages] * M,
             [values] * M,
         )
-        model = Model(
-            self._layout, PathFunction(self.path_model), self._centre
-        )
+        model = self._likelihood_model()
         theta = self._theta()
         mode, root = continued_modes(
             theta, model.layout, model.path, many, times, self._centre
@@ -1243,6 +1303,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "path_model": key,
             "links": links,
             "varying": list(self.varying),
+            "link": list(self.link),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
             "feature_names": list(self.feature_names),
@@ -1257,7 +1318,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 if self.hazard_covariates is None
                 else list(self.hazard_covariates)
             ),
-            "marker_reference": float(self.marker_reference),
+            "marker_reference": (
+                None
+                if self.marker_reference is None
+                else float(self.marker_reference)
+            ),
             "centre": float(self._centre),
             "covariate_means": np.asarray(self._zbar, dtype=float).tolist(),
             "n_items": float(self.n_items),
@@ -1338,7 +1403,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
         hazard = model_dict.get("hazard_covariates")
         out.hazard_covariates = None if hazard is None else list(hazard)
-        out.marker_reference = float(model_dict["marker_reference"])
+        # saved before the hazard could follow anything but the value
+        out.link = tuple(model_dict.get("link") or ("value",))
+        reference = model_dict["marker_reference"]
+        out.marker_reference = None if reference is None else float(reference)
         out._centre = float(model_dict["centre"])
         out._zbar = np.array(model_dict["covariate_means"], dtype=float)
         out.n_items = float(model_dict.get("n_items", 0.0))

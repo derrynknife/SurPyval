@@ -19,7 +19,7 @@ import numpy.typing as npt
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
-from ._kinds import (
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     ACCELERATED_LIFE,
     ADDITIVE_HAZARD,

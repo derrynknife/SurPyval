@@ -13,8 +13,11 @@ assumptions and references are on the :doc:`Recurrent Event Regression
 Analysis` page; for the models without covariates see
 :doc:`Recurrent Event Modelling with SurPyval`. When the failures come in
 several types (failure modes) and a covariate may act on one type and not
-another, see `Several failure modes, each with its own covariate effects`_
-at the end of this page.
+another, see `Several failure modes, each with its own covariate effects`_.
+To estimate covariate effects without choosing a baseline shape at all (the
+Andersen-Gill, Prentice-Williams-Peterson and Wei-Lin-Weissfeld models, with
+robust standard errors), see `Without a baseline shape: Andersen-Gill,
+Prentice-Williams-Peterson and Wei-Lin-Weissfeld`_ at the end of this page.
 
 Both fitters take the recurrent ``x`` / ``i`` / ``c`` / ``n`` arrays exactly as
 the models without covariates do (including ``tl`` / ``tr`` truncation and
@@ -349,8 +352,11 @@ Saving and loading a regression model
 Like the other recurrence models, a fitted proportional-intensity model can be
 saved with ``to_dict`` / ``to_json`` and restored with ``surpyval.from_dict``
 / ``surpyval.from_json``. The baseline, its parameters and the coefficients
-are stored, so predictions are reproduced exactly; the fitted data and
-likelihood are not, so re-fit if you need confidence bounds or diagnostics.
+are stored, so predictions are reproduced exactly, and so is the parameter
+covariance, so the restored model gives the same standard errors,
+``summary()`` and Wald bounds (``cif_cb``, ``iif_cb``, ``cb_tvc``). The
+fitted data and likelihood are not stored, so re-fit for the likelihood
+(``aic()``) or the diagnostics.
 
 .. jupyter-execute::
 
@@ -358,6 +364,7 @@ likelihood are not, so re-fit if you need confidence bounds or diagnostics.
 
     restored = surpyval.from_dict(fleet.to_dict())
     print(np.allclose(restored.cif(40, z), fleet.cif(40, z)))
+    print(np.allclose(restored.cif_cb(40, z), fleet.cif_cb(40, z)))
 
 Model checking
 --------------
@@ -1233,6 +1240,313 @@ says what to use instead:
 - Only the Wald (delta-method) bounds are offered, as on the single-mode
   models; there is no penalised fit, and the ``_from_df`` forms take
   ``Z_cols`` only (no ``formula``).
+
+Without a baseline shape: Andersen-Gill, Prentice-Williams-Peterson and Wei-Lin-Weissfeld
+------------------------------------------------------------------------------------------
+
+Every model above gives the baseline intensity a formula. Three fitters
+leave it unspecified, as ``CoxPH`` does for a single event, and estimate
+only how the covariates change the rate: ``AndersenGill``,
+``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld``. They differ in what
+they assume a repeat event is; :doc:`Recurrent Event Regression Analysis`
+sets the four models side by side, in words. In one line each:
+
+- ``AndersenGill``: an event does not change the item; one baseline for all
+  events. The coefficient is a log *rate ratio*.
+- ``PrenticeWilliamsPeterson``: each event number has its own baseline, and
+  an item is at risk of its second event only after its first.
+  ``time_scale="total"`` (the default) measures time as the item's age,
+  ``time_scale="gap"`` as the time since its last event.
+- ``WeiLinWeissfeld``: the time from the start to the first event, to the
+  second, and so on, each modelled on its own.
+
+All three take the event log the other recurrent models take: ``fit(x, Z,
+i=..., c=...)``, with ``c = 0`` for an event and ``c = 1`` for the end of an
+item's observation, or ``fit_from_df`` with the column names. All three
+return the same kind of model, and all three report **robust standard
+errors**, with each item a cluster: an item's events are not independent
+pieces of evidence, and the robust errors do not pretend they are.
+
+The data are laid out for the model (the risk interval of each row, and its
+event number) and handed to ``CoxPH``, so tied times, a coefficient the
+data cannot determine and a likelihood with no maximum are handled, and
+reported, as ``CoxPH`` does. The results equal R's ``coxph(... +
+cluster(id))`` on the matching layout.
+
+An engineering example: trucks, and what the log does not record
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Eighty haul trucks are watched for 36 months; half work a dusty pit. To
+have a known answer the breakdowns are simulated: dust multiplies the
+breakdown rate by :math:`e^{0.5} \approx 1.65`, and, as in any real fleet,
+some trucks are simply worse than others for reasons the log does not
+record (a factor ``hidden`` that the analysis never sees).
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    from surpyval.recurrent import AndersenGill
+
+    rng = np.random.default_rng(2026)
+    months = 36.0
+    rows = []
+    for truck in range(80):
+        dusty = float(truck % 2)
+        hidden = rng.gamma(1 / 0.6, 0.6)   # not in the log
+        expected = (months / 9.0) ** 1.3 * hidden * np.exp(0.5 * dusty)
+        times = months * rng.uniform(size=rng.poisson(expected)) ** (1 / 1.3)
+        rows += [(truck, t, 0, dusty) for t in np.sort(times)]
+        rows.append((truck, months, 1, dusty))
+    fleet_log = pd.DataFrame(rows, columns=["truck", "month", "c", "dusty"])
+
+    ag = AndersenGill.fit_from_df(
+        fleet_log, x_col="month", Z_cols="dusty", i_col="truck", c_col="c"
+    )
+    ag
+
+The estimate is a rate ratio of about 1.5, and its 95% interval contains
+the true 1.65. ``summary()`` shows the two standard errors side by side:
+
+.. jupyter-execute::
+
+    ag.summary()[["coef", "exp(coef)", "se(coef)", "naive se(coef)"]].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = ag.summary()
+    assert round(float(_t["exp(coef)"].iloc[0]), 1) == 1.5, _t
+    assert _t["exp(coef) lower 95%"].iloc[0] < np.exp(0.5), _t
+    assert np.exp(0.5) < _t["exp(coef) upper 95%"].iloc[0], _t
+    _ratio = float(_t["se(coef)"].iloc[0] / _t["naive se(coef)"].iloc[0])
+    assert 2.0 < _ratio < 2.5, _ratio
+
+The robust standard error is more than twice the model-based ("naive") one.
+The naive error counts 656 breakdowns as 656 independent observations of
+the effect of dust; the robust one sees that they come from 80 trucks, and
+that trucks differ. Had the naive error been used, the interval would have
+been less than half as wide as the data justify. ``covariance()`` and
+``standard_errors()`` are the robust ones; ``naive_covariance()`` is the
+other.
+
+``cif(x, Z)`` is the expected number of breakdowns by age ``x``, the
+cumulative baseline scaled by the covariates. It agrees closely with the
+parametric model fitted to the same log, without having been told the shape
+of the trend:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA, ProportionalIntensityNHPP
+
+    parametric = ProportionalIntensityNHPP.fit_from_df(
+        fleet_log, x_col="month", Z_cols="dusty", i_col="truck", c_col="c",
+        baseline=CrowAMSAA,
+    )
+    ages = [12, 24, 36]
+    print("Andersen-Gill, clean pit :", ag.cif(ages, [0]).round(2))
+    print("Crow-AMSAA,    clean pit :", parametric.cif(ages, [0]).round(2))
+    print("Andersen-Gill, dusty pit :", ag.cif(ages, [1]).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ag.cif(ages, [0]), parametric.cif(ages, [0]), rtol=0.05)
+
+What it cannot do is forecast: the baseline is a step function that stops
+at the last breakdown, so for month 48 use the parametric model. Bounds on
+the curve itself are not offered either (``cif_cb`` says so and points to
+the alternatives); the robust interval of the rate ratio is in
+``summary()``.
+
+A medical example: one trial, three questions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Three hundred patients are randomised to a treatment or not, and followed
+for 24 months for recurrent infections. In this simulation an infection
+changes the patient: the first comes slowly (on average after 30 months
+untreated), and after one, the next comes much sooner (8 months). The
+treatment stretches every one of these waiting times by the same factor,
+:math:`e^{0.5}`, a log hazard ratio of :math:`-0.5` for each wait.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import PrenticeWilliamsPeterson, WeiLinWeissfeld
+
+    rng = np.random.default_rng(1989)
+    follow_up = 24.0
+    rows = []
+    for patient in range(300):
+        treated = float(patient % 2)
+        age, number = 0.0, 1
+        while True:
+            mean_wait = (30.0 if number == 1 else 8.0) * np.exp(0.5 * treated)
+            age += rng.exponential(mean_wait)
+            if age >= follow_up:
+                break
+            rows.append((patient, age, 0, treated))
+            number += 1
+        rows.append((patient, follow_up, 1, treated))
+    trial = pd.DataFrame(rows, columns=["patient", "month", "c", "treated"])
+
+    columns = dict(x_col="month", Z_cols="treated", i_col="patient", c_col="c")
+    fits = {
+        "Andersen-Gill": AndersenGill.fit_from_df(trial, **columns),
+        "PWP, gap time": PrenticeWilliamsPeterson.fit_from_df(
+            trial, time_scale="gap", max_events=3, **columns
+        ),
+        "PWP, total time": PrenticeWilliamsPeterson.fit_from_df(
+            trial, max_events=3, **columns
+        ),
+        "Wei-Lin-Weissfeld": WeiLinWeissfeld.fit_from_df(
+            trial, max_events=3, **columns
+        ),
+    }
+    pd.DataFrame(
+        {
+            name: {
+                "coef": fit.params[0],
+                "se(coef)": fit.standard_errors()[0],
+                "naive se(coef)": np.sqrt(fit.naive_covariance()[0, 0]),
+            }
+            for name, fit in fits.items()
+        }
+    ).T.round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gap = fits["PWP, gap time"]
+    assert abs(_gap.params[0] + 0.5) < 2 * _gap.standard_errors()[0]
+    assert all(fit.params[0] < 0 for fit in fits.values())
+    _r = {k: f.standard_errors()[0] / np.sqrt(f.naive_covariance()[0, 0])
+          for k, f in fits.items()}
+    assert 0.9 < _r["PWP, gap time"] < 1.1, _r
+    assert _r["Andersen-Gill"] > 1.25 and _r["Wei-Lin-Weissfeld"] > 1.25, _r
+    assert fits["Wei-Lin-Weissfeld"].params[0] < _gap.params[0]
+
+All four find that the treatment helps, and they are answers to different
+questions:
+
+- The **gap-time** model matches how these data arise, and recovers the
+  effect on each wait (the true value is :math:`-0.5`). Its robust and
+  naive standard errors agree: once each infection number has its own
+  baseline, nothing is left over to make a patient's waits alike.
+- The **Andersen-Gill** coefficient is the effect on the overall infection
+  rate. It is larger in size, because the treatment helps twice: it delays
+  each infection, and by delaying the first it keeps patients longer in the
+  state where infections are rare. Its robust error is well above its naive
+  one: with a single baseline, the dependence the model leaves out (a
+  patient who has had one infection is on the fast clock) shows up as
+  patients differing.
+- The **Wei-Lin-Weissfeld** coefficient is the effect on the time from
+  randomisation to each infection number. It too carries the knock-on
+  effect of delaying earlier infections, and is the one that compares the
+  groups as randomised.
+
+``max_events=3`` models the first three infections only: few patients have
+a fourth, and a baseline estimated from a handful of them is poorly
+determined. For the conditional models, what follows a patient's third
+infection is left out; for the marginal model it is the number of event
+numbers modelled.
+
+With a baseline per event number, ``cif`` takes the event number as
+``stratum``, and for the gap-time and marginal models ``sf`` turns it into
+a probability: of waiting longer than ``x`` for that infection, or of not
+having had it by ``x`` months after randomisation.
+
+.. jupyter-execute::
+
+    gap = fits["PWP, gap time"]
+    print("P(first wait > 12 months), untreated :",
+          gap.sf(12, [0], stratum=1).round(2))
+    print("P(second wait > 12 months), untreated:",
+          gap.sf(12, [0], stratum=2).round(2))
+
+    wlw = fits["Wei-Lin-Weissfeld"]
+    print("P(no second infection by month 24), untreated:",
+          wlw.sf(24, [0], stratum=2).round(2))
+    print("P(no second infection by month 24), treated  :",
+          wlw.sf(24, [1], stratum=2).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert gap.sf(12, [0], stratum=2) < gap.sf(12, [0], stratum=1)
+    assert abs(gap.sf(12, [0], stratum=1) - np.exp(-12 / 30)) < 0.08
+    assert abs(gap.sf(12, [0], stratum=2) - np.exp(-12 / 8)) < 0.08
+    assert wlw.sf(24, [1], stratum=2) > wlw.sf(24, [0], stratum=2)
+
+The second wait is much the shorter, as simulated (the true values are
+0.67 and 0.22).
+
+Start-stop rows, saving, and what is not available
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In an event log, the covariates on a row are those in force up to that
+row's time, so they may change from one of an item's rows to the next (the
+marginal model, which starts every clock at 0, needs them constant within
+an item and refuses otherwise). For an item that enters late, a break in
+its observation, or a covariate that changes between events,
+``AndersenGill`` and ``PrenticeWilliamsPeterson`` take start-stop rows,
+``fit_tvc(i, xl, xr, c, Z)`` or ``fit_tvc_from_df``: each row an interval
+``(xl, xr]`` of one item, ending in an event (``c = 0``) or not. This is
+the layout of R's ``Surv(start, stop, event)``:
+
+.. jupyter-execute::
+
+    rows = pd.DataFrame({
+        "id":    [1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
+        "start": [2, 5, 9, 0, 6, 0, 3, 8, 1, 4],
+        "stop":  [5, 8, 12, 6, 11, 3, 7, 12, 4, 10],
+        "c":     [0, 0, 1, 0, 1, 0, 0, 1, 0, 0],
+        "load":  [0.2, 0.9, 0.9, 1.5, 1.1, 0.4, 0.1, 0.8, 1.9, 1.3],
+    })
+    small = AndersenGill.fit_tvc_from_df(
+        rows, i_col="id", xl_col="start", xr_col="stop", c_col="c",
+        Z_cols="load",
+    )
+    small.params.round(3)
+
+A model saves and loads like any other, keeping both covariances and every
+prediction:
+
+.. jupyter-execute::
+
+    import surpyval
+
+    restored = surpyval.from_dict(ag.to_dict())
+    print(restored.standard_errors().round(4), ag.standard_errors().round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(restored.standard_errors(), ag.standard_errors())
+    assert np.array_equal(restored.cif(ages, [1]), ag.cif(ages, [1]))
+
+``model.cox`` is the Cox model fitted to the laid-out rows, for anything
+this model does not wrap: ``model.diagnose()`` is its ``diagnose()`` (the
+proportional-hazards tests, read here as a screen, since they take the rows
+as independent), and its residuals are row by row. Not available yet, each
+a refusal or an absent method rather than a wrong answer:
+
+- **Bounds on the curve** (``cif_cb``): the robust variance is of the
+  coefficients only. ``model.cox.cb(x, Z, on="Hf")`` gives the model-based
+  bound.
+- **Simulation and forecasts**: the baseline has no shape beyond the data.
+  Use the parametric models above.
+- **Counted failures** (``c = 2``) and left-censored rows: the partial
+  likelihood needs each event's time. ``ProportionalIntensityNHPP`` takes
+  them.
+- **Weights** and **penalised** fits.
+- **Several failure modes**: fit one model per mode, to that mode's events
+  with the other modes' rows flagged ``c = 1`` (as
+  ``CauseSpecificProportionalIntensity`` does for the parametric models).
 
 See :doc:`Recurrent Event Regression Analysis` for the theory and references
 behind these models.

@@ -1,0 +1,139 @@
+{
+  "generator": "scripts/reference/reference_r_fine_gray_variance.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "pbc_half_years_cause1": {
+      "fixture": "pbc",
+      "software": "R cmprsk",
+      "version": "2.2.12",
+      "call": "crr(ceiling(pbc_d$years * 2) / 2, pbc_d$cause, cbind(pbc_d$drug, pbc_d$age, pbc_d$log_bili, pbc_d$female), failcode = 1, cencode = 0)",
+      "settings": {
+        "covariates": ["drug", "age", "log_bili", "female"],
+        "time": "ceiling(years * 2) / 2",
+        "var_naive": "fit$invinf, the inverse information",
+        "var_sandwich": "fit$var, Fine and Gray's robust variance"
+      },
+      "values": {
+        "coef": [-0.169388684849792, -0.109857822033546, 0.312475752803621, -0.556703818616395],
+        "var_sandwich": [
+          [0.135050799402595, -3.55010471176579e-05, 0.0136765100097433, -0.0142615397132372],
+          [-3.55010471176579e-05, 0.000410263455472962, -0.000275576141557029, 0.0032294835213721],
+          [0.0136765100097433, -0.000275576141557029, 0.0176024114124769, 0.00165231107458489],
+          [-0.0142615397132372, 0.0032294835213721, 0.0016523110745849, 0.352311349090458]
+        ],
+        "var_naive": [
+          [0.147372493086403, 9.76982523204757e-05, 0.00789070495941291, 0.034730327120824],
+          [9.76982523204757e-05, 0.000519662756183145, -0.000148032249102058, 0.00281788333327232],
+          [0.00789070495941291, -0.000148032249102058, 0.0313486434843706, -0.0023964488581304],
+          [0.034730327120824, 0.00281788333327232, -0.00239644885813041, 0.395539854944674]
+        ],
+        "loglik": -146.935175220338,
+        "converged": true
+      }
+    },
+    "pbc_half_years_cause2": {
+      "fixture": "pbc",
+      "software": "R cmprsk",
+      "version": "2.2.12",
+      "call": "crr(ceiling(pbc_d$years * 2) / 2, pbc_d$cause, cbind(pbc_d$drug, pbc_d$age, pbc_d$log_bili, pbc_d$female), failcode = 2, cencode = 0)",
+      "settings": {
+        "covariates": ["drug", "age", "log_bili", "female"],
+        "time": "ceiling(years * 2) / 2",
+        "var_naive": "fit$invinf, the inverse information",
+        "var_sandwich": "fit$var, Fine and Gray's robust variance"
+      },
+      "values": {
+        "coef": [-0.105420066615211, 0.0520516668788145, 0.94329548133862, -0.035482211439466],
+        "var_sandwich": [
+          [0.0289226051262786, 2.50613570029182e-05, 0.00226790100656473, -0.0048062956450938],
+          [2.50613570029181e-05, 8.41400300310674e-05, 0.000248503133656817, -0.000254726213672683],
+          [0.00226790100656473, 0.000248503133656817, 0.00777069336356925, -0.00125737025102794],
+          [-0.0048062956450938, -0.000254726213672683, -0.00125737025102794, 0.06560238296946]
+        ],
+        "var_naive": [
+          [0.030781388225143, -0.00031117631878167, 0.00142791349716497, 0.000423182492329244],
+          [-0.00031117631878167, 6.62734768687527e-05, 5.95639420120284e-05, 0.000644207186016938],
+          [0.00142791349716497, 5.95639420120285e-05, 0.00785041398697676, 0.00246257356547505],
+          [0.000423182492329242, 0.000644207186016938, 0.00246257356547505, 0.0547820960687048]
+        ],
+        "loglik": -667.904228477473,
+        "converged": true
+      }
+    },
+    "competing_counts_cause1": {
+      "fixture": "competing",
+      "software": "R cmprsk",
+      "version": "2.2.12",
+      "call": "rep_d <- cr_d[rep(seq_len(nrow(cr_d)), cr_d$n), ]; crr(rep_d$x, rep_d$cause, cbind(rep_d$group, rep_d$z), failcode = 1, cencode = 0)",
+      "settings": {
+        "covariates": ["group", "z"],
+        "counts": "n = 1 + (row %% 3), row from 1; each row n times",
+        "var_naive": "fit$invinf, the inverse information",
+        "var_sandwich": "fit$var, Fine and Gray's robust variance"
+      },
+      "values": {
+        "coef": [0.856004209413073, 0.125178555990918],
+        "var_sandwich": [
+          [0.0548610306354701, 0.00524159586809167],
+          [0.00524159586809167, 0.0129624475182106]
+        ],
+        "var_naive": [
+          [0.0610042228132211, 0.00243879184793493],
+          [0.00243879184793493, 0.0143204381506786]
+        ],
+        "loglik": -365.895520805905,
+        "converged": true
+      }
+    },
+    "competing_counts_cause2": {
+      "fixture": "competing",
+      "software": "R cmprsk",
+      "version": "2.2.12",
+      "call": "rep_d <- cr_d[rep(seq_len(nrow(cr_d)), cr_d$n), ]; crr(rep_d$x, rep_d$cause, cbind(rep_d$group, rep_d$z), failcode = 2, cencode = 0)",
+      "settings": {
+        "covariates": ["group", "z"],
+        "counts": "n = 1 + (row %% 3), row from 1; each row n times",
+        "var_naive": "fit$invinf, the inverse information",
+        "var_sandwich": "fit$var, Fine and Gray's robust variance"
+      },
+      "values": {
+        "coef": [-1.00204744778617, 0.338476169767296],
+        "var_sandwich": [
+          [0.0857406070588217, 0.00226586683435181],
+          [0.00226586683435181, 0.0234271419918081]
+        ],
+        "var_naive": [
+          [0.0925648522749176, -0.000839143377025223],
+          [-0.000839143377025223, 0.0299843612242975]
+        ],
+        "loglik": -219.343414500082,
+        "converged": true
+      }
+    },
+    "competing_no_censoring_cause1": {
+      "fixture": "competing",
+      "software": "R cmprsk",
+      "version": "2.2.12",
+      "call": "all_d$cause[all_d$cause == 0] <- 2; crr(all_d$x, all_d$cause, cbind(all_d$group, all_d$z), failcode = 1, cencode = 0)",
+      "settings": {
+        "covariates": ["group", "z"],
+        "causes": "every censored row (cause 0) made cause 2",
+        "var_naive": "fit$invinf, the inverse information",
+        "var_sandwich": "fit$var, Fine and Gray's robust variance"
+      },
+      "values": {
+        "coef": [0.77565107867215, 0.148021021108204],
+        "var_sandwich": [
+          [0.0984655735699025, 0.0045015131170829],
+          [0.0045015131170829, 0.0234824483307771]
+        ],
+        "var_naive": [
+          [0.108779183990144, 0.00107150292044459],
+          [0.00107150292044459, 0.0267508478456743]
+        ],
+        "loglik": -168.934136584181,
+        "converged": true
+      }
+    }
+  }
+}

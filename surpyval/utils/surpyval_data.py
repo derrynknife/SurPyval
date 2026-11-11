@@ -2473,17 +2473,36 @@ def _options(
     return options
 
 
+#: A fit on continuous covariate paths starts with this many steps in each
+#: stretch of a path, and halves them until no estimate moves by more than
+#: ``_PATH_TOLERANCE`` of its standard error, for at most ``_PATH_ROUNDS``
+#: halvings (8, 16, ..., 2048 steps a stretch) and ``_PATH_ROWS`` rows.
+_PATH_STEPS = 8
+_PATH_TOLERANCE = 0.01
+_PATH_ROUNDS = 8
+_PATH_ROWS = 2_000_000
+#: The share of a failure's last step that holds the path's value at the
+#: failure.
+_PATH_END = 1e-6
+
+
 def _fit_tvc_from_data(
     fit_tvc: Callable, data: SurpyvalData, options: dict
 ) -> Any:
-    """Fit ``data`` with step time-varying covariates by the model's
+    """Fit ``data`` with time-varying covariates by the model's
     ``fit_tvc``: each item's life, from the start of its observation
     (``left_truncation``, else 0) to its outcome, split where its schedule
     steps into ``(start, stop]`` rows, the covariates of each row being the
     item's static ones (if any) followed by its time-varying ones in force
-    there."""
+    there.
+
+    An item whose covariates are a continuous ``CovariatePath`` is fitted
+    on the path cut into steps (``CovariatePath.to_steps``; the step a
+    failure falls in ends with the path's value at the failure): the fit is
+    repeated with the steps halved until no estimate moves by more than
+    ``_PATH_TOLERANCE`` of its standard error, and the model says what it
+    took in ``path_steps``."""
     from surpyval.univariate.regression.tvc_path import CovariatePath
-    from surpyval.utils.item_history import late_covariates
 
     if np.isin(data.c, (-1, 2)).any():
         raise ValueError(
@@ -2497,60 +2516,6 @@ def _fit_tvc_from_data(
             "(fit_tvc); this data has right truncated items."
         )
     ids = data.ids if data.ids is not None else list(range(len(data.x)))
-    static = None
-    if data.Z is not None:
-        static = np.asarray(data.Z, dtype=float)
-        static = static[:, None] if static.ndim == 1 else static
-    x = data.x if data.x.ndim == 1 else data.x[:, 0]
-    fitter = getattr(fit_tvc, "__self__", None)
-    support = getattr(fitter, "support", (0.0, np.inf))
-    real_line = float(support[0]) < 0
-    rows: dict[str, list] = {k: [] for k in ("i", "xl", "xr", "c", "Z", "n")}
-    for k, item in enumerate(ids):
-        schedule = data.time_varying_covariates[item]  # type: ignore[index]
-        if isinstance(schedule, CovariatePath):
-            raise ValueError(
-                f"Item {item!r}'s time-varying covariates are a continuous "
-                "CovariatePath; fitting on continuous paths is not provided "
-                "yet. Give the path as a StepSchedule to fit it."
-            )
-        if np.isfinite(data.tl[k]):
-            start = float(data.tl[k])
-        elif real_line:
-            # Not left truncated: followed since -inf, as the ordinary fit
-            # reads it, on a baseline defined below 0 (#952).
-            if schedule.start > -np.inf:
-                raise ValueError(
-                    f"Item {item!r} has no left_truncation, so on this "
-                    "model's baseline, defined below 0, it is followed "
-                    "since -inf, but its time-varying covariates start at "
-                    f"{schedule.start:g}. Give their value since -inf "
-                    "(StepSchedule.from_changepoints([-np.inf, ...], ...)), "
-                    "or left_truncation=0 if it came under observation at "
-                    "0."
-                )
-            start = -np.inf
-        else:
-            start = 0.0
-        stop = float(x[k])
-        if schedule.start > start:
-            # Nothing says what the covariates were before (#930).
-            raise late_covariates(item, schedule.start, start)
-        starts, ends, values = schedule.segments(
-            max(stop, schedule.start + 1e-12)
-        )
-        keep = (ends > start) & (starts < stop)
-        starts = np.maximum(starts[keep], start)
-        ends = np.minimum(ends[keep], stop)
-        values = values[keep]
-        last = len(starts) - 1
-        for j, (a, b, z) in enumerate(zip(starts, ends, values)):
-            rows["i"].append(item)
-            rows["xl"].append(a)
-            rows["xr"].append(b)
-            rows["c"].append(int(data.c[k]) if j == last else 1)
-            rows["Z"].append(z if static is None else np.r_[static[k], z])
-            rows["n"].append(data.n[k])
     accepted = inspect.signature(fit_tvc).parameters
     if not any(
         p.kind is inspect.Parameter.VAR_KEYWORD for p in accepted.values()
@@ -2570,15 +2535,188 @@ def _fit_tvc_from_data(
                 + (", ".join(repr(t) for t in takes) or "no options")
                 + "."
             )
-    return fit_tvc(
-        np.array(rows["i"]),
-        np.array(rows["xl"], dtype=float),
-        np.array(rows["xr"], dtype=float),
-        np.array(rows["c"]),
-        np.array(rows["Z"], dtype=float),
-        np.array(rows["n"]),
-        **options,
+
+    def fitted(steps: int) -> tuple[Any, int]:
+        rows = _tvc_rows(fit_tvc, data, ids, steps)
+        model = fit_tvc(
+            np.array(rows["i"]),
+            np.array(rows["xl"], dtype=float),
+            np.array(rows["xr"], dtype=float),
+            np.array(rows["c"]),
+            np.array(rows["Z"], dtype=float),
+            np.array(rows["n"]),
+            **options,
+        )
+        return model, len(rows["i"])
+
+    schedules = data.time_varying_covariates or {}
+    continuous = any(
+        isinstance(schedule, CovariatePath) for schedule in schedules.values()
     )
+    model, count = fitted(_PATH_STEPS)
+    if not continuous:
+        return model
+    return _refined_on_paths(fitted, model, count)
+
+
+def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
+    """The fit on continuous paths, refined: ``model`` is the fit with
+    ``_PATH_STEPS`` steps a stretch (``count`` rows), and ``fitted(steps)``
+    fits with another number. The steps are halved until the estimates
+    move by no more than ``_PATH_TOLERANCE`` of their standard errors
+    (where a standard error is missing, of ``1e-2 max(|estimate|, 1)``),
+    and the model returned holds ``path_steps``: the steps a stretch and
+    the rows of its fit, the largest move of an estimate at the last
+    halving (in standard errors), the tolerance and whether it was met."""
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    steps, change = _PATH_STEPS, 0.0
+    converged = False
+    for _ in range(_PATH_ROUNDS):
+        finer, finer_count = fitted(2 * steps)
+        if finer_count == count:
+            # every path is flat or made of steps: nothing was cut finer
+            converged = True
+            break
+        change = _largest_move(model, finer)
+        model, count, steps = finer, finer_count, 2 * steps
+        if change <= _PATH_TOLERANCE:
+            converged = True
+            break
+        if 2 * count > _PATH_ROWS:
+            break
+    report = {
+        "steps": steps,
+        "rows": count,
+        "change": float(change),
+        "tolerance": _PATH_TOLERANCE,
+        "converged": converged,
+    }
+    try:
+        model.path_steps = report
+    except AttributeError:
+        pass
+    if not converged:
+        warnings.warn(
+            "The fit on continuous covariate paths still moved when its "
+            f"steps were halved to {steps} a stretch ({count:,} rows): the "
+            f"largest move of an estimate was {change:.2g} of its standard "
+            f"error, above the tolerance of {_PATH_TOLERANCE:g}. The last "
+            "fit is returned. List the path's kinks and jumps as "
+            "breakpoints, or give the items' covariates as StepSchedules "
+            "(CovariatePath.to_steps(t_max, steps)) of your own fineness.",
+            RuntimeWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    return model
+
+
+def _largest_move(coarse: Any, fine: Any) -> float:
+    """The largest change of an estimate between two fits, in the finer
+    fit's standard errors."""
+    old = np.atleast_1d(np.asarray(coarse.params, dtype=float)).ravel()
+    new = np.atleast_1d(np.asarray(fine.params, dtype=float)).ravel()
+    if old.shape != new.shape:
+        return np.inf
+    scale = 1e-2 * np.maximum(np.abs(new), 1.0)
+    try:
+        with ignoring_warnings():
+            se = np.asarray(fine.standard_errors(), dtype=float).ravel()
+        if se.shape == new.shape:
+            scale = np.where(np.isfinite(se) & (se > 0), se, scale)
+    except Exception:
+        pass
+    both = np.isfinite(old) & np.isfinite(new)
+    if not both.any():
+        return 0.0
+    return float(np.max(np.abs(new - old)[both] / scale[both]))
+
+
+def _tvc_rows(
+    fit_tvc: Callable, data: SurpyvalData, ids: Any, steps: int
+) -> dict[str, list]:
+    """The ``(start, stop]`` rows of every item for ``fit_tvc``, a
+    continuous path cut into ``steps`` steps a stretch."""
+    from surpyval.univariate.regression.tvc_path import CovariatePath
+    from surpyval.utils.item_history import late_covariates
+
+    static = None
+    if data.Z is not None:
+        static = np.asarray(data.Z, dtype=float)
+        static = static[:, None] if static.ndim == 1 else static
+    x = data.x if data.x.ndim == 1 else data.x[:, 0]
+    fitter = getattr(fit_tvc, "__self__", None)
+    support = getattr(fitter, "support", (0.0, np.inf))
+    real_line = float(support[0]) < 0
+    rows: dict[str, list] = {k: [] for k in ("i", "xl", "xr", "c", "Z", "n")}
+    for k, item in enumerate(ids):
+        schedule = data.time_varying_covariates[item]  # type: ignore[index]
+        path = schedule if isinstance(schedule, CovariatePath) else None
+        if np.isfinite(data.tl[k]):
+            start = float(data.tl[k])
+        elif real_line:
+            # Not left truncated: followed since -inf, as the ordinary fit
+            # reads it, on a baseline defined below 0 (#952).
+            if path is not None:
+                raise ValueError(
+                    f"Item {item!r} has no left_truncation, so on this "
+                    "model's baseline, defined below 0, it is followed "
+                    "since -inf, and a continuous CovariatePath is cut "
+                    "into steps over a finite stretch only. Give the age "
+                    "it came under observation as left_truncation (0 if "
+                    "at 0)."
+                )
+            if schedule.start > -np.inf:
+                raise ValueError(
+                    f"Item {item!r} has no left_truncation, so on this "
+                    "model's baseline, defined below 0, it is followed "
+                    "since -inf, but its time-varying covariates start at "
+                    f"{schedule.start:g}. Give their value since -inf "
+                    "(StepSchedule.from_changepoints([-np.inf, ...], ...)), "
+                    "or left_truncation=0 if it came under observation at "
+                    "0."
+                )
+            start = -np.inf
+        else:
+            start = 0.0
+        stop = float(x[k])
+        if schedule.start > start:
+            # Nothing says what the covariates were before (#930).
+            raise late_covariates(item, schedule.start, start)
+        if path is not None:
+            schedule = path.to_steps(
+                stop if stop > start else start + 1.0, steps, start=start
+            )
+        starts, ends, values = schedule.segments(
+            max(stop, schedule.start + 1e-12)
+        )
+        keep = (ends > start) & (starts < stop)
+        starts = np.maximum(starts[keep], start)
+        ends = np.minimum(ends[keep], stop)
+        values = values[keep]
+        if path is not None and int(data.c[k]) == 0 and len(starts):
+            # A failure's hazard is that of the covariate at the failure,
+            # not at the middle of the step it fell in (an error that
+            # falls only with the step's width, not its square): the last
+            # millionth of that step holds the path's value at its end.
+            at_end = path(stop)[0]
+            if not np.array_equal(values[-1], at_end):
+                cut = ends[-1] - _PATH_END * (ends[-1] - starts[-1])
+                if starts[-1] < cut < ends[-1]:
+                    starts = np.append(starts, cut)
+                    ends = np.append(ends[:-1], [cut, ends[-1]])
+                    values = np.vstack([values, at_end])
+        last = len(starts) - 1
+        for j, (a, b, z) in enumerate(zip(starts, ends, values)):
+            rows["i"].append(item)
+            rows["xl"].append(a)
+            rows["xr"].append(b)
+            rows["c"].append(int(data.c[k]) if j == last else 1)
+            rows["Z"].append(z if static is None else np.r_[static[k], z])
+            rows["n"].append(data.n[k])
+    return rows
 
 
 def named_fit(fit: Callable, names: list | None) -> Any:

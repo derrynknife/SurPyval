@@ -152,16 +152,102 @@ def test_fine_gray_matches_crr(ref_id):
     assert_allclose(model.beta, ref["coef"], **FIT)
     # The stored optimum of the weighted partial likelihood.
     assert_allclose(-model._neg_ll, ref["loglik"], rtol=0, atol=1e-6)
-    # SurPyval's standard errors are the model-based ones (crr's invinf),
-    # documented as such: Fine and Gray's sandwich (crr's var) is not
-    # implemented.
+    # The default covariance is Fine and Gray's robust sandwich (crr's
+    # var); robust=False gives the model-based one (crr's invinf).
+    assert_allclose(model.covariance(), ref["var_sandwich"], **FIT)
     assert_allclose(
-        model.standard_errors(), np.sqrt(np.diag(ref["var_naive"])), **FIT
+        model.standard_errors(), np.sqrt(np.diag(ref["var_sandwich"])), **FIT
     )
-    assert not np.allclose(
-        model.standard_errors(),
-        np.sqrt(np.diag(ref["var_sandwich"])),
-        rtol=1e-3,
+    assert_allclose(model.covariance(robust=False), ref["var_naive"], **FIT)
+    assert_allclose(
+        model.standard_errors(robust=False),
+        np.sqrt(np.diag(ref["var_naive"])),
+        **FIT,
     )
+    # crr's own table: z and p on the robust standard errors.
+    table = model.summary()
+    z = np.asarray(ref["coef"]) / np.sqrt(np.diag(ref["var_sandwich"]))
+    assert_allclose(table["z"], z, rtol=1e-4)
+    assert_allclose(model.p_values, table["p"], rtol=1e-12)
     for j, z in enumerate(ref["z_new"]):
         assert_allclose(model.cif(ref["times"], z), ref["cif"][:, j], **FIT)
+
+
+def test_crr_robust_errors_are_smaller_and_larger_than_model_based():
+    """The range the theory page quotes: over crr's stored fits the
+    robust standard errors are from 25% smaller to 17% larger than the
+    model-based ones."""
+    ratios = []
+    for source, ref_ids in (
+        ("r_cmprsk", sorted(CRR)),
+        (
+            "r_fine_gray_variance",
+            [
+                "pbc_half_years_cause1",
+                "pbc_half_years_cause2",
+                "competing_counts_cause1",
+                "competing_counts_cause2",
+                "competing_no_censoring_cause1",
+            ],
+        ),
+    ):
+        for ref_id in ref_ids:
+            ref = values(source, ref_id)
+            ratios += list(
+                np.sqrt(
+                    np.diag(ref["var_sandwich"]) / np.diag(ref["var_naive"])
+                )
+            )
+    assert round(min(ratios), 2) == 0.75, min(ratios)
+    assert round(max(ratios), 2) == 1.17, max(ratios)
+
+
+# The cases of scripts/reference/reference_r_fine_gray_variance.R, which
+# stress the censoring term of Fine and Gray's sandwich: heavy ties
+# between events of both causes and censorings (pbc in half years), counts
+# (crr given each row n times) and no censoring at all (the term is zero).
+VARIANCE = "r_fine_gray_variance"
+
+
+def _variance_case(ref_id):
+    if ref_id.startswith("pbc_half_years"):
+        d = fixture("pbc")
+        x = np.ceil(d["years"] * 2) / 2
+        Z = np.column_stack(
+            [d[k] for k in ("drug", "age", "log_bili", "female")]
+        )
+        return x, Z, d["cause"], None
+    d = fixture("competing")
+    Z = np.column_stack([d["group"], d["z"]])
+    if ref_id.startswith("competing_counts"):
+        n = 1 + (np.arange(1, d["x"].size + 1) % 3)
+        return d["x"], Z, d["cause"], n
+    return d["x"], Z, np.where(d["cause"] == 0, 2, d["cause"]), None
+
+
+@pytest.mark.parametrize(
+    "ref_id",
+    [
+        "pbc_half_years_cause1",
+        "pbc_half_years_cause2",
+        "competing_counts_cause1",
+        "competing_counts_cause2",
+        "competing_no_censoring_cause1",
+    ],
+)
+def test_fine_gray_variances_match_crr(ref_id):
+    x, Z, cause, n = _variance_case(ref_id)
+    ref = values(VARIANCE, ref_id)
+    assert ref["converged"]
+    model = FineGray.fit(x, Z, _causes(cause), n=n, event=int(ref_id[-1]))
+    assert_allclose(model.beta, ref["coef"], **FIT)
+    assert_allclose(-model._neg_ll, ref["loglik"], rtol=0, atol=1e-6)
+    # About 4e-8 (relative) on the sandwich, an optimiser's answer.
+    assert_allclose(model.covariance(), ref["var_sandwich"], **FIT)
+    assert_allclose(model.covariance(robust=False), ref["var_naive"], **FIT)
+    # The two differ by far more than the tolerance (3% to 25% here).
+    assert not np.allclose(
+        model.standard_errors(),
+        model.standard_errors(robust=False),
+        rtol=1e-2,
+    )

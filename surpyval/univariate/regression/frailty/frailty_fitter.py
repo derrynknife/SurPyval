@@ -54,7 +54,6 @@ from surpyval.utils.covariates import coefficient_floor, coefficient_names
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
@@ -68,7 +67,7 @@ from .._fit_skeleton import (
     optimise_ph,
     require_finite_fit,
 )
-from .._kinds import PROPORTIONAL_HAZARD
+from ..kinds import PROPORTIONAL_HAZARD
 from ..proportional_hazards.cox_likelihood import strata_labels
 from ..regression_data import design_matrix_from_df
 from .families import (
@@ -750,7 +749,6 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,

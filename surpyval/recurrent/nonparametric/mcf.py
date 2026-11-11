@@ -20,6 +20,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -664,6 +665,7 @@ class NonParametricCounting(
         out.origin = _observation_origin(data)
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_event_history_data
     def fit(

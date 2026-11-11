@@ -99,10 +99,6 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import (
-    column_arguments,
-    removed_parameter_note,
-)
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -130,7 +126,6 @@ from .._fit_skeleton import (
     baseline_at_origin_error,
     covariate_center,
 )
-from .._kinds import PROPORTIONAL_ODDS
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -138,6 +133,7 @@ from .._prediction import (
     unique_rows,
 )
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
+from ..kinds import PROPORTIONAL_ODDS
 from ..life_at import (
     AtCovariatesMixin,
     checked_params,
@@ -1107,8 +1103,8 @@ class ProportionalOddsModel(
         names = self.parameter_names
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}{}".format(
-                    name, names, removed_parameter_note(name, names)
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
                 )
             )
         if lr:
@@ -1530,7 +1526,6 @@ class ProportionalOdds_(FitterRepr):
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
-    @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         self,

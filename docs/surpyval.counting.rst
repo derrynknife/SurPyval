@@ -17,7 +17,8 @@ Each fitter below returns one of three fitted-model classes: a
 (the Poisson processes), a :doc:`RenewalModel <counting/renewal_model>`
 (the renewal and imperfect-repair models) or a
 :doc:`ProportionalIntensityModel <counting/proportional_intensity_models>`
-(the regression models). The non-parametric and cause-specific fitters
+(the regression models; the semi-parametric ones return a
+:doc:`RecurrentCoxModel <counting/recurrent_cox>`). The non-parametric and cause-specific fitters
 return a fitted instance of their own class.
 
 Recurrent Event (Poisson Process) Models
@@ -87,6 +88,7 @@ Intensities that depend on covariates.
     counting/proportional_intensity_models
     counting/hpp_pi
     counting/nhpp_pi
+    counting/recurrent_cox
 
 Trend Tests and Diagnostics
 ---------------------------

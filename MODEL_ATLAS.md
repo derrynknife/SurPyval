@@ -91,6 +91,7 @@ Worked classifications:
 | HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis) | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
+| AndersenGill, PrenticeWilliamsPeterson, WeiLinWeissfeld | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
 | CauseSpecificNHPP | univariate | recurrent | competing | recurrent | none | continuous | parametric |
 | CauseSpecificProportionalIntensity | univariate | recurrent | competing | recurrent | with | continuous | parametric |
@@ -145,7 +146,7 @@ Cells of the axes with nothing built yet:
 | Gap | Cell |
 |-----|------|
 | Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric |
-| Recurrent events with covariates, semi-parametric (Andersen–Gill, PWP, mean model) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
+| Recurrent events with covariates, semi-parametric: robust bounds on the cumulative baseline, and simulation (Andersen–Gill, PWP and WLW are built) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
 | Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
 | Multi-state models (illness-death, progressive) | `multi_state` |
 | Copulas for more than two lifetimes | multivariate, more than two series |

@@ -311,6 +311,34 @@ with the numbers. No random numbers are involved: the same data and
 prior give the same answer on every machine. ``method="laplace"`` is a
 normal approximation at the peak instead, labelled approximate.
 
+**Very small and very large probabilities.** A chance of failure of one
+in a million million is as much a number as one of a half, and it is
+where a safety case or a rare adverse event lives. The predictive
+``ff`` is therefore the posterior average of each parameter value's own
+failure function, :math:`F_{\text{pred}}(t) = \sum_i w_i F(t \mid
+\theta_i)`, and not :math:`1 - S_{\text{pred}}(t)`: a double next to 1
+holds about sixteen digits, so the subtraction would leave eight digits
+of a probability of :math:`10^{-8}` and none of one of :math:`10^{-16}`.
+``sf`` is the same average of the survival functions, so it keeps its
+digits far past the data (whichever of the two is larger is one minus the
+other, so they always sum to 1); ``Hf`` is :math:`-\log(1 - F)` (as ``log1p``)
+while less than half have failed and :math:`-\log S` after, and stays
+finite where ``sf`` itself underflows. The credible intervals from
+``cri`` are built the same way, and ``qf`` solves on the log of ``ff`` up
+to the median and on the log of ``sf`` above it, so
+``model.qf(1e-12)`` and ``model.qf(1 - 1e-12)`` are both found (a limited
+failure population's quantile is infinite above the proportion that ever
+fails).
+
+**Random lives.** ``model.random(size, random_state)`` takes one uniform
+number per life. With a closed-form predictive the life is its quantile
+at that number. Otherwise the number picks a parameter value by where it
+falls among the cumulative weights :math:`w_i`, and its place within that
+value's share, rescaled to (0, 1), is the probability at which that
+value's own quantile function gives the life. The draws follow the
+distribution that ``sf``, ``ff`` and ``qf`` describe, and the same seed
+gives the same lives.
+
 The posterior itself is ``model.posterior``: ``draws(k, random_state)``,
 ``to_dataframe()``, ``density(points)`` (exact for the grid), and
 ``marginal(name)``; ``model.draw_models(k)`` gives ordinary models, one

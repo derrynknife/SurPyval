@@ -34,13 +34,6 @@ from surpyval.utils.warnings import ignoring_warnings
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
 from ._inference import InferenceMixin
-from ._kinds import (
-    ACCELERATED_FAILURE_TIME,
-    ACCELERATED_LIFE,
-    ADDITIVE_HAZARD,
-    PROPORTIONAL_HAZARD,
-    PROPORTIONAL_ODDS,
-)
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
 from ._prediction import (
@@ -49,6 +42,13 @@ from ._prediction import (
     quantiles_by_inversion,
 )
 from ._tvc_evaluation import TVCEvaluationMixin
+from .kinds import (
+    ACCELERATED_FAILURE_TIME,
+    ACCELERATED_LIFE,
+    ADDITIVE_HAZARD,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
 from .life_at import AtCovariatesMixin, checked_params, rebuilt
 from .regression_data import (
     check_covariate_width,
@@ -162,9 +162,11 @@ class ParametricRegressionModel(
     k: int
     #: The number of baseline distribution parameters.
     k_dist: int
-    #: The family, one of the names in ``_kinds``: ``"Proportional
+    #: The family, one of the names in
+    #: ``surpyval.univariate.regression.kinds``: ``"Proportional
     #: Hazard"``, ``"Accelerated Failure Time"``, ``"Proportional Odds"``,
-    #: ``"Additive Hazard"`` or ``"Accelerated Life"``.
+    #: ``"Additive Hazard"``, ``"Accelerated Life"`` or
+    #: ``"Distributional"``.
     kind: str
     #: ``{name: value}`` of the parameters held fixed in the fit (an
     #: accelerated life model's placeholder for its life parameter

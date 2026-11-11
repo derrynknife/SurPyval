@@ -1413,6 +1413,19 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        (
+            "AndersenGill",
+            "PrenticeWilliamsPeterson",
+            "PrenticeWilliamsPeterson[gap]",
+            "WeiLinWeissfeld",
+        ),
+        "no simulation from the model: the baseline is a step function "
+        "with no shape beyond the data, and the conditional and marginal "
+        "models do not define a process to draw an item's history from. "
+        "Recovery from simulated processes is tested in "
+        "tests/recurrent/test_recurrent_cox.py",
+    ),
     "Weibull[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
@@ -1439,6 +1452,12 @@ EXCLUDED: dict[str, str] = {
     "calibration/test_coverage_joint.py, simulates fleets with markers and "
     "checks the parameters' bias and coverage and the dynamic-prediction "
     "bands",
+    **{
+        f"WeibullJointPH[{_link}]": "a lifetime with marker readings along "
+        "it, which a model draw does not give: recovery of fleets simulated "
+        "from this link is in univariate/joint/test_joint_links.py"
+        for _link in ("slope", "cumulative", "value+slope")
+    },
 }
 
 

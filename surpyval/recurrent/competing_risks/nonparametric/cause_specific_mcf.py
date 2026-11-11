@@ -42,6 +42,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -50,7 +51,6 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
@@ -323,6 +323,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return out
 
     @classmethod
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_event_history_data
     def fit(
@@ -384,7 +385,9 @@ class CauseSpecificMCF(SerialisableMixin):
         return cls.fit_from_recurrent_data(data)
 
     @classmethod
-    @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @ambiguous_item_ids(
+        "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
+    )
     @takes_unit
     def fit_from_df(
         cls,

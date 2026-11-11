@@ -206,6 +206,26 @@ class LinkedPathModel(PathModel):
         )
         return natural * derivative
 
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        return self.base.slope(x, *self._natural_args(params))
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        # the chain rule, as for the Jacobian
+        natural = np.asarray(
+            self.base.slope_jacobian(x, *self._natural_args(params)),
+            dtype=float,
+        )
+        derivative = np.stack(
+            np.broadcast_arrays(
+                *[
+                    d(np.asarray(e, dtype=float))
+                    for d, e in zip(self._deriv, params)
+                ]
+            ),
+            axis=-1,
+        )
+        return natural * derivative
+
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self.base.check_data(x, y)
 

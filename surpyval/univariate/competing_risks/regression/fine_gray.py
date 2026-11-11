@@ -109,37 +109,45 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import (
     call_fit,
     cause_column,
+    column_arguments,
     frame_column,
     frame_columns,
     require_frame,
 )
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
-from surpyval.utils.linalg import safe_inv
+from surpyval.utils.linalg import safe_inv, standard_errors_of
 from surpyval.utils.no_maximum import (
     combined_maximum,
     maximum_entry,
     restored_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     check_alpha_ci,
     missing_cause_error,
+    no_covariance_error,
     refuse_subdistribution_entry,
     unknown_cause_error,
 )
 from surpyval.utils.weights import (
     effective_sample_size,
+    refuse_weighted,
     sandwich,
     warn_if_few_effective,
 )
 
 if TYPE_CHECKING:
     import pandas as pd
+
+#: Which covariance ``covariance()``, ``standard_errors()``, ``summary()``
+#: and ``p_values`` use unless asked: ``True`` the robust (sandwich) one of
+#: Fine and Gray, ``False`` the model-based inverse information. The one
+#: place the default is set.
+ROBUST_BY_DEFAULT = True
 
 #: Newton-Raphson's convergence tolerance, in standard errors of the step
 #: (``newton_raphson``), CoxPH's default.
@@ -255,9 +263,12 @@ def _fit_cause(
     """
     Fit the Fine-Gray subdistribution-hazard model for a single ``cause``.
 
-    Returns a dict with the fitted coefficients, their standard errors and
-    p-values, the baseline cumulative subdistribution hazard (as sorted event
-    times and the cumulative hazard at each), the optimiser result, and the
+    Returns a dict with the fitted coefficients, their robust covariance
+    (``"cov"``: Fine and Gray's sandwich, :func:`_robust_covariance`), the
+    p-values on it and the model-based covariance (``"model_cov"``, the
+    inverse information), the baseline cumulative subdistribution hazard
+    (as sorted event times and the cumulative hazard at each), the
+    optimiser result, and the
     coefficients along which the partial likelihood has no finite maximum
     (``"runaway"``, see :func:`_warn_if_monotone`).
 
@@ -274,9 +285,10 @@ def _fit_cause(
     takes ``n w`` in place of ``n``: the events, the risk sets and the
     censoring distribution ``G`` (the Kaplan-Meier of the censoring
     weighted by ``n w``), so whole-number weights give the fit of the rows
-    counted that many times. The covariance is then the robust sandwich of
-    :func:`_robust_covariance`, clustered by unit, which holds ``G``
-    fixed.
+    counted that many times. The covariance is then Fine and Gray's
+    sandwich with the sampling weights (:func:`_robust_covariance`),
+    which is the unweighted one when ``w = 1``, and there is no
+    model-based one.
     """
     counts = n
     if w is not None:
@@ -487,27 +499,38 @@ def _fit_cause(
     # Where the coefficients ran off far, the Hessian can be nan, and
     # inverting it raised "SVD did not converge" (#746)
     cov = safe_inv(H) if np.all(np.isfinite(H)) else np.full(H.shape, np.nan)
-    if w is not None and kept.size and np.all(np.isfinite(cov)):
+    # The model-based covariance, the inverse information (crr's invinf).
+    # It is not a weighted fit's covariance, so none is kept for one.
+    model_cov = None if w is not None else cov.copy()
+    if kept.size and np.all(np.isfinite(cov)):
         # The robust (sandwich) covariance, the inverse information the
-        # bread
-        cov = _robust_covariance(
-            cov,
-            Z_sorted[:, kept],
-            res.x,
-            sets,
-            counts[sets.order],
-            w[sets.order],
-            is_event[sets.order],
-            x[sets.order],
-        )
+        # bread: Fine and Gray's, with the term for the estimated
+        # censoring distribution, the weights' too (_robust_covariance)
+        # (far out along a run-off a risk set's sum underflows; the
+        # covariance is then nan, as the coefficients running off are)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cov = _robust_covariance(
+                cov,
+                Z_sorted[:, kept],
+                res.x,
+                sets,
+                counts[sets.order],
+                None if w is None else w[sets.order],
+                is_event[sets.order],
+                (c == 1)[sets.order],
+                x[sets.order],
+            )
     # A coefficient running off has no standard error, as in CoxPH (#648)
     cov[off, :] = np.nan
     cov[:, off] = np.nan
+    if model_cov is not None:
+        model_cov[off, :] = np.nan
+        model_cov[:, off] = np.nan
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.where(var > 0, var, np.nan))
         z_score = beta / se
-    p_values = 2.0 * (1.0 - norm.cdf(np.abs(z_score)))
+    p_values = 2.0 * norm.sf(np.abs(z_score))
     if aliased.size:
         # 0 for the baseline and predictions; the model reports nan.
         beta = expand(beta, kept, p)
@@ -516,6 +539,10 @@ def _fit_cause(
         full = np.full((p, p), np.nan)
         full[np.ix_(kept, kept)] = cov
         cov = full
+        if model_cov is not None:
+            full = np.full((p, p), np.nan)
+            full[np.ix_(kept, kept)] = model_cov
+            model_cov = full
         beta = np.where(np.isnan(beta), 0.0, beta)
 
     # Breslow baseline cumulative subdistribution hazard: at each event-of-
@@ -543,9 +570,9 @@ def _fit_cause(
         "cause": cause,
         "beta": beta,
         "center": mean,
-        "se": se,
         "p_values": p_values,
         "cov": cov,
+        "model_cov": model_cov,
         "baseline_times": uniq_t,
         "baseline_cumhaz": baseline_cumhaz,
         "neg_ll": float(res.fun),
@@ -582,36 +609,51 @@ def _robust_covariance(
     beta: npt.NDArray,
     sets: _RiskSets,
     n: npt.NDArray,
-    w: npt.NDArray,
+    w: npt.NDArray | None,
     is_event: npt.NDArray,
+    is_censored: npt.NDArray,
     x: npt.NDArray,
 ) -> npt.NDArray:
     """
-    The robust (sandwich) covariance of a weighted Fine-Gray fit,
-    ``bread M bread``, ``bread`` the inverse of the weighted information
-    and ``M = sum_i n_i w_i^2 L_i L_i'``, ``L_i`` unit ``i``'s score
-    residual (Lin and Wei, 1989) summed over its time at risk:
+    The robust (sandwich) covariance of a Fine-Gray fit, ``bread M
+    bread``, ``bread`` the inverse of the information of the weighted
+    partial likelihood and ``M`` the sum over the units of the outer
+    products of their influence on the score.
 
-        L_i = delta_i (Z_i - Zbar(x_i))
-              - sum_t W_it exp(beta'Z_i) (Z_i - Zbar(t)) dLambda0(t),
+    Without weights (``w`` is ``None``) it is Fine and Gray's (1999)
+    variance, ``M = sum_i n_i (eta_i + psi_i)(eta_i + psi_i)'``, which R's
+    ``cmprsk::crr`` reports as ``var``. ``eta_i`` is unit ``i``'s score
+    residual (Lin and Wei, 1989) summed over its time at risk,
+
+        eta_i = delta_i (Z_i - Zbar(x_i))
+                - sum_t W_it exp(beta'Z_i) (Z_i - Zbar(t)) dLambda0(t),
 
     ``W_it`` its weight in the subdistribution risk set at the event time
     ``t`` (1 while under observation, ``G(t-)/G(x_i-)`` after a competing
     failure), ``Zbar(t)`` the risk set's weighted mean covariate and
-    ``dLambda0`` the baseline's increments. It is R's ``coxph(Surv(fgstart,
-    fgstop, fgstatus) ~ Z, weights = fgwt * w, cluster = id)`` on the
-    counting-process data of the fit: the censoring weights ``W`` are held
-    fixed, so the variability of ``G`` is not in it.
+    ``dLambda0`` the baseline's increments. ``psi_i`` is what the unit
+    adds through the estimate of the censoring distribution ``G`` in those
+    weights (:func:`_censoring_residuals`).
+
+    With sampling weights ``w`` it is ``M = sum_i n_i w_i^2 (eta_i +
+    psi_i)(eta_i + psi_i)'``, every sum in ``eta`` and ``psi`` (the risk
+    sets, the baseline's increments, the censoring Kaplan-Meier and its
+    at-risk counts) taken with ``n w``: a unit's influence is ``w_i``
+    times what it would be unweighted. So ``w = 1`` is the unweighted
+    variance, and scaling every weight changes nothing. Without ``psi``
+    it would be R's ``coxph(Surv(fgstart, fgstop, fgstatus) ~ Z,
+    weights = fgwt * w, cluster = id)`` on the counting-process data of
+    the fit, which holds ``G`` fixed.
 
     The rows (``Z`` centred, the counts ``n``, weights ``w``, the
-    events ``is_event`` and the times ``x``) are in time order
-    (``sets.order``); every sum is O(N p) (:func:`_risk_set_sums`,
-    :func:`_risk_set_weights`).
+    events ``is_event``, the censorings ``is_censored`` and the times
+    ``x``) are in time order (``sets.order``); every sum is O(N p)
+    (:func:`_risk_set_sums`, :func:`_risk_set_weights`).
     """
     with np.errstate(over="ignore", under="ignore"):
         eta = Z @ beta
         risk = np.exp(eta - (float(eta.max()) if eta.size else 0.0))
-    omega = n * w
+    omega = n if w is None else n * w
     S0 = _risk_set_sums(omega * risk, sets)
     S1 = _risk_set_sums((omega * risk)[None, :] * Z.T, sets).T
     mean = S1 / S0[:, None]
@@ -626,7 +668,83 @@ def _robust_covariance(
     events = np.flatnonzero(is_event)
     at = np.searchsorted(sets.times, x[events])
     resid[events] += Z[events] - mean[at]
-    return sandwich(bread, resid, n, w)
+    resid += _censoring_residuals(
+        Z, risk, sets, omega, is_censored, x, dH, mean
+    )
+    return sandwich(bread, resid, n, np.ones(n.size) if w is None else w)
+
+
+def _censoring_residuals(
+    Z: npt.NDArray,
+    risk: npt.NDArray,
+    sets: _RiskSets,
+    n: npt.NDArray,
+    is_censored: npt.NDArray,
+    x: npt.NDArray,
+    dH: npt.NDArray,
+    mean: npt.NDArray,
+) -> npt.NDArray:
+    """
+    Each unit's contribution to the score through the estimated censoring
+    distribution, Fine and Gray's ``psi_i`` (1999, section 3.2), as
+    ``cmprsk::crr`` computes it:
+
+        psi_i = c_i q(x_i) / Y(x_i) - sum_{u <= x_i} dc(u) q(u) / Y(u)^2,
+
+    the integral of ``q / Y`` against the unit's censoring martingale.
+    The sum is over the censoring times ``u``, with ``dc(u)`` the units
+    censored there, ``Y(u)`` those with ``x >= u`` and ``c_i`` 1 for a
+    censored unit. ``q(u)`` is how the score moves with the censoring
+    hazard at ``u``: over the events at ``t >= u``, the part of the risk
+    set's covariate spread carried by the competing failures before
+    ``u``, whose weights ``G(t-)/G(x_j-)`` that hazard scales,
+
+        q(u) = sum_{t >= u} dLambda0(t) G(t-)
+               sum_{j: x_j < u} exp(beta'Z_j) (Z_j - Zbar(t)) / G(x_j-).
+
+    The inner sum splits into a prefix sum over the competing failures
+    (of ``exp(beta'Z)/G`` and of that times ``Z``) and the outer into a
+    suffix sum over the event times, so every ``q`` is O(N p).
+
+    The rows are in time order; ``risk`` is ``exp(beta'Z)`` (on any
+    scale, with ``dH`` on its inverse), ``dH`` the baseline's increments
+    and ``mean`` ``Zbar`` at each event time of ``sets``.
+    """
+    rows, p = Z.shape
+    out = np.zeros((rows, p))
+    if not is_censored.any():
+        return out
+    times, inv = np.unique(x[is_censored], return_inverse=True)
+    censored = np.bincount(inv, weights=n[is_censored], minlength=times.size)
+    first = np.searchsorted(x, times, side="left")
+    at_risk = _cumsum(n[::-1])[::-1][first]
+    # The competing failures before each censoring time
+    carried = sets.competing_over_G * n * risk
+    before = np.concatenate([[0.0], _cumsum(carried)])[first]
+    before_Z = np.concatenate(
+        [np.zeros((1, p)), _cumsum((carried[:, None] * Z).T).T]
+    )[first]
+    # The events at or after each censoring time
+    step = dH * sets.G_t
+    later = np.searchsorted(sets.times, times, side="left")
+    after = np.concatenate([_cumsum(step[::-1])[::-1], [0.0]])[later]
+    after_mean = np.concatenate(
+        [
+            _cumsum((step[:, None] * mean).T[:, ::-1])[:, ::-1].T,
+            np.zeros((1, p)),
+        ]
+    )[later]
+    q = before_Z * after[:, None] - before[:, None] * after_mean
+    # The compensator up to each row's time, and the jump of a censored row
+    drift = np.concatenate(
+        [
+            np.zeros((1, p)),
+            np.cumsum(q * (censored / at_risk**2)[:, None], axis=0),
+        ]
+    )
+    out -= drift[np.searchsorted(times, x, side="right")]
+    out[is_censored] += (q / at_risk[:, None])[inv]
+    return out
 
 
 def _runoff_of_cause(
@@ -991,8 +1109,13 @@ class FineGrayModel(
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
 
     The natural prediction is the cumulative incidence function :meth:`cif`;
-    ``coefficients``/``se``/``p_values`` describe the (log) subdistribution
-    hazard ratios.
+    ``coefficients``, :meth:`standard_errors`, ``p_values`` and
+    :meth:`summary` describe the (log) subdistribution hazard ratios. The
+    standard errors, and the p-values and intervals from them, are the
+    robust ones of Fine and Gray (the sandwich ``cmprsk::crr`` reports);
+    ``covariance(robust=False)``, ``standard_errors(robust=False)`` and
+    ``summary(robust=False)`` give the model-based ones (see
+    :meth:`covariance`).
 
     ``log_likelihood`` is the maximised weighted partial log-likelihood
     (``cmprsk::crr``'s ``loglik``), ``neg_ll()`` its negative, and
@@ -1009,11 +1132,18 @@ class FineGrayModel(
     #: The coefficients (``beta``, the log subdistribution hazard
     #: ratios), their standard errors, Wald p-values and covariance.
     coefficients: npt.NDArray
-    #: The coefficients' standard errors, ``standard_errors()``.
-    _se: npt.NDArray
+    #: The coefficients' two-sided Wald p-values, on the standard errors
+    #: of ``standard_errors()`` (the robust ones); ``nan`` on a model
+    #: restored from a dict saved before v0.27, which has only the
+    #: model-based ones (``summary(robust=False)``).
     p_values: npt.NDArray
-    #: The coefficients' covariance, ``covariance()`` (#605).
-    _covariance: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605): the robust
+    #: one; ``None`` on a model restored from a dict saved before v0.27,
+    #: which stored only the model-based one.
+    _covariance: npt.NDArray | None
+    #: The model-based covariance, ``covariance(robust=False)``: the
+    #: inverse information. ``None`` for a fit with weights ``w``.
+    _model_covariance: npt.NDArray | None
     #: The baseline subdistribution cumulative hazard: its step times and
     #: values.
     _times: npt.NDArray
@@ -1039,8 +1169,8 @@ class FineGrayModel(
     #: ``diagnose()`` checks it (#874); ``None`` on a model restored with
     #: ``from_dict``, which does not store them.
     _fit_data: dict | None = None
-    #: Whether the model was fitted with weights ``w``: its covariance is
-    #: then the robust one, and the information criteria refuse.
+    #: Whether the model was fitted with weights ``w``: it then has no
+    #: model-based covariance, and the information criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights (``None`` unweighted).
     effective_n: float | None = None
@@ -1055,9 +1185,9 @@ class FineGrayModel(
         self.center = np.asarray(
             fit.get("center", np.zeros(np.size(fit["beta"]))), dtype=float
         )
-        self._se = fit["se"]
         self.p_values = fit["p_values"]
         self._covariance = fit["cov"]
+        self._model_covariance = fit.get("model_cov")
         self._times = fit["baseline_times"]
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
@@ -1074,20 +1204,72 @@ class FineGrayModel(
         "absorbs, or a linear combination of the others"
     )
 
-    def covariance(self) -> npt.NDArray:
-        """The coefficients' covariance: the inverse of the weighted
-        partial likelihood's information at the fit (a ``nan`` row and
-        column for an aliased coefficient). It was ``cov`` before
-        v0.23. For a fit with weights ``w`` it is the robust (sandwich)
-        covariance clustered by unit, which holds the censoring
-        distribution ``G`` fixed (R's ``coxph(..., weights = fgwt * w,
-        cluster = id)`` on ``finegray``'s data)."""
+    def covariance(self, robust: bool = ROBUST_BY_DEFAULT) -> npt.NDArray:
+        """The coefficients' covariance (a ``nan`` row and column for an
+        aliased coefficient). It was ``cov`` before v0.23.
+
+        By default it is the robust (sandwich) covariance of Fine and
+        Gray (1999), which R's ``cmprsk::crr`` reports as ``var``:
+        ``A^-1 M A^-1``, ``A`` the information of the weighted partial
+        likelihood and ``M`` the sum over the units of the squares of
+        their influence on the score, the part through the estimated
+        censoring distribution ``G`` included. ``robust=False`` gives
+        the model-based covariance ``A^-1`` (``crr``'s ``invinf``), which
+        takes the censoring weights as known; it was the only covariance
+        before v0.27.
+
+        For a fit with sampling weights ``w`` the robust covariance is
+        the same sandwich with each unit's influence (the part through
+        ``G``, the Kaplan-Meier of the censoring weighted by ``w``,
+        included) multiplied by its weight, so ``w = 1`` gives the
+        unweighted covariance; ``robust=False`` is refused. A model
+        restored from a dict saved before v0.27 has only the model-based
+        covariance: ask for it with ``robust=False``, or refit.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> t_c = rng.uniform(0, 20, 200)  # censoring times
+        >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
+        >>> first = np.where(t_a < t_b, "a", "b")
+        >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
+        >>> model = FineGray.fit(x, Z, e, event="a")
+        >>> model.covariance().round(5)
+        array([[0.04333]])
+        >>> model.covariance(robust=False).round(5)
+        array([[0.04419]])
+        """
+        if not robust:
+            return self._model_based_covariance()
+        if self._covariance is None:
+            raise no_covariance_error(
+                "the robust one: it was saved before v0.27, which stored "
+                "only the model-based covariance; ask for that with "
+                "robust=False, or refit the model"
+            )
         return self._covariance
 
-    def standard_errors(self) -> npt.NDArray:
-        """The coefficients' standard errors, from :meth:`covariance`.
-        They were the attribute ``se`` before v0.23."""
-        return self._se
+    def _model_based_covariance(self) -> npt.NDArray:
+        if self._model_covariance is None:
+            raise refuse_weighted(
+                "The model-based covariance (robust=False)",
+                "the inverse information of a weighted partial likelihood "
+                "is not the covariance of its estimate",
+                "Use the robust covariance, the default.",
+            )
+        return self._model_covariance
+
+    def standard_errors(self, robust: bool = ROBUST_BY_DEFAULT) -> npt.NDArray:
+        """The coefficients' standard errors, the square roots of the
+        diagonal of :meth:`covariance`: the robust ones by default, the
+        model-based ones with ``robust=False``. They were the attribute
+        ``se`` before v0.23."""
+        return standard_errors_of(self.covariance(robust))
 
     @property
     def params(self) -> npt.NDArray:
@@ -1102,7 +1284,9 @@ class FineGrayModel(
         ``coef_1``, ... for an array ``Z`` (#614), as for ``CoxPH``."""
         return coefficient_names(self, np.size(self.beta))
 
-    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
+    def summary(
+        self, alpha_ci: float = 0.05, robust: bool = ROBUST_BY_DEFAULT
+    ) -> pd.DataFrame:
         """
         The coefficient table, as ``CoxPH.summary``: one row per covariate
         (named by ``parameter_names``), with the coefficient, the
@@ -1110,6 +1294,11 @@ class FineGrayModel(
         two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
         statistic ``z`` and its two-sided p-value. An aliased coefficient
         is ``nan`` throughout.
+
+        The standard errors, and so the intervals, ``z`` and ``p``, are
+        the robust ones of :meth:`covariance` by default (Fine and Gray's
+        sandwich, as ``cmprsk::crr`` prints); ``robust=False`` builds the
+        whole table from the model-based ones instead.
 
         Examples
         --------
@@ -1126,15 +1315,14 @@ class FineGrayModel(
         >>> model.summary()[["coef", "exp(coef)", "se(coef)"]].round(4)
                      coef  exp(coef)  se(coef)
         covariate
-        grp        0.6626     1.9398    0.1741
+        grp        0.6626     1.9398    0.1727
         """
         check_alpha_ci(alpha_ci)
         return coefficient_table(
             self.parameter_names,
             self.params,
-            self._se,
+            self.standard_errors(robust),
             alpha_ci,
-            p=self.p_values,
         )
 
     def _ic_k(self) -> int:
@@ -1167,16 +1355,24 @@ class FineGrayModel(
             # native type: a numpy scalar label breaks JSON/BSON
             "cause": to_native(self.cause),
             "beta": np.asarray(self.beta, dtype=float).tolist(),
-            "se": np.asarray(self._se, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-            # The key every model's dict stores it under (#605).
-            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
+        if self._covariance is not None:
+            # The key every model's dict stores covariance() under (#605),
+            # with its standard errors
+            out["covariance"] = np.asarray(
+                self._covariance, dtype=float
+            ).tolist()
+            out["se"] = standard_errors_of(self._covariance).tolist()
+        if self._model_covariance is not None:
+            out["model_covariance"] = np.asarray(
+                self._model_covariance, dtype=float
+            ).tolist()
         if self._ic_n is not None:
             out["ic_n"] = float(self._ic_n)
         if np.any(self.center):
@@ -1206,18 +1402,28 @@ class FineGrayModel(
                 "The model dict's 'center' has {} value(s) for {} "
                 "coefficient(s).".format(center.size, beta.size)
             )
+        weighted = model_dict.get("weighted") is True
+        # "cov" is the key of a dict written before v0.23.
+        stored = model_dict.get("covariance", model_dict.get("cov"))
+        cov = None if stored is None else np.array(stored, dtype=float)
+        model_cov = model_dict.get("model_covariance")
+        p_values = np.array(model_dict["p_values"], dtype=float)
+        if model_cov is not None:
+            model_cov = np.array(model_cov, dtype=float)
+        elif not weighted:
+            # Saved before v0.27: its one covariance, and its p-values,
+            # are the model-based ones, and the robust one cannot be
+            # rebuilt without the data.
+            cov, model_cov = None, cov
+            p_values = np.full(beta.shape, np.nan)
         out = cls(
             {
                 "cause": label_from_native(model_dict["cause"]),
                 "beta": beta,
                 "center": center,
-                "se": np.array(model_dict["se"], dtype=float),
-                "p_values": np.array(model_dict["p_values"], dtype=float),
-                # "cov" is the key of a dict written before v0.23.
-                "cov": np.array(
-                    model_dict.get("covariance", model_dict.get("cov")),
-                    dtype=float,
-                ),
+                "p_values": p_values,
+                "cov": cov,
+                "model_cov": model_cov,
                 "baseline_times": np.array(
                     model_dict["baseline_times"], dtype=float
                 ),
@@ -1231,7 +1437,7 @@ class FineGrayModel(
                 "ic_n": cls._restored_ic_n(model_dict),
                 "res": None,
                 "maximum": restored_maximum(model_dict),
-                "weighted": model_dict.get("weighted") is True,
+                "weighted": weighted,
                 "effective_n": model_dict.get("effective_n"),
             }
         )
@@ -1312,8 +1518,22 @@ class FineGrayModel(
             "Coefficients (beta'Z acts on the subdistribution hazard):",
         ]
         names = coefficient_names(self, np.size(self.beta))
-        for nm, b, s, p in zip(names, self.beta, self._se, self.p_values):
+        robust = self._covariance is not None
+        table = self.summary(robust=robust)
+        for nm, b, s, p in zip(
+            names, self.beta, table["se(coef)"], table["p"]
+        ):
             lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
+        if not self.weighted:
+            lines.append(
+                "Standard errors     : "
+                + (
+                    "robust (Fine and Gray's sandwich)"
+                    if robust
+                    else "model-based (saved before v0.27; refit for the "
+                    "robust ones)"
+                )
+            )
         if self.weighted:
             lines.append(
                 "Weights             : effective sample size "
@@ -1497,9 +1717,9 @@ class FineGray_(FitterRepr):
             risk sets and the censoring distribution ``G`` (the weighted
             Kaplan-Meier of the censoring times), so whole-number weights
             give the estimates of the rows counted that many times. The
-            covariance is the robust (sandwich) one clustered by unit,
-            holding ``G`` fixed, as R's ``coxph(..., weights = fgwt * w,
-            cluster = id)`` on ``finegray``'s data; ``aic``, ``bic`` and
+            covariance is Fine and Gray's robust (sandwich) one with the
+            weights, the part through ``G`` included, so ``w = 1`` gives
+            the unweighted fit's; ``aic``, ``bic`` and
             ``aic_c`` and the diagnostics refuse a weighted fit. See
             :doc:`/Weighted Data`.
         tl : array_like or float, optional
@@ -1515,6 +1735,11 @@ class FineGray_(FitterRepr):
         -------
         FineGrayModel
             The fitted model, with :meth:`~FineGrayModel.cif` prediction.
+            Its standard errors, p-values and ``summary()`` use the robust
+            (sandwich) variance of Fine and Gray, as R's ``cmprsk::crr``;
+            the model-based ones are ``standard_errors(robust=False)``
+            and ``summary(robust=False)`` (see
+            :meth:`~FineGrayModel.covariance`).
             Where a covariate, or a combination of them, separates the
             events of interest from the rest of their risk sets, the
             weighted partial likelihood has no finite maximum: the fit

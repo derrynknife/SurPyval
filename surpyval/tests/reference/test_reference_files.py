@@ -39,6 +39,8 @@ EXPECTED_SOURCES = {
     "r_custom_recipes",
     "r_distributional_diagnostics",
     "r_competing_entry",
+    "r_fine_gray_variance",
+    "r_recurrent_cox",
     "py_lifelines",
     "py_sksurv",
 }

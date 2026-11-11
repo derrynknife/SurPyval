@@ -192,15 +192,8 @@ def test_counts_and_delayed_entry_reach_fit_tvc():
 
 
 def test_what_fit_tvc_cannot_take_is_refused():
-    path = sp.CovariatePath.from_points([0, 10], [0.0, 1.0])
-    with pytest.raises(
-        ValueError, match="continuous CovariatePath.*StepSchedule"
-    ):
-        sp.WeibullPH.fit(
-            SurpyvalData.from_items(
-                [it.clone(time_varying_covariates=path) for it in ITEMS]
-            )
-        )
+    # (a continuous CovariatePath is fitted, cut into steps:
+    # univariate/regression/test_covariate_path_fit.py)
     found = [ITEMS[0].clone(interval_censored=[1, 2])] + ITEMS[1:]
     with pytest.raises(ValueError, match="left or interval censored"):
         sp.WeibullPH.fit(SurpyvalData.from_items(found))

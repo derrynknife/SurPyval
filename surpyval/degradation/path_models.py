@@ -34,7 +34,6 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
-from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
@@ -51,7 +50,15 @@ def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
     return intercept, slope
 
 
-class PathModel(ABC, RemovedNames):
+def _columns(x: npt.NDArray, *columns: Any) -> npt.NDArray:
+    """``columns`` (each a number or an array broadcasting with ``x``)
+    side by side, one row per entry of ``x``."""
+    return np.column_stack(
+        [np.broadcast_to(np.asarray(c, dtype=float), x.shape) for c in columns]
+    )
+
+
+class PathModel(ABC):
     """
     Base class for degradation path models.
 
@@ -109,6 +116,47 @@ class PathModel(ABC, RemovedNames):
                 (self.path(x, *upper) - self.path(x, *lower)) / (2.0 * h)
             )
         return np.column_stack(columns)
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        """
+        The path's rate of change with time, ``d path / d x``, at
+        time(s) ``x`` (the parameters numbers, or arrays broadcasting
+        with ``x``).
+
+        The base implementation uses central finite differences in
+        ``x`` (a step of ``1e-6 max(|x|, 1)``, so the path must be
+        defined a little either side of ``x``); the built-in models
+        override it with the analytic derivative.
+        """
+        x = np.asarray(x, dtype=float)
+        h = 1e-6 * np.maximum(np.abs(x), 1.0)
+        return (
+            np.asarray(self.path(x + h, *params), dtype=float)
+            - np.asarray(self.path(x - h, *params), dtype=float)
+        ) / (2.0 * h)
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        """
+        Partial derivatives of :meth:`slope` with respect to the
+        parameters, at time(s) ``x``: a ``(len(x), n_params)`` matrix.
+
+        The base implementation uses central finite differences of
+        :meth:`slope` in each parameter; the built-in models override it
+        with the analytic derivatives.
+        """
+        x = np.asarray(x, dtype=float)
+        columns = []
+        for j in range(len(params)):
+            value = np.asarray(params[j], dtype=float)
+            h = 1e-6 * np.maximum(np.abs(value), 1.0)
+            upper: list[Any] = list(params)
+            lower: list[Any] = list(params)
+            upper[j] = value + h
+            lower[j] = value - h
+            columns.append(
+                (self.slope(x, *upper) - self.slope(x, *lower)) / (2.0 * h)
+            )
+        return np.column_stack([np.broadcast_to(c, x.shape) for c in columns])
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         """Raise ``ValueError`` if the data is outside the model domain."""
@@ -223,6 +271,16 @@ class LinearPath_(PathModel):
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x])
 
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        return b + 0.0 * x
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        return _columns(x, 0.0, 1.0)
+
     @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
@@ -252,6 +310,17 @@ class ExponentialPath_(PathModel):
         x = np.asarray(x, dtype=float)
         e = np.exp(b * x)
         return np.column_stack([e, a * x * e])
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        return a * b * np.exp(b * x)
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        e = np.exp(b * x)
+        return _columns(x, b * e, a * e * (1.0 + b * x))
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (y <= 0).any():
@@ -289,6 +358,19 @@ class PowerPath_(PathModel):
         x = np.asarray(x, dtype=float)
         xb = np.power(x, b)
         return np.column_stack([xb, a * xb * np.log(x)])
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return a * b * np.power(x, b - 1.0)
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            xb = np.power(x, b - 1.0)
+            return _columns(x, b * xb, a * xb * (1.0 + b * np.log(x)))
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self._require_positive_times(
@@ -331,6 +413,18 @@ class LogarithmicPath_(PathModel):
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), np.log(x)])
 
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return b / x
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return _columns(x, 0.0, 1.0 / x)
+
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self._require_positive_times(
             x, "y = a + b * ln(t) is undefined at t = 0"
@@ -365,6 +459,18 @@ class LloydLipowPath_(PathModel):
     def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), -1.0 / x])
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return b / x**2
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return _columns(x, 0.0, 1.0 / x**2)
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self._require_positive_times(x, "y = a - b / t is undefined at t = 0")
@@ -424,6 +530,16 @@ class QuadraticPath_(PathModel):
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x, x**2])
 
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        return b + 2.0 * c * x
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        return _columns(x, 0.0, 1.0, 2.0 * x)
+
     @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
@@ -462,6 +578,26 @@ class GompertzPath_(PathModel):
         outer = np.exp(-b * inner)
         return np.column_stack(
             [outer, -a * inner * outer, a * b * x * inner * outer]
+        )
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(over="ignore"):
+            inner = np.exp(-c * x)
+            return a * b * c * inner * np.exp(-b * inner)
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(over="ignore"):
+            inner = np.exp(-c * x)
+            both = inner * np.exp(-b * inner)
+        return _columns(
+            x,
+            b * c * both,
+            a * c * both * (1.0 - b * inner),
+            a * b * both * (1.0 - c * x + b * c * x * inner),
         )
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
@@ -509,6 +645,19 @@ class OffsetExponentialPath_(PathModel):
         x = np.asarray(x, dtype=float)
         e = np.exp(c * x)
         return np.column_stack([np.ones_like(x), e, b * x * e])
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(over="ignore"):
+            return b * c * np.exp(c * x)
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b, c = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(over="ignore"):
+            e = np.exp(c * x)
+        return _columns(x, 0.0, c * e, b * e * (1.0 + c * x))
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
@@ -658,6 +807,18 @@ class MichaelisMentenPath_(PathModel):
         x = np.asarray(x, dtype=float)
         denominator = b + x
         return np.column_stack([x / denominator, -a * x / denominator**2])
+
+    def slope(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return a * b / (b + x) ** 2
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return _columns(x, b / (b + x) ** 2, a * (x - b) / (b + x) ** 3)
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self._require_positive_times(

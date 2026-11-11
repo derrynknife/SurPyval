@@ -36,7 +36,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     stress_data,
     uni_data,
 )
-from surpyval.univariate.regression import _kinds
+from surpyval.univariate.regression import kinds
 from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
 # ---------------------------------------------------------------------------
@@ -155,6 +155,11 @@ PROPERTIES: dict[str, str] = {
     ),
     "interp_refused": "an unknown interp value raises ValueError",
     "estimators": "each estimation option gives a valid model",
+    "covariance_robust": (
+        "robust= on covariance() gives a symmetric, positive semi-definite "
+        "covariance either way, which standard_errors() and summary() "
+        "follow"
+    ),
     "estimators_agree": (
         "the estimation options agree on a large sample from the model"
     ),
@@ -211,6 +216,16 @@ DECLARED_ATTRIBUTES = frozenset(
         "surpyval.AdditiveHazardsModel",
         "surpyval.AalenAdditiveModel",
         "surpyval.BuckleyJamesModel",
+        "surpyval.univariate.competing_risks.regression.fine_gray"
+        ".FineGrayModel",
+    }
+)
+
+# The model classes whose covariance() takes robust= (the robust or the
+# model-based covariance), swept by test_options; test_options checks
+# that every registered model class whose covariance() takes it is here.
+ROBUST_COVARIANCE = frozenset(
+    {
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
     }
@@ -466,6 +481,10 @@ class Case:
         ):
             return False
         if prop == "aliasing_constant" and not self.intercept:
+            return False
+        if prop == "covariance_robust" and (
+            self.model_class not in ROBUST_COVARIANCE
+        ):
             return False
         if prop == "attributes" and (
             self.model_class not in DECLARED_ATTRIBUTES
@@ -830,10 +849,10 @@ FAST_REGRESSIONS += ("WeibullAH", "LogNormalAFT")
 # constant in the linear predictor moves the baseline's parameters and
 # nothing else (ORIGIN_MAPS, as the fit decides it).
 _KINDS = {
-    "PH": _kinds.PROPORTIONAL_HAZARD,
-    "AFT": _kinds.ACCELERATED_FAILURE_TIME,
-    "PO": _kinds.PROPORTIONAL_ODDS,
-    "AH": _kinds.ADDITIVE_HAZARD,
+    "PH": kinds.PROPORTIONAL_HAZARD,
+    "AFT": kinds.ACCELERATED_FAILURE_TIME,
+    "PO": kinds.PROPORTIONAL_ODDS,
+    "AH": kinds.ADDITIVE_HAZARD,
 }
 
 

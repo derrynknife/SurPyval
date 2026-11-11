@@ -1,5 +1,4 @@
 import re
-import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +23,7 @@ from surpyval.utils.no_maximum import (
     warn_unverified,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import collecting_warnings
 
 #: The Nelder-Mead runs up a life's run-off ridge (``_climb_run_off``)
 _RUN_OFF_RESTARTS = 5
@@ -365,8 +365,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         if given is None:
             return params, "unverified", None
         x, c, n, tl = given
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught:
             try:
                 with np.errstate(all="ignore"):
                     life = dist.fit(x, c, n, tl=tl)

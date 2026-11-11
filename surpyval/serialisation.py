@@ -42,8 +42,6 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
-from surpyval.utils.removed_names import RemovedNames
-
 # ``"model"`` tag -> defining module. The tag every class writes into
 # its dict is its own class name, so the registry only needs to find
 # the defining module, lazily (importing everything eagerly here would
@@ -104,6 +102,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "ProportionalIntensityModel": (
         "surpyval.recurrent.regression.proportional_intensity"
     ),
+    "RecurrentCoxModel": "surpyval.recurrent.regression.recurrent_cox",
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
     "DegradationModel": "surpyval.degradation.degradation_model",
     "InducedFailureDistribution": "surpyval.degradation.rul",
@@ -1167,7 +1166,7 @@ def with_unit_line(text: str, unit: str) -> str:
     return text + "\nUnit : " + unit
 
 
-class SerialisableMixin(RemovedNames):
+class SerialisableMixin:
     """Shared ``to_json`` / ``from_json`` plumbing for serialisable
     models: every class keeps only its ``to_dict`` / ``from_dict``
     pair (this used to be copy-pasted into ~20 classes).

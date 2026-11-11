@@ -342,7 +342,8 @@ def test_ari_saved_before_the_rename_still_loads():
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         model = RenewalModel.from_dict(dict(saved))
-        assert model.to_dict() == saved
+        # Saved again, it gains only the (empty) covariance entry.
+        assert model.to_dict() == {**saved, "covariance": None}
     assert model.model.dist is Duane
     np.testing.assert_array_equal(model.params, [0.5, 20.0, 1.5])
 
