@@ -4,10 +4,11 @@ SurPyval: survival and reliability analysis in Python.
 Fit parametric distributions (``Weibull``, ``LogNormal``, ``Exponential``,
 ...), non-parametric estimates (``KaplanMeier``, ``NelsonAalen``,
 ``Turnbull``), regression models (``CoxPH``, ``WeibullPH``, the AFT, PO
-and AH families, ...), competing risks, recurrent-event, degradation and
-multivariate models to data that may be censored (left, right or
-interval) and truncated, in one data format: ``x`` the times, ``c`` the
-censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
+and AH families, ...), competing risks, multi-state, recurrent-event,
+degradation and multivariate models to data that may be censored (left,
+right or interval) and truncated, in one data format: ``x`` the times,
+``c`` the censoring flag, ``n`` the counts and ``t`` the truncation
+(``xcnt``).
 
 >>> import surpyval
 >>> x, c = [10.0, 12.0, 15.0, 21.0, 30.0], [0, 0, 1, 0, 1]
@@ -15,9 +16,10 @@ censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
 >>> model.dist.name
 'Weibull'
 
-The regression, competing-risks, recurrent-event and degradation models
-and the metrics load on first use; ``surpyval.recurrent``,
-``surpyval.degradation``, ``surpyval.multivariate``, ``surpyval.ml``,
+The regression, competing-risks, multi-state, recurrent-event and
+degradation models and the metrics load on first use;
+``surpyval.recurrent``, ``surpyval.degradation``,
+``surpyval.multivariate``, ``surpyval.multistate``, ``surpyval.ml``,
 ``surpyval.life_models``, ``surpyval.metrics`` and ``surpyval.datasets``
 hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
@@ -251,6 +253,10 @@ _LAZY = {
         "surpyval.univariate.competing_risks",
     ),
     **dict.fromkeys(
+        ("MultiState", "MultiStateProportionalHazards", "TransitionMatrix"),
+        "surpyval.multistate",
+    ),
+    **dict.fromkeys(
         (
             "ARA",
             "ARI",
@@ -412,6 +418,7 @@ if TYPE_CHECKING:
         life_models,
         metrics,
         ml,
+        multistate,
         plotting,
         recurrent,
         test_planning,
@@ -433,6 +440,11 @@ if TYPE_CHECKING:
         integrated_brier_score,
         score_predictions,
         survival_probability,
+    )
+    from surpyval.multistate import (
+        MultiState,
+        MultiStateProportionalHazards,
+        TransitionMatrix,
     )
     from surpyval.recurrent import (
         ARA,
@@ -500,6 +512,7 @@ _SUBPACKAGES = (
     "life_models",
     "metrics",
     "ml",
+    "multistate",
     "plotting",
     "recurrent",
     "test_planning",
