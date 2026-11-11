@@ -41,6 +41,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -135,7 +136,7 @@ def _check_distribution(distribution: Any) -> None:
             "LogNormal, Gamma, ...); got {!r}. For a fitted model, pass its "
             "distribution (model.dist).".format(distribution)
         )
-    if name not in SUPPORTED:
+    if canonical_name(distribution) not in SUPPORTED:
         raise ValueError(
             "Distributional regression is not available for the {} "
             "distribution: it takes a continuous distribution whose support "
@@ -236,7 +237,8 @@ class DistributionalFitter(
         SurPyval's AFT models; +1 otherwise (a rate, or a shape or spread
         with no direction of its own). See :func:`._links.sign`."""
         return tuple(
-            _links.sign(self.dist.name, name) for name in self.parameter_names
+            _links.sign(canonical_name(self.dist), name)
+            for name in self.parameter_names
         )
 
     def _resolve_links(

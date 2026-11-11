@@ -3,6 +3,7 @@ import autograd.numpy as np
 from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
+from surpyval.utils.aliases import canonical_name
 
 from ..kinds import ACCELERATED_LIFE
 from .lifemodel import LifeModel
@@ -67,14 +68,16 @@ def AcceleratedLife(
     >>> model.params.round(3)
     array([  1.   ,   2.831, 558.686,  -0.828])
     """
-    if distribution.name not in _LIFE_PARAM_MAP:
+    # By its canonical name: an alias (Gauss, Galton) is its distribution
+    family = canonical_name(distribution)
+    if family not in _LIFE_PARAM_MAP:
         supported = list(_LIFE_PARAM_MAP.keys())
         raise ValueError(
             f"Distribution '{distribution.name}' is not supported by "
             f"AcceleratedLife. Supported distributions: {supported}"
         )
 
-    life_param, transform, inv_transform = _LIFE_PARAM_MAP[distribution.name]
+    life_param, transform, inv_transform = _LIFE_PARAM_MAP[family]
     name = f"{distribution.name}{life_model.name}AL"
 
     return ParameterSubstitutionFitter(
@@ -85,5 +88,5 @@ def AcceleratedLife(
         life_parameter=life_param,
         param_transform=transform,
         inverse_param_transform=inv_transform,
-        life_relation=_LIFE_RELATION.get(distribution.name, "L(Z)"),
+        life_relation=_LIFE_RELATION.get(family, "L(Z)"),
     )

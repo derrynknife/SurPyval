@@ -42,6 +42,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
@@ -685,7 +686,9 @@ class Centring:
             return None
         if center:
             return cls(covariate_center(Z, n), fitter.k_dist)
-        entry = ORIGIN_MAPS.get((kind or "", getattr(fitter.dist, "name", "")))
+        entry = ORIGIN_MAPS.get(
+            (kind or "", canonical_name(fitter.dist) or "")
+        )
         if entry is None:
             return None
         moved, move = entry
@@ -910,7 +913,7 @@ def alias_coefficients(
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
     Zf = Z[:, free]
-    intercept = (kind or "", getattr(fitter.dist, "name", "")) in ORIGIN_MAPS
+    intercept = (kind or "", canonical_name(fitter.dist) or "") in ORIGIN_MAPS
     if intercept:
         Zf = Zf - covariate_center(Zf, n)
         constant = constant_columns(Z[:, free])

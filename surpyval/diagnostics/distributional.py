@@ -85,6 +85,7 @@ from typing import Any
 
 import numpy as np
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _covariate_kind, _draw_form, _fmt, _gap, _note
@@ -194,7 +195,7 @@ def _own(ctx: Context) -> str:
     """How the advice names the model's fitter: ``WeibullDistributional``,
     or ``Distributional(<name>)`` for a distribution with no prebuilt
     one."""
-    name = ctx.model.distribution.name
+    name = canonical_name(ctx.model.distribution)
     if name in CANDIDATES:
         return name + "Distributional"
     return f"Distributional({name})"
@@ -212,7 +213,7 @@ def _candidate_covariates(model: Any, candidate: str) -> dict:
     params = list(model.distribution.parameter_names)
     positions = _positions(model)
     every = sorted({j for p in positions for j in p.tolist()})
-    life = LIFE.get(model.distribution.name)
+    life = LIFE.get(canonical_name(model.distribution))
     if life is None:
         life_cols, other_cols = every, every
     else:
@@ -271,7 +272,7 @@ def _aic_candidates(ctx: Context) -> list[dict]:
 
     def compute() -> list[dict]:
         model = ctx.model
-        own = model.distribution.name
+        own = canonical_name(model.distribution)
         out = [
             {
                 "label": _own(ctx),
@@ -704,7 +705,7 @@ def _validate(model: Any) -> None:
 
 
 def _notes(ctx: Context) -> list[str]:
-    name = ctx.model.distribution.name
+    name = canonical_name(ctx.model.distribution)
     others = [c for c in CANDIDATES if c != name]
     return [
         "Distribution: the Cox-Snell residuals H(x | z), each unit's fitted "
@@ -738,7 +739,7 @@ def _on(name: str | None) -> Any:
     one with no prebuilt fitter)."""
 
     def test(ctx: Context) -> bool:
-        own = ctx.model.distribution.name
+        own = canonical_name(ctx.model.distribution)
         return own not in CANDIDATES if name is None else own == name
 
     return test
