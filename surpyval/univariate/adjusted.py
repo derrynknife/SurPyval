@@ -371,7 +371,10 @@ class _Parametric(_Engine):
         with np.errstate(all="ignore"):
             return (
                 np.asarray(
-                    delta_method_se(value, self.params, self.cov), float
+                    delta_method_se(
+                        value, self.params, self.cov, scale_free=True
+                    ),
+                    float,
                 )
                 ** 2
             )
@@ -396,7 +399,7 @@ class _Parametric(_Engine):
             return np.einsum("g,gi,i->", L, self._rmst_at(p, tau), omega)
 
         with np.errstate(all="ignore"):
-            se = delta_method_se(value, self.params, self.cov)
+            se = delta_method_se(value, self.params, self.cov, scale_free=True)
         return float(np.ravel(se)[0]) ** 2
 
     def last_time(self) -> float | None:
@@ -836,7 +839,8 @@ class AdjustedCurves:
         level
             One of :attr:`levels`.
         on : {"sf", "ff"}, optional
-            The function bounded. Default "sf".
+            The function bounded (``"R"`` and ``"F"`` are accepted
+            spellings of ``"sf"`` and ``"ff"``). Default "sf".
         alpha_ci : float, optional
             Total tail probability of the bound(s). Default 0.05.
         bound : {"two-sided", "lower", "upper"}, optional
@@ -860,7 +864,8 @@ class AdjustedCurves:
         from surpyval.utils.linalg import bound_signs
         from surpyval.utils.validation import BOUNDS
 
-        check_option("on", on, ("sf", "ff"))
+        check_option("on", on, ("sf", "R", "ff", "F"))
+        on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, BOUNDS)
         check_alpha_ci(alpha_ci)
         t = self._times(x).ravel()

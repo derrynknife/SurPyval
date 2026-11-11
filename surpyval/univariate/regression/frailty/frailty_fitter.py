@@ -53,7 +53,7 @@ from surpyval.utils import (
 from surpyval.utils.covariates import coefficient_floor, coefficient_names
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
-from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.linalg import curvature_scales, numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
@@ -701,7 +701,20 @@ class FrailtyFitter(FitterRepr):
                 if exact is not None:
                     Hmat = exact
                 else:
+                    # The baseline's and the coefficients' steps are a
+                    # thousandth of their scale in the likelihood, not a
+                    # fraction of each parameter floored at 1: an
+                    # exponential baseline's rate of 2.4e-5 (times in
+                    # seconds) was stepped by 40% of itself, and its
+                    # standard error was 37% off the one in hours. The
+                    # frailty variance has no unit and keeps its step: on
+                    # its boundary, 0, its variance is not a Wald one and
+                    # is a function of that step.
                     steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
+                    scales = curvature_scales(nll_nat, nat)
+                    usable = np.isfinite(scales) & (scales > 0)
+                    usable[-1] = False
+                    steps = np.where(usable, 1e-3 * scales, steps)
                     Hmat = numerical_hessian(nll_nat, nat, step=steps)
                 cov = np.linalg.inv(Hmat)
                 if np.all(np.isfinite(cov)):

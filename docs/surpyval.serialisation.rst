@@ -143,6 +143,306 @@ The later versions, each refused by the SurPyval releases before it:
        whose coefficients carry their signs (``"coefficient_signs"``).
      - 0.27
 
+.. _saved-model-dictionary:
+
+The saved-model dictionary
+--------------------------
+
+Code outside SurPyval (a web service, a database query, a program in
+another language) can read the dictionary ``to_dict`` writes without
+loading the model. Its layout is a contract, set out here key by key:
+
+- Every dictionary written by an earlier release keeps loading, whatever
+  its ``"schema"``.
+- From 1.0, a 1.x release may **add** keys, but never renames or removes
+  one, nor changes what an existing key holds. A reader should therefore
+  ignore keys it does not know. (See :doc:`Deprecation Policy`.)
+- A key listed as written "when it applies" is left out, not written as
+  ``null``, when it does not apply.
+
+The tables below were made by fitting one model of every class the
+readers know and listing its keys; ``surpyval/tests/test_json_serialisation.py``
+checks them against the code, so they cannot drift.
+
+Keys in every dictionary
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Key
+     - What it holds
+   * - ``schema``
+     - The oldest layout version that reads the dictionary correctly, an
+       integer (see above).
+   * - ``model`` or ``parameterization``
+     - Which class wrote it, so that :func:`~surpyval.serialisation.from_dict`
+       can choose the reader. Most classes write ``"model"``, set to the
+       class name. Four write ``"parameterization"`` instead:
+       ``"parametric"`` (``Parametric``), ``"non-parametric"``
+       (``NonParametric``, whose ``"model"`` holds the estimator,
+       ``"Kaplan-Meier"`` for example), ``"parametric-regression"``
+       (``ParametricRegressionModel``) and ``"copula"``
+       (``CopulaModel``). A few classes write both; ``"model"`` then
+       decides.
+
+.. _saved-model-optional-keys:
+
+Keys any model writes when they apply
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Key
+     - When, and what it holds
+   * - ``non_finite``
+     - The dictionary holds a value that is not a finite number: where
+       each ``null`` came from (see `Infinite and NaN values`_).
+   * - ``unit``
+     - The model has a unit (``unit=`` on ``fit``): its text.
+   * - ``weighted``
+     - The model was fitted with sampling weights ``w``: ``true``.
+   * - ``effective_n``
+     - With ``weighted``: the effective sample size.
+   * - ``data``
+     - ``to_dict(with_data=True)`` (``Parametric`` and ``NonParametric``):
+       the fitted data, ``x``, ``c``, ``n``, ``t`` (and ``w``). Some
+       models that need their data to predict always store it under this
+       key (listed below).
+   * - ``feature_names``
+     - A regression model whose covariates have names: the names, in
+       the order of the coefficients.
+   * - ``formula``
+     - A regression model fitted with a formula: its text.
+   * - ``formula_meta``
+     - With ``formula``: the levels and fitted transform statistics
+       needed to build the same design matrix again.
+   * - ``center``
+     - A regression model fitted with ``center=True``: the covariate
+       values its baseline is at.
+
+Names shared between families
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Where a key below appears, it means the same thing whichever model wrote
+it:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Key
+     - What it holds
+   * - ``params``
+     - The fitted parameters (or coefficients), a list of numbers.
+   * - ``param_names``
+     - The names of ``params``, in the same order.
+   * - ``covariance``
+     - The parameters' covariance matrix (with weights, the robust one).
+   * - ``hess_inv``
+     - The inverse Hessian of the negative log-likelihood. Without
+       weights it equals ``covariance``.
+   * - ``_neg_ll``
+     - The fitted negative log-likelihood.
+   * - ``ic_n``
+     - The sample size used by ``bic`` and ``aic_c``.
+   * - ``maximum``
+     - Whether the fit reached a maximum of the likelihood.
+   * - ``data_summary``
+     - The "Data" line of the model's printout.
+   * - ``distribution`` or ``dist``
+     - The name of the distribution (``"Weibull"``).
+   * - ``how``
+     - The fitting method (``"MLE"``, ``"MPP"``, ...).
+   * - ``kind``
+     - The model's family within its class (``"Cox"``, ``"PH"``, ...).
+   * - ``x``
+     - The times at which a step-function estimate is stored.
+
+Keys of each class
+~~~~~~~~~~~~~~~~~~
+
+"Always" lists the keys every fitted model of that class writes, besides
+``schema`` and the identifying key; "When it applies" lists the keys
+written only by some fits (a Turnbull estimate, a stratified or
+delayed-entry Cox model, a parametric model with fixed parameters, and
+so on) beyond those in `Keys any model writes when they apply`_. A model
+nested inside another (a competing-risks model's per-cause models, a
+forest's trees, a copula's margins) is a dictionary of its own class,
+with its own ``schema``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 22 36 20
+
+   * - Class
+     - Identified by
+     - Always
+     - When it applies
+   * - ``Parametric``
+     - ``"parameterization": "parametric"``
+     - ``distribution``, ``how``, ``param_names``, ``params``, ``lfp``, ``p``, ``zi``, ``f0``, ``offset``, ``gamma``, ``hess_inv``, ``covariance``, ``_neg_ll``, ``maximum``, ``data_summary``, ``ic_n``
+     - ``fixed``, ``custom``, ``event_counts``, ``n_trials``
+   * - ``NonParametric``
+     - ``"parameterization": "non-parametric"``
+     - ``x``, ``r``, ``d``, ``R``, ``F``, ``H``, ``greenwood``, ``data_summary``
+     - ``estimator``, ``tol``, ``max_iter``, ``algorithm``, ``support``, ``band_n``
+   * - ``ParametricRegressionModel``
+     - ``"parameterization": "parametric-regression"``
+     - ``kind``, ``distribution``, ``phi_param_map``, ``params``, ``k``, ``k_dist``, ``fixed``, ``gamma``, ``p``, ``f0``, ``covariance``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``
+     - ``reg_model_name``, ``inference_centring``, ``life_model_name``
+   * - ``DistributionalRegressionModel``
+     - ``"model": "DistributionalRegressionModel"``
+     - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``
+     - --
+   * - ``MixtureCureModel``
+     - ``"model": "MixtureCureModel"``
+     - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
+     - --
+   * - ``SemiParametricRegressionModel``
+     - ``"model": "SemiParametricRegressionModel"``
+     - ``kind``, ``beta``, ``params``, ``x``, ``r``, ``d``, ``h0``, ``H0``, ``tie_method``, ``baseline_method``, ``is_tvc``, ``p_values``, ``se``, ``covariance``, ``_neg_ll``, ``ic_n``, ``maximum``, ``data_summary``
+     - ``tl``, ``strata``, ``firth``
+   * - ``FrailtyModel``
+     - ``"model": "FrailtyModel"``
+     - ``kind``, ``family``, ``distribution``, ``dist_params``, ``beta``, ``theta``, ``k_dist``, ``param_names``, ``group_labels``, ``frailties``, ``n_obs``, ``n_events``, ``n_groups``, ``n_events_weighted``, ``n_obs_weighted``, ``_neg_ll``, ``maximum``, ``covariance``
+     - --
+   * - ``CoxFrailtyModel``
+     - ``"model": "CoxFrailtyModel"``
+     - ``kind``, ``family``, ``tie_method``, ``beta``, ``theta``, ``center``, ``x``, ``h0``, ``H0``, ``parameter_names``, ``group_labels``, ``frailties``, ``n_obs``, ``n_events``, ``n_groups``, ``_neg_ll``, ``log_likelihood_no_frailty``, ``k``, ``n_events_weighted``, ``n_obs_weighted``, ``data_summary``, ``maximum``, ``covariance``
+     - --
+   * - ``AdditiveHazardsModel``
+     - ``"model": "AdditiveHazardsModel"``
+     - ``beta``, ``params``, ``x``, ``h0``, ``H0``, ``covariance``, ``se``, ``p_values``, ``drift``
+     - --
+   * - ``AalenAdditiveModel``
+     - ``"model": "AalenAdditiveModel"``
+     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``
+     - --
+   * - ``BuckleyJamesModel``
+     - ``"model": "BuckleyJamesModel"``
+     - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
+     - --
+   * - ``ProportionalOddsModel``
+     - ``"model": "ProportionalOddsModel"``
+     - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
+     - --
+   * - ``MixtureModel``
+     - ``"model": "MixtureModel"``
+     - ``dist``, ``m``, ``params``, ``w``, ``maximum``, ``_neg_ll``, ``ic_n``, ``theta_covariance``
+     - ``custom``
+   * - ``RoystonParmarModel``
+     - ``"model": "RoystonParmarModel"``
+     - ``scale``, ``knots``, ``params``, ``n``, ``n_events``, ``_neg_ll``, ``maximum``, ``ic_n``, ``covariance``
+     - --
+   * - ``FineGrayModel``
+     - ``"model": "FineGrayModel"``
+     - ``cause``, ``beta``, ``p_values``, ``baseline_times``, ``baseline_cumhaz``, ``_neg_ll``, ``maximum``, ``covariance``, ``se``, ``model_covariance``, ``ic_n``
+     - --
+   * - ``CompetingRisksProportionalHazards``
+     - ``"model": "CompetingRisksProportionalHazards"``
+     - ``how``, ``event_idx_map``, ``n_event_types``, ``x``, ``betas``, ``h0_e``, ``maximum``, ``_neg_ll``, ``ic_n``, ``covariances``
+     - ``fg_models``
+   * - ``ParametricCompetingRisks``
+     - ``"model": "ParametricCompetingRisks"``
+     - ``causes``, ``models``
+     - ``joint``
+   * - ``ParametricCompetingRisksRegression``
+     - ``"model": "ParametricCompetingRisksRegression"``
+     - ``causes``, ``models``
+     - --
+   * - ``CompetingRisks``
+     - ``"model": "CompetingRisks"``
+     - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
+     - ``support``
+   * - ``CauseSpecificMCF``
+     - ``"model": "CauseSpecificMCF"``
+     - ``event_types``, ``models``
+     - ``support``
+   * - ``CauseSpecificNHPP``
+     - ``"model": "CauseSpecificNHPP"``
+     - ``dist``, ``event_types``, ``models``, ``covariances``, ``end``
+     - --
+   * - ``CauseSpecificProportionalIntensity``
+     - ``"model": "CauseSpecificProportionalIntensity"``
+     - ``baseline``, ``event_types``, ``models``, ``covariances``
+     - ``feature_names``
+   * - ``NonParametricCounting``
+     - ``"model": "NonParametricCounting"``
+     - ``x``, ``mcf_hat``, ``var``, ``origin``
+     - ``support``
+   * - ``ParametricRecurrenceModel``
+     - ``"model": "ParametricRecurrenceModel"``
+     - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
+     - --
+   * - ``ProportionalIntensityModel``
+     - ``"model": "ProportionalIntensityModel"``
+     - ``kind``, ``dist``, ``param_names``, ``params``, ``coeffs``, ``covariance``, ``maximum``
+     - ``feature_names``
+   * - ``RecurrentCoxModel``
+     - ``"model": "RecurrentCoxModel"``
+     - ``kind``, ``cox``, ``robust_covariance``, ``n_items``, ``n_events``, ``max_events``
+     - ``strata``
+   * - ``RenewalModel``
+     - ``"model": "RenewalModel"``
+     - ``family``, ``dist``, ``params``, ``restoration``, ``how``, ``covariance``, ``maximum``, ``kijima_type``
+     - ``m``
+   * - ``DegradationModel``
+     - ``"model": "DegradationModel"``
+     - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``
+     - --
+   * - ``InducedFailureDistribution``
+     - ``"model": "InducedFailureDistribution"``
+     - ``samples``, ``threshold``, ``path_name``
+     - ``stress``
+   * - ``WienerProcessModel``
+     - ``"model": "WienerProcessModel"``
+     - ``mu``, ``sigma``, ``threshold``, ``y0``, ``covariance``, ``_neg_ll``, ``ic_n``, ``maximum``
+     - ``gamma``, ``stress_ref``, ``Z_cols``
+   * - ``GammaProcessModel``
+     - ``"model": "GammaProcessModel"``
+     - ``alpha``, ``beta``, ``threshold``, ``y0``, ``covariance``, ``_neg_ll``, ``ic_n``, ``maximum``
+     - ``gamma``, ``stress_ref``, ``Z_cols``
+   * - ``DestructiveDegradationModel``
+     - ``"model": "DestructiveDegradationModel"``
+     - ``distribution``, ``transform``, ``direction``, ``beta``, ``sigma``, ``threshold``, ``_neg_ll``, ``transform_scores``, ``data``, ``maximum``
+     - --
+   * - ``CopulaModel``
+     - ``"parameterization": "copula"``
+     - ``copula``, ``params``, ``how``, ``margins``, ``maximum``
+     - ``rotation``, ``_neg_ll``, ``ic_n``, ``k``, ``covariance``
+   * - ``SurvivalTree``
+     - ``"model": "SurvivalTree"``
+     - ``kind``, ``n_features_split``, ``selection``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``
+     - --
+   * - ``RandomSurvivalForest``
+     - ``"model": "RandomSurvivalForest"``
+     - ``kind``, ``n_trees``, ``bootstrap``, ``selection``, ``alpha_split``, ``min_split_gain``, ``trees``
+     - --
+   * - ``NeverOccurs``
+     - ``"model": "NeverOccurs"``
+     - --
+     - --
+   * - ``InstantlyOccurs``
+     - ``"model": "InstantlyOccurs"``
+     - --
+     - --
+   * - ``JointModel``
+     - ``"model": "JointModel"``
+     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
+     - --
+   * - ``BayesianParametric``
+     - ``"model": "BayesianParametric"``
+     - ``distribution``, ``offset``, ``lfp``, ``zi``, ``fixed``, ``method``, ``priors``, ``data``, ``posterior``, ``log_evidence``, ``diagnostics``, ``exact``, ``surpyval_version``
+     - --
+
+
+Readers and helpers
+-------------------
+
 .. autofunction:: surpyval.serialisation.from_dict
 
 .. autofunction:: surpyval.serialisation.from_json

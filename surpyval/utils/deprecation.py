@@ -16,8 +16,7 @@ rename it was written for):
   silently read as something other than what that place holds in the
   package's other methods of the name (``Parametric.mean(5)`` takes the
   5 as ``defective``, where ``KaplanMeier`` models' ``mean(5)`` takes it
-  as ``tau``): a ``FutureWarning``, and keyword-only from
-  :data:`REMOVED_IN_NEXT`;
+  as ``tau``): a ``FutureWarning`` that names the keyword to use;
 - :func:`ambiguous_item_ids`, the recurrent fits' item ids ``i``, which
   stand where the other fits take the censoring flags ``c``: a
   ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
@@ -433,7 +432,6 @@ def positional_option(
     taken_as: str,
     elsewhere: str,
     advice: str,
-    removed_in: str = REMOVED_IN_NEXT,
 ) -> Callable[[F], F]:
     """
     Decorate a method whose argument ``name`` is read, when it is given by
@@ -443,9 +441,9 @@ def positional_option(
     other. Passing ``name``, or any argument after it, by position then
     warns with a ``FutureWarning`` (shown wherever the call is made, since
     the risk is a wrong number, not an error) that says what the value was
-    taken as and how to pass it by name; from ``removed_in``, ``name`` and
-    the arguments after it are keyword-only. The call and its result are
-    unchanged.
+    taken as and how to pass it by name. The call and its result are
+    unchanged, and the argument stays positional: making it keyword-only
+    would be a breaking change, which waits for 2.0 (DECISIONS.md).
 
     Parameters
     ----------
@@ -459,8 +457,6 @@ def positional_option(
         "the censoring flags 'c', as in fit(x, c, n, t)".
     advice : str
         How to pass it by name: "i=... (or c=... for censoring flags)".
-    removed_in : str, optional
-        The release that makes it keyword-only.
 
     Returns
     -------
@@ -486,9 +482,8 @@ def positional_option(
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.mean: the first positional argument was taken as 'defective'
     (whether to include the never-failing part), not as the time 'tau' to
-    restrict the mean to. Passing 'defective' or any argument after it by
-    position is deprecated; they will be keyword-only from v0.28. Pass it
-    by name, defective=...; the result is unchanged.
+    restrict the mean to. The call is ambiguous: pass it by name,
+    defective=...; the result is unchanged.
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
     ...     Model().mean(defective=True)
@@ -509,10 +504,8 @@ def positional_option(
                 warnings.warn(
                     f"{where}: the {ordinal} positional argument was taken "
                     f"as '{name}' ({taken_as}), not as {elsewhere}. "
-                    f"Passing '{name}' or any argument after it by "
-                    "position is deprecated; they will be keyword-only "
-                    f"from v{removed_in}. Pass it by name, {advice}; the "
-                    "result is unchanged.",
+                    f"The call is ambiguous: pass it by name, {advice}; "
+                    "the result is unchanged.",
                     FutureWarning,
                     stacklevel=2,
                 )
@@ -526,7 +519,6 @@ def positional_option(
 def ambiguous_item_ids(
     elsewhere: str,
     column: bool = False,
-    removed_in: str = REMOVED_IN_NEXT,
 ) -> Callable[[F], F]:
     """
     Decorate a recurrent-event ``fit`` (or, with ``column=True``, its
@@ -541,8 +533,8 @@ def ambiguous_item_ids(
     of ``i`` (or of its column) 0s and 1s, as censoring flags are. (Ids
     all 0 or all 1, one item, are left alone: read as flags they would
     give the same fit, or mark every row censored.)
-    From ``removed_in`` that call is refused, asking for the argument by
-    name. The call and its result are unchanged.
+    The call and its result are unchanged; refusing it would be a
+    breaking change, which waits for 2.0 (DECISIONS.md).
 
     Parameters
     ----------
@@ -552,8 +544,6 @@ def ambiguous_item_ids(
     column : bool, optional
         ``True`` for a ``fit_from_df``, whose ``i_col`` names a column of
         its ``df``.
-    removed_in : str, optional
-        The release that refuses the call.
 
     Examples
     --------
@@ -572,9 +562,8 @@ def ambiguous_item_ids(
     each event belongs to, but no 'c' was given and its values are 0s and
     1s, as censoring flags are (the 'c' of fit(x, c, n, t)). Read as item
     ids, every row is an event and none is censored. Name it to say which
-    it is: c=... for censoring flags, or i=... for item ids. An unnamed 'i'
-    of 0s and 1s with no 'c' is deprecated and will be refused from v0.28;
-    the result is unchanged.
+    it is: c=... for censoring flags, or i=... for item ids. The call is
+    ambiguous; the result is unchanged.
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
     ...     Fitter().fit([1, 2, 3], [1, 1, 2])  # ids, not flags
@@ -632,10 +621,8 @@ def ambiguous_item_ids(
                     f"are (the '{c_name}' of {elsewhere}). Read as item "
                     "ids, every row is an event and none is censored. Name "
                     f"it to say which it is: {c_name}=... for censoring "
-                    f"flags, or {i_name}=... for item ids. An unnamed "
-                    f"'{i_name}' of 0s and 1s with no '{c_name}' is "
-                    f"deprecated and will be refused from v{removed_in}; "
-                    "the result is unchanged.",
+                    f"flags, or {i_name}=... for item ids. The call is "
+                    "ambiguous; the result is unchanged.",
                     FutureWarning,
                     stacklevel=2,
                 )

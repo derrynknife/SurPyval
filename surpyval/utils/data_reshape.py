@@ -706,7 +706,15 @@ class ReshapeMixin(ReadOnlyArrays):
             from surpyval.utils import lifetime_reshape
 
             return lifetime_reshape.without(self, parts)
+        on_arrays = self._without_on_arrays(parts)
+        if on_arrays is not None:
+            return on_arrays
         return self._map(lambda r: without(r, parts))
+
+    def _without_on_arrays(self, parts: tuple) -> Any:
+        """:meth:`without` worked on the arrays where that gives what the
+        records give, else ``None`` (the records are then used)."""
+        return None
 
     def with_covariates(self, columns: Any) -> Any:
         """The data with only the covariate ``columns`` -- their names,
