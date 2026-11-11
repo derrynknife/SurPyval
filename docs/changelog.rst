@@ -119,7 +119,9 @@ Unreleased
   ``x`` never fails), ``susceptible=True`` on ``sf``, ``ff``, ``df``,
   ``hf``, ``Hf``, ``qf`` and ``mean`` for the latency alone, and
   ``follow_up()``, Maller and Zhou's check that the units were followed
-  long enough to show a plateau. Data with no cured fraction end in the
+  long enough to show a plateau. The likelihood-ratio bound on a quantile,
+  ``quantile_cb(p, Z, method="lr")``, has an infinite upper end where the
+  likelihood region allows a susceptible probability at or below ``p``. Data with no cured fraction end in the
   "No finite maximum" warning, naming ``lfp_p`` and saying to fit the
   latency alone. Checked against R's ``flexsurvcure`` (Weibull,
   log-normal and log-logistic latencies; logit, probit and loglog links;

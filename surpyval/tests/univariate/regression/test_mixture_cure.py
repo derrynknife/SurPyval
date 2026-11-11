@@ -309,6 +309,31 @@ def test_quantiles_means_and_draws(fitted):
     assert np.array_equal(draws, again)
 
 
+def test_lr_quantile_bound_is_infinite_past_the_cure_fraction():
+    # Where the likelihood region holds a susceptible probability at or
+    # below p, a fraction p of such units may never fail: the quantile's
+    # upper bound is inf (it was the finite extreme of the rest of the
+    # region, which shrank as the level grew).
+    x, c, Z = _simulate(7, 300)
+    model = sp.WeibullMixtureCure.fit(
+        x, Z[:, 0], c=c, covariates={"lfp_p": [0]}
+    )
+    row = [0.0]
+    pi_hat = float(model.susceptible_probability(row))
+    pi_lo = float(model.parameter_cb("lfp_p", row, method="lr")[0, 0])
+    assert 0 < pi_lo < pi_hat
+    between, below = 0.5 * (pi_lo + pi_hat), 0.5 * pi_lo
+    cb = model.quantile_cb([between, below], row, method="lr")
+    assert np.isinf(cb[0, 1]) and np.isfinite(cb[0, 0])
+    assert np.all(np.isfinite(cb[1]))
+    assert cb[1, 0] < model.qf(below, row) < cb[1, 1]
+    upper = model.quantile_cb(between, row, method="lr", bound="upper")
+    assert np.isinf(upper).all()
+    # the Wald bound is unchanged by this
+    wald = model.quantile_cb(below, row)
+    assert np.all(np.isfinite(wald))
+
+
 def test_bounds_and_serialisation(fitted):
     model, x, c, Z = fitted
     row = [1.0, 0.3]

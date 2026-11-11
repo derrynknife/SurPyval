@@ -214,6 +214,15 @@ this model is a member: the fits, checks, bounds (``cb``, ``param_cb``
 and ``parameter_cb`` with Wald, likelihood-ratio and bootstrap methods),
 weights, ``to_dict`` and ``from_dict`` are that family's.
 
+One bound behaves differently. A quantile, the age by which a fraction
+``p`` of the units have failed, is infinite when ``p`` is at or above the
+chance of ever failing. So the likelihood-ratio bound on a quantile
+(``quantile_cb(p, Z, method="lr")``) has an infinite upper end whenever
+the data cannot rule out that so few units ever fail: whenever the
+likelihood-ratio lower bound on ``lfp_p`` at that row is at or below ``p``.
+It is an honest answer, saying the data do not bound that quantile from
+above.
+
 A medical example: who relapses, and when
 -----------------------------------------
 

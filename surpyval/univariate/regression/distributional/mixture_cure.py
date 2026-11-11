@@ -600,6 +600,66 @@ class MixtureCureModel(DistributionalRegressionModel):
             )
         return self._latency_call("qf", u, Z)
 
+    def _quantile_cb_rows(
+        self,
+        probs: npt.NDArray,
+        rows: npt.NDArray,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> npt.NDArray:
+        """``quantile_cb``'s bounds (see the regressions' own). With
+        ``method="lr"`` the upper bound is ``inf`` wherever the
+        likelihood region holds parameters whose susceptible probability
+        at the row is at most ``p``: a fraction ``p`` of such units may
+        never fail, so the quantile is infinite there. Whether it does is
+        the profile lower bound on ``lfp_p`` at the row, at the same
+        level; that side is not searched, and the other is the one-sided
+        bound at the same critical value."""
+        sup = super()._quantile_cb_rows
+        if method != "lr" or bound == "lower":
+            return sup(probs, rows, alpha_ci, bound, method, *args, **kwargs)
+        side = "two-sided" if bound == "two-sided" else "lower"
+        lfp = onp.asarray(
+            self.parameter_cb(
+                "lfp_p", rows, alpha_ci=alpha_ci, bound=side, method="lr"
+            ),
+            dtype=float,
+        )
+        lowest = lfp[:, 0] if side == "two-sided" else lfp.reshape(-1)
+        endless = lowest <= probs
+        two = bound == "two-sided"
+        out = onp.full((probs.size, 2) if two else probs.size, onp.nan)
+        if (~endless).any():
+            out[~endless] = sup(
+                probs[~endless],
+                rows[~endless],
+                alpha_ci,
+                bound,
+                method,
+                *args,
+                **kwargs,
+            )
+        if endless.any():
+            if two:
+                # the lower end of a two-sided interval at alpha is the
+                # one-sided bound at alpha / 2
+                out[endless, 0] = sup(
+                    probs[endless],
+                    rows[endless],
+                    alpha_ci / 2,
+                    "lower",
+                    method,
+                    *args,
+                    **kwargs,
+                )
+                out[endless, 1] = onp.inf
+            else:
+                out[endless] = onp.inf
+        return out
+
     def mean(self, Z: Any, *, susceptible: bool = False) -> Any:
         """
         The mean life of a unit with covariates ``Z``. The population's
