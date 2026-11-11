@@ -40,6 +40,15 @@ Unreleased
   left-censored rows. See :doc:`Recurrent Event Regression Analysis` (what
   each model assumes about a repeat event, in words) and
   :doc:`Recurrent Event Regression Modelling with SurPyval`.
+- The names of the regression families have a public home,
+  ``surpyval.univariate.regression.kinds``: ``PROPORTIONAL_HAZARD``,
+  ``ACCELERATED_FAILURE_TIME``, ``PROPORTIONAL_ODDS``, ``ADDITIVE_HAZARD``,
+  ``ACCELERATED_LIFE`` and ``DISTRIBUTIONAL``, the values a fitted
+  parametric regression model's ``kind`` takes, and two groups of them,
+  ``TIME_SCALING`` (the covariates rescale time) and ``HAZARD_BASED`` (the
+  covariates act on the hazard), so ``model.kind in kinds.TIME_SCALING``
+  replaces a comparison with a string literal. The strings are unchanged.
+
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every

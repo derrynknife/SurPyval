@@ -19,7 +19,7 @@ from surpyval.utils.validation import warn_outside_unit_interval
 from surpyval.utils.warnings import ignoring_warnings
 
 from .._covariate_link import CovariateLink
-from .._kinds import DISTRIBUTIONAL
+from ..kinds import DISTRIBUTIONAL
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import (
     check_covariate_width,

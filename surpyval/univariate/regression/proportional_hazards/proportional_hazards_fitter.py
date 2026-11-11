@@ -29,9 +29,9 @@ from .._fit_skeleton import (
     optimise_ph,
     uniform_draws,
 )
-from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
 from .._penalised_fit import PenalisedFitMixin
+from ..kinds import PROPORTIONAL_HAZARD
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin

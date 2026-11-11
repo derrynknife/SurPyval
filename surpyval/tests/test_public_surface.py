@@ -47,6 +47,7 @@ NAMESPACES: tuple[str, ...] = (
     "surpyval.univariate.parametric",
     "surpyval.univariate.nonparametric",
     "surpyval.univariate.regression",
+    "surpyval.univariate.regression.kinds",
     "surpyval.univariate.competing_risks",
     "surpyval.recurrent",
     "surpyval.degradation",

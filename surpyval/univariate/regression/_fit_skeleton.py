@@ -62,12 +62,12 @@ from ._aliasing import (
 )
 from ._baseline_profile import filled_derivatives, to_log, walk_profile
 from ._covariate_link import CovariateLink
-from ._kinds import (
+from ._robust import note_source_rows
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
-from ._robust import note_source_rows
 from .parametric_regression_model import ParametricRegressionModel
 
 
