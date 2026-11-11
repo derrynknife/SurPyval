@@ -1500,6 +1500,11 @@ Unreleased
          ``WeibullAL[InversePower]`` 1.6e-5, now 2.7e-9; with times a
          million times larger ``WeibullAL[InverseExponential]`` 1.6e-2,
          now 2e-6
+     * - Directly adjusted curves (``direct_adjustment``) from those
+         models
+       - the ``cb`` and ``rmst`` gradients
+       - ``WeibullAH`` with times a million times larger: 0.16, now
+         4e-7
      * - The same, ``robust=True``
        - the rows' scores of the sandwich
        - ``WeibullAH`` with times a million times larger: ``nan``, now

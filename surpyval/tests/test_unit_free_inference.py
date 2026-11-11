@@ -197,3 +197,20 @@ def test_copula_bounds_do_not_depend_on_the_unit(name):
     np.testing.assert_allclose(
         model.cb(X * k, on="sf"), ref.cb(X, on="sf"), rtol=1e-6
     )
+
+
+def test_directly_adjusted_bounds_do_not_depend_on_the_unit():
+    # The adjusted curves' delta method had the same floor: with times a
+    # million times larger, WeibullAH's adjusted band was 16% off.
+    from surpyval.univariate.adjusted import direct_adjustment
+
+    name = "WeibullAH"
+    case = CASE_BY_NAME[name]
+    k = 1e6
+    bands = []
+    for model, scale in ((_fit(name, 1.0), 1.0), (_fit(name, k), k)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            curves = direct_adjustment(model, 0, covariates="fixed")
+            bands.append(_width(curves.cb(case.x * scale, curves.levels[0])))
+    np.testing.assert_allclose(bands[1], bands[0], rtol=1e-5)
