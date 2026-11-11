@@ -1121,9 +1121,21 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
     print("SHR      :", np.round(np.exp(model.beta), 3))
     print("cov      :\n", np.round(model.covariance(), 4))
 
-The standard errors come from the inverse Hessian of the weighted partial
-likelihood (the robust variance of Fine and Gray is not implemented), so treat
-them as approximate. ``covariance()`` is that inverse, and ``log_likelihood``
+The standard errors, and the p-values and ``summary()`` built on them, are
+the robust ones Fine and Gray derived (a sandwich variance that allows for
+the censoring weights being estimated from the same data), which is what
+R's ``cmprsk::crr`` prints. The model-based ones, from the curvature of the
+weighted partial likelihood alone, are there on request, with
+``robust=False``:
+
+.. jupyter-execute::
+
+    print("robust se      :", np.round(model.standard_errors(), 4))
+    print("model-based se :", np.round(model.standard_errors(robust=False), 4))
+    model.summary(robust=False)[["coef", "se(coef)", "p"]]
+
+``covariance()`` and ``covariance(robust=False)`` are the two matrices; see
+:doc:`Competing Risks Analysis` for the formulas. ``log_likelihood`` is
 the maximised weighted partial log-likelihood (``cmprsk::crr``'s ``loglik``),
 whose ``aic()`` and ``bic()`` (with the events of the cause as BIC's sample
 size) compare Fine-Gray models of the same cause on the same data; a

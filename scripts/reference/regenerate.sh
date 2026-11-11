@@ -33,6 +33,8 @@ Rscript scripts/reference/reference_r_competing_metrics.R
 Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_competing_entry.R
+# cmprsk (in R_LIBS_USER) for the Fine-Gray model's two covariances
+Rscript scripts/reference/reference_r_fine_gray_variance.R
 Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
 Rscript scripts/reference/reference_r_weighted_competing_regression.R

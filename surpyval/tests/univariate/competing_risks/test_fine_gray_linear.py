@@ -286,8 +286,13 @@ def test_fit_matches_the_dense_weight_matrix(case, cause, center):
     np.testing.assert_array_equal(new["baseline_times"], old["baseline_times"])
     assert new["runaway"] == old["runaway"]
     np.testing.assert_array_equal(np.isnan(new["beta"]), np.isnan(old["beta"]))
-    keys = ["beta", "se", "p_values", "cov", "center", "baseline_cumhaz"]
+    keys = ["beta", "center", "baseline_cumhaz"]
     rtol = 1e-12
+    if not new["runaway"]:
+        # The old fit's covariance is the model-based one, the inverse
+        # information: the fit's "model_cov" (its "cov" is the robust
+        # covariance, which the old fit did not have).
+        _assert_close(new["model_cov"], old["cov"], rtol)
     if new["runaway"]:
         # No finite maximum: BFGS stops where the rise along the runaway
         # direction drops below its tolerance, a point the last digits of
@@ -352,7 +357,10 @@ def test_crph_fine_gray_matches_the_dense_weight_matrix():
     for cause in (1, 2, 3):
         old = _old_fit_cause(*args, cause)
         _assert_close(model.betas[model.event_idx_map[cause]], old["beta"])
-        _assert_close(model._fg_models[cause].standard_errors(), old["se"])
+        # (the old fit's standard errors are the model-based ones)
+        _assert_close(
+            model._fg_models[cause].standard_errors(robust=False), old["se"]
+        )
 
 
 @pytest.mark.parametrize("ties", ["censoring_first", "events_first"])

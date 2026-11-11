@@ -212,9 +212,11 @@ def test_fine_gray_functions_on_a_fine_gray_fit():
         stats = [r["statistic"] for r in res["per_covariate"]]
         stats.append(res["global"]["statistic"])
         assert_allclose(stats, ref[transform + "_chisq"], **TOL)
-    # The information is the inverse of the model's covariance.
+    # The information is the inverse of the model-based covariance.
     assert_allclose(
-        np.linalg.inv(res["information"]), model.covariance(), rtol=1e-8
+        np.linalg.inv(res["information"]),
+        model.covariance(robust=False),
+        rtol=1e-8,
     )
     res = fine_gray_added_covariate_test(model, df["age"] ** 2)
     assert_allclose(res["statistic"], ref["square_age"], **TOL)
