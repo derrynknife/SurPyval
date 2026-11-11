@@ -1175,55 +1175,72 @@ def _joint_coefficients(model):
 
 
 def _joint():
-    """The joint model, predicting for one item read four times and still
+    """The joint models, predicting for one item read four times and still
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
-    markers=..., given=...)``: one covariate vector a call."""
-    case = regression(
-        "WeibullJointPH",
-        sp.WeibullJointPH,
-        model_class="surpyval.JointModel",
-        data=joint_data,
-        x=X_JOINT,
-        Z=np.ones((X_JOINT.size, 1)),
-        functions=("sf", "ff"),
-        z_style="single",
-        paths={
-            "fit_from_df": lambda d: sp.WeibullJointPH.fit_from_df(
-                pd.DataFrame(
-                    {
-                        "x": d["x"],
-                        "c": d["c"],
-                        "n": d["n"],
-                        "z0": np.asarray(d["Z"])[:, 0],
-                        "markers": list(d["markers"]),
-                    }
-                ),
-                x_col="x",
-                markers_col="markers",
-                c_col="c",
-                n_col="n",
-                Z_cols=["z0"],
-            )
-        },
-        rows=("x", "Z", "c", "n", "markers"),
-        coefficients=_joint_coefficients,
-        intercept=True,
-        draw=None,
-        exclude={
-            "random_sf": "an item's draws depend on its readings: "
-            "JointModel.predict(...).random(size) draws for one item",
-            "row_independence": "one item a call (Z is its covariate "
-            "vector), so there are no rows to mix up",
-        },
-    )
-    return [
-        replace(
-            case,
-            times=("x", "markers"),
-            call_kwargs=dict(JOINT_ITEM),
-            call_times=("markers", "given"),
+    markers=..., given=...)``: one covariate vector a call. The hazard
+    follows the marker's current value (``WeibullJointPH``), its slope,
+    the area under it, or its value and slope together."""
+    fitters = {
+        "WeibullJointPH": sp.WeibullJointPH,
+        "WeibullJointPH[slope]": sp.JointPH(sp.Weibull, link="slope"),
+        "WeibullJointPH[cumulative]": sp.JointPH(
+            sp.Weibull, link="cumulative"
+        ),
+        "WeibullJointPH[value+slope]": sp.JointPH(
+            sp.Weibull, link=["value", "slope"]
+        ),
+    }
+    out = []
+    for name, fitter in fitters.items():
+        case = regression(
+            name,
+            fitter,
+            # the links are ways of calling the one public factory
+            fitters=("surpyval.WeibullJointPH",) if "[" not in name else (),
+            model_class="surpyval.JointModel",
+            data=joint_data,
+            x=X_JOINT,
+            Z=np.ones((X_JOINT.size, 1)),
+            functions=("sf", "ff"),
+            z_style="single",
+            paths={
+                "fit_from_df": lambda d, fitter=fitter: fitter.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "c": d["c"],
+                            "n": d["n"],
+                            "z0": np.asarray(d["Z"])[:, 0],
+                            "markers": list(d["markers"]),
+                        }
+                    ),
+                    x_col="x",
+                    markers_col="markers",
+                    c_col="c",
+                    n_col="n",
+                    Z_cols=["z0"],
+                )
+            },
+            rows=("x", "Z", "c", "n", "markers"),
+            coefficients=_joint_coefficients,
+            intercept=True,
+            draw=None,
+            exclude={
+                "random_sf": "an item's draws depend on its readings: "
+                "JointModel.predict(...).random(size) draws for one item",
+                "row_independence": "one item a call (Z is its covariate "
+                "vector), so there are no rows to mix up",
+            },
         )
-    ]
+        out.append(
+            replace(
+                case,
+                times=("x", "markers"),
+                call_kwargs=dict(JOINT_ITEM),
+                call_times=("markers", "given"),
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

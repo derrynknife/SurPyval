@@ -1452,6 +1452,12 @@ EXCLUDED: dict[str, str] = {
     "calibration/test_coverage_joint.py, simulates fleets with markers and "
     "checks the parameters' bias and coverage and the dynamic-prediction "
     "bands",
+    **{
+        f"WeibullJointPH[{_link}]": "a lifetime with marker readings along "
+        "it, which a model draw does not give: recovery of fleets simulated "
+        "from this link is in univariate/joint/test_joint_links.py"
+        for _link in ("slope", "cumulative", "value+slope")
+    },
 }
 
 

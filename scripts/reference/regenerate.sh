@@ -66,4 +66,7 @@ Rscript scripts/reference/reference_r_parametric_competing_risks.R
 Rscript scripts/reference/reference_r_parametric_competing_risks_interval.R
 # The semi-parametric recurrent-event regressions (bladder2)
 Rscript scripts/reference/reference_r_recurrent_cox.R
+# JM (in R_LIBS_USER) for the joint model's links; prints the values typed
+# into surpyval/tests/reference/test_joint_links.py (about ten minutes)
+Rscript scripts/reference/reference_r_joint_links.R
 "${1:-python}" scripts/reference/reference_python.py

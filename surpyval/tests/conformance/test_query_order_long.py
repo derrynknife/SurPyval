@@ -34,7 +34,15 @@ PERMUTATIONS = 2
 # The two cases whose predictions are slowest (a posterior integral, a
 # joint model's marker path) run their longest query in the full suite
 # only; every other case runs every length on a pull request.
-_SLOW_AT_129 = frozenset({"Weibull[bayes]", "WeibullJointPH"})
+_SLOW_AT_129 = frozenset(
+    {
+        "Weibull[bayes]",
+        "WeibullJointPH",
+        "WeibullJointPH[slope]",
+        "WeibullJointPH[cumulative]",
+        "WeibullJointPH[value+slope]",
+    }
+)
 
 
 def _params():
