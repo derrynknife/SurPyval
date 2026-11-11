@@ -122,6 +122,14 @@ def _pi_data(seed=0, n_items=12):
     return np.array(xs), np.array(ii), np.array(cc), np.array(ZZ)
 
 
+def _recurrent_cox(fitter, **kw):
+    """A semi-parametric recurrent-event regression on the
+    proportional-intensity data (Andersen-Gill, Prentice-Williams-Peterson
+    or Wei-Lin-Weissfeld: one model class, RecurrentCoxModel)."""
+    x, i, c, Z = _pi_data()
+    return fitter.fit(x, Z, i=i, c=c, **kw)
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -268,10 +276,13 @@ def _forest():
 def _build(name):
     from surpyval.degradation import GammaProcess, WienerProcess
     from surpyval.recurrent import (
+        AndersenGill,
         CrowAMSAA,
         GeneralizedRenewal,
         NonParametricCounting,
+        PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
+        WeiLinWeissfeld,
     )
     from surpyval.recurrent.competing_risks import (
         CauseSpecificMCF,
@@ -381,6 +392,16 @@ def _build(name):
             i=_pi_data()[1],
             c=_pi_data()[2],
         ),
+        "recurrent_cox_andersen_gill": lambda: _recurrent_cox(AndersenGill),
+        "recurrent_cox_pwp_total": lambda: _recurrent_cox(
+            PrenticeWilliamsPeterson
+        ),
+        "recurrent_cox_pwp_gap": lambda: _recurrent_cox(
+            PrenticeWilliamsPeterson, time_scale="gap"
+        ),
+        "recurrent_cox_wei_lin_weissfeld": lambda: _recurrent_cox(
+            WeiLinWeissfeld
+        ),
         "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
         ),
@@ -445,6 +466,10 @@ CASES = [
     "mcf",
     "parametric_recurrence",
     "proportional_intensity",
+    "recurrent_cox_andersen_gill",
+    "recurrent_cox_pwp_total",
+    "recurrent_cox_pwp_gap",
+    "recurrent_cox_wei_lin_weissfeld",
     "renewal",
     "degradation",
     "induced_failure_distribution",

@@ -81,6 +81,7 @@ from surpyval.tests.conformance.registry_cases import (  # noqa: F401
     _START_IS_MAXIMUM,
     _U_LARGE,
     CASES,
+    CURE_LATENCIES,
     DISTRIBUTIONAL_BASELINES,
     FAR,
     GOMPERTZ,
@@ -207,6 +208,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     binary_data,
     copula_data,
     cr_data,
+    cure_data,
     destructive_data,
     discrete_data,
     exact_event_data,
@@ -349,6 +351,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PairwiseLogRankResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
     "surpyval.PseudoRegressionResult": _RESULT,
+    "surpyval.AdjustedCurves": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
@@ -442,6 +445,8 @@ for _fn in (
     "pseudo_cif",
     "pseudo_regression",
     "pseudo_regression_from_df",
+    "direct_adjustment",
+    "weight_diagnostics",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
 for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
