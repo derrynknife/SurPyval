@@ -94,8 +94,8 @@ from .._fit_skeleton import (
     say_verdict,
     uniform_draws,
 )
-from .._kinds import ADDITIVE_HAZARD
 from .._likelihood import regression_neg_ll
+from ..kinds import ADDITIVE_HAZARD
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin

@@ -106,7 +106,7 @@ def parametric_likelihood_ratio_test(
     if not model._is_linear_predictor() or (
         model.reg_model.name not in _SERIALISABLE_REG_NAMES
     ):
-        from ._kinds import DISTRIBUTIONAL
+        from .kinds import DISTRIBUTIONAL
 
         if model._is_accelerated_life():
             what = (

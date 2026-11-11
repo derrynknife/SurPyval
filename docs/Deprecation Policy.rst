@@ -19,8 +19,10 @@ What is public
   ``surpyval.prior``), ``surpyval.test_planning``, ``surpyval.datasets``,
   ``surpyval.pymc``, ``surpyval.utils`` and the four
   ``surpyval.univariate`` packages (``parametric``, ``nonparametric``,
-  ``regression`` and ``competing_risks``). Where a namespace has an
-  ``__all__``, that list is what it promises.
+  ``regression`` and ``competing_risks``), and
+  ``surpyval.univariate.regression.kinds``, the names of the regression
+  families. Where a namespace has an ``__all__``, that list is what it
+  promises.
 - The documented methods, attributes and arguments of those classes and
   functions.
 

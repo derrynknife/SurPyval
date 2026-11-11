@@ -893,7 +893,7 @@ def _extrapolation_rows(ctx: Context) -> list[dict]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _is_accelerated_life(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ACCELERATED_LIFE
+    from surpyval.univariate.regression.kinds import ACCELERATED_LIFE
     from surpyval.univariate.regression.parametric_regression_model import (
         ParametricRegressionModel,
     )

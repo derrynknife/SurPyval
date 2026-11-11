@@ -53,7 +53,7 @@ from surpyval.utils.covariates import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._kinds import ACCELERATED_FAILURE_TIME
+from ..kinds import ACCELERATED_FAILURE_TIME
 from ..parametric_regression_model import ParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 

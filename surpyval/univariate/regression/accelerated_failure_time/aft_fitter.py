@@ -23,9 +23,9 @@ from .._fit_skeleton import (
     optimise_nm_tnc,
     split_log_linear,
 )
-from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
 from .._penalised_fit import PenalisedFitMixin
+from ..kinds import ACCELERATED_FAILURE_TIME
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll

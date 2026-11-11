@@ -75,9 +75,9 @@ from .._fit_skeleton import (
     say_verdict,
     uniform_draws,
 )
-from .._kinds import DISTRIBUTIONAL
 from .._likelihood import regression_neg_ll
 from .._robust import note_source_rows
+from ..kinds import DISTRIBUTIONAL
 from ..regression_data import (
     DataFrameRegressionMixin,
     design_matrix_from_df,

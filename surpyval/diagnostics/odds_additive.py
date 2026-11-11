@@ -1171,7 +1171,7 @@ def _ah_rules() -> tuple[AdviceRule, ...]:
 # ---------------------------------------------------------------------------
 def _is_po(model: Any) -> bool:
     from surpyval.univariate.regression import ProportionalOddsModel
-    from surpyval.univariate.regression._kinds import PROPORTIONAL_ODDS
+    from surpyval.univariate.regression.kinds import PROPORTIONAL_ODDS
 
     if isinstance(model, ProportionalOddsModel):
         return True
@@ -1179,7 +1179,7 @@ def _is_po(model: Any) -> bool:
 
 
 def _is_ah(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ADDITIVE_HAZARD
+    from surpyval.univariate.regression.kinds import ADDITIVE_HAZARD
 
     if _is_lin_ying(model):
         return True

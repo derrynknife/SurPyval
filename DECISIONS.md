@@ -13,6 +13,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-12
+
+### A public home for the regression family names (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The strings a parametric regression model's public `kind` takes are public constants in the module `surpyval.univariate.regression.kinds` (a frozen public namespace of its own; not in the regression package's `__all__`, whose names all appear at the top level, where `surpyval.kinds` would be too general a name), with two groups, `TIME_SCALING` (accelerated failure time, accelerated life) and `HAZARD_BASED` (proportional hazard, additive hazard). Proportional odds and distributional regression are in neither group. The former `_kinds` module re-exports them. | proposed | `kind` was already public but the names to compare it with were private, so a caller had to import a private module or repeat string literals. A module of constants keeps one name per thing; the groups answer the question callers ask (does the covariate rescale time or act on the hazard) without each caller keeping its own list. The private module is not covered by the deprecation policy, but downstream code (RePyability) imports it, and a test suite that fails on SurPyval's deprecation warnings would break on a warning, so the old path re-exports the same objects silently, with no warning and no removal date. | done |
+
 ## 2026-11-11
 
 ### Failure modes with covariates: `CauseSpecificProportionalIntensity` (11 Nov 2026)
