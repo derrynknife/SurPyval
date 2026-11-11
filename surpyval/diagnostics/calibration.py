@@ -121,6 +121,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import norm
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt, _is_cox, _note
@@ -1036,7 +1037,7 @@ def _baseline_is(
     one not among ``baselines``)."""
 
     def test(ctx: Context) -> bool:
-        own = ctx.model.distribution.name
+        own = canonical_name(ctx.model.distribution)
         return own == name if name is not None else own not in baselines
 
     return test

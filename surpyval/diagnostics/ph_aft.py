@@ -133,6 +133,7 @@ from surpyval.univariate.regression._fit_skeleton import (
     LogLinearPhi,
 )
 from surpyval.univariate.regression._likelihood import regression_neg_ll
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
@@ -222,7 +223,7 @@ def _base(ctx: Context) -> SimpleNamespace:
             model=m,
             fitter=m.model,
             dist=m.distribution,
-            name=m.distribution.name,
+            name=canonical_name(m.distribution),
             data=data,
             raw=raw,
             Z=Z,
@@ -2274,7 +2275,7 @@ def _dist_is(
     AFT models are (True) or are not (False) the same model)."""
 
     def test(ctx: Context) -> bool:
-        baseline = ctx.model.distribution.name
+        baseline = canonical_name(ctx.model.distribution)
         if name is None:
             return baseline not in BASELINES and (
                 same is None or (baseline in SAME_PH_AFT) == same
