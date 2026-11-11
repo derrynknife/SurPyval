@@ -172,6 +172,31 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+N_CURE = 60
+
+
+def cure_data():
+    """60 rows for the mixture-cure regressions: the regression
+    fixture's covariates and lives, where 2 units in 5 with ``z0 = 0``
+    and 3 in 5 with ``z0 = 1`` never fail and are still running at 60,
+    far past the lives (a plateau)."""
+    z0 = np.tile([0.0, 1.0], N_CURE // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_CURE), 3)
+    life = quantiles(N_CURE, 1.0, 2.0)[scramble(N_CURE)]
+    x = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    pair = np.arange(N_CURE) // 2
+    cured = np.where(z0 == 0, pair % 5 < 2, pair % 5 < 3)
+    x = np.where(cured, 60.0, x)
+    n = np.ones(N_CURE, int)
+    n[[3, 11]] = 2
+    return {
+        "x": x,
+        "Z": np.column_stack([z0, z1]),
+        "c": cured.astype(int),
+        "n": n,
+    }
+
+
 def ah_data():
     """The regression fixture with its covariates turned to add hazard,
     for the additive hazards cases (#828): ``1 - z1`` for ``z1``, so both

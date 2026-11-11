@@ -65,6 +65,16 @@ RULES = {
     "NonParametricCounting": "nan",
     "CauseSpecificMCF": "nan",
 }
+# Parametric cases that look data-bounded on their fixture but are not,
+# each with the reason: defined by a formula everywhere, they are flat
+# past the data only because the curve has reached its limit to the
+# last bit of a float.
+NOT_DATA_BOUNDED = {
+    "WeibullMixtureCure": "parametric: the latency's survival at the last "
+    "censoring time (60) is 5e-27, so the population's sf is on its "
+    "plateau, 1 - lfp_p(z), to the last bit there and beyond; within the "
+    "data (20, 30, 40) it still moves",
+}
 START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
 # Estimates whose hazard acts from time 0, not only at the event times: an
 # additive hazards model's covariate effect is a constant added hazard, so
@@ -179,12 +189,18 @@ def test_data_bounded_cases_are_listed():
         for case in CASES
         if case.interface != BIVARIATE
         and case.name not in RULES
+        and case.name not in NOT_DATA_BOUNDED
         and _looks_data_bounded(case)
     ]
     assert not unlisted, (
         "these behave as data-bounded estimates: give each its rule in "
         f"RULES: {unlisted}"
     )
+
+
+def test_not_data_bounded_entries_are_cases():
+    stale = set(NOT_DATA_BOUNDED) - {case.name for case in CASES}
+    assert not stale, f"not registry cases (remove them): {stale}"
 
 
 # ---------------------------------------------------------------------------

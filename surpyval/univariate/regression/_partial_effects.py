@@ -661,6 +661,12 @@ class _Covariates:
         return float(np.average(Z[:, j], weights=n)), None
 
 
+#: The public name of ``_Covariates``, for the modules outside this
+#: package that read a model's covariates as ``plot_partial_effects``
+#: does (``surpyval.univariate.adjusted``).
+Covariates = _Covariates
+
+
 # ---------------------------------------------------------------------------
 # Reading a formula's model spec (formulaic)
 # ---------------------------------------------------------------------------

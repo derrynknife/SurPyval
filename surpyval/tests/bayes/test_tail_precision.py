@@ -29,7 +29,11 @@ from scipy import optimize, stats
 
 import surpyval as sp
 from surpyval import prior
-from surpyval.tests._helpers import KS_BAND_20000
+from surpyval.tests._helpers import (
+    KS_BAND_20000,
+    ks_distance,
+    ks_distance_bracketed,
+)
 
 #: The failure probabilities of the lower-tail checks, and the survival
 #: probabilities of the upper-tail ones.
@@ -712,29 +716,70 @@ def _uniforms_used(model, size):
     raise AssertionError("more than four uniforms per life")
 
 
-def ks_on_a_subset(draws, ff, points=400):
-    """The largest gap between the draws' ECDF and ``ff`` (both its right
-    and left limits) at ``points`` of the sorted draws, evenly spaced by
-    rank among the finite draws. It is the Kolmogorov-Smirnov distance
-    taken over a subset of the times, so it is never larger, and the KS
-    band holds for it as it does for the whole: a test of the same size
-    (or smaller; it is conservative) that evaluates the
-    predictive at 800 times instead of 40,000 (a grid posterior's ff at
-    every draw took up to 20 minutes)."""
-    x = np.sort(draws)
-    n = x.size
-    # (at finite times only: an infinite life, a unit of a limited
-    # failure population that never fails, is counted in n)
-    m = int(np.isfinite(x).sum())
-    idx = np.unique(np.linspace(0, m - 1, points).round().astype(int))
-    t = x[idx]
-    right = np.searchsorted(x, t, side="right") / n
-    left = np.searchsorted(x, t, side="left") / n
-    F_right = np.asarray(ff(t), dtype=float)
-    F_left = np.asarray(ff(np.nextafter(t, -np.inf)), dtype=float)
-    return float(
-        max(np.max(np.abs(right - F_right)), np.max(np.abs(left - F_left)))
+#: The models whose predictive ``ff`` is cheap enough to evaluate at
+#: every draw, to check the bracketed distance against the plain one.
+CHEAP = [
+    "conjugate-exponential-gamma",
+    "conjugate-normal-normal",
+    "draws-Weibull",
+    "draws-LogNormal",
+    "draws-Normal",
+    "draws-LogLogistic",
+    "grid-Exponential",
+    "grid-Rayleigh",
+]
+
+
+@pytest.mark.parametrize("name", CHEAP)
+def test_bracketed_ks_is_the_supremum_over_every_draw(name):
+    """The KS check below takes the supremum over all 20,000 draws by
+    bracketing ``ff`` between the times at which it is evaluated; where
+    evaluating it at every draw is cheap, the two are the same number."""
+    model = model_of(name)
+    draws = model.random(N_DRAWS, random_state=SEED)
+    calls = []
+
+    def ff(t):
+        calls.append(np.size(t))
+        return model.ff(t)
+
+    got = ks_distance_bracketed(draws, ff)
+    assert got == ks_distance(draws, model.ff)
+    # and from far fewer than the 40,001 times the plain one evaluates
+    assert sum(calls) < 4_000
+
+
+def _step_ff(t):
+    """A failure function with a jump of 0.3 at 0 and an Exponential of
+    mean 10 after it, reaching 0.9: a tenth never fails."""
+    t = np.asarray(t, dtype=float)
+    with np.errstate(over="ignore"):
+        return np.where(t < 0, 0.0, 0.3 + 0.6 * -np.expm1(-t / 10))
+
+
+def test_bracketed_ks_with_ties_jumps_and_infinite_lives():
+    rng = np.random.default_rng(SEED)
+    u = rng.random(N_DRAWS)
+    draws = np.where(
+        u < 0.3, 0.0, np.where(u < 0.9, rng.exponential(10, N_DRAWS), np.inf)
     )
+    assert ks_distance_bracketed(draws, _step_ff) == ks_distance(
+        draws, _step_ff
+    )
+    # a curve some way off: the supremum is found where it is
+    for shifted in (lambda t: _step_ff(t * 1.2), lambda t: _step_ff(t - 5)):
+        want = ks_distance(draws, shifted)
+        assert want > KS_BAND_20000
+        assert ks_distance_bracketed(draws, shifted) == want
+
+
+def test_bracketed_ks_refuses_a_curve_that_falls():
+    """The brackets hold only for a curve that never falls: one that
+    does (here a survival function passed by mistake) is an error, not a
+    distance."""
+    draws = np.random.default_rng(SEED).exponential(10, 1000)
+    with pytest.raises(AssertionError, match="falls"):
+        ks_distance_bracketed(draws, lambda t: np.exp(-np.asarray(t) / 10))
 
 
 @pytest.mark.parametrize("name", list(BUILDERS))
@@ -748,7 +793,7 @@ def test_random_follows_the_predictive(name):
     draws = model.random(N_DRAWS, random_state=SEED)
     assert draws.shape == (N_DRAWS,)
     assert not np.isnan(draws).any()
-    d = ks_on_a_subset(draws, model.ff)
+    d = ks_distance_bracketed(draws, model.ff)
     assert d <= KS_BAND_20000, (
         f"{name}: largest gap {d:.4f} between the {N_DRAWS} draws' ECDF "
         f"and ff is beyond the KS 0.1% band {KS_BAND_20000:.4f}"

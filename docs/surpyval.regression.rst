@@ -64,6 +64,7 @@ and the shape, say) has its own linear predictor and link. See
     :maxdepth: 1
 
     regression/distributional
+    regression/mixture_cure
 
 Correlated Observations
 -----------------------

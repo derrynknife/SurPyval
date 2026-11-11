@@ -13,6 +13,7 @@ from surpyval.univariate.parametric import (
 )
 
 from .fitter import Distributional, DistributionalFitter
+from .mixture_cure import MixtureCure, MixtureCureFitter, MixtureCureModel
 from .model import DistributionalRegressionModel
 
 # Prebuilt fitters, one per common distribution
@@ -25,11 +26,26 @@ NormalDistributional = Distributional(Normal)
 GumbelDistributional = Distributional(Gumbel)
 LogisticDistributional = Distributional(Logistic)
 
+# Mixture-cure regression, one fitter per common latency distribution
+WeibullMixtureCure = MixtureCure(Weibull)
+LogNormalMixtureCure = MixtureCure(LogNormal)
+LogLogisticMixtureCure = MixtureCure(LogLogistic)
+GammaMixtureCure = MixtureCure(Gamma)
+ExponentialMixtureCure = MixtureCure(Exponential)
+
 __all__ = [
     "Distributional",
     "DistributionalFitter",
     "DistributionalRegressionModel",
     "ExponentialDistributional",
+    "ExponentialMixtureCure",
+    "GammaMixtureCure",
+    "LogLogisticMixtureCure",
+    "LogNormalMixtureCure",
+    "MixtureCure",
+    "MixtureCureFitter",
+    "MixtureCureModel",
+    "WeibullMixtureCure",
     "GammaDistributional",
     "GumbelDistributional",
     "LogisticDistributional",

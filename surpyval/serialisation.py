@@ -68,6 +68,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "DistributionalRegressionModel": (
         "surpyval.univariate.regression.distributional.model"
     ),
+    "MixtureCureModel": (
+        "surpyval.univariate.regression.distributional.mixture_cure"
+    ),
     "BayesianParametric": "surpyval.bayes.model",
     "JointModel": "surpyval.univariate.joint.joint_model",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),

@@ -230,6 +230,14 @@ _LAZY = {
             "LogisticDistributional",
             "NormalDistributional",
             "WeibullDistributional",
+            "ExponentialMixtureCure",
+            "GammaMixtureCure",
+            "LogLogisticMixtureCure",
+            "LogNormalMixtureCure",
+            "MixtureCure",
+            "MixtureCureFitter",
+            "MixtureCureModel",
+            "WeibullMixtureCure",
         ),
         "surpyval.univariate.regression.distributional",
     ),
@@ -281,6 +289,10 @@ _LAZY = {
             "WienerProcess",
         ),
         "surpyval.degradation",
+    ),
+    **dict.fromkeys(
+        ("AdjustedCurves", "direct_adjustment", "weight_diagnostics"),
+        "surpyval.univariate.adjusted",
     ),
     **dict.fromkeys(
         (
@@ -454,6 +466,11 @@ if TYPE_CHECKING:
         ProportionalIntensityNHPP,
         WeiLinWeissfeld,
     )
+    from surpyval.univariate.adjusted import (
+        AdjustedCurves,
+        direct_adjustment,
+        weight_diagnostics,
+    )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
         CompetingRisksProportionalHazards,
@@ -481,13 +498,21 @@ if TYPE_CHECKING:
         DistributionalFitter,
         DistributionalRegressionModel,
         ExponentialDistributional,
+        ExponentialMixtureCure,
         GammaDistributional,
+        GammaMixtureCure,
         GumbelDistributional,
         LogisticDistributional,
         LogLogisticDistributional,
+        LogLogisticMixtureCure,
         LogNormalDistributional,
+        LogNormalMixtureCure,
+        MixtureCure,
+        MixtureCureFitter,
+        MixtureCureModel,
         NormalDistributional,
         WeibullDistributional,
+        WeibullMixtureCure,
     )
 
 # The subpackages ``import surpyval`` used to import, so that

@@ -41,6 +41,7 @@ EXPECTED_SOURCES = {
     "r_competing_entry",
     "r_fine_gray_variance",
     "r_parametric_competing_regression",
+    "r_recurrent_cox",
     "py_lifelines",
     "py_sksurv",
 }
