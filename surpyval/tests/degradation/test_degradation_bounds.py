@@ -16,13 +16,9 @@ import pytest
 
 from surpyval import Weibull
 from surpyval.degradation import DegradationAnalysis
-from surpyval.degradation._bounds import (
-    _delta_se,
-    _life_loglik,
-    _num_hessian,
-)
+from surpyval.degradation._bounds import _delta_se, _life_loglik
 from surpyval.tests._helpers import linear_degradation_units
-from surpyval.utils.linalg import sf_link_bound
+from surpyval.utils.linalg import scale_free_hessian, sf_link_bound
 
 
 def _linear_degradation(seed, n_units=20, noise=2.0, n_points=5, t_max=8.0):
@@ -65,10 +61,12 @@ def _mle_only_se(model, x):
     phi = np.asarray(model.life_model.params, dtype=float)
     t = model.pseudo_failure_times
     cov = np.linalg.inv(
-        -_num_hessian(lambda p: _life_loglik(model, p, t), phi)
+        scale_free_hessian(lambda p: -_life_loglik(model, p, t), phi)
     )
     x = np.atleast_1d(np.asarray(x, dtype=float))
-    return _delta_se(lambda p: model.life_model.dist.sf(x, *p), phi, cov)
+    return _delta_se(
+        lambda p: model.life_model.dist.sf(x, *p), phi, cov, scale_free=True
+    )
 
 
 # --- the mechanism: the correction widens the covariance ------------------
@@ -80,7 +78,7 @@ def test_analytic_covariance_is_wider_than_mle():
     phi = np.asarray(m.life_model.params, dtype=float)
     t = m.pseudo_failure_times
     cov_mle = np.linalg.inv(
-        -_num_hessian(lambda p: _life_loglik(m, p, t), phi)
+        scale_free_hessian(lambda p: -_life_loglik(m, p, t), phi)
     )
     se_corr = np.sqrt(np.diag(cov_corr))
     se_mle = np.sqrt(np.diag(cov_mle))
@@ -117,7 +115,7 @@ def test_exact_fits_give_no_correction():
     phi = np.asarray(m.life_model.params, dtype=float)
     t = m.pseudo_failure_times
     cov_mle = np.linalg.inv(
-        -_num_hessian(lambda p: _life_loglik(m, p, t), phi)
+        scale_free_hessian(lambda p: -_life_loglik(m, p, t), phi)
     )
     assert np.allclose(cov_corr, cov_mle)
 

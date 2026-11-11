@@ -42,6 +42,9 @@ tests = [
     "pymongo>=4",
     # Property-based tests (surpyval/tests/properties).
     "hypothesis>=6",
+    # Arbitrary-precision references (the closed-form regression
+    # quantiles' tests).
+    "mpmath>=1.3",
 ]
 docs = [
     # The documentation build toolchain, used by Read the Docs and by a

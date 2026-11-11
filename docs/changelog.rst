@@ -941,7 +941,9 @@ Unreleased
 - Arguments that, given by position, were silently read as something
   else now warn, with a ``FutureWarning`` (shown wherever the call is
   made) that says what the value was taken as and the keyword to use.
-  Nothing else changes: each call returns exactly what it did before.
+  Nothing else changes: each call returns exactly what it did before,
+  and the arguments stay positional (making them keyword-only, or
+  refusing the call, would be a breaking change, which waits for 2.0).
   Passing the argument by name silences the warning.
 
   - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
@@ -960,28 +962,94 @@ Unreleased
     ``fit_from_df``. The ids stay a positional data argument
     (``fit(x, i, c)`` is unchanged), so the warning fires only for the
     call that cannot be told apart: ``i`` given by position, no ``c``, and
-    values of 0s and 1s. That call will be refused from v0.28; name the
-    argument (``c=`` or ``i=``).
+    values of 0s and 1s. Name the argument (``c=`` or ``i=``).
   - ``Parametric.mean(defective, tau)`` and
     ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
     as ``defective`` and ignored it (6.524 on a Weibull fitted to
     ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
-    mean restricted to 5 (``mean(tau=5)`` is 4.671). ``defective`` will be
-    keyword-only from v0.28.
+    mean restricted to 5 (``mean(tau=5)`` is 4.671). Pass ``defective``
+    by name.
   - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
-    ``mean_cb`` takes ``tau`` first. ``alpha_ci`` and the arguments after
-    it will be keyword-only from v0.28.
+    ``mean_cb`` takes ``tau`` first. Pass ``alpha_ci`` by name.
   - ``Parametric.random(size, a, b)`` and ``random_data``: every other
     model's ``random(size, random_state)`` takes the seed second, so
     ``model.random(10, 42)`` truncated the draws below 42 (every draw
-    ``inf`` on that Weibull). ``a`` and ``b`` will be keyword-only from
-    v0.28.
+    ``inf`` on that Weibull). Pass ``a`` and ``b`` by name.
   - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
-    axes first, so ``plot(ax)`` drew stacked curves on new axes.
-    ``stacked`` and the arguments after it will be keyword-only from
-    v0.28.
+    axes first, so ``plot(ax)`` drew stacked curves on new axes. Pass
+    ``stacked`` by name.
 
 **Changed.**
+
+- **What 1.0 will promise is now written down.** :doc:`Deprecation Policy`
+  says that from 1.0 SurPyval follows semantic versioning (no breaking
+  change to the public interface before 2.0), that a deprecated public
+  name keeps working, with a warning, for at least two minor releases and
+  at least six months, whichever is later, and what a 1.x release may
+  still change (corrected numbers, the oldest supported Python or numpy).
+  The rules before 1.0 are unchanged. The dictionary ``to_dict`` writes is
+  documented key by key, for every class, on :doc:`surpyval.serialisation`
+  (:ref:`saved-model-dictionary`), and a test keeps the page and the code
+  in step: from 1.0 keys may be added but are not renamed or removed. The
+  conventions page documents ``on="R"`` and ``on="F"`` as accepted
+  spellings of ``"sf"`` and ``"ff"``. Custom distributions are written
+  with ``autograd.numpy``, and the policy now says that is part of the
+  interface. No change to any result.
+- **The recurrent models' standard errors are steadier under a change of
+  time unit (an intentional numerical change, in the seventh digit or
+  beyond).** The finite-difference Hessian behind the Poisson-process,
+  proportional-intensity, cause-specific and renewal models' covariances
+  (``scale_free_hessian``) stepped each direction by 1e-3 of a standard
+  deviation. With times in hours or seconds the negative log-likelihood is
+  in the thousands, and rounding then cost the Hessian about its seventh
+  digit, so the same data in another unit gave bounds that differed by up
+  to 1.4e-6. It now steps by 3e-3 and cancels one more term of the
+  difference's error (four step sizes, not three). The largest relative
+  difference between a generalised renewal model's standard errors fitted
+  in months and in another unit (the test data of the unit checks):
+
+  ======== ========== ==========
+  Unit     Before     After
+  ======== ========== ==========
+  hours    9.4e-8     2.1e-8
+  seconds  3.9e-7     6.1e-8
+  years    2.4e-7     6.3e-9
+  ======== ========== ==========
+
+  Against the closed-form Hessian of a power-law process, the standard
+  errors are within 2e-9 from years to hours as before and within 4.4e-7
+  in seconds (8.3e-9 before). Example: a generalised renewal model in
+  hours, standard errors of ``[q, alpha, beta]`` 4.482161218522,
+  132.8835862844, 0.09875842148647 before and 4.482161306947,
+  132.8835700725, 0.09875843998802 now; ``CrowAMSAA`` on the same repair
+  fleet in hours, 4657.449597614 and 0.2461119034716 before,
+  4657.449566626 and 0.2461119023258 now.
+- **The quantiles of the parametric regressions are computed in closed
+  form (an intentional numerical change, at rounding level).**
+  ``qf(p, Z)`` of the proportional hazards, accelerated failure time and
+  proportional odds models with the log-linear link, on a Weibull,
+  Exponential, Gumbel, Logistic, LogLogistic, Normal, LogNormal or Gamma
+  baseline, and of the additive hazards model on an Exponential baseline,
+  is now the baseline's own inverse at a target moved by the covariates
+  (for proportional hazards
+  :math:`H_0^{-1}(-\log(1 - p)\, e^{-\beta' Z})`) instead of a numerical
+  search on the model's cumulative hazard. A custom link, the
+  accelerated life and distributional models, the additive hazards model
+  on another baseline and any other baseline keep the search, unchanged.
+  The quantiles move by rounding: on the 28 parametric regressions of
+  the conformance suite at probabilities from ``1e-12`` to ``1 - 1e-12``,
+  by at most ``1.4e-14`` relative (``4.6e-13`` absolute); both agree with
+  a 50-digit reference to within ``2e-14`` relative. For the ``WeibullPH``
+  example in ``qf``'s docstring, ``qf(0.9, [0])`` was
+  ``15.502628026657936`` and is ``15.502628026657938``. The Wald bounds
+  on a quantile (``quantile_cb``) move by at most ``7e-10`` relative,
+  through their numerical gradient. It is about 20 to 50 times as fast:
+  ``qf`` at 39 points takes 0.1 to 0.2 ms instead of 1 to 6 ms, and,
+  since ``ParametricCompetingRisksRegression.cif`` integrates over a
+  cause's quantiles, its ``cif`` at 12 times takes 0.17 s instead of
+  0.74 s, and ``cb(..., on="cif")`` 2.2 s instead of 13.9 s, with the
+  same incidences and bounds within ``1e-11`` relative. The parametric
+  bootstrap's draws use the same closed form.
 
 - **Fine-Gray standard errors are the robust ones by default (an
   intentional numerical change).** ``FineGray`` (and
@@ -1378,6 +1446,28 @@ Unreleased
 
 **Fixed.**
 
+- ``on="R"`` and ``on="F"`` (accepted spellings of ``"sf"`` and ``"ff"``)
+  were refused by four functions that take ``on``: an adjusted curve's
+  ``cb``, ``plot_nonparametric``, ``plot_partial_effects`` and a Bayesian
+  fit's ``compare_to``. They now give exactly what ``"sf"`` and ``"ff"``
+  give, as everywhere else.
+- ``ProportionalIntensityNHPP`` starts from the covariate-free fit of its
+  baseline for data the item records (``ItemHistory``) refuse but the fit
+  takes: an item whose id is blank text, an item whose end of observation
+  is at its entry age, or a failure at the top of an inspection window
+  that counts failures. Those used to start every baseline parameter at
+  one, and with a ``CoxLewis`` baseline on ages in the tens of thousands
+  the fit stopped there, warned that it had not reached a verified
+  maximum and returned ``params`` ``[1, 1]``, coefficients ``[0, 0]`` and
+  a ``nan`` log-likelihood. On 30 simulated items observed to 50,000
+  hours, one with a blank id, it now gives ``alpha`` -9.264,
+  ``beta`` 2.366e-05 and coefficients 0.5421 and -0.1913 (log-likelihood
+  -2836.7). Where the unit start did converge (``Duane``, ``CrowAMSAA``)
+  the estimates move by about 1e-6 of a standard error (at most 4e-7
+  relative; ``Duane``'s ``b`` 5.585229e-07 -> 5.585231e-07 on that
+  example), the log-likelihood the same to 1e-12. Data the records take
+  starts exactly as before.
+
 - ``fit_from_ecdf`` on every parametric family refuses a curve that falls
   as ``x`` rises, with a ``ValueError``: "F must rise with x; if you have a
   survival curve R, pass F = 1 - R", and where it falls. A survival curve
@@ -1504,6 +1594,93 @@ Unreleased
   a relative tolerance: a Laplace ExpoWeibull fit's ``qf(1e-12)`` had
   stopped at a time where ``ff`` was 3.7e-10.
 
+- Standard errors and bounds of the other families that take finite
+  differences no longer move with the unit of time either. Their steps
+  were a fraction of each parameter with a fixed floor (0.01, or 1), the
+  rule fixed above for the repairable-system models, and a parameter that
+  is small in the unit the times are written in (an additive hazard's
+  coefficient, a rate per second, a margin's scale in years) was stepped
+  by a large part of itself. Each now takes its steps from the
+  likelihood or from the standard errors, as the repairable-system
+  models do. The estimates are unchanged. Fitting one fixture with its
+  times in hours and again in seconds (or years, or a million times
+  either), the relative difference between the two, before and now:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 30 34 36
+
+     * - Model
+       - What moved
+       - Before, now
+     * - Additive-hazards regressions (``WeibullAH`` and the rest),
+         accelerated-life models
+       - Wald bounds (``cb``, ``quantile_cb``, ``rmst``): the delta
+         method's gradient
+       - in seconds ``WeibullAH``'s ``Hf`` band 1.5e-4, now 5.6e-7;
+         ``WeibullAL[InversePower]`` 1.6e-5, now 2.7e-9; with times a
+         million times larger ``WeibullAL[InverseExponential]`` 1.6e-2,
+         now 2e-6
+     * - Directly adjusted curves (``direct_adjustment``) from those
+         models
+       - the ``cb`` and ``rmst`` gradients
+       - ``WeibullAH`` with times a million times larger: 0.16, now
+         4e-7
+     * - The same, ``robust=True``
+       - the rows' scores of the sandwich
+       - ``WeibullAH`` with times a million times larger: ``nan``, now
+         6e-7
+     * - ``RoystonParmar``
+       - the information (now ``scale_free_hessian``)
+       - the spline coefficients' standard errors 8e-4 in seconds, now
+         3e-7
+     * - Frailty models whose variance is at 0 (where the exact Hessian
+         is not used)
+       - the information in the baseline's and the coefficients'
+         parameters
+       - in seconds the relative standard error of
+         ``ExponentialFrailty``'s rate 0.37 (a 37% difference), now
+         1.5e-5; ``GammaFrailty``'s 0.07, now 6e-5
+     * - ``WienerProcess``, ``GammaProcess``
+       - the information and the ``cb`` gradient
+       - the ``sf`` band in seconds 1.8e-3 and 7.6e-3, now 7e-8 and
+         1.5e-5 (the gamma process's fit agrees to 2e-5)
+     * - ``DegradationAnalysis`` (the analytic two-stage bounds)
+       - the life model's information, its mixed derivatives in the
+         pseudo failure times, the path's gradient and the ``cb``
+         gradient
+       - with times a million times larger, the power path's band 98
+         times as wide (and ``nan``), now 1e-7; the linear path's 1e-2,
+         now 5e-8
+     * - Copulas fitted with parametric margins
+       - the joint information, the IFM scores and the bounds'
+         gradient
+       - margins' standard errors 1.2e-4 in seconds and 6.4e-3 with
+         times a millionth of the unit, now 1e-7 and 2e-7
+
+  Families whose covariance and bounds come from exact derivatives
+  (the parametric distributions with offset, limited-failure and
+  zero-inflated forms, the PH, AFT, PO and distributional regressions,
+  the parametric competing-risks, mixture and Royston-Parmar
+  regression models) and the semi-parametric ones were unit-free
+  already, to the fit's own agreement. The PH, AFT and PO regressions' Wald bounds use
+  the new gradient too and move by at most 1.2e-6 on the conformance
+  fixtures (and 1e-4 on one ``GumbelPH`` density bound of 1.5e18).
+
+  **Numbers that move** in the fixtures' own units: the additive-hazards
+  and accelerated-life bounds by at most 4e-10; ``RoystonParmar``'s
+  standard errors by up to 2e-4 (``gamma_1``'s 1.840876, now 1.840929;
+  the new Hessian also removes the cancellation between the strongly
+  correlated spline coefficients); the frailty models' by up to 2e-6
+  (the frailty variance's is unchanged, 0.0016927 for
+  ``WeibullFrailty``); ``GammaProcess``'s by up to 1e-5 (``alpha``'s
+  0.0947975, now 0.0947984), ``WienerProcess``'s by 1e-8;
+  ``DegradationAnalysis``'s analytic bounds by up to 1.7e-6; the
+  copulas' covariances by up to 7.6e-5 (``ClaytonCopula``'s ``theta``
+  standard error 1.234759, now 1.234775); bootstrap (BCa) bounds by up
+  to 2e-9. ``surpyval.utils.linalg`` gains ``curvature_scales`` (each
+  parameter's scale in a likelihood), and ``scale_free_hessian`` a
+  ``fallback_step``.
 - The package no longer silences other threads' warnings. Wherever it
   held a warning back (117 places: the starts and polishes of fits, inner
   refits of bootstraps and diagnostics, autograd's "output seems
@@ -1656,6 +1833,17 @@ Unreleased
   634 -> 476 ms (the semi-parametric ``AndersenGill``,
   ``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld`` already built their
   rows with array operations).
+- **The proportional-intensity NHPP's default start is faster**: the
+  data without its covariates, which the start fits the baseline to, was
+  built by turning every item into an ``ItemHistory`` record and back.
+  ``EventHistoryData.without("covariates")`` now builds it from the
+  arrays wherever that gives the same data, every array and dtype bit for
+  bit (the records are still used for data with event types, states,
+  time-varying covariates, attributes or observation windows, and for
+  data the records could refuse). On 1,000 items with about 10 events
+  each, ``without("covariates")`` 318 -> 5 ms and the Duane
+  ``ProportionalIntensityNHPP`` fit 1,021 -> 575 ms (a loaded machine;
+  run back to back); the fits' numbers are unchanged.
 
 **Internal.**
 

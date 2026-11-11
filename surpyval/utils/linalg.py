@@ -203,10 +203,41 @@ def _curvature_steps(
     return steps
 
 
+def curvature_scales(
+    func: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+) -> npt.NDArray:
+    """
+    Each parameter's scale in a negative log-likelihood ``func`` at its
+    minimum ``x``: the change in it, the others held, at which ``func``
+    rises by one half on average over the two sides (one standard error,
+    were ``func`` quadratic and the parameter alone). It moves with the
+    unit a parameter is written in, so finite-difference steps taken as
+    a fraction of it do not depend on that unit. All ``nan`` where some
+    parameter has no such change (``func`` does not rise on both sides:
+    a boundary, a flat direction).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.linalg import curvature_scales
+    >>> def f(v):
+    ...     return 0.5 * (v[0] / 2.0) ** 2 + 0.5 * (v[1] / 1e-6) ** 2
+    >>> curvature_scales(f, np.array([0.0, 0.0])).round(12)
+    array([2.e+00, 1.e-06])
+    """
+    x = np.asarray(x, dtype=float)
+    with np.errstate(all="ignore"):
+        f0 = func(x)
+        found = _curvature_steps(func, x, f0, 1.0) if np.isfinite(f0) else None
+    return np.full(x.size, np.nan) if found is None else found
+
+
 def scale_free_hessian(
     func: Callable[[npt.NDArray], float],
     x: npt.NDArray,
-    scale: float = 1e-3,
+    scale: float = 3e-3,
+    fallback_step: "npt.NDArray | None" = None,
 ) -> npt.NDArray:
     """
     Finite-difference Hessian of a negative log-likelihood ``func`` at
@@ -229,22 +260,32 @@ def scale_free_hessian(
        whatever linear map of the parameters the model is written in,
        and no loss to cancellation between strongly correlated
        parameters (a power law's exponent and scale);
-    3. at ``scale``, ``2 scale`` and ``4 scale``, combined to cancel the
-       two leading terms of a central difference's error (Richardson
-       extrapolation: ``(64 H1 - 20 H2 + H4) / 45``).
+    3. at ``scale``, ``2 scale``, ``4 scale`` and ``8 scale``, combined
+       to cancel the three leading terms of a central difference's error
+       (Richardson extrapolation: ``(4096 H1 - 1344 H2 + 84 H4 - H8) /
+       2835``).
+
+    ``scale`` (3e-3) balances two errors. A shorter step loses digits to
+    rounding: ``func`` rises by only ``scale**2 / 2`` against its own
+    size, so a likelihood of a few thousand in hours or seconds kept
+    about seven digits of its Hessian at 1e-3. A longer one meets the
+    terms Richardson leaves, which grow with how far the likelihood is
+    from quadratic (a power law's exponent and scale in seconds).
 
     The result is mapped back to the parameters of ``x``. Where step 1
     or 2 cannot be done -- ``func`` does not rise on both sides of
     ``x``, or ``H0`` is not positive definite: a parameter on a
     boundary, a likelihood with no maximum there -- the plain
-    :func:`numerical_hessian` is returned, so such a fit is reported as
+    :func:`numerical_hessian` is returned (in the steps
+    ``fallback_step``, where the caller has its own, such as one that
+    keeps a parameter inside its bounds), so such a fit is reported as
     it was.
 
     Against the closed-form Hessian of a power-law process's likelihood,
-    the standard errors agree to 1e-8 with times in units from years to
-    seconds, where the plain rule is 4e-3 off in hours and fails in
-    seconds. It costs about three times the evaluations of the plain
-    rule, plus a few per parameter.
+    the standard errors agree to 2e-9 with times in units from years to
+    hours and to 5e-7 in seconds, where the plain rule is 4e-3 off in
+    hours and fails in seconds. It costs about four times the
+    evaluations of the plain rule, plus a few per parameter.
 
     Examples
     --------
@@ -268,26 +309,26 @@ def scale_free_hessian(
         f0 = func(x)
     steps = _curvature_steps(func, x, f0, scale) if np.isfinite(f0) else None
     if steps is None:
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
     with np.errstate(all="ignore"):
         first = numerical_hessian(func, x, steps)
     if not np.all(np.isfinite(first)):
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
     try:
         root = np.linalg.cholesky(np.linalg.inv(first))
     except np.linalg.LinAlgError:
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
 
     def whitened(z: npt.NDArray) -> float:
         return func(x + root @ z)
 
     origin = np.zeros(n)
     with np.errstate(all="ignore"):
-        one, two, four = (
+        one, two, four, eight = (
             numerical_hessian(whitened, origin, np.full(n, m * scale))
-            for m in (1.0, 2.0, 4.0)
+            for m in (1.0, 2.0, 4.0, 8.0)
         )
-    in_z = (64.0 * one - 20.0 * two + four) / 45.0
+    in_z = (4096.0 * one - 1344.0 * two + 84.0 * four - eight) / 2835.0
     if not np.all(np.isfinite(in_z)):
         return first
     back = np.linalg.inv(root)

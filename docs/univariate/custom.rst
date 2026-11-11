@@ -27,5 +27,9 @@ again under the same name (see the class docstring); constructing a
 second distribution under a name already used in the session warns that
 it replaces the first for that purpose.
 
+Writing ``fun`` with ``autograd.numpy`` (``from autograd import numpy as
+np``) is part of SurPyval's public interface, and stays so through 1.x
+(see :doc:`/Deprecation Policy`).
+
 .. autoclass:: surpyval.univariate.parametric.distributions.custom_distribution.CustomDistribution
    :members:
