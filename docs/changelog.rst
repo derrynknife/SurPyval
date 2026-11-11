@@ -5,6 +5,37 @@ Unreleased
 
 **Added.**
 
+- Multi-state models, ``surpyval.multistate`` (``MultiState``,
+  ``MultiStateProportionalHazards`` and ``TransitionMatrix`` also at the
+  top level), for units that move between several states (healthy, ill,
+  dead; working, degraded, failed). ``TransitionMatrix`` declares the
+  states and the allowed transitions (with ``illness_death``,
+  ``competing_risks``, ``progressive`` and ``from_matrix``). The data are
+  spells, one row per stay in a state (``x``, ``e`` the state entered or
+  missing if censored, ``state``, ``tl`` its start, ``id``, ``n``), with
+  ``to_stacked`` / ``from_stacked`` for R ``mstate``'s layout of one row
+  per possible transition. ``MultiState`` is the Aalen-Johansen estimate:
+  ``transition_probabilities(x, s)`` (the matrix :math:`P(s, t)`),
+  ``occupancy(x, state, s, from_state)``, ``cumulative_hazard``,
+  ``occupancy_se`` and ``cb`` with the Greenwood-type and Aalen-type
+  variances of ``mstate`` and the infinitesimal jackknife of
+  ``survfit``, a stacked ``plot``, delayed entry and tied times.
+  ``MultiStateProportionalHazards`` is a Cox model of each transition,
+  fitted as one stratified Cox model of the stacked data, with each
+  covariate's effect per transition or ``shared`` by all of them;
+  ``occupancy`` and ``transition_probabilities`` for given covariates,
+  with standard errors and bounds that include the coefficients'
+  uncertainty (``mstate``'s ``msfit`` and ``probtrans``), and it warns
+  where the predicted hazards of leaving a state add up to more than 1.
+  Every estimate and variance equals R's (``survival`` 3.8.12,
+  ``mstate`` 0.3.3) to rounding on the MGUS data and a simulated
+  illness-death model with recovery; with one transient state the
+  estimate is ``CompetingRisks``' cumulative incidence, and with one
+  transition the Kaplan-Meier estimate with Greenwood's variance. Not yet
+  built: parametric models of each transition, semi-Markov models and
+  states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
+  data (``spells=True`` gives its illness-death spells). See
+  :doc:`Multi-State Models`.
 - Regression for repeat events without a baseline shape: ``AndersenGill``,
   ``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld``
   (``surpyval.recurrent``, and at the top level), the semi-parametric
