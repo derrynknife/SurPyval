@@ -60,7 +60,7 @@ from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import LR_NAMES
-from ._prediction import quantiles_by_inversion
+from ._prediction import times_at_hazard
 
 #: What a refit that raises is counted as failing with.
 REFIT_ERRORS = (
@@ -459,18 +459,7 @@ def _times_at(
     if own is not None:
         return np.asarray(own(params, center, H_target, Z), dtype=float)
     rows = np.asarray(model._centred(Z, center), dtype=float)
-    with np.errstate(all="ignore"):
-        p = -np.expm1(-np.asarray(H_target, dtype=float))
-        start = np.asarray(
-            model.distribution.qf(p, *params[: model.k_dist]), dtype=float
-        ) * np.ones(p.shape)
-    return quantiles_by_inversion(
-        lambda t, k: model.model.Hf(t, rows[k], *params),
-        p,
-        model.distribution.support,
-        start,
-        lambda t, k: model.model.hf(t, rows[k], *params),
-    )
+    return times_at_hazard(model, params, rows, H_target)
 
 
 # -- the scores of the resamples ---------------------------------------------
