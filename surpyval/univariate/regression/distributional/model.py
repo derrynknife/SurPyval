@@ -97,12 +97,36 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     #: The number of columns of ``Z``.
     _width: int
 
+    #: The ``model`` entry of the model's dict.
+    _dict_model = "DistributionalRegressionModel"
+    #: The title of its printout.
+    _repr_title = "Distributional Regression SurPyval Model"
+
+    @classmethod
+    def _fitter_from_dict(cls, model_dict: dict, links: tuple) -> Any:
+        """The (unbound) fitter of a model's dict."""
+        import surpyval
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
+
+        from .fitter import DistributionalFitter
+
+        dist = getattr(surpyval, str(model_dict["distribution"]), None)
+        if not isinstance(dist, ParametricFitter):
+            raise ValueError(
+                "Unknown distribution {!r}".format(model_dict["distribution"])
+            )
+        return DistributionalFitter(
+            dist, links=dict(zip(dist.parameter_names, links))
+        )
+
     def __repr__(self) -> str:
         out = super().__repr__()
         if not hasattr(self, "params"):
             return out
         lines = out.split("\n")
-        title = "Distributional Regression SurPyval Model"
+        title = self._repr_title
         lines[0], lines[1] = title, "=" * len(title)
         names = self.feature_names
         terms = []
@@ -928,7 +952,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         True
         """
         out: dict[str, Any] = {
-            "model": "DistributionalRegressionModel",
+            "model": self._dict_model,
             "kind": self.kind,
             "distribution": self.distribution.name,
             "links": list(self.links),
@@ -1005,31 +1029,23 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         >>> DistributionalRegressionModel.from_dict(d).links
         ('log', 'log')
         """
-        import surpyval
-        from surpyval.univariate.parametric.parametric_fitter import (
-            ParametricFitter,
-        )
+        from .fitter import _link_name
 
-        from .fitter import DistributionalFitter, _link_name
-
-        if model_dict.get("model") != "DistributionalRegressionModel":
+        if model_dict.get("model") != cls._dict_model:
             raise ValueError(
-                "Not a distributional regression model's dict (its 'model' "
-                "is {!r}).".format(model_dict.get("model"))
-            )
-        dist = getattr(surpyval, str(model_dict["distribution"]), None)
-        if not isinstance(dist, ParametricFitter):
-            raise ValueError(
-                "Unknown distribution {!r}".format(model_dict["distribution"])
+                "Not a {}'s dict (its 'model' is {!r}).".format(
+                    cls._dict_model, model_dict.get("model")
+                )
             )
         links = tuple(str(v) for v in model_dict["links"])
         positions = tuple(
             np.asarray(c, dtype=int) for c in model_dict["covariate_positions"]
         )
         width = int(model_dict["width"])
-        fitter = DistributionalFitter(
-            dist, links=dict(zip(dist.parameter_names, links))
-        )._bound(positions, width, links)
+        fitter = cls._fitter_from_dict(model_dict, links)._bound(
+            positions, width, links
+        )
+        dist = fitter.dist
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
         pmap = {str(k): int(v) for k, v in model_dict["phi_param_map"].items()}
