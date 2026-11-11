@@ -48,6 +48,13 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     100.0
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # log time (#477).

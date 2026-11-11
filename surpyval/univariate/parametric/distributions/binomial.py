@@ -99,6 +99,15 @@ class Binomial_(DiscreteParametricFitter):
     array([0.3, 0. ])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        n : integer
+            The number of trials
+        p : float
+            The per-trial probability of an event
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

@@ -69,6 +69,13 @@ class FixedEventProbability_(  # type: ignore[misc]
     array([0.0441, 0.5028])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        p : float
+            The probability of failure of the thing
+        """
+
     #: ``random`` (``SingleProbabilityMixin``'s) draws 0/1 event
     #: indicators, 1 where ``u <= p``: exactly where ``qf(u)`` is 0. A
     #: fitted model's ``random`` draws through it rather than ``qf``, whose

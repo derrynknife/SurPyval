@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Shared parameter entries in distribution docstrings (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Each distribution method keeps its parameter entries literally in its docstring. The class states them once more in `_param_docs`, the copy to edit; `scripts/sync_docstrings.py --write` rewrites the method copies from it, and `surpyval/tests/utils/test_shared_docstrings.py` fails, naming the class, method and difference, when a copy drifts. Filling a `{params}` line in at import was tried and rejected. | proposed | Most users read docstrings in their editor's hover, which reads the source without importing it, so a placeholder there is a visible cost; literal copies with a check keep the text whole everywhere and still stop the copies drifting. Nine copies had drifted (Beta, Gumbel, GumbelLEV, Logistic) and were reworded to match. | done |
+
 ### `fit_from_ecdf` refuses a falling curve (12 Nov 2026)
 
 | Decision | By | Reason | Status |

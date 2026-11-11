@@ -319,6 +319,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
     array([0.7358, 0.406 , 0.0916])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The rate parameter for the Gamma distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
