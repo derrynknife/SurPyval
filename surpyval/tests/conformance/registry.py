@@ -153,6 +153,8 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     REFIT_PROPERTIES,
     REGRESSION,
     ROBUST_COVARIANCE,
+    STATES,
+    STATES_REGRESSION,
     UNI_FUNCTIONS,
     UNIVARIATE,
     WITH_COVARIATES,
@@ -340,6 +342,8 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
+    "surpyval.TransitionMatrix": _DATA
+    + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
     "surpyval.CovariatePath": _DATA,
@@ -444,6 +448,10 @@ for _fn in (
     "pseudo_regression_from_df",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
+for _fn in ("to_stacked", "from_stacked"):
+    OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
+        _FUNCTION + ": converts multi-state data between its forms"
+    )
 for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (

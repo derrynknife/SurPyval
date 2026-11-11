@@ -375,3 +375,57 @@ def copula_data():
 X_COP = np.array(
     [[2.0, 1.0], [5.0, 2.0], [8.0, 3.0], [10.0, 5.0], [14.0, 7.0], [3.0, 6.0]]
 )
+
+
+# Multi-state: an illness-death model with recovery, as spells
+_MS_UNITS = [
+    # (spells as (tl, x, state, entered), count, covariate)
+    ([(0, 2, "healthy", "ill"), (2, 5, "ill", "healthy"),
+      (5, 9, "healthy", "dead")], 1, 0.0),
+    ([(0, 3, "healthy", "dead")], 1, 1.0),
+    ([(0, 1.5, "healthy", "ill"), (1.5, 4, "ill", "dead")], 1, 1.0),
+    ([(0.5, 6, "healthy", None)], 1, 0.0),
+    ([(0, 4.5, "healthy", "ill"), (4.5, 10, "ill", None)], 1, 1.0),
+    ([(1, 3.5, "ill", "healthy"), (3.5, 8, "healthy", "ill"),
+      (8, 12, "ill", "dead")], 1, 0.25),
+    ([(0, 7, "healthy", "dead")], 2, 0.0),
+    ([(2, 11, "healthy", None)], 1, 1.0),
+    ([(0, 2.5, "healthy", "ill"), (2.5, 6.5, "ill", "dead")], 1, 0.5),
+    ([(0, 5.5, "healthy", "ill"), (5.5, 7.5, "ill", "healthy"),
+      (7.5, 12, "healthy", None)], 1, 1.0),
+]  # fmt: skip
+
+
+def ms_data(with_Z=False):
+    """Ten units' spells in an illness-death model with recovery, some
+    entering late (one in "ill"), one row counted twice."""
+    rows = [
+        (tl, x, st, e, n, z)
+        for spells, n, z in _MS_UNITS
+        for tl, x, st, e in spells
+    ]
+    d = {
+        "x": np.array([r[1] for r in rows], dtype=float),
+        "e": np.array([r[3] for r in rows], dtype=object),
+        "state": np.array([r[2] for r in rows], dtype=object),
+        "tl": np.array([r[0] for r in rows], dtype=float),
+        "n": np.array([r[4] for r in rows], dtype=int),
+        "transitions": [
+            ("healthy", "ill"),
+            ("healthy", "dead"),
+            ("ill", "healthy"),
+            ("ill", "dead"),
+        ],
+    }
+    if with_Z:
+        d["Z"] = np.array([[r[5]] for r in rows], dtype=float)
+    return d
+
+
+X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
+# The Cox model's predictions: from 7.5 on, the one unit left at risk in
+# "ill" makes the predicted hazards of leaving it add up to more than 1
+# for the other covariate rows (a property of the fit to so few, which the
+# model warns of).
+X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
+Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])

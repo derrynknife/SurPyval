@@ -129,6 +129,8 @@ RULES = {
     "hf": (0.0, np.inf, 0),
     "df": (0.0, np.inf, 0),
     "cif": (0.0, 1.0, 1),
+    # A state's occupation probability: rises or falls (a transient state)
+    "occupancy": (0.0, 1.0, 0),
     "mcf": (0.0, np.inf, 1),
     "iif": (0.0, np.inf, 0),
     "qf": (-np.inf, np.inf, 1),
