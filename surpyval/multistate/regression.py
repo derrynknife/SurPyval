@@ -929,9 +929,10 @@ class MultiStateProportionalHazards(SerialisableMixin):
         check_bound_args(alpha_ci, bound, bound_type)
         x = np.asarray(x, dtype=float)
         p = self.occupancy(x, Z, state, s, from_state)
-        with warnings.catch_warnings():
-            # (occupancy has said where the probabilities can leave [0, 1])
-            warnings.simplefilter("ignore")
+        from surpyval.utils.warnings import ignoring_warnings
+
+        # occupancy has said where the probabilities can leave [0, 1]
+        with ignoring_warnings(UserWarning, message="For the covariates"):
             se = self.occupancy_se(x, Z, state, s, from_state, variance)
         out = probability_bounds(p, se, alpha_ci, bound, bound_type)
         past = x > self.last
