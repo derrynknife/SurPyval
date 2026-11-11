@@ -255,7 +255,7 @@ def robust_inference_state(
             model, p_hat, center, free, cov, cluster
         )
     else:
-        step = model._hessian_step(p_hat)[free]
+        step = model._gradient_step(p_hat, cov)[free]
         scores = row_scores(model, data, p_hat, free, step)
         n = np.asarray(data.n, dtype=float)
         if cluster is None:

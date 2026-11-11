@@ -61,6 +61,7 @@ from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.linalg import (
     delta_method_se,
     numerical_hessian,
+    scale_free_hessian,
     sf_link_bound,
     standard_errors_of,
     wald_bound_on_support,
@@ -318,10 +319,20 @@ def _covariance_of(
     to the model's parameters by the delta method, with ``jac`` the
     diagonal of ``d parameter / d v``. ``None`` where the Hessian is not
     finite or not invertible.
+
+    Without a ``step`` the Hessian is taken in steps found from the
+    likelihood's own curvature (``scale_free_hessian``): a Wiener drift
+    is a level per unit of time, and stepped by a fraction of itself
+    floored at ``1e-2`` its standard error moved with the time unit. A
+    caller whose likelihood carries round-off noise (the quantised gamma
+    process) passes its own, larger ``step``.
     """
     v_hat = np.asarray(v_hat, dtype=float)
     with np.errstate(all="ignore"):
-        H = numerical_hessian(neg_ll, v_hat, step)
+        if step is None:
+            H = scale_free_hessian(neg_ll, v_hat)
+        else:
+            H = numerical_hessian(neg_ll, v_hat, step)
     if not np.all(np.isfinite(H)):
         return None
     try:
@@ -1318,7 +1329,9 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             return np.atleast_1d(model.sf(flat, Z, y0=y0))
 
         with np.errstate(all="ignore"):
-            se = delta_method_se(sf_of, self._estimates(), cov)
+            se = delta_method_se(
+                sf_of, self._estimates(), cov, scale_free=True
+            )
         out = sf_link_bound(
             sf_hat, se, alpha_ci, bound, "logit", ff_hat=ff_hat, on=on
         )
