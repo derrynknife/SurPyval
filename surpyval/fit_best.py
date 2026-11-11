@@ -284,7 +284,9 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         The observed event times (or intervals), in any of the formats
         ``fit`` accepts. If not given, ``xl`` and ``xr`` must be.
     c : array_like, optional
-        The censoring indicators.
+        The censoring indicators (0 an observed event, such as a failure
+        or a death, 1 right censored, -1 left censored, 2 interval
+        censored).
     n : array_like, optional
         The counts for each observation.
     t : array_like, optional

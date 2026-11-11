@@ -287,9 +287,12 @@ class OptimisedFitMixin(FitInputsMixin):
             Array of observations of the random variables. If x is
             :code:`None`, xl and xr must be provided.
         c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. If not provided
-            will assume all values are observed.
+            Array of censoring flags. 0 is observed (the event, such as a
+            failure, a death or a relapse, happened at ``x``), 1 is right
+            censored (no event by ``x``), -1 is left censored (the event was
+            before ``x``) and 2 is interval censored. A status column in which
+            1 marks the event is the reverse: pass ``1 - status``. If not
+            provided will assume all values are observed.
         n : array like, optional
             Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each

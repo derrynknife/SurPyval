@@ -399,7 +399,8 @@ def logrank(
         none at risk after ``t0``), and the statistic is 0 with ``dof`` 0
         and a p-value of 1.
     c : array like, optional
-        Array of censoring flags. 0 is observed and 1 is right
+        Array of censoring flags. 0 is observed (the event, such as a
+        failure, a death or a relapse, happened at ``x``) and 1 is right
         censored. Left or interval censored data cannot be used with
         this test; :func:`~surpyval.interval_logrank` takes them. If not
         provided assumes all values are observed.

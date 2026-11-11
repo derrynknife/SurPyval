@@ -249,8 +249,9 @@ def pseudo_survival(
         The time(s) at which to take the survival; none past the largest
         time in ``x``.
     c : array_like, optional
-        Censoring flags: 0 a failure, 1 right-censored (the default is
-        every row failed). Left and interval censoring are refused.
+        Censoring flags: 0 an event (a failure, a death), 1
+        right-censored (the default is every row an event). Left and
+        interval censoring are refused.
     n : array_like, optional
         Counts: a row with ``n = 3`` is three identical units, each with
         the row's pseudo-value.
@@ -312,7 +313,7 @@ def pseudo_rmst(
     tau : float
         The end of the window; not past the largest time in ``x``.
     c : array_like, optional
-        Censoring flags: 0 a failure, 1 right-censored.
+        Censoring flags: 0 an event, 1 right-censored.
     n : array_like, optional
         Counts of identical units.
     tl : array_like, optional
@@ -380,7 +381,7 @@ CompetingRisks` gives it. Each unit's pseudo-value is
     cause : label
         The cause whose incidence is wanted; one of the labels in ``e``.
     c : array_like, optional
-        Censoring flags (0 a failure with a cause, 1 right-censored);
+        Censoring flags (0 an event with a cause, 1 right-censored);
         derived from ``e`` if not given.
     n : array_like, optional
         Counts of identical units.
@@ -839,7 +840,7 @@ def pseudo_regression(
         covariate). Rows with a missing or infinite covariate are dropped
         before the pseudo-values are computed, with a warning.
     c : array_like, optional
-        Censoring flags: 0 a failure, 1 right-censored.
+        Censoring flags: 0 an event, 1 right-censored.
     n : array_like, optional
         Counts of identical units (each its own unit in the sandwich).
     quantity : str, optional
