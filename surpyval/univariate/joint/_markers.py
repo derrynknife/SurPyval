@@ -164,7 +164,14 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
             alpha, beta = float(np.mean(arrays.T)), 1.0
     if not (np.isfinite(alpha) and np.isfinite(beta)):
         alpha, beta = float(np.mean(arrays.T)), 1.0
-    trial = dict(theta, alpha=alpha, beta=beta, gamma=np.zeros(p), zeta=0.0)
+    n_links = layout.n_links
+    trial = dict(
+        theta,
+        alpha=alpha,
+        beta=beta,
+        gamma=np.zeros(p),
+        zeta=np.zeros(n_links),
+    )
     zero = np.zeros(len(arrays.w))
     b, _ = modes(
         trial,
@@ -181,11 +188,28 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     )
     entered = arrays.L > 0
     late = np.isfinite(arrays.Rt)
+    # A slope's or an area's effect is searched in units of its spread
+    # over the items (at the age each left observation): their sizes are
+    # far from 1, and this search has no other scaling. The value's is
+    # searched as it is.
+    scales = np.ones(n_links)
+    at = np.where(interval, arrays.U, arrays.T)
+    for j, (link, followed, _) in enumerate(model.path.terms):
+        if link == "value":
+            continue
+        with np.errstate(all="ignore"):
+            spread = np.asarray(
+                followed.path(at, *params[:, 0, :].T), dtype=float
+            )
+        spread = spread[np.isfinite(spread)]
+        if spread.size and np.std(spread) > 0:
+            scales[j] = 1.0 / float(np.std(spread))
 
     def objective(v: Any) -> Any:
         th = dict(trial)
         th["alpha"], th["beta"] = anp.exp(v[0]), anp.exp(v[1])
-        th["gamma"], th["zeta"] = layout._gamma(v[2 : 2 + k]), v[2 + k]
+        th["gamma"] = layout._gamma(v[2 : 2 + k])
+        th["zeta"] = v[2 + k :] * scales
         H_T = anp.exp(
             log_cumhaz(th, model.path, params, arrays, arrays.T, model.centre)
         )[:, 0]
@@ -229,7 +253,7 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
             )
         return -anp.sum(arrays.w * ll) / anp.sum(arrays.w)
 
-    v0 = np.concatenate([[np.log(alpha), np.log(beta)], np.zeros(k + 1)])
+    v0 = np.concatenate([[np.log(alpha), np.log(beta)], np.zeros(k + n_links)])
     with ignoring_warnings(), np.errstate(all="ignore"):
         result = minimize(
             value_and_grad(objective), v0, jac=True, method="BFGS"
@@ -239,5 +263,5 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     out["alpha"], out["beta"] = float(np.exp(v[0])), float(np.exp(v[1]))
     gamma = np.zeros(p)
     gamma[layout.hazard] = v[2 : 2 + k]
-    out["gamma"], out["zeta"] = gamma, float(v[2 + k])
+    out["gamma"], out["zeta"] = gamma, v[2 + k :] * scales
     return out

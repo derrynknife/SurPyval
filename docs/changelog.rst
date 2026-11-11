@@ -73,6 +73,29 @@ Unreleased
   read from the item): a measured signal belongs in a joint model. See
   "Fitting on a continuous path" in
   :doc:`Regression Modelling with SurPyval`.
+- Joint models: what the hazard follows of the marker's path is a choice,
+  ``JointPH(Weibull, path_model, link=...)``. ``"value"`` (the default, as
+  before: risk follows the level), ``"slope"`` (risk follows how fast the
+  marker is changing, the path's rate of change) or ``"cumulative"`` (risk
+  follows the accumulated exposure, the area under the path from age 0),
+  or a list of them, each with an effect of its own: ``marker_effect``,
+  ``slope_effect``, ``cumulative_effect``. ``link=["value", "slope"]``
+  asks whether, at a given level, a rising marker is at more risk than a
+  steady one. Every part of the joint model works with every link: the
+  data (failures, right, left and interval censoring, truncation), the
+  covariates in each part, any path model, ``sf``, ``ff``, ``cb``,
+  ``predict``, ``summary`` and ``to_dict``/``from_dict`` (a model saved
+  before follows the value). With the slope or the area alone the Weibull
+  ``alpha`` is that of an item at a slope and an area of 0, and
+  ``marker_reference`` is refused; a Lloyd-Lipow path, whose area from
+  age 0 is not finite, is refused for the cumulative link. On the Mayo
+  PBC trial the four models agree with R's ``JM`` to within 0.15 standard
+  errors of every estimate. The degradation path models gain ``slope(x,
+  *params)``, the path's rate of change, and ``slope_jacobian``: analytic
+  for the built-in paths (and through a ``LinkedPathModel``), central
+  differences for a ``PathModel`` of one's own that does not give them.
+  No numbers change: a fit with the default link is the same to the last
+  digit. See "What the hazard follows: the link" in :doc:`Joint Models`.
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every
