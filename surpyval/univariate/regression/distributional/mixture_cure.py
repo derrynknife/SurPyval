@@ -397,9 +397,10 @@ class MixtureCureModel(DistributionalRegressionModel):
         >>> bool(np.allclose(restored.sf(50, [1]), model.sf(50, [1])))
         True
         """
-        out = super().to_dict()
-        out["latency"] = self.latency.name
-        return out
+        return super().to_dict()
+
+    def _subclass_dict_entries(self) -> dict:
+        return {"latency": self.latency.name}
 
     @property
     def latency(self) -> Any:
