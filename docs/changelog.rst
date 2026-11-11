@@ -5,6 +5,43 @@ Unreleased
 
 **Added.**
 
+- Repeat events with failure modes and covariates:
+  ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
+  top level), the regression counterpart of ``CauseSpecificNHPP``. Every
+  event type (failure mode) has its own baseline intensity and its own
+  covariate coefficients, so a covariate can raise one mode's rate and
+  leave another's alone. The modes of a marked Poisson process are
+  independent, so each is the single-mode proportional-intensity fit
+  (``ProportionalIntensityHPP`` for ``baseline=HPP``, else
+  ``ProportionalIntensityNHPP`` with ``Duane``, ``CrowAMSAA`` or
+  ``CoxLewis``) of its own events over every item's whole observation
+  window, kept in ``models[event]``; there is no second likelihood. Fits:
+  ``fit(x, Z, i, c, n, e, tl, tr, baseline, init)`` and ``fit_from_df``
+  (``e_col``) for fixed covariates, and ``fit_tvc``, ``fit_tvc_timeline``
+  and their ``_from_df`` forms for covariates that change over time (the
+  single-mode fits' rows, plus the mode ``e`` of each failure). Per mode,
+  with the mode as ``event`` after ``Z``: ``cif``, ``iif``, ``cif_cb``,
+  ``iif_cb``, and ``cif_tvc``, ``iif_tvc``, ``cb_tvc`` along a schedule,
+  each the mode's own model's. Totals over the modes: ``total_cif``,
+  ``total_iif``, ``total_cif_tvc``, ``total_iif_tvc``, with bounds
+  ``total_cif_cb``, ``total_iif_cb`` and ``total_cb_tvc`` that add the
+  modes' delta-method variances and form the bounds on the log scale, as
+  ``CauseSpecificNHPP``'s totals, so a one-mode model's total bounds are
+  that mode's. ``coefficients()`` is the table of every (mode, covariate):
+  the coefficient, the rate ratio ``exp(coef)``, the standard error, Wald
+  intervals for both, ``z`` and ``p``; ``summary()`` stacks the modes'
+  parameter tables. ``neg_ll``, ``aic``, ``bic`` and ``aic_c`` are those of
+  the whole model (sums over the modes); ``to_dict`` / ``from_dict`` keep
+  every prediction and each mode's covariance, so a restored model gives
+  the same bounds and tables. One aliasing warning covers the fits of all
+  modes. Not carried over yet, each refusing with what to use instead:
+  ``diagnose``, ``residuals``, ``cramer_von_mises``, ``trend_test``,
+  ``plot``, the simulation methods and ``mcf`` (call them on
+  ``models[event]``), ``forecast`` and ``surpyval.forecast``, ``growth``
+  and the MTBF methods; counts of failures (``c = 2``) and right
+  truncation; bounds other than Wald's. See "Several failure modes, each
+  with its own covariate effects" in
+  :doc:`Recurrent Event Regression Modelling with SurPyval`.
 - Repairable systems with several failure modes, on ``CauseSpecificNHPP``
   (one intensity model per event type). Each mode's bounds through the
   model, with the mode as ``event``: ``cif_cb``, ``iif_cb``, ``mtbf`` and
