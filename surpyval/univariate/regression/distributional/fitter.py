@@ -188,15 +188,33 @@ class DistributionalFitter(
         covariates: Mapping[str, Any] | None = None,
         links: Mapping[str, str] | None = None,
     ) -> None:
-        _check_distribution(distribution)
+        self._check_distribution(distribution)
         mirror_distribution(self, distribution)
         self.name = distribution.name + self.name_suffix
         self._covariates = covariates
         self._links_given = links
         self.links = self._resolve_links(links)
 
+    #: The check a distribution passes to be taken; a subclass with its
+    #: own distributions replaces it.
+    _check_distribution = staticmethod(_check_distribution)
+
+    def _say_verdict(self, verdict: Any, values: dict) -> None:
+        """The one warning of a search that did not end at a verified
+        maximum."""
+        say_verdict(verdict, dist=self.dist.name, values=values)
+
+    def _model_class(self) -> Any:
+        """The class of the model a fit returns."""
+        from .model import DistributionalRegressionModel
+
+        return DistributionalRegressionModel
+
     def __reduce__(self) -> Any:
-        return (_rebuild_fitter, (self.dist, self.__getstate__()))
+        return (
+            _rebuild_fitter,
+            (self.dist, self.__getstate__(), type(self)),
+        )
 
     def __getstate__(self) -> dict:
         return {
@@ -347,7 +365,7 @@ class DistributionalFitter(
         """A copy of this fitter for the model fitted with ``positions``
         (its ``fit`` refits with the same columns, as the bootstrap
         does)."""
-        out = DistributionalFitter.__new__(DistributionalFitter)
+        out = type(self).__new__(type(self))
         mirror_distribution(out, self.dist)
         out.name = self.name
         out.links = links
@@ -698,10 +716,8 @@ class DistributionalFitter(
             fit_centring,
         )
         mark_weighted(model, data)
-        say_verdict(
-            verdict,
-            dist=self.dist.name,
-            values=dict(zip(self.parameter_names, model.params)),
+        self._say_verdict(
+            verdict, dict(zip(self.parameter_names, model.params))
         )
         model.maximum = verdict.maximum
 
@@ -985,7 +1001,7 @@ class DistributionalFitter(
             )
         target = self
         if covariates is not None or links is not None:
-            target = DistributionalFitter(
+            target = type(self)(
                 self.dist,
                 covariates if covariates is not None else self._covariates,
                 links if links is not None else self._links_given,
@@ -1150,10 +1166,8 @@ def _assemble(
     fit_centring: tuple | None,
 ) -> Any:
     """The fitted model."""
-    from .model import DistributionalRegressionModel
-
     K = bound.k_dist
-    model = DistributionalRegressionModel()
+    model = bound._model_class()()
     model.center = center
     model._fit_centring = fit_centring
     model.distribution_param_map = dict(bound.param_map)
@@ -1231,10 +1245,13 @@ def _coefficient_penalizer(
     return onp.concatenate([value[onp.asarray(c, int)] for c in positions])
 
 
-def _rebuild_fitter(dist: Any, state: dict) -> DistributionalFitter:
-    out = DistributionalFitter.__new__(DistributionalFitter)
+def _rebuild_fitter(
+    dist: Any, state: dict, cls: Any = None
+) -> DistributionalFitter:
+    cls = DistributionalFitter if cls is None else cls
+    out: DistributionalFitter = cls.__new__(cls)
     mirror_distribution(out, dist)
-    out.name = dist.name + DistributionalFitter.name_suffix
+    out.name = dist.name + cls.name_suffix
     for key, value in state.items():
         setattr(out, key, value)
     return out

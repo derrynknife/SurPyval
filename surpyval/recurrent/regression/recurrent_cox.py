@@ -50,6 +50,7 @@ from surpyval.utils.dataframe import (
     frame_column,
     require_frame,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.units import label_axes, takes_unit
@@ -59,6 +60,14 @@ ANDERSEN_GILL = "Andersen-Gill"
 PWP_TOTAL = "Prentice-Williams-Peterson, total time"
 PWP_GAP = "Prentice-Williams-Peterson, gap time"
 WLW = "Wei-Lin-Weissfeld"
+
+#: How each kind is refitted, for the refusals of a restored model.
+_FITTER_NAME = {
+    ANDERSEN_GILL: "AndersenGill.fit",
+    PWP_TOTAL: "PrenticeWilliamsPeterson.fit",
+    PWP_GAP: 'PrenticeWilliamsPeterson.fit(..., time_scale="gap")',
+    WLW: "WeiLinWeissfeld.fit",
+}
 
 #: What each kind's cumulative baseline is, for the axis of ``plot``.
 _CURVE = {
@@ -801,6 +810,19 @@ class RecurrentCoxModel(SerialisableMixin):
         >>> type(model.diagnose()).__name__
         'Diagnosis'
         """
+        if not hasattr(self.cox, "_fit_data"):
+            # A model restored by from_dict keeps the coefficients,
+            # covariances and baseline, not the layout's rows; the Cox
+            # model's own message would point at CoxPH.fit, which is not
+            # how this model is refitted.
+            raise ValueError(
+                "The diagnostics need the data the model was fitted to "
+                "(the layout's rows), which a model restored with "
+                "from_dict / from_json does not carry. Refit on the data "
+                "with {}.".format(
+                    _FITTER_NAME.get(self.kind, "the recurrent fitter")
+                )
+            )
         return self.cox.diagnose(*args, **kwargs)
 
     def plot(self, ax: Any = None) -> Any:
@@ -1091,6 +1113,9 @@ class _RecurrentCoxFitter(FitterRepr):
         model.cox.feature_names = [str(name) for name in names]
         return model
 
+    @ambiguous_item_ids(
+        "a regression's fit_from_df(df, x_col, Z_cols, c_col)", column=True
+    )
     @takes_unit
     def fit_from_df(
         self,
@@ -1220,6 +1245,7 @@ class AndersenGill(_StartStopFrame):
 
     _kind = ANDERSEN_GILL
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(
@@ -1398,6 +1424,7 @@ class PrenticeWilliamsPeterson(_StartStopFrame):
             )
         return _TIME_SCALES[time_scale]
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(
@@ -1592,6 +1619,7 @@ class WeiLinWeissfeld(_RecurrentCoxFitter):
 
     _kind = WLW
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(

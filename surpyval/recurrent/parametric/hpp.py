@@ -20,6 +20,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -327,6 +328,7 @@ class HPP(CountingProcess):
 
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_event_history_data
     def fit(

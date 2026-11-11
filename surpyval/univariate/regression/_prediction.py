@@ -26,7 +26,6 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
 from surpyval.utils.validation import warn_outside_unit_interval
 
@@ -51,7 +50,6 @@ class ConditionalSurvivalMixin:
 
     Hf: Callable[..., Any]
 
-    @removed_arguments("0.23", X="'given'")
     def cs(
         self,
         x: npt.ArrayLike,

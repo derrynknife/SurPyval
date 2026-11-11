@@ -50,18 +50,17 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import ndtr, ndtri
 
-from surpyval.utils.no_maximum import quiet_maximum_warnings
+from surpyval.utils.no_maximum import (
+    NoFiniteMaximumError,
+    quiet_maximum_warnings,
+    warn_bootstrap_refits,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import LR_NAMES
 from ._prediction import quantiles_by_inversion
-
-#: The share of refits that may fail to reach a verified maximum before
-#: the bounds warn: a few in a thousand are expected of small samples, as
-#: a resample with no failures at a stress leaves its effect unbounded.
-FAILED_SHARE = 0.02
 
 #: What a refit that raises is counted as failing with.
 REFIT_ERRORS = (
@@ -134,16 +133,18 @@ class Refits:
     #: maximum was not verified (the values they reached are kept).
     no_maximum: int
     unverified: int
-    #: Refits that raised (left out).
+    #: Refits that raised (left out), ``no_estimate`` of them because
+    #: the resample's likelihood has no maximum at all (no failures).
     failed: int
     #: What the model's own fit reached (its ``maximum``).
     model_maximum: str = "verified"
+    no_estimate: int = 0
 
     def warn(self) -> None:
         """One warning: that the model itself has no finite maximum, or
-        that more than ``FAILED_SHARE`` of the refits did not reach a
-        verified maximum or failed."""
-        bad = self.no_maximum + self.unverified + self.failed
+        that some refits had no finite maximum, or that more than
+        ``FAILED_SHARE`` of them did not reach a verified maximum or
+        failed (``warn_bootstrap_refits``)."""
         if self.model_maximum == "no finite maximum":
             # On #583's test with 11 failures, the bootstrap bound from
             # such a fit covered 0.004 (the Wald bound, [0, 1] or nan
@@ -159,26 +160,15 @@ class Refits:
                 stacklevel=caller_stacklevel(),
             )
             return
-        if bad <= FAILED_SHARE * self.n_boot:
-            return
-        parts = []
-        if self.no_maximum:
-            parts.append(f"{self.no_maximum} with no finite maximum")
-        if self.unverified:
-            parts.append(f"{self.unverified} at an unverified maximum")
-        if self.failed:
-            parts.append(f"{self.failed} failed and left out")
-        warnings.warn(
-            f"{bad} of the {self.n_boot} bootstrap refits did not reach a "
-            f"verified maximum of the likelihood ({', '.join(parts)}). "
-            "A refit with no finite maximum is kept at the estimate it "
-            "reached, where its parameters run off to their limit, so that "
-            "it counts at its end of the bounds; with this many, the data "
-            "barely identify the model (too few failures at some covariate "
-            "values), and the bounds are rough. Compare them with "
-            "method='lr'.",
-            UserWarning,
-            stacklevel=caller_stacklevel(),
+        warn_bootstrap_refits(
+            self.n_boot,
+            no_maximum=self.no_maximum,
+            no_estimate=self.no_estimate,
+            unverified=self.unverified,
+            failed=self.failed - self.no_estimate,
+            advice="there are too few failures at some covariate values; "
+            "treat the bounds as rough, and compare them with "
+            "method='lr', which needs no refits",
         )
 
 
@@ -359,7 +349,12 @@ def _draw(
         kwargs["center"] = model._has_center()
     score = _score(model, p_hat)
     params, centers, scores = [], [], []
-    counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
+    counts = {
+        "no finite maximum": 0,
+        "unverified": 0,
+        "failed": 0,
+        "no estimate": 0,
+    }
     for _ in range(n_boot):
         if cases:
             x, Z, c, t, w = design.resample(rng)
@@ -378,6 +373,9 @@ def _draw(
                     **weights,
                     **kwargs,
                 )
+        except NoFiniteMaximumError:
+            counts["no estimate"] += 1
+            continue
         except REFIT_ERRORS:
             counts["failed"] += 1
             continue
@@ -394,8 +392,9 @@ def _draw(
         scores=np.array(scores).reshape(len(scores), p_hat.size),
         no_maximum=counts["no finite maximum"],
         unverified=counts["unverified"],
-        failed=counts["failed"],
+        failed=counts["failed"] + counts["no estimate"],
         model_maximum=model.maximum,
+        no_estimate=counts["no estimate"],
     )
 
 
@@ -452,7 +451,13 @@ def _times_at(
     Z: npt.NDArray,
 ) -> npt.NDArray:
     """The times at which ``model``'s cumulative hazard at ``params``
-    reaches ``H_target``, row by row of ``Z``."""
+    reaches ``H_target``, row by row of ``Z``. A model whose cumulative
+    hazard levels off (a cure fraction) inverts it itself
+    (``_times_at_hazard``): a target it never reaches is an infinite
+    time."""
+    own = getattr(model, "_times_at_hazard", None)
+    if own is not None:
+        return np.asarray(own(params, center, H_target, Z), dtype=float)
     rows = np.asarray(model._centred(Z, center), dtype=float)
     with np.errstate(all="ignore"):
         p = -np.expm1(-np.asarray(H_target, dtype=float))

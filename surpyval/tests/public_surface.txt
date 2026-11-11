@@ -9,6 +9,7 @@ surpyval.AcceleratedLife
 surpyval.AdditiveHazards
 surpyval.AdditiveHazardsFitter
 surpyval.AdditiveHazardsModel
+surpyval.AdjustedCurves
 surpyval.AndersenGill
 surpyval.Bernoulli
 surpyval.Beta
@@ -49,6 +50,7 @@ surpyval.ExponentialAFT
 surpyval.ExponentialAH
 surpyval.ExponentialDistributional
 surpyval.ExponentialFrailty
+surpyval.ExponentialMixtureCure
 surpyval.ExponentialPH
 surpyval.ExponentialPO
 surpyval.FineGray
@@ -63,6 +65,7 @@ surpyval.GammaAFT
 surpyval.GammaAH
 surpyval.GammaDistributional
 surpyval.GammaFrailty
+surpyval.GammaMixtureCure
 surpyval.GammaPH
 surpyval.GammaPO
 surpyval.GammaProcess
@@ -91,11 +94,13 @@ surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
 surpyval.LogLogisticDistributional
+surpyval.LogLogisticMixtureCure
 surpyval.LogNormal
 surpyval.LogNormalAFT
 surpyval.LogNormalAH
 surpyval.LogNormalDistributional
 surpyval.LogNormalFrailty
+surpyval.LogNormalMixtureCure
 surpyval.LogNormalPH
 surpyval.LogNormalPO
 surpyval.LogRankResult
@@ -105,6 +110,9 @@ surpyval.LogisticAH
 surpyval.LogisticDistributional
 surpyval.LogisticPH
 surpyval.LogisticPO
+surpyval.MixtureCure
+surpyval.MixtureCureFitter
+surpyval.MixtureCureModel
 surpyval.MixtureModel
 surpyval.MultiState
 surpyval.MultiStateProportionalHazards
@@ -161,6 +169,7 @@ surpyval.WeibullAH
 surpyval.WeibullDistributional
 surpyval.WeibullFrailty
 surpyval.WeibullJointPH
+surpyval.WeibullMixtureCure
 surpyval.WeibullPH
 surpyval.WeibullPO
 surpyval.WienerProcess
@@ -242,6 +251,7 @@ surpyval.diagnostics.Advice
 surpyval.diagnostics.Diagnosis
 surpyval.diagnostics.DiagnosticsFailed
 surpyval.diagnostics.diagnose
+surpyval.direct_adjustment
 surpyval.fit_best
 surpyval.forecast
 surpyval.from_dict
@@ -568,6 +578,7 @@ surpyval.utils.xcnt_to_xrd
 surpyval.utils.xrd_handler
 surpyval.utils.xrd_to_xcnt
 surpyval.weibayes
+surpyval.weight_diagnostics
 surpyval.xcn_to_fs
 surpyval.xcnt_handler
 surpyval.xcnt_to_xrd

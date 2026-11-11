@@ -348,6 +348,8 @@ def test_663_restored_models_say_they_carry_no_data():
     x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
     i = [1] * 6 + [2] * 5
     c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    # What needs the data refuses and says the model was restored; the
+    # Wald bounds, which need only the saved covariance, do not.
     for model in (
         rc.CrowAMSAA.fit(x, i, c),
         rc.GeneralizedRenewal.fit(x, i, c),
@@ -356,13 +358,19 @@ def test_663_restored_models_say_they_carry_no_data():
         with pytest.raises(
             ValueError, match="restored with from_dict / from_json"
         ):
-            restored.param_cb(restored._parameter_names()[0])
-    restored = rc.CrowAMSAA.fit(x, i, c)
-    restored = type(restored).from_dict(restored.to_dict())
+            restored.aic()
+    # The Kijima q here is on its edge: its interval is a profile
+    # likelihood's, which needs the data.
     with pytest.raises(
         ValueError, match="restored with from_dict / from_json"
     ):
-        restored.cif_cb(10.0)
+        restored.param_cb("q")
+    model = rc.CrowAMSAA.fit(x, i, c)
+    restored = type(model).from_dict(model.to_dict())
+    np.testing.assert_array_equal(restored.cif_cb(10.0), model.cif_cb(10.0))
+    np.testing.assert_array_equal(
+        restored.param_cb("alpha"), model.param_cb("alpha")
+    )
 
 
 def test_665_profile_interval_for_an_interior_restoration_parameter():

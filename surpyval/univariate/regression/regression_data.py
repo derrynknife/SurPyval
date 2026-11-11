@@ -33,7 +33,6 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.dataframe import check_columns, frame_column
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import takes_unit
 from surpyval.utils.warnings import ignoring_warnings
 
@@ -1177,7 +1176,6 @@ class DataFrameRegressionMixin:
     # Provided by the host fitter class this mixin is combined with.
     fit: Callable[..., ParametricRegressionModel]
 
-    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     @takes_unit
     def fit_from_df(
         self,

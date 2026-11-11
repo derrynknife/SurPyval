@@ -36,6 +36,36 @@ Unreleased
   states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
   data (``spells=True`` gives its illness-death spells). See
   :doc:`Multi-State Models`.
+- Adjusted survival curves for groups that were not assigned at random
+  (two suppliers on different duty, treated and untreated patients).
+  ``direct_adjustment(model, group, levels, Z, w, covariates, robust,
+  cluster)`` takes a fitted regression that has the group among its
+  covariates, predicts every unit's survival curve with the group set to
+  each level in turn, and averages over the sample (standardisation, or
+  g-computation). It returns ``AdjustedCurves``: ``sf``, ``ff`` and ``cb``
+  of a level's adjusted curve, ``sf_diff`` and ``rmst_diff`` (the adjusted
+  difference between two levels in survival at a time and in restricted
+  mean survival time, each with a standard error, interval and test),
+  ``rmst`` and ``plot``. The variances are built for the parametric
+  regression families (the delta method through the parameters'
+  covariance) and ``CoxPH`` (the baseline's variance and the
+  coefficients', as in ``CoxPH.cb``), plus, by default, the spread of the
+  units' predictions (``covariates="sampled"``; ``"fixed"`` leaves it out
+  for a reference population). The group is a column position, a column
+  name or a formula's variable (with the DataFrame as ``Z``, so
+  interactions with the group are rebuilt). Any other model with
+  ``sf(x, Z)`` gives the curves, and its bounds refuse with what to use;
+  a stratified Cox model is refused. Checked against R: the averaged
+  ``survfit(coxph, newdata)`` curves and ``riskRegression::ate``'s risks
+  to 1e-6, and a ``survreg`` delta method by hand to 1e-3.
+  ``weight_diagnostics(w, group, Z, extreme, smd)`` checks a set of
+  weights brought to a weighted comparison (``KaplanMeier.fit(..., w=)``
+  with ``sf_diff`` and ``rmst_diff``): each group's effective sample size,
+  its largest weight's share and the number of extreme weights, the
+  standardised mean difference of each covariate before and after
+  weighting with the ratio of the weighted variances, and ``flags``, plain
+  sentences for anything outside the usual rules. No propensity model is
+  fitted. New guide: :doc:`Adjusted Survival Curves`.
 - Regression for repeat events without a baseline shape: ``AndersenGill``,
   ``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld``
   (``surpyval.recurrent``, and at the top level), the semi-parametric
@@ -127,6 +157,39 @@ Unreleased
   differences for a ``PathModel`` of one's own that does not give them.
   No numbers change: a fit with the default link is the same to the last
   digit. See "What the hazard follows: the link" in :doc:`Joint Models`.
+- Mixture-cure regression: ``MixtureCure(latency, incidence, covariates,
+  links)`` and the prebuilt ``WeibullMixtureCure``,
+  ``LogNormalMixtureCure``, ``LogLogisticMixtureCure``,
+  ``GammaMixtureCure`` and ``ExponentialMixtureCure``. A fraction of the
+  units never fails (sound parts, cured patients), and covariates act
+  both on the probability of ever failing (the incidence, ``lfp_p``,
+  through a logit, probit or complementary log-log link) and on the life
+  of the units that do fail (the latency, a distribution with covariates
+  on its parameters, on the scale by default as in an AFT model):
+  ``S(t | z) = 1 - pi(z) + pi(z) S_u(t | z)``. Both parts are fitted
+  together by maximum likelihood with every censoring, truncation, count
+  and weight; it is the limited-failure fit (``lfp=True``) with
+  covariates, and reduces to it exactly without them. The model is a
+  member of the distributional regressions and has their ``fit``,
+  ``fit_from_df`` (``formulas={"lfp_p": ..., "alpha": ...}``),
+  ``fit_penalised``, bounds (``cb``, ``param_cb``, ``parameter_cb``;
+  Wald, likelihood-ratio and bootstrap), ``summary``, ``random``,
+  ``to_dict`` and ``from_dict``. ``MixtureCureModel`` adds
+  ``susceptible_probability(Z)``, ``cure_probability(Z)``,
+  ``cure_given_survival(x, Z)`` (the chance that a unit still running at
+  ``x`` never fails), ``susceptible=True`` on ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf`` and ``mean`` for the latency alone, and
+  ``follow_up()``, Maller and Zhou's check that the units were followed
+  long enough to show a plateau. The likelihood-ratio bound on a quantile,
+  ``quantile_cb(p, Z, method="lr")``, has an infinite upper end where the
+  likelihood region allows a susceptible probability at or below ``p``. Data with no cured fraction end in the
+  "No finite maximum" warning, naming ``lfp_p`` and saying to fit the
+  latency alone. Checked against R's ``flexsurvcure`` (Weibull,
+  log-normal and log-logistic latencies; logit, probit and loglog links;
+  late entry): log-likelihoods to 1e-3, estimates to 5e-3 on the link
+  scale, standard errors to 1%. The distributional regressions' links
+  gain ``"logit"``, ``"probit"`` and ``"cloglog"`` for a parameter in
+  (0, 1). New guide: :doc:`Mixture-Cure Regression`.
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every
@@ -821,6 +884,51 @@ Unreleased
   the time; a wrong distribution for one cause was flagged for that cause
   80% of the time and for the right cause 5.5%).
 
+**Deprecated.**
+
+- Arguments that, given by position, were silently read as something
+  else now warn, with a ``FutureWarning`` (shown wherever the call is
+  made) that says what the value was taken as and the keyword to use.
+  Nothing else changes: each call returns exactly what it did before.
+  Passing the argument by name silences the warning.
+
+  - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
+    ``CoxLewis``, ``HPP``, ``NonParametricCounting``, ``ARA``, ``ARI``,
+    ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+    ``CauseSpecificMCF`` and ``CauseSpecificNHPP`` take the item ids
+    ``i`` second, where every other ``fit(x, c, n, t)`` takes the
+    censoring flags, so ``CrowAMSAA.fit(x, c)`` read the flags as two
+    items with nothing censored: on ``x = [5, 12, 20, 31, 45, 60, 80]``,
+    ``c = [0, 0, 0, 0, 0, 0, 1]`` it gives ``alpha`` 19.99 and ``beta``
+    1.00, where ``fit(x, c=c)`` gives 7.63 and 0.76. The same holds after
+    ``Z`` in ``ProportionalIntensityHPP``, ``ProportionalIntensityNHPP``,
+    ``AndersenGill``, ``PrenticeWilliamsPeterson``, ``WeiLinWeissfeld``
+    and ``CauseSpecificProportionalIntensity`` (``fit``,
+    ``fit_penalised``), and for ``i_col`` in every recurrent
+    ``fit_from_df``. The ids stay a positional data argument
+    (``fit(x, i, c)`` is unchanged), so the warning fires only for the
+    call that cannot be told apart: ``i`` given by position, no ``c``, and
+    values of 0s and 1s. That call will be refused from v0.28; name the
+    argument (``c=`` or ``i=``).
+  - ``Parametric.mean(defective, tau)`` and
+    ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
+    as ``defective`` and ignored it (6.524 on a Weibull fitted to
+    ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
+    mean restricted to 5 (``mean(tau=5)`` is 4.671). ``defective`` will be
+    keyword-only from v0.28.
+  - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
+    ``mean_cb`` takes ``tau`` first. ``alpha_ci`` and the arguments after
+    it will be keyword-only from v0.28.
+  - ``Parametric.random(size, a, b)`` and ``random_data``: every other
+    model's ``random(size, random_state)`` takes the seed second, so
+    ``model.random(10, 42)`` truncated the draws below 42 (every draw
+    ``inf`` on that Weibull). ``a`` and ``b`` will be keyword-only from
+    v0.28.
+  - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
+    axes first, so ``plot(ax)`` drew stacked curves on new axes.
+    ``stacked`` and the arguments after it will be keyword-only from
+    v0.28.
+
 **Changed.**
 
 - **Fine-Gray standard errors are the robust ones by default (an
@@ -916,6 +1024,61 @@ Unreleased
   18897.8]``; an Exponential with a Gamma(2, 500) prior on 100, 250 and
   400 hours was ``[783.8, 51.0, 250.5]`` and is now ``[192.8, 1029.9,
   39.5]``. The distribution of the draws is unchanged.
+
+- A saved single-process repairable model keeps its bounds. ``to_dict`` /
+  ``to_json`` of a maximum-likelihood ``HPP``, ``CrowAMSAA``, ``Duane`` or
+  ``CoxLewis`` fit (``ParametricRecurrenceModel``) and of a
+  proportional-intensity fit (``ProportionalIntensityModel``) now store the
+  parameter covariance (``"covariance"``), and the restored model computes
+  ``covariance()``, ``standard_errors()``, ``summary()``, ``param_cb`` and
+  the Wald bounds (``cif_cb``, ``iif_cb``, ``mtbf_cb``, ``cb_tvc``) from
+  it, equal to the fit's. The renewal models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) do the same for
+  ``covariance()``, ``standard_errors()``, the Wald ``param_cb`` and
+  ``summary()``; with the repair parameter on the edge of its range, its
+  interval (a profile-likelihood one) and so ``summary()`` need the data
+  and are refused, saying so. Before, a restored model refused them, while a
+  restored ``CauseSpecificNHPP`` or ``CauseSpecificProportionalIntensity``
+  (whose causes are these same models) gave them. What needs the data is
+  still refused, with a message that says what is and is not available:
+  the likelihood and the information criteria, the diagnostics, ``plot``,
+  Crow's exact bounds, the profile-likelihood intervals and the repair
+  test. The entry is optional on reading (the schema is
+  unchanged): a dictionary saved by an earlier version loads as before and
+  refuses the bounds, saying it holds no covariance; a model with no
+  likelihood (``from_params``, ``how="MSE"``) and a penalised fit save
+  ``null``. No fitted number changes.
+- **Bootstrap refits with no finite maximum are always reported.** A
+  resample can leave the likelihood with no finite maximum: no failures,
+  fewer distinct failure times than parameters, or a covariate group with
+  no failures. Every bootstrap that refits resamples (``method="bootstrap"``
+  on the parametric models, the parametric regressions including
+  ``cb_tvc`` and distributional regression, a competing-risks cause's net
+  bounds, ``DegradationAnalysis`` and ``DestructiveDegradation``, and
+  ``Parametric.bootstrap``) now treats them one way: a refit that returns
+  with no finite maximum is kept at the estimate it reached, so that it
+  counts toward the end of the bounds it ran to (as before); a resample the
+  fit refuses because its likelihood has no maximum at all is left out (as
+  before, but no longer counted as an ordinary failure); and both are said
+  in one ``BootstrapRefitWarning`` (``surpyval.utils.no_maximum``), with
+  how many of how many, what was done with them and what to do, whenever
+  there is at least one. Before, they were said only above 2% of the
+  refits, the degradation bootstraps did not count them at all, and
+  ``DestructiveDegradation.cb`` repeated each refit's own warning (30
+  warnings for 30 refits of noise-free readings; now one). The counts are
+  on the warning (``no_maximum``, ``no_estimate``, ``unverified``,
+  ``failed``, ``n_boot``) and on ``Parametric.bootstrap()``'s result
+  (``no_estimate``, new, beside ``no_maximum`` and ``failed``). The
+  fit's refusals of such data raise ``NoFiniteMaximumError``, a
+  ``ValueError``. The bounds themselves do not change: on 13 checks
+  across every path (normal data and data with such refits) they are
+  identical to the bit. Example: a Weibull fitted to 3 failures among 10
+  units, ``cb([2, 5], method="bootstrap", n_boot=200, random_state=1)``,
+  gives the same bounds as before ([0.6917, 0.9934] at 2) and now says
+  that 26 of the 200 resamples had fewer than two distinct failure times
+  and were left out. The goodness-of-fit reports (univariate and
+  competing-risks incidence) add a note with the count of their refits
+  with no finite maximum.
 
 - The renewal models' simulations (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
@@ -1083,6 +1246,46 @@ Unreleased
   penalty itself is unchanged: a ridge on the covariates only, scaled by
   each covariate's variance.
 
+**Removed.**
+
+- The hints for names removed in v0.23 and v0.24 are retired. Using one of
+  these names now raises Python's plain ``AttributeError``, ``TypeError``
+  or ``ImportError`` (or, for a parameter name, the usual "Unknown
+  parameter" ``ValueError``), without the message that named the release
+  and the replacement. The names, with what replaced them:
+
+  - model and fitter attributes: ``param_names`` (``parameter_names``),
+    ``cov_matrix`` and ``cov`` (``covariance()``), ``se``
+    (``standard_errors()``), ``loglike`` (``neg_ll()``), ``loglik``
+    (``log_likelihood``), ``loglik_no_frailty``
+    (``log_likelihood_no_frailty``), and ``MixtureModel``'s ``EM``,
+    ``Q``, ``expectation``, ``maximisation``, ``likelihood`` and
+    ``initialise_params`` (internal to ``fit()``);
+  - top-level names: ``DualExponential``, ``DualPower``, ``Eyring``,
+    ``InverseExponential``, ``InverseEyring``, ``InversePower``,
+    ``LifeModel``, ``Linear``, ``Power``, ``PowerExponential`` and
+    ``ExponentialLifeModel`` (all in ``surpyval.life_models``), and
+    ``NUM``, ``TINIEST`` and ``EPS`` (use numpy);
+  - the module ``surpyval.utils.score``
+    (``surpyval.metrics.concordance_index``);
+  - arguments: ``cs(X=)`` (``given``), ``ARI.fit(dist=)``,
+    ``ARI.fit_from_recurrent_data(dist=)`` and
+    ``ARI.fit_from_parameters(dist=, dist_params=)`` (``baseline``,
+    ``baseline_params``), ``CustomDistribution(param_names=)``
+    (``parameter_names``), ``from_params(p=)`` (``lfp_p``),
+    ``success_run(confidence=, alpha=)`` (``alpha_ci``), and a
+    regression or competing-risks ``fit_from_df`` given ``x=``, ``c=``
+    or another ``fit`` argument's name for a column (``x_col``, ...);
+  - ``neg_ll(beta)`` on the semi-parametric models (``neg_ll_of(beta)``);
+    ``neg_ll`` now takes no arguments;
+  - the parameter names ``p`` (``lfp_p``) and ``beta_j`` (the covariate's
+    column, else ``coef_j``) in ``fixed`` and ``param_cb``.
+
+  The hints for names removed in v0.25 and v0.26 stay. A
+  ``fit_from_df`` that passes other keywords on to ``fit`` (the
+  univariate, recurrent and Fine-Gray ones) still refuses a column given
+  by the ``fit`` argument's name and names the ``_col`` argument.
+
 **Changed.**
 
 - Penalised Cox on start-stop data counts subjects, not rows:
@@ -1123,6 +1326,106 @@ Unreleased
 
 **Fixed.**
 
+- ``fit_from_ecdf`` on every parametric family refuses a curve that falls
+  as ``x`` rises, with a ``ValueError``: "F must rise with x; if you have a
+  survival curve R, pass F = 1 - R", and where it falls. A survival curve
+  passed in place of the CDF (``NonParametric.fit_from_ecdf`` takes
+  ``R``) was fitted without a word: ``Weibull.fit_from_ecdf([1, 2, 3, 4],
+  [0.9, 0.7, 0.4, 0.1])`` gave alpha 1.754 and a negative beta, -2.045.
+  The points may still come in any order (they are checked in order of
+  ``x``), flat steps are accepted, and a curve that rises is fitted
+  exactly as before. Values outside [0, 1] were already refused.
+- Standard errors and bounds of the repairable-system models no longer
+  move with the unit of time. The covariance of every Poisson-process fit
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), of the renewal models
+  (``GeneralizedOneRenewal``, ``GeneralizedRenewal``, ``ARA``, ``ARI``),
+  of the proportional-intensity regressions and of the cause-specific
+  models built on them comes from a finite-difference Hessian of the
+  likelihood, whose step was a fraction of each parameter's own size with
+  a floor of 0.01 of a unit. A parameter that is tiny in small units was
+  then stepped by far too much: Duane's scale ``b`` is 3e-4 with times in
+  hours where it is 0.2 in months, and Cox-Lewis's slope 3e-5. On one data
+  set written in months and in hours, the standard error of Duane's
+  ``alpha`` was 0.37272 and 0.37159 (now 0.372722 and 0.372722), a
+  ``cb_tvc`` bound 0.09521 and 0.09558 (now 0.09521 and 0.09521), and the
+  standard error of Cox-Lewis's slope, times the unit, 0.0202494 and
+  0.0202419 (now 0.0202494 and 0.0202493); in seconds it was 1.6e-82
+  (now 0.0202493). The steps now come from the likelihood itself
+  (``surpyval.utils.linalg.scale_free_hessian``): each parameter is
+  stepped by a fixed fraction of the distance over which the likelihood
+  falls, the differences are taken in coordinates in which the Hessian is
+  the identity (so strongly correlated parameters lose nothing to
+  cancellation), and two step sizes more are combined to cancel the
+  leading errors. Against the exact Hessian of a power-law process the
+  standard errors agree to 1e-8 from years to seconds.
+
+  The Wald bounds on the curves (``cif_cb``, ``iif_cb``, ``mtbf_cb``,
+  ``cb_tvc`` and the cause-specific ones) take the curve's gradient by
+  finite differences too, with the same floor; their steps are now a
+  fraction of each parameter's standard error (``delta_method_se(...,
+  scale_free=True)``), which moves with the unit. For Cox-Lewis in
+  seconds (a slope of 9e-9 against a step of 6e-8) a ``cif_cb`` taken at
+  the estimates the fit in months implies was ``[2.3e-36, 8.7e36]`` where
+  it should be ``[2.32363, 8.58449]``; it is now ``[2.32363, 8.58449]``.
+  Every bound of these models now rescales with the unit exactly (to
+  1e-6, the test's tolerance, at the same estimates). The estimates and
+  the likelihood were unit-free already and are unchanged; the shared
+  ``numerical_hessian``, ``delta_method_se``'s default and every other
+  family's covariance and bounds are unchanged.
+
+  **Numbers that move** (the conformance fixtures, in their own units;
+  nothing else in the refactor snapshot changes): every standard error,
+  ``summary()`` interval, ``param_cb``, saved covariance and Wald bound of
+  the models below, by at most the relative amount shown (leaving out
+  covariances that are zero to rounding, such as -4.7e-8 now 1.5e-10).
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 34 14 52
+
+     * - Model
+       - At most
+       - For example (before, after)
+     * - ``HPP``
+       - 1.9e-8
+       - se of the rate: 0.0200308401, 0.0200308404
+     * - ``CrowAMSAA``
+       - 3.7e-8
+       - a ``cif_cb`` lower bound: 0.0295659296, 0.0295659307
+     * - ``Duane``
+       - 1.2e-7
+       - se of ``alpha``: 0.2152070692, 0.2152070859; upper bound of
+         ``b``: 1.1050234, 1.1050236
+     * - ``CoxLewis``
+       - 8.6e-8
+       - upper bound of ``beta``: 0.00633419161, 0.00633419215
+     * - ``GeneralizedOneRenewal``
+       - 2.9e-7
+       - se of ``alpha``: 0.8820289, 0.8820292
+     * - ``GeneralizedRenewal``, ``ARA``
+       - 6.2e-8
+       - se of ``alpha``: 1.8676783, 1.8676784
+     * - ``ARI``
+       - 2.9e-7
+       - se of ``beta``: 0.12108621, 0.12108624
+     * - ``ProportionalIntensityHPP``
+       - 1.5e-6
+       - upper bound of the coefficient: 0.8899106, 0.8899119
+     * - ``ProportionalIntensityNHPP``
+       - 7.2e-7
+       - upper bound of the coefficient: 0.8899107, 0.8899114
+     * - ``CauseSpecificNHPP``
+       - 1.8e-7
+       - a saved covariance entry: 1.8846813, 1.8846816
+     * - ``CauseSpecificProportionalIntensity``
+       - 9.4e-4
+       - one cause's coefficient variance: 1.2010818, 1.2000000 (its
+         exact value is 1/1 + 1/5 = 1.2, the variance of a log rate
+         ratio of 1 and 5 events); its ``cif_cb`` upper bound 0.81464,
+         0.81453; its coefficient's interval -2.14800 to 2.14800, now
+         -2.14703 to 2.14703
+
+  A covariance costs about three times the likelihood evaluations it did.
 - Bayesian fits keep their digits in both tails, for every engine (grid,
   Laplace, draws from another sampler) and the offset, limited-failure and
   zero-inflated forms. ``ff`` is the posterior average of each point's own
@@ -1162,9 +1465,18 @@ Unreleased
   never save and restore the shared list. In one thread nothing changes:
   the same warnings are held back and the same are given (the results and
   warnings of every model in the conformance suite are the same to the
-  last bit). Six places that collect an inner step's warnings to read or
-  repeat them (``fit_best`` among them) still use the shared filters
-  while they run.
+  last bit). The six places that collect an inner step's warnings to
+  read or repeat them, or raise one, now do so in their own thread only
+  too (``collecting_warnings`` and ``raising_warnings`` in the same
+  module): ``fit_best``, the renewal fits' check for a life with no
+  finite maximum, the Cox frailty fit's Cox fit, the mean residual
+  life's integral, ``diagnose()``'s Cramer-von Mises test of a
+  repairable-system model, and the unknown-level check of a formula
+  naming its levels. Before, while one of them ran, every warning raised
+  in another thread went into its list and was lost to that thread (a
+  test counted 29,356 such warnings during one ``fit_best``), and a
+  formula's check made other threads' ``DataMismatchWarning`` errors.
+  The package no longer changes the shared warning filters anywhere.
 - An exponential fitted with a Gamma prior on a rate per hour
   (``Exponential.fit_bayes(x, priors={"failure_rate":
   Gamma.from_params([40, 1e9])})``, 40 failures in a billion unit-hours,

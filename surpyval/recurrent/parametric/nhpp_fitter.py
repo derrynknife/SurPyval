@@ -15,6 +15,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -324,6 +325,7 @@ class NHPPFitter(IntensityModel):
         model._n_obs = bic_sample_size(data)
         return model
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_event_history_data
     def fit(

@@ -1317,7 +1317,10 @@ def incidence_bootstrap(
         REFIT_ERRORS,
         check_n_boot,
     )
-    from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.no_maximum import (
+        NoFiniteMaximumError,
+        quiet_maximum_warnings,
+    )
     from surpyval.utils.rng import as_generator
 
     uni = _univariate()
@@ -1361,7 +1364,7 @@ def incidence_bootstrap(
             ]
         refit_entry = {"tl": design.tl}
     draws = []
-    failed = 0
+    failed = no_estimate = no_maximum = 0
     for _ in range(n_boot):
         with np.errstate(all="ignore"):
             latent = np.column_stack(
@@ -1404,9 +1407,17 @@ def incidence_bootstrap(
                 gaps = incidence_distance(
                     refit, x, e, censored.astype(int), **refit_entry
                 )
+        except NoFiniteMaximumError:
+            failed += 1
+            no_estimate += 1
+            continue
         except REFIT_ERRORS:
             failed += 1
             continue
+        no_maximum += any(
+            getattr(f, "maximum", None) == "no finite maximum"
+            for f in fits.values()
+        )
         draws.append([gaps[j]["D"] for j in range(len(causes))])
     values = np.array(draws, dtype=float).reshape(len(draws), len(causes))
     p = {}
@@ -1422,6 +1433,8 @@ def incidence_bootstrap(
         "p": p,
         "draws": values,
         "failed": failed,
+        "no_estimate": no_estimate,
+        "no_maximum": no_maximum,
         "n_boot": n_boot,
     }
 
@@ -1528,6 +1541,9 @@ _INCIDENCE_TEST = "sup |CIF - Aalen-Johansen| (parametric bootstrap)"
 
 def _incidence_rows(ctx: Context) -> list[dict]:
     boot = _incidence(ctx)
+    note = None if boot is None else _univariate().no_maximum_note(boot)
+    if note and note not in ctx.notes:
+        ctx.notes.append(note)
     rows = []
     for cause in ctx.model.causes:
         row = {

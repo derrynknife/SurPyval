@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from types import FrameType
 
 import surpyval
+from surpyval.utils.warnings import _showwarnmsg
 
 PACKAGE = os.path.dirname(os.path.abspath(surpyval.__file__)) + os.sep
 TESTS = os.path.join(PACKAGE, "tests") + os.sep
@@ -63,6 +64,12 @@ _SKIP = {
     os.path.abspath(contextlib.__file__),
     os.path.abspath(__file__),
 }
+# ... and the package's own hook in front of ``warnings._showwarnmsg``
+# (it hands a warning to a thread's ``collecting_warnings`` block, and
+# every other one on): a frame of the machinery, not where a warning
+# came from. Skipped by its code, as the rest of its module raises
+# deliberate warnings.
+_SKIP_CODE = {_showwarnmsg.__code__}
 
 
 @dataclass(frozen=True)
@@ -111,7 +118,7 @@ def _inspect(message, category) -> tuple[str | None, Leak | None]:
     inner: FrameType | None = None
     while frame is not None:
         name = os.path.abspath(frame.f_code.co_filename)
-        if name in _SKIP:
+        if name in _SKIP or frame.f_code in _SKIP_CODE:
             frame = frame.f_back
             continue
         if inner is None:

@@ -22,10 +22,29 @@ from __future__ import annotations
 from typing import Any
 
 import autograd.numpy as np
+from autograd.scipy.special import erfc as _erfc
+from autograd.scipy.special import erfcinv as _erfcinv
+from autograd.scipy.special import expit as _expit
+
+_SQRT2 = 2.0**0.5
+
+
+def _ndtr(x: Any) -> Any:
+    """The standard normal distribution function."""
+    return 0.5 * _erfc(-x / _SQRT2)
+
+
+def _ndtri(p: Any) -> Any:
+    """The standard normal quantile function."""
+    return -_SQRT2 * _erfcinv(2.0 * p)
+
 
 #: The links by name, each with the parameter ranges it maps onto the
 #: whole line (its inverse stays inside them).
-LINKS = ("identity", "log")
+LINKS = ("identity", "log", "logit", "probit", "cloglog")
+
+#: The links of a probability, a parameter in (0, 1).
+PROBABILITY_LINKS = ("logit", "probit", "cloglog")
 
 #: The parameters whose increase makes every quantile of the life later
 #: (``"longer"``) or earlier (``"shorter"``), by distribution. A
@@ -72,6 +91,8 @@ def default_link(bounds: tuple) -> str:
         return "identity"
     if lower == 0 and upper is None:
         return "log"
+    if lower == 0 and upper == 1:
+        return "logit"
     raise ValueError(
         "A parameter with bounds {} has no link in a distributional "
         "regression.".format(bounds)
@@ -83,8 +104,11 @@ def allowed_links(bounds: tuple) -> tuple[str, ...]:
     for a parameter on the whole line (log keeps it positive), only log
     for a positive one (an identity link could take it below 0, where
     the likelihood is not defined)."""
-    if default_link(bounds) == "identity":
+    default = default_link(bounds)
+    if default == "identity":
         return ("identity", "log")
+    if default == "logit":
+        return PROBABILITY_LINKS
     return ("log",)
 
 
@@ -93,6 +117,14 @@ def link(name: str, value: Any) -> Any:
     if name == "log":
         with np.errstate(divide="ignore"):
             return np.log(value)
+    if name == "logit":
+        with np.errstate(divide="ignore"):
+            return np.log(value) - np.log1p(-value)
+    if name == "probit":
+        return _ndtri(value)
+    if name == "cloglog":
+        with np.errstate(divide="ignore"):
+            return np.log(-np.log1p(-value))
     return value
 
 
@@ -101,6 +133,13 @@ def inverse(name: str, eta: Any) -> Any:
     if name == "log":
         with np.errstate(over="ignore"):
             return np.exp(eta)
+    if name == "logit":
+        return _expit(eta)
+    if name == "probit":
+        return _ndtr(eta)
+    if name == "cloglog":
+        with np.errstate(over="ignore"):
+            return -np.expm1(-np.exp(eta))
     return eta
 
 
@@ -112,4 +151,6 @@ def move(name: str, value: Any, shift: Any) -> Any:
         # to inf, the limit, without numpy's raw warning (principle 22).
         with np.errstate(over="ignore", invalid="ignore"):
             return value * np.exp(shift)
+    if name in PROBABILITY_LINKS:
+        return inverse(name, link(name, value) + shift)
     return value + shift

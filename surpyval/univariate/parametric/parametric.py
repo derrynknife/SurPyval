@@ -33,6 +33,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import (
     bound_signs,
     cb_link,
@@ -47,10 +48,6 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     restored_maximum,
 )
 from surpyval.utils.record_predict import PredictsRecordsMixin
-from surpyval.utils.removed_names import (
-    removed_arguments,
-    removed_parameter_note,
-)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -1841,7 +1838,6 @@ class Parametric(
             valid.append("f0")
         raise ValueError(
             f"Unknown parameter {name!r}; expected one of {valid}"
-            + removed_parameter_note(name, valid)
         )
 
     def _ensure_surv_data(self) -> None:
@@ -2386,7 +2382,6 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -2480,6 +2475,13 @@ class Parametric(
         cs = np.where(cs > 1.0, 1.0, cs)
         return cs[()]
 
+    @positional_option(
+        "a",
+        "the lower truncation bound of the draws",
+        "the seed 'random_state' of random(size, random_state) on the other "
+        "models",
+        "a=..., or random_state=... for a seed",
+    )
     def random(
         self,
         size: int | tuple[int, ...],
@@ -2637,6 +2639,13 @@ class Parametric(
             q = self.qf(F_a + (1.0 - u) * (F_b - F_a))
         return np.reshape(np.asarray(q, dtype=float), np.shape(u))
 
+    @positional_option(
+        "a",
+        "the lower truncation bound of the draws",
+        "the seed 'random_state' of random(size, random_state) on the other "
+        "models",
+        "a=..., or random_state=... for a seed",
+    )
     def random_data(
         self,
         size: int,
@@ -2689,7 +2698,7 @@ class Parametric(
         (array([0, 0, 0, 1]), array([1, 1, 1, 5]))
         """
         x = np.ravel(
-            self.random(size, a, b, random_state=random_state)
+            self.random(size, a=a, b=b, random_state=random_state)
         ).astype(float)
         finite = np.isfinite(x)
         f = x[finite]
@@ -2709,6 +2718,13 @@ class Parametric(
             return float(np.max(f)) + 1.0
         return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
+    @positional_option(
+        "defective",
+        "whether the mean counts only the units that fail",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean(tau)",
+        "defective=..., or tau=... for a restricted mean",
+    )
     def mean(self, defective: bool = False, tau: float | None = None) -> float:
         r"""
         The mean of the distribution using the parameters found in the
@@ -3224,6 +3240,13 @@ class Parametric(
         self._warn_offset_wald("quantile_cb")
         return self._quantile_cb_wald(probs, alpha_ci, bound)
 
+    @positional_option(
+        "alpha_ci",
+        "the significance level of the bounds",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean_cb(tau, alpha_ci)",
+        "alpha_ci=...",
+    )
     def mean_cb(
         self,
         alpha_ci: float = 0.05,

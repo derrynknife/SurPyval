@@ -59,7 +59,6 @@ from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -979,7 +978,6 @@ class AdditiveHazards_(FitterRepr):
         model._fit_data = (x, c, n, Z)
         return model
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,

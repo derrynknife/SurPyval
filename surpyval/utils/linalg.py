@@ -157,6 +157,144 @@ def numerical_hessian(
     return H
 
 
+def _curvature_steps(
+    func: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+    f0: float,
+    scale: float,
+) -> "npt.NDArray | None":
+    """For each parameter, the step ``h`` at which ``func`` rises by
+    ``scale**2 / 2`` on average over ``x + h`` and ``x - h``: ``scale``
+    standard deviations of a likelihood that is quadratic there. Found
+    from the function alone (a search over ``h`` by factors of 4, then
+    the step its second difference implies), so it does not depend on the
+    units of the parameter. ``None`` where a parameter has no such step
+    (``func`` does not rise on both sides: a boundary, a flat
+    direction)."""
+    target = scale**2
+    steps = (np.finfo(float).eps ** 0.25) * np.maximum(np.abs(x), 1e-2)
+
+    def rise(i: int, h: float) -> float:
+        e = np.zeros(x.size)
+        e[i] = h
+        with np.errstate(all="ignore"):
+            out = func(x + e) + func(x - e) - 2.0 * f0
+        return float(out) if np.isfinite(out) else np.inf
+
+    for i in range(x.size):
+        h = float(steps[i])
+        delta = rise(i, h)
+        for _ in range(200):
+            if delta > 4.0 * target:
+                h /= 4.0
+            elif delta < target / 4.0:
+                h *= 4.0
+            else:
+                break
+            delta = rise(i, h)
+        else:
+            return None
+        for _ in range(2):
+            if not 0.0 < delta < np.inf:
+                return None
+            h *= np.sqrt(target / delta)
+            delta = rise(i, h)
+        steps[i] = h
+    return steps
+
+
+def scale_free_hessian(
+    func: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+    scale: float = 1e-3,
+) -> npt.NDArray:
+    """
+    Finite-difference Hessian of a negative log-likelihood ``func`` at
+    its minimum ``x`` that does not depend on the units of the
+    parameters.
+
+    :func:`numerical_hessian` steps each parameter by a fraction of its
+    own size (with a floor), so the points it evaluates, and with them
+    its error, change when a parameter is rescaled: a scale of ``3e-4``
+    (a time in hours where the fit in months had ``0.2``) is stepped by
+    0.4% of itself, not 0.01%, and the standard errors move by a few
+    parts in a thousand. Here the steps come from ``func`` itself:
+
+    1. each parameter's step is the one at which ``func`` rises by
+       ``scale**2 / 2`` (``scale`` standard deviations, were the others
+       held), which gives a first Hessian ``H0``;
+    2. ``func`` is then differenced in the coordinates ``z`` with ``x +
+       L z``, ``L L' = inv(H0)``, in which its Hessian is the identity,
+       with the step ``scale`` in every direction: the same points
+       whatever linear map of the parameters the model is written in,
+       and no loss to cancellation between strongly correlated
+       parameters (a power law's exponent and scale);
+    3. at ``scale``, ``2 scale`` and ``4 scale``, combined to cancel the
+       two leading terms of a central difference's error (Richardson
+       extrapolation: ``(64 H1 - 20 H2 + H4) / 45``).
+
+    The result is mapped back to the parameters of ``x``. Where step 1
+    or 2 cannot be done -- ``func`` does not rise on both sides of
+    ``x``, or ``H0`` is not positive definite: a parameter on a
+    boundary, a likelihood with no maximum there -- the plain
+    :func:`numerical_hessian` is returned, so such a fit is reported as
+    it was.
+
+    Against the closed-form Hessian of a power-law process's likelihood,
+    the standard errors agree to 1e-8 with times in units from years to
+    seconds, where the plain rule is 4e-3 off in hours and fails in
+    seconds. It costs about three times the evaluations of the plain
+    rule, plus a few per parameter.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.linalg import scale_free_hessian
+    >>> def f(v):
+    ...     return v[0] ** 2 + 3 * v[0] * v[1] + 5 * v[1] ** 2
+    >>> scale_free_hessian(f, np.array([0.0, 0.0])).round(6)
+    array([[ 2.,  3.],
+           [ 3., 10.]])
+    >>> # the same function of a parameter in other units: v[1] = 1e6 w
+    >>> def g(w):
+    ...     return f(np.array([w[0], 1e6 * w[1]]))
+    >>> (scale_free_hessian(g, np.array([0.0, 0.0])) / [[1, 1e6], [1e6, 1e12]]).round(6)
+    array([[ 2.,  3.],
+           [ 3., 10.]])
+    """  # noqa: E501
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    with np.errstate(all="ignore"):
+        f0 = func(x)
+    steps = _curvature_steps(func, x, f0, scale) if np.isfinite(f0) else None
+    if steps is None:
+        return numerical_hessian(func, x)
+    with np.errstate(all="ignore"):
+        first = numerical_hessian(func, x, steps)
+    if not np.all(np.isfinite(first)):
+        return numerical_hessian(func, x)
+    try:
+        root = np.linalg.cholesky(np.linalg.inv(first))
+    except np.linalg.LinAlgError:
+        return numerical_hessian(func, x)
+
+    def whitened(z: npt.NDArray) -> float:
+        return func(x + root @ z)
+
+    origin = np.zeros(n)
+    with np.errstate(all="ignore"):
+        one, two, four = (
+            numerical_hessian(whitened, origin, np.full(n, m * scale))
+            for m in (1.0, 2.0, 4.0)
+        )
+    in_z = (64.0 * one - 20.0 * two + four) / 45.0
+    if not np.all(np.isfinite(in_z)):
+        return first
+    back = np.linalg.inv(root)
+    out = back.T @ in_z @ back
+    return (out + out.T) / 2.0
+
+
 def numerical_gradient(
     func: Callable[[npt.NDArray], float],
     x: npt.NDArray,
@@ -191,6 +329,7 @@ def delta_method_se(
     func: Callable[[npt.NDArray], Any],
     mle: npt.NDArray,
     cov: npt.NDArray,
+    scale_free: bool = False,
 ) -> npt.NDArray:
     """
     Standard errors of the (possibly vector-valued) function ``func`` of
@@ -202,10 +341,23 @@ def delta_method_se(
     an accelerated life model's constant ``c`` of 6e-9 against a step of
     6e-8 gave a ``nan`` bound, #617) the difference is taken again in a
     step relative to the parameter alone.
+
+    With ``scale_free=True`` the step is ``eps**(1/3)`` of the
+    parameter's own standard error (``sqrt(cov[i, i])``) instead, where
+    that is positive and finite: rescaling or shifting a parameter then
+    moves its step with it, so the result does not depend on the units
+    the model is written in. The floor of the default rule is a fixed
+    amount of a parameter, far too long a step for a slope of ``1e-8``
+    per second.
     """
     h = np.finfo(float).eps ** (1.0 / 3.0)
     mle = np.asarray(mle, dtype=float)
     step = h * np.maximum(np.abs(mle), 1e-2)
+    if scale_free:
+        with np.errstate(invalid="ignore"):
+            sd = np.sqrt(np.diag(np.asarray(cov, dtype=float)))
+        usable = np.isfinite(sd) & (sd > 0)
+        step = np.where(usable, h * np.where(usable, sd, 1.0), step)
     at = None
     cols = []
     for i in range(mle.size):
