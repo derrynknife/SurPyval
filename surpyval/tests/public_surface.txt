@@ -138,6 +138,8 @@ surpyval.Parametric
 surpyval.ParametricCompetingRisks
 surpyval.ParametricCompetingRisksRegression
 surpyval.ParametricDistribution
+surpyval.ParametricMultiState
+surpyval.ParametricMultiStateRegression
 surpyval.ParametricRegressionModel
 surpyval.PenaltyPath
 surpyval.Poisson
@@ -297,6 +299,8 @@ surpyval.ml.RandomSurvivalForest
 surpyval.ml.SurvivalTree
 surpyval.multistate.MultiState
 surpyval.multistate.MultiStateProportionalHazards
+surpyval.multistate.ParametricMultiState
+surpyval.multistate.ParametricMultiStateRegression
 surpyval.multistate.TransitionMatrix
 surpyval.multistate.from_stacked
 surpyval.multistate.to_stacked

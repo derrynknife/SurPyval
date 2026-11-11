@@ -43,6 +43,7 @@ EXPECTED_SOURCES = {
     "r_parametric_competing_regression",
     "r_recurrent_cox",
     "r_multistate",
+    "r_multistate_parametric",
     "r_mixture_cure",
     "r_adjusted_curves",
     "py_lifelines",

@@ -1494,6 +1494,13 @@ EXCLUDED: dict[str, str] = {
     "in Z and refits of it are biased (0.061 at worst over 40 refits of "
     "300): its own study, calibration/test_coverage_aalen.py, simulates "
     "from a true additive model",
+    **dict.fromkeys(
+        ("ParametricMultiState", "ParametricMultiStateRegression"),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters and of the occupation probabilities from simulated "
+        "Markov paths is tested in tests/multistate/test_parametric.py",
+    ),
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
     "calibration/test_coverage_joint.py, simulates fleets with markers and "

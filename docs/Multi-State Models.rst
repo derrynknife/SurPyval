@@ -231,6 +231,101 @@ Where few units are left at risk the predicted hazards of leaving a state
 can add up to more than 1 at one time, and the predicted probabilities can
 then leave [0, 1]; the model warns when a prediction reaches such a time.
 
+Parametric models: a distribution for each transition
+-----------------------------------------------------
+
+The Aalen-Johansen estimate and the Cox models make no assumption about
+the shape of each transition's hazard over time, and so they stop at the
+last observed time and move in steps. A *parametric* multi-state model
+instead gives each transition a distribution (a Weibull, say) on the
+time since the start, fitted to the spells that could have ended in it.
+Choose it when you need to
+
+- **extrapolate**: predict past the last observation (the share of
+  patients dead at 50 years, the share of pumps failed over a design
+  life longer than the trial), as far as the distributions can be
+  trusted there;
+- **draw smooth curves**, which do not jump at each observed event, or
+  summarise each transition in a few numbers (a shape and a scale);
+- work with **few events**, where a step estimate is ragged.
+
+The price is the assumption: each transition's hazard must follow its
+distribution. Compare the fit with the Aalen-Johansen estimate where the
+data are, as below, and with other distributions (``dist`` takes one for
+every transition or a dictionary with one for each).
+
+Each transition is fitted on its own: its events are the spells that
+ended in it; the spells in the same state that ended in another
+transition, or were censored, are censored; and a spell that began at
+``tl`` (an entry into the state, or a late entry into the study) is left
+truncated there. That is the maximum-likelihood fit of the whole model,
+because its likelihood is a product of one factor per transition.
+
+The probabilities then come from the *Kolmogorov forward equations*, which
+say how :math:`P(s, t)` changes as :math:`t` moves on:
+:math:`\partial P(s, t) / \partial t = P(s, t)\,Q(t)`, where
+:math:`Q(t)` holds the transition hazards. SurPyval solves them by
+chaining many short steps, each the exact answer for hazards that are
+nearly constant over it (the matrix exponential, with a fourth-order
+correction for hazards that change), on a grid that is refined until each
+row of :math:`P(s, t)` is accurate to about :math:`10^{-8}`. With
+exponential transitions (constant hazards) the answer is the matrix
+exponential :math:`\exp\{Q\,(t - s)\}` exactly.
+
+.. jupyter-execute::
+
+    from surpyval.multistate import ParametricMultiState
+
+    weibull = ParametricMultiState.fit_from_df(
+        spells, "x", "e", "state", tl_col="tl", i_col="id", transitions=tm
+    )
+    weibull
+
+The Weibull and Aalen-Johansen occupation probabilities agree where the
+data are, and the Weibull model goes on past the last observation
+(about 35 years):
+
+.. jupyter-execute::
+
+    times = [120, 240, 360]
+    for state in weibull.states:
+        print(
+            state,
+            weibull.occupancy(times, state).round(3),
+            model.occupancy(times, state).round(3),
+        )
+    print("death at 50 years:", weibull.occupancy(600, "death").round(3))
+
+Bounds come from the delta method over every transition's parameters
+(their covariance is block diagonal, since each transition is fitted on
+its own), on the log(-log) scale by default so that they stay in (0, 1):
+
+.. jupyter-execute::
+
+    weibull.cb([120, 240], "pcm")
+
+``ParametricMultiStateRegression`` puts a parametric regression on each
+transition (``WeibullPH`` by default; any of the proportional-hazards,
+accelerated-failure-time and other parametric regressions, one for every
+transition or one each), and predicts for given covariates:
+
+.. jupyter-execute::
+
+    from surpyval.multistate import ParametricMultiStateRegression
+
+    reg = ParametricMultiStateRegression.fit_from_df(
+        spells, "x", ["age70", "male"], "e", "state", tl_col="tl",
+        i_col="id", transitions=tm,
+    )
+    for z in ([0.5, 1.0], [-0.5, 0.0]):
+        print(z, reg.occupancy(120, z, "death").round(3),
+              reg.cb(120, z, "death").round(3))
+
+The models assume the hazards run on the time since the start (the clock
+goes forward: a Markov model). A model whose hazards run on the time in
+the current state (``clock="reset"``, semi-Markov) is refused: its
+probabilities are not the solution of the forward equations.
+
 How it was checked
 ------------------
 
@@ -248,12 +343,26 @@ Greenwood's variance. Simulated Markov models are recovered within their
 bounds. The script that produced R's numbers is
 ``scripts/reference/reference_r_multistate.R``.
 
+The parametric models were checked against R's ``flexsurv`` (fitting
+each transition with ``flexsurvreg`` and solving the forward equations
+with ``pmatrix.fs``), on the same data: the fits reach the same maximum,
+and with flexsurv's parameters the transition probabilities agree to
+about :math:`10^{-11}`. The forward equations were also checked against
+a closed form (Weibull hazards of different shapes, one infinite at 0),
+and with one transient state the occupation probabilities equal
+``ParametricCompetingRisks``' cumulative incidences. The delta-method
+standard errors match the spread of the probabilities over simulated
+parameters, and simulated Markov models are recovered within their
+bounds. The script is
+``scripts/reference/reference_r_multistate_parametric.R``.
+
 What is not here yet
 --------------------
 
-Parametric models of each transition, semi-Markov (clock-reset) models,
-and states seen only at inspection times (panel data) are not built. A
-fit refuses interval-censored changes of state.
+Semi-Markov (clock-reset) models and states seen only at inspection
+times (panel data) are not built. A fit refuses interval-censored changes
+of state. The parametric models have no expected length of stay in each
+state yet, nor likelihood-ratio or bootstrap bounds.
 
 References
 ----------
@@ -265,6 +374,10 @@ non-homogeneous Markov chains based on censored observations",
 Andersen, P. K. and Keiding, N. (2002), "Multi-state models for event
 history analysis", *Statistical Methods in Medical Research*, 11(2), 91-115.
 
+Blanes, S., Casas, F., Oteo, J. A. and Ros, J. (2009), "The Magnus
+expansion and some of its applications", *Physics Reports*, 470(5-6),
+151-238.
+
 Datta, S. and Satten, G. A. (2001), "Validity of the Aalen-Johansen
 estimators of stage occupation probabilities and Nelson-Aalen estimators of
 integrated transition hazards for non-Markov models", *Statistics &
@@ -274,6 +387,9 @@ de Wreede, L. C., Fiocco, M. and Putter, H. (2010), "The mstate package for
 estimation and prediction in non- and semi-parametric multi-state and
 competing risks models", *Computer Methods and Programs in Biomedicine*,
 99(3), 261-274.
+
+Jackson, C. H. (2016), "flexsurv: a platform for parametric survival
+modeling in R", *Journal of Statistical Software*, 70(8), 1-33.
 
 Kyle, R. A., Therneau, T. M., Rajkumar, S. V., et al. (2002), "A long-term
 study of prognosis in monoclonal gammopathy of undetermined
@@ -287,8 +403,9 @@ API
 ---
 
 Import these from ``surpyval.multistate`` (``MultiState``,
-``MultiStateProportionalHazards`` and ``TransitionMatrix`` are also at the
-top level, ``surpyval.MultiState`` and so on).
+``MultiStateProportionalHazards``, ``ParametricMultiState``,
+``ParametricMultiStateRegression`` and ``TransitionMatrix`` are also at
+the top level, ``surpyval.MultiState`` and so on).
 
 .. autoclass:: surpyval.multistate.TransitionMatrix
    :members:
@@ -297,6 +414,12 @@ top level, ``surpyval.MultiState`` and so on).
    :members:
 
 .. autoclass:: surpyval.multistate.MultiStateProportionalHazards
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricMultiState
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricMultiStateRegression
    :members:
 
 .. autofunction:: surpyval.multistate.to_stacked
