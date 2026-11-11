@@ -114,6 +114,21 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "surpyval.utils",
             "_caller_stacklevel",
         ),
+        (
+            "surpyval.univariate.competing_risks.regression.parametric_competing_risks_regression",  # noqa: E501
+            "surpyval.univariate.competing_risks.parametric.parametric_competing_risks",  # noqa: E501
+            "_central_differences",
+        ),
+        (
+            "surpyval.univariate.competing_risks.regression.parametric_competing_risks_regression",  # noqa: E501
+            "surpyval.univariate.competing_risks.parametric.parametric_competing_risks",  # noqa: E501
+            "_checked_sd",
+        ),
+        (
+            "surpyval.univariate.competing_risks.regression.parametric_competing_risks_regression",  # noqa: E501
+            "surpyval.univariate.competing_risks.parametric.parametric_competing_risks",  # noqa: E501
+            "_ic_terms",
+        ),
     }
 )
 
