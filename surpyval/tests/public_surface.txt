@@ -84,6 +84,7 @@ surpyval.ItemLifetime
 surpyval.JointModel
 surpyval.JointPH
 surpyval.KaplanMeier
+surpyval.LifeAtCovariates
 surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
