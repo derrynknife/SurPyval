@@ -91,7 +91,6 @@ from surpyval.univariate.regression.regression_data import (
 from surpyval.utils import finite_covariate_mask, is_missing_event
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -1219,7 +1218,6 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         return out
 
     @classmethod
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         cls,
