@@ -64,4 +64,6 @@ Rscript scripts/reference/reference_r_royston_parmar_given.R
 Rscript scripts/reference/reference_r_parametric_competing_risks.R
 # Prints the values test_parametric_competing_risks_interval.py holds
 Rscript scripts/reference/reference_r_parametric_competing_risks_interval.R
+# The semi-parametric recurrent-event regressions (bladder2)
+Rscript scripts/reference/reference_r_recurrent_cox.R
 "${1:-python}" scripts/reference/reference_python.py

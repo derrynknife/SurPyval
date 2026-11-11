@@ -5,6 +5,41 @@ Unreleased
 
 **Added.**
 
+- Regression for repeat events without a baseline shape: ``AndersenGill``,
+  ``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld``
+  (``surpyval.recurrent``, and at the top level), the semi-parametric
+  relatives of the proportional-intensity models. Andersen-Gill has one
+  unspecified baseline intensity for every event (the coefficient is a log
+  rate ratio); Prentice-Williams-Peterson has a baseline per event number
+  and puts an item at risk of its ``k``-th event only after its
+  ``(k - 1)``-th, on the item's age (``time_scale="total"``, the default)
+  or on the time since its last event (``time_scale="gap"``);
+  Wei-Lin-Weissfeld models the time from the start to each event number
+  marginally. Each is the Cox partial likelihood on its own layout of the
+  rows, fitted by ``CoxPH`` (its tie handling, aliasing and check of the
+  maximum; no second likelihood), and each reports the **robust (sandwich)
+  covariance with every item a cluster** as ``covariance()`` and
+  ``standard_errors()``, with the model-based one as
+  ``naive_covariance()`` and both in ``summary()``. Fits: ``fit(x, Z, i,
+  c)`` and ``fit_from_df`` from an event log, where the covariates on a
+  row are those in force up to its time; ``fit_tvc(i, xl, xr, c, Z)`` and
+  ``fit_tvc_from_df`` from start-stop rows (delayed entry, gaps,
+  covariates that change between events) for the first two;
+  ``max_events`` models an item's first few events only. The model, a
+  ``RecurrentCoxModel``, gives ``cif(x, Z)`` (for Andersen-Gill the
+  expected number of events; with ``stratum`` the cumulative hazard of
+  that event number), ``sf`` for the gap-time and marginal models,
+  ``plot``, ``diagnose`` (the Cox fit's), ``neg_ll`` / ``aic`` / ``bic``,
+  and ``to_dict`` / ``from_dict``; ``cox`` is the underlying Cox model.
+  Coefficients, both covariances, the likelihood and the cumulative
+  baseline equal R's ``coxph(... + cluster(id))`` on the bladder data in
+  the matching layouts (``bladder2`` for Andersen-Gill and both
+  Prentice-Williams-Peterson forms, ``bladder`` for Wei-Lin-Weissfeld).
+  Not offered, each a refusal that says what to use: robust bounds on the
+  curve (``cif_cb``), simulation, weights, penalised fits, and counted or
+  left-censored rows. See :doc:`Recurrent Event Regression Analysis` (what
+  each model assumes about a repeat event, in words) and
+  :doc:`Recurrent Event Regression Modelling with SurPyval`.
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every

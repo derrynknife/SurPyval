@@ -759,6 +759,22 @@ def _recurrent_tvc_path(fitter, marks=False):
     return run
 
 
+def _recurrent_cox_tvc_path(fitter, **kw):
+    """The fixture's rows as start-stop rows, each from the item's
+    previous row (0 for its first), fitted by ``fit_tvc``."""
+
+    def run(d):
+        x, i = np.asarray(d["x"], dtype=float), np.asarray(d["i"])
+        xl = np.zeros_like(x)
+        for item in np.unique(i):
+            rows = np.flatnonzero(i == item)
+            rows = rows[np.argsort(x[rows], kind="stable")]
+            xl[rows[1:]] = x[rows[:-1]]
+        return fitter.fit_tvc(i, xl, x, d["c"], d["Z"], **kw)
+
+    return run
+
+
 def _counting_draw(m, s):
     return m.count_terminated_simulation(3, items=2, random_state=s)
 
@@ -844,6 +860,53 @@ def _recurrent():
                     3, items=2, random_state=s, Z=[0.5]
                 ),
                 explicit_seed=True,
+            )
+        )
+    # The semi-parametric recurrent-event regressions: Cox fits of a
+    # layout of each item's rows, with a robust covariance by item.
+    recurrent_cox = (
+        ("AndersenGill", "AndersenGill", {}, {}),
+        ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}, {}),
+        (
+            "PrenticeWilliamsPeterson[gap]",
+            "PrenticeWilliamsPeterson",
+            {"time_scale": "gap"},
+            {},
+        ),
+        ("WeiLinWeissfeld", "WeiLinWeissfeld", {}, {}),
+    )
+    for label, name, kw, _ in recurrent_cox:
+        fitter = getattr(rc, name)
+        stratified = name != "AndersenGill"
+        paths = {}
+        if name != "WeiLinWeissfeld":
+            # fit_tvc with the item's covariates on every row is fit
+            paths["fit_tvc"] = _recurrent_cox_tvc_path(fitter, **kw)
+        out.append(
+            Case(
+                name=label,
+                fitters=(
+                    (f"surpyval.recurrent.{name}",) if "[" not in label else ()
+                ),
+                model_class=(
+                    "surpyval.recurrent.regression.recurrent_cox"
+                    ".RecurrentCoxModel"
+                ),
+                interface=COUNTING_REGRESSION,
+                data=functools.partial(recurrent_data, True),
+                fit=_fit(fitter, **kw),
+                functions=("cif",),
+                call_kwargs={"stratum": 2} if stratified else {},
+                x=X_REC,
+                Z=Z_REC,
+                paths=paths,
+                rows=("x", "Z", "i", "c", "n"),
+                covariates="Z",
+                drops_missing_covariate=False,
+                coefficients=lambda m: m.params,
+                # The unspecified baseline absorbs a constant.
+                intercept=True,
+                rtol=1e-6,
             )
         )
     renewals = (
@@ -1491,6 +1554,17 @@ def _df_paths():
     paths["ARI"] = _col_df(rc.ARI, m=1)
     paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    for label, name, kw in (
+        ("AndersenGill", "AndersenGill", {}),
+        ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}),
+        (
+            "PrenticeWilliamsPeterson[gap]",
+            "PrenticeWilliamsPeterson",
+            {"time_scale": "gap"},
+        ),
+        ("WeiLinWeissfeld", "WeiLinWeissfeld", {}),
+    ):
+        paths[label] = _col_df(getattr(rc, name), ("x", "i", "c", "n"), **kw)
     paths["CauseSpecificProportionalIntensity"] = _col_df(
         rc.CauseSpecificProportionalIntensity
     )
@@ -2508,6 +2582,7 @@ def _starve(case):
         "FineGrayModel",
         "ProportionalOddsModel",
         "CoxFrailtyModel",
+        "RecurrentCoxModel",
     ):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":
