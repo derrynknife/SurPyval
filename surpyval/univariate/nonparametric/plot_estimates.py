@@ -204,6 +204,8 @@ def plot_nonparametric(
         ``Hf``, or the hazard rate ``hf``, which is drawn as the
         kernel-smoothed rate of ``smoothed_hf`` (the step estimate has no
         rate of its own, so it has no bounds, ticks or quantiles).
+        ``"R"`` and ``"F"`` are accepted spellings of ``"sf"`` and
+        ``"ff"``.
     ax : matplotlib Axes, optional
         The axes to draw on. Without one a new figure is made, with room
         for the table. On axes of your own, save with
@@ -326,7 +328,8 @@ def plot_nonparametric(
     (np.float64(7.0), np.float64(10.0))
     >>> plt.close(out.fig)
     """
-    check_option("on", on, _ON)
+    check_option("on", on, _ON + ("R", "F"))
+    on = {"R": "sf", "F": "ff"}.get(on, on)
     check_alpha_ci(alpha_ci)
     check_option("bound", bound, BOUNDS)
     check_option("ci_style", ci_style, _CI_STYLES)
