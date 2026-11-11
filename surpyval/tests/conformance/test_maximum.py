@@ -70,6 +70,7 @@ from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
     bounds_convert,
     is_local_minimum,
+    numerical_derivatives,
     search_floor,
 )
 from surpyval.utils.covariates import coefficient_floor
@@ -372,9 +373,9 @@ class Search(NamedTuple):
         x = np.asarray(self.x, dtype=float)
         keep = [i for i in range(x.size) if i not in self.held]
         jac, hess = self.jac, self.hess
-        if jac is None or hess is None:
-            jac, hess = _derivatives(self.fun, x)
         floor = np.broadcast_to(np.asarray(self.floor, float), x.shape)
+        if jac is None or hess is None:
+            jac, hess = _derivatives(self.fun, x, floor)
         return x, keep, jac, hess, floor
 
     def verified(self) -> bool:
@@ -411,13 +412,18 @@ class Search(NamedTuple):
         )
 
 
-def _derivatives(fun, x):
-    """``(jac, hess)`` of ``fun``: autograd's, or central differences
-    (``numerical_gradient``, ``numerical_hessian``, in steps relative to
-    each component) for a likelihood autograd cannot differentiate, or
-    whose autograd derivatives are not finite at ``x``."""
-    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+def _derivatives(fun, x, floor=1.0):
+    """``(jac, hess)`` of ``fun``: autograd's, or central differences for
+    a likelihood autograd cannot differentiate, or whose autograd
+    derivatives are not finite at ``x``.
 
+    The differences are the fits' own (``numerical_derivatives``): in
+    steps of each component's unit, ``floor``. A step from a unit of 1 is
+    below the likelihood's rounding for a coefficient near 0 whose
+    covariate is in millionths (a unit of 1e6): the differences are then
+    rounding noise times 1e12, and a verified maximum was "refused" or
+    not by the last bit of ``x`` (scaled gradient 0 or +/-0.0036, scaled
+    Hessian eigenvalue 1.8e6, 7.1e6 or -3.3 at the same point)."""
     jac, hess = jacobian(fun), hessian(fun)
     try:
         with np.errstate(all="ignore"), warnings.catch_warnings():
@@ -429,11 +435,7 @@ def _derivatives(fun, x):
         ok = False
     if ok:
         return jac, hess
-    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, float)), 1.0)
-    return (
-        lambda v: numerical_gradient(fun, v, 1e-2 * steps),
-        lambda v: numerical_hessian(fun, v, steps),
-    )
+    return numerical_derivatives(fun, x, floor)
 
 
 def _canonical(neg_ll, params, bounds, n_obs, held=(), name=""):
@@ -1195,4 +1197,72 @@ def test_every_family_has_its_check():
     )
     assert not missing, (
         "give these model classes their likelihood in SEARCHES: " f"{missing}"
+    )
+
+
+# -- the check itself, and the differences this module takes ----------------
+
+
+def test_a_saddle_with_a_gradient_is_not_a_verified_maximum():
+    """``is_local_minimum`` refuses a point by its numbers, whatever
+    search reached it: a scaled gradient of (-4e-08, -3e-08, -0.0036) and
+    scaled Hessian eigenvalues of (-1.12, 0.91, 24.05) (per observation,
+    as a failing run reported them) are not a maximum of a likelihood;
+    nor is either fault alone."""
+    n_obs = 5.0
+    g = n_obs * np.array([-4e-08, -3e-08, -0.0036])
+    saddle = n_obs * np.diag([-1.12, 0.91, 24.05])
+    bowl = n_obs * np.diag([1.12, 0.91, 24.05])
+    x = np.zeros(3)
+
+    def refused(grad, H):
+        def fun(v):
+            return float(grad @ v + 0.5 * v @ H @ v)
+
+        return not is_local_minimum(
+            fun, lambda v: grad + H @ v, lambda v: H, x, obj_scale=n_obs
+        )
+
+    assert refused(g, saddle)
+    assert refused(np.zeros(3), saddle)
+    assert refused(g, bowl)
+    assert not refused(np.zeros(3), bowl)
+
+
+def test_577_differences_are_taken_in_each_components_unit():
+    """The check of a coefficient near 0 whose covariate is in millionths
+    does not turn on the last bit of the estimate. The proportional
+    intensity of the cause with no covariate effect is such a fit: its
+    likelihood is in plain numpy, so this module differences it, and in
+    steps from a unit of 1 the coefficient's differences were rounding
+    noise (see :func:`_derivatives`): the same verified maximum passed or
+    failed by the build. In the covariate's unit every nearby point gives
+    the same curvature."""
+    case = next(
+        c for c in CASES if c.name == "CauseSpecificProportionalIntensity"
+    )
+    data = _small_scale(case)
+    model, _ = _said(lambda: case.fit(data))
+    assert model.models["b"].maximum == "verified"
+    (search,) = (
+        s for s in _search_cause_specific_nhpp(model, data) if s.name == "'b'"
+    )
+    x = np.asarray(search.x, dtype=float)
+    floor = np.asarray(search.floor, dtype=float)
+    # the coefficient is near 0 in a unit of a million
+    assert floor[-1] == 1e6 and abs(x[-1]) < 1.0
+    scale = np.maximum(np.abs(x), floor)
+    eigenvalues = []
+    for k in range(6):
+        at = search._replace(x=x * (1 + k * 1e-12))
+        assert at.verified(), at.why()
+        _, _, _, hess, _ = at._parts()
+        H = np.asarray(hess(np.asarray(at.x, dtype=float)), dtype=float)
+        eigenvalues.append(
+            np.linalg.eigvalsh(0.5 * (H + H.T) * np.outer(scale, scale))
+        )
+    eigenvalues = np.array(eigenvalues) / search.n_obs
+    assert (eigenvalues > 0).all()
+    np.testing.assert_allclose(
+        eigenvalues, np.tile(eigenvalues[0], (6, 1)), rtol=1e-3
     )
