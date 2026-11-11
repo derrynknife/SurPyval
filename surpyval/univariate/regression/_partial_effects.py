@@ -122,7 +122,8 @@ class PartialEffectsMixin:
             steps.
         on : {'sf', 'ff', 'Hf'}, optional
             The function drawn: survival (the default), failure
-            probability or cumulative hazard.
+            probability or cumulative hazard. ``"R"`` and ``"F"`` are
+            accepted spellings of ``"sf"`` and ``"ff"``.
         plot_bounds : bool, optional
             Draw each curve's two-sided confidence band, from the model's
             ``cb`` (its default Wald method, from the fit's covariance),
@@ -337,6 +338,8 @@ def draw_partial_effects(
     if refusal is not None:
         raise ValueError(refusal)
     allowed = model._PARTIAL_EFFECTS_ON
+    if on in ("R", "F") and {"R": "sf", "F": "ff"}[on] in allowed:
+        on = {"R": "sf", "F": "ff"}[on]
     if on not in allowed:
         raise ValueError(
             "on={!r} is not a function plot_partial_effects draws; use one "
