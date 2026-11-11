@@ -72,7 +72,9 @@ from surpyval.utils.validation import check_option
 from ._shared import (  # noqa: F401 (CATEGORICAL_LEVELS: was defined here)
     CATEGORICAL_LEVELS,
     _covariate_kind,
+    _cox_snell_panel,
     _fmt,
+    _form_panel,
     _is_cox,
     _ph_name,
     _source,
@@ -312,26 +314,12 @@ def _form_rows(ctx: Context) -> list[dict]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     Z = _raw_Z(ctx)
     martingale = _residuals(ctx, "martingale")
-    panels = []
-    for j, name in _form_columns(ctx):
-
-        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
-            from surpyval.plotting import INK, PALETTE
-
-            z = Z[:, j]
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z, martingale, s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z, martingale, grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(name)
-            ax.set_ylabel("martingale residual")
-
-        panels.append(Panel(f"{name}: functional form", draw))
-    return panels
+    return [
+        _form_panel(name, Z[:, j], martingale, "martingale residual")
+        for j, name in _form_columns(ctx)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -464,26 +452,11 @@ def _overall_panels(ctx: Context) -> list[Panel]:
     # Cox-Snell residual: each row's cumulative hazard over its time at
     # risk, delta - martingale.
     r = (c == 0).astype(float) - _residuals(ctx, "martingale")
-    order = np.argsort(r, kind="stable")
-    r, c, n = r[order], c[order], n[order]
-    uniq, first = np.unique(r, return_index=True)
-    at_risk = n[::-1].cumsum()[::-1][first]
-    deaths = np.bincount(
-        np.searchsorted(uniq, r), weights=n * (c == 0), minlength=uniq.size
-    )
-    H = np.cumsum(deaths / at_risk)
-    keep = deaths > 0
-
-    def draw(ax: Any, options: Any) -> None:
-        from surpyval.plotting import INK, PALETTE
-
-        ax.step(uniq[keep], H[keep], where="post", color=PALETTE[0])
-        top = float(max(uniq[keep].max(), H[keep].max())) if keep.any() else 1
-        ax.plot([0, top], [0, top], color=INK["secondary"], ls="--", lw=0.8)
-        ax.set_xlabel("Cox-Snell residual")
-        ax.set_ylabel("cumulative hazard")
-
-    return [Panel("overall fit (Cox-Snell)", draw)]
+    return [
+        _cox_snell_panel(
+            r, c, n, "Cox-Snell residual", "overall fit (Cox-Snell)"
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------

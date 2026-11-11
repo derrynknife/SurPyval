@@ -5,14 +5,57 @@ them is a dataset (:meth:`EventHistoryData.from_items
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 __all__ = ["ItemHistory"]
 
 
-class ItemHistory:
+class _ItemRecord:
+    """What ``ItemHistory`` and ``ItemLifetime`` share: frozen once
+    built, written as JSON, and equal to another record of the same class
+    with the same id and the same fields (``_fields``)."""
+
+    if TYPE_CHECKING:
+        id: Any
+        time_varying_covariates: Any
+
+        def _fields(self) -> dict: ...
+
+        def to_dict(self) -> dict: ...
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        frozen_setattr(self, name, value)
+
+    def __setstate__(self, state: dict) -> None:
+        frozen_setstate(self, state)
+
+    def to_json(self, filepath: Any = None) -> str | None:
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.id == other.id and self._compared() == other._compared()
+
+    def __hash__(self) -> int:
+        return hash((self.id, hashable(self._compared())))
+
+    def _compared(self) -> dict:
+        return comparable(self._fields(), self.time_varying_covariates)
+
+    def _as_dict(self) -> bool:
+        # A record pickled before #930 has no _tvc_dict: its schedule
+        # showed as a dict.
+        return getattr(self, "_tvc_dict", True)
+
+
+class ItemHistory(_ItemRecord):
     """
     One repairable item's history: its failures, observed exactly, found
     in an interval or known only to have happened before an age, how long
@@ -273,12 +316,6 @@ class ItemHistory:
         )
         self._check()
         freeze(self)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        frozen_setattr(self, name, value)
-
-    def __setstate__(self, state: dict) -> None:
-        frozen_setstate(self, state)
 
     def attribute(self, name: str) -> Any:
         """The value of the attribute ``name`` (``attributes={name:
@@ -824,13 +861,6 @@ class ItemHistory:
 
         return record_from_dict(cls, record_dict)
 
-    def to_json(self, filepath: Any = None) -> str | None:
-        """The record as strict JSON text (:meth:`to_dict` dumped), or
-        written to the file ``filepath``."""
-        from surpyval.utils.data_json import dump
-
-        return dump(self.to_dict(), filepath)
-
     @classmethod
     def from_json(cls, source: Any) -> ItemHistory:
         """The record back from JSON text (a string starting with ``{``)
@@ -844,22 +874,6 @@ class ItemHistory:
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ItemHistory):
-            return NotImplemented
-        return self.id == other.id and self._compared() == other._compared()
-
-    def __hash__(self) -> int:
-        return hash((self.id, hashable(self._compared())))
-
-    def _compared(self) -> dict:
-        return comparable(self._fields(), self.time_varying_covariates)
-
-    def _as_dict(self) -> bool:
-        # A record pickled before #930 has no _tvc_dict: its schedule
-        # showed as a dict.
-        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         """One line where it fits in 79 columns, else one argument per
