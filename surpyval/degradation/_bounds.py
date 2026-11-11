@@ -250,8 +250,13 @@ def bootstrap_cb(
     model), so the bound reflects life-fit and extrapolation
     variability, not path re-selection. Refits whose curve is not
     finite everywhere are dropped rather than poisoning the quantiles.
+    Refits whose life fit has no finite maximum are kept at the estimate
+    they reached and counted, and resamples whose life fit has no
+    maximum at all are left out and counted, in one warning
+    (``warn_bootstrap_refits``), as the parametric bootstrap does.
     """
     from surpyval.univariate.parametric.parametric import Parametric
+    from surpyval.utils.no_maximum import warn_bootstrap_refits
     from surpyval.utils.refits import DEGRADATION_REFIT
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -293,9 +298,18 @@ def bootstrap_cb(
         ),
     }
     token = DEGRADATION_REFIT.set(refit)
+    counts = {"no finite maximum": 0, "unverified": 0, "no estimate": 0}
     try:
         curves = _bootstrap_curves(
-            model, x, Z, method_name, missing, n_boot, rng, clock_kwargs
+            model,
+            x,
+            Z,
+            method_name,
+            missing,
+            n_boot,
+            rng,
+            clock_kwargs,
+            counts,
         )
     finally:
         DEGRADATION_REFIT.reset(token)
@@ -315,6 +329,15 @@ def bootstrap_cb(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
         )
+    warn_bootstrap_refits(
+        n_boot,
+        no_maximum=counts["no finite maximum"],
+        no_estimate=counts["no estimate"],
+        unverified=counts["unverified"],
+        failed=n_boot - len(curves) - counts["no estimate"],
+        advice="treat the bounds as rough; more units, or units followed "
+        "closer to the threshold, would settle them",
+    )
     return percentile_bounds(curves, alpha_ci, bound)
 
 
@@ -327,10 +350,15 @@ def _bootstrap_curves(
     n_boot: int,
     rng: Any,
     clock_kwargs: dict,
+    counts: "dict | None" = None,
 ) -> list:
     """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
     ``model``'s units, each refitted and its ``method_name`` curve taken at
-    ``x`` (and ``Z``), those not finite where the model's own is dropped."""
+    ``x`` (and ``Z``), those not finite where the model's own is dropped.
+    ``counts`` (updated in place) counts the kept refits whose life fit
+    has no finite or an unverified maximum, and the resamples whose life
+    fit has no maximum at all (left out)."""
+    from surpyval.utils.no_maximum import NoFiniteMaximumError
 
     from .degradation_analysis import DegradationAnalysis
 
@@ -372,6 +400,13 @@ def _bootstrap_curves(
                 )
                 if np.isfinite(curve[~missing]).all():
                     curves.append(np.where(missing, np.nan, curve))
+                    reached = getattr(m.life_model, "maximum", None)
+                    if counts is not None and reached in counts:
+                        counts[reached] += 1
+            except NoFiniteMaximumError:
+                if counts is not None:
+                    counts["no estimate"] += 1
+                continue
             except Exception:
                 continue
     return curves

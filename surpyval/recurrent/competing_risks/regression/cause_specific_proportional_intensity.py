@@ -76,6 +76,7 @@ from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.data_formats import is_missing_event
 from surpyval.utils.dataframe import (
     call_fit,
+    column_arguments,
     frame_column,
     frame_columns,
     refuse_recurrent_column_names,
@@ -92,7 +93,6 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     refuse_right_truncation,
 )
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -1609,7 +1609,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             function_at = curve(self.models[cause])
             estimate = estimate + function_at(values)
             variance = (
-                variance + delta_method_se(function_at, values, cov) ** 2
+                variance
+                + delta_method_se(function_at, values, cov, scale_free=True)
+                ** 2
             )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 

@@ -72,7 +72,6 @@ from surpyval.utils.linalg import (
     warn_wald_undefined,
 )
 from surpyval.utils.no_maximum import combined_maximum
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -1752,7 +1751,6 @@ class ParametricCompetingRisks(
         return out
 
     @classmethod
-    @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         cls,

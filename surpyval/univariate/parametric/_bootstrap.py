@@ -59,13 +59,16 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.regression._bootstrap import (
-    FAILED_SHARE,
     REFIT_ERRORS,
     ResampleDesign,
     bca_bounds,
     check_n_boot,
 )
-from surpyval.utils.no_maximum import quiet_maximum_warnings
+from surpyval.utils.no_maximum import (
+    NoFiniteMaximumError,
+    quiet_maximum_warnings,
+    warn_bootstrap_refits,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
@@ -195,8 +198,11 @@ class Refits:
     values: npt.NDArray
     no_maximum: int
     unverified: int
+    #: Refits that raised (left out), ``no_estimate`` of them because
+    #: the resample's likelihood has no maximum at all.
     failed: int
     model_maximum: str = "verified"
+    no_estimate: int = 0
     #: ``point`` with an ``lfp_p`` or ``f0`` the data put on its edge
     #: there, as the refits' ``values`` are (:func:`_at_edges`).
     estimate: tuple = ()
@@ -206,9 +212,10 @@ class Refits:
 
     def warn(self, public: bool = False) -> None:
         """One warning: that the model itself has no finite maximum, or
-        that more than ``FAILED_SHARE`` of the refits did not reach a
-        verified maximum or failed (``public``: worded for the refits of
-        ``Parametric.bootstrap`` rather than the bounds)."""
+        that some refits had no finite maximum, or that more than
+        ``FAILED_SHARE`` of them did not reach a verified maximum or
+        failed (``warn_bootstrap_refits``; ``public``: worded for the
+        refits of ``Parametric.bootstrap`` rather than the bounds)."""
         if self.model_maximum == "no finite maximum":
             warnings.warn(
                 "This model's likelihood has no finite maximum (as its fit "
@@ -225,31 +232,19 @@ class Refits:
                 stacklevel=caller_stacklevel(),
             )
             return
-        bad = self.no_maximum + self.unverified + self.failed
-        if bad <= FAILED_SHARE * self.n_boot:
-            return
-        parts = []
-        if self.no_maximum:
-            parts.append(f"{self.no_maximum} with no finite maximum")
-        if self.unverified:
-            parts.append(f"{self.unverified} at an unverified maximum")
-        if self.failed:
-            parts.append(f"{self.failed} failed and left out")
-        warnings.warn(
-            f"{bad} of the {self.n_boot} bootstrap refits did not reach a "
-            f"verified maximum of the likelihood ({', '.join(parts)}). "
-            "A refit with no finite maximum is kept at the estimate it "
-            + (
-                "reached; with this many, the data barely determine the "
-                "model and the refits' spread is a rough guide to its "
-                "uncertainty."
+        warn_bootstrap_refits(
+            self.n_boot,
+            no_maximum=self.no_maximum,
+            no_estimate=self.no_estimate,
+            unverified=self.unverified,
+            failed=self.failed - self.no_estimate,
+            what="refits' spread" if public else "bounds",
+            advice=(
+                "their spread is a rough guide to its uncertainty"
                 if public
-                else "reached, so that it counts at its end of the bounds; "
-                "with this many, the data barely determine the model and "
-                "the bounds are rough."
+                else "treat the bounds as rough, and compare them with "
+                "method='lr', which needs no refits"
             ),
-            UserWarning,
-            stacklevel=caller_stacklevel(),
         )
 
 
@@ -555,7 +550,12 @@ def _draw(
     # it is censored at the last time in the data.
     end = float(np.max(design.x)) if design.x.size else np.inf
     models, values = [], []
-    counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
+    counts = {
+        "no finite maximum": 0,
+        "unverified": 0,
+        "failed": 0,
+        "no estimate": 0,
+    }
     kwargs: dict[str, Any]
     for _ in range(n_boot):
         if cases:
@@ -586,6 +586,9 @@ def _draw(
                     init=init,
                     **kwargs,
                 )
+        except NoFiniteMaximumError:
+            counts["no estimate"] += 1
+            continue
         except REFIT_ERRORS:
             counts["failed"] += 1
             continue
@@ -616,8 +619,9 @@ def _draw(
         values=np.array(values).reshape(len(values), len(point)),
         no_maximum=counts["no finite maximum"],
         unverified=counts["unverified"],
-        failed=counts["failed"],
+        failed=counts["failed"] + counts["no estimate"],
         model_maximum=model.maximum,
+        no_estimate=counts["no estimate"],
     )
 
 
@@ -810,6 +814,11 @@ class ParametricBootstrap:
     failed : int
         The refits whose fit raised; they are left out, so
         ``len(models) == n_boot - failed``.
+    no_estimate : int
+        Of the ``failed``, the resamples whose likelihood has no maximum
+        at all (no failures, or fewer distinct failure times than
+        parameters), which the fit refuses; the bounds leave them out
+        too, and say how many.
     no_maximum : int
         The kept refits whose likelihood had no finite maximum (kept at
         the estimate they reached, as the bounds keep them).
@@ -835,6 +844,7 @@ class ParametricBootstrap:
     failed: int
     no_maximum: int
     unverified: int
+    no_estimate: int = 0
 
     def __len__(self) -> int:
         return len(self.models)
@@ -879,6 +889,7 @@ class ParametricBootstrap:
             "failed": int(self.failed),
             "no_maximum": int(self.no_maximum),
             "unverified": int(self.unverified),
+            "no_estimate": int(self.no_estimate),
         }
         return encode_non_finite(out)
 
@@ -909,4 +920,5 @@ def bootstrap(model: Any, n_boot: Any, random_state: Any) -> Any:
         failed=fits.failed,
         no_maximum=fits.no_maximum,
         unverified=fits.unverified,
+        no_estimate=fits.no_estimate,
     )

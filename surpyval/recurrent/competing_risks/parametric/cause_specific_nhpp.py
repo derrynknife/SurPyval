@@ -58,7 +58,6 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import (
@@ -565,7 +564,6 @@ class CauseSpecificNHPP(SerialisableMixin):
     @ambiguous_item_ids(
         "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
     )
-    @column_arguments("x", "i", "c", "n", "tl", "tr")
     @takes_unit
     def fit_from_df(
         cls,
@@ -741,7 +739,10 @@ class CauseSpecificNHPP(SerialisableMixin):
                 return getattr(dist, fname)(x, *params)
 
             estimate = estimate + curve(estimates)
-            variance = variance + delta_method_se(curve, estimates, cov) ** 2
+            variance = (
+                variance
+                + delta_method_se(curve, estimates, cov, scale_free=True) ** 2
+            )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 
     def _has_likelihood(self, cause: Any) -> bool:

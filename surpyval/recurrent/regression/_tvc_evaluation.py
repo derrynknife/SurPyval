@@ -59,7 +59,7 @@ class TVCEvaluationMixin:
         feature_names: list[str] | None
 
         def _coef(self) -> npt.NDArray: ...
-        def _check_fitted(self) -> None: ...
+        def _check_inference(self) -> None: ...
         def _estimated(self) -> npt.NDArray: ...
         def _mle_values(self) -> npt.NDArray: ...
         def covariance(self) -> npt.NDArray: ...
@@ -421,7 +421,7 @@ class TVCEvaluationMixin:
                 "covariates then. Leave given out, with a schedule from "
                 "the time origin."
             )
-        self._check_fitted()
+        self._check_inference()
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         shape = xq.shape + ((2,) if bound == "two-sided" else ())
         lo, from_given = self._given(given)
@@ -444,5 +444,5 @@ class TVCEvaluationMixin:
         cov[held, :] = 0.0
         cov[:, held] = 0.0
         mle = self._mle_values()
-        se = delta_method_se(function_at, mle, cov)
+        se = delta_method_se(function_at, mle, cov, scale_free=True)
         return log_transformed_cb(function_at(mle), se, alpha_ci, bound)
