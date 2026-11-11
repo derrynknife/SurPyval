@@ -524,6 +524,14 @@ surpyval.univariate.regression.WeibullAH
 surpyval.univariate.regression.WeibullFrailty
 surpyval.univariate.regression.WeibullPH
 surpyval.univariate.regression.WeibullPO
+surpyval.univariate.regression.kinds.ACCELERATED_FAILURE_TIME
+surpyval.univariate.regression.kinds.ACCELERATED_LIFE
+surpyval.univariate.regression.kinds.ADDITIVE_HAZARD
+surpyval.univariate.regression.kinds.DISTRIBUTIONAL
+surpyval.univariate.regression.kinds.HAZARD_BASED
+surpyval.univariate.regression.kinds.PROPORTIONAL_HAZARD
+surpyval.univariate.regression.kinds.PROPORTIONAL_ODDS
+surpyval.univariate.regression.kinds.TIME_SCALING
 surpyval.univariate.regression.penalty_path
 surpyval.univariate.regression.plot_coefficients
 surpyval.utils.coerce_xcnt_x
