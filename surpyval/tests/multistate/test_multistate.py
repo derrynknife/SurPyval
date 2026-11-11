@@ -3,7 +3,7 @@ other estimators already give (competing risks, Kaplan-Meier), recovery
 of known Markov models from simulated data, and the data checks.
 
 The comparisons with R (``survival``, ``mstate``) are in
-``test_reference_multistate.py``.
+``surpyval/tests/reference/test_multistate.py``.
 """
 
 import json

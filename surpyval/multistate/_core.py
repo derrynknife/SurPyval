@@ -253,12 +253,18 @@ def robust_variance(
 
 
 def at_risk_distribution(
-    data: SpellData, s: float
+    data: SpellData, s: float, first_event: float | None = None
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """The states of the units at risk just after ``s`` (``tl <= s <
-    x``), as a distribution, and each unit's influence on it."""
+    x``), as a distribution, and each unit's influence on it. With
+    ``first_event``, those at risk at that time instead (``tl <
+    first_event <= x``): R ``survfit``'s default, for a start at the
+    earliest entry, where few may have entered yet."""
     k = data.tm.n_states
-    here = (data.tl <= s) & (data.x > s)
+    if first_event is None:
+        here = (data.tl <= s) & (data.x > s)
+    else:
+        here = (data.tl < first_event) & (data.x >= first_event)
     total = data.n[here].sum()
     p0 = np.zeros(k)
     if total == 0:

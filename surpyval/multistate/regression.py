@@ -615,6 +615,13 @@ class MultiStateProportionalHazards(SerialisableMixin):
             raise ValueError("'s', the start of the prediction, is NaN.")
         return s
 
+    def _first_event(self, s: float) -> float | None:
+        """At the default start (the earliest entry), the first event
+        time: the starting states are those of the units at risk then."""
+        if s != self.start or self.t.size == 0:
+            return None
+        return float(self.t[0])
+
     def _p0(self, s: float, from_state: Any) -> npt.NDArray:
         k = self.transitions.n_states
         if from_state is not None:
@@ -623,7 +630,9 @@ class MultiStateProportionalHazards(SerialisableMixin):
             return p0
         key = ("p0", s)
         if key not in self._cache:
-            self._cache[key] = _core.at_risk_distribution(self._data, s)[0]
+            self._cache[key] = _core.at_risk_distribution(
+                self._data, s, self._first_event(s)
+            )[0]
         return self._cache[key]
 
     def _P(self, z: npt.NDArray, s: float) -> npt.NDArray:
@@ -809,7 +818,8 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> model.cumulative_hazard(120, [1], "mgus", "pcm").round(4)
         np.float64(0.0971)
         """
-        h = self.transitions.transition_index(from_state, to_state)
+        # (refuses a pair that is not a transition)
+        self.transitions.transition_index(from_state, to_state)
         x = np.asarray(x, dtype=float)
 
         def value(z: npt.NDArray, j0: int, idx: npt.NDArray) -> npt.NDArray:
@@ -819,7 +829,6 @@ class MultiStateProportionalHazards(SerialisableMixin):
             H = np.cumsum(prof[:, a, b])
             return np.where(idx < 0, 0.0, H[np.maximum(idx, 0)])
 
-        del h
         return self._by_row(x, Z, -np.inf, value, check=False)
 
     @keeps_query_shape

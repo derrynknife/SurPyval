@@ -18,8 +18,9 @@ Two kinds of fixture:
   competing risks with ties, a prediction matrix for the Brier score and
   AUC, continuous data for the additive hazards model, and a deliberate
   violation of proportional hazards for the Cox diagnostics, a covariate
-  that separates the events from the survivors (Firth's fit), and
-  recurrent events of two groups of systems for the MCF comparison.
+  that separates the events from the survivors (Firth's fit),
+  recurrent events of two groups of systems for the MCF comparison, and
+  an illness-death model with recovery for the multi-state models.
 
 Run from the repository root::
 
@@ -39,6 +40,7 @@ from surpyval.datasets import (
     load_kidney,
     load_lung,
     load_mettas_and_zhao,
+    load_mgus2,
     load_pbc2,
 )
 
@@ -576,6 +578,80 @@ def recurrent_groups(seed, ties):
     }
 
 
+def mgus2_multistate():
+    df = load_mgus2(spells=True)
+    code = {"mgus": 1, "pcm": 2, "death": 3}
+    return {
+        "source": "surpyval.datasets.load_mgus2(spells=True); R "
+        "survival::mgus2 as illness-death spells (state and e: 1 mgus, "
+        "2 pcm, 3 death; e null where the spell is censored); z1 = "
+        "(age - 70) / 10, male 1 for a man",
+        "columns": {
+            "id": _native(df["id"]),
+            "tl": _native(df["tl"]),
+            "x": _native(df["x"]),
+            "state": _native(df["state"].map(code)),
+            "e": [None if v is None else code[v] for v in df["e"]],
+            "z1": _native((df["age"] - 70) / 10),
+            "male": _native(df["male"]),
+        },
+    }
+
+
+def multistate(seed):
+    """An illness-death model with recovery and constant hazards
+    (healthy -> ill 0.3, healthy -> dead 0.1, ill -> healthy 0.4, ill ->
+    dead 0.3) for 300 units, each first seen at a uniform time in (0, 1)
+    (delayed entry: a unit dead by then is never seen; a unit can enter
+    ill) and censored at a uniform time in (2, 8). Times are rounded to
+    two decimals, which ties some of them; a spell that rounding would
+    leave empty is given 0.01."""
+    rng = np.random.default_rng(seed)
+    # (from, to, rate); states 1 healthy, 2 ill, 3 dead
+    moves = [(1, 2, 0.3), (1, 3, 0.1), (2, 1, 0.4), (2, 3, 0.3)]
+    rows = []
+    for unit in range(1, 301):
+        entry = round(float(rng.uniform(0, 1)), 2)
+        cens = round(float(rng.uniform(2, 8)), 2)
+        t, state, spells = 0.0, 1, []
+        while True:
+            out = [m for m in moves if m[0] == state]
+            total = sum(m[2] for m in out)
+            nt = t + rng.exponential(1 / total)
+            if nt >= cens:
+                spells.append([t, cens, state, None])
+                break
+            k = rng.choice(len(out), p=[m[2] / total for m in out])
+            spells.append([t, nt, state, out[k][1]])
+            t, state = nt, out[k][1]
+            if state == 3:
+                break
+        spells = [sp for sp in spells if sp[1] > entry]
+        if not spells:
+            continue
+        spells[0][0] = max(spells[0][0], entry)
+        for k, sp in enumerate(spells):
+            sp[0] = spells[k - 1][1] if k else round(sp[0], 2)
+            sp[1] = round(sp[1], 2)
+            if sp[1] <= sp[0]:
+                sp[1] = round(sp[0] + 0.01, 2)
+            rows.append((unit, sp[0], sp[1], sp[2], sp[3]))
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.multistate (rng {}): "
+        "spells of an illness-death model with recovery, delayed entry "
+        "and ties (state and e: 1 healthy, 2 ill, 3 dead; e null where the "
+        "spell is censored)".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "tl": _native(columns[1]),
+            "x": _native(columns[2]),
+            "state": _native(columns[3]),
+            "e": list(columns[4]),
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -618,6 +694,8 @@ def build():
         "separation": separation(),
         "recurrent_groups": recurrent_groups(3798, False),
         "recurrent_groups_ties": recurrent_groups(3799, True),
+        "mgus2_multistate": mgus2_multistate(),
+        "multistate": multistate(3800),
     }
 
 

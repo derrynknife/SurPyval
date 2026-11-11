@@ -267,6 +267,13 @@ class MultiState(SerialisableMixin):
             self._cache[key] = _core.product_integral(self.dA, j0)
         return self._cache[key]
 
+    def _first_event(self, s: float) -> float | None:
+        """At the default start (the earliest entry), the first event
+        time: the starting states are those of the units at risk then."""
+        if s != self.start or self.t.size == 0:
+            return None
+        return float(self.t[0])
+
     def _p0(self, s: float, from_state: Any) -> npt.NDArray:
         k = self.transitions.n_states
         if from_state is not None:
@@ -275,7 +282,9 @@ class MultiState(SerialisableMixin):
             return p0
         key = ("p0", s)
         if key not in self._cache:
-            self._cache[key] = _core.at_risk_distribution(self._data, s)
+            self._cache[key] = _core.at_risk_distribution(
+                self._data, s, self._first_event(s)
+            )
         return self._cache[key][0]
 
     def _at(
@@ -362,8 +371,11 @@ class MultiState(SerialisableMixin):
         from_state : any, optional
             The state the unit is in at ``s``: the probability is then the
             row of :meth:`transition_probabilities` for it. By default the
-            units start in the states the units under observation at
-            ``s`` were in (those with ``tl <= s < x``), in proportion.
+            units start in the states the units under observation were
+            in, in proportion: at the first transition for the default
+            ``s`` (those with ``tl < t_1 <= x``, as R's ``survfit``, since
+            with delayed entry few may have entered at the earliest
+            entry), else at ``s`` (``tl <= s < x``).
 
         Returns
         -------

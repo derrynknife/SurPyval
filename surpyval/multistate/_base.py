@@ -3,14 +3,10 @@ prediction, and the bounds."""
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
-
-VARIANCES = ("greenwood", "aalen")
 
 
 def check_bound_args(alpha_ci: float, bound: str, bound_type: str) -> None:
@@ -55,12 +51,6 @@ def probability_bounds(
     if bound == "upper":
         return upper
     return np.column_stack([lower, upper])
-
-
-def flat_times(x: Any) -> tuple[npt.NDArray, tuple]:
-    """The query as a 1-D float array, and its shape."""
-    arr = np.asarray(x, dtype=float)
-    return arr.ravel(), arr.shape
 
 
 def step_index(t: npt.NDArray, x: npt.NDArray) -> npt.NDArray:

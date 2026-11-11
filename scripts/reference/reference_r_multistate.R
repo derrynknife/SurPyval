@@ -1,42 +1,42 @@
-# Reference values for the multi-state models (surpyval.multistate),
-# written to surpyval/tests/multistate/data/r_multistate.json for
-# surpyval/tests/multistate/test_reference_multistate.py.
+# Reference results from R for the multi-state models
+# (surpyval.multistate), for surpyval/tests/reference/test_multistate.py.
+#
+# Writes surpyval/tests/reference/data/r_multistate.json, with the
+# software, its version, the call and the settings of each entry. Run from
+# the repository root, after
+#
+#     python scripts/reference/make_fixtures.py
+#
+# with mstate in the library path:
 #
 #     R_LIBS_USER=<library with mstate> \
 #         Rscript scripts/reference/reference_r_multistate.R
 #
-# Written with R 4.6.2, survival 3.8.12, mstate 0.3.3 and jsonlite (the
-# versions are stored in the file). Re-running reproduces the file byte
-# for byte.
+# Written with R 4.6.2, survival 3.8.12 and mstate 0.3.3. Re-running
+# reproduces the file byte for byte.
 #
-# The data are stored in the file with the results, so the tests need
-# neither R nor the data's packages:
+# The fixtures (fixtures.json):
 #
-# * "mgus2": survival::mgus2 (Kyle et al., 2002) as an illness-death
-#   model: MGUS -> plasma-cell malignancy (pcm) -> death, and MGUS ->
-#   death; months. As in the survival package's vignette on multi-state
-#   models, a progression in the month of death is moved 0.1 months
-#   earlier, so that the spell in pcm has a length. Covariates: z1 =
-#   (age - 70) / 10 and male (1 for a man).
-# * "sim": 300 units simulated here from a Markov illness-death model
-#   with recovery (healthy -> ill 0.3, healthy -> dead 0.1, ill ->
-#   healthy 0.4, ill -> dead 0.3, constant hazards), each first seen at
-#   a uniform time in (0, 1) (delayed entry: units dead by then are
-#   never seen) and censored at a uniform time in (2, 8); times rounded
-#   to 0.01, which gives tied times.
+# * "mgus2_multistate": survival::mgus2 as an illness-death model (MGUS ->
+#   plasma-cell malignancy (pcm) -> death, MGUS -> death; months), as
+#   load_mgus2(spells=True) gives it: as in the survival package's
+#   vignette on multi-state models, a progression in the month of death is
+#   put 0.1 months earlier. Checked here against R's own mgus2.
+# * "multistate": 300 units simulated by make_fixtures.py from a Markov
+#   illness-death model with recovery, with delayed entry and tied times.
 #
 # What each reference is:
 #
 # * survfit(Surv(tl, x, event) ~ 1, id = id, istate = state, timefix =
 #   FALSE): the Aalen-Johansen state occupation probabilities and their
 #   infinitesimal-jackknife std.err, from the start (p0 the states of
-#   those at risk then) and from s with p0 given.
-# * mstate: coxph(Surv(tl, x, status) ~ strata(trans), method =
+#   those at risk then), and from s = 2 with that p0 or with p0 given.
+# * mstate: coxph(Surv(Tstart, Tstop, status) ~ strata(trans), method =
 #   "breslow") on the stacked data, msfit(vartype = v) and
 #   probtrans(predt = s, method = v) for v in "greenwood", "aalen": the
-#   transition probabilities P(s, t) from each state, with their
-#   standard errors. (Breslow's ties make the increments d / r, the
-#   Aalen-Johansen estimate; coxph's default, Efron's, changes them.)
+#   transition probabilities P(s, t) from each state with their standard
+#   errors. (Breslow's ties make the increments d / r, the Aalen-Johansen
+#   estimate; coxph's default, Efron's, changes them.)
 # * mstate with covariates: coxph with the covariates expanded per
 #   transition (expand.covs), or "male" shared by every transition, and
 #   strata(trans), ties "breslow" or "efron"; msfit(newdata) for one
@@ -49,89 +49,42 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
-out <- list(
-  generator = "scripts/reference/reference_r_multistate.R",
-  software = list(
-    R = paste0(R.version$major, ".", R.version$minor),
-    survival = as.character(packageVersion("survival")),
-    mstate = as.character(packageVersion("mstate"))
-  ),
-  data = list(),
-  references = list()
-)
+data_dir <- file.path("surpyval", "tests", "reference", "data")
+if (!file.exists(file.path(data_dir, "fixtures.json"))) {
+  stop("Run from the repository root (fixtures.json not found)")
+}
+out_file <- file.path(data_dir, "r_multistate.json")
+fx <- fromJSON(file.path(data_dir, "fixtures.json"))
+v_survival <- as.character(packageVersion("survival"))
+v_mstate <- as.character(packageVersion("mstate"))
 
-# ---------------------------------------------------------------------------
-# Data
-# ---------------------------------------------------------------------------
+spells <- function(name, states) {
+  d <- as.data.frame(lapply(fx[[name]]$columns, function(v) {
+    if (is.list(v)) sapply(v, function(u) if (is.null(u)) NA else u) else v
+  }))
+  d$state <- states[d$state]
+  d$e <- ifelse(is.na(d$e), NA, states[d$e])
+  d
+}
+
+mgus_states <- c("mgus", "pcm", "death")
+sim_states <- c("healthy", "ill", "dead")
+mgus_long <- spells("mgus2_multistate", mgus_states)
+sim_long <- spells("multistate", sim_states)
+
+# The fixture is R's mgus2, as the vignette turns it into spells.
 m <- mgus2
 ptemp <- ifelse(m$pstat == 1 & m$ptime == m$futime, m$ptime - 0.1, m$ptime)
-rows <- list()
-for (i in seq_len(nrow(m))) {
-  z1 <- (m$age[i] - 70) / 10
-  male <- as.numeric(m$sex[i] == "M")
-  if (m$pstat[i] == 1) {
-    rows[[length(rows) + 1]] <- data.frame(
-      id = m$id[i], tl = 0, x = ptemp[i], state = "mgus", e = "pcm",
-      z1 = z1, male = male)
-    rows[[length(rows) + 1]] <- data.frame(
-      id = m$id[i], tl = ptemp[i], x = m$futime[i], state = "pcm",
-      e = ifelse(m$death[i] == 1, "death", NA), z1 = z1, male = male)
-  } else {
-    rows[[length(rows) + 1]] <- data.frame(
-      id = m$id[i], tl = 0, x = m$futime[i], state = "mgus",
-      e = ifelse(m$death[i] == 1, "death", NA), z1 = z1, male = male)
-  }
-}
-mgus_long <- do.call(rbind, rows)
-# Spells of length zero (follow-up of 0 months) cannot be at risk.
-mgus_long <- mgus_long[mgus_long$x > mgus_long$tl, ]
-mgus_states <- c("mgus", "pcm", "death")
+n_spells <- 1 + (m$pstat == 1)
+stopifnot(nrow(mgus_long) == sum(n_spells))
+first <- mgus_long[!duplicated(mgus_long$id), ]
+stopifnot(all(first$id == m$id))
+stopifnot(isTRUE(all.equal(first$x, as.numeric(ifelse(m$pstat == 1, ptemp, m$futime)))))
+stopifnot(isTRUE(all.equal(first$z1, (as.numeric(m$age) - 70) / 10)))
+stopifnot(all(first$male == as.numeric(m$sex == "M")))
+
 mgus_tmat <- transMat(list(c(2, 3), c(3), c()), names = mgus_states)
-
-set.seed(20261112)
-rates <- matrix(0, 3, 3)
-rates[1, 2] <- 0.3; rates[1, 3] <- 0.1; rates[2, 1] <- 0.4; rates[2, 3] <- 0.3
-sim_states <- c("healthy", "ill", "dead")
-rows <- list()
-for (i in 1:300) {
-  entry <- round(runif(1, 0, 1), 2)
-  cens <- round(runif(1, 2, 8), 2)
-  t <- 0; s <- 1; spells <- list()
-  repeat {
-    total <- sum(rates[s, ])
-    nt <- t + rexp(1, total)
-    if (nt >= cens) {
-      spells[[length(spells) + 1]] <- c(t, cens, s, NA)
-      break
-    }
-    to <- sample(1:3, 1, prob = rates[s, ])
-    spells[[length(spells) + 1]] <- c(t, nt, s, to)
-    t <- nt; s <- to
-    if (s == 3) break
-  }
-  sp <- do.call(rbind, spells)
-  sp <- sp[sp[, 2] > entry, , drop = FALSE]
-  if (nrow(sp) == 0) next
-  sp[1, 1] <- max(sp[1, 1], entry)
-  sp[, 1:2] <- round(sp[, 1:2], 2)
-  for (k in seq_len(nrow(sp))) {
-    if (k > 1) sp[k, 1] <- sp[k - 1, 2]
-    if (sp[k, 2] <= sp[k, 1]) sp[k, 2] <- sp[k, 1] + 0.01
-  }
-  rows[[length(rows) + 1]] <- data.frame(
-    id = i, tl = sp[, 1], x = sp[, 2], state = sim_states[sp[, 3]],
-    e = ifelse(is.na(sp[, 4]), NA, sim_states[sp[, 4]]))
-}
-sim_long <- do.call(rbind, rows)
 sim_tmat <- transMat(list(c(2, 3), c(1, 3), c()), names = sim_states)
-
-store_data <- function(d) {
-  lst <- as.list(d)
-  lst$e <- ifelse(is.na(d$e), NA, d$e)
-  lst
-}
-out$data$mgus2 <- store_data(mgus_long)
-out$data$sim <- store_data(sim_long)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -158,19 +111,18 @@ stack <- function(long, tmat, covs = character()) {
 }
 
 at <- function(times, grid, values) {
-  # A step function (right-continuous) of the grid, its first value
-  # before the grid starts.
+  # A right-continuous step function of the grid, its first value before
+  # the grid starts.
   idx <- findInterval(times, grid)
   values[pmax(idx, 1)]
 }
 
 nums <- function(v) unname(as.numeric(v))
 
-survfit_ref <- function(long, states, times, start = NULL, p0 = NULL) {
-  ev <- factor(ifelse(is.na(long$e), "censor", long$e),
-               levels = c("censor", states))
-  ist <- factor(long$state, levels = states)
-  long$ev <- ev; long$ist <- ist
+survfit_values <- function(long, states, times, start = NULL, p0 = NULL) {
+  long$ev <- factor(ifelse(is.na(long$e), "censor", long$e),
+                    levels = c("censor", states))
+  long$ist <- factor(long$state, levels = states)
   if (is.null(start)) {
     fit <- survfit(Surv(tl, x, ev) ~ 1, data = long, id = id,
                    istate = ist, timefix = FALSE)
@@ -191,7 +143,7 @@ survfit_ref <- function(long, states, times, start = NULL, p0 = NULL) {
   res
 }
 
-probtrans_ref <- function(pt, states, times) {
+probtrans_values <- function(pt, states, times) {
   res <- list(times = times)
   for (a in seq_along(states)) {
     tab <- pt[[a]]
@@ -205,9 +157,16 @@ probtrans_ref <- function(pt, states, times) {
   res
 }
 
-add <- function(id, call, settings, values) {
-  out$references[[id]] <<- list(call = call, settings = settings,
-                                values = values)
+references <- list()
+add <- function(id, fixture, software, call, settings, values) {
+  references[[id]] <<- list(
+    fixture = fixture,
+    software = paste("R", software),
+    version = if (software == "survival") v_survival else v_mstate,
+    call = call,
+    settings = settings,
+    values = values
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -215,44 +174,56 @@ add <- function(id, call, settings, values) {
 # ---------------------------------------------------------------------------
 mgus_times <- c(12, 60, 120, 240, 360, 420)
 sim_times <- c(0.5, 1, 1.5, 2, 3, 4, 5, 6.5, 7.5)
+survfit_call <- paste("survfit(Surv(tl, x, ev) ~ 1, id = id,",
+                      "istate = state, timefix = FALSE")
 
-add("survfit_mgus2", "survfit(Surv(tl, x, ev) ~ 1, id = id, istate = state, timefix = FALSE)",
-    "from the start, p0 the states at risk then",
-    survfit_ref(mgus_long, mgus_states, mgus_times))
-add("survfit_sim", "survfit(Surv(tl, x, ev) ~ 1, id = id, istate = state, timefix = FALSE)",
-    "from the start (the earliest entry), p0 the states at risk then",
-    survfit_ref(sim_long, sim_states, sim_times))
-add("survfit_sim_s2", "survfit(..., start.time = 2)",
-    "from s = 2, p0 the states at risk then (healthy and ill)",
-    survfit_ref(sim_long, sim_states, sim_times[sim_times >= 2], start = 2))
-add("survfit_sim_s2_ill", "survfit(..., start.time = 2, p0 = c(0, 1, 0))",
-    "from s = 2 in 'ill'",
-    survfit_ref(sim_long, sim_states, sim_times[sim_times >= 2], start = 2,
-                p0 = c(0, 1, 0)))
+add("survfit_mgus2", "mgus2_multistate", "survival",
+    paste0(survfit_call, ")"),
+    list(start = "the earliest entry", p0 = "the states at risk then"),
+    survfit_values(mgus_long, mgus_states, mgus_times))
+add("survfit_sim", "multistate", "survival",
+    paste0(survfit_call, ")"),
+    list(start = "the earliest entry", p0 = "the states at risk then"),
+    survfit_values(sim_long, sim_states, sim_times))
+add("survfit_sim_s2", "multistate", "survival",
+    paste0(survfit_call, ", start.time = 2)"),
+    list(start = "2", p0 = "the states at risk then (healthy and ill)"),
+    survfit_values(sim_long, sim_states, sim_times[sim_times >= 2],
+                   start = 2))
+add("survfit_sim_s2_ill", "multistate", "survival",
+    paste0(survfit_call, ", start.time = 2, p0 = c(0, 1, 0))"),
+    list(start = "2", p0 = "ill"),
+    survfit_values(sim_long, sim_states, sim_times[sim_times >= 2],
+                   start = 2, p0 = c(0, 1, 0)))
 
 # ---------------------------------------------------------------------------
 # mstate, no covariates: P(s, t) with the Greenwood and Aalen variances
 # ---------------------------------------------------------------------------
 mgus_st <- stack(mgus_long, mgus_tmat, c("z1", "male"))
 sim_st <- stack(sim_long, sim_tmat)
+cases <- list(
+  list("mgus2", "mgus2_multistate", mgus_st, mgus_tmat, mgus_states,
+       mgus_times, 0),
+  list("mgus2_s60", "mgus2_multistate", mgus_st, mgus_tmat, mgus_states,
+       mgus_times[mgus_times >= 60], 60),
+  list("sim", "multistate", sim_st, sim_tmat, sim_states, sim_times, 0),
+  list("sim_s2", "multistate", sim_st, sim_tmat, sim_states,
+       sim_times[sim_times >= 2], 2)
+)
 for (v in c("greenwood", "aalen")) {
-  for (case in list(list("mgus2", mgus_st, mgus_tmat, mgus_states,
-                         mgus_times, 0),
-                    list("mgus2_s60", mgus_st, mgus_tmat, mgus_states,
-                         mgus_times[mgus_times >= 60], 60),
-                    list("sim", sim_st, sim_tmat, sim_states, sim_times, 0),
-                    list("sim_s2", sim_st, sim_tmat, sim_states,
-                         sim_times[sim_times >= 2], 2))) {
-    st <- case[[2]]
-    c0 <- coxph(Surv(Tstart, Tstop, status) ~ strata(trans), data = st,
-                method = "breslow")
-    msf <- msfit(c0, trans = case[[3]], vartype = v)
-    pt <- probtrans(msf, predt = case[[6]], method = v)
-    add(paste0("mstate_", case[[1]], "_", v),
-        sprintf("probtrans(msfit(coxph(Surv(Tstart, Tstop, status) ~ strata(trans), method = 'breslow'), vartype = '%s'), predt = %g, method = '%s')",
-                v, case[[6]], v),
-        paste("P(s, t) from each state, s =", case[[6]]),
-        probtrans_ref(pt, case[[4]], case[[5]]))
+  for (case in cases) {
+    c0 <- coxph(Surv(Tstart, Tstop, status) ~ strata(trans),
+                data = case[[3]], method = "breslow")
+    msf <- msfit(c0, trans = case[[4]], vartype = v)
+    pt <- suppressWarnings(probtrans(msf, predt = case[[7]], method = v))
+    add(paste0("mstate_", case[[1]], "_", v), case[[2]], "mstate",
+        sprintf(paste0("probtrans(msfit(coxph(Surv(Tstart, Tstop, status)",
+                       " ~ strata(trans), method = 'breslow'), vartype =",
+                       " '%s'), predt = %g, method = '%s')"),
+                v, case[[7]], v),
+        list(data = "the stacked spells (one row per possible transition)",
+             predt = case[[7]], from = "each state"),
+        probtrans_values(pt, case[[5]], case[[6]]))
   }
 }
 
@@ -280,24 +251,31 @@ for (name in names(fits)) {
     cx <- coxph(fits[[name]], data = ex, method = ties)
     msf <- msfit(cx, newdata = newdata, trans = mgus_tmat)
     for (s in c(0, 60)) {
-      pt <- probtrans(msf, predt = s)
-      vals <- probtrans_ref(pt, mgus_states, mgus_times[mgus_times >= s])
+      # (probtrans warns of a negative diagonal of I + dA late on, where
+      # few are at risk; SurPyval warns there too)
+      pt <- suppressWarnings(probtrans(msf, predt = s))
+      vals <- probtrans_values(pt, mgus_states, mgus_times[mgus_times >= s])
       vals$coef <- nums(coef(cx))
       vals$coef_names <- names(coef(cx))
       vals$se_coef <- nums(sqrt(diag(vcov(cx))))
       vals$profile <- as.list(profile)
       add(paste0("mstate_cox_mgus2_", name, "_", ties, "_s", s),
+          "mgus2_multistate", "mstate",
           sprintf("probtrans(msfit(coxph(%s, method = '%s'), newdata), predt = %g)",
                   deparse(fits[[name]], width.cutoff = 500L), ties, s),
-          paste("covariates", name, "per transition; profile z1 = 0.5,",
-                "male = 1; method 'aalen'"),
+          list(effects = name, ties = ties, profile = "z1 = 0.5, male = 1",
+               method = "aalen"),
           vals)
     }
   }
 }
 
-text <- toJSON(out, auto_unbox = TRUE, digits = NA, na = "null",
-               pretty = TRUE)
-dir.create("surpyval/tests/multistate/data", showWarnings = FALSE,
-           recursive = TRUE)
-writeLines(text, "surpyval/tests/multistate/data/r_multistate.json")
+out <- list(
+  generator = "scripts/reference/reference_r_multistate.R",
+  R = R.version.string,
+  references = references
+)
+writeLines(
+  toJSON(out, digits = NA, auto_unbox = TRUE, na = "null", pretty = TRUE),
+  out_file
+)
