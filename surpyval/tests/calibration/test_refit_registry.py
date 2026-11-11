@@ -613,6 +613,30 @@ def _cr(case, truth, n):
     return draw
 
 
+def _cr_entry(case, truth, n):
+    """:func:`_cr` with delayed entry. Four in ten units enter late, at a
+    uniform time up to the 20th percentile of the fixture's times, and
+    are seen only if they are still under observation then (their event
+    or censoring comes after their entry); units are drawn until ``n``
+    have been seen."""
+    base = _cr(case, truth, n)
+    q20 = float(np.quantile(np.unique(case.data()["x"]), 0.2))
+
+    def draw(rng):
+        x, e, tl = np.empty(0), np.empty(0, object), np.empty(0)
+        while x.size < n:
+            d = base(rng)
+            late = rng.uniform(size=n) < 0.4
+            entry = np.where(late, rng.uniform(0, q20, n), 0.0)
+            seen = d["x"] > entry
+            x = np.r_[x, d["x"][seen]]
+            e = np.r_[e, d["e"][seen]]
+            tl = np.r_[tl, entry[seen]]
+        return {"x": x[:n], "e": e[:n], "tl": tl[:n]}
+
+    return draw
+
+
 def _pcr(case, truth, n):
     # The model's own sampler: (time, cause) records.
     def draw(rng):
@@ -623,6 +647,37 @@ def _pcr(case, truth, n):
         out = t[0] > cens
         e[out] = None
         return {"x": np.where(out, cens, t[0]), "e": e}
+
+    return draw
+
+
+def _pcr_inspected(case, truth, n):
+    """:func:`_pcr` with a third of the failures found at inspections, as
+    in the fixture: the inspections are a third of the all-cause median
+    apart, and such a failure is recorded with its cause in the window
+    between the inspections around it (left censored before the first).
+    Which failures are found at an inspection is a draw independent of
+    their times."""
+    base = _pcr(case, truth, n)
+    step = _step(truth)
+
+    def draw(rng):
+        d = base(rng)
+        t = d["x"]
+        failed = np.array([v is not None for v in d["e"]])
+        found = failed & (rng.uniform(size=n) < 1 / 3)
+        # (lo, hi] holds t
+        lo = (np.ceil(t / step) - 1) * step
+        hi = lo + step
+        left = found & (lo <= 0)
+        x = np.column_stack(
+            [
+                np.where(found & ~left, lo, np.where(left, hi, t)),
+                np.where(found, hi, t),
+            ]
+        )
+        c = np.where(found, np.where(left, -1, 2), np.where(failed, 0, 1))
+        return {"x": x, "c": c, "e": d["e"]}
 
     return draw
 
@@ -1153,7 +1208,11 @@ PLANS["CoxFrailty"] = Plan(
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
+PLANS["CompetingRisks[tl]"] = Plan(_cr_entry, 300, 60)
 PLANS["ParametricCompetingRisks"] = Plan(_pcr, 300, 60, params=_pcr_params)
+PLANS["ParametricCompetingRisks[interval]"] = Plan(
+    _pcr_inspected, 300, 60, params=_pcr_params
+)
 for _name in (
     "CompetingRisksProportionalHazards[Cox]",
     "CompetingRisksProportionalHazards[Fine-Gray]",

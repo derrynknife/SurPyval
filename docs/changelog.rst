@@ -558,7 +558,8 @@ Unreleased
   Weighted fits are refused.
 - Regressions as plain life models, and their parameter uncertainty
   carried along. ``model.at(Z)`` is the lifetime distribution of a unit
-  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  with one covariate row (``LifeAtCovariates``, at the top level too, as
+  the other result classes are): ``sf``, ``ff``, ``df``,
   ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
   times only, each exactly the regression's at ``Z``, on every parametric
   regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric

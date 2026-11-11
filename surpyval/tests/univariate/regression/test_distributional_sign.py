@@ -111,17 +111,24 @@ def _cases():
     return saved["models"]
 
 
+# The bounds take a central-difference Jacobian (a step of about 6e-6),
+# whose rounding differs between platforms by about 1e-10 of a bound: the
+# values stored by v0.26 on one platform are met to 1e-8 on another
+# (2.5e-10 seen on a tail probability of 0.01).
+BOUND_RTOL = 1e-8
+
+
 def _check_predictions(model, case):
     rows, t = case["rows"], case["t"]
     np.testing.assert_allclose(model.sf(t, rows), case["sf"], rtol=1e-12)
-    np.testing.assert_allclose(model.cb(t, rows), case["cb"], rtol=1e-10)
+    np.testing.assert_allclose(model.cb(t, rows), case["cb"], rtol=BOUND_RTOL)
     np.testing.assert_allclose(
         model.parameters_at(rows), case["parameters_at"], rtol=1e-12
     )
     np.testing.assert_allclose(
         model.parameter_cb(case["parameter"], rows),
         case["parameter_cb"],
-        rtol=1e-10,
+        rtol=BOUND_RTOL,
     )
     np.testing.assert_allclose(
         model.standard_errors(), case["standard_errors"], rtol=1e-10
@@ -140,7 +147,7 @@ def _check_predictions(model, case):
     lo, hi = case["param_cb"]
     expected = [lo, hi] if s[k] == 1 else [-hi, -lo]
     np.testing.assert_allclose(
-        model.param_cb(case["coefficient"]), expected, rtol=1e-10
+        model.param_cb(case["coefficient"]), expected, rtol=BOUND_RTOL
     )
 
 
