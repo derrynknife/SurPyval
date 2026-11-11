@@ -59,6 +59,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     binary_data,
     copula_data,
     cr_data,
+    cure_data,
     destructive_data,
     exact_event_data,
     joint_data,
@@ -1313,6 +1314,64 @@ def _distributional():
 
 
 # ---------------------------------------------------------------------------
+# Mixture-cure regression: the distributional regression of a lifetime
+# with a fraction that never fails
+# ---------------------------------------------------------------------------
+def _cure_coefficients(model):
+    """A mixture-cure regression's coefficients, a row for each
+    parameter that has covariates (in the fixtures the latency's life
+    parameter and the incidence, both on every column)."""
+    params = np.asarray(model.params, dtype=float)
+    rows, start = [], model.k_dist
+    for cols in model.covariate_positions:
+        if len(cols):
+            rows.append(params[start : start + len(cols)])
+        start += len(cols)
+    return np.array(rows)
+
+
+CURE_LATENCIES = (
+    "Weibull",
+    "LogNormal",
+    "LogLogistic",
+    "Gamma",
+    "Exponential",
+)
+FAST_CURE = ("WeibullMixtureCure",)
+
+
+def _mixture_cure():
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "MixtureCure"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                data=cure_data,
+                # A MixtureCureModel is a DistributionalRegressionModel:
+                # declared as one, so every table keyed by the model's
+                # class applies to it.
+                model_class="surpyval.DistributionalRegressionModel",
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.MixtureCure",
+                        "surpyval.MixtureCureFitter",
+                        "surpyval.MixtureCureModel",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(frozenset() if name in FAST_CURE else REFIT_PROPERTIES),
+                coefficients=_cure_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Bayesian fits (surpyval.bayes)
 # ---------------------------------------------------------------------------
 def _bayes_weibull(d):
@@ -1443,6 +1502,7 @@ CASES: list[Case] = (
     + _joint()
     + _spline_regression()
     + _distributional()
+    + _mixture_cure()
     + _bayes()
 )
 
@@ -1685,6 +1745,7 @@ _REGRESSION_LR_X = {
     "WeibullAL[PowerExponential]": (3.0, 10.0),
     "WeibullDistributional": (2.0, 8.0),
     "LogNormalDistributional": (2.0, 8.0),
+    "WeibullMixtureCure": (2.0, 8.0),
 }
 
 
@@ -2041,6 +2102,12 @@ _DISTRIBUTIONAL_PARAMETERS = {
     base + "Distributional": getattr(sp, base).parameter_names
     for base in DISTRIBUTIONAL_BASELINES
 }
+_DISTRIBUTIONAL_PARAMETERS.update(
+    {
+        base + "MixtureCure": [*getattr(sp, base).parameter_names, "lfp_p"]
+        for base in CURE_LATENCIES
+    }
+)
 
 
 def _bounds(case):

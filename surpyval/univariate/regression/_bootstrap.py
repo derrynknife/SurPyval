@@ -451,7 +451,13 @@ def _times_at(
     Z: npt.NDArray,
 ) -> npt.NDArray:
     """The times at which ``model``'s cumulative hazard at ``params``
-    reaches ``H_target``, row by row of ``Z``."""
+    reaches ``H_target``, row by row of ``Z``. A model whose cumulative
+    hazard levels off (a cure fraction) inverts it itself
+    (``_times_at_hazard``): a target it never reaches is an infinite
+    time."""
+    own = getattr(model, "_times_at_hazard", None)
+    if own is not None:
+        return np.asarray(own(params, center, H_target, Z), dtype=float)
     rows = np.asarray(model._centred(Z, center), dtype=float)
     with np.errstate(all="ignore"):
         p = -np.expm1(-np.asarray(H_target, dtype=float))

@@ -96,6 +96,39 @@ Unreleased
   differences for a ``PathModel`` of one's own that does not give them.
   No numbers change: a fit with the default link is the same to the last
   digit. See "What the hazard follows: the link" in :doc:`Joint Models`.
+- Mixture-cure regression: ``MixtureCure(latency, incidence, covariates,
+  links)`` and the prebuilt ``WeibullMixtureCure``,
+  ``LogNormalMixtureCure``, ``LogLogisticMixtureCure``,
+  ``GammaMixtureCure`` and ``ExponentialMixtureCure``. A fraction of the
+  units never fails (sound parts, cured patients), and covariates act
+  both on the probability of ever failing (the incidence, ``lfp_p``,
+  through a logit, probit or complementary log-log link) and on the life
+  of the units that do fail (the latency, a distribution with covariates
+  on its parameters, on the scale by default as in an AFT model):
+  ``S(t | z) = 1 - pi(z) + pi(z) S_u(t | z)``. Both parts are fitted
+  together by maximum likelihood with every censoring, truncation, count
+  and weight; it is the limited-failure fit (``lfp=True``) with
+  covariates, and reduces to it exactly without them. The model is a
+  member of the distributional regressions and has their ``fit``,
+  ``fit_from_df`` (``formulas={"lfp_p": ..., "alpha": ...}``),
+  ``fit_penalised``, bounds (``cb``, ``param_cb``, ``parameter_cb``;
+  Wald, likelihood-ratio and bootstrap), ``summary``, ``random``,
+  ``to_dict`` and ``from_dict``. ``MixtureCureModel`` adds
+  ``susceptible_probability(Z)``, ``cure_probability(Z)``,
+  ``cure_given_survival(x, Z)`` (the chance that a unit still running at
+  ``x`` never fails), ``susceptible=True`` on ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf`` and ``mean`` for the latency alone, and
+  ``follow_up()``, Maller and Zhou's check that the units were followed
+  long enough to show a plateau. The likelihood-ratio bound on a quantile,
+  ``quantile_cb(p, Z, method="lr")``, has an infinite upper end where the
+  likelihood region allows a susceptible probability at or below ``p``. Data with no cured fraction end in the
+  "No finite maximum" warning, naming ``lfp_p`` and saying to fit the
+  latency alone. Checked against R's ``flexsurvcure`` (Weibull,
+  log-normal and log-logistic latencies; logit, probit and loglog links;
+  late entry): log-likelihoods to 1e-3, estimates to 5e-3 on the link
+  scale, standard errors to 1%. The distributional regressions' links
+  gain ``"logit"``, ``"probit"`` and ``"cloglog"`` for a parameter in
+  (0, 1). New guide: :doc:`Mixture-Cure Regression`.
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every

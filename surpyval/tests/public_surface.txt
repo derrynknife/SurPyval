@@ -49,6 +49,7 @@ surpyval.ExponentialAFT
 surpyval.ExponentialAH
 surpyval.ExponentialDistributional
 surpyval.ExponentialFrailty
+surpyval.ExponentialMixtureCure
 surpyval.ExponentialPH
 surpyval.ExponentialPO
 surpyval.FineGray
@@ -63,6 +64,7 @@ surpyval.GammaAFT
 surpyval.GammaAH
 surpyval.GammaDistributional
 surpyval.GammaFrailty
+surpyval.GammaMixtureCure
 surpyval.GammaPH
 surpyval.GammaPO
 surpyval.GammaProcess
@@ -91,11 +93,13 @@ surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
 surpyval.LogLogisticDistributional
+surpyval.LogLogisticMixtureCure
 surpyval.LogNormal
 surpyval.LogNormalAFT
 surpyval.LogNormalAH
 surpyval.LogNormalDistributional
 surpyval.LogNormalFrailty
+surpyval.LogNormalMixtureCure
 surpyval.LogNormalPH
 surpyval.LogNormalPO
 surpyval.LogRankResult
@@ -105,6 +109,9 @@ surpyval.LogisticAH
 surpyval.LogisticDistributional
 surpyval.LogisticPH
 surpyval.LogisticPO
+surpyval.MixtureCure
+surpyval.MixtureCureFitter
+surpyval.MixtureCureModel
 surpyval.MixtureModel
 surpyval.MultivariateDistribution
 surpyval.NegativeBinomial
@@ -158,6 +165,7 @@ surpyval.WeibullAH
 surpyval.WeibullDistributional
 surpyval.WeibullFrailty
 surpyval.WeibullJointPH
+surpyval.WeibullMixtureCure
 surpyval.WeibullPH
 surpyval.WeibullPO
 surpyval.WienerProcess

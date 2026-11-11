@@ -1174,6 +1174,7 @@ SEARCHES: dict[str, Callable] = {
     "RoystonParmarModel": _search_royston_parmar,
     "ParametricRegressionModel": _search_regression,
     "DistributionalRegressionModel": _search_regression,
+    "MixtureCureModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,
     "SemiParametricRegressionModel": _search_cox,

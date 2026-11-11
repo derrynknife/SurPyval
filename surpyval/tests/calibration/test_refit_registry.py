@@ -1197,6 +1197,15 @@ for _base in reg.DISTRIBUTIONAL_BASELINES:
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+for _base in reg.CURE_LATENCIES:
+    # The model's own random: a unit that never fails is drawn as inf,
+    # and censored at the last finite time
+    PLANS[_base + "MixtureCure"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
