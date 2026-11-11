@@ -666,7 +666,9 @@ class ProportionalIntensityModel(
         cov = self.covariance()
         cov[held, :] = 0.0
         cov[:, held] = 0.0
-        se = delta_method_se(function_at, self._mle_values(), cov)
+        se = delta_method_se(
+            function_at, self._mle_values(), cov, scale_free=True
+        )
         estimate = getattr(self, function)(x, Z)
         return log_transformed_cb(estimate, se, alpha_ci, bound)
 

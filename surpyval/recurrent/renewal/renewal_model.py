@@ -26,7 +26,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.regression._summary import format_table
 from surpyval.utils.linalg import (
     bound_signs,
-    numerical_hessian,
+    scale_free_hessian,
     wald_bound_on_support,
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
@@ -2283,7 +2283,7 @@ class RenewalModel(
         def neg_ll_rest(params: np.ndarray) -> float:
             return self._neg_ll(np.r_[mle[0], params])
 
-        H = numerical_hessian(neg_ll_rest, mle[1:])
+        H = scale_free_hessian(neg_ll_rest, mle[1:])
         n = mle.size
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):

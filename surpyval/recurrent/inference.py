@@ -12,7 +12,7 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
-from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+from surpyval.utils.linalg import scale_free_hessian, wald_bound_on_support
 from surpyval.utils.validation import alpha_ci_error
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
@@ -88,7 +88,10 @@ class LikelihoodInferenceMixin:
     ``_n_obs`` alone.
 
     Standard errors come from inverting a numerical Hessian of the negative
-    log-likelihood (the observed Fisher information). When a parameter sits on
+    log-likelihood (the observed Fisher information), taken with steps
+    sized by the likelihood itself
+    (:func:`~surpyval.utils.linalg.scale_free_hessian`), so they do not
+    depend on the unit of time. When a parameter sits on
     a boundary (e.g. a repair parameter driven to its limit) the asymptotic
     normal approximation does not hold and the corresponding standard error is
     returned as NaN with a warning.
@@ -309,7 +312,7 @@ class LikelihoodInferenceMixin:
         n = full.size
         free = self._estimated()
         if free.all():
-            H = numerical_hessian(self._neg_ll, full)
+            H = scale_free_hessian(self._neg_ll, full)
         else:
 
             def neg_ll_free(values: np.ndarray) -> float:
@@ -317,7 +320,7 @@ class LikelihoodInferenceMixin:
                 params[free] = values
                 return self._neg_ll(params)
 
-            H = numerical_hessian(neg_ll_free, full[free])
+            H = scale_free_hessian(neg_ll_free, full[free])
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
             return out, False

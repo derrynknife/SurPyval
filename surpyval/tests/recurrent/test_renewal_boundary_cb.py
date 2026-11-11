@@ -117,9 +117,7 @@ def test_interior_restoration_keeps_its_wald_interval():
     model = GeneralizedRenewal.fit(x, i, c)
     assert model.params[0] > 1  # inside its range
     cov = model.covariance()
-    np.testing.assert_allclose(
-        cov, numerical_hessian_inverse(model), rtol=1e-12
-    )
+    np.testing.assert_allclose(cov, full_hessian_inverse(model), rtol=1e-12)
     var = cov[0, 0]
     q = model.params[0]
     want = q * np.exp(np.array([-1, 1]) * 1.959963984540054 * np.sqrt(var) / q)
@@ -128,10 +126,10 @@ def test_interior_restoration_keeps_its_wald_interval():
     )
 
 
-def numerical_hessian_inverse(model):
-    from surpyval.utils.linalg import numerical_hessian
+def full_hessian_inverse(model):
+    from surpyval.utils.linalg import scale_free_hessian
 
-    return np.linalg.inv(numerical_hessian(model._neg_ll, model._mle))
+    return np.linalg.inv(scale_free_hessian(model._neg_ll, model._mle))
 
 
 # ---------------------------------------------------------------------------

@@ -558,3 +558,74 @@ def test_666_intensity_and_proportional_intensity_models_have_summary():
     )
     pi = ProportionalIntensityHPP.fit(x, [[0.0]] * 5 + [[1.0]] * 6, i, c)
     assert list(pi.summary().index) == pi.parameter_names
+
+
+# -- standard errors under a change of the time unit ------------------------
+
+# Months as hours, as seconds and as years.
+_UNITS = [1.0, 730.0, 730.0 * 3600.0, 1.0 / 12.0]
+
+
+_HPP_SECONDS = pytest.mark.xfail(
+    strict=True,
+    reason="the HPP fit itself stops short with times of 1e8 (months as "
+    "seconds): its root search returns a rate of 0.9994 where the "
+    "estimate is 3.2e-8, and warns that it did not reach a verified "
+    "maximum. The standard error is then of the wrong point; the Hessian "
+    "is not at fault.",
+)
+
+
+@pytest.mark.parametrize(
+    "k",
+    [
+        pytest.param(k, marks=_HPP_SECONDS) if k == 730.0 * 3600.0 else k
+        for k in _UNITS
+    ],
+)
+def test_hpp_standard_error_is_its_closed_form_in_any_unit(k):
+    # One item, 5 failures in (0, 60]: the rate is 5 / 60 and, the
+    # information being n / rate^2, its standard error rate / sqrt(n).
+    x = np.array([3, 9, 20, 35, 56, 60.0]) * k
+    model = HPP.fit(x, c=[0, 0, 0, 0, 0, 1])
+    assert model.params == pytest.approx([5 / (60 * k)], rel=1e-6)
+    assert model.standard_errors() == pytest.approx(
+        [np.sqrt(5) / (60 * k)], rel=1e-6
+    )
+
+
+@pytest.mark.parametrize("dist", [Duane, CoxLewis], ids=["Duane", "CoxLewis"])
+@pytest.mark.parametrize("k", _UNITS)
+def test_standard_errors_are_those_of_the_exact_hessian_in_any_unit(dist, k):
+    """The two baselines whose parameters are tiny in small units (the
+    Duane scale ``b``, the Cox-Lewis slope ``beta``), against the Hessian
+    automatic differentiation gives at the fitted parameters. The plain
+    finite-difference rule was 4e-3 off for Duane in hours and failed in
+    seconds."""
+    from autograd import hessian
+
+    model = dist.fit(
+        np.array(REPAIR_FLEET_X) * k, i=REPAIR_FLEET_I, c=REPAIR_FLEET_C
+    )
+    exact = np.sqrt(np.diag(np.linalg.inv(hessian(model._neg_ll)(model._mle))))
+    assert model.standard_errors() == pytest.approx(exact, rel=1e-5)
+
+
+@pytest.mark.parametrize(
+    "baseline", [Duane, CrowAMSAA, CoxLewis], ids=lambda d: d.name
+)
+def test_regression_bounds_do_not_move_with_the_time_unit(baseline):
+    # Months to hours: the coefficient's standard error and the bounds on
+    # the expected number of failures stay (to the fit's own tolerance).
+    x = np.array(REPAIR_FLEET_X, dtype=float)
+    Z = np.array([0.0] * 6 + [1.0] * 5)
+    kwargs = dict(i=REPAIR_FLEET_I, c=REPAIR_FLEET_C, baseline=baseline)
+    ref = ProportionalIntensityNHPP.fit(x, Z, **kwargs)
+    hours = ProportionalIntensityNHPP.fit(x * 730.0, Z, **kwargs)
+    t = np.array([10.0, 30.0, 60.0])
+    np.testing.assert_allclose(
+        hours.standard_errors()[-1], ref.standard_errors()[-1], rtol=1e-3
+    )
+    np.testing.assert_allclose(
+        hours.cif_cb(t * 730.0, [1.0]), ref.cif_cb(t, [1.0]), rtol=1e-3
+    )
