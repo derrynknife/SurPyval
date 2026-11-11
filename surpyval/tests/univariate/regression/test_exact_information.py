@@ -441,10 +441,13 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     # The subdistribution fit's standard errors invert the exact Hessian
     # the no-maximum check took (``judge_search``, which checks the
-    # maximum with it too), rather than taking it again.
+    # maximum with it too), rather than taking it again: the model-based
+    # covariance (``robust=False``) is that inverse, and the robust one
+    # (the default) has it as its bread.
     case = CASE_BY_NAME["FineGray"]
-    calls, seen = [], []
+    calls, seen, breads = [], [], []
     original, take = fine_gray.hessian, skeleton.search_derivatives
+    sandwich = fine_gray._robust_covariance
 
     def counted(f):
         calls.append(1)
@@ -455,10 +458,19 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
         return take(neg_ll, beta)
 
     monkeypatch.setattr(fine_gray, "hessian", counted)
+
+    def with_bread(bread, *args):
+        breads.append(np.array(bread))
+        return sandwich(bread, *args)
+
     monkeypatch.setattr(skeleton, "search_derivatives", taking)
+    monkeypatch.setattr(fine_gray, "_robust_covariance", with_bread)
     model = _fit(lambda: case.fit(case.data()))
-    assert calls == [] and len(seen) == 1
+    assert calls == [] and len(seen) == 1 and len(breads) == 1
     neg_ll, beta = seen[0]
     np.testing.assert_array_equal(beta, model.beta)
     direct = np.linalg.inv(original(neg_ll)(beta))
-    np.testing.assert_allclose(model.covariance(), direct, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(
+        model.covariance(robust=False), direct, rtol=1e-10, atol=0
+    )
+    np.testing.assert_allclose(breads[0], direct, rtol=1e-10, atol=0)
