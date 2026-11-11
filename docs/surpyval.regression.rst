@@ -42,6 +42,17 @@ AFT, AH and PO families can be evaluated along.
 
     regression/parametric
 
+Which Family a Model Is
+-----------------------
+
+A fitted parametric regression model names its family in ``model.kind``.
+Compare it with the constants in ``surpyval.univariate.regression.kinds``
+rather than with a string:
+
+.. automodule:: surpyval.univariate.regression.kinds
+    :members:
+    :no-index:
+
 Covariates on Every Parameter
 -----------------------------
 
