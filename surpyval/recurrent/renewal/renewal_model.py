@@ -1067,7 +1067,15 @@ class RenewalModel(
         parameter, and the family's discrete option (``kijima_type`` for the
         generalized renewal, memory ``m`` for ARA/ARI). On load the family's
         fitter rebuilds the sampler from those, so ``mcf`` and the simulation
-        methods reproduce exactly. The likelihood/data state is not stored.
+        methods reproduce exactly. A maximum-likelihood fit's parameter
+        covariance (that of :meth:`covariance`) is stored too
+        (``"covariance"``), so the reloaded model gives the same
+        ``covariance()``, ``standard_errors()``, ``summary()`` and Wald
+        ``param_cb``. The data and the likelihood are not stored: the
+        likelihood, the information criteria, the repair test and the
+        profile-likelihood intervals (``method="lr"``, and the restoration
+        parameter's interval on the edge of its range) need a refit, and
+        say so.
 
         See Also
         --------
@@ -1080,6 +1088,9 @@ class RenewalModel(
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
             "how": self.how,
+            # What the Wald bounds need (null for a model with no
+            # likelihood); optional on reading.
+            "covariance": self._covariance_entry(),
             **maximum_entry(self.maximum),
         }
         if getattr(self, "kijima_type", None) is not None:
@@ -1118,7 +1129,23 @@ class RenewalModel(
         # likelihood, as a reloaded parametric model does not).
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)
+        out._restore_covariance(
+            model_dict,
+            np.r_[float(out.restoration), np.asarray(out.model.params)],
+        )
         return out
+
+    def _covariance_entry(self) -> "list | None":
+        """The covariance as ``to_dict`` saves it: the fit's
+        :meth:`covariance` (with the restoration parameter's row and
+        column ``nan`` on the edge of its range), a restored model's
+        saved one, or ``None`` for a model with no likelihood."""
+        if not hasattr(self, "_neg_ll"):
+            if self._saved_covariance is None:
+                return None
+            return np.asarray(self._saved_covariance, dtype=float).tolist()
+        with ignoring_warnings():
+            return np.asarray(self.covariance(), dtype=float).tolist()
 
     @staticmethod
     def _rebuild(fitter: Any, family: str, model_dict: dict) -> "RenewalModel":
@@ -2182,7 +2209,7 @@ class RenewalModel(
         beta      2.754  0.652      1.732      4.379
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         with ignoring_warnings():
             # The boundary is reported in the table (nan), not warned.
             cov = self.covariance()
@@ -2240,7 +2267,13 @@ class RenewalModel(
         parameter took steps across the edge, where the likelihood is not
         the model's, and gave negative variances to the others too (-10.8
         for a Weibull ``alpha``, #461).
+
+        A model restored with ``from_dict`` returns the covariance it was
+        saved with.
         """
+        if not hasattr(self, "_neg_ll") and self._saved_covariance is not None:
+            # The saved one, edge row and all: as the fit gave it.
+            return np.array(self._saved_covariance, dtype=float)
         self._check_fitted()
         edge = self._edge_value()
         if edge is None:

@@ -96,9 +96,13 @@ class ParametricRecurrenceModel(
 
         The intensity model is stateless, so only its name and the fitted
         ``params`` are stored; the reloaded model reproduces ``cif``/``iif``/
-        ``mcf``/``inv_cif`` exactly. Likelihood-inference state (the data and
-        the ``neg_ll`` closure) is not stored, so a reloaded model behaves like
-        a ``from_params`` one for confidence bounds and diagnostics.
+        ``mcf``/``inv_cif`` exactly. A maximum-likelihood fit's parameter
+        covariance is stored too (``"covariance"``), so the reloaded model
+        gives the same ``covariance()``, ``standard_errors()``,
+        ``summary()``, ``param_cb`` and Wald bounds (``cif_cb``, ``iif_cb``,
+        ``mtbf_cb``). The data and the likelihood are not stored: the
+        likelihood, the information criteria, the diagnostics and Crow's
+        exact bounds (``method="crow"``) need a refit, and say so.
 
         See Also
         --------
@@ -110,6 +114,9 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
+                # What the Wald bounds need (null for a model with no
+                # likelihood); optional on reading.
+                "covariance": self._covariance_entry(),
                 **maximum_entry(self.maximum),
             }
         )
@@ -131,6 +138,7 @@ class ParametricRecurrenceModel(
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)
+        out._restore_covariance(model_dict, out.params)
         return out
 
     def _parameter_names(self) -> list:
@@ -723,7 +731,7 @@ class ParametricRecurrenceModel(
             The confidence bounds on the CIF.
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.cif(x, *params),
@@ -821,7 +829,7 @@ class ParametricRecurrenceModel(
             return self._reciprocal_cb(
                 self._crow_mtbf_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
             )
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.iif(x, *params),
