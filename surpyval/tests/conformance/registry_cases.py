@@ -2913,6 +2913,8 @@ def _starve(case):
         "CoxFrailtyModel",
         "RecurrentCoxModel",
         "MultiStateProportionalHazards",
+        # (each transition's regression: a group with no events)
+        "ParametricMultiStateRegression",
     ):
         return lambda d: fit(_no_event_level(d))
     if cls in (
