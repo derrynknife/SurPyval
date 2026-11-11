@@ -354,6 +354,14 @@ with its own ``schema``.
      - ``"model": "ParametricCompetingRisksRegression"``
      - ``causes``, ``models``
      - --
+   * - ``ParametricMultiState``
+     - ``"model": "ParametricMultiState"``
+     - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``
+     - --
+   * - ``ParametricMultiStateRegression``
+     - ``"model": "ParametricMultiStateRegression"``
+     - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``, ``Z``, ``covariate_names``
+     - --
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``

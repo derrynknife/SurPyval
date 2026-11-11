@@ -52,7 +52,12 @@ from surpyval import (
 )
 from surpyval.bayes import prior as sp_prior
 from surpyval.life_models import Power
-from surpyval.multistate import MultiState, MultiStateProportionalHazards
+from surpyval.multistate import (
+    MultiState,
+    MultiStateProportionalHazards,
+    ParametricMultiState,
+    ParametricMultiStateRegression,
+)
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
     _TAGGED_MODELS,
@@ -380,6 +385,10 @@ def _build(name):
         "multistate_cox": lambda: MultiStateProportionalHazards.fit(
             **ms_data(True)
         ),
+        "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
+        "multistate_parametric_regression": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True))
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -484,6 +493,8 @@ CASES = [
     "competing_risks",
     "multistate",
     "multistate_cox",
+    "multistate_parametric",
+    "multistate_parametric_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",

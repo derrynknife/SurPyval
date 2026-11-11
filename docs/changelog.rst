@@ -5,6 +5,24 @@ Unreleased
 
 **Added.**
 
+- Parametric multi-state models, ``ParametricMultiState`` (a
+  distribution for each transition, Weibull by default, or a different
+  one per transition) and ``ParametricMultiStateRegression`` (a
+  parametric regression for each transition, ``WeibullPH`` by default,
+  or any of the PH, AFT and other parametric regressions), also at the
+  top level. Each transition is fitted to the spells in its 'from' state,
+  the others censored and each spell left truncated at its start (the
+  clock goes forward: a Markov model). ``transition_probabilities``
+  solves the Kolmogorov forward equations by product integration with
+  fourth-order Magnus steps on an adaptive grid, to about 1e-8 per row;
+  ``occupancy``, ``occupancy_se`` and ``cb`` (delta-method bounds over
+  every transition's parameters), ``cumulative_hazard`` and ``hazard``.
+  The curves are smooth and extend past the data. ``clock="reset"``
+  (semi-Markov) is refused with the reason. Checked against R
+  ``flexsurv`` 2.3.2 (``pmatrix.fs``): the fits' log-likelihoods agree,
+  and with flexsurv's parameters the transition probabilities agree to
+  1e-11; with one transient state the occupation probabilities are
+  ``ParametricCompetingRisks``' cumulative incidences.
 - Multi-state models, ``surpyval.multistate`` (``MultiState``,
   ``MultiStateProportionalHazards`` and ``TransitionMatrix`` also at the
   top level), for units that move between several states (healthy, ill,
@@ -32,8 +50,7 @@ Unreleased
   illness-death model with recovery; with one transient state the
   estimate is ``CompetingRisks``' cumulative incidence, and with one
   transition the Kaplan-Meier estimate with Greenwood's variance. Not yet
-  built: parametric models of each transition, semi-Markov models and
-  states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
+  built: semi-Markov models and states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
   data (``spells=True`` gives its illness-death spells). See
   :doc:`Multi-State Models`.
 - Adjusted survival curves for groups that were not assigned at random

@@ -28,13 +28,15 @@ finite where a hazard is not (a Weibull with a shape below 1, at 0),
 and the Gauss points are inside the interval.
 
 The grid is adaptive. Each interval is compared with its two halves; an
-interval where they differ by more than its share of the tolerance (in
-the maximum absolute row sum) is halved, until every interval passes.
+interval where they differ by more than its share of the tolerance,
+``tol * length / scale`` (in the maximum absolute row sum; ``scale`` the
+span of the data), is halved, until every interval passes.
 The halves' product is the one used, whose error is about a fifteenth
 of that difference (the local error falls 32-fold as the interval
 halves). As the matrices are (to that accuracy) stochastic, errors do
 not grow as they are carried forward, so the error of each row of
-:math:`P(s, t)` is below the tolerance.
+:math:`P(s, t)` is below the tolerance per ``scale`` of time (see
+:func:`plan`).
 """
 
 from __future__ import annotations

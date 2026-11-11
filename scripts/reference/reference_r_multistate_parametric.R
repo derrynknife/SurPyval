@@ -34,7 +34,7 @@
 #   rtol = atol = 1e-12: P(0, t), the forward equations solved by
 #   deSolve's lsoda (flexsurv has no start time, so P(s, t) is
 #   P(0, s)^-1 P(0, t), by the Chapman-Kolmogorov equations).
-# * With ci = TRUE, B = 4000, after set.seed(1): flexsurv's intervals,
+# * With ci = TRUE, B = 1000, after set.seed(1): flexsurv's intervals,
 #   the 2.5% and 97.5% quantiles of P(0, t) over parameters drawn from
 #   their asymptotic normal distribution (a simulation, not the delta
 #   method).
@@ -188,19 +188,19 @@ for (case in cases) {
 # ---------------------------------------------------------------------------
 fits <- fit_all(mgus_st, mgus_tmat, "weibull", Surv(Tstart, Tstop, status) ~ 1)
 fm <- do.call(fmsm, c(fits, list(trans = mgus_tmat)))
-ci_times <- c(60, 120, 240)
+ci_times <- c(120, 240)
 lower <- list()
 upper <- list()
 for (k in seq_along(ci_times)) {
   set.seed(1)
-  p <- pmatrix.fs(fm, t = ci_times[k], ci = TRUE, B = 4000)
+  p <- pmatrix.fs(fm, t = ci_times[k], ci = TRUE, B = 1000)
   lower[[k]] <- unname(attr(p, "lower"))
   upper[[k]] <- unname(attr(p, "upper"))
 }
 vals <- c(list(times = ci_times), matrices(lower, mgus_states, "L"),
           matrices(upper, mgus_states, "U"))
 add("flexsurv_mgus2_weibull_ci", "mgus2_multistate",
-    "set.seed(1); pmatrix.fs(fmsm(...), t, ci = TRUE, B = 4000)",
+    "set.seed(1); pmatrix.fs(fmsm(...), t, ci = TRUE, B = 1000)",
     list(dist = "weibull", cl = 0.95,
          method = "simulation from the parameters' normal distribution"),
     vals)

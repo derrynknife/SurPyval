@@ -570,7 +570,8 @@ class ParametricMultiState(_ParametricMultiStateBase):
     Q(t)`, :math:`Q(t)` the matrix of the transition hazards, which are
     solved by product integration on an adaptive grid to an accuracy of
     about :math:`10^{-8}` in each row (the sum of the absolute errors of
-    its elements). The bounds on the state occupation probabilities come
+    its elements) over the span of the data, and in proportion beyond
+    it. The bounds on the state occupation probabilities come
     from the delta method over every transition's parameters.
 
     Unlike the non-parametric :class:`~surpyval.multistate.MultiState`,
@@ -645,7 +646,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         >>> model.parameter_names[:2]
         ['mgus -> pcm: alpha', 'mgus -> pcm: beta']
         >>> model.occupancy([120, 240], "death").round(3)
-        array([0.627, 0.896])
+        array([0.581, 0.808])
         """
         from surpyval import Weibull
 
@@ -755,8 +756,8 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ... )
         >>> model.transition_probabilities(2.0).round(3)
         array([[1.   , 0.   , 0.   ],
-               [0.339, 0.488, 0.173],
-               [0.528, 0.   , 0.472]])
+               [0.182, 0.67 , 0.147],
+               [0.551, 0.   , 0.449]])
         """
         s = self._start(s)
         k = self.transitions.n_states
@@ -802,7 +803,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ...     i_col="id",
         ... )
         >>> model.occupancy([120, 240, 480], "pcm").round(4)
-        array([0.0139, 0.0094, 0.0012])
+        array([0.0143, 0.0083, 0.0022])
         """
         s = self._start(s)
         b = self.transitions.index(state)
@@ -834,7 +835,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ...     i_col="id",
         ... )
         >>> model.occupancy_se(240, "death").round(4)
-        np.float64(0.0085)
+        np.float64(0.0114)
         """
         s = self._start(s)
         b = self.transitions.index(state)
@@ -882,7 +883,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ...     i_col="id",
         ... )
         >>> model.cb(240, "death").round(3)
-        array([0.879, 0.911])
+        array([0.785, 0.829])
         """
         check_bound_args(alpha_ci, bound, bound_type)
         p = self.occupancy(x, state, s, from_state)
@@ -909,7 +910,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ...     i_col="id", dist=Exponential,
         ... )
         >>> model.cumulative_hazard(120, "mgus", "pcm").round(4)
-        np.float64(0.1135)
+        np.float64(0.1066)
         """
         self.transitions.transition_index(from_state, to_state)
         model = self.models[(self._label(from_state), self._label(to_state))]
@@ -1040,7 +1041,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         >>> model.parameter_names[:3]
         ['mgus -> pcm: alpha', 'mgus -> pcm: beta', 'mgus -> pcm: male']
         >>> model.occupancy([120, 120], [[1], [0]], "pcm").round(4)
-        array([0.0126, 0.0153])
+        array([0.0128, 0.0161])
         """
         from surpyval import WeibullPH
 
@@ -1270,8 +1271,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ... )
         >>> model.transition_probabilities(120, [1]).round(3)
         array([[1.   , 0.   , 0.   ],
-               [0.62 , 0.368, 0.013],
-               [0.982, 0.   , 0.018]])
+               [0.615, 0.372, 0.013],
+               [0.985, 0.   , 0.015]])
         """
         s = self._start(s)
         z = self._z(Z)
@@ -1307,7 +1308,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ...     tl_col="tl", i_col="id",
         ... )
         >>> model.occupancy([120, 120], [[1], [0]], "death").round(3)
-        array([0.62 , 0.509])
+        array([0.615, 0.542])
         """
         s = self._start(s)
         b = self.transitions.index(state)
@@ -1341,7 +1342,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ...     tl_col="tl", i_col="id",
         ... )
         >>> model.occupancy_se(240, [1], "death").round(4)
-        np.float64(0.0133)
+        np.float64(0.0137)
         """
         s = self._start(s)
         b = self.transitions.index(state)
@@ -1379,7 +1380,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ...     tl_col="tl", i_col="id",
         ... )
         >>> model.cb(240, [1], "death").round(3)
-        array([0.85, 0.9 ])
+        array([0.807, 0.86 ])
         """
         check_bound_args(alpha_ci, bound, bound_type)
         p = self.occupancy(x, Z, state, s, from_state)
@@ -1409,7 +1410,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ...     tl_col="tl", i_col="id",
         ... )
         >>> model.cumulative_hazard(120, [1], "mgus", "pcm").round(4)
-        np.float64(0.0958)
+        np.float64(0.1008)
         """
         h = self.transitions.transition_index(from_state, to_state)
         m = self._models()[h]
