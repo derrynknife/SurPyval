@@ -137,7 +137,8 @@ def lattice_quantile(
     weights: npt.NDArray,
     q: npt.ArrayLike,
     shape: tuple[int, ...],
-) -> npt.NDArray:
+    complement: npt.NDArray | None = None,
+) -> Any:
     """Quantiles ``q`` of a function's ``values`` at the points of
     lattices of ``shape`` (``(lattices, m, ..., m)``, the points in that
     order), each point's mass spread over its cell.
@@ -155,6 +156,14 @@ def lattice_quantile(
 
     ``values`` is ``(N,)`` or ``(N, s)``; the result is ``q``'s shape, or
     ``(s,) + q.shape``.
+
+    ``complement`` is for probabilities: ``1 - values`` computed as itself
+    (a failure function beside its survival function), so that it has
+    digits where ``values`` is a rounding from 1. The scale each column
+    is worked on is chosen from ``values`` as without it, but computed
+    from whichever of the two is small, and the result is then the pair
+    ``(quantiles, 1 - quantiles)``, the second with the digits of the
+    complement.
 
     Examples
     --------
@@ -178,14 +187,34 @@ def lattice_quantile(
     # decades, otherwise swamps the sums); quantiles carry back exactly.
     scales = []
     v = v.copy()
+    comp = None
+    if complement is not None:
+        comp = np.asarray(complement, dtype=float).reshape(v.shape)
     with np.errstate(all="ignore"):
         for j in range(s):
             col = v[finite[:, j], j]
             if col.size and np.all(col > 0) and np.all(col < 1):
-                v[:, j] = np.log(v[:, j]) - np.log1p(-v[:, j])
+                if comp is None:
+                    v[:, j] = np.log(v[:, j]) - np.log1p(-v[:, j])
+                else:
+                    # log(1 - v) from the complement where it is given
+                    # (v is then a rounding from 1 wherever it is small)
+                    other = np.where(
+                        comp[:, j] > 0,
+                        np.log(comp[:, j]),
+                        np.log1p(-v[:, j]),
+                    )
+                    v[:, j] = np.log(v[:, j]) - other
                 scales.append("logit")
             elif col.size and np.all(col > 0):
-                v[:, j] = np.log(v[:, j])
+                if comp is None:
+                    v[:, j] = np.log(v[:, j])
+                else:
+                    v[:, j] = np.where(
+                        comp[:, j] < 0.5,
+                        np.log1p(-comp[:, j]),
+                        np.log(v[:, j]),
+                    )
                 scales.append("log")
             else:
                 scales.append("identity")
@@ -223,14 +252,22 @@ def lattice_quantile(
                 (4 * once - twice) / 3,
                 once,
             )
+    rest = np.empty_like(out)
     with np.errstate(all="ignore"):
         for j, scale in enumerate(scales):
             if scale == "logit":
+                rest[j] = 1.0 / (1.0 + np.exp(out[j]))
                 out[j] = 1.0 / (1.0 + np.exp(-out[j]))
             elif scale == "log":
+                rest[j] = -np.expm1(out[j])
                 out[j] = np.exp(out[j])
+            else:
+                rest[j] = 1.0 - out[j]
     shaped: npt.NDArray = out.reshape((s,) + q_shape)
-    return shaped[0] if one else shaped
+    if complement is None:
+        return shaped[0] if one else shaped
+    other_side: npt.NDArray = rest.reshape((s,) + q_shape)
+    return (shaped[0], other_side[0]) if one else (shaped, other_side)
 
 
 def _spread_quantiles(

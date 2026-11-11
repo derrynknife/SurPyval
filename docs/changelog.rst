@@ -869,6 +869,22 @@ Unreleased
     where a risk set's sum underflows.
   - ``FineGrayModel.p_values`` is computed in the tail (``2 * norm.sf``),
     as ``summary()``'s, so a p-value below 1e-16 is no longer 0.
+- ``random`` of a Bayesian fit (``BayesianParametric.random``) takes one
+  uniform number per life, where it took two (one to pick a posterior
+  point and one for the life). The number picks a point by the posterior's
+  cumulative weights, and its place within that point's share is the
+  probability for the point's own quantile; a closed-form predictive
+  (an Exponential with a Gamma prior, a Normal with a Normal prior on its
+  mean) uses its quantile directly. On a grid the life is drawn at the
+  grid point, not at a point jittered within its cell, so the draws follow
+  exactly the distribution ``sf``, ``ff`` and ``qf`` describe. This is an
+  intentional change to results: **the same seed gives different lives
+  than before.** For example, a Weibull fit to 3 failures and 37
+  survivors with the default grid, ``random(3, random_state=1)``, was
+  ``[2596.0, 33586.3, 10561.4]`` and is now ``[2240.2, 30592.9,
+  18897.8]``; an Exponential with a Gamma(2, 500) prior on 100, 250 and
+  400 hours was ``[783.8, 51.0, 250.5]`` and is now ``[192.8, 1029.9,
+  39.5]``. The distribution of the draws is unchanged.
 
 - A saved single-process repairable model keeps its bounds. ``to_dict`` /
   ``to_json`` of a maximum-likelihood ``HPP``, ``CrowAMSAA``, ``Duane`` or
@@ -1098,6 +1114,32 @@ Unreleased
   forms give ``nan`` there.
 
 **Fixed.**
+
+- Bayesian fits keep their digits in both tails, for every engine (grid,
+  Laplace, draws from another sampler) and the offset, limited-failure and
+  zero-inflated forms. ``ff`` is the posterior average of each point's own
+  failure function rather than ``1 - sf``, which kept no digits of a
+  failure probability below about 1e-8; ``Hf`` is ``-log1p(-ff)`` while
+  ``ff`` is below one half and ``-log(sf)`` above, and stays finite where
+  ``sf`` underflows; ``cri(on="ff")`` and ``cri(on="Hf")`` and
+  ``compare_to(on="ff")`` keep the same digits. For the Weibull fit above,
+  ``ff(0.1)`` was ``4.1397633e-09`` and is now ``4.1397644e-09`` (the
+  posterior average summed exactly is ``4.139764380041089e-09``; the old
+  value was off by 2.6e-7 relative, the new one by less than 1e-15), and
+  ``qf(1e-12)`` was ``5.7914e-05`` and is now ``5.7848e-05``. Below the
+  support ``ff`` is now exactly 0 and ``sf`` exactly 1 (they were a
+  rounding either side). Elsewhere values move only in their last digits
+  (``ff(100)`` was ``7.935912007228652e-05``, now
+  ``7.93591200732899e-05``).
+- ``qf`` of a Bayesian fit found by search (grid, Laplace, draws) now
+  converges in the upper tail: it solves on the log of ``ff`` up to
+  ``p = 0.5`` and on the log of ``sf`` above, with a tolerance relative to
+  the time scale. On the Weibull fit above, ``qf(0.9999)`` and
+  ``qf(1 - 1e-9)`` raised "Failed to converge after 100 iterations" and
+  are now 275897.7 and 15438917.1. On positive times it solves on the log
+  of time, so a quantile far below the posterior points' own is found to
+  a relative tolerance: a Laplace ExpoWeibull fit's ``qf(1e-12)`` had
+  stopped at a time where ``ff`` was 3.7e-10.
 
 - The package no longer silences other threads' warnings. Wherever it
   held a warning back (117 places: the starts and polishes of fits, inner
