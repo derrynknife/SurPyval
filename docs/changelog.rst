@@ -814,6 +814,23 @@ Unreleased
 
 **Fixed.**
 
+- An exponential fitted with a Gamma prior on a rate per hour
+  (``Exponential.fit_bayes(x, priors={"failure_rate":
+  Gamma.from_params([40, 1e9])})``, 40 failures in a billion unit-hours,
+  as a handbook or a data library gives a rate) no longer raises
+  ``OverflowError`` from ``sf``, ``ff``, ``df``, ``hf`` and ``Hf``. Its
+  predictive distribution is a closed form (a Lomax of the posterior's
+  shape ``a`` and scale ``b``) that was evaluated as ``a * b**a / (b +
+  x)**(a + 1)``, and ``b**a`` passes the largest float once ``b`` is near
+  1e9 and ``a`` above about 34. The five functions and ``qf`` are now
+  worked out on the log scale (``Hf(x) = a log(1 + x / b)``), so the same
+  study in hours and in millions of hours gives the same probabilities;
+  on a scale that did not overflow the values are the same to rounding,
+  and ``ff`` near 0 keeps its digits. ``mrl`` of such a
+  fit is the Lomax's closed form, ``(b + x) / (a - 1)``, in place of a
+  numerical integral that returned -1 with a per-hour prior and was up
+  to 1% out far into the tail on any scale; ``hf`` at an infinite time is
+  0, not ``nan``.
 - An accelerated life fit (``AcceleratedLife``, the parameter-substitution
   fitter) no longer makes warnings in other threads raise. To start its
   search it fits the distribution at each stress level and, where that
