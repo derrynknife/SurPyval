@@ -87,6 +87,12 @@ NOT_SWEPT = {
     "likelihood_contour": "a joint confidence region of two parameters, "
     "not an interval; checked against WeibullR's MLEcontour in "
     "parametric/test_likelihood_contour.py",
+    "growth": "a table of each cause's trend parameter (param_cb's "
+    "interval), its test and the cause's iif_cb / mtbf_cb (swept) at one "
+    "time; checked against them in recurrent/test_event_marks.py",
+    "forecast": "a prediction interval of a count (surpyval.forecast), "
+    "where alpha_ci is its level, not a confidence bound's; checked in "
+    "recurrent/test_event_marks.py",
 }
 # "confidence" was the recurrent models' level until v0.22; a method
 # that took it again would be an unswept uncertainty method.

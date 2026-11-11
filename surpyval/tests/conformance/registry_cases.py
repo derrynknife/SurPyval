@@ -1914,6 +1914,16 @@ def _bounds(case):
             )
             for bound_type in ("log", "log-log", "plain")
         ),
+        # Each cause's own model's bounds, and the totals over the causes
+        # (the causes' delta-method variances added, on the log scale).
+        "CauseSpecificNHPP": (
+            Bound("cif_cb", point="cif", per_cause=True),
+            Bound("iif_cb", point="iif", per_cause=True),
+            Bound("mtbf_cb", point="mtbf", per_cause=True),
+            Bound("total_cif_cb", point="total_cif"),
+            Bound("total_iif_cb", point="total_iif"),
+            Bound("total_mtbf_cb", point="total_mtbf"),
+        ),
     }
     if cls in fixed:
         return fixed[cls]
