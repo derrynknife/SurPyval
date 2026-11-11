@@ -952,6 +952,36 @@ Unreleased
 
 **Changed.**
 
+- **The recurrent models' standard errors are steadier under a change of
+  time unit (an intentional numerical change, in the seventh digit or
+  beyond).** The finite-difference Hessian behind the Poisson-process,
+  proportional-intensity, cause-specific and renewal models' covariances
+  (``scale_free_hessian``) stepped each direction by 1e-3 of a standard
+  deviation. With times in hours or seconds the negative log-likelihood is
+  in the thousands, and rounding then cost the Hessian about its seventh
+  digit, so the same data in another unit gave bounds that differed by up
+  to 1.4e-6. It now steps by 3e-3 and cancels one more term of the
+  difference's error (four step sizes, not three). The largest relative
+  difference between a generalised renewal model's standard errors fitted
+  in months and in another unit (the test data of the unit checks):
+
+  ======== ========== ==========
+  Unit     Before     After
+  ======== ========== ==========
+  hours    9.4e-8     2.1e-8
+  seconds  3.9e-7     6.1e-8
+  years    2.4e-7     6.3e-9
+  ======== ========== ==========
+
+  Against the closed-form Hessian of a power-law process, the standard
+  errors are within 2e-9 from years to hours as before and within 4.4e-7
+  in seconds (8.3e-9 before). Example: a generalised renewal model in
+  hours, standard errors of ``[q, alpha, beta]`` 4.482161218522,
+  132.8835862844, 0.09875842148647 before and 4.482161306947,
+  132.8835700725, 0.09875843998802 now; ``CrowAMSAA`` on the same repair
+  fleet in hours, 4657.449597614 and 0.2461119034716 before,
+  4657.449566626 and 0.2461119023258 now.
+
 - **Fine-Gray standard errors are the robust ones by default (an
   intentional numerical change).** ``FineGray`` (and
   ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"``)
