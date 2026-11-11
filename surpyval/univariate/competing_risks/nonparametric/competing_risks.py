@@ -52,6 +52,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.data_formats import _get_idx, xcnt_handler, xcnt_to_xrd
 from surpyval.utils.dataframe import frame_column
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -692,6 +693,12 @@ class CompetingRisks(SerialisableMixin):
         model.effective_n = self.effective_n
         return model
 
+    @positional_option(
+        "stacked",
+        "whether to stack the curves of the causes",
+        "the axes 'ax' of a non-parametric model's plot(ax)",
+        "stacked=..., or ax=... for the axes",
+    )
     def plot(
         self,
         stacked: bool = False,

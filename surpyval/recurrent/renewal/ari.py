@@ -13,6 +13,7 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -637,6 +638,7 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(baseline.parameter_initialiser(data.x))
         return base_params
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @removed_arguments("0.23", dist="'baseline'")
     @takes_unit
     @accepts_event_history_data
@@ -727,6 +729,7 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
+    @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n", "tl", "tr")
     @takes_unit
     def fit_from_df(

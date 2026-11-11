@@ -67,6 +67,20 @@ How a name is retired
        AttributeError: 'Weibull_' object has no attribute 'param_names':
        it was removed in v0.23; use 'parameter_names'
 
+An argument that becomes keyword-only
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Where an argument given by position is silently read as something other
+than what that place holds in SurPyval's other methods of the same name
+(``Parametric.mean(5)`` takes the 5 as ``defective``, where a
+non-parametric model's ``mean(5)`` takes it as ``tau``), the call keeps
+working for one release and warns with a ``FutureWarning``, not a
+``DeprecationWarning``: the risk is a wrong number, not an error, so the
+warning is shown wherever the call is made. It says what the value was
+taken as, the keyword to use and the release from which the argument is
+keyword-only. Passing it by name silences it, and the result is unchanged
+meanwhile.
+
 A test in the package keeps a list of every public name and fails when
 one disappears without going through these steps.
 
