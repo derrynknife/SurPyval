@@ -451,6 +451,11 @@ if TYPE_CHECKING:
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
     )
+    from surpyval.univariate.adjusted import (
+        AdjustedCurves,
+        direct_adjustment,
+        weight_diagnostics,
+    )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
         CompetingRisksProportionalHazards,
@@ -462,11 +467,6 @@ if TYPE_CHECKING:
         JointModel,
         JointPH,
         WeibullJointPH,
-    )
-    from surpyval.univariate.adjusted import (
-        AdjustedCurves,
-        direct_adjustment,
-        weight_diagnostics,
     )
     from surpyval.univariate.pseudo import (
         PseudoRegressionResult,

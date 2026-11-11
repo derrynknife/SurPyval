@@ -414,6 +414,15 @@ stay between 0 and 1; intervals for a difference are the difference plus
 or minus a normal quantile times its standard error. ``robust=True`` uses
 the model's robust (sandwich) covariance in the first part.
 
+The curves are checked against R: a Cox model's adjusted curves equal the
+row means of ``survival::survfit`` with ``newdata``, and a Weibull model's
+curves, differences, restricted means and delta-method standard errors
+match ``survival::survreg`` worked by hand. The Cox curves also match
+``riskRegression::ate`` (the G-formula behind ``adjustedCurves``' direct
+method). Its standard errors come from the Cox model's robust influence
+function, and on the ``lung`` data they are 4% to 13% smaller than the
+model-based ones here.
+
 For the weighted route, the variance is the weighted Kaplan-Meier's robust
 one (see :doc:`Weighted Data`). It treats the weights as known. Weights
 estimated from the same data usually make the true variance a little
