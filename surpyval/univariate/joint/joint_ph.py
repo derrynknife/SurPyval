@@ -1,4 +1,7 @@
-"""The joint model fitter: :func:`JointPH` and ``WeibullJointPH`` (#891)."""
+"""The joint model fitter: :func:`JointPH` and ``WeibullJointPH`` (#891).
+
+The hazard follows the marker's current value, its slope, the area under
+it, or more than one (``link``)."""
 
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from surpyval.utils.units import takes_unit
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
+    LINKS,
     MAX_VARYING,
     JointArrays,
     Layout,
@@ -65,7 +69,11 @@ class JointPHFitter(FitterRepr):
     fitter_kind = "joint model fitter"
 
     def __init__(
-        self, distribution: Any, path_model: Any, varying: Any = None
+        self,
+        distribution: Any,
+        path_model: Any,
+        varying: Any = None,
+        link: Any = "value",
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -108,7 +116,32 @@ class JointPHFitter(FitterRepr):
                 "items (the quadrature is a grid of 7 points in each); "
                 f"got {len(varying)}."
             )
-        every = parameter_names(names, [n for n in names if n in varying], [])
+        try:
+            links = [link] if isinstance(link, str) else list(link)
+        except TypeError:
+            links = []
+        if (
+            not links
+            or any(name not in LINKS for name in links)
+            or len(set(links)) < len(links)
+        ):
+            raise ValueError(
+                "link names what of the marker's path the hazard follows: "
+                "'value' (its current value), 'slope' (its rate of change) "
+                "or 'cumulative' (the area under it from age 0), or a "
+                f"list of them, each once; got {link!r}."
+            )
+        self.link = tuple(name for name in LINKS if name in links)
+        base = getattr(path_model, "base", path_model)
+        if "cumulative" in self.link and base.name == "Lloyd-Lipow":
+            raise ValueError(
+                "The Lloyd-Lipow path a - b / t has no finite area from age "
+                "0, so the hazard cannot follow its cumulative: use "
+                "link='value' or 'slope', or another path."
+            )
+        every = parameter_names(
+            names, [n for n in names if n in varying], [], links=self.link
+        )
         twice = sorted({n for n in every if every.count(n) > 1})
         if twice:
             raise ValueError(
@@ -137,6 +170,8 @@ class JointPHFitter(FitterRepr):
         ]
         if len(self.varying) < len(names):
             out.append("varying: " + ", ".join(self.varying))
+        if self.link != ("value",):
+            out.append("link: " + ", ".join(self.link))
         return out
 
     @dataframe_covariates
@@ -164,8 +199,9 @@ class JointPHFitter(FitterRepr):
         parameters of its own -- those that vary between items
         multivariate normal about means that its covariates shift, the
         rest common -- read with normal noise; its hazard is Weibull
-        proportional hazards in the path's current, noise-free value and
-        its covariates. The varying parameters are integrated out of each
+        proportional hazards in the path's current, noise-free value (or
+        its slope or the area under it: the fitter's ``link``) and its
+        covariates. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
         the log-likelihood stops moving), and the likelihood is maximised
@@ -213,7 +249,8 @@ class JointPHFitter(FitterRepr):
         marker_reference : float, optional
             The marker value at which ``alpha`` is reported (the
             baseline's item has its marker there). Default the mean
-            reading. It changes ``alpha`` only.
+            reading. It changes ``alpha`` only. Refused where the hazard
+            does not follow the marker's value (the fitter's ``link``).
         path_covariates : list of str or dict, optional
             The covariates that shift the path parameters' means
             (``a_<cov>``, ``b_<cov>``, ...): a list (each path parameter),
@@ -262,6 +299,13 @@ class JointPHFitter(FitterRepr):
                     "is reported, one finite number; got "
                     f"{marker_reference!r}."
                 )
+        if reference is not None and "value" not in self.link:
+            raise ValueError(
+                "'marker_reference' is the marker value at which alpha is "
+                "reported, for a hazard that follows the marker's value; "
+                f"this one follows its {' and '.join(self.link)} (alpha "
+                "is at a slope and an area of 0): leave it out."
+            )
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
         parts = covariate_parts(
             list(self.path_model.parameter_names),
@@ -380,7 +424,10 @@ class JointPHFitter(FitterRepr):
 
 
 def JointPH(
-    distribution: Any, path_model: Any = None, varying: Any = None
+    distribution: Any,
+    path_model: Any = None,
+    varying: Any = None,
+    link: Any = "value",
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -388,8 +435,8 @@ def JointPH(
     by default; ``QuadraticPath``, ``ExponentialPath``, ... or a
     ``PathModel`` of one's own), and the hazard is proportional hazards
     on the baseline ``distribution`` (the Weibull for now, #891) in the
-    path's current value. ``WeibullJointPH`` is ``JointPH(Weibull,
-    LinearPath)``.
+    path's current value, or in what ``link`` names. ``WeibullJointPH``
+    is ``JointPH(Weibull, LinearPath)``.
 
     Parameters
     ----------
@@ -401,6 +448,14 @@ def JointPH(
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
         items. Default all of them (at most three).
+    link : str or sequence of str, optional
+        What of the marker's path the hazard follows: ``"value"`` (the
+        default: its current value, so risk follows the level),
+        ``"slope"`` (its rate of change: risk follows how fast it is
+        changing) or ``"cumulative"`` (the area under it from age 0:
+        risk follows the accumulated exposure), or a list of them, each
+        with an effect of its own (``marker_effect``, ``slope_effect``,
+        ``cumulative_effect``).
 
     Returns
     -------
@@ -417,12 +472,15 @@ def JointPH(
     >>> JointPH(Weibull, QuadraticPath, varying=("a", "b"))
     ... # doctest: +ELLIPSIS
     WeibullQuadraticJointPH: joint model fitter (..., varying: a, b)
+    >>> JointPH(Weibull, link=["value", "slope"])
+    ... # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., link: value, slope)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying)
+    return JointPHFitter(distribution, path_model, varying, link)
 
 
 # -- the data ----------------------------------------------------------------
@@ -664,7 +722,7 @@ def _fit(
     shifts, hazard = parts
     p_all = len(names)
     every = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard
+        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -709,8 +767,9 @@ def _fit(
             dtype=bool,
         ).reshape(len(path_names), p),
         np.array([cov in hazard for cov in kept_names], dtype=bool),
+        fitter.link,
     )
-    model = Model(layout, PathFunction(path_model), centre)
+    model = Model(layout, PathFunction(path_model, fitter.link), centre)
     # Starting values: each item's path alone, their spread, then the
     # survival part on each item's predicted path
     theta = marker_start(model, ages, values, Z - zbar, counts)
@@ -823,7 +882,7 @@ def _fit(
         warn_no_covariance()
     # every parameter, nan for an aliased covariate's
     full_names = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard
+        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
     )
     kept_names = parameter_names(
         path_names,
@@ -831,6 +890,7 @@ def _fit(
         kept_names,
         {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
         [c for c in hazard if c in kept_names],
+        fitter.link,
     )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -851,7 +911,8 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
-    out.marker_reference = float(reference)
+    out.link = tuple(fitter.link)
+    out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
     out._zbar = zbar
     if covariance is not None:
@@ -890,7 +951,7 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     the model's parameters; the model's point ``u`` in that space; and
     the number of items. For the checks that a fit's answer is a
     maximum (``tests/conformance``)."""
-    fitter = JointPH(model.dist, model.path_model, model.varying)
+    fitter = JointPH(model.dist, model.path_model, model.varying, model.link)
     records, counts, names = _records(
         data["x"],
         data.get("c"),
@@ -908,7 +969,7 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     Z = Z_all[:, model._kept] - model._zbar
     arrays = JointArrays.build(counts, T, d, L, Z, ages, values, U=U, Rt=Rt)
     layout = model._layout
-    lik = Model(layout, PathFunction(model.path_model), model._centre)
+    lik = model._likelihood_model()
     theta = model._theta()
     u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
     placed, _ = place(u, lik, arrays, (None, None))

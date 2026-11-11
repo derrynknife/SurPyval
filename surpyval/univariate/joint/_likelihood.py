@@ -17,6 +17,11 @@ be in the hazard, the path or both: the entries of ``Delta`` and
 
     h_i(t) = h0(t) exp(gamma'z_i + zeta (path(t; theta_i) - c)).
 
+The hazard may follow, in place of the path's value or beside it, the
+path's slope or the area under it from age 0 (the links, each with an
+effect of its own): ``zeta (path - c)`` is then the sum over the links
+(:func:`predictor`), and everything below holds with it.
+
 Given ``theta_i`` the readings and the lifetime are independent, so an
 item's likelihood is the integral over its varying parameters
 
@@ -140,55 +145,133 @@ def path_jacobian(path_model: Any, x: npt.NDArray, P: npt.NDArray) -> Any:
     return J.reshape(shape + (Pf.shape[1],))
 
 
+#: What of the marker's path the hazard may follow (``link``), in the
+#: order of their effects in the parameters, and each effect's name.
+LINKS = ("value", "slope", "cumulative")
+EFFECTS = {
+    "value": "marker_effect",
+    "slope": "slope_effect",
+    "cumulative": "cumulative_effect",
+}
+
+
+#: The nodes (as fractions of the age) and weights of the area under a
+#: path from age 0: the cumulative hazard's rule, ``s = x w^4`` with
+#: 15-point Gauss-Legendre in ``w``, which is exact for a polynomial path
+#: up to the sixth degree and keeps its accuracy for a path with a
+#: logarithmic or root singularity at 0.
+AREA_NODES = GL_U
+AREA_W = np.exp(GL_LOGW) * GL_NODES**3
+
+
+class LinkPath:
+    """What the hazard follows of a marker's path, as a path of its own
+    (``path`` and ``jacobian``, as a path model's): the path's rate of
+    change (``"slope"``: the path model's ``slope`` and
+    ``slope_jacobian``) or the area under it from age 0
+    (``"cumulative"``: 15-point Gauss-Legendre of the path and of its
+    Jacobian over ``(0, x)``, ``AREA_NODES``)."""
+
+    def __init__(self, path_model: Any, link: str) -> None:
+        self.base = path_model
+        self.link = link
+        self.name = f"{path_model.name} ({link})"
+        self.parameter_names = list(path_model.parameter_names)
+
+    def path(self, x: Any, *params: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        if self.link == "slope":
+            return np.asarray(self.base.slope(x, *params), dtype=float)
+        spread = [np.asarray(v, dtype=float)[..., None] for v in params]
+        m = np.asarray(
+            self.base.path(x[..., None] * AREA_NODES, *spread), dtype=float
+        )
+        return x * np.sum(AREA_W * m, axis=-1)
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        if self.link == "slope":
+            return np.asarray(
+                self.base.slope_jacobian(x, *params), dtype=float
+            )
+        K = AREA_NODES.size
+        P = np.stack(
+            [
+                np.repeat(np.broadcast_to(np.asarray(v, float), x.shape), K)
+                for v in params
+            ],
+            axis=-1,
+        )
+        ages = (x[:, None] * AREA_NODES).ravel()
+        J = path_jacobian(self.base, ages, P).reshape(x.size, K, -1)
+        return x[:, None] * np.einsum("k,mkp->mp", AREA_W, J)
+
+
 class PathFunction:
     """``path(params, x)`` of a path model for autograd: ``params``
     ``(..., p)`` and ``x`` ``(...)`` of one shape, its derivatives the
     path model's Jacobian and, for the second, central differences of
-    that."""
+    that. ``terms`` holds what the hazard follows, one ``(link, path,
+    function)`` for each of ``links``: the path itself (``"value"``),
+    or its :class:`LinkPath`."""
 
-    def __init__(self, path_model: Any) -> None:
+    def __init__(self, path_model: Any, links: tuple = ("value",)) -> None:
         self.model = path_model
-
-        @primitive
-        def values(params: Any, x: Any) -> Any:
-            with np.errstate(all="ignore"):
-                return np.asarray(
-                    path_model.path(x, *np.moveaxis(params, -1, 0)),
-                    dtype=float,
+        self.values, self.jac = _differentiable(path_model)
+        self.links = tuple(links)
+        self.terms: list = []
+        for link in self.links:
+            if link == "value":
+                self.terms.append((link, path_model, self.values))
+            else:
+                followed = LinkPath(path_model, link)
+                self.terms.append(
+                    (link, followed, _differentiable(followed)[0])
                 )
-
-        @primitive
-        def jac(params: Any, x: Any) -> Any:
-            return path_jacobian(path_model, x, params)
-
-        def jac_vjp(ans: Any, params: Any, x: Any) -> Any:
-            p = params.shape[-1]
-            h = 1e-5 * np.maximum(np.abs(params), 1.0)
-            second = []
-            for j in range(p):
-                up, down = params.copy(), params.copy()
-                up[..., j] += h[..., j]
-                down[..., j] -= h[..., j]
-                second.append(
-                    (
-                        path_jacobian(path_model, x, up)
-                        - path_jacobian(path_model, x, down)
-                    )
-                    / (2 * h[..., j : j + 1])
-                )
-            S = np.stack(second, axis=-1)  # (..., p, p)
-            return lambda g: np.einsum("...k,...kj->...j", g, S)
-
-        defvjp(
-            values,
-            lambda ans, params, x: lambda g: g[..., None] * jac(params, x),
-        )
-        defvjp(jac, jac_vjp)
-        self.values = values
-        self.jac = jac
 
     def __call__(self, params: Any, x: Any) -> Any:
         return self.values(params, x)
+
+
+def _differentiable(path_model: Any) -> tuple:
+    """``(values, jac)`` of a path model for autograd."""
+
+    @primitive
+    def values(params: Any, x: Any) -> Any:
+        with np.errstate(all="ignore"):
+            return np.asarray(
+                path_model.path(x, *np.moveaxis(params, -1, 0)),
+                dtype=float,
+            )
+
+    @primitive
+    def jac(params: Any, x: Any) -> Any:
+        return path_jacobian(path_model, x, params)
+
+    def jac_vjp(ans: Any, params: Any, x: Any) -> Any:
+        p = params.shape[-1]
+        h = 1e-5 * np.maximum(np.abs(params), 1.0)
+        second = []
+        for j in range(p):
+            up, down = params.copy(), params.copy()
+            up[..., j] += h[..., j]
+            down[..., j] -= h[..., j]
+            second.append(
+                (
+                    path_jacobian(path_model, x, up)
+                    - path_jacobian(path_model, x, down)
+                )
+                / (2 * h[..., j : j + 1])
+            )
+        S = np.stack(second, axis=-1)  # (..., p, p)
+        return lambda g: np.einsum("...k,...kj->...j", g, S)
+
+    defvjp(
+        values,
+        lambda ans, params, x: lambda g: g[..., None] * jac(params, x),
+    )
+    defvjp(jac, jac_vjp)
+    return values, jac
 
 
 # -- the parameters ---------------------------------------------------------
@@ -223,7 +306,8 @@ class Layout:
     rows), log ``sigma``, the log Weibull ``alpha`` (at the covariate
     means and the marker's centre) and ``beta``, the hazard's
     coefficients ``gamma`` (the covariates of ``hazard``) and the
-    marker's effect ``zeta``.
+    marker's effects ``zeta``, one for each of ``links`` (what of the
+    path the hazard follows: its value, slope or cumulative area).
 
     ``shifts`` ``(P, p)`` and ``hazard`` ``(p,)`` say which covariates
     enter which part (default every one in both): an entry that is off is
@@ -234,8 +318,10 @@ class Layout:
     varying: tuple
     shifts: Any = None
     hazard: Any = None
+    links: tuple = ("value",)
 
     def __post_init__(self) -> None:
+        self.links = tuple(self.links)
         self.shifts = (
             np.ones((self.P, self.p), dtype=bool)
             if self.shifts is None
@@ -264,10 +350,19 @@ class Layout:
         return int(self.hazard.sum())
 
     @property
+    def n_links(self) -> int:
+        return len(self.links)
+
+    @property
     def size(self) -> int:
         q = self.q
         return (
-            self.P + self.n_shifts + q * (q + 1) // 2 + 3 + self.n_hazard + 1
+            self.P
+            + self.n_shifts
+            + q * (q + 1) // 2
+            + 3
+            + self.n_hazard
+            + self.n_links
         )
 
     def shift_positions(self) -> list[tuple[int, int, int]]:
@@ -341,7 +436,7 @@ class Layout:
             "alpha": anp.exp(u[i + 1]),
             "beta": anp.exp(u[i + 2]),
             "gamma": self._gamma(u[i + 3 : i + 3 + n_hazard]),
-            "zeta": u[i + 3 + n_hazard],
+            "zeta": u[i + 3 + n_hazard : i + 3 + n_hazard + self.n_links],
         }
 
     def pack(self, theta: dict) -> npt.NDArray:
@@ -362,7 +457,7 @@ class Layout:
                     np.log(theta["beta"]),
                 ],
                 gamma.reshape(self.p)[self.hazard],
-                [float(theta["zeta"])],
+                np.asarray(theta["zeta"], dtype=float).reshape(self.n_links),
             ]
         )
 
@@ -474,7 +569,7 @@ def _path_params(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
     return anp.stack(cols, axis=-1)
 
 
-def _at(path: PathFunction, params: Any, ages: npt.NDArray) -> Any:
+def _at(path: Any, params: Any, ages: npt.NDArray) -> Any:
     """``path`` at ``ages`` ``(N, A)`` for parameters ``(N, K, P)``:
     ``(N, K, A)``."""
     N, K, P = params.shape
@@ -482,6 +577,22 @@ def _at(path: PathFunction, params: Any, ages: npt.NDArray) -> Any:
     full = anp.broadcast_to(params[:, :, None, :], (N, K, A, P))
     x = np.broadcast_to(ages[:, None, :], (N, K, A))
     return path(full, x)
+
+
+def predictor(
+    theta: dict, path: PathFunction, params: Any, ages: npt.NDArray, c: float
+) -> Any:
+    """The marker's part of the log hazard at ``ages`` ``(N, A)`` for
+    parameters ``(N, K, P)``, ``(N, K, A)``: each of the path's links
+    times its effect, the value relative to the centre ``c``."""
+    zeta = anp.reshape(theta["zeta"], (-1,))
+    out: Any = 0.0
+    for k, (link, _, function) in enumerate(path.terms):
+        followed = _at(function, params, ages)
+        if link == "value":
+            followed = followed - c
+        out = out + zeta[k] * followed
+    return out
 
 
 def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
@@ -531,10 +642,10 @@ def log_cumhaz(
     ``t_i`` is 0)."""
     positive = t > 0
     safe = np.where(positive, t, 1.0)
-    m = _at(path, params, safe[:, None] * GL_U[None, :])
-    beta, zeta = theta["beta"], theta["zeta"]
+    eta = predictor(theta, path, params, safe[:, None] * GL_U[None, :], centre)
+    beta = theta["beta"]
     inner = logsumexp(
-        GL_LOGW + (4 * beta - 1) * np.log(GL_NODES) + zeta * (m - centre),
+        GL_LOGW + (4 * beta - 1) * np.log(GL_NODES) + eta,
         axis=-1,
     )
     lin = anp.dot(arrays.Z, theta["gamma"])
@@ -567,15 +678,15 @@ def log_cumhaz_between(
     loses no precision to a difference of two cumulative hazards."""
     width = hi - lo
     s = lo[:, None] + width[:, None] * GL_U[None, :]
-    m = _at(path, params, s)
-    alpha, beta, zeta = theta["alpha"], theta["beta"], theta["zeta"]
+    eta = predictor(theta, path, params, s, centre)
+    alpha, beta = theta["alpha"], theta["beta"]
     lin = anp.dot(arrays.Z, theta["gamma"])
     log_h = (
         anp.log(beta)
         - anp.log(alpha)
         + (beta - 1) * (np.log(s)[:, None, :] - anp.log(alpha))
         + lin[:, None, None]
-        + zeta * (m - centre)
+        + eta
     )
     inner = logsumexp(GL_LOGW + 3 * np.log(GL_NODES) + log_h, axis=-1)
     return np.log(width)[:, None] + inner
@@ -630,7 +741,7 @@ def log_event(
     """``log h(T_i | theta)`` at the nodes (at age 1 where ``T_i`` is 0,
     a left censored item's, which has no event there)."""
     T = np.where(arrays.T > 0, arrays.T, 1.0)
-    m = _at(path, params, T[:, None])[..., 0]
+    eta = predictor(theta, path, params, T[:, None], centre)[..., 0]
     alpha, beta = theta["alpha"], theta["beta"]
     lin = anp.dot(arrays.Z, theta["gamma"])
     base = (
@@ -639,7 +750,7 @@ def log_event(
         + (beta - 1) * (anp.log(T) - anp.log(alpha))
         + lin
     )
-    return base[:, None] + theta["zeta"] * (m - centre)
+    return base[:, None] + eta
 
 
 # -- where the nodes go -------------------------------------------------------
@@ -668,7 +779,39 @@ def _mode_objective(
     )[:, 0, :]
     V = list(layout.varying)
     q = layout.q
-    zeta = float(theta["zeta"])
+    zeta = np.asarray(theta["zeta"], dtype=float).reshape(-1)
+
+    def followed(ages: npt.NDArray) -> list:
+        """``(effect, value, Jacobian in the varying parameters)`` of
+        each link at ``ages`` ``(N, A)``."""
+        P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
+        out = []
+        for k, (_, model, _) in enumerate(path.terms):
+            m = model.path(ages, *np.moveaxis(P, -1, 0))
+            J = path_jacobian(model, ages, np.array(P))[..., V]
+            out.append((zeta[k], m, J))
+        return out
+
+    def log_effect(terms: list) -> Any:
+        """The marker's part of the log hazard (the value's centred)."""
+        out: Any = 0.0
+        for (link, _, _), (effect, m, _) in zip(path.terms, terms):
+            out = out + effect * ((m - centre) if link == "value" else m)
+        return out
+
+    def weighted(lam: npt.NDArray, terms: list) -> tuple:
+        """The gradient and Gauss-Newton curvature of ``sum lam`` in
+        the varying parameters, through the links."""
+        grad: Any = 0.0
+        curve: Any = 0.0
+        for effect, _, J in terms:
+            grad = grad + effect * np.einsum("nq,nqj->nj", lam, J)
+            for other, _, J2 in terms:
+                curve = curve + effect * other * np.einsum(
+                    "nq,nqi,nqj->nij", lam, J, J2
+                )
+        return grad, curve
+
     with np.errstate(all="ignore"):
         f = np.zeros(len(b))
         g = np.zeros((len(b), q))
@@ -688,9 +831,7 @@ def _mode_objective(
         positive = t > 0
         safe = np.where(positive, t, 1.0)
         s_ages = safe[:, None] * GL_U[None, :]
-        P = np.broadcast_to(params[:, None, :], s_ages.shape + (layout.P,))
-        m = path.model.path(s_ages, *np.moveaxis(P, -1, 0))
-        J = path_jacobian(path.model, s_ages, np.array(P))[..., V]
+        terms = followed(s_ages)
         beta = float(theta["beta"])
         lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
         log_lam = (
@@ -700,41 +841,34 @@ def _mode_objective(
             + np.log(beta)
             + GL_LOGW
             + (4 * beta - 1) * np.log(GL_NODES)
-            + zeta * (m - centre)
+            + log_effect(terms)
         )
         lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
         f = f + lam.sum(axis=1)
-        g = g + zeta * np.einsum("nq,nqj->nj", lam, J)
-        H = H + zeta**2 * np.einsum("nq,nqi,nqj->nij", lam, J, J)
+        grad, curve = weighted(lam, terms)
+        g = g + grad
+        H = H + curve
         if np.any(d > 0):
-            P1 = params[:, None, :]
-            mT = path.model.path(safe[:, None], *np.moveaxis(P1, -1, 0))[:, 0]
-            JT = path_jacobian(path.model, safe[:, None], np.array(P1))[
-                :, 0, V
-            ]
-            f = f - d * zeta * mT
-            g = g - (d * zeta)[:, None] * JT
+            for effect, mT, JT in followed(safe[:, None]):
+                f = f - d * effect * mT[:, 0]
+                g = g - (d * effect)[:, None] * JT[:, 0]
         if upper is not None:
             rows, lo, hi = _between(t, upper)
             if rows.any():
                 width = hi - lo
                 s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
-                P = np.broadcast_to(
-                    params[:, None, :], s_ages.shape + (layout.P,)
-                )
-                m = path.model.path(s_ages, *np.moveaxis(P, -1, 0))
-                J = path_jacobian(path.model, s_ages, np.array(P))[..., V]
+                terms = followed(s_ages)
                 alpha = float(theta["alpha"])
                 log_lam = (
                     (lin + np.log(width) + np.log(beta / alpha))[:, None]
                     + (beta - 1) * (np.log(s_ages) - np.log(alpha))
                     + GL_LOGW
                     + 3 * np.log(GL_NODES)
-                    + zeta * (m - centre)
+                    + log_effect(terms)
                 )
                 lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
                 delta = np.where(rows, lam.sum(axis=1), 1.0)
-                g_delta = zeta * np.einsum("nq,nqj->nj", lam, J)
+                g_delta, _ = weighted(lam, terms)
                 small = -np.expm1(-delta)
                 f = f - np.where(rows, np.log(small), 0.0)
                 g = (
