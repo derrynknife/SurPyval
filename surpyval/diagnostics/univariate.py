@@ -94,10 +94,11 @@ class of its own, without ``diagnose()``.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -363,8 +364,7 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
             kwargs["tl"] = design.tl
             kwargs["tr"] = design.tr
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.dist.fit(x, **kwargs, **options)
                 stats = _statistics(refit, x, kwargs["c"], None, t)
         except REFIT_ERRORS:
@@ -546,8 +546,7 @@ def _probability_panels(ctx: Context) -> list[Panel]:
         return []
 
     def draw(ax: Any, options: Any) -> None:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             ctx.model.plot(ax=ax)
 
     return [Panel(f"{_label(ctx.model)} probability plot", draw)]
@@ -570,8 +569,7 @@ def _quiet(fit: Any) -> Any:
     from surpyval.utils.no_maximum import quiet_maximum_warnings
 
     try:
-        with warnings.catch_warnings(), quiet_maximum_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), quiet_maximum_warnings():
             out = fit()
             aic = float(out.aic())
     except Exception:  # an alternative that does not fit is not one
@@ -627,8 +625,7 @@ def _alternatives(ctx: Context) -> list[dict]:
 
     # Every other distribution, as fit_best ranks them
     def ranked() -> Any:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             return fit_best(**data, return_table=True)[1]
 
     try:

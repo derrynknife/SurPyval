@@ -34,7 +34,7 @@ import numpy.typing as npt
 
 from surpyval import plotting
 from surpyval.utils.validation import check_alpha_ci
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -295,8 +295,7 @@ def likelihood_contour(
     # profile-likelihood bounds at the same critical value, and the
     # tangent points there (the other parameter at its profile optimum).
     bounds = np.empty((2, 2))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         for k, j in enumerate(free):
             o = free[1 - k]
             for s, direction in enumerate((-1.0, 1.0)):

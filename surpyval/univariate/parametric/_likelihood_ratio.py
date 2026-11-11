@@ -30,7 +30,7 @@ from scipy.special import expit
 from scipy.special import ndtri as z
 
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -2994,8 +2994,7 @@ class LikelihoodRatioMixin:
         if not 0 < level < 1:
             return None
         crit = z(1.0 - level / 2.0) ** 2
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             ends = np.array(
                 [self._lr_param_side(j, crit, d) for d in (-1.0, 1.0)]
             )

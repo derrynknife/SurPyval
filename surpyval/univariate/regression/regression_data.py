@@ -35,6 +35,7 @@ from surpyval.utils import (
 from surpyval.utils.dataframe import check_columns, frame_column
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._aliasing import covariate_columns
 
@@ -1133,8 +1134,7 @@ def _materialise_spec(
         encoder_state=encoder_state,
         transform_state=transform_state,
     )
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         model_matrix = spec.get_model_matrix(pd.DataFrame(template))
     return model_matrix.model_spec
 

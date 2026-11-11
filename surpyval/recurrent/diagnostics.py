@@ -32,6 +32,7 @@ from numpy.typing import ArrayLike
 
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 
 def _validate_diagnostic_data(data: Any, what: str) -> None:
@@ -381,8 +382,7 @@ def _cvm_pvalue(
             # The optimiser explores extreme parameter values on its way to
             # the optimum; the resulting numerical warnings are routine, and
             # over hundreds of refits they would swamp the console.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
+            with ignoring_warnings(RuntimeWarning):
                 sim_data, refit_payload = simulate_refit(rng)
                 u_b, _ = uniforms(sim_data, refit_payload)
         except (ValueError, RuntimeError, np.linalg.LinAlgError):

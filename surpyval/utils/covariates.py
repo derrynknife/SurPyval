@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -134,8 +134,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
                 # only once it is materialised: do so again, allowing the
                 # mismatch.
                 try:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings():
                         spec = materialise().model_spec
                 except Exception:
                     pass

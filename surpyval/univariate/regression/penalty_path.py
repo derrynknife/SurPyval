@@ -23,12 +23,13 @@ the data.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+
+from surpyval.utils.warnings import ignoring_warnings
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -368,9 +369,8 @@ def penalty_path(
                     min_ratio
                 )
             )
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # The search's fits are not reported; the path's are.
-            warnings.simplefilter("ignore")
             top = _largest_penalty(fit, a)
         grid = top * np.geomspace(1.0, min_ratio, int(n_penalties))
     else:

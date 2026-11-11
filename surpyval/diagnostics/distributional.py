@@ -81,10 +81,11 @@ verified maximum, and one with aliased coefficients.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _covariate_kind, _fmt, _gap, _note
 from .cox import INFLUENCE_LIMIT
@@ -241,8 +242,7 @@ def _refit(ctx: Context, candidate: str) -> tuple[float, str, str]:
     data = b.data
     fitter = getattr(surpyval, candidate + "Distributional")
     try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             fitted = fitter.fit(
                 data.x,
                 b.raw,
@@ -406,8 +406,7 @@ def _scores(ctx: Context) -> np.ndarray:
         def gradient(w: Any) -> Any:
             return grad(_neg_ll(b.fitter, _view(b, b.Z, w)))(theta)
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             # The likelihood is linear in the rows' weights, so this is
             # exact: d(grad of -loglik)/d(weight of row i) is -n_i u_i.
             J = np.asarray(jacobian(gradient)(np.ones(b.n.size)), dtype=float)

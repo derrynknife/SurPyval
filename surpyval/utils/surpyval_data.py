@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import inspect
-import warnings
 from collections.abc import Callable
 from numbers import Number
 from pathlib import Path
@@ -23,6 +22,7 @@ from surpyval.utils.item_history import missing_type
 from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.warnings import (
     MaskedCauseWarning,
+    ignoring_warnings,
     named,
     warn_masked,
     warn_suspension_types,
@@ -1082,9 +1082,8 @@ class SurpyvalData(ReshapeMixin):
             e[:] = [i.event_type for i in items]
             if masked:
                 warn_masked(len(masked), "items " + named(masked))
-        with warnings.catch_warnings():
+        with ignoring_warnings(MaskedCauseWarning):
             # Warned of above, by item
-            warnings.simplefilter("ignore", MaskedCauseWarning)
             data = cls(
                 x,
                 np.array(flags),

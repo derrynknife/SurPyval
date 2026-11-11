@@ -13,12 +13,11 @@ arrays.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 
-from surpyval.utils.warnings import MaskedCauseWarning
+from surpyval.utils.warnings import MaskedCauseWarning, ignoring_warnings
 
 
 def _columns(data: Any) -> np.ndarray:
@@ -77,9 +76,8 @@ def rebuilt(
         # No typed failure is left: no event types, as from_items gives
         e = None
     truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
-    with warnings.catch_warnings():
+    with ignoring_warnings(MaskedCauseWarning):
         # Warned of when the data was built
-        warnings.simplefilter("ignore", MaskedCauseWarning)
         out = SurpyvalData(
             x,
             c,

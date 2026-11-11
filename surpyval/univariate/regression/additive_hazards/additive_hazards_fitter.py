@@ -76,7 +76,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
@@ -548,10 +548,9 @@ class AdditiveHazardsFitter(
             fun, AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET
         )
 
-        with warnings.catch_warnings():
+        with ignoring_warnings(message="Output seems independent"):
             # The penalty is constant outside the valid region, and
             # autograd says so for any gradient taken there.
-            warnings.filterwarnings("ignore", "Output seems independent")
             try:
                 res = preconditioned_bfgs(
                     fun,

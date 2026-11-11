@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 #: Below this effective sample size a weighted fit warns that its robust
 #: variance may be poor.
@@ -111,10 +111,7 @@ def few_effective_said_later() -> Iterator[None]:
     """Silence :func:`warn_if_few_effective` inside a step whose fit
     warns of it itself afterwards (a regression's start from the
     baseline's weighted fit), so that it is said once (principle 22)."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message=FEW_EFFECTIVE, category=UserWarning
-        )
+    with ignoring_warnings(UserWarning, FEW_EFFECTIVE):
         yield
 
 

@@ -29,7 +29,7 @@ from surpyval.univariate.parametric._likelihood_ratio import (
 )
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
@@ -689,10 +689,9 @@ def lr_search(model: Any, reported: bool) -> RegressionLikelihoodRatio:
             "to, which a model restored from a dict does not keep; use "
             "method='wald'."
         )
-    with warnings.catch_warnings():
+    with ignoring_warnings():
         # The searches need no covariance (it only scales their steps):
         # without one, they go on without it.
-        warnings.simplefilter("ignore")
         if reported or model._fit_centring is None:
             params = np.asarray(model._eval_params(), dtype=float)
             center = model.center

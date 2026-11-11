@@ -83,11 +83,12 @@ one with more *continuous*, as for the Cox family.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2, norm
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _covariate_kind, _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -280,8 +281,7 @@ def _fit_split(
     which ``where[j]`` is the column of the model's covariate ``j``)."""
     s = _split(ctx)
     model = ctx.model
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         try:
             if _is_parametric(model):
                 beta = _coefficients(model)

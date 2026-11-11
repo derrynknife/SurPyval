@@ -41,6 +41,7 @@ from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
 from surpyval.utils.linalg import percentile_bounds, safe_inv, sf_link_bound
 from surpyval.utils.rng import as_generator
+from surpyval.utils.warnings import ignoring_warnings
 
 # -- first stage: per-unit pseudo-failure-time variances ------------------
 
@@ -330,7 +331,6 @@ def _bootstrap_curves(
     """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
     ``model``'s units, each refitted and its ``method_name`` curve taken at
     ``x`` (and ``Z``), those not finite where the model's own is dropped."""
-    import warnings
 
     from .degradation_analysis import DegradationAnalysis
 
@@ -340,8 +340,7 @@ def _bootstrap_curves(
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         for _ in range(n_boot):
             picks = rng.choice(n_units, size=n_units)
             xs, ys, ids, Zs = [], [], [], []
