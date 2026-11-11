@@ -51,7 +51,6 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -158,7 +157,7 @@ def _domain_checked(method: Callable[..., Any]) -> Callable[..., Any]:
     return checked
 
 
-class Copula(RemovedNames):
+class Copula:
     """Bivariate copula family.
 
     Subclasses define :meth:`cdf` (and, for speed/stability, may override the

@@ -2616,16 +2616,13 @@ def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
 def _largest_move(coarse: Any, fine: Any) -> float:
     """The largest change of an estimate between two fits, in the finer
     fit's standard errors."""
-    import warnings
-
     old = np.atleast_1d(np.asarray(coarse.params, dtype=float)).ravel()
     new = np.atleast_1d(np.asarray(fine.params, dtype=float)).ravel()
     if old.shape != new.shape:
         return np.inf
     scale = 1e-2 * np.maximum(np.abs(new), 1.0)
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             se = np.asarray(fine.standard_errors(), dtype=float).ravel()
         if se.shape == new.shape:
             scale = np.where(np.isfinite(se) & (se > 0), se, scale)

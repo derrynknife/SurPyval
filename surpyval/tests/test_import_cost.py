@@ -80,9 +80,22 @@ def test_lazy_names_are_the_packages_names() -> None:
     exported = {
         k for k, v in lazy.items() if v == "surpyval.univariate.regression"
     }
-    # The life models moved to ``surpyval.life_models``
-    moved = set(surpyval._MOVED_TO_LIFE_MODELS)
-    moved |= {"GeneralLogLinear", "GeneralLinear"}
+    # The life models are in ``surpyval.life_models``, not at the top level
+    moved = {
+        "DualExponential",
+        "DualPower",
+        "Eyring",
+        "ExponentialLifeModel",
+        "GeneralLinear",
+        "GeneralLogLinear",
+        "InverseExponential",
+        "InverseEyring",
+        "InversePower",
+        "LifeModel",
+        "Linear",
+        "Power",
+        "PowerExponential",
+    }
     assert exported | moved == set(regression.__all__)
     assert not exported & moved
     for name, module in lazy.items():

@@ -60,7 +60,6 @@ from surpyval.utils.deprecation import (
     renamed_arguments,
 )
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -1480,7 +1479,6 @@ class AalenAdditive_(FitterRepr):
         return model
 
     @renamed_arguments(REMOVED_IN_NEXT, coef_penalty="penalizer")
-    @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         self,
