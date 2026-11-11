@@ -120,7 +120,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         e: npt.ArrayLike,
         state: npt.ArrayLike,
         tl: npt.ArrayLike | float | None = None,
-        id: npt.ArrayLike | None = None,
+        i: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         transitions: Any = None,
         shared: Any = None,
@@ -131,7 +131,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
         Parameters
         ----------
-        x, e, state, tl, id, n, transitions
+        x, e, state, tl, i, n, transitions
             The spells, as for :meth:`MultiState.fit
             <surpyval.multistate.MultiState.fit>`.
         Z : array_like
@@ -167,7 +167,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> tm = TransitionMatrix.illness_death(("mgus", "pcm", "death"))
         >>> model = MultiStateProportionalHazards.fit(
         ...     df["x"], df[["male"]], df["e"], df["state"], tl=df["tl"],
-        ...     id=df["id"], transitions=tm,
+        ...     i=df["id"], transitions=tm,
         ... )
         >>> model.parameter_names
         ['male: mgus -> pcm', 'male: mgus -> death', 'male: pcm -> death']
@@ -181,7 +181,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         np.float64(0.0105)
         """
         check_option("tie_method", tie_method, _TIES)
-        data = check_spells(x, e, state, tl, id, n, transitions)
+        data = check_spells(x, e, state, tl, i, n, transitions)
         Z_arr, names = _covariates(Z, data.x.size)
         shared_cols = _shared_columns(shared, names)
         return cls._fit(data, Z_arr, names, shared_cols, tie_method)
@@ -280,7 +280,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         e_col: str,
         state_col: str,
         tl_col: str | None = None,
-        id_col: str | None = None,
+        i_col: str | None = None,
         n_col: str | None = None,
         transitions: Any = None,
         shared: Any = None,
@@ -307,7 +307,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         ... })
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     df, "stop", ["age"], "to", "state", tl_col="start",
-        ...     id_col="unit", shared=["age"],
+        ...     i_col="unit", shared=["age"],
         ... )
         >>> model.parameter_names
         ['age']
@@ -325,7 +325,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
             col(e_col, "e_col"),
             col(state_col, "state_col"),
             col(tl_col, "tl_col"),
-            col(id_col, "id_col"),
+            col(i_col, "i_col"),
             col(n_col, "n_col"),
             transitions,
         )
@@ -704,7 +704,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> from surpyval.multistate import MultiStateProportionalHazards
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
-        ...     tl_col="tl", id_col="id",
+        ...     tl_col="tl", i_col="id",
         ... )
         >>> model.states
         ('death', 'mgus', 'pcm')
@@ -775,7 +775,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> from surpyval.multistate import MultiStateProportionalHazards
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
-        ...     tl_col="tl", id_col="id",
+        ...     tl_col="tl", i_col="id",
         ... )
 
         For a man and a woman, ten years on:
@@ -813,7 +813,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> from surpyval.multistate import MultiStateProportionalHazards
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
-        ...     tl_col="tl", id_col="id",
+        ...     tl_col="tl", i_col="id",
         ... )
         >>> model.cumulative_hazard(120, [1], "mgus", "pcm").round(4)
         np.float64(0.0971)
@@ -862,7 +862,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> from surpyval.multistate import MultiStateProportionalHazards
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
-        ...     tl_col="tl", id_col="id",
+        ...     tl_col="tl", i_col="id",
         ... )
         >>> model.occupancy_se(240, [1], "death").round(4)
         np.float64(0.016)
@@ -921,7 +921,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> from surpyval.multistate import MultiStateProportionalHazards
         >>> model = MultiStateProportionalHazards.fit_from_df(
         ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
-        ...     tl_col="tl", id_col="id",
+        ...     tl_col="tl", i_col="id",
         ... )
         >>> model.cb(240, [1], "death").round(4)
         array([0.8079, 0.8707])
@@ -966,7 +966,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
             "state": [to_native(tm.states[g]) for g in d.g],
             "e": [None if h < 0 else to_native(tm.states[h]) for h in d.h],
             "n": d.n.tolist(),
-            "id": d.cluster.tolist() if d.ids_given else None,
+            "i": d.cluster.tolist() if d.ids_given else None,
             "Z": self._Z.tolist(),
             "covariate_names": list(self.covariate_names),
             "shared": [int(j) for j in self.shared],
@@ -993,7 +993,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
             [label_from_native(v) for v in model_dict["e"]],
             [label_from_native(v) for v in model_dict["state"]],
             tl,
-            model_dict["id"],
+            model_dict.get("i", model_dict.get("id")),
             model_dict["n"],
             tm,
         )

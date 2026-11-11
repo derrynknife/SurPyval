@@ -67,7 +67,8 @@ Each row is a *spell*: the time a unit spent in one state. A spell has
 - ``x``: when it ended;
 - ``e``: the state the unit moved into at ``x``, or missing (``None``)
   where the spell ended because observation stopped (censoring);
-- optionally ``id``, the unit, and ``n``, a count of identical units.
+- optionally ``i``, the unit (``i_col`` for a DataFrame), and ``n``, a
+  count of identical units.
 
 A unit's spells follow one another: the second starts where the first
 ended. A unit can also enter part-way through, in any state (delayed entry,
@@ -141,7 +142,7 @@ Then the Aalen-Johansen estimate:
 .. jupyter-execute::
 
     model = MultiState.fit_from_df(
-        spells, "x", "e", "state", tl_col="tl", id_col="id", transitions=tm
+        spells, "x", "e", "state", tl_col="tl", i_col="id", transitions=tm
     )
     model
 
@@ -190,7 +191,7 @@ the effect of sex and of age (in decades from 70) on each transition:
     spells["age70"] = (spells["age"] - 70) / 10
     cox = MultiStateProportionalHazards.fit_from_df(
         spells, "x", ["age70", "male"], "e", "state", tl_col="tl",
-        id_col="id", transitions=tm,
+        i_col="id", transitions=tm,
     )
     cox.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(3)
 
@@ -203,7 +204,7 @@ same on every transition, ``shared`` gives it one coefficient:
 
     shared = MultiStateProportionalHazards.fit_from_df(
         spells, "x", ["age70", "male"], "e", "state", tl_col="tl",
-        id_col="id", transitions=tm, shared=["male"],
+        i_col="id", transitions=tm, shared=["male"],
     )
     shared.parameter_names
 

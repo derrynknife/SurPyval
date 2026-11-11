@@ -66,7 +66,7 @@ def check_spells(
     e: npt.ArrayLike,
     state: npt.ArrayLike,
     tl: npt.ArrayLike | float | None = None,
-    id: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
     n: npt.ArrayLike | None = None,
     transitions: Any = None,
 ) -> SpellData:
@@ -177,16 +177,19 @@ def check_spells(
         dtype=np.intp,
     )
 
-    if id is None:
+    if i is None:
         cluster = np.arange(size)
         n_clusters = size
         ids_given = False
     else:
         import pandas as pd
 
-        ids = _object_array(id, "id", size)
+        ids = _object_array(i, "i", size)
         if np.any(missing_events(ids)):
-            raise ValueError("'id' has missing values: label every row.")
+            raise ValueError(
+                "'i' (the unit of each row) has missing values: label "
+                "every row."
+            )
         codes, uniques = pd.factorize(pd.Series(ids, dtype=object))
         cluster = np.asarray(codes, dtype=np.intp)
         n_clusters = len(uniques)
@@ -229,7 +232,7 @@ def to_stacked(
     state: npt.ArrayLike,
     transitions: Any,
     tl: npt.ArrayLike | float | None = None,
-    id: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
 ) -> Any:
     """
     Long-form multi-state data in the stacked form: one row for each
@@ -243,7 +246,7 @@ def to_stacked(
 
     Parameters
     ----------
-    x, e, state, tl, id
+    x, e, state, tl, i
         The long form, as for :meth:`MultiState.fit`.
     transitions : TransitionMatrix or iterable of (from, to)
         The allowed transitions.
@@ -251,7 +254,8 @@ def to_stacked(
     Returns
     -------
     pandas.DataFrame
-        Columns ``id`` (the row of the spell when ``id`` is not given),
+        Columns ``id`` (the unit, ``i``, or the row of the spell when ``i``
+        is not given),
         ``from``, ``to``, ``trans`` (the transition's number), ``tl``,
         ``x`` and ``status``.
 
@@ -261,7 +265,7 @@ def to_stacked(
     >>> tm = TransitionMatrix.illness_death()
     >>> to_stacked(
     ...     x=[2, 5], e=["ill", None], state=["healthy", "ill"],
-    ...     tl=[0, 2], id=[1, 1], transitions=tm,
+    ...     tl=[0, 2], i=[1, 1], transitions=tm,
     ... )
        id     from   to  trans   tl    x  status
     0   1  healthy  ill      0  0.0  2.0       1
@@ -270,12 +274,12 @@ def to_stacked(
     """
     import pandas as pd
 
-    data = check_spells(x, e, state, tl, id, None, transitions)
+    data = check_spells(x, e, state, tl, i, None, transitions)
     tm = data.tm
     ids = (
         np.arange(data.x.size)
-        if id is None
-        else _object_array(id, "id", data.x.size)
+        if i is None
+        else _object_array(i, "i", data.x.size)
     )
     frm = tm.from_index()
     rows = []
@@ -299,7 +303,7 @@ def to_stacked(
 
 
 def from_stacked(
-    id: npt.ArrayLike,
+    i: npt.ArrayLike,
     from_state: npt.ArrayLike,
     to_state: npt.ArrayLike,
     tl: npt.ArrayLike,
@@ -310,29 +314,29 @@ def from_stacked(
     Stacked multi-state data (mstate's ``msprep`` layout) in the long
     form the models take.
 
-    The rows of one spell (the same ``id``, ``from_state``, ``tl`` and
+    The rows of one spell (the same unit ``i``, ``from_state``, ``tl`` and
     ``x``) become one row, whose ``e`` is the ``to_state`` of the row
     with ``status`` 1, or missing if none has it.
 
     Returns
     -------
     dict
-        ``{"x", "e", "state", "tl", "id"}``, to pass to
+        ``{"x", "e", "state", "tl", "i"}``, to pass to
         ``MultiState.fit(**...)``.
 
     Examples
     --------
     >>> from surpyval.multistate import from_stacked
     >>> long = from_stacked(
-    ...     id=[1, 1, 1], from_state=["healthy", "healthy", "ill"],
+    ...     i=[1, 1, 1], from_state=["healthy", "healthy", "ill"],
     ...     to_state=["ill", "dead", "dead"], tl=[0, 0, 2], x=[2, 2, 5],
     ...     status=[1, 0, 0],
     ... )
     >>> long["e"], long["state"]
     (['ill', None], ['healthy', 'ill'])
     """
-    id = _object_array(id, "id", None)
-    size = id.size
+    i = _object_array(i, "i", None)
+    size = i.size
     frm = _object_array(from_state, "from_state", size)
     to = _object_array(to_state, "to_state", size)
     tl = _times(tl, "tl", size)
@@ -342,13 +346,13 @@ def from_stacked(
         raise ValueError("'status' must be 0 or 1 on every row.")
     spells: dict = {}
     for k in range(size):
-        key = (id[k], frm[k], tl[k], x[k])
+        key = (i[k], frm[k], tl[k], x[k])
         if key not in spells:
             spells[key] = None
         if status[k] == 1:
             if spells[key] is not None:
                 raise ValueError(
-                    f"Unit {id[k]!r}'s spell in {frm[k]!r} ending at "
+                    f"Unit {i[k]!r}'s spell in {frm[k]!r} ending at "
                     f"{x[k]:g} has status 1 on two transitions: a spell "
                     "ends in one transition at most."
                 )
@@ -359,5 +363,5 @@ def from_stacked(
         "e": [spells[k] for k in keys],
         "state": [k[1] for k in keys],
         "tl": [k[2] for k in keys],
-        "id": [k[0] for k in keys],
+        "i": [k[0] for k in keys],
     }

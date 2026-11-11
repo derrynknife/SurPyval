@@ -102,7 +102,7 @@ class MultiState(SerialisableMixin):
     start: float
     #: The last observed time (an event or a censoring).
     last: float
-    #: Whether units were labelled (``id``): the robust variance then sums
+    #: Whether units were labelled (``i``): the robust variance then sums
     #: each unit's spells.
     ids_given: bool = False
     _data: SpellData
@@ -119,7 +119,7 @@ class MultiState(SerialisableMixin):
         e: npt.ArrayLike,
         state: npt.ArrayLike,
         tl: npt.ArrayLike | float | None = None,
-        id: npt.ArrayLike | None = None,
+        i: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         transitions: Any = None,
     ) -> MultiState:
@@ -142,7 +142,7 @@ class MultiState(SerialisableMixin):
             second starts where the first ended). It is also delayed entry
             (left truncation) for a unit first seen part-way through.
             Defaults to observation from the start.
-        id : array_like, optional
+        i : array_like, optional
             The unit each spell belongs to. Used to check that a unit's
             spells do not overlap, and by the robust variance, which sums
             a unit's spells. Without it every row is a unit of its own.
@@ -172,13 +172,13 @@ class MultiState(SerialisableMixin):
         ...     state=["healthy", "ill", "healthy", "ill", "healthy",
         ...            "healthy", "healthy"],
         ...     tl=[0, 2, 0, 3, 0, 0, 0],
-        ...     id=[1, 1, 2, 2, 3, 4, 5],
+        ...     i=[1, 1, 2, 2, 3, 4, 5],
         ...     transitions=tm,
         ... )
         >>> model.occupancy([1, 5, 9], "ill").round(4)
         array([0. , 0.4, 0.2])
         """
-        data = check_spells(x, e, state, tl, id, n, transitions)
+        data = check_spells(x, e, state, tl, i, n, transitions)
         return cls._from_data(data)
 
     @classmethod
@@ -207,7 +207,7 @@ class MultiState(SerialisableMixin):
         e_col: str,
         state_col: str,
         tl_col: str | None = None,
-        id_col: str | None = None,
+        i_col: str | None = None,
         n_col: str | None = None,
         transitions: Any = None,
     ) -> MultiState:
@@ -225,7 +225,7 @@ class MultiState(SerialisableMixin):
         ...     "start": [0, 2, 0, 0], "unit": [1, 1, 2, 3],
         ... })
         >>> model = MultiState.fit_from_df(
-        ...     df, "stop", "to", "state", tl_col="start", id_col="unit"
+        ...     df, "stop", "to", "state", tl_col="start", i_col="unit"
         ... )
         >>> model.transitions.transitions
         (('healthy', 'dead'), ('healthy', 'ill'), ('ill', 'dead'))
@@ -240,7 +240,7 @@ class MultiState(SerialisableMixin):
             col(e_col, "e_col"),
             col(state_col, "state_col"),
             tl=col(tl_col, "tl_col"),
-            id=col(id_col, "id_col"),
+            i=col(i_col, "i_col"),
             n=col(n_col, "n_col"),
             transitions=transitions,
         )
@@ -333,7 +333,7 @@ class MultiState(SerialisableMixin):
         >>> model = MultiState.fit(
         ...     x=[1, 2, 5, 3, 6, 4], e=["b", "a", None, "b", None, None],
         ...     state=["a", "b", "a", "a", "b", "a"], tl=[0, 1, 2, 0, 3, 0],
-        ...     id=[1, 1, 1, 2, 2, 3],
+        ...     i=[1, 1, 1, 2, 2, 3],
         ... )
         >>> model.states
         ('a', 'b')
@@ -388,7 +388,7 @@ class MultiState(SerialisableMixin):
         >>> model = MultiState.fit(
         ...     x=[1, 2, 5, 3, 6, 4], e=["b", "a", None, "b", None, None],
         ...     state=["a", "b", "a", "a", "b", "a"], tl=[0, 1, 2, 0, 3, 0],
-        ...     id=[1, 1, 1, 2, 2, 3],
+        ...     i=[1, 1, 1, 2, 2, 3],
         ... )
 
         Unit 1 moves to ``b`` at 1 and back at 2, unit 2 moves to ``b``
@@ -420,7 +420,7 @@ class MultiState(SerialisableMixin):
         >>> model = MultiState.fit(
         ...     x=[1, 2, 5, 3, 6, 4], e=["b", "a", None, "b", None, None],
         ...     state=["a", "b", "a", "a", "b", "a"], tl=[0, 1, 2, 0, 3, 0],
-        ...     id=[1, 1, 1, 2, 2, 3],
+        ...     i=[1, 1, 1, 2, 2, 3],
         ... )
         >>> model.cumulative_hazard([1, 3], "a", "b").round(4)
         array([0.3333, 0.6667])
@@ -479,7 +479,7 @@ class MultiState(SerialisableMixin):
             alike). They take the starting distribution as known.
             ``'robust'`` is the infinitesimal jackknife, R ``survival``'s
             ``survfit`` ``std.err``: it sums each unit's influence over
-            its spells (pass ``id``), and includes the uncertainty of the
+            its spells (pass ``i``), and includes the uncertainty of the
             default starting distribution.
 
         Examples
@@ -488,7 +488,7 @@ class MultiState(SerialisableMixin):
         >>> model = MultiState.fit(
         ...     x=[1, 2, 5, 3, 6, 4], e=["b", "a", None, "b", None, None],
         ...     state=["a", "b", "a", "a", "b", "a"], tl=[0, 1, 2, 0, 3, 0],
-        ...     id=[1, 1, 1, 2, 2, 3],
+        ...     i=[1, 1, 1, 2, 2, 3],
         ... )
         >>> model.occupancy_se(3.5, "b").round(4)
         np.float64(0.2722)
@@ -572,7 +572,7 @@ class MultiState(SerialisableMixin):
         >>> model = MultiState.fit(
         ...     x=[1, 2, 5, 3, 6, 4], e=["b", "a", None, "b", None, None],
         ...     state=["a", "b", "a", "a", "b", "a"], tl=[0, 1, 2, 0, 3, 0],
-        ...     id=[1, 1, 1, 2, 2, 3],
+        ...     i=[1, 1, 1, 2, 2, 3],
         ... )
         >>> model.cb(3.5, "b").round(4)
         array([0.009 , 0.7741])
@@ -651,7 +651,7 @@ class MultiState(SerialisableMixin):
             "state": [to_native(tm.states[g]) for g in d.g],
             "e": [None if h < 0 else to_native(tm.states[h]) for h in d.h],
             "n": d.n.tolist(),
-            "id": d.cluster.tolist() if d.ids_given else None,
+            "i": d.cluster.tolist() if d.ids_given else None,
         }
         return stamp_schema(out)
 
@@ -670,7 +670,7 @@ class MultiState(SerialisableMixin):
             [label_from_native(v) for v in model_dict["e"]],
             [label_from_native(v) for v in model_dict["state"]],
             tl,
-            model_dict["id"],
+            model_dict.get("i", model_dict.get("id")),
             model_dict["n"],
             tm,
         )

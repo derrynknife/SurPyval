@@ -12,7 +12,7 @@ Unreleased
   states and the allowed transitions (with ``illness_death``,
   ``competing_risks``, ``progressive`` and ``from_matrix``). The data are
   spells, one row per stay in a state (``x``, ``e`` the state entered or
-  missing if censored, ``state``, ``tl`` its start, ``id``, ``n``), with
+  missing if censored, ``state``, ``tl`` its start, ``i`` the unit, ``n``), with
   ``to_stacked`` / ``from_stacked`` for R ``mstate``'s layout of one row
   per possible transition. ``MultiState`` is the Aalen-Johansen estimate:
   ``transition_probabilities(x, s)`` (the matrix :math:`P(s, t)`),

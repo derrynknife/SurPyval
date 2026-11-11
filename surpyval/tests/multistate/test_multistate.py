@@ -36,7 +36,7 @@ HAND = dict(
     e=["b", "a", None, "b", None, None],
     state=["a", "b", "a", "a", "b", "a"],
     tl=[0, 1, 2, 0, 3, 0],
-    id=[1, 1, 1, 2, 2, 3],
+    i=[1, 1, 1, 2, 2, 3],
 )
 
 
@@ -234,7 +234,7 @@ TM = TransitionMatrix(PAIRS, states=STATES)
 def test_recovers_a_markov_model():
     d = _simulate(3000, seed=20261112)
     model = MultiState.fit(
-        d["x"], d["e"], d["state"], tl=d["tl"], id=d["id"], transitions=TM
+        d["x"], d["e"], d["state"], tl=d["tl"], i=d["id"], transitions=TM
     )
     times = np.array([0.5, 1.0, 2.0, 4.0, 6.0])
     for a, start in enumerate(STATES[:2]):
@@ -260,7 +260,7 @@ def test_cox_recovers_the_effects_and_the_probabilities():
         d["e"],
         d["state"],
         tl=d["tl"],
-        id=d["id"],
+        i=d["id"],
         transitions=TM,
     )
     est, se = model.params, model.standard_errors()
@@ -286,7 +286,7 @@ def test_transition_specific_effects_are_separate_cox_models():
         d["e"],
         d["state"],
         tl=d["tl"],
-        id=d["id"],
+        i=d["id"],
         transitions=TM,
         tie_method="breslow",
     )
@@ -319,7 +319,7 @@ def test_a_shared_effect_is_one_coefficient():
         d["e"],
         d["state"],
         tl=d["tl"],
-        id=d["id"],
+        i=d["id"],
         transitions=TM,
         shared=[0],
     )
@@ -334,9 +334,7 @@ def test_a_shared_effect_is_one_coefficient():
 def test_long_and_stacked_forms_round_trip():
     tm = TransitionMatrix(PAIRS, states=STATES)
     d = _simulate(30, seed=1)
-    stacked = to_stacked(
-        d["x"], d["e"], d["state"], tm, tl=d["tl"], id=d["id"]
-    )
+    stacked = to_stacked(d["x"], d["e"], d["state"], tm, tl=d["tl"], i=d["id"])
     # One row per transition out of each spell's state
     out = {"healthy": 2, "ill": 2}
     assert len(stacked) == sum(out[s] for s in d["state"])
@@ -351,7 +349,7 @@ def test_long_and_stacked_forms_round_trip():
     )
     a = MultiState.fit(**back, transitions=tm)
     b = MultiState.fit(
-        d["x"], d["e"], d["state"], tl=d["tl"], id=d["id"], transitions=tm
+        d["x"], d["e"], d["state"], tl=d["tl"], i=d["id"], transitions=tm
     )
     q = np.linspace(0, 8, 9)
     for state in STATES:

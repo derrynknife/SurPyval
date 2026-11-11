@@ -81,7 +81,7 @@ def _model(name):
         d["e"],
         d["state"],
         tl=d["tl"],
-        id=d["id"],
+        i=d["id"],
         transitions=TRANSITIONS[name],
     )
 
@@ -160,7 +160,7 @@ def _cox(effects, ties):
         d["e"],
         d["state"],
         tl=d["tl"],
-        id=d["id"],
+        i=d["id"],
         transitions=TRANSITIONS["mgus2_multistate"],
         shared=[1] if effects == "shared" else None,
         tie_method=ties,
