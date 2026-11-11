@@ -91,25 +91,45 @@ class _Fit(SimpleNamespace):
     ok: bool
 
 
-def _form_panel(
-    name: str, z: np.ndarray, residual: np.ndarray, ylabel: str
-) -> Panel:
-    """The functional-form plot of covariate ``name``: each row's
-    ``residual`` against its value ``z``, with a lowess trend and a line
-    at 0 (Cox, frailty and parametric PH/AFT)."""
+def _draw_form(
+    ax: Any,
+    z: np.ndarray,
+    residual: np.ndarray,
+    name: str,
+    ylabel: str,
+    grid: np.ndarray | None = None,
+) -> None:
+    """Draw the functional-form plot on ``ax``: each row's ``residual``
+    against its covariate value ``z``, with a lowess trend over ``grid``
+    (default: 60 points across ``z``) and a line at 0."""
+    from surpyval.plotting import INK, PALETTE
+
     from .smooth import lowess
 
-    def draw(ax: Any, options: Any) -> None:
-        from surpyval.plotting import INK, PALETTE
-
+    if grid is None:
         grid = np.linspace(z.min(), z.max(), 60)
-        ax.scatter(z, residual, s=10, color=INK["muted"], alpha=0.6)
-        ax.plot(grid, lowess(z, residual, grid), color=PALETTE[0])
-        ax.axhline(0.0, color=INK["axis"], lw=0.8)
-        ax.set_xlabel(name)
-        ax.set_ylabel(ylabel)
+    ax.scatter(z, residual, s=10, color=INK["muted"], alpha=0.6)
+    ax.plot(grid, lowess(z, residual, grid), color=PALETTE[0])
+    ax.axhline(0.0, color=INK["axis"], lw=0.8)
+    ax.set_xlabel(name)
+    ax.set_ylabel(ylabel)
 
-    return Panel(f"{name}: functional form", draw)
+
+def _form_panel(
+    name: str,
+    z: np.ndarray,
+    residual: np.ndarray,
+    ylabel: str,
+    title: str | None = None,
+) -> Panel:
+    """The functional-form plot of covariate ``name`` (:func:`_draw_form`;
+    Cox, frailty, parametric PH/AFT and Fine-Gray), titled ``title``
+    (default ``"<name>: functional form"``)."""
+
+    def draw(ax: Any, options: Any) -> None:
+        _draw_form(ax, z, residual, name, ylabel)
+
+    return Panel(title or f"{name}: functional form", draw)
 
 
 def _cox_snell_panel(

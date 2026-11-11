@@ -29,7 +29,6 @@ from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
-from surpyval.utils.validation import option_error
 
 from ._tvc_evaluation import TVCEvaluationMixin, refuse_schedule
 
@@ -442,16 +441,7 @@ class ProportionalIntensityModel(
         )
         self._check_has_data("residuals")
         cif_map = self._item_cif_map()
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, cif_map)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, cif_map)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, cif_map, kind)
 
     def trend_test(
         self,

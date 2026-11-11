@@ -87,7 +87,7 @@ import numpy as np
 
 from surpyval.utils.warnings import ignoring_warnings
 
-from ._shared import _covariate_kind, _fmt, _gap, _note
+from ._shared import _covariate_kind, _draw_form, _fmt, _gap, _note
 from .cox import INFLUENCE_LIMIT
 from .ph_aft import (
     AIC_MARGIN,
@@ -531,24 +531,22 @@ def _form_rows(ctx: Context) -> list[dict]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     b = _base(ctx)
     panels = []
     for c in _form_coefficients(ctx):
 
         def draw(ax: Any, options: Any, c: dict = c) -> None:
-            from surpyval.plotting import INK, PALETTE
-
             r = _score_residuals(ctx)[:, c["k"]]
             z = b.raw[:, c["j"]]
             keep = np.isfinite(r)
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z[keep], r[keep], s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z[keep], r[keep], grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(c["name"])
-            ax.set_ylabel("score residual of {}".format(c["parameter"]))
+            _draw_form(
+                ax,
+                z[keep],
+                r[keep],
+                c["name"],
+                "score residual of {}".format(c["parameter"]),
+                grid=np.linspace(z.min(), z.max(), 60),
+            )
 
         panels.append(
             Panel(
