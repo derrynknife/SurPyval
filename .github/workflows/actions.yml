@@ -261,8 +261,10 @@ jobs:
     # long-studies 5, copula 4. The runners' speed varies by about two
     # (#617's bootstrap took 24 to 36 on the 17 October runs), so 60
     # minutes is about twice the longest; one that hangs fails here
-    # rather than holding the release for GitHub's six hours.
-    timeout-minutes: 60
+    # rather than holding the release for GitHub's six hours. A group
+    # whose one study is longer names its own limits (job-timeout,
+    # test-timeout) in the matrix.
+    timeout-minutes: ${{ matrix.job-timeout || 60 }}
     strategy:
       fail-fast: false
       matrix:
@@ -294,21 +296,34 @@ jobs:
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[lfp]'
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[zi]'
           # The bootstrap coverage of LFP and ZI models (#286): four
-          # studies of 200 replicates of 200 refits, every core. Together
-          # they took 47 minutes locally against the 60-minute limit, so
-          # they run in two groups by the designs' measured cost (the
-          # #1091 study, scripts/studies/lfp_zi_bootstrap): lfp_edge with
-          # zi (about 26 minutes) and lfp with lognormal_lfp (about 21).
-          # Every seed is per design, so the split changes no result.
-          - group: extra-parameters-bootstrap-edge-zi
+          # studies of 200 replicates of 200 refits, every core, each in
+          # a group of its own. On their first run on the runners (11
+          # November 2026) lfp took 1251 s and lognormal_lfp 1526 s, 4.9 s
+          # for each unit of the designs' measured cost (lfp_edge 560,
+          # lognormal_lfp 290, lfp 280, zi 130: the #1091 study,
+          # scripts/studies/lfp_zi_bootstrap), and lfp_edge ran into the
+          # 45-minute per-test limit, which that rate puts it just over
+          # (about 46 minutes; zi about 11). lfp_edge therefore has
+          # limits of its own, about twice its time as the others'
+          # are: 90 minutes for the study, 105 for the job. Every seed is
+          # per design, so the grouping changes no result.
+          - group: extra-parameters-bootstrap-lfp-edge
             workers: '0'
+            test-timeout: 5400
+            job-timeout: 105
             args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lfp_edge]'
+          - group: extra-parameters-bootstrap-zi
+            workers: '0'
+            args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[zi]'
           - group: extra-parameters-bootstrap-lfp
             workers: '0'
             args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lfp]'
+          - group: extra-parameters-bootstrap-lognormal-lfp
+            workers: '0'
+            args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lognormal_lfp]'
           - group: long-studies
             workers: '3'
@@ -397,11 +412,11 @@ jobs:
       # (the "rest" group at 53% on 30 October 2026). 45 minutes is over
       # the longest study's time (#617's bootstrap, 24 to 36), so it stops
       # no sound study; a hang that starts later is still stopped by the
-      # job's limit.
+      # job's limit. (A group with a longer study sets test-timeout.)
       - name: pytest (${{ matrix.group }})
         run: >-
           python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
-          --timeout=2700 --timeout-method=thread
+          --timeout=${{ matrix.test-timeout || 2700 }} --timeout-method=thread
           --run-calibration --run-scenarios ${{ matrix.args }}
 
   # The PyMC helpers (surpyval.pymc) with PyMC installed. PyMC is not a
