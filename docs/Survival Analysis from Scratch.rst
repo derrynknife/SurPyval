@@ -17,8 +17,9 @@ both:
 
 Different fields use different words for the same ideas. An engineer says
 *failure*, *unit* and *reliability*; a clinician says *event*, *subject* and
-*survival*. This page uses them side by side. The data sets here are made up
-for teaching, and small enough to check on paper.
+*survival*. This page uses them side by side, and the :doc:`Glossary` maps
+one vocabulary to the other. The data sets here are made up for teaching,
+and small enough to check on paper.
 
 What is time-to-event data?
 ---------------------------
@@ -642,3 +643,5 @@ and a regression. From here:
   repeated hospital admissions)? See :doc:`Recurrent Event Analysis`.
 - A measurement drifting towards a threshold (wear, a biomarker)? See
   :doc:`Degradation Analysis` and :doc:`Joint Models`.
+- :doc:`Glossary` maps the engineering, medical and statistical words for
+  the same ideas.

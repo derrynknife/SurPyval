@@ -12,9 +12,9 @@ SurPyval - Survival Analysis in Python
 long things last. The "thing" can be a bearing, a patient, a loan, a
 recession or a marathon runner, and the "time" can be hours, cycles,
 kilometres or dollars. What makes these problems different from ordinary
-statistics is that the data is almost never complete. Some units have not
-failed yet when the study ends (*censoring*), some were only inspected now
-and then, and some never reached your data set at all because of how it was
+statistics is that the data is almost never complete. Some units (items,
+subjects) have not had the event (have not failed, died or relapsed) when
+the study ends (*censoring*), some were only inspected now and then, and some never reached your data set at all because of how it was
 collected (*truncation*). SurPyval is built around handling every one of
 those situations correctly, in any combination, with one consistent
 interface.
@@ -57,6 +57,10 @@ Where to start
   maintenance log? :doc:`Data Wrangler Examples` shows how to turn it into
   the ``x``, ``c``, ``n``, ``t`` arrays every fitter takes, and
   :doc:`Conventions` defines those arrays exactly.
+- Used to other words for these ideas (event or failure, subject or unit,
+  survival or reliability, right censored or suspended)? The
+  :doc:`Glossary` maps the engineering, medical and statistical
+  vocabularies to each other and to SurPyval's names.
 
 How the documentation is organised
 ----------------------------------
@@ -125,14 +129,17 @@ so on.
      - :doc:`regression analysis` /
        :doc:`Regression Modelling with SurPyval`
    * - Competing risks
-     - Items that can fail from one of several causes: cumulative
+     - Units that can fail, or subjects that can have an event, from one
+       of several causes (failure modes, causes of death): cumulative
        incidence (Aalen-Johansen), parametric cause-specific models,
        cause-specific Cox regression, Fine-Gray subdistribution regression
        and Gray's test.
      - :doc:`Competing Risks Analysis` /
        :doc:`Competing Risks SurPyval Modelling`
    * - Recurrent events
-     - Repairable items that fail again and again: the mean cumulative
+     - Events that happen again and again to the same unit (a repairable
+       item that keeps failing, a patient with repeated admissions): the
+       mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
        (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
        ARI), trend tests, proportional-intensity regression, and whether
@@ -291,6 +298,7 @@ Contents:
    Survival Analysis from Scratch
    Types of Data
    Conventions
+   Glossary
    Design Principles
    Handy References - Aide-mémoire
    Data Wrangler Examples

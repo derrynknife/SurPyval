@@ -22,16 +22,16 @@ The five functions, their names in SurPyval, and their meanings:
      - Meaning
    * - :math:`f(t)`
      - ``df``
-     - the density: the probability of failing in a small interval around :math:`t`, per unit time
+     - the density: the probability of the event (a failure, a death) in a small interval around :math:`t`, per unit time
    * - :math:`F(t)`
      - ``ff``
-     - the CDF, or unreliability: the probability of having failed by :math:`t`
+     - the CDF, or unreliability: the probability that the event has happened (the item has failed) by :math:`t`
    * - :math:`R(t)`
      - ``sf``
      - the survival, or reliability, function: the probability of surviving past :math:`t`; :math:`R = 1 - F`
    * - :math:`h(t)`
      - ``hf``
-     - the hazard: the rate of failure at :math:`t` *among the items that have survived to* :math:`t`
+     - the hazard, or failure rate: the rate of events at :math:`t` *among the units that have survived to* :math:`t`
    * - :math:`H(t)`
      - ``Hf``
      - the cumulative hazard: the hazard accumulated up to :math:`t`
