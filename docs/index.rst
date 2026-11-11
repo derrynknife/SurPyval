@@ -43,6 +43,10 @@ models to censored data without writing code.
 Where to start
 --------------
 
+- New to survival analysis? Start with :doc:`Survival Analysis from Scratch`.
+  It assumes no background and explains censoring, the survival and hazard
+  functions, the Kaplan-Meier estimate by hand, a Weibull fit, comparing
+  groups and regression, with one engineering and one medical example.
 - New to SurPyval? Read the :doc:`Quickstart`. In ten minutes it fits a
   first model, shows why censoring matters, and gives a small example of
   every area of the package.
@@ -284,6 +288,7 @@ Contents:
    :caption: Quickstart & Intro
 
    Quickstart
+   Survival Analysis from Scratch
    Types of Data
    Conventions
    Design Principles

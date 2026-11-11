@@ -1048,6 +1048,16 @@ Unreleased
   infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
   which breaks mutmut 3.8.
 
+**Documentation.**
+
+- New page: :doc:`Survival Analysis from Scratch`, for readers who have
+  never met censoring. It explains time-to-event data, why the times cannot
+  simply be averaged, censoring and truncation, the survival, hazard and
+  cumulative hazard functions, the Kaplan-Meier estimate worked by hand, a
+  Weibull fit and how to read it, bounds, comparing groups and regression,
+  with an engineering example (pump failures) and a medical one (time to
+  relapse) throughout. Linked from the front page and the Quickstart.
+
 v0.26 (31 October 2026)
 -----------------------
 

@@ -3,6 +3,9 @@ Quickstart
 
 
 So, you know what survival analysis is and you just want to see what this can do.
+If you do not, or censoring is a new word, read
+:doc:`Survival Analysis from Scratch` first: it teaches the subject from the
+beginning, and this page will then make sense.
 (If you have not installed it yet: ``pip install surpyval``; it needs Python
 3.11 or later.)
 
