@@ -373,11 +373,23 @@ jobs:
               surpyval/tests/calibration/test_size_bayes_diagnostics.py
               surpyval/tests/calibration/test_diagnose_aalen.py
               surpyval/tests/calibration/test_coverage_competing_risks_interval.py
+          # The case-bootstrap coverage of weighted fits (40,000 refits)
+          # took 1,586 to 2,056 s on one core in "weights-power", then
+          # ran into the 45-minute per-test limit there on 11 November
+          # 2026 (pytest-timeout's thread method ends the xdist worker,
+          # which pytest reports as a crashed worker). Its replicates now
+          # run on every core themselves, as #617's do, so it has a group
+          # of its own (workers 0: no xdist). Its numbers are unchanged.
+          - group: weights-bootstrap
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_weights.py::test_case_bootstrap_coverage'
           - group: weights-power
             workers: auto
             args: >-
               surpyval/tests/calibration/test_coverage_weights.py
               surpyval/tests/calibration/test_size_power.py
+              --deselect 'surpyval/tests/calibration/test_coverage_weights.py::test_case_bootstrap_coverage'
           - group: rest
             workers: auto
             args: >-
