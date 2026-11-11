@@ -115,7 +115,7 @@ from .fine_gray import _validated
 if TYPE_CHECKING:
     import pandas as pd
 
-_CB_ON = ("cif", "sf", "ff", "Hf")
+_CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
 _CB_METHODS = ("wald", "lr", "bootstrap")
 
 
@@ -920,8 +920,9 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         event : optional
             The cause: required for ``on="cif"``; for the others ``None``
             is all causes.
-        on : {"cif", "sf", "ff", "Hf"}, optional
-            The function bounded. Default ``"cif"``.
+        on : {"cif", "sf", "ff", "Hf", "R", "F"}, optional
+            The function bounded (``"R"`` is ``"sf"``, ``"F"`` is
+            ``"ff"``). Default ``"cif"``.
         alpha_ci : float, optional
             One minus the confidence level. Default 0.05.
         bound : {"two-sided", "upper", "lower"}, optional
@@ -959,6 +960,7 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         """
         check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
+        on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, BOUNDS)
         method = str(method).lower()
         check_option("method", method, _CB_METHODS)
