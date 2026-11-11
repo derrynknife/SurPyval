@@ -22,7 +22,7 @@ import functools
 import inspect
 import types
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -33,10 +33,6 @@ if TYPE_CHECKING:
 
 from surpyval.utils import is_missing_event, refuse_time_values
 from surpyval.utils.deprecation import ambiguous_item_ids
-from surpyval.utils.removed_names import (
-    column_arguments,
-    removed_message,
-)
 from surpyval.utils.units import takes_unit
 
 
@@ -127,18 +123,56 @@ def frame_columns(
 
 
 def refuse_column_names(options: Mapping[str, Any], *names: str) -> None:
-    """Refuse a ``fit_from_df`` column argument passed by its name before
-    v0.22 (``x`` for ``x_col``), which would otherwise reach ``fit`` as an
+    """Refuse a ``fit_from_df`` column passed by the ``fit`` argument's
+    name (``x`` for ``x_col``), which would otherwise reach ``fit`` as an
     option, with Python's ``TypeError`` for an unknown argument."""
     for name in names:
         if name in options:
             raise TypeError(
-                removed_message(
-                    "fit_from_df() got an unexpected keyword argument "
-                    f"'{name}'",
-                    (f"name the column with '{name}_col'", "0.23"),
-                )
+                "fit_from_df() got an unexpected keyword argument "
+                f"'{name}'; name the column with '{name}_col'"
             )
+
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def column_arguments(*names: str) -> Callable[[F], F]:
+    """
+    Decorate a ``fit_from_df`` that passes its other keywords on to
+    ``fit`` so that a column passed by the ``fit`` argument's name
+    (``c="event"``) raises a ``TypeError`` naming the ``_col`` argument
+    (``c_col``), rather than reaching ``fit`` as a column label.
+
+    Examples
+    --------
+    >>> from surpyval.utils.dataframe import column_arguments
+    >>> @column_arguments("x")
+    ... def fit_from_df(df, x_col, **fit_options):
+    ...     return df[x_col]
+    >>> fit_from_df({"t": 1}, x="t")  # doctest: +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    TypeError: fit_from_df() got an unexpected keyword argument 'x'; name
+    the column with 'x_col'
+    """
+
+    def decorate(func: F) -> F:
+        where = func.__qualname__
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if kwargs:
+                for old in sorted(kwargs.keys() & set(names)):
+                    raise TypeError(
+                        f"{where}() got an unexpected keyword argument "
+                        f"{old!r}; name the column with '{old}_col'"
+                    )
+            return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorate
 
 
 def refuse_recurrent_column_names(

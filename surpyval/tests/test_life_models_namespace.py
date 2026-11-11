@@ -1,6 +1,6 @@
 """The life models live in ``surpyval.life_models``; the names they had at
-the top level until v0.22 are removed in v0.23, and asking for one says
-where it is."""
+the top level until v0.22 were removed in v0.23 (their hints were retired
+in v0.27)."""
 
 import warnings
 
@@ -47,8 +47,8 @@ def test_arrhenius_is_the_exponential_life_model():
 
 
 @pytest.mark.parametrize("old, new", sorted(MOVED.items()))
-def test_old_top_level_name_is_gone_and_says_where(old, new):
-    with pytest.raises(AttributeError, match=rf"surpyval\.life_models\.{new}"):
+def test_old_top_level_name_is_gone(old, new):
+    with pytest.raises(AttributeError, match=f"no attribute '{old}'"):
         getattr(sp, old)
     assert not hasattr(sp, old)
     assert old not in dir(sp)

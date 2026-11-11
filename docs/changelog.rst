@@ -1152,6 +1152,46 @@ Unreleased
   penalty itself is unchanged: a ridge on the covariates only, scaled by
   each covariate's variance.
 
+**Removed.**
+
+- The hints for names removed in v0.23 and v0.24 are retired. Using one of
+  these names now raises Python's plain ``AttributeError``, ``TypeError``
+  or ``ImportError`` (or, for a parameter name, the usual "Unknown
+  parameter" ``ValueError``), without the message that named the release
+  and the replacement. The names, with what replaced them:
+
+  - model and fitter attributes: ``param_names`` (``parameter_names``),
+    ``cov_matrix`` and ``cov`` (``covariance()``), ``se``
+    (``standard_errors()``), ``loglike`` (``neg_ll()``), ``loglik``
+    (``log_likelihood``), ``loglik_no_frailty``
+    (``log_likelihood_no_frailty``), and ``MixtureModel``'s ``EM``,
+    ``Q``, ``expectation``, ``maximisation``, ``likelihood`` and
+    ``initialise_params`` (internal to ``fit()``);
+  - top-level names: ``DualExponential``, ``DualPower``, ``Eyring``,
+    ``InverseExponential``, ``InverseEyring``, ``InversePower``,
+    ``LifeModel``, ``Linear``, ``Power``, ``PowerExponential`` and
+    ``ExponentialLifeModel`` (all in ``surpyval.life_models``), and
+    ``NUM``, ``TINIEST`` and ``EPS`` (use numpy);
+  - the module ``surpyval.utils.score``
+    (``surpyval.metrics.concordance_index``);
+  - arguments: ``cs(X=)`` (``given``), ``ARI.fit(dist=)``,
+    ``ARI.fit_from_recurrent_data(dist=)`` and
+    ``ARI.fit_from_parameters(dist=, dist_params=)`` (``baseline``,
+    ``baseline_params``), ``CustomDistribution(param_names=)``
+    (``parameter_names``), ``from_params(p=)`` (``lfp_p``),
+    ``success_run(confidence=, alpha=)`` (``alpha_ci``), and a
+    regression or competing-risks ``fit_from_df`` given ``x=``, ``c=``
+    or another ``fit`` argument's name for a column (``x_col``, ...);
+  - ``neg_ll(beta)`` on the semi-parametric models (``neg_ll_of(beta)``);
+    ``neg_ll`` now takes no arguments;
+  - the parameter names ``p`` (``lfp_p``) and ``beta_j`` (the covariate's
+    column, else ``coef_j``) in ``fixed`` and ``param_cb``.
+
+  The hints for names removed in v0.25 and v0.26 stay. A
+  ``fit_from_df`` that passes other keywords on to ``fit`` (the
+  univariate, recurrent and Fine-Gray ones) still refuses a column given
+  by the ``fit`` argument's name and names the ``_col`` argument.
+
 **Changed.**
 
 - Penalised Cox on start-stop data counts subjects, not rows:

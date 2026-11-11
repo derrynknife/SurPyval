@@ -505,15 +505,9 @@ _SUBPACKAGES = (
     "test_planning",
 )
 
-# The package's removed names (the life models' top-level names, removed
-# in v0.23, the numeric constants, removed in v0.24, and
-# RecurrentEventData, removed in v0.26) say what replaced
-# them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL`` (#653).
-_MOVED_TO_LIFE_MODELS = tuple(
-    name
-    for name, (instead, _) in _REMOVED_TOP_LEVEL.items()
-    if instead.startswith("it is surpyval.life_models.")
-)
+# The package's removed names (RecurrentEventData, removed in v0.26) say
+# what replaced them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL``
+# (#653).
 
 # Names that live only in a subpackage: asking for one here
 # (``surpyval.laplace``) says where it is, rather than only that

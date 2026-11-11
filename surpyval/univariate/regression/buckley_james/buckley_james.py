@@ -56,7 +56,6 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -828,7 +827,6 @@ class BuckleyJames_(FitterRepr):
             (Y, delta, Z_a, n_a),
         )
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,
