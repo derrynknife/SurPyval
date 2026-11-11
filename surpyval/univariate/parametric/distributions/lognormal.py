@@ -54,6 +54,16 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     array([0.8845, 0.4941, 0.1131])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        mu : numpy array or scalar
+            The location parameter for the LogNormal distribution
+        sigma : numpy array or scalar
+            The scale parameter for the LogNormal distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the normal quantile of ff, on which this family is a straight line in
     # log time (#477).
@@ -133,10 +143,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -171,10 +178,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -206,10 +210,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -241,10 +242,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -291,10 +289,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -325,10 +320,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -357,10 +349,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -389,10 +378,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------
@@ -419,10 +405,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
+        {params}
 
         Returns
         -------

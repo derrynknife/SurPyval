@@ -69,6 +69,14 @@ class FixedEventProbability_(  # type: ignore[misc]
     array([0.0441, 0.5028])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        p : float
+            The probability of failure of the thing
+        """
+
     #: ``random`` (``SingleProbabilityMixin``'s) draws 0/1 event
     #: indicators, 1 where ``u <= p``: exactly where ``qf(u)`` is 0. A
     #: fitted model's ``random`` draws through it rather than ``qf``, whose
@@ -101,8 +109,7 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        p : float
-            The probability of failure of the thing
+        {params}
 
         Returns
         -------
@@ -135,8 +142,7 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        p : float
-            The probability of failure of the thing
+        {params}
 
         Returns
         -------
@@ -178,8 +184,7 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        p : float
-            The probability of failure of the thing
+        {params}
 
         Returns
         -------
@@ -222,8 +227,7 @@ class FixedEventProbability_(  # type: ignore[misc]
         u : numpy array or scalar
             The probability or probabilities at which the quantile will
             be calculated
-        p : float
-            The probability of failure of the thing
+        {params}
 
         Returns
         -------
@@ -254,8 +258,7 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         m : integer
             The ordinal of the moment to calculate
-        p : float
-            The probability of failure of the thing
+        {params}
 
         Returns
         -------

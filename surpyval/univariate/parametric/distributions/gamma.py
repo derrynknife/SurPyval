@@ -319,6 +319,16 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
     array([0.7358, 0.406 , 0.0916])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The rate parameter for the Gamma distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -409,10 +419,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
 
         Returns
@@ -447,10 +454,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
 
         Returns
@@ -484,10 +488,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
 
         Returns
@@ -532,10 +533,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
 
         Returns
@@ -609,10 +607,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
 
         Returns
@@ -647,10 +642,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
         Returns
         -------
@@ -679,10 +671,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
         Returns
         -------
@@ -713,10 +702,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
         Returns
         -------
@@ -747,10 +733,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
         Returns
         -------
@@ -786,10 +769,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The rate parameter for the Gamma distribution
+        {params}
 
         Returns
         -------

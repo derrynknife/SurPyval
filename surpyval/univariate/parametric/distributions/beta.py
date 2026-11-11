@@ -53,6 +53,16 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
     array([0.8857, 0.4202, 0.1094])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -95,10 +105,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -135,10 +142,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -170,10 +174,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -206,10 +207,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -244,10 +242,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -275,10 +270,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------
@@ -318,10 +310,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
+        {params}
 
         Returns
         -------

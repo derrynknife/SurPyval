@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Shared parameter entries in distribution docstrings (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A distribution states its parameter entries once (`_param_docs`), and each method docstring has a `{params}` line that `ParametricFitter.__init_subclass__` fills in at import. The runtime `__doc__` (what `help()`, Sphinx and doctest read) is unchanged, character for character; only an editor that reads the source without importing it shows the `{params}` line. | proposed | The same entries were repeated in up to ten methods of every distribution, so a wording fix meant ten edits. Filling at import keeps the rendered text whole; the alternative, a "parameters as in the class docstring" pointer, would shorten what users read in `help()`. Reversible by pasting the entries back. | done |
+
 ### `fit_from_ecdf` refuses a falling curve (12 Nov 2026)
 
 | Decision | By | Reason | Status |

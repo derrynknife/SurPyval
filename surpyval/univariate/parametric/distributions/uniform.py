@@ -37,6 +37,16 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
     array([0.75, 0.5 , 0.25])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        a : numpy array or scalar
+            The lower parameter for the Uniform distribution
+        b : numpy array or scalar
+            The upper parameter for the Uniform distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -94,10 +104,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -128,10 +135,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -166,10 +170,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -204,10 +205,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -255,10 +253,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -338,10 +333,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -370,10 +362,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -402,10 +391,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------
@@ -438,10 +424,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
+        {params}
 
         Returns
         -------

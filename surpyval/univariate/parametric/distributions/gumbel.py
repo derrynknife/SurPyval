@@ -39,6 +39,16 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
     array([0.9212, 0.3679, 0.066 ])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # time (#477).
@@ -83,10 +93,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        mu : numpy array like or scalar
-            The location parameter of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter of the distribution
+        {params}
 
         Returns
         -------
@@ -122,10 +129,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        mu : numpy array like or scalar
-            The location parameter of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter of the distribution
+        {params}
 
         Returns
         -------
@@ -162,10 +166,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        mu : numpy array like or scalar
-            The location parameter of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter of the distribution
+        {params}
 
         Returns
         -------
@@ -210,10 +211,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        mu : numpy array like or scalar
-            The location parameter of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter of the distribution
+        {params}
 
         Returns
         -------
@@ -247,10 +245,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        mu : numpy array like or scalar
-            The location parameter of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter of the distribution
+        {params}
 
         Returns
         -------

@@ -168,6 +168,14 @@ class Hypoexponential_(ParametricFitter):
     2.6667
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        rates : numpy array or scalars
+            The stage rates ``lambda_1, ..., lambda_m``
+        """
+
     def __init__(self, name: str, m: int = 0) -> None:
         # ``m == 0`` is the exported singleton, whose arity is only fixed
         # when ``from_params`` is called; that call (and deserialisation)
@@ -395,8 +403,7 @@ class Hypoexponential_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -434,8 +441,7 @@ class Hypoexponential_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -466,8 +472,7 @@ class Hypoexponential_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -502,8 +507,7 @@ class Hypoexponential_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -534,8 +538,7 @@ class Hypoexponential_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -587,8 +590,7 @@ class Hypoexponential_(ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -657,8 +659,7 @@ class Hypoexponential_(ParametricFitter):
         Parameters
         ----------
 
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -693,8 +694,7 @@ class Hypoexponential_(ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -723,8 +723,7 @@ class Hypoexponential_(ParametricFitter):
         Parameters
         ----------
 
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
 
         Returns
         -------
@@ -766,8 +765,7 @@ class Hypoexponential_(ParametricFitter):
 
         size : integer or tuple of positive integers
             Shape or size of the random draw
-        rates : numpy array or scalars
-            The stage rates ``lambda_1, ..., lambda_m``
+        {params}
         random_state : int or numpy.random.Generator, optional
             Seed or generator for a draw of its own; ``None`` (the
             default) draws from numpy's global stream (see

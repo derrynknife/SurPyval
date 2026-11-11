@@ -84,6 +84,14 @@ class Bernoulli_(  # type: ignore[misc]
     array([[nan]])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        p : float
+            The probability of the ``1`` outcome
+        """
+
     @staticmethod
     def _check_x(x: Numeric) -> npt.NDArray:
         """Reject anything that is not a Bernoulli outcome."""
@@ -128,8 +136,7 @@ class Bernoulli_(  # type: ignore[misc]
         x : numpy array or scalar
             The outcome(s) at which the function will be calculated.
             Must be 0 or 1.
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -163,8 +170,7 @@ class Bernoulli_(  # type: ignore[misc]
         x : numpy array or scalar
             The outcome(s) at which the function will be calculated.
             Must be 0 or 1.
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -195,8 +201,7 @@ class Bernoulli_(  # type: ignore[misc]
         x : numpy array or scalar
             The outcome(s) at which the function will be calculated.
             Must be 0 or 1.
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -231,8 +236,7 @@ class Bernoulli_(  # type: ignore[misc]
         x : numpy array or scalar
             The outcome(s) at which the function will be calculated.
             Must be 0 or 1.
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -267,8 +271,7 @@ class Bernoulli_(  # type: ignore[misc]
         x : numpy array or scalar
             The outcome(s) at which the function will be calculated.
             Must be 0 or 1.
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -310,8 +313,7 @@ class Bernoulli_(  # type: ignore[misc]
         u : numpy array or scalar
             The probability or probabilities at which the quantile will
             be calculated
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -346,8 +348,7 @@ class Bernoulli_(  # type: ignore[misc]
         Parameters
         ----------
 
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------
@@ -379,8 +380,7 @@ class Bernoulli_(  # type: ignore[misc]
 
         m : integer
             The ordinal of the moment to calculate
-        p : float
-            The probability of the ``1`` outcome
+        {params}
 
         Returns
         -------

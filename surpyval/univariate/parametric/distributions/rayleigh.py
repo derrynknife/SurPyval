@@ -43,6 +43,14 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     array([0.8825, 0.6065, 0.1353])
     """
 
+    # The Parameters entries the method docstrings below share, written
+    # once: each docstring has a ``{params}`` line in their place, filled
+    # in when the class is made (``surpyval.utils.docstrings``).
+    _param_docs = """
+        sigma : numpy array or scalar
+            scale parameter for the Rayleigh distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # log time (#477).
@@ -118,8 +126,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -151,8 +158,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -183,8 +189,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -217,8 +222,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -249,8 +253,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -281,8 +284,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -314,8 +316,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------
@@ -344,8 +345,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
+        {params}
 
         Returns
         -------

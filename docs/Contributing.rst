@@ -42,7 +42,14 @@ The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
 skipped by default). The second executes the ``>>>`` examples in the
 docstrings and checks their printed output, so a docstring example is a
-tested promise like any other. ``--run-invariants`` opts in to a slower
+tested promise like any other.
+
+A distribution's methods share their parameter entries: the class states
+them once, in ``_param_docs``, and each method docstring has a
+``{params}`` line where they go, filled in when the class is made
+(``surpyval.utils.docstrings``). ``help()``, Sphinx and doctest read the
+filled text; a new method writes ``{params}`` rather than copying the
+entries. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
