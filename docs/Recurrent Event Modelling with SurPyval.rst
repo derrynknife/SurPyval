@@ -1942,6 +1942,13 @@ an event row whose mark is missing counts towards no cause:
     assert np.allclose(model.mcf(4.5, "A") + model.mcf(4.5, "B"),
                        NonParametricCounting.fit(x, i, c).mcf(4.5))
 
+(When the items also differ in covariates -- an environment, a duty, an
+overhaul state -- and a covariate may drive one failure mode and not
+another, see "Several failure modes, each with its own covariate effects" in
+:doc:`Recurrent Event Regression Modelling with SurPyval`:
+``CauseSpecificProportionalIntensity`` gives every mode its own baseline and
+its own coefficients.)
+
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
 cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be
 passed as ``dist``; ``how`` and ``init`` are passed on to every cause's fit).

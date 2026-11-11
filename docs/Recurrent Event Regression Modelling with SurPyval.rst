@@ -11,7 +11,10 @@ Crow-AMSAA). Both scale a baseline intensity by a covariate factor
 by :math:`e^{\beta_k}` for each unit of covariate :math:`k`. The theory,
 assumptions and references are on the :doc:`Recurrent Event Regression
 Analysis` page; for the models without covariates see
-:doc:`Recurrent Event Modelling with SurPyval`.
+:doc:`Recurrent Event Modelling with SurPyval`. When the failures come in
+several types (failure modes) and a covariate may act on one type and not
+another, see `Several failure modes, each with its own covariate effects`_
+at the end of this page.
 
 Both fitters take the recurrent ``x`` / ``i`` / ``c`` / ``n`` arrays exactly as
 the models without covariates do (including ``tl`` / ``tr`` truncation and
@@ -810,6 +813,426 @@ the covariates as fixed:
 - ``fit_penalised`` has no time-varying form, and the ``_from_df`` forms
   take ``Z_cols`` only (no ``formula``), as this model's ``fit_from_df``
   does.
+
+Several failure modes, each with its own covariate effects
+-----------------------------------------------------------
+
+A repairable item rarely fails in only one way. A pump has seal failures and
+electrical trips; a vehicle has brake, tyre and engine repairs; a patient is
+readmitted for different reasons. :doc:`Recurrent Event Modelling with
+SurPyval` shows how ``CauseSpecificNHPP`` fits one failure-rate curve per
+**failure mode** (event type). This section adds covariates to that picture.
+
+The question it answers is: *which covariate drives which kind of failure?*
+Abrasive fluid wears seals; there is no reason for it to trip the
+motor's protection. A weak power supply causes trips and does nothing to the
+seal. The
+model gives every failure mode
+
+- its own **baseline**: how often that kind of failure happens, and how that
+  changes with age, on an item whose covariates are all zero; and
+- its own **coefficients**: one per covariate, saying by what factor the
+  covariate multiplies the rate of *that* kind of failure.
+
+So "abrasive service triples seal failures and leaves the trips alone"
+is something the model can say, and can say with confidence bounds on each
+part.
+
+**Reading a rate ratio per mode.** The exponential of a coefficient is a
+*rate ratio*: the factor by which one more unit of the covariate multiplies
+the rate of that mode's failures, at every age. A rate ratio of 3 for
+``abrasive`` on the seal mode means that, of two pumps of the same age, the
+one in abrasive service is having seal failures three times as often. A rate
+ratio of 1 means the covariate does nothing to that mode; below 1, it
+protects against it. Each mode has its own ratio for each covariate, with its
+own interval. An interval that contains 1 says the data do not show an
+effect on that mode. It does not say there is none: a mode with few failures
+has wide intervals.
+
+**Why not fit all the failures together?** Because a covariate that matters a
+great deal for one mode can look unimportant, or vanish, in the total. If
+seal failures are a small share of all failures, tripling them moves the
+total rate only a little, and a model of all failures reports a small rate
+ratio that may not even be distinguishable from 1. The conclusion "abrasive
+service hardly matters" would be wrong where it counts: for the seals, for
+the spare seals to hold, and for the decision whether a better seal is worth
+buying. A covariate that raises one mode and lowers another can cancel
+altogether. Fitting the modes apart keeps each effect at full strength, and
+adding the modes back up (the *totals* below) still gives the answer for
+failures of any kind.
+
+**What the model assumes.** The failures of each mode arrive as a Poisson
+process (a repair leaves the item as it was just before the failure, as in
+the models above), and the modes do not interfere with each other: a seal
+failure neither brings a trip forward nor postpones it. Under that
+assumption the modes can be fitted one at a time, each to its own failures
+over the whole time every item was watched, with the other modes' failures
+simply left out. That is what ``CauseSpecificProportionalIntensity`` does:
+each mode is an ordinary proportional-intensity fit (the models at the top
+of this page), and the fitted models are in ``models[event]``. The formulas
+are on the :doc:`Recurrent Event Regression Analysis` page.
+
+The data
+~~~~~~~~
+
+To have a known answer, we simulate 60 pumps watched for 48 months. Half
+pump an abrasive slurry. Seal failures are the rarer mode; they become more
+frequent as a pump ages, and abrasive service triples them (a coefficient of
+1.1). Electrical trips are the common nuisance: about one every four months,
+at a constant rate, whatever the fluid (a coefficient of 0). The event log has one row
+per failure, with its mode, and one row per pump for the end of its record
+(``c = 1``, with no mode):
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(2026)
+    months = 48.0
+    # mode: (alpha, beta) of a power-law baseline, and the abrasive coefficient
+    truth = {"seal": (70.0, 1.6, 1.1), "trip": (4.0, 1.0, 0.0)}
+
+    rows = []
+    for pump in range(60):
+        abrasive = float(pump % 2)
+        for mode, (alpha, beta, coef) in truth.items():
+            expected = (months / alpha) ** beta * np.exp(coef * abrasive)
+            times = months * rng.uniform(size=rng.poisson(expected)) ** (1 / beta)
+            rows += [(pump, t, 0, mode, abrasive) for t in np.sort(times)]
+        rows.append((pump, months, 1, None, abrasive))
+    log = pd.DataFrame(rows, columns=["pump", "month", "c", "mode", "abrasive"])
+
+    print(log.head(4))
+    print(log.groupby(["mode", "abrasive"]).size().unstack())
+
+The counts already tell the story: seal failures are several times as common
+on the abrasive pumps, trips about the same on both.
+
+Fitting, and the coefficient table
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fit takes what the single-mode regressions take, plus the mode of each
+failure: ``e`` in ``fit`` (``None`` on the end-of-record rows), ``e_col`` in
+``fit_from_df``. ``baseline`` is the baseline of every mode: ``Duane`` (the
+default), ``CrowAMSAA`` or ``CoxLewis``, or ``HPP`` for constant rates.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CauseSpecificProportionalIntensity, CrowAMSAA
+
+    modes = CauseSpecificProportionalIntensity.fit_from_df(
+        log, x_col="month", Z_cols="abrasive", e_col="mode",
+        i_col="pump", c_col="c", baseline=CrowAMSAA,
+    )
+    print(modes)
+    table = modes.coefficients()
+    print(table[["coef", "exp(coef)", "exp(coef) lower 95%",
+                 "exp(coef) upper 95%", "p"]].round(3).to_string())
+
+``coefficients()`` has one row per mode and covariate. ``exp(coef)`` is the
+rate ratio, with its 95% interval beside it, and ``p`` is the p-value of the
+test that the covariate does nothing to that mode. Abrasive service
+multiplies the seal failure rate by about three, and the whole interval is
+well above 1. For the trips the ratio is close to 1 and its interval
+contains 1: no sign of an effect, which is the truth here.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo = table["exp(coef) lower 95%"]
+    _hi = table["exp(coef) upper 95%"]
+    assert _lo["seal", "abrasive"] > 1.0
+    assert _lo["seal", "abrasive"] < np.exp(1.1) < _hi["seal", "abrasive"]
+    assert _lo["trip", "abrasive"] < 1.0 < _hi["trip", "abrasive"]
+
+``summary()`` lists every fitted parameter of every mode, the baseline's
+first, in the shape of ``CauseSpecificNHPP.summary``. The seal's ``beta`` is
+above 1 (its failures become more frequent with age) and the trips' is near
+1 (a constant rate):
+
+.. jupyter-execute::
+
+    print(modes.summary().round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s = modes.summary()
+    for _mode, (_alpha, _beta, _coef) in truth.items():
+        for _name, _true in (("alpha", _alpha), ("beta", _beta),
+                             ("abrasive", _coef)):
+            _row = _s.loc[(_mode, _name)]
+            assert _row["lower 95%"] < _true < _row["upper 95%"], (_mode, _name)
+    assert np.allclose(
+        modes.summary().loc["seal"].to_numpy(),
+        modes.models["seal"].summary().to_numpy(),
+    )
+
+What fitting all the failures together would have said
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here is the single-mode regression fitted to the same log with the modes
+ignored, every failure counted alike:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import ProportionalIntensityNHPP
+
+    together = ProportionalIntensityNHPP.fit_from_df(
+        log, x_col="month", Z_cols="abrasive", i_col="pump", c_col="c",
+        baseline=CrowAMSAA,
+    )
+    ratio = np.exp(together.coeffs[0])
+    lower, upper = np.exp(together.param_cb("abrasive"))
+    print(f"all failures together: rate ratio {ratio:.2f} "
+          f"(95% CI {lower:.2f} to {upper:.2f})")
+    seal = table.loc[("seal", "abrasive")]
+    print(f"seal failures alone  : rate ratio {seal['exp(coef)']:.2f} "
+          f"(95% CI {seal['exp(coef) lower 95%']:.2f} to "
+          f"{seal['exp(coef) upper 95%']:.2f})")
+
+Fitted together, abrasive service appears to do nothing: a rate ratio close
+to 1, with an interval that contains 1. That is a fair description of
+*failures of any kind*, because nine failures in ten are trips, which the
+fluid does not affect. It is the wrong answer to "does abrasive service
+matter?": it triples the seal failures, and the fit by mode shows it with an
+interval that is nowhere near 1. The pooled fit also has one baseline for
+everything, so it cannot show that seal failures grow with age while trips
+do not.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert ratio < 0.6 * seal["exp(coef)"]
+    assert lower < 1.0 < upper
+    assert seal["exp(coef) lower 95%"] > 1.5
+
+Predictions for each mode, with bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The prediction methods are those of the single-mode model with the mode as
+``event`` after the covariates: ``cif(x, Z, event)`` is the expected number
+of failures of that mode by age ``x`` on an item with covariates ``Z``,
+``iif(x, Z, event)`` the rate of that mode's failures at age ``x``, and
+``cif_cb`` and ``iif_cb`` their confidence bounds. Each is the mode's own
+model's, so ``modes.cif(x, Z, "seal")`` is ``modes.models["seal"].cif(x,
+Z)``. The expected number of failures of each mode in four years, on clean
+and on abrasive service:
+
+.. jupyter-execute::
+
+    for mode in modes.event_types:
+        for label, Z in (("clean", [0]), ("abrasive", [1])):
+            lo, hi = modes.cif_cb(months, Z, mode)
+            print(f"{mode:5s} {label:8s}: {modes.cif(months, Z, mode):5.2f} "
+                  f"(95% CI {lo:.2f} to {hi:.2f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(modes.cif(months, [1], "seal"),
+                       modes.models["seal"].cif(months, [1]))
+    assert np.allclose(modes.cif_cb(months, [1], "seal"),
+                       modes.models["seal"].cif_cb(months, [1]))
+    for _mode, (_alpha, _beta, _coef) in truth.items():
+        for _z in (0.0, 1.0):
+            _lo, _hi = modes.cif_cb(months, [_z], _mode, alpha_ci=0.01)
+            _true = (months / _alpha) ** _beta * np.exp(_coef * _z)
+            assert _lo < _true < _hi, (_mode, _z, _lo, _true, _hi)
+
+All modes together: the totals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An owner also needs the answer for failures of any kind: how many call-outs
+to expect, whatever broke. The modes are independent, so their expected
+counts and their rates simply add: ``total_cif(x, Z)`` and ``total_iif(x,
+Z)`` are the sums over the modes at a covariate row. Their uncertainties add
+too. Each mode was fitted to its own failures, so the estimates are
+independent and the variance of the sum is the sum of the modes' variances;
+``total_cif_cb`` and ``total_iif_cb`` form the bounds from it on the log
+scale, exactly as ``CauseSpecificNHPP`` does for its totals. A model with a
+single mode therefore has total bounds equal to that mode's bounds.
+
+.. jupyter-execute::
+
+    for label, Z in (("clean", [0]), ("abrasive", [1])):
+        lo, hi = modes.total_cif_cb(months, Z)
+        print(f"{label:8s}: {modes.total_cif(months, Z):5.2f} failures of any "
+              f"kind in four years (95% CI {lo:.2f} to {hi:.2f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(
+        modes.total_cif(months, [1]),
+        sum(modes.cif(months, [1], k) for k in modes.event_types),
+    )
+    assert np.allclose(
+        modes.total_iif(months, [1]),
+        sum(modes.iif(months, [1], k) for k in modes.event_types),
+    )
+
+Unlike the pooled fit above, the total here is built from the right model
+for each mode: it knows that the extra failures on abrasive service are seal
+failures, and that they grow with age.
+
+Failure modes with covariates that change over time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When a covariate belongs to a period of an item's life (see `Covariates that
+change over time`_ above), the fits are ``fit_tvc`` (start-stop rows) and
+``fit_tvc_timeline`` (a log of what happened and when), with their
+``_from_df`` forms. They take exactly the rows the single-mode fits take,
+plus the mode of each failure. Suppose the pumps were all on clean water at
+first and half of them were switched to the slurry at month 20. A pump's
+timeline then has a row for its entry, one for each failure, one for the
+switch and one for the end of its record; ``abrasive`` on a row is the value
+in force from that row on:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(2027)
+    switch = 20.0
+
+    def failures(alpha, beta, factor, start, end):
+        """Failure times of one mode on (start, end] at a constant factor."""
+        low, high = (start / alpha) ** beta, (end / alpha) ** beta
+        count = rng.poisson((high - low) * factor)
+        return alpha * rng.uniform(low, high, size=count) ** (1 / beta)
+
+    rows = []
+    for pump in range(60):
+        periods = [(0.0, months, 0.0)]
+        if pump % 2:
+            periods = [(0.0, switch, 0.0), (switch, months, 1.0)]
+        for start, end, abrasive in periods:
+            rows.append((pump, start, 1, None, abrasive))
+            for mode, (alpha, beta, coef) in truth.items():
+                rows += [
+                    (pump, t, 0, mode, abrasive)
+                    for t in failures(alpha, beta, np.exp(coef * abrasive),
+                                      start, end)
+                ]
+        rows.append((pump, months, 1, None, abrasive))
+    timeline = pd.DataFrame(
+        rows, columns=["pump", "month", "c", "mode", "abrasive"]
+    ).sort_values(["pump", "month"], kind="stable")
+
+    switched = CauseSpecificProportionalIntensity.fit_tvc_timeline_from_df(
+        timeline, "pump", "month", "abrasive", "c", "mode", baseline=CrowAMSAA
+    )
+    print(switched.coefficients()[["exp(coef)", "exp(coef) lower 95%",
+                                   "exp(coef) upper 95%"]].round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = switched.coefficients()
+    for _mode, (_alpha, _beta, _coef) in truth.items():
+        _row = _t.loc[(_mode, "abrasive")]
+        assert _row["coef lower 95%"] < _coef < _row["coef upper 95%"], _mode
+
+Predictions along a planned schedule take the mode in the same place:
+``cif_tvc(x, Z, event, xl, given)``, ``iif_tvc`` and ``cb_tvc``, and
+``total_cif_tvc``, ``total_iif_tvc`` and ``total_cb_tvc`` for failures of
+any kind. For a pump that is 24 months old and about to go onto the slurry,
+the next two years:
+
+.. jupyter-execute::
+
+    from surpyval import StepSchedule
+
+    slurry = StepSchedule.from_changepoints([24], [[1.0]])
+    stay_clean = StepSchedule.from_changepoints([24], [[0.0]])
+    for label, plan in (("onto the slurry", slurry), ("stays clean", stay_clean)):
+        seals = switched.cif_tvc(48, plan, "seal", given=24)
+        every = switched.total_cif_tvc(48, plan, given=24)
+        lo, hi = switched.total_cb_tvc(48, plan, given=24)
+        print(f"{label:15s}: {seals:.2f} seal failures, {every:.2f} of any "
+              f"kind (95% CI {lo:.2f} to {hi:.2f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(
+        switched.total_cif_tvc(48, slurry, given=24),
+        sum(switched.cif_tvc(48, slurry, k, given=24)
+            for k in switched.event_types),
+    )
+    assert np.allclose(
+        switched.total_cb_tvc([24.0, 48.0], StepSchedule.constant([1.0])),
+        switched.total_cif_cb([24.0, 48.0], [1.0]),
+    )
+
+Comparing, saving, and what is not available yet
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``neg_ll``, ``aic``, ``bic`` and ``aic_c`` are those of the whole model: the
+likelihood is the product of the modes', so the log-likelihoods add (and BIC
+counts the failures of every mode), as for ``CauseSpecificNHPP``. Use them to
+compare baselines or sets of covariates. ``to_dict`` / ``from_dict`` (and
+``to_json`` / ``from_json``) keep every prediction, and each mode's
+parameter covariance, so the restored model gives the same bounds and
+tables:
+
+.. jupyter-execute::
+
+    hpp = CauseSpecificProportionalIntensity.fit_from_df(
+        log, x_col="month", Z_cols="abrasive", e_col="mode",
+        i_col="pump", c_col="c", baseline=surpyval.recurrent.HPP,
+    )
+    print("AIC, constant rates   :", round(hpp.aic(), 1))
+    print("AIC, power-law trends :", round(modes.aic(), 1))
+
+    restored = CauseSpecificProportionalIntensity.from_dict(modes.to_dict())
+    print(restored.total_cif_cb(months, [1]).round(2))
+    print(modes.total_cif_cb(months, [1]).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert modes.aic() < hpp.aic()
+    assert np.allclose(restored.total_cif_cb(months, [1]),
+                       modes.total_cif_cb(months, [1]))
+    assert np.allclose(restored.coefficients().to_numpy(),
+                       modes.coefficients().to_numpy())
+
+Some things the single-mode models and ``CauseSpecificNHPP`` offer are not
+carried over to this model yet. Each of these refuses with a message that
+says what to use instead:
+
+- **Diagnostics** (``diagnose``, ``residuals``, ``cramer_von_mises``,
+  ``trend_test``) and ``plot``: call them on one mode's own model,
+  ``modes.models["seal"].diagnose()``. Each mode is a Poisson process of its
+  own, so its diagnostics are valid there (for a fixed-covariate fit; a mode
+  fitted to changing covariates refuses them, as above).
+- **Simulation** and the simulated ``mcf``: simulate each mode from its own
+  model at a covariate row; the modes are independent, so their simulated
+  failures can be pooled. The expected counts need no simulation (``cif``,
+  ``total_cif``).
+- **Forecasts** (``forecast`` and ``surpyval.forecast``): the expected
+  number of failures over a time ahead is ``total_cif_tvc(age + horizon, Z,
+  xl=[age], given=age)``, with bounds from ``total_cb_tvc``; one mode's
+  forecast with its prediction interval is ``surpyval.forecast(
+  modes.models["seal"], age, horizon, Z=Z)``.
+- ``growth``, and the MTBF methods (``mtbf``, ``total_mtbf`` and their
+  bounds): read each mode's trend parameter from ``summary()``, and take the
+  reciprocal of ``iif`` / ``total_iif`` and of their bounds.
+- **Counts of failures** between inspections (``c = 2``) and right
+  truncation: a count carries no mode per failure. Fit each mode's own counts
+  with the single-mode regression.
+- Only the Wald (delta-method) bounds are offered, as on the single-mode
+  models; there is no penalised fit, and the ``_from_df`` forms take
+  ``Z_cols`` only (no ``formula``).
 
 See :doc:`Recurrent Event Regression Analysis` for the theory and references
 behind these models.

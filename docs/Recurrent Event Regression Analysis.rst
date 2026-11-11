@@ -226,6 +226,61 @@ has over a period is Poisson distributed about the expected number, as
 before. The worked example is on the
 :doc:`Recurrent Event Regression Modelling with SurPyval` page.
 
+.. rubric:: Several event types, each with its own effects
+
+When the events come in several mutually exclusive types (the failure modes
+of a machine), each type can be given its own baseline and its own
+coefficients. In words: the rate of type :math:`k` events on an item is that
+type's baseline rate at the item's age, times that type's own factor for
+the item's covariates. A covariate can then raise one type's rate and leave
+another's alone. For :math:`K` types,
+
+.. math::
+
+    \lambda_k(t \mid Z) = \lambda_{0k}(t; \theta_k)\, e^{Z\beta_k},
+    \qquad k = 1, \dots, K .
+
+If the types arrive as independent Poisson processes (an event of one type
+neither hastens nor delays an event of another), the log-likelihood is a sum
+of :math:`K` terms, the :math:`k`-th involving only :math:`\theta_k` and
+:math:`\beta_k`:
+
+.. math::
+
+    \ell = \sum_{k=1}^{K} \ell_k(\theta_k, \beta_k),
+
+where :math:`\ell_k` is the proportional-intensity log-likelihood above for
+the events of type :math:`k` alone, over the whole time each item was
+observed. So each type is estimated by fitting the ordinary model to its own
+events, with the other types' events left out (not censored: the item stays
+under observation through them), and the estimates of different types are
+independent. :math:`e^{\beta_{kj}}` is the rate ratio of covariate :math:`j`
+for type :math:`k`.
+
+The rate of events of any type is the sum of the types' rates, and the
+expected number of events of any type is the sum of their expected numbers:
+
+.. math::
+
+    \lambda_\bullet(t \mid Z) = \sum_k \lambda_k(t \mid Z), \qquad
+    \Lambda_\bullet(t \mid Z) = \sum_k \Lambda_k(t \mid Z) .
+
+Because the types' estimates are independent, the variance of an estimated
+total is the sum of the types' delta-method variances,
+:math:`\operatorname{Var}\hat\Lambda_\bullet = \sum_k
+\operatorname{Var}\hat\Lambda_k`, and the confidence bounds are formed from
+it on the log scale, as each type's are. Note that the total does *not*
+follow a proportional-intensity model of its own unless every type has the
+same coefficients: its rate ratio for a covariate is a mixture of the types'
+ratios, weighted by their shares of the events, which is why one model
+fitted to all the events can report a small effect for a covariate that is
+strong for one type. The information criteria of the whole model use the
+summed log-likelihood, the parameters of every type and the events of every
+type. In SurPyval this is ``CauseSpecificProportionalIntensity``; with
+covariates that change over time each :math:`\ell_k` is the time-varying
+likelihood of the previous section. The worked example is on the
+:doc:`Recurrent Event Regression Modelling with SurPyval` page.
+
 .. rubric:: Interpreting the coefficients
 
 - :math:`e^{\beta_k}` is the **rate ratio** for a one-unit increase in
