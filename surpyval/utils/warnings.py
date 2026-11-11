@@ -1,6 +1,8 @@
 """Where a warning points (the first frame outside surpyval), the
-warnings several models share, and holding warnings back in one thread
-only (:class:`ignoring_warnings`)."""
+warnings several models share, and warning blocks that act in one thread
+only: holding warnings back (:class:`ignoring_warnings`), collecting them
+(:class:`collecting_warnings`) and raising them (:class:`raising_warnings`).
+"""
 
 from __future__ import annotations
 
@@ -12,17 +14,17 @@ import threading
 import warnings as _warnings
 from collections.abc import Callable
 from types import TracebackType
-from typing import Any
+from typing import Any, Literal
 
-# -- an "ignore" filter only its own thread matches --------------------------
+# -- filters only their own thread matches -----------------------------------
 #
 # Python keeps one list of warning filters for the whole process, and asks
 # of each filter, in turn, whether the warning's message matches the
 # filter's (``filter_message.match(text)``), and its category and module.
-# The filter below has, in the message's place, a ``threading.local``: its
-# ``match`` is looked up in the calling thread, and is "never" in every
-# thread except one inside an :class:`ignoring_warnings` block. So the
-# filter stays in the shared list, and each thread turns it on and off for
+# The filters below have, in the message's place, a ``threading.local``:
+# its ``match`` is looked up in the calling thread, and is "never" in
+# every thread except one inside a block of this module. So the filters
+# stay in the shared list, and each thread turns them on and off for
 # itself without touching the list.
 #
 # Everything the interpreter calls while it reads the list is C (a
@@ -71,28 +73,117 @@ def _filters_changed() -> None:
             held()
 
 
-def _switch_for(category: type[Warning]) -> _ThreadSwitch:
-    """The switch of the thread-local "ignore" filter for ``category`` at
-    the front of the filters, adding the filter if it is not there.
+def _switch_for(action: str, category: type[Warning]) -> _ThreadSwitch:
+    """The switch of a thread-local ``action`` filter for ``category``
+    near the front of the filters, adding one at the front if none will
+    do.
 
-    "At the front" is among the leading filters of this kind: the newest
-    filter wins in Python, so a block must come before whatever was added
-    since the last one (a ``catch_warnings`` block around this call, a
-    test's own filters). Adding at the front moves the other filters
-    along without hiding any from a thread reading the list."""
+    The newest filter wins in Python, so a block must come before
+    whatever was added since the last one (a ``catch_warnings`` block
+    around this call, a test's own filters) and before every filter this
+    thread has switched on for another action (an "ignore" block around
+    a collecting one, say). So a filter of the leading run of thread-local
+    filters will do only if every one ahead of it is off in this thread
+    or has the same action; otherwise a new one is added at the front.
+    The list grows only with how deeply blocks of different actions have
+    ever been nested, not with use. Adding at the front moves the other
+    filters along without hiding any from a thread reading the list."""
     filters: list[Any] = _warnings.filters  # type: ignore[assignment]
     for item in filters:
         found = item[1] if isinstance(item, tuple) and len(item) == 5 else 0
         if not isinstance(found, _ThreadSwitch):
             break
-        if item[2] is category:
+        if item[0] == action and item[2] is category:
             return found
+        if item[0] != action and found.match is not _never:
+            break
     switch = _ThreadSwitch()
-    filters.insert(0, ("ignore", switch, category, None, 0))
+    filters.insert(0, (action, switch, category, None, 0))
     return switch
 
 
-class ignoring_warnings:
+def _context_aware() -> bool:
+    """Python 3.14 run with context-aware warnings: there the standard
+    ``catch_warnings`` is already local to the thread."""
+    return bool(getattr(sys.flags, "context_aware_warnings", False))
+
+
+#: The filter actions the blocks below use.
+_Action = Literal["ignore", "always", "error"]
+
+
+class _thread_filter:
+    """A block that switches on, in its own thread only, a filter with
+    action ``_action`` (see :class:`ignoring_warnings`)."""
+
+    __slots__ = ("_category", "_message", "_switch", "_standard")
+    _action: _Action = "ignore"
+    _standard: Any
+
+    def __init__(
+        self, category: type[Warning] = Warning, message: str = ""
+    ) -> None:
+        self._category = category
+        self._message = message
+
+    def _enter_standard(self, record: bool) -> Any:
+        # Python 3.14 run with context-aware warnings: the standard form
+        # is already local to the thread (and its filters come before the
+        # shared list this class adds to).
+        self._standard = _warnings.catch_warnings(record=record)
+        log = self._standard.__enter__()
+        _warnings.filterwarnings(
+            self._action, self._message, category=self._category
+        )
+        return log
+
+    def __enter__(self) -> Any:
+        if _context_aware():
+            self._enter_standard(record=False)
+            return None
+        self._enter_shared()
+        return None
+
+    def _enter_shared(self) -> None:
+        self._standard = None
+        self._switch = switch = _switch_for(self._action, self._category)
+        # (the thread's own attributes: the messages of its open blocks
+        # on this filter, None for a block matching every message)
+        open_blocks = switch.__dict__.setdefault("open_blocks", [])
+        open_blocks.append(self._message or None)
+        self._set(switch, open_blocks)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self._standard is not None:
+            self._standard.__exit__(exc_type, exc, tb)
+            return
+        switch = self._switch
+        open_blocks = switch.__dict__["open_blocks"]
+        # (blocks end in the reverse of the order they began in)
+        mine = self._message or None
+        for i in range(len(open_blocks) - 1, -1, -1):
+            if open_blocks[i] == mine:
+                del open_blocks[i]
+                break
+        self._set(switch, open_blocks)
+
+    @staticmethod
+    def _set(switch: _ThreadSwitch, open_blocks: list[str | None]) -> None:
+        if not open_blocks:
+            switch.match = _never
+        elif None in open_blocks:
+            switch.match = _always
+        else:
+            switch.match = _any_of(tuple(m for m in open_blocks if m))
+        _filters_changed()
+
+
+class ignoring_warnings(_thread_filter):
     """Ignore, in this thread only, the warnings raised inside the block.
 
     ``with warnings.catch_warnings(): warnings.simplefilter("ignore")``
@@ -126,32 +217,126 @@ class ignoring_warnings:
     ['given']
     """
 
-    __slots__ = ("_category", "_message", "_switch", "_standard")
+    __slots__ = ()
+    _action: _Action = "ignore"
 
-    def __init__(
-        self, category: type[Warning] = Warning, message: str = ""
-    ) -> None:
-        self._category = category
-        self._message = message
 
-    def __enter__(self) -> None:
-        if getattr(sys.flags, "context_aware_warnings", False):
-            # Python 3.14 run with context-aware warnings: the standard
-            # form is already local to the thread (and its filters come
-            # before the shared list this class adds to).
-            self._standard = _warnings.catch_warnings()
-            self._standard.__enter__()
-            _warnings.filterwarnings(
-                "ignore", self._message, category=self._category
-            )
-            return
-        self._standard = None  # type: ignore[assignment]
-        self._switch = switch = _switch_for(self._category)
-        # (the thread's own attributes: the messages of its open blocks
-        # on this filter, None for a block ignoring every message)
-        open_blocks = switch.__dict__.setdefault("open_blocks", [])
-        open_blocks.append(self._message or None)
-        self._set(switch, open_blocks)
+class raising_warnings(_thread_filter):
+    """Raise, in this thread only, the warnings raised inside the block as
+    exceptions: ``catch_warnings()`` with ``simplefilter("error",
+    category)``, without making every other thread's warnings of that
+    category exceptions while the block runs.
+
+    Parameters
+    ----------
+    category : type, optional
+        The warnings to raise; every ``Warning`` by default.
+    message : str, optional
+        A regular expression the start of the message must match (case
+        ignored), as in ``warnings.filterwarnings``.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.warnings import raising_warnings
+    >>> try:
+    ...     with raising_warnings(RuntimeWarning):
+    ...         warnings.warn("stop here", RuntimeWarning)
+    ... except RuntimeWarning as error:
+    ...     print(error)
+    stop here
+    """
+
+    __slots__ = ()
+    _action: _Action = "error"
+
+
+# -- collecting the warnings of one thread -----------------------------------
+#
+# Python hands every warning its filters let through to
+# ``warnings._showwarnmsg`` (the interpreter looks it up on the module
+# each time). ``catch_warnings(record=True)`` collects by swapping the
+# hooks behind it for the whole process, so a thread collecting caught
+# every other thread's warnings meanwhile (and those threads lost them).
+# Here ``_showwarnmsg`` is wrapped once, for good: a warning shown in a
+# thread with a collecting block open goes to that thread's innermost
+# block; every other warning goes on to the hook that was there, as
+# before (so ``catch_warnings`` and pytest's recording work as ever). The
+# "always" a collecting block asks for is a thread-local filter as above.
+
+_collectors = threading.local()
+_install_lock = threading.Lock()
+_shown_before: Callable[[Any], Any] | None = None
+
+
+def _showwarnmsg(msg: Any) -> None:
+    """``warnings._showwarnmsg`` while surpyval's hook is installed."""
+    logs = getattr(_collectors, "logs", None)
+    if logs:
+        logs[-1].append(msg)
+        return
+    shown = _shown_before
+    if shown is not None:
+        shown(msg)
+
+
+def _install_collector() -> None:
+    """Put :func:`_showwarnmsg` in front of the module's hook, once."""
+    global _shown_before
+    if _warnings._showwarnmsg is _showwarnmsg:  # type: ignore[attr-defined]
+        return
+    with _install_lock:
+        current = _warnings._showwarnmsg  # type: ignore[attr-defined]
+        if current is not _showwarnmsg:
+            _shown_before = current
+            _warnings._showwarnmsg = _showwarnmsg  # type: ignore
+
+
+class collecting_warnings(_thread_filter):
+    """Collect, in this thread only, the warnings raised inside the block:
+    ``catch_warnings(record=True)`` with ``simplefilter("always",
+    category)``, without collecting (and so losing) every other thread's
+    warnings while the block runs.
+
+    The block gives a list that fills with ``warnings.WarningMessage``
+    objects (``message``, ``category``, ``filename``, ``lineno``), as
+    ``catch_warnings(record=True)`` does: every warning of ``category``
+    raised in the block, each time it is raised, and any other warning
+    the filters let through. An inner block that ignores warnings
+    (:class:`ignoring_warnings`) still ignores them, and an inner
+    collecting block takes its own.
+
+    Parameters
+    ----------
+    category : type, optional
+        The warnings always collected; every ``Warning`` by default.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.warnings import collecting_warnings
+    >>> with collecting_warnings() as caught:
+    ...     warnings.warn("first")
+    ...     warnings.warn("first")
+    >>> [str(w.message) for w in caught]
+    ['first', 'first']
+    """
+
+    __slots__ = ("_log",)
+    _action: _Action = "always"
+
+    def __init__(self, category: type[Warning] = Warning) -> None:
+        super().__init__(category)
+
+    def __enter__(self) -> list[Any]:
+        if _context_aware():
+            return self._enter_standard(record=True)
+        _install_collector()
+        self._log: list[Any] = []
+        logs = _collectors.__dict__.setdefault("logs", [])
+        logs.append(self._log)
+        self._enter_shared()
+        return self._log
 
     def __exit__(
         self,
@@ -159,28 +344,13 @@ class ignoring_warnings:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        if self._standard is not None:
-            self._standard.__exit__(exc_type, exc, tb)
-            return
-        switch = self._switch
-        open_blocks = switch.__dict__["open_blocks"]
-        # (blocks end in the reverse of the order they began in)
-        mine = self._message or None
-        for i in range(len(open_blocks) - 1, -1, -1):
-            if open_blocks[i] == mine:
-                del open_blocks[i]
-                break
-        self._set(switch, open_blocks)
-
-    @staticmethod
-    def _set(switch: _ThreadSwitch, open_blocks: list[str | None]) -> None:
-        if not open_blocks:
-            switch.match = _never
-        elif None in open_blocks:
-            switch.match = _always
-        else:
-            switch.match = _any_of(tuple(m for m in open_blocks if m))
-        _filters_changed()
+        if self._standard is None:
+            logs = _collectors.__dict__["logs"]
+            for i in range(len(logs) - 1, -1, -1):
+                if logs[i] is self._log:
+                    del logs[i]
+                    break
+        super().__exit__(exc_type, exc, tb)
 
 
 def caller_stacklevel() -> int:

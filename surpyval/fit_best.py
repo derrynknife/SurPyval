@@ -32,6 +32,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import collecting_warnings
 
 if TYPE_CHECKING:
     # Imported where it is used: ``import surpyval`` does not load pandas
@@ -469,11 +470,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         # A candidate's own warning that its fit is not a verified maximum
         # is held back: the fitted model records it (``maximum``), and the
         # one warning below says it for every candidate set aside.
-        with (
-            warnings.catch_warnings(record=True) as caught,
-            quiet_maximum_warnings(),
-        ):
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught, quiet_maximum_warnings():
             try:
                 temp_model = fit()
                 tmp_measure = getattr(temp_model, metric)()
