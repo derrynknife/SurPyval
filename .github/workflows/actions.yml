@@ -355,10 +355,40 @@ jobs:
             args: >-
               surpyval/tests/calibration/test_coverage_joint.py
               surpyval/tests/calibration/test_coverage_distributional.py
+          # The "rest" group was cancelled at its 60-minute limit, half
+          # way through, on the first run with the studies added since
+          # the 0.26 release (11 November 2026; 31 minutes on the 0.26
+          # run). Its studies' times, in core-seconds on an M-series Mac
+          # with six workers: 5267 in all, of which the five study files
+          # added since 0.26 are 1975 (the parametric competing-risks
+          # diagnostics 1499) and the weights and power studies 1882. So
+          # those are two groups of their own, and the rest (about 1410,
+          # less than half of what the group held on the 0.26 run) stays
+          # here: three groups of about equal time.
+          - group: diagnostics-size
+            workers: auto
+            args: >-
+              surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
+              surpyval/tests/calibration/test_size_distributional_diagnostics.py
+              surpyval/tests/calibration/test_size_bayes_diagnostics.py
+              surpyval/tests/calibration/test_diagnose_aalen.py
+              surpyval/tests/calibration/test_coverage_competing_risks_interval.py
+          - group: weights-power
+            workers: auto
+            args: >-
+              surpyval/tests/calibration/test_coverage_weights.py
+              surpyval/tests/calibration/test_size_power.py
           - group: rest
             workers: auto
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
+              --ignore=surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
+              --ignore=surpyval/tests/calibration/test_size_distributional_diagnostics.py
+              --ignore=surpyval/tests/calibration/test_size_bayes_diagnostics.py
+              --ignore=surpyval/tests/calibration/test_diagnose_aalen.py
+              --ignore=surpyval/tests/calibration/test_coverage_competing_risks_interval.py
+              --ignore=surpyval/tests/calibration/test_coverage_weights.py
+              --ignore=surpyval/tests/calibration/test_size_power.py
               --ignore surpyval/tests/calibration/test_sbc_bayes.py
               --ignore=surpyval/tests/calibration/test_coverage_joint.py
               --ignore=surpyval/tests/calibration/test_coverage_distributional.py
