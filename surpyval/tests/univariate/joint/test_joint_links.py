@@ -82,6 +82,24 @@ def test_a_path_on_a_log_link_has_its_slope_on_the_link_scale():
     )
 
 
+def _gauss_legendre_bound(f, points=15):
+    """The error bound of ``points``-point Gauss-Legendre on (0, 1) for
+    an ``f`` analytic in the Bernstein ellipses about it (Trefethen,
+    Approximation Theory and Approximation Practice, theorem 19.3, halved
+    for the interval's length): ``(64 / 15) M / ((rho^2 - 1) rho^(2n))``,
+    ``M`` the largest ``|f|`` on the ellipse of parameter ``rho``, at the
+    ``rho`` that gives the least."""
+    theta = np.linspace(0.0, 2.0 * np.pi, 4001)
+    best = np.inf
+    for rho in np.linspace(1.1, 8.0, 300):
+        t = (rho * np.exp(1j * theta) + np.exp(-1j * theta) / rho) / 2.0
+        M = np.max(np.abs(f((t + 1.0) / 2.0)))
+        best = min(
+            best, 32.0 / 15.0 * M / ((rho**2 - 1.0) * rho ** (2 * points))
+        )
+    return best
+
+
 def test_the_area_under_a_path_is_its_closed_form():
     a, b, c = 1.3, 0.4, 0.2
     quadratic = LinkPath(PATH_MODELS["quadratic"], "cumulative")
@@ -95,9 +113,23 @@ def test_the_area_under_a_path_is_its_closed_form():
         np.column_stack([X, X**2 / 2, X**3 / 3]),
         rtol=1e-14,
     )
+    # not a polynomial, so the rule is not exact: its error is held to
+    # the Gauss-Legendre bound for an integrand analytic in a Bernstein
+    # ellipse (below), plus rounding. It is 4e-12 at the oldest age,
+    # 2e-17 or less at the others; the rule's actual error there is
+    # 1.4e-12.
     exponential = LinkPath(PATH_MODELS["exponential"], "cumulative")
-    np.testing.assert_allclose(
-        exponential.path(X, a, b), a * np.expm1(b * X) / b, rtol=1e-11
+    exact = a * np.expm1(b * X) / b
+    bound = np.array(
+        [
+            _gauss_legendre_bound(
+                lambda w, x=x: 4 * a * x * w**3 * np.exp(b * x * w**4)
+            )
+            for x in X
+        ]
+    )
+    assert np.all(
+        np.abs(exponential.path(X, a, b) - exact) <= bound + 1e-14 * exact
     )
     # not polynomials, and singular at 0: a logarithmic path's area is
     # a t + b (t log t - t), a power path's a t^(b + 1) / (b + 1)
