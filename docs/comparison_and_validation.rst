@@ -64,6 +64,21 @@ The two-group restricted-mean-survival-time difference (the per-model
 
 .. autofunction:: surpyval.univariate.nonparametric.nonparametric.rmst_diff
 
+Adjusted survival curves
+------------------------
+
+A comparison of groups that were not assigned at random, on one mix of
+covariates: direct adjustment (standardisation) of a fitted regression
+model, and the checks on a set of weights before a weighted comparison.
+The guide is :doc:`Adjusted Survival Curves`.
+
+.. autofunction:: surpyval.direct_adjustment
+
+.. autoclass:: surpyval.AdjustedCurves
+   :members: sf, ff, cb, sf_diff, rmst, rmst_diff, plot
+
+.. autofunction:: surpyval.weight_diagnostics
+
 Automatic distribution selection
 --------------------------------
 

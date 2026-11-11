@@ -323,6 +323,7 @@ Contents:
    Distributional Regression
    Mixture-Cure Regression
    Pseudo-Observations
+   Adjusted Survival Curves
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
