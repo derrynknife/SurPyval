@@ -348,6 +348,14 @@ df = pd.DataFrame({"t": x, "c": c, "load": Z[:, 0]})
 dm = sp.WeibullDistributional.fit_from_df(df, x_col="t", c_col="c", Z_cols=["load"])
 dm.parameters_at(pd.DataFrame({"load": [0.0, 1.0]}))   # alpha, beta at each row
 
+# Mixture cure: some units never fail; covariates on who fails (lfp_p) and when
+rc = np.random.default_rng(0); lot = rc.binomial(1, 0.5, 400)
+ever = rc.random(400) < np.where(lot == 1, 0.6, 0.3)
+tc = np.where(ever, 100 * rc.weibull(2.0, 400), 500.0)   # the rest still running at 500
+cm = sp.WeibullMixtureCure.fit(tc, lot, c=(~ever).astype(int))
+cm.cure_probability([1]); cm.sf(100, [1], susceptible=True)   # the latency alone
+cm.cure_given_survival(100, [1])       # P(never fails | still running at 100)
+
 # Robust SEs, the global LR test, a forest plot
 ph = sp.WeibullPH.fit(x, Z, c)
 ph.robust_standard_errors(); ph.summary(robust=True)  # cluster= for groups

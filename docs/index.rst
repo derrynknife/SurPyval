@@ -321,6 +321,7 @@ Contents:
    Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
    Distributional Regression
+   Mixture-Cure Regression
    Pseudo-Observations
    Model Diagnostics
    applications
