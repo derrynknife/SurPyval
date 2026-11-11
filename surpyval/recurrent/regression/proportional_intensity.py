@@ -31,6 +31,8 @@ from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
 from surpyval.utils.validation import option_error
 
+from ._tvc_evaluation import TVCEvaluationMixin, refuse_schedule
+
 
 def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
     """The columns of ``Z`` whose coefficients a proportional-intensity
@@ -72,6 +74,7 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
+    TVCEvaluationMixin,
     PenalisedModelMixin,
     DiagnoseMixin,
     SerialisableMixin,
@@ -95,6 +98,14 @@ class ProportionalIntensityModel(
     of :meth:`covariance` and :meth:`standard_errors`, so
     ``parameter_names[:len(params)]`` names ``params``. A coefficient the
     data cannot determine is ``nan`` and listed in :attr:`aliased`.
+
+    A model fitted to covariates that change over time (``fit_tvc``) has
+    ``is_tvc`` set. ``cif_tvc``, ``iif_tvc`` and ``cb_tvc`` predict along a
+    covariate schedule (for any model, however fitted), while ``cif``,
+    ``iif`` and the simulation methods answer for an item held at one
+    covariate vector. The methods that read one covariate row per fitted
+    item (``residuals``, ``cramer_von_mises``, ``trend_test``,
+    ``diagnose``, ``plot``) refuse for such a fit, saying so.
 
     Examples
     --------
@@ -132,6 +143,12 @@ class ProportionalIntensityModel(
     data: Any
     how: str
     res: Any
+    #: Whether the model was fitted to covariates that change over time
+    #: (``fit_tvc``), whose start-stop rows are then ``_tvc_fit_rows``
+    #: and whose number of items is ``n_items``; it has no ``data``.
+    is_tvc: bool = False
+    _tvc_fit_rows: dict
+    n_items: int
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
     #: applicable"`` for a model built from its parameters, ``"unknown"``
@@ -333,6 +350,29 @@ class ProportionalIntensityModel(
         else:
             raise ValueError(f"Inverse cif undefined for {self.dist.name}")
 
+    def _refuse_tvc(self, what: str, instead: str) -> None:
+        """Refuse ``what`` for a model fitted to time-varying covariates
+        (``fit_tvc``), saying what to do ``instead``; anything else
+        passes."""
+        if self.is_tvc:
+            raise ValueError(
+                f"{what} is not available for a model fitted to "
+                "time-varying covariates (fit_tvc, fit_tvc_timeline): it "
+                "reads one covariate row per item, and these items' "
+                f"covariates change over time. {instead}"
+            )
+
+    def diagnose(self, *args: Any, **kwargs: Any) -> Any:
+        self._refuse_tvc(
+            "diagnose()",
+            "Compare candidate baselines and covariates with aic() and "
+            "bic(), and observed with expected failures over a period "
+            "with cif_tvc along an item's own schedule.",
+        )
+        return super().diagnose(*args, **kwargs)
+
+    diagnose.__doc__ = DiagnoseMixin.diagnose.__doc__
+
     def _item_cif_map(self) -> dict:
         # Each item's cumulative intensity is the baseline scaled by its own
         # ``exp(Z'beta)`` factor. The covariates are per item (static), so the
@@ -383,6 +423,12 @@ class ProportionalIntensityModel(
         numpy array
             The residuals.
         """
+        self._refuse_tvc(
+            "residuals()",
+            "Compare an item's observed failures over a period with the "
+            "expected number, cif_tvc(end, schedule, given=start) along "
+            "its own schedule.",
+        )
         self._check_has_data("residuals")
         cif_map = self._item_cif_map()
         if kind in ("cumulative_hazard", "pit"):
@@ -432,6 +478,13 @@ class ProportionalIntensityModel(
             direction of the statistic and the trend concluded at
             ``alpha_ci``.
         """
+        self._refuse_tvc(
+            "trend_test()",
+            "Test the failure times themselves for a trend with "
+            "surpyval.recurrent.laplace or mil_hdbk_189c (which take no "
+            "covariates), or compare this fit with the constant-baseline "
+            "one (ProportionalIntensityHPP.fit_tvc) by aic().",
+        )
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
             self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
@@ -468,6 +521,12 @@ class ProportionalIntensityModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
+        self._refuse_tvc(
+            "cramer_von_mises()",
+            "Its bootstrap would need to simulate each item along its own "
+            "covariate history, which is not available yet; compare "
+            "candidate baselines and covariates with aic() and bic().",
+        )
         self._check_has_data("cramer_von_mises")
         if self.penalty is not None:
             raise ValueError(
@@ -638,6 +697,11 @@ class ProportionalIntensityModel(
             The axes the data was plotted on.
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_tvc(
+            "plot()",
+            "Plot cif_tvc (with cb_tvc) along a schedule of interest "
+            "against time instead.",
+        )
         self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
@@ -692,8 +756,10 @@ class ProportionalIntensityModel(
         ``Z`` describes one unit's covariate history, so a missing value
         raises (the package's missing-value rule, in the Conventions page)
         rather than being simulated: a NaN intensity ran every sequence to
-        ``max_events`` and then failed on the NaN event times.
+        ``max_events`` and then failed on the NaN event times. A covariate
+        schedule is refused: simulation is at one fixed covariate vector.
         """
+        refuse_schedule(Z, "this method")
         try:
             Z_arr = np.atleast_1d(
                 np.asarray(
