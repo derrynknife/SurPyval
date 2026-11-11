@@ -112,6 +112,7 @@ from surpyval.utils.dataframe import (
     column_arguments,
     frame_column,
     frame_columns,
+    read_columns,
     require_frame,
 )
 from surpyval.utils.fitter_repr import FitterRepr
@@ -1647,14 +1648,9 @@ class FineGray_(FitterRepr):
             "Z": frame_columns(df, Z_cols, "Z_cols").astype(float),
             "e": cause_column(df, e_col),
         }
-        if c_col is not None:
-            arrays["c"] = frame_column(df, c_col, "c_col")
-        if n_col is not None:
-            arrays["n"] = frame_column(df, n_col, "n_col")
-        if w_col is not None:
-            arrays["w"] = frame_column(df, w_col, "w_col")
-        if tl_col is not None:
-            arrays["tl"] = frame_column(df, tl_col, "tl_col", time=True)
+        arrays |= read_columns(
+            df, {"c": c_col, "n": n_col, "w": w_col, "tl": tl_col}
+        )
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
         names |= {"c": "c_col", "n": "n_col", "w": "w_col", "tl": "tl_col"}
         # The columns name the coefficients (#614)

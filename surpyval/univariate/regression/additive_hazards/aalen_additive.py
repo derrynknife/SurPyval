@@ -76,12 +76,7 @@ from surpyval.utils.weights import (
     warn_if_few_effective,
 )
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._fit_skeleton import draws_by_row
 from .._prediction import (
@@ -93,9 +88,9 @@ from .._prediction import (
 )
 from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
+    FrameDesign,
     NoLikelihoodMixin,
     check_covariate_width,
-    design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -1508,20 +1503,17 @@ class AalenAdditive_(FitterRepr):
             tl_col=tl_col,
             w_col=w_col,
         )
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            penalizer=penalizer,
+            w=design.column(w_col),
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-        tl = None if tl_col is None else df[tl_col].values
-        w = None if w_col is None else df[w_col].values
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tl=tl, penalizer=penalizer, w=w)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
 
 
 AalenAdditive = AalenAdditive_()

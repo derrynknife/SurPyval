@@ -75,7 +75,6 @@ from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.regression import WeibullPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
@@ -84,11 +83,10 @@ from surpyval.univariate.regression.parametric_regression_model import (
 )
 from surpyval.univariate.regression.regression_data import (
     DataFrameRegressionMixin,
-    design_matrix_from_df,
+    FrameDesign,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
-from surpyval.utils import finite_covariate_mask, is_missing_event
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
@@ -1287,22 +1285,15 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         >>> model.cif(np.full(3, 5.0), new, "wear").round(4)
         array([0.2844, 0.5163, 0.1903])
         """
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            model=model,
+            init=init,
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        # A censored row's cause is ``None``; accept a blank/NaN cell.
-        e = sub[e_col].to_numpy(dtype=object).copy()
-        e[[is_missing_event(v) for v in e]] = None
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
-        tl = sub[tl_col].values if tl_col is not None else None
-        with covariate_columns(feature_names, Z, model_spec):
-            out = cls.fit(x, Z, e, c=c, n=n, tl=tl, model=model, init=init)
-        out.feature_names = feature_names
-        out.formula = formula
-        out._model_spec = model_spec
-        return out
