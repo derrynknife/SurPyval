@@ -47,10 +47,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.integrate import quad, quad_vec
-from scipy.linalg import block_diag
+from scipy.integrate import quad
 from scipy.optimize import brentq
-from scipy.special import ndtri
 
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
@@ -59,15 +57,19 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks._assembly import (
+    block_diagonal,
+    central_differences,
+    first_failures,
+    incidence_on_probability_scale,
+    summed_ic_terms,
+    wald_all_cause_bound,
+    wald_cif_bound,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
     ordered_labels,
-)
-from surpyval.univariate.competing_risks.parametric.parametric_competing_risks import (  # noqa: E501
-    _central_differences,
-    _checked_sd,
-    _ic_terms,
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.regression import WeibullPH
@@ -87,7 +89,7 @@ from surpyval.univariate.regression.regression_data import (
     serialise_covariate_meta,
 )
 from surpyval.utils import finite_covariate_mask, is_missing_event
-from surpyval.utils.linalg import bound_signs, standard_errors_of
+from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import (
@@ -493,28 +495,22 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         if todo.any():
             upper, at = top[todo], rows[todo]
 
-            def integrand(u: float) -> npt.NDArray:
-                with np.errstate(all="ignore"), ignoring_warnings():
-                    s = np.asarray(own.qf(u * upper, at), dtype=float).ravel()
-                    val = np.ones_like(s)
-                    far = np.isposinf(s)
-                    for m in others:
-                        sj = np.asarray(m.sf(s, at), dtype=float).ravel()
-                        # (no regression family has a cure fraction:
-                        # every cause's survival falls to 0)
-                        val = val * np.where(far, 0.0, sj)
-                return np.where(np.isfinite(val), val, 1.0)
+            def quantile(p: npt.NDArray) -> npt.NDArray:
+                with ignoring_warnings():
+                    return own.qf(p, at)
 
-            integral, _ = quad_vec(
-                integrand,
-                0.0,
-                1.0,
-                epsabs=1e-13,
-                epsrel=1e-11,
-                norm="max",
-                limit=2000,
+            def survival(m: Any) -> Any:
+                def sf(t: npt.NDArray) -> npt.NDArray:
+                    with ignoring_warnings():
+                        return m.sf(t, at)
+
+                return sf
+
+            # (no regression family has a cure fraction: every cause's
+            # survival falls to 0)
+            out[todo] = incidence_on_probability_scale(
+                upper, quantile, [survival(m) for m in others]
             )
-            out[todo] = upper * np.asarray(integral, dtype=float)
         return out
 
     def probability_of_cause(self, Z: Any, event: Any) -> Any:
@@ -720,11 +716,7 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
                 size, rows, random_state=rng
             )
             latent.append(np.ravel(times))
-        stacked = np.column_stack(latent)
-        first = np.argmin(stacked, axis=1)
-        out = np.empty(stacked.shape[0], dtype=[("x", float), ("e", object)])
-        out["x"] = stacked[np.arange(stacked.shape[0]), first]
-        out["e"] = np.array([self.causes[i] for i in first], dtype=object)
+        out = first_failures(np.column_stack(latent), self.causes)
         return out, np.asarray(drawn_at, dtype=float)
 
     # -- parameters and their uncertainty ---------------------------------
@@ -794,11 +786,8 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
         zero, exactly: the likelihood factorises over the causes, so
         their estimates are asymptotically independent.
         """
-        return block_diag(
-            *[
-                np.atleast_2d(np.asarray(self.models[k].covariance(), float))
-                for k in self.causes
-            ]
+        return block_diagonal(
+            [self.models[k].covariance() for k in self.causes]
         )
 
     def standard_errors(self) -> npt.NDArray:
@@ -1023,28 +1012,11 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
                     rebuilt = model.with_params(values)
                     return np.asarray(rebuilt.Hf(t, rows), dtype=float)
 
-            grad = _central_differences(
+            grad = central_differences(
                 H_of, np.ravel(model._estimates()), cov, t.size
             )
             var = var + np.einsum("jt,jk,kt->t", grad, cov, grad)
-        ok = np.isfinite(H) & (H > 0)
-        sd = np.where(ok, _checked_sd(var, t, "Hf", ok), 0.0) / np.where(
-            ok, H, 1.0
-        )
-        alpha, signs = bound_signs(alpha_ci, bound)
-        if on == "sf":
-            # sf falls as H rises: its lower bound is at H's upper one.
-            signs = -signs
-        H_b = H[:, None] * np.exp(
-            signs[None, :] * ndtri(1 - alpha) * sd[:, None]
-        )
-        if on == "Hf":
-            out = H_b
-        elif on == "sf":
-            out = np.exp(-H_b)
-        else:
-            out = -np.expm1(-H_b)
-        return out if bound == "two-sided" else out[:, 0]
+        return wald_all_cause_bound(H, var, t, on, alpha_ci, bound)
 
     def _cb_cif(
         self,
@@ -1064,19 +1036,9 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
                 rebuilt = self.with_params(values)
                 return np.asarray(rebuilt.cif(t, rows, event), dtype=float)
 
-        grad = _central_differences(cif_of, self._estimates(), cov, t.size)
+        grad = central_differences(cif_of, self._estimates(), cov, t.size)
         var = np.einsum("jt,jk,kt->t", grad, cov, grad)
-        ok = (F > 0) & (F < 1) & np.isfinite(F)
-        sd = np.where(ok, _checked_sd(var, t, "cif", ok), 0.0)
-        sd_logit = sd / np.where(ok, F * (1 - F), 1.0)
-        alpha, signs = bound_signs(alpha_ci, bound)
-        centre = np.where(ok, F, 0.5)
-        logit_F = np.log(centre) - np.log1p(-centre)
-        moved = logit_F[:, None] + signs[None, :] * ndtri(1 - alpha) * (
-            sd_logit[:, None]
-        )
-        out = np.where(ok[:, None], 1.0 / (1.0 + np.exp(-moved)), F[:, None])
-        return out if bound == "two-sided" else out[:, 0]
+        return wald_cif_bound(F, var, t, alpha_ci, bound)
 
     # -- goodness of fit (the likelihood factorises over causes) ----------
 
@@ -1104,12 +1066,7 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
     def _ic_terms(self) -> tuple[int, float]:
         # The parameters estimated over every cause, and the failures of
         # every cause.
-        k_total, n_total = 0, 0.0
-        for k in self.causes:
-            k_cause, n_cause = _ic_terms(self.models[k])
-            k_total += k_cause
-            n_total += n_cause
-        return k_total, n_total
+        return summed_ic_terms([self.models[k] for k in self.causes])
 
     def aic(self) -> float:
         """Akaike information criterion of the whole model, ``2 K + 2

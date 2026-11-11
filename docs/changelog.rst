@@ -167,7 +167,15 @@ Unreleased
   Checked
   against R ``flexsurv``: each cause's ``flexsurvreg(dist =
   "weibullPH")`` fit and the cumulative incidences of ``pmatrix.fs`` on
-  the competing-risks multi-state model, at given covariate rows. See
+  the competing-risks multi-state model, at given covariate rows; its
+  incidences also match the Aalen-Johansen product integral of its own
+  fitted hazards on a fine grid (to 1e-6), and on Weibull data the
+  cause-specific Cox model's incidences lie inside its 95% bands. It
+  shares the cause-by-cause assembly (the incidence integral, the
+  Aalen-Johansen step, random draws, the block-diagonal covariance, the
+  information-criterion terms and the Wald bounds) with
+  ``ParametricCompetingRisks`` and ``CompetingRisksProportionalHazards``
+  in one internal module; no number of either changes. See
   "Parametric Competing-Risks Regression" in
   :doc:`Competing Risks SurPyval Modelling`.
 - Mixture-cure regression: ``MixtureCure(latency, incidence, covariates,
