@@ -32,45 +32,6 @@ from surpyval.serialisation import (
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import warn_outside_unit_interval
 
-# The serialisation of the two classes. They are the model themselves
-# (every method is a classmethod), so the instance-method ``to_json`` of
-# ``SerialisableMixin`` does not fit; these are its classmethod
-# counterparts. ``to_json`` used to be missing altogether, although the
-# package reader ``surpyval.from_json`` was registered for both classes.
-# Not being mixin users, their ``from_dict`` takes the shared reader
-# checks (schema, ...) from ``checked_from_dict`` explicitly.
-
-
-def _degenerate_to_dict(cls: type[Any]) -> dict[str, Any]:
-    return stamp_schema({"model": cls.name})
-
-
-def _degenerate_from_dict(
-    cls: type[Any], model_dict: dict[str, Any]
-) -> type[Distribution]:
-    # The tag is the whole of the model, so check it: any dictionary at
-    # all used to "restore" as whichever class was asked.
-    require_model_tag(model_dict, cls.name, f"the {cls.name} distribution")
-    return cls
-
-
-def _degenerate_to_json(
-    cls: type[Distribution], fp: str | os.PathLike | None
-) -> str | None:
-    return write_json(_degenerate_to_dict(cls), fp)
-
-
-def _degenerate_from_json(
-    cls: type[Distribution], fp: str | os.PathLike
-) -> type[Distribution]:
-    model_dict = read_json(fp)
-    if not isinstance(model_dict, dict):
-        raise ValueError(
-            "Expected a serialised model dict, got "
-            f"{type(model_dict).__name__}"
-        )
-    return read_model_dict(cls, model_dict)
-
 
 def _constant(x: npt.ArrayLike, value: float) -> npt.NDArray:
     """``value`` at every point of ``x``, and NaN where ``x`` is NaN: a
@@ -87,7 +48,48 @@ def _quantile(p: npt.ArrayLike, value: float) -> npt.NDArray:
     return np.where(warn_outside_unit_interval(p), np.nan, q)
 
 
-class NeverOccurs(Distribution):
+class _PointMass(Distribution):
+    """The serialisation the two classes share. They are the model
+    themselves (every method is a classmethod), so the instance-method
+    ``to_json`` of ``SerialisableMixin`` does not fit; these are its
+    classmethod counterparts. Not being mixin users, their ``from_dict``
+    takes the shared reader checks (schema, ...) from
+    ``checked_from_dict`` explicitly."""
+
+    name: str
+
+    @classmethod
+    def to_dict(cls) -> dict[str, Any]:
+        return stamp_schema({"model": cls.name})
+
+    @classmethod
+    @checked_from_dict
+    def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
+        # The tag is the whole of the model, so check it: any dictionary
+        # at all used to "restore" as whichever class was asked.
+        require_model_tag(model_dict, cls.name, f"the {cls.name} distribution")
+        return cls
+
+    @classmethod
+    def to_json(cls, fp: str | os.PathLike | None = None) -> str | None:
+        """Write :meth:`to_dict` to ``fp`` as JSON, or return the JSON
+        text without ``fp``."""
+        return write_json(cls.to_dict(), fp)
+
+    @classmethod
+    def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
+        """Load the distribution from a JSON file written by
+        :meth:`to_json`."""
+        model_dict = read_json(fp)
+        if not isinstance(model_dict, dict):
+            raise ValueError(
+                "Expected a serialised model dict, got "
+                f"{type(model_dict).__name__}"
+            )
+        return read_model_dict(cls, model_dict)
+
+
+class NeverOccurs(_PointMass):
     """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf).
 
     Stateless: the class itself is the model, with nothing to fit.
@@ -150,29 +152,8 @@ class NeverOccurs(Distribution):
         # A point mass: random_state is taken for the common signature.
         return np.ones(size) * np.inf
 
-    @classmethod
-    def to_dict(cls) -> dict[str, Any]:
-        return _degenerate_to_dict(cls)
 
-    @classmethod
-    @checked_from_dict
-    def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
-        return _degenerate_from_dict(cls, model_dict)
-
-    @classmethod
-    def to_json(cls, fp: str | os.PathLike | None = None) -> str | None:
-        """Write :meth:`to_dict` to ``fp`` as JSON, or return the JSON
-        text without ``fp``."""
-        return _degenerate_to_json(cls, fp)
-
-    @classmethod
-    def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
-        """Load the distribution from a JSON file written by
-        :meth:`to_json`."""
-        return _degenerate_from_json(cls, fp)
-
-
-class InstantlyOccurs(Distribution):
+class InstantlyOccurs(_PointMass):
     """The event has already occurred: ``F(x) = 1`` everywhere (mass at 0).
 
     Stateless: the class itself is the model, with nothing to fit.
@@ -236,24 +217,3 @@ class InstantlyOccurs(Distribution):
     ) -> npt.NDArray:
         # A point mass: random_state is taken for the common signature.
         return np.zeros(size)
-
-    @classmethod
-    def to_dict(cls) -> dict[str, Any]:
-        return _degenerate_to_dict(cls)
-
-    @classmethod
-    @checked_from_dict
-    def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
-        return _degenerate_from_dict(cls, model_dict)
-
-    @classmethod
-    def to_json(cls, fp: str | os.PathLike | None = None) -> str | None:
-        """Write :meth:`to_dict` to ``fp`` as JSON, or return the JSON
-        text without ``fp``."""
-        return _degenerate_to_json(cls, fp)
-
-    @classmethod
-    def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
-        """Load the distribution from a JSON file written by
-        :meth:`to_json`."""
-        return _degenerate_from_json(cls, fp)

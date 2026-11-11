@@ -72,7 +72,7 @@ How a name is retired
    error.
 
 An argument that becomes keyword-only
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Where an argument given by position is silently read as something other
 than what that place holds in SurPyval's other methods of the same name

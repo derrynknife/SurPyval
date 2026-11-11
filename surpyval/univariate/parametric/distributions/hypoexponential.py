@@ -168,6 +168,13 @@ class Hypoexponential_(ParametricFitter):
     2.6667
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        rates : numpy array or scalars
+            The stage rates ``lambda_1, ..., lambda_m``
+        """
+
     def __init__(self, name: str, m: int = 0) -> None:
         # ``m == 0`` is the exported singleton, whose arity is only fixed
         # when ``from_params`` is called; that call (and deserialisation)

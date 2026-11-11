@@ -2177,11 +2177,13 @@ model type:
     import surpyval
     from surpyval.degradation import DegradationAnalysis, DegradationModel
 
+    # Eight units: with four, a bootstrap resample often holds too few
+    # distinct units to refit the life model.
     saveable = DegradationAnalysis.fit(
-        np.tile(np.arange(100, 1100, 100), 4),
-        10 + np.repeat([0.31, 0.28, 0.44, 0.37], 10)
-        * np.tile(np.arange(100, 1100, 100), 4),
-        np.repeat([1, 2, 3, 4], 10),
+        np.tile(np.arange(100, 1100, 100), 8),
+        10 + np.repeat([0.31, 0.28, 0.44, 0.37, 0.33, 0.40, 0.29, 0.35], 10)
+        * np.tile(np.arange(100, 1100, 100), 8),
+        np.repeat(np.arange(1, 9), 10),
         threshold=150,
     )
     reloaded = DegradationModel.from_dict(saveable.to_dict())

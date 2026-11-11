@@ -140,6 +140,7 @@ from ._shared import (
     _covariate_kind,
     _Fit,
     _fmt,
+    _form_panel,
     _gap,
     _note,
     _source,
@@ -1192,27 +1193,14 @@ def _form_rows_of(scale: str) -> Callable[[Context], list[dict]]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     b = _base(ctx)
     rows, m = _martingale(ctx)
-    panels = []
-    for j, name in _form_columns(ctx):
-
-        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
-            from surpyval.plotting import INK, PALETTE
-
-            z = b.raw[rows, j]
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z, m[rows], s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z, m[rows], grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(name)
-            ax.set_ylabel("martingale residual")
-
-        if rows.any():
-            panels.append(Panel(f"{name}: functional form", draw))
-    return panels
+    if not rows.any():
+        return []
+    return [
+        _form_panel(name, b.raw[rows, j], m[rows], "martingale residual")
+        for j, name in _form_columns(ctx)
+    ]
 
 
 # ---------------------------------------------------------------------------

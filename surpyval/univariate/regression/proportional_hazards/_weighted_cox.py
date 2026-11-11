@@ -309,6 +309,33 @@ def robust_covariance(
     return summed.T @ summed
 
 
+def weighted_rows(
+    x: Any, Z: Any, w: Any, tie_method: str
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The checked weights ``w`` (one per value of ``x``) and ``Z`` as
+    rows, for a weighted Cox fit (plain or penalised) with ``tie_method``:
+    refuses the exact tie methods, which have no weighted form here, and a
+    ``Z`` with a different number of rows."""
+    from surpyval.utils.weights import check_weights, refuse_weighted
+
+    if tie_method not in ("efron", "breslow"):
+        raise refuse_weighted(
+            f"tie_method={tie_method!r}",
+            "the exact partial likelihoods have no weighted form here",
+            "Use tie_method='efron' (the default) or 'breslow'.",
+        )
+    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+    w_arr = check_weights(w, x_arr.shape[0])
+    Z_in = np.asarray(Z, dtype=float)
+    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
+    if Z_rows.shape[0] != w_arr.shape[0]:
+        raise ValueError(
+            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
+            "x: give one row of covariates per value."
+        )
+    return w_arr, Z_rows
+
+
 def fit_weighted_cox(
     x: Any,
     Z: Any,
@@ -327,7 +354,6 @@ def fit_weighted_cox(
     cluster, and ``robust_covariance()`` does so by default."""
     from surpyval.utils.weights import (
         effective_sample_size,
-        refuse_weighted,
         warn_if_few_effective,
     )
 
@@ -352,23 +378,7 @@ def fit_weighted_cox(
         runoff_direction,
     )
 
-    if tie_method not in ("efron", "breslow"):
-        raise refuse_weighted(
-            f"tie_method={tie_method!r}",
-            "the exact partial likelihoods have no weighted form here",
-            "Use tie_method='efron' (the default) or 'breslow'.",
-        )
-    from surpyval.utils.weights import check_weights
-
-    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-    w_arr = check_weights(w, x_arr.shape[0])
-    Z_in = np.asarray(Z, dtype=float)
-    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
-    if Z_rows.shape[0] != w_arr.shape[0]:
-        raise ValueError(
-            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
-            "x: give one row of covariates per value."
-        )
+    w_arr, Z_rows = weighted_rows(x, Z, w, tie_method)
     # The weights travel as a last column of Z, and the rows' places
     # before it, so that the rows the validation drops (a missing
     # covariate, with its warning) or reorders take their weights (and

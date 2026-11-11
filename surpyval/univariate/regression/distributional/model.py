@@ -1008,7 +1008,14 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             # bounds and the information criteria.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
+        out.update(self._subclass_dict_entries())
         return stamp_schema(out)
+
+    def _subclass_dict_entries(self) -> dict:
+        """Entries a subclass adds to :meth:`to_dict`, before the
+        document is finished (made strict JSON and stamped with its
+        schema), so that they are encoded with the rest."""
+        return {}
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> DistributionalRegressionModel:

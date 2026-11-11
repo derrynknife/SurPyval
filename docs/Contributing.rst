@@ -42,7 +42,15 @@ The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
 skipped by default). The second executes the ``>>>`` examples in the
 docstrings and checks their printed output, so a docstring example is a
-tested promise like any other. ``--run-invariants`` opts in to a slower
+tested promise like any other.
+
+A distribution's methods repeat their parameter entries, literally, in
+every docstring, so the source reads the same as ``help()``. The class
+states them once more in ``_param_docs``, and that is the copy to edit:
+``python scripts/sync_docstrings.py --write`` rewrites the methods' copies
+from it, and ``surpyval/tests/utils/test_shared_docstrings.py`` fails,
+naming the class, method and difference, when a copy has drifted.
+``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
