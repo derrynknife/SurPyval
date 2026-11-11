@@ -5,6 +5,36 @@ Unreleased
 
 **Added.**
 
+- Adjusted survival curves for groups that were not assigned at random
+  (two suppliers on different duty, treated and untreated patients).
+  ``direct_adjustment(model, group, levels, Z, w, covariates, robust,
+  cluster)`` takes a fitted regression that has the group among its
+  covariates, predicts every unit's survival curve with the group set to
+  each level in turn, and averages over the sample (standardisation, or
+  g-computation). It returns ``AdjustedCurves``: ``sf``, ``ff`` and ``cb``
+  of a level's adjusted curve, ``sf_diff`` and ``rmst_diff`` (the adjusted
+  difference between two levels in survival at a time and in restricted
+  mean survival time, each with a standard error, interval and test),
+  ``rmst`` and ``plot``. The variances are built for the parametric
+  regression families (the delta method through the parameters'
+  covariance) and ``CoxPH`` (the baseline's variance and the
+  coefficients', as in ``CoxPH.cb``), plus, by default, the spread of the
+  units' predictions (``covariates="sampled"``; ``"fixed"`` leaves it out
+  for a reference population). The group is a column position, a column
+  name or a formula's variable (with the DataFrame as ``Z``, so
+  interactions with the group are rebuilt). Any other model with
+  ``sf(x, Z)`` gives the curves, and its bounds refuse with what to use;
+  a stratified Cox model is refused. Checked against R: the averaged
+  ``survfit(coxph, newdata)`` curves and ``riskRegression::ate``'s risks
+  to 1e-6, and a ``survreg`` delta method by hand to 1e-3.
+  ``weight_diagnostics(w, group, Z, extreme, smd)`` checks a set of
+  weights brought to a weighted comparison (``KaplanMeier.fit(..., w=)``
+  with ``sf_diff`` and ``rmst_diff``): each group's effective sample size,
+  its largest weight's share and the number of extreme weights, the
+  standardised mean difference of each covariate before and after
+  weighting with the ratio of the weighted variances, and ``flags``, plain
+  sentences for anything outside the usual rules. No propensity model is
+  fitted. New guide: :doc:`Adjusted Survival Curves`.
 - Repeat events with failure modes and covariates:
   ``CauseSpecificProportionalIntensity`` (``surpyval.recurrent``, and at the
   top level), the regression counterpart of ``CauseSpecificNHPP``. Every

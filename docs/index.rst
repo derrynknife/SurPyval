@@ -320,6 +320,7 @@ Contents:
    Regression Modelling with SurPyval
    Distributional Regression
    Pseudo-Observations
+   Adjusted Survival Curves
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling

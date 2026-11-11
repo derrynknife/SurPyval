@@ -32,7 +32,8 @@ saw ``w`` units. Three common sources:
   units that got a treatment (an overhaul, a new supplier, a drug) differ
   from those that did not. Weighting each unit by one over the probability
   that it got what it got makes the groups comparable, as in a randomised
-  trial.
+  trial. :doc:`Adjusted Survival Curves` works through it, with the
+  checks on such weights.
 - **Inverse probability of censoring weights.** If units drop out of
   follow-up for reasons tied to their risk, each unit still followed is
   weighted by one over its probability of still being followed.

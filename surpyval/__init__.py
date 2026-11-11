@@ -279,6 +279,10 @@ _LAZY = {
         "surpyval.degradation",
     ),
     **dict.fromkeys(
+        ("AdjustedCurves", "direct_adjustment", "weight_diagnostics"),
+        "surpyval.univariate.adjusted",
+    ),
+    **dict.fromkeys(
         (
             "PseudoRegressionResult",
             "pseudo_cif",
@@ -458,6 +462,11 @@ if TYPE_CHECKING:
         JointModel,
         JointPH,
         WeibullJointPH,
+    )
+    from surpyval.univariate.adjusted import (
+        AdjustedCurves,
+        direct_adjustment,
+        weight_diagnostics,
     )
     from surpyval.univariate.pseudo import (
         PseudoRegressionResult,
