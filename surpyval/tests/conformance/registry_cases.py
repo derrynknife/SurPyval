@@ -2533,6 +2533,14 @@ def _starve(case):
         )
     if cls == "CauseSpecificNHPP":
         return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
+    if cls == "CauseSpecificProportionalIntensity":
+        # (the one init is every cause's: cause a's fit, moved)
+        return _far_start(
+            case,
+            lambda m: _scaled_start(
+                np.r_[m.models["a"].params, m.models["a"].coeffs]
+            ),
+        )
     if cls == "RenewalModel":
         # [restoration, *distribution parameters]: the scale moved.
         return _far_start(
