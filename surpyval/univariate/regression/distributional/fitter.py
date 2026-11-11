@@ -29,7 +29,6 @@ parameter's intercept.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -46,6 +45,7 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import ignoring_warnings
 from surpyval.utils.weights import few_effective_said_later
 
 from .._aliasing import (
@@ -1034,8 +1034,7 @@ class DistributionalFitter(
                 covariates[name] = []
                 continue
             sides.append(rhs)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 _, cols, _ = design_matrix_from_df(df, None, rhs)
             covariates[name] = list(cols)
         if not sides:
@@ -1045,8 +1044,7 @@ class DistributionalFitter(
                 "({}.fit).".format(self.dist.name)
             )
         union = " + ".join(f"({s})" for s in sides)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             _, union_cols, _ = design_matrix_from_df(df, None, union)
         union_cols = list(union_cols)
         for name, cols in covariates.items():
@@ -1318,8 +1316,7 @@ def _profile_walk(
         def g(v: Any, base: Any = base) -> Any:
             return fun(base + np.dot(other, v))
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             res = minimize(
                 g, y, jac=_grad(g), method="BFGS", options={"maxiter": 200}
             )

@@ -9,7 +9,6 @@ starting point and for the comparison in the summary.
 from __future__ import annotations
 
 import time
-import warnings
 from typing import Any
 
 import numpy as np
@@ -26,6 +25,7 @@ from surpyval.bayes.engines.grid import (
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.prior import BoundPriors, PriorSpec, quantity_at
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 METHODS = ("auto", "grid", "conjugate", "laplace")
 #: Families whose support moves with their parameters, which the grid
@@ -208,8 +208,7 @@ def _fallback_start(
         dp = list(np.atleast_1d(plain.params))
     else:
         try:
-            with warnings.catch_warnings(), np.errstate(all="ignore"):
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), np.errstate(all="ignore"):
                 dp = list(np.atleast_1d(dist._parameter_initialiser(data)))
         except (ValueError, TypeError, RuntimeError, IndexError):
             return None
@@ -250,8 +249,7 @@ def _mle_start(
     if not _has_failure_information(data) or dist.discrete:
         return None
     try:
-        with warnings.catch_warnings(), quiet_maximum_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), quiet_maximum_warnings():
             with np.errstate(all="ignore"):
                 return dist.fit_from_surpyval_data(
                     data,

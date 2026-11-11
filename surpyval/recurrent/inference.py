@@ -14,7 +14,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.validation import alpha_ci_error
-from surpyval.utils.warnings import warn_no_covariance
+from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 
 def check_alpha_ci(alpha_ci: Any) -> None:
@@ -376,9 +376,8 @@ class LikelihoodInferenceMixin:
 
         check_alpha_ci(alpha_ci)
         self._check_fitted()
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # A boundary is reported in the table (nan), not warned.
-            warnings.simplefilter("ignore")
             cov = self.covariance()
         level = f"{100 * (1 - alpha_ci):g}%"
         rows = []
@@ -389,8 +388,7 @@ class LikelihoodInferenceMixin:
             if not (np.isfinite(value) and var > 0):
                 rows.append([value, np.nan, np.nan, np.nan])
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 cb = wald_bound_on_support(
                     float(value), var, lo, hi, alpha_ci, "two-sided"
                 )

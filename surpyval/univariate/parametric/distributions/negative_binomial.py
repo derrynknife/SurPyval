@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from math import comb
 from typing import Any
 
@@ -27,6 +26,7 @@ from surpyval.utils.autograd_gamma_compat import (
 )
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._discrete_tails import refine_quantile
 
@@ -138,8 +138,7 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
             shifted = SurpyvalData(
                 surv_data.x - 1.0, surv_data.c, surv_data.n, surv_data.t - 1.0
             )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 limit = Poisson.fit_from_surpyval_data(shifted, lfp=lfp)
         except ValueError:
             return super()._warn_if_at_limit(surv_data, results, zi, lfp)

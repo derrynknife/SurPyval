@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-11
+
+### Warnings held back in one thread only (11 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The package holds a warning back with `ignoring_warnings()` (`surpyval/utils/warnings.py`), not with `warnings.catch_warnings()` and `simplefilter("ignore")`. The 117 such blocks are converted one for one (same place, same category, same message pattern); `test_thread_safe_warnings.py` fails if a module uses `catch_warnings` again outside the listed places. | proposed | `catch_warnings` saves and restores the one filter list every thread shares: while a block ran, every other thread's warnings were dropped, and two threads leaving blocks out of order left the "ignore" in place for good. In its own thread the new block is the old one (the newest filter wins); the refactor snapshot is bit-exact before and after, the warnings of every registry case included. | done |
+| `ignoring_warnings` is a filter in the shared list whose message slot is a `threading.local`: its `match` is looked up in the calling thread, and is "never" except in a thread inside a block. A filter is added at the front of the list when none is there, and never removed; a block only switches its own thread's `match`. Everything the interpreter calls while it reads the list is C (`threading.local` attribute lookup, `functools.partial` of `operator.is_`, a compiled pattern's `match`). | proposed | Python 3.11 to 3.13 have no per-thread filters. A filter that runs Python code while the list is read (`__subclasscheck__`, a Python `match`) lets another thread run half way through the read: a filter removed then makes the reader skip the next one (seen: an "error" filter skipped once in three fits), and a list replaced then can be freed under the reader. With C only, the interpreter lock is held for the whole read. On Python 3.14 run with context-aware warnings the block is the standard form, which is then local to the thread already. | done |
+| Six places still use `catch_warnings`: five collect an inner step's warnings to read or repeat them (`fit_best`, the renewal fit's no-maximum check, the Cox frailty fit's Cox fit, the residual-life integral, `diagnose()`'s Cramer-von Mises test), and `formula_model_matrix` catches `formulaic`'s unknown-level warning for a formula naming its levels. | proposed | Collecting warnings needs the shared `showwarning` hook; each needs its own rewrite (reading the step's result instead of its warnings, as the accelerated life starts were), which can change which warnings a user sees. Left as they are, listed in the test, for a later change. | gap |
+
 ## 2026-11-07
 
 ### Thread-safe warning checks (7 Nov 2026)

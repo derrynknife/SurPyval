@@ -78,12 +78,13 @@ when it is given.
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -142,8 +143,7 @@ def _quiet(compute: Any) -> Any:
     """``compute()``, its warnings silenced, or ``None`` if it raises or
     returns a fit with no finite maximum: a refit made for a check, whose
     warnings would be about the check's model, not the user's."""
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         try:
             out = compute()
         except Exception:  # noqa: BLE001 -- any failure skips the refit

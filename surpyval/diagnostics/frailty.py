@@ -103,13 +103,14 @@ of a group are not independent.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2
+
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
     _covariate_kind,
@@ -144,8 +145,7 @@ _COX = "Cox shared frailty"
 # Small helpers
 # ---------------------------------------------------------------------------
 def _quiet(fit: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         return fit(*args, **kwargs)
 
 
@@ -651,8 +651,7 @@ def _maximise(f: _Marginal, start: np.ndarray) -> _Fit:
     first[j_theta] = max(first[j_theta], 0.0)
     with np.errstate(all="ignore"):
         u = np.where(log_scale, np.log(np.abs(first)), first * scale)
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         value = float(obj(u))
         if not np.isfinite(value):
             return _Fit(theta=start, value=float("nan"), ok=False)

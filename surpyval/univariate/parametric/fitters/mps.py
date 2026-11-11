@@ -10,6 +10,7 @@ import numpy.typing as npt
 from autograd import hessian
 
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.warnings import ignoring_warnings
 
 from . import (
     OPTIMUM_GTOL,
@@ -151,8 +152,7 @@ class _TowardLimit:
             self._limit.append(None)
             from surpyval.utils.no_maximum import quiet_maximum_warnings
 
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 try:
                     fit = self.family.fit_from_surpyval_data(
                         self.model.surv_data, how="MPS"
@@ -272,8 +272,7 @@ class _RunsOff:
                 return low is None or not np.isfinite(low)
             return False
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             try:
                 found = _runaway(
                     mps_fun,
@@ -305,8 +304,7 @@ class _RunsOff:
             # gradient 0.5) with AVX2 ones, and Newton-CG then took 19 of
             # 21 s before the same "no finite maximum". Where it does not
             # show one, the ladder goes on to Newton-CG as before.
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 nm = minimize(
                     mps_fun, res.x, method="Nelder-Mead", args=self.args
                 )
@@ -317,8 +315,7 @@ class _RunsOff:
                 self.found = found
                 return True
             return False
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             nm = minimize(
                 mps_fun, self.init, method="Nelder-Mead", args=self.args
             )

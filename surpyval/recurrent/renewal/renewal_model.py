@@ -35,7 +35,7 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import warn_no_covariance
+from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
 #: perfect and a minimal repair process (#513): the Kijima ``q`` of the
@@ -2183,9 +2183,8 @@ class RenewalModel(
         """
         check_alpha_ci(alpha_ci)
         self._check_fitted()
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # The boundary is reported in the table (nan), not warned.
-            warnings.simplefilter("ignore")
             cov = self.covariance()
         level = f"{100 * (1 - alpha_ci):g}%"
         rows = []
@@ -2194,16 +2193,14 @@ class RenewalModel(
         ):
             var = float(cov[k, k])
             if k == 0 and self._edge_value() is not None:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     cb = self.param_cb(self._restoration_param_name, alpha_ci)
                 rows.append([value, np.nan, cb[0], cb[1]])
                 continue
             if not var > 0:
                 rows.append([value, np.nan, np.nan, np.nan])
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 cb = wald_bound_on_support(
                     float(value), var, lo, hi, alpha_ci, "two-sided"
                 )
@@ -2618,8 +2615,7 @@ class RenewalModel(
             return starts
         ari = self._dist_label == "Baseline Intensity"
         try:
-            with warnings.catch_warnings(), np.errstate(all="ignore"):
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), np.errstate(all="ignore"):
                 if ari and which == "minimal":
                     extra = fitter._initial_baseline_params(data, dist)
                 elif ari:
@@ -2679,8 +2675,7 @@ class RenewalModel(
         best = None
         # The searches' own warnings (an overflowing trial point, a line
         # search that stops short) are not the user's.
-        with warnings.catch_warnings(), np.errstate(all="ignore"):
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), np.errstate(all="ignore"):
             for start in starts:
                 z0 = to_free(start)
                 if not np.isfinite(restricted(z0)):

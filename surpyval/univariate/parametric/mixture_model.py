@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import numbers
-import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -61,7 +60,7 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -859,8 +858,7 @@ class MixtureModel(
             return cached or None
         jac = grad(self._Q)
         try:
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 g = np.asarray(jac(self.params.ravel()), dtype=float)
             usable = bool(np.all(np.isfinite(g)))
         except Exception:
@@ -1008,8 +1006,7 @@ class MixtureModel(
         params = np.zeros((m, k))
         w = np.zeros(m)
         try:
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 for i, rows in enumerate(blocks):
                     rows = np.sort(rows)
                     params[i] = self.dist.fit(
@@ -1176,8 +1173,7 @@ class MixtureModel(
             # A weight of 0, or a parameter on its bound: no interior
             # point to polish from.
             return False
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             try:
                 f0 = float(fun(x0))
                 res = preconditioned_bfgs(fun, x0, (), jac, obj_scale=n_obs)
@@ -2090,8 +2086,7 @@ class MixtureModel(
             w, params = self._unpack(th)
             return self.neg_ll_of(w, params)
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             info = np.asarray(hessian(fun)(theta), dtype=float)
             if not np.all(np.isfinite(info)):
                 # autograd's second derivative can be NaN where the first
