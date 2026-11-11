@@ -114,6 +114,8 @@ surpyval.MixtureCure
 surpyval.MixtureCureFitter
 surpyval.MixtureCureModel
 surpyval.MixtureModel
+surpyval.MultiState
+surpyval.MultiStateProportionalHazards
 surpyval.MultivariateDistribution
 surpyval.NegativeBinomial
 surpyval.NelsonAalen
@@ -158,6 +160,7 @@ surpyval.SemiParametricRegressionModel
 surpyval.StepSchedule
 surpyval.StepValuedError
 surpyval.SurpyvalData
+surpyval.TransitionMatrix
 surpyval.Turnbull
 surpyval.Uniform
 surpyval.WeiLinWeissfeld
@@ -213,6 +216,7 @@ surpyval.datasets.load_kidney
 surpyval.datasets.load_lung
 surpyval.datasets.load_meeker_lfp
 surpyval.datasets.load_mettas_and_zhao
+surpyval.datasets.load_mgus2
 surpyval.datasets.load_pbc2
 surpyval.datasets.load_rossi_static
 surpyval.datasets.load_rossi_time_varying
@@ -291,6 +295,11 @@ surpyval.metrics.score_predictions
 surpyval.metrics.survival_probability
 surpyval.ml.RandomSurvivalForest
 surpyval.ml.SurvivalTree
+surpyval.multistate.MultiState
+surpyval.multistate.MultiStateProportionalHazards
+surpyval.multistate.TransitionMatrix
+surpyval.multistate.from_stacked
+surpyval.multistate.to_stacked
 surpyval.multivariate.AMH
 surpyval.multivariate.Clayton
 surpyval.multivariate.Copula

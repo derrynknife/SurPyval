@@ -88,7 +88,11 @@ univariate, regression or repairable-system model. The parametric regression
 models have `qf`, `cs` and `quantile_cb`, with Wald, likelihood-ratio and
 bootstrap bounds, and the semi-parametric and frailty regressions have `qf`.
 An offset model's bounds can be bootstrapped (`method="bootstrap"`) to take
-in the offset's uncertainty.
+in the offset's uncertainty. Units that move between several states
+(healthy, ill, dead; working, degraded, failed) have multi-state models
+(`surpyval.multistate`): Aalen-Johansen transition and state occupation
+probabilities (`MultiState`) and a Cox model of each transition
+(`MultiStateProportionalHazards`), with standard errors and bounds.
 
 # Install and Quick Intro
 

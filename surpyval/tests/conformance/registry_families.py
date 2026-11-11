@@ -50,8 +50,15 @@ COUNTING = "counting"  # recurrent events: cif / iif / mcf (x)
 COUNTING_REGRESSION = "counting-regression"  # cif(x, Z)
 COUNTING_CAUSES = "counting-causes"  # mcf / cif (x, cause)
 BIVARIATE = "bivariate"  # copulas: f(X), X of shape (m, 2)
+STATES = "states"  # multi-state: per-state occupancy(x, state)
+STATES_REGRESSION = "states-regression"  # occupancy(x, Z, state)
 
-WITH_COVARIATES = (REGRESSION, CAUSES_REGRESSION, COUNTING_REGRESSION)
+WITH_COVARIATES = (
+    REGRESSION,
+    CAUSES_REGRESSION,
+    COUNTING_REGRESSION,
+    STATES_REGRESSION,
+)
 
 # ---------------------------------------------------------------------------
 # Properties. The name is what ``exclude`` / ``KNOWN_FAILURES`` refer to.
@@ -64,6 +71,7 @@ PROPERTIES: dict[str, str] = {
     ),
     "qf_ff": "qf(ff(x)) == x inside the support",
     "cif_sum": "the causes' cumulative incidences sum to 1 - sf",
+    "occupancy_sum": "the states' occupation probabilities sum to 1",
     "scalar": (
         "a scalar query gives a scalar that agrees with the same query as "
         "a 1-D array"
@@ -301,6 +309,9 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.univariate.competing_risks.CompetingRisks": (
         "a non-parametric (Aalen-Johansen) estimate"
     ),
+    "surpyval.multistate.MultiState": (
+        "a non-parametric (Aalen-Johansen) estimate"
+    ),
     "surpyval.recurrent.NonParametricCounting": (
         "the non-parametric mean cumulative function"
     ),
@@ -353,6 +364,8 @@ _EVERY = frozenset(
         COUNTING_REGRESSION,
         COUNTING_CAUSES,
         BIVARIATE,
+        STATES,
+        STATES_REGRESSION,
     }
 )
 _SURVIVAL = frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION})
@@ -365,6 +378,7 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION}),
     "qf_ff": frozenset({UNIVARIATE, CAUSES}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
+    "occupancy_sum": frozenset({STATES, STATES_REGRESSION}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
     "outside_data": _EVERY - {BIVARIATE},

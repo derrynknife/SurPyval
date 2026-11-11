@@ -15,6 +15,7 @@ import pandas as pd
 import surpyval as sp
 from surpyval import degradation as dg
 from surpyval import ml
+from surpyval import multistate as ms
 from surpyval import multivariate as mv
 from surpyval import recurrent as rc
 from surpyval.tests.conformance.registry_families import (
@@ -26,6 +27,8 @@ from surpyval.tests.conformance.registry_families import (
     COUNTING_CAUSES,
     COUNTING_REGRESSION,
     REFIT_PROPERTIES,
+    STATES,
+    STATES_REGRESSION,
     UNI_FUNCTIONS,
     UNIVARIATE,
     Bound,
@@ -49,11 +52,14 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_CR,
     X_DESTR,
     X_JOINT,
+    X_MS,
+    X_MSR,
     X_PATH,
     X_PROC,
     X_REC,
     X_UNI,
     Z_CR,
+    Z_MS,
     Z_REC,
     beta_geometric_data,
     binary_data,
@@ -66,6 +72,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     lfp_count_data,
     lfp_data,
     mixture_data,
+    ms_data,
     offset_data,
     path_data,
     process_data,
@@ -779,6 +786,93 @@ def _competing_risks():
         )
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Multi-state
+# ---------------------------------------------------------------------------
+_MS_STATES = ("healthy", "ill", "dead")
+
+
+def _multistate():
+    def frame(d):
+        df = pd.DataFrame(
+            {
+                "x": d["x"],
+                "e": d["e"],
+                "state": d["state"],
+                "tl": d["tl"],
+                "n": d["n"],
+            }
+        )
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def ms_from_df(d):
+        return ms.MultiState.fit_from_df(
+            frame(d),
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+        )
+
+    def msph_from_df(d):
+        return ms.MultiStateProportionalHazards.fit_from_df(
+            frame(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+        )
+
+    exact = "an exact (Aalen-Johansen) estimate of the spells"
+    return [
+        Case(
+            name="MultiState",
+            fitters=("surpyval.multistate.MultiState",),
+            model_class="surpyval.multistate.MultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=_fit(ms.MultiState),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={"fit_from_df": ms_from_df},
+            rtol=1e-9,
+            exclude={"convergence": exact},
+        ),
+        Case(
+            name="MultiStateProportionalHazards",
+            fitters=("surpyval.multistate.MultiStateProportionalHazards",),
+            model_class="surpyval.multistate.MultiStateProportionalHazards",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=_fit(ms.MultiStateProportionalHazards),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": msph_from_df},
+            rtol=1e-6,
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        ),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1547,6 +1641,7 @@ CASES: list[Case] = (
     + _semi_parametric()
     + _trees()
     + _competing_risks()
+    + _multistate()
     + _recurrent()
     + _degradation()
     + _copulas()
@@ -2161,12 +2256,35 @@ _DISTRIBUTIONAL_PARAMETERS.update(
 )
 
 
+def _multistate_bounds(variances):
+    """The bounds on each state's occupation probability, for each
+    variance and bound type (a 'normal' interval can leave [0, 1])."""
+    return tuple(
+        Bound(
+            "cb",
+            point="occupancy",
+            per_cause=True,
+            kwargs={"variance": v, "bound_type": t},
+            in_range=t == "exp",
+            label=f"cb[{v}, {t}]",
+        )
+        for v in variances
+        for t in ("exp", "normal")
+    )
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
+        # variances; the Cox model's include its coefficients'.
+        "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
+        "MultiStateProportionalHazards": _multistate_bounds(
+            ("aalen", "greenwood")
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
         # The Cox model's predicted curves: R's survfit conf.types
@@ -2557,6 +2675,8 @@ def _estimators(case):
         return {"tie_method": methods}, {}, _cox_sample
     if name == "CompetingRisksProportionalHazards[Cox]":
         return {"tie_method": ("efron", "breslow")}, {}, _cr_sample
+    if name == "MultiStateProportionalHazards":
+        return {"tie_method": ("efron", "breslow")}, {}, None
     if name == "CompetingRisks[Nelson-Aalen]":
         methods = ("Nelson-Aalen", "Kaplan-Meier")
         return (
