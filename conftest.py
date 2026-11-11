@@ -274,13 +274,13 @@ def pytest_sessionfinish(session):
 
 
 def pytest_runtest_setup(item):
-    """Each doctest starts with no figure open: an example that draws on
-    ``plt.gca()`` would otherwise draw on an earlier example's axes (its
-    labels and lines), and the doctests run one after another in one
-    process."""
-    if isinstance(item, pytest.DoctestItem) and "matplotlib.pyplot" in (
-        sys.modules
-    ):
+    """Each test and doctest starts with no figure open: one that draws on
+    ``plt.gca()`` would otherwise draw on the axes an earlier test left
+    open in the same process (its labels and artists), and which test ran
+    before it depends on how the run is split across workers. (A
+    Crow-AMSAA plot test counted the scatter of a diagnostics panel left
+    open before it.)"""
+    if "matplotlib.pyplot" in sys.modules:
         sys.modules["matplotlib.pyplot"].close("all")
 
 
