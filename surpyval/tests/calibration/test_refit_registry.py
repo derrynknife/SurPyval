@@ -682,6 +682,31 @@ def _pcr_inspected(case, truth, n):
     return draw
 
 
+def _pcrr(case, truth, n):
+    # The model's own sampler, at each of the fixture's covariate rows:
+    # (time, cause) records.
+    design = _design(case, n)
+    Z = design["Z"]
+    rows, where = np.unique(Z, axis=0, return_inverse=True)
+    where = where.ravel()
+
+    def draw(rng):
+        t = np.empty((3, Z.shape[0]))
+        e = np.empty(Z.shape[0], object)
+        for j, row in enumerate(rows):
+            at = where == j
+            m = int(at.sum())
+            rec, _ = truth.random(3 * m, row[None, :], random_state=rng)
+            t[:, at] = np.asarray(rec["x"], float).reshape(3, m)
+            e[at] = np.asarray(rec["e"], object)[:m]
+        cens = np.maximum(t[1], t[2])
+        out = t[0] > cens
+        e[out] = None
+        return {"x": np.where(out, cens, t[0]), "e": e, **design}
+
+    return draw
+
+
 def _pcr_params(model):
     return np.concatenate([model.models[k].params for k in model.causes])
 
@@ -1257,6 +1282,9 @@ for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
 PLANS["CompetingRisks[tl]"] = Plan(_cr_entry, 300, 60)
 PLANS["ParametricCompetingRisks"] = Plan(_pcr, 300, 60, params=_pcr_params)
+PLANS["ParametricCompetingRisksRegression"] = Plan(
+    _pcrr, 300, 60, params=_pcr_params
+)
 PLANS["ParametricCompetingRisks[interval]"] = Plan(
     _pcr_inspected, 300, 60, params=_pcr_params
 )

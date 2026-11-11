@@ -69,7 +69,7 @@ not yet built.
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
 | Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.ml`) |
 | Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF, with confidence bounds) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
+| Continuous time | Single event | Competing | With | `ParametricCompetingRisksRegression` (a parametric regression per cause) | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | `CauseSpecificNHPP` | `CauseSpecificMCF` |

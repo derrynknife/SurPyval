@@ -29,6 +29,9 @@ SurPyval's competing-risks tools, and the question each one answers:
    * - ``CompetingRisksProportionalHazards``
      - How do covariates change each cause-specific hazard (``model="Cox"``),
        or the incidence of every cause (``model="Fine-Gray"``)?
+   * - ``ParametricCompetingRisksRegression``
+     - A parametric regression per cause; smooth CIFs at any covariates,
+       beyond the last observation.
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
@@ -1497,6 +1500,207 @@ other rows as they are:
         csph_f.cif([2.0], pd.DataFrame({"z1": [0.5], "band": ["mid"]}), 1)
     except ValueError as err:
         print(textwrap.fill(str(err), 79))
+
+Parametric Competing-Risks Regression
+-------------------------------------
+
+The cause-specific Cox model above tells you how a covariate changes each
+cause's hazard, but its cumulative incidences are step functions that stop
+at the last event: it cannot say what happens after the study ends.
+``ParametricCompetingRisksRegression`` answers the same question with a
+parametric model for every cause, so each cause's cumulative incidence is a
+smooth curve, at any covariate values, that carries on past the data:
+
+- an engineer with two years of field returns asks what share of pumps
+  running hot will have had a seal failure by the end of a five-year
+  warranty, when bearings fail too;
+- a clinician asks for a patient's ten-year probability of dying of the
+  disease, given age and stage, from a study with six years of follow-up,
+  when patients also die of other causes.
+
+Each cause gets its own regression of its hazard on the covariates: a
+Weibull proportional hazards model by default (``model=WeibullPH``), or any
+of the parametric regressions (``ExponentialPH``, ``WeibullAFT``,
+``LogNormalAFT``, ``LogLogisticPO`` and the rest), the same for every cause
+or one per cause in a dict. Each cause is fitted with the failures of the
+other causes treated as censored; that is the maximum-likelihood fit of the
+whole model, and it does not assume the causes are independent (the theory
+page, :doc:`Competing Risks Analysis`, explains why).
+
+Here 600 pumps run at a temperature between 40 and 80 degrees. Seals wear
+out, faster when hot; bearings fail at a rate that temperature does not
+change. The test stops at 8 (thousand hours), so the data end there:
+
+.. jupyter-execute::
+
+    from surpyval import (
+        ExponentialPH,
+        ParametricCompetingRisksRegression,
+        WeibullPH,
+    )
+
+    pump_rng = np.random.default_rng(7)
+    n_pumps = 600
+    pump_temp = pump_rng.uniform(40, 80, n_pumps)
+    pump_hot = (pump_temp - 60) / 10                  # per 10 degrees above 60
+    pump_seal = 12 * pump_rng.weibull(2.5, n_pumps) * np.exp(-0.5 * pump_hot / 2.5)
+    pump_bearing = pump_rng.exponential(25, n_pumps)
+    pump_first = np.minimum(pump_seal, pump_bearing)
+    pump_x = np.minimum(pump_first, 8.0)
+    pump_e = np.where(pump_seal < pump_bearing, "seal", "bearing").astype(object)
+    pump_e[pump_first > 8.0] = None            # still running at the end
+    pump_Z = pump_hot[:, None]
+
+    pcr = ParametricCompetingRisksRegression.fit(pump_x, pump_Z, pump_e)
+    print(pcr)
+    pcr.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(3)
+
+The table stacks each cause's own regression table. The seal's coefficient
+is its log hazard ratio per 10 degrees (the data were simulated with 0.5),
+and the bearing's is indistinguishable from zero, as simulated:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _table = pcr.summary()
+    _seal = _table.loc[("seal", "coefficients", "coef_0")]
+    _bearing = _table.loc[("bearing", "coefficients", "coef_0")]
+    assert abs(_seal["coef"] - 0.5) < 2 * _seal["se(coef)"], _seal
+    assert _bearing["p"] > 0.05, _bearing
+
+The fitted per-cause models are ordinary regression models, in
+``pcr.models["seal"]`` and ``pcr.models["bearing"]``, with everything those
+offer. The cumulative incidence of a cause is ``cif(x, Z, event)``. The
+covariate rows ``Z`` are paired with the times as in every regression: one
+row used at every time, one row per time, or several rows at one time.
+Below, the seal's cumulative incidence at 50 and at 75 degrees, with the
+cause-specific Cox model's step estimate for comparison. The test ended at
+8; the parametric curves carry on to 20:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.competing_risks import (
+        CompetingRisksProportionalHazards,
+    )
+
+    pump_cox = CompetingRisksProportionalHazards.fit(pump_x, pump_Z, pump_e)
+    t_pump = np.linspace(0, 20, 201)
+    for degrees, colour in [(50, "C0"), (75, "C3")]:
+        row = [(degrees - 60) / 10]
+        plt.plot(t_pump, pcr.cif(t_pump, row, "seal"), color=colour,
+                 label=f"{degrees} degrees (parametric)")
+        seen = t_pump <= 8
+        plt.step(t_pump[seen], pump_cox.cif(t_pump[seen], row, "seal"),
+                 where="post", color=colour, alpha=0.5,
+                 label=f"{degrees} degrees (Cox)")
+    plt.axvline(8, color="grey", linestyle=":")
+    plt.xlabel("Time (thousand hours)")
+    plt.ylabel("Cumulative incidence of a seal failure")
+    plt.legend()
+
+Inside the data the two agree; past it only the parametric model has an
+answer, and that answer rests on the assumed shape of each hazard, which
+the data cannot check beyond 8. Use the cause-specific Cox model when you
+only need the covariates' effects or predictions inside the follow-up, and
+this one when you need a smooth curve or a prediction beyond it, after
+checking the fit of each cause's model (``pcr.models[cause].diagnose()``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = np.array([2.0, 4.0, 6.0, 7.5])
+    for _row in ([-1.0], [1.5]):
+        _gap = np.abs(pcr.cif(_t, _row, "seal") - pump_cox.cif(_t, _row, "seal"))
+        assert _gap.max() < 0.05, _gap
+
+``probability_of_cause(Z, event)`` is the eventual share of each cause, the
+cumulative incidence at infinity, and ``cb`` gives confidence bounds on the
+cumulative incidence (or, with ``on=``, on the all-cause survival, failure
+probability or cumulative hazard):
+
+.. jupyter-execute::
+
+    pump_rows = [[-1.0], [1.5]]                  # 50 and 75 degrees
+    print("eventual share of seal failures:",
+          pcr.probability_of_cause(pump_rows, "seal").round(3))
+    print("by 15, at 75 degrees           :",
+          round(float(pcr.cif(15, [1.5], "seal")), 3),
+          pcr.cb(15, [1.5], "seal").round(3))
+
+The hotter pumps lose more of their units to the seal, because the seal's
+hazard rises with temperature and the bearing's does not. The causes'
+eventual shares sum to one:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _share = pcr.probability_of_cause(pump_rows, "seal")
+    assert _share[1] > _share[0], _share
+    assert np.allclose(
+        _share + pcr.probability_of_cause(pump_rows, "bearing"), 1.0
+    )
+    _lo, _hi = pcr.cb(15, [1.5], "seal")
+    assert _lo < pcr.cif(15, [1.5], "seal") < _hi
+
+The other functions follow ``ParametricCompetingRisks``, with ``Z`` after
+the times. Without ``event``, ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` are
+of the first failure of any cause; with ``event=k`` they are cause ``k``'s
+net ones, its own model's. ``qf(p, Z)`` and ``mean(Z)`` are the B-lives
+and the mean life of the whole unit, and ``random(size, Z)`` simulates
+units at each covariate row:
+
+.. jupyter-execute::
+
+    print("survival to 8 at 75 degrees:", round(float(pcr.sf(8, [1.5])), 3))
+    print("B10 life at 50 and 75      :", pcr.qf(0.1, pump_rows).round(2))
+    print("mean life at 50 and 75     :", pcr.mean(pump_rows).round(2))
+    pump_draws, pump_drawn_at = pcr.random(4, [[1.5]], random_state=0)
+    print(pump_draws["x"].round(2), list(pump_draws["e"]))
+
+A different model per cause is a dict. The bearing's hazard is constant in
+the simulation, so an exponential model for it has one parameter fewer;
+``aic`` and ``bic`` are those of the whole model (the log-likelihood sums
+over the causes, and BIC's sample size is the failures of any cause), so
+they compare the two:
+
+.. jupyter-execute::
+
+    simpler = ParametricCompetingRisksRegression.fit(
+        pump_x, pump_Z, pump_e,
+        model={"seal": WeibullPH, "bearing": ExponentialPH},
+    )
+    print("Weibull + Weibull     AIC: %.1f" % pcr.aic())
+    print("Weibull + Exponential AIC: %.1f" % simpler.aic())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert simpler.aic() < pcr.aic(), (simpler.aic(), pcr.aic())
+
+The simpler model has the lower AIC. ``fit_from_df`` takes the column
+names, and the covariates as ``Z_cols`` or as a ``formula``; the fitted
+model then predicts from a DataFrame of the raw covariates. Entry times
+(``tl``, ``tl_col``) are taken as in the single-cause regressions. The
+model saves and loads with ``to_dict`` / ``from_dict`` like every other.
+Left- and interval-censored rows are refused (without covariates,
+``ParametricCompetingRisks`` takes them), and so are weights:
+
+.. jupyter-execute::
+
+    pumps = pd.DataFrame({
+        "hours": pump_x, "mode": pump_e, "temp": pump_temp,
+        "site": np.where(pump_rng.uniform(size=n_pumps) < 0.5, "coast", "inland"),
+    })
+    by_site = ParametricCompetingRisksRegression.fit_from_df(
+        pumps, x_col="hours", e_col="mode", formula="temp + site"
+    )
+    print(by_site.feature_names)
+    new_pumps = pd.DataFrame({"temp": [75, 75], "site": ["coast", "inland"]})
+    print(by_site.cif([15, 15], new_pumps, "seal").round(3))
 
 Scoring predictions of one cause: Brier score and AUC
 -----------------------------------------------------

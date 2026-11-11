@@ -278,6 +278,14 @@ def _competing_parametric(model, label=""):
     return out
 
 
+def _competing_regression(model, label=""):
+    # Each cause's own regression fit, the other causes censored
+    out = []
+    for cause, m in model.models.items():
+        out += _regression(m, f"{label}cause {cause}")
+    return out
+
+
 def _hpp(model, label=""):
     # The fit searches log(rate), then the coefficients, on the fitter's
     # own likelihood (``_neg_ll`` is the same in the rate itself, but not
@@ -323,6 +331,10 @@ OBJECTIVES = {
     "surpyval.SemiParametricRegressionModel": lambda case: _cox(fitted(case)),
     "surpyval.univariate.competing_risks.ParametricCompetingRisks": (
         lambda case: _competing_parametric(fitted(case))
+    ),
+    "surpyval.univariate.competing_risks"
+    ".ParametricCompetingRisksRegression": (
+        lambda case: _competing_regression(fitted(case))
     ),
     "surpyval.recurrent.parametric.parametric_recurrence"
     ".ParametricRecurrenceModel": lambda case: _hpp(fitted(case)),

@@ -40,6 +40,7 @@ EXPECTED_SOURCES = {
     "r_distributional_diagnostics",
     "r_competing_entry",
     "r_fine_gray_variance",
+    "r_parametric_competing_regression",
     "py_lifelines",
     "py_sksurv",
 }

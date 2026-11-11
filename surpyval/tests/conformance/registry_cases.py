@@ -701,6 +701,57 @@ def _competing_risks():
                 ),
             )
         )
+
+    def pcrr_from_df(d, formula=False):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
+        )
+        covariates = {"formula": "z0"} if formula else {"Z_cols": ["z0"]}
+        return cr.ParametricCompetingRisksRegression.fit_from_df(
+            df, x_col="x", e_col="e", n_col="n", **covariates
+        )
+
+    out.append(
+        Case(
+            name="ParametricCompetingRisksRegression",
+            fitters=(
+                "surpyval.univariate.competing_risks"
+                ".ParametricCompetingRisksRegression",
+            ),
+            model_class=(
+                "surpyval.univariate.competing_risks"
+                ".ParametricCompetingRisksRegression"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=_fit(cr.ParametricCompetingRisksRegression),
+            # (qf(p, Z) is checked in the model's own tests: the suite's
+            # quantile query has no covariate rows to pair with)
+            functions=("sf", "ff", "Hf", "hf", "df"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            paths={
+                "fit_from_df": pcrr_from_df,
+                "formula": functools.partial(pcrr_from_df, formula=True),
+            },
+            draw=lambda m, s: m.random(15, Z_CR[:2], random_state=s)[0]["x"],
+            explicit_seed=True,
+            # One row of coefficients per cause, as the cause-specific Cox
+            # model's betas
+            # (after each cause's Weibull alpha and beta)
+            coefficients=lambda m: np.array(
+                [
+                    np.asarray(m.models[k].params, dtype=float)[2:]
+                    for k in m.causes
+                ]
+            ),
+            intercept=True,
+        )
+    )
     out.append(
         Case(
             name="FineGray",
@@ -2104,7 +2155,10 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
-    if cls == "ParametricCompetingRisks":
+    if cls in (
+        "ParametricCompetingRisks",
+        "ParametricCompetingRisksRegression",  # (at covariate rows)
+    ):
         # Wald bounds on each cause's cumulative incidence (logit) and the
         # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
         # its own model's cb. (Its method="lr" and "bootstrap", the
@@ -2602,7 +2656,10 @@ def _starve(case):
         "RecurrentCoxModel",
     ):
         return lambda d: fit(_no_event_level(d))
-    if cls == "CompetingRisksProportionalHazards":
+    if cls in (
+        "CompetingRisksProportionalHazards",
+        "ParametricCompetingRisksRegression",
+    ):
         return lambda d: fit(_no_event_level(d))
     if name == "Logistic":
         # The scale, not the location: from a far location the fit
