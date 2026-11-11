@@ -741,7 +741,10 @@ class CauseSpecificNHPP(SerialisableMixin):
                 return getattr(dist, fname)(x, *params)
 
             estimate = estimate + curve(estimates)
-            variance = variance + delta_method_se(curve, estimates, cov) ** 2
+            variance = (
+                variance
+                + delta_method_se(curve, estimates, cov, scale_free=True) ** 2
+            )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 
     def _has_likelihood(self, cause: Any) -> bool:
