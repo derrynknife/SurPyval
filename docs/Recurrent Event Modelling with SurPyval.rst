@@ -2308,7 +2308,9 @@ Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded
 model behaves like a ``from_params`` one: it predicts and simulates, but
 confidence bounds, diagnostics and ``plot`` need a re-fit. (A reloaded
-non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
+non-parametric MCF keeps its variance, so ``mcf_cb`` still works, and a
+reloaded ``CauseSpecificNHPP`` keeps each cause's parameter covariance, so
+its Wald bounds, ``growth()`` and ``summary()`` still work; see above.)
 
 References
 ----------
