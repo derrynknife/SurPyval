@@ -2707,15 +2707,19 @@ class GammaProcessModel(FirstPassageProcessModel):
         return out
 
     def _df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
-        # Density of the first-passage time (numeric derivative of ``ff``).
+        # Density of the first-passage time (numeric derivative of ``ff``),
+        # in central steps of a millionth of the time: steps of at least
+        # 1e-6 (and a lower end of at least 1e-12) were most of a time
+        # measured in millionths of the unit, and the density and hazard
+        # moved with the unit by 1%.
         h = 1e-6
         out = np.zeros_like(t)
         pos = t > 0
         tp = t[pos]
-        step = np.maximum(h, tp * h)
+        step = tp * h
         f_hi = self._ff_distance(tp + step, distance)
-        f_lo = self._ff_distance(np.maximum(tp - step, 1e-12), distance)
-        out[pos] = (f_hi - f_lo) / ((tp + step) - np.maximum(tp - step, 1e-12))
+        f_lo = self._ff_distance(tp - step, distance)
+        out[pos] = (f_hi - f_lo) / ((tp + step) - (tp - step))
         out = np.clip(out, 0.0, None)
         return out
 
