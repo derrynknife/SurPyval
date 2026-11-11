@@ -1415,6 +1415,11 @@ Unreleased
 
 **Fixed.**
 
+- ``on="R"`` and ``on="F"`` (accepted spellings of ``"sf"`` and ``"ff"``)
+  were refused by four functions that take ``on``: an adjusted curve's
+  ``cb``, ``plot_nonparametric``, ``plot_partial_effects`` and a Bayesian
+  fit's ``compare_to``. They now give exactly what ``"sf"`` and ``"ff"``
+  give, as everywhere else.
 - ``ProportionalIntensityNHPP`` starts from the covariate-free fit of its
   baseline for data the item records (``ItemHistory``) refuse but the fit
   takes: an item whose id is blank text, an item whose end of observation

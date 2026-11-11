@@ -1885,7 +1885,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         on : str, optional
             ``"sf"`` (the default) or ``"ff"`` at ``x``; ``"qf"``, a
             quantile, with ``p`` (``on="qf", p=0.10`` for the B10 life);
-            ``"mean"``; or a parameter name.
+            ``"mean"``; or a parameter name. ``"R"`` and ``"F"`` are
+            accepted spellings of ``"sf"`` and ``"ff"`` (unless the
+            distribution has a parameter of that name).
         p : float, optional
             The quantile's probability. Defaults to 0.10.
         x : float, optional
@@ -1905,6 +1907,8 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         >>> round(new.compare_to(old, on="qf", p=0.10).probability, 2)
         0.78
         """
+        if on in ("R", "F") and on not in self.posterior.parameter_names:
+            on = {"R": "sf", "F": "ff"}[on]
         if on in ("sf", "ff") and x is None:
             raise ValueError(
                 f"on={on!r} needs the time x=; for a B-life use on='qf' "
