@@ -59,7 +59,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import (
     fixed_order_dot,
     numerical_gradient,
-    numerical_hessian,
+    scale_free_hessian,
     standard_errors_of,
 )
 from surpyval.utils.no_maximum import (
@@ -1088,7 +1088,14 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
         n_obs = float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum())
         with np.errstate(all="ignore"):
             steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
-            information = numerical_hessian(neg_ll, gamma, step=steps)
+            # In steps found from the likelihood's own curvature: the
+            # intercept moves by ``-gamma_1 log k`` when the times are
+            # multiplied by ``k``, and in the fixed steps the spline
+            # coefficients' standard errors moved by 8e-4 between times
+            # in hours and in seconds.
+            information = scale_free_hessian(
+                neg_ll, gamma, fallback_step=steps
+            )
             try:
                 cov = np.linalg.inv(information)
                 if np.all(np.isfinite(cov)):

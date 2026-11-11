@@ -496,7 +496,10 @@ class RestrictedMeanMixin:
         value = self._rmst_at(taus, rows_c, params)
         with np.errstate(all="ignore"):
             se = delta_method_se(
-                lambda p: self._rmst_at(taus, rows_c, p), params, cov
+                lambda p: self._rmst_at(taus, rows_c, p),
+                params,
+                cov,
+                scale_free=True,
             )
         return value, np.asarray(se, dtype=float)
 
@@ -799,7 +802,11 @@ class RestrictedMeanMixin:
         mu_b = float(self._rmst_at(t, rb, params)[0])
         diff = mu_a - mu_b
         with np.errstate(all="ignore"):
-            se = float(np.ravel(delta_method_se(diff_of, params, cov))[0])
+            se = float(
+                np.ravel(
+                    delta_method_se(diff_of, params, cov, scale_free=True)
+                )[0]
+            )
         z_crit = norm.ppf(1 - alpha_ci / 2)
         p_value = (
             float(2.0 * norm.sf(abs(diff) / se)) if se > 0 else float("nan")
