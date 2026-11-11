@@ -20,6 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -376,6 +377,7 @@ class ProportionalIntensityNHPP(
 
         return out
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @removed_arguments("0.25", dist="'baseline'")
     @dataframe_covariates
     @takes_unit

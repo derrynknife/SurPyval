@@ -834,6 +834,51 @@ Unreleased
   the time; a wrong distribution for one cause was flagged for that cause
   80% of the time and for the right cause 5.5%).
 
+**Deprecated.**
+
+- Arguments that, given by position, were silently read as something
+  else now warn, with a ``FutureWarning`` (shown wherever the call is
+  made) that says what the value was taken as and the keyword to use.
+  Nothing else changes: each call returns exactly what it did before.
+  Passing the argument by name silences the warning.
+
+  - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
+    ``CoxLewis``, ``HPP``, ``NonParametricCounting``, ``ARA``, ``ARI``,
+    ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+    ``CauseSpecificMCF`` and ``CauseSpecificNHPP`` take the item ids
+    ``i`` second, where every other ``fit(x, c, n, t)`` takes the
+    censoring flags, so ``CrowAMSAA.fit(x, c)`` read the flags as two
+    items with nothing censored: on ``x = [5, 12, 20, 31, 45, 60, 80]``,
+    ``c = [0, 0, 0, 0, 0, 0, 1]`` it gives ``alpha`` 19.99 and ``beta``
+    1.00, where ``fit(x, c=c)`` gives 7.63 and 0.76. The same holds after
+    ``Z`` in ``ProportionalIntensityHPP``, ``ProportionalIntensityNHPP``,
+    ``AndersenGill``, ``PrenticeWilliamsPeterson``, ``WeiLinWeissfeld``
+    and ``CauseSpecificProportionalIntensity`` (``fit``,
+    ``fit_penalised``), and for ``i_col`` in every recurrent
+    ``fit_from_df``. The ids stay a positional data argument
+    (``fit(x, i, c)`` is unchanged), so the warning fires only for the
+    call that cannot be told apart: ``i`` given by position, no ``c``, and
+    values of 0s and 1s. That call will be refused from v0.28; name the
+    argument (``c=`` or ``i=``).
+  - ``Parametric.mean(defective, tau)`` and
+    ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
+    as ``defective`` and ignored it (6.524 on a Weibull fitted to
+    ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
+    mean restricted to 5 (``mean(tau=5)`` is 4.671). ``defective`` will be
+    keyword-only from v0.28.
+  - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
+    ``mean_cb`` takes ``tau`` first. ``alpha_ci`` and the arguments after
+    it will be keyword-only from v0.28.
+  - ``Parametric.random(size, a, b)`` and ``random_data``: every other
+    model's ``random(size, random_state)`` takes the seed second, so
+    ``model.random(10, 42)`` truncated the draws below 42 (every draw
+    ``inf`` on that Weibull). ``a`` and ``b`` will be keyword-only from
+    v0.28.
+  - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
+    axes first, so ``plot(ax)`` drew stacked curves on new axes.
+    ``stacked`` and the arguments after it will be keyword-only from
+    v0.28.
+
 **Changed.**
 
 - **Fine-Gray standard errors are the robust ones by default (an
@@ -930,6 +975,29 @@ Unreleased
   400 hours was ``[783.8, 51.0, 250.5]`` and is now ``[192.8, 1029.9,
   39.5]``. The distribution of the draws is unchanged.
 
+- A saved single-process repairable model keeps its bounds. ``to_dict`` /
+  ``to_json`` of a maximum-likelihood ``HPP``, ``CrowAMSAA``, ``Duane`` or
+  ``CoxLewis`` fit (``ParametricRecurrenceModel``) and of a
+  proportional-intensity fit (``ProportionalIntensityModel``) now store the
+  parameter covariance (``"covariance"``), and the restored model computes
+  ``covariance()``, ``standard_errors()``, ``summary()``, ``param_cb`` and
+  the Wald bounds (``cif_cb``, ``iif_cb``, ``mtbf_cb``, ``cb_tvc``) from
+  it, equal to the fit's. The renewal models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) do the same for
+  ``covariance()``, ``standard_errors()``, the Wald ``param_cb`` and
+  ``summary()``; with the repair parameter on the edge of its range, its
+  interval (a profile-likelihood one) and so ``summary()`` need the data
+  and are refused, saying so. Before, a restored model refused them, while a
+  restored ``CauseSpecificNHPP`` or ``CauseSpecificProportionalIntensity``
+  (whose causes are these same models) gave them. What needs the data is
+  still refused, with a message that says what is and is not available:
+  the likelihood and the information criteria, the diagnostics, ``plot``,
+  Crow's exact bounds, the profile-likelihood intervals and the repair
+  test. The entry is optional on reading (the schema is
+  unchanged): a dictionary saved by an earlier version loads as before and
+  refuses the bounds, saying it holds no covariance; a model with no
+  likelihood (``from_params``, ``how="MSE"``) and a penalised fit save
+  ``null``. No fitted number changes.
 - The renewal models' simulations (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
   (a cumulative hazard past 20) by Newton's method on the cumulative
@@ -1136,6 +1204,97 @@ Unreleased
 
 **Fixed.**
 
+- Standard errors and bounds of the repairable-system models no longer
+  move with the unit of time. The covariance of every Poisson-process fit
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), of the renewal models
+  (``GeneralizedOneRenewal``, ``GeneralizedRenewal``, ``ARA``, ``ARI``),
+  of the proportional-intensity regressions and of the cause-specific
+  models built on them comes from a finite-difference Hessian of the
+  likelihood, whose step was a fraction of each parameter's own size with
+  a floor of 0.01 of a unit. A parameter that is tiny in small units was
+  then stepped by far too much: Duane's scale ``b`` is 3e-4 with times in
+  hours where it is 0.2 in months, and Cox-Lewis's slope 3e-5. On one data
+  set written in months and in hours, the standard error of Duane's
+  ``alpha`` was 0.37272 and 0.37159 (now 0.372722 and 0.372722), a
+  ``cb_tvc`` bound 0.09521 and 0.09558 (now 0.09521 and 0.09521), and the
+  standard error of Cox-Lewis's slope, times the unit, 0.0202494 and
+  0.0202419 (now 0.0202494 and 0.0202493); in seconds it was 1.6e-82
+  (now 0.0202493). The steps now come from the likelihood itself
+  (``surpyval.utils.linalg.scale_free_hessian``): each parameter is
+  stepped by a fixed fraction of the distance over which the likelihood
+  falls, the differences are taken in coordinates in which the Hessian is
+  the identity (so strongly correlated parameters lose nothing to
+  cancellation), and two step sizes more are combined to cancel the
+  leading errors. Against the exact Hessian of a power-law process the
+  standard errors agree to 1e-8 from years to seconds.
+
+  The Wald bounds on the curves (``cif_cb``, ``iif_cb``, ``mtbf_cb``,
+  ``cb_tvc`` and the cause-specific ones) take the curve's gradient by
+  finite differences too, with the same floor; their steps are now a
+  fraction of each parameter's standard error (``delta_method_se(...,
+  scale_free=True)``), which moves with the unit. For Cox-Lewis in
+  seconds (a slope of 9e-9 against a step of 6e-8) a ``cif_cb`` taken at
+  the estimates the fit in months implies was ``[2.3e-36, 8.7e36]`` where
+  it should be ``[2.32363, 8.58449]``; it is now ``[2.32363, 8.58449]``.
+  Every bound of these models now rescales with the unit exactly (to
+  1e-6, the test's tolerance, at the same estimates). The estimates and
+  the likelihood were unit-free already and are unchanged; the shared
+  ``numerical_hessian``, ``delta_method_se``'s default and every other
+  family's covariance and bounds are unchanged.
+
+  **Numbers that move** (the conformance fixtures, in their own units;
+  nothing else in the refactor snapshot changes): every standard error,
+  ``summary()`` interval, ``param_cb``, saved covariance and Wald bound of
+  the models below, by at most the relative amount shown (leaving out
+  covariances that are zero to rounding, such as -4.7e-8 now 1.5e-10).
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 34 14 52
+
+     * - Model
+       - At most
+       - For example (before, after)
+     * - ``HPP``
+       - 1.9e-8
+       - se of the rate: 0.0200308401, 0.0200308404
+     * - ``CrowAMSAA``
+       - 3.7e-8
+       - a ``cif_cb`` lower bound: 0.0295659296, 0.0295659307
+     * - ``Duane``
+       - 1.2e-7
+       - se of ``alpha``: 0.2152070692, 0.2152070859; upper bound of
+         ``b``: 1.1050234, 1.1050236
+     * - ``CoxLewis``
+       - 8.6e-8
+       - upper bound of ``beta``: 0.00633419161, 0.00633419215
+     * - ``GeneralizedOneRenewal``
+       - 2.9e-7
+       - se of ``alpha``: 0.8820289, 0.8820292
+     * - ``GeneralizedRenewal``, ``ARA``
+       - 6.2e-8
+       - se of ``alpha``: 1.8676783, 1.8676784
+     * - ``ARI``
+       - 2.9e-7
+       - se of ``beta``: 0.12108621, 0.12108624
+     * - ``ProportionalIntensityHPP``
+       - 1.5e-6
+       - upper bound of the coefficient: 0.8899106, 0.8899119
+     * - ``ProportionalIntensityNHPP``
+       - 7.2e-7
+       - upper bound of the coefficient: 0.8899107, 0.8899114
+     * - ``CauseSpecificNHPP``
+       - 1.8e-7
+       - a saved covariance entry: 1.8846813, 1.8846816
+     * - ``CauseSpecificProportionalIntensity``
+       - 9.4e-4
+       - one cause's coefficient variance: 1.2010818, 1.2000000 (its
+         exact value is 1/1 + 1/5 = 1.2, the variance of a log rate
+         ratio of 1 and 5 events); its ``cif_cb`` upper bound 0.81464,
+         0.81453; its coefficient's interval -2.14800 to 2.14800, now
+         -2.14703 to 2.14703
+
+  A covariance costs about three times the likelihood evaluations it did.
 - Bayesian fits keep their digits in both tails, for every engine (grid,
   Laplace, draws from another sampler) and the offset, limited-failure and
   zero-inflated forms. ``ff`` is the posterior average of each point's own

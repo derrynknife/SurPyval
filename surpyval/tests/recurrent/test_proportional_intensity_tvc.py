@@ -462,26 +462,12 @@ def test_the_order_of_the_rows_does_not_matter(name):
     np.testing.assert_array_equal(model.coeffs, ref.coeffs)
 
 
-# Duane's bounds under a change of unit are checked apart, below.
-_UNIT_BOUNDS = pytest.mark.xfail(
-    strict=True,
-    reason="Duane's bounds move with the time unit: in hours its scale b "
-    "is 3e-4, and the numerical Hessian behind covariance() (shared by "
-    "the fixed-covariate fit, whose standard errors move too) is then "
-    "accurate to about 0.3% only (se of alpha 0.37272 in months, 0.37159 "
-    "in hours; a cb_tvc bound 0.09558 against 0.09521). The estimates "
-    "and the likelihood are unit-free; Crow-AMSAA, the same model, is "
-    "unit-free in its bounds too.",
-)
-
-
 @pytest.mark.parametrize(
     "name, bounds",
     [
         ("HPP", True),
         ("CrowAMSAA", True),
-        ("Duane", False),
-        pytest.param("Duane", True, marks=_UNIT_BOUNDS),
+        ("Duane", True),
     ],
 )
 def test_a_change_of_time_unit_rescales_time_only(name, bounds):
@@ -944,9 +930,13 @@ def test_a_round_trip_keeps_every_prediction(name):
     assert restored.maximum == "verified"
     np.testing.assert_array_equal(restored.params, model.params)
     assert surpyval.from_json(model.to_json()).to_dict() == model.to_dict()
-    # A restored model carries no likelihood: its bounds say so.
+    # A restored model keeps the covariance, so the Wald bounds, but no
+    # likelihood: what needs it says so.
+    np.testing.assert_array_equal(
+        restored.cb_tvc(t, plan), model.cb_tvc(t, plan)
+    )
     with pytest.raises(ValueError, match="restored|from_dict"):
-        restored.cb_tvc(t, plan)
+        restored.aic()
 
     # pickle keeps the likelihood, so the inference too.
     clone = pickle.loads(pickle.dumps(model))
