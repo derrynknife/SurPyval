@@ -255,6 +255,7 @@ _LAZY = {
             "ARI",
             "CauseSpecificMCF",
             "CauseSpecificNHPP",
+            "CauseSpecificProportionalIntensity",
             "CoxLewis",
             "CrowAMSAA",
             "Duane",
@@ -435,6 +436,7 @@ if TYPE_CHECKING:
         HPP,
         CauseSpecificMCF,
         CauseSpecificNHPP,
+        CauseSpecificProportionalIntensity,
         CoxLewis,
         CrowAMSAA,
         Duane,
@@ -443,14 +445,6 @@ if TYPE_CHECKING:
         NonParametricCounting,
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
-    )
-    from surpyval.univariate.pseudo import (
-        PseudoRegressionResult,
-        pseudo_cif,
-        pseudo_regression,
-        pseudo_regression_from_df,
-        pseudo_rmst,
-        pseudo_survival,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
@@ -463,6 +457,14 @@ if TYPE_CHECKING:
         JointModel,
         JointPH,
         WeibullJointPH,
+    )
+    from surpyval.univariate.pseudo import (
+        PseudoRegressionResult,
+        pseudo_cif,
+        pseudo_regression,
+        pseudo_regression_from_df,
+        pseudo_rmst,
+        pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
     from surpyval.univariate.regression.distributional import (

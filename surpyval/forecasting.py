@@ -536,6 +536,9 @@ def _recurrent_kind(model: Any) -> str | None:
     from surpyval.recurrent.competing_risks.parametric import (
         CauseSpecificNHPP,
     )
+    from surpyval.recurrent.competing_risks.regression import (
+        CauseSpecificProportionalIntensity,
+    )
     from surpyval.recurrent.parametric.parametric_recurrence import (
         ParametricRecurrenceModel,
     )
@@ -544,6 +547,10 @@ def _recurrent_kind(model: Any) -> str | None:
     )
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
+    if isinstance(model, CauseSpecificProportionalIntensity):
+        # Several event types with covariates: not forecast yet. The
+        # model's own refusal says what to use instead.
+        model.forecast()
     if isinstance(model, RenewalModel):
         return "renewal"
     if isinstance(

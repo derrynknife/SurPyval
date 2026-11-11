@@ -93,6 +93,10 @@ _TAGGED_MODELS: dict[str, str] = {
     "CauseSpecificNHPP": (
         "surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp"
     ),
+    "CauseSpecificProportionalIntensity": (
+        "surpyval.recurrent.competing_risks.regression"
+        ".cause_specific_proportional_intensity"
+    ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
     "ParametricRecurrenceModel": (
         "surpyval.recurrent.parametric.parametric_recurrence"
