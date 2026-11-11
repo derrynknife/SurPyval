@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.removed_names import (
     column_arguments,
     removed_message,
@@ -392,6 +393,7 @@ class RecurrentDataFrameMixin:
     row per event (or end of observation) and a column of unit ids."""
 
     @fitter_method
+    @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n")
     @takes_unit
     def fit_from_df(
@@ -522,6 +524,9 @@ class RecurrentRegressionDataFrameMixin:
     a column of unit ids and covariate columns."""
 
     @fitter_method
+    @ambiguous_item_ids(
+        "a regression's fit_from_df(df, x_col, Z_cols, c_col)", column=True
+    )
     @column_arguments("x", "i", "c", "n")
     @takes_unit
     def fit_from_df(

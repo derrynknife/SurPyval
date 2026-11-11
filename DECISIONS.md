@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Arguments that a positional call silently misreads (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A positional argument that a method reads as something other than what the same place holds in the package's other methods of that name warns with a `FutureWarning` (through `surpyval.utils.deprecation.positional_option`) and becomes keyword-only from v0.28: `Parametric.mean`'s and `ParametricCompetingRisks.mean`'s `defective`, `Parametric.mean_cb`'s `alpha_ci`, `Parametric.random`'s and `random_data`'s `a` (and `b`), and `CompetingRisks.plot`'s `stacked`. The result is unchanged meanwhile. | proposed | Each gave a different number with no warning to a caller who used another family's order (`mean(5)` ignored the 5). A `FutureWarning` rather than a `DeprecationWarning`, which Python hides outside `__main__`, since the harm is a silently wrong result. Only the arguments that are misread are covered; making every option after the data keyword-only is a separate, wider decision. | done |
+| The recurrent fits keep `i` as a positional data argument (`fit(x, i, c, n)`, `fit(x, Z, i, c)`, `fit_from_df(df, x_col, i_col, c_col)`), and warn only for the call that cannot be told apart from `fit(x, c)`: `i` by position, no `c`, and values of 0s and 1s (`ambiguous_item_ids`). That call is to be refused from v0.28, asking for the argument by name. | proposed | Warning on every positional `i` would flag the common, correct `fit(x, i)` and `fit(x, i, c)` (and downstream test suites that fail on SurPyval's warnings), while the misread is only `CrowAMSAA.fit(x, c)`: alpha 19.99 in place of 7.63. Ids all 0 or all 1 (one item) are left alone, as flags they give the same fit or mark every row censored. | done |
+| Not covered, because the call already raises: `Parametric.plot(ax)` and `MixtureModel.plot(ax)` (`heuristic` is checked), `Parametric.mean_cb(tau)` with `tau >= 1`, `bootstrap_cb(x, alpha_ci)` (`bound` is checked), `NonParametric.fit_from_ecdf(x, F)` (`R` must not rise), `CoxPH.fit(x, Z, c, n, t)` with a two-column `t`. Left for the wider keyword-only decision: a regression's required `Z` after the query (`model.rmst(5, 0.05)` reads 0.05 as `Z` on a one-covariate model), and `Weibull.fit_from_ecdf(x, R)` with a falling curve, which fits silently. | proposed | The first group fails with a message; the second needs either a check of the input or the keyword-only change. | open |
+
 ### A public home for the regression family names (12 Nov 2026)
 
 | Decision | By | Reason | Status |
