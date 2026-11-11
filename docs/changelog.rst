@@ -813,7 +813,9 @@ Unreleased
   weights are estimated and whose risk sets repeat units; the robust one
   is the method's own and the reference software's.
 
-  Neither is always the larger. The numbers that change, standard errors
+  The robust standard errors are mostly smaller than the model-based ones,
+  but not always: on the stored ``crr`` fits, 17 of 22 coefficients get a
+  smaller standard error. The numbers that change, standard errors
   model-based → robust (every Wald interval, ``z`` and ``p`` moves with
   them):
 
@@ -829,7 +831,9 @@ Unreleased
     error in ``FineGrayModel.summary``'s (no censoring) 0.1741 → 0.1727.
 
   Over the stored ``crr`` fits the robust standard errors are from 25%
-  smaller to 17% larger than the model-based ones. In a simulation from
+  smaller to 17% larger than the model-based ones (the larger ones are
+  all for death in PBC: ``age``, ``log_bili`` and ``female``, and ``age``
+  and ``female`` again with the times rounded to half years). In a simulation from
   the model (n = 200, 47% censored, 1000 replicates) the 95% Wald
   intervals covered the two coefficients 94.3% and 93.2% of the time with
   the robust variance and 94.8% and 94.3% with the model-based one.

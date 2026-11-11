@@ -732,9 +732,9 @@ reports by default, and the one R's ``cmprsk::crr`` reports (its ``var``):
 use it. The *model-based* variance, the inverse of the curvature of
 :math:`\ell` (``crr``'s ``invinf``), is ``covariance(robust=False)``,
 ``standard_errors(robust=False)`` and ``summary(robust=False)``; it was the
-only one before version 0.27. Neither is always the larger: on the
-reference data sets the robust standard errors are between 25% smaller and
-17% larger than the model-based ones.
+only one before version 0.27. The robust standard errors are mostly the
+smaller, but not always: on the reference data sets 17 of 22 are smaller,
+and they range from 25% smaller to 17% larger than the model-based ones.
 
 In symbols, with :math:`\hat{A} = -\partial^2 \ell / \partial\gamma\,
 \partial\gamma'` the information at :math:`\hat\gamma`, the model-based
