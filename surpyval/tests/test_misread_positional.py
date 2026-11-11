@@ -35,7 +35,6 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
 
 matplotlib.use("Agg")
 
@@ -103,7 +102,7 @@ def test_crow_amsaa_example():
     message = messages[0]
     assert message.startswith("CrowAMSAA.fit: the second positional")
     assert "'i'" in message and "c=..." in message and "i=..." in message
-    assert f"v{REMOVED_IN_NEXT}" in message
+    assert "ambiguous" in message and " v0." not in message
     named = _quiet(lambda: sp.CrowAMSAA.fit(X, c=C))
     np.testing.assert_allclose(named.params, [7.6347, 0.76267], rtol=1e-4)
 
