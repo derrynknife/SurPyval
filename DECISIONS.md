@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Distribution and life-model aliases (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Keep all four other names: `Gauss` (for `Normal`), `Galton` (for `LogNormal`), and `life_models.Exponential` and `life_models.Arrhenius`. None is deprecated. A model fitted with an alias saves and loads as the alias, and is otherwise identical to one fitted with the canonical name. | maintainer | The names are in use and cost nothing to keep, as long as an alias never behaves differently. | done |
+| The package identifies a distribution or life model by its `canonical_name` (the name, with an alias resolved), never by `name`: registries, comparisons, candidate lists and the diagnostics' advice. `name` stays the one the user chose, for the `repr`, `to_dict` and plot titles. | proposed | One property derived from the name keeps old pickles working and gives one rule for new code; the alternative (`name` canonical, a separate display name) would have changed what `dist.name` says for every alias. | done |
+| `life_models.Arrhenius` becomes its own instance of the exponential life model, with the name `Arrhenius`, so it saves and loads as the name used, as the distribution aliases do. Before, it was `life_models.Exponential` itself and saved as `Exponential`; such dictionaries still load, as `Exponential`. `Arrhenius is Exponential` is no longer true. | proposed | The same rule for all four aliases is the least surprising; a model built with `Arrhenius` that printed and saved as `Exponential` surprised. The cost, an identity check between the two, has no use in the package and `canonical_name` replaces it. | done |
+
 ### The interface at 1.0 (12 Nov 2026)
 
 | Decision | By | Reason | Status |
