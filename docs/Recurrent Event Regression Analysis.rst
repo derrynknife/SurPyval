@@ -341,9 +341,158 @@ estimated jointly and a wrong baseline can bias the coefficients.
   estimates remain sensible but the model-based standard errors tend to be
   too small, and the goodness-of-fit test and martingale residuals are the
   place to look for it.
-- **Scope.** Covariates are available for the HPP and NHPP intensity models.
-  The imperfect-repair (renewal) models, the cause-specific (marked) models
-  and gapped (multi-window) observation do not take covariates.
+- **Scope.** Covariates are available for the HPP and NHPP intensity models,
+  and for the models with an unspecified baseline in the next section.
+  The imperfect-repair (renewal) models and gapped (multi-window)
+  observation of the parametric models do not take covariates.
+
+Without a baseline shape: four ways to treat a repeat event
+-----------------------------------------------------------
+
+The models above give the baseline intensity a formula. When you only care
+how the covariates change the rate, and would rather not say what the
+baseline looks like, the baseline can be left unspecified, exactly as a Cox
+model leaves the baseline hazard of a single event unspecified. The
+coefficients are then estimated from the *order* in which the items had
+their events: at each event the model asks which of the items that could
+have had it did.
+
+"Could have had it" is the whole question, because an item that has had an
+event is still there and can have another. There are four standard answers.
+They are four different statements about what a repeat event is, so they
+answer different questions, and choosing between them is a matter of the
+subject, not of fit.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 41 41
+
+   * - Model
+     - What it says about repeat events
+     - The question it answers
+   * - Andersen-Gill [AndersenGill1982]_
+     - An event does not change the item. Its rate at any age depends on
+       its covariates and its age, not on how many events it has had or
+       when. One baseline for every event.
+     - How do the covariates change the *rate of events*?
+   * - Prentice-Williams-Peterson, total time
+     - An event changes the item. The rate of a second event is its own
+       function of age, different from that of a first; an item cannot have
+       a second before its first.
+     - Among items that have had :math:`k - 1` events, how do the covariates
+       change the rate of the :math:`k`-th, at a given age?
+   * - Prentice-Williams-Peterson, gap time
+     - The same, but the clock restarts at each event: what matters is the
+       time since the last event, not the age.
+     - How do the covariates change the *time between* one event and the
+       next?
+   * - Wei-Lin-Weissfeld
+     - Nothing about how one event leads to the next. Each of "the time
+       from the start to the first event", "... to the second event", and
+       so on, is modelled on its own.
+     - How do the covariates change the time, *from the start*, until the
+       :math:`k`-th event?
+
+Two examples make the difference concrete.
+
+*A fleet of pumps.* Pumps trip and are restarted. If a restart leaves a
+pump as it was, the number of earlier trips tells you nothing more than
+its age and duty do, and the Andersen-Gill model is the natural one: "an
+abrasive duty multiplies the trip rate by 1.8". If instead each trip is
+followed by a repair that changes the pump, so that a pump on its third
+repair is not the machine it was when new, each repair number deserves a
+baseline of its own: the gap-time Prentice-Williams-Peterson model says
+"an abrasive duty shortens the time from one repair to the next", with a
+different typical gap after the first, second and third repair.
+
+*A trial of a treatment for a relapsing illness.* Patients are randomised
+at time 0 and may relapse several times. The Andersen-Gill model answers
+"does the treatment lower the relapse rate?". The conditional models answer
+"among patients who have relapsed once, does the treatment delay the
+second relapse?", which is a question about a selected group: patients who
+relapsed early despite treatment are not like those who relapsed on
+placebo. The Wei-Lin-Weissfeld model keeps the comparison the trial
+randomised: every patient counts towards "time from randomisation to the
+second relapse", whether or not they have had the first.
+
+In formulas, with :math:`Y_i(t)` equal to 1 while item :math:`i` is "at
+risk" and 0 otherwise, each model is
+
+.. math::
+
+    \lambda_{ik}(t \mid Z_i) = Y_{ik}(t)\, \lambda_{0k}(t)\, e^{\beta' Z_i}
+
+and they differ in the baseline and in the risk indicator:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 52
+
+   * - Model
+     - Baseline
+     - Item :math:`i` is at risk of event :math:`k` ...
+   * - Andersen-Gill
+     - :math:`\lambda_0(t)`, shared
+     - whenever it is under observation.
+   * - PWP, total time
+     - :math:`\lambda_{0k}(t)`, :math:`t` the age
+     - from its :math:`(k-1)`-th event to its :math:`k`-th.
+   * - PWP, gap time
+     - :math:`\lambda_{0k}(u)`, :math:`u` the time since the last event
+     - from its :math:`(k-1)`-th event to its :math:`k`-th.
+   * - Wei-Lin-Weissfeld
+     - :math:`\lambda_{0k}(t)`, :math:`t` from the start
+     - from the start until its :math:`k`-th event.
+
+Each is fitted by the Cox partial likelihood on rows laid out to match:
+one row per interval at risk, in the stratum of its event number where the
+baseline depends on it [Therneau2000]_. So the tie handling, the treatment
+of a coefficient the data cannot determine and the check that a maximum
+was reached are those of the Cox model.
+
+.. rubric:: Why the standard errors are "robust"
+
+One item contributes several rows, and they are not independent: a pump
+that trips often does so for reasons the covariates do not record (its
+installation, its operator), and a patient who relapses early tends to
+relapse again. The partial likelihood's own standard errors take every row
+as a separate piece of evidence, so when items differ in such unrecorded
+ways they are too small, often by a wide margin. The remedy keeps the
+estimates and replaces the standard errors: add up, item by item, how much
+each item pulls the estimate (its score residuals), and measure the spread
+of those pulls *between items*. Items are independent of each other even
+when an item's events are not.
+
+This is the sandwich estimator with each item a cluster [LinWei1989]_. If
+:math:`A` is the information of the partial likelihood and :math:`s_i` is
+item :math:`i`'s summed score residual,
+
+.. math::
+
+    V_{robust} = A^{-1} \Big( \sum_i s_i s_i^{\top} \Big) A^{-1},
+
+where the model-based covariance is :math:`A^{-1}` alone. With it the
+Andersen-Gill coefficients remain valid as effects on the *mean number of
+events* even when events are not Poisson [LinWeiYangYing2000]_, and it is
+what makes the Wei-Lin-Weissfeld model usable at all, since there every
+item appears in every stratum [WeiLinWeissfeld1989]_. SurPyval reports the
+robust standard errors by default for all four models, and the model-based
+ones beside them; the two being close is itself a finding (the covariates
+explain the differences between items).
+
+.. rubric:: What these models do not give
+
+- **A formula for the baseline.** The cumulative baseline is a step
+  function known only up to the last event, so it cannot be extrapolated.
+  To forecast beyond the data, use the parametric proportional-intensity
+  models above.
+- **A simple expected count from the conditional and marginal models.**
+  The Andersen-Gill cumulative baseline, scaled by the covariates, is the
+  expected number of events by an age. The others give the cumulative
+  hazard of one event number, not a count.
+- **Later events for free.** A baseline per event number is estimated from
+  the items that reached that number, which soon become few. It is usual
+  to model the first few events only [PrenticeWilliamsPeterson1981]_.
 
 Model checking
 --------------
@@ -388,6 +537,10 @@ covariate-conditional cumulative intensity with confidence bounds — see the
 References
 ----------
 
+.. [AndersenGill1982] Andersen, P.K. and Gill, R.D., 1982. Cox's regression
+   model for counting processes: a large sample study. *The Annals of
+   Statistics*, 10(4), pp.1100-1120.
+
 .. [Cook2007r] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
    Recurrent Events*. Springer.
 
@@ -397,3 +550,24 @@ References
 
 .. [Rigdon2000r] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
    Reliability of Repairable Systems*. John Wiley & Sons.
+
+.. [LinWei1989] Lin, D.Y. and Wei, L.J., 1989. The robust inference for the
+   Cox proportional hazards model. *Journal of the American Statistical
+   Association*, 84(408), pp.1074-1078.
+
+.. [LinWeiYangYing2000] Lin, D.Y., Wei, L.J., Yang, I. and Ying, Z., 2000.
+   Semiparametric regression for the mean and rate functions of recurrent
+   events. *Journal of the Royal Statistical Society: Series B*, 62(4),
+   pp.711-730.
+
+.. [PrenticeWilliamsPeterson1981] Prentice, R.L., Williams, B.J. and
+   Peterson, A.V., 1981. On the regression analysis of multivariate failure
+   time data. *Biometrika*, 68(2), pp.373-379.
+
+.. [Therneau2000] Therneau, T.M. and Grambsch, P.M., 2000. *Modeling
+   Survival Data: Extending the Cox Model*. Springer. (Chapter 8.)
+
+.. [WeiLinWeissfeld1989] Wei, L.J., Lin, D.Y. and Weissfeld, L., 1989.
+   Regression analysis of multivariate incomplete failure time data by
+   modeling marginal distributions. *Journal of the American Statistical
+   Association*, 84(408), pp.1065-1073.

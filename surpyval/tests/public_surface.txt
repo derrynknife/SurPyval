@@ -9,6 +9,7 @@ surpyval.AcceleratedLife
 surpyval.AdditiveHazards
 surpyval.AdditiveHazardsFitter
 surpyval.AdditiveHazardsModel
+surpyval.AndersenGill
 surpyval.Bernoulli
 surpyval.Beta
 surpyval.Beta4
@@ -130,6 +131,7 @@ surpyval.ParametricRegressionModel
 surpyval.PenaltyPath
 surpyval.Poisson
 surpyval.PredictionScores
+surpyval.PrenticeWilliamsPeterson
 surpyval.ProportionalHazardsFitter
 surpyval.ProportionalIntensityHPP
 surpyval.ProportionalIntensityNHPP
@@ -149,6 +151,7 @@ surpyval.StepValuedError
 surpyval.SurpyvalData
 surpyval.Turnbull
 surpyval.Uniform
+surpyval.WeiLinWeissfeld
 surpyval.Weibull
 surpyval.WeibullAFT
 surpyval.WeibullAH
@@ -308,6 +311,7 @@ surpyval.pymc.prior_from_spec
 surpyval.pymc.to_surpyval
 surpyval.recurrent.ARA
 surpyval.recurrent.ARI
+surpyval.recurrent.AndersenGill
 surpyval.recurrent.CauseSpecificMCF
 surpyval.recurrent.CauseSpecificNHPP
 surpyval.recurrent.CauseSpecificProportionalIntensity
@@ -322,10 +326,12 @@ surpyval.recurrent.HPP
 surpyval.recurrent.InterventionTestResult
 surpyval.recurrent.MCFDiffResult
 surpyval.recurrent.NonParametricCounting
+surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP
 surpyval.recurrent.RenewalModel
 surpyval.recurrent.TrendTestResult
+surpyval.recurrent.WeiLinWeissfeld
 surpyval.recurrent.intervention_test
 surpyval.recurrent.laplace
 surpyval.recurrent.mcf_diff

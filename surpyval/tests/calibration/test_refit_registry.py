@@ -1413,6 +1413,19 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        (
+            "AndersenGill",
+            "PrenticeWilliamsPeterson",
+            "PrenticeWilliamsPeterson[gap]",
+            "WeiLinWeissfeld",
+        ),
+        "no simulation from the model: the baseline is a step function "
+        "with no shape beyond the data, and the conditional and marginal "
+        "models do not define a process to draw an item's history from. "
+        "Recovery from simulated processes is tested in "
+        "tests/recurrent/test_recurrent_cox.py",
+    ),
     "Weibull[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "

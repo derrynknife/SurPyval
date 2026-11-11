@@ -759,6 +759,15 @@ def _search_cox(model, data):
     return [search.in_covariate_units(_columns(kept), Z[:, kept])]
 
 
+def _search_recurrent_cox(model, data):
+    """The Cox fit of the layout's rows (which are not the fixture's rows,
+    so the search stays in the fit's own covariate units). A fit whose
+    every coefficient is aliased searched nothing."""
+    if np.isnan(np.asarray(model.params, dtype=float)).all():
+        return None
+    return _search_cox(model.cox, None)
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -1174,6 +1183,7 @@ SEARCHES: dict[str, Callable] = {
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricRecurrenceModel": _search_recurrence,
     "ProportionalIntensityModel": _search_recurrence,
+    "RecurrentCoxModel": _search_recurrent_cox,
     "RenewalModel": _search_recurrence,
     "CauseSpecificNHPP": _search_cause_specific_nhpp,
     # (each cause's own proportional-intensity model, as above)

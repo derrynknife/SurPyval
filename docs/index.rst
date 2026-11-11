@@ -135,7 +135,9 @@ so on.
      - Repairable items that fail again and again: the mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
        (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
-       ARI), trend tests, proportional-intensity regression, and whether
+       ARI), trend tests, proportional-intensity regression (parametric,
+       and the Andersen-Gill, Prentice-Williams-Peterson and
+       Wei-Lin-Weissfeld models with robust standard errors), and whether
        a corrective action changed the failure rate.
      - :doc:`Recurrent Event Analysis` /
        :doc:`Recurrent Event Modelling with SurPyval`;

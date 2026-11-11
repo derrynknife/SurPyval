@@ -104,6 +104,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "ProportionalIntensityModel": (
         "surpyval.recurrent.regression.proportional_intensity"
     ),
+    "RecurrentCoxModel": "surpyval.recurrent.regression.recurrent_cox",
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
     "DegradationModel": "surpyval.degradation.degradation_model",
     "InducedFailureDistribution": "surpyval.degradation.rul",

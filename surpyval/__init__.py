@@ -254,6 +254,7 @@ _LAZY = {
         (
             "ARA",
             "ARI",
+            "AndersenGill",
             "CauseSpecificMCF",
             "CauseSpecificNHPP",
             "CauseSpecificProportionalIntensity",
@@ -264,8 +265,10 @@ _LAZY = {
             "GeneralizedRenewal",
             "HPP",
             "NonParametricCounting",
+            "PrenticeWilliamsPeterson",
             "ProportionalIntensityHPP",
             "ProportionalIntensityNHPP",
+            "WeiLinWeissfeld",
         ),
         "surpyval.recurrent",
     ),
@@ -435,6 +438,7 @@ if TYPE_CHECKING:
         ARA,
         ARI,
         HPP,
+        AndersenGill,
         CauseSpecificMCF,
         CauseSpecificNHPP,
         CauseSpecificProportionalIntensity,
@@ -444,8 +448,10 @@ if TYPE_CHECKING:
         GeneralizedOneRenewal,
         GeneralizedRenewal,
         NonParametricCounting,
+        PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
+        WeiLinWeissfeld,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
