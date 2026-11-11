@@ -789,6 +789,73 @@ Unreleased
 
 **Changed.**
 
+- **Fine-Gray standard errors are the robust ones by default (an
+  intentional numerical change).** ``FineGray`` (and
+  ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"``)
+  reported model-based standard errors: the inverse information of the
+  weighted partial likelihood, which takes the censoring weights as known
+  (R ``cmprsk::crr``'s ``invinf``). ``covariance()``,
+  ``standard_errors()``, ``p_values``, ``summary()`` (its standard errors,
+  Wald intervals, ``z`` and ``p``) and the printout now use the robust
+  (sandwich) variance Fine and Gray derived, which adds each unit's
+  influence on the estimate, the part through the estimated censoring
+  distribution included: the variance ``crr`` reports (its ``var``) and
+  prints, reproduced to about 1e-7 (relative) on eight stored ``crr``
+  fits, with ties between events of both causes and censorings, with
+  counts (``crr`` given each row ``n`` times) and with no censoring. The
+  coefficients, the likelihood, the baseline and every prediction are
+  unchanged. The model-based variance stays available, under the name the
+  other regressions use for the choice: ``covariance(robust=False)``,
+  ``standard_errors(robust=False)`` and ``summary(robust=False)``; the
+  model-based p-values are the ``p`` column of ``summary(robust=False)``.
+  The reason for the change of default (design principle 15): the
+  model-based variance is not the variance of this estimator, whose
+  weights are estimated and whose risk sets repeat units; the robust one
+  is the method's own and the reference software's.
+
+  Neither is always the larger. The numbers that change, standard errors
+  model-based → robust (every Wald interval, ``z`` and ``p`` moves with
+  them):
+
+  - the ``competing`` reference data, cause 1 (``group``, ``z``):
+    0.33147, 0.16439 → 0.30823, 0.15600; ``p`` 0.0172, 0.4443 → 0.0104,
+    0.4202;
+  - the same, cause 2: 0.44598, 0.24453 → 0.43318, 0.20337; ``p``
+    0.0355, 0.3282 → 0.0304, 0.2397;
+  - PBC, death (``drug``, ``age``, ``log_bili``, ``female``): 0.17603,
+    0.00818, 0.08971, 0.23463 → 0.17584, 0.00959, 0.09410, 0.26680;
+  - the docstring examples: the censored one's variance
+    (``FineGrayModel.covariance``) 0.04419 → 0.04333, and the standard
+    error in ``FineGrayModel.summary``'s (no censoring) 0.1741 → 0.1727.
+
+  Over the stored ``crr`` fits the robust standard errors are from 25%
+  smaller to 17% larger than the model-based ones. In a simulation from
+  the model (n = 200, 47% censored, 1000 replicates) the 95% Wald
+  intervals covered the two coefficients 94.3% and 93.2% of the time with
+  the robust variance and 94.8% and 94.3% with the model-based one.
+
+  What else follows:
+
+  - A saved model's dict holds both: ``"covariance"`` (and ``"se"``,
+    ``"p_values"``) the robust one, as ``covariance()``, and
+    ``"model_covariance"``. A dict saved by 0.26 or earlier holds only the
+    model-based covariance, and the robust one cannot be rebuilt without
+    the data: it loads with its predictions and ``covariance(robust=False)``
+    as they were, while ``covariance()``, ``standard_errors()`` and
+    ``summary()`` refuse, saying to ask for ``robust=False`` or refit, and
+    ``p_values`` is ``nan`` (the model-based ones are in
+    ``summary(robust=False)``).
+  - A fit with weights ``w`` is unchanged: its covariance is the robust
+    one that holds the censoring distribution fixed (R's ``coxph`` on
+    ``finegray``'s data), so with censoring a fit with ``w = 1`` and a fit
+    without ``w`` report slightly different standard errors. It has no
+    model-based covariance: ``robust=False`` is refused.
+  - Where a coefficient runs off (a fit that warns "No finite maximum"),
+    the robust covariance of the other coefficients can be ``nan`` too,
+    where a risk set's sum underflows.
+  - ``FineGrayModel.p_values`` is computed in the tail (``2 * norm.sf``),
+    as ``summary()``'s, so a p-value below 1e-16 is no longer 0.
+
 - The renewal models' simulations (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
   (a cumulative hazard past 20) by Newton's method on the cumulative

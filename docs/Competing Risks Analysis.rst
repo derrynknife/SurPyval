@@ -709,21 +709,81 @@ coefficients maximise the weighted partial log-likelihood
 
 with :math:`n_i` the count of each row. (Tied event times are handled by
 this Breslow form: each tied event sees the same weighted risk set.) SurPyval's
-``FineGray`` maximises this with BFGS (exact gradients by automatic
-differentiation), reports standard errors from the inverse of the Hessian of
-:math:`\ell` at the optimum, and estimates the baseline by the Breslow-type
-increments :math:`\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
+``FineGray`` maximises this by Newton-Raphson and estimates the baseline by
+the Breslow-type increments :math:`\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
 n_j\, e^{Z_j\hat{\gamma}}`. The fitted CIF is a step function, flat before
 the first and after the last cause-:math:`k` event time. In time order the
 weighted risk set at :math:`t` is a suffix of the rows (:math:`x_j \geq t`)
 plus :math:`\hat{G}(t^-)` times a prefix of the competing failures, each
 weighted :math:`1/\hat{G}(x_j^-)`, so every sum is a cumulative sum and a fit
 takes time and memory linear in the number of rows (after a sort): about a
-second at :math:`10^5` rows and three covariates. Those standard errors
-are the model-based (inverse information) ones; the robust sandwich variance
-that Fine and Gray derived to account for the estimated weights is not
-implemented, so treat the reported ``standard_errors()`` and ``p_values``
-as approximate.
+second at :math:`10^5` rows and three covariates.
+
+**Standard errors.** The weights :math:`w_i(t)` are not known: they are
+built from :math:`\hat{G}`, itself estimated from the same data. The
+curvature of :math:`\ell` alone treats them as known, and treats the rows
+of the weighted risk sets as independent, which they are not (a unit that
+failed from a competing cause appears in every later risk set). Fine and
+Gray therefore derived a *robust*, or sandwich, variance, which adds up each
+unit's whole influence on the estimate: its own events and time at risk,
+and what it contributes to :math:`\hat{G}`. This is the variance SurPyval
+reports by default, and the one R's ``cmprsk::crr`` reports (its ``var``):
+``covariance()``, ``standard_errors()``, ``p_values`` and ``summary()`` all
+use it. The *model-based* variance, the inverse of the curvature of
+:math:`\ell` (``crr``'s ``invinf``), is ``covariance(robust=False)``,
+``standard_errors(robust=False)`` and ``summary(robust=False)``; it was the
+only one before version 0.27. Neither is always the larger: on the
+reference data sets the robust standard errors are between 25% smaller and
+17% larger than the model-based ones.
+
+In symbols, with :math:`\hat{A} = -\partial^2 \ell / \partial\gamma\,
+\partial\gamma'` the information at :math:`\hat\gamma`, the model-based
+covariance is :math:`\hat{A}^{-1}` and the robust one
+
+.. math::
+
+    \widehat{\operatorname{var}}(\hat\gamma) = \hat{A}^{-1}
+        \Big[ \sum_i n_i\, (\hat\eta_i + \hat\psi_i)
+        (\hat\eta_i + \hat\psi_i)' \Big] \hat{A}^{-1} .
+
+:math:`\hat\eta_i` is unit :math:`i`'s score residual over its time in the
+weighted risk sets, with :math:`\bar{Z}(t)` the weighted mean covariate of
+the risk set at :math:`t` and :math:`\delta_i = 1` for a failure from
+cause :math:`k`:
+
+.. math::
+
+    \hat\eta_i = \delta_i \{Z_i - \bar{Z}(x_i)\}
+        - \sum_{t} w_i(t)\, e^{Z_i\hat\gamma}\,
+        \{Z_i - \bar{Z}(t)\}\, \Delta\hat{\Lambda}_{k,0}^*(t) .
+
+:math:`\hat\psi_i` is the unit's part through :math:`\hat{G}`. Let
+:math:`Y(u)` be the number of units with :math:`x_j \geq u`,
+:math:`d^c(u)` the number censored at :math:`u`, and
+
+.. math::
+
+    \hat{q}(u) = \sum_{t \geq u} \Delta\hat{\Lambda}_{k,0}^*(t)
+        \sum_{j:\, x_j < u,\ \text{competing}} w_j(t)\, n_j\,
+        e^{Z_j\hat\gamma}\, \{Z_j - \bar{Z}(t)\},
+
+how much of the score at the later events is carried by the units that
+failed from a competing cause before :math:`u`, whose weights the censoring
+at :math:`u` scales. Then
+
+.. math::
+
+    \hat\psi_i = \frac{\hat{q}(x_i)}{Y(x_i)}\, 1\{i \text{ censored}\}
+        - \sum_{u \leq x_i} \frac{\hat{q}(u)\, d^c(u)}{Y(u)^2},
+
+the sum over the censoring times. With no censoring :math:`\hat\psi_i = 0`
+and the robust covariance is the usual sandwich of the score residuals
+(Lin and Wei's, for the Cox model). SurPyval computes every term with
+cumulative sums, in time linear in the rows, and reproduces ``crr``'s
+``var`` to about :math:`10^{-7}` (relative) on tied, counted and uncensored
+reference data. For a fit with weights ``w`` the robust covariance leaves
+:math:`\hat\psi` out (see :doc:`Weighted Data`), and there is no
+model-based one.
 
 Choosing between them
 ~~~~~~~~~~~~~~~~~~~~~

@@ -5,6 +5,11 @@
   (Lin-Wei) covariance, n = 200, two covariates, 30% censoring; once with
   continuous times (Breslow) and once with times grouped onto a coarse grid
   (heavy ties, Efron's method).
+- **Fine-Gray**: 95% Wald intervals of the coefficients from the robust
+  covariance (Fine and Gray's sandwich, the default), n = 200, two
+  covariates, data from the model itself with about half the rows
+  censored, independently of the covariates. The model-based intervals'
+  coverage is printed beside it, and not checked.
 - **Parametric families**: ``param_cb`` of every parameter of ``WeibullPH``,
   ``WeibullAFT``, ``LogNormalAFT``, ``WeibullPO`` and ``WeibullAH``, each
   simulated from its own model, n = 200.
@@ -65,6 +70,40 @@ def test_cox_coefficient_coverage(tied):
     label = "CoxPH ({})".format("efron, ties" if tied else "breslow")
     check_coverage(lo, hi, beta, 0.95, label + " model-based", slack=slack)
     check_coverage(rlo, rhi, beta, 0.95, label + " robust", slack=slack)
+
+
+def test_fine_gray_coefficient_coverage():
+    rng = np.random.default_rng(331)
+    beta = np.array([0.7, -0.5])
+    reps, p = 1000, 0.5
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    mlo, mhi = np.empty((reps, 2)), np.empty((reps, 2))
+    censored = 0.0
+    for r in range(reps):
+        Z = _covariates(rng)
+        # Fine and Gray's (1999) construction: the cumulative incidence of
+        # cause 1 is 1 - (1 - p (1 - exp(-t)))^exp(beta'Z); cause 2, with
+        # exponential times, takes the rest.
+        phi = np.exp(Z @ beta)
+        p1 = 1 - (1 - p) ** phi
+        first = rng.uniform(size=N) < p1
+        v = rng.uniform(size=N)
+        t1 = -np.log(1 - (1 - (1 - v * p1) ** (1 / phi)) / p)
+        t = np.where(first, t1, rng.exponential(1.0, N))
+        cens = rng.exponential(1.0, N)
+        e = np.where(first, 1, 2).astype(object)
+        e[cens < t] = None
+        censored += np.mean(cens < t) / reps
+        model = sp.FineGray.fit(np.minimum(t, cens), Z, e, event=1)
+        b = np.asarray(model.params)
+        se = model.standard_errors()
+        mse = model.standard_errors(robust=False)
+        lo[r], hi[r] = b - Z_CRIT * se, b + Z_CRIT * se
+        mlo[r], mhi[r] = b - Z_CRIT * mse, b + Z_CRIT * mse
+    print(f"censored rows: {censored:.0%}")
+    covered = ((mlo <= beta) & (beta <= mhi)).mean(axis=0)
+    print("FineGray model-based (not checked):", covered)
+    check_coverage(lo, hi, beta, 0.95, "FineGray robust")
 
 
 def test_proportional_odds_coefficient_coverage():
