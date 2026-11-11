@@ -336,7 +336,9 @@ def test_617_refits_that_raise_are_left_out_and_counted(ph, monkeypatch):
         return fit(x, Z, **kwargs)
 
     monkeypatch.setattr(model.model, "fit", flaky)
-    with pytest.warns(UserWarning, match="5 failed and left out"):
+    with pytest.warns(
+        UserWarning, match="5 failed for another reason and left out"
+    ):
         model.cb(5.0, [1, 0.0], method="bootstrap", n_boot=20, random_state=0)
     assert model._bootstrap_refits[(20, 0)].params.shape[0] == 15
 
