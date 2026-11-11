@@ -2,15 +2,19 @@
 # cured fraction and on the latency distribution, fitted jointly by
 # maximum likelihood.
 #
-# Writes surpyval/tests/reference/data/r_mixture_cure.json: the data the
-# fits were made on (simulated here, seed 20261111, and stored in the
-# file, so the tests need no generator) and, for each fit, the software,
-# its version, the call and the values. Generated with R 4.6.2, flexsurv
-# 2.3.2 and flexsurvcure 1.3.3.
+# Writes surpyval/tests/reference/data/r_mixture_cure.json in the layout
+# of the other reference files: for each fit the fixture, the software,
+# its version, the call, the settings and the values. Generated with
+# R 4.6.2, flexsurv 2.3.2 and flexsurvcure 1.3.3.
 #
+#     python scripts/reference/make_fixtures.py
 #     Rscript scripts/reference/reference_r_mixture_cure.R
 #
-# Needs flexsurvcure and jsonlite. Re-running reproduces the file.
+# Run from the repository root, after make_fixtures.py. Needs
+# flexsurvcure and jsonlite. Re-running reproduces the file byte for
+# byte. The data are simulated here (seed 20261111) and kept as the
+# shared fixture "cure_regression"; the script stops if its draws
+# differ from the fixture.
 #
 # The data: 400 units with a binary covariate z1 and a continuous z2. A
 # unit is susceptible with probability plogis(-0.3 + 0.9 z1 + 0.6 z2); a
@@ -44,7 +48,9 @@ suppressPackageStartupMessages({
 })
 
 data_dir <- file.path("surpyval", "tests", "reference", "data")
-if (!dir.exists(data_dir)) stop("Run from the repository root")
+if (!file.exists(file.path(data_dir, "fixtures.json"))) {
+    stop("Run from the repository root (fixtures.json not found)")
+}
 
 set.seed(20261111)
 n <- 400
@@ -57,6 +63,12 @@ event <- as.numeric(susceptible & life < follow)
 time <- round(ifelse(event == 1, life, follow), 4)
 entry <- round(runif(n, 0, 4), 4)
 d <- data.frame(time = time, event = event, z1 = z1, z2 = z2, entry = entry)
+fx <- fromJSON(file.path(data_dir, "fixtures.json"))
+cure <- as.data.frame(fx$cure_regression$columns)
+for (col in names(d)) {
+    stopifnot(isTRUE(all.equal(cure[[col]], as.numeric(d[[col]]),
+                               tolerance = 0)))
+}
 
 times <- c(2, 5, 10, 20, 35)
 nd <- data.frame(z1 = c(0, 1), z2 = c(0, 0.5))
@@ -67,9 +79,16 @@ add <- function(id, call, data = d) {
     s <- summary(fit, newdata = nd, t = times, type = "survival", ci = FALSE,
                  tidy = FALSE)
     refs[[id]] <<- list(
+        fixture = "cure_regression",
         software = "R flexsurvcure",
         version = as.character(packageVersion("flexsurvcure")),
         call = call,
+        settings = list(
+            flexsurv = as.character(packageVersion("flexsurv")),
+            rows = if (identical(data, d)) "all" else
+                "the rows with time > entry (late entry)",
+            theta = "the cured fraction, with the main formula's covariates"
+        ),
         values = list(
             names = rownames(fit$res.t),
             est = unname(fit$res.t[, "est"]),
@@ -109,7 +128,6 @@ add("weibull_logit_scale_only", paste(
 out <- list(
     generator = "scripts/reference/reference_r_mixture_cure.R",
     R = R.version.string,
-    data = as.list(d),
     references = refs
 )
 text <- toJSON(out, auto_unbox = TRUE, digits = NA, na = "null",

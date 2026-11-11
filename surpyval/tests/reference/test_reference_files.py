@@ -41,6 +41,8 @@ EXPECTED_SOURCES = {
     "r_competing_entry",
     "r_fine_gray_variance",
     "r_recurrent_cox",
+    "r_mixture_cure",
+    "r_adjusted_curves",
     "py_lifelines",
     "py_sksurv",
 }

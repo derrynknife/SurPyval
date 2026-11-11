@@ -130,6 +130,18 @@ def _recurrent_cox(fitter, **kw):
     return fitter.fit(x, Z, i=i, c=c, **kw)
 
 
+def _mixture_cure():
+    """A mixture-cure regression: 2 in 5 units at z = 0 and 3 in 5 at
+    z = 1 never fail and are still running at 60, far past the lives;
+    a covariate on both the incidence and the latency's scale."""
+    rng = np.random.default_rng(11)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    cured = rng.random(z.size) < np.where(z == 0, 0.4, 0.6)
+    x = np.where(cured, 60.0, life)
+    return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -323,6 +335,7 @@ def _build(name):
         "distributional_regression": lambda: (
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
+        "mixture_cure": _mixture_cure,
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
@@ -438,6 +451,7 @@ CASES = [
     "turnbull",
     "parametric_regression",
     "distributional_regression",
+    "mixture_cure",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",
