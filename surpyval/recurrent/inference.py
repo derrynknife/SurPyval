@@ -236,6 +236,16 @@ class LikelihoodInferenceMixin:
         that was not estimated (an aliased coefficient, #502) has a ``nan``
         row and column.
         """
+        out, found = self._covariance_matrix()
+        if not found:
+            warn_no_covariance()
+        return out
+
+    def _covariance_matrix(self) -> tuple[np.ndarray, bool]:
+        """:meth:`covariance` and whether the information could be
+        evaluated and inverted (``nan`` where not), without the warning:
+        for a caller that reports a missing covariance in its own way (a
+        table's ``nan``, a saved model's ``null``)."""
         self._check_fitted()
         full = self._mle_values()
         n = full.size
@@ -252,13 +262,12 @@ class LikelihoodInferenceMixin:
             H = numerical_hessian(neg_ll_free, full[free])
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
-            warn_no_covariance()
-            return out
+            return out, False
         try:
             out[np.ix_(free, free)] = np.linalg.inv(H)
         except np.linalg.LinAlgError:
-            warn_no_covariance()
-        return out
+            return out, False
+        return out, True
 
     def standard_errors(self) -> np.ndarray:
         """
