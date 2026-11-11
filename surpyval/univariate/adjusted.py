@@ -667,6 +667,27 @@ class AdjustedCurves:
     covariates : {"sampled", "fixed"}
         Whether the variances count the population's covariates as a
         sample (see :func:`direct_adjustment`).
+
+    Examples
+    --------
+    Two suppliers' parts, where supplier 1 went mostly to heavy duty: the
+    95% bounds of supplier 1's adjusted survival at 40, and the adjusted
+    difference in restricted mean life to 100 (supplier 1 minus 0):
+
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> rng = np.random.default_rng(0)
+    >>> heavy = rng.binomial(1, 0.5, 400)
+    >>> supplier = rng.binomial(1, np.where(heavy == 1, 0.8, 0.2))
+    >>> x = 100 * np.exp(-0.9 * heavy + 0.2 * supplier)
+    >>> x = x * rng.weibull(2.0, 400)
+    >>> model = sp.WeibullAFT.fit(x, np.column_stack([supplier, heavy]))
+    >>> adjusted = sp.direct_adjustment(model, group=0)
+    >>> adjusted.cb(40, 1).round(3)
+    array([0.661, 0.743])
+    >>> res = adjusted.rmst_diff(100, 1, 0)
+    >>> print(round(res["difference"], 1), round(res["se"], 1))
+    9.6 2.0
     """
 
     def __init__(
