@@ -329,8 +329,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
     models: dict
     baseline: Any
     feature_names: list[str] | None = None
-    #: Whether the model was fitted to covariates that change over time
-    #: (``fit_tvc``, ``fit_tvc_timeline``); such a fit keeps no ``data``.
+    # (documented under Attributes above; such a fit keeps no ``data``)
     is_tvc: bool = False
     # A restored model's saved inference: each type's parameter
     # covariance (None where its fit had none).
