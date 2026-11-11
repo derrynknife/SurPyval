@@ -84,6 +84,13 @@ class Bernoulli_(  # type: ignore[misc]
     array([[nan]])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        p : float
+            The probability of the ``1`` outcome
+        """
+
     @staticmethod
     def _check_x(x: Numeric) -> npt.NDArray:
         """Reject anything that is not a Bernoulli outcome."""

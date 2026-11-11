@@ -915,8 +915,13 @@ class TVCEvaluationMixin:
         last clipped at the query time.
         """
         params, center = self._tvc_theta(theta)
-        H = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
+        linear = self._tvc_linear(params, center, Zseg)
+        if linear is not None:
+            return self._tvc_hf_additive_batched(
+                xq, starts, ends, linear, support_lo, falls
+            )
+        H = np.zeros(xq.shape[0], dtype=float)
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
             zrow = self._centred(
                 np.asarray(z, dtype=float).reshape(1, -1), center
@@ -947,6 +952,114 @@ class TVCEvaluationMixin:
                 # segment before the query time (#376).
                 falls |= (hi - lo) < 0
             H = H + (hi - lo)
+        return H
+
+    def _tvc_linear(
+        self, params: npt.NDArray, center: npt.NDArray | None, Zseg: Any
+    ) -> tuple | None:
+        """
+        ``(eta, params_1)`` to evaluate every segment of a step path in
+        one call of the model's ``Hf`` (or ``_phi``), where the model reads
+        a covariate row only through its linear predictor
+        ``eta = beta' (z - c)``: each segment's ``eta`` (an ``(n, 1)``
+        column), and the parameters with the coefficients replaced by a
+        single 1. ``Hf(x, eta, *params_1)`` is then ``Hf(x, z, *params)``
+        number for number: ``eta`` is the dot product the model takes of
+        that one row (the same call, row by row), and ``eta * 1`` is
+        exact, where a dot product of all the rows at once could round
+        differently from one row's. ``None`` for a model that reads the
+        row otherwise (a covariate function of your own, an accelerated
+        life model's life model), which is evaluated a segment at a time.
+        """
+        from ._fit_skeleton import LogLinearPhi
+        from .accelerated_failure_time.aft_fitter import AFTFitter
+        from .additive_hazards.additive_hazards_fitter import (
+            AdditiveHazardsFitter,
+        )
+        from .proportional_hazards.proportional_hazards_fitter import (
+            ProportionalHazardsFitter,
+        )
+        from .proportional_odds.proportional_odds_fitter import (
+            ProportionalOddsFitter,
+        )
+
+        model = self.model
+        kind = type(model)
+        if kind.Hf is ProportionalHazardsFitter.Hf:
+            linear = (
+                getattr(model, "phi", None) is LogLinearPhi.phi
+                and kind._scaled is ProportionalHazardsFitter._scaled
+                and kind._log_phi is ProportionalHazardsFitter._log_phi
+                and kind._phi_off is ProportionalHazardsFitter._phi_off
+            )
+        elif kind.Hf is ProportionalOddsFitter.Hf:
+            linear = (
+                kind.log_sf is ProportionalOddsFitter.log_sf
+                and kind._phi is ProportionalOddsFitter._phi
+            )
+        elif kind.Hf is AdditiveHazardsFitter.Hf:
+            linear = kind._beta_Z is AdditiveHazardsFitter._beta_Z
+        elif kind.Hf is AFTFitter.Hf:
+            linear = kind._phi is AFTFitter._phi
+        else:
+            linear = False
+        if not linear or self._is_accelerated_life():
+            return None
+        params = np.asarray(params, dtype=float)
+        rows = self._centred(
+            np.asarray(Zseg, dtype=float).reshape(len(Zseg), -1), center
+        )
+        beta = np.array(tuple(params[self.k_dist :]))
+        if rows.shape[1] != beta.shape[0]:
+            return None
+        rows = np.ascontiguousarray(rows, dtype=float)
+        eta = np.array(
+            [np.dot(rows[k : k + 1], beta)[0] for k in range(rows.shape[0])],
+            dtype=float,
+        ).reshape(-1, 1)
+        return eta, (*params[: self.k_dist], 1.0)
+
+    def _tvc_hf_additive_batched(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        linear: tuple,
+        support_lo: float,
+        falls: npt.NDArray | None,
+    ) -> npt.NDArray:
+        """:meth:`_tvc_hf_additive` with the model's ``Hf`` called once for
+        every segment (see :meth:`_tvc_linear`); the segments' increments
+        are then added in their order, as one at a time."""
+        eta, params_1 = linear
+        n_seg, n_q = len(starts), xq.shape[0]
+        starts = np.asarray(starts, dtype=float)
+        ends = np.asarray(ends, dtype=float)
+        # Query times before 0 fall in the first segment when the baseline
+        # is defined there.
+        floors = starts.copy()
+        floors[0] = min(starts[0], support_lo)
+        upper = np.clip(xq[None, :], floors[:, None], ends[:, None])
+        # One call: each segment's clipped query times, then the starts of
+        # the segments after the first (the first runs from the bottom of
+        # the support, where H = 0).
+        at = np.concatenate([upper.ravel(), starts[1:]])
+        rows = np.concatenate([np.repeat(eta, n_q, axis=0), eta[1:]], axis=0)
+        with np.errstate(divide="ignore"):
+            values = np.asarray(
+                self.model.Hf(at, rows, *params_1), dtype=float
+            ).ravel()
+        hi = values[: n_seg * n_q].reshape(n_seg, n_q)
+        lo = values[n_seg * n_q :]
+        H = np.zeros(n_q, dtype=float)
+        additive = falls is not None and self._is_additive()
+        for i in range(n_seg):
+            step = hi[i] - (np.zeros(1) if i == 0 else lo[i - 1 : i])
+            if additive:
+                # A negative increment: the additive hazard fell in this
+                # segment before the query time (#376).
+                falls |= step < 0
+            H = H + step
         return H
 
     def _tvc_hf_from_zero(
@@ -1023,11 +1136,19 @@ class TVCEvaluationMixin:
         params, center = self._tvc_theta(theta)
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
+        linear = self._tvc_linear(params, center, Zseg)
+        if linear is not None:
+            # Every segment's rate in one call (see _tvc_linear).
+            eta, params_1 = linear
+            rates = self._tvc_rate(eta, np.asarray(params_1, dtype=float))
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = self._centred(
-                np.asarray(z, dtype=float).reshape(1, -1), center
-            )
-            rate = float(self._tvc_rate(zrow, params)[0])
+            if linear is not None:
+                rate = float(rates[i])
+            else:
+                zrow = self._centred(
+                    np.asarray(z, dtype=float).reshape(1, -1), center
+                )
+                rate = float(self._tvc_rate(zrow, params)[0])
             # Query times before 0 fall in the first segment when the
             # baseline is defined there (a negative age, as sf(x, Z)).
             width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a

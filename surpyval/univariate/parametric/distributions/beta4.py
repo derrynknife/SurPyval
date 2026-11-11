@@ -71,6 +71,19 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
        1.
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

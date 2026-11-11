@@ -250,13 +250,12 @@ def _fit_weighted_penalised(
     linear in the weights, so the objective is the same, and it is then
     the same function for ``w`` and ``c * w``."""
     from surpyval.utils.weights import (
-        check_weights,
         effective_sample_size,
         refuse_weighted,
         warn_if_few_effective,
     )
 
-    from ._weighted_cox import WeightedCox
+    from ._weighted_cox import WeightedCox, weighted_rows
     from .cox_likelihood import baselines_at_origin
     from .cox_ph import _require_an_event
 
@@ -266,21 +265,7 @@ def _fit_weighted_penalised(
             "its weighted form is not built yet (as for CoxPH.fit)",
             "Fit each stratum with w, or put the stratum in Z.",
         )
-    if tie_method not in ("efron", "breslow"):
-        raise refuse_weighted(
-            f"tie_method={tie_method!r}",
-            "the exact partial likelihoods have no weighted form here",
-            "Use tie_method='efron' (the default) or 'breslow'.",
-        )
-    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-    w_arr = check_weights(w, x_arr.shape[0])
-    Z_in = np.asarray(Z, dtype=float)
-    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
-    if Z_rows.shape[0] != w_arr.shape[0]:
-        raise ValueError(
-            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
-            "x: give one row of covariates per value."
-        )
+    w_arr, Z_rows = weighted_rows(x, Z, w, tie_method)
     # The weights travel as a last column of Z, so that the rows the
     # validation drops or reorders take their weights with them (as
     # CoxPH.fit with w).

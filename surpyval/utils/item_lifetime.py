@@ -14,17 +14,14 @@ from surpyval.utils.item_history import (
     _attributes,
     _covariate_field,
     _covariates,
+    _ItemRecord,
     _schedule_field,
     _time_varying,
     _unit,
     _with_step,
     checked_id,
-    comparable,
     covariate_value,
     freeze,
-    frozen_setattr,
-    frozen_setstate,
-    hashable,
     item_id,
     late_covariates,
     missing_type,
@@ -45,7 +42,7 @@ _OUTCOMES = (
 )
 
 
-class ItemLifetime:
+class ItemLifetime(_ItemRecord):
     """
     One item's lifetime: how it ended (or what is known of its failure),
     the window in which it could have been seen, what failed, and its
@@ -207,12 +204,6 @@ class ItemLifetime:
         # order of age; ``markers`` gives them as a dict.
         self._marker_ages, self._marker_values = self._checked_markers(markers)
         freeze(self)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        frozen_setattr(self, name, value)
-
-    def __setstate__(self, state: dict) -> None:
-        frozen_setstate(self, state)
 
     def attribute(self, name: str) -> Any:
         """The value of the attribute ``name`` (``attributes={name:
@@ -567,13 +558,6 @@ class ItemLifetime:
 
         return record_from_dict(cls, record_dict)
 
-    def to_json(self, filepath: Any = None) -> str | None:
-        """The record as strict JSON text (:meth:`to_dict` dumped), or
-        written to the file ``filepath``."""
-        from surpyval.utils.data_json import dump
-
-        return dump(self.to_dict(), filepath)
-
     @classmethod
     def from_json(cls, source: Any) -> ItemLifetime:
         """The record back from JSON text (a string starting with ``{``)
@@ -587,22 +571,6 @@ class ItemLifetime:
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ItemLifetime):
-            return NotImplemented
-        return self.id == other.id and self._compared() == other._compared()
-
-    def __hash__(self) -> int:
-        return hash((self.id, hashable(self._compared())))
-
-    def _compared(self) -> dict:
-        return comparable(self._fields(), self.time_varying_covariates)
-
-    def _as_dict(self) -> bool:
-        # A record pickled before #930 has no _tvc_dict: its schedule
-        # showed as a dict.
-        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         fields = "".join(

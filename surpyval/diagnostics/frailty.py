@@ -114,8 +114,10 @@ from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
     _covariate_kind,
+    _cox_snell_panel,
     _Fit,
     _fmt,
+    _form_panel,
     _gap,
     _note,
     _ph_name,
@@ -907,26 +909,13 @@ def _conditional_martingale(ctx: Context) -> np.ndarray:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     Z = _data(ctx).Z
     martingale = _conditional_martingale(ctx)
-    panels = []
-    for j, name in _form_columns(ctx):
-
-        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
-            from surpyval.plotting import INK, PALETTE
-
-            z = Z[:, j]
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z, martingale, s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z, martingale, grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(name)
-            ax.set_ylabel("martingale residual, given the frailty")
-
-        panels.append(Panel(f"{name}: functional form", draw))
-    return panels
+    ylabel = "martingale residual, given the frailty"
+    return [
+        _form_panel(name, Z[:, j], martingale, ylabel)
+        for j, name in _form_columns(ctx)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1123,26 +1112,15 @@ def _overall_panels(ctx: Context) -> list[Panel]:
         else:
             r = np.asarray(model.Hf(d.x), dtype=float) * np.ones(d.x.size)
     c, n = d.c, d.w
-    order = np.argsort(r, kind="stable")
-    r, c, n = r[order], c[order], n[order]
-    uniq, first = np.unique(r, return_index=True)
-    at_risk = n[::-1].cumsum()[::-1][first]
-    deaths = np.bincount(
-        np.searchsorted(uniq, r), weights=n * (c == 0), minlength=uniq.size
-    )
-    H = np.cumsum(deaths / at_risk)
-    keep = deaths > 0
-
-    def draw(ax: Any, options: Any) -> None:
-        from surpyval.plotting import INK, PALETTE
-
-        ax.step(uniq[keep], H[keep], where="post", color=PALETTE[0])
-        top = float(max(uniq[keep].max(), H[keep].max())) if keep.any() else 1
-        ax.plot([0, top], [0, top], color=INK["secondary"], ls="--", lw=0.8)
-        ax.set_xlabel("marginal Cox-Snell residual")
-        ax.set_ylabel("cumulative hazard")
-
-    return [Panel("overall fit (marginal Cox-Snell)", draw)]
+    return [
+        _cox_snell_panel(
+            r,
+            c,
+            n,
+            "marginal Cox-Snell residual",
+            "overall fit (marginal Cox-Snell)",
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------

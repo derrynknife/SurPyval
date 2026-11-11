@@ -1925,6 +1925,19 @@ class DegradationModel(SerialisableMixin):
             "\nPath Fixed Effects  :\n" + effects
         )
 
+    def _repr_head(self) -> str:
+        """The first lines of the ``repr``, the same for every kind of
+        life model: the path model, threshold and unit counts."""
+        return (
+            "Degradation Analysis SurPyval Model"
+            "\n==================================="
+            f"\nPath Model          : {self.path_model.name}"
+            f"\nThreshold           : {self.threshold}"
+            f"\nNumber of Units     : {len(self.units)}"
+            f"\nCensored Units      : {int((self.c == 1).sum())}"
+            f"{self._left_censored_repr()}"
+        )
+
     def __repr__(self) -> str:
         if self._is_clock:
             assert self.gamma is not None and self.stress_ref is not None
@@ -1936,14 +1949,8 @@ class DegradationModel(SerialisableMixin):
                 )
             )
             return (
-                "Degradation Analysis SurPyval Model"
-                "\n==================================="
-                f"\nPath Model          : {self.path_model.name}"
-                f"\nThreshold           : {self.threshold}"
-                f"\nNumber of Units     : {len(self.units)}"
-                f"\nCensored Units      : {int((self.c == 1).sum())}"
-                f"{self._left_censored_repr()}"
-                "\nAcceleration        : clock (step-stress)"
+                self._repr_head()
+                + "\nAcceleration        : clock (step-stress)"
                 "\nStress coefficients : "
                 + np.array2string(self.gamma, precision=6)
                 + "\nReference stress    : "
@@ -1961,14 +1968,8 @@ class DegradationModel(SerialisableMixin):
                 for name, p in zip(names, self.life_model.params)
             )
             return (
-                "Degradation Analysis SurPyval Model"
-                "\n==================================="
-                f"\nPath Model          : {self.path_model.name}"
-                f"\nThreshold           : {self.threshold}"
-                f"\nNumber of Units     : {len(self.units)}"
-                f"\nCensored Units      : {int((self.c == 1).sum())}"
-                f"{self._left_censored_repr()}"
-                f"\nLife Distribution   : {dist_name} ({reg_name} covariates)"
+                self._repr_head() + f"\nLife Distribution   : {dist_name}"
+                f" ({reg_name} covariates)"
                 "\nParameters          :\n"
                 + param_string
                 + self._stress_repr()
@@ -1983,13 +1984,7 @@ class DegradationModel(SerialisableMixin):
             ]
         )
         return (
-            "Degradation Analysis SurPyval Model"
-            "\n==================================="
-            f"\nPath Model          : {self.path_model.name}"
-            f"\nThreshold           : {self.threshold}"
-            f"\nNumber of Units     : {len(self.units)}"
-            f"\nCensored Units      : {int((self.c == 1).sum())}"
-            f"{self._left_censored_repr()}"
-            f"\nLife Distribution   : {self.life_model.dist.name}"
+            self._repr_head()
+            + f"\nLife Distribution   : {self.life_model.dist.name}"
             "\nParameters          :\n" + param_string
         )

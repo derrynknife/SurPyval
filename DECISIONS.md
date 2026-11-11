@@ -31,6 +31,12 @@ Design decisions made while working on the open issues, with the reason for each
 | `to_dict` stores the data (spells, covariates and options), and `from_dict` refits. | proposed | The estimates and every variance (the jackknife needs each unit's spells) are then exactly the original's, with nothing else to keep in step. The fits are fast and deterministic. | done |
 | The checks against R use `survival::mgus2` (shipped as `datasets.load_mgus2`, as the package already ships other `survival` data) and a seeded synthetic fixture from `make_fixtures.py` (`multistate`), not mstate's `ebmt` data. | proposed | The licence of the `ebmt` data (distributed in a GPL package, from a registry) is unclear, so it is not copied into the repository. mgus2 is the illness-death example of `survival`'s own multi-state vignette; the synthetic data add recovery (a reversible transition), delayed entry and ties. | done |
 | Parametric models of each transition are not built in this phase. | proposed | The non-parametric and Cox models answer the common questions and match R exactly. A parametric model per transition needs the Kolmogorov forward equations solved for its probabilities, and its own bounds (delta method through the solution, or simulation, as flexsurv does): its own piece of work, left in the `MODEL_ATLAS.md` gaps with semi-Markov models and panel data. | open |
+### Shared parameter entries in distribution docstrings (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Each distribution method keeps its parameter entries literally in its docstring. The class states them once more in `_param_docs`, the copy to edit; `scripts/sync_docstrings.py --write` rewrites the method copies from it, and `surpyval/tests/utils/test_shared_docstrings.py` fails, naming the class, method and difference, when a copy drifts. Filling a `{params}` line in at import was tried and rejected. | proposed | Most users read docstrings in their editor's hover, which reads the source without importing it, so a placeholder there is a visible cost; literal copies with a check keep the text whole everywhere and still stop the copies drifting. Nine copies had drifted (Beta, Gumbel, GumbelLEV, Logistic) and were reworded to match. | done |
+
 ### `fit_from_ecdf` refuses a falling curve (12 Nov 2026)
 
 | Decision | By | Reason | Status |
