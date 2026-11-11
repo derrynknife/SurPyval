@@ -145,8 +145,14 @@ Every distribution is an object in the ``surpyval`` namespace
      - no
      -
 
-``Galton`` and ``Gauss`` are the same distributions as ``LogNormal`` and
-``Normal`` under their other names. Every distribution in the table except the
+``Gauss`` is another name for ``Normal``, and ``Galton`` another name for
+``LogNormal``. A model fitted with one saves and loads as that name (its
+``repr`` and ``to_dict`` show it) and is otherwise identical: the same fit to
+the last digit, the same checks and refusals, and wherever SurPyval asks
+which distribution a model has (``fit_best``, ``AcceleratedLife``, the
+diagnostics), it is taken as the ``Normal`` or ``LogNormal``.
+``dist.canonical_name`` gives that name (``sp.Gauss.canonical_name`` is
+``"Normal"``). Every distribution in the table except the
 ``Hypoexponential`` also accepts ``lfp=True``. The discrete lifetimes
 (``Geometric``, ``DiscreteWeibull``, ``NegativeBinomial``, ``BetaGeometric``,
 ``Discretize`` and ``Poisson``) and the per-demand and degenerate models

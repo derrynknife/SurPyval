@@ -2841,6 +2841,7 @@ def _starve(case):
         "ProportionalOddsModel",
         "CoxFrailtyModel",
         "RecurrentCoxModel",
+        "MultiStateProportionalHazards",
     ):
         return lambda d: fit(_no_event_level(d))
     if cls in (

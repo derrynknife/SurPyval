@@ -29,6 +29,7 @@ from surpyval.univariate.parametric import (
 from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
@@ -138,7 +139,8 @@ def _candidate_names(names: Iterable[Any] | None, argument: str) -> set[str]:
             f"`{argument}` takes distribution names only; a mixture is a "
             "candidate only when named in `include`."
         )
-    wanted = {str(name).lower() for name in names}
+    # An alias (Gauss, Galton) names its distribution's candidate
+    wanted = {str(canonical_name(str(name))).lower() for name in names}
     known = {dist.name.lower() for dist in distributions}
     unknown = sorted(wanted - known)
     if unknown:

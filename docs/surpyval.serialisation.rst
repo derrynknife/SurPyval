@@ -358,6 +358,14 @@ with its own ``schema``.
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
      - ``support``
+   * - ``MultiState``
+     - ``"model": "MultiState"``
+     - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``
+     - --
+   * - ``MultiStateProportionalHazards``
+     - ``"model": "MultiStateProportionalHazards"``
+     - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``Z``, ``covariate_names``, ``shared``, ``tie_method``
+     - --
    * - ``CauseSpecificMCF``
      - ``"model": "CauseSpecificMCF"``
      - ``event_types``, ``models``

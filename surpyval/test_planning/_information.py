@@ -16,6 +16,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy import special, stats
 
+from surpyval.utils.aliases import canonical_name
+
 #: The families planned for, by the name of their SurPyval fitter: the
 #: standard variable of ``log T``.
 FAMILIES = {"Weibull": "sev", "LogNormal": "normal"}
@@ -28,7 +30,8 @@ _COMPLETE = {"sev": 6.5, "normal": 26.0}
 def family_of(distribution: Any) -> str:
     """The standard family of a SurPyval fitter, or a ValueError naming
     those planned for."""
-    name = getattr(distribution, "name", None)
+    # By the canonical name: Galton is the LogNormal
+    name = canonical_name(distribution)
     if name not in FAMILIES:
         raise ValueError(
             "distribution must be surpyval.Weibull or surpyval.LogNormal, "

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
@@ -124,7 +125,9 @@ class TVCEvaluationMixin:
                 "(this model is '{}').".format(self.kind)
             )
         name = self.distribution.name
-        if self._is_accelerated_life() and name not in (self._TVC_SCALE_LIFE):
+        if self._is_accelerated_life() and canonical_name(
+            self.distribution
+        ) not in (self._TVC_SCALE_LIFE):
             raise NotImplementedError(
                 "An Accelerated Life model is evaluated along a changing "
                 "stress by cumulative exposure, S(t) = S_1(int_0^t du / "
