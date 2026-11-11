@@ -61,6 +61,14 @@ PWP_TOTAL = "Prentice-Williams-Peterson, total time"
 PWP_GAP = "Prentice-Williams-Peterson, gap time"
 WLW = "Wei-Lin-Weissfeld"
 
+#: How each kind is refitted, for the refusals of a restored model.
+_FITTER_NAME = {
+    ANDERSEN_GILL: "AndersenGill.fit",
+    PWP_TOTAL: "PrenticeWilliamsPeterson.fit",
+    PWP_GAP: 'PrenticeWilliamsPeterson.fit(..., time_scale="gap")',
+    WLW: "WeiLinWeissfeld.fit",
+}
+
 #: What each kind's cumulative baseline is, for the axis of ``plot``.
 _CURVE = {
     ANDERSEN_GILL: "Expected number of events",
@@ -802,6 +810,19 @@ class RecurrentCoxModel(SerialisableMixin):
         >>> type(model.diagnose()).__name__
         'Diagnosis'
         """
+        if not hasattr(self.cox, "_fit_data"):
+            # A model restored by from_dict keeps the coefficients,
+            # covariances and baseline, not the layout's rows; the Cox
+            # model's own message would point at CoxPH.fit, which is not
+            # how this model is refitted.
+            raise ValueError(
+                "The diagnostics need the data the model was fitted to "
+                "(the layout's rows), which a model restored with "
+                "from_dict / from_json does not carry. Refit on the data "
+                "with {}.".format(
+                    _FITTER_NAME.get(self.kind, "the recurrent fitter")
+                )
+            )
         return self.cox.diagnose(*args, **kwargs)
 
     def plot(self, ax: Any = None) -> Any:
