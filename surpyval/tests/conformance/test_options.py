@@ -1016,7 +1016,16 @@ CONVENTIONS = {
     # incidence by default, its natural quantity (documented, #728).
     "on": (
         "on= defaults to 'sf'",
-        _default_is("on", "sf", own={"CompetingRisks": "cif"}),
+        _default_is(
+            "on",
+            "sf",
+            own={
+                "CompetingRisks": "cif",
+                # Counts of repeat events have no survival function: the
+                # bounds along a schedule are on the expected count.
+                "ProportionalIntensityModel": "cif",
+            },
+        ),
     ),
     "interp": ("interp= defaults to 'step'", _default_is("interp", "step")),
     "seed": (
