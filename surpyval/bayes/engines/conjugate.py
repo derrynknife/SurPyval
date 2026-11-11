@@ -21,6 +21,8 @@ from typing import Any
 import numpy as np
 from scipy.special import betaln, gammaln
 
+from surpyval.utils.aliases import canonical_name
+
 #: Equal-probability points a conjugate posterior is summarised on for
 #: the functions that have no closed form.
 NODES = 4000
@@ -49,7 +51,7 @@ def _prior_family(prior: Any) -> tuple[str, tuple] | None:
         )
         if not plain:
             return None
-        name = m.dist.name
+        name = canonical_name(m.dist)
         p = tuple(float(v) for v in np.atleast_1d(m.params))
         if name == "Gamma":
             return "gamma", p
@@ -82,7 +84,7 @@ def applies(
         if np.all(np.isin(c, (0, 1))) and not np.isfinite(t[:, 1]).any():
             return "exponential-gamma"
     if (
-        dist.name == "Normal"
+        canonical_name(dist) == "Normal"
         and free == ["mu"]
         and fam[0] == "normal"
         and np.all(c == 0)

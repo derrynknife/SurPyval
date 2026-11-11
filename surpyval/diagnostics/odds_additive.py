@@ -88,6 +88,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _covariate_kind, _fmt
@@ -963,7 +964,7 @@ def _ah_notes(ctx: Context) -> list[str]:
 def _distribution(model: Any) -> str | None:
     if not _is_parametric(model):
         return None
-    return str(getattr(model.distribution, "name", ""))
+    return str(canonical_name(model.distribution) or "")
 
 
 def _failing_name(row: dict) -> str:
