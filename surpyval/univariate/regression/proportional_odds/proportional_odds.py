@@ -130,7 +130,6 @@ from .._fit_skeleton import (
     baseline_at_origin_error,
     covariate_center,
 )
-from .._kinds import PROPORTIONAL_ODDS
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -138,6 +137,7 @@ from .._prediction import (
     unique_rows,
 )
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
+from ..kinds import PROPORTIONAL_ODDS
 from ..life_at import (
     AtCovariatesMixin,
     checked_params,

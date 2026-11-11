@@ -36,7 +36,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     stress_data,
     uni_data,
 )
-from surpyval.univariate.regression import _kinds
+from surpyval.univariate.regression import kinds
 from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
 # ---------------------------------------------------------------------------
@@ -830,10 +830,10 @@ FAST_REGRESSIONS += ("WeibullAH", "LogNormalAFT")
 # constant in the linear predictor moves the baseline's parameters and
 # nothing else (ORIGIN_MAPS, as the fit decides it).
 _KINDS = {
-    "PH": _kinds.PROPORTIONAL_HAZARD,
-    "AFT": _kinds.ACCELERATED_FAILURE_TIME,
-    "PO": _kinds.PROPORTIONAL_ODDS,
-    "AH": _kinds.ADDITIVE_HAZARD,
+    "PH": kinds.PROPORTIONAL_HAZARD,
+    "AFT": kinds.ACCELERATED_FAILURE_TIME,
+    "PO": kinds.PROPORTIONAL_ODDS,
+    "AH": kinds.ADDITIVE_HAZARD,
 }
 
 

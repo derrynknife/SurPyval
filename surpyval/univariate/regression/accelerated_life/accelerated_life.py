@@ -4,7 +4,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 
-from .._kinds import ACCELERATED_LIFE
+from ..kinds import ACCELERATED_LIFE
 from .lifemodel import LifeModel
 from .parameter_substitution import ParameterSubstitutionFitter
 
