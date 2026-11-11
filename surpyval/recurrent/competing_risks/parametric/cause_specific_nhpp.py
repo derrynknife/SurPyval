@@ -30,7 +30,7 @@ from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci, require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
-    _OPPOSITE,
+    OPPOSITE_BOUND,
     ParametricRecurrenceModel,
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
@@ -924,7 +924,8 @@ class CauseSpecificNHPP(SerialisableMixin):
         check_option("bound", bound, BOUNDS)
         check_alpha_ci(alpha_ci)
         return ParametricRecurrenceModel._reciprocal_cb(
-            self._saved_cb(x, "iif", event, alpha_ci, _OPPOSITE[bound]), bound
+            self._saved_cb(x, "iif", event, alpha_ci, OPPOSITE_BOUND[bound]),
+            bound,
         )
 
     @keeps_query_shape
@@ -1083,7 +1084,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             np.asarray(x, dtype=float),
             self.event_types,
             alpha_ci,
-            _OPPOSITE[bound],
+            OPPOSITE_BOUND[bound],
         )
         return ParametricRecurrenceModel._reciprocal_cb(cb, bound)
 
