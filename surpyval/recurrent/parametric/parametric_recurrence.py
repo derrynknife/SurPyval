@@ -266,7 +266,12 @@ class ParametricRecurrenceModel(
             item = np.asarray(self.data.i)
             x = np.asarray(self.data.x, dtype=float)
             x = x.reshape(item.size, -1).max(axis=1)
-            return np.array([x[item == u].max() for u in np.unique(item)])
+            # Each item's largest time, in the order of its sorted labels
+            # (a maximum, so the same whatever order it is taken in).
+            _, inverse = np.unique(item, return_inverse=True)
+            ages = np.full(inverse.max() + 1, -np.inf)
+            np.maximum.at(ages, inverse.reshape(-1), x)
+            return ages
         now = np.atleast_1d(np.asarray(age, dtype=float)).reshape(-1)
         if not np.all(np.isfinite(now)) or np.any(now < 0):
             raise ValueError(
