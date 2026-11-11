@@ -3699,16 +3699,150 @@ AFT does, when its life parameter scales time (below).
 
 .. note::
 
-   **A** ``CovariatePath`` **evaluates a known, external path only.** For
-   now it evaluates an already-fitted model along a path you supply: a
-   planned load, a test profile, ambient conditions. For the result to be
-   a survival probability, the path must not depend on the unit's own
-   failure process (an *external* covariate). Fitting still uses steps. A
+   **A** ``CovariatePath`` **is a known, external path.** It is a path you
+   supply: a planned load, a test profile, ambient conditions. For the
+   survival along it to be a probability, and for a fit on it to mean
+   what it says (`Fitting on a continuous path`_), the path must not
+   depend on the unit's own failure process (an *external* covariate). A
    measured covariate is known only at its sample times, so fit it in
-   start-stop form with ``fit_tvc``, as above; the step approximation's
-   error shrinks with the square of the step width. A covariate driven by
-   the unit itself, such as a degradation signal read from it, needs a
-   joint longitudinal-survival model, which SurPyval does not provide.
+   start-stop form with ``fit_tvc``, as above. A covariate driven by the
+   unit itself, such as a vibration or wear signal read from it, or a
+   patient's biomarker, is not a path to fit on: its readings are noisy
+   and stop when the unit fails, which pulls its effect towards zero. It
+   needs a joint model of the readings and the lifetime
+   (:doc:`Joint Models`).
+
+.. _tvc-fit-continuous:
+
+Fitting on a continuous path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a ramp-stress test the stress is raised steadily until each unit fails,
+so no unit ever sat at one stress level: there is no single covariate value
+to regress its life on. The same is true of units run through a thermal
+cycle, of equipment on a planned mission profile, and of patients whose
+dose is raised on a fixed schedule over the first weeks of treatment. What
+each unit has is a *path*, and the question is the usual one: how much
+does the hazard rise per unit of the covariate?
+
+Give each item its path, as the ``time_varying_covariates`` of its
+:class:`~surpyval.ItemLifetime`, and fit as usual. A model is fitted to
+steps, so the fit cuts each path into steps for you, and makes sure the
+answer does not depend on how:
+
+1. each stretch of a path between two of its breakpoints is cut into 8
+   steps of equal width, each holding the path's value at its midpoint
+   (a stretch where the path is flat stays one step, so a path made of
+   steps is fitted exactly as ``fit_tvc`` fits it);
+2. the model is fitted to those steps by its ``fit_tvc``;
+3. the steps are halved and the model fitted again, until no estimate
+   moves by more than 1% of its standard error.
+
+The fitted model says what that took in ``path_steps``: the steps in each
+stretch at the end, the rows fitted, the largest move of an estimate at
+the last halving (in standard errors), and whether the tolerance was met.
+The error of the cumulative hazard along midpoint steps falls with the
+square of their width, so each halving cuts it by about four, and what is
+left after the last one is about a third of that last move. A fit that
+still moves after eight halvings, or would need more than two million
+rows, returns its last fit with one warning that says so.
+
+Three groups of capacitors on a voltage ramp, the overstress rising by
+0.02, 0.05 and 0.1 units an hour, tested for 60 hours. The hazard is
+constant at a fixed stress and multiplied by :math:`e^{1.2}` for each unit
+of overstress:
+
+.. jupyter-execute::
+
+    from surpyval import ExponentialPH, SurpyvalData
+
+    ramp_rng = np.random.default_rng(11)
+    capacitors, rates, ages, failed = [], [], [], []
+    for k in range(300):
+        rate = [0.02, 0.05, 0.1][k % 3]          # overstress per hour
+        # H(t) = 0.02 (exp(1.2 rate t) - 1) / (1.2 rate), inverted exactly
+        life = np.log1p(1.2 * rate * ramp_rng.exponential() / 0.02) / (1.2 * rate)
+        outcome = "observed" if life <= 60 else "right_censored"
+        rates.append(rate)
+        ages.append(min(life, 60.0))
+        failed.append(life <= 60)
+        capacitors.append(
+            ItemLifetime(
+                k,
+                **{outcome: min(life, 60.0)},
+                time_varying_covariates=CovariatePath.from_points(
+                    [0.0, 60.0], [0.0, 60.0 * rate]
+                ),
+            )
+        )
+    on_ramps = ExponentialPH.fit(SurpyvalData.from_items(capacitors))
+    print(on_ramps.params.round(4))
+    print(on_ramps.path_steps)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert on_ramps.path_steps["converged"]
+    assert on_ramps.path_steps["change"] <= 0.01
+    _se = on_ramps.standard_errors()
+    assert abs(on_ramps.params[0] - 0.02) < 3 * _se[0]
+    assert abs(on_ramps.params[1] - 1.2) < 3 * _se[1]
+
+The fit recovers the rate of 0.02 an hour and the coefficient of 1.2 it was
+simulated with. For this model the answer can be checked by hand: along a
+ramp :math:`z(t) = r t` the cumulative hazard of an exponential baseline
+has the closed form
+
+.. math::
+
+    H(t) = \lambda \int_0^t e^{\beta r u}\, du
+         = \lambda\, \frac{e^{\beta r t} - 1}{\beta r},
+
+and maximising the likelihood written with it gives the same estimates:
+
+.. jupyter-execute::
+
+    from scipy.optimize import minimize
+
+    rate, life, failed = np.array(rates), np.array(ages), np.array(failed)
+
+
+    def closed_form_neg_ll(v):
+        lam, beta = np.exp(v[0]), v[1]
+        H = lam * np.expm1(beta * rate * life) / (beta * rate)
+        # each failure adds the log of its hazard, lam exp(beta r t)
+        log_h = np.log(lam) + beta * rate[failed] * life[failed]
+        return np.sum(H) - np.sum(log_h)
+
+
+    by_hand = minimize(closed_form_neg_ll, [np.log(0.05), 0.5], method="BFGS")
+    print(np.exp(by_hand.x[0]).round(4), by_hand.x[1].round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _exact = np.array([np.exp(by_hand.x[0]), by_hand.x[1]])
+    assert np.all(np.abs(on_ramps.params - _exact) < 0.01 * _se)
+
+The steps are yours to choose where you want them: ``path.to_steps(t_max,
+steps)`` is the step schedule the fit uses (a
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`), and an
+item given that schedule instead of the path is fitted on exactly those
+steps, with no refinement.
+
+Every regression that fits time-varying covariates from item records fits
+paths the same way: proportional hazards, proportional odds and additive
+hazards (the hazard at each moment is that of the covariate then), Cox,
+and accelerated failure time, where the path accumulates an accelerated
+age (the cumulative-exposure model of a step-stress or ramp-stress test).
+The same conditions apply as for steps: observed and right censored
+lifetimes only, and for accelerated failure time a path from age 0. On a
+baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) an item
+needs its ``left_truncation``, the age it came under observation, as a
+path is cut into steps over a finite stretch only.
+
 
 .. _tvc-bounds-mean:
 

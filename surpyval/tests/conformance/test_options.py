@@ -15,6 +15,10 @@ past bugs lived in the others. This module sweeps them:
   are those on ``sf`` transformed, and the documented shapes;
 - every ``interp=`` value a case declares: a valid curve, equal to the
   step estimate at its step times, and an unknown value refused;
+- the choice of covariance, ``robust=``, on every model whose
+  ``covariance()`` takes it: both values give a symmetric, positive
+  semi-definite covariance, and ``standard_errors()`` and ``summary()``
+  follow the same choice;
 - every estimation option a case declares (``how=``, Cox's ``method=``,
   the non-parametric estimator choices): each gives a valid model, and on
   a large sample from the model they agree;
@@ -47,6 +51,7 @@ from surpyval.tests.conformance.registry import (
     KNOWN_INCONSISTENCIES,
     NON_STRICT,
     Q_PROBS,
+    ROBUST_COVARIANCE,
     WITH_COVARIATES,
     call,
     cases_for,
@@ -750,6 +755,50 @@ def test_unknown_interp_is_refused(case):
 
 
 # ---------------------------------------------------------------------------
+# The covariance option, robust=
+# ---------------------------------------------------------------------------
+def _takes_robust(dotted):
+    method = getattr(_resolve(dotted), "covariance", None)
+    if not callable(method):
+        return False
+    try:
+        return "robust" in inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def test_every_model_with_a_robust_covariance_is_swept():
+    takes = {c.model_class for c in CASES if _takes_robust(c.model_class)}
+    assert takes == set(ROBUST_COVARIANCE), takes ^ set(ROBUST_COVARIANCE)
+
+
+@pytest.mark.parametrize("robust", [True, False], ids=["robust", "model"])
+@pytest.mark.parametrize("case", cases_for("covariance_robust"))
+def test_robust_option_gives_a_consistent_covariance(case, robust):
+    skip_without_finite_maximum(case)
+    model = fitted(case)
+    cov = np.asarray(model.covariance(robust=robust), float)
+    kept = ~np.isnan(np.diag(cov))
+    cov = cov[np.ix_(kept, kept)]
+    assert np.all(np.isfinite(cov))
+    np.testing.assert_allclose(cov, cov.T, rtol=0, atol=1e-12)
+    assert np.linalg.eigvalsh(cov).min() >= -1e-10 * max(
+        1.0, np.abs(cov).max()
+    )
+    se = np.asarray(model.standard_errors(robust=robust), float)
+    np.testing.assert_allclose(se[kept], np.sqrt(np.diag(cov)), rtol=1e-12)
+    table = model.summary(robust=robust)
+    np.testing.assert_allclose(
+        np.asarray(table["se(coef)"], float)[kept], se[kept], rtol=1e-12
+    )
+    # The default is one of the two, the same in all three methods
+    default = inspect.signature(model.covariance).parameters["robust"]
+    for name in ("standard_errors", "summary"):
+        param = inspect.signature(getattr(model, name)).parameters["robust"]
+        assert param.default == default.default, name
+
+
+# ---------------------------------------------------------------------------
 # Estimation options
 # ---------------------------------------------------------------------------
 def _estimator_params():
@@ -1071,6 +1120,13 @@ CONVENTIONS = {
         "how= is the estimation method, default 'MLE' where there is a "
         "likelihood",
         _how,
+    ),
+    # The choice between the robust (sandwich) and the model-based
+    # covariance is robust=, off by default; the Fine-Gray model's is on,
+    # as R's cmprsk::crr reports it (documented, 0.27).
+    "robust": (
+        "robust= chooses the robust covariance, default False",
+        _default_is("robust", False, own={"FineGrayModel": True}),
     ),
     "id column": (
         "the item-id column of a data frame has one spelling",

@@ -308,9 +308,12 @@ class CompetingRisksProportionalHazards(
             }
         model.results = None
         if model.model == "Fine-Gray":
-            model._covariances = [
-                fg.covariance() for fg in model._fg_models.values()
-            ]
+            # (None where a cause's model was saved before v0.27, with
+            # only its model-based covariance: covariance() then refuses)
+            robust = [fg._covariance for fg in model._fg_models.values()]
+            model._covariances = (
+                None if any(cov is None for cov in robust) else robust
+            )
         elif "covariances" in model_dict:
             model._covariances = [
                 np.array(cov, dtype=float) for cov in model_dict["covariances"]
@@ -410,14 +413,21 @@ class CompetingRisksProportionalHazards(
     def covariance(self) -> npt.NDArray:
         """
         The covariance of ``params``: block-diagonal across the causes,
-        each block the inverse information of that cause's fit (its Cox
-        partial likelihood, or its Fine-Gray weighted partial likelihood),
-        as the causes' fits are separate. An aliased coefficient's row and
-        column are ``nan``. For a fit with weights ``w`` each block is
-        the cause's robust (sandwich) covariance (see :meth:`fit`).
+        each block that cause's fit's, as the causes' fits are separate.
+        For ``model="Cox"`` a block is the inverse information of the
+        cause's Cox partial likelihood; for ``model="Fine-Gray"`` it is
+        the cause's robust (sandwich) covariance, Fine and Gray's, as
+        ``FineGray``'s ``covariance()`` (the model-based one is
+        ``models[cause].covariance(robust=False)``). An aliased
+        coefficient's row and column are ``nan``. For a fit with weights
+        ``w`` each block is the cause's robust (sandwich) covariance (see
+        :meth:`fit`).
 
         Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
-        dict saved before the covariances were stored, and for a penalised
+        dict saved before the covariances were stored, for a
+        ``model="Fine-Gray"`` model restored from a dict saved before
+        v0.27 (which stored only the model-based covariances, and the
+        robust ones need the data), and for a penalised
         fit (:meth:`fit_penalised`), which has none.
         """
         self._refuse_if_penalised()
@@ -425,6 +435,9 @@ class CompetingRisksProportionalHazards(
             raise no_covariance_error(
                 "it was saved before the causes' covariances were stored; "
                 "refit it"
+                if self.model == "Cox"
+                else "the robust one: it was saved before v0.27, which "
+                "stored only each cause's model-based covariance; refit it"
             )
         return block_diag(*[np.atleast_2d(c) for c in self._covariances])
 

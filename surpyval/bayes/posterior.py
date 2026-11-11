@@ -127,16 +127,55 @@ class Posterior:
             return np.full(q.shape, col[0])
         return self.wquantile(col, q)
 
-    def wquantile(self, values: npt.NDArray, q: npt.ArrayLike) -> Any:
+    def wquantile(
+        self,
+        values: npt.NDArray,
+        q: npt.ArrayLike,
+        complement: npt.NDArray | None = None,
+    ) -> Any:
         """Posterior quantiles ``q`` of a function's ``values`` at the
         points (``(N,)`` or ``(N, s)``): on a grid each point's mass is
         spread over its cell (``lattice_quantile``); a non-finite value
-        is taken as infinite."""
+        is taken as infinite.
+
+        With ``complement`` (``1 - values`` computed as itself, for a
+        probability: the points' failure functions beside their survival
+        functions) the result is the pair ``(quantiles, 1 - quantiles)``,
+        the second from the complement's own values, so it keeps its
+        digits where the quantile is a rounding from 1.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.bayes.posterior import Posterior
+        >>> post = Posterior(["a"], ["a"], np.zeros((3, 1)),
+        ...                  np.ones(3) / 3, "draws")
+        >>> f = np.array([1e-20, 2e-20, 3e-20])
+        >>> s, f_q = post.wquantile(1 - f, 0.5, complement=f)
+        >>> float(s), float(f_q)
+        (1.0, 2e-20)
+        """
         v = np.asarray(values, dtype=float)
         v = np.where(np.isnan(v), np.inf, v)
-        if self.shape is not None and int(np.prod(self.shape)) == len(v):
-            return lattice_quantile(v, self.weights, q, self.shape)
-        return weighted_quantile(v, self.weights, q)
+        lattice = self.shape is not None and int(np.prod(self.shape)) == len(v)
+        if complement is None:
+            if lattice:
+                assert self.shape is not None
+                return lattice_quantile(v, self.weights, q, self.shape)
+            return weighted_quantile(v, self.weights, q)
+        c = np.asarray(complement, dtype=float)
+        c = np.where(np.isnan(c), -np.inf, c)
+        if lattice:
+            assert self.shape is not None
+            return lattice_quantile(v, self.weights, q, self.shape, c)
+        # The weighted quantile interpolates the sorted values at their
+        # mid-weights, so the complement's quantile at 1 - q is one minus
+        # the values' at q, from the complement's own numbers
+        flipped = 1.0 - np.asarray(q, dtype=float)
+        return (
+            weighted_quantile(v, self.weights, q),
+            weighted_quantile(c, self.weights, flipped),
+        )
 
     def mean(self, name: str) -> float:
         """The posterior mean of the parameter ``name``."""

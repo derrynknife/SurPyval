@@ -49,6 +49,30 @@ Unreleased
   covariates act on the hazard), so ``model.kind in kinds.TIME_SCALING``
   replaces a comparison with a string literal. The strings are unchanged.
 
+- Regressions are fitted on continuously varying covariates: a ramp-stress
+  test, a thermal cycle, a planned mission or dose profile. An item
+  record whose ``time_varying_covariates`` are a ``CovariatePath`` used to
+  be refused by every fit; now each path is cut into steps and the model
+  fitted to them by its ``fit_tvc``, with the steps halved until no
+  estimate moves by more than 1% of its standard error. The fitted model
+  holds ``path_steps``: the steps in each stretch of a path at the end,
+  the rows fitted, the largest move of an estimate at the last halving (in
+  standard errors), the tolerance and whether it was met; a fit that still
+  moves after eight halvings, or would need more than two million rows,
+  returns its last fit with one warning. Every fitter that takes
+  time-varying covariates from item records does so: proportional hazards,
+  proportional odds, additive hazards, Cox and accelerated failure time
+  (cumulative exposure). The new ``CovariatePath.to_steps(t_max, steps=8,
+  start=None)`` gives the steps as a ``StepSchedule``: each stretch between
+  the path's breakpoints in ``steps`` equal steps at the midpoint value, a
+  flat stretch one step, so a flat path is fitted as the constant
+  covariate and a path made of steps exactly as ``fit_tvc`` fits those
+  steps. In the fit, the step a failure falls in ends with the path's
+  value at the failure. On a baseline defined below 0 an item with a path
+  needs its ``left_truncation``. The path must be external (planned, not
+  read from the item): a measured signal belongs in a joint model. See
+  "Fitting on a continuous path" in
+  :doc:`Regression Modelling with SurPyval`.
 - Joint models: what the hazard follows of the marker's path is a choice,
   ``JointPH(Weibull, path_model, link=...)``. ``"value"`` (the default, as
   before: risk follows the level), ``"slope"`` (risk follows how fast the
@@ -615,9 +639,12 @@ Unreleased
   censoring distribution from the weighted Kaplan-Meier (so whole-number
   weights give the counted fit exactly; R's ``finegray`` leaves its
   censoring distribution unweighted), with the robust covariance clustered
-  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
-  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
-  1e-6). The information criteria, the diagnostics and the penalised fit
+  by unit, Fine and Gray's with each unit's influence (the part through
+  the censoring distribution included) times its weight, so ``w = 1``
+  gives the unweighted fit's. Checked against R (coefficients 1e-8;
+  standard errors 1e-6 against ``coxph(..., weights = fgwt * w, cluster =
+  id)`` with the censoring term taken out, as ``coxph`` holds the
+  censoring distribution fixed; the term itself against its definition). The information criteria, the diagnostics and the penalised fit
   refuse weighted fits.
 - ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
   Aalen's additive hazards model with sampling weights. Each increment of
@@ -764,6 +791,100 @@ Unreleased
   80% of the time and for the right cause 5.5%).
 
 **Changed.**
+
+- **Fine-Gray standard errors are the robust ones by default (an
+  intentional numerical change).** ``FineGray`` (and
+  ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"``)
+  reported model-based standard errors: the inverse information of the
+  weighted partial likelihood, which takes the censoring weights as known
+  (R ``cmprsk::crr``'s ``invinf``). ``covariance()``,
+  ``standard_errors()``, ``p_values``, ``summary()`` (its standard errors,
+  Wald intervals, ``z`` and ``p``) and the printout now use the robust
+  (sandwich) variance Fine and Gray derived, which adds each unit's
+  influence on the estimate, the part through the estimated censoring
+  distribution included: the variance ``crr`` reports (its ``var``) and
+  prints, reproduced to about 1e-7 (relative) on eight stored ``crr``
+  fits, with ties between events of both causes and censorings, with
+  counts (``crr`` given each row ``n`` times) and with no censoring. The
+  coefficients, the likelihood, the baseline and every prediction are
+  unchanged. The model-based variance stays available, under the name the
+  other regressions use for the choice: ``covariance(robust=False)``,
+  ``standard_errors(robust=False)`` and ``summary(robust=False)``; the
+  model-based p-values are the ``p`` column of ``summary(robust=False)``.
+  The reason for the change of default (design principle 15): the
+  model-based variance is not the variance of this estimator, whose
+  weights are estimated and whose risk sets repeat units; the robust one
+  is the method's own and the reference software's.
+
+  The robust standard errors are mostly smaller than the model-based ones,
+  but not always: on the stored ``crr`` fits, 17 of 22 coefficients get a
+  smaller standard error. The numbers that change, standard errors
+  model-based → robust (every Wald interval, ``z`` and ``p`` moves with
+  them):
+
+  - the ``competing`` reference data, cause 1 (``group``, ``z``):
+    0.33147, 0.16439 → 0.30823, 0.15600; ``p`` 0.0172, 0.4443 → 0.0104,
+    0.4202;
+  - the same, cause 2: 0.44598, 0.24453 → 0.43318, 0.20337; ``p``
+    0.0355, 0.3282 → 0.0304, 0.2397;
+  - PBC, death (``drug``, ``age``, ``log_bili``, ``female``): 0.17603,
+    0.00818, 0.08971, 0.23463 → 0.17584, 0.00959, 0.09410, 0.26680;
+  - the docstring examples: the censored one's variance
+    (``FineGrayModel.covariance``) 0.04419 → 0.04333, and the standard
+    error in ``FineGrayModel.summary``'s (no censoring) 0.1741 → 0.1727.
+
+  Over the stored ``crr`` fits the robust standard errors are from 25%
+  smaller to 17% larger than the model-based ones (the larger ones are
+  all for death in PBC: ``age``, ``log_bili`` and ``female``, and ``age``
+  and ``female`` again with the times rounded to half years). In a simulation from
+  the model (n = 200, 47% censored, 1000 replicates) the 95% Wald
+  intervals covered the two coefficients 94.3% and 93.2% of the time with
+  the robust variance and 94.8% and 94.3% with the model-based one.
+
+  What else follows:
+
+  - A saved model's dict holds both: ``"covariance"`` (and ``"se"``,
+    ``"p_values"``) the robust one, as ``covariance()``, and
+    ``"model_covariance"``. A dict saved by 0.26 or earlier holds only the
+    model-based covariance, and the robust one cannot be rebuilt without
+    the data: it loads with its predictions and ``covariance(robust=False)``
+    as they were, while ``covariance()``, ``standard_errors()`` and
+    ``summary()`` refuse, saying to ask for ``robust=False`` or refit, and
+    ``p_values`` is ``nan`` (the model-based ones are in
+    ``summary(robust=False)``).
+  - A fit with weights ``w`` gets the same term for the censoring
+    distribution, with sampling weights: every sum (the censoring
+    Kaplan-Meier and its at-risk counts included) weighted, and each
+    unit's influence its weight times the unweighted one. So a fit with
+    ``w = 1`` reports exactly the unweighted standard errors, and scaling
+    every weight changes nothing. Before, a weighted fit held the
+    censoring distribution fixed (R's ``coxph`` on ``finegray``'s data),
+    and ``w = 1`` gave slightly different standard errors from no ``w``.
+    On the weighted reference data the standard errors move from 0.53324,
+    0.26389 to 0.53366, 0.26592 (cause 1) and from 0.84097, 0.46078 to
+    0.84041, 0.46074 (cause 2). A weighted fit has no model-based
+    covariance: ``robust=False`` is refused.
+  - Where a coefficient runs off (a fit that warns "No finite maximum"),
+    the robust covariance of the other coefficients can be ``nan`` too,
+    where a risk set's sum underflows.
+  - ``FineGrayModel.p_values`` is computed in the tail (``2 * norm.sf``),
+    as ``summary()``'s, so a p-value below 1e-16 is no longer 0.
+- ``random`` of a Bayesian fit (``BayesianParametric.random``) takes one
+  uniform number per life, where it took two (one to pick a posterior
+  point and one for the life). The number picks a point by the posterior's
+  cumulative weights, and its place within that point's share is the
+  probability for the point's own quantile; a closed-form predictive
+  (an Exponential with a Gamma prior, a Normal with a Normal prior on its
+  mean) uses its quantile directly. On a grid the life is drawn at the
+  grid point, not at a point jittered within its cell, so the draws follow
+  exactly the distribution ``sf``, ``ff`` and ``qf`` describe. This is an
+  intentional change to results: **the same seed gives different lives
+  than before.** For example, a Weibull fit to 3 failures and 37
+  survivors with the default grid, ``random(3, random_state=1)``, was
+  ``[2596.0, 33586.3, 10561.4]`` and is now ``[2240.2, 30592.9,
+  18897.8]``; an Exponential with a Gamma(2, 500) prior on 100, 250 and
+  400 hours was ``[783.8, 51.0, 250.5]`` and is now ``[192.8, 1029.9,
+  39.5]``. The distribution of the draws is unchanged.
 
 - The renewal models' simulations (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
@@ -1062,6 +1183,32 @@ Unreleased
          -2.14703 to 2.14703
 
   A covariance costs about three times the likelihood evaluations it did.
+- Bayesian fits keep their digits in both tails, for every engine (grid,
+  Laplace, draws from another sampler) and the offset, limited-failure and
+  zero-inflated forms. ``ff`` is the posterior average of each point's own
+  failure function rather than ``1 - sf``, which kept no digits of a
+  failure probability below about 1e-8; ``Hf`` is ``-log1p(-ff)`` while
+  ``ff`` is below one half and ``-log(sf)`` above, and stays finite where
+  ``sf`` underflows; ``cri(on="ff")`` and ``cri(on="Hf")`` and
+  ``compare_to(on="ff")`` keep the same digits. For the Weibull fit above,
+  ``ff(0.1)`` was ``4.1397633e-09`` and is now ``4.1397644e-09`` (the
+  posterior average summed exactly is ``4.139764380041089e-09``; the old
+  value was off by 2.6e-7 relative, the new one by less than 1e-15), and
+  ``qf(1e-12)`` was ``5.7914e-05`` and is now ``5.7848e-05``. Below the
+  support ``ff`` is now exactly 0 and ``sf`` exactly 1 (they were a
+  rounding either side). Elsewhere values move only in their last digits
+  (``ff(100)`` was ``7.935912007228652e-05``, now
+  ``7.93591200732899e-05``).
+- ``qf`` of a Bayesian fit found by search (grid, Laplace, draws) now
+  converges in the upper tail: it solves on the log of ``ff`` up to
+  ``p = 0.5`` and on the log of ``sf`` above, with a tolerance relative to
+  the time scale. On the Weibull fit above, ``qf(0.9999)`` and
+  ``qf(1 - 1e-9)`` raised "Failed to converge after 100 iterations" and
+  are now 275897.7 and 15438917.1. On positive times it solves on the log
+  of time, so a quantile far below the posterior points' own is found to
+  a relative tolerance: a Laplace ExpoWeibull fit's ``qf(1e-12)`` had
+  stopped at a time where ``ff`` was 3.7e-10.
+
 - The package no longer silences other threads' warnings. Wherever it
   held a warning back (117 places: the starts and polishes of fits, inner
   refits of bootstraps and diagnostics, autograd's "output seems

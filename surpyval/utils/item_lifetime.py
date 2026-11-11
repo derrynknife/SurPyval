@@ -87,10 +87,11 @@ class ItemLifetime:
         value holding from its age on), a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
         or a continuously varying
-        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
-        Each must start at or before the start of observation
-        (``left_truncation``, else 0): nothing says what they were before
-        their first age.
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+        (a ramp, a cycle: fitted cut into steps fine enough that the fit
+        no longer depends on them). Each must start at or before the
+        start of observation (``left_truncation``, else 0): nothing says
+        what they were before their first age.
     markers : dict, optional
         Repeated measurements of one marker (a vibration level, a wear or
         oil-debris reading, a biomarker), ``{age: value}``: one reading
