@@ -1232,6 +1232,15 @@ Unreleased
 
 **Fixed.**
 
+- ``fit_from_ecdf`` on every parametric family refuses a curve that falls
+  as ``x`` rises, with a ``ValueError``: "F must rise with x; if you have a
+  survival curve R, pass F = 1 - R", and where it falls. A survival curve
+  passed in place of the CDF (``NonParametric.fit_from_ecdf`` takes
+  ``R``) was fitted without a word: ``Weibull.fit_from_ecdf([1, 2, 3, 4],
+  [0.9, 0.7, 0.4, 0.1])`` gave alpha 1.754 and a negative beta, -2.045.
+  The points may still come in any order (they are checked in order of
+  ``x``), flat steps are accepted, and a curve that rises is fitted
+  exactly as before. Values outside [0, 1] were already refused.
 - Standard errors and bounds of the repairable-system models no longer
   move with the unit of time. The covariance of every Poisson-process fit
   (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), of the renewal models

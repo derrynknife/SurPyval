@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### `fit_from_ecdf` refuses a falling curve (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A parametric `fit_from_ecdf` refuses `F` that falls between neighbouring points (taken in order of `x`, ties by `F`) by more than `1e-12`, any fall at all beyond rounding, not only a curve that falls overall. The message names `F` and says to pass `1 - R` for a survival curve. | proposed | A CDF cannot fall, and neither can an empirical one: `1 - R` of Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates (200 random data sets each, with censoring, intervals and truncation) never fell, not even by rounding. Rounding a rising curve to fewer digits keeps it rising, so a curve read off a plot falls only through a misreading. The rule matches `NonParametric.fit_from_ecdf`, which refuses any rise in `R`. The tolerance absorbs arithmetic such as `1 - R` only. | done |
+
 ### Arguments that a positional call silently misreads (12 Nov 2026)
 
 | Decision | By | Reason | Status |

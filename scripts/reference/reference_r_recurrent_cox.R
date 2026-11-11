@@ -3,20 +3,23 @@
 # time) and Wei-Lin-Weissfeld, with the robust variance clustered by
 # subject.
 #
-# Writes surpyval/tests/reference/data/r_recurrent_cox.json: the data,
-# and for each fit the software, its version, the call and the values.
-# Generated with R 4.6.2 and survival 3.8.12.
+# Writes surpyval/tests/reference/data/r_recurrent_cox.json in the layout
+# of the other reference files: for each fit the fixture, the software,
+# its version, the call, the settings and the values. Generated with
+# R 4.6.2 and survival 3.8.12.
 #
+#     python scripts/reference/make_fixtures.py
 #     Rscript scripts/reference/reference_r_recurrent_cox.R
 #
-# Needs survival and jsonlite. Re-running reproduces the file byte for
-# byte.
+# Run from the repository root, after make_fixtures.py. Needs survival
+# and jsonlite. Re-running reproduces the file byte for byte.
 #
 # The data are survival's bladder cancer recurrences (Wei, Lin and
 # Weissfeld 1989), each subject's first four recurrences, in its two
-# layouts: bladder2, start-stop rows (stored here, with the fits on it),
-# and bladder, one row per subject and recurrence number (the
-# Wei-Lin-Weissfeld layout, which the test builds from bladder2's rows).
+# layouts: bladder2, start-stop rows (the shared fixture "bladder2",
+# checked here against R's copy), and bladder, one row per subject and
+# recurrence number (the Wei-Lin-Weissfeld layout, which the test builds
+# from bladder2's rows).
 #
 # The fits, each with rx + size + number and cluster(id):
 #
@@ -36,14 +39,16 @@ suppressPackageStartupMessages({
     library(jsonlite)
 })
 
-out_file <- file.path(
-    "surpyval", "tests", "reference", "data", "r_recurrent_cox.json"
-)
-software <- list(
-    name = "survival",
-    version = as.character(packageVersion("survival")),
-    r = paste(R.version$major, R.version$minor, sep = ".")
-)
+data_dir <- file.path("surpyval", "tests", "reference", "data")
+if (!file.exists(file.path(data_dir, "fixtures.json"))) {
+    stop("Run from the repository root (fixtures.json not found)")
+}
+out_file <- file.path(data_dir, "r_recurrent_cox.json")
+fx <- fromJSON(file.path(data_dir, "fixtures.json"))
+b2 <- as.data.frame(fx$bladder2$columns)
+for (col in c("id", "rx", "number", "size", "start", "stop", "event")) {
+    stopifnot(isTRUE(all.equal(b2[[col]], as.numeric(bladder2[[col]]))))
+}
 times <- c(5, 10, 20, 40)
 
 baseline <- function(fit) {
@@ -60,10 +65,17 @@ baseline <- function(fit) {
     lapply(split(bh, bh$strata), at)
 }
 
-entry <- function(call, fit) {
+entry <- function(call, fit, data) {
     list(
-        software = software,
+        fixture = "bladder2",
+        software = "R survival",
+        version = as.character(packageVersion("survival")),
         call = call,
+        settings = list(
+            data = data,
+            variance = "robust (var), clustered by id; naive.var beside it",
+            baseline = "basehaz(fit, centered = FALSE) at times"
+        ),
         values = list(
             coef = unname(coef(fit)),
             naive_covariance = unname(fit$naive.var),
@@ -117,21 +129,25 @@ calls <- list(
     )
 )
 
-references <- lapply(calls, function(item) {
-    entry(sprintf(item[[1]], rhs), item[[2]]())
+layouts <- list(
+    ag = "bladder2, start-stop rows",
+    ag_breslow = "bladder2, start-stop rows",
+    pwp_total = "bladder2, start-stop rows",
+    pwp_gap = "bladder2, each row's gap (stop - start)",
+    wlw = paste(
+        "bladder, a row per subject and recurrence number 1 to 4",
+        "(the test builds it from bladder2's rows)"
+    )
+)
+references <- lapply(names(calls), function(name) {
+    item <- calls[[name]]
+    entry(sprintf(item[[1]], rhs), item[[2]](), layouts[[name]])
 })
+names(references) <- names(calls)
 
 out <- list(
-    data = list(
-        name = "bladder2",
-        source = paste(
-            "survival::bladder2 (Wei, Lin and Weissfeld 1989): start-stop",
-            "rows of each subject's first four recurrences"
-        ),
-        columns = as.list(
-            bladder2[c("id", "rx", "number", "size", "start", "stop", "event")]
-        )
-    ),
+    generator = "scripts/reference/reference_r_recurrent_cox.R",
+    R = R.version.string,
     references = references
 )
 writeLines(

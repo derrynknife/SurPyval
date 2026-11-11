@@ -346,6 +346,12 @@ def test_round_trips(name):
         )
         pd.testing.assert_frame_equal(restored.summary(), model.summary())
         assert repr(restored) == repr(model)
+    # The diagnostics need the layout's rows, which are not saved: the
+    # restored model says so and names its own fitter, not CoxPH.
+    with pytest.raises(ValueError, match="data") as err:
+        surpyval.from_dict(saved).diagnose()
+    assert type(fitter).__name__ in str(err.value)
+    assert "CoxPH" not in str(err.value)
 
 
 def test_start_stop_rows_are_the_cox_fit_of_them():
