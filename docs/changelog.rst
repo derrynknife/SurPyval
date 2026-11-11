@@ -1389,6 +1389,23 @@ Unreleased
 
 **Fixed.**
 
+- ``ProportionalIntensityNHPP`` starts from the covariate-free fit of its
+  baseline for data the item records (``ItemHistory``) refuse but the fit
+  takes: an item whose id is blank text, an item whose end of observation
+  is at its entry age, or a failure at the top of an inspection window
+  that counts failures. Those used to start every baseline parameter at
+  one, and with a ``CoxLewis`` baseline on ages in the tens of thousands
+  the fit stopped there, warned that it had not reached a verified
+  maximum and returned ``params`` ``[1, 1]``, coefficients ``[0, 0]`` and
+  a ``nan`` log-likelihood. On 30 simulated items observed to 50,000
+  hours, one with a blank id, it now gives ``alpha`` -9.264,
+  ``beta`` 2.366e-05 and coefficients 0.5421 and -0.1913 (log-likelihood
+  -2836.7). Where the unit start did converge (``Duane``, ``CrowAMSAA``)
+  the estimates move by about 1e-6 of a standard error (at most 4e-7
+  relative; ``Duane``'s ``b`` 5.585229e-07 -> 5.585231e-07 on that
+  example), the log-likelihood the same to 1e-12. Data the records take
+  starts exactly as before.
+
 - ``fit_from_ecdf`` on every parametric family refuses a curve that falls
   as ``x`` rises, with a ``ValueError``: "F must rise with x; if you have a
   survival curve R, pass F = 1 - R", and where it falls. A survival curve
@@ -1667,6 +1684,17 @@ Unreleased
   634 -> 476 ms (the semi-parametric ``AndersenGill``,
   ``PrenticeWilliamsPeterson`` and ``WeiLinWeissfeld`` already built their
   rows with array operations).
+- **The proportional-intensity NHPP's default start is faster**: the
+  data without its covariates, which the start fits the baseline to, was
+  built by turning every item into an ``ItemHistory`` record and back.
+  ``EventHistoryData.without("covariates")`` now builds it from the
+  arrays wherever that gives the same data, every array and dtype bit for
+  bit (the records are still used for data with event types, states,
+  time-varying covariates, attributes or observation windows, and for
+  data the records could refuse). On 1,000 items with about 10 events
+  each, ``without("covariates")`` 318 -> 5 ms and the Duane
+  ``ProportionalIntensityNHPP`` fit 1,021 -> 575 ms (a loaded machine;
+  run back to back); the fits' numbers are unchanged.
 
 **Internal.**
 
