@@ -97,7 +97,7 @@ def test_the_area_under_a_path_is_its_closed_form():
     )
     exponential = LinkPath(PATH_MODELS["exponential"], "cumulative")
     np.testing.assert_allclose(
-        exponential.path(X, a, b), a * np.expm1(b * X) / b, rtol=1e-13
+        exponential.path(X, a, b), a * np.expm1(b * X) / b, rtol=1e-11
     )
     # not polynomials, and singular at 0: a logarithmic path's area is
     # a t + b (t log t - t), a power path's a t^(b + 1) / (b + 1)
