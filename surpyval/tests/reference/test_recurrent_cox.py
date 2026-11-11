@@ -1,11 +1,8 @@
 """The semi-parametric recurrent-event regressions against R's
 ``coxph(... + cluster(id))`` on the bladder cancer recurrences, in the
-layout each model takes (``scripts/reference/reference_r_recurrent_cox.R``
-wrote the data and the values).
+layout each model takes (the rows are the shared fixture ``bladder2``;
+``scripts/reference/reference_r_recurrent_cox.R`` wrote the values).
 """
-
-import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,14 +14,13 @@ from surpyval.recurrent import (
     WeiLinWeissfeld,
 )
 
-STORED = json.loads(
-    (Path(__file__).parent / "data" / "r_recurrent_cox.json").read_text()
-)
+from ._data import fixture, reference
+
 Z_COLS = ["rx", "size", "number"]
 
 
 def _rows():
-    df = pd.DataFrame(STORED["data"]["columns"])
+    df = pd.DataFrame(fixture("bladder2"))
     df["c"] = 1 - df["event"]
     return df
 
@@ -70,7 +66,7 @@ CASES = [
 )
 def test_fit_matches_coxph_with_cluster(ref, layout):
     model = FITS[ref](layout)
-    values = STORED["references"][ref]["values"]
+    values = reference("r_recurrent_cox", ref)["values"]
     assert model.maximum == "verified"
     np.testing.assert_allclose(model.params, values["coef"], rtol=1e-7)
     np.testing.assert_allclose(
@@ -90,7 +86,7 @@ def test_fit_matches_coxph_with_cluster(ref, layout):
 @pytest.mark.parametrize("ref", list(FITS))
 def test_cumulative_baseline_matches_basehaz(ref):
     model = FITS[ref](_event_log)
-    values = STORED["references"][ref]["values"]
+    values = reference("r_recurrent_cox", ref)["values"]
     times = values["times"]
     for stratum, expected in values["baseline"].items():
         label = None if stratum == "all" else int(stratum.split("=")[-1])
