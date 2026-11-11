@@ -2031,6 +2031,229 @@ fluke of this sample.
 
     assert bearing_fit.param_cb("beta")[0] > 1.5
 
+Each failure mode's intensity, with bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A failure mode's **intensity** is how often that kind of failure is
+happening on one item at a given age: failures per month, say. Its
+reciprocal is the mode's **MTBF** at that age, the average time between
+failures of that kind if the item stayed as it is then. The **cumulative
+intensity** is the running total: how many failures of that kind one item is
+expected to have had by that age. All three are estimates from a finite
+record, so each comes with **confidence bounds**: the range of values the
+data cannot rule out.
+
+``cif_cb``, ``iif_cb``, ``mtbf`` and ``mtbf_cb`` are the single-process
+methods of the same names, with the mode as ``event`` (they are the mode's
+own model's bounds, ``pumps.models[event].cif_cb`` and so on, and take the
+same ``alpha_ci``, ``bound`` and, for the last two, ``method``). Where is
+each mode at the end of the 40 months?
+
+.. jupyter-execute::
+
+    for mode in pumps.event_types:
+        rate = float(pumps.iif(T, mode))
+        lo, hi = pumps.iif_cb(T, mode)
+        m_lo, m_hi = pumps.mtbf_cb(T, mode)
+        print(f"{mode:8s} {rate:.3f} failures a month (95%: {lo:.3f} to {hi:.3f});"
+              f" MTBF {float(pumps.mtbf(T, mode)):.1f} months ({m_lo:.1f} to {m_hi:.1f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(pumps.iif_cb(T, "seal"), pumps.models["seal"].iif_cb(T))
+    assert np.allclose(pumps.mtbf_cb(T, "bearing"),
+                       pumps.models["bearing"].mtbf_cb(T))
+
+All modes together
+~~~~~~~~~~~~~~~~~~
+
+The owner of a pump mostly cares how often it stops, whatever the reason.
+Because the modes are independent, their intensities simply add:
+``total_cif``, ``total_iif`` and ``total_mtbf`` are the expected number of
+failures of any kind, the rate of failures of any kind and the MTBF of the
+pump as a whole. Their bounds, ``total_cif_cb``, ``total_iif_cb`` and
+``total_mtbf_cb``, add the modes' uncertainties in the same way (the
+variance of a sum of independent estimates is the sum of their variances)
+and are then formed on the log scale, as the single-process bounds are, so
+they cannot go below zero:
+
+.. jupyter-execute::
+
+    print("failures of any kind per pump by 40 months:",
+          round(float(pumps.total_cif(T)), 2), pumps.total_cif_cb(T).round(2))
+    print("failures of any kind per pump-month at 40 :",
+          round(float(pumps.total_iif(T)), 3), pumps.total_iif_cb(T).round(3))
+    print("MTBF of a pump at 40 months               :",
+          round(float(pumps.total_mtbf(T)), 2), pumps.total_mtbf_cb(T).round(2))
+
+In symbols, with :math:`\hat\Lambda_k(t)` the fitted cumulative intensity of
+mode :math:`k` and :math:`\mathrm{se}_k(t)` its standard error (the delta
+method, from that mode's parameter covariance), the total is
+:math:`\hat\Lambda(t) = \sum_k \hat\Lambda_k(t)`, its standard error is
+:math:`\mathrm{se}(t) = \sqrt{\sum_k \mathrm{se}_k(t)^2}`, and the bounds are
+:math:`\hat\Lambda(t) \exp(\pm z \, \mathrm{se}(t) / \hat\Lambda(t))`. The
+intensity is treated the same way, and the bounds on the MTBF are the
+reciprocals of the bounds on the intensity. A model with a single mode has
+the total's bounds equal to that mode's.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(pumps.total_iif(T),
+                      sum(pumps.iif(T, k) for k in pumps.event_types))
+    _lo, _hi = pumps.total_cif_cb(T)
+    assert _lo < pumps.total_cif(T) < _hi
+
+Growth per mode: better, level or worse
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+"Reliability growth" asks whether failures are becoming rarer (the item is
+getting better), arriving at a steady rate (staying level) or becoming more
+frequent (getting worse). Asked of all failures together, the answer can
+hide what matters: one mode wearing out behind another that is steady.
+``growth()`` asks it of each mode, in one table with a row per mode, so the
+owner can see which modes need attention and which are under control:
+
+.. jupyter-execute::
+
+    table = pumps.growth()
+    print(table.T.to_string(float_format=lambda v: f"{v:.3g}"))
+
+Reading down a column:
+
+- ``parameter`` is the parameter of the intensity model that carries the
+  trend, ``estimate`` its fitted value and ``lower 95%`` / ``upper 95%`` its
+  confidence interval (``param_cb``). For Crow-AMSAA it is ``beta``: below 1
+  the intensity is falling, at 1 it is constant, above 1 it is rising.
+  (``alpha`` plays that part for ``Duane``, with the same reading, and
+  ``beta`` for ``CoxLewis``, where the dividing value is 0.)
+- ``no trend`` is that dividing value, and ``p_value`` tests whether the data
+  are consistent with it. A small p-value says the trend is real; a large
+  one says only that these data cannot tell the mode's intensity from a
+  constant one, which with few failures is not proof that it is constant.
+- ``trend`` is the conclusion at the level ``alpha_ci``: ``"increasing"``
+  (failures becoming more frequent: getting worse), ``"decreasing"`` (getting
+  better) or ``"none"`` (no trend shown), the words of the trend tests.
+- ``iif`` and ``mtbf`` are the mode's intensity and MTBF at the end of
+  observation, with their bounds, and ``share`` is the mode's share of the
+  total intensity then: the fraction of the failures happening now that are
+  of this kind.
+
+Here the seal failures show no trend and the bearing failures an increasing
+one, and by 40 months the bearings cause most of the failures: the fix to
+look for is in the bearings. ``growth(x=...)`` reads the intensities, MTBFs
+and shares at another time, and ``alpha_ci`` sets the level of the bounds
+and of ``trend``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert table.loc["seal", "trend"] == "none"
+    assert table.loc["bearing", "trend"] == "increasing"
+    assert table.loc["bearing", "share"] > 0.5
+    assert np.isclose(table["share"].sum(), 1.0)
+
+The test is a Wald test on the scale of the parameter's interval (the log
+of a positive parameter): :math:`z = \log(\hat\beta / 1) /
+\mathrm{se}(\log\hat\beta)` for Crow-AMSAA, with a two-sided p-value from
+the normal distribution, so ``trend`` is ``"none"`` exactly when the
+interval contains the ``no trend`` value. A homogeneous Poisson process
+(``dist=HPP``) has a constant intensity by construction and no parameter to
+test, so ``growth()`` refuses it and says to refit with ``CrowAMSAA``,
+``Duane`` or ``CoxLewis``.
+
+Forecasts: how many failures to expect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A forecast answers a planning question: how many failures of each kind will
+the pumps have over the next year, and how many spares and call-outs is it
+sensible to plan for? The **expected** number is the model's average: the
+cumulative intensity gained over the window by each pump, added over the
+pumps. The number that actually happens is a whole number that varies by
+chance around that average even if the model is exactly right, so the
+forecast also gives a **prediction interval**: a range that the actual count
+falls in with the stated probability.
+
+That is a different thing from a confidence bound. A confidence bound is
+about the *average* (how well the data pin down the expected number); a
+prediction interval is about the *outcome* (what will be seen). More data
+narrow a confidence bound towards nothing, but never a prediction interval:
+chance remains.
+
+``forecast`` is :func:`surpyval.forecast` for this model, with the same
+arguments and the same ``Forecast`` result (see "Expected counts and
+prediction intervals" above): ``event`` picks a mode, and without it the
+forecast is of failures of any kind. With ``age`` left out the units are the
+fitted pumps, each from the end of its own observation. The next 6 and 12
+months:
+
+.. jupyter-execute::
+
+    print(pumps.forecast(horizon=[6, 12], alpha_ci=0.1))
+    for mode in pumps.event_types:
+        f = pumps.forecast(horizon=[6, 12], alpha_ci=0.1, event=mode)
+        print(f"{mode:8s} next 12 months: expect {f.expected[-1]:.1f},"
+              f" 90% prediction interval {f.lower[-1]:.0f} to {f.upper[-1]:.0f}")
+
+The modes' expected counts add up to the total's. The count of each mode is
+Poisson, and because the modes are independent so is the total, with the
+sum of their means; the interval is the Poisson one. As for a single
+process, the forecast treats the fitted parameters as exact, so with little
+data the interval is somewhat too narrow; ``total_cif_cb`` shows how
+uncertain the expected number itself is. ``surpyval.forecast(pumps, ...)``
+is the same forecast of all modes, and ``age``, ``n`` and ``limit`` describe
+other units (a new pump is ``age=0``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import surpyval as surv
+
+    _all = pumps.forecast(horizon=[6, 12], alpha_ci=0.1)
+    _each = [pumps.forecast(horizon=[6, 12], event=k) for k in pumps.event_types]
+    assert np.allclose(_all.expected, sum(f.expected for f in _each))
+    assert np.allclose(surv.forecast(pumps, horizon=[6, 12]).expected,
+                       _all.expected)
+    assert np.allclose(
+        _all.expected, 5 * (pumps.total_cif(T + np.array([6, 12])) - pumps.total_cif(T))
+    )
+
+The fitted parameters, and a saved model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``summary()`` is the single-process table (estimate, standard error and
+Wald interval of each parameter), stacked over the modes:
+
+.. jupyter-execute::
+
+    print(pumps.summary().round(3))
+
+A model saved with ``to_dict`` or ``to_json`` keeps each mode's parameters
+and their covariance and the end of observation, so the restored model gives
+the same bounds, the same ``growth()`` table and ``summary()``, and the same
+forecasts for the ages it is given. It keeps no data, so what needs the data
+is refused, as on a restored single-process model: a forecast with ``age``
+left out, Crow's exact bounds (``method="crow"``), ``plot`` and the
+likelihood (``aic()``).
+
+.. jupyter-execute::
+
+    restored = CauseSpecificNHPP.from_dict(pumps.to_dict())
+    print(restored.total_iif_cb(T).round(3))
+    print(restored.forecast(age=[40.0] * 5, horizon=12, alpha_ci=0.1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored.total_iif_cb(T), pumps.total_iif_cb(T))
+    assert restored.growth().equals(pumps.growth())
+
 Both classes also have a ``fit_from_df`` method that reads the columns of a
 ``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
 ``c_col``, ``n_col``, ``tl_col``, ``tr_col``), as every recurrent fitter
@@ -2085,7 +2308,9 @@ Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded
 model behaves like a ``from_params`` one: it predicts and simulates, but
 confidence bounds, diagnostics and ``plot`` need a re-fit. (A reloaded
-non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
+non-parametric MCF keeps its variance, so ``mcf_cb`` still works, and a
+reloaded ``CauseSpecificNHPP`` keeps each cause's parameter covariance, so
+its Wald bounds, ``growth()`` and ``summary()`` still work; see above.)
 
 References
 ----------

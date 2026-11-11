@@ -196,6 +196,119 @@ def test_cause_specific_nhpp_round_trip():
         assert np.allclose(model.cif(xt, cause), restored.cif(xt, cause))
 
 
+def _marked_fit(**kwargs):
+    rng = np.random.default_rng(7)
+    xs, ii, cc, es = [], [], [], []
+    for item in range(12):
+        for _ in range(int(rng.integers(3, 7))):
+            xs.append(float(rng.uniform(0, 400)))
+            ii.append(item)
+            cc.append(0)
+            es.append(rng.choice(["A", "B"]))
+        xs.append(400.0)
+        ii.append(item)
+        cc.append(1)
+        es.append(None)
+    return CauseSpecificNHPP.fit(
+        np.array(xs),
+        np.array(ii),
+        np.array(cc),
+        e=np.array(es, dtype=object),
+        **kwargs,
+    )
+
+
+def test_cause_specific_nhpp_round_trip_keeps_bounds_growth_and_forecasts():
+    model = _marked_fit()
+    saved = json_round_trip(model.to_dict())
+    restored = CauseSpecificNHPP.from_dict(saved)
+    xt = np.array([50.0, 200.0, 400.0, 500.0])
+    for bound in ("two-sided", "lower", "upper"):
+        kw = {"alpha_ci": 0.1, "bound": bound}
+        for cause in model.event_types:
+            for name in ("cif_cb", "iif_cb", "mtbf_cb"):
+                assert np.array_equal(
+                    getattr(restored, name)(xt, cause, **kw),
+                    getattr(model, name)(xt, cause, **kw),
+                ), (name, cause, bound)
+        for name in ("total_cif_cb", "total_iif_cb", "total_mtbf_cb"):
+            assert np.array_equal(
+                getattr(restored, name)(xt, **kw),
+                getattr(model, name)(xt, **kw),
+            ), (name, bound)
+    for name in ("total_cif", "total_iif", "total_mtbf"):
+        assert np.array_equal(
+            getattr(restored, name)(xt), getattr(model, name)(xt)
+        )
+    for cause in model.event_types:
+        assert np.array_equal(restored.mtbf(xt, cause), model.mtbf(xt, cause))
+    # the end of observation is kept, so growth() reads the same time
+    assert saved["end"] == 400.0
+    assert restored.growth().equals(model.growth())
+    assert restored.growth(x=100.0, alpha_ci=0.2).equals(
+        model.growth(x=100.0, alpha_ci=0.2)
+    )
+    assert restored.summary().equals(model.summary())
+    # forecasts for given ages; the fitted items' ages are data
+    kw = {"age": [400.0] * 12, "horizon": [50.0, 100.0], "alpha_ci": 0.1}
+    for event in (None, *model.event_types):
+        a = restored.forecast(event=event, **kw)
+        b = model.forecast(horizon=kw["horizon"], alpha_ci=0.1, event=event)
+        assert np.array_equal(a.expected, b.expected)
+        assert np.array_equal(a.lower, b.lower)
+        assert np.array_equal(a.upper, b.upper)
+        assert np.array_equal(a.period_expected, b.period_expected)
+    # a second round trip writes the same document
+    assert json_round_trip(restored.to_dict()) == saved
+    assert saved["schema"] == 1
+
+
+def test_cause_specific_nhpp_restored_refuses_what_needs_the_data():
+    model = _marked_fit()
+    restored = CauseSpecificNHPP.from_dict(json_round_trip(model.to_dict()))
+    with pytest.raises(ValueError, match="age is required"):
+        restored.forecast(horizon=10.0)
+    with pytest.raises(ValueError, match="age is required"):
+        restored.forecast(horizon=10.0, event="A")
+    with pytest.raises(ValueError, match="requires a model fitted from data"):
+        restored.mtbf_cb(400.0, "A", method="crow")
+    with pytest.raises(ValueError, match="requires a model fitted from data"):
+        restored.iif_cb(400.0, "A", method="crow")
+    with pytest.raises(ValueError, match="restored with from_dict"):
+        restored.aic()
+
+
+def test_cause_specific_nhpp_dict_without_covariances_refuses_bounds():
+    # A dict saved before the covariances were kept, and a least-squares
+    # fit's: the point values restore, the bounds say why they cannot.
+    model = _marked_fit()
+    old = json_round_trip(model.to_dict())
+    del old["covariances"], old["end"]
+    restored = CauseSpecificNHPP.from_dict(old)
+    assert np.array_equal(restored.total_iif(100.0), model.total_iif(100.0))
+    for call in (
+        lambda: restored.total_cif_cb(100.0),
+        lambda: restored.cif_cb(100.0, "A"),
+        lambda: restored.mtbf_cb(100.0, "A"),
+        lambda: restored.summary(),
+        lambda: restored.growth(x=100.0),
+    ):
+        with pytest.raises(ValueError, match="restored with from_dict"):
+            call()
+    with pytest.raises(ValueError, match="x is required"):
+        restored.growth()
+
+    mse = _marked_fit(how="MSE")
+    saved = json_round_trip(mse.to_dict())
+    assert saved["covariances"] == [None, None]
+    restored = CauseSpecificNHPP.from_dict(saved)
+    with pytest.raises(ValueError, match="refit with how='MLE'"):
+        restored.total_cif_cb(100.0)
+    assert restored.forecast(age=0.0, horizon=10.0).expected == pytest.approx(
+        mse.forecast(age=0.0, horizon=10.0).expected
+    )
+
+
 def test_cause_specific_nhpp_json_file(tmp_path):
     rng = np.random.default_rng(6)
     xs, ii, cc, es = [], [], [], []

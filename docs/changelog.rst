@@ -5,6 +5,34 @@ Unreleased
 
 **Added.**
 
+- Repairable systems with several failure modes, on ``CauseSpecificNHPP``
+  (one intensity model per event type). Each mode's bounds through the
+  model, with the mode as ``event``: ``cif_cb``, ``iif_cb``, ``mtbf`` and
+  ``mtbf_cb``, the mode's own model's (``method="crow"`` included). The
+  totals over the modes with bounds: ``total_iif`` and ``total_mtbf``
+  beside ``total_cif``, and ``total_cif_cb``, ``total_iif_cb`` and
+  ``total_mtbf_cb``, which add the modes' delta-method variances (the modes
+  of a marked Poisson process are independent) and form the bounds on the
+  log scale, so a one-mode model's total bounds are that mode's. Growth per
+  mode: ``growth()`` returns a table with a row per mode holding its trend
+  parameter (``beta`` of ``CrowAMSAA`` and ``CoxLewis``, ``alpha`` of
+  ``Duane``) with its interval, the Wald test that it is at its no-trend
+  value and the conclusion (``"increasing"``, ``"decreasing"`` or
+  ``"none"``), the mode's intensity and MTBF at the end of observation
+  with bounds, and its share of the total intensity; a model fitted with
+  ``dist=HPP`` is refused, saying which ``dist`` to refit with. Forecasts:
+  ``forecast(age, horizon, n, limit, alpha_ci, event)`` gives the expected
+  number of events of one type, or of every type, over a time ahead with
+  its Poisson prediction interval, and ``surpyval.forecast`` takes the
+  model (every type). ``summary()`` stacks the modes' parameter tables.
+  ``to_dict`` now keeps each mode's parameter covariance and the end of
+  observation, so a restored model gives the same Wald bounds, ``growth()``
+  and ``summary()``, and the same forecasts for given ages; what needs the
+  data (a forecast of the fitted items, ``method="crow"``, ``plot``, the
+  likelihood) is refused as before, and a dict saved by an older version
+  loads as before. The coverage of the total bounds is studied in
+  ``tests/calibration/test_coverage_recurrent.py`` (two modes on 10
+  systems, 1000 replicates: 0.943 to 0.961 against 0.95).
 - A published :doc:`Deprecation Policy`, linked from the documentation's
   home page and from Contributing: what is public, how a renamed or
   removed name is deprecated (a warning for at least one release naming

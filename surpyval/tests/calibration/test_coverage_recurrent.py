@@ -1,6 +1,7 @@
 """Coverage of the parametric recurrent-event bounds (``cif_cb``,
 ``iif_cb``, ``param_cb``, and Crow's demonstrated-MTBF bounds,
-``mtbf_cb(method="crow")``, #578).
+``mtbf_cb(method="crow")``, #578), and of the cause-specific model's
+bounds on the total over its causes (``total_cif_cb``, ``total_iif_cb``).
 
 Data: 10 systems observed to T = 50 from a power-law (Crow-AMSAA) process
 with alpha = 10 and beta = 1.5 (about 11 events a system), simulated
@@ -18,7 +19,12 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from surpyval.recurrent import CoxLewis, CrowAMSAA, intervention_test
+from surpyval.recurrent import (
+    CauseSpecificNHPP,
+    CoxLewis,
+    CrowAMSAA,
+    intervention_test,
+)
 from surpyval.recurrent.intervention import _exact_bound, _Strata
 from surpyval.tests.calibration._montecarlo import (
     check_coverage,
@@ -77,6 +83,57 @@ def test_nhpp_cif_cb_and_param_cb(name):
     check_coverage(lo, hi, truth, 0.95, name + " cif_cb")
     check_coverage(ilo, ihi, true_iif, 0.95, name + " iif_cb")
     check_coverage(plo, phi, np.asarray(params), 0.95, name + " param_cb")
+
+
+def test_cause_specific_total_bounds():
+    # Two independent power-law modes on each of the 10 systems: a rising
+    # one (alpha = 10, beta = 1.5, about 11 events a system) and a falling
+    # one (alpha = 8, beta = 0.7, about 3.6). The total's bounds add the
+    # modes' delta-method variances (``total_cif_cb``, ``total_iif_cb``;
+    # ``total_mtbf_cb`` is the reciprocal of the latter, so it covers
+    # exactly when that does). Seed, sizes and level fixed before the run.
+    modes = {
+        "rising": (
+            lambda t: (t / 10.0) ** 1.5,
+            lambda n: 10.0 * n ** (1 / 1.5),
+        ),
+        "falling": (
+            lambda t: (t / 8.0) ** 0.7,
+            lambda n: 8.0 * n ** (1 / 0.7),
+        ),
+    }
+    true_params = {"rising": [10.0, 1.5], "falling": [8.0, 0.7]}
+    rng = np.random.default_rng(403)
+    t_eval = np.array([10.0, 25.0, 50.0])
+    truth = sum(cif(t_eval) for cif, _ in modes.values())
+    true_iif = sum(
+        CrowAMSAA.from_params(p).iif(t_eval) for p in true_params.values()
+    )
+    reps = 1000
+    lo, hi = np.empty((reps, 3)), np.empty((reps, 3))
+    ilo, ihi = np.empty((reps, 3)), np.empty((reps, 3))
+    for r in range(reps):
+        xs, ids, cs, es = [], [], [], []
+        for name, (cif, inv_cif) in modes.items():
+            x, i, c = simulate_nhpp(rng, cif, inv_cif, SYSTEMS, T_END)
+            seen = c == 0
+            xs.extend(x[seen])
+            ids.extend(i[seen])
+            cs.extend([0] * int(seen.sum()))
+            es.extend([name] * int(seen.sum()))
+        xs.extend([T_END] * SYSTEMS)
+        ids.extend(range(SYSTEMS))
+        cs.extend([1] * SYSTEMS)
+        es.extend([None] * SYSTEMS)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = CauseSpecificNHPP.fit(xs, ids, cs, e=es)
+            b = model.total_cif_cb(t_eval)
+            lo[r], hi[r] = b[:, 0], b[:, 1]
+            b = model.total_iif_cb(t_eval)
+            ilo[r], ihi[r] = b[:, 0], b[:, 1]
+    check_coverage(lo, hi, truth, 0.95, "CauseSpecificNHPP total_cif_cb")
+    check_coverage(ilo, ihi, true_iif, 0.95, "CauseSpecificNHPP total_iif_cb")
 
 
 @pytest.mark.parametrize("design", ["time", "failure"])
