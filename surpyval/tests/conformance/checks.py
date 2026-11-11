@@ -29,7 +29,7 @@ from surpyval.tests.conformance.registry import predictions, scramble
 # ---------------------------------------------------------------------------
 # How each function scales with the time unit: value(K x) * K**power
 # in the new unit equals value(x) in the old one.
-_POWER = {"hf": 1, "df": 1, "iif": 1, "pdf": 2, "qf": -1}
+_POWER = {"hf": 1, "df": 1, "iif": 1, "total_iif": 1, "pdf": 2, "qf": -1}
 
 
 def unit_power(case, key):

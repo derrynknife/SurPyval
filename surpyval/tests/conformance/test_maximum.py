@@ -1174,6 +1174,8 @@ SEARCHES: dict[str, Callable] = {
     "ProportionalIntensityModel": _search_recurrence,
     "RenewalModel": _search_recurrence,
     "CauseSpecificNHPP": _search_cause_specific_nhpp,
+    # (each cause's own proportional-intensity model, as above)
+    "CauseSpecificProportionalIntensity": _search_cause_specific_nhpp,
     "CopulaModel": _search_copula,
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,

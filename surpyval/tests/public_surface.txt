@@ -18,6 +18,7 @@ surpyval.BuckleyJames
 surpyval.BuckleyJamesModel
 surpyval.CauseSpecificMCF
 surpyval.CauseSpecificNHPP
+surpyval.CauseSpecificProportionalIntensity
 surpyval.CoefficientPlot
 surpyval.CompetingRisks
 surpyval.CompetingRisksProportionalHazards
@@ -308,6 +309,7 @@ surpyval.recurrent.ARA
 surpyval.recurrent.ARI
 surpyval.recurrent.CauseSpecificMCF
 surpyval.recurrent.CauseSpecificNHPP
+surpyval.recurrent.CauseSpecificProportionalIntensity
 surpyval.recurrent.CountingProcess
 surpyval.recurrent.CoxLewis
 surpyval.recurrent.CrowAMSAA

@@ -276,6 +276,7 @@ def _build(name):
     from surpyval.recurrent.competing_risks import (
         CauseSpecificMCF,
         CauseSpecificNHPP,
+        CauseSpecificProportionalIntensity,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
@@ -350,6 +351,16 @@ def _build(name):
         "cause_specific_nhpp": lambda: CauseSpecificNHPP.fit(
             *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
         ),
+        "cause_specific_proportional_intensity": lambda: (
+            CauseSpecificProportionalIntensity.fit(
+                _recurrent_marked_data()[0],
+                (np.asarray(_recurrent_marked_data()[1]) % 3).astype(float),
+                i=_recurrent_marked_data()[1],
+                c=_recurrent_marked_data()[2],
+                e=_recurrent_marked_data()[3],
+                baseline=CrowAMSAA,
+            )
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
@@ -423,6 +434,7 @@ CASES = [
     "competing_risks",
     "cause_specific_mcf",
     "cause_specific_nhpp",
+    "cause_specific_proportional_intensity",
     "mcf",
     "parametric_recurrence",
     "proportional_intensity",

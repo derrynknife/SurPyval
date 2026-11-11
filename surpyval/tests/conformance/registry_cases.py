@@ -740,10 +740,11 @@ def _recurrent_data_path(fitter, **fixed):
     return run
 
 
-def _recurrent_tvc_path(fitter):
+def _recurrent_tvc_path(fitter, marks=False):
     """The fixture's event rows as start-stop rows, each from the item's
     previous row (0 for its first) with the item's covariates, fitted by
-    ``fit_tvc``: the time-fixed data in the time-varying layout."""
+    ``fit_tvc``: the time-fixed data in the time-varying layout (with the
+    event type of each row where ``marks``)."""
 
     def run(d):
         x, i = np.asarray(d["x"], dtype=float), np.asarray(d["i"])
@@ -752,7 +753,8 @@ def _recurrent_tvc_path(fitter):
             rows = np.flatnonzero(i == item)
             rows = rows[np.argsort(x[rows], kind="stable")]
             xl[rows[1:]] = x[rows[:-1]]
-        return fitter.fit_tvc(i, xl, x, d["c"], d["Z"], d["n"])
+        extra = {"e": d["e"]} if marks else {}
+        return fitter.fit_tvc(i, xl, x, d["c"], d["Z"], d["n"], **extra)
 
     return run
 
@@ -908,6 +910,38 @@ def _recurrent():
             events=("a", "b"),
             x=X_REC,
             rows=("x", "i", "c", "n", "e"),
+        )
+    )
+    out.append(
+        Case(
+            name="CauseSpecificProportionalIntensity",
+            fitters=("surpyval.recurrent.CauseSpecificProportionalIntensity",),
+            model_class=(
+                "surpyval.recurrent.CauseSpecificProportionalIntensity"
+            ),
+            # cif(x, Z, event) per cause; total_cif(x, Z) over the causes
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(recurrent_data, True, True),
+            fit=_fit(rc.CauseSpecificProportionalIntensity),
+            functions=("total_cif", "total_iif"),
+            event_functions=("cif", "iif"),
+            events=("a", "b"),
+            x=X_REC,
+            Z=Z_REC,
+            # fit_tvc with one covariate value per item is fit
+            paths={
+                "fit_tvc": _recurrent_tvc_path(
+                    rc.CauseSpecificProportionalIntensity, marks=True
+                )
+            },
+            rows=("x", "Z", "i", "c", "n", "e"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array(
+                [m.models[k].coeffs for k in m.event_types]
+            ),
+            # Each cause's Duane scale b absorbs a constant.
+            intercept=True,
         )
     )
     # A count above one is refused on an observed recurrent event (the
@@ -1457,6 +1491,9 @@ def _df_paths():
     paths["ARI"] = _col_df(rc.ARI, m=1)
     paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    paths["CauseSpecificProportionalIntensity"] = _col_df(
+        rc.CauseSpecificProportionalIntensity
+    )
     paths["DestructiveDegradation"] = lambda d: (
         dg.DestructiveDegradation.fit_from_df(
             pd.DataFrame(d), x_col="x", y_col="y", threshold=20.0
@@ -1942,6 +1979,14 @@ def _bounds(case):
             Bound("total_cif_cb", point="total_cif"),
             Bound("total_iif_cb", point="total_iif"),
             Bound("total_mtbf_cb", point="total_mtbf"),
+        ),
+        # Each cause's own model's bounds at a covariate row, and the
+        # totals over the causes (variances added, on the log scale).
+        "CauseSpecificProportionalIntensity": (
+            Bound("cif_cb", point="cif", per_cause=True),
+            Bound("iif_cb", point="iif", per_cause=True),
+            Bound("total_cif_cb", point="total_cif"),
+            Bound("total_iif_cb", point="total_iif"),
         ),
     }
     if cls in fixed:
