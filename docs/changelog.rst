@@ -49,6 +49,30 @@ Unreleased
   covariates act on the hazard), so ``model.kind in kinds.TIME_SCALING``
   replaces a comparison with a string literal. The strings are unchanged.
 
+- Regressions are fitted on continuously varying covariates: a ramp-stress
+  test, a thermal cycle, a planned mission or dose profile. An item
+  record whose ``time_varying_covariates`` are a ``CovariatePath`` used to
+  be refused by every fit; now each path is cut into steps and the model
+  fitted to them by its ``fit_tvc``, with the steps halved until no
+  estimate moves by more than 1% of its standard error. The fitted model
+  holds ``path_steps``: the steps in each stretch of a path at the end,
+  the rows fitted, the largest move of an estimate at the last halving (in
+  standard errors), the tolerance and whether it was met; a fit that still
+  moves after eight halvings, or would need more than two million rows,
+  returns its last fit with one warning. Every fitter that takes
+  time-varying covariates from item records does so: proportional hazards,
+  proportional odds, additive hazards, Cox and accelerated failure time
+  (cumulative exposure). The new ``CovariatePath.to_steps(t_max, steps=8,
+  start=None)`` gives the steps as a ``StepSchedule``: each stretch between
+  the path's breakpoints in ``steps`` equal steps at the midpoint value, a
+  flat stretch one step, so a flat path is fitted as the constant
+  covariate and a path made of steps exactly as ``fit_tvc`` fits those
+  steps. In the fit, the step a failure falls in ends with the path's
+  value at the failure. On a baseline defined below 0 an item with a path
+  needs its ``left_truncation``. The path must be external (planned, not
+  read from the item): a measured signal belongs in a joint model. See
+  "Fitting on a continuous path" in
+  :doc:`Regression Modelling with SurPyval`.
 - Joint models: what the hazard follows of the marker's path is a choice,
   ``JointPH(Weibull, path_model, link=...)``. ``"value"`` (the default, as
   before: risk follows the level), ``"slope"`` (risk follows how fast the
