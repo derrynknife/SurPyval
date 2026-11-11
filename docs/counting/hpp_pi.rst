@@ -13,3 +13,7 @@ taking the covariates alongside the time).
    .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit
    .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_from_df
+   .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_tvc
+   .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_tvc_from_df
+   .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_tvc_timeline
+   .. automethod:: surpyval.recurrent.regression.hpp_proportional_intensity.ProportionalIntensityHPP.fit_tvc_timeline_from_df
