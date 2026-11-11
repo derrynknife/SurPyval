@@ -153,7 +153,7 @@ class SurpyvalData(ReshapeMixin):
             corresponding x entry is a 2-element array [left, right].
         c : array-like, optional
             Censoring flags for each value in x:
-            * 0 = uncensored
+            * 0 = uncensored (the event, a failure or a death, was at x)
             * 1 = right censored
             * -1 = left censored
             * 2 = interval censored

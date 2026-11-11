@@ -457,7 +457,9 @@ class ProportionalHazardsFitter(
             Rows with a missing or infinite covariate are dropped, with a
             warning.
         c : array_like, optional
-            The censoring indicators.
+            The censoring indicators (0 an observed event, such as a
+            failure or a death, 1 right censored, -1 left censored, 2
+            interval censored).
         n : array_like, optional
             The number of observations at each time.
         t : array_like, optional

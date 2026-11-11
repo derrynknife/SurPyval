@@ -1007,6 +1007,16 @@ Unreleased
   that made the singular step look estimable. The estimate now stops
   before that step, as it was meant to.
 
+**Documentation.**
+
+- The description of the censoring flag ``c`` in the docstrings of the main
+  entry points (the parametric and non-parametric ``fit``, ``MixtureModel``,
+  ``fit_best``, ``plotting_positions``, ``logrank``, the proportional
+  hazards ``fit``, ``SurpyvalData`` and the pseudo-observation functions)
+  says what each code means in words any field uses (0 is the observed
+  event, such as a failure, a death or a relapse) and how to convert a
+  status column in which 1 marks the event. Wording only.
+
 **Internal.**
 
 - The Bayesian calibration study's left-truncated scenario draws its
