@@ -993,6 +993,32 @@ Unreleased
   132.8835700725, 0.09875843998802 now; ``CrowAMSAA`` on the same repair
   fleet in hours, 4657.449597614 and 0.2461119034716 before,
   4657.449566626 and 0.2461119023258 now.
+- **The quantiles of the parametric regressions are computed in closed
+  form (an intentional numerical change, at rounding level).**
+  ``qf(p, Z)`` of the proportional hazards, accelerated failure time and
+  proportional odds models with the log-linear link, on a Weibull,
+  Exponential, Gumbel, Logistic, LogLogistic, Normal, LogNormal or Gamma
+  baseline, and of the additive hazards model on an Exponential baseline,
+  is now the baseline's own inverse at a target moved by the covariates
+  (for proportional hazards
+  :math:`H_0^{-1}(-\log(1 - p)\, e^{-\beta' Z})`) instead of a numerical
+  search on the model's cumulative hazard. A custom link, the
+  accelerated life and distributional models, the additive hazards model
+  on another baseline and any other baseline keep the search, unchanged.
+  The quantiles move by rounding: on the 28 parametric regressions of
+  the conformance suite at probabilities from ``1e-12`` to ``1 - 1e-12``,
+  by at most ``1.4e-14`` relative (``4.6e-13`` absolute); both agree with
+  a 50-digit reference to within ``2e-14`` relative. For the ``WeibullPH``
+  example in ``qf``'s docstring, ``qf(0.9, [0])`` was
+  ``15.502628026657936`` and is ``15.502628026657938``. The Wald bounds
+  on a quantile (``quantile_cb``) move by at most ``7e-10`` relative,
+  through their numerical gradient. It is about 20 to 50 times as fast:
+  ``qf`` at 39 points takes 0.1 to 0.2 ms instead of 1 to 6 ms, and,
+  since ``ParametricCompetingRisksRegression.cif`` integrates over a
+  cause's quantiles, its ``cif`` at 12 times takes 0.17 s instead of
+  0.74 s, and ``cb(..., on="cif")`` 2.2 s instead of 13.9 s, with the
+  same incidences and bounds within ``1e-11`` relative. The parametric
+  bootstrap's draws use the same closed form.
 
 - **Fine-Gray standard errors are the robust ones by default (an
   intentional numerical change).** ``FineGray`` (and
