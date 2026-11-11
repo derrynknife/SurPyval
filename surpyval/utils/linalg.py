@@ -203,10 +203,41 @@ def _curvature_steps(
     return steps
 
 
+def curvature_scales(
+    func: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+) -> npt.NDArray:
+    """
+    Each parameter's scale in a negative log-likelihood ``func`` at its
+    minimum ``x``: the change in it, the others held, at which ``func``
+    rises by one half on average over the two sides (one standard error,
+    were ``func`` quadratic and the parameter alone). It moves with the
+    unit a parameter is written in, so finite-difference steps taken as
+    a fraction of it do not depend on that unit. All ``nan`` where some
+    parameter has no such change (``func`` does not rise on both sides:
+    a boundary, a flat direction).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.linalg import curvature_scales
+    >>> def f(v):
+    ...     return 0.5 * (v[0] / 2.0) ** 2 + 0.5 * (v[1] / 1e-6) ** 2
+    >>> curvature_scales(f, np.array([0.0, 0.0])).round(12)
+    array([2.e+00, 1.e-06])
+    """
+    x = np.asarray(x, dtype=float)
+    with np.errstate(all="ignore"):
+        f0 = func(x)
+        found = _curvature_steps(func, x, f0, 1.0) if np.isfinite(f0) else None
+    return np.full(x.size, np.nan) if found is None else found
+
+
 def scale_free_hessian(
     func: Callable[[npt.NDArray], float],
     x: npt.NDArray,
     scale: float = 1e-3,
+    fallback_step: "npt.NDArray | None" = None,
 ) -> npt.NDArray:
     """
     Finite-difference Hessian of a negative log-likelihood ``func`` at
@@ -237,7 +268,9 @@ def scale_free_hessian(
     or 2 cannot be done -- ``func`` does not rise on both sides of
     ``x``, or ``H0`` is not positive definite: a parameter on a
     boundary, a likelihood with no maximum there -- the plain
-    :func:`numerical_hessian` is returned, so such a fit is reported as
+    :func:`numerical_hessian` is returned (in the steps
+    ``fallback_step``, where the caller has its own, such as one that
+    keeps a parameter inside its bounds), so such a fit is reported as
     it was.
 
     Against the closed-form Hessian of a power-law process's likelihood,
@@ -268,15 +301,15 @@ def scale_free_hessian(
         f0 = func(x)
     steps = _curvature_steps(func, x, f0, scale) if np.isfinite(f0) else None
     if steps is None:
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
     with np.errstate(all="ignore"):
         first = numerical_hessian(func, x, steps)
     if not np.all(np.isfinite(first)):
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
     try:
         root = np.linalg.cholesky(np.linalg.inv(first))
     except np.linalg.LinAlgError:
-        return numerical_hessian(func, x)
+        return numerical_hessian(func, x, fallback_step)
 
     def whitened(z: npt.NDArray) -> float:
         return func(x + root @ z)
