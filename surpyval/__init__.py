@@ -262,7 +262,13 @@ _LAZY = {
         "surpyval.univariate.competing_risks",
     ),
     **dict.fromkeys(
-        ("MultiState", "MultiStateProportionalHazards", "TransitionMatrix"),
+        (
+            "MultiState",
+            "MultiStateProportionalHazards",
+            "ParametricMultiState",
+            "ParametricMultiStateRegression",
+            "TransitionMatrix",
+        ),
         "surpyval.multistate",
     ),
     **dict.fromkeys(
@@ -457,6 +463,8 @@ if TYPE_CHECKING:
     from surpyval.multistate import (
         MultiState,
         MultiStateProportionalHazards,
+        ParametricMultiState,
+        ParametricMultiStateRegression,
         TransitionMatrix,
     )
     from surpyval.recurrent import (

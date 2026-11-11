@@ -832,6 +832,29 @@ def _multistate():
             transitions=d["transitions"],
         )
 
+    def pms_from_df(d):
+        return ms.ParametricMultiState.fit_from_df(
+            frame(d),
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+        )
+
+    def pmsr_from_df(d):
+        return ms.ParametricMultiStateRegression.fit_from_df(
+            frame(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+        )
+
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
         Case(
@@ -869,6 +892,47 @@ def _multistate():
             drops_missing_covariate=False,
             paths={"fit_from_df": msph_from_df},
             rtol=1e-6,
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        ),
+        Case(
+            name="ParametricMultiState",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=_fit(ms.ParametricMultiState),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={"fit_from_df": pms_from_df},
+            exclude={
+                "convergence": "each transition is fitted by its "
+                "distribution's own univariate fit, whose starved fits the "
+                "Parametric cases check; the model adds no search of its "
+                "own and takes no init"
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=_fit(ms.ParametricMultiStateRegression),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": pmsr_from_df},
             coefficients=lambda m: m.betas,
             intercept=True,
         ),
@@ -2264,9 +2328,13 @@ def _multistate_bounds(variances):
             "cb",
             point="occupancy",
             per_cause=True,
-            kwargs={"variance": v, "bound_type": t},
+            kwargs=(
+                {"bound_type": t}
+                if v is None
+                else {"variance": v, "bound_type": t}
+            ),
             in_range=t == "exp",
-            label=f"cb[{v}, {t}]",
+            label=f"cb[{t}]" if v is None else f"cb[{v}, {t}]",
         )
         for v in variances
         for t in ("exp", "normal")
@@ -2285,6 +2353,9 @@ def _bounds(case):
         "MultiStateProportionalHazards": _multistate_bounds(
             ("aalen", "greenwood")
         ),
+        # The delta method over every transition's parameters.
+        "ParametricMultiState": _multistate_bounds((None,)),
+        "ParametricMultiStateRegression": _multistate_bounds((None,)),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
         # The Cox model's predicted curves: R's survfit conf.types
