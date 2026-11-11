@@ -191,6 +191,53 @@ refs$cox_ate <- list(
     )
 )
 
+# -- where the standard errors differ ----------------------------------------
+# ate's influence function of the averaged risk splits into the sampling
+# of the covariates, (F_i(t) - mean F(t)) / n, and the rest, the Cox
+# model's own influence (coefficients and Breslow baseline, empirical).
+# The first is the "sampled" term of direct_adjustment, exactly; the
+# second is an empirical (sandwich) variance where direct_adjustment
+# uses survfit's model-based one: one unit's predictCox(se = TRUE)
+# against survfit's std.err shows the same gap. The single-unit survfit
+# std.err is the model-based reference.
+a_iid <- ate(cox_f, treatment = "sex", data = da, times = times,
+             se = TRUE, iid = TRUE, store = c(iid = "full"),
+             verbose = FALSE)
+one <- data.frame(age = 60, ph_ecog = 1)
+comp <- list(times = times, row_age = 60, row_ph_ecog = 1)
+for (g in c("1", "2")) {
+    nd <- da
+    nd$sex <- factor(g, levels = levels(da$sex))
+    risk <- 1 - predictCox(cox_f, newdata = nd, times = times,
+                           type = "survival")$survival
+    cov_term <- sweep(risk, 2, colMeans(risk)) / n
+    iid <- a_iid$iid$GFORMULA[[g]]
+    comp[[paste0("covariate_se_", g)]] <- sqrt(colSums(cov_term^2))
+    comp[[paste0("model_if_se_", g)]] <- sqrt(colSums((iid - cov_term)^2))
+    row <- transform(one, sex = factor(g, levels = levels(da$sex)))
+    comp[[paste0("unit_if_se_", g)]] <- predictCox(
+        cox_f, newdata = row, times = times, type = "survival",
+        se = TRUE)$survival.se[1, ]
+    sf_row <- summary(survfit(cox, newdata = transform(one, sex = as.numeric(g))),
+                      times = times)
+    comp[[paste0("unit_sf_", g)]] <- sf_row$surv
+    comp[[paste0("unit_survfit_se_", g)]] <- sf_row$std.err
+}
+refs$cox_se_components <- list(
+    fixture = "lung",
+    software = "R riskRegression and survival",
+    version = paste("riskRegression",
+                    as.character(packageVersion("riskRegression")),
+                    "survival", as.character(packageVersion("survival"))),
+    call = paste("ate(..., iid = TRUE, store = c(iid = 'full')) split into",
+                 "the covariate term (F_i - mean F) / n and the rest;",
+                 "predictCox(se = TRUE) and summary(survfit(cox, newdata),",
+                 "times)$std.err for one unit (age 60, ph.ecog 1)"),
+    settings = list(ties = "efron",
+                    se = "standard errors of the risk (= of survival)"),
+    values = comp
+)
+
 out <- list(
     generator = "scripts/reference/reference_r_adjusted_curves.R",
     R = R.version.string,

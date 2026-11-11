@@ -419,9 +419,16 @@ row means of ``survival::survfit`` with ``newdata``, and a Weibull model's
 curves, differences, restricted means and delta-method standard errors
 match ``survival::survreg`` worked by hand. The Cox curves also match
 ``riskRegression::ate`` (the G-formula behind ``adjustedCurves``' direct
-method). Its standard errors come from the Cox model's robust influence
-function, and on the ``lung`` data they are 4% to 13% smaller than the
-model-based ones here.
+method). Its standard errors can differ from the ones here, by 4% to 13%
+on the ``lung`` data, and the reason is the estimator, not the averaging.
+Both count the sampling of the covariates the same way (that part agrees
+exactly). For the model's own uncertainty, ``ate`` uses the empirical
+(sandwich) influence function of the Cox fit, and SurPyval uses the
+model-based variance that ``survfit`` reports for a single curve. The two
+agree when the proportional hazards model holds, and drift apart when it
+fits less well. On ``lung`` the same gap shows for a single patient:
+``riskRegression``'s standard error of one curve is 10% below
+``survfit``'s for one sex and 8% above it for the other.
 
 For the weighted route, the variance is the weighted Kaplan-Meier's robust
 one (see :doc:`Weighted Data`). It treats the weights as known. Weights

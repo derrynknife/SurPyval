@@ -108,13 +108,61 @@ def test_cox_curves_against_riskregression_ate(cox):
     assert_allclose(-res["difference"], ref["risk_diff"], rtol=1e-6)
 
 
+def _risk_se(adjusted, t, g):
+    """The standard error of the adjusted survival (= of the risk) of
+    level ``g``, from the width of its logit bounds."""
+    z = 1.959963984540054
+    S = adjusted.sf(t, g)
+    cb = adjusted.cb(t, g)
+    logit = np.log(cb / (1 - cb))
+    return (logit[:, 1] - logit[:, 0]) / (2 * z) * S * (1 - S)
+
+
+def test_cox_one_unit_errors_are_survfits():
+    # The model's part of the variance, for a population of one unit, is
+    # survfit's model-based standard error of that unit's curve.
+    ref = values(SOURCE, "cox_se_components")
+    t = ref["times"]
+    x, c, Z = _lung()
+    model = sp.CoxPH.fit(x, Z, c=c)
+    row = [[1.0, ref["row_age"], ref["row_ph_ecog"]]]
+    one = sp.direct_adjustment(
+        model, group=0, levels=[1, 2], Z=row, covariates="fixed"
+    )
+    for g in (1, 2):
+        assert_allclose(one.sf(t, g), ref[f"unit_sf_{g}"], rtol=1e-6)
+        se = _risk_se(one, t, g)
+        assert_allclose(se, ref[f"unit_survfit_se_{g}"], rtol=1e-4)
+
+
+def test_cox_covariate_term_is_ates(cox):
+    # The sampling of the covariates: ate's influence function carries it
+    # as (F_i(t) - mean F(t)) / n, the "sampled" term here.
+    ref = values(SOURCE, "cox_se_components")
+    t = ref["times"]
+    x, c, Z = _lung()
+    fixed = sp.direct_adjustment(
+        sp.CoxPH.fit(x, Z, c=c), group=0, covariates="fixed"
+    )
+    for g in (1, 2):
+        term = np.sqrt(_risk_se(cox, t, g) ** 2 - _risk_se(fixed, t, g) ** 2)
+        assert_allclose(term, ref[f"covariate_se_{g}"], rtol=1e-4)
+
+
 @pytest.mark.xfail(
     strict=True,
-    reason="The standard errors are 4% to 13% above riskRegression's on "
-    "these data (the difference at t = 700: 0.0489 against 0.0435), past "
-    "the 10% set for two different estimators (model-based here, the "
-    "robust influence function there). The model-based errors match the "
-    "spread over replicates in test_adjusted.py.",
+    reason="A different estimator of the model's part, not an error: "
+    "ate's influence function is the sum of the covariates' term (equal "
+    "here, test_cox_covariate_term_is_ates) and the Cox model's own "
+    "empirical influence (coefficients and Breslow baseline, a sandwich "
+    "variance), where direct_adjustment uses survfit's model-based "
+    "variance (test_cox_one_unit_errors_are_survfits). The two agree when "
+    "the model holds and differ when it fits less well: on lung, one "
+    "unit's predictCox(se = TRUE) is 10% below survfit's std.err for sex "
+    "2 at t = 700 (0.0495 against 0.0549) and 8% above it for sex 1 "
+    "(0.0294 against 0.0274), the same pattern as the averaged curves "
+    "(4% to 13% apart; the difference at t = 700, 0.0489 against "
+    "0.0435), past the 10% asked.",
 )
 def test_cox_errors_against_riskregression_ate(cox):
     ref = values(SOURCE, "cox_ate")

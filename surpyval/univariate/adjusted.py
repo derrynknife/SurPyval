@@ -68,15 +68,15 @@ def _fitted_rows(model: Any) -> tuple[Any, Any, Any] | None:
 def _layout(model: Any) -> Any:
     """How the model names its covariates (a formula's variables, named
     columns or positions), as ``plot_partial_effects`` reads them."""
-    from surpyval.univariate.regression._partial_effects import _Covariates
+    from surpyval.univariate.regression._partial_effects import Covariates
 
     if hasattr(model, "_partial_effects_width"):
-        return _Covariates(model)
-    return _Covariates(_Named(model))
+        return Covariates(model)
+    return Covariates(_Named(model))
 
 
 class _Named:
-    """What ``_Covariates`` reads of a model, for one that does not draw
+    """What ``Covariates`` reads of a model, for one that does not draw
     partial effects."""
 
     def __init__(self, model: Any) -> None:
