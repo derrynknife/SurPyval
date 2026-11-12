@@ -377,6 +377,7 @@ surpyval.recurrent.laplace
 surpyval.recurrent.mcf_diff
 surpyval.recurrent.mil_hdbk_189c
 surpyval.rmst_diff
+surpyval.rmtl_diff
 surpyval.round_sig
 surpyval.score_predictions
 surpyval.sf_diff
@@ -415,6 +416,7 @@ surpyval.univariate.competing_risks.CompetingRisksProportionalHazards
 surpyval.univariate.competing_risks.FineGray
 surpyval.univariate.competing_risks.ParametricCompetingRisks
 surpyval.univariate.competing_risks.ParametricCompetingRisksRegression
+surpyval.univariate.competing_risks.rmtl_diff
 surpyval.univariate.nonparametric.FIT_FUNCS
 surpyval.univariate.nonparametric.FlemingHarrington
 surpyval.univariate.nonparametric.IntervalLogRankResult

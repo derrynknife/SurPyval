@@ -280,6 +280,7 @@ _LAZY = {
             "ParametricCompetingRisks",
             "ParametricCompetingRisksRegression",
             "gray_test",
+            "rmtl_diff",
         ),
         "surpyval.univariate.competing_risks",
     ),
@@ -382,6 +383,7 @@ __all__ = [
     "at_risk_table",
     "life_table",
     "rmst_diff",
+    "rmtl_diff",
     "sf_diff",
     "success_run",
     # Parametric
@@ -520,6 +522,7 @@ if TYPE_CHECKING:
         ParametricCompetingRisks,
         ParametricCompetingRisksRegression,
         gray_test,
+        rmtl_diff,
     )
     from surpyval.univariate.equivalence import (
         Equivalence,

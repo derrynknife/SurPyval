@@ -432,6 +432,7 @@ for _fn in (
     "plot_likelihood_contour",
     "life_table",
     "rmst_diff",
+    "rmtl_diff",
     "sf_diff",
     "success_run",
     "weibayes",
@@ -453,6 +454,9 @@ for _fn in (
     "weight_diagnostics",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
+OUT_OF_SCOPE["surpyval.univariate.competing_risks.rmtl_diff"] = (
+    _FUNCTION + ": compares two fitted competing-risks models"
+)
 for _fn in ("to_stacked", "from_stacked"):
     OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
         _FUNCTION + ": converts multi-state data between its forms"

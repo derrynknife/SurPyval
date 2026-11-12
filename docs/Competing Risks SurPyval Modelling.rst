@@ -1060,6 +1060,89 @@ differences in *early* incidence:
     print("rho = 1: p = %.2g" % gray_test(x, e, group, event=1, rho=1.0).p_value)
 
 
+Time lost to a cause: the restricted mean time lost
+---------------------------------------------------
+
+The cumulative incidence answers "what fraction has failed from this cause
+by time t". A single number that summarises the whole curve up to a
+horizon is the **restricted mean time lost** (RMTL): of the first
+:math:`\tau` units of time, how much, on average, a unit loses to that
+cause. A unit that fails from the cause at time :math:`t < \tau` loses
+:math:`\tau - t`; a unit that survives to :math:`\tau`, or fails from
+another cause, loses nothing to it. It is the area under the cause's
+cumulative incidence,
+
+.. math::
+    \text{RMTL}_k(\tau) = \int_0^\tau F_k(t)\,dt,
+
+so it is in units of time and needs no model for how the causes act
+(Andersen, 2013). The times lost to all the causes add up to
+:math:`\tau` less the restricted mean survival time (``rmst``), so with
+one cause the time lost is just :math:`\tau - \text{RMST}`.
+
+``rmtl(event, tau)`` gives it with a standard error and a 95% interval;
+``tau`` defaults to the largest observed time:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as sp
+
+    rng = np.random.default_rng(3)
+
+    def simulate(n, shock_mean):
+        wear = 100.0 * rng.weibull(3.0, n)
+        shock = rng.exponential(shock_mean, n)
+        censor = rng.uniform(0.0, 250.0, n)
+        x = np.minimum.reduce([wear, shock, censor])
+        e = np.where(x == censor, None, np.where(wear < shock, "wear", "shock"))
+        return x, e.astype(object)
+
+    old = sp.CompetingRisks.fit(*simulate(200, 150.0))
+    new = sp.CompetingRisks.fit(*simulate(200, 600.0))
+    res = old.rmtl("shock", tau=100)
+    print("time lost to shocks in the first 100 hours: %.1f (%.1f to %.1f)"
+          % (res["rmtl"], res["lower"], res["upper"]))
+
+``surpyval.rmtl_diff`` compares the time lost to a cause between two
+groups, as ``rmst_diff`` compares survival: the difference with its interval
+and a z-test of no difference, and the ratio with its interval. Here a
+design change that makes shocks four times rarer saves many hours in the first 100:
+
+.. jupyter-execute::
+
+    cmp = sp.rmtl_diff(old, new, "shock", tau=100)
+    print("difference %.1f hours (%.1f to %.1f), p = %.2g"
+          % (cmp["difference"], cmp["lower"], cmp["upper"], cmp["p_value"]))
+    print("ratio %.2f (%.2f to %.2f)"
+          % (cmp["ratio"], cmp["ratio_lower"], cmp["ratio_upper"]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0 < res["lower"] < res["rmtl"] < res["upper"] < 100
+    assert cmp["difference"] > 0 and cmp["p_value"] < 0.05
+
+The standard error is the delta method's on the hazard increments at each
+event time (a multinomial at each time, as Greenwood's formula takes a
+binomial); with one cause it is exactly the Greenwood-based standard error of
+``KaplanMeier.rmst``. It is the standard error of R's ``GFDrmtl`` package,
+and within 1% of R ``survival``'s ``summary(fit, rmean = tau)`` (an
+infinitesimal-jackknife standard error) on the data checked. The interval is ``rmtl +- 1.96 se``; in simulation (n = 200) it
+covers the true time lost about 95% of the time, and ``rmtl_diff``'s test
+rejects about 5% of the time when the groups do not differ. A ``tau`` past
+the last observed time is refused while some units are still event-free
+there, as for ``rmst``. A model fitted with weights refuses ``rmtl``: its
+robust variance is not built.
+
+``ParametricCompetingRisks.rmtl`` gives the same quantity from the fitted
+distributions, by numerical integration of the cumulative incidence, with
+a delta-method standard error over every cause's parameters and an interval
+on the logit of ``rmtl / tau`` (so within 0 and ``tau``); a ``tau`` past
+the data is allowed, the fit extrapolating. ``rmtl_diff`` accepts either
+kind of model in either position.
+
 Fine-Gray Sub-distribution Hazards
 ----------------------------------
 

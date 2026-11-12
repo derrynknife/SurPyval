@@ -5,6 +5,19 @@ Unreleased
 
 **Added.**
 
+- The restricted mean time lost (RMTL) to a cause of failure: the area
+  under the cause's cumulative incidence up to a horizon ``tau``, the
+  average time of the first ``tau`` lost to that cause.
+  ``CompetingRisks.rmtl(event, tau)`` gives it exactly for the step
+  estimate, with a delta-method standard error (with one cause it is
+  ``tau`` less ``KaplanMeier.rmst``, with the same standard error) and a
+  normal interval; ``ParametricCompetingRisks.rmtl(event, tau)`` from the
+  fitted distributions, with a delta-method interval on the logit of
+  ``rmtl / tau``; and ``surpyval.rmtl_diff(model_a, model_b, event, tau)``
+  compares two groups (difference, its interval and z-test, and the ratio
+  with its interval), as ``rmst_diff`` does for survival. Checked against
+  R ``survival`` 3.8.12, ``cmprsk`` 2.2.12, ``survRM2`` 1.0.4 and
+  ``GFDrmtl`` 0.1.0.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,
