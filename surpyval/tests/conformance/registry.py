@@ -354,6 +354,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
+    "surpyval.RiskReclassification": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -446,6 +447,7 @@ for _fn in (
     "compare_concordance",
     "concordance_estimate",
     "concordance_index",
+    "idi_nri",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",
