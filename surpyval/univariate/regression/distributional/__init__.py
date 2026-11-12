@@ -15,6 +15,11 @@ from surpyval.univariate.parametric import (
 from .fitter import Distributional, DistributionalFitter
 from .mixture_cure import MixtureCure, MixtureCureFitter, MixtureCureModel
 from .model import DistributionalRegressionModel
+from .zero_inflated import (
+    ZeroInflated,
+    ZeroInflatedFitter,
+    ZeroInflatedModel,
+)
 
 # Prebuilt fitters, one per common distribution
 WeibullDistributional = Distributional(Weibull)
@@ -32,6 +37,13 @@ LogNormalMixtureCure = MixtureCure(LogNormal)
 LogLogisticMixtureCure = MixtureCure(LogLogistic)
 GammaMixtureCure = MixtureCure(Gamma)
 ExponentialMixtureCure = MixtureCure(Exponential)
+
+# Zero-inflated regression, one fitter per common latency distribution
+WeibullZeroInflated = ZeroInflated(Weibull)
+LogNormalZeroInflated = ZeroInflated(LogNormal)
+LogLogisticZeroInflated = ZeroInflated(LogLogistic)
+GammaZeroInflated = ZeroInflated(Gamma)
+ExponentialZeroInflated = ZeroInflated(Exponential)
 
 __all__ = [
     "Distributional",
@@ -53,4 +65,12 @@ __all__ = [
     "LogNormalDistributional",
     "NormalDistributional",
     "WeibullDistributional",
+    "ExponentialZeroInflated",
+    "GammaZeroInflated",
+    "LogLogisticZeroInflated",
+    "LogNormalZeroInflated",
+    "WeibullZeroInflated",
+    "ZeroInflated",
+    "ZeroInflatedFitter",
+    "ZeroInflatedModel",
 ]

@@ -382,8 +382,8 @@ What is not built
 - **A semi-parametric (Cox) latency**, as in R's ``smcure``: the latency
   here is parametric. A flexible parametric choice (compare the
   latencies by AIC) covers most uses.
-- **Covariates on a dead-on-arrival fraction** (zero-inflation,
-  ``zi=True`` in the univariate fits).
+- **A dead-on-arrival fraction** (zero inflation) in the same model: that
+  is its own model, :doc:`Zero-Inflated Regression`.
 - **The incidence estimated by a general classifier** (a gradient-boosted
   or random-forest model in place of the link).
 - **Latencies on the whole line** (normal, Gumbel, logistic): a time to

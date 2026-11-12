@@ -356,6 +356,13 @@ cm = sp.WeibullMixtureCure.fit(tc, lot, c=(~ever).astype(int))
 cm.cure_probability([1]); cm.sf(100, [1], susceptible=True)   # the latency alone
 cm.cure_given_survival(100, [1])       # P(never fails | still running at 100)
 
+# Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
+# covariates on who arrives dead (f0) and on the life of the rest
+doa = rc.random(400) < np.where(lot == 1, 0.2, 0.05)
+tz = np.where(doa, 0.0, 100 * rc.weibull(2.0, 400))
+zm = sp.WeibullZeroInflated.fit(tz, lot)   # zm.fit_route: "two-stage" or "joint"
+zm.doa_probability([1]); zm.sf(100, [1], susceptible=True)   # life of a unit that worked
+
 # Robust SEs, the global LR test, a forest plot
 ph = sp.WeibullPH.fit(x, Z, c)
 ph.robust_standard_errors(); ph.summary(robust=True)  # cluster= for groups
