@@ -566,23 +566,9 @@ def test_666_intensity_and_proportional_intensity_models_have_summary():
 _UNITS = [1.0, 730.0, 730.0 * 3600.0, 1.0 / 12.0]
 
 
-_HPP_SECONDS = pytest.mark.xfail(
-    strict=True,
-    reason="the HPP fit itself stops short with times of 1e8 (months as "
-    "seconds): its root search returns a rate of 0.9994 where the "
-    "estimate is 3.2e-8, and warns that it did not reach a verified "
-    "maximum. The standard error is then of the wrong point; the Hessian "
-    "is not at fault.",
-)
-
-
-@pytest.mark.parametrize(
-    "k",
-    [
-        pytest.param(k, marks=_HPP_SECONDS) if k == 730.0 * 3600.0 else k
-        for k in _UNITS
-    ],
-)
+# Months as seconds failed until the search started at the data's own
+# rate: it began at a rate of 1 and stopped there, unverified.
+@pytest.mark.parametrize("k", _UNITS)
 def test_hpp_standard_error_is_its_closed_form_in_any_unit(k):
     # One item, 5 failures in (0, 60]: the rate is 5 / 60 and, the
     # information being n / rate^2, its standard error rate / sqrt(n).
