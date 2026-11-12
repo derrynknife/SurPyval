@@ -50,6 +50,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import ndtr, ndtri
 
+from surpyval.utils.linalg import bootstrap_position
 from surpyval.utils.no_maximum import (
     NoFiniteMaximumError,
     quiet_maximum_warnings,
@@ -784,14 +785,9 @@ def bca_bounds(
         denom = 1.0 - a * w
         with np.errstate(divide="ignore", invalid="ignore"):
             adjusted = np.where(denom > 0, z0 + w / denom, np.sign(w) * np.inf)
-        # The ``(n + 1) p``-th smallest draw (Davison & Hinkley 1997,
-        # section 5.2.2; ``np.quantile``'s "weibull" rule): the k-th of n
-        # draws sits at the k / (n + 1) quantile on average, so this
-        # reads each level where the draws put it. The "linear" rule,
-        # ``(n - 1) p``, reads every tail level as if it were nearer the
-        # middle; at 200 draws a 90% or 95% interval came out about 2%
-        # narrower and covered about a point less.
-        pos = ndtr(adjusted) * (n + 1) - 1.0
+        # The ``(n + 1) p``-th smallest draw, the rule every bootstrap
+        # bound shares (``utils.linalg.BOOTSTRAP_QUANTILE_METHOD``).
+        pos = bootstrap_position(ndtr(adjusted), n)
         lo = np.clip(np.floor(pos).astype(int), 0, n - 1)
         hi = np.minimum(lo + 1, n - 1)
         frac = pos - lo

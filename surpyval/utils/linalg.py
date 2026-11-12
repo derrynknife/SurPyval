@@ -20,7 +20,7 @@ fitted numbers anywhere.
 
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import numpy.typing as npt
@@ -479,22 +479,61 @@ def log_transformed_cb(
 # hazard, and computed so that it stays accurate in both tails.
 
 
+#: The rule every bootstrap bound reads its level from the refits with: the
+#: bound at level ``p`` of ``n`` refits is the ``(n + 1) p``-th smallest,
+#: interpolated linearly between refits, and the end refit beyond the first
+#: and last (Davison and Hinkley 1997, section 5.2.2). It is
+#: ``np.quantile``'s ``method="weibull"``; :func:`bootstrap_position` gives
+#: the same position for code that indexes the sorted refits itself. The
+#: k-th smallest of n draws sits at the ``k / (n + 1)`` quantile on average,
+#: so this reads each level where the draws put it. ``np.quantile``'s
+#: default, the ``(n - 1) p`` rule, reads every tail level nearer the
+#: middle: at 200 refits a 95% interval spanned about the 3.0% to 97.0%
+#: points of the refits' distribution, about 2% too narrow.
+BOOTSTRAP_QUANTILE_METHOD: Final = "weibull"
+
+
+def bootstrap_position(p: npt.ArrayLike, n: int) -> npt.NDArray:
+    """The zero-based (fractional) position in ``n`` sorted refits of the
+    bootstrap bound at level ``p``: ``(n + 1) p - 1``, the ``(n + 1) p``-th
+    smallest. A position below 0 or above ``n - 1`` means the end refit on
+    that side. The rule of :data:`BOOTSTRAP_QUANTILE_METHOD`."""
+    return np.asarray(p, dtype=float) * (n + 1) - 1.0
+
+
+def bootstrap_quantile(
+    draws: npt.ArrayLike, p: npt.ArrayLike, nan_skip: bool = False
+) -> npt.NDArray:
+    """The bootstrap bound at level ``p`` of each column of ``draws`` (one
+    refit per row), by :data:`BOOTSTRAP_QUANTILE_METHOD`. ``nan_skip=True``
+    leaves ``nan`` refits out (``np.nanquantile``); otherwise a column with
+    a ``nan`` gives ``nan``."""
+    quantile = np.nanquantile if nan_skip else np.quantile
+    return quantile(
+        np.asarray(draws),
+        np.asarray(p, dtype=float),
+        axis=0,
+        method=BOOTSTRAP_QUANTILE_METHOD,
+    )
+
+
 def percentile_bounds(
     draws: npt.ArrayLike, alpha_ci: float, bound: str = "two-sided"
 ) -> npt.NDArray:
     """The percentile bootstrap bound of ``draws`` (one resample per row):
     the ``alpha_ci`` quantile for ``bound="lower"``, the ``1 - alpha_ci``
     quantile for ``"upper"``, and otherwise the ``alpha_ci / 2`` and ``1 -
-    alpha_ci / 2`` quantiles, stacked on a last axis of 2. Shared by the
-    Kaplan-Meier, degradation, destructive-degradation and Buckley-James
-    bootstraps (#351)."""
+    alpha_ci / 2`` quantiles, stacked on a last axis of 2, each read from
+    the resamples by :func:`bootstrap_quantile` (the ``(n + 1) p``-th
+    smallest). Shared by the Kaplan-Meier, degradation,
+    destructive-degradation and Buckley-James bootstraps (#351)."""
     draws = np.asarray(draws)
     if bound == "lower":
-        return np.quantile(draws, alpha_ci, axis=0)
+        return bootstrap_quantile(draws, alpha_ci)
     if bound == "upper":
-        return np.quantile(draws, 1.0 - alpha_ci, axis=0)
-    lo = np.quantile(draws, alpha_ci / 2.0, axis=0)
-    hi = np.quantile(draws, 1.0 - alpha_ci / 2.0, axis=0)
+        return bootstrap_quantile(draws, 1.0 - alpha_ci)
+    lo = bootstrap_quantile(draws, alpha_ci / 2.0)
+    hi = bootstrap_quantile(draws, 1.0 - alpha_ci / 2.0)
     return np.stack([lo, hi], axis=-1)
 
 

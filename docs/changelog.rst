@@ -1514,7 +1514,38 @@ Unreleased
   89.0% / 94.0% with the old rule and 90.0% / 95.0% with the new one. The
   Weibull 30-unit design of that study, a known shortfall before, now
   passes every bound. The percentile bootstraps of the Kaplan-Meier,
-  degradation and Buckley-James models are unchanged.
+  degradation and Buckley-James models now use the same rule (next entry).
+- **The percentile bootstrap bounds read their levels the same way (an
+  intentional numerical change).** The non-parametric
+  ``bootstrap_cb`` (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and
+  Turnbull), the degradation models' ``cb(..., method="bootstrap")``,
+  the destructive-degradation ``cb`` and the Buckley-James
+  ``bootstrap_ci`` (and ``summary(n_boot=...)``) took each bound from the
+  resamples with the ``(n - 1) p`` rule, as the parametric bootstrap did
+  before the entry above, so their intervals were about 2% too narrow at
+  200 resamples. They now take the ``(n + 1) p``-th smallest resample,
+  interpolated, the rule the parametric bounds use; one helper
+  (``utils.linalg.bootstrap_quantile``) holds it for every bootstrap
+  bound. The pointwise band around the lowess trend on the diagnostic
+  plots uses it too. With 200 resamples and the default 95% level:
+
+  - Kaplan-Meier, failures at 1.2, 2.5, 3.1, 4.0, 4.4, 5.3, 6.1, 6.8, 7.7,
+    8.9, 9.5, 10.2, 11.8, 13.0 and 14.6 and five units censored at 15,
+    ``bootstrap_cb(10, n_boot=200, random_state=1)``: [0.2987, 0.65] is
+    now [0.2513, 0.65] (the resampled ``R`` takes steps of 0.05, so a
+    bound can move by most of a step);
+  - a linear-path degradation analysis (20 units, Weibull lifetimes),
+    ``cb(40, on="sf", method="bootstrap", n_boot=200, random_state=7)``:
+    [0.3808, 0.7449] is now [0.3768, 0.7451];
+  - a destructive-degradation fit (400 specimens, LogNormal),
+    ``cb(30, on="sf", n_boot=200, random_state=3)``: [0.4494, 0.5540] is
+    now [0.4427, 0.5568];
+  - a Buckley-James fit (300 units, two covariates),
+    ``bootstrap_ci(n_boot=200, random_state=0)``: [-1.0475, -0.8132] and
+    [0.2665, 0.5214] are now [-1.0505, -0.8096] and [0.2564, 0.5245].
+
+  The same seeds give the same resamples, so only the bounds moved. No
+  calibration study covers these bootstraps yet.
 - **The other names ``Gauss``, ``Galton`` and ``life_models.Arrhenius``
   now behave exactly as ``Normal``, ``LogNormal`` and
   ``life_models.Exponential``, except for the name they carry.** A model
