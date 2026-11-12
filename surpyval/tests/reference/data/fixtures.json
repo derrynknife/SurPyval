@@ -30956,6 +30956,10 @@
   },
   "source": "seeded synthetic, make_fixtures.multistate (rng 3800): spells of an illness-death model with recovery, delayed entry and ties (state and e: 1 healthy, 2 ill, 3 dead; e null where the spell is censored)"
  },
+ "no_data": {
+  "columns": {},
+  "source": "none: a design calculation (a sample size or a power) from the arguments in its call alone"
+ },
  "ovarian": {
   "columns": {
    "age": [

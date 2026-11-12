@@ -514,6 +514,21 @@ for _fn in (
     "rate_ratio_power",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
+    "cox_detectable",
+    "cox_events",
+    "cox_power",
+    "cox_sample_size",
+    "cure_logrank_events",
+    "cure_logrank_power",
+    "cure_logrank_sample_size",
+    "equivalence_events",
+    "equivalence_power",
+    "equivalence_sample_size",
+    "noninferiority_events",
+    "noninferiority_power",
+    "noninferiority_sample_size",
+    "rmst_power",
+    "rmst_sample_size",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (

@@ -927,6 +927,11 @@ def build():
         "mgus2_multistate": mgus2_multistate(),
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
+        "no_data": {
+            "source": "none: a design calculation (a sample size or a "
+            "power) from the arguments in its call alone",
+            "columns": {},
+        },
     }
 
 
