@@ -805,7 +805,7 @@ Interval-counted (grouped) data
 Sometimes the exact event times are unknown and only the number of events
 between inspections is recorded. Give each inspection interval as an
 ``[start, end]`` pair in ``x`` with ``c=2``, and the number of events found
-in ``n``. A count of events since new up to a time can be given as a
+in ``n`` (0 for an inspection that found none). A count of events since new up to a time can be given as a
 left-censored row (``c=-1``). The HPP and NHPP models accept these rows,
 alone or mixed with exact events (when mixing, write an exact event at
 :math:`t` as the pair ``[t, t]`` with ``c=0``, and the end of observation as
@@ -835,6 +835,132 @@ event times, so they are not available for grouped data.
 
     assert sum(n) == 32
     assert np.isclose(HPP.fit(x, i=i, c=c, n=n).params[0], 32 / 80)
+
+Counts at inspections (panel counts)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When each unit is inspected at its own times and only the number of events
+since the previous inspection is recorded -- pumps checked every few hundred
+hours, with the failures found at each check counted; patients seen at
+clinic visits, with the new tumours counted -- the data are *panel counts*.
+Many inspections find nothing, and those zeros matter: they say no events
+happened in the interval. ``PanelCountMCF`` estimates the mean cumulative
+function (the expected number of events per unit by each time) from such
+data without assuming a process or a shape; the theory is in
+:doc:`Recurrent Event Analysis` (Panel Counts). The data are one row per
+inspection: the unit, the inspection time (from the start of the unit's
+observation) and the count since the previous inspection.
+
+Here, 40 pumps are inspected every 300 to 900 hours over their first 5000
+hours of service:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    from surpyval.recurrent import PanelCountMCF
+
+    # Failures of each pump follow a power law (mean (t / 1000)^1.4), faster
+    # on some pumps than others; only the counts found at inspections are kept
+    rng = np.random.default_rng(7)
+    rows = []
+    for pump in range(40):
+        rate = rng.gamma(2.0, 0.5)
+        failures = 1000 * (np.cumsum(rng.exponential(size=50)) / rate) ** (1 / 1.4)
+        t, last = 0.0, 0
+        while True:
+            t += rng.uniform(300, 900)
+            if t > 5000:
+                break
+            found = int(np.sum(failures <= t)) - last
+            last += found
+            rows.append((pump, round(t), found))
+    log = pd.DataFrame(rows, columns=["pump", "hours", "found"])
+    print(log.head(5))
+
+    mcf = PanelCountMCF.fit_from_df(log, "hours", "found", i_col="pump", unit="hours")
+    mcf
+
+The estimate is a non-decreasing step function with a step only where the
+data say the mean can change. Its bounds resample whole pumps and refit
+(the bootstrap), so they do not assume the pumps share one rate:
+
+.. jupyter-execute::
+
+    t = [1000, 2500, 4500]
+    print("MCF   :", mcf.mcf(t).round(2))
+    print("bounds:", mcf.mcf_cb(t, n_boot=200, random_state=1).round(2).tolist())
+
+The default estimator is the maximum likelihood one (Wellner and Zhang);
+``how="pseudo"`` gives the isotonic regression of the cumulative counts
+(Sun and Kalbfleisch), which is exact and fast but uses the data less
+fully when units are inspected at different times. The same counts fit a
+parametric model through the grouped-count likelihood: each inspection
+interval is a ``[previous, this]`` pair with ``c=2``, and a count of 0 is
+allowed there:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA
+
+    pseudo = PanelCountMCF.fit_from_df(log, "hours", "found", i_col="pump", how="pseudo")
+    log = log.sort_values(["pump", "hours"])
+    start = log.groupby("pump")["hours"].shift(fill_value=0)
+    ca = CrowAMSAA.fit(
+        np.c_[start, log["hours"]], i=log["pump"], c=np.full(len(log), 2), n=log["found"]
+    )
+    print("pseudo-likelihood MCF:", pseudo.mcf(t).round(2))
+    print("Crow-AMSAA            :", ca.cif(t).round(2), "shape", ca.params[1].round(2))
+
+The parametric fit assumes the counts are Poisson; here the pumps differ
+in their rates, so its bounds would be too narrow, while the shape of the
+curve agrees with the non-parametric estimate.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (log["found"] == 0).any()
+    assert np.all(np.diff(mcf.mcf_hat) >= 0)
+    assert abs(ca.params[1] - 1.4) < 0.3
+
+**Covariates: the proportional means model.** ``PanelCountRegression``
+fits :math:`E[N(t) \mid Z] = \Lambda_0(t) e^{\beta' Z}`, with the
+baseline left unspecified, by the pseudo-likelihood (the default, R
+``spef``'s ``"MPL"``) or the likelihood. :math:`e^{\beta}` is the ratio of
+the expected counts at every time. The bladder tumour data
+(``load_bladder_panel``) record the new tumours found at each clinic visit
+of 85 patients on placebo or thiotepa:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_bladder_panel
+    from surpyval.recurrent import PanelCountRegression
+
+    bladder = load_bladder_panel()
+    model = PanelCountRegression.fit_from_df(
+        bladder, "time", ["treatment", "size", "num"], "count", i_col="id"
+    )
+    print(model)
+    print("ratio of expected tumours, thiotepa / placebo:",
+          np.exp(model.params[0]).round(3))
+    print("95% bootstrap interval for beta:",
+          model.param_cb("treatment", n_boot=200, random_state=1).round(3))
+
+Thiotepa patients are expected to have about a quarter as many new
+tumours by any time as placebo patients with the same initial tumours. The
+likelihood estimator (``how="likelihood"``) gives a smaller effect on these
+data (:math:`\hat\beta \approx -0.79`), as in the published analyses; the
+two weight the visits differently, and they agree when the model holds and
+the visit times carry no information about the counts. Standard errors and
+intervals for either come from resampling patients (``standard_errors``,
+``param_cb``, ``mcf_cb``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.params, [-1.32638, -0.06262, 0.25041], atol=1e-4)
 
 Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

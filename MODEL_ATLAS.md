@@ -99,6 +99,8 @@ Worked classifications:
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
 | CauseSpecificNHPP | univariate | recurrent | competing | recurrent | none | continuous | parametric |
 | CauseSpecificProportionalIntensity | univariate | recurrent | competing | recurrent | with | continuous | parametric |
+| PanelCountMCF (counts at inspections, no event times) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
+| PanelCountRegression (proportional means, panel counts) | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | MultiState (Aalen–Johansen) | univariate | single_event | single/competing | multi_state | none | continuous | nonparametric |
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |

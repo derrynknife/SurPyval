@@ -318,6 +318,16 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.recurrent.CauseSpecificMCF": (
         "the non-parametric mean cumulative function of each cause"
     ),
+    "surpyval.recurrent.PanelCountMCF": (
+        "a maximum of a working likelihood (Poisson, or the "
+        "pseudo-likelihood) over step functions, with no AIC; its "
+        "convergence is a Karush-Kuhn-Tucker check"
+    ),
+    "surpyval.recurrent.PanelCountRegression": (
+        "a maximum of a working likelihood (Poisson, or the "
+        "pseudo-likelihood) with a step-function baseline, with no AIC; "
+        "its convergence is a check of the gradient"
+    ),
     "surpyval.degradation.DegradationModel": (
         "two stages: each unit's path by least squares (or a mixed model), "
         "then a fit of the pseudo-failure times, whose own maximum is a "

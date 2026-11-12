@@ -144,6 +144,8 @@ surpyval.NormalPO
 surpyval.PH
 surpyval.PO
 surpyval.PairwiseLogRankResult
+surpyval.PanelCountMCF
+surpyval.PanelCountRegression
 surpyval.ParameterSubstitutionFitter
 surpyval.Parametric
 surpyval.ParametricCompetingRisks
@@ -225,6 +227,7 @@ surpyval.compare_concordance
 surpyval.concordance_estimate
 surpyval.concordance_index
 surpyval.datasets.load_bearing_failures
+surpyval.datasets.load_bladder_panel
 surpyval.datasets.load_bofors_steel
 surpyval.datasets.load_boston_housing
 surpyval.datasets.load_framingham
@@ -366,6 +369,8 @@ surpyval.recurrent.HPP
 surpyval.recurrent.InterventionTestResult
 surpyval.recurrent.MCFDiffResult
 surpyval.recurrent.NonParametricCounting
+surpyval.recurrent.PanelCountMCF
+surpyval.recurrent.PanelCountRegression
 surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP

@@ -493,3 +493,17 @@ X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
 # model warns of).
 X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
 Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])
+
+
+def panel_data(with_Z=False):
+    """Four units, each inspected at its own times, with the number of
+    events found since the previous inspection (some 0)."""
+    x = np.array([5.0, 20, 35, 60, 10, 25, 60, 15, 40, 60, 8, 30, 50])
+    n = np.array([1.0, 2, 0, 3, 1, 1, 2, 2, 1, 2, 0, 2, 1])
+    i = np.array([1] * 4 + [2] * 3 + [3] * 3 + [4] * 3)
+    d = {"x": x, "n": n, "i": i}
+    if with_Z:
+        d["Z"] = np.array([0.0] * 4 + [1.0] * 3 + [0.5] * 3 + [0.0] * 3)[
+            :, None
+        ]
+    return d

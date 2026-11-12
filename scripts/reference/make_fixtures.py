@@ -20,7 +20,9 @@ Two kinds of fixture:
   violation of proportional hazards for the Cox diagnostics, a covariate
   that separates the events from the survivors (Firth's fit),
   recurrent events of two groups of systems for the MCF comparison, and
-  an illness-death model with recovery for the multi-state models.
+  an illness-death model with recovery for the multi-state models;
+* the bladder tumour panel counts (``load_bladder_panel``), checked by
+  ``reference_r_spef.R`` against R spef's ``blaTum``.
 
 Run from the repository root::
 
@@ -36,6 +38,7 @@ from pathlib import Path
 import numpy as np
 
 from surpyval.datasets import (
+    load_bladder_panel,
     load_heart_transplants,
     load_kidney,
     load_lung,
@@ -781,6 +784,20 @@ def recurrent_groups(seed, ties):
     }
 
 
+def bladder_panel():
+    df = load_bladder_panel()
+    return {
+        "source": "surpyval.datasets.load_bladder_panel(); R spef::blaTum "
+        "(Sun and Wei 2000): new bladder tumours counted at each clinic "
+        "visit, one row per visit; count is the number since the previous "
+        "visit",
+        "columns": {
+            k: _native(df[k])
+            for k in ("id", "time", "count", "treatment", "size", "num")
+        },
+    }
+
+
 def mgus2_multistate():
     df = load_mgus2(spells=True)
     code = {"mgus": 1, "pcm": 2, "death": 3}
@@ -905,6 +922,7 @@ def build():
         "recurrent_groups_ties": recurrent_groups(3799, True),
         "mgus2_multistate": mgus2_multistate(),
         "multistate": multistate(3800),
+        "bladder_panel": bladder_panel(),
     }
 
 

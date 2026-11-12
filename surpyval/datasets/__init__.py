@@ -211,6 +211,47 @@ def load_kidney() -> pd.DataFrame:
     return _read_csv("kidney.csv")
 
 
+def load_bladder_panel() -> pd.DataFrame:
+    """
+    New bladder tumours counted at clinic visits, from the bladder cancer
+    trial of the Veterans Administration Cooperative Urological Research
+    Group (Byar, 1980), in its panel-count form [18]_: 85 patients with
+    superficial bladder tumours, 47 on placebo and 38 on thiotepa, seen
+    at their own, irregular visit times, at each of which the number of
+    new tumours since the previous visit was counted. The tumour times
+    themselves are not known. The same data are ``blaTum`` in R's
+    ``spef`` package.
+
+    One row per visit: ``id`` the patient, ``time`` the visit in months
+    from the start of treatment, ``count`` the new tumours found since the
+    previous visit (often 0), ``treatment`` 1 for thiotepa and 0 for
+    placebo, ``size`` the size of the largest initial tumour (cm) and
+    ``num`` the number of initial tumours. 920 rows.
+
+    Examples
+    --------
+    >>> from surpyval.datasets import load_bladder_panel
+    >>> from surpyval.recurrent import PanelCountRegression
+    >>> df = load_bladder_panel()
+    >>> model = PanelCountRegression.fit_from_df(
+    ...     df, "time", ["treatment", "size", "num"], "count", i_col="id"
+    ... )
+    >>> model.params.round(4)
+    array([-1.3264, -0.0626,  0.2504])
+
+    References
+    ----------
+    .. [18] Sun, J. and Wei, L. J. (2000). Regression analysis of panel
+            count data with covariate-dependent observation and censoring
+            times. Journal of the Royal Statistical Society, Series B,
+            62(2), 293-302. The trial: Byar, D. P. (1980), The Veterans
+            Administration study of chemoprophylaxis for recurrent stage I
+            bladder tumors, in Bladder Tumors and Other Topics in
+            Urological Oncology, Plenum, New York, 363-370.
+    """
+    return _read_csv("bladder_panel.csv")
+
+
 def load_lung() -> pd.DataFrame:
     """
     Data on the survival of patients with advanced lung cancer from [6]_.

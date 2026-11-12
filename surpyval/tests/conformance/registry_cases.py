@@ -75,6 +75,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     mixture_data,
     ms_data,
     offset_data,
+    panel_data,
     path_data,
     process_data,
     quantiles,
@@ -1800,6 +1801,65 @@ def _bayes():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Panel counts (recurrent events counted at inspections)
+# ---------------------------------------------------------------------------
+def _panel_count():
+    def mcf_from_df(d):
+        df = pd.DataFrame({"x": d["x"], "n": d["n"], "i": d["i"]})
+        return rc.PanelCountMCF.fit_from_df(df, "x", "n", i_col="i")
+
+    def reg_from_df(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "n": d["n"], "i": d["i"], "z": d["Z"][:, 0]}
+        )
+        return rc.PanelCountRegression.fit_from_df(
+            df, "x", ["z"], "n", i_col="i"
+        )
+
+    counts = (
+        "n is the number of events found at an inspection, not a "
+        "frequency: a row with n = 2 is not two rows"
+    )
+    return [
+        Case(
+            name="PanelCountMCF",
+            fitters=("surpyval.recurrent.PanelCountMCF",),
+            model_class="surpyval.recurrent.PanelCountMCF",
+            interface=COUNTING,
+            data=panel_data,
+            fit=_fit(rc.PanelCountMCF),
+            functions=("mcf",),
+            x=X_REC,
+            rows=("x", "n", "i"),
+            paths={"fit_from_df": mcf_from_df},
+            rtol=1e-7,
+            exclude={"counts": counts},
+        ),
+        Case(
+            name="PanelCountRegression",
+            fitters=("surpyval.recurrent.PanelCountRegression",),
+            model_class="surpyval.recurrent.PanelCountRegression",
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(rc.PanelCountRegression),
+            functions=("mcf",),
+            x=X_REC,
+            Z=Z_REC,
+            z_style="single",
+            rows=("x", "Z", "n", "i"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.params,
+            # The unspecified baseline absorbs a constant.
+            intercept=True,
+            rtol=1e-6,
+            exclude={"counts": counts},
+        ),
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -1819,6 +1879,7 @@ CASES: list[Case] = (
     + _equivalence()
     + _zero_inflated()
     + _bayes()
+    + _panel_count()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -2453,12 +2514,48 @@ def _multistate_bounds(variances):
     )
 
 
+def _panel_count_bounds(regression):
+    # Percentile bootstraps of refits to resampled units (and, on the
+    # coefficients, the normal interval from the bootstrap's spread)
+    out = tuple(
+        Bound(
+            "mcf_cb",
+            point="mcf",
+            kwargs={"interp": interp, **_BOOT},
+            wald=False,
+            nan_ok=True,
+            label=f"mcf_cb[{interp}]",
+        )
+        for interp in ("step", "linear")
+    )
+    if not regression:
+        return out
+    return out + (
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs=_BOOT,
+            wald=False,
+            label="param_cb[percentile]",
+        ),
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "normal", **_BOOT},
+            in_range=False,
+            label="param_cb[normal]",
+        ),
+    )
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "PanelCountMCF": _panel_count_bounds(False),
+        "PanelCountRegression": _panel_count_bounds(True),
         # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
         # variances; the Cox model's include its coefficients'.
         "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
@@ -2782,6 +2879,7 @@ _INTERP = {
     "Turnbull": _NP_INTERP,
     "NonParametricCounting": ("step", "linear"),
     "CauseSpecificMCF": ("step", "linear"),
+    "PanelCountMCF": ("step", "linear"),
     # Its baselines are steps: interp= takes "step" only (#416).
     "CompetingRisksProportionalHazards[Cox]": ("step",),
 }

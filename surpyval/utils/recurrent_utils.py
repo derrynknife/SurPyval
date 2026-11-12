@@ -258,10 +258,11 @@ def validate_nhpp_data(data: EventHistoryData, dist: object) -> None:
     """
     c = np.asarray(data.c)
     name = getattr(dist, "name", type(dist).__name__)
-    if not np.any(c != 1):
+    if not np.any((c != 1) & (np.asarray(data.n) > 0)):
         raise ValueError(
             "The data has no events (every row is an end-of-observation "
-            "c=1 row), so the {} intensity cannot be estimated.".format(name)
+            "c=1 row or a count of 0), so the {} intensity cannot be "
+            "estimated.".format(name)
         )
 
     lower, upper = getattr(dist, "support", (-np.inf, np.inf))
@@ -840,8 +841,17 @@ def _check_xicn_values(
 
     if not np.isfinite(n).all():
         raise ValueError("Counts 'n' must be finite")
-    if np.any(n <= 0):
-        raise ValueError("Counts 'n' must be strictly positive")
+    # A count of 0 is information on a counted row: an inspection (c=2,
+    # or c=-1 from the entry) that found no events. On an exact-event or
+    # end-of-observation row it means nothing.
+    counted = (c == 2) | (c == -1)
+    if np.any(n < 0) or np.any((n == 0) & ~counted):
+        raise ValueError(
+            "Counts 'n' must be strictly positive on exact-event and "
+            "end-of-observation rows (c=0 or c=1), and not negative on "
+            "counted rows (c=2 or c=-1), where 0 is an inspection that "
+            "found no events"
+        )
 
     # Truncation bounds may be +/-inf (the default open window) but a NaN
     # bound is meaningless.
