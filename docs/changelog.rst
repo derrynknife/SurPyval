@@ -18,6 +18,38 @@ Unreleased
   with its interval), as ``rmst_diff`` does for survival. Checked against
   R ``survival`` 3.8.12, ``cmprsk`` 2.2.12, ``survRM2`` 1.0.4 and
   ``GFDrmtl`` 0.1.0.
+- Four more tests in the log-rank family, each with a result object,
+  ``to_dict`` and a plain-words section in
+  :doc:`Non-Parametric SurPyval Modelling`, checked against R:
+
+  - ``maxcombo_logrank``: the max-combo test of two groups, the largest
+    of several Fleming-Harrington weighted log-rank statistics (by default
+    FH(0, 0), FH(0, 1), FH(1, 0) and FH(1, 1)), with a p-value from their
+    joint normal distribution, so it allows for picking the best
+    weighting; two- or one-sided, each component's ``z`` and the
+    correlation matrix reported; ``strata``, ``tl`` and ``t0`` as for
+    ``logrank``. For delayed, fading or crossing effects. Matches R's
+    ``nph::logrank.maxtest``.
+  - ``trend_logrank``: the log-rank test for trend across ordered groups
+    (Tarone), one degree of freedom, with default (1, ..., k) or own
+    scores, two- or one-sided, and every option of ``logrank``
+    (weightings, strata, ``tl``, ``t0``, sampling weights). Matches the
+    trend test computed from R's ``survdiff``.
+  - ``permutation_logrank``: the (weighted, stratified) log-rank test
+    with an exact p-value (all relabellings of the units, when there are
+    at most ``max_exact``) or a seeded Monte Carlo one with its standard
+    error. The docs say when it is valid (the same censoring in every
+    group) and when to use ``logrank`` instead. Matches R's
+    ``coin::logrank_test``.
+  - ``maxstat_logrank``: the maximally selected log-rank statistic, the
+    cut-point of a continuous covariate that best separates survival,
+    with a p-value corrected for the search (the exact Gauss p-value by
+    default; Lausen's 1994 bound, Lausen and Schumacher's 1992
+    approximation or a permutation p-value on request). The naive
+    p-value at the best cut is reported only to show that it is not
+    valid, and the docs point to regression on the covariate itself.
+    Matches R's ``maxstat::maxstat.test``.
+
 - Multi-state models for panel data, ``PanelMultiState`` and
   ``PanelMultiStateRegression`` (also at the top level): units whose state
   is seen only at visits (clinic visits, inspections, survey waves), so
