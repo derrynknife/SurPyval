@@ -52,9 +52,6 @@ _ROUNDS = 10
 _ROUND_TOL = 1e-10
 #: A verified maximum's gradient, in standard errors of each parameter.
 _GTOL = 1e-4
-#: A spread whose Cholesky diagonal is below this share of its row's
-#: length (a correlation within 5e-7 of +-1) is on the edge of its space.
-_EDGE = 1e-3
 
 
 class JointPHFitter(FitterRepr):
@@ -803,21 +800,31 @@ def _fit(
             "The joint fit could not start: the likelihood is not finite at "
             "its starting values (check the readings and the path model)."
         )
-
     u, value, placed, starts, converged = _descend(
         u, value, placed, starts, search, curvature, evaluated
     )
-    # A search that ends with the items' spread on the edge of its space
-    # (a correlation of +-1, which the log-scale Cholesky factor reaches
-    # only at -inf) can stop on the flat shelf there, where the gradient
-    # vanishes, short of a maximum inside. It searches once more from the
-    # same spreads uncorrelated and keeps the better of the two answers.
-    inside = _inside_spread(u, layout)
-    if inside is not None:
+    value, grad, cov_u, positive, flat = _check_maximum(
+        u, placed, search, curvature
+    )
+    # A search can stop short of the maximum on the flat shelf where the
+    # items' spread nears a correlation of +-1 (the log-scale Cholesky
+    # diagonal reaches it only at -inf, and the gradient vanishes well
+    # before): its answer is then not a verified maximum. Such an answer
+    # gets one more search, from the same sds uncorrelated. A verified
+    # answer from it is kept; otherwise the lower of the two. The first
+    # answer's likelihood is not compared with a verified one: it is not
+    # a maximum, and near a correlation of +-1 the adaptive nodes can be
+    # far off (one fleet: 5099.8 by the nodes, 5197.8 by a grid integral,
+    # against the maximum inside at 5159.0). A verified answer is kept as
+    # it is, with no second search.
+    inside = None
+    if layout.q >= 2 and not (converged and positive and flat):
+        inside = _uncorrelated(u, layout)
+    if inside is not None and np.all(np.isfinite(inside)):
         retry_value, retry_placed, retry_starts = evaluated(
             inside, (None, None)
         )
-        if retry_placed is not None:
+        if retry_placed is not None and np.isfinite(retry_value):
             retry = _descend(
                 inside,
                 retry_value,
@@ -827,33 +834,12 @@ def _fit(
                 curvature,
                 evaluated,
             )
-            if retry[1] < value - _ROUND_TOL * max(1.0, abs(value)):
-                u, value, placed, starts, converged = retry
-    # The maximum, verified at the last nodes: a zero gradient (in
-    # standard errors) and a positive-definite Hessian
-    with np.errstate(all="ignore"):
-        value, grad = search(u, placed)
-        info = curvature(u, placed)
-    info = 0.5 * (info + info.T)
-    cov_u, positive = None, False
-    if np.all(np.isfinite(info)):
-        # judged and inverted in each parameter's own scale: a slope a
-        # second has a curvature 1e7 squared times one an hour's
-        own = _equilibration(info)
-        scaled = info * np.outer(own, own)
-        try:
-            positive = bool(np.all(np.linalg.eigvalsh(scaled) > 0))
-            cov_u = (
-                np.linalg.inv(scaled) * np.outer(own, own)
-                if positive
-                else None
-            )
-        except np.linalg.LinAlgError:
-            positive = False
-    flat = False
-    if cov_u is not None and np.all(np.isfinite(grad)):
-        sd = np.sqrt(np.abs(np.diag(cov_u)))
-        flat = bool(np.max(np.abs(grad) * sd) < _GTOL)
+            checked = _check_maximum(retry[0], retry[2], search, curvature)
+            sound = retry[4] and checked[3] and checked[4]
+            lower = retry[1] < value - _ROUND_TOL * max(1.0, abs(value))
+            if sound or lower:
+                u, _, placed, starts, converged = retry
+                value, grad, cov_u, positive, flat = checked
     verified = converged and positive and flat and np.all(np.isfinite(u))
     if not verified:
         reason = None
@@ -1000,22 +986,46 @@ def _descend(
     return u, value, placed, starts, converged
 
 
-def _inside_spread(u: npt.NDArray, layout: Layout) -> npt.NDArray | None:
-    """``u`` with the items' spread made uncorrelated (each varying
-    parameter's sd kept) where it is on the edge of its space -- a
-    diagonal of its Cholesky factor below ``_EDGE`` of its row's length,
-    a correlation of +-1 -- else ``None``."""
-    if layout.q < 2:
-        return None
+def _check_maximum(
+    u: npt.NDArray, placed: tuple, search: Any, curvature: Any
+) -> tuple:
+    """``(value, grad, cov_u, positive, flat)`` at ``u`` by the nodes
+    ``placed``: the likelihood and its gradient, the inverse Hessian
+    (``None`` where it is not positive definite), whether it is, and
+    whether the gradient is zero in standard errors (below ``_GTOL``).
+    The Hessian is judged and inverted in each parameter's own scale: a
+    slope a second has a curvature 1e7 squared times one an hour's."""
+    with np.errstate(all="ignore"):
+        value, grad = search(u, placed)
+        info = curvature(u, placed)
+    info = 0.5 * (info + info.T)
+    cov_u, positive = None, False
+    if np.all(np.isfinite(info)):
+        own = _equilibration(info)
+        scaled = info * np.outer(own, own)
+        try:
+            positive = bool(np.all(np.linalg.eigvalsh(scaled) > 0))
+            cov_u = (
+                np.linalg.inv(scaled) * np.outer(own, own)
+                if positive
+                else None
+            )
+        except np.linalg.LinAlgError:
+            positive = False
+    flat = False
+    if cov_u is not None and np.all(np.isfinite(grad)):
+        sd = np.sqrt(np.abs(np.diag(cov_u)))
+        flat = bool(np.max(np.abs(grad) * sd) < _GTOL)
+    return value, grad, cov_u, positive, flat
+
+
+def _uncorrelated(u: npt.NDArray, layout: Layout) -> npt.NDArray:
+    """``u`` with the items' spread made uncorrelated, each varying
+    parameter's sd kept."""
     theta = layout.unpack(np.asarray(u, dtype=float))
-    L = np.asarray(theta["L"], dtype=float)
-    length = np.sqrt(np.sum(L**2, axis=1))
-    if not np.all(np.isfinite(length) & (length > 0)):
-        return None
-    if np.all(np.abs(np.diag(L)) >= _EDGE * length):
-        return None
     theta = {k: np.asarray(v, dtype=float) for k, v in theta.items()}
-    theta["L"] = np.diag(length)
+    L = theta["L"]
+    theta["L"] = np.diag(np.sqrt(np.sum(L**2, axis=1)))
     return layout.pack(theta)
 
 
