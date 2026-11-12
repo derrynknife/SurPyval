@@ -698,3 +698,29 @@ def test_dynamic_prediction_to_dict_with_covariates_and_one_missing():
     json.dumps(d, allow_nan=False)
     assert d["covariates"]["site"] is None
     assert d["sf"] == [None, None] and d["sf_lower"] is None
+
+
+def test_a_search_that_reaches_a_correlation_of_one_finds_the_maximum():
+    # The calibration study's first replicate (seed 7300, 200 pumps, exact
+    # failures): the search from the per-item start ran onto the flat shelf
+    # at corr_a_b = 1 (the Cholesky diagonal at -inf on the log scale)
+    # and stopped there 38.8 below the maximum inside, at corr_a_b 0.22,
+    # with a singular Hessian and so no covariance.
+    items, _, _ = simulate_split(200, seed=7300)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = WeibullJointPH.fit(
+            SurpyvalData.from_items(items), marker_reference=CENTRE, **SPLIT
+        )
+    named = dict(zip(model.parameter_names, model.params))
+    assert model.maximum == "verified"
+    assert named["corr_a_b"] == pytest.approx(0.2194, abs=1e-3)
+    assert model.neg_ll() == pytest.approx(5159.0068, abs=1e-3)
+    se = model.standard_errors()
+    assert np.all(np.isfinite(se) & (se > 0))
+    band = model.predict(
+        {"site": 1.0, "load": 1.0},
+        markers={0.0: 3.2, 60.0: 3.6, 120.0: 4.1, 180.0: 4.5},
+        given=180.0,
+    ).cb([240.0, 360.0])
+    assert np.all(np.isfinite(band))

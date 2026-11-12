@@ -52,6 +52,9 @@ _ROUNDS = 10
 _ROUND_TOL = 1e-10
 #: A verified maximum's gradient, in standard errors of each parameter.
 _GTOL = 1e-4
+#: A spread whose Cholesky diagonal is below this share of its row's
+#: length (a correlation within 5e-7 of +-1) is on the edge of its space.
+_EDGE = 1e-3
 
 
 class JointPHFitter(FitterRepr):
@@ -800,47 +803,32 @@ def _fit(
             "The joint fit could not start: the likelihood is not finite at "
             "its starting values (check the readings and the path model)."
         )
-    converged = False
-    for _ in range(_ROUNDS):
-        # A search with the nodes held where they are, then the step it
-        # proposes taken as far as the likelihood by nodes placed at the
-        # new point improves on this one's (backtracking where not):
-        # each round is a descent of the adaptive quadrature's likelihood.
-        S = _whitening(curvature, u, placed)
 
-        def whitened(v: npt.NDArray, u0: npt.NDArray = u) -> tuple:
-            with np.errstate(all="ignore"):
-                f, grad = search(u0 + S @ v, placed)
-            if not np.isfinite(f) or not np.all(np.isfinite(grad)):
-                return np.inf, np.zeros_like(v)
-            return f, S.T @ grad
-
-        with ignoring_warnings():
-            result = minimize(
-                whitened,
-                np.zeros(u.size),
-                jac=True,
-                method="BFGS",
-                options={"gtol": 1e-7, "maxiter": 5000},
+    u, value, placed, starts, converged = _descend(
+        u, value, placed, starts, search, curvature, evaluated
+    )
+    # A search that ends with the items' spread on the edge of its space
+    # (a correlation of +-1, which the log-scale Cholesky factor reaches
+    # only at -inf) can stop on the flat shelf there, where the gradient
+    # vanishes, short of a maximum inside. It searches once more from the
+    # same spreads uncorrelated and keeps the better of the two answers.
+    inside = _inside_spread(u, layout)
+    if inside is not None:
+        retry_value, retry_placed, retry_starts = evaluated(
+            inside, (None, None)
+        )
+        if retry_placed is not None:
+            retry = _descend(
+                inside,
+                retry_value,
+                retry_placed,
+                retry_starts,
+                search,
+                curvature,
+                evaluated,
             )
-        step = result.x if np.all(np.isfinite(result.x)) else 0 * result.x
-        size = 1.0
-        while True:
-            trial = u + S @ (size * step)
-            new_value, new_placed, new_starts = evaluated(trial, starts)
-            if new_value <= value + 1e-12 * max(1.0, abs(value)):
-                break
-            size /= 4.0
-            if size < 1e-6:
-                trial, new_value, new_placed = u, value, placed
-                new_starts = starts
-                break
-        moved = float(np.max(np.abs(size * step), initial=0.0))
-        settled = abs(value - new_value) <= _ROUND_TOL * max(1.0, abs(value))
-        u, value, placed, starts = trial, new_value, new_placed, new_starts
-        if settled and moved < 1e-3:
-            converged = True
-            break
+            if retry[1] < value - _ROUND_TOL * max(1.0, abs(value)):
+                u, value, placed, starts, converged = retry
     # The maximum, verified at the last nodes: a zero gradient (in
     # standard errors) and a positive-definite Hessian
     with np.errstate(all="ignore"):
@@ -952,6 +940,83 @@ def _whitening(curvature: Any, u: npt.NDArray, placed: tuple) -> npt.NDArray:
             pass
     diag = np.diag(H) if np.all(np.isfinite(np.diag(H))) else np.ones(u.size)
     return np.diag(1.0 / np.sqrt(np.where(diag > 0, diag, 1.0)))
+
+
+def _descend(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    search: Any,
+    curvature: Any,
+    evaluated: Any,
+) -> tuple:
+    """Rounds of search from ``u`` (its likelihood ``value`` by the
+    nodes ``placed``): ``(u, value, placed, starts, converged)``.
+    ``search`` and ``curvature`` are the likelihood's value and gradient
+    and its Hessian by given nodes, ``evaluated`` the likelihood by nodes
+    placed at a point (``_fit``'s)."""
+    converged = False
+    for _ in range(_ROUNDS):
+        # A search with the nodes held where they are, then the step it
+        # proposes taken as far as the likelihood by nodes placed at the
+        # new point improves on this one's (backtracking where not):
+        # each round is a descent of the adaptive quadrature's likelihood.
+        S = _whitening(curvature, u, placed)
+
+        def whitened(v: npt.NDArray, u0: npt.NDArray = u) -> tuple:
+            with np.errstate(all="ignore"):
+                f, grad = search(u0 + S @ v, placed)
+            if not np.isfinite(f) or not np.all(np.isfinite(grad)):
+                return np.inf, np.zeros_like(v)
+            return f, S.T @ grad
+
+        with ignoring_warnings():
+            result = minimize(
+                whitened,
+                np.zeros(u.size),
+                jac=True,
+                method="BFGS",
+                options={"gtol": 1e-7, "maxiter": 5000},
+            )
+        step = result.x if np.all(np.isfinite(result.x)) else 0 * result.x
+        size = 1.0
+        while True:
+            trial = u + S @ (size * step)
+            new_value, new_placed, new_starts = evaluated(trial, starts)
+            if new_value <= value + 1e-12 * max(1.0, abs(value)):
+                break
+            size /= 4.0
+            if size < 1e-6:
+                trial, new_value, new_placed = u, value, placed
+                new_starts = starts
+                break
+        moved = float(np.max(np.abs(size * step), initial=0.0))
+        settled = abs(value - new_value) <= _ROUND_TOL * max(1.0, abs(value))
+        u, value, placed, starts = trial, new_value, new_placed, new_starts
+        if settled and moved < 1e-3:
+            converged = True
+            break
+    return u, value, placed, starts, converged
+
+
+def _inside_spread(u: npt.NDArray, layout: Layout) -> npt.NDArray | None:
+    """``u`` with the items' spread made uncorrelated (each varying
+    parameter's sd kept) where it is on the edge of its space -- a
+    diagonal of its Cholesky factor below ``_EDGE`` of its row's length,
+    a correlation of +-1 -- else ``None``."""
+    if layout.q < 2:
+        return None
+    theta = layout.unpack(np.asarray(u, dtype=float))
+    L = np.asarray(theta["L"], dtype=float)
+    length = np.sqrt(np.sum(L**2, axis=1))
+    if not np.all(np.isfinite(length) & (length > 0)):
+        return None
+    if np.all(np.abs(np.diag(L)) >= _EDGE * length):
+        return None
+    theta = {k: np.asarray(v, dtype=float) for k, v in theta.items()}
+    theta["L"] = np.diag(length)
+    return layout.pack(theta)
 
 
 def _equilibration(H: npt.NDArray) -> npt.NDArray:
