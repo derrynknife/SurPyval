@@ -294,6 +294,8 @@ _LAZY = {
         (
             "MultiState",
             "MultiStateProportionalHazards",
+            "PanelMultiState",
+            "PanelMultiStateRegression",
             "ParametricMultiState",
             "ParametricMultiStateRegression",
             "TransitionMatrix",
@@ -499,6 +501,8 @@ if TYPE_CHECKING:
     from surpyval.multistate import (
         MultiState,
         MultiStateProportionalHazards,
+        PanelMultiState,
+        PanelMultiStateRegression,
         ParametricMultiState,
         ParametricMultiStateRegression,
         TransitionMatrix,

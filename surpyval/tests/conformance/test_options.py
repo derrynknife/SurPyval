@@ -340,6 +340,8 @@ def _estimate(case, spec, fname, event):
             out.append(model.qf_at_usage(*args))
         elif spec.method == "param_cb":
             out.append(model.params[model.parameter_names.index(args[0])])
+        elif spec.method == "sojourn_cb":
+            out.append(model.mean_sojourn(*args))
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)

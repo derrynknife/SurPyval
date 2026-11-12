@@ -796,6 +796,24 @@ def _search_parametric_multistate_regression(model, data):
     return out
 
 
+def _search_panel_multistate(model, data):
+    """The panel likelihood (the forward recursion over each unit's
+    visits) in the space the fit searches: log intensities in units of
+    the mean gap between visits, coefficients of standardised covariates
+    and period log ratios, with its exact gradient and the Hessian by
+    central differences of it."""
+    lik = model._likelihood()
+    return [
+        Search(
+            lik.fun,
+            np.asarray(model._theta, dtype=float),
+            float(lik.n_obs),
+            jac=lik.jac,
+            hess=lik.hess,
+        )
+    ]
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -1315,6 +1333,8 @@ SEARCHES: dict[str, Callable] = {
     "ParametricMultiStateRegression": (
         _search_parametric_multistate_regression
     ),
+    "PanelMultiState": _search_panel_multistate,
+    "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (
         _search_parametric_competing_regression
