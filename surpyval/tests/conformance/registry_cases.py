@@ -834,6 +834,32 @@ def _multistate():
             transitions=d["transitions"],
         )
 
+    # The covariate's effect shared by the two transitions into "dead",
+    # whose baselines are also taken as proportional (one stratum, with an
+    # indicator). The transitions are read from the data, so the case
+    # follows its states when they are relabelled.
+    def shared_options(d):
+        into_dead = [tuple(d["transitions"][1]), tuple(d["transitions"][3])]
+        return {"shared": {0: into_dead}, "proportional_baselines": into_dead}
+
+    def msph_shared(d):
+        return ms.MultiStateProportionalHazards.fit(
+            **{**shared_options(d), **d}
+        )
+
+    def msph_shared_from_df(d):
+        return ms.MultiStateProportionalHazards.fit_from_df(
+            frame(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            **shared_options(d),
+        )
+
     def pms_from_df(d):
         return ms.ParametricMultiState.fit_from_df(
             frame(d),
@@ -896,6 +922,36 @@ def _multistate():
             rtol=1e-6,
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+        Case(
+            name="MultiStateProportionalHazards[shared]",
+            fitters=(),
+            model_class="surpyval.multistate.MultiStateProportionalHazards",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=msph_shared,
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": msph_shared_from_df},
+            rtol=1e-6,
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude=dict.fromkeys(
+                ("aliasing", "aliasing_constant"),
+                "a copy of a covariate shared by some transitions only is "
+                "aliased in one combination of its per-transition "
+                "coefficients (the shared column is their sum), not in all "
+                "of them; a constant on the two proportional baselines is "
+                "aliased with their indicator. The unshared case checks the "
+                "aliasing itself",
+            ),
         ),
         Case(
             name="ParametricMultiState",

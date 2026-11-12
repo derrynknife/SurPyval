@@ -377,7 +377,7 @@ with its own ``schema``.
    * - ``MultiStateProportionalHazards``
      - ``"model": "MultiStateProportionalHazards"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``Z``, ``covariate_names``, ``shared``, ``tie_method``
-     - --
+     - ``shared_groups``, ``baseline_groups``
    * - ``CauseSpecificMCF``
      - ``"model": "CauseSpecificMCF"``
      - ``event_types``, ``models``
