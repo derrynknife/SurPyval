@@ -1063,6 +1063,30 @@ Unreleased
   each study's mean coverage over its bounds at each level, the gap from
   nominal and the count below it. It is a report only; nothing passes or
   fails on it, and no seed, replicate count or tolerance changed.
+- Group-sequential designs in ``surpyval.test_planning``: a comparison
+  looked at a few planned times, stopping early for efficacy or futility
+  while keeping its level. ``logrank_group_sequential(hazard_ratio, looks,
+  power)`` gives the boundaries at each look, the maximum and expected
+  events (the single-analysis events of ``logrank_events`` times the
+  inflation factor), the units (with ``event_probability``) and the hazard
+  ratio on each boundary; ``group_sequential_design`` gives the same for
+  any normal test statistic on the information scale, and
+  ``boundary_crossing`` the chances of crossing any boundaries. Efficacy
+  boundaries: O'Brien-Fleming, Pocock, Wang-Tsiatis and Haybittle-Peto, or
+  Lan-DeMets alpha spending (O'Brien-Fleming-type, Pocock-type,
+  Hwang-Shih-DeCani, Kim-DeMets); one- or two-sided; futility boundaries by
+  beta spending, binding or non-binding. The designs report the critical
+  values and nominal p-values, the alpha and beta spent, the inflation
+  factor, the stopping probabilities and expected information under both
+  hypotheses; ``update`` re-computes a spending design at the information
+  the looks came at; ``decide``, the stage-wise ``p_value``, the
+  median-unbiased ``estimate`` with its interval (``hazard_ratio_estimate``
+  for the log-rank design) and ``repeated_interval`` analyse a study.
+  Computed by recursive numerical integration (Jennison and Turnbull 2000,
+  chapter 19), not simulation; checked against R's gsDesign 3.11.0 and
+  rpact 4.4.0 (to about 1e-6) and Jennison and Turnbull's tables, and by
+  simulated log-rank studies. ``to_dict`` / ``from_dict``. Guide:
+  :doc:`Test Planning with SurPyval`.
 
 **Deprecated.**
 
