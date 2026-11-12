@@ -50,6 +50,7 @@ EXPECTED_SOURCES = {
     "r_adjusted_curves",
     "r_rmtl",
     "r_km_ci",
+    "r_interval_cox",
     "r_weibullr",
     "r_logrank_extensions",
     "r_reclassification",

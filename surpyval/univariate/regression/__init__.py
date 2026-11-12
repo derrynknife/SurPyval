@@ -64,6 +64,8 @@ from .proportional_hazards import (
     ExponentialPH,
     GammaPH,
     GumbelPH,
+    IntervalCoxPH,
+    IntervalCoxPHModel,
     LogisticPH,
     LogNormalPH,
     NormalPH,
@@ -103,6 +105,7 @@ __all__ = [
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
+    "IntervalCoxPHModel",
     "FrailtyModel",
     # A regression's life at fixed covariates, model.at(Z)
     "LifeAtCovariates",
@@ -190,4 +193,6 @@ __all__ = [
     "ProportionalOdds",
     "ProportionalOddsFitter",
     "WeibullPO",
+    # Cox for interval-censored data (NPMLE baseline)
+    "IntervalCoxPH",
 ]

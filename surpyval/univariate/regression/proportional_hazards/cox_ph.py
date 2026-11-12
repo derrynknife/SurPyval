@@ -685,8 +685,8 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     the means, stored as the model's ``center``. Supports right censoring, left
     truncation (delayed entry), stratification and time-varying
     covariates in start-stop form; left- and interval-censored data are
-    refused, as the partial likelihood has no term for them (use a
-    parametric regression model).
+    refused, as the partial likelihood has no term for them (use
+    ``IntervalCoxPH``, or a parametric regression model).
     ``CoxPH`` is an instance of this class; its fit methods return a
     :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
     """
@@ -852,7 +852,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             observed time must be finite. Left-censored
             (-1) and interval-censored (2) rows raise a ``ValueError``: the
             partial likelihood has no term for them, so fit such data with
-            a parametric regression model (e.g. ``WeibullPH``) instead.
+            ``IntervalCoxPH`` (the Cox model with a non-parametric
+            baseline on the Turnbull intervals) or a parametric
+            regression model (e.g. ``WeibullPH``) instead.
         n: array-like, optional
             The number of observations at each time point.
         tl: array-like, optional

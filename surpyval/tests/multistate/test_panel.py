@@ -280,6 +280,23 @@ def test_regression_predicts_with_the_intensity_ratios():
     assert shared.parameter_names[-1] == "z0"
     assert np.ptp(shared.betas) == 0
     assert shared.log_likelihood <= model.log_likelihood + 1e-8
+    # by name, and the refusals
+    by_name = PanelMultiStateRegression.fit(
+        x, z.astype(float), s, i, transitions=ILLNESS, shared=["z0"]
+    )
+    np.testing.assert_allclose(by_name.params, shared.params)
+    with pytest.raises(ValueError, match="not built for the panel"):
+        PanelMultiStateRegression.fit(
+            x, z.astype(float), s, i, transitions=ILLNESS, shared={0: "all"}
+        )
+    with pytest.raises(ValueError, match="not a covariate"):
+        PanelMultiStateRegression.fit(
+            x, z.astype(float), s, i, transitions=ILLNESS, shared="age"
+        )
+    with pytest.raises(ValueError, match="Z has 1 column"):
+        PanelMultiStateRegression.fit(
+            x, z.astype(float), s, i, transitions=ILLNESS, shared=3
+        )
 
 
 def test_a_constant_covariate_is_aliased(illness_data):

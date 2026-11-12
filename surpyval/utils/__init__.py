@@ -146,9 +146,11 @@ def validate_coxph(
             "CoxPH supports only observed (c=0) and right-censored (c=1) "
             "observations (with optional left-truncation `tl`); the Cox "
             "partial likelihood has no term for left-censored (c=-1) or "
-            "interval-censored (c=2) data. Use a parametric regression "
-            "model instead, e.g. WeibullPH.fit(x, Z, c=c) or "
-            "WeibullAFT.fit(x, Z, c=c), which handle every censoring type."
+            "interval-censored (c=2) data. Use IntervalCoxPH.fit(x, Z, "
+            "c=c), the Cox model with a non-parametric baseline for such "
+            "data, or a parametric regression model, e.g. WeibullPH.fit(x, "
+            "Z, c=c) or WeibullAFT.fit(x, Z, c=c), which handle every "
+            "censoring type."
         ),
         truncation=(
             "CoxPH supports left-truncation (delayed entry) only, supplied "
