@@ -483,6 +483,98 @@ smallest change detectable and the operating time needed, for the test of
 :func:`surpyval.recurrent.intervention_test`. They are worked through in
 :doc:`Intervention Analysis with SurPyval`.
 
+Group-sequential designs
+------------------------
+
+A comparison that runs for years is usually looked at along the way: if
+the difference is already clear it can stop early, and if it is clearly not
+coming it can stop for futility. Each extra look is another chance of a
+false finding, so a group-sequential design holds each look to a stricter
+level, chosen so that the chance of a false finding over all the looks is
+still the level asked for. The price is a few more events at most (the
+*inflation factor*); the gain is fewer on average, because the study often
+stops early.
+
+To detect a 30% lower hazard with 90% power at the one-sided 2.5% level,
+one analysis needs 331 events. Looking after a third, two thirds and all of
+the events, with O'Brien-Fleming-type boundaries (very strict early, close
+to the single analysis's level at the end) and a non-binding futility
+boundary, needs at most 353, but about 272 on average if the difference is there
+and 207 if there is none:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import logrank_group_sequential
+
+    design = logrank_group_sequential(
+        0.7, 3, 0.9, alternative="one-sided", alpha_ci=0.025,
+        futility="hwang-shih-decani", futility_parameter=-2,
+    )
+    design
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert design.max_events == 353
+    assert round(design.expected_events["alternative"]) == 272
+    assert round(design.expected_events["null"]) == 207
+
+At each look the log-rank statistic (signed so that large values favour the
+new design) is compared with the boundaries: at or above the efficacy
+boundary the study stops with the difference shown; at or below the
+futility boundary it may stop without it. The "HR at bound" column is the
+observed hazard ratio that is on the efficacy boundary.
+
+The events rarely arrive exactly as planned. With a spending function (the
+default) the boundaries are re-computed for the events the looks actually
+came at, and the level is still kept. Here the second look came at 230
+events with a log-rank statistic of 2.6, past its boundary, so the study
+stops; the estimate of the hazard ratio allows for having stopped early
+(stopping when the difference looks large makes the plain estimate too
+optimistic):
+
+.. jupyter-execute::
+
+    actual = design.update([120, 230, 349])
+    print(actual.decide(2, 2.6))
+    print(round(actual.p_value(2, 2.6), 4))
+    estimate = actual.hazard_ratio_estimate(2, 2.6)
+    print({k: round(v, 3) for k, v in estimate.items() if k != "repeated"})
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert actual.decide(2, 2.6) == "efficacy"
+    assert round(estimate["estimate"], 2) == 0.71
+
+The p-value and the median-unbiased estimate with its confidence interval
+use the stage-wise ordering (an earlier stop is a stronger result); the
+repeated confidence interval (``estimate["repeated"]``) holds at any look,
+whether or not the study stops there.
+
+The boundaries can be O'Brien-Fleming's, Pocock's, Wang and Tsiatis' or
+Haybittle and Peto's classical shapes, or the Lan-DeMets spending functions
+(O'Brien-Fleming-type, Pocock-type, Hwang-Shih-DeCani, Kim-DeMets); the
+futility boundary spends the type II error with one of the spending
+functions, binding or not. :func:`~surpyval.test_planning.group_sequential_design`
+gives the same designs for any normal test statistic (a difference of means
+or proportions, a Cox coefficient), on the scale of the information, and
+:func:`~surpyval.test_planning.boundary_crossing` the chances of crossing
+any boundaries. They are computed by recursive numerical integration
+(Jennison and Turnbull 2000, chapter 19), not simulated, and agree with R's
+``gsDesign`` and ``rpact`` to about 1e-6.
+
+*Which sequential test?* Wald's sequential tests above
+(:func:`~surpyval.test_planning.sequential_mtbf_test`,
+:func:`~surpyval.test_planning.sequential_demonstration_test`) look after
+every failure or unit and decide between a target and a good value of one
+MTBF or reliability: they suit a demonstration test watched continuously. A
+group-sequential design looks a few planned times at a normal test
+statistic: it suits a comparison of groups analysed in batches, such as a
+log-rank test at interim analyses.
+
 References
 ----------
 
@@ -499,3 +591,7 @@ References
 - Freedman, L. S. (1982). Tables of the number of patients required in
   clinical trials using the logrank test. *Statistics in Medicine* 1,
   121-129.
+- Jennison, C. and Turnbull, B. W. (2000). *Group Sequential Methods with
+  Applications to Clinical Trials*. Chapman & Hall/CRC.
+- Lan, K. K. G. and DeMets, D. L. (1983). Discrete sequential boundaries
+  for clinical trials. *Biometrika* 70, 659-663.

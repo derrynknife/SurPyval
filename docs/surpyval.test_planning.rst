@@ -89,3 +89,21 @@ intervention, :func:`surpyval.recurrent.intervention_test`.
 .. autofunction:: surpyval.test_planning.rate_ratio_detectable
 
 .. autofunction:: surpyval.test_planning.rate_ratio_exposure
+
+Group-sequential designs
+------------------------
+
+Designs looked at a few planned times, stopping early for efficacy or
+futility while keeping their level.
+
+.. autofunction:: surpyval.test_planning.logrank_group_sequential
+
+.. autoclass:: surpyval.test_planning.LogrankGroupSequentialDesign
+   :members: hazard_ratio_estimate, update, to_dict
+
+.. autofunction:: surpyval.test_planning.group_sequential_design
+
+.. autoclass:: surpyval.test_planning.GroupSequentialDesign
+   :members: decide, update, p_value, estimate, repeated_interval, crossing_probabilities, max_information, to_dict, from_dict
+
+.. autofunction:: surpyval.test_planning.boundary_crossing
