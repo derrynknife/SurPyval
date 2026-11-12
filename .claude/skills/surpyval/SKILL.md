@@ -103,7 +103,12 @@ Extra `fit` options on parametric distributions: `how` (`"MLE"` default, or
 location/threshold `gamma`, e.g. 3-parameter Weibull), `zi=True`
 (zero-inflation), `lfp=True` (limited failure population / cure fraction),
 `fixed={"beta": 2}` (hold parameters), `init=[...]`. For `how="MPP"`,
-`heuristic` picks the plotting positions (`"Nelson-Aalen"` default).
+`heuristic` picks the plotting positions (`"Nelson-Aalen"` default); an
+MPP fit's bounds are `method="pivotal"` on `cb`/`quantile_cb`/`param_cb`
+(exact for complete or type II samples; Weibull, LogNormal, LogLogistic,
+Normal, Logistic, Gumbel, GumbelLEV, Exponential). `model.rba()` gives an
+MLE fit's small-sample (reduced bias) adjusted Weibull shape or (log)normal
+`sigma`, opt-in.
 **Note:** `offset`/`zi`/`lfp` are univariate-distribution features only — the
 **regression** fitters do not accept them (they raise `TypeError`).
 

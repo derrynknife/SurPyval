@@ -52477,6 +52477,71 @@
    12.0
   ]
  },
+ "rank_regression": {
+  "columns": {
+   "c": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "c_mixed": [
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0
+   ],
+   "c_type2": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1
+   ],
+   "x": [
+    30,
+    49,
+    82,
+    90,
+    96,
+    125,
+    151,
+    172,
+    199,
+    236
+   ],
+   "x_type2": [
+    30,
+    49,
+    82,
+    90,
+    96,
+    125,
+    126,
+    126,
+    126,
+    126
+   ]
+  },
+  "source": "made up for reference_r_weibullr.R: ten lifetimes; c_type2 censors the last four at 126 (x_type2), c_mixed makes 82 and 172 suspensions"
+ },
  "recurrent_groups": {
   "columns": {
    "event": [

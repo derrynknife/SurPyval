@@ -1211,6 +1211,26 @@ def multistate(seed):
     }
 
 
+def rank_regression():
+    """Ten lifetimes for the rank-regression (probability plotting)
+    references: complete (``c``), censored after the sixth failure at
+    126 (``c_type2``, ``x_type2``), and with two suspensions among them
+    (``c_mixed``)."""
+    x = [30, 49, 82, 90, 96, 125, 151, 172, 199, 236]
+    return {
+        "source": "made up for reference_r_weibullr.R: ten lifetimes; "
+        "c_type2 censors the last four at 126 (x_type2), c_mixed makes "
+        "82 and 172 suspensions",
+        "columns": {
+            "x": x,
+            "c": [0] * 10,
+            "x_type2": x[:6] + [126] * 4,
+            "c_type2": [0] * 6 + [1] * 4,
+            "c_mixed": [0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        },
+    }
+
+
 def multistate_panel(seed):
     """A four-state Markov model seen at visits (1 well, 2 mild, 3
     severe, 4 dead; the transitions of R msm's heart-transplant example):
@@ -1341,6 +1361,7 @@ def build():
         "mgus2_multistate": mgus2_multistate(),
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
+        "rank_regression": rank_regression(),
         "multistate_panel": multistate_panel(3801),
         "no_data": {
             "source": "none: a design calculation (a sample size or a "
