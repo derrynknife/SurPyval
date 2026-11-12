@@ -3,13 +3,12 @@
 "gaussian"))``: the stored values of scripts/reference/reference_r_coxme.R
 on the kidney, lung and seeded clustered fixtures.
 
-coxme's own search over the variances stops early with its default
-tolerance; the script runs it to ``reltol = 1e-14``, where it agrees with
-SurPyval's maximum to the printed digits. The tolerances below are those
-of two optimisers of the same smooth function reaching the same maximum:
-SurPyval's integrated log-likelihood is at least R's and at most 1e-4
-above it (coxme still stops up to 6e-6 short on the correlated random
-slope), and the coefficients are within 1e-2 of R's. Refitted at R's own
+The script runs coxme's search over the variances to ``reltol = 1e-14``.
+Two optimisers of the same smooth function stop at slightly different
+points, so the free fits are compared by log-likelihood: SurPyval's
+integrated log-likelihood is at least R's and at most 1e-4 above it (6e-6
+on the correlated random slope), and the coefficients are within 1e-2 of
+R's. Refitted at R's own
 variances (``variance=``), every value R reports is reproduced to 1e-6 or
 better, which checks the likelihoods themselves without the optimisers.
 """
@@ -22,8 +21,8 @@ from surpyval import CoxFrailty, CoxMixedEffects, RandomEffect
 
 from ._data import fixture, reference
 
-# R's maximum is short of SurPyval's by up to this much (coxme's search
-# stops on a flat ridge), and never above it.
+# How far above R's integrated log-likelihood SurPyval's may be (two
+# optimisers stopping at slightly different points); never below it.
 LOGLIK = 1e-4
 
 

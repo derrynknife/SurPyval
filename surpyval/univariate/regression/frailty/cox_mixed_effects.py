@@ -1032,13 +1032,14 @@ class CoxMixedEffectsModel(
     rows; ``df_penalised`` is the penalised fit's effective degrees of
     freedom.
 
-    Predictions are for a unit of a given group (``group=``: a label, or a
-    ``{term: label}`` dict with several terms), or, by default, of a new
-    group with random effects 0 (a typical, median group); with
-    ``marginal=True`` the random effects of the terms not given in
-    ``group`` are integrated out, the population-averaged curve for a unit
-    of a new group. The baseline is a step function, as ``CoxPH``'s:
-    ``hf`` and ``df`` are its jumps.
+    Predictions are marginal by default, as ``CoxFrailty``'s: the random
+    effects of every term not named in ``group=`` are integrated out (the
+    curve of a unit from a group not yet seen). ``group=`` (a label, or a
+    ``{term: label}`` dict with several terms) conditions on an observed
+    group's predicted random effects; ``marginal=False`` sets the
+    remaining random effects to 0 instead (a typical, median group), the
+    curve ``coxme`` predicts. The baseline is a step function, as
+    ``CoxPH``'s: ``hf`` and ``df`` are its jumps.
 
     Examples
     --------
@@ -1054,9 +1055,9 @@ class CoxMixedEffectsModel(
     >>> round(test["statistic"], 3), round(test["p_value"], 4)
     (4.88, 0.0136)
     >>> model.sf([30, 100], [45, 1]).round(3)
-    array([0.739, 0.545])
-    >>> model.sf([30, 100], [45, 1], marginal=True).round(3)
     array([0.707, 0.524])
+    >>> model.sf([30, 100], [45, 1], marginal=False).round(3)
+    array([0.739, 0.545])
     """
 
     def __init__(self) -> None:
@@ -1577,12 +1578,15 @@ class CoxMixedEffectsModel(
         x: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
-        """The cumulative hazard: of a unit of the group ``group`` (by
-        default a new group, random effects 0), or with ``marginal=True``
-        averaged over the random effects not given."""
+        """The cumulative hazard. By default (``marginal=True``, as
+        ``CoxFrailty``) the random effects of the terms not given in
+        ``group=`` are integrated out: a unit of a new group. ``group=``
+        conditions on an observed group's predicted random effects;
+        ``marginal=False`` sets the others to 0 (a typical group, as
+        ``coxme`` predicts)."""
         x, eta, var, H0, _ = self._H_parts(x, Z, group, marginal, stratum)
         s = np.asarray(eta * H0, dtype=float)
         return self._cumulative(s, var * np.ones(s.shape))
@@ -1592,10 +1596,13 @@ class CoxMixedEffectsModel(
         x: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
-        """The survival function (see :meth:`Hf`)."""
+        """The survival function. Marginal by default, as ``CoxFrailty``'s:
+        the random effects of the terms not named in ``group=`` are
+        integrated out; ``marginal=False`` sets them to 0 instead (a
+        typical group). See :meth:`Hf`."""
         return np.exp(-self.Hf(x, Z, group, marginal, stratum))
 
     def ff(
@@ -1603,7 +1610,7 @@ class CoxMixedEffectsModel(
         x: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
         """The failure probability (see :meth:`Hf`)."""
@@ -1614,7 +1621,7 @@ class CoxMixedEffectsModel(
         x: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
         """The hazard's jump at the latest baseline time at or before
@@ -1630,7 +1637,7 @@ class CoxMixedEffectsModel(
         x: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
         """The density's jump: :meth:`hf` times :meth:`sf`."""
@@ -1644,7 +1651,7 @@ class CoxMixedEffectsModel(
         p: Any,
         Z: Any = None,
         group: Any = None,
-        marginal: bool = False,
+        marginal: bool = True,
         stratum: Any = None,
     ) -> np.ndarray:
         """The quantile: the first baseline time at which the failure

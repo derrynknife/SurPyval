@@ -21,8 +21,9 @@ Unreleased
   intervals (``variance_cb()``), the predicted random effects,
   ``lr_test()`` against the Cox model (a boundary-aware chi-square
   mixture), coxme's integrated, penalised and null log-likelihoods, and
-  predictions for a group, for a new group, or averaged over the random
-  effects (``marginal=True``). Checked against coxme 2.2.22 on the
+  predictions averaged over the random effects (the default, as
+  ``CoxFrailty``), for an observed group, or with the random effects at 0
+  (``marginal=False``). Checked against coxme 2.2.22 on the
   kidney, lung and a nested/crossed/random-slope data set. Guide:
   :doc:`regression/frailty`.
 - ``CoxFrailty.fit(..., family="lognormal")``: the log-normal shared

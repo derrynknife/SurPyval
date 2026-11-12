@@ -13,18 +13,20 @@
 # Run make_fixtures.py first. Needs survival, coxme and jsonlite.
 #
 # * coxme maximises the Laplace-approximated integrated partial likelihood
-#   over the variances with optim(); its default tolerance (reltol 1e-5)
-#   stops early (on eortc's correlated random slope by 0.014 in the
-#   log-likelihood, with a correlation of 0.785 where the maximum is at
-#   0.992). Here optim runs with reltol 1e-14, by Nelder-Mead and by BFGS,
-#   and the fit with the higher integrated log-likelihood is kept.
+#   over the variances with optim(). Here optim runs with reltol 1e-14, by
+#   Nelder-Mead and by BFGS, and the fit with the higher integrated
+#   log-likelihood is kept: at the default tolerance two optimisers stop at
+#   slightly different points (up to 0.014 in the log-likelihood on a
+#   correlated-slope example run locally), so the tests compare the fits
+#   by log-likelihood and at R's variances.
 # * sparse = c(1000, 0.02) keeps coxme's information matrix dense (it is
 #   sparse by default only for a grouping factor with more than 50
 #   levels, and none here has that many).
-# * coxph's gaussian frailty chooses its variance by an approximate REML
-#   (McGilchrist 1993), not by maximum likelihood; its penalised fit at a
-#   given variance (frailty(..., theta = )) is the same penalised partial
-#   likelihood as coxme's, so it is compared at a fixed variance.
+# * coxph's gaussian frailty chooses its variance by a different rule (an
+#   approximate REML, McGilchrist 1993) than coxme (maximum likelihood);
+#   its penalised fit at a given variance (frailty(..., theta = )) is the
+#   same penalised partial likelihood as coxme's, so it is compared at a
+#   fixed variance.
 
 suppressPackageStartupMessages({
     library(survival)
@@ -143,8 +145,6 @@ ctl <- coxph.control(eps = 1e-12, toler.chol = 1e-13, iter.max = 500,
 fit <- coxph(Surv(time, status) ~ age + female +
                  frailty(id, dist = "gaussian", theta = 0.5, sparse = FALSE),
              data = k, control = ctl)
-default <- coxph(Surv(time, status) ~ age + female +
-                     frailty(id, dist = "gaussian"), data = k)
 refs[["kidney_coxph_gaussian_fixed"]] <- entry(
     "kidney", "survival",
     paste("coxph(Surv(time, status) ~ age + female + frailty(id, dist =",
@@ -152,16 +152,12 @@ refs[["kidney_coxph_gaussian_fixed"]] <- entry(
     list(ties = "efron",
          loglik = paste("loglik[2] is the partial likelihood at the",
                         "penalised fit, penalty its penalty"),
-         se = "sqrt(diag(var)) with sparse = FALSE (the full information)",
-         default_call = paste(
-             "coxph's own choice of theta (frailty(id, dist = 'gaussian'),",
-             "method 'reml') is", signif(default$history[[1]]$theta, 7))),
+         se = "sqrt(diag(var)) with sparse = FALSE (the full information)"),
     list(theta = 0.5, beta = unname(coef(fit)[1:2]),
          se = unname(sqrt(diag(fit$var))[1:2]),
          frail = unname(coef(fit)[-(1:2)]),
          loglik_partial = unname(fit$loglik[2]),
-         penalty = unname(fit$penalty[2]),
-         reml_theta = default$history[[1]]$theta)
+         penalty = unname(fit$penalty[2]))
 )
 
 out <- list(

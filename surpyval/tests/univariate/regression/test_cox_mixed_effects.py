@@ -91,7 +91,7 @@ def test_lognormal_cox_frailty_is_the_one_term_model(kidney, kidney_fit):
     # The marginal curve integrates the same log-normal frailty out
     np.testing.assert_allclose(
         frailty.sf([30, 100], [45, 1]),
-        m.sf([30, 100], [45, 1], marginal=True),
+        m.sf([30, 100], [45, 1]),
         rtol=1e-6,
     )
     np.testing.assert_allclose(
@@ -178,7 +178,9 @@ def test_conditional_and_marginal_predictions(kidney_fit, kidney):
     H0 = np.array([base["H0"][base["x"] <= ti][-1] for ti in t])
     lp = z @ beta
     # A new group at random effect 0
-    np.testing.assert_allclose(m.Hf(t, z), np.exp(lp) * H0, rtol=1e-12)
+    np.testing.assert_allclose(
+        m.Hf(t, z, marginal=False), np.exp(lp) * H0, rtol=1e-12
+    )
     # An observed group: its predicted random effect
     b = m.random_effects["group"].loc["21"].iloc[0]
     np.testing.assert_allclose(
@@ -193,12 +195,15 @@ def test_conditional_and_marginal_predictions(kidney_fit, kidney):
             12,
             epsabs=1e-13,
         )[0]
-        assert m.sf(ti, z, marginal=True) == pytest.approx(exact, rel=1e-8)
+        assert m.sf(ti, z) == pytest.approx(exact, rel=1e-8)
     # hf is the jump of Hf; qf inverts ff at a step
-    jumps = m.hf(base["x"][:5], z)
-    np.testing.assert_allclose(
-        np.cumsum(jumps), m.Hf(base["x"][:5], z), rtol=1e-12
-    )
+    for marginal in (True, False):
+        jumps = m.hf(base["x"][:5], z, marginal=marginal)
+        np.testing.assert_allclose(
+            np.cumsum(jumps),
+            m.Hf(base["x"][:5], z, marginal=marginal),
+            rtol=1e-12,
+        )
     q = m.qf(0.5, z)
     assert m.ff(q, z) >= 0.5
     assert m.df(t, z) == pytest.approx(m.hf(t, z) * m.sf(t, z))
@@ -237,19 +242,17 @@ def test_nested_crossed_slopes_and_strata_predictions():
         model.sf(5.0, [1.0])
     with pytest.raises(ValueError, match="dict"):
         model.sf(5.0, [1.0], group=0, stratum=0)
-    s_new = model.sf(5.0, [1.0], stratum=0)
-    s_site = model.sf(5.0, [1.0], group={"site": 3}, stratum=0)
+    s_new = model.sf(5.0, [1.0], stratum=0, marginal=False)
+    s_site = model.sf(5.0, [1.0], group={"site": 3}, stratum=0, marginal=False)
     b = model.random_effects["site"].loc["3"].to_numpy()
     assert -np.log(s_site) == pytest.approx(-np.log(s_new) * np.exp(b.sum()))
-    # The marginal over every term: the random part's variance adds up
-    marginal = model.sf(5.0, [1.0], marginal=True, stratum=1)
-    assert (
-        np.isfinite(marginal)
-        and marginal > model.sf(5.0, [1.0], stratum=1) - 1
-    )
+    # Marginal (the default) averages over every term not given
+    marginal = model.sf(5.0, [1.0], stratum=1)
+    typical = model.sf(5.0, [1.0], stratum=1, marginal=False)
+    assert np.isfinite(marginal) and marginal != typical
     d = model.to_dict()
     restored = CoxMixedEffectsModel.from_dict(json.loads(json.dumps(d)))
-    for kw in ({}, {"marginal": True}, {"group": {"site:ward": "3:1"}}):
+    for kw in ({}, {"marginal": False}, {"group": {"site:ward": "3:1"}}):
         np.testing.assert_allclose(
             restored.sf([2.0, 9.0], [1.0], stratum=1, **kw),
             model.sf([2.0, 9.0], [1.0], stratum=1, **kw),
@@ -340,6 +343,22 @@ def test_refusals(kidney, kidney_fit):
         fixed.variance_cb()
     assert np.isnan(fixed.lr_test()["p_value"])
     assert fixed.k == 2
+
+
+def test_weights_are_refused_with_what_to_use(kidney):
+    from surpyval.utils.weights import WeightedRefusal
+
+    x, Z, c, df = kidney
+    w = np.ones(x.size)
+    with pytest.raises(WeightedRefusal, match=r"does not take weights \(w\)"):
+        CoxMixedEffects.fit(x, Z=Z, c=c, groups=df["id"], w=w)
+    with pytest.raises(WeightedRefusal, match="CoxPH"):
+        CoxFrailty.fit(x, Z=Z, c=c, groups=df["id"], family="lognormal", w=w)
+    frame = pd.DataFrame({"x": x, "c": c, "g": df["id"], "w": w})
+    with pytest.raises(WeightedRefusal, match=r"\(w_col\)"):
+        CoxMixedEffects.fit_from_df(
+            frame, x_col="x", c_col="c", group_col="g", w_col="w"
+        )
 
 
 def test_missing_labels_are_dropped_with_a_warning(kidney):

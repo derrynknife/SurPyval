@@ -72,10 +72,9 @@ Laplace approximation to the integrated partial likelihood, reported as
 predicted (posterior-mode) log-frailty exponentiated; ``theta``'s
 standard error is from the curvature of its profile likelihood. R's
 ``coxph(... + frailty(id, dist = "gaussian"))`` fits the same penalised
-partial likelihood but picks :math:`\theta` by an approximate REML rule
-rather than maximum likelihood, so its default :math:`\theta` differs
-(0.569 against 0.457 on the kidney data); at the same :math:`\theta`
-(``theta=``) the two fits agree.
+partial likelihood but chooses :math:`\theta` by a different rule (an
+approximate REML rather than maximum likelihood); at the same
+:math:`\theta` (``theta=``) the two fits agree.
 
 Mixed-effects Cox models
 ------------------------
@@ -160,12 +159,14 @@ p-value is half the chi-square's (the 50:50 mixture), with several
 independent variances the binomial mixture, and with correlations the
 plain chi-square, which is conservative.
 
-Predictions (``sf``, ``Hf``, ``ff``, ``hf``, ``df``, ``qf``) are for a unit
-of an observed group, ``group=label`` (``group={"hospital": 3, "batch":
-2}`` with several terms), or by default of a new group with random
-effects 0, a typical group; ``marginal=True`` averages over the random
-effects of the terms not given, the curve of a unit from a group not yet
-seen. ``stratum=`` picks a stratum's baseline. The baseline is a step
+Predictions (``sf``, ``Hf``, ``ff``, ``hf``, ``df``, ``qf``) are marginal
+by default, as ``CoxFrailty``'s: the random effects of every term not
+named in ``group=`` are averaged over, the curve of a unit from a group
+not yet seen. ``group=label`` (``group={"hospital": 3, "batch": 2}`` with
+several terms) conditions on an observed group's predicted random
+effects, and ``marginal=False`` sets the remaining random effects to 0
+(a typical group, the curve ``coxme`` predicts). ``stratum=`` picks a
+stratum's baseline. The baseline is a step
 function, as ``CoxPH``'s.
 
 A worked example, the lung cancer data with a random intercept per
