@@ -1444,6 +1444,149 @@ on the full 94 women and on simulated data with every kind of censoring). Trunca
 makes the units not exchangeable, which the test relies on; use ``logrank`` with ``tl`` for exact
 and right censored data with delayed entry.
 
+When the hazards are not proportional: the max-combo test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The log-rank test is at its best when one group's hazard is a constant multiple of the other's.
+When the difference only shows after a while (a treatment that takes time to work), fades, or the
+curves cross, a weighting that stresses late or early times does better -- but which one is not
+known in advance, and trying several and keeping the smallest p-value overstates the evidence.
+``maxcombo_logrank`` runs several Fleming-Harrington weightings at once (by default FH(0, 0), the
+log-rank test; FH(0, 1), late; FH(1, 0), early; and FH(1, 1), the middle), takes the strongest,
+and gets its p-value from the joint distribution of all of them, so the chance of a false
+rejection stays at the level chosen. Here the treatment does nothing for 5 time units and then
+halves the hazard:
+
+.. jupyter-execute::
+
+    from surpyval import maxcombo_logrank
+
+    rng = np.random.default_rng(11)
+    control = rng.exponential(10, 150)
+    treated = rng.exponential(10, 150)
+    late = treated > 5
+    treated[late] = 5 + rng.exponential(20, late.sum())
+    x_d = np.minimum(np.concatenate([control, treated]), 25)
+    c_d = (np.concatenate([control, treated]) > 25).astype(int)
+    arm = np.repeat(['control', 'treated'], 150)
+    print('log-rank : p = %.3g' % logrank(x_d, arm, c=c_d).p_value)
+    combo = maxcombo_logrank(x_d, arm, c=c_d)
+    print(combo)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert combo.p_value < logrank(x_d, arm, c=c_d).p_value, combo
+
+Each component's ``z`` is the first group's (here ``'control'``) observed minus expected events
+over its standard deviation; the p-value is :math:`P(\max_j |Z_j| \ge m)` for normal
+:math:`Z_j` with the components' estimated correlation (``combo.correlation``), R's
+``nph::logrank.maxtest``. ``alternative='greater'`` or ``'less'`` gives a one-sided test, and
+``strata``, ``tl`` and ``t0`` work as for ``logrank``.
+
+Ordered groups: the test for trend
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the groups have an order -- doses, stages, load levels -- the question is usually whether
+the hazard rises with the order, not whether any group differs. ``trend_logrank`` gives each group
+a score (1, 2, ..., k by default, or your own through ``scores``) and tests whether the groups'
+observed minus expected events line up with the scores, on one degree of freedom. It finds a
+steady trend with fewer data than the k-group test, and misses a difference that does not follow
+the order. It takes every option of ``logrank`` (``weighting``, ``strata``, ``tl``, ``t0``, ``w``):
+
+.. jupyter-execute::
+
+    from surpyval import trend_logrank
+
+    rng = np.random.default_rng(12)
+    dose = np.repeat([0, 10, 20, 40], 40)
+    x_t = rng.exponential(10 / np.exp(0.02 * dose))
+    print('k-group : p = %.3g' % logrank(x_t, dose).p_value)
+    print(trend_logrank(x_t, dose, scores=[0, 10, 20, 40]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _tr = trend_logrank(x_t, dose, scores=[0, 10, 20, 40])
+    assert _tr.z > 0 and _tr.p_value < logrank(x_t, dose).p_value, _tr
+
+A positive ``z`` means the hazard rises with the score. With :math:`U` the groups' observed minus
+expected events, :math:`V` their covariance and :math:`s` the scores,
+:math:`z = s^\top U / \sqrt{s^\top V s}` (Tarone, 1975).
+
+Small samples: the permutation log-rank test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The chi-squared p-value of ``logrank`` is an approximation that can be poor with a handful of
+units. ``permutation_logrank`` takes the p-value from the data instead: if the groups share one
+survival curve, the labels are just tags, so it counts how many ways of shuffling them give a
+statistic at least as large as the one observed -- every way when there are few (an exact
+p-value), a random sample of them otherwise (a Monte Carlo p-value, seeded with
+``random_state``, with its standard error):
+
+.. jupyter-execute::
+
+    from surpyval import permutation_logrank
+
+    x_s = [6, 6, 6, 7, 10, 13, 16, 22, 23, 1, 1, 2, 2, 3, 4, 4, 5]
+    c_s = [0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    arm_s = ['treated'] * 9 + ['control'] * 8
+    print(permutation_logrank(x_s, arm_s, c=c_s))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pl = permutation_logrank(x_s, arm_s, c=c_s)
+    assert _pl.method == 'exact' and _pl.p_value < 0.05, _pl
+
+**When the permutation p-value is valid.** Shuffling the labels assumes the units are
+exchangeable under the null hypothesis: the same survival *and the same censoring* in every
+group. When one group is followed for longer or loses more units, the shuffles mix up the
+censoring patterns too, and the test can reject a true null too often (Heinze, Gnant and Schemper,
+2003). Then use ``logrank``, whose chi-squared p-value does not assume equal censoring. For the
+same reason delayed entry (``tl``) and sampling weights (``w``) are refused.
+
+Cut-points of a continuous covariate: maximally selected statistics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+People often want a threshold: "patients over this age", "parts above this vibration level".
+``maxstat_logrank`` tries every cut of a continuous covariate between the 10% and 90% quantiles
+(``minprop``, ``maxprop``), scores each split with the log-rank statistic, and reports the best.
+
+Two warnings in plain words. First, the ordinary log-rank p-value *at the best cut* is wrong:
+with dozens of cuts tried, one of them looks significant by chance alone, and that naive p-value
+rejects a true null hypothesis far more often than 5% (about 4 times in 10 with 100 units and the default range of cuts, in the package's own simulation study).
+``maxstat_logrank`` reports it as ``naive_p_value`` only to show the size of the correction; report
+``p_value``, which allows for the search. Second, cutting a continuous covariate in two throws
+information away and the best cut rarely replicates; to learn how the covariate affects survival,
+fit a regression on the covariate itself (``CoxPH``). Use a cut only when a two-way decision is
+really needed.
+
+.. jupyter-execute::
+
+    from surpyval import maxstat_logrank
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    res = maxstat_logrank(lung['time'], lung['age'], c=1 - lung['status'])
+    print(res)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert res.naive_p_value < 0.05 < res.p_value, res
+
+The best cut, 70 years, would look significant on its own (p = 0.044), but once the 24 cuts tried
+are allowed for there is no real evidence of a threshold in age. The default p-value
+(``method='exact'``) is the probability that the largest of the standardised statistics, jointly
+normal under the null hypothesis, reaches the one observed (R's ``maxstat``, ``pmethod =
+'exactGauss'``); ``'lausen94'`` (an upper bound), ``'lausen92'`` (a large-sample approximation) and
+``'permutation'`` (Monte Carlo) are the alternatives.
+
 Plotting groups with the number at risk
 ---------------------------------------
 

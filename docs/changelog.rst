@@ -15,6 +15,61 @@ Unreleased
   ``'normal'``. ``quantile_cb`` and ``plot`` take them too. Checked
   against R ``survival`` 3.8.12 (``survfit(conf.type=...)``) and
   ``km.ci`` 0.5.6 to rounding.
+- Four more tests in the log-rank family, each with a result object,
+  ``to_dict`` and a plain-words section in
+  :doc:`Non-Parametric SurPyval Modelling`, checked against R:
+
+  - ``maxcombo_logrank``: the max-combo test of two groups, the largest
+    of several Fleming-Harrington weighted log-rank statistics (by default
+    FH(0, 0), FH(0, 1), FH(1, 0) and FH(1, 1)), with a p-value from their
+    joint normal distribution, so it allows for picking the best
+    weighting; two- or one-sided, each component's ``z`` and the
+    correlation matrix reported; ``strata``, ``tl`` and ``t0`` as for
+    ``logrank``. For delayed, fading or crossing effects. Matches R's
+    ``nph::logrank.maxtest``.
+  - ``trend_logrank``: the log-rank test for trend across ordered groups
+    (Tarone), one degree of freedom, with default (1, ..., k) or own
+    scores, two- or one-sided, and every option of ``logrank``
+    (weightings, strata, ``tl``, ``t0``, sampling weights). Matches the
+    trend test computed from R's ``survdiff``.
+  - ``permutation_logrank``: the (weighted, stratified) log-rank test
+    with an exact p-value (all relabellings of the units, when there are
+    at most ``max_exact``) or a seeded Monte Carlo one with its standard
+    error. The docs say when it is valid (the same censoring in every
+    group) and when to use ``logrank`` instead. Matches R's
+    ``coin::logrank_test``.
+  - ``maxstat_logrank``: the maximally selected log-rank statistic, the
+    cut-point of a continuous covariate that best separates survival,
+    with a p-value corrected for the search (the exact Gauss p-value by
+    default; Lausen's 1994 bound, Lausen and Schumacher's 1992
+    approximation or a permutation p-value on request). The naive
+    p-value at the best cut is reported only to show that it is not
+    valid, and the docs point to regression on the covariate itself.
+    Matches R's ``maxstat::maxstat.test``.
+
+- Multi-state models for panel data, ``PanelMultiState`` and
+  ``PanelMultiStateRegression`` (also at the top level): units whose state
+  is seen only at visits (clinic visits, inspections, survey waves), so
+  that each move happened at an unknown time between two visits. A
+  continuous-time Markov model with a constant intensity for each allowed
+  move, fitted by maximum likelihood from the states seen (the likelihood
+  of R ``msm``: products of :math:`\exp(Q t)` over the gaps, by the
+  forward recursion). Data are one row per visit (``x``, ``s``, ``i``, and
+  ``fit_from_df`` with ``x_col``, ``s_col``, ``i_col``); a visit may see a
+  set of states (``censored``), a death may be timed exactly
+  (``exact_entry``) and a move may be seen as it happened
+  (``obstype="exact"``). Covariates act on the log intensities, per
+  transition or ``shared``, and may change between visits; ``pci`` lets
+  the intensities change at given times. ``intensity_matrix``,
+  ``transition_probabilities``, ``occupancy``, ``occupancy_se`` and ``cb``
+  (delta-method bounds from the exact derivatives of the matrix
+  exponential), ``mean_sojourn`` and ``sojourn_cb``, ``param_cb`` and
+  ``summary`` (Wald bounds, intensity ratios), a fit that warns where an
+  intensity runs to 0 (no finite maximum), and ``to_dict`` /
+  ``from_dict``. Checked against R ``msm`` 1.9: log-likelihoods to 1e-12,
+  intensities, standard errors and bounds to about 1e-6. Misclassified
+  states (hidden Markov models) are not built. See :doc:`Multi-State
+  Models`.
 - ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
   (IDI) and the net reclassification improvement (NRI) of a new risk
   model over an old one at a horizon, on right-censored data, from the

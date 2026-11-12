@@ -1,0 +1,371 @@
+{
+  "generator": "scripts/reference/reference_r_logrank_extensions.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "maxcombo_lung_sex_two_sided": {
+      "fixture": "lung",
+      "software": "R nph",
+      "version": "2.1",
+      "call": "logrank.maxtest(time, event, group, alternative = 'two.sided', rho = c(0, 0, 1, 1), gamma = c(0, 1, 0, 1))",
+      "settings": {
+        "alternative": "two.sided",
+        "rho": [0, 0, 1, 1],
+        "gamma": [0, 1, 0, 1],
+        "integrator": "GenzBretz(maxpts = 1e7, abseps = 1e-8)",
+        "mvtnorm": "1.4.2"
+      },
+      "values": {
+        "z": [3.21352484896035, 1.86010326758789, 3.56569087291055, 2.7685344459842],
+        "p_each": [0.00131116452035551, 0.0628709169850082, 0.000362898927598887, 0.00563090329551552],
+        "correlation": [
+          [1, 0.840680223222446, 0.919348938396786, 0.926749176742414],
+          [0.840680223222446, 1, 0.559816455597053, 0.871519863764597],
+          [0.919348938396786, 0.559816455597053, 1, 0.784859166767914],
+          [0.926749176742414, 0.871519863764597, 0.784859166767914, 1]
+        ],
+        "p_value": 0.000983861236311334,
+        "p_bonferroni": 0.00145159571039555
+      }
+    },
+    "maxcombo_lung_sex_greater": {
+      "fixture": "lung",
+      "software": "R nph",
+      "version": "2.1",
+      "call": "logrank.maxtest(time, event, group, alternative = 'greater', rho = c(0, 0, 1, 1), gamma = c(0, 1, 0, 1))",
+      "settings": {
+        "alternative": "greater",
+        "rho": [0, 0, 1, 1],
+        "gamma": [0, 1, 0, 1],
+        "integrator": "GenzBretz(maxpts = 1e7, abseps = 1e-8)",
+        "mvtnorm": "1.4.2"
+      },
+      "values": {
+        "z": [3.21352484896035, 1.86010326758789, 3.56569087291055, 2.7685344459842],
+        "p_each": [0.000655582260177701, 0.0314354584925041, 0.000181449463799499, 0.00281545164775776],
+        "correlation": [
+          [1, 0.840680223222446, 0.919348938396786, 0.926749176742414],
+          [0.840680223222446, 1, 0.559816455597053, 0.871519863764597],
+          [0.919348938396786, 0.559816455597053, 1, 0.784859166767914],
+          [0.926749176742414, 0.871519863764597, 0.784859166767914, 1]
+        ],
+        "p_value": 0.000491930607465552,
+        "p_bonferroni": 0.000725797855197996
+      }
+    },
+    "maxcombo_lung_sex_less": {
+      "fixture": "lung",
+      "software": "R nph",
+      "version": "2.1",
+      "call": "logrank.maxtest(time, event, group, alternative = 'less', rho = c(0, 0, 1, 1), gamma = c(0, 1, 0, 1))",
+      "settings": {
+        "alternative": "less",
+        "rho": [0, 0, 1, 1],
+        "gamma": [0, 1, 0, 1],
+        "integrator": "GenzBretz(maxpts = 1e7, abseps = 1e-8)",
+        "mvtnorm": "1.4.2"
+      },
+      "values": {
+        "z": [3.21352484896035, 1.86010326758789, 3.56569087291055, 2.7685344459842],
+        "p_each": [0.999344417739822, 0.968564541507496, 0.999818550536201, 0.997184548352242],
+        "correlation": [
+          [1, 0.840680223222446, 0.919348938396786, 0.926749176742414],
+          [0.840680223222446, 1, 0.559816455597053, 0.871519863764597],
+          [0.919348938396786, 0.559816455597053, 1, 0.784859166767914],
+          [0.926749176742414, 0.871519863764597, 0.784859166767914, 1]
+        ],
+        "p_value": 0.993021675510686,
+        "p_bonferroni": 1
+      }
+    },
+    "maxcombo_veteran_trt_nph_default": {
+      "fixture": "veteran",
+      "software": "R nph",
+      "version": "2.1",
+      "call": "logrank.maxtest(time, event, group, alternative = 'two.sided', rho = c(0, 0, 1), gamma = c(0, 1, 0))",
+      "settings": {
+        "alternative": "two.sided",
+        "rho": [0, 0, 1],
+        "gamma": [0, 1, 0],
+        "integrator": "GenzBretz(maxpts = 1e7, abseps = 1e-8)",
+        "mvtnorm": "1.4.2"
+      },
+      "values": {
+        "z": [-0.0907047033088693, 0.898024314591002, -0.933386036389649],
+        "p_each": [0.927727233340077, 0.369172586811807, 0.350620687393127],
+        "correlation": [
+          [1, 0.854704016531531, 0.891172055196877],
+          [0.854704016531531, 1, 0.526183490392911],
+          [0.891172055196877, 0.526183490392911, 1]
+        ],
+        "p_value": 0.54884553208036,
+        "p_bonferroni": 1
+      }
+    },
+    "trend_lung_ecog": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survdiff(Surv(time, status) ~ ph_ecog, rho = 0); s'(obs - exp) / sqrt(s' var s)",
+      "settings": {
+        "scores": [0, 1, 2],
+        "rho": 0,
+        "strata": "none"
+      },
+      "values": {
+        "obs_minus_exp": [-16.9046962798501, -1.09294223487679, 17.9976385147268],
+        "z": 4.05543379026078,
+        "chisq": 16.446543227189,
+        "p_value": 5.00413461461444e-05
+      }
+    },
+    "trend_lung_ecog_rho1": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survdiff(Surv(time, status) ~ ph_ecog, rho = 1); s'(obs - exp) / sqrt(s' var s)",
+      "settings": {
+        "scores": [0, 1, 2],
+        "rho": 1,
+        "strata": "none"
+      },
+      "values": {
+        "obs_minus_exp": [-11.1438601644857, -2.16292384206207, 13.3067840065478],
+        "z": 4.28481421107481,
+        "chisq": 18.3596328234287,
+        "p_value": 1.82891960063237e-05
+      }
+    },
+    "trend_lung_ecog_strata_sex": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survdiff(Surv(time, status) ~ ph_ecog + strata(sex), rho = 0); s'(obs - exp) / sqrt(s' var s)",
+      "settings": {
+        "scores": [0, 1, 2],
+        "rho": 0,
+        "strata": "sex"
+      },
+      "values": {
+        "obs_minus_exp": [-17.1303391457659, -1.2768169592283, 18.4071561049942],
+        "z": 4.15317936392488,
+        "chisq": 17.2488988289315,
+        "p_value": 3.27887529826936e-05
+      }
+    },
+    "trend_veteran_celltype_unequal": {
+      "fixture": "veteran",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survdiff(Surv(time, status) ~ celltype, rho = 0); s'(obs - exp) / sqrt(s' var s)",
+      "settings": {
+        "scores": [1, 2, 4, 8],
+        "rho": 0,
+        "strata": "none"
+      },
+      "values": {
+        "obs_minus_exp": [-16.6546776724754, 14.8979206731852, 10.3062353856395, -8.54947838634931],
+        "z": -0.439839588103481,
+        "chisq": 0.193458863263039,
+        "p_value": 0.660053292907469
+      }
+    },
+    "trend_lung_ecog_cox_score": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "coxph(Surv(time, status) ~ ph_ecog, ties = 'breslow', iter.max = 0); summary(fit)$sctest",
+      "settings": {
+        "scores": [0, 1, 2],
+        "ties": "breslow"
+      },
+      "values": {
+        "score_test": 16.4027772886138
+      }
+    },
+    "permutation_aml_exact": {
+      "fixture": "aml",
+      "software": "R coin",
+      "version": "1.4.6",
+      "call": "logrank_test(Surv(time, status) ~ group, distribution = 'exact', type = 'logrank')",
+      "settings": {
+        "type": "logrank",
+        "rho": 0,
+        "gamma": 0,
+        "group_order": "maintained = 0 first (coin's level 1)",
+        "ties": "mid-ranks"
+      },
+      "values": {
+        "z": -1.83454992709545,
+        "p_value": 0.0646930132729029,
+        "p_value_asymptotic": 0.0665724037128787
+      }
+    },
+    "permutation_aml_exact_fh10": {
+      "fixture": "aml",
+      "software": "R coin",
+      "version": "1.4.6",
+      "call": "logrank_test(Surv(time, status) ~ group, distribution = 'exact', type = 'Fleming-Harrington', rho = 1, gamma = 0)",
+      "settings": {
+        "type": "Fleming-Harrington",
+        "rho": 1,
+        "gamma": 0,
+        "group_order": "maintained = 0 first (coin's level 1)",
+        "ties": "mid-ranks"
+      },
+      "values": {
+        "z": -1.67383686783899,
+        "p_value": 0.0945167364604705,
+        "p_value_asymptotic": 0.0941626644413896
+      }
+    },
+    "permutation_lung_ecog_mc": {
+      "fixture": "lung",
+      "software": "R coin",
+      "version": "1.4.6",
+      "call": "logrank_test(Surv(time, status) ~ factor(ph_ecog), distribution = approximate(nresample = 1e5))",
+      "settings": {
+        "nresample": 100000,
+        "seed": 20261113,
+        "subset": "ph_ecog < 3"
+      },
+      "values": {
+        "statistic": 15.5331818719155,
+        "p_value": 0.00028,
+        "p_value_asymptotic": 0.000423655075087126
+      }
+    },
+    "permutation_veteran_trt_strata_mc": {
+      "fixture": "veteran",
+      "software": "R coin",
+      "version": "1.4.6",
+      "call": "independence_test(Surv(time, status) ~ factor(trt) | factor(celltype), ytrafo = function(d) trafo(d, surv_trafo = logrank_trafo, block = celltype), distribution = approximate(nresample = 1e5))",
+      "settings": {
+        "nresample": 100000,
+        "seed": 20261114,
+        "scores": "within each stratum"
+      },
+      "values": {
+        "z": 0.806155230833104,
+        "p_value": 0.42716,
+        "p_value_asymptotic": 0.42015334885708,
+        "survdiff_strata_chisq": 0.701743346844317,
+        "coin_pooled_scores_z": 0.268904702884317
+      }
+    },
+    "maxstat_lung_age_exactGauss": {
+      "fixture": "lung",
+      "software": "R maxstat",
+      "version": "0.7.26",
+      "call": "maxstat.test(logrank_trafo(Surv(time, status)) ~ age, smethod = 'Data', pmethod = 'exactGauss', minprop = 0.1, maxprop = 0.9)",
+      "settings": {
+        "pmethod": "exactGauss",
+        "minprop": 0.1,
+        "maxprop": 0.9,
+        "scores": "coin::logrank_trafo (mid-ranks)",
+        "coin": "1.4.6",
+        "B": 0
+      },
+      "values": {
+        "statistic": 2.01381518478582,
+        "cutpoint": 70,
+        "p_value": 0.290682948848247,
+        "cuts": [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
+        "stats": [1.13061655186367, 1.47916409912936, 1.35871134982277, 0.785212141834462, 0.968676505599157, 0.817462409825512, 0.955914707589565, 0.733695672336039, 1.0841935856281, 1.39647786938661, 1.37364216061015, 0.975529017037116, 0.863699255603393, 1.37569904265207, 1.90421182074058, 1.67447056964461, 1.75755706151163, 1.31823747870063, 1.64622087125008, 1.92576402264098, 2.01381518478582, 1.91238768420927, 1.56891901760761, 0.563132586799004],
+        "cscores_statistic": 2.01361866309724,
+        "cscores_cutpoint": 70
+      }
+    },
+    "maxstat_lung_age_Lau94": {
+      "fixture": "lung",
+      "software": "R maxstat",
+      "version": "0.7.26",
+      "call": "maxstat.test(logrank_trafo(Surv(time, status)) ~ age, smethod = 'Data', pmethod = 'Lau94', minprop = 0.1, maxprop = 0.9)",
+      "settings": {
+        "pmethod": "Lau94",
+        "minprop": 0.1,
+        "maxprop": 0.9,
+        "scores": "coin::logrank_trafo (mid-ranks)",
+        "coin": "1.4.6",
+        "B": 0
+      },
+      "values": {
+        "statistic": 2.01381518478582,
+        "cutpoint": 70,
+        "p_value": 0.42700028775617,
+        "cuts": [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
+        "stats": [1.13061655186367, 1.47916409912936, 1.35871134982277, 0.785212141834462, 0.968676505599157, 0.817462409825512, 0.955914707589565, 0.733695672336039, 1.0841935856281, 1.39647786938661, 1.37364216061015, 0.975529017037116, 0.863699255603393, 1.37569904265207, 1.90421182074058, 1.67447056964461, 1.75755706151163, 1.31823747870063, 1.64622087125008, 1.92576402264098, 2.01381518478582, 1.91238768420927, 1.56891901760761, 0.563132586799004],
+        "cscores_statistic": 2.01361866309724,
+        "cscores_cutpoint": 70
+      }
+    },
+    "maxstat_lung_age_Lau92": {
+      "fixture": "lung",
+      "software": "R maxstat",
+      "version": "0.7.26",
+      "call": "maxstat.test(logrank_trafo(Surv(time, status)) ~ age, smethod = 'Data', pmethod = 'Lau92', minprop = 0.1, maxprop = 0.9)",
+      "settings": {
+        "pmethod": "Lau92",
+        "minprop": 0.1,
+        "maxprop": 0.9,
+        "scores": "coin::logrank_trafo (mid-ranks)",
+        "coin": "1.4.6",
+        "B": 0
+      },
+      "values": {
+        "statistic": 2.01381518478582,
+        "cutpoint": 70,
+        "p_value": 0.454447402635711,
+        "cuts": [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
+        "stats": [1.13061655186367, 1.47916409912936, 1.35871134982277, 0.785212141834462, 0.968676505599157, 0.817462409825512, 0.955914707589565, 0.733695672336039, 1.0841935856281, 1.39647786938661, 1.37364216061015, 0.975529017037116, 0.863699255603393, 1.37569904265207, 1.90421182074058, 1.67447056964461, 1.75755706151163, 1.31823747870063, 1.64622087125008, 1.92576402264098, 2.01381518478582, 1.91238768420927, 1.56891901760761, 0.563132586799004],
+        "cscores_statistic": 2.01361866309724,
+        "cscores_cutpoint": 70
+      }
+    },
+    "maxstat_lung_age_condMC": {
+      "fixture": "lung",
+      "software": "R maxstat",
+      "version": "0.7.26",
+      "call": "maxstat.test(logrank_trafo(Surv(time, status)) ~ age, smethod = 'Data', pmethod = 'condMC', minprop = 0.1, maxprop = 0.9)",
+      "settings": {
+        "pmethod": "condMC",
+        "minprop": 0.1,
+        "maxprop": 0.9,
+        "scores": "coin::logrank_trafo (mid-ranks)",
+        "coin": "1.4.6",
+        "B": 100000
+      },
+      "values": {
+        "statistic": 2.01381518478582,
+        "cutpoint": 70,
+        "p_value": 0.29072,
+        "cuts": [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
+        "stats": [1.13061655186367, 1.47916409912936, 1.35871134982277, 0.785212141834462, 0.968676505599157, 0.817462409825512, 0.955914707589565, 0.733695672336039, 1.0841935856281, 1.39647786938661, 1.37364216061015, 0.975529017037116, 0.863699255603393, 1.37569904265207, 1.90421182074058, 1.67447056964461, 1.75755706151163, 1.31823747870063, 1.64622087125008, 1.92576402264098, 2.01381518478582, 1.91238768420927, 1.56891901760761, 0.563132586799004],
+        "cscores_statistic": 2.01361866309724,
+        "cscores_cutpoint": 70
+      }
+    },
+    "maxstat_veteran_karno_exactGauss": {
+      "fixture": "veteran",
+      "software": "R maxstat",
+      "version": "0.7.26",
+      "call": "maxstat.test(logrank_trafo(Surv(time, status)) ~ karno, smethod = 'Data', pmethod = 'exactGauss', minprop = 0.1, maxprop = 0.9)",
+      "settings": {
+        "pmethod": "exactGauss",
+        "minprop": 0.1,
+        "maxprop": 0.9,
+        "scores": "coin::logrank_trafo (mid-ranks)",
+        "coin": "1.4.6",
+        "B": 0
+      },
+      "values": {
+        "statistic": 4.60817010404183,
+        "cutpoint": 40,
+        "p_value": 2.02005008563821e-05,
+        "cuts": [30, 40, 50, 60, 70, 75],
+        "stats": [3.82103538074228, 4.60817010404183, 4.40856312433069, 4.45025387550976, 3.21392139843663, 3.37877711756537],
+        "cscores_statistic": 4.61806159115936,
+        "cscores_cutpoint": 40
+      }
+    }
+  }
+}
