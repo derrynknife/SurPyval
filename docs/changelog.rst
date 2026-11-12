@@ -908,14 +908,13 @@ Unreleased
   (``tests/calibration/test_coverage_bootstrap.py``): Weibull and LogNormal,
   about 30% right censored, at 30, 100 and 300 units, on ``param_cb``,
   ``cb(sf)`` and ``quantile_cb`` at 90% and 95% (200 replicates of 200
-  refits a design). The intervals are short of their level at every size:
-  averaged over each size's 16 bounds, 86.8% / 91.8% at 30 units, 87.9% /
-  93.4% at 100 and 87.8% / 93.8% at 300 (90% / 95%). At 30 units three
-  bounds fall outside their tolerance, so those two designs are marked as
-  known shortfalls (strict xfails, with the numbers in the reason). No
-  method changed. :doc:`Parametric SurPyval Modelling` now says so beside
-  the bootstrap bounds and recommends ``method="lr"``, whose intervals hold
-  their level, where coverage matters.
+  refits a design). Its first run found the intervals about a point short
+  at every sample size, which led to the fix below; with it, averaged over
+  each size's 16 bounds, they cover 0.880 / 0.930 at 30 units, 0.891 /
+  0.947 at 100 and 0.888 / 0.946 at 300 (90% / 95%; LogNormal at 100
+  units over the first 160 of its 200 replicates). One 30-unit
+  design (LogNormal) still has a bound outside its tolerance and is marked
+  as a known shortfall (a strict xfail, with the numbers in the reason).
 - The calibration runs end with a "pooled calibration coverage" section:
   each study's mean coverage over its bounds at each level, the gap from
   nominal and the count below it. It is a report only; nothing passes or
@@ -1362,6 +1361,44 @@ Unreleased
   forms give ``nan`` there.
 
 **Fixed.**
+
+- **Bootstrap intervals read their bounds at the levels asked, so they
+  are a little wider and hold their level (an intentional numerical
+  change).** ``method="bootstrap"`` bounds (``param_cb``, ``cb``,
+  ``quantile_cb``, ``mrl_cb``, ``rmst_cb``) of the parametric models,
+  plain, offset, limited-failure and zero-inflated, and of the parametric
+  regressions took each bound from the refits with the ``(n - 1) p`` rule
+  (``np.quantile``'s default). The k-th smallest of n refits sits at the
+  ``k / (n + 1)`` quantile on average, so with the default 200 refits a
+  95% interval ran from about the 3.0% to the 97.0% point of the refits'
+  distribution rather than 2.5% to 97.5% (and a 90% one from 5.5% to
+  94.5%): about 2% too narrow, and about a point of coverage short, at
+  every sample size. A bound at level ``p`` is now the ``(n + 1) p``-th
+  smallest refit, interpolated between refits (Davison and Hinkley 1997,
+  section 5.2.2; ``np.quantile``'s ``method="weibull"``). For example, a
+  Weibull fitted to failures at 1.2, 2.5, 3.1, 4.0, 4.4, 5.3, 6.1, 6.8,
+  7.7, 8.9, 9.5, 10.2, 11.8, 13.0 and 14.6 and five units censored at 15:
+  ``param_cb("alpha", alpha_ci=0.1, method="bootstrap", random_state=1)``
+  was [8.746, 16.735] and is now [8.695, 16.906]; ``quantile_cb(0.1)``
+  with the same options was [1.339, 4.640] and is now [1.324, 4.660].
+  In the plain bootstrap calibration study (same seeds, so the same
+  refits), the average coverage of each size's 16 bounds moved, at 90% /
+  95%:
+
+  =========  ===============  ===============
+  Units      before           now
+  =========  ===============  ===============
+  30         0.868 / 0.918    0.880 / 0.930
+  100        0.879 / 0.934    0.891 / 0.947
+  300        0.878 / 0.938    0.888 / 0.946
+  =========  ===============  ===============
+
+  On 8,000 simulated data sets of 300 Weibull units (an independent
+  implementation of the same bootstrap), the 90% / 95% intervals covered
+  89.0% / 94.0% with the old rule and 90.0% / 95.0% with the new one. The
+  Weibull 30-unit design of that study, a known shortfall before, now
+  passes every bound. The percentile bootstraps of the Kaplan-Meier,
+  degradation and Buckley-James models are unchanged.
 
 - ``fit_from_ecdf`` on every parametric family refuses a curve that falls
   as ``x`` rises, with a ``ValueError``: "F must rise with x; if you have a

@@ -33,27 +33,35 @@ design runs its replicates in turn and the designs run side by side
 (12 November 2026, an M-series Mac at two workers, shared with other
 work) each design took 2,190 to 2,430 s.
 
-What the first run found: the intervals are short of nominal at every
-sample size, not only the smallest. The mean coverage
-of each design's eight cells at 90% / 95%:
+What the first run found, and the fix: the intervals were about a point
+short of nominal at every sample size, not only the smallest (85 of the
+96 cells below nominal), because each bound was read from the refits
+with the ``(n - 1) p`` rule, which puts every tail level nearer the
+middle (at 200 refits a 95% interval spanned about 3.0-97.0% of the
+refits' distribution). The bounds now use the ``(n + 1) p``-th refit
+(``bca_bounds``). The same seeds give the same refits, so only the
+bounds moved. The mean coverage of each design's eight cells at 90% /
+95%, before and after:
 
-=========  ==============  ==============  ==============
-Family     30 units        100 units       300 units
-=========  ==============  ==============  ==============
-Weibull    0.876 / 0.923   0.876 / 0.935   0.876 / 0.940
-LogNormal  0.859 / 0.913   0.883 / 0.934   0.879 / 0.936
-=========  ==============  ==============  ==============
+=========  =====  ==============  ==============
+Family     Units  before          after
+=========  =====  ==============  ==============
+Weibull    30     0.876 / 0.923   0.884 / 0.937
+Weibull    100    0.876 / 0.935   0.886 / 0.946
+Weibull    300    0.876 / 0.940   0.888 / 0.949
+LogNormal  30     0.859 / 0.913   0.877 / 0.924
+LogNormal  100    0.883 / 0.934   0.896 / 0.949*
+LogNormal  300    0.879 / 0.936   0.889 / 0.944
+=========  =====  ==============  ==============
 
-Over both families, the mean is 0.868 / 0.918 at 30 units, 0.879 /
-0.934 at 100 and 0.878 / 0.938 at 300: at 95% the gap narrows from about
-three points to one, at 90% it stays at about two. Of the 96 cells, 85
-are below nominal. At 30 units three cells fall
-outside their tolerance, so those two designs are strict xfails (known
-shortfalls, ``SHORTFALL``); the other four designs pass every cell. The
+(After: the designs re-run replicate by replicate with the same seeds,
+12 November 2026; * LogNormal at 100 units over its first 160
+replicates only, every cell inside its tolerance.) At 200 replicates
+a design's mean is uncertain by about a point. Weibull at 30 units
+now passes every cell; LogNormal at 30 units still has one outside its
+tolerance (``SHORTFALL``). The
 likelihood-ratio bounds of the same families hold their level
-(``test_coverage_parametric``). That the 90% intervals are no closer at
-300 units than at 100 is not explained here: a bootstrap interval should
-approach its level as the sample grows.
+(``test_coverage_parametric``).
 """
 
 import warnings
@@ -127,21 +135,19 @@ def _study(family, n):
     return p_cb, s_cb, q_cb
 
 
-# The designs whose first run (12 November 2026, the seeds above) put a
-# cell outside its tolerance: known shortfalls, not to be met by a change
-# of seed, replicate count or tolerance. Strict, so a fix shows as a pass.
+# The designs that put a cell outside its tolerance on the run after the
+# bootstrap's percentiles were corrected (12 November 2026, the seeds
+# above): known shortfalls, not to be met by a change of seed, replicate
+# count or tolerance. Strict, so a fix shows as a pass. (Weibull at 30
+# units was one on the first run, at 0.890 on the 95% quantile_cb of the
+# 90% quantile; with the correction that cell covers 0.915 and every
+# cell passes.)
 SHORTFALL = {
-    ("Weibull", 30): (
-        "known shortfall at 30 units: the 95% quantile_cb on the 90% "
-        "quantile covered 0.890 (tolerance 0.894 to 1); the design's 16 "
-        "cells averaged 0.876 at 90% and 0.923 at 95%, every one inside "
-        "its tolerance but that one"
-    ),
     ("LogNormal", 30): (
-        "known shortfall at 30 units: at 95% the cb(sf) at the 10% quantile "
-        "covered 0.885 and the quantile_cb on that quantile 0.875 "
-        "(tolerance 0.894 to 1); the design's 16 cells averaged 0.859 at "
-        "90% and 0.913 at 95%, all 16 below nominal"
+        "known shortfall at 30 units: the 95% quantile_cb on the 10% "
+        "quantile covered 0.890 (tolerance 0.894 to 1); the design's 16 "
+        "cells averaged 0.877 at 90% and 0.924 at 95%, 15 of them below "
+        "nominal"
     ),
 }
 
