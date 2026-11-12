@@ -140,10 +140,20 @@ def test_likelihood_ratio_coverage_on_the_edge():
         params[:, :2, 0], params[:, :2, 1], values, 0.95, "edge param_cb"
     )
     check_coverage(
-        params[:, 2, 0], params[:, 2, 1], 1.0, 0.975, "edge lfp_p two-sided"
+        params[:, 2, 0],
+        params[:, 2, 1],
+        1.0,
+        0.975,
+        "edge lfp_p two-sided",
+        pooled=False,
     )
     check_coverage(
-        np.full_like(one_sided, -np.inf), one_sided, 1.0, 0.95, "edge upper"
+        np.full_like(one_sided, -np.inf),
+        one_sided,
+        1.0,
+        0.95,
+        "edge upper",
+        pooled=False,
     )
     check_coverage(band[:, :, 0], band[:, :, 1], sf_true, 0.95, "edge cb")
 
@@ -251,6 +261,7 @@ def test_bootstrap_coverage(name):
                 1.0,
                 1 - a / 2,
                 f"{label} lfp_p on the edge",
+                pooled=False,
             )
         else:
             check_coverage(
