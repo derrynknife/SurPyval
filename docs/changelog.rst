@@ -1486,9 +1486,13 @@ Unreleased
   with a singular Hessian, so ``predict(...).cb`` and
   ``standard_errors()`` refused. Two of the 400 fleets of the joint
   calibration study did: their maxima are 38.8 and 37.1 better, with
-  ``corr_a_b`` 0.22 and 0.23 rather than 1, and are verified. A fit that
-  ends on that edge now searches once more from no correlation and keeps
-  the better answer; every other fit is unchanged.
+  ``corr_a_b`` 0.22 and 0.23 rather than 1, and are verified. A fit
+  whose first answer is not a verified maximum now searches once more
+  from no correlation, and keeps that answer where it is verified (or
+  else the lower of the two); a verified fit is unchanged. Near the edge
+  the adaptive nodes' likelihood can be far off (5099.8 where a grid
+  integral gives 5197.8), so where the first search stops there it is
+  not compared with the verified answer.
 - **Fits that failed or ended in the wrong place when the time unit
   changed (an intentional numerical change, in the sixth digit or beyond
   in ordinary units).** Writing the same times in another unit should

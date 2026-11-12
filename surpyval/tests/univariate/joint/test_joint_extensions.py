@@ -700,24 +700,46 @@ def test_dynamic_prediction_to_dict_with_covariates_and_one_missing():
     assert d["sf"] == [None, None] and d["sf_lower"] is None
 
 
-def test_a_search_that_reaches_a_correlation_of_one_finds_the_maximum():
+@pytest.mark.parametrize("nudge", [0, 60])
+def test_a_search_that_reaches_a_correlation_of_one_finds_the_maximum(nudge):
     # The calibration study's first replicate (seed 7300, 200 pumps, exact
-    # failures): the search from the per-item start ran onto the flat shelf
-    # at corr_a_b = 1 (the Cholesky diagonal at -inf on the log scale)
-    # and stopped there 38.8 below the maximum inside, at corr_a_b 0.22,
-    # with a singular Hessian and so no covariance.
+    # failures). The search from the per-item start runs onto the flat
+    # shelf towards corr_a_b = 1 (the Cholesky diagonal at -inf on the log
+    # scale) and stops there, unverified. Where it stops depends on the
+    # last bits of the arithmetic (this failed on Linux x86-64 only): on
+    # macOS it stopped 38.8 above the maximum inside; with the readings
+    # changed by 1e-11 of themselves (``nudge`` 60, a seed) it stops where
+    # the adaptive nodes put the negative log-likelihood at 5099.8, though
+    # a grid integral there gives 5197.8. Either way the fit is the
+    # maximum inside, at corr_a_b 0.22: 5159.00675 by the nodes and by a
+    # grid integral (to 4e-8).
     items, _, _ = simulate_split(200, seed=7300)
+    if nudge:
+        rng = np.random.default_rng(nudge)
+        items = [
+            item.clone(
+                markers={
+                    age: value * (1 + 1e-11 * rng.standard_normal())
+                    for age, value in item.markers.items()
+                }
+            )
+            for item in items
+        ]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = WeibullJointPH.fit(
             SurpyvalData.from_items(items), marker_reference=CENTRE, **SPLIT
         )
     named = dict(zip(model.parameter_names, model.params))
+    se = dict(zip(model.parameter_names, model.standard_errors()))
     assert model.maximum == "verified"
-    assert named["corr_a_b"] == pytest.approx(0.2194, abs=1e-3)
-    assert model.neg_ll() == pytest.approx(5159.0068, abs=1e-3)
-    se = model.standard_errors()
-    assert np.all(np.isfinite(se) & (se > 0))
+    # A verified maximum's gradient is below 1e-4 standard errors, so the
+    # estimates are within about 1e-4 of theirs of the maximum and the
+    # likelihood within 1e-7; the nudge moves the maximum by less.
+    assert model.neg_ll() == pytest.approx(5159.00675, abs=1e-4)
+    assert abs(named["corr_a_b"] - 0.219418) < 1e-3 * se["corr_a_b"] + 1e-6
+    assert abs(named["sd_b"] - 1.44511e-3) < 1e-3 * se["sd_b"] + 1e-8
+    assert all(np.isfinite(v) and v > 0 for v in se.values())
     band = model.predict(
         {"site": 1.0, "load": 1.0},
         markers={0.0: 3.2, 60.0: 3.6, 120.0: 4.1, 180.0: 4.5},
