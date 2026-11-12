@@ -855,6 +855,26 @@ def multistate(seed):
     }
 
 
+def rank_regression():
+    """Ten lifetimes for the rank-regression (probability plotting)
+    references: complete (``c``), censored after the sixth failure at
+    126 (``c_type2``, ``x_type2``), and with two suspensions among them
+    (``c_mixed``)."""
+    x = [30, 49, 82, 90, 96, 125, 151, 172, 199, 236]
+    return {
+        "source": "made up for reference_r_weibullr.R: ten lifetimes; "
+        "c_type2 censors the last four at 126 (x_type2), c_mixed makes "
+        "82 and 172 suspensions",
+        "columns": {
+            "x": x,
+            "c": [0] * 10,
+            "x_type2": x[:6] + [126] * 4,
+            "c_type2": [0] * 6 + [1] * 4,
+            "c_mixed": [0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -905,6 +925,7 @@ def build():
         "recurrent_groups_ties": recurrent_groups(3799, True),
         "mgus2_multistate": mgus2_multistate(),
         "multistate": multistate(3800),
+        "rank_regression": rank_regression(),
     }
 
 

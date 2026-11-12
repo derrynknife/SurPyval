@@ -142,6 +142,10 @@ def _nonparametric(name, data=uni_data, **kw):
     )
 
 
+#: The probability-plotting fits registered, with their pivotal bounds.
+_MPP_FAMILIES = ("Weibull", "LogNormal")
+
+
 def _univariate():
     # Gauss and Galton are other names for Normal and LogNormal.
     alias = {"Normal": "Gauss", "LogNormal": "Galton"}
@@ -227,6 +231,29 @@ def _univariate():
             paths={},
         )
     )
+    # Probability-plotting fits, whose bounds are the pivotal ones
+    for name in _MPP_FAMILIES:
+        out.append(
+            continuous(
+                name,
+                case_name=f"{name}[MPP]",
+                fitters=(),
+                fixed={"how": "MPP"},
+                exclude={
+                    "convergence[initial guess]": "a closed-form "
+                    "regression: no search, so no initial guess to leave",
+                    "maximum": "not a maximum-likelihood fit: its "
+                    "maximum is 'not applicable'",
+                    "maximum[starved]": "not a maximum-likelihood fit",
+                    "derivatives": "no likelihood is maximised, so no "
+                    "gradient or Hessian is taken",
+                    "cb_declared": "mean_cb, mrl_cb and rmst_cb refuse, as "
+                    "documented: a probability-plotting fit's bounds are "
+                    "the pivotal ones on sf/ff/Hf, the quantiles and the "
+                    "parameters (swept)",
+                },
+            )
+        )
     # A limited failure population in interval-censored counts, whose
     # default start ran p to its bound of 1 (#579)
     out.append(
@@ -2103,7 +2130,31 @@ def _bootstrap_bounds(case, on):
     ]
 
 
+def _pivotal_bounds(case):
+    """The pivotal Monte Carlo bounds of a probability-plotting fit, its
+    only bounds: on sf, ff and Hf, the quantiles and the parameters. The
+    calls with one ``n_sim`` and seed share one simulation."""
+    kw = dict(
+        kwargs={"method": "pivotal", "n_sim": 999, "random_state": 1},
+        wald=False,
+    )
+    on = tuple(f for f in ("sf", "ff", "Hf") if f in case.functions)
+    return (
+        Bound("cb", on=on, label="cb[pivotal]", **kw),
+        Bound("param_cb", kind="param", label="param_cb[pivotal]", **kw),
+        Bound(
+            "quantile_cb",
+            point="qf",
+            query=(0.1, 0.3),
+            label="quantile_cb[pivotal]",
+            **kw,
+        ),
+    )
+
+
 def _parametric_bounds(case):
+    if case.name.endswith("[MPP]"):
+        return _pivotal_bounds(case)
     on = tuple(f for f in _ON_ALL if f in case.functions)
     out = []
     if case.name not in _NO_WALD:
