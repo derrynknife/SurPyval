@@ -111,13 +111,17 @@ def rebuilt(
             else a_inferred & (np.asarray(out.c) != 1)
         )
     out.attributes = attributes
-    markers = getattr(data, "markers", None)
+    m = getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if m is not None and markers is None:
+        # Named measurements: the readings of the units kept
+        out._m = m._for_units(ids or [])
     if markers is not None:
         # Keyed by id, else by row (numbered afresh); a reshape that
         # moves an item's window goes through the records, which trim
         # the readings to it
         if ids is not None:
-            out.markers = {i: markers[i] for i in ids}
+            out.markers = {i: markers.get(i, {}) for i in ids}
         else:
             old_rows = (
                 np.flatnonzero(keep) if keep is not None else np.arange(len(x))

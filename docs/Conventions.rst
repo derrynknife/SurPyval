@@ -66,12 +66,12 @@ Every row of a ``SurpyvalData`` is described by the same letters. In plain words
 - ``i``: which unit the row belongs to (``ids`` is its other name).
 - ``e``: what kind of event happened at ``x``: a failure mode, or the state the unit moved into.
 - ``s``: the state the unit was in during the row (multi-state data).
+- ``m``: the readings taken on a unit over its life (a vibration level, a temperature), on their own timeline rather than in the rows: kept in a ``Measurements`` object and linked to the rows by ``i`` (see `Measurements: m`_).
 - ``a``: whether the event at ``x`` ended the unit's history for good (1: scrapped, written off, died) or the unit carried on (0).
 - ``Z``: the covariates, what the row's unit was like or exposed to during the row.
 - ``w``: how many units of the population each unit of the row stands for (a sampling, propensity or censoring weight).
-- ``m``: measurements. *(Described in its own section, added separately.)*
 
-The sections below say how ``x`` with ``xl`` and ``xr``, ``i``, ``e`` and ``s``, and ``a`` work together.
+The sections below say how ``x`` with ``xl`` and ``xr``, ``i``, ``e`` and ``s``, ``a``, and ``m`` work together.
 
 Exact times and ranges together: x, xl and xr
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -198,6 +198,42 @@ Without ``a``, and with every unit on one row, ``data.a`` is None and the data i
 
     assert stretches.a.tolist() == [0, 1, 0]
     assert repairs.a.tolist() == [0, 0, 1, 0, 0] and repairs.n_items == 2
+
+Measurements: m
+~~~~~~~~~~~~~~~
+
+``m`` is the readings taken on a unit over its life, on their own timeline: a vibration level, a temperature, a wear or oil-debris reading, a biomarker. They are not life events, and they are taken when someone looks, not when something happens, so they are kept apart from the rows in a :class:`~surpyval.utils.measurements.Measurements` object and linked to the rows by the unit ``i``. A reading is a time on the same clock as ``x`` and a value; it has no censoring and no count (a reading not taken is left out). Several named measurements may be kept together, and they need not share times or units.
+
+This example has two units, each with vibration readings and one with a temperature reading, attached to their life data:
+
+.. jupyter-execute::
+
+    m = surv.Measurements(
+        {
+            "vibration": {"A": {0: 2.1, 30: 2.6}, "B": {0: 1.9, 15: 2.0}},
+            "temperature": {"A": {10: 61.0}},
+        },
+        units={"vibration": "mm/s"},
+    )
+    data = surv.SurpyvalData([40, 55], c=[0, 1], i=["A", "B"], m=m)
+    print(data.summary())
+    print(data.m["vibration"])
+
+``Measurements`` takes ``{i: {x: value}}`` for one measurement (unnamed, or named with ``name=``) or ``{name: {i: {x: value}}}`` for several; the shape is read from what the innermost dicts hold, and a dict with no readings at all is refused, since it says neither. ``Measurements.from_dataframe(df, i_col=, x_col=, m_col=, m_name_col=)`` reads a long frame with one row per reading, and ``to_dataframe()`` writes one back. ``m.names``, ``m.units``, ``m.ids``, ``m.n_units``, ``m.n_readings``, ``m[name]`` and ``m.for_unit(i)`` read it back. Times and values are finite numbers, one reading per unit, measurement and time.
+
+``m`` needs the rows' units, ``i``; a unit with readings but no rows is warned of, by count and id, and kept. Indexing and every reshape keep the readings of the units kept; a reshape that moves a unit's observation (``censor_at``, ``enter_at``) keeps the readings inside its new window. ``data.without("m")`` leaves them out (``"measurements"`` and ``"markers"`` are the same part).
+
+``data.markers`` is the same store under its older name: the one measurement's ``{i: {x: value}}``, as the joint models (:class:`~surpyval.WeibullJointPH`) have always taken it, and as ``SurpyvalData.from_items`` gives it from the records' ``markers``. Data with one unnamed measurement prints and saves exactly as it always has. A fit takes one measurement as its markers, so data with several is refused until one is chosen with ``data.with_measurement(name)``; reading ``data.markers`` of such data is refused the same way. Data with named measurements is saved under ``"m"`` (``"schema": 4``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert data.m.names == ["vibration", "temperature"]
+    assert data.with_measurement("vibration").markers == {
+        "A": {0.0: 2.1, 30.0: 2.6},
+        "B": {0.0: 1.9, 15.0: 2.0},
+    }
 
 The xrd format
 ~~~~~~~~~~~~~~

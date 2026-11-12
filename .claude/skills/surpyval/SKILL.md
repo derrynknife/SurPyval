@@ -82,6 +82,10 @@ Every fitter's `fit()` takes the same optional arrays. Only `x` is usually neede
   good, 0 where it carried on; a unit (`i`) may have several rows in time order
   (covariate stretches or repeated events); blank `a` on an event is 1 on the
   unit's last row, 0 before. Fits of one row per unit refuse such data.
+- **`m`** (in `SurpyvalData`) — readings taken on the units over their lives,
+  on their own timeline (`sp.Measurements`: `{i: {x: value}}`, or
+  `{name: {i: {x: value}}}` for several), linked by `i`; `data.markers` is the
+  same store (one measurement), which the joint models fit.
 
 ```python
 import numpy as np

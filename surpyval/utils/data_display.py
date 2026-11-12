@@ -79,12 +79,19 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         ]
         for j, name in enumerate(names):
             columns[name] = [time_text(v) for v in Z[:shown, j]]
-    markers = getattr(data, "markers", None)
-    if markers is not None and not recurrent:
+    m = None if recurrent else getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if markers is not None:
         keys = data.ids if data.ids is not None else range(len(data.x))
         columns["markers"] = [
             plural(len(markers.get(key, {})), "reading")
             for key in list(keys)[:shown]
+        ]
+    elif m is not None:
+        # Named measurements: each row's unit's readings, of them all
+        columns["m"] = [
+            plural(m._readings_of_unit(key), "reading")
+            for key in data.ids[:shown]
         ]
     attributes = getattr(data, "attributes", None)
     if attributes:
@@ -227,7 +234,10 @@ def held_lines(data: Any, recurrent: bool) -> list:
             "  time-varying covariates: "
             + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
         )
-    markers = getattr(data, "markers", None)
+    m = getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if m is not None and markers is None:
+        lines.append(f"  m: {m._describe()}")
     if markers is not None:
         readings = sum(len(m) for m in markers.values())
         read = sum(1 for m in markers.values() if m)

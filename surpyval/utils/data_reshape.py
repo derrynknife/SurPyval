@@ -27,6 +27,9 @@ LIFETIME_PARTS = {
     "time_varying_covariates": ("time_varying_covariates",),
     "truncation": ("left_truncation", "right_truncation"),
     "markers": ("markers",),
+    # The measurements' other names (``data.m``): one part
+    "m": ("markers",),
+    "measurements": ("markers",),
     "attributes": ("attributes",),
     # The rows' states (``s``): no part of a record; the dataset drops them
     "states": (),
@@ -702,7 +705,7 @@ class ReshapeMixin(ReadOnlyArrays):
         # array reshapes would drop its weights.
         return (
             self._PARTS is LIFETIME_PARTS
-            and getattr(self, "markers", None) is None
+            and getattr(self, "m", None) is None
             and getattr(self, "w", None) is None
         )
 
@@ -1237,7 +1240,7 @@ class ReshapeMixin(ReadOnlyArrays):
             later = to(record)
             if later is None:
                 return record
-            if self._on_arrays:
+            if self._PARTS is LIFETIME_PARTS:
                 if record.outcome != "right_censored":
                     if record.id in (age if isinstance(age, dict) else ()):
                         raise ValueError(
@@ -1259,7 +1262,7 @@ class ReshapeMixin(ReadOnlyArrays):
         return self._map(extended)
 
     def _record_type(self) -> type:
-        if self._on_arrays:
+        if self._PARTS is LIFETIME_PARTS:
             from surpyval.utils.item_lifetime import ItemLifetime
 
             return ItemLifetime

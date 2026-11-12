@@ -31,6 +31,23 @@ Unreleased
   both is left out of every per-row argument, with a warning naming it; a
   row giving neither is refused. Only ``x``, or only ``xl`` and ``xr``,
   is read as before. See :doc:`Conventions`.
+- Measurements in the data model: ``Measurements`` holds readings taken
+  on units over their lives, on their own timeline (one measurement, or
+  several named ones such as vibration and temperature, each with an
+  optional unit label), built from ``{i: {x: value}}``, ``{name: {i: {x:
+  value}}}`` or a long DataFrame (``Measurements.from_dataframe``), and
+  written by ``to_dataframe`` and ``to_dict``. ``SurpyvalData(..., i=...,
+  m=...)`` and ``SurpyvalData.from_dataframe(..., m=...)`` attach them,
+  linked to the rows by the unit ids (a unit with readings but no rows is
+  warned of). ``data.m`` and ``data.markers`` are one store: data with
+  one unnamed measurement (the joint models' markers) behaves, prints and
+  saves exactly as before. Indexing and every reshape keep the readings of
+  the units kept; ``without("m")`` (or ``"measurements"``) leaves them
+  out; ``with_measurement(name)`` keeps one, which the joint models then
+  fit; data with several measurements is refused by a fit until one is
+  chosen. ``extend_running`` and ``update`` of data with marker
+  readings, which took its records for event histories and failed, now
+  work. See :doc:`Conventions`.
 - States in the data model: ``SurpyvalData(..., s=...)`` takes the state
   each row's unit was in during the row (from its entry ``tl`` to ``x``),
   with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one

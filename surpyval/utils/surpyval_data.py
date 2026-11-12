@@ -19,6 +19,7 @@ from surpyval.serialisation import (
 from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.item_history import missing_type
+from surpyval.utils.measurements import MeasurementsMixin
 from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.warnings import (
     MaskedCauseWarning,
@@ -29,7 +30,7 @@ from surpyval.utils.warnings import (
 )
 
 
-class SurpyvalData(ReshapeMixin):
+class SurpyvalData(MeasurementsMixin, ReshapeMixin):
     """
     Lifetime data: one row per item (or per group of identical items,
     counted ``n``), each observed exactly, right censored, left censored
@@ -141,7 +142,7 @@ class SurpyvalData(ReshapeMixin):
     a: np.ndarray | None = None
     a_inferred: np.ndarray | None = None
     time_varying_covariates: dict | None = None
-    markers: dict | None = None
+    # The markers are the measurements m (MeasurementsMixin), one store
     # The name of each column of Z, where they have names: given as
     # ``covariate_names``, the columns of a DataFrame ``Z``, or the items'
     # ``covariates={name: value}``. They name a fitted model's
@@ -179,6 +180,7 @@ class SurpyvalData(ReshapeMixin):
         s: Any = None,
         i: Any = None,
         a: Any = None,
+        m: Any = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -294,6 +296,13 @@ class SurpyvalData(ReshapeMixin):
             rows (then it is inferred), and with states ``s`` it is
             kept and checked only (the transitions say which states are
             absorbing).
+        m : Measurements or dict, optional
+            Readings taken on the units over their lives, on their own
+            timeline (:class:`~surpyval.utils.measurements.Measurements`,
+            or a dict it is built from: ``{i: {x: value}}`` or ``{name:
+            {i: {x: value}}}``), linked to the rows by ``i``, which it
+            needs; ``data.m`` (``data.markers`` is the same store). A
+            unit with readings but no rows is warned of and kept.
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -418,6 +427,8 @@ class SurpyvalData(ReshapeMixin):
             from surpyval.utils.item_history import _unit
 
             self.unit = _unit("(data)", unit)
+        if m is not None:
+            self.m = m
 
     def add_covariates(self, Z: ArrayLike) -> None:
         """
@@ -914,6 +925,7 @@ class SurpyvalData(ReshapeMixin):
         w_col: Any = None,
         s_col: Any = None,
         a_col: Any = None,
+        m: Any = None,
     ) -> SurpyvalData:
         """
         The data from a :class:`pandas.DataFrame` with one row per item
@@ -989,6 +1001,9 @@ class SurpyvalData(ReshapeMixin):
             taken by ``fit(data)``.
         w_col : str, optional
             The weight of each row, ``w``.
+        m : Measurements or dict, optional
+            The units' readings, ``data.m`` (a frame of readings is read
+            with ``Measurements.from_dataframe``); needs ``i_col``.
 
         Returns
         -------
@@ -1045,7 +1060,7 @@ class SurpyvalData(ReshapeMixin):
         """
         from surpyval.utils.data_frames import lifetime_from_frame
 
-        return lifetime_from_frame(
+        data = lifetime_from_frame(
             cls,
             df,
             x_col=x_col,
@@ -1065,6 +1080,9 @@ class SurpyvalData(ReshapeMixin):
             s_col=s_col,
             a_col=a_col,
         )
+        if m is not None:
+            data.m = m
+        return data
 
     def to_dataframe(self) -> Any:
         """
@@ -1289,6 +1307,7 @@ class SurpyvalData(ReshapeMixin):
         """
         self._refuse_records("make records of")
         self._refuse_state_records("to_items()")
+        self._refuse_measurement_records("to_items()")
         prepared = self._prepared()
         return [self._item_at(k, prepared) for k in range(len(self.x))]
 
@@ -1351,7 +1370,7 @@ class SurpyvalData(ReshapeMixin):
         out = SurpyvalData.from_items(records, counts=counts)
         if self.ids is None:
             out.ids = None  # its items were row numbers, not ids
-        return out
+        return self._carry_measurements(out)
 
     def _from_kept(self, rows: list, records: list, counts: list) -> Any:
         """The data of the reshaped ``records`` of the rows ``rows``. With
@@ -1375,7 +1394,7 @@ class SurpyvalData(ReshapeMixin):
             out.a = np.where(out.c == 1, 0, self.a[kept])
             if self.a_inferred is not None:
                 out.a_inferred = self.a_inferred[kept] & (out.c != 1)
-        return out
+        return self._carry_measurements(out)
 
     def _covariate_levels(self, column: int) -> list:
         Z = np.asarray(self.Z, dtype=float)
@@ -1415,6 +1434,7 @@ class SurpyvalData(ReshapeMixin):
         from surpyval.utils.item_history import item_id
 
         self._refuse_state_records(f"item({id!r})")
+        self._refuse_measurement_records(f"item({id!r})")
         key = item_id(id)
         if self.ids is not None:
             matches = [k for k, i in enumerate(self.ids) if i == key]
@@ -1464,7 +1484,7 @@ class SurpyvalData(ReshapeMixin):
                 if self.time_varying_covariates is None
                 else self.time_varying_covariates[item]
             ),
-            markers=None if self.markers is None else self.markers[item],
+            markers=_readings_of(self._plain_markers(), item),
             attributes=(
                 None if self.attributes is None else self.attributes[k]
             ),
@@ -1475,10 +1495,11 @@ class SurpyvalData(ReshapeMixin):
         """Each row's marker readings, ``{age: value}`` (``{}`` for an item
         with none), in the order of the rows; None where the data has
         none."""
-        if self.markers is None:
+        markers = self.markers
+        if markers is None:
             return None
         keys = self.ids if self.ids is not None else range(len(self.x))
-        return [dict(self.markers[key]) for key in keys]
+        return [dict(markers.get(key, {})) for key in keys]
 
     def summary(self) -> str:
         """
@@ -1597,6 +1618,7 @@ class SurpyvalData(ReshapeMixin):
         """
         self._refuse_records("make records of")
         self._refuse_state_records("records()")
+        self._refuse_measurement_records("records()")
         prepared = self._prepared()
         for k in range(len(self.x)):
             yield self._item_at(k, prepared)
@@ -1843,6 +1865,10 @@ class SurpyvalData(ReshapeMixin):
             out.time_varying_covariates = {
                 i: self.time_varying_covariates[i] for i in kept
             }
+        if self.m is not None and not self.m._plain:
+            # Named measurements: the readings of the units kept
+            out._m = self.m._for_units(out.ids)
+            return out
         by_row = self._markers_by_row()
         if by_row is not None:
             # By id, else by the new row numbers
@@ -1936,7 +1962,12 @@ class SurpyvalData(ReshapeMixin):
         unit = getattr(self, "unit", None)
         if unit is not None:
             data["unit"] = unit
-        by_row = self._markers_by_row()
+        if self.m is not None and not self.m._plain:
+            # Named measurements (or one with a unit): under "m"
+            data["m"] = self.m.to_dict()
+            by_row = None
+        else:
+            by_row = self._markers_by_row()
         if by_row is not None:
             # One list of [age, value] pairs per row (JSON keys are text)
             data["markers"] = [
@@ -1949,7 +1980,12 @@ class SurpyvalData(ReshapeMixin):
         # surpyval.serialisation.encode_non_finite), not as the
         # ``Infinity`` literals strict parsers reject.
         out = encode_non_finite(data)
-        if self.w is not None or self.s is not None or self.a is not None:
+        if (
+            self.w is not None
+            or self.s is not None
+            or self.a is not None
+            or "m" in data
+        ):
             # Schema 3 (a weighted model's dict is 4): a reader that
             # checks the schema and has no weights refuses it rather than
             # drop them. Data with states is schema 4, which a reader
@@ -2049,6 +2085,10 @@ class SurpyvalData(ReshapeMixin):
                 key: {float(age): float(value) for age, value in pairs}
                 for key, pairs in zip(keys, data["markers"])
             }
+        if "m" in data:
+            from surpyval.utils.measurements import Measurements
+
+            out._m = Measurements.from_dict(data["m"])
         return out
 
     def to_json(self, filepath: str | Path | None = None) -> str | None:
@@ -2627,7 +2667,7 @@ def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
     held = {
         "Z": data.Z,
         "e": data.e,
-        "markers": data.markers,
+        "markers": data.m,
         "s": data.s,
         "state": data.s,
         "i": data.ids,
@@ -2646,10 +2686,18 @@ def _markers_taken(data: SurpyvalData, names: set) -> dict:
     """The data's marker readings as a fit's ``markers`` argument (one
     ``{age: value}`` per row), ``{}`` where it has none; refused for a fit
     that takes none."""
-    if data.markers is None:
+    if data.m is None:
         return {}
     if "markers" not in names:
         raise ValueError(_NO_MARKERS)
+    if len(data.m.names) > 1:
+        raise ValueError(
+            "This fit takes one measurement as its markers, and the "
+            f"SurpyvalData holds {len(data.m.names)} ("
+            + ", ".join(map(str, data.m.names))
+            + "): keep one with data.with_measurement(name), or leave "
+            'them out with data.without("m").'
+        )
     return {"markers": data._markers_by_row()}
 
 
@@ -2687,7 +2735,7 @@ def refuses_what_fit_cannot_take(method: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         data = kwargs.get("surv_data", args[1] if len(args) > 1 else None)
         if isinstance(data, SurpyvalData):
-            if data.markers is not None:
+            if data.m is not None:
                 raise ValueError(_NO_MARKERS)
             missing = _not_taken_yet(data)
             if data.w is not None and not _takes_weights(args[0]):
@@ -3495,6 +3543,11 @@ def _checked_names(names: Any, Z: Any) -> list:
     if twice:
         raise ValueError(f"covariate_names has {twice!r} more than once.")
     return names
+
+
+def _readings_of(markers: dict | None, item: Any) -> dict | None:
+    """An item's marker readings in ``markers`` (None where it has none)."""
+    return None if markers is None else markers.get(item)
 
 
 def _named_row(Z: np.ndarray | None, k: int, names: list | None) -> Any:

@@ -145,7 +145,7 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
         lost.append("states")
     if lost:
         raise ValueError(f"{what}: {lost_message(lost, False)}")
-    if getattr(data, "markers", None) is not None:
+    if getattr(data, "m", None) is not None:
         raise ValueError(
             f"{what}: this fit takes no markers, which the SurpyvalData "
             'holds; use data.without("markers") (the joint models, such as '

@@ -121,6 +121,7 @@ surpyval.LogisticAH
 surpyval.LogisticDistributional
 surpyval.LogisticPH
 surpyval.LogisticPO
+surpyval.Measurements
 surpyval.MixtureCure
 surpyval.MixtureCureFitter
 surpyval.MixtureCureModel

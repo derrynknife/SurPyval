@@ -241,6 +241,11 @@ _SCHEMA_JOINT = 4
 # The schema of data with states (``"s"``): v0.27's schema 4.
 _SCHEMA_STATES = 4
 
+# The schema of data with named measurements (``"m"``; the old unnamed
+# ``"markers"`` keep their layout): v0.27's schema 4, which a v0.26
+# reader refuses rather than silently drop the readings.
+_SCHEMA_MEASUREMENTS = 4
+
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
 _SCHEMA_WITHOUT_NON_FINITE = 1
@@ -740,6 +745,8 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         return _SCHEMA_JOINT
     if any(_has_states(d) for d in dicts):
         return _SCHEMA_STATES
+    if any(_has_measurements(d) for d in dicts):
+        return _SCHEMA_MEASUREMENTS
     if any(d.get("weighted") is True for d in dicts):
         return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
@@ -785,6 +792,12 @@ def _has_states(d: dict) -> bool:
     return d.get("class") == "SurpyvalData" and (
         d.get("s") is not None or d.get("a") is not None
     )
+
+
+def _has_measurements(d: dict) -> bool:
+    """Whether ``d`` is data with named measurements (a ``SurpyvalData``
+    with ``"m"``)."""
+    return d.get("class") == "SurpyvalData" and d.get("m") is not None
 
 
 def _is_weighted(d: dict) -> bool:
