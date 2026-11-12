@@ -262,6 +262,29 @@ def log_frailty_integral(
         np.asarray(getval(A), dtype=float),
         np.asarray(getval(B), dtype=float),
     )
+    missing = ~(np.isfinite(Dv) & np.isfinite(Av) & np.isfinite(Bv))
+    if (
+        np.any(missing)
+        and not np.all(missing)
+        and Dv.shape == np.shape(D)
+        and Dv.shape == np.shape(A)
+        and Dv.shape == np.shape(B)
+    ):
+        # A missing value (a nan covariate in a query) gives nan there
+        # only: the others are computed on their own, so one row's nan
+        # does not place the nodes of the rest.
+        out = np.full(Dv.shape, np.nan)
+        keep = ~missing
+        out[keep] = log_frailty_integral(
+            Dv[keep],
+            Av[keep],
+            Bv[keep],
+            getval(alpha),
+            getval(theta),
+            family,
+            n_nodes,
+        )
+        return out
     tv = np.float64(getval(theta))
     av = np.float64(getval(alpha))
     if not (np.isfinite(tv) and np.isfinite(av)):
@@ -768,6 +791,18 @@ class _Likelihood:
             log_frailty_integral(D + 1.0, A, B, alpha, theta, self.family)
             - log_frailty_integral(D, A, B, alpha, theta, self.family)
         )
+
+
+class _FloatLikelihood:
+    """The negative log-likelihood as a float of a plain array: what the
+    likelihood-ratio searches call (a class, so a model pickles after a
+    likelihood-ratio bound)."""
+
+    def __init__(self, lik: _Likelihood) -> None:
+        self.lik = lik
+
+    def __call__(self, params: Any) -> float:
+        return float(self.lik(np.asarray(params, dtype=float)))
 
 
 class _Search:
@@ -1430,6 +1465,13 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
     _held: npt.NDArray
     _lik: _Likelihood
     _ll_null: float
+
+    def __getstate__(self) -> dict:
+        """The state to pickle, without the likelihood-ratio searches'
+        cache, which is rebuilt when needed."""
+        state = dict(vars(self))
+        state.pop("_lr_region", None)
+        return state
 
     # -- names and parts ----------------------------------------------------
     def _coefficient_names(self) -> list[str]:
@@ -2143,7 +2185,7 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
             held = set(np.flatnonzero(~self._estimated()).tolist())
             cov, _ = self._covariance_matrix()
             region = LikelihoodRegion(
-                lambda t: float(lik(np.asarray(t, dtype=float))),
+                _FloatLikelihood(lik),
                 self._p(),
                 list(self.parameter_names),
                 [(0, None)] * 4
