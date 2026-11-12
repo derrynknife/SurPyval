@@ -90,6 +90,8 @@ surpyval.GumbelPO
 surpyval.HPP
 surpyval.Hypoexponential
 surpyval.InstantlyOccurs
+surpyval.IntervalCoxPH
+surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
@@ -580,6 +582,8 @@ surpyval.univariate.regression.GumbelAFT
 surpyval.univariate.regression.GumbelAH
 surpyval.univariate.regression.GumbelPH
 surpyval.univariate.regression.GumbelPO
+surpyval.univariate.regression.IntervalCoxPH
+surpyval.univariate.regression.IntervalCoxPHModel
 surpyval.univariate.regression.InverseExponential
 surpyval.univariate.regression.InverseEyring
 surpyval.univariate.regression.InversePower
