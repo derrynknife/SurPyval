@@ -514,7 +514,7 @@ class RecurrentDataFrameMixin:
             "tl": tl_col,
             "tr": tr_col,
         }
-        arrays = _read_columns(df, columns)
+        arrays = read_columns(df, columns)
         names = {k: f"{k}_col" for k in columns}
         return call_fit(self, arrays, names, fit_options)
 
@@ -522,7 +522,7 @@ class RecurrentDataFrameMixin:
 _TIME_ARGS = frozenset({"x", "xl", "xr", "tl", "tr"})
 
 
-def _read_columns(
+def read_columns(
     df: pd.DataFrame, columns: dict[str, str | None]
 ) -> dict[str, Any]:
     """Each named column (``fit`` argument -> column name) as an array."""
@@ -533,7 +533,7 @@ def _read_columns(
     }
 
 
-def _regression_fit_from_df(
+def regression_fit_from_df(
     fitter: Any,
     df: pd.DataFrame,
     x_col: str,
@@ -542,7 +542,7 @@ def _regression_fit_from_df(
     fit_options: dict[str, Any],
 ) -> Any:
     df = require_frame(df)
-    arrays = _read_columns(df, {"x": x_col, **columns})
+    arrays = read_columns(df, {"x": x_col, **columns})
     arrays["Z"] = frame_columns(df, Z_cols, "Z_cols").astype(float)
     names = {k: f"{k}_col" for k in arrays} | {"Z": "Z_cols"}
     # An aliasing warning names the columns (#502).
@@ -645,7 +645,7 @@ class RecurrentRegressionDataFrameMixin:
             "tl": tl_col,
             "tr": tr_col,
         }
-        return _regression_fit_from_df(
+        return regression_fit_from_df(
             self, df, x_col, Z_cols, columns, fit_options
         )
 
@@ -767,7 +767,7 @@ class RegressionDataFrameMixin:
             "tl": tl_col,
             "tr": tr_col,
         }
-        arrays = _read_columns(df, columns)
+        arrays = read_columns(df, columns)
         model_spec = None
         if Z_cols is not None:
             names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

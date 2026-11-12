@@ -28,6 +28,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
     formula_model_matrix,
+    is_missing_event,
     numeric_columns,
     refuse_time_values,
     xcnt_handler,
@@ -481,6 +482,60 @@ def design_matrix_from_df(
 
     Z = numeric_columns(df, Z_cols)
     return Z, Z_cols, None
+
+
+class FrameDesign:
+    """The covariates a ``fit_from_df`` reads from a DataFrame, and the
+    rows it fits: ``Z``, ``feature_names`` and ``model_spec`` as from
+    :func:`design_matrix_from_df`, and ``rows``, the frame (less the rows
+    with a missing covariate, with ``drop_missing``)."""
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        Z_cols: str | list[str] | None,
+        formula: str | None,
+        drop_missing: bool = False,
+        optional: bool = False,
+    ) -> None:
+        self.formula = formula
+        self.Z: Any
+        self.feature_names: list[str] | None
+        if optional and Z_cols is None and formula is None:
+            # A model that may have no covariates (a frailty model).
+            self.Z, self.feature_names, self.model_spec = None, None, None
+        else:
+            self.Z, self.feature_names, self.model_spec = (
+                design_matrix_from_df(df, Z_cols=Z_cols, formula=formula)
+            )
+        if drop_missing:
+            mask = finite_covariate_mask(self.Z)
+            self.Z = self.Z[mask]
+            df = df.loc[mask]
+        self.rows = df
+
+    def column(self, name: str | None) -> Any:
+        """The values of column ``name`` of the rows, or ``None``."""
+        return None if name is None else self.rows[name].values
+
+    def causes(self, e_col: str) -> npt.NDArray:
+        """The column of causes, a censored row's cause ``None`` (a blank
+        or NaN cell is read as one)."""
+        e = self.rows[e_col].to_numpy(dtype=object).copy()
+        e[[is_missing_event(v) for v in e]] = None
+        return e
+
+    def fit(self, fit: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """``fit(*args, **kwargs)``, its aliasing warning naming the
+        covariate columns (#476), and the model it returns with the
+        ``feature_names``, ``formula`` and ``_model_spec`` it predicts
+        from a DataFrame by."""
+        with covariate_columns(self.feature_names, self.Z, self.model_spec):
+            model = fit(*args, **kwargs)
+        model.feature_names = self.feature_names
+        model.formula = self.formula
+        model._model_spec = self.model_spec
+        return model
 
 
 def prepare_Z(

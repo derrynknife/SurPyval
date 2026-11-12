@@ -71,7 +71,7 @@ from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import collecting_warnings
 
-from .._aliasing import covariate_columns, expand, fit_columns
+from .._aliasing import expand, fit_columns
 from .._fit_skeleton import covariate_center
 from .._prediction import step_quantiles, unique_rows
 from ..proportional_hazards.cox_likelihood import (
@@ -83,7 +83,7 @@ from ..proportional_hazards.cox_likelihood import (
 )
 from ..proportional_hazards.cox_ph import CoxPH
 from ..regression_data import (
-    design_matrix_from_df,
+    FrameDesign,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -1023,29 +1023,18 @@ class CoxFrailtyFitter(FitterRepr):
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values
         groups = df[group_col].values
-        feature_names = None
-        model_spec = None
-        if Z_cols is None and formula is None:
-            Z = None
-        else:
-            Z, feature_names, model_spec = design_matrix_from_df(
-                df, Z_cols=Z_cols, formula=formula
-            )
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(
-                x,
-                Z=Z,
-                c=c,
-                n=n,
-                groups=groups,
-                tie_method=tie_method,
-                theta=theta,
-                center=center,
-            )
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
+        design = FrameDesign(df, Z_cols, formula, optional=True)
+        return design.fit(
+            self.fit,
+            x,
+            Z=design.Z,
+            c=c,
+            n=n,
+            groups=groups,
+            tie_method=tie_method,
+            theta=theta,
+            center=center,
+        )
 
 
 class CoxFrailtyModel(_SharedFrailty):

@@ -68,19 +68,15 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.data_formats import is_missing_event
 from surpyval.utils.dataframe import (
-    call_fit,
     column_arguments,
-    frame_column,
-    frame_columns,
     refuse_recurrent_column_names,
-    require_frame,
+    regression_fit_from_df,
 )
 from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
@@ -628,20 +624,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             "tl": tl_col,
             "tr": tr_col,
         }
-        df = require_frame(df)
-        arrays = {
-            key: frame_column(
-                df, name, f"{key}_col", time=key in ("x", "tl", "tr")
-            )
-            for key, name in {"x": x_col, **columns}.items()
-            if name is not None
-        }
-        arrays["Z"] = frame_columns(df, Z_cols, "Z_cols").astype(float)
-        arg_names = {k: f"{k}_col" for k in arrays} | {"Z": "Z_cols"}
+        model = regression_fit_from_df(
+            cls, df, x_col, Z_cols, columns, fit_options
+        )
+        # The columns name the coefficients.
         names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        # An aliasing warning names the columns, as do the coefficients.
-        with covariate_columns(names):
-            model = call_fit(cls, arrays, arg_names, fit_options)
         model.feature_names = [str(name) for name in names]
         model.df = df
         return model

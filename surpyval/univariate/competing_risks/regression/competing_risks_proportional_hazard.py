@@ -38,7 +38,6 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
@@ -52,14 +51,10 @@ from surpyval.univariate.regression._summary import (
     coefficient_table,
 )
 from surpyval.univariate.regression.regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
-    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
-)
-from surpyval.utils import (
-    finite_covariate_mask,
-    is_missing_event,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
@@ -988,38 +983,20 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            model=model,
+            tie_method=tie_method,
+            center=center,
+            w=design.column(w_col),
+            tl=design.column(tl_col),
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        # A censored row's cause is ``None``; accept a blank/NaN cell for it.
-        e = sub[e_col].to_numpy(dtype=object).copy()
-        e[[is_missing_event(v) for v in e]] = None
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
-        w = sub[w_col].values if w_col is not None else None
-        tl = sub[tl_col].values if tl_col is not None else None
-
-        with covariate_columns(feature_names, Z, model_spec):
-            fitted = cls.fit(
-                x,
-                Z,
-                e,
-                c=c,
-                n=n,
-                model=model,
-                tie_method=tie_method,
-                center=center,
-                w=w,
-                tl=tl,
-            )
-        fitted.formula = formula
-        fitted.feature_names = feature_names
-        fitted._model_spec = model_spec
-        return fitted
 
     @classmethod
     @dataframe_covariates
