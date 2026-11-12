@@ -104,7 +104,8 @@ Worked classifications:
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
 | ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
 | ParametricMultiStateRegression (a parametric regression per transition) | univariate | single_event | single/competing | multi_state | with | continuous | parametric |
-| (not built yet) semi-Markov (clock-reset), panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| ParametricMultiState / ParametricMultiStateRegression with `clock="reset"` (semi-Markov: hazards of the time in the state) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| (not built yet) panel data; semi-Markov Cox per transition | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric/semiparametric |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:

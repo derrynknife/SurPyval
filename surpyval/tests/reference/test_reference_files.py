@@ -44,6 +44,7 @@ EXPECTED_SOURCES = {
     "r_recurrent_cox",
     "r_multistate",
     "r_multistate_parametric",
+    "r_multistate_semimarkov",
     "r_mixture_cure",
     "r_adjusted_curves",
     "py_lifelines",

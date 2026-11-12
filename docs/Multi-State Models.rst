@@ -321,10 +321,77 @@ transition or one each), and predicts for given covariates:
         print(z, reg.occupancy(120, z, "death").round(3),
               reg.cb(120, z, "death").round(3))
 
-The models assume the hazards run on the time since the start (the clock
-goes forward: a Markov model). A model whose hazards run on the time in
-the current state (``clock="reset"``, semi-Markov) is refused: its
-probabilities are not the solution of the forward equations.
+Expected length of stay
+~~~~~~~~~~~~~~~~~~~~~~~
+
+How long, on average, does a unit spend in each state over a period?
+That is the area under its occupation probability curve,
+:math:`L_b(s, t) = \int_s^t P(\text{in } b \text{ at } u)\, du`, the
+multi-state version of the restricted mean survival time; over all the
+states it adds up to :math:`t - s`. ``length_of_stay`` gives it, and
+``length_of_stay_cb`` bounds it (the delta method on the logit of the
+fraction of the time spent in the state, so the bounds stay between 0 and
+:math:`t - s`):
+
+.. jupyter-execute::
+
+    for state in weibull.states:
+        print(state, weibull.length_of_stay(240, state).round(1))
+    weibull.length_of_stay_cb(240, "pcm").round(2)
+
+Over the first 20 years an average patient spends about 9 of them with
+MGUS and only a few months with myeloma.
+
+Semi-Markov models: the clock restarts in each state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The models above run every hazard on the time since the start (the
+clock goes forward: a Markov model). Often the time that matters is the
+time spent in the current state instead: the time since a repair, since
+a relapse, since a machine was moved to standby. With ``clock="reset"``
+each transition's hazard is a function of the time since the unit
+entered its 'from' state (a semi-Markov model). Each transition is then
+fitted on the times spent in the state, ``x - tl``, with no truncation;
+``tl`` must therefore be the time the unit entered the state.
+
+.. jupyter-execute::
+
+    reset = ParametricMultiState.fit_from_df(
+        spells, "x", "e", "state", tl_col="tl", i_col="id",
+        transitions=tm, clock="reset",
+    )
+    reset.models[("pcm", "death")]
+
+Here every patient starts with MGUS at diagnosis, so the transitions out
+of it are the same on both clocks; only the hazard of death after
+myeloma changes, which now falls with the time since the myeloma was
+found (a shape below 1).
+
+Where a unit is at time :math:`t` now depends on when it made each
+earlier move, so the probabilities are no longer the solution of the
+forward equations. SurPyval solves the *renewal equations* instead: the
+rate at which units enter a state is the sum, over the states they come
+from, of the rate they entered those states times the chance of leaving
+for this one after the time since. It counts the entries into each state
+on a fine grid (evenly spread within each cell), by convolution, and
+halves the grid until the probabilities settle (to about
+:math:`10^{-6}`). It is exact in the limit, deterministic, and works
+with recovery (a cycle in the transitions) as well as without; R's
+``flexsurv`` answers the same question by simulating paths.
+
+.. jupyter-execute::
+
+    for state in reset.states:
+        print(state, reset.occupancy([120, 240], state).round(4),
+              reset.cb(240, state).round(4))
+    print("time with myeloma by 20 years:",
+          reset.length_of_stay(240, "pcm").round(2))
+
+``transition_probabilities(x, s)`` gives, row by row, the probabilities
+for a unit that *entered* each state at ``s``; since the hazards depend
+only on the time in the state, they depend only on ``x - s``. A
+prediction from a later ``s`` needs ``from_state``: units under
+observation at ``s`` have been in their states for different times.
 
 How it was checked
 ------------------
@@ -356,13 +423,33 @@ parameters, and simulated Markov models are recovered within their
 bounds. The script is
 ``scripts/reference/reference_r_multistate_parametric.R``.
 
+The semi-Markov models were checked against a closed form (an
+illness-death model with Weibull hazards of the time in each state, one
+infinite at 0, where the probabilities and lengths of stay are
+one-dimensional integrals) to :math:`10^{-6}`; with exponential hazards
+(where the clock does not matter) against the forward equations, with
+recovery; against a seeded simulation of paths with recovery; and
+against R's ``flexsurv``: the clock-reset fits reach flexsurv's maximum,
+and with flexsurv's parameters the probabilities agree with its
+simulation (``pmatrix.simfs``, a million paths) within its Monte Carlo
+error, as do the lengths of stay (``totlos.simfs``). The clock-forward
+lengths of stay agree with ``totlos.fs`` to about :math:`10^{-8}` of the
+time. The delta-method standard errors match the spread over simulated
+parameters, and a calibration study checks the coverage of the bounds.
+The script is ``scripts/reference/reference_r_multistate_semimarkov.R``.
+
 What is not here yet
 --------------------
 
-Semi-Markov (clock-reset) models and states seen only at inspection
-times (panel data) are not built. A fit refuses interval-censored changes
-of state. The parametric models have no expected length of stay in each
-state yet, nor likelihood-ratio or bootstrap bounds.
+States seen only at inspection times (panel data) are not built. A fit
+refuses interval-censored changes of state. The parametric models have no
+likelihood-ratio or bootstrap bounds. The clock reset is offered for the
+parametric models only: a Cox model per transition on the time in the
+state would need its probabilities simulated over step hazards, and the
+Aalen-Johansen estimate is Markov by construction (for a non-Markov
+process its occupation probabilities are still consistent, Datta and
+Satten, 2001, but its transition probabilities from a later time are
+not). Covariates that change over a stay are not taken.
 
 References
 ----------

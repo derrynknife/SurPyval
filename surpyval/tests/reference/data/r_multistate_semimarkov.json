@@ -1,0 +1,344 @@
+{
+  "generator": "scripts/reference/reference_r_multistate_semimarkov.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "flexsurv_reset_mgus2_weibull": {
+      "fixture": "mgus2_multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'weibull'); set.seed(1); pmatrix.simfs(fmsm(...), trans, t, M = 1e6); set.seed(1); totlos.simfs(fmsm(...), trans, t, start = 1, M = 1e6)",
+      "settings": {
+        "clock": "reset (time in the state)",
+        "M": 1000000
+      },
+      "values": {
+        "params": [
+          [1.18466841961498, 805.511033769555],
+          [0.863487874460859, 155.31843166569],
+          [0.740214723253759, 26.9852296443327]
+        ],
+        "param_names": [
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"]
+        ],
+        "se": [
+          [0.0767358500665639, 0.157640144358316],
+          [0.0295592628936497, 0.0402199067392747],
+          [0.0807287604583467, 0.135816468356638]
+        ],
+        "loglik": [-920.757299482966, -5159.09590849871, -446.185598727719],
+        "times": [60, 120, 240],
+        "P_mgus_mgus": [0.615969, 0.405326, 0.183712],
+        "P_mgus_pcm": [0.014002, 0.014371, 0.00913],
+        "P_mgus_death": [0.370029, 0.580303, 0.807158],
+        "P_pcm_mgus": [0, 0, 0],
+        "P_pcm_pcm": [0.164762, 0.049521, 0.006536],
+        "P_pcm_death": [0.835238, 0.950479, 0.993464],
+        "P_death_mgus": [0, 0, 0],
+        "P_death_pcm": [0, 0, 0],
+        "P_death_death": [1, 1, 1],
+        "los_t": 240,
+        "los": [110.502678223509, 2.84012865062873, 126.657193125865]
+      }
+    },
+    "flexsurv_reset_mgus2_lnorm": {
+      "fixture": "mgus2_multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'lnorm')",
+      "settings": {
+        "clock": "reset (time in the state)"
+      },
+      "values": {
+        "params": [
+          [7.1185515584907, 1.84682737152149],
+          [4.56480014235055, 1.78388910879139],
+          [2.52719241598211, 1.94370396069698]
+        ],
+        "param_names": [
+          ["meanlog", "sdlog"],
+          ["meanlog", "sdlog"],
+          ["meanlog", "sdlog"]
+        ],
+        "se": [
+          [0.206775747135867, 0.0710332344852471],
+          [0.0538297417126103, 0.0254301394450435],
+          [0.184513363174418, 0.0704145012623577]
+        ],
+        "loglik": [-925.221999080857, -5217.39075208142, -459.453259693861]
+      }
+    },
+    "flexsurv_reset_mgus2_exp": {
+      "fixture": "mgus2_multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'exp')",
+      "settings": {
+        "clock": "reset (time in the state)"
+      },
+      "values": {
+        "params": [
+          0.000888277133643526,
+          0.00664276816230226,
+          0.0330350556463368
+        ],
+        "param_names": [
+          "rate",
+          "rate",
+          "rate"
+        ],
+        "se": [
+          0.0932504809627968,
+          0.0340997169409879,
+          0.0985329278165663
+        ],
+        "loglik": [-923.016078923597, -5172.23480063333, -454.249156870383]
+      }
+    },
+    "flexsurv_reset_sim_weibull": {
+      "fixture": "multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'weibull'); set.seed(1); pmatrix.simfs(fmsm(...), trans, t, M = 1e6); set.seed(1); totlos.simfs(fmsm(...), trans, t, start = 1, M = 1e6)",
+      "settings": {
+        "clock": "reset (time in the state)",
+        "M": 1000000
+      },
+      "values": {
+        "params": [
+          [0.99670919046565, 3.32268318709148],
+          [1.11433879888451, 8.56487679341124],
+          [0.919966417481043, 2.51071485425722],
+          [1.01195598286841, 3.06792109637608]
+        ],
+        "param_names": [
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"]
+        ],
+        "se": [
+          [0.0592666749401446, 0.074095335830852],
+          [0.0994425839586583, 0.160113916515881],
+          [0.0786417198006342, 0.113728495243461],
+          [0.0866433111622782, 0.122325591460022]
+        ],
+        "loglik": [-422.379640716754, -212.832883197944, -191.718530635936, -170.254043917663],
+        "times": [1, 3, 6],
+        "P_healthy_healthy": [0.716614, 0.434766, 0.236439],
+        "P_healthy_ill": [0.174279, 0.204678, 0.13067],
+        "P_healthy_dead": [0.109107, 0.360556, 0.632891],
+        "P_ill_healthy": [0.249708, 0.275109, 0.171653],
+        "P_ill_ill": [0.508788, 0.213448, 0.10128],
+        "P_ill_dead": [0.241504, 0.511443, 0.727067],
+        "P_dead_healthy": [0, 0, 0],
+        "P_dead_ill": [0, 0, 0],
+        "P_dead_dead": [1, 1, 1],
+        "los_t": 6,
+        "los": [2.92885101383292, 1.02266133267515, 2.04848765349167]
+      }
+    },
+    "flexsurv_reset_sim_lnorm": {
+      "fixture": "multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'lnorm')",
+      "settings": {
+        "clock": "reset (time in the state)"
+      },
+      "values": {
+        "params": [
+          [0.774733809280155, 1.45803415100316],
+          [2.14076277491765, 1.66577552714052],
+          [0.497528590528303, 1.6153937685767],
+          [0.804094925381408, 1.57328231432284]
+        ],
+        "param_names": [
+          ["meanlog", "sdlog"],
+          ["meanlog", "sdlog"],
+          ["meanlog", "sdlog"],
+          ["meanlog", "sdlog"]
+        ],
+        "se": [
+          [0.0926434254372946, 0.0532955632950624],
+          [0.203834480454168, 0.0920196908386987],
+          [0.140504873343605, 0.072433680661945],
+          [0.156432400622021, 0.0808241216604599]
+        ],
+        "loglik": [-427.249442651696, -215.177336625412, -193.384882187188, -173.650797146685]
+      }
+    },
+    "flexsurv_reset_sim_exp": {
+      "fixture": "multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ 1, subset = trans == h, dist = 'exp')",
+      "settings": {
+        "clock": "reset (time in the state)"
+      },
+      "values": {
+        "params": [
+          0.301223721368055,
+          0.10197677844166,
+          0.412571289892004,
+          0.323585325405643
+        ],
+        "param_names": [
+          "rate",
+          "rate",
+          "rate",
+          "rate"
+        ],
+        "se": [
+          0.0721687836487036,
+          0.124034735945277,
+          0.0990147542976674,
+          0.111803398874964
+        ],
+        "loglik": [-422.381189751447, -213.395658585694, -192.305318944231, -170.263395421561]
+      }
+    },
+    "flexsurv_forward_los_mgus2": {
+      "fixture": "mgus2_multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstart, Tstop, status) ~ 1, subset = trans == h, dist = 'weibull'); totlos.fs(fmsm(...), trans, t, rtol = 1e-12, atol = 1e-12)",
+      "settings": {
+        "clock": "forward (Tstart, Tstop]",
+        "ode": "rtol = atol = 1e-12",
+        "los": "row a: from state a at 0"
+      },
+      "values": {
+        "params": [
+          [1.18466796821131, 805.511631948393],
+          [0.863487784001399, 155.318477630067],
+          [0.945756818681916, 26.8709229756624]
+        ],
+        "param_names": [
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"]
+        ],
+        "se": [
+          [0.0767358753821798, 0.157640263722615],
+          [0.0295592663072548, 0.0402199188599999],
+          [0.137301456768199, 0.320848587965034]
+        ],
+        "loglik": [-920.757299482974, -5159.09590849874, -454.163016489672],
+        "times": [120, 240, 480],
+        "los_1": [
+          [76.9153432977576, 1.49051010263283, 41.5941465996096],
+          [0, 27.0517271981534, 92.9482728018464],
+          [0, 0, 120]
+        ],
+        "los_2": [
+          [110.359577481945, 2.83831071386887, 126.802111804187],
+          [0, 27.5477697833166, 212.452230216683],
+          [0, 0, 240]
+        ],
+        "los_3": [
+          [133.089209001548, 3.95557126022825, 342.955219738225],
+          [0, 27.5593329789447, 452.440667021055],
+          [0, 0, 480]
+        ]
+      }
+    },
+    "flexsurv_forward_los_sim": {
+      "fixture": "multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstart, Tstop, status) ~ 1, subset = trans == h, dist = 'weibull'); totlos.fs(fmsm(...), trans, t, rtol = 1e-12, atol = 1e-12)",
+      "settings": {
+        "clock": "forward (Tstart, Tstop]",
+        "ode": "rtol = atol = 1e-12",
+        "los": "row a: from state a at 0"
+      },
+      "values": {
+        "params": [
+          [1.02325449128945, 3.35425655246617],
+          [1.19944268143757, 8.79557017209113],
+          [1.25454118666558, 2.93360000087368],
+          [1.12226473795831, 3.3451691904779]
+        ],
+        "param_names": [
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"],
+          ["shape", "scale"]
+        ],
+        "se": [
+          [0.0910773560891732, 0.0811130494149316],
+          [0.140570537500452, 0.130592289293312],
+          [0.137791168662901, 0.124562051939275],
+          [0.168729397267251, 0.14413357083507]
+        ],
+        "loglik": [-422.34992096338, -212.668685362522, -191.185277624224, -170.050891424867],
+        "times": [2, 6, 12],
+        "los_1": [
+          [1.48221688673713, 0.324776983704343, 0.193006129558528],
+          [0.307708020120345, 1.28596908999061, 0.406322889889044],
+          [0, 0, 2]
+        ],
+        "los_2": [
+          [2.98233347901342, 1.04661557686074, 1.97105094412584],
+          [1.25350883813791, 2.0121767388441, 2.73431442301798],
+          [0, 0, 6]
+        ],
+        "los_3": [
+          [3.85656712611254, 1.43447428551065, 6.70895858837677],
+          [1.88991313210002, 2.29829869276779, 7.81178817513218],
+          [0, 0, 12]
+        ]
+      }
+    },
+    "flexsurv_reset_mgus2_weibullPH_male": {
+      "fixture": "mgus2_multistate",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "deSolve": "1.42",
+      "call": "flexsurvreg(Surv(Tstop - Tstart, status) ~ male, subset = trans == h, dist = 'weibullPH'); set.seed(1); pmatrix.simfs(fmsm(...), trans, t, M = 1e6, newdata = data.frame(male = 1))",
+      "settings": {
+        "clock": "reset (time in the state)",
+        "M": 1000000
+      },
+      "values": {
+        "params": [
+          [1.1831186462526, 0.000378019027020308, -0.0785151561955803],
+          [0.866608524744614, 0.0111751286107915, 0.225920909546221],
+          [0.740005799589308, 0.0856967938558093, 0.0384408900308889]
+        ],
+        "param_names": [
+          ["shape", "scale", "male"],
+          ["shape", "scale", "male"],
+          ["shape", "scale", "male"]
+        ],
+        "se": [
+          [0.0768462584710862, 0.468776843763647, 0.186717667651243],
+          [0.0295351940017122, 0.134344667375082, 0.0689199108872388],
+          [0.0806976649319065, 0.255160382265333, 0.197181204085315]
+        ],
+        "loglik": [-920.668850919698, -5153.67785392466, -446.166603827615],
+        "times": [120, 240],
+        "male": 1,
+        "P_mgus_mgus": [0.372923, 0.157674],
+        "P_mgus_pcm": [0.012717, 0.007425],
+        "P_mgus_death": [0.61436, 0.834901],
+        "P_pcm_mgus": [0, 0],
+        "P_pcm_pcm": [0.046689, 0.00593],
+        "P_pcm_death": [0.953311, 0.99407],
+        "P_death_mgus": [0, 0],
+        "P_death_pcm": [0, 0],
+        "P_death_death": [1, 1]
+      }
+    }
+  }
+}
