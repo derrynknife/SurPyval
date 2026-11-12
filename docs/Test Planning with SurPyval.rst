@@ -483,6 +483,243 @@ smallest change detectable and the operating time needed, for the test of
 :func:`surpyval.recurrent.intervention_test`. They are worked through in
 :doc:`Intervention Analysis with SurPyval`.
 
+When the plain log-rank calculation is wrong
+--------------------------------------------
+
+Schoenfeld's events answer one question: a test that the hazard ratio of
+two groups is 1, when it is the same at every age. Four common plans ask
+something else.
+
+**A covariate that is measured, or correlated with others.** To detect the
+effect of a measurement (a temperature, a dose, a load) in a Cox model,
+the information is the covariate's variance, and a covariate partly
+explained by the others in the model carries less: its coefficient's
+variance is inflated by :math:`1 / (1 - R^2)`, :math:`R^2` its squared
+multiple correlation with them (Hsieh and Lavori 2000). A hazard ratio of
+1.5 per standard deviation takes 48 events alone, 69 if the other
+covariates explain 30% of its variance. For a covariate of two levels give
+``proportion`` instead of ``sd``; with ``r_squared=0`` that is
+Schoenfeld's formula.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import (
+        cox_detectable,
+        cox_events,
+        cox_power,
+        cox_sample_size,
+    )
+
+    print(cox_events(1.5, sd=1.0), cox_events(1.5, sd=1.0, r_squared=0.3))
+    print(cox_sample_size(1.5, 0.4, sd=1.0, r_squared=0.3))
+    print(round(cox_detectable(200, 0.4, sd=1.0, r_squared=0.3), 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox_events(1.5, sd=1.0) == 48
+    assert cox_events(1.5, sd=1.0, r_squared=0.3) == 69
+
+**Showing that a change is no worse, or as good.** A cheaper part, a
+shorter procedure: the aim is to show the new group's hazard is at most a
+margin above the old's (non-inferiority), or within margins on both sides
+(equivalence), not that it differs. The null hypothesis is then the
+margin, not a ratio of 1: non-inferiority is shown when the upper limit of
+the ``1 - alpha_ci`` confidence interval of the hazard ratio is below the
+margin, and equivalence when the whole interval is inside the margins
+(two one-sided tests; the classical 5% tests compare a 90% interval,
+``alpha_ci=0.1``). Showing a raise of at most 30% when the two are in fact
+equally good takes 457 events, which is Schoenfeld's count for a hazard
+ratio of 1.3 at one side of a 95% interval.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import (
+        equivalence_events,
+        noninferiority_events,
+        noninferiority_sample_size,
+    )
+
+    print(noninferiority_events(1.3))
+    print(noninferiority_sample_size(1.3, 0.4))
+    print(equivalence_events(1.25, alpha_ci=0.1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert noninferiority_events(1.3) == 457
+    assert equivalence_events(1.25, alpha_ci=0.1) == 688
+
+**A difference in restricted mean survival time.** When the hazards are
+not expected to be proportional (an effect that starts late, curves that
+cross), the hazard ratio is not one number, and a log-rank plan can be far
+off. The restricted mean survival time (RMST) to a horizon :math:`\tau`,
+the area under the survival curve up to :math:`\tau`, needs no such
+assumption, and its difference reads in time: "over five years, the new
+units run on average 0.8 years longer before failing".
+:func:`~surpyval.test_planning.rmst_sample_size` takes the survival curve
+expected in each group (any SurPyval distribution, fitted or with given
+parameters, or a function of time, such as a piecewise exponential), the
+time over which units enter, the follow-up after the last enters and the
+dropout rate, and computes the variance of each group's Kaplan-Meier RMST
+from them (not by simulation):
+
+.. math::
+    \sigma_j^2 = \int_0^\tau
+        \frac{\left(\int_t^\tau S_j(u)\,du\right)^2}
+             {S_j(t)^2\, G(t)}\, dF_j(t),
+
+with :math:`G` the chance of still being observed at :math:`t`. The test
+planned is :func:`surpyval.rmst_diff`'s.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval.test_planning import rmst_power, rmst_sample_size
+
+    def piecewise(t):
+        # hazard 0.15 for two years, 0.25 after
+        t = np.asarray(t, dtype=float)
+        return np.exp(-np.where(t < 2, 0.15 * t, 0.3 + 0.25 * (t - 2)))
+
+    curves = (surpyval.Weibull.from_params([8.0, 1.3]), piecewise)
+    study = dict(accrual_time=2.0, follow_up=4.0, dropout_rate=0.05)
+    n = rmst_sample_size(curves, 5.0, **study)
+    print(n, round(rmst_power(curves, 5.0, n, **study), 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert n == (84, 84)
+
+**Some units never fail.** When a fraction of the units is cured, immune
+or free of the defect, each group's survival levels off at its cured
+fraction, :math:`S(t) = \pi + (1 - \pi) S_u(t)`, and the hazard ratio
+drifts towards 1 as the uncured fail. Schoenfeld's count for one hazard
+ratio is then wrong, by an amount that depends on the follow-up.
+:func:`~surpyval.test_planning.cure_logrank_sample_size` uses the mean and
+variance of the log-rank statistic under the two mixture-cure curves
+(Schoenfeld 1981), over the study's entry, follow-up and dropout. A
+difference in the cured fraction, in the latency (``latency_hazard_ratio``
+or a pair of latency distributions), or both, may be given:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import (
+        cure_logrank_events,
+        cure_logrank_sample_size,
+    )
+
+    latency = surpyval.Weibull.from_params([2.0, 1.2])
+    study = dict(accrual_time=1.0, follow_up=3.0)
+    print(cure_logrank_sample_size((0.45, 0.30), latency, **study))
+    print(cure_logrank_events((0.45, 0.30), latency, **study))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cure_logrank_sample_size((0.45, 0.30), latency, **study) == (247, 247)
+
+A difference only in the cured fraction shows late, when the uncured have
+failed: with half a year of follow-up instead of three, the same plan
+needs several times the units.
+
+Group-sequential designs
+------------------------
+
+A comparison that runs for years is usually looked at along the way: if
+the difference is already clear it can stop early, and if it is clearly not
+coming it can stop for futility. Each extra look is another chance of a
+false finding, so a group-sequential design holds each look to a stricter
+level, chosen so that the chance of a false finding over all the looks is
+still the level asked for. The price is a few more events at most (the
+*inflation factor*); the gain is fewer on average, because the study often
+stops early.
+
+To detect a 30% lower hazard with 90% power at the one-sided 2.5% level,
+one analysis needs 331 events. Looking after a third, two thirds and all of
+the events, with O'Brien-Fleming-type boundaries (very strict early, close
+to the single analysis's level at the end) and a non-binding futility
+boundary, needs at most 353, but about 272 on average if the difference is there
+and 207 if there is none:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import logrank_group_sequential
+
+    design = logrank_group_sequential(
+        0.7, 3, 0.9, alternative="one-sided", alpha_ci=0.025,
+        futility="hwang-shih-decani", futility_parameter=-2,
+    )
+    design
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert design.max_events == 353
+    assert round(design.expected_events["alternative"]) == 272
+    assert round(design.expected_events["null"]) == 207
+
+At each look the log-rank statistic (signed so that large values favour the
+new design) is compared with the boundaries: at or above the efficacy
+boundary the study stops with the difference shown; at or below the
+futility boundary it may stop without it. The "HR at bound" column is the
+observed hazard ratio that is on the efficacy boundary.
+
+The events rarely arrive exactly as planned. With a spending function (the
+default) the boundaries are re-computed for the events the looks actually
+came at, and the level is still kept. Here the second look came at 230
+events with a log-rank statistic of 2.6, past its boundary, so the study
+stops; the estimate of the hazard ratio allows for having stopped early
+(stopping when the difference looks large makes the plain estimate too
+optimistic):
+
+.. jupyter-execute::
+
+    actual = design.update([120, 230, 349])
+    print(actual.decide(2, 2.6))
+    print(round(actual.p_value(2, 2.6), 4))
+    estimate = actual.hazard_ratio_estimate(2, 2.6)
+    print({k: round(v, 3) for k, v in estimate.items() if k != "repeated"})
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert actual.decide(2, 2.6) == "efficacy"
+    assert round(estimate["estimate"], 2) == 0.71
+
+The p-value and the median-unbiased estimate with its confidence interval
+use the stage-wise ordering (an earlier stop is a stronger result); the
+repeated confidence interval (``estimate["repeated"]``) holds at any look,
+whether or not the study stops there.
+
+The boundaries can be O'Brien-Fleming's, Pocock's, Wang and Tsiatis' or
+Haybittle and Peto's classical shapes, or the Lan-DeMets spending functions
+(O'Brien-Fleming-type, Pocock-type, Hwang-Shih-DeCani, Kim-DeMets); the
+futility boundary spends the type II error with one of the spending
+functions, binding or not. :func:`~surpyval.test_planning.group_sequential_design`
+gives the same designs for any normal test statistic (a difference of means
+or proportions, a Cox coefficient), on the scale of the information, and
+:func:`~surpyval.test_planning.boundary_crossing` the chances of crossing
+any boundaries. They are computed by recursive numerical integration
+(Jennison and Turnbull 2000, chapter 19), not simulated, and agree with R's
+``gsDesign`` and ``rpact`` to about 1e-6.
+
+*Which sequential test?* Wald's sequential tests above
+(:func:`~surpyval.test_planning.sequential_mtbf_test`,
+:func:`~surpyval.test_planning.sequential_demonstration_test`) look after
+every failure or unit and decide between a target and a good value of one
+MTBF or reliability: they suit a demonstration test watched continuously. A
+group-sequential design looks a few planned times at a normal test
+statistic: it suits a comparison of groups analysed in batches, such as a
+log-rank test at interim analyses.
+
 References
 ----------
 
@@ -499,3 +736,18 @@ References
 - Freedman, L. S. (1982). Tables of the number of patients required in
   clinical trials using the logrank test. *Statistics in Medicine* 1,
   121-129.
+- Hsieh, F. Y. and Lavori, P. W. (2000). Sample-size calculations for the
+  Cox proportional hazards regression model with nonbinary covariates.
+  *Controlled Clinical Trials* 21, 552-560.
+- Chow, S.-C., Shao, J. and Wang, H. (2008). *Sample Size Calculations in
+  Clinical Research*, 2nd edition, chapter 7. Chapman and Hall.
+- Royston, P. and Parmar, M. K. B. (2013). Restricted mean survival time:
+  an alternative to the hazard ratio for the design and analysis of
+  randomized trials with a time-to-event outcome. *BMC Medical Research
+  Methodology* 13, 152.
+- Schoenfeld, D. (1981). The asymptotic properties of nonparametric tests
+  for comparing survival distributions. *Biometrika* 68, 316-319.
+- Jennison, C. and Turnbull, B. W. (2000). *Group Sequential Methods with
+  Applications to Clinical Trials*. Chapman & Hall/CRC.
+- Lan, K. K. G. and DeMets, D. L. (1983). Discrete sequential boundaries
+  for clinical trials. *Biometrika* 70, 659-663.

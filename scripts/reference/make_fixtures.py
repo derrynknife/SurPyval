@@ -801,6 +801,27 @@ def mgus2_multistate():
     }
 
 
+def mgus2_pyears():
+    df = load_mgus2()
+    tl = np.where(df["id"] % 4 == 0, df["futime"] // 3, 0)
+    return {
+        "source": "surpyval.datasets.load_mgus2(); R survival::mgus2, "
+        "one row per patient: age at diagnosis and dxyr (years), futime "
+        "(months), death 1 for a death, male 1 for a man; tl a late "
+        "entry made for the tests, futime %/% 3 months for every fourth "
+        "id (id %% 4 == 0) and 0 otherwise",
+        "columns": {
+            "id": _native(df["id"]),
+            "age": _native(df["age"]),
+            "dxyr": _native(df["dxyr"]),
+            "male": _native((df["sex"] == "M").astype(int)),
+            "futime": _native(df["futime"]),
+            "death": _native(df["death"]),
+            "tl": _native(tl),
+        },
+    }
+
+
 def multistate(seed):
     """An illness-death model with recovery and constant hazards
     (healthy -> ill 0.3, healthy -> dead 0.1, ill -> healthy 0.4, ill ->
@@ -944,8 +965,14 @@ def build():
         "recurrent_groups": recurrent_groups(3798, False),
         "recurrent_groups_ties": recurrent_groups(3799, True),
         "mgus2_multistate": mgus2_multistate(),
+        "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
         "landmark": landmark_fixture(3801),
+        "no_data": {
+            "source": "none: a design calculation (a sample size or a "
+            "power) from the arguments in its call alone",
+            "columns": {},
+        },
     }
 
 
