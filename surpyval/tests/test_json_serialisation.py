@@ -151,6 +151,17 @@ def _mixture_cure():
     return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
 
 
+def _zero_inflated():
+    """A zero-inflated regression: 1 unit in 10 at z = 0 and 1 in 5 at
+    z = 1 fail at time 0; a covariate on both f0 and the latency's
+    scale."""
+    rng = np.random.default_rng(12)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    doa = rng.random(z.size) < np.where(z == 0, 0.1, 0.2)
+    return surpyval.WeibullZeroInflated.fit(np.where(doa, 0.0, life), z)
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -346,6 +357,7 @@ def _build(name):
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
         "mixture_cure": _mixture_cure,
+        "zero_inflated": _zero_inflated,
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
@@ -475,6 +487,7 @@ CASES = [
     "parametric_regression",
     "distributional_regression",
     "mixture_cure",
+    "zero_inflated",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",

@@ -1231,6 +1231,14 @@ for _base in reg.CURE_LATENCIES:
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+for _base in reg.CURE_LATENCIES:
+    # The model's own random: a unit dead on arrival is drawn as 0
+    PLANS[_base + "ZeroInflated"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),

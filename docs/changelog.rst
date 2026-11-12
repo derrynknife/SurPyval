@@ -226,6 +226,30 @@ Unreleased
   in one internal module; no number of either changes. See
   "Parametric Competing-Risks Regression" in
   :doc:`Competing Risks SurPyval Modelling`.
+- Zero-inflated regression: ``ZeroInflated(latency, incidence, covariates,
+  links)`` and the prebuilt ``WeibullZeroInflated``,
+  ``LogNormalZeroInflated``, ``LogLogisticZeroInflated``,
+  ``GammaZeroInflated`` and ``ExponentialZeroInflated``. A share of the
+  units fails at time 0 (dead on arrival), and covariates act both on
+  that share (``f0``, through a logit, probit or complementary log-log
+  link) and on the life of the units that work (the latency, a
+  distribution with covariates on its parameters, on the scale by
+  default): ``F(t | z) = f0(z) + (1 - f0(z)) F_u(t | z)``. It is the
+  zero-inflated fit (``zi=True``) with covariates, and reduces to it
+  without them. Where every row says whether its unit was dead on
+  arrival, the fit is two stages, a binary regression and the latency's
+  regression on the units that worked, which is the joint maximum with a
+  block-diagonal covariance; left censoring, an interval starting at 0
+  or right truncation without late entry couple the parts, and both are
+  fitted together (``method="auto"``, ``"two-stage"`` or ``"joint"``;
+  ``model.fit_route`` says which). Late entries say nothing about
+  ``f0``. An interval starting at 0 includes the units dead on arrival.
+  ``ZeroInflatedModel`` adds ``doa_probability(Z)`` and
+  ``susceptible=True`` on ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``
+  and ``mean`` for the life of a unit that worked, with the family's
+  ``fit_from_df`` (``formulas={"f0": ..., "alpha": ...}``),
+  ``fit_penalised``, bounds, ``random``, ``to_dict`` and ``from_dict``.
+  New guide: :doc:`Zero-Inflated Regression`.
 - Mixture-cure regression: ``MixtureCure(latency, incidence, covariates,
   links)`` and the prebuilt ``WeibullMixtureCure``,
   ``LogNormalMixtureCure``, ``LogLogisticMixtureCure``,

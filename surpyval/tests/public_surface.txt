@@ -53,6 +53,7 @@ surpyval.ExponentialFrailty
 surpyval.ExponentialMixtureCure
 surpyval.ExponentialPH
 surpyval.ExponentialPO
+surpyval.ExponentialZeroInflated
 surpyval.FineGray
 surpyval.FixedEventProbability
 surpyval.FlemingHarrington
@@ -69,6 +70,7 @@ surpyval.GammaMixtureCure
 surpyval.GammaPH
 surpyval.GammaPO
 surpyval.GammaProcess
+surpyval.GammaZeroInflated
 surpyval.Gauss
 surpyval.GeneralizedOneRenewal
 surpyval.GeneralizedRenewal
@@ -95,6 +97,7 @@ surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
 surpyval.LogLogisticDistributional
 surpyval.LogLogisticMixtureCure
+surpyval.LogLogisticZeroInflated
 surpyval.LogNormal
 surpyval.LogNormalAFT
 surpyval.LogNormalAH
@@ -103,6 +106,7 @@ surpyval.LogNormalFrailty
 surpyval.LogNormalMixtureCure
 surpyval.LogNormalPH
 surpyval.LogNormalPO
+surpyval.LogNormalZeroInflated
 surpyval.LogRankResult
 surpyval.Logistic
 surpyval.LogisticAFT
@@ -175,7 +179,11 @@ surpyval.WeibullJointPH
 surpyval.WeibullMixtureCure
 surpyval.WeibullPH
 surpyval.WeibullPO
+surpyval.WeibullZeroInflated
 surpyval.WienerProcess
+surpyval.ZeroInflated
+surpyval.ZeroInflatedFitter
+surpyval.ZeroInflatedModel
 surpyval.at_risk_table
 surpyval.auc_td
 surpyval.bayes.BayesianParametric

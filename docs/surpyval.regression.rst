@@ -65,6 +65,7 @@ and the shape, say) has its own linear predictor and link. See
 
     regression/distributional
     regression/mixture_cure
+    regression/zero_inflated
 
 Correlated Observations
 -----------------------
