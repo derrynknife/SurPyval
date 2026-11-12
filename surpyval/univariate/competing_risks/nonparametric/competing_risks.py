@@ -31,6 +31,10 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     ordered_labels,
 )
+from surpyval.univariate.competing_risks.rmtl import (
+    aalen_johansen_rmtl,
+    rmtl_result,
+)
 from surpyval.univariate.nonparametric._support import (
     check_support,
     on_support,
@@ -659,6 +663,131 @@ class CompetingRisks(SerialisableMixin):
         if bound == "upper":
             return [upper]
         return [lower, upper]
+
+    def _rmtl_default_tau(self, what: str) -> float:
+        """The default horizon of the time lost: the largest time."""
+        return float(self.x[-1])
+
+    def _rmtl_estimate(
+        self, event: Any, tau: float, who: str = "the model"
+    ) -> tuple[float, float]:
+        """The restricted mean time lost to ``event`` up to ``tau`` and
+        its variance, or the refusal (naming the model as ``who``)."""
+        validate_event(self.event_idx_map, event)
+        validate_cif_event(event)
+        tau = float(tau)
+        if not np.isfinite(tau) or tau < 0:
+            raise ValueError(
+                f"tau must be a finite number at least 0; got {tau!r}."
+            )
+        if self.weighted:
+            raise ValueError(
+                "The restricted mean time lost of a model fitted with "
+                "weights w has no standard error here: its variance would "
+                "be the robust (infinitesimal jackknife) one, which needs "
+                "each unit's influence and is not built. Fit without "
+                "weights, or use pseudo-observations (surpyval's "
+                "pseudo_cif) for weighted inference."
+            )
+        last = float(self.x[-1])
+        s_last = float(np.prod(1.0 - self.d / self.r))
+        if tau > last and s_last > 1e-12:
+            raise ValueError(
+                "tau = {:g} is past {}'s largest observed time, {:g}, "
+                "where {:.3g} of the units are still event-free: the "
+                "cumulative incidence beyond it is not estimated, so the "
+                "time lost would be whatever tau made it. Use a tau at or "
+                "below {:g}, or leave tau out for it.".format(
+                    tau, who, last, s_last, last
+                )
+            )
+        return aalen_johansen_rmtl(
+            self.x, self.r, self.d, self.d_e[self.event_idx_map[event]], tau
+        )
+
+    def rmtl(
+        self, event: Any, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        r"""
+        Restricted mean time lost to cause ``event`` up to ``tau``, with
+        inference.
+
+        It is the expected time, within the first ``tau``, that a unit
+        loses to the cause: the area under the cause's cumulative
+        incidence,
+
+        .. math::
+            \text{RMTL}_k(\tau) = \int_0^\tau F_k(t)\,dt
+                = E[\tau - \min(T, \tau);\ \text{cause } k],
+
+        exact for the step estimate (Andersen, 2013). The times lost to
+        all the causes add up to ``tau`` less the restricted mean survival
+        time; with one cause the time lost is ``tau - rmst``.
+
+        The standard error is the delta method's on the hazard increments
+        (see
+        :func:`~surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl`):
+        with one cause it is the Greenwood-based standard error of the
+        restricted mean survival time, as ``KaplanMeier.rmst`` gives it.
+        The interval is the normal one, ``rmtl +- z se``, as for
+        ``rmst``.
+
+        Parameters
+        ----------
+        event : hashable
+            The cause.
+        tau : scalar, optional
+            The horizon; defaults to the largest observed time. A ``tau``
+            beyond it is refused while some units are still event-free
+            there (the incidence beyond it is not estimated), as ``rmst``
+            refuses it.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmtl", "se", "lower", "upper", "tau"}``.
+
+        Raises
+        ------
+        ValueError
+            If ``event`` is not a cause of the model, ``tau`` is negative
+            or past the data (above), or the model was fitted with
+            weights (no standard error is built for those).
+
+        References
+        ----------
+        Andersen, P. K. (2013), "Decomposition of number of life years
+        lost according to causes of death", *Statistics in Medicine*,
+        32(30), 5278-5285.
+
+        Zhao, L., Tian, L., Claggett, B., Pfeffer, M., Kim, D. H., Solomon,
+        S. and Wei, L. J. (2018), "Estimating treatment effect with
+        clinical interpretation from a comparative clinical trial with an
+        end point subject to competing risks", *JAMA Cardiology*, 3(4),
+        357-358.
+
+        Examples
+        --------
+        >>> from surpyval import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = CompetingRisks.fit(x, e)
+        >>> res = model.rmtl('a', tau=8)
+        >>> print(round(res["rmtl"], 4), round(res["se"], 4))
+        1.6667 0.7702
+
+        See Also
+        --------
+        surpyval.rmtl_diff : compare the time lost to a cause between two
+            groups.
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmtl_default_tau("rmtl")
+        mu, var = self._rmtl_estimate(event, float(tau))
+        return rmtl_result(mu, var, float(tau), alpha_ci, "plain")
 
     def _single_event(self, event: Any) -> Any:
         """The single-event estimate of the all-cause failures

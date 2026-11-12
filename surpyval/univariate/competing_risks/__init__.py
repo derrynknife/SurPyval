@@ -5,6 +5,7 @@ from .regression import (
     FineGray,
     ParametricCompetingRisksRegression,
 )
+from .rmtl import rmtl_diff
 
 __all__ = [
     "CompetingRisks",
@@ -12,4 +13,5 @@ __all__ = [
     "CompetingRisksProportionalHazards",
     "FineGray",
     "ParametricCompetingRisksRegression",
+    "rmtl_diff",
 ]

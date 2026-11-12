@@ -275,3 +275,90 @@ def test_competing_risks_cif_coverage(alpha_ci):
         lo[r], hi[r] = b[:, 0], b[:, 1]
     label = f"CompetingRisks cb(cif) at {1 - alpha_ci:.0%}"
     check_coverage(lo, hi, truth, 1 - alpha_ci, label)
+
+
+def _true_wear_rmtl(tau):
+    """The time lost to wear up to ``tau`` in the design above: the area
+    under its cumulative incidence, ``int_0^tau (tau - u) f(u) e^{-u /
+    150} du``."""
+    from scipy.integrate import quad
+
+    wear = sp.Weibull.from_params([100.0, 3.0])
+    return quad(
+        lambda u: (tau - u) * wear.df(u) * np.exp(-u / 150.0),
+        0.0,
+        tau,
+        epsabs=0.0,
+        epsrel=1e-12,
+    )[0]
+
+
+def _wear_or_shock(rng, n):
+    t_wear = 100.0 * rng.weibull(3.0, n)
+    t_shock = rng.exponential(150.0, n)
+    t_cens = rng.uniform(0.0, 250.0, n)
+    x = np.minimum.reduce([t_wear, t_shock, t_cens])
+    e = np.where(
+        x == t_cens, None, np.where(t_wear < t_shock, "wear", "shock")
+    ).astype(object)
+    return x, e
+
+
+def test_competing_risks_rmtl_coverage():
+    # The 95% interval of the restricted mean time lost to wear, at
+    # tau = 75 and 110 (true 5.29 and 17.65), n = 200, on the design of
+    # the cumulative incidence's study above. (The first run used 125,
+    # which some replicates' largest time falls short of, about 0.2% of
+    # them: rmtl refuses a tau past the data, and the run stopped there.)
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    rng = np.random.default_rng(207)
+    taus = np.array([75.0, 110.0])
+    truth = np.array([_true_wear_rmtl(t) for t in taus])
+    reps, n = 2000, 200
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        model = CompetingRisks.fit(*_wear_or_shock(rng, n))
+        for k, tau in enumerate(taus):
+            res = model.rmtl("wear", tau=tau)
+            lo[r, k], hi[r, k] = res["lower"], res["upper"]
+    check_coverage(lo, hi, truth, 0.95, "CompetingRisks rmtl")
+
+
+def test_rmtl_diff_size():
+    # Two groups of 150 from the same design: the z-test of no difference
+    # in the time lost to wear by tau = 100 should reject 5% of the time.
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    rng = np.random.default_rng(208)
+    reps, n = 2000, 150
+    rejected = 0
+    for _ in range(reps):
+        a = CompetingRisks.fit(*_wear_or_shock(rng, n))
+        b = CompetingRisks.fit(*_wear_or_shock(rng, n))
+        rejected += sp.rmtl_diff(a, b, "wear", tau=100.0)["p_value"] < 0.05
+    check_rate(rejected, reps, 0.05, "rmtl_diff size at 5%")
+
+
+def test_parametric_competing_risks_rmtl_coverage():
+    # The parametric fit's delta-method interval (on the logit of rmtl /
+    # tau) with a Weibull for each cause, correctly specified (the shock's
+    # exponential is a Weibull of shape 1), n = 200, tau = 100 (true
+    # 13.37).
+    from surpyval.univariate.competing_risks import ParametricCompetingRisks
+
+    rng = np.random.default_rng(209)
+    tau = 100.0
+    truth = _true_wear_rmtl(tau)
+    reps, n = 500, 200
+    lo, hi = np.empty(reps), np.empty(reps)
+    for r in range(reps):
+        x, e = _wear_or_shock(rng, n)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = ParametricCompetingRisks.fit(x, e, dist=sp.Weibull)
+        res = model.rmtl("wear", tau=tau)
+        lo[r], hi[r] = res["lower"], res["upper"]
+    check_coverage(
+        lo[:, None], hi[:, None], truth, 0.95, "ParametricCompetingRisks rmtl"
+    )

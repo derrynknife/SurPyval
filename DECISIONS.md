@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-13
 
+### Restricted mean time lost to a cause (13 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CompetingRisks.rmtl(event, tau=None, alpha_ci=0.05)` and `ParametricCompetingRisks.rmtl(...)` return `{"rmtl", "se", "lower", "upper", "tau"}`; `surpyval.rmtl_diff(model_a, model_b, event, tau=None, alpha_ci=0.05)` returns `rmst_diff`'s keys (with `rmtl_a`/`rmtl_b`) plus `ratio_lower`/`ratio_upper`. | proposed | Mirrors `rmst` / `rmst_diff` so the two read alike; the ratio's interval (delta method on the log ratio) is added because the ratio is a common way to report the RMTL (survRM2 reports one). `rmst_diff` was left unchanged. | done |
+| The non-parametric standard error is the delta method on the multinomial hazard increments at each time (`aalen_johansen_rmtl`), not Aalen's variance (the one `cb` uses for the incidence) nor the infinitesimal jackknife. | proposed | With one cause it reduces exactly to the Greenwood-based variance of `KaplanMeier.rmst`, so `rmtl = tau - rmst` holds for the standard error too (Aalen's does not reduce to Greenwood's). It equals R `GFDrmtl`'s asymptotic variance (Munko, Dobler and Ditzhaus) to rounding, and is within 1% of R `survival`'s jackknife `se(rmean)` on the data checked. | done |
+| The non-parametric interval is plain (`rmtl +- z se`), as `KaplanMeier.rmst`; the parametric one is on the logit of `rmtl / tau`, as `Parametric.rmst`. | proposed | Each mirrors its family's RMST. Coverage: 0.945 and 0.946 (non-parametric, n = 200), 0.950 (parametric, 500 replicates). | done |
+| A `tau` past the last time is refused while units are still event-free there (any `tau` once the all-cause survival is 0); a weighted fit refuses `rmtl` (no robust variance built). | proposed | As `rmst`/`rmst_diff`. The weighted variance needs each unit's influence, which the fitted model does not keep. | gap (weighted) |
 ### More pointwise interval types for the non-parametric survival estimates (13 Nov 2026)
 
 | Decision | By | Reason | Status |

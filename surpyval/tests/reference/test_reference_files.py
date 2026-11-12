@@ -48,6 +48,7 @@ EXPECTED_SOURCES = {
     "r_mixture_cure",
     "r_pyears",
     "r_adjusted_curves",
+    "r_rmtl",
     "r_km_ci",
     "r_interval_cox",
     "r_weibullr",
