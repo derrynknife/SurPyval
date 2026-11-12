@@ -54,6 +54,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_JOINT,
     X_MS,
     X_MSR,
+    X_PANEL,
     X_PATH,
     X_PROC,
     X_REC,
@@ -75,6 +76,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     mixture_data,
     ms_data,
     offset_data,
+    panel_data,
     path_data,
     process_data,
     quantiles,
@@ -140,6 +142,10 @@ def _nonparametric(name, data=uni_data, **kw):
         },
         **kw,
     )
+
+
+#: The probability-plotting fits registered, with their pivotal bounds.
+_MPP_FAMILIES = ("Weibull", "LogNormal")
 
 
 def _univariate():
@@ -227,6 +233,29 @@ def _univariate():
             paths={},
         )
     )
+    # Probability-plotting fits, whose bounds are the pivotal ones
+    for name in _MPP_FAMILIES:
+        out.append(
+            continuous(
+                name,
+                case_name=f"{name}[MPP]",
+                fitters=(),
+                fixed={"how": "MPP"},
+                exclude={
+                    "convergence[initial guess]": "a closed-form "
+                    "regression: no search, so no initial guess to leave",
+                    "maximum": "not a maximum-likelihood fit: its "
+                    "maximum is 'not applicable'",
+                    "maximum[starved]": "not a maximum-likelihood fit",
+                    "derivatives": "no likelihood is maximised, so no "
+                    "gradient or Hessian is taken",
+                    "cb_declared": "mean_cb, mrl_cb and rmst_cb refuse, as "
+                    "documented: a probability-plotting fit's bounds are "
+                    "the pivotal ones on sf/ff/Hf, the quantiles and the "
+                    "parameters (swept)",
+                },
+            )
+        )
     # A limited failure population in interval-censored counts, whose
     # default start ran p to its bound of 1 (#579)
     out.append(
@@ -986,6 +1015,83 @@ def _multistate():
             },
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Multi-state, states seen at visits (panel data)
+# ---------------------------------------------------------------------------
+_PANEL_EXCLUDE = {
+    "counts": "the rows are visits of units, and a visit repeated is a "
+    "unit seen twice at one time (refused); the model takes no counts",
+    "convergence": "the search starts from the data's crude rates and "
+    "takes no init or iteration limit to starve; a search that ends "
+    "short is checked by 'maximum'",
+}
+
+
+def _panel_multistate():
+    def frame(d):
+        df = pd.DataFrame({"x": d["x"], "s": d["s"], "i": d["i"]})
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def options(d):
+        return {
+            "transitions": d["transitions"],
+            "censored": d["censored"],
+            "exact_entry": d["exact_entry"],
+        }
+
+    def from_df(d):
+        return ms.PanelMultiState.fit_from_df(
+            frame(d), "x", "s", "i", **options(d)
+        )
+
+    def reg_from_df(d):
+        return ms.PanelMultiStateRegression.fit_from_df(
+            frame(d), "x", ["z0"], "s", "i", **options(d)
+        )
+
+    return [
+        Case(
+            name="PanelMultiState",
+            fitters=("surpyval.multistate.PanelMultiState",),
+            model_class="surpyval.multistate.PanelMultiState",
+            interface=STATES,
+            data=panel_data,
+            fit=_fit(ms.PanelMultiState),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            rows=("x", "s", "i"),
+            times=("x",),
+            paths={"fit_from_df": from_df},
+            exclude=_PANEL_EXCLUDE,
+        ),
+        Case(
+            name="PanelMultiStateRegression",
+            fitters=("surpyval.multistate.PanelMultiStateRegression",),
+            model_class="surpyval.multistate.PanelMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(ms.PanelMultiStateRegression),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            Z=Z_MS[: X_PANEL.size],
+            rows=("x", "Z", "s", "i"),
+            times=("x",),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude=_PANEL_EXCLUDE,
         ),
     ]
 
@@ -1867,6 +1973,7 @@ CASES: list[Case] = (
     + _mixture_cure()
     + _equivalence()
     + _zero_inflated()
+    + _panel_multistate()
     + _bayes()
 )
 
@@ -2152,7 +2259,31 @@ def _bootstrap_bounds(case, on):
     ]
 
 
+def _pivotal_bounds(case):
+    """The pivotal Monte Carlo bounds of a probability-plotting fit, its
+    only bounds: on sf, ff and Hf, the quantiles and the parameters. The
+    calls with one ``n_sim`` and seed share one simulation."""
+    kw = dict(
+        kwargs={"method": "pivotal", "n_sim": 999, "random_state": 1},
+        wald=False,
+    )
+    on = tuple(f for f in ("sf", "ff", "Hf") if f in case.functions)
+    return (
+        Bound("cb", on=on, label="cb[pivotal]", **kw),
+        Bound("param_cb", kind="param", label="param_cb[pivotal]", **kw),
+        Bound(
+            "quantile_cb",
+            point="qf",
+            query=(0.1, 0.3),
+            label="quantile_cb[pivotal]",
+            **kw,
+        ),
+    )
+
+
 def _parametric_bounds(case):
+    if case.name.endswith("[MPP]"):
+        return _pivotal_bounds(case)
     on = tuple(f for f in _ON_ALL if f in case.functions)
     out = []
     if case.name not in _NO_WALD:
@@ -2530,6 +2661,27 @@ def _bounds(case):
         + (_LENGTH_OF_STAY,),
         "ParametricMultiStateRegression": _multistate_bounds((None,))
         + (_LENGTH_OF_STAY,),
+        # The delta method over the intensities (and coefficients), Wald
+        # bounds on each parameter, and on each transient state's mean
+        # stay.
+        "PanelMultiState": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy",), ("ill",)),
+            ),
+        ),
+        "PanelMultiStateRegression": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy", [0.5]), ("ill", [1.0])),
+            ),
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path

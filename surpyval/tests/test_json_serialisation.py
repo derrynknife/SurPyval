@@ -55,6 +55,8 @@ from surpyval.life_models import Power
 from surpyval.multistate import (
     MultiState,
     MultiStateProportionalHazards,
+    PanelMultiState,
+    PanelMultiStateRegression,
     ParametricMultiState,
     ParametricMultiStateRegression,
 )
@@ -66,7 +68,7 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
-from surpyval.tests.conformance.registry_fixtures import ms_data
+from surpyval.tests.conformance.registry_fixtures import ms_data, panel_data
 
 # -- data ---------------------------------------------------------------------
 
@@ -421,6 +423,10 @@ def _build(name):
         "multistate_parametric_regression_reset": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True), clock="reset")
         ),
+        "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
+        "multistate_panel_regression": lambda: (
+            PanelMultiStateRegression.fit(**panel_data(True))
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -531,6 +537,8 @@ CASES = [
     "multistate_parametric_regression",
     "multistate_parametric_reset",
     "multistate_parametric_regression_reset",
+    "multistate_panel",
+    "multistate_panel_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",

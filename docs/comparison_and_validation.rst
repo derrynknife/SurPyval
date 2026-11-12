@@ -42,6 +42,38 @@ exact, right, left and interval-censored rows), and the result they return:
 .. autoclass:: surpyval.univariate.nonparametric.interval_logrank.IntervalLogRankResult
    :members: to_dict
 
+The max-combo test of two groups, the largest of several
+Fleming-Harrington weighted log-rank statistics with a p-value that allows
+for taking the largest (for hazards that are not proportional):
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_maxcombo.maxcombo_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_maxcombo.MaxComboResult
+   :members: to_dict
+
+The log-rank test for trend across ordered groups (one degree of freedom):
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_trend.trend_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_trend.TrendLogRankResult
+   :members: to_dict
+
+The log-rank test with an exact or Monte Carlo permutation p-value, for
+small samples:
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_permutation.permutation_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_permutation.PermutationLogRankResult
+   :members: to_dict
+
+The maximally selected log-rank statistic: the cut-point of a continuous
+covariate, with a p-value corrected for the search:
+
+.. autofunction:: surpyval.univariate.nonparametric.maxstat.maxstat_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.maxstat.MaxStatResult
+   :members: to_dict
+
 The test of two groups' survival at one time:
 
 .. autofunction:: surpyval.univariate.nonparametric.survival_difference.sf_diff
@@ -135,3 +167,13 @@ and Uno's version" on the :doc:`regression analysis` page):
 .. autofunction:: surpyval.metrics.concordance.compare_concordance
 
 .. autoclass:: surpyval.metrics.concordance.ConcordanceComparison
+
+The integrated discrimination improvement and the net reclassification
+improvement of a new risk model over an old one at a horizon, with their
+event and non-event parts and resampling bounds (see "Does a new marker
+improve the predictions?" on the :doc:`regression analysis` page, which
+also says why the Brier score difference comes first):
+
+.. autofunction:: surpyval.metrics.reclassification.idi_nri
+
+.. autoclass:: surpyval.metrics.reclassification.RiskReclassification

@@ -393,6 +393,102 @@ only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
 
+States seen only at visits (panel data)
+---------------------------------------
+
+Often nobody sees a unit change state. A patient's condition is graded at
+clinic visits, a component is found worn at an inspection, a survey asks
+each wave who is employed. All that is known is the state at each visit,
+so a move happened at some unknown time between two visits, and a unit
+may even pass through a state between visits that is never seen (ill and
+recovered again). Spells cannot be written down, and the models above do
+not apply.
+
+``PanelMultiState`` fits the standard model for such *panel data*
+(Kalbfleisch and Lawless 1985, and R's ``msm``): a Markov chain in
+continuous time with a constant *transition intensity* for each allowed
+move, the rate of that move while a unit is in its 'from' state. Over a
+gap of length :math:`t` the probability of going from state :math:`r` to
+state :math:`s`, by any route, is element :math:`(r, s)` of the matrix
+exponential :math:`P(t) = \exp(Q t)`, :math:`Q` the matrix of
+intensities. Each unit contributes the probability of the states it was
+seen in, given its first, multiplied over the gaps between its visits;
+the intensities that make the data most likely are the estimates. The
+mean stay in a state is one over the total rate of leaving it.
+
+The data are one row per visit: the time (``x``), the state seen
+(``s``) and the unit (``i``). Three kinds of row go beyond a plain
+visit:
+
+- a move into an absorbing state timed exactly (a death, a scrapping):
+  name the state in ``exact_entry``, and the row means "in some other
+  state just before, entered this one at this time";
+- a visit that saw only a set of states ("alive, condition not
+  recorded"): give it a code and say what the code means in
+  ``censored``, ``{"alive": ["healthy", "ill"]}``;
+- a move seen as it happened, the unit having stayed in its previous
+  state until then: ``obstype="exact"`` on that row.
+
+Unlike the spell models, the allowed transitions must be given: they
+cannot be read off the visits.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from scipy.linalg import expm
+    from surpyval.multistate import PanelMultiState
+
+    rng = np.random.default_rng(7)
+    states = ["healthy", "ill", "dead"]
+    Q = np.array([[-0.35, 0.3, 0.05], [0.2, -0.45, 0.25], [0, 0, 0]])
+    x, s, i = [], [], []
+    for unit in range(150):
+        state, t = 0, 0.0
+        for visit in np.arange(0.0, 6.0, 1.0):
+            if visit > 0:
+                p = expm(Q * 1.0)[state]
+                state = rng.choice(3, p=p / p.sum())
+            x.append(visit)
+            s.append(states[state])
+            i.append(unit)
+            if state == 2:
+                break
+
+    panel = PanelMultiState.fit(
+        x, s, i, transitions=[("healthy", "ill"), ("healthy", "dead"),
+                              ("ill", "healthy"), ("ill", "dead")],
+    )
+    panel
+
+The fitted intensities, with Wald bounds on the log scale, the
+probabilities of each state later on for a unit healthy now (with
+delta-method bounds), and the mean stays:
+
+.. jupyter-execute::
+
+    print(panel.summary()[["estimate", "lower", "upper"]].round(3))
+    print(panel.transition_probabilities(2.0).round(3))
+    print(panel.occupancy(2.0, "dead", from_state="healthy").round(3),
+          panel.cb(2.0, "dead", from_state="healthy").round(3))
+    print(round(panel.mean_sojourn("healthy"), 2),
+          panel.sojourn_cb("healthy").round(2))
+
+``PanelMultiStateRegression`` puts covariates on the log intensities,
+each transition with its own coefficients or one ``shared`` by every
+transition; a row's covariates hold over the gap that starts at it, so
+they may change from visit to visit. The coefficients are log intensity
+ratios, and ``summary`` shows the ratios with their bounds. ``pci``
+(a list of times) lets every intensity change at those times, each later
+period multiplying each transition's intensity by its own factor.
+
+The model assumes the future depends only on the current state (Markov)
+and, apart from ``pci`` and covariates, that the intensities stay the
+same over time. The standard errors come from the observed information
+(the exact gradient of the likelihood, differenced once), and the bounds
+on probabilities from the delta method through the exact derivatives of
+the matrix exponential. Misclassified states (a hidden Markov model,
+where a visit can record the wrong state) are not built.
+
 How it was checked
 ------------------
 
@@ -438,15 +534,29 @@ time. The delta-method standard errors match the spread over simulated
 parameters, and a calibration study checks the coverage of the bounds.
 The script is ``scripts/reference/reference_r_multistate_semimarkov.R``.
 
+The panel-data models were checked against R's ``msm`` 1.9 on a
+simulated four-state model with exactly timed deaths and visits that saw
+only "alive": the log-likelihoods agree to :math:`10^{-12}` and the
+intensities, standard errors, bounds, transition probabilities, mean
+stays and intensity ratios (with covariates that change between visits,
+an effect shared by every transition, and piecewise-constant intensities)
+to about :math:`10^{-6}`. With every move seen when it happens the
+estimates are the numbers of moves over the time at risk, and with two
+states the fit is the exponential fit to interval-censored lifetimes.
+Simulated panel data show the bounds on the intensities, the occupation
+probabilities and the mean stays covering at their nominal level. The
+script is ``scripts/reference/reference_r_multistate_panel.R``.
+
 What is not here yet
 --------------------
 
-States seen only at inspection times (panel data) are not built. A fit
-refuses interval-censored changes of state. The parametric models have no
+The spell models refuse interval-censored changes of state: for states
+seen only at visits use ``PanelMultiState``, which has no hidden Markov
+(misclassification) model yet. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
-parametric models only: a Cox model per transition on the time in the
-state would need its probabilities simulated over step hazards, and the
-Aalen-Johansen estimate is Markov by construction (for a non-Markov
+parametric spell models only: a Cox model per transition on the time in
+the state would need its probabilities simulated over step hazards, and
+the Aalen-Johansen estimate is Markov by construction (for a non-Markov
 process its occupation probabilities are still consistent, Datta and
 Satten, 2001, but its transition probabilities from a later time are
 not). Covariates that change over a stay are not taken.
@@ -475,8 +585,15 @@ estimation and prediction in non- and semi-parametric multi-state and
 competing risks models", *Computer Methods and Programs in Biomedicine*,
 99(3), 261-274.
 
+Jackson, C. H. (2011), "Multi-state models for panel data: the msm
+package for R", *Journal of Statistical Software*, 38(8), 1-29.
+
 Jackson, C. H. (2016), "flexsurv: a platform for parametric survival
 modeling in R", *Journal of Statistical Software*, 70(8), 1-33.
+
+Kalbfleisch, J. D. and Lawless, J. F. (1985), "The analysis of panel
+data under a Markov assumption", *Journal of the American Statistical
+Association*, 80(392), 863-871.
 
 Kyle, R. A., Therneau, T. M., Rajkumar, S. V., et al. (2002), "A long-term
 study of prognosis in monoclonal gammopathy of undetermined
@@ -491,7 +608,8 @@ API
 
 Import these from ``surpyval.multistate`` (``MultiState``,
 ``MultiStateProportionalHazards``, ``ParametricMultiState``,
-``ParametricMultiStateRegression`` and ``TransitionMatrix`` are also at
+``ParametricMultiStateRegression``, ``PanelMultiState``,
+``PanelMultiStateRegression`` and ``TransitionMatrix`` are also at
 the top level, ``surpyval.MultiState`` and so on).
 
 .. autoclass:: surpyval.multistate.TransitionMatrix
@@ -507,6 +625,12 @@ the top level, ``surpyval.MultiState`` and so on).
    :members:
 
 .. autoclass:: surpyval.multistate.ParametricMultiStateRegression
+   :members:
+
+.. autoclass:: surpyval.multistate.PanelMultiState
+   :members:
+
+.. autoclass:: surpyval.multistate.PanelMultiStateRegression
    :members:
 
 .. autofunction:: surpyval.multistate.to_stacked
