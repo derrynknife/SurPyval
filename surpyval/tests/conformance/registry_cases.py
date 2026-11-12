@@ -85,6 +85,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     unit_interval_data,
     xcnt_data,
     zi_data,
+    zi_reg_data,
 )
 from surpyval.univariate import competing_risks as cr
 
@@ -1581,6 +1582,40 @@ def _mixture_cure():
     return out
 
 
+FAST_ZI = ("WeibullZeroInflated",)
+
+
+def _zero_inflated():
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "ZeroInflated"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                data=zi_reg_data,
+                # A ZeroInflatedModel is a DistributionalRegressionModel:
+                # declared as one, so every table keyed by the model's
+                # class applies to it.
+                model_class="surpyval.DistributionalRegressionModel",
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.ZeroInflated",
+                        "surpyval.ZeroInflatedFitter",
+                        "surpyval.ZeroInflatedModel",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(frozenset() if name in FAST_ZI else REFIT_PROPERTIES),
+                coefficients=_cure_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Equivalent time scales (surpyval.Equivalence): one life on two clocks
 # ---------------------------------------------------------------------------
@@ -1782,6 +1817,7 @@ CASES: list[Case] = (
     + _distributional()
     + _mixture_cure()
     + _equivalence()
+    + _zero_inflated()
     + _bayes()
 )
 
@@ -2025,6 +2061,7 @@ _REGRESSION_LR_X = {
     "WeibullDistributional": (2.0, 8.0),
     "LogNormalDistributional": (2.0, 8.0),
     "WeibullMixtureCure": (2.0, 8.0),
+    "WeibullZeroInflated": (2.0, 8.0),
 }
 
 
@@ -2384,6 +2421,12 @@ _DISTRIBUTIONAL_PARAMETERS = {
 _DISTRIBUTIONAL_PARAMETERS.update(
     {
         base + "MixtureCure": [*getattr(sp, base).parameter_names, "lfp_p"]
+        for base in CURE_LATENCIES
+    }
+)
+_DISTRIBUTIONAL_PARAMETERS.update(
+    {
+        base + "ZeroInflated": [*getattr(sp, base).parameter_names, "f0"]
         for base in CURE_LATENCIES
     }
 )

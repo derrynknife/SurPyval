@@ -302,6 +302,10 @@ with its own ``schema``.
      - ``"model": "MixtureCureModel"``
      - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
      - --
+   * - ``ZeroInflatedModel``
+     - ``"model": "ZeroInflatedModel"``
+     - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
+     - --
    * - ``SemiParametricRegressionModel``
      - ``"model": "SemiParametricRegressionModel"``
      - ``kind``, ``beta``, ``params``, ``x``, ``r``, ``d``, ``h0``, ``H0``, ``tie_method``, ``baseline_method``, ``is_tvc``, ``p_values``, ``se``, ``covariance``, ``_neg_ll``, ``ic_n``, ``maximum``, ``data_summary``

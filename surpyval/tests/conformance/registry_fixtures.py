@@ -216,6 +216,26 @@ def equivalence_data():
     return {"x": x, "x2": np.round(rate * x, 3), "c": c, "n": n}
 
 
+def zi_reg_data():
+    """60 rows for the zero-inflated regressions: the regression
+    fixture's covariates and lives, where 1 unit in 10 with ``z0 = 0``
+    and 2 in 10 with ``z0 = 1`` fail at time 0 (dead on arrival), and
+    every seventh of the rest is right censored."""
+    z0 = np.tile([0.0, 1.0], N_CURE // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_CURE), 3)
+    life = quantiles(N_CURE, 1.0, 2.0)[scramble(N_CURE)]
+    x = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    pair = np.arange(N_CURE) // 2
+    doa = np.where(z0 == 0, pair % 10 == 0, pair % 5 == 0)
+    x = np.where(doa, 0.0, x)
+    c = np.zeros(N_CURE, int)
+    c[1::7] = 1
+    c[doa] = 0
+    n = np.ones(N_CURE, int)
+    n[[3, 11]] = 2
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
 def ah_data():
     """The regression fixture with its covariates turned to add hazard,
     for the additive hazards cases (#828): ``1 - z1`` for ``z1``, so both

@@ -363,6 +363,13 @@ em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
 em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
 
+# Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
+# covariates on who arrives dead (f0) and on the life of the rest
+doa = rc.random(400) < np.where(lot == 1, 0.2, 0.05)
+tz = np.where(doa, 0.0, 100 * rc.weibull(2.0, 400))
+zm = sp.WeibullZeroInflated.fit(tz, lot)   # zm.fit_route: "two-stage" or "joint"
+zm.doa_probability([1]); zm.sf(100, [1], susceptible=True)   # life of a unit that worked
+
 # Robust SEs, the global LR test, a forest plot
 ph = sp.WeibullPH.fit(x, Z, c)
 ph.robust_standard_errors(); ph.summary(robust=True)  # cluster= for groups
