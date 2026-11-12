@@ -117,13 +117,18 @@ model exist:
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula. Frailty for repairable systems is not built yet.
+  Archimedean copula; `CoxFrailty` takes a gamma or log-normal frailty.
+  `CoxMixedEffects` (R's `coxme`) generalises the log-normal one to several
+  Gaussian random-effect terms: nested and crossed grouping factors and
+  correlated random slopes. Frailty for repairable systems is not built
+  yet.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
+| CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself

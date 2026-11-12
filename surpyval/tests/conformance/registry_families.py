@@ -1116,6 +1116,41 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    cox_me = regression(
+        "CoxMixedEffects",
+        sp.CoxMixedEffects,
+        data=grouped_reg_data,
+        model_class="surpyval.CoxMixedEffectsModel",
+        rows=("x", "Z", "c", "n", "groups"),
+        labels=("groups",),
+        paths={
+            "fit_from_df": lambda d: sp.CoxMixedEffects.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                group_col="g",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+            ),
+            "random": lambda d: sp.CoxMixedEffects.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                random_effects="(1 | g)",
+                formula="z0 + z1",
+                c_col="c",
+                n_col="n",
+            ),
+        },
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
+        coefficients=_beta,
+        intercept=True,
+    )
     ah = regression(
         "AdditiveHazards",
         sp.AdditiveHazards,
@@ -1213,7 +1248,7 @@ def _semi_parametric():
         coefficients=lambda m: m.B[:, 1:],
         intercept=True,
     )
-    return [cox, strat, cox_frailty, ah, bj, po, aalen]
+    return [cox, strat, cox_frailty, cox_me, ah, bj, po, aalen]
 
 
 _NO_COEFFICIENTS = (

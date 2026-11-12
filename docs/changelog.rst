@@ -5,6 +5,29 @@ Unreleased
 
 **Added.**
 
+- Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
+  Cox model whose log hazard has Gaussian random effects, a random
+  intercept per group of one or more grouping factors, nested (wards in
+  hospitals) or crossed (batches and machines), and random slopes,
+  correlated with the intercept or not. Terms are given as
+  ``groups=``, as ``RandomEffect(groups, slopes=[...])`` objects, or in
+  ``fit_from_df`` in the bar notation (``random_effects="(1 + trt |
+  centre) + (1 | hospital/ward)"``). Fitted by maximum likelihood as
+  ``coxme`` fits it: the coefficients and random effects maximise the
+  penalised partial likelihood, the variances its Laplace approximation to
+  the integrated partial likelihood. Efron or Breslow ties, counts, late
+  entry and strata as in ``CoxPH``. Reports Wald intervals on the fixed
+  coefficients, ``variance_components()`` with profile-likelihood
+  intervals (``variance_cb()``), the predicted random effects,
+  ``lr_test()`` against the Cox model (a boundary-aware chi-square
+  mixture), coxme's integrated, penalised and null log-likelihoods, and
+  predictions for a group, for a new group, or averaged over the random
+  effects (``marginal=True``). Checked against coxme 2.2.22 on the
+  kidney, lung and a nested/crossed/random-slope data set. Guide:
+  :doc:`regression/frailty`.
+- ``CoxFrailty.fit(..., family="lognormal")``: the log-normal shared
+  frailty with a Cox baseline (coxme's ``(1 | group)``), beside the gamma
+  frailty.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,

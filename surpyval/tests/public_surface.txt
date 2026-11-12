@@ -29,6 +29,9 @@ surpyval.CoxFrailty
 surpyval.CoxFrailtyFitter
 surpyval.CoxFrailtyModel
 surpyval.CoxLewis
+surpyval.CoxMixedEffects
+surpyval.CoxMixedEffectsFitter
+surpyval.CoxMixedEffectsModel
 surpyval.CoxPH
 surpyval.CrowAMSAA
 surpyval.CustomDistribution
@@ -163,6 +166,7 @@ surpyval.ProportionalOdds
 surpyval.ProportionalOddsFitter
 surpyval.ProportionalOddsModel
 surpyval.PseudoRegressionResult
+surpyval.RandomEffect
 surpyval.Rayleigh
 surpyval.RoystonParmar
 surpyval.RoystonParmarModel
@@ -506,6 +510,9 @@ surpyval.univariate.regression.CovariatePath
 surpyval.univariate.regression.CoxFrailty
 surpyval.univariate.regression.CoxFrailtyFitter
 surpyval.univariate.regression.CoxFrailtyModel
+surpyval.univariate.regression.CoxMixedEffects
+surpyval.univariate.regression.CoxMixedEffectsFitter
+surpyval.univariate.regression.CoxMixedEffectsModel
 surpyval.univariate.regression.CoxPH
 surpyval.univariate.regression.DualExponential
 surpyval.univariate.regression.DualPower
@@ -560,6 +567,7 @@ surpyval.univariate.regression.ProportionalHazardsFitter
 surpyval.univariate.regression.ProportionalOdds
 surpyval.univariate.regression.ProportionalOddsFitter
 surpyval.univariate.regression.ProportionalOddsModel
+surpyval.univariate.regression.RandomEffect
 surpyval.univariate.regression.RoystonParmarPH
 surpyval.univariate.regression.RoystonParmarPO
 surpyval.univariate.regression.RoystonParmarRegression
