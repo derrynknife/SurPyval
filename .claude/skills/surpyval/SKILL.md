@@ -389,6 +389,9 @@ ka = sp.KaplanMeier.fit(x[:40], c[:40]); kb = sp.KaplanMeier.fit(x[40:], c[40:])
 sp.sf_diff(ka, kb, 8)["p_value"]      # survival at one time, log(-log) scale
 ka.cs(2, 6)                           # conditional survival from an estimate
 sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
+py = sp.person_years(x, c, factors={"g": g},          # exposure table:
+                     timescales={"age": (0, [0, 5, 10, np.inf])}, per=1000)
+py.table; py.rate_ratio({"g": "B"}, {"g": "A"})  # rates, exact bounds
 ```
 
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
