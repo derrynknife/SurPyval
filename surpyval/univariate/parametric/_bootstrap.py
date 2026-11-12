@@ -152,6 +152,7 @@ def jackknife(model: Any, fits: Refits) -> Jackknife:
                     zi=model.zi,
                     fixed=fixed,
                     init=init,
+                    **_method_options(model),
                     **kwargs,
                 )
         except REFIT_ERRORS:
@@ -499,6 +500,24 @@ def _fixed(model: Any) -> dict:
     }
 
 
+def _method_options(model: Any) -> dict:
+    """The estimation method a refit uses: the model's own, with its
+    probability-plotting options for an MPP fit. A refit by maximum
+    likelihood of a model fitted otherwise (as every refit was) bounded
+    the MPP, MPS, MSE or MOM estimate by the spread of a different
+    estimator, centred by the share of its refits below the estimate."""
+    how = getattr(model, "method", "MLE")
+    if how not in ("MPP", "MPS", "MSE", "MOM"):
+        return {}
+    out: dict[str, Any] = {"how": how}
+    info = getattr(model, "fitting_info", None) or {}
+    if how == "MPP":
+        for key in ("heuristic", "rr", "on_d_is_0", "turnbull_estimator"):
+            if key in info:
+                out[key] = info[key]
+    return out
+
+
 def _refit_options(model: Any) -> tuple:
     """``(fixed, init)`` of a refit of ``model``: its user-fixed
     parameters, and a start at its estimate in the fit's own order (the
@@ -584,6 +603,7 @@ def _draw(
                     # From the estimate: each resample's maximum is within
                     # sampling error of it
                     init=init,
+                    **_method_options(model),
                     **kwargs,
                 )
         except NoFiniteMaximumError:
