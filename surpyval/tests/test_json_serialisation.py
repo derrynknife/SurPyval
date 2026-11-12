@@ -413,6 +413,11 @@ def _build(name):
         "multistate_cox": lambda: MultiStateProportionalHazards.fit(
             **ms_data(True)
         ),
+        "multistate_cox_shared": lambda: MultiStateProportionalHazards.fit(
+            **ms_data(True),
+            shared={0: [("healthy", "dead"), ("ill", "dead")]},
+            proportional_baselines=[("healthy", "dead"), ("ill", "dead")],
+        ),
         "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
@@ -527,6 +532,7 @@ CASES = [
     "competing_risks",
     "multistate",
     "multistate_cox",
+    "multistate_cox_shared",
     "multistate_parametric",
     "multistate_parametric_regression",
     "multistate_panel",

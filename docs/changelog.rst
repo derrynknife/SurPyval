@@ -5,6 +5,27 @@ Unreleased
 
 **Added.**
 
+- ``MultiStateProportionalHazards`` can share a covariate's effect among
+  some transitions only: ``shared={"age": [("healthy", "dead"), ("ill",
+  "dead")]}`` gives age one coefficient on the two transitions into death
+  and its own on the others (several groups are a list of such lists;
+  transitions may also be named ``"healthy -> dead"``). The list form,
+  ``shared=["age"]``, still shares it among every transition. A new
+  ``proportional_baselines`` option takes transitions whose baseline
+  hazards are proportional: they share one baseline (the first's) and the
+  log of each other's ratio to it is one more coefficient (``"baseline:
+  ill -> dead vs healthy -> dead"``). Both are R ``mstate``'s general
+  expanded design, one stratified Cox model of the stacked data; the
+  predictions' standard errors carry the shared parameters' covariance
+  across transitions. Checked against ``mstate`` 0.3.3 on the MGUS data
+  and a simulated model with recovery (coefficients, standard errors, log
+  partial likelihood and ``probtrans``'s probabilities and standard
+  errors). For two transitions sharing a baseline, the standard errors
+  use the covariance :math:`\phi_h \phi_g` times the baseline's
+  variance; ``msfit`` uses :math:`\phi_h^2`, which depends on the order
+  of the transitions, so the standard errors differ from mstate's there
+  (by about 7% to 13% in the checks). Saved models gain the keys
+  ``shared_groups`` and ``baseline_groups`` when the options are used.
 - Pivotal bounds for probability-plotting fits: ``cb``, ``quantile_cb``
   and ``param_cb`` take ``method="pivotal"`` on a model fitted with
   ``how="MPP"`` (rank regression) of the Weibull, LogNormal, LogLogistic,

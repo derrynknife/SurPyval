@@ -1472,7 +1472,11 @@ EXCLUDED: dict[str, str] = {
         "tests/recurrent/test_recurrent_cox.py",
     ),
     **dict.fromkeys(
-        ("MultiState", "MultiStateProportionalHazards"),
+        (
+            "MultiState",
+            "MultiStateProportionalHazards",
+            "MultiStateProportionalHazards[shared]",
+        ),
         "no simulation from the model: its fit is a step estimate of the "
         "transition hazards with no shape beyond the data, and the models "
         "have no random() to draw a unit's path through the states. "
