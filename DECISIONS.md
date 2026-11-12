@@ -13,6 +13,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-13
+
+### IDI and NRI of a new risk model (13 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| In scope, as `surpyval.metrics.idi_nri` beside the Brier score, AUC and concordance: a metric with inference, not a workflow helper. Its docstring and the guide say in plain words that the NRI is not a proper scoring rule (Hilden and Gerds 2014; Pepe, Fan, Feng, Gerds and Hilden 2015), that for nested models its test repeats the likelihood-ratio test of the added covariate, and that the Brier / IBS and AUC differences (`score_predictions`) are the primary comparison; the `repr` repeats the first point. | proposed | The package keeps prediction metrics with inference; the honest caveats are the condition for including a measure that is widely asked for but easily misread. | done |
+| One function taking the two models' predicted risks of the event by the horizon (`risk_old`, `risk_new`, in [0, 1]), not the models or covariates; returns `RiskReclassification` (`estimates` table with every measure, its bounds and p-value; `tables` of reclassification counts; `to_dict` / `from_dict`). | proposed | As the other metrics, it works for any model; refitting models inside a metric is a workflow. | done |
+| Events are `x <= t` with an event, non-events `x > t` (as `auc_td` and `nricens`; `survIDINRI` uses `x < t` and `x >= t`). The non-event parts are signed so that positive is better (`idi_nonevents` is the mean fall), so each total is the sum of its parts. | proposed | One convention across the metrics; parts that add up are easier to read. | done |
+| The IDI is IPCW only (Uno et al. 2013), with the metrics' censoring weights (reverse Kaplan-Meier, events first, `1 / G(x-)`), and its exact weighted means (not `survIDINRI`'s trapezoid over a 2000-point grid, within 5e-4 of them). The NRI is IPCW (default) or Kaplan-Meier (`censoring="km"`, Pencina et al. 2011, as `nricens`'s `point.method = "km"`). | proposed | IPCW matches the Brier score and AUC here and `survIDINRI`; the Kaplan-Meier NRI is the other published estimator and `nricens`'s default. Its shares can leave [0, 1] (a known property of the estimator), left as they come. | done |
+| Bounds: perturbation resampling (default, Exp(1) weights; every estimate, the censoring weights included, recomputed with the weights rather than through `survIDINRI`'s linear expansion) or the bootstrap, 1000 resamples, percentile bounds by the package's `(n + 1) p` rule, p-value twice the share of resamples beyond 0 (as `survIDINRI`). The risks are held fixed, so the bounds leave out the variation of models fitted to the same data; said in the docs. Resamples with no event or no non-event are dropped with a warning that counts them. | proposed | Fixed-risk bounds are right for validation data and match `nricens` with `p.std` / `p.new`; refitting is model-specific. Calibration: with fixed models scored on new data, 1000 replicates, the bounds cover the true IDI, continuous NRI and categorical NRI of a noise marker 0.951, 0.956 and 0.955. With Cox models fitted to the same data (400 replicates) the bounds cover 0 for the IDI 0.938, the continuous NRI 0.913 and the categorical NRI 0.810, and the mean continuous NRI of the noise marker is +0.069 (the likelihood-ratio test of the marker rejects 0.055): the in-sample NRI defect, reported in the docs. | done |
+| Not offered: competing risks (`e` / `cause`), late entry, weights, Uno's third measure (the median improvement), and a minimum change for the continuous NRI. | proposed | Not asked for; each can be added on the same estimator. | gap |
+
 ## 2026-11-12
 
 ### Equivalent time scales: one life on two clocks (12 Nov 2026)
