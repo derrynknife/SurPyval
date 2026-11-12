@@ -1146,6 +1146,12 @@ for _base in ("Weibull", "Exponential"):
 PLANS["Weibull[xcnt]"] = Plan(
     _xcnt_parametric, 300, 100, params=_parametric_params
 )
+# Probability-plotting fits (how="MPP"), a closed-form regression on the
+# plotting positions: refitted as the maximum-likelihood fits are, on the
+# same censored draws (their pivotal bounds' coverage is
+# calibration/test_coverage_pivotal.py's business).
+for _base in ("Weibull", "LogNormal"):
+    PLANS[f"{_base}[MPP]"] = _CENSORED
 # The fixture's 1000 units, 3% of which fail within the 24 months
 PLANS["Weibull[lfp-counts]"] = Plan(
     _lfp_counts, 1000, 100, params=_parametric_params
