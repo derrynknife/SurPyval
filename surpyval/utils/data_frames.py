@@ -107,6 +107,31 @@ def _times(
     return np.column_stack([lower, upper]), True
 
 
+def _exact_or_range(
+    df: Any, x_col: Any, xl_col: Any, xr_col: Any, c_col: Any, event_col: Any
+) -> tuple[Any, np.ndarray, Any]:
+    """The frame, times and flags where ``x_col`` is given with ``xl_col``
+    and/or ``xr_col``: each row an exact time in ``x_col`` or a range in
+    the other two (a blank lower end ``-inf``, a blank upper end ``inf``,
+    as for ``xl_col`` and ``xr_col`` alone), read by
+    :func:`~surpyval.utils.data_formats.exact_or_range`; the rows giving
+    both are left out of the frame, with a warning."""
+    from surpyval.utils.data_formats import exact_or_range
+
+    x = frame_column(df, x_col, "x_col", time=True)
+    xl = None if xl_col is None else frame_column(df, xl_col, "xl_col", True)
+    xr = None if xr_col is None else frame_column(df, xr_col, "xr_col", True)
+    c: Any = (
+        frame_column(df, c_col, "c_col")
+        if c_col is not None and event_col is None
+        else _flags(df, c_col, event_col)
+    )
+    bounds, flags, keep = exact_or_range(x, xl, xr, c, blank_is_infinite=True)
+    if keep is not None:
+        df = df.iloc[np.flatnonzero(keep)]
+    return df, bounds, None if flags is None else flags.astype(int)
+
+
 def _bounds_by_flag(
     x: np.ndarray, c: Any, xl_col: Any, xr_col: Any, flag_col: Any
 ) -> np.ndarray:
@@ -282,10 +307,13 @@ def lifetime_from_frame(
     df = require_frame(df)
     if len(df) == 0:
         raise ValueError("The DataFrame has no rows.")
-    x, intervals = _times(df, x_col, xl_col, xr_col)
-    c = _flags(df, c_col, event_col)
-    if intervals and c is not None:
-        x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
+    if x_col is not None and (xl_col is not None or xr_col is not None):
+        df, x, c = _exact_or_range(df, x_col, xl_col, xr_col, c_col, event_col)
+    else:
+        x, intervals = _times(df, x_col, xl_col, xr_col)
+        c = _flags(df, c_col, event_col)
+        if intervals and c is not None:
+            x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
     n = _counts(df, n_col)
     w = None if w_col is None else frame_column(df, w_col, "w_col")
     ids = None

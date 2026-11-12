@@ -556,11 +556,26 @@ def test_fits_that_are_not_multi_state_refuse_several_states():
     for fit in (
         sp.Weibull.fit,
         sp.KaplanMeier.fit,
-        sp.CompetingRisks.fit,
         sp.Weibull.fit_from_surpyval_data,
     ):
-        with pytest.raises(ValueError, match=r"more than one state \(s\)"):
+        with pytest.raises(
+            ValueError,
+            match=r"^This fit takes no event types, which the SurpyvalData "
+            r"holds, and takes data in one state only \(this data's rows "
+            r"are in more than one, s\)\.",
+        ):
             fit(data)
+    # The states alone: a clause that reads on its own
+    for fit, given in (
+        (sp.CompetingRisks.fit, data),
+        (sp.Weibull.fit, data.without("event_types")),
+    ):
+        with pytest.raises(
+            ValueError,
+            match=r"^This fit takes data in one state only \(this data's "
+            r"rows are in more than one, s\)\. To fit",
+        ):
+            fit(given)
     with pytest.raises(ValueError, match="data.s == state"):
         sp.Weibull.fit(data.without("event_types"))
     with pytest.raises(ValueError, match="life_table takes data with one"):

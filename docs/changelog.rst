@@ -5,6 +5,15 @@ Unreleased
 
 **Added.**
 
+- ``x`` with ``xl`` and ``xr``: the three may now be given together
+  (``SurpyvalData``, ``SurpyvalData.from_dataframe`` and every
+  ``fit_from_df`` with ``x_col``, ``xl_col`` and ``xr_col``), read row by
+  row as an exact time in ``x`` or a range in ``xl`` and ``xr``, the other
+  blank (None, NaN or pandas' ``NA``). A range is read by its bounds as a
+  ``[xl, xr]`` row is, and a ``c`` given must agree with it. A row giving
+  both is left out of every per-row argument, with a warning naming it; a
+  row giving neither is refused. Only ``x``, or only ``xl`` and ``xr``,
+  is read as before. See :doc:`Conventions`.
 - States in the data model: ``SurpyvalData(..., s=...)`` takes the state
   each row's unit was in during the row (from its entry ``tl`` to ``x``),
   with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one

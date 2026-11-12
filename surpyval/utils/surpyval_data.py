@@ -187,11 +187,20 @@ class SurpyvalData(ReshapeMixin):
         t : array-like, optional
             2D array of truncation bounds [left, right] for each value in x.
         xl : array-like, optional
-            Left interval bounds for interval censored data.
-            Cannot be used with 'x'. Must be paired with 'xr'.
+            Left interval bounds for interval censored data, paired with
+            'xr'. Given with 'x', each row is read on its own: an exact
+            time in 'x' (with 'xl' and 'xr' blank: None, NaN or pandas'
+            NA), or a range in 'xl' and 'xr' (with 'x' blank), read by its
+            bounds as a ``[xl, xr]`` row is (``[v, inf]`` right censored,
+            ``[-inf, v]`` left censored, ``[v1, v2]`` interval censored,
+            ``[v, v]`` exact). A row giving both is left out with a
+            warning, and so are its entries in every other per-row
+            argument; a row giving neither is refused. A ``c`` given must
+            agree with each range (a blank ``c`` on a range row is read
+            from the range).
         xr : array-like, optional
-            Right interval bounds for interval censored data.
-            Cannot be used with 'x'. Must be paired with 'xl'.
+            Right interval bounds for interval censored data, paired with
+            'xl'; with 'x', as for 'xl'.
         tl : array-like or scalar, optional
             Left truncation bounds. Cannot be used with 't'. May be given
             alone (the right bound is then infinite) or with 'tr'.
@@ -297,6 +306,18 @@ class SurpyvalData(ReshapeMixin):
             ids, id_name = i, "i"
         else:
             id_name = "ids"
+        if handle and x is not None and (xl is not None or xr is not None):
+            from surpyval.utils.data_formats import drop_rows, exact_or_range
+
+            # Read row by row: an exact time in x or a range in xl and xr.
+            # Rows giving both are left out (with a warning) of every
+            # per-row argument alike.
+            x, c, keep = exact_or_range(x, xl, xr, c)
+            xl = xr = None
+            n, tl, tr, w, Z, e, ids, s = (
+                drop_rows(v, keep) for v in (n, tl, tr, w, Z, e, ids, s)
+            )
+            t = drop_rows(t, keep, matrix=True)
         if s is not None and handle:
             c = _flags_from_entered(c, e, x, xl)
         if any(v is not None for v in (Z, e, ids, s)):
@@ -876,7 +897,11 @@ class SurpyvalData(ReshapeMixin):
             a blank ``xl_col`` one already failed at the first look (left
             censored at ``xr_col``). The kind of each row is read from
             its bounds; a ``c_col`` given with them must agree (a row with
-            different bounds is flagged 2).
+            different bounds is flagged 2). Given with ``x_col``, each row
+            is read on its own: an exact time in ``x_col`` (the bounds
+            blank) or bounds (``x_col`` blank); a row giving both is left
+            out, with a warning, and a blank ``c_col`` cell on a row with
+            bounds is read from them.
         c_col : str, optional
             The censoring flags, in the ``xcnt`` coding (0 observed, 1
             right censored, -1 left censored, 2 interval censored).
@@ -2383,12 +2408,22 @@ _WITHOUT_PARTS = {
 }
 
 
+# What a fit cannot take that is not a thing the data holds but a shape of
+# it, each said in a clause of its own.
+_OWN_CLAUSE = {
+    "states": (
+        "takes data in one state only (this data's rows are in more than "
+        "one, s)"
+    ),
+}
+
+
 def lost_message(lost: list, takes_event_types: bool) -> str:
     """The refusal of ``fit(data)`` for data holding what the fit has no
     argument for, ``lost``, naming the call that fits without it and the
     model that takes it (#933)."""
     what = " or ".join(
-        part.split(" (")[0] for part in lost
+        part.split(" (")[0] for part in lost if part not in _OWN_CLAUSE
     )  # ("... (fit them with fit_tvc for now)" is a note of its own)
     parts = list(
         dict.fromkeys(
@@ -2437,12 +2472,11 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
             "MultiStateProportionalHazards, ParametricMultiState) take the "
             "states"
         )
-    message = f"This fit takes no {what}, which the SurpyvalData holds."
-    if "states" in lost:
-        message = message.replace(
-            "states, which the SurpyvalData holds",
-            "more than one state (s), which the SurpyvalData holds",
-        )
+    clauses = (
+        [f"takes no {what}, which the SurpyvalData holds"] if what else []
+    )
+    clauses += [_OWN_CLAUSE[part] for part in lost if part in _OWN_CLAUSE]
+    message = "This fit " + ", and ".join(clauses) + "."
     if ways:
         message += " To fit without them, use " + ", or ".join(ways) + "."
     if takes:

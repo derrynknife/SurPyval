@@ -595,6 +595,7 @@ def fit_from_df(
     """``fit_bayes`` on the columns of a DataFrame, named as
     ``fit_from_df`` names them."""
     from surpyval.utils.dataframe import (
+        exact_or_range_frame,
         frame_column,
         refuse_column_names,
         require_frame,
@@ -611,10 +612,9 @@ def fit_from_df(
 
     df = require_frame(df)
     refuse_column_names(options, "x", "c", "n", "xl", "xr", "tl", "tr")
-    if x_col is not None and (xl_col is not None or xr_col is not None):
-        raise ValueError(
-            "Cannot use `x_col` and (`xl_col` and `xr_col`) together"
-        )
+    df, x_col, xl_col, xr_col = exact_or_range_frame(
+        df, x_col, xl_col, xr_col, c_col
+    )
     arrays: dict[str, Any] = {}
     if x_col is not None:
         arrays["x"] = frame_column(df, x_col, "x_col", time=True)

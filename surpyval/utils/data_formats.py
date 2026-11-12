@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, named
 
 
 def validate_float_array(arr: npt.ArrayLike | None, name: str) -> npt.NDArray:
@@ -918,12 +918,12 @@ def xcnt_handler(
         truncation
     xl: array or scalar, optional (default: None)
         array of the values of the left interval of interval censored data.
-        Cannot be used with 'x' parameter, must be used with the 'xr'
-        parameter
+        Used with the 'xr' parameter. Given with 'x', the rows are read one
+        by one (see :func:`exact_or_range`): an exact time in 'x' or a
+        range in 'xl' and 'xr', blank (None or NaN) where the row has none.
     xr: array or scalar, optional (default: None)
         array of the values of the right interval of interval censored data.
-        Cannot be used with 'x' parameter, must be used with the 'xl'
-        parameter
+        Used with the 'xl' parameter; with 'x', as for 'xl'.
     tl: array or scalar, optional (default: None)
         array of values of the left value of truncation. If scalar, all values
         will be treated as left truncated by that value
@@ -958,8 +958,8 @@ def xcnt_handler(
     Raises
     ------
     ValueError
-        If the inputs break any of the rules above: for example ``x`` and
-        ``xl``/``xr`` both given, empty ``x``, arrays of different
+        If the inputs break any of the rules above: for example a row
+        with none of ``x``, ``xl`` and ``xr``, empty ``x``, arrays of different
         lengths, a NaN in ``x`` or in a truncation bound, an unknown
         censoring flag, a count that is not a positive whole number, a
         value at or below its own left truncation, or a right censored
@@ -1008,6 +1008,13 @@ def xcnt_handler(
             [-inf,  inf]]))
     """
 
+    if x is not None and (xl is not None or xr is not None):
+        # An exact time in x or a range in xl and xr, row by row; rows
+        # giving both are left out of every per-row argument.
+        x, c, keep = exact_or_range(x, xl, xr, c)
+        xl = xr = None
+        n, tl, tr = (drop_rows(v, keep) for v in (n, tl, tr))
+        t = drop_rows(t, keep, matrix=True)
     x, c, n, t, xl, xr, tl, tr = (
         _numeric_list_as_array(v) for v in (x, c, n, t, xl, xr, tl, tr)
     )
@@ -1116,6 +1123,249 @@ def _xcnt_x(
     if x.shape[0] == 0:
         raise ValueError("'x' is empty: at least one observation is needed")
     return x
+
+
+def _is_blank(value: Any) -> bool:
+    """Whether one cell is blank: None, NaN or pandas' ``NA`` / ``NaT``."""
+    return (
+        value is None
+        or (isinstance(value, (float, np.floating)) and value != value)
+        or type(value).__name__ in ("NAType", "NaTType")
+    )
+
+
+def _cells(values: Any, name: str) -> tuple[npt.NDArray, npt.NDArray]:
+    """One column of :func:`exact_or_range`: its numbers (NaN where
+    blank) and which cells are blank."""
+    refuse_time_values(values, name)
+    if hasattr(values, "to_numpy"):
+        values = values.to_numpy(dtype=object)
+    arr = np.asarray(values, dtype=object)
+    if arr.ndim == 0:
+        arr = arr.reshape(1)
+    if arr.ndim == 2 and arr.shape[1] == 1:
+        arr = arr[:, 0]
+    if arr.ndim != 1:
+        raise ValueError(
+            f"'{name}' must hold one value per row when 'x' is given with "
+            "'xl' / 'xr' (an exact time in 'x', or a range in 'xl' and "
+            "'xr')."
+        )
+    blank = np.array([_is_blank(v) for v in arr], dtype=bool)
+    try:
+        numbers = np.array(
+            [np.nan if b else float(v) for v, b in zip(arr, blank)],
+            dtype=float,
+        )
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"'{name}' must hold numbers, a blank cell (None or NaN) where "
+            "the row has none."
+        ) from None
+    return numbers, blank
+
+
+_RANGE_READINGS = {
+    1: "right censored",
+    -1: "left censored",
+    2: "interval censored",
+}
+
+
+def exact_or_range(
+    x: Any,
+    xl: Any,
+    xr: Any,
+    c: Any = None,
+    blank_is_infinite: bool = False,
+) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray | None]:
+    """
+    Read ``x``, ``xl`` and ``xr`` given together, row by row: an exact
+    time in ``x`` (``xl`` and ``xr`` blank), or a range in ``xl`` and
+    ``xr`` (``x`` blank), read by the bounds as the handler reads a
+    two-column ``x``: ``(v, inf)`` right censored at ``v``, ``(-inf, v)``
+    left censored at ``v``, ``(v1, v2)`` interval censored, ``(v, v)``
+    exact. A blank is None, NaN or pandas' ``NA``. ``(0, v)`` stays an
+    interval: the handler does not know the distribution's support.
+
+    A row that gives both an exact time and a range (``x`` and either of
+    ``xl`` / ``xr``) is left out, with a warning; one that gives neither
+    is refused, as is a range with one end blank (unless
+    ``blank_is_infinite``, where a blank lower end is ``-inf`` and a blank
+    upper end ``inf``, as a DataFrame's blank cells are read). A ``c``
+    given must agree with the range of a range row (2 is accepted on any
+    range with different ends, as the handler takes it); a blank ``c`` on
+    a range row is read from the range, and on an exact row is refused.
+
+    Returns ``(x, c, keep)``: the rows kept as a two-column ``x``
+    (``[t, t]`` for an exact time), their flags (None where ``c`` was not
+    given: the handler's default reading of the bounds is the same), and
+    the rows kept (a boolean mask, None where every row is kept), for
+    the other per-row arrays to drop the same rows (:func:`drop_rows`).
+
+    Examples
+    --------
+    >>> from surpyval.utils.data_formats import exact_or_range
+    >>> inf, nan = float("inf"), float("nan")
+    >>> x, c, keep = exact_or_range(
+    ...     [3, nan, nan], [nan, 5, 2], [nan, inf, 4]
+    ... )
+    >>> x.tolist(), c, keep
+    ([[3.0, 3.0], [5.0, inf], [2.0, 4.0]], None, None)
+    """
+    columns: list[tuple[npt.NDArray, npt.NDArray] | None] = []
+    k = None
+    for name, values in (("x", x), ("xl", xl), ("xr", xr)):
+        if values is None:
+            columns.append(None)
+            continue
+        numbers, blank = _cells(values, name)
+        if k is None:
+            k = len(numbers)
+        elif len(numbers) != k:
+            raise ValueError(
+                f"'{name}' has {len(numbers)} rows and 'x' {k}: 'x', 'xl' "
+                "and 'xr' hold one cell per row (blank where the row has "
+                "none)."
+            )
+        columns.append((numbers, blank))
+    assert k is not None
+    if k == 0:
+        raise ValueError("'x' is empty: at least one observation is needed")
+    every = (np.full(k, np.nan), np.ones(k, dtype=bool))
+    (xv, xb), (lo, lob), (hi, hib) = (col or every for col in columns)
+    lo, hi = lo.copy(), hi.copy()
+
+    both = ~xb & (~lob | ~hib)
+    keep = ~both
+    if both.any():
+        rows = np.flatnonzero(both).tolist()
+        if not keep.any():
+            raise ValueError(
+                f"Every row ({k}) gives both an exact time in 'x' and a "
+                "range in 'xl' / 'xr', so no row is left to read. Give "
+                "each row either 'x' (an exact time) or 'xl' and 'xr' (a "
+                "range), and leave the other blank."
+            )
+        warnings.warn(
+            f"{len(rows)} row{'' if len(rows) == 1 else 's'} (row"
+            f"{'' if len(rows) == 1 else 's'} {named(rows)}) "
+            f"{'was' if len(rows) == 1 else 'were'} left out: "
+            f"{'it gives' if len(rows) == 1 else 'each gives'} both an "
+            "exact time in 'x' and a range in 'xl' / 'xr', and which one "
+            "holds is not known. Give each row either 'x' or 'xl' and "
+            "'xr', and leave the other blank.",
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
+    ranged = xb & keep
+    neither = ranged & lob & hib
+    if neither.any():
+        rows = np.flatnonzero(neither).tolist()
+        raise ValueError(
+            f"{_rows_say(rows)} no time: 'x', 'xl' and 'xr' are all blank. "
+            "Give an exact time in 'x', or a range in 'xl' and 'xr', or "
+            "leave the row out."
+        )
+    if blank_is_infinite:
+        lo[ranged & lob] = -np.inf
+        hi[ranged & hib] = np.inf
+    else:
+        one_end = ranged & (lob | hib)
+        if one_end.any():
+            rows = np.flatnonzero(one_end).tolist()
+            raise ValueError(
+                f"{_rows_say(rows)} a range with one end blank (and 'x' "
+                "blank). Give both ends: -inf for a lower end not known "
+                "(left censored), inf for an upper end not known (right "
+                "censored)."
+            )
+    lower = np.where(ranged, lo, xv)
+    upper = np.where(ranged, hi, xv)
+
+    c_out = None
+    if c is not None:
+        refuse_boolean_censoring(c)
+        cv, cb = _cells(c, "c")
+        if len(cv) != k:
+            raise ValueError("'c' must be the same length as 'x'")
+        exact = ~xb & keep
+        unflagged = np.flatnonzero(exact & cb).tolist()
+        if unflagged:
+            raise ValueError(
+                f"{_rows_say(unflagged)} an exact time in 'x' and a blank "
+                "'c': give each its flag (0 observed, 1 right censored, -1 "
+                "left censored). A blank 'c' is read from the range only "
+                "on a row with 'xl' and 'xr'."
+            )
+        two = np.flatnonzero(exact & ~cb & (cv == 2)).tolist()
+        if two:
+            raise ValueError(
+                f"{_rows_say(two)} c = 2 (interval censored) and one exact "
+                "time in 'x': give the interval's ends in 'xl' and 'xr' "
+                "(with 'x' blank), or the row's flag (0, 1 or -1)."
+            )
+        wide = ranged & (lower != upper)
+        reading = np.where(
+            np.isinf(upper) & (upper > 0),
+            1,
+            np.where(np.isinf(lower) & (lower < 0), -1, 2),
+        )
+        conflict = wide & ~cb & (cv != reading) & (cv != 2)
+        if conflict.any():
+            rows = np.flatnonzero(conflict).tolist()
+            shown = "; ".join(
+                f"row {r}: c = {_flag_text(cv[r])}, but [{lower[r]:g}, "
+                f"{upper[r]:g}] reads as {_RANGE_READINGS[int(reading[r])]}"
+                for r in rows[:5]
+            )
+            raise ValueError(
+                f"{_rows_say(rows)} a flag in 'c' that disagrees with "
+                f"the range in 'xl' and 'xr' ({shown}"
+                f"{'; ...' if len(rows) > 5 else ''}). Correct 'c' or the "
+                "range, or leave 'c' blank on those rows for the range to "
+                "decide."
+            )
+        c_out = cv.copy()
+        c_out[wide] = 2
+        c_out[ranged & ~wide & cb] = 0
+        c_out = c_out[keep]
+    bounds = np.column_stack([lower, upper])[keep]
+    return bounds, c_out, (None if keep.all() else keep)
+
+
+def _flag_text(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else repr(value)
+
+
+def _rows_say(rows: list) -> str:
+    """'Row 2 has' or 'Rows 2, 5 have'."""
+    if len(rows) == 1:
+        return f"Row {rows[0]} has"
+    return f"Rows {named(rows)} have"
+
+
+def drop_rows(
+    value: Any, keep: npt.NDArray | None, matrix: bool = False
+) -> Any:
+    """``value``, a per-row argument (one entry per row, or a ``(k, 2)``
+    matrix where ``matrix``), with only the rows ``keep``; a single value
+    (a number for every row) or None is returned as it is."""
+    if keep is None or value is None:
+        return value
+    if np.ndim(value) == 0 or isinstance(value, (str, bytes)):
+        return value
+    if matrix and np.ndim(value) != 2:
+        return value
+    if len(value) != len(keep):
+        return value
+    rows = np.flatnonzero(keep)
+    if hasattr(value, "iloc"):
+        return value.iloc[rows]
+    if isinstance(value, (list, tuple)):
+        return [value[r] for r in rows]
+    return np.asarray(value)[rows]
 
 
 def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> npt.NDArray:

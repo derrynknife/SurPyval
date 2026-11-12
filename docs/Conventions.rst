@@ -54,6 +54,39 @@ Notice three things. The two right censored values at 2 have been merged into on
     assert data.x.ndim == 2 and data.x.shape[1] == 2
     assert np.all(data.t[:, 0] == 0) and np.all(np.isinf(data.t[:, 1]))
 
+Exact times and ranges together: x, xl and xr
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A table often has a column for the times seen exactly and two for the ranges of the rest: the age a unit was last seen working (``xl``) and the age it was first found failed (``xr``). Give all three, and each row is read on its own. A row has either an exact time in ``x`` or a range in ``xl`` and ``xr``, and the other cells blank (None, NaN or pandas' ``NA``). A range is read by its bounds, as a ``[xl, xr]`` row always has been:
+
+====================================  ==============================  ===
+row                                   read as                         c
+====================================  ==============================  ===
+``x = v``, ``xl``, ``xr`` blank       exact at v (``c`` as given)     0
+``xl = v``, ``xr = inf``              right censored at v             1
+``xl = -inf``, ``xr = v``             left censored at v              -1
+``xl = v1``, ``xr = v2``              interval censored, (v1, v2]     2
+``xl = xr = v``                       exact at v                      0
+====================================  ==============================  ===
+
+A range from 0, ``(0, v)``, stays an interval: the data does not know the distribution's support, so it is not turned into left censoring. A row that gives both an exact time and a range (``x`` and either of ``xl``, ``xr``) cannot be read either way: it is left out, with a warning that says how many rows and which, and its entries in every other per-row argument (``c``, ``n``, ``tl``, ``tr``, ``Z``, ``e``, ``s``, ``i``, ``w``) are left out with it. A row with nothing, or a range with one end blank, is refused (``SurpyvalData.from_dataframe`` and the competing-risks ``fit_from_df`` read a blank end as infinite, as they do when the two columns are given alone). A ``c`` given must agree with each range (2 is also taken on any range with different ends, as for a ``[xl, xr]`` row), and a blank ``c`` on a range row is read from the range. The same holds for the ``xcnt`` handler, ``SurpyvalData.from_dataframe`` and every ``fit_from_df`` with ``x_col``, ``xl_col`` and ``xr_col``. Passing only ``x``, or only ``xl`` and ``xr``, is read as before.
+
+.. jupyter-execute::
+
+    nan, inf = float("nan"), float("inf")
+    data = surv.SurpyvalData(
+        x=[3, nan, nan, nan],
+        xl=[nan, 5, -inf, 2],
+        xr=[nan, inf, 4, 6],
+    )
+    print(data)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert sorted(data.c.tolist()) == [-1, 0, 1, 2]
+
 Units, states and moves: i, e and s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
