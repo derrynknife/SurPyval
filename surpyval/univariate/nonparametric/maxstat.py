@@ -226,9 +226,10 @@ def maxstat_logrank(
     **Read this before using it.** The p-value of an ordinary log-rank
     test *at the best cut* (``naive_p_value``) is not valid: with dozens
     of cuts tried, some split will look significant by chance alone, and
-    at the 5% level the naive test rejects a true null hypothesis 30% to
-    40% of the time or more. ``p_value`` allows for the search and is the
-    one to report. Even so, turning a continuous covariate into two
+    at the 5% level the naive test rejects a true null hypothesis about
+    40% of the time (100 units and the default range of cuts, in
+    simulation). ``p_value`` allows for the search and is the one to
+    report. Even so, turning a continuous covariate into two
     groups throws information away -- every unit on one side of the cut
     is treated as alike, however far from it -- and the cut found is
     unstable and tends not to replicate in new data. To learn whether and

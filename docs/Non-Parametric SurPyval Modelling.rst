@@ -1556,7 +1556,7 @@ People often want a threshold: "patients over this age", "parts above this vibra
 
 Two warnings in plain words. First, the ordinary log-rank p-value *at the best cut* is wrong:
 with dozens of cuts tried, one of them looks significant by chance alone, and that naive p-value
-rejects a true null hypothesis far more often than 5% (around one time in three for 100 units).
+rejects a true null hypothesis far more often than 5% (about 4 times in 10 with 100 units and the default range of cuts, in the package's own simulation study).
 ``maxstat_logrank`` reports it as ``naive_p_value`` only to show the size of the correction; report
 ``p_value``, which allows for the search. Second, cutting a continuous covariate in two throws
 information away and the best cut rarely replicates; to learn how the covariate affects survival,

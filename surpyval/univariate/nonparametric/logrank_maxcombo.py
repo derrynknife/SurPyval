@@ -207,8 +207,8 @@ def _max_normal_sf(m: float, R: npt.NDArray, alternative: str) -> float:
             cov=R,
             allow_singular=True,
             lower_limit=np.full(J, -m) if two_sided else None,
-            maxpts=1000000 * J,
-            abseps=1e-6,
+            maxpts=50000 * J,
+            abseps=1e-5,
             releps=0.0,
             rng=np.random.default_rng(20261113),
         )
@@ -313,8 +313,11 @@ def maxcombo_logrank(
     v_t`. Under the null hypothesis the :math:`z_j` are jointly normal
     with that correlation, so the p-value of :math:`m = \max_j |z_j|` is
     :math:`1 - P(-m < Z_j < m \text{ for all } j)`, a multivariate normal
-    probability (Genz's algorithm, at a fixed seed and an absolute error
-    of about 1e-7). This is R's ``nph::logrank.maxtest`` (Karrison 2016;
+    probability. It is computed at a fixed seed, so a result does not
+    change between calls: a small p-value by importance sampling of the
+    union of the events :math:`|Z_j| \ge m` (relative error about 0.1%),
+    one above 0.2 by Genz's algorithm (absolute error about 1e-4). This is
+    R's ``nph::logrank.maxtest`` (Karrison 2016;
     Lin et al. 2020).
 
     Examples
