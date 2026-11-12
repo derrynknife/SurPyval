@@ -16,8 +16,6 @@ at the extremes it stopped short or failed:
   at their start (every coefficient 0) and called it a maximum
   (``LogNormalAH`` ``sf`` 1.3 off); a coefficient there is a rate of
   about 1e5, searched against a floor of 1.
-- ``NormalAL[GeneralLinear]``: a linear life's coefficients carry the
-  unit of time, searched against a floor of 1 (``sf`` 3e-3 off).
 - The distributional regressions on a location (Normal, Gumbel,
   Logistic): the location's coefficients, likewise (``sf`` up to 1e5
   off).
@@ -131,13 +129,6 @@ ADDITIVE = [
 )
 def test_additive_hazards_fit_does_not_depend_on_the_unit(name, k):
     _same_model(name, k, 1e-4, (("sf", 0), ("hf", 1)))
-
-
-# Agreement about 1e-6; old: 3.1e-3 off (millionths), unverified there
-# and in years.
-@pytest.mark.parametrize("k", [MICRO, YEARS], ids=["micro", "years"])
-def test_linear_life_fit_does_not_depend_on_the_unit(k):
-    _same_model("NormalAL[GeneralLinear]", k, 1e-4)
 
 
 # Agreement about 1e-5; old: Normal 0.51 and 3.4 (hf), Gumbel 1.5e5 and

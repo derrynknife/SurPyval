@@ -1502,10 +1502,6 @@ Unreleased
     1. It is now measured in ``1 / (range(Z) T)``, with ``T`` the median
     observed time, and an unbounded baseline location gets the
     univariate fits' floor.
-  - ``AL`` with the ``GeneralLinear`` life model (a linear life, whose
-    coefficients are times): off by 3e-3 and unverified with times in
-    millionths or in years. A life-model parameter that starts smaller
-    than its search floor is now searched in its own starting size.
   - The distributional regressions on a location (``Normal``,
     ``Gumbel``, ``Logistic``): off by up to 1e5 and unverified in
     millionths or a million units. A parameter on the identity link and
@@ -1535,7 +1531,6 @@ Unreleased
   ``GumbelAH``                80! / 2e-05 / 2e-05 / 2e-05!    1e-06 / 5e-06 / 8e-06 / 5e-06
   ``LogisticAH``              2 / 2e-07 / 2e-07 / 5e-07!      5e-06 / 3e-06 / 4e-06 / 3e-06
   ``WeibullAH``               2e-05 / 5e-07! / 5e-07 / 5e-07! 3e-06 / 3e-06 / 3e-06 / 3e-06
-  ``NormalAL[GeneralLinear]`` 0.003! / 1e-07 / 8e-05! / 9e-07 6e-08 / 1e-07 / 3e-09 / 9e-07
   ``GumbelDistributional``    2e5! / 1e-05 / 1e-05 / 1e3!     8e-06 / 6e-05 / 4e-05 / 1e-05
   ``NormalDistributional``    1e-05! / 2e-05 / 1e-05 / 3!     3e-06 / 5e-06 / 1e-05 / 2e-05
   ``HPP``                     1! / 3e-13 / 1! / 1e7!          9e-16 / 3e-16 / 3e-16 / 2e-15

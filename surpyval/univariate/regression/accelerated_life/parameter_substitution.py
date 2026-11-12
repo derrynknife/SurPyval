@@ -287,35 +287,6 @@ def _coefficient_units(
     return coefficient_floor(len(free), coefs, Z)
 
 
-def _in_starting_size(
-    floor: npt.NDArray,
-    init: npt.NDArray,
-    not_fixed: Any,
-    k_dist: int,
-    log_scale: list,
-) -> npt.NDArray:
-    """``floor`` with each life-model parameter that starts smaller than
-    its floor searched in its own starting size.
-
-    A life-model parameter can carry the unit of time (a linear life's
-    coefficients are times per unit of stress): with a floor of 1 the
-    search measured one of 1e-5 (times a millionth of the unit) in
-    steps of 1, and stopped short of the maximum, saying so. Its
-    starting size scales with the unit, so the search is the same
-    whatever the unit, as ``search_floor`` caps a location's floor at
-    the data's spread; a parameter at or above its floor keeps it, so
-    nothing changes for data of ordinary size.
-    """
-    floor = np.array(floor, dtype=float)
-    start = np.abs(np.asarray(init, dtype=float))
-    for pos, i in enumerate(not_fixed):
-        if i < k_dist or i in log_scale or not np.isfinite(start[pos]):
-            continue
-        if 0 < start[pos] < floor[pos]:
-            floor[pos] = start[pos]
-    return floor
-
-
 class ParameterSubstitutionFitter(
     MirroredDistributionAttrs, HazardIdentitiesMixin, DataFrameRegressionMixin
 ):
@@ -1009,9 +980,6 @@ class ParameterSubstitutionFitter(
 
             n_obs = float(np.sum(data.n))
             floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
-            floor = _in_starting_size(
-                floor, init, not_fixed, len(self.param_map), log_scale
-            )
             # The parameters with one bound, finished and judged on the log
             # scale of their distance from it (one searched on the log
             # scale already is judged there)
