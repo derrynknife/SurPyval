@@ -5,6 +5,26 @@ Unreleased
 
 **Added.**
 
+- Landmark analysis and dynamic prediction (van Houwelingen 2007; van
+  Houwelingen and Putter 2011): ``landmark(life, at, horizon)`` derives
+  the landmark data of a ``SurpyvalData`` -- the units still at risk at
+  each landmark ``L``, entered at ``L``, their covariates as known then
+  (the last value at or before ``L`` of time-varying covariates and
+  measurements) and their follow-up cut at ``L + horizon`` -- as another
+  ``SurpyvalData``, stacked over several landmarks with ``L`` (and, with
+  ``interactions=True``, each covariate times ``L``) as covariates.
+  ``LandmarkCox`` fits a Cox model at one landmark or a supermodel over
+  several (effects polynomial in the landmark, or any basis given; a
+  baseline per landmark or one pooled baseline), with robust standard
+  errors clustered on the unit, and gives the dynamic prediction
+  ``P(T <= s + w | T > s, Z(s))`` (``predict``, ``sf``/``ff``/``Hf``
+  from ``s``, ``table`` for landmarks by covariate profiles) with robust
+  bounds (``cb``, the infinitesimal jackknife over units), the effects
+  at each landmark (``beta``, ``beta_cb``), ``summary`` and ``to_dict`` /
+  ``from_dict``. ``landmark_kaplan_meier`` gives the survival from a
+  landmark by group. Checked against R ``dynpred`` and ``survival``
+  (``coxph(... + cluster(id))``) to about 1e-10. Guide:
+  :doc:`Landmark Analysis`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,

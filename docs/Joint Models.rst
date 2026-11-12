@@ -44,7 +44,9 @@ Two shortcuts are common, and both are biased:
 
 The joint likelihood fixes both: each item's line is integrated over what
 its readings leave uncertain, and its readings and its lifetime inform the
-same line.
+same line. (A third approach, which models no path at all, is
+:doc:`landmarking <Landmark Analysis>`: a model of the units still at risk
+at a time, by their last readings then.)
 
 The model
 ---------

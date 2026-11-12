@@ -96,6 +96,7 @@ surpyval.ItemLifetime
 surpyval.JointModel
 surpyval.JointPH
 surpyval.KaplanMeier
+surpyval.LandmarkCox
 surpyval.LifeAtCovariates
 surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
@@ -284,6 +285,8 @@ surpyval.gray_test
 surpyval.handle_xicn
 surpyval.integrated_brier_score
 surpyval.interval_logrank
+surpyval.landmark
+surpyval.landmark_kaplan_meier
 surpyval.life_models.Arrhenius
 surpyval.life_models.DualExponential
 surpyval.life_models.DualPower

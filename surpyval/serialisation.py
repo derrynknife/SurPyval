@@ -96,6 +96,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "CompetingRisks": (
         "surpyval.univariate.competing_risks.nonparametric.competing_risks"
     ),
+    "LandmarkCox": "surpyval.univariate.landmark.landmark_cox",
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
     "ParametricMultiState": "surpyval.multistate.parametric",

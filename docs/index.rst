@@ -316,6 +316,7 @@ Contents:
    Recurrent Event Regression Analysis
    Degradation Analysis
    Joint Models
+   Landmark Analysis
    Multivariate Analysis
 
 .. toctree::

@@ -255,6 +255,11 @@ _LAZY = {
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
     ),
+    # Landmark analysis and dynamic prediction
+    **dict.fromkeys(
+        ("LandmarkCox", "landmark", "landmark_kaplan_meier"),
+        "surpyval.univariate.landmark",
+    ),
     # Equivalent time scales: one life on two clocks (x1 + k x2)
     **dict.fromkeys(
         (
@@ -535,6 +540,11 @@ if TYPE_CHECKING:
         JointModel,
         JointPH,
         WeibullJointPH,
+    )
+    from surpyval.univariate.landmark import (
+        LandmarkCox,
+        landmark,
+        landmark_kaplan_meier,
     )
     from surpyval.univariate.pseudo import (
         PseudoRegressionResult,

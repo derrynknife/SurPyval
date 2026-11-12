@@ -37,6 +37,7 @@ from surpyval import (
     CoxPH,
     InstantlyOccurs,
     KaplanMeier,
+    LandmarkCox,
     MixtureModel,
     NelsonAalen,
     NeverOccurs,
@@ -415,6 +416,15 @@ def _build(name):
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
         ),
+        "landmark_cox": lambda: LandmarkCox.fit(
+            SurpyvalData(
+                x=np.abs(np.random.default_rng(5).weibull(1.3, 40) * 6) + 0.2,
+                Z=np.random.default_rng(6).integers(0, 2, (40, 1)),
+            ),
+            at=[0, 1, 2],
+            horizon=4,
+            baseline="pooled",
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -523,6 +533,7 @@ CASES = [
     "multistate_cox",
     "multistate_parametric",
     "multistate_parametric_regression",
+    "landmark_cox",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
