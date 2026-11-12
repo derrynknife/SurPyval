@@ -796,6 +796,34 @@ def _search_parametric_multistate_regression(model, data):
     return out
 
 
+def _search_joint_frailty(model, data):
+    """The joint frailty model's marginal likelihood (it keeps it) at the
+    reported parameters, in the logs of the positive ones (the Weibull
+    scales and shapes and theta); the coefficients in their covariates'
+    units. A fit with theta on its boundary 0 reports the model without
+    frailty, whose own fits are those of the two parts."""
+    lik = model._lik
+    free = np.flatnonzero(model._estimated())
+    p_hat = model._p()
+    if not free.size or not model._estimated()[4]:
+        return None
+
+    def natural(u):
+        parts = list(p_hat)
+        for k, j in enumerate(free):
+            parts[j] = anp.exp(u[k]) if j < 5 else u[k]
+        return anp.array(parts)
+
+    def fun(u):
+        return lik(natural(u))
+
+    u = np.array([np.log(p_hat[j]) if j < 5 else p_hat[j] for j in free])
+    search = Search(fun, u, model._n_obs)
+    p = model.n_covariates
+    coefs = [(k, (j - 6) % p) for k, j in enumerate(free) if j >= 6]
+    return [search.in_covariate_units(coefs, lik.Z)]
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -1262,6 +1290,7 @@ SEARCHES: dict[str, Callable] = {
     "CompetingRisksProportionalHazards": _search_crph,
     "MultiStateProportionalHazards": _search_multistate_cox,
     "ParametricMultiState": _search_parametric_multistate,
+    "JointFrailtyModel": _search_joint_frailty,
     "ParametricMultiStateRegression": (
         _search_parametric_multistate_regression
     ),

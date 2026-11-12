@@ -5,6 +5,28 @@ Unreleased
 
 **Added.**
 
+- The joint frailty model of recurrent events and a terminal event,
+  ``JointFrailty`` (``surpyval.recurrent``, and at the top level), with
+  ``JointFrailtyModel``: items with repeated events (repairs,
+  readmissions) whose history ends in an event that depends on them
+  (scrapping, death). Each item's frailty ``u`` multiplies its recurrent
+  intensity and, as ``u ** alpha``, its terminal hazard (Liu, Wolfe and
+  Huang 2004; Rondeau et al. 2007); gamma or log-normal frailty, Weibull
+  baselines (the recurrent one the power-law intensity), on the item's
+  age (``time_scale="calendar"``) or, for the recurrences, the time since
+  the last event (``"gap"``), with delayed entry (``tl``) on the
+  calendar scale. The terminal event is given by ``terminal=1`` on the
+  row (``c=1``) that closes an item's history. Fitted by maximum marginal
+  likelihood, the frailty integrated out by a trapezoid rule over each
+  item's integrand, accurate to rounding; ``theta``, ``alpha``, ``beta``,
+  ``gamma``, ``summary()``, Wald and profile-likelihood ``param_cb``,
+  ``frailty_tests()`` (no frailty, on its boundary; and ``alpha = 0``),
+  each item's predicted frailty (``frailties``), ``cif``, ``iif``,
+  ``mcf`` (the expected count, the terminal event stopping it) and the
+  terminal event's ``sf``, ``ff``, ``hf``, ``Hf`` and ``df``, for the
+  population or for one item's frailty, with ``cif_cb``, ``iif_cb``,
+  ``mcf_cb`` and ``sf_cb``; ``random`` and ``from_params``; ``to_dict`` /
+  ``from_dict``. Checked against R ``frailtypack`` 3.8.2.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,

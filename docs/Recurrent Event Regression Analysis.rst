@@ -534,6 +534,104 @@ reading off the event-count ratio between covariate settings, and plotting the
 covariate-conditional cumulative intensity with confidence bounds — see the
 :doc:`Recurrent Event Regression Modelling with SurPyval` page.
 
+A terminal event that depends on the recurrences: the joint frailty model
+-------------------------------------------------------------------------
+
+Every model above ends an item's history with a right-censored row, and
+takes that end to say nothing about the item's events: the observation
+stopped because the study did. Often it stopped because of an event
+that ends the history for good -- a machine scrapped after one repair
+too many, a patient who dies after repeated hospital admissions -- and
+the items with many recurrences are the ones that reach it sooner. That
+end is then informative, and a model of the recurrences alone is biased:
+the items with the highest rates leave the data early, so the rate looks
+lower than it is.
+
+The **joint frailty model** [LiuWolfeHuang2004]_ [Rondeau2007]_ models
+the two kinds of event together. Each item has its own unobserved
+*frailty* :math:`u` -- how prone it is to events, beyond what its
+covariates say -- which multiplies its rate of recurrent events, and,
+raised to a power :math:`\alpha`, its hazard of the terminal event:
+
+.. math::
+
+    r_i(t \mid u) = u\, r_0(t)\, e^{\beta' Z_i}, \qquad
+    \lambda_i(t \mid u) = u^{\alpha}\, \lambda_0(t)\, e^{\gamma' Z_i}.
+
+In words:
+
+- :math:`\theta`, the variance of the frailty, says how much the items
+  differ: 0 is no difference beyond the covariates, and the two kinds of
+  event are then independent.
+- :math:`\alpha` says how the terminal event depends on that difference:
+  positive when the items with more recurrences reach it sooner, 0 when
+  the terminal event does not depend on the recurrences (given the
+  covariates), negative when the frail items last longer.
+- :math:`\beta` and :math:`\gamma` are the covariates' effects on each
+  kind of event, as log rate ratios given the frailty.
+
+The frailty is gamma with mean 1 (``family="gamma"``, the default) or
+log-normal with :math:`\log u \sim N(0, \theta)`
+(``family="lognormal"``). The baselines are Weibull:
+:math:`R_0(t) = (t / \eta_r)^{k_r}`, the power-law (Crow-AMSAA)
+intensity, and :math:`\Lambda_0(t) = (t / \eta_t)^{k_t}`. The recurrent
+intensity runs on the item's age (``time_scale="calendar"``, the
+Andersen-Gill form) or on the time since its last event
+(``time_scale="gap"``: each event renews the baseline); the terminal
+hazard is always on the age. An item seen only from an age :math:`e`
+(delayed entry, ``tl``) is one that had not reached the terminal event
+by then, and the likelihood divides by the chance of that, which
+depends on the frailty.
+
+The fit maximises the marginal likelihood, the frailty integrated out of
+each item's likelihood,
+
+.. math::
+
+    L_i = \frac{\int_0^\infty \prod_j u\, r_0(t_{ij}) e^{\beta' Z_i}
+    \, e^{-u R_i e^{\beta' Z_i}} \,
+    \big(u^\alpha \lambda_0(X_i) e^{\gamma' Z_i}\big)^{\delta_i}
+    e^{-u^\alpha \Lambda_0(X_i) e^{\gamma' Z_i}} \, dG_\theta(u)}
+    {\int_0^\infty e^{-u^\alpha \Lambda_0(e_i) e^{\gamma' Z_i}}
+    \, dG_\theta(u)},
+
+with :math:`R_i` the item's cumulative baseline intensity over its
+observation and :math:`\delta_i` 1 if the terminal event ended it. The
+integral has no closed form unless :math:`\alpha = 1`, and is computed
+in :math:`w = \log u` over each item's own range, from the integrand's
+peak out to where it has fallen by :math:`e^{-36}`, by a trapezoid rule,
+which on an integrand this smooth is exact to rounding. The parameters'
+covariance is the inverse of the exact (automatic-derivative) Hessian;
+``param_cb`` gives Wald or profile-likelihood bounds.
+
+What the model gives:
+
+- ``frailty_tests()``: the likelihood-ratio test of :math:`\theta = 0`
+  (no frailty: the two parts fitted separately), whose p-value is that of
+  an even mixture of a point mass at 0 and :math:`\chi^2_1`, since 0 is
+  the edge of :math:`\theta`'s range; and of :math:`\alpha = 0` (the
+  terminal event independent of the recurrences), against
+  :math:`\chi^2_1`.
+- ``frailties``: each item's predicted frailty, its mean given its own
+  history.
+- ``cif`` and ``iif``: the recurrent events' cumulative intensity and
+  intensity with no terminal event to stop them; ``mcf``: the expected
+  number of recurrences by an age, the terminal event stopping them,
+  :math:`e^{\beta' Z} \int_0^t r_0(s)\, E[u\, S(s \mid u)]\, ds`.
+- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``: the terminal event's functions.
+  Each prediction is for the population of items with the covariates
+  (``frailty=None``, averaged over the frailty) or for one item of known
+  frailty (``frailty=u``).
+- ``random``: items simulated from the model, as rows ``fit`` takes.
+
+R's ``frailtypack`` (``frailtyPenal`` with ``terminal()``) fits the same
+model; SurPyval's agrees with its log-normal fits to three or four figures. Its
+gamma fits use Gauss-Laguerre quadrature with fixed nodes, whose answer
+moves with the number of nodes; SurPyval's are the maximum of the exact
+likelihood. Not built: spline (penalised) baselines, covariates that
+change over time, several terminal events, and frailties shared by
+groups of items (a fleet, a hospital).
+
 References
 ----------
 
@@ -571,3 +669,12 @@ References
    Regression analysis of multivariate incomplete failure time data by
    modeling marginal distributions. *Journal of the American Statistical
    Association*, 84(408), pp.1065-1073.
+
+.. [LiuWolfeHuang2004] Liu, L., Wolfe, R.A. and Huang, X., 2004. Shared
+   frailty models for recurrent events and a terminal event.
+   *Biometrics*, 60(3), pp.747-756.
+
+.. [Rondeau2007] Rondeau, V., Mathoulin-Pelissier, S., Jacqmin-Gadda, H.,
+   Brouste, V. and Soubeyran, P., 2007. Joint frailty models for recurring
+   events and death using maximum penalized likelihood estimation:
+   application on cancer events. *Biostatistics*, 8(4), pp.708-721.

@@ -398,6 +398,10 @@ with its own ``schema``.
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
      - --
+   * - ``JointFrailtyModel``
+     - ``"model": "JointFrailtyModel"``
+     - ``family``, ``time_scale``, ``params``, ``n_covariates``, ``held``, ``covariance``, ``frailty_ids``, ``frailty_values``, ``maximum``
+     - ``feature_names``
    * - ``ProportionalIntensityModel``
      - ``"model": "ProportionalIntensityModel"``
      - ``kind``, ``dist``, ``param_names``, ``params``, ``coeffs``, ``covariance``, ``maximum``

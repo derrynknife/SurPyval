@@ -117,13 +117,19 @@ model exist:
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula. Frailty for repairable systems is not built yet.
+  Archimedean copula.
+- **Joint frailty of recurrent and terminal events** (`JointFrailty`):
+  each item's own frailty acts on its recurrent intensity and, raised to
+  a power `alpha`, on the hazard of a terminal event that ends its
+  history (scrapping, death), so the two series are dependent. The frailty
+  is per item, not shared by a group of items.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
+| JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
@@ -157,7 +163,7 @@ Cells of the axes with nothing built yet:
 | Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
 | Multi-state models (illness-death, progressive) | `multi_state` |
 | Copulas for more than two lifetimes | multivariate, more than two series |
-| Shared frailty and correlated series for repairable systems | multivariate / recurrent |
+| Shared frailty and correlated series for repairable systems, beyond the one built (a frailty shared by a group of items, such as a fleet; several recurrent series per item; spline baselines) | multivariate / recurrent |
 | Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis |
 
 Not gaps, by choice: discrete time with covariates is logistic or binomial
@@ -180,6 +186,7 @@ the observed proportion).
 - **Effect type** — fixed vs random effects (frailty). Frailty is both the
   *clustered* kind of `multivariate` data and a random-effect modality of the
   covariate axis; the single-event frailty regressions above exist, and
-  frailty for repairable systems is not built yet. (Shared-frailty models coincide with Archimedean copulas — a
+  an item-level frailty for repairable systems exists only in the joint
+  model of recurrent and terminal events (`JointFrailty`). (Shared-frailty models coincide with Archimedean copulas — a
   reason the multivariate-dependence machinery could be framed as
   `none / frailty / copula`.)
