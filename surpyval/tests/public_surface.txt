@@ -153,6 +153,7 @@ surpyval.ParametricMultiState
 surpyval.ParametricMultiStateRegression
 surpyval.ParametricRegressionModel
 surpyval.PenaltyPath
+surpyval.PersonYears
 surpyval.Poisson
 surpyval.PredictionScores
 surpyval.PrenticeWilliamsPeterson
@@ -333,9 +334,11 @@ surpyval.multivariate.MultivariateSurpyvalData
 surpyval.multivariate.StudentT
 surpyval.pairwise_logrank
 surpyval.penalty_path
+surpyval.person_years
 surpyval.plot_coefficients
 surpyval.plot_likelihood_contour
 surpyval.plot_nonparametric
+surpyval.poisson_rate_bounds
 surpyval.prior
 surpyval.pseudo_cif
 surpyval.pseudo_regression
@@ -440,6 +443,7 @@ surpyval.univariate.nonparametric.NonParametric
 surpyval.univariate.nonparametric.NonParametricPlot
 surpyval.univariate.nonparametric.PLOTTING_METHODS
 surpyval.univariate.nonparametric.PairwiseLogRankResult
+surpyval.univariate.nonparametric.PersonYears
 surpyval.univariate.nonparametric.Turnbull
 surpyval.univariate.nonparametric.VAR_FUNCS
 surpyval.univariate.nonparametric.at_risk_table
@@ -455,8 +459,10 @@ surpyval.univariate.nonparametric.logrank
 surpyval.univariate.nonparametric.nelson_aalen
 surpyval.univariate.nonparametric.nelson_aalen_variance
 surpyval.univariate.nonparametric.pairwise_logrank
+surpyval.univariate.nonparametric.person_years
 surpyval.univariate.nonparametric.plot_nonparametric
 surpyval.univariate.nonparametric.plotting_positions
+surpyval.univariate.nonparametric.poisson_rate_bounds
 surpyval.univariate.nonparametric.rank_adjust
 surpyval.univariate.nonparametric.rmst_diff
 surpyval.univariate.nonparametric.sf_diff

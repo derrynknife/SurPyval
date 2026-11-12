@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-13
 
+### Exposure (person-years) tables: `person_years` (13 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function, `surpyval.person_years(x, c, n, tl, factors=, timescales=, rates=, per=, alpha_ci=)`, next to `life_table`, returning a `PersonYears` result (the table as a DataFrame, `margins`, `rate_ratio`, `to_dict` / `from_dict`), not a fitted model. | proposed | A tabulation like `life_table`, but the rate ratio and the observed to expected ratio need the table's settings, so the result is an object rather than a bare DataFrame. | done |
+| A time scale is `(start, breaks)`: each unit's value at time 0 of `x`, rising one for one with follow-up; with late entry the unit is followed on `(tl, x]` and its value at `tl` is `start + tl`. Time since entry is `start = -tl`. | proposed | R's `pyears` reads a `tcut` variable as its value at time 0 with `Surv(tl, x, d)` (checked); one rule covers age, calendar time and time since entry. | done |
+| Bands are `(b_j, b_{j+1}]`: an event exactly on an edge is in the band that ends there; time outside every band is off the table (`offtable`, with a warning), as R's. A last edge of `inf` is allowed (R refuses it). | proposed | Matches `pyears` (checked on edge cases); an infinite last band saves a warning for the oldest units. | done |
+| Every combination of the levels and bands is a row, those with no time included (rate `nan`). `units` counts a unit in each cell where it spent time, so `margins` leaves it out. | proposed | As R's arrays; cells with no time are information (no exposure there), and unit counts do not add over cells. | done |
+| Bounds are exact: Garwood for a rate and for observed / expected (the expected count taken as known); Clopper-Pearson on the conditional binomial for a rate ratio, with the exact binomial test (`binomtest`, the minimum-likelihood two-sided p-value, as `poisson.test`). Two-sided, `alpha_ci = 0.05` by default. | proposed | The standard exact methods (Breslow and Day 1987), reproduced from R's `poisson.test` to 1e-9; no other Garwood helper existed in the package, so `poisson_rate_bounds` is public. | done |
+| Reference rates are given per cell (one rate, or a table by some of the factors and time scales, a band named by its lower edge), in the units of the table's rates (`per`). A rate table finer than the cells is not integrated along each unit's path as R's `ratetable` is. | proposed | Keeps the input a plain table; the exact expected count for a finer rate table is had by cutting the bands at its edges and adding the cells up. A gap if that proves awkward. | done (finer tables a gap) |
+| Refused: left and interval censored rows (the exposure ends at an unknown time; the message says to record a failure found at an inspection as an event there, or use `Turnbull`), a `SurpyvalData` (it sorts its rows, so the per-row factors and start values could not be matched), missing factor labels or start values. | principle 2 | A table of exposure needs each unit's end time; silently matching sorted rows would mix units up. | done |
 ### Sample size beyond the plain log-rank calculation (13 Nov 2026)
 
 | Decision | By | Reason | Status |

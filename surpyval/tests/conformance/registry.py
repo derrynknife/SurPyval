@@ -354,6 +354,9 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
+    "surpyval.PersonYears": (
+        "what person_years tabulated (an exposure table), not a model"
+    ),
     "surpyval.PseudoRegressionResult": _RESULT,
     "surpyval.AdjustedCurves": _RESULT,
     "surpyval.NonParametricPlot": (
@@ -431,6 +434,8 @@ for _fn in (
     "plot_coefficients",
     "plot_likelihood_contour",
     "life_table",
+    "person_years",
+    "poisson_rate_bounds",
     "rmst_diff",
     "sf_diff",
     "success_run",

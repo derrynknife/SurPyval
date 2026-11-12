@@ -5,6 +5,24 @@ Unreleased
 
 **Added.**
 
+- Exposure (person-years) tables, ``person_years(x, c, n, tl, factors=,
+  timescales=, rates=, per=, alpha_ci=)``, as R's ``survival::pyears``:
+  the total time at risk, the events and the units in each cell of fixed
+  factors crossed with time bands that each unit moves through while
+  followed (attained age, calendar period, time since entry: R's
+  ``tcut``), with each cell's event rate (per ``per`` units of time) and
+  its exact Garwood bounds. ``rate_ratio(cells, reference)`` gives the
+  ratio of two cells' rates with its exact conditional bounds and test
+  (R's ``poisson.test``); ``rates=`` (one rate or a table by some of the
+  dimensions) gives expected events and the observed to expected ratio
+  (standardised incidence or mortality ratio) with exact bounds;
+  ``margins(by)`` adds the table up; time outside every band is reported
+  in ``offtable``. The ``PersonYears`` result has ``to_dict`` /
+  ``from_dict``. Also ``poisson_rate_bounds(events, exposure)``, the
+  exact bounds of one rate. Left and interval censored rows are refused
+  with the fix. Checked against ``pyears`` and ``poisson.test`` on
+  ``mgus2`` (cells exact). Guide: the "Exposure (person-years) tables"
+  section of :doc:`Non-Parametric SurPyval Modelling`.
 - Sample size and power for four designs the plain log-rank calculation
   does not answer, in ``surpyval.test_planning``: a Cox model's
   coefficient for a continuous covariate or one correlated with the
