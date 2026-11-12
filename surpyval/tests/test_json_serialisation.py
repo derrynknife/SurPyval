@@ -151,6 +151,19 @@ def _mixture_cure():
     return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
 
 
+def _equivalence():
+    """An equivalent time scale: hours and starts at three start rates,
+    one start worth 10 hours, a third still running."""
+    rng = np.random.default_rng(13)
+    rate = rng.choice([0.02, 0.1, 0.5], 150)
+    life = 2000.0 * rng.weibull(2.0, 150) / (1.0 + 10.0 * rate)
+    end = rng.uniform(300.0, 2000.0, 150)
+    h = np.minimum(life, end)
+    return surpyval.WeibullEquivalence.fit(
+        h, rate * h, c=(life > end).astype(int)
+    )
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -346,6 +359,7 @@ def _build(name):
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
         "mixture_cure": _mixture_cure,
+        "equivalence": _equivalence,
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
@@ -475,6 +489,7 @@ CASES = [
     "parametric_regression",
     "distributional_regression",
     "mixture_cure",
+    "equivalence",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",

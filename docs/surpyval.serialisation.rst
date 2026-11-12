@@ -452,8 +452,8 @@ with its own ``schema``.
      - --
    * - ``EquivalenceModel``
      - ``"model": "EquivalenceModel"``
-     - ``distribution``, ``clocks``, ``params``, ``parameter_names``, ``_neg_ll``, ``_null_neg_ll``, ``ic_n``, ``maximum``, ``covariance``
-     - --
+     - ``distribution``, ``clocks``, ``params``, ``parameter_names``, ``_neg_ll``, ``_null_neg_ll``, ``ic_n``
+     - ``maximum``, ``covariance``
    * - ``BayesianParametric``
      - ``"model": "BayesianParametric"``
      - ``distribution``, ``offset``, ``lfp``, ``zi``, ``fixed``, ``method``, ``priors``, ``data``, ``posterior``, ``log_evidence``, ``diagnostics``, ``exact``, ``surpyval_version``
