@@ -7,7 +7,8 @@ Data: 10 systems observed to T = 50 from a power-law (Crow-AMSAA) process
 with alpha = 10 and beta = 1.5 (about 11 events a system), simulated
 from the definition (``_montecarlo.simulate_nhpp``) rather than through the
 package's own simulator, so a fault there cannot cancel one in the fit.
-The log-linear (Cox-Lewis) process is checked the same way. The
+The log-linear (Cox-Lewis) process is checked the same way, and
+Duane's ``param_cb`` with times in hours, where its scale is about 3e-6. The
 intervention test's interval of the rate ratio is checked at the end.
 
 Slack 0.01.
@@ -23,6 +24,7 @@ from surpyval.recurrent import (
     CauseSpecificNHPP,
     CoxLewis,
     CrowAMSAA,
+    Duane,
     intervention_test,
 )
 from surpyval.recurrent.intervention import _exact_bound, _Strata
@@ -83,6 +85,34 @@ def test_nhpp_cif_cb_and_param_cb(name):
     check_coverage(lo, hi, truth, 0.95, name + " cif_cb")
     check_coverage(ilo, ihi, true_iif, 0.95, name + " iif_cb")
     check_coverage(plo, phi, np.asarray(params), 0.95, name + " param_cb")
+
+
+def test_duane_param_cb_in_hours():
+    # Duane's interval on its shape where its scale is tiny: 12 systems
+    # observed to 15,000 hours from a power law with eta = 3000 h and shape
+    # 1.6 (about 13 events a system), so b = 3000 ** -1.6, about 2.8e-6.
+    # A finite-difference step that ignores the size of b gave the shape a
+    # standard error about five times too small here, or none at all.
+    eta, beta, t_end = 3000.0, 1.6, 15_000.0
+    rng = np.random.default_rng(403)
+    reps = 1000
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        x, i, c = simulate_nhpp(
+            rng,
+            lambda t: (t / eta) ** beta,
+            lambda n: eta * n ** (1 / beta),
+            12,
+            t_end,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = Duane.fit(x, i, c=c)
+            for j, p in enumerate(model.parameter_names):
+                lo[r, j], hi[r, j] = model.param_cb(p)
+    check_coverage(
+        lo, hi, np.array([beta, eta**-beta]), 0.95, "Duane param_cb (hours)"
+    )
 
 
 def test_cause_specific_total_bounds():
