@@ -399,9 +399,10 @@ def test_i_and_ids_are_one_argument_and_one_list():
         SurpyvalData([1, 2, 3], i=["a", "b"])
 
 
-def test_repeated_ids_only_with_states():
-    with pytest.raises(ValueError, match="given more than once: 'A'"):
-        SurpyvalData([3, 5, 7], i=["A", "A", "B"])
+def test_repeated_ids_with_and_without_states():
+    # Without states a unit's several rows are stretches or events, read
+    # with the terminal flags a (test_terminal_flag.py)
+    assert SurpyvalData([3, 5, 7], i=["A", "A", "B"]).n_items == 2
     assert _illness_death().i == ["A", "A", "B", "C"]
     with pytest.raises(ValueError, match="all be of one kind"):
         _illness_death(i=["A", "A", 1, "C"])

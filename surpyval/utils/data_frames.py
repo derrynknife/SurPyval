@@ -298,6 +298,7 @@ def lifetime_from_frame(
     unit: Any = None,
     w_col: Any = None,
     s_col: Any = None,
+    a_col: Any = None,
 ) -> Any:
     """A ``SurpyvalData`` from a DataFrame with one row per item (or per
     group of identical items, counted ``n_col``; with ``s_col``, one row
@@ -326,6 +327,9 @@ def lifetime_from_frame(
         states = [_plain(v) for v in column]
         entered = _whole_states(entered, column)
     Z, names = _covariates(df, Z_cols, "a regression's fit_from_df(df, ...)")
+    a = None
+    if a_col is not None:
+        a = [_plain(v) for v in frame_column(df, a_col, "a_col")]
     data = cls(
         x,
         c,
@@ -338,6 +342,7 @@ def lifetime_from_frame(
         ids=ids,
         w=w,
         s=states,
+        a=a,
     )
     attributes = _attributes(df, attribute_cols)
     if attributes is not None:
@@ -352,7 +357,8 @@ def lifetime_to_frame(data: Any) -> Any:
     """The rows of a ``SurpyvalData`` as a DataFrame: ``id`` (where it has
     ids), ``x`` (or ``xl`` and ``xr`` where any row is an interval),
     ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite), ``s``
-    (where it has states), ``e`` (where it has event types), the
+    (where it has states), ``e`` (where it has event types), ``a``
+    (where it has terminal flags), the
     covariates by name (``Z0``, ``Z1``, ... unnamed) and the
     attributes."""
     import pandas as pd
@@ -386,6 +392,8 @@ def lifetime_to_frame(data: Any) -> Any:
         columns["s"] = list(data.s)
     if data.e is not None:
         columns["e"] = list(data.e)
+    if getattr(data, "a", None) is not None:
+        columns["a"] = np.asarray(data.a)
     _covariate_columns(columns, data)
     _attribute_columns(columns, getattr(data, "attributes", None))
     return pd.DataFrame(columns)

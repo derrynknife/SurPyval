@@ -5,6 +5,23 @@ Unreleased
 
 **Added.**
 
+- Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
+  have several rows without states, stretches of its own clock in time
+  order (covariate stretches still running at ``x``, or repeated events),
+  and ``SurpyvalData(..., a=...)`` (``from_dataframe(a_col=...)``,
+  ``data.a``) marks the event that ended a unit's history for good. An
+  event row with no ``a`` is terminal on its unit's last row and not
+  before (``data.a_inferred`` marks those rows); ``a = 1`` on a running
+  row, a row after a terminal one and overlapping or out-of-order rows
+  are refused, naming the rows. ``a`` is carried by indexing, reshapes,
+  DataFrames and JSON (``"schema": 4``), shown in the ``repr`` and
+  ``summary()`` ("units: 2 (1 ended for good, 1 still running)"), and
+  given to a fit with an ``a`` argument. Fits of one row per unit,
+  ``to_xrd`` and ``life_table`` refuse data whose units have several
+  rows, naming ``fit_tvc`` or the recurrent models; ``n_items`` counts
+  units. Data without ``a`` and with one row per unit is unchanged. A
+  repeated id without states, refused before, is now a unit with several
+  rows.
 - ``x`` with ``xl`` and ``xr``: the three may now be given together
   (``SurpyvalData``, ``SurpyvalData.from_dataframe`` and every
   ``fit_from_df`` with ``x_col``, ``xl_col`` and ``xr_col``), read row by

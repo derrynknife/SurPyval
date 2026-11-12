@@ -60,6 +60,8 @@ def rebuilt(
     )
     ids = data.ids
     s = getattr(data, "s", None) if isinstance(s, str) else s
+    a = getattr(data, "a", None)
+    a_inferred = getattr(data, "a_inferred", None)
     attributes = getattr(data, "attributes", None)
     if keep is not None:
         keep = np.asarray(keep, dtype=bool)
@@ -71,6 +73,8 @@ def rebuilt(
         e = None if e is None else e[rows]
         ids = None if ids is None else [ids[r] for r in rows]
         s = None if s is None else s[rows]
+        a = None if a is None else a[rows]
+        a_inferred = None if a_inferred is None else a_inferred[rows]
         if attributes is not None:
             attributes = [attributes[r] for r in rows]
     if not (c == 2).any():
@@ -98,6 +102,14 @@ def rebuilt(
     # e (a row censored loses its e), or drops e (the moves are then the
     # event, as in survival data)
     out.s = s
+    if a is not None:
+        # A row a reshape censored has no terminal event
+        out.a = np.where(np.asarray(out.c) == 1, 0, a)
+        out.a_inferred = (
+            None
+            if a_inferred is None
+            else a_inferred & (np.asarray(out.c) != 1)
+        )
     out.attributes = attributes
     markers = getattr(data, "markers", None)
     if markers is not None:

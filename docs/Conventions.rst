@@ -54,6 +54,25 @@ Notice three things. The two right censored values at 2 have been merged into on
     assert data.x.ndim == 2 and data.x.shape[1] == 2
     assert np.all(data.t[:, 0] == 0) and np.all(np.isinf(data.t[:, 1]))
 
+The letters of the data model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every row of a ``SurpyvalData`` is described by the same letters. In plain words:
+
+- ``x``: when the row ends: the time something happened, or the last time the unit was seen. ``xl`` and ``xr`` give a range instead, where the time is known only to lie between two ages.
+- ``c``: what is known at ``x``: 0 the event happened at ``x``, 1 the unit was still running at ``x``, -1 the event happened before ``x``, 2 it happened within the range.
+- ``n``: how many identical units the row stands for.
+- ``t`` (``tl`` and ``tr``): the window in which the unit could be seen. ``tl`` is also where a row starts on the unit's clock when a unit has several rows.
+- ``i``: which unit the row belongs to (``ids`` is its other name).
+- ``e``: what kind of event happened at ``x``: a failure mode, or the state the unit moved into.
+- ``s``: the state the unit was in during the row (multi-state data).
+- ``a``: whether the event at ``x`` ended the unit's history for good (1: scrapped, written off, died) or the unit carried on (0).
+- ``Z``: the covariates, what the row's unit was like or exposed to during the row.
+- ``w``: how many units of the population each unit of the row stands for (a sampling, propensity or censoring weight).
+- ``m``: measurements. *(Described in its own section, added separately.)*
+
+The sections below say how ``x`` with ``xl`` and ``xr``, ``i``, ``e`` and ``s``, and ``a`` work together.
+
 Exact times and ranges together: x, xl and xr
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -131,6 +150,55 @@ C        0     4    well    dead    0
     assert data.c.tolist() == [0, 0, 1, 0]
     assert data.n_items == 3 and data.i == ["A", "A", "B", "C"]
 
+Several rows per unit, and the end of a unit's history: a
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A unit may have several rows without states too. Each row is a stretch of the unit's own clock, from ``tl`` to ``x``, and the rows of a unit come in time order: each starts at or after the previous row's ``x``. ``a`` says whether the event that ends a row ended the unit's history for good (1: the unit was scrapped, written off or died) or the unit carried on (0: it was repaired, or the event recurs). Ending for good is the same idea as entering an absorbing state in multi-state data. What a unit's rows mean depends on how they end:
+
+======================================================  ===============================================================
+a unit's rows                                           what they are
+======================================================  ===============================================================
+rows with ``c = 1``, then one event with ``a = 1``      single-event life data with time-varying covariates
+events with ``a = 0``, then more rows                   recurrent events (repairs; the unit carries on)
+events with ``a = 0``, then an event with ``a = 1``     recurrent events ending in a terminal event
+a last row with ``c = 1``                               still running at the end of the record
+======================================================  ===============================================================
+
+In the first kind, each ``c = 1`` row is a stretch with the covariates ``Z`` fixed, "still running at ``x``", and the next row starts at ``x`` with the new covariates. ``a`` may be left out, or blank on some rows: an event row with no ``a`` is read as terminal (1) on its unit's last row and as not (0) on an earlier one, and ``data.a_inferred`` marks the rows read so. An ``a`` given always wins. A ``c = 1`` row has no event, so ``a = 1`` there is refused; a row after one with ``a = 1`` of the same unit is refused, and so is a row that starts before the previous row of its unit ends. Only events may share a time (simultaneous events, or the end of the record at an event's time), as for the recurrent models' data. ``e`` stays optional: an event with ``a = 0`` and no ``e`` is an event of an unrecorded kind.
+
+Covariate stretches: unit A ran under load 0 until 4, then under load 1 until it failed at 9; B was still running at 6.
+
+.. jupyter-execute::
+
+    stretches = surv.SurpyvalData(
+        x=[4, 9, 6],
+        tl=[0, 4, 0],
+        c=[1, 0, 1],
+        i=["A", "A", "B"],
+        Z=[[0.0], [1.0], [0.0]],
+    )
+    print(stretches)
+    print(stretches.a_inferred)
+
+Repairs, then the end: unit 1 was repaired at 2 and 5 and scrapped at 9; unit 2 was repaired at 4 and still running at 7.
+
+.. jupyter-execute::
+
+    repairs = surv.SurpyvalData(
+        x=[2, 5, 9, 4, 7], c=[0, 0, 0, 0, 1], i=[1, 1, 1, 2, 2]
+    )
+    print(repairs)
+    print(repairs.summary())
+
+Without ``a``, and with every unit on one row, ``data.a`` is None and the data is exactly what it was before ``a`` existed; with states ``s``, ``a`` is kept and checked but not inferred (the transitions say which states are absorbing). ``data.n_items`` counts units, not rows. A fit of one row per unit (a distribution, Kaplan-Meier, a regression) refuses data whose units have several rows, saying which kind it is: covariate stretches go to the model's ``fit_tvc``, repeated events to the recurrent models in ``surpyval.recurrent``. A fit with an ``a`` argument is given ``data.a`` and ``data.i``. ``item``, ``to_items`` and ``records`` refuse such data (a record is one unit's single row); ``to_dataframe`` writes ``a`` as a column (``from_dataframe(a_col=...)`` reads it, as given), and ``to_dict`` writes ``"a"`` and ``"a_inferred"``, stamped ``"schema": 4``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert stretches.a.tolist() == [0, 1, 0]
+    assert repairs.a.tolist() == [0, 0, 1, 0, 0] and repairs.n_items == 2
+
 The xrd format
 ~~~~~~~~~~~~~~
 
@@ -190,6 +258,7 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - i = the unit (item) each row belongs to (``ids`` is its other name in ``SurpyvalData``).
 - e = the event type of each row: the failure mode for competing risks, or, with ``s``, the state the unit moved into at x; blank where it had not.
 - s = the state the unit was in during the row (multi-state data); without it every row starts from the one initial state. See "Units, states and moves" above.
+- a = whether the row's event ended the unit's history for good (1) or the unit carried on (0). See "Several rows per unit" above.
 
 Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
 

@@ -1085,6 +1085,16 @@ class ReshapeMixin(ReadOnlyArrays):
         """
         from surpyval.utils.item_history import checked_id, item_id
 
+        if getattr(self, "a", None) is not None and (
+            self._PARTS is LIFETIME_PARTS
+        ):
+            raise ValueError(
+                "update replaces an item's record by its id, and this data "
+                "has terminal flags a (a unit may have several rows, one "
+                "per stretch or event), which a record has no place for: "
+                "build the new data from its rows, SurpyvalData(x, c, ..., "
+                "i=i, a=a)."
+            )
         if getattr(self, "s", None) is not None:
             raise ValueError(
                 "update replaces an item's record by its id, and with "

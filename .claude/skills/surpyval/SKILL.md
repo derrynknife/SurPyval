@@ -78,6 +78,10 @@ Every fitter's `fit()` takes the same optional arrays. Only `x` is usually neede
   (multi-state data; without it every row starts from one state), `i` the unit
   (`ids` is its other name). With `s`, `c` is read from `e` (blank = still in
   `s`); non-multi-state fits refuse data in more than one state.
+- **`a`** (in `SurpyvalData`) — 1 where a row's event ended the unit's history for
+  good, 0 where it carried on; a unit (`i`) may have several rows in time order
+  (covariate stretches or repeated events); blank `a` on an event is 1 on the
+  unit's last row, 0 before. Fits of one row per unit refuse such data.
 
 ```python
 import numpy as np

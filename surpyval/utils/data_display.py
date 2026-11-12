@@ -67,6 +67,9 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
     e = getattr(data, "e", None)
     if e is not None:
         columns["e"] = [repr(plain(v)) for v in e[:shown]]
+    a = None if recurrent else getattr(data, "a", None)
+    if a is not None:
+        columns["a"] = [str(int(v)) for v in a[:shown]]
     Z = getattr(data, "Z", None)
     if Z is not None:
         Z = np.asarray(Z, dtype=float)

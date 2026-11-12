@@ -212,7 +212,8 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # causes.
 # And by data with states (a ``SurpyvalData`` with ``"s"``): a v0.26
 # reader would drop the states and take the stays in every state as one
-# sample.
+# sample; and data with terminal flags (``"a"``), whose units' several
+# rows it would take as units of their own.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 4
 
@@ -778,9 +779,12 @@ def _is_joint(d: dict) -> bool:
 
 
 def _has_states(d: dict) -> bool:
-    """Whether ``d`` is data with states (a ``SurpyvalData`` with
-    ``"s"``)."""
-    return d.get("class") == "SurpyvalData" and d.get("s") is not None
+    """Whether ``d`` is data with states or terminal flags (a
+    ``SurpyvalData`` with ``"s"`` or ``"a"``): an older reader would take
+    a unit's several rows as units of their own."""
+    return d.get("class") == "SurpyvalData" and (
+        d.get("s") is not None or d.get("a") is not None
+    )
 
 
 def _is_weighted(d: dict) -> bool:
