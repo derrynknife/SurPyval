@@ -77,4 +77,6 @@ Rscript scripts/reference/reference_r_joint_links.R
 Rscript scripts/reference/reference_r_multistate.R
 # msm (in R_LIBS_USER) for the panel-data multi-state models
 Rscript scripts/reference/reference_r_multistate_panel.R
+# gsDesign and rpact (in R_LIBS_USER) for the group-sequential designs
+Rscript scripts/reference/reference_r_group_sequential.R
 "${1:-python}" scripts/reference/reference_python.py

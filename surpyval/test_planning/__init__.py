@@ -34,6 +34,22 @@ Test planning: designing reliability tests before they are run.
   :func:`rate_ratio_power`, :func:`rate_ratio_detectable` and
   :func:`rate_ratio_exposure` (the test is
   :func:`surpyval.recurrent.intervention_test`).
+- **Sample size beyond the plain log-rank test**: a Cox model's
+  coefficient for a continuous or adjusted covariate
+  (:func:`cox_events`, :func:`cox_sample_size`, :func:`cox_power`,
+  :func:`cox_detectable`); non-inferiority and equivalence of a hazard
+  ratio (:func:`noninferiority_events`, :func:`equivalence_events` and
+  their ``_sample_size`` and ``_power``); a difference in restricted mean
+  survival time (:func:`rmst_sample_size`, :func:`rmst_power`); and a
+  log-rank test when some units are cured
+  (:func:`cure_logrank_sample_size`, :func:`cure_logrank_events`,
+  :func:`cure_logrank_power`).
+- **Group-sequential designs**: a comparison looked at a few planned
+  times, stopping early for efficacy or futility while keeping its
+  level: :func:`group_sequential_design` (any normal test statistic),
+  :func:`logrank_group_sequential` (the events and units of a log-rank
+  test) and :func:`boundary_crossing` (the chances of crossing given
+  boundaries).
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -80,10 +96,34 @@ from surpyval.test_planning.estimation import (
     life_test_precision,
     life_test_sample_size,
 )
+from surpyval.test_planning.group_sequential import (
+    GroupSequentialDesign,
+    LogrankGroupSequentialDesign,
+    boundary_crossing,
+    group_sequential_design,
+    logrank_group_sequential,
+)
 from surpyval.test_planning.rate_ratio import (
     rate_ratio_detectable,
     rate_ratio_exposure,
     rate_ratio_power,
+)
+from surpyval.test_planning.sample_size import (
+    cox_detectable,
+    cox_events,
+    cox_power,
+    cox_sample_size,
+    cure_logrank_events,
+    cure_logrank_power,
+    cure_logrank_sample_size,
+    equivalence_events,
+    equivalence_power,
+    equivalence_sample_size,
+    noninferiority_events,
+    noninferiority_power,
+    noninferiority_sample_size,
+    rmst_power,
+    rmst_sample_size,
 )
 from surpyval.test_planning.sequential import (
     SequentialDemonstrationTest,
@@ -127,4 +167,26 @@ __all__ = [
     "rate_ratio_detectable",
     "rate_ratio_exposure",
     "rate_ratio_power",
+    # Group-sequential designs
+    "GroupSequentialDesign",
+    "LogrankGroupSequentialDesign",
+    "boundary_crossing",
+    "group_sequential_design",
+    "logrank_group_sequential",
+    # Sample size beyond the plain log-rank test
+    "cox_detectable",
+    "cox_events",
+    "cox_power",
+    "cox_sample_size",
+    "cure_logrank_events",
+    "cure_logrank_power",
+    "cure_logrank_sample_size",
+    "equivalence_events",
+    "equivalence_power",
+    "equivalence_sample_size",
+    "noninferiority_events",
+    "noninferiority_power",
+    "noninferiority_sample_size",
+    "rmst_power",
+    "rmst_sample_size",
 ]

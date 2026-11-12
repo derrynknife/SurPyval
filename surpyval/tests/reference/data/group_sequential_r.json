@@ -1,0 +1,314 @@
+{
+  "generator": "scripts/reference/reference_r_group_sequential.R",
+  "versions": {
+    "R": "4.6.2",
+    "gsDesign": "3.11.0",
+    "rpact": "4.4.0"
+  },
+  "references": {
+    "ldof_one_sided": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 1, alpha = 0.025, beta = 0.1, sfu = sfLDOF)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "upper": [3.7103028732625, 2.51142701390808, 1.99304752277194],
+        "lower": null,
+        "inflation_factor": 1.01185248280578,
+        "information": [0.337284160935259, 0.674568321870518, 1.01185248280578],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.000103505718147101, 0.0059448834203012, 0.0189516111740871],
+        "upper_prob_alt": [0.0337931822656051, 0.526513771241955, 0.33969304361556],
+        "lower_prob_null": null,
+        "lower_prob_alt": null,
+        "expected_null": 1.00977754611091,
+        "expected_alt": 0.811471917000001
+      }
+    },
+    "ldpocock_two_sided": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 4, test.type = 2, alpha = 0.025, beta = 0.2, sfu = sfLDPocock)",
+      "values": {
+        "timing": [0.25, 0.5, 0.75, 1],
+        "upper": [2.36832770352391, 2.36752398548841, 2.35816766174812, 2.35002954768076],
+        "lower": null,
+        "inflation_factor": 1.19630986473119,
+        "information": [0.299077466182797, 0.598154932365595, 0.897232398548392, 1.19630986473119],
+        "delta": 2.80158521811297,
+        "upper_prob_null": [0.00893435048771972, 0.00656851871456786, 0.00519686122333486, 0.00430027653045304],
+        "upper_prob_alt": [0.20152191173968, 0.250356352276046, 0.205985978991675, 0.142135757027819],
+        "lower_prob_null": [0.00893435048771972, 0.00656851871456785, 0.00519686122333486, 0.00430027653045304],
+        "lower_prob_alt": [4.80054528061955e-05, 2.24854757210974e-06, 1.72334931351595e-07, 1.68556279480198e-08],
+        "expected_null": 1.16931097538759,
+        "expected_alt": 0.80409575630307
+      }
+    },
+    "ldof_two_sided": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 2, alpha = 0.025, beta = 0.2, sfu = sfLDOF)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "upper": [3.7103028732625, 2.51142701390808, 1.99304752255554],
+        "lower": null,
+        "inflation_factor": 1.01279470786061,
+        "information": [0.337598235953535, 0.675196471907071, 1.01279470786061],
+        "delta": 2.80158521811297,
+        "upper_prob_null": [0.000103505718147101, 0.00594488342030119, 0.0189516111740871],
+        "upper_prob_alt": [0.018648772415684, 0.398800308582891, 0.382550918682405],
+        "lower_prob_null": [0.000103505718147101, 0.00594488342030119, 0.0189516111740871],
+        "lower_prob_alt": [4.6959289822765e-08, 7.36789821080376e-07, 6.61538527077141e-07],
+        "expected_null": 1.00864097015789,
+        "expected_alt": 0.865568561399138
+      }
+    },
+    "hsd_unequal": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 5, test.type = 1, alpha = 0.025, beta = 0.1, timing = c(0.2, 0.45, 0.7, 0.85, 1), sfu = sfHSD, sfupar = -4)",
+      "values": {
+        "timing": [0.2, 0.45, 0.7, 0.85, 1],
+        "upper": [3.25266848844068, 2.89114248236235, 2.51865488583135, 2.30210887785464, 2.03836150103367],
+        "lower": null,
+        "inflation_factor": 1.02632099945576,
+        "information": [0.205264199891153, 0.461844449755094, 0.718424699619035, 0.8723728495374, 1.02632099945576],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.000571633968585955, 0.0017836989641264, 0.0048485812849487, 0.00630593303625985, 0.0114901644400177],
+        "upper_prob_alt": [0.0372065955954205, 0.214512415482354, 0.348444636170436, 0.17799284766199, 0.121843505525493],
+        "lower_prob_null": null,
+        "lower_prob_alt": null,
+        "expected_null": 1.02238115230049,
+        "expected_alt": 0.73999855922296
+      }
+    },
+    "nonbinding_hsd": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 4, alpha = 0.025, beta = 0.1, sfu = sfLDOF, sfl = sfHSD, sflpar = -2)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "upper": [3.7103028732625, 2.51142701390808, 1.99304752277194],
+        "lower": [-0.241774731140725, 0.93666544454512, 1.99304752277194],
+        "inflation_factor": 1.06651360171971,
+        "information": [0.35550453390657, 0.71100906781314, 1.06651360171971],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.000103505718147101, 0.00593870889471063, 0.0172351464163461],
+        "upper_prob_alt": [0.0377368308895312, 0.55013212023353, 0.312131059645548],
+        "lower_prob_null": [0.404477359868643, 0.42913751178674, 0.143107825581115],
+        "lower_prob_alt": [0.0148337098059493, 0.028892122674873, 0.056274149088639],
+        "expected_null": 0.624181368576621,
+        "expected_alt": 0.823289726989627
+      }
+    },
+    "binding_hsd": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 3, alpha = 0.025, beta = 0.1, sfu = sfLDOF, sfl = sfHSD, sflpar = -2)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "upper": [3.7103028732625, 2.51109398922856, 1.95805227236225],
+        "lower": [-0.261021817275574, 0.909445790475801, 1.95805227236225],
+        "inflation_factor": 1.0453775998591,
+        "information": [0.348459199953033, 0.696918399906066, 1.0453775998591],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.000103505718147101, 0.00594488663249861, 0.0189524972252183],
+        "upper_prob_alt": [0.0361819243083688, 0.541217011498484, 0.322601064304231],
+        "lower_prob_null": [0.397037841283118, 0.42975330306245, 0.148208024845069],
+        "lower_prob_alt": [0.0148337098059493, 0.0288921226748745, 0.0562741599035779],
+        "expected_null": 0.616779445168352,
+        "expected_alt": 0.811164092981991
+      }
+    },
+    "power_nonbinding": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 4, test.type = 4, alpha = 0.05, beta = 0.2, timing = c(0.3, 0.5, 0.8, 1), sfu = sfPower, sfupar = 3, sfl = sfPower, sflpar = 2)",
+      "values": {
+        "timing": [0.3, 0.5, 0.8, 1],
+        "upper": [2.99997699270339, 2.53796445621561, 1.99182439897327, 1.71864756652583],
+        "lower": [-0.665001879606275, 0.1303030547806, 1.12898168358034, 1.71864756652583],
+        "inflation_factor": 1.10548149281336,
+        "information": [0.331644447844008, 0.55274074640668, 0.884385194250688, 1.10548149281336],
+        "delta": 2.48647486052439,
+        "upper_prob_null": [0.00135, 0.0048999690202917, 0.0191727878646251, 0.0202602654830551],
+        "upper_prob_alt": [0.058434563612328, 0.193110139806541, 0.388973814180748, 0.159481483119054],
+        "lower_prob_null": [0.25302464543475, 0.31433650645736, 0.310254169336, 0.0767016491014143],
+        "lower_prob_alt": [0.018, 0.032000014237418, 0.0780000000001653, 0.0719999982047403],
+        "expected_null": 0.659346880255429,
+        "expected_alt": 0.818659859563001
+      }
+    },
+    "ldpocock_binding": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 4, test.type = 3, alpha = 0.025, beta = 0.2, sfu = sfLDPocock, sfl = sfLDOF)",
+      "values": {
+        "timing": [0.25, 0.5, 0.75, 1],
+        "upper": [2.36832770352391, 2.36746597159615, 2.35294408815781, 2.26689658285959],
+        "lower": [-0.747528417052002, 0.713607018543772, 1.5468982623713, 2.26689658285959],
+        "inflation_factor": 1.2482005918894,
+        "information": [0.312050147972349, 0.624100295944698, 0.936150443917047, 1.2482005918894],
+        "delta": 2.80158521811297,
+        "upper_prob_null": [0.00893435048771972, 0.00656851899215316, 0.00519688424949805, 0.00430057616246522],
+        "upper_prob_alt": [0.210894436236928, 0.258922372623885, 0.2069587557066, 0.12322443576108],
+        "lower_prob_null": [0.227372328023656, 0.53793418510353, 0.173570426651744, 0.0361227128150421],
+        "lower_prob_alt": [0.01037412280734, 0.059552203917428, 0.0689980913282085, 0.0610756135535774],
+        "expected_null": 0.631373325312253,
+        "expected_alt": 0.756187479693729
+      }
+    },
+    "classical_of": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 4, test.type = 2, alpha = 0.025, beta = 0.2, sfu = \"OF\")",
+      "values": {
+        "timing": [0.25, 0.5, 0.75, 1],
+        "upper": [4.04859122009535, 2.86278630598174, 2.33745523076081, 2.02429561004768],
+        "lower": null,
+        "inflation_factor": 1.02384633438902,
+        "information": [0.255961583597256, 0.511923167194511, 0.767884750791767, 1.02384633438902],
+        "delta": 2.80158521811297,
+        "upper_prob_null": [2.57634255504086e-05, 0.00208457724064972, 0.00834554793540444, 0.014544110520457],
+        "upper_prob_alt": [0.00425425844464961, 0.191314602034371, 0.356522732512361, 0.247908393394684],
+        "lower_prob_null": [2.57634255504086e-05, 0.00208457724064972, 0.00834554793540443, 0.014544110520457],
+        "lower_prob_alt": [2.30168630978201e-08, 5.63172538703653e-07, 7.48100748193588e-07, 4.59630892046846e-07],
+        "expected_null": 1.01740020160815,
+        "expected_alt": 0.831384556536751
+      }
+    },
+    "classical_pocock": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 5, test.type = 2, alpha = 0.025, beta = 0.1, sfu = \"Pocock\")",
+      "values": {
+        "timing": [0.2, 0.4, 0.6, 0.8, 1],
+        "upper": [2.41317626270135, 2.41317626270135, 2.41317626270135, 2.41317626270135, 2.41317626270135],
+        "lower": null,
+        "inflation_factor": 1.20660270026111,
+        "information": [0.241320540052221, 0.482641080104443, 0.723961620156664, 0.965282160208885, 1.20660270026111],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.00790708485665956, 0.00585590207113297, 0.00450933406337714, 0.00365509376512695, 0.00307258518908254],
+        "upper_prob_alt": [0.205879638294401, 0.260255920785014, 0.208604919851671, 0.140191550887148, 0.0850679700175614],
+        "lower_prob_null": [0.00790708485665956, 0.00585590207113297, 0.00450933406337714, 0.00365509376512695, 0.00307258518908254],
+        "lower_prob_alt": [3.0936553053936e-05, 1.21017327548452e-06, 7.48774755533905e-08, 5.98788927041908e-09, 5.64706978770478e-10],
+        "expected_null": 1.17674178952805,
+        "expected_alt": 0.684912279389511
+      }
+    },
+    "classical_wt": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 1, alpha = 0.025, beta = 0.1, sfu = \"WT\", sfupar = 0.25)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "upper": [2.741136718143, 2.30501204000678, 2.08281349769494],
+        "lower": null,
+        "inflation_factor": 1.04979842347676,
+        "information": [0.349932807825587, 0.699865615651173, 1.04979842347676],
+        "delta": 3.24151555008465,
+        "upper_prob_null": [0.00306135125592491, 0.00931104404156331, 0.0126276001127261],
+        "upper_prob_alt": [0.205079361494912, 0.460039608081031, 0.234881096582185],
+        "lower_prob_null": null,
+        "lower_prob_alt": null,
+        "expected_null": 1.04439764921006,
+        "expected_alt": 0.745287478119997
+      }
+    },
+    "logrank_events": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 1, alpha = 0.025, beta = 0.1, sfu = sfLDOF, n.fix = nEvents(hr = 0.7, alpha = 0.025, beta = 0.1, ratio = 1, sided = 1))",
+      "values": {
+        "fixed_events": 330.37791396381,
+        "events": [111.431238626369, 222.862477252737, 334.293715879106],
+        "expected_null": 333.608202615336,
+        "expected_alt": 268.092401212701
+      }
+    },
+    "logrank_update": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 1, alpha = 0.025, beta = 0.1, sfu = sfLDOF, n.I = c(130, 240, 337), maxn.IPlan = <the design's n.I[3]>, delta = <its delta>)",
+      "values": {
+        "max_events": 334.293715879106,
+        "upper": [3.4096046802234, 2.40660091460199, 2.00571390746076],
+        "power": 0.901175925536355
+      }
+    },
+    "logrank_update_futility": {
+      "software": "gsDesign",
+      "call": "gsDesign(k = 3, test.type = 4, alpha = 0.025, beta = 0.1, sfu = sfLDOF, sfl = sfHSD, sflpar = -2, n.I = c(120, 250, 360), maxn.IPlan = <planned>, delta = <planned>)",
+      "values": {
+        "max_events": 352.352521986713,
+        "upper": [3.66711661312043, 2.42052862215277, 2.00515437763815],
+        "lower": [-0.20921765172908, 1.08560808949304, 2.00515437763815],
+        "power": 0.902399192451219
+      }
+    },
+    "rpact_asof_two_sided": {
+      "software": "rpact",
+      "call": "getDesignGroupSequential(kMax = 3, alpha = 0.05, sided = 2, typeOfDesign = \"asOF\", beta = 0.2)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "critical": [3.7103028732625, 2.51142748445272, 1.9930474832654],
+        "alpha_spent": [0.000207011436294202, 0.0120967781517901, 0.04999999],
+        "futility": null,
+        "inflation_factor": 1.01279481297401,
+        "expected_null": 1.00864107488243,
+        "expected_alt": 0.865568695981473
+      }
+    },
+    "rpact_hp_two_sided": {
+      "software": "rpact",
+      "call": "getDesignGroupSequential(kMax = 4, alpha = 0.05, sided = 2, typeOfDesign = \"HP\", constantBoundsHP = 3, beta = 0.2)",
+      "values": {
+        "timing": [0.25, 0.5, 0.75, 1],
+        "critical": [3, 3, 3, 1.98275095993178],
+        "alpha_spent": [0.0026997960632602, 0.00492348325783139, 0.0067391763432499, 0.05],
+        "futility": null,
+        "inflation_factor": 1.01141436581843,
+        "expected_null": 1.0077827673216,
+        "expected_alt": 0.872398350775453
+      }
+    },
+    "rpact_wt_one_sided": {
+      "software": "rpact",
+      "call": "getDesignGroupSequential(kMax = 4, alpha = 0.025, sided = 1, typeOfDesign = \"WT\", deltaWT = 0.25, beta = 0.1, informationRates = c(0.25, 0.5, 0.8, 1))",
+      "values": {
+        "timing": [0.25, 0.5, 0.8, 1],
+        "critical": [2.99184951755479, 2.51583553429038, 2.23692926483643, 2.1155570821527],
+        "alpha_spent": [0.00138646456241209, 0.00678235235601199, 0.0163459743894799, 0.02499999],
+        "futility": null,
+        "inflation_factor": 1.05760915721115,
+        "expected_null": 1.05163311747972,
+        "expected_alt": 0.726902476628303
+      }
+    },
+    "rpact_ksd_nonbinding": {
+      "software": "rpact",
+      "call": "getDesignGroupSequential(kMax = 3, alpha = 0.025, sided = 1, typeOfDesign = \"asKD\", gammaA = 3, typeBetaSpending = \"bsKD\", gammaB = 2, bindingFutility = FALSE, beta = 0.1)",
+      "values": {
+        "timing": [0.333333333333333, 0.666666666666667, 1],
+        "critical": [3.11301726340868, 2.46193402260542, 2.00870528072119],
+        "alpha_spent": [0.000925925925925886, 0.00740740731248368, 0.025],
+        "futility": [-0.349749023725149, 0.982254187110811],
+        "inflation_factor": 1.07101143461519,
+        "expected_null": 0.637733047829019,
+        "expected_alt": 0.789871281685995
+      }
+    },
+    "rpact_logrank_events": {
+      "software": "rpact",
+      "call": "getSampleSizeSurvival(getDesignGroupSequential(kMax = 3, alpha = 0.025, sided = 1, typeOfDesign = \"asOF\", beta = 0.1), hazardRatio = 0.7, ...)",
+      "values": {
+        "max_events": 334.293805162763,
+        "events": [111.431268387588, 222.862536775175, 334.293805162763],
+        "expected_null": 333.608291394109,
+        "expected_alt": 268.092475719048
+      }
+    },
+    "rpact_analysis": {
+      "software": "rpact",
+      "call": "getAnalysisResults(getDesignGroupSequential(kMax = 3, alpha = 0.025, sided = 1, typeOfDesign = \"asOF\"), getDataset(overallEvents = c(112, 224), overallLogRanks = c(1.5, 2.6), overallAllocationRatios = c(1, 1)), directionUpper = TRUE)",
+      "values": {
+        "events": [112, 224],
+        "z": [1.5, 2.6],
+        "max_events": 336,
+        "p_value": 0.00470217208533164,
+        "estimate": 1.41521669461567,
+        "lower": 1.08896676380181,
+        "upper": 1.83904726836023,
+        "repeated_lower": [0.658554511211331, 1.01190632150451],
+        "repeated_upper": [2.67688737234852, 1.9798938469108]
+      }
+    }
+  }
+}
