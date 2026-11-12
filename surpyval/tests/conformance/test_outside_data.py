@@ -62,6 +62,8 @@ RULES = {
     "CompetingRisksProportionalHazards[Cox]": "hold",
     "CompetingRisksProportionalHazards[Fine-Gray]": "hold",
     "FineGray": "hold",
+    "FineGray[strata]": "hold",
+    "FineGray[cluster]": "hold",
     "NonParametricCounting": "nan",
     "CauseSpecificMCF": "nan",
 }
@@ -96,6 +98,8 @@ WITHOUT_SET_SUPPORT = {
     "CompetingRisksProportionalHazards[Cox]": _SEMI,
     "CompetingRisksProportionalHazards[Fine-Gray]": _SEMI,
     "FineGray": _SEMI,
+    "FineGray[strata]": _SEMI,
+    "FineGray[cluster]": _SEMI,
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
 }

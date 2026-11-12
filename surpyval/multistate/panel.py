@@ -1455,11 +1455,36 @@ class _PanelMultiStateBase(SerialisableMixin):
 
 
 def _shared_columns(shared: Any, names: list) -> tuple:
+    """The columns of the covariates named in ``shared`` (by name or
+    position), each with one coefficient for every transition."""
     if shared is None:
         return ()
-    from surpyval.multistate.regression import _shared_columns as check
-
-    return check(shared, names)
+    if isinstance(shared, dict):
+        raise ValueError(
+            "shared takes the covariates (names or column numbers) whose one "
+            "coefficient applies to every transition, such as shared=0 or "
+            "shared=['age']; sharing a coefficient among some transitions "
+            "(a dict) is not built for the panel-data models."
+        )
+    if isinstance(shared, (str, int, np.integer)):
+        shared = [shared]
+    out = []
+    for item in shared:
+        if isinstance(item, (int, np.integer)) and not isinstance(item, bool):
+            if not 0 <= int(item) < len(names):
+                raise ValueError(
+                    f"shared names column {item}, but Z has {len(names)} "
+                    "column(s)."
+                )
+            out.append(int(item))
+        elif item in names:
+            out.append(names.index(item))
+        else:
+            raise ValueError(
+                f"shared names {item!r}, which is not a covariate; the "
+                f"covariates are {names!r}."
+            )
+    return tuple(sorted(set(out)))
 
 
 def _scoring(lik: _Likelihood, theta: npt.NDArray) -> tuple:

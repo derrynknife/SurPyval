@@ -283,6 +283,16 @@ _REG = "surpyval.univariate.regression."
 #: family is registered (a registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
     Pending(
+        "interval-censored Cox regressions",
+        _instance_of(
+            _REG + "proportional_hazards.interval_cox.IntervalCoxPHModel"
+        ),
+        "Check proportional hazards with diagnose() on a parametric PH fit "
+        "of the same interval-censored data (WeibullPH.fit(x, Z, c=c)), "
+        "and compare each group's predicted curve with a Turnbull "
+        "estimate of that group.",
+    ),
+    Pending(
         "Buckley-James regressions",
         _instance_of(
             _REG + "buckley_james.buckley_james." "BuckleyJamesModel"

@@ -66,6 +66,7 @@ PARTIAL_LIKELIHOOD = frozenset(
         "surpyval.SemiParametricRegressionModel",
         "surpyval.CoxFrailtyModel",
         "surpyval.ProportionalOddsModel",
+        "surpyval.IntervalCoxPHModel",
         "surpyval.univariate.competing_risks."
         "CompetingRisksProportionalHazards",
         "surpyval.univariate.competing_risks.regression.fine_gray."
