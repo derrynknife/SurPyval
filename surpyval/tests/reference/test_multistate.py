@@ -233,3 +233,213 @@ def test_cox_prediction_warns_where_the_hazards_add_up_past_one():
         model.occupancy([120, 240], [0.5, 1.0], "pcm")
     with pytest.warns(UserWarning, match="add up to more than 1 at time 282"):
         model.occupancy([120, 300], [0.5, 1.0], "pcm")
+
+
+# ---------------------------------------------------------------------------
+# Effects shared by some transitions, and proportional baselines
+# ---------------------------------------------------------------------------
+# mstate's general expanded design (de Wreede, Fiocco and Putter, 2010):
+# a column of the design applies a covariate to a set of transitions; the
+# transitions with proportional baselines are one stratum, with the
+# indicator of each but the first. The models below are those designs.
+SIM_TRANSITIONS = TransitionMatrix(
+    [
+        ("healthy", "ill"),
+        ("healthy", "dead"),
+        ("ill", "healthy"),
+        ("ill", "dead"),
+    ],
+    states=STATES["multistate"],
+)
+
+
+def _design(case, ties):
+    if case == "sim_groups":
+        d = _spells("multistate")
+        unit = d["id"]
+        Z = np.column_stack([(unit % 3 == 0).astype(float), (unit % 7) / 7])
+        into_dead = [("healthy", "dead"), ("ill", "dead")]
+        return MultiStateProportionalHazards.fit(
+            d["x"],
+            Z,
+            d["e"],
+            d["state"],
+            tl=d["tl"],
+            i=d["id"],
+            transitions=SIM_TRANSITIONS,
+            shared={0: into_dead, 1: "all"},
+            proportional_baselines=into_dead,
+            tie_method=ties,
+        )
+    d = _spells("mgus2_multistate")
+    Z = np.column_stack([d["covariates"]["z1"], d["covariates"]["male"]])
+    into_death = [("mgus", "death"), ("pcm", "death")]
+    if case == "mgus2_groups":
+        options = {"shared": {0: into_death}}
+    else:
+        options = {"shared": [1], "proportional_baselines": into_death}
+    return MultiStateProportionalHazards.fit(
+        d["x"],
+        Z,
+        d["e"],
+        d["state"],
+        tl=d["tl"],
+        i=d["id"],
+        transitions=TRANSITIONS["mgus2_multistate"],
+        tie_method=ties,
+        **options,
+    )
+
+
+DESIGNS = [
+    ("mgus2_groups", "breslow", (0, 60)),
+    ("mgus2_groups", "efron", (0, 60)),
+    ("mgus2_proportional", "breslow", (0, 60)),
+    ("mgus2_proportional", "efron", (0, 60)),
+    ("sim_groups", "efron", (0, 2)),
+]
+
+
+def _compare_predictions(model, v, s, se_rtol):
+    profile = list(v["profile"].values())
+    t = v["times"]
+    for from_state in model.states:
+        for to_state in model.states:
+            key = f"{from_state}_{to_state}"
+            p = model.occupancy(
+                t, profile, to_state, s=s, from_state=from_state
+            )
+            se = model.occupancy_se(
+                t, profile, to_state, s=s, from_state=from_state
+            )
+            assert_allclose(p, v[f"P_{key}"], rtol=1e-9, atol=1e-12)
+            # As variances, for the reason given in
+            # test_cox_per_transition_matches_mstate.
+            # mstate's square root of a variance negative by rounding is
+            # NaN; it is 0 to rounding here.
+            want = v[f"se_{key}"] ** 2
+            ok = ~np.isnan(want)
+            assert np.all(se[~ok] < 1e-7)
+            assert_allclose(
+                se[ok] ** 2,
+                want[ok],
+                rtol=se_rtol,
+                atol=64 * np.finfo(float).eps * np.nanmax(want),
+            )
+
+
+@pytest.mark.filterwarnings("ignore:For the covariates")
+@pytest.mark.parametrize("case, ties, starts", DESIGNS)
+def test_shared_groups_and_proportional_baselines_match_mstate(
+    case, ties, starts
+):
+    model = _design(case, ties)
+    for s in starts:
+        v = values(SOURCE, f"mstate_cox_{case}_{ties}_s{s}")
+        # the same columns in the same order
+        assert len(v["coef_names"]) == len(model.parameter_names)
+        assert_allclose(model.params, v["coef"], rtol=1e-8)
+        assert_allclose(model.standard_errors(), v["se_coef"], rtol=1e-8)
+        assert_allclose(model.log_likelihood, v["loglik"], rtol=1e-12)
+        if "proportional" in case or case == "sim_groups":
+            # mstate's msfit gives two transitions that share a baseline
+            # the covariance phi_h^2 dN / S0^2 of their increments, h the
+            # lower-numbered one; it is phi_h phi_g dN / S0^2 (the
+            # baseline's variance, times each transition's relative
+            # risk), which does not depend on the order of the
+            # transitions. With mstate's term the standard errors agree;
+            # with the right one they differ (by up to 13% here).
+            model._mstate_cross = True
+            model._cache = {}
+            _compare_predictions(model, v, s, 2e-6)
+            model._mstate_cross = False
+            model._cache = {}
+            # The default differs from mstate's, at least somewhere
+            # (compared where the standard error is not 0 to rounding).
+            profile = list(v["profile"].values())
+            gap = 0.0
+            for a in model.states:
+                for b in model.states:
+                    want = v[f"se_{a}_{b}"]
+                    big = want > 1e-4
+                    if np.any(big):
+                        se = model.occupancy_se(
+                            v["times"], profile, b, s=s, from_state=a
+                        )
+                        gap = max(gap, np.max(np.abs(se[big] / want[big] - 1)))
+            assert 0.01 < gap < 0.2, gap
+        else:
+            _compare_predictions(model, v, s, 2e-6)
+
+
+def test_shared_names_say_which_transitions():
+    model = _design("mgus2_groups", "breslow")
+    assert values(SOURCE, "mstate_cox_mgus2_groups_breslow_s0")[
+        "coef_names"
+    ] == ["z1.1", "z1.23", "male.1", "male.2", "male.3"]
+    assert model.parameter_names == [
+        "z0: mgus -> pcm",
+        "z0: mgus -> death, pcm -> death",
+        "z1: mgus -> pcm",
+        "z1: mgus -> death",
+        "z1: pcm -> death",
+    ]
+    prop = _design("mgus2_proportional", "breslow")
+    assert (
+        prop.parameter_names[-1] == "baseline: pcm -> death vs mgus -> death"
+    )
+
+
+def test_the_shared_baselines_covariance_does_not_depend_on_the_order():
+    # The same model with its transitions listed in another order: the
+    # standard errors are the same. mstate's term changes with the order.
+    model = _design("sim_groups", "efron")
+    d = _spells("multistate")
+    unit = d["id"]
+    Z = np.column_stack([(unit % 3 == 0).astype(float), (unit % 7) / 7])
+    into_dead = [("ill", "dead"), ("healthy", "dead")]
+    tm = TransitionMatrix(
+        [
+            ("ill", "dead"),
+            ("ill", "healthy"),
+            ("healthy", "dead"),
+            ("healthy", "ill"),
+        ],
+        states=STATES["multistate"],
+    )
+    other = MultiStateProportionalHazards.fit(
+        d["x"],
+        Z,
+        d["e"],
+        d["state"],
+        tl=d["tl"],
+        i=d["id"],
+        transitions=tm,
+        shared={0: into_dead, 1: "all"},
+        # the reference is now ill -> dead: the same model
+        proportional_baselines=into_dead,
+        tie_method="efron",
+    )
+    assert_allclose(other.log_likelihood, model.log_likelihood, rtol=1e-12)
+    t = np.array([1.0, 3.0, 6.0])
+    for a in ("healthy", "ill"):
+        for b in model.states:
+            args = (t, [1.0, 0.5], b)
+            assert_allclose(
+                other.occupancy_se(*args, from_state=a),
+                model.occupancy_se(*args, from_state=a),
+                rtol=1e-8,
+            )
+    model._mstate_cross = other._mstate_cross = True
+    model._cache, other._cache = {}, {}
+    differ = [
+        np.max(
+            np.abs(
+                other.occupancy_se(t, [1.0, 0.5], b, from_state=a)
+                - model.occupancy_se(t, [1.0, 0.5], b, from_state=a)
+            )
+        )
+        for a in ("healthy", "ill")
+        for b in model.states
+    ]
+    assert max(differ) > 1e-4
