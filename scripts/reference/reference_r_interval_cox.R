@@ -18,14 +18,19 @@
 #
 # The data (fixtures):
 #
-# * ic_mice: icenReg's miceData (Hoel and Walburg 1972), 144 mice
-#   inspected once each (current status): l = 0 is "had the tumour by u"
-#   (left censored), u = Inf "had none at l" (right censored); grp is 1
-#   for the germ-free environment ("ge"), 0 for conventional ("ce").
-# * ic_diabetes: icenReg's IR_diabetes (Borch-Johnsen et al. 1985), 731
-#   patients' times from diabetes to diabetic nephropathy in years,
-#   interval censored between visits or exact (left == right); male is 1
-#   for a man. Endpoints are whole years and are shared between rows.
+# * ic_current_status: seeded synthetic data from make_fixtures.py, of
+#   the kind of icenReg's miceData (current status): 150 units inspected
+#   once; l = 0 is "failed by u" (left censored), u = Inf "still working
+#   at l" (right censored); one binary covariate grp.
+# * ic_wide_narrow: seeded synthetic data from make_fixtures.py, of the
+#   kind of icenReg's IR_diabetes: 400 lives in years between whole-year
+#   visits, narrow (1 to 3 years) or wide (5 to 15), exact (left ==
+#   right) or right censored; endpoints shared between rows; one binary
+#   covariate male.
+#
+# icenReg's own miceData and IR_diabetes are not copied into the
+# repository (their licence is unclear); the same fits on them were run
+# locally and agree as closely (see DECISIONS.md).
 # * ic_mixed: simulated here (seed 20261113) and kept as the shared
 #   fixture; the script stops if its draws differ. 300 units with a
 #   binary z1 and a continuous z2, life Weibull PH, S(t) = exp(-(t / 10)
@@ -68,14 +73,13 @@ check <- function(name, d) {
     }
 }
 
-data(miceData)
-mice <- data.frame(l = miceData$l, u = miceData$u,
-                   grp = as.numeric(miceData$grp == "ge"))
-check("ic_mice", mice)
-data(IR_diabetes)
-diabetes <- data.frame(left = IR_diabetes$left, right = IR_diabetes$right,
-                       male = as.numeric(IR_diabetes$gender == "male"))
-check("ic_diabetes", diabetes)
+fixture <- function(name) {
+    d <- as.data.frame(fx[[name]]$columns)
+    for (col in names(d)) d[[col]][is.na(d[[col]])] <- Inf
+    d
+}
+status <- fixture("ic_current_status")
+wide_narrow <- fixture("ic_wide_narrow")
 
 set.seed(20261113)
 n <- 300
@@ -146,9 +150,9 @@ add <- function(id, fixture, formula, data, newdata, rows) {
     )
 }
 
-add("mice", "ic_mice", "cbind(l, u) ~ grp", mice,
+add("current_status", "ic_current_status", "cbind(l, u) ~ grp", status,
     data.frame(grp = c(0, 1)), "all")
-add("diabetes", "ic_diabetes", "cbind(left, right) ~ male", diabetes,
+add("wide_narrow", "ic_wide_narrow", "cbind(left, right) ~ male", wide_narrow,
     data.frame(male = c(0, 1)), "all")
 add("mixed", "ic_mixed", "cbind(l, u) ~ z1 + z2", mixed,
     data.frame(z1 = c(0, 1), z2 = c(0, 0.5)), "all")

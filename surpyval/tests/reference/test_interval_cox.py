@@ -17,8 +17,15 @@ estimate of a standard error has a Monte Carlo error of about 2.2%, and
 the two are required to agree within 15% (fixed before either was run).
 The default, profile-likelihood standard error estimates the same
 quantity by another route and is held to the same 15% of R's bootstrap
-(a sanity bound; the mice and diabetes values, 4% apart, were seen while
-choosing the method).
+(a sanity bound; values on icenReg's own data, within 6%, were seen
+while choosing the method).
+
+The data are seeded synthetic fixtures from ``make_fixtures.py``: current
+status data of the kind of icenReg's miceData, interval data with wide
+and narrow intervals, exact times and shared whole-year endpoints of the
+kind of its IR_diabetes, and a mixed simulated set. icenReg's own data
+are not copied into the repository; the same checks on them were run
+locally (see DECISIONS.md).
 
 With exact and right-censored data only (``exact_right``) the model is
 the grouped-data proportional hazards model: ``ic_sp`` and SurPyval
@@ -50,12 +57,12 @@ def _rows(l, u):
 
 
 def _data(ref_id):
-    if ref_id == "mice":
-        d = fixture("ic_mice")
+    if ref_id == "current_status":
+        d = fixture("ic_current_status")
         x, c = _rows(d["l"], d["u"])
         return x, c, d["grp"].reshape(-1, 1)
-    if ref_id == "diabetes":
-        d = fixture("ic_diabetes")
+    if ref_id == "wide_narrow":
+        d = fixture("ic_wide_narrow")
         x, c = _rows(d["left"], d["right"])
         return x, c, d["male"].reshape(-1, 1)
     d = fixture("ic_mixed")
@@ -67,7 +74,7 @@ def _data(ref_id):
     return d["er_time"], c, Z
 
 
-IDS = ("mice", "diabetes", "mixed", "exact_right")
+IDS = ("current_status", "wide_narrow", "mixed", "exact_right")
 
 
 @pytest.fixture(scope="module")
@@ -109,7 +116,7 @@ def test_survival_after_each_turnbull_interval(fits, ref_id):
 
 
 # (exact_right's, a minute of refits, is left to the interval data)
-@pytest.mark.parametrize("ref_id", ("mice", "diabetes", "mixed"))
+@pytest.mark.parametrize("ref_id", ("current_status", "wide_narrow", "mixed"))
 def test_standard_errors_against_the_bootstrap(fits, ref_id):
     r = values(SOURCE, ref_id)
     model = fits[ref_id]
