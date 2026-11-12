@@ -31,6 +31,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     ah_data,
     discrete_data,
     grouped_reg_data,
+    ic_reg_data,
     reg_data,
     stratified_reg_data,
     stress_data,
@@ -1213,7 +1214,33 @@ def _semi_parametric():
         coefficients=lambda m: m.B[:, 1:],
         intercept=True,
     )
-    return [cox, strat, cox_frailty, ah, bj, po, aalen]
+
+    def ic_from_df(d):
+        x = np.asarray(d["x"], dtype=float)
+        df = pd.DataFrame(d["Z"], columns=["z0", "z1"])
+        df["xl"], df["xr"], df["c"], df["n"] = x[:, 0], x[:, 1], d["c"], d["n"]
+        return sp.IntervalCoxPH.fit_from_df(
+            df,
+            xl_col="xl",
+            xr_col="xr",
+            Z_cols=["z0", "z1"],
+            c_col="c",
+            n_col="n",
+        )
+
+    interval_cox = regression(
+        "IntervalCoxPH",
+        sp.IntervalCoxPH,
+        data=ic_reg_data,
+        model_class="surpyval.IntervalCoxPHModel",
+        paths={"fit_from_df": ic_from_df},
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    return [cox, strat, cox_frailty, ah, bj, po, aalen, interval_cox]
 
 
 _NO_COEFFICIENTS = (

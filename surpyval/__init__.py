@@ -199,6 +199,8 @@ _LAZY = {
             "PO",
             "ParameterSubstitutionFitter",
             "ParametricRegressionModel",
+            "IntervalCoxPH",
+            "IntervalCoxPHModel",
             "ProportionalHazardsFitter",
             "ProportionalOdds",
             "ProportionalOddsFitter",

@@ -175,6 +175,22 @@ def _zero_inflated():
     return surpyval.WeibullZeroInflated.fit(np.where(doa, 0.0, life), z)
 
 
+def _interval_cox():
+    """An interval-censored Cox fit: lives seen between inspections two
+    apart, a few exactly, one right censored."""
+    rng = np.random.default_rng(13)
+    z = np.tile([0.0, 1.0], 30)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(1.5, z.size)
+    lo = 2.0 * np.floor(life / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(z.size, 2)
+    x[::5] = life[::5, None]
+    c[::5] = 0
+    x[7] = [lo[7], lo[7]]
+    c[7] = 1
+    return surpyval.IntervalCoxPH.fit(x, z, c=c)
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -383,6 +399,7 @@ def _build(name):
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
+        "interval_cox": _interval_cox,
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -512,6 +529,7 @@ CASES = [
     "aalen_additive",
     "buckley_james",
     "proportional_odds",
+    "interval_cox",
     "mixture",
     "royston_parmar",
     "fine_gray",

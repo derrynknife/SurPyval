@@ -5,6 +5,25 @@ Unreleased
 
 **Added.**
 
+- The Cox model for interval-censored data, ``IntervalCoxPH`` (model
+  ``IntervalCoxPHModel``): the covariates multiply the hazard,
+  ``S(x | Z) = S0(x) ** exp(beta'Z)``, and the baseline is a
+  non-parametric maximum-likelihood estimate with mass only on the
+  Turnbull intervals of the pooled data, fitted jointly with the
+  coefficients (the model of R's ``icenReg::ic_sp(model = "ph")``, whose
+  coefficients, log-likelihood and curves it matches). Takes exact,
+  right-, left- and interval-censored rows (``x`` as ``[left, right]``
+  pairs), counts and left truncation; ``fit_from_df`` reads intervals
+  from ``xl_col`` and ``xr_col``. Standard errors from the profile
+  likelihood (Murphy and van der Vaart 2000); ``param_cb`` with Wald,
+  profile likelihood-ratio (``method="lr"``) and case-bootstrap
+  (``method="bootstrap"``) intervals, and ``covariance(method=
+  "bootstrap")``. ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``qf``,
+  ``baseline_sf``, ``random``, ``with_params``, ``summary``,
+  ``to_dict`` / ``from_dict``. ``cb`` on the curves, right truncation and
+  ``diagnose()`` refuse, saying what to use instead. ``CoxPH`` still
+  refuses interval-censored rows. Guide:
+  :doc:`Interval-Censored Cox Regression`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,
