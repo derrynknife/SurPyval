@@ -75,4 +75,6 @@ Rscript scripts/reference/reference_r_recurrent_cox.R
 Rscript scripts/reference/reference_r_joint_links.R
 # mstate (in R_LIBS_USER) for the multi-state models
 Rscript scripts/reference/reference_r_multistate.R
+# gsDesign and rpact (in R_LIBS_USER) for the group-sequential designs
+Rscript scripts/reference/reference_r_group_sequential.R
 "${1:-python}" scripts/reference/reference_python.py
