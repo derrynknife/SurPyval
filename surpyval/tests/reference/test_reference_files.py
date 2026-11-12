@@ -48,6 +48,7 @@ EXPECTED_SOURCES = {
     "r_mixture_cure",
     "r_pyears",
     "r_adjusted_curves",
+    "r_logrank_extensions",
     "r_reclassification",
     "r_sample_size",
     "py_lifelines",
