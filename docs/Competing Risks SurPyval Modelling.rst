@@ -1208,6 +1208,63 @@ optimiser result (``model.res``) is not stored:
     np.allclose(reloaded.cif([0.5, 1.0], Z=[1.0, 0.0]),
                 model.cif([0.5, 1.0], Z=[1.0, 0.0]))
 
+Strata and clusters
+~~~~~~~~~~~~~~~~~~~
+
+Two common departures from the plain model have their own options.
+
+**Strata.** When the units come from a few groups (sites, centres,
+production lines) whose cause-1 incidence has a different shape over time,
+or whose censoring differs, ``strata=`` gives each group its own baseline
+subdistribution hazard and its own censoring distribution, while the
+covariates' effects are shared (Zhou, Latouche, Rocha and Fine, 2011; R's
+``crrSC::crrs``). This is the competing-risks counterpart of a stratified
+Cox model: use it for a factor you need to allow for but do not need an
+effect for. Predictions then name the stratum:
+
+.. jupyter-execute::
+
+    site = np.where(np.arange(N) % 3 == 0, "east", "west")
+    by_site = FineGray.fit(x, Z, e, c=c, event=1, strata=site)
+    print(by_site.beta.round(3), by_site.standard_errors().round(3))
+    print(by_site.cif([0.5, 1.0], Z=[1.0, 0.0], stratum="east").round(3))
+
+With many small strata (a stratum per centre with a handful of units each)
+a censoring distribution per stratum is poorly estimated; then
+``strata_censoring="common"`` estimates one for all the strata, each still
+with its own baseline (``crrs``'s ``ctype = 2``).
+
+**Clusters.** When units are not independent of each other within a group
+(the two eyes or kidneys of a patient, the pumps of one station, the
+components of one machine), ``cluster=`` keeps the estimates and makes the
+standard errors allow for the dependence: the robust covariance adds up
+the influence of a cluster's units before squaring it (Zhou, Fine,
+Latouche and Labopin, 2012; R's ``crrSC::crrc``). Without it, a covariate
+shared by the units of a cluster has standard errors that are too small.
+
+.. jupyter-execute::
+
+    pair = np.arange(N) // 2
+    paired = FineGray.fit(x, Z, e, c=c, event=1, cluster=pair)
+    print(paired.beta.round(3), paired.standard_errors().round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(paired.beta, model.beta)
+    assert by_site.cif(1.0, Z=[1.0, 0.0], stratum="east") > 0
+
+Both combine with each other and with weights ``w``, and ``fit_from_df``
+takes them as ``strata_col`` and ``cluster_col``. R's ``crrs`` with
+``ctype = 2`` treats each stratum as a cluster too: its standard errors are
+those of ``strata_censoring="common", cluster=<the strata>``. The
+model-based covariance (``covariance(robust=False)``) ignores the clusters,
+and the diagnostics (``diagnose()``, the proportionality tests and the
+residuals) refuse a fit with strata or clusters, as their tests take one
+baseline and independent units: check proportionality on the fit without
+them, or within each stratum.
+
 Cause-Specific Proportional Hazards
 -----------------------------------
 

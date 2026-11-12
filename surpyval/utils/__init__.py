@@ -169,14 +169,17 @@ def validate_fine_gray_inputs(
     n: npt.ArrayLike | None,
     w: npt.ArrayLike | float | None = None,
     tl: npt.ArrayLike | float | None = None,
+    labels: tuple = (),
 ) -> tuple:
     """``(x, Z, e, c, n)`` of a competing-risks regression, checked, with
     the rows that have a missing covariate dropped; and the weights ``w``
     of the rows kept as a sixth entry where ``w`` is given (checked by
     ``check_weights``, one per row or one for every row), and the entry
-    times ``tl`` of the rows kept as the last entry where ``tl`` is given
+    times ``tl`` of the rows kept as the next entry where ``tl`` is given
     (checked as ``CoxPH``'s are: one-dimensional, each before its row's
-    time)."""
+    time). ``labels``, per-row arrays (a Fine-Gray fit's stratum and
+    cluster codes), travel with the rows and come last, those of the rows
+    kept."""
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)
@@ -191,10 +194,11 @@ def validate_fine_gray_inputs(
         # The weights travel with the rows, so a row dropped for a
         # missing covariate takes its weight with it.
         rows += (check_weights(w, rows[0].shape[0]),)
+    rows += tuple(np.asarray(a) for a in labels)
     # Rows with a NaN / infinite covariate are dropped with a warning, as
     # every regression fitter does (they used to be dropped silently here);
     # left- and interval-censored rows are refused below, after the drop.
-    x_a, c_a, n_a, tl_a, Z_arr, e_arr, *w_kept = semi_parametric_inputs(
+    x_a, c_a, n_a, tl_a, Z_arr, e_arr, *carried = semi_parametric_inputs(
         x,
         Z,
         c,
@@ -215,9 +219,11 @@ def validate_fine_gray_inputs(
     e_arr = check_c_and_e(c_a, e_arr)
     check_left_or_int_cens(c_a)
 
+    w_kept = carried[: 0 if w is None else 1]
+    label_kept = carried[len(w_kept) :]
     out: tuple = (x_a, Z_arr, e_arr, c_a, n_a)
     if w is not None:
         out += (np.asarray(w_kept[0], float),)
     if tl is not None:
         out += (tl_a,)
-    return out
+    return out + tuple(np.asarray(a) for a in label_kept)
