@@ -2719,6 +2719,30 @@ def _bounds(case):
                 label="quantile_cb_at_usage",
             ),
         ),
+        # Wald from the profile likelihood's curvature, the profile
+        # likelihood-ratio interval and the case bootstrap; the curves
+        # have no bounds (cb refuses, pointing to these and WeibullPH).
+        "IntervalCoxPHModel": (
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "bootstrap", **_BOOT},
+                label="param_cb[bootstrap]",
+                wald=False,
+                slow=True,
+            ),
+        ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
         # The Cox model's predicted curves: R's survfit conf.types
         "SemiParametricRegressionModel": tuple(
@@ -3272,6 +3296,7 @@ def _starve(case):
         "SemiParametricRegressionModel",
         "FineGrayModel",
         "ProportionalOddsModel",
+        "IntervalCoxPHModel",
         "CoxFrailtyModel",
         "RecurrentCoxModel",
         "MultiStateProportionalHazards",

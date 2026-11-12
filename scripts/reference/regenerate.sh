@@ -77,6 +77,8 @@ Rscript scripts/reference/reference_r_recurrent_cox.R
 # JM (in R_LIBS_USER) for the joint model's links; prints the values typed
 # into surpyval/tests/reference/test_joint_links.py (about ten minutes)
 Rscript scripts/reference/reference_r_joint_links.R
+# icenReg (in R_LIBS_USER) for the interval-censored Cox model
+Rscript scripts/reference/reference_r_interval_cox.R
 # mstate (in R_LIBS_USER) for the multi-state models
 Rscript scripts/reference/reference_r_multistate.R
 # msm (in R_LIBS_USER) for the panel-data multi-state models

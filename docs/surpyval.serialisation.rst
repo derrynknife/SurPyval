@@ -334,6 +334,10 @@ with its own ``schema``.
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
      - --
+   * - ``IntervalCoxPHModel``
+     - ``"model": "IntervalCoxPHModel"``
+     - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``H0``, ``H0_infinite``, ``intervals``, ``p0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
+     - --
    * - ``MixtureModel``
      - ``"model": "MixtureModel"``
      - ``dist``, ``m``, ``params``, ``w``, ``maximum``, ``_neg_ll``, ``ic_n``, ``theta_covariance``
