@@ -5,6 +5,29 @@ Unreleased
 
 **Added.**
 
+- Multi-state models for panel data, ``PanelMultiState`` and
+  ``PanelMultiStateRegression`` (also at the top level): units whose state
+  is seen only at visits (clinic visits, inspections, survey waves), so
+  that each move happened at an unknown time between two visits. A
+  continuous-time Markov model with a constant intensity for each allowed
+  move, fitted by maximum likelihood from the states seen (the likelihood
+  of R ``msm``: products of :math:`\exp(Q t)` over the gaps, by the
+  forward recursion). Data are one row per visit (``x``, ``s``, ``i``, and
+  ``fit_from_df`` with ``x_col``, ``s_col``, ``i_col``); a visit may see a
+  set of states (``censored``), a death may be timed exactly
+  (``exact_entry``) and a move may be seen as it happened
+  (``obstype="exact"``). Covariates act on the log intensities, per
+  transition or ``shared``, and may change between visits; ``pci`` lets
+  the intensities change at given times. ``intensity_matrix``,
+  ``transition_probabilities``, ``occupancy``, ``occupancy_se`` and ``cb``
+  (delta-method bounds from the exact derivatives of the matrix
+  exponential), ``mean_sojourn`` and ``sojourn_cb``, ``param_cb`` and
+  ``summary`` (Wald bounds, intensity ratios), a fit that warns where an
+  intensity runs to 0 (no finite maximum), and ``to_dict`` /
+  ``from_dict``. Checked against R ``msm`` 1.9: log-likelihoods to 1e-12,
+  intensities, standard errors and bounds to about 1e-6. Misclassified
+  states (hidden Markov models) are not built. See :doc:`Multi-State
+  Models`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,

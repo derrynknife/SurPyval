@@ -144,6 +144,8 @@ surpyval.NormalPO
 surpyval.PH
 surpyval.PO
 surpyval.PairwiseLogRankResult
+surpyval.PanelMultiState
+surpyval.PanelMultiStateRegression
 surpyval.ParameterSubstitutionFitter
 surpyval.Parametric
 surpyval.ParametricCompetingRisks
@@ -315,6 +317,8 @@ surpyval.ml.RandomSurvivalForest
 surpyval.ml.SurvivalTree
 surpyval.multistate.MultiState
 surpyval.multistate.MultiStateProportionalHazards
+surpyval.multistate.PanelMultiState
+surpyval.multistate.PanelMultiStateRegression
 surpyval.multistate.ParametricMultiState
 surpyval.multistate.ParametricMultiStateRegression
 surpyval.multistate.TransitionMatrix

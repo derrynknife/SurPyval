@@ -75,4 +75,6 @@ Rscript scripts/reference/reference_r_recurrent_cox.R
 Rscript scripts/reference/reference_r_joint_links.R
 # mstate (in R_LIBS_USER) for the multi-state models
 Rscript scripts/reference/reference_r_multistate.R
+# msm (in R_LIBS_USER) for the panel-data multi-state models
+Rscript scripts/reference/reference_r_multistate_panel.R
 "${1:-python}" scripts/reference/reference_python.py

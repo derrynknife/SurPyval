@@ -54,6 +54,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_JOINT,
     X_MS,
     X_MSR,
+    X_PANEL,
     X_PATH,
     X_PROC,
     X_REC,
@@ -75,6 +76,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     mixture_data,
     ms_data,
     offset_data,
+    panel_data,
     path_data,
     process_data,
     quantiles,
@@ -937,6 +939,83 @@ def _multistate():
             paths={"fit_from_df": pmsr_from_df},
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Multi-state, states seen at visits (panel data)
+# ---------------------------------------------------------------------------
+_PANEL_EXCLUDE = {
+    "counts": "the rows are visits of units, and a visit repeated is a "
+    "unit seen twice at one time (refused); the model takes no counts",
+    "convergence": "the search starts from the data's crude rates and "
+    "takes no init or iteration limit to starve; a search that ends "
+    "short is checked by 'maximum'",
+}
+
+
+def _panel_multistate():
+    def frame(d):
+        df = pd.DataFrame({"x": d["x"], "s": d["s"], "i": d["i"]})
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def options(d):
+        return {
+            "transitions": d["transitions"],
+            "censored": d["censored"],
+            "exact_entry": d["exact_entry"],
+        }
+
+    def from_df(d):
+        return ms.PanelMultiState.fit_from_df(
+            frame(d), "x", "s", "i", **options(d)
+        )
+
+    def reg_from_df(d):
+        return ms.PanelMultiStateRegression.fit_from_df(
+            frame(d), "x", ["z0"], "s", "i", **options(d)
+        )
+
+    return [
+        Case(
+            name="PanelMultiState",
+            fitters=("surpyval.multistate.PanelMultiState",),
+            model_class="surpyval.multistate.PanelMultiState",
+            interface=STATES,
+            data=panel_data,
+            fit=_fit(ms.PanelMultiState),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            rows=("x", "s", "i"),
+            times=("x",),
+            paths={"fit_from_df": from_df},
+            exclude=_PANEL_EXCLUDE,
+        ),
+        Case(
+            name="PanelMultiStateRegression",
+            fitters=("surpyval.multistate.PanelMultiStateRegression",),
+            model_class="surpyval.multistate.PanelMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(ms.PanelMultiStateRegression),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            Z=Z_MS[: X_PANEL.size],
+            rows=("x", "Z", "s", "i"),
+            times=("x",),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude=_PANEL_EXCLUDE,
         ),
     ]
 
@@ -1818,6 +1897,7 @@ CASES: list[Case] = (
     + _mixture_cure()
     + _equivalence()
     + _zero_inflated()
+    + _panel_multistate()
     + _bayes()
 )
 
@@ -2468,6 +2548,27 @@ def _bounds(case):
         # The delta method over every transition's parameters.
         "ParametricMultiState": _multistate_bounds((None,)),
         "ParametricMultiStateRegression": _multistate_bounds((None,)),
+        # The delta method over the intensities (and coefficients), Wald
+        # bounds on each parameter, and on each transient state's mean
+        # stay.
+        "PanelMultiState": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy",), ("ill",)),
+            ),
+        ),
+        "PanelMultiStateRegression": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy", [0.5]), ("ill", [1.0])),
+            ),
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
