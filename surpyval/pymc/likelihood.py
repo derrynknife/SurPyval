@@ -62,6 +62,9 @@ def as_surpyval_data(
             "whose robust covariance gives valid Wald intervals, or pass "
             "the data without its weights (data.x, data.c, data.n, data.t).",
         )
+        from surpyval.utils.surpyval_data import refuse_multi_state
+
+        refuse_multi_state(data, what)
         return data
     if data is not None:
         if hasattr(data, "to_xcnt") or hasattr(data, "x_i"):

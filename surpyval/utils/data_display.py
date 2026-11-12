@@ -61,6 +61,9 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         columns["tl"] = [time_text(v) for v in tl[:shown]]
     if np.isfinite(tr).any():
         columns["tr"] = [time_text(v) for v in tr[:shown]]
+    s = None if recurrent else getattr(data, "s", None)
+    if s is not None:
+        columns["s"] = [repr(plain(v)) for v in s[:shown]]
     e = getattr(data, "e", None)
     if e is not None:
         columns["e"] = [repr(plain(v)) for v in e[:shown]]
@@ -103,7 +106,8 @@ def heading(data: Any, recurrent: bool) -> str:
     if recurrent:
         items = len(data.ids)
     else:
-        items = int(np.asarray(data.n).sum())
+        # The rows weighted by their counts; with states, the units
+        items = data.n_items
     head = f"{name}: {plural(items, 'item')}, {plural(len(data.x), 'row')}"
     unit = getattr(data, "unit", None)
     return head if unit is None else f"{head}, ages in {unit}"
@@ -184,7 +188,10 @@ def held_lines(data: Any, recurrent: bool) -> list:
                 if np.isfinite(b).any()
             )
         )
-    e = getattr(data, "e", None)
+    s = None if recurrent else getattr(data, "s", None)
+    if s is not None:
+        lines += _state_lines(data, s, n)
+    e = None if s is not None else getattr(data, "e", None)
     if e is not None:
         counts: Counter = Counter()
         masked = 0
@@ -237,6 +244,31 @@ def held_lines(data: Any, recurrent: bool) -> list:
     if attributes:
         names = list(dict.fromkeys(k for a in attributes if a for k in a))
         lines.append("  attributes: " + ", ".join(names))
+    return lines
+
+
+def _state_lines(data: Any, s: Any, n: Any) -> list:
+    """The summary lines of lifetime data with states: the states (in the
+    order first seen, in ``s`` then ``e``) and the moves between them,
+    counting units (a row counted ``n`` is ``n`` moves)."""
+    e = getattr(data, "e", None)
+    entered = [None] * len(s) if e is None else list(e)
+    named = [plain(v) for v in s]
+    named += [plain(v) for v in entered if v is not None]
+    found = list(dict.fromkeys(named))
+    lines = ["  states: " + ", ".join(map(str, found))]
+    moves: Counter = Counter()
+    for frm, to, flag, k in zip(s, entered, data.c, n):
+        if flag != 1:
+            moves[(plain(frm), plain(to))] += int(k)
+    if moves:
+        lines.append(
+            "  moves: "
+            + ", ".join(
+                f"{frm} to {'not recorded' if to is None else to} ({k})"
+                for (frm, to), k in moves.items()
+            )
+        )
     return lines
 
 

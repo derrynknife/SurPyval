@@ -54,6 +54,50 @@ Notice three things. The two right censored values at 2 have been merged into on
     assert data.x.ndim == 2 and data.x.shape[1] == 2
     assert np.all(data.t[:, 0] == 0) and np.all(np.isinf(data.t[:, 1]))
 
+Units, states and moves: i, e and s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Three more columns say what each row is about:
+
+- ``i``: which unit the row belongs to (``ids`` is its other name; the two are one argument and one list).
+- ``s``: the state the unit was in during the row, from its entry (``tl``) to ``x``.
+- ``e``: the state it moved into at ``x``; blank (None, NaN or an empty string) where it had not moved.
+- ``c`` then says whether it moved (0) or was still in ``s`` when last seen (1).
+
+Without ``s`` there is one starting state, and every row starts from it. Ordinary survival data is that case with one way out (the event), and competing-risks data is that case with several ways out: the failure mode in ``e`` is the state entered. Nothing about such data changes when ``s`` is not given.
+
+With ``s``, a unit has a row for each stay in a state, so its id repeats. This is an illness-death study: patient A was well until 3, then ill until dying at 5; B was still well when last seen at 7; C died at 4 without falling ill.
+
+=======  ====  ===  ======  ======  ===
+unit     tl    x    s       e       c
+=======  ====  ===  ======  ======  ===
+A        0     3    well    ill     0
+A        3     5    ill     dead    0
+B        0     7    well            1
+C        0     4    well    dead    0
+=======  ====  ===  ======  ======  ===
+
+.. jupyter-execute::
+
+    data = surv.SurpyvalData(
+        x=[3, 5, 7, 4],
+        tl=[0, 3, 0, 0],
+        s=["well", "ill", "well", "well"],
+        e=["ill", "dead", None, "dead"],
+        i=["A", "A", "B", "C"],
+    )
+    print(data)
+    print(data.summary())
+
+``c`` was left out, so it was read from ``e``: a blank ``e`` is 1, a state 0. A ``c`` given with ``e`` must agree with it row by row; a row with ``c = 1`` and a state in ``e``, or a move with no state entered, is refused, naming the rows. The states are kept as given (text or whole numbers, never turned into floats), and ``data.n_items`` counts the units (3 here), not the rows. The multi-state models (:class:`~surpyval.multistate.MultiState` and the others in ``surpyval.multistate``) take this data; a fit that is not multi-state refuses data in more than one state, since putting every stay into one risk set is another model, and ``data[data.s == "well"]`` keeps the stays in one state (which fit as competing risks, as data without ``s`` would).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert data.c.tolist() == [0, 0, 1, 0]
+    assert data.n_items == 3 and data.i == ["A", "A", "B", "C"]
+
 The xrd format
 ~~~~~~~~~~~~~~
 
@@ -110,6 +154,9 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - tl = one dimensional array or scalar value. If an array it is the value at which each value of x is left truncated. If a scalar all values of x are left truncated at the same value.
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
+- i = the unit (item) each row belongs to (``ids`` is its other name in ``SurpyvalData``).
+- e = the event type of each row: the failure mode for competing risks, or, with ``s``, the state the unit moved into at x; blank where it had not.
+- s = the state the unit was in during the row (multi-state data); without it every row starts from the one initial state. See "Units, states and moves" above.
 
 Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
 
@@ -538,7 +585,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A model fitted with sampling weights is stamped 3 and a stratified Cox model 4, which older releases refuse rather than misread (one as unweighted, the other as its first stratum's baseline); so is a ``ParametricCompetingRisks`` fitted to left- or interval-censored rows (schema 4), whose covariance between causes SurPyval 0.26 would drop. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
+Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A model fitted with sampling weights is stamped 3 and a stratified Cox model 4, which older releases refuse rather than misread (one as unweighted, the other as its first stratum's baseline); so is a ``ParametricCompetingRisks`` fitted to left- or interval-censored rows (schema 4), whose covariance between causes SurPyval 0.26 would drop, and data with states, a ``SurpyvalData`` with ``s`` (schema 4), whose states it would drop. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
 A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 

@@ -140,6 +140,9 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
         lost.append("event types")
     if getattr(data, "time_varying_covariates", None) is not None:
         lost.append("time-varying covariates")
+    states = getattr(data, "s", None)
+    if states is not None and len(set(states.tolist())) > 1:
+        lost.append("states")
     if lost:
         raise ValueError(f"{what}: {lost_message(lost, False)}")
     if getattr(data, "markers", None) is not None:

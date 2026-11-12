@@ -210,6 +210,9 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # every cause's parameters and the joint likelihood, which a v0.26 reader
 # would silently drop, bounding the incidences without the terms between
 # causes.
+# And by data with states (a ``SurpyvalData`` with ``"s"``): a v0.26
+# reader would drop the states and take the stays in every state as one
+# sample.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 4
 
@@ -233,6 +236,9 @@ _SCHEMA_SIGNED = 4
 # The schema of a jointly fitted ParametricCompetingRisks model (its
 # ``"joint"`` entry): v0.27's schema 4.
 _SCHEMA_JOINT = 4
+
+# The schema of data with states (``"s"``): v0.27's schema 4.
+_SCHEMA_STATES = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -731,6 +737,8 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         return _SCHEMA_SIGNED
     if any(_is_joint(d) for d in dicts):
         return _SCHEMA_JOINT
+    if any(_has_states(d) for d in dicts):
+        return _SCHEMA_STATES
     if any(d.get("weighted") is True for d in dicts):
         return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
@@ -767,6 +775,12 @@ def _is_joint(d: dict) -> bool:
         d.get("model") == "ParametricCompetingRisks"
         and d.get("joint") is not None
     )
+
+
+def _has_states(d: dict) -> bool:
+    """Whether ``d`` is data with states (a ``SurpyvalData`` with
+    ``"s"``)."""
+    return d.get("class") == "SurpyvalData" and d.get("s") is not None
 
 
 def _is_weighted(d: dict) -> bool:

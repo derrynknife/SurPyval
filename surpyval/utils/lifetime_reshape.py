@@ -38,9 +38,10 @@ def rebuilt(
     e: Any = "same",
     names: Any = "same",
     time_varying: Any = "same",
+    s: Any = "same",
 ) -> Any:
     """A dataset like ``data`` with the rows ``keep`` (all, where None)
-    and the arrays given replaced: the item ids and time-varying
+    and the arrays given replaced: the item ids, states and time-varying
     covariates follow the rows kept."""
     from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -58,6 +59,7 @@ def rebuilt(
         else time_varying
     )
     ids = data.ids
+    s = getattr(data, "s", None) if isinstance(s, str) else s
     attributes = getattr(data, "attributes", None)
     if keep is not None:
         keep = np.asarray(keep, dtype=bool)
@@ -68,6 +70,7 @@ def rebuilt(
         Z = None if Z is None else np.asarray(Z)[rows]
         e = None if e is None else e[rows]
         ids = None if ids is None else [ids[r] for r in rows]
+        s = None if s is None else s[rows]
         if attributes is not None:
             attributes = [attributes[r] for r in rows]
     if not (c == 2).any():
@@ -91,6 +94,10 @@ def rebuilt(
             unit=data.unit,
         )
     out.ids = ids
+    # Set as they are: a reshape changes only flags it keeps in step with
+    # e (a row censored loses its e), or drops e (the moves are then the
+    # event, as in survival data)
+    out.s = s
     out.attributes = attributes
     markers = getattr(data, "markers", None)
     if markers is not None:
@@ -133,6 +140,8 @@ def without(data: Any, parts: tuple) -> Any:
     if "truncation" in parts:
         changes["tl"] = np.full(len(data.c), -np.inf)
         changes["tr"] = np.full(len(data.c), np.inf)
+    if "states" in parts:
+        changes["s"] = None
     out = rebuilt(data, **changes)
     if "attributes" in parts:
         out.attributes = None
@@ -185,13 +194,20 @@ def with_covariates(data: Any, columns: list) -> Any:
 
 def relabel(data: Any, mapping: dict) -> Any:
     """``data`` with its failures' event types renamed by ``mapping``
-    (:func:`data_reshape.relabel`): a suspension keeps none."""
+    (:func:`data_reshape.relabel`): a suspension keeps none. With states
+    ``s``, an event type is a state, so ``s`` is renamed with it."""
     e = np.empty(len(data.e), dtype=object)
     e[:] = [
         (v if flag == 1 else mapping.get(v, v))
         for v, flag in zip(data.e, np.asarray(data.c))
     ]
-    return rebuilt(data, e=e)
+    s = getattr(data, "s", None)
+    if s is not None:
+        renamed = np.empty(len(s), dtype=object)
+        for k, v in enumerate(s):
+            renamed[k] = mapping.get(v, v)
+        s = renamed
+    return rebuilt(data, e=e, s="same" if s is None else s)
 
 
 def for_event_type(data: Any, types: set, masked: str) -> Any:

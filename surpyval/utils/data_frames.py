@@ -240,6 +240,20 @@ def _event_types(df: Any, e_col: Any) -> np.ndarray | None:
     return out
 
 
+def _whole_states(entered: Any, states: Any) -> Any:
+    """The states entered, as whole numbers where the states are: pandas
+    stores a column of whole numbers with a blank as floats (``2.0``),
+    which would not name the same state as ``2`` in the states column."""
+    if entered is None or not np.issubdtype(states.dtype, np.integer):
+        return entered
+    values = [v for v in entered if v is not None]
+    if not all(isinstance(v, float) and v.is_integer() for v in values):
+        return entered
+    out = np.empty(len(entered), dtype=object)
+    out[:] = [None if v is None else int(v) for v in entered]
+    return out
+
+
 def lifetime_from_frame(
     cls: Any,
     df: Any,
@@ -258,10 +272,11 @@ def lifetime_from_frame(
     attribute_cols: Any = None,
     unit: Any = None,
     w_col: Any = None,
+    s_col: Any = None,
 ) -> Any:
     """A ``SurpyvalData`` from a DataFrame with one row per item (or per
-    group of identical items, counted ``n_col``); see
-    ``SurpyvalData.from_dataframe``."""
+    group of identical items, counted ``n_col``; with ``s_col``, one row
+    per stay of a unit in a state); see ``SurpyvalData.from_dataframe``."""
     from surpyval.utils.units import normalise_unit
 
     df = require_frame(df)
@@ -276,6 +291,12 @@ def lifetime_from_frame(
     ids = None
     if i_col is not None:
         ids = [_plain(v) for v in frame_column(df, i_col, "i_col")]
+    states = None
+    entered = _event_types(df, e_col)
+    if s_col is not None:
+        column = frame_column(df, s_col, "s_col")
+        states = [_plain(v) for v in column]
+        entered = _whole_states(entered, column)
     Z, names = _covariates(df, Z_cols, "a regression's fit_from_df(df, ...)")
     data = cls(
         x,
@@ -284,10 +305,11 @@ def lifetime_from_frame(
         tl=_bound(df, tl_col, "tl_col"),
         tr=_bound(df, tr_col, "tr_col"),
         Z=Z,
-        e=_event_types(df, e_col),
+        e=entered,
         covariate_names=names,
         ids=ids,
         w=w,
+        s=states,
     )
     attributes = _attributes(df, attribute_cols)
     if attributes is not None:
@@ -301,9 +323,10 @@ def lifetime_from_frame(
 def lifetime_to_frame(data: Any) -> Any:
     """The rows of a ``SurpyvalData`` as a DataFrame: ``id`` (where it has
     ids), ``x`` (or ``xl`` and ``xr`` where any row is an interval),
-    ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite), ``e``
-    (where it has event types), the covariates by name (``Z0``, ``Z1``,
-    ... unnamed) and the attributes."""
+    ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite), ``s``
+    (where it has states), ``e`` (where it has event types), the
+    covariates by name (``Z0``, ``Z1``, ... unnamed) and the
+    attributes."""
     import pandas as pd
 
     if data.time_varying_covariates is not None:
@@ -331,6 +354,8 @@ def lifetime_to_frame(data: Any) -> Any:
         columns["tl"] = tl
     if np.isfinite(tr).any():
         columns["tr"] = tr
+    if getattr(data, "s", None) is not None:
+        columns["s"] = list(data.s)
     if data.e is not None:
         columns["e"] = list(data.e)
     _covariate_columns(columns, data)

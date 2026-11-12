@@ -28,6 +28,8 @@ LIFETIME_PARTS = {
     "truncation": ("left_truncation", "right_truncation"),
     "markers": ("markers",),
     "attributes": ("attributes",),
+    # The rows' states (``s``): no part of a record; the dataset drops them
+    "states": (),
 }
 HISTORY_PARTS = {
     "covariates": ("covariates",),
@@ -633,6 +635,16 @@ def per_item_ages(method: str, ages: Any, data: Any) -> dict:
     return out
 
 
+def rows_of_units(ids: list, wanted: Any) -> np.ndarray:
+    """The rows (positions in ``ids``, each row's unit) of the units
+    ``wanted``, in the order of the rows: every row of a unit with
+    several (its stays in states). The one lookup of a unit's rows."""
+    wanted_set = set(wanted)
+    return np.array(
+        [k for k, unit in enumerate(ids) if unit in wanted_set], dtype=int
+    )
+
+
 def id_list(ids: Any, data: Any) -> list:
     """``ids`` for ``select`` as a list of ids (#932): a str, a number
     or an id of the data's is one id."""
@@ -664,11 +676,22 @@ class ReshapeMixin(ReadOnlyArrays):
 
     def _map(self, fn: Callable) -> Any:
         records, counts = self._records()
-        kept = [(fn(r), k) for r, k in zip(records, counts)]
-        kept = [(r, k) for r, k in kept if r is not None]
+        kept = [(j, fn(r), k) for j, (r, k) in enumerate(zip(records, counts))]
+        kept = [(j, r, k) for j, r, k in kept if r is not None]
         if not kept:
             raise ValueError("No items are left.")
-        return self._from_records([r for r, _ in kept], [k for _, k in kept])
+        return self._from_kept(
+            [j for j, _, _ in kept],
+            [r for _, r, _ in kept],
+            [k for _, _, k in kept],
+        )
+
+    def _from_kept(self, rows: list, records: list, counts: list) -> Any:
+        """The dataset of ``records`` (with ``counts``), the reshaped
+        records of the rows (or items) ``rows``; a dataset that keeps
+        something by row that the records have no place for (lifetime
+        data's states) puts it back by ``rows``."""
+        return self._from_records(records, counts)
 
     @property
     def _on_arrays(self) -> bool:
@@ -694,8 +717,9 @@ class ReshapeMixin(ReadOnlyArrays):
         The data without some of what it holds, to fit a model that does
         not take it: any of ``"covariates"``, ``"event_types"``,
         ``"time_varying_covariates"``, ``"truncation"`` (and ``"markers"``
-        for lifetime data, ``"states"`` for event history data), as
-        separate arguments or a list. A plain ``Weibull.fit`` of data built
+        for lifetime data, ``"states"`` for event history data and for
+        lifetime data with states ``s``), as separate arguments or a
+        list. A plain ``Weibull.fit`` of data built
         with covariates and failure modes, say, is
         ``Weibull.fit(data.without("covariates", "event_types"))``.
         """
@@ -850,7 +874,9 @@ class ReshapeMixin(ReadOnlyArrays):
 
     def relabel_event_types(self, mapping: dict) -> Any:
         """The data with its event types renamed by ``mapping`` (``{old:
-        new}``): to merge failure modes, map several to one."""
+        new}``): to merge failure modes, map several to one. With states
+        ``s`` (lifetime data), the event types are the states entered,
+        so a state is renamed in ``s`` and ``e`` alike."""
         from surpyval.utils.item_history import missing_type
 
         # A missing key (None, NaN, "") names the masked causes
@@ -858,6 +884,9 @@ class ReshapeMixin(ReadOnlyArrays):
             None if missing_type(k) else k: v for k, v in mapping.items()
         }
         types = self._event_types()
+        states = getattr(self, "s", None)
+        if states is not None and self._PARTS is LIFETIME_PARTS:
+            types |= set(states)
         unknown = [k for k in mapping if k is not None and k not in types]
         if unknown:
             raise ValueError(
@@ -1009,29 +1038,25 @@ class ReshapeMixin(ReadOnlyArrays):
                     + ", ".join(repr(i) for i in missing)
                     + " in the data."
                 )
-            wanted_set = set(wanted)
-            rows = np.array(
-                [k for k, i in enumerate(have) if i in wanted_set], dtype=int
-            )
+            rows = rows_of_units(have, wanted)
         if where is None and rows is not None and self._on_arrays:
             from surpyval.utils import lifetime_reshape
 
             return lifetime_reshape.select(self, rows)
         records, counts = self._records()
+        triples = list(zip(range(len(records)), records, counts))
         if rows is not None:
             kept_rows = set(rows.tolist())
-            pairs = [
-                (r, k)
-                for j, (r, k) in enumerate(zip(records, counts))
-                if j in kept_rows
-            ]
-        else:
-            pairs = list(zip(records, counts))
+            triples = [t for t in triples if t[0] in kept_rows]
         if where is not None:
-            pairs = [(r, k) for r, k in pairs if where(r)]
-        if not pairs:
+            triples = [t for t in triples if where(t[1])]
+        if not triples:
             raise ValueError("No items are left.")
-        return self._from_records([r for r, _ in pairs], [k for _, k in pairs])
+        return self._from_kept(
+            [j for j, _, _ in triples],
+            [r for _, r, _ in triples],
+            [k for _, _, k in triples],
+        )
 
     def update(self, records: Any, counts: Any = None) -> Any:
         """
@@ -1060,6 +1085,13 @@ class ReshapeMixin(ReadOnlyArrays):
         """
         from surpyval.utils.item_history import checked_id, item_id
 
+        if getattr(self, "s", None) is not None:
+            raise ValueError(
+                "update replaces an item's record by its id, and with "
+                "states s a unit has a row for each stay in a state, which "
+                "a record has no place for: build the new data from its "
+                "rows, SurpyvalData(x, c, ..., s=s, e=e, i=i)."
+            )
         if getattr(self, "ids", None) is None:
             raise ValueError(
                 "update needs item ids, and this data has none (its rows "
@@ -1143,8 +1175,8 @@ class ReshapeMixin(ReadOnlyArrays):
                 + ", ".join(repr(i) for i in missing)
                 + " in the data."
             )
-        dropped = set(wanted)
-        keep = np.array([i not in dropped for i in have], dtype=bool)
+        keep = np.ones(len(have), dtype=bool)
+        keep[rows_of_units(have, wanted)] = False
         if not keep.any():
             raise ValueError("No items are left.")
         return self._rows_of_items(keep)
@@ -1281,13 +1313,16 @@ class ReshapeMixin(ReadOnlyArrays):
         or before a first look, its observation starts instead at the later
         inspection, from which it is known again.
         """
+        entries = None
         if isinstance(age, dict):
             cuts = per_item_ages("enter_at", age, self)
         elif callable(age):
-            cuts = {
-                r.id: cut_age("enter_at", age(r), self)
-                for r in self._records()[0]
-            }
+            # Each record's own entry, in order (a unit's id repeats over
+            # its stays in data with states, so not keyed by id)
+            entries = iter(
+                [cut_age("enter_at", age(r), self) for r in self._records()[0]]
+            )
+            cuts = None
         else:
             value = cut_age("enter_at", age, self)
             cuts = None
@@ -1308,6 +1343,8 @@ class ReshapeMixin(ReadOnlyArrays):
             return self._map(
                 lambda r: enter_at(r, cuts[r.id]) if r.id in cuts else r
             )
+        if entries is not None:
+            return self._map(lambda r: enter_at(r, next(entries)))
         if self._on_arrays:
             from surpyval.utils import lifetime_reshape
 

@@ -56,7 +56,9 @@ class SurpyvalData(ReshapeMixin):
     Its arrays are ``x`` (a ``[lower, upper]`` row where any observation
     is an interval), ``c``, ``n`` and ``t`` (``tl`` and ``tr``, its
     columns), ``Z`` (the covariates, named by ``covariate_names``), ``e``
-    (the event types) and ``ids``. For the likelihoods it also holds the
+    (the event types), ``ids`` (each row's unit, also called ``i``) and,
+    for multi-state data, ``s`` (the state each row's unit was in). For
+    the likelihoods it also holds the
     rows split by kind of observation (``x_o``, ``n_o``; ``x_r``, ``n_r``;
     ``x_l``, ``n_l``; ``x_il``, ``x_ir``, ``n_i``; and ``Z_o``, ... with
     covariates): a censored row with a finite truncation bound on its
@@ -94,6 +96,22 @@ class SurpyvalData(ReshapeMixin):
     (array([1., 3.]), array([4.]))
     >>> data.x_il, data.x_ir
     (array([2.]), array([3.]))
+
+    With states: each row is a stay of a unit (``i``) in a state (``s``),
+    entered at ``tl`` and left at ``x`` for the state ``e`` (blank where
+    the unit was still in ``s`` when last seen, which makes ``c`` 1):
+
+    >>> data = SurpyvalData(
+    ...     x=[3, 5, 7, 4],
+    ...     tl=[0, 3, 0, 0],
+    ...     s=["well", "ill", "well", "well"],
+    ...     e=["ill", "dead", None, "dead"],
+    ...     i=["A", "A", "B", "C"],
+    ... )
+    >>> data.c
+    array([0, 0, 1, 0])
+    >>> data.n_items
+    3
     """
 
     # Attached by ``from_items``: each row's item id, the event type of
@@ -103,6 +121,10 @@ class SurpyvalData(ReshapeMixin):
     # with none; #891).
     ids: list | None = None
     e: np.ndarray | None = None
+    # Each row's state (the state the unit was in during the row), for
+    # multi-state data; None where every row starts from the one initial
+    # state (ordinary survival and competing-risks data).
+    s: np.ndarray | None = None
     time_varying_covariates: dict | None = None
     markers: dict | None = None
     # The name of each column of Z, where they have names: given as
@@ -139,6 +161,8 @@ class SurpyvalData(ReshapeMixin):
         ids: Any = None,
         unit: Any = None,
         w: ArrayLike | Number | None = None,
+        s: Any = None,
+        i: Any = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -187,12 +211,17 @@ class SurpyvalData(ReshapeMixin):
             The event type (failure mode or cause) of each row, for the
             competing-risks fitters, which take it from the data; a
             suspension (``c == 1``) has none (None). Giving ``e`` turns
-            ``group_and_sort`` off, as ``Z`` does.
+            ``group_and_sort`` off, as ``Z`` does. With states ``s``,
+            ``e`` is the state the unit moved into at ``x`` (a failure
+            mode is a state entered from the one starting state), blank
+            (None, NaN or "") where it was still in ``s``.
         ids : array-like, optional
-            Each row's item id (text or numbers, each once), as
+            Each row's item (unit) id (text or numbers, each once), as
             ``from_items`` gives them: ``data.item(id)`` and
             ``select(ids=...)`` then find the rows. Giving ``ids`` turns
-            ``group_and_sort`` off, as ``Z`` does.
+            ``group_and_sort`` off, as ``Z`` does. ``i`` is the same
+            argument; give one or the other. With states ``s`` a unit
+            has a row for each stay in a state, so an id may repeat.
         unit : str, optional
             The unit of the times (``"hours"``, ``"km"``), a label kept
             with the data as a model keeps its ``unit``; ``fit(data)``
@@ -206,6 +235,21 @@ class SurpyvalData(ReshapeMixin):
             make invalid (see :doc:`/Weighted Data`). Rows are grouped
             only where their weights are equal too. Without ``w`` the
             data is unweighted (``data.w`` is None).
+        s : array-like, optional
+            The state each row's unit was in during the row (from its
+            entry, ``tl``, to ``x``), for multi-state data: one state per
+            row, text or numbers, kept as given. Without ``s`` every row
+            starts from the one initial state, as ordinary survival and
+            competing-risks data do. With ``s``, ``c`` is read from ``e``
+            where ``c`` is left out (blank ``e``: 1, still in ``s``;
+            otherwise 0, moved into ``e`` at ``x``), and a ``c`` given
+            must agree with ``e`` (a row with ``c == 1`` has a blank
+            ``e``, any other row a state in ``e``). Giving ``s`` turns
+            ``group_and_sort`` off, as ``Z`` does. Fits that are not
+            multi-state refuse data with more than one state in ``s``.
+        i : array-like, optional
+            Each row's unit (item) id; the same argument as ``ids``
+            (``data.i`` and ``data.ids`` are the same list).
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -244,7 +288,18 @@ class SurpyvalData(ReshapeMixin):
         >>> data = SurpyvalData(x, t=t)
         """
 
-        if Z is not None or e is not None or ids is not None:
+        if i is not None:
+            if ids is not None:
+                raise TypeError(
+                    "Both i= and ids= were given: they are the same "
+                    "argument (each row's unit id), so give one."
+                )
+            ids, id_name = i, "i"
+        else:
+            id_name = "ids"
+        if s is not None and handle:
+            c = _flags_from_entered(c, e, x, xl)
+        if any(v is not None for v in (Z, e, ids, s)):
             group_and_sort = False
 
         w_arr: np.ndarray | None = None
@@ -287,13 +342,15 @@ class SurpyvalData(ReshapeMixin):
             self.Z: np.ndarray | None = None
         if covariate_names is not None:
             self.covariate_names = _checked_names(covariate_names, self.Z)
-        if e is not None:
+        if s is not None:
+            self.s = _state_array(s, len(self.c))
+            if e is not None:
+                self.e = _entered_states(e, self.c)
+        elif e is not None:
             self.e = _event_type_array(e, self.c)
         if ids is not None:
-            from surpyval.utils.item_history import check_item_ids
-
-            listed = _kind_ids("ids", ids, len(self.c))
-            check_item_ids(listed, "row (identical items are its count, n)")
+            listed = _kind_ids(id_name, ids, len(self.c))
+            check_unit_ids(listed, several_rows=s is not None)
             self.ids = listed
         if unit is not None:
             from surpyval.utils.item_history import _unit
@@ -793,13 +850,15 @@ class SurpyvalData(ReshapeMixin):
         attribute_cols: Any = None,
         unit: Any = None,
         w_col: Any = None,
+        s_col: Any = None,
     ) -> SurpyvalData:
         """
         The data from a :class:`pandas.DataFrame` with one row per item
         (or per group of identical items, counted ``n_col``), naming the
         columns as every DataFrame entry point does (``x_col``, ``c_col``,
         ..., the ``fit`` argument with ``_col``). The rows stay in the
-        frame's order where ids, event types or covariates are given.
+        frame's order where ids, event types, states or covariates are
+        given.
 
         Parameters
         ----------
@@ -831,12 +890,20 @@ class SurpyvalData(ReshapeMixin):
             The left and right truncation of each row (a column), or one
             bound for every row (a number).
         i_col : str, optional
-            The item ids (each once): ``data.item(id)`` and
+            The item (unit) ids, ``data.i`` (each once; with ``s_col``, a
+            unit's id on each of its rows): ``data.item(id)`` and
             ``select(ids=...)`` then find them.
         e_col : str, optional
             The event type of each failure (a failure mode or cause); a
             blank cell on a suspension is nothing, on a failure a type
-            not recorded (a masked cause, warned of).
+            not recorded (a masked cause, warned of). With ``s_col``, the
+            state the unit moved into at ``x`` (blank where it had not
+            moved), from which ``c`` is read where no ``c_col`` or
+            ``event_col`` is given.
+        s_col : str, optional
+            The state each row's unit was in during the row, for
+            multi-state data (one row per stay in a state, entered at
+            ``tl_col``): ``data.s``.
         Z_cols : list of str, optional
             The covariate columns, which name the covariates
             (``covariate_names``); numbers (a blank cell is a covariate
@@ -848,6 +915,8 @@ class SurpyvalData(ReshapeMixin):
         unit : str, optional
             The unit of the times (``"hours"``), kept with the data and
             taken by ``fit(data)``.
+        w_col : str, optional
+            The weight of each row, ``w``.
 
         Returns
         -------
@@ -884,6 +953,23 @@ class SurpyvalData(ReshapeMixin):
         ... )
         >>> data.c
         array([-1,  2,  1])
+
+        Stays in states (an illness-death study), the flags read from the
+        state entered:
+
+        >>> df = pd.DataFrame({
+        ...     "patient": [1, 1, 2, 3],
+        ...     "entered": [0, 3, 0, 0],
+        ...     "left": [3, 5, 7, 4],
+        ...     "state": ["well", "ill", "well", "well"],
+        ...     "to": ["ill", "dead", None, "dead"],
+        ... })
+        >>> data = SurpyvalData.from_dataframe(
+        ...     df, i_col="patient", tl_col="entered", x_col="left",
+        ...     s_col="state", e_col="to",
+        ... )
+        >>> data.c, data.n_items
+        (array([0, 0, 1, 0]), 3)
         """
         from surpyval.utils.data_frames import lifetime_from_frame
 
@@ -904,6 +990,7 @@ class SurpyvalData(ReshapeMixin):
             attribute_cols=attribute_cols,
             unit=unit,
             w_col=w_col,
+            s_col=s_col,
         )
 
     def to_dataframe(self) -> Any:
@@ -911,11 +998,13 @@ class SurpyvalData(ReshapeMixin):
         The rows as a :class:`pandas.DataFrame`: ``id`` (where the data
         has ids), ``x`` (or ``xl`` and ``xr`` where any row is an
         interval), ``c``, ``n``, ``tl`` and ``tr`` (where any bound is
-        finite), ``e`` (where it has event types), the covariates by
-        name (``Z0``, ``Z1``, ... where unnamed) and the attributes.
+        finite), ``s`` (where it has states), ``e`` (where it has event
+        types), the covariates by name (``Z0``, ``Z1``, ... where
+        unnamed) and the attributes.
         ``SurpyvalData.from_dataframe(data.to_dataframe(), x_col="x",
-        c_col="c", n_col="n", ...)`` is the same data. Time-varying
-        covariates have no place in it, and are refused.
+        c_col="c", n_col="n", i_col="id", s_col="s", ...)`` is the same
+        data. Time-varying covariates have no place in it, and are
+        refused.
 
         Examples
         --------
@@ -1126,14 +1215,32 @@ class SurpyvalData(ReshapeMixin):
         [ItemLifetime(0, observed=3.0), ItemLifetime(1, right_censored=7.0)]
         """
         self._refuse_records("make records of")
+        self._refuse_state_records("to_items()")
         prepared = self._prepared()
         return [self._item_at(k, prepared) for k in range(len(self.x))]
 
     _PARTS = LIFETIME_PARTS
 
     def _records(self) -> tuple[list, list]:
+        # The rows' records, for a reshape: with states, each record is
+        # one row (one stay), its state kept beside it by the reshape
+        # (``_from_kept``).
         self._refuse_records("reshape")
-        return self.to_items(), list(np.asarray(self.n))
+        prepared = self._prepared()
+        records = [self._item_at(k, prepared) for k in range(len(self.x))]
+        return records, list(np.asarray(self.n))
+
+    def _refuse_state_records(self, what: str) -> None:
+        """Refuse to give records of data with states, which an
+        ``ItemLifetime`` has no place for."""
+        if self.s is not None:
+            raise ValueError(
+                f"{what} gives ItemLifetime records, which have no place "
+                "for the state s each row's unit was in (and a unit with "
+                "several stays would be several records under one id). "
+                "Use data.to_dataframe() for the rows, data.select(ids=...) "
+                "for a unit's rows, or data[rows]."
+            )
 
     def _refuse_records(self, what: str) -> None:
         """Refuse to make records of weighted data, which have no place
@@ -1151,6 +1258,24 @@ class SurpyvalData(ReshapeMixin):
         out = SurpyvalData.from_items(records, counts=counts)
         if self.ids is None:
             out.ids = None  # its items were row numbers, not ids
+        return out
+
+    def _from_kept(self, rows: list, records: list, counts: list) -> Any:
+        """The data of the reshaped ``records`` of the rows ``rows``. With
+        states, a record has no place for its row's state, and a unit's
+        id repeats over its stays, so the records are numbered by row and
+        the ids and states are put back by row."""
+        if self.s is None:
+            return self._from_records(records, counts)
+        from surpyval.utils.item_lifetime import ItemLifetime
+
+        numbered = [
+            ItemLifetime(k, **record._fields())
+            for k, record in enumerate(records)
+        ]
+        out = SurpyvalData.from_items(numbered, counts=counts)
+        out.ids = None if self.ids is None else [self.ids[r] for r in rows]
+        out.s = self.s[np.asarray(rows, dtype=int)]
         return out
 
     def _covariate_levels(self, column: int) -> list:
@@ -1190,6 +1315,7 @@ class SurpyvalData(ReshapeMixin):
         """
         from surpyval.utils.item_history import item_id
 
+        self._refuse_state_records(f"item({id!r})")
         key = item_id(id)
         if self.ids is not None:
             matches = [k for k, i in enumerate(self.ids) if i == key]
@@ -1304,8 +1430,26 @@ class SurpyvalData(ReshapeMixin):
     @property
     def n_items(self) -> int:
         """The number of items: the rows weighted by their counts ``n``
-        (``len(data)`` is the number of rows)."""
-        return int(np.asarray(self.n).sum())
+        (``len(data)`` is the number of rows). With states ``s`` and unit
+        ids, a unit has a row for each stay, so the items are the
+        distinct units, each counted by the ``n`` of its first row."""
+        n = np.asarray(self.n)
+        if self.s is not None and self.ids is not None:
+            first: dict = {}
+            for k, unit in enumerate(self.ids):
+                first.setdefault(unit, k)
+            return int(n[list(first.values())].sum())
+        return int(n.sum())
+
+    @property
+    def i(self) -> list | None:
+        """Each row's unit (item) id, as ``ids``: the two names are one
+        list, and setting either sets both."""
+        return self.ids
+
+    @i.setter
+    def i(self, value: list | None) -> None:
+        self.ids = value
 
     @property
     def event_types(self) -> list:
@@ -1333,6 +1477,7 @@ class SurpyvalData(ReshapeMixin):
         ['observed', 'right_censored']
         """
         self._refuse_records("make records of")
+        self._refuse_state_records("records()")
         prepared = self._prepared()
         for k in range(len(self.x)):
             yield self._item_at(k, prepared)
@@ -1382,6 +1527,13 @@ class SurpyvalData(ReshapeMixin):
         >>> data.to_observations()["observed_left_truncation"]
         array([500.,   0.])
         """
+        if self.s is not None:
+            raise ValueError(
+                "to_observations lists the times by kind of observation, "
+                "and from_observations has no place for the state s of "
+                "each row: use data.to_dataframe() or data.to_dict(), "
+                "which keep the states."
+            )
         counts = self.n.astype(int)
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
         Z = None
@@ -1440,6 +1592,7 @@ class SurpyvalData(ReshapeMixin):
             tuple
                 The xrd data, ``(x, r, d)``.
         """
+        refuse_multi_state(self, "to_xrd")
         # Cache per estimator: the first call used to be returned for
         # every later call regardless of a different ``estimator``
         # argument (#282).
@@ -1555,6 +1708,8 @@ class SurpyvalData(ReshapeMixin):
         rows = np.atleast_1d(np.arange(len(self.x))[index])
         if self.e is not None:
             out.e = self.e[rows]
+        if self.s is not None:
+            out.s = self.s[rows]
         if self.ids is not None:
             out.ids = [self.ids[r] for r in rows]
         if self.attributes is not None:
@@ -1610,8 +1765,10 @@ class SurpyvalData(ReshapeMixin):
         :doc:`/surpyval.serialisation`). ``surpyval.from_dict`` reads it
         too. Data with weights ``w`` is stamped ``"schema": 3`` (a
         weighted model is schema 4), so that a reader without weights
-        refuses it rather than drop them; unweighted data has no
-        ``"schema"``.
+        refuses it rather than drop them, and data with states ``s``
+        ``"schema": 4`` for the same reason; other data has no
+        ``"schema"``. The unit ids are under ``"ids"`` (``i``'s other
+        name), the states under ``"s"``.
 
         Examples
         --------
@@ -1636,6 +1793,8 @@ class SurpyvalData(ReshapeMixin):
             data["covariate_names"] = list(self.covariate_names)
         if self.e is not None:
             data["e"] = [label(v) for v in self.e]
+        if self.s is not None:
+            data["s"] = [label(v) for v in self.s]
         if self.ids is not None:
             data["ids"] = [label(v) for v in self.ids]
         if self.attributes is not None:
@@ -1661,10 +1820,12 @@ class SurpyvalData(ReshapeMixin):
         # surpyval.serialisation.encode_non_finite), not as the
         # ``Infinity`` literals strict parsers reject.
         out = encode_non_finite(data)
-        if self.w is not None:
+        if self.w is not None or self.s is not None:
             # Schema 3 (a weighted model's dict is 4): a reader that
             # checks the schema and has no weights refuses it rather than
-            # drop them. Unweighted data keeps its unstamped layout.
+            # drop them. Data with states is schema 4, which a reader
+            # without them refuses rather than read the stays of every
+            # state as one sample. Other data keeps its unstamped layout.
             from surpyval.serialisation import required_schema
 
             out["schema"] = required_schema(out)
@@ -1731,6 +1892,8 @@ class SurpyvalData(ReshapeMixin):
             out.e = _event_type_array(
                 [label_back(v) for v in data["e"]], out.c, warn=False
             )
+        if "s" in data:
+            out.s = _object_array([label_back(v) for v in data["s"]])
         if "ids" in data:
             out.ids = [label_back(v) for v in data["ids"]]
         if "attributes" in data:
@@ -2026,7 +2189,12 @@ def accepts_surpyval_data(method: F) -> F:
     censoring, counts, truncation, covariates or event types that the fit
     has no argument for are refused, not dropped; so are its marker
     readings, which a fit takes only where it has a ``markers`` argument
-    (one ``{age: value}`` per row, the joint models)."""
+    (one ``{age: value}`` per row, the joint models), and data whose rows
+    are in more than one state (``s``), which only a fit with a ``state``
+    (or ``s``) argument takes. Such a fit is given the data's states
+    there, and its unit ids as ``i`` where it has that argument; its
+    censoring is then carried by ``e``, so a fit with no ``c`` takes data
+    whose flags are 0 and 1."""
     signature = inspect.signature(method)
     params = list(signature.parameters)
     names = set(params)
@@ -2065,37 +2233,13 @@ def accepts_surpyval_data(method: F) -> F:
                     ),
                     data,
                 )
-        for name, held, how in (
-            (
-                "Z",
-                data.Z,
-                "SurpyvalData(x, c, ..., Z=Z), or "
-                "from_observations(..., observed_covariates=..., ...)",
-            ),
-            (
-                "e",
-                data.e,
-                "SurpyvalData(x, c, ..., e=e), or "
-                "from_observations(..., observed_event_types=..., ...)",
-            ),
-        ):
-            if (
-                held is None
-                and name in names
-                and bound.arguments.get(name) is None
-                and signature.parameters[name].default
-                is inspect.Parameter.empty
-            ):
-                what = "covariates" if name == "Z" else "event types"
-                raise TypeError(
-                    f"This fit needs {what}, {name}, and the SurpyvalData "
-                    f"holds none: build it with {how}."
-                )
+        state = _state_argument(names)
+        _check_needed(data, names, bound, signature, state)
         filled: dict[str, Any] = {"x": data.x}
         lost = []
         if "c" in names:
             filled["c"] = data.c
-        elif np.any(data.c != 0):
+        elif np.any(data.c != 0) and not _flags_in_entered(data, names, state):
             lost.append("censoring")
         lost += _fill_counts(data, names, filled)
         left = bool(np.isfinite(data.tl).any())
@@ -2124,6 +2268,12 @@ def accepts_surpyval_data(method: F) -> F:
                 lost.append("event types")
         if data.time_varying_covariates is not None:
             lost.append("time-varying covariates")
+        if state is not None and data.s is not None:
+            filled[state] = data.s
+            if "i" in names and data.ids is not None:
+                filled["i"] = data.ids
+        elif len(_distinct_states(data)) > 1:
+            lost.append("states")
         filled.update(markers)
         if lost:
             raise ValueError(lost_message(lost, "e" in names))
@@ -2138,6 +2288,73 @@ def accepts_surpyval_data(method: F) -> F:
 
     setattr(wrapper, "_accepts_surpyval_data", True)
     return wrapper  # type: ignore[return-value]
+
+
+def _state_argument(names: set) -> str | None:
+    """The argument a fit takes the states in, ``state`` or ``s``; None
+    where it takes none."""
+    return next((name for name in ("state", "s") if name in names), None)
+
+
+def _flags_in_entered(data: SurpyvalData, names: set, state: Any) -> bool:
+    """Whether a multi-state fit without ``c`` takes the data's censoring
+    in ``e``: with states, a blank ``e`` is a row still in its state
+    (``c == 1``), so flags of 0 and 1 are carried by ``e``."""
+    return (
+        state is not None
+        and "e" in names
+        and data.s is not None
+        and data.e is not None
+        and bool(np.isin(data.c, (0, 1)).all())
+    )
+
+
+def _check_needed(
+    data: SurpyvalData,
+    names: set,
+    bound: inspect.BoundArguments,
+    signature: inspect.Signature,
+    state: str | None,
+) -> None:
+    """Refuse data that holds none of what the fit needs (an argument
+    with no default): covariates, event types or states."""
+    needs = [
+        (
+            "Z",
+            data.Z,
+            "covariates",
+            "SurpyvalData(x, c, ..., Z=Z), or "
+            "from_observations(..., observed_covariates=..., ...)",
+        ),
+        (
+            "e",
+            data.e,
+            "event types",
+            "SurpyvalData(x, c, ..., e=e), or "
+            "from_observations(..., observed_event_types=..., ...)",
+        ),
+    ]
+    if state is not None:
+        needs.append(
+            (
+                state,
+                data.s,
+                "states",
+                "SurpyvalData(x, ..., s=s, e=e, i=i), or "
+                "SurpyvalData.from_dataframe(df, ..., s_col=..., e_col=...)",
+            )
+        )
+    for name, held, what, how in needs:
+        if (
+            held is None
+            and name in names
+            and bound.arguments.get(name) is None
+            and signature.parameters[name].default is inspect.Parameter.empty
+        ):
+            raise TypeError(
+                f"This fit needs {what}, {name}, and the SurpyvalData "
+                f"holds none: build it with {how}."
+            )
 
 
 def _fill_counts(data: SurpyvalData, names: set, filled: dict) -> list:
@@ -2213,22 +2430,42 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
             "fit_tvc takes the time-varying covariates (fit(data) calls it "
             "for a model that has one)"
         )
+    if "states" in lost:
+        ways.append("data[data.s == state] for the stays in one state")
+        takes.append(
+            "the multi-state models (surpyval.multistate.MultiState, "
+            "MultiStateProportionalHazards, ParametricMultiState) take the "
+            "states"
+        )
     message = f"This fit takes no {what}, which the SurpyvalData holds."
+    if "states" in lost:
+        message = message.replace(
+            "states, which the SurpyvalData holds",
+            "more than one state (s), which the SurpyvalData holds",
+        )
     if ways:
         message += " To fit without them, use " + ", or ".join(ways) + "."
     if takes:
         message += " " + "; ".join(takes) + "."
-    return message.replace(". a regression", ". A regression")
+    message = message.replace(". a regression", ". A regression")
+    return message.replace(". the multi-state", ". The multi-state")
 
 
 def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
     """The data arguments given alongside a SurpyvalData ``x``, which holds
     them: ``Z``, ``e`` and ``markers`` count only where the data has them
     (``fit(data, Z=None)`` is fine)."""
-    held = {"Z": data.Z, "e": data.e, "markers": data.markers}
+    held = {
+        "Z": data.Z,
+        "e": data.e,
+        "markers": data.markers,
+        "s": data.s,
+        "state": data.s,
+        "i": data.ids,
+    }
     return [
         name
-        for name in _DATA_ARGUMENTS + ("Z", "e", "markers")
+        for name in _DATA_ARGUMENTS + ("Z", "e", "markers", "s", "state", "i")
         if arguments.get(name) is not None
         and not (name in held and held[name] is None)
     ]
@@ -2263,6 +2500,8 @@ def _not_taken_yet(data: SurpyvalData) -> list:
         out.append("event types")
     if data.time_varying_covariates is not None:
         out.append("time-varying covariates (fit them with fit_tvc for now)")
+    if len(_distinct_states(data)) > 1:
+        out.append("states")
     return out
 
 
@@ -2353,6 +2592,158 @@ def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:
             int(masked.sum()), "rows " + named(np.flatnonzero(masked).tolist())
         )
     return out
+
+
+def _object_array(values: list) -> np.ndarray:
+    """``values`` as a 1-D object array, one entry each (a tuple stays one
+    value)."""
+    out = np.empty(len(values), dtype=object)
+    for k, value in enumerate(values):
+        out[k] = value
+    return out
+
+
+def _per_row(name: str, what: str, values: Any, k: int) -> list:
+    """``values`` as a list of ``k`` plain values, one per row; a single
+    value is refused (as a single ``e`` is)."""
+    if isinstance(values, (str, bytes)) or (
+        not isinstance(values, (list, tuple)) and np.ndim(values) == 0
+    ):
+        raise ValueError(
+            f"'{name}' must hold one {what} per row, not a single value: "
+            f"give a list as long as x ([value] * {k} for the same one on "
+            "every row)."
+        )
+    listed = list(values)
+    if len(listed) != k:
+        raise ValueError(
+            f"'{name}' must hold one {what} per row ({k}); got "
+            f"{len(listed)}."
+        )
+    return [_plain(v) for v in listed]
+
+
+def _state_array(s: Any, k: int) -> np.ndarray:
+    """The states ``s`` as a 1-D object array of plain values (text or
+    numbers, as given): one per row, none missing."""
+    listed = _per_row("s", "state", s, k)
+    missing = [r for r, v in enumerate(listed) if missing_type(v)]
+    if missing:
+        raise ValueError(
+            "'s' must give the state of every row (the state the unit was "
+            f"in during the row); {_rows_have(missing).lower()} none (a "
+            "blank, None or NaN). Give each row its state."
+        )
+    for value in listed:
+        try:
+            hash(value)
+        except TypeError:
+            raise ValueError(
+                "A state in 's' must be text, a number or a tuple of them; "
+                f"got {value!r}."
+            )
+    return _object_array(listed)
+
+
+def _blank_entries(e: Any, rows: int) -> list:
+    """Whether each of the ``rows`` entries of ``e`` is blank (no state
+    entered)."""
+    return [missing_type(v) for v in _per_row("e", "state", e, rows)]
+
+
+def _flags_from_entered(c: Any, e: Any, x: Any, xl: Any) -> Any:
+    """The censoring flags of data with states: ``c`` as given, or, where
+    it is left out, read from ``e`` (a blank: 1, still in the state; a
+    state: 0, moved into it at ``x``)."""
+    if c is not None:
+        return c
+    if e is None:
+        raise ValueError(
+            "Data with states s needs e, the state each row's unit moved "
+            "into at x (blank where it was still in its state s at x), or "
+            "c (1 where it was still in s, 0 where it moved): give e, and "
+            "c is read from it."
+        )
+    times = x if x is not None else xl
+    rows = len(times) if times is not None and np.ndim(times) else 1
+    return np.array(
+        [1 if blank else 0 for blank in _blank_entries(e, rows)], dtype=int
+    )
+
+
+def _entered_states(e: Any, c: np.ndarray) -> np.ndarray:
+    """``e`` of data with states: the state each row moved into (None
+    where blank), which must agree with ``c``: a row still in its state
+    (``c == 1``) has none, every other row one."""
+    listed = _per_row("e", "state", e, len(c))
+    out = _object_array([None if missing_type(v) else v for v in listed])
+    c = np.asarray(c)
+    blank = np.array([v is None for v in out], dtype=bool)
+    stayed = np.flatnonzero((c == 1) & ~blank).tolist()
+    if stayed:
+        raise ValueError(
+            f"{_rows_have(stayed)} c = 1 (still in the state s at x) and "
+            "a state entered in e. Blank e where the unit had not moved, "
+            "or set c to 0 where it moved into e at x."
+        )
+    moved = np.flatnonzero((c != 1) & blank).tolist()
+    if moved:
+        raise ValueError(
+            f"{_rows_have(moved)} no state entered in e, but c says the "
+            "unit moved (0; -1 or 2 for a move seen only at a look). Give "
+            "the state it moved into, or set c to 1 where it was still in "
+            "its state s at x."
+        )
+    return out
+
+
+def _rows_have(rows: list) -> str:
+    """'Row 2 has' or 'Rows 2, 5 have'."""
+    if len(rows) == 1:
+        return f"Row {rows[0]} has"
+    return f"Rows {named(rows)} have"
+
+
+def _distinct_states(data: Any) -> list:
+    """The distinct states of ``data``'s ``s``, in the order first seen
+    (an empty list where it has none)."""
+    s = getattr(data, "s", None)
+    return [] if s is None else list(dict.fromkeys(s.tolist()))
+
+
+def refuse_multi_state(data: Any, what: str) -> None:
+    """Refuse, in ``what``, data whose units were in more than one state
+    (``s``): taking all its rows as one sample would pool the stays in
+    different states into one risk set, another model."""
+    states = _distinct_states(data)
+    if len(states) > 1:
+        raise ValueError(
+            f"{what} takes data with one starting state, and this data's "
+            f"rows are in {len(states)} states (s: "
+            f"{', '.join(repr(v) for v in states[:5])}"
+            f"{', ...' if len(states) > 5 else ''}); pooling the stays in "
+            "different states is another model. " + _STATES_INSTEAD
+        )
+
+
+# What to use for data in more than one state.
+_STATES_INSTEAD = (
+    "The multi-state models (surpyval.multistate.MultiState, "
+    "MultiStateProportionalHazards, ParametricMultiState) take the "
+    "states; data[data.s == state] keeps the stays in one state."
+)
+
+
+def check_unit_ids(ids: list, several_rows: bool) -> None:
+    """The rule for the rows' unit ids, in one place: of one kind (all
+    text or all numbers), and each once, unless a unit may have several
+    rows (``several_rows``: with states, a row for each stay)."""
+    from surpyval.utils.item_history import check_item_ids
+
+    check_item_ids(
+        list(dict.fromkeys(ids)) if several_rows else ids,
+        "row (identical items are its count, n)",
+    )
 
 
 def _kind_ids(name: str, value: Any, k: int) -> list:

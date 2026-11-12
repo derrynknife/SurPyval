@@ -5,6 +5,22 @@ Unreleased
 
 **Added.**
 
+- States in the data model: ``SurpyvalData(..., s=...)`` takes the state
+  each row's unit was in during the row (from its entry ``tl`` to ``x``),
+  with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one
+  unit has a row for each stay. ``c`` is read from ``e`` where it is left
+  out (a blank ``e``: still in the state), and a ``c`` that disagrees with
+  ``e`` is refused, naming the rows. Without ``s`` every row starts from
+  the one initial state and nothing changes: ordinary survival and
+  competing-risks data are that case. ``i`` is the new name of ``ids``,
+  which stays as its other name (one argument, one list). The states are
+  carried by indexing and every reshape, shown in the ``repr`` and
+  ``summary()``, read by ``from_dataframe(s_col=...)`` and written by
+  ``to_dataframe``, ``to_dict`` and ``to_json`` (data with states is
+  ``"schema": 4``). Fits that are not multi-state, ``to_xrd`` and
+  ``life_table`` refuse data in more than one state, naming the
+  multi-state models and ``data[data.s == state]``; data in one state
+  fits exactly as without ``s``. See :doc:`Conventions`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,
