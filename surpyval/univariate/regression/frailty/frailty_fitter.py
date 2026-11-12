@@ -57,7 +57,7 @@ from surpyval.utils.linalg import curvature_scales, numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
-from .._aliasing import covariate_columns, expand, fit_columns
+from .._aliasing import expand, fit_columns
 from .._fit_skeleton import (
     _gradient,
     alias_coefficients,
@@ -69,7 +69,7 @@ from .._fit_skeleton import (
 )
 from ..kinds import PROPORTIONAL_HAZARD
 from ..proportional_hazards.cox_likelihood import strata_labels
-from ..regression_data import design_matrix_from_df
+from ..regression_data import FrameDesign
 from .families import (
     check_family,
     lognormal_log_integral,
@@ -812,19 +812,7 @@ class FrailtyFitter(FitterRepr):
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values
         groups = df[group_col].values
-
-        feature_names = None
-        model_spec = None
-        if Z_cols is None and formula is None:
-            Z = None
-        else:
-            Z, feature_names, model_spec = design_matrix_from_df(
-                df, Z_cols=Z_cols, formula=formula
-            )
-
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z=Z, c=c, n=n, groups=groups, init=init)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
+        design = FrameDesign(df, Z_cols, formula, optional=True)
+        return design.fit(
+            self.fit, x, Z=design.Z, c=c, n=n, groups=groups, init=init
+        )

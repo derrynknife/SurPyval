@@ -68,13 +68,7 @@ from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import no_covariance_error
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._prediction import (
     STEP_QF_TOL,
@@ -90,9 +84,9 @@ from ..life_at import (
     rebuilt,
 )
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     NoLikelihoodMixin,
-    design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -993,20 +987,14 @@ class AdditiveHazards_(FitterRepr):
         covariate names for prediction (see :meth:`fit` for the model).
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-
-        # The aliasing warning (#476) names the columns.
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
 
 
 AdditiveHazards = AdditiveHazards_()

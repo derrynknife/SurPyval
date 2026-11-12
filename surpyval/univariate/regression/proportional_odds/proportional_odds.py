@@ -113,13 +113,7 @@ from surpyval.utils.validation import (
     no_covariance_error,
 )
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._fit_skeleton import (
     LOG_MAX,
@@ -141,9 +135,9 @@ from ..life_at import (
     rebuilt,
 )
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     canonical_rows,
-    design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -1573,19 +1567,17 @@ class ProportionalOdds_(FitterRepr):
         array([ 0.4275, -0.1206])
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col, tl_col=tl_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            tol=tol,
+            center=center,
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-        tl = None if tl_col is None else df[tl_col].values
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tl=tl, tol=tol, center=center)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
 
 
 def _inverse_information(S: npt.NDArray) -> npt.NDArray:

@@ -5,6 +5,24 @@ Unreleased
 
 **Added.**
 
+- Parametric multi-state models, ``ParametricMultiState`` (a
+  distribution for each transition, Weibull by default, or a different
+  one per transition) and ``ParametricMultiStateRegression`` (a
+  parametric regression for each transition, ``WeibullPH`` by default,
+  or any of the PH, AFT and other parametric regressions), also at the
+  top level. Each transition is fitted to the spells in its 'from' state,
+  the others censored and each spell left truncated at its start (the
+  clock goes forward: a Markov model). ``transition_probabilities``
+  solves the Kolmogorov forward equations by product integration with
+  fourth-order Magnus steps on an adaptive grid, to about 1e-8 per row;
+  ``occupancy``, ``occupancy_se`` and ``cb`` (delta-method bounds over
+  every transition's parameters), ``cumulative_hazard`` and ``hazard``.
+  The curves are smooth and extend past the data. ``clock="reset"``
+  (semi-Markov) is refused with the reason. Checked against R
+  ``flexsurv`` 2.3.2 (``pmatrix.fs``): the fits' log-likelihoods agree,
+  and with flexsurv's parameters the transition probabilities agree to
+  1e-11; with one transient state the occupation probabilities are
+  ``ParametricCompetingRisks``' cumulative incidences.
 - Multi-state models, ``surpyval.multistate`` (``MultiState``,
   ``MultiStateProportionalHazards`` and ``TransitionMatrix`` also at the
   top level), for units that move between several states (healthy, ill,
@@ -32,8 +50,7 @@ Unreleased
   illness-death model with recovery; with one transient state the
   estimate is ``CompetingRisks``' cumulative incidence, and with one
   transition the Kaplan-Meier estimate with Greenwood's variance. Not yet
-  built: parametric models of each transition, semi-Markov models and
-  states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
+  built: semi-Markov models and states seen only at inspections. ``datasets.load_mgus2`` adds the MGUS
   data (``spells=True`` gives its illness-death spells). See
   :doc:`Multi-State Models`.
 - Adjusted survival curves for groups that were not assigned at random
@@ -935,6 +952,21 @@ Unreleased
   (200 replicates of n = 100 at 10%: the right models rejected 7-10.5% of
   the time; a wrong distribution for one cause was flagged for that cause
   80% of the time and for the right cause 5.5%).
+- A calibration study of the plain models' bootstrap bounds
+  (``tests/calibration/test_coverage_bootstrap.py``): Weibull and LogNormal,
+  about 30% right censored, at 30, 100 and 300 units, on ``param_cb``,
+  ``cb(sf)`` and ``quantile_cb`` at 90% and 95% (200 replicates of 200
+  refits a design). Its first run found the intervals about a point short
+  at every sample size, which led to the fix below; with it, averaged over
+  each size's 16 bounds, they cover 0.880 / 0.930 at 30 units, 0.891 /
+  0.947 at 100 and 0.888 / 0.946 at 300 (90% / 95%; LogNormal at 100
+  units over the first 160 of its 200 replicates). One 30-unit
+  design (LogNormal) still has a bound outside its tolerance and is marked
+  as a known shortfall (a strict xfail, with the numbers in the reason).
+- The calibration runs end with a "pooled calibration coverage" section:
+  each study's mean coverage over its bounds at each level, the gap from
+  nominal and the count below it. It is a report only; nothing passes or
+  fails on it, and no seed, replicate count or tolerance changed.
 
 **Deprecated.**
 
@@ -1527,6 +1559,43 @@ Unreleased
   bootstrap bounds of ``WeibullAH``'s coefficients moved by up to 0.6%
   (-0.0018080, now -0.0018194), because every resample's fit follows
   the new search.
+- **Bootstrap intervals read their bounds at the levels asked, so they
+  are a little wider and hold their level (an intentional numerical
+  change).** ``method="bootstrap"`` bounds (``param_cb``, ``cb``,
+  ``quantile_cb``, ``mrl_cb``, ``rmst_cb``) of the parametric models,
+  plain, offset, limited-failure and zero-inflated, and of the parametric
+  regressions took each bound from the refits with the ``(n - 1) p`` rule
+  (``np.quantile``'s default). The k-th smallest of n refits sits at the
+  ``k / (n + 1)`` quantile on average, so with the default 200 refits a
+  95% interval ran from about the 3.0% to the 97.0% point of the refits'
+  distribution rather than 2.5% to 97.5% (and a 90% one from 5.5% to
+  94.5%): about 2% too narrow, and about a point of coverage short, at
+  every sample size. A bound at level ``p`` is now the ``(n + 1) p``-th
+  smallest refit, interpolated between refits (Davison and Hinkley 1997,
+  section 5.2.2; ``np.quantile``'s ``method="weibull"``). For example, a
+  Weibull fitted to failures at 1.2, 2.5, 3.1, 4.0, 4.4, 5.3, 6.1, 6.8,
+  7.7, 8.9, 9.5, 10.2, 11.8, 13.0 and 14.6 and five units censored at 15:
+  ``param_cb("alpha", alpha_ci=0.1, method="bootstrap", random_state=1)``
+  was [8.746, 16.735] and is now [8.695, 16.906]; ``quantile_cb(0.1)``
+  with the same options was [1.339, 4.640] and is now [1.324, 4.660].
+  In the plain bootstrap calibration study (same seeds, so the same
+  refits), the average coverage of each size's 16 bounds moved, at 90% /
+  95%:
+
+  =========  ===============  ===============
+  Units      before           now
+  =========  ===============  ===============
+  30         0.868 / 0.918    0.880 / 0.930
+  100        0.879 / 0.934    0.891 / 0.947
+  300        0.878 / 0.938    0.888 / 0.946
+  =========  ===============  ===============
+
+  On 8,000 simulated data sets of 300 Weibull units (an independent
+  implementation of the same bootstrap), the 90% / 95% intervals covered
+  89.0% / 94.0% with the old rule and 90.0% / 95.0% with the new one. The
+  Weibull 30-unit design of that study, a known shortfall before, now
+  passes every bound. The percentile bootstraps of the Kaplan-Meier,
+  degradation and Buckley-James models are unchanged.
 - **The other names ``Gauss``, ``Galton`` and ``life_models.Arrhenius``
   now behave exactly as ``Normal``, ``LogNormal`` and
   ``life_models.Exponential``, except for the name they carry.** A model

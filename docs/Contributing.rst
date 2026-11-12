@@ -57,7 +57,13 @@ changing a likelihood, an initial guess or an optimiser.
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which the release pull request's full run also runs, on
-3.12. They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
+3.12. Each coverage check prints one line per cell (``-rP`` shows them for
+passing tests), and the run ends with a "pooled calibration coverage"
+section: for every study and level, the mean coverage over its cells, the
+gap from nominal in points and how many cells fall below. A shortfall of a
+point or two in every cell passes each cell's check at a few hundred
+replicates, and shows only there. It is a report; nothing fails on it.
+They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short

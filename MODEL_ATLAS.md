@@ -100,7 +100,9 @@ Worked classifications:
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | MultiState (Aalen–Johansen) | univariate | single_event | single/competing | multi_state | none | continuous | nonparametric |
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
-| (not built yet) parametric per transition, semi-Markov, panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
+| ParametricMultiStateRegression (a parametric regression per transition) | univariate | single_event | single/competing | multi_state | with | continuous | parametric |
+| (not built yet) semi-Markov (clock-reset), panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:

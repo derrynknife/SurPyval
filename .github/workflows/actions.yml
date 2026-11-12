@@ -325,6 +325,30 @@ jobs:
             workers: '0'
             args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lognormal_lfp]'
+          # The bootstrap coverage of the plain Weibull and LogNormal
+          # (test_coverage_bootstrap.py): three designs a family (30, 100
+          # and 300 units) of 200 replicates of 200 refits, each design's
+          # replicates in turn on one worker, the three side by side. On
+          # its first run (12 November 2026, an M-series Mac at two
+          # workers, heavily shared) each design took 2,190 to 2,430 s,
+          # 11 to 12 s a replicate; the limits are about twice that, as
+          # for lfp_edge above.
+          - group: plain-bootstrap-weibull
+            workers: '3'
+            test-timeout: 5400
+            job-timeout: 90
+            args: >-
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[Weibull-30]'
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[Weibull-100]'
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[Weibull-300]'
+          - group: plain-bootstrap-lognormal
+            workers: '3'
+            test-timeout: 5400
+            job-timeout: 90
+            args: >-
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[LogNormal-30]'
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[LogNormal-100]'
+              'surpyval/tests/calibration/test_coverage_bootstrap.py::test_bootstrap_coverage[LogNormal-300]'
           - group: long-studies
             workers: '3'
             args: >-
@@ -407,6 +431,7 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_copula.py
               --ignore=surpyval/tests/calibration/test_refit_registry.py
               --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py
+              --ignore=surpyval/tests/calibration/test_coverage_bootstrap.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'

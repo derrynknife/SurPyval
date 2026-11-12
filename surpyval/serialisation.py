@@ -94,6 +94,8 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
+    "ParametricMultiState": "surpyval.multistate.parametric",
+    "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
         "surpyval.recurrent.competing_risks.nonparametric.cause_specific_mcf"
     ),
