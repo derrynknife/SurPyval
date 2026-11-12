@@ -2487,7 +2487,21 @@ def _nonparametric_bounds(case):
                 label=f"quantile_cb[{bound_type}]",
             )
         )
-    # The band's default scale (#390), which the pointwise bounds lack.
+    # The other pointwise interval types (R's survfit conf.type and
+    # km.ci's Peto and Rothman intervals).
+    for bound_type in ("log", "logit", "arcsine", "peto", "rothman"):
+        for interp in ("step", "linear", "cubic"):
+            out.append(
+                Bound(
+                    "cb",
+                    on=_ON_SURVIVAL,
+                    kwargs={"bound_type": bound_type, "interp": interp},
+                    in_range=bound_type != "peto",
+                    nan_ok=True,
+                    label=f"cb[{bound_type},{interp}]",
+                )
+            )
+    # The band's default scale (#390).
     for method in ("hall-wellner", "nair"):
         out.append(
             Bound(

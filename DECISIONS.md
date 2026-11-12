@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-13
 
+### More pointwise interval types for the non-parametric survival estimates (13 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `cb(bound_type=...)` of the non-parametric estimates takes `'log'`, `'logit'`, `'arcsine'`, `'peto'` and `'rothman'` beside `'exp'` and `'normal'`; the default stays `'exp'` (log(-log)). The names follow the existing vocabulary: `'exp'` is R's `"log-log"`, `'normal'` R's `"plain"` and `'arcsine'` the name `band()` already uses for R's `"arcsin"`. | proposed | Matches what R `survfit(conf.type=)` and `km.ci` offer without renaming the two existing types. | done |
+| `'log'` cuts the upper bound at 1, as R does; `'normal'` and `'peto'` are not cut to [0, 1] (R cuts its `"plain"`). | proposed | `'normal'` was never cut and changing it would move existing numbers; `'peto'` follows `km.ci`, which does not cut by default. | done |
+| Peto's variance uses `Y`, the number at risk at the step's own time (`km.ci`'s `n.risk` row), and is refused for a weighted fit. | proposed | Matches `km.ci`; the formula counts units and has no weighted form. | done |
+| `CompetingRisks.cb` passes the new types through for `sf`/`ff`/`Hf` and refuses them on the cumulative incidence. | proposed | The incidence's log(-log) and plain intervals are the ones with a published form there (Choudhury 2002); the others were not checked against any software. | done |
+| Calibration: the Peto check is one-sided (coverage at least nominal), set after the first run, whose two-sided check failed on over-coverage only (one-sided lower bound at the third quartile 0.9770). | proposed | Peto's variance counts only those still at risk, so it overstates the variance under censoring late in follow-up (Dorey and Korn, 1987): conservative by construction. | done |
 ### The Cox model for interval-censored data (13 Nov 2026)
 
 | Decision | By | Reason | Status |
