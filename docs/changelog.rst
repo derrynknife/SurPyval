@@ -1478,6 +1478,17 @@ Unreleased
 
 **Fixed.**
 
+- **Joint fits that stopped at a correlation of 1 (an intentional
+  numerical change for those fits only).** ``WeibullJointPH`` (and any
+  ``JointPH`` with two or more varying path parameters) could run onto
+  the edge where the random effects are perfectly correlated, where the
+  likelihood is flat, and stop there short of the maximum, unverified and
+  with a singular Hessian, so ``predict(...).cb`` and
+  ``standard_errors()`` refused. Two of the 400 fleets of the joint
+  calibration study did: their maxima are 38.8 and 37.1 better, with
+  ``corr_a_b`` 0.22 and 0.23 rather than 1, and are verified. A fit that
+  ends on that edge now searches once more from no correlation and keeps
+  the better answer; every other fit is unchanged.
 - **Fits that failed or ended in the wrong place when the time unit
   changed (an intentional numerical change, in the sixth digit or beyond
   in ordinary units).** Writing the same times in another unit should
