@@ -1239,6 +1239,35 @@ for _base in reg.CURE_LATENCIES:
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+
+
+def _equivalence_draw(case, truth, n):
+    # The model's own random, at usage rates resampled from the fixture's
+    # (each unit's second clock per unit of the first); censored on the
+    # first clock by two further lives at the same rate, and the second
+    # clock read at the same rate.
+    d = case.data()
+    rates = np.asarray(d["x2"], dtype=float) / np.asarray(d["x"], dtype=float)
+
+    def draw(rng):
+        rate = rng.choice(rates, n)
+        t = np.vstack(
+            [truth.random(n, rate=rate, random_state=rng)[0] for _ in "abc"]
+        )
+        out = _censor(*t)
+        out["x2"] = rate * out["x"]
+        return out
+
+    return draw
+
+
+for _base in reg.CURE_LATENCIES:
+    PLANS[_base + "Equivalence"] = Plan(
+        _equivalence_draw,
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
@@ -1508,6 +1537,14 @@ EXCLUDED: dict[str, str] = {
         "give (no simulator of paths): recovery of each transition's "
         "parameters and of the occupation probabilities from simulated "
         "Markov paths is tested in tests/multistate/test_parametric.py",
+    ),
+    **dict.fromkeys(
+        ("PanelMultiState", "PanelMultiStateRegression"),
+        "states seen only at visits, a history which a model draw does not "
+        "give (no simulator of visit schedules or paths): recovery of the "
+        "intensities and the coverage of their bounds from simulated "
+        "panels is calibration/test_coverage_multistate_panel.py, and the "
+        "models' special cases are in tests/multistate/test_panel.py",
     ),
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
