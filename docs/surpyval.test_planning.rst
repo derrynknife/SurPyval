@@ -90,6 +90,43 @@ intervention, :func:`surpyval.recurrent.intervention_test`.
 
 .. autofunction:: surpyval.test_planning.rate_ratio_exposure
 
+Beyond the plain log-rank calculation
+-------------------------------------
+
+A Cox model's coefficient, non-inferiority and equivalence of a hazard
+ratio, a difference in restricted mean survival time, and a log-rank test
+when some units are cured.
+
+.. autofunction:: surpyval.test_planning.cox_events
+
+.. autofunction:: surpyval.test_planning.cox_sample_size
+
+.. autofunction:: surpyval.test_planning.cox_power
+
+.. autofunction:: surpyval.test_planning.cox_detectable
+
+.. autofunction:: surpyval.test_planning.noninferiority_events
+
+.. autofunction:: surpyval.test_planning.noninferiority_sample_size
+
+.. autofunction:: surpyval.test_planning.noninferiority_power
+
+.. autofunction:: surpyval.test_planning.equivalence_events
+
+.. autofunction:: surpyval.test_planning.equivalence_sample_size
+
+.. autofunction:: surpyval.test_planning.equivalence_power
+
+.. autofunction:: surpyval.test_planning.rmst_sample_size
+
+.. autofunction:: surpyval.test_planning.rmst_power
+
+.. autofunction:: surpyval.test_planning.cure_logrank_sample_size
+
+.. autofunction:: surpyval.test_planning.cure_logrank_events
+
+.. autofunction:: surpyval.test_planning.cure_logrank_power
+
 Group-sequential designs
 ------------------------
 
