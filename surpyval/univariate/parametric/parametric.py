@@ -1390,7 +1390,7 @@ class Parametric(
         ``rba`` factors and its ``"mle-rba"`` fit, which applies them to
         maximum-likelihood fits only, as here (Abernethy, *The New
         Weibull Handbook*, 5th ed., chapter 5); the factors are exact
-        for any ``r`` (``WeibullR`` uses 1 above 343 failures).
+        for any ``r`` (``WeibullR`` returns 1 above 343 failures).
 
         Parameters
         ----------

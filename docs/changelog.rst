@@ -23,8 +23,8 @@ Unreleased
   (``"mpp_options"``), so a model saved ``with_data=True`` gives the same
   bounds. Refused, with what to use instead, for other methods and
   families, offsets, left- or interval-censored and truncated data. The
-  fits agree exactly with R's ``WeibullR``; its ``pivotal-rr`` bounds are
-  an approximation of these (see :doc:`Parametric SurPyval Modelling`).
+  fits agree exactly with R's ``WeibullR``, whose ``pivotal-rr`` bounds
+  are constructed differently (see :doc:`Parametric SurPyval Modelling`).
 - ``Parametric.rba(basis="median")``: Abernethy's reduced bias
   adjustment of a maximum-likelihood fit, the Weibull shape multiplied by
   ``C4^3.5`` (median-unbiased; ``basis="mean"``: ``C4^6``) or the

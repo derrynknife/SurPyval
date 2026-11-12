@@ -2473,13 +2473,11 @@ What to know before using them:
   ``on='hf'`` or ``'df'`` (the hazard and density are not a monotone function
   of the line's error).
 
-R's ``WeibullR`` has a ``pivotal-rr`` bound too, but it is not the exact
-pivotal interval: it reads the spread of the simulated quantiles and rotates
-it about the fitted line, without standardising by each simulated line's
-slope. On ten lifetimes censored after the sixth failure its 90% bounds on
-the B10, B50 and B90 lives covered 83%, 83% and 90% of the time, against
-SurPyval's 87%, 91% and 93%. The fits themselves agree with ``WeibullR``'s
-exactly (``heuristic='Benard', rr='x'`` is its default).
+The fits agree with R's ``WeibullR`` exactly (``heuristic='Benard',
+rr='x'`` is its default). ``WeibullR``'s ``pivotal-rr`` bounds are
+constructed differently (from percentiles of the simulated lines, rotated
+about the fitted line) from the exact pivotal intervals of Lawless used here,
+so the two are not expected to coincide.
 
 .. jupyter-execute::
     :hide-code:

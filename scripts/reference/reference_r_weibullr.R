@@ -22,19 +22,20 @@
 #
 # * mrr_*: the rank-regression fit (eta, beta or meanlog, sdlog), x on y
 #   (WeibullR's default), and its "pivotal-rr" bounds, 90%
-#   two-sided, S = 1e4, at the probabilities `unrel`. WeibullR's pivotal
-#   bounds are not the exact pivotal intervals of Lawless (2003): it
-#   reads the percentiles of the simulated log quantiles u* + b* z_p and
-#   then rotates them about the fitted line, rather than those of
-#   (u* - z_p) / b*. They are recorded for comparison only. The y on x
-#   fits are left out: WeibullR 1.2.4's reg_method = "YonX" returns an
-#   eta of 1.8e-4 and the reciprocal of the x on y shape for these data
-#   (lslr(getPPP(x, ppos = "Benard"), reg_method = "YonX")), not a fit.
+#   two-sided, S = 1e4, at the probabilities `unrel`. These bounds are
+#   constructed differently from the exact pivotal intervals of Lawless
+#   (2003) that SurPyval uses (percentiles of the simulated log quantiles
+#   u* + b* z_p, rotated about the fitted line, rather than those of
+#   (u* - z_p) / b*), so they are recorded, not compared. The y on x
+#   comparison is left out: on this fixture WeibullR 1.2.4's
+#   reg_method = "YonX" (lslr(getPPP(x, ppos = "Benard"),
+#   reg_method = "YonX")) returns an eta of 1.8e-4 and the reciprocal of
+#   the x on y shape, so there is nothing comparable.
 # * mle_rba_*: the "mle" and "mle-rba" fits (the MLE with the shape, or
-#   the lognormal sdlog, multiplied by rba()). WeibullR's simplex stops
-#   about 1e-4 (relative) from the maximum (its complete-sample
-#   lognormal meanlog is 4.651327, the mean of the logs 4.651412), so
-#   the adjustment is compared through the ratio of the two fits.
+#   the lognormal sdlog, multiplied by rba()). The two maximum-likelihood
+#   fits differ by about 1e-4 (relative): WeibullR's complete-sample
+#   lognormal meanlog is 4.651327, the mean of the logs 4.651412. So the
+#   adjustment is compared through the ratio of the two fits.
 # * rba_factors: rba(r) for r = 3..30, 50, 100, 343 and 344, for the
 #   Weibull (median and mean basis) and the lognormal (WeibullR returns
 #   1 above 343 failures).

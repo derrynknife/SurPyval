@@ -15,25 +15,19 @@ What is checked, and how closely:
   lognormal sdlog, multiplied by that factor for the number of failures
   (to 1e-12), and SurPyval's ``rba()`` multiplies its own fit by the
   same factor. The two maximum-likelihood fits themselves differ by
-  about 1e-4: WeibullR's simplex stops short (its complete-sample
-  lognormal meanlog is 4.651327, where the maximum is the mean of the
-  logs, 4.651412), so they are compared to 1e-3.
-- WeibullR's ``pivotal-rr`` bounds are *not* the exact pivotal
-  intervals, so SurPyval's are not compared with them to a tolerance.
-  WeibullR reads the percentiles of the simulated log quantiles
-  ``u* + b* z_p`` and rotates them about the fitted line, where the
-  exact interval reads those of ``(u* - z_p) / b*`` (Lawless 2003,
-  section 5.1). The tolerance chosen before looking (10% on each end of
-  the 90% interval at p = 0.1 and 0.5) does not hold: on the type II
-  design SurPyval's upper bound on the median life is 223 against
-  WeibullR's 162. (WeibullR's "Datum" column is the median of its
+  about 1e-4 (WeibullR's complete-sample lognormal meanlog is 4.651327,
+  the mean of the logs 4.651412), so they are compared to 1e-3.
+- WeibullR's ``pivotal-rr`` bounds are constructed differently from
+  the exact pivotal intervals used here (percentiles of the simulated
+  log quantiles ``u* + b* z_p``, rotated about the fitted line, where
+  Lawless 2003, section 5.1, reads those of ``(u* - z_p) / b*``). The
+  tolerance fixed in advance (10% on each end of the 90% interval at
+  p = 0.1 and 0.5) did not hold: on the type II design the upper bound
+  on the median life is 223 here against 162. The constructions differ,
+  so the bounds are recorded, not compared; both are checked to bracket
+  the fitted quantile. (WeibullR's "Datum" column is the median of its
   simulation, not the fitted quantile, so it is not compared either.)
-  Coverage decides between them: over 300 type II
-  samples (n = 10, r = 6, Weibull shape 1.7) WeibullR's 90% bounds on
-  the B10, B50 and B90 lives covered 0.833, 0.827 and 0.897, SurPyval's
-  (400 samples) 0.870, 0.913 and 0.925; the calibration study
-  (``calibration/test_coverage_pivotal.py``) checks SurPyval's. Here
-  both are checked to bracket the fitted quantile.
+  SurPyval's coverage is checked by ``calibration/test_coverage_pivotal.py``.
 - The inversion itself (:mod:`surpyval.univariate.parametric._pivotal`'s
   ``location_ends``, ``scale_ends``, ``quantile_ends`` and
   ``standardised_ends``) is checked against exact intervals: fed the
