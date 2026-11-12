@@ -65,10 +65,19 @@ def test_parameters_outside_their_space_have_no_likelihood():
 
 def test_zero_inflated_windows_ending_or_starting_at_zero():
     """Kills, in ``LogLikelihood._windows``, the zero-inflated mass ``f0``
-    counted only for a window end above 0 (``xr > 0``, ``xl > 0``,
-    ``* (xl >= 0)`` made ``/``): the mass at 0 is in a window ``(xl, 0]``
-    and below one ``(0, xr]``. With ``f0 = 0.2`` and the unit exponential,
-    ``P(-1 < T <= 0) = 0.2`` and ``P(0 < T <= 1) = 0.8 (1 - exp(-1))``."""
-    ll = log_likelihood_fn(sp.Weibull, xl=[-1.0, 0.0], xr=[0.0, 1.0], zi=True)
-    expected = np.log(0.2) + np.log(0.8 * (1 - np.exp(-1.0)))
+    counted only for a window end above 0 (``xr > 0``), or left out of a
+    window that opens at 0 (``xl >= 0``), or ``* (xl > 0)`` made ``/``:
+    the mass at 0 is in a window ``(xl, 0]``, in ``[0, xr]`` (failed by
+    ``xr``, perhaps at 0) and below ``(a, xr]`` with ``a > 0``. With
+    ``f0 = 0.2`` and the unit exponential, ``P(-1 < T <= 0) = 0.2``,
+    ``P(0 <= T <= 1) = 0.2 + 0.8 (1 - exp(-1))`` and
+    ``P(0.5 < T <= 1) = 0.8 (exp(-0.5) - exp(-1))``."""
+    ll = log_likelihood_fn(
+        sp.Weibull, xl=[-1.0, 0.0, 0.5], xr=[0.0, 1.0, 1.0], zi=True
+    )
+    expected = (
+        np.log(0.2)
+        + np.log(0.2 + 0.8 * (1 - np.exp(-1.0)))
+        + np.log(0.8 * (np.exp(-0.5) - np.exp(-1.0)))
+    )
     assert_allclose(ll(np.array([1.0, 1.0, 0.2])), expected, rtol=1e-12)

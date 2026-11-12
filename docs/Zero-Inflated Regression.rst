@@ -329,11 +329,13 @@ weighted fit), and the fit reports whether it reached a verified maximum
 distribution's own zero-inflated fit, ``latency.fit(x, c, zi=True)``, to
 the last digit of the likelihood.
 
-One convention differs from the univariate fits: there, an interval
-starting at 0 means "after 0 and by :math:`t`", which leaves out the
-units dead on arrival. Here it includes them, because an inspection that
-finds a unit failed cannot tell when, and the unit may never have
-worked. Record a failure known to be after 0 with a lower bound above 0.
+An interval starting at 0 includes the units dead on arrival, because
+an inspection that finds a unit failed cannot tell when, and the unit
+may never have worked; the univariate fits (``fit(zi=True)``) read it
+the same way. Record a failure known to be after 0 with a lower bound
+above 0. This is the likelihood of Moulton and Halsey (1995) and of
+Braekers and Grouwels (2016), whose rows "failed by :math:`t`" include
+the mass at 0.
 
 **Refusals.** If no unit failed at 0 and every row says its unit worked,
 ``f0`` is estimated as 0 and the model is the latency's regression
@@ -358,5 +360,12 @@ References
 
 - Lambert, D. (1992). Zero-inflated Poisson regression, with an
   application to defects in manufacturing. *Technometrics* 34, 1-14.
+- Moulton, L. H. and Halsey, N. A. (1995). A mixture model with
+  detection limits for regression analyses of antibody response to
+  vaccine. *Biometrics* 51(4).
+- Grouwels, Y. (2015). PhD thesis, chapter 2, section 2.1 (the
+  likelihood of zero-inflated left-censored data, p. 11).
+- Braekers, R. and Grouwels, Y. (2016). *Communications in Statistics -
+  Theory and Methods* 45(7).
 - Farewell, V. T. (1982). The use of mixture models for the analysis of
   survival data with long-term survivors. *Biometrics* 38, 1041-1046.

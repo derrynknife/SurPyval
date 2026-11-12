@@ -181,16 +181,22 @@ def test_no_covariates_is_the_univariate_zero_inflated_fit(latency, method):
     assert_allclose(at.sf(t), model.sf(t, [0, 0]), rtol=1e-12)
 
 
-def test_no_covariates_with_left_censoring_is_the_univariate_fit():
-    # The joint route; an interval [0, t] holds the jump at 0, so it is
-    # the univariate fit's left censoring at t.
+@pytest.mark.parametrize("as_left", [False, True])
+def test_no_covariates_with_left_censoring_is_the_univariate_fit(as_left):
+    # The joint route, on the same data: an interval [0, t] holds the
+    # jump at 0 in both (it says "failed by t", as left censoring at t
+    # does), so the rows go in as they are, and written as left
+    # censoring they give the same fit again.
     xx, c, Z = _inspected(31, 900)
+    if as_left:
+        from_zero = (c == 2) & (xx[:, 0] == 0)
+        c = np.where(from_zero, -1, c)
+        xx = np.where(from_zero[:, None], xx[:, 1:], xx)
+    else:
+        assert np.any((c == 2) & (xx[:, 0] == 0))
     model = sp.WeibullZeroInflated.fit(xx, Z, c=c, covariates={})
     assert model.fit_route == "joint"
-    from_zero = (c == 2) & (xx[:, 0] == 0)
-    c_uni = np.where(from_zero, -1, c)
-    x_uni = np.where(from_zero[:, None], xx[:, 1:], xx)
-    univariate = sp.Weibull.fit(x_uni, c=c_uni, zi=True)
+    univariate = sp.Weibull.fit(xx, c=c, zi=True)
     assert_allclose(model.neg_ll(), univariate.neg_ll(), rtol=1e-9)
     assert_allclose(model.params[:2], univariate.params, rtol=1e-4)
     assert_allclose(model.params[2], univariate.f0, rtol=1e-4)

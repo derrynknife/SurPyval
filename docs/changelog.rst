@@ -1058,6 +1058,27 @@ Unreleased
 
 **Changed.**
 
+- **Zero-inflated fits: a row "failed by t" includes the units dead on
+  arrival (an intentional change of numbers).** In a univariate
+  ``fit(..., zi=True)`` an interval starting at 0, ``[0, t]``, was read
+  as "after 0 and by t", leaving out the mass ``f0`` at 0, while left
+  censoring at ``t`` included it. Both now contribute
+  ``f0 + (p - f0) F(t)``, the likelihood of zero-inflated data with such
+  rows (Moulton and Halsey 1995, *Biometrics* 51(4); Braekers and
+  Grouwels 2016, *Comm. Stat. Theory Methods* 45(7); Grouwels 2015, PhD
+  thesis, section 2.1) and the rule of ``ZeroInflated``, whose fit
+  without covariates is now the univariate fit on the same rows, without
+  rewriting them. A left truncation at 0 is now no truncation (it
+  divided by ``1 - f0``); a late entry at ``tl > 0`` is unchanged.
+  **``f0`` can be larger on data with left-censored or ``[0, t]`` rows**:
+  on 100 units, 10 failed at 0 and 7 found failed at an inspection at 2
+  recorded as ``[0, 2]``, a Weibull's ``f0`` went from 0.100 to 0.150
+  and its scale from 10.27 to 10.97, the same as with those rows left
+  censored at 2. Bayesian fits (``fit_bayes``) use the same
+  likelihood. Fits with no ``[0, t]`` row and no truncation at 0 are
+  unchanged to the last digit, left censoring and intervals that open
+  above 0 included.
+
 - **What 1.0 will promise is now written down.** :doc:`Deprecation Policy`
   says that from 1.0 SurPyval follows semantic versioning (no breaking
   change to the public interface before 2.0), that a deprecated public
