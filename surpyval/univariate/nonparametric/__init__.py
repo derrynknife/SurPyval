@@ -23,6 +23,7 @@ from .logrank_trend import TrendLogRankResult, trend_logrank
 from .maxstat import MaxStatResult, maxstat_logrank
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric, rmst_diff
+from .person_years import PersonYears, person_years, poisson_rate_bounds
 from .plot_estimates import NonParametricPlot, plot_nonparametric
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust

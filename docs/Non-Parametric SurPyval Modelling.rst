@@ -1727,6 +1727,143 @@ withdrawals, as half at risk there. Data already grouped is given as one row per
 outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
 into intervals; estimate it with ``Turnbull`` instead.
 
+Exposure (person-years) tables
+------------------------------
+
+An **exposure table** answers "how often do events happen here?" for each group and each stretch
+of life. In every cell it adds up the time the units were watched there (the *exposure*: unit-hours,
+person-years), counts the events there, and divides: the event rate, failures per 1,000 operating
+hours or deaths per 1,000 person-years. A unit counts in every cell it passes through. A pump
+watched from 3,000 to 7,000 operating hours, with bands every 2,000 hours, adds 1,000 hours to the
+2,000-4,000 band, 2,000 to the 4,000-6,000 band and 1,000 to the 6,000-8,000 band, and its failure
+counts in the band it was in when it failed. Reading each unit's band from its age at the start of
+the record instead would put all its time, and its failure, in one band, which overstates the
+rates of the young bands and understates the old.
+
+``surv.person_years`` builds the table, as R's ``survival::pyears``. Fixed groupings (a site, a
+model, a sex) are ``factors``; time bands are ``timescales``, each given as ``(start, breaks)``:
+each unit's value on that clock at time 0 of ``x``, and the band edges. Attained age is ``(age at
+time 0, age bands)``, calendar period ``(date at time 0 as a number, period edges)``, the clock of
+``x`` itself ``(0, bands)`` and time since entry ``(-tl, bands)``.
+
+A fleet: twelve pumps at two sites, each recorded from some age (``start``, in operating hours
+since installation) until it failed or the record ended. Failures per 1,000 hours by site and by
+age band:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    pumps = pd.DataFrame({
+        "site": ["North"] * 6 + ["South"] * 6,
+        "start": [0, 0, 2000, 4500, 6000, 9000, 0, 1000, 3000, 5000, 7000, 8000],
+        "end": [6200, 11800, 9400, 12000, 8100, 15500,
+                3900, 7400, 9800, 6900, 13000, 12100],
+        "failed": [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1],
+    })
+    fleet = surv.person_years(
+        pumps["end"], 1 - pumps["failed"], tl=pumps["start"],
+        factors={"site": pumps["site"]},
+        timescales={"age": (0, [0, 5000, 10000, 20000])},
+        per=1000,
+    )
+    print(fleet.table[["site", "age", "age_end", "units", "exposure", "events",
+                       "rate", "rate_lower", "rate_upper"]].round(3))
+    print(fleet.margins("site")[["site", "exposure", "events", "rate",
+                                 "rate_lower", "rate_upper"]].round(3))
+
+In plain terms: the North pumps ran 41,500 hours and failed 3 times, 0.072 failures per 1,000
+hours; the South pumps 29,100 hours and 5 failures, 0.172. The bounds (95% by default,
+``alpha_ci``) are exact: with so few failures they are wide, from 0.015 to 0.21 at North. Is South
+really worse?
+
+.. jupyter-execute::
+
+    rr = fleet.rate_ratio({"site": "South"}, {"site": "North"})
+    print(round(rr["ratio"], 2), round(rr["lower"], 2), round(rr["upper"], 2),
+          round(rr["p_value"], 2))
+
+South's rate is 2.4 times North's, but anything from about half to 15 times fits these eight
+failures (p = 0.29): the data cannot yet tell the sites apart.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s = fleet.margins("site").set_index("site")
+    assert _s.loc["North", "exposure"] == 41500 and _s.loc["North", "events"] == 3
+    assert _s.loc["South", "exposure"] == 29100 and _s.loc["South", "events"] == 5
+    assert round(_s.loc["North", "rate"], 3) == 0.072 and round(_s.loc["South", "rate"], 3) == 0.172
+    assert round(_s.loc["North", "rate_lower"], 3) == 0.015 and round(_s.loc["North", "rate_upper"], 2) == 0.21
+    assert round(rr["ratio"], 1) == 2.4 and round(rr["p_value"], 2) == 0.29
+    assert 0.4 < rr["lower"] < 0.5 and 15 < rr["upper"] < 16
+
+A cohort: the 1,384 patients of ``mgus2`` followed from diagnosis, deaths per 1,000
+person-years by sex and attained age. With reference rates (here an illustrative table, by sex and
+age band, in the same units: deaths per 1,000 person-years), each cell also gets its expected
+deaths and the observed to expected ratio, the standardised mortality (or incidence) ratio:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_mgus2
+
+    mgus = load_mgus2()
+    reference = pd.DataFrame({
+        "sex": ["F"] * 4 + ["M"] * 4,
+        "age": [0, 60, 70, 80] * 2,
+        "rate": [5, 15, 40, 120, 8, 25, 60, 160],
+    })
+    cohort = surv.person_years(
+        mgus["futime"] / 12, 1 - mgus["death"],
+        factors={"sex": mgus["sex"]},
+        timescales={"age": (mgus["age"], [0, 60, 70, 80, np.inf])},
+        rates=reference, per=1000,
+    )
+    print(cohort.table[["sex", "age", "units", "exposure", "events", "rate",
+                        "expected", "oe_ratio", "oe_lower", "oe_upper"]].round(2))
+    print(cohort.margins()[["exposure", "events", "expected", "oe_ratio",
+                            "oe_lower", "oe_upper"]].round(3))
+
+The patients lived 11,048.5 person-years and 963 died, 1.37 times the deaths the reference rates
+predict (95% bounds 1.28 to 1.46). The excess is largest under 60, four to five times the
+reference (14 women died there against 3.4 expected), and shrinks with age. ``units`` counts the patients who spent time in each cell, so a patient who
+crossed an age band is counted in both.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = cohort.margins().iloc[0]
+    assert round(_t["exposure"], 1) == 11048.5 and _t["events"] == 963
+    assert round(_t["oe_ratio"], 2) == 1.37
+    assert round(_t["oe_lower"], 2) == 1.28 and round(_t["oe_upper"], 2) == 1.46
+    _f = cohort.table.iloc[0]
+    assert _f["events"] == 14 and round(_f["expected"], 1) == 3.4
+
+What it does, in more detail:
+
+- **The rate and its bounds.** A cell's rate is its events over its exposure, :math:`d / T`, the
+  estimate of a hazard taken as constant within the cell. Its bounds are the exact (Garwood)
+  Poisson bounds, :math:`\chi^2_{2d, \alpha/2} / 2T` and :math:`\chi^2_{2d+2, 1-\alpha/2} / 2T`
+  (R's ``poisson.test``); they cover the true rate at least 95% of the time, more where the counts
+  are small. ``surv.poisson_rate_bounds(d, T)`` gives them for any count and exposure.
+- **The rate ratio** of two sets of cells (``rate_ratio(cells, reference)``) uses that, given the
+  total events in the two, the share in the first is binomial: its exact (Clopper-Pearson) bounds
+  and binomial test give the ratio's bounds and p-value, as R's ``poisson.test`` with two counts.
+- **Observed to expected.** The expected events of a cell are its reference rate times its
+  exposure, and the ratio's bounds are the Garwood bounds of the events divided by them (the
+  expected count taken as known). ``rates`` is one rate for every cell or a table with a ``rate``
+  column and columns for the factors and time scales it varies by (a time band by its lower edge).
+  A reference rate that changes within a cell is taken at one value there; to integrate a finer
+  rate table, cut the bands at its edges and add the cells up (``margins``).
+- **Bands** are ``(lower, upper]``: an event exactly on an edge is in the band ending there, as in
+  R. Time outside every band is reported in ``offtable`` with a warning; end the last band at
+  ``inf`` to keep everything. ``margins(by)`` adds the table up over the other dimensions and
+  recomputes the rates; ``units`` do not add up across cells and are left out there.
+- **Refused:** left and interval censored rows (``c=-1``, ``c=2``), whose exposure ends at an
+  unknown time: a failure found at an inspection is recorded as an event at the inspection; or
+  estimate the survival with ``Turnbull``.
+
 Conditional survival
 --------------------
 
