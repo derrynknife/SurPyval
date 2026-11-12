@@ -24,6 +24,80 @@ Unreleased
   ``diagnose()`` refuse, saying what to use instead. ``CoxPH`` still
   refuses interval-censored rows. Guide:
   :doc:`Interval-Censored Cox Regression`.
+- Multi-state models for panel data, ``PanelMultiState`` and
+  ``PanelMultiStateRegression`` (also at the top level): units whose state
+  is seen only at visits (clinic visits, inspections, survey waves), so
+  that each move happened at an unknown time between two visits. A
+  continuous-time Markov model with a constant intensity for each allowed
+  move, fitted by maximum likelihood from the states seen (the likelihood
+  of R ``msm``: products of :math:`\exp(Q t)` over the gaps, by the
+  forward recursion). Data are one row per visit (``x``, ``s``, ``i``, and
+  ``fit_from_df`` with ``x_col``, ``s_col``, ``i_col``); a visit may see a
+  set of states (``censored``), a death may be timed exactly
+  (``exact_entry``) and a move may be seen as it happened
+  (``obstype="exact"``). Covariates act on the log intensities, per
+  transition or ``shared``, and may change between visits; ``pci`` lets
+  the intensities change at given times. ``intensity_matrix``,
+  ``transition_probabilities``, ``occupancy``, ``occupancy_se`` and ``cb``
+  (delta-method bounds from the exact derivatives of the matrix
+  exponential), ``mean_sojourn`` and ``sojourn_cb``, ``param_cb`` and
+  ``summary`` (Wald bounds, intensity ratios), a fit that warns where an
+  intensity runs to 0 (no finite maximum), and ``to_dict`` /
+  ``from_dict``. Checked against R ``msm`` 1.9: log-likelihoods to 1e-12,
+  intensities, standard errors and bounds to about 1e-6. Misclassified
+  states (hidden Markov models) are not built. See :doc:`Multi-State
+  Models`.
+- ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
+  (IDI) and the net reclassification improvement (NRI) of a new risk
+  model over an old one at a horizon, on right-censored data, from the
+  two models' predicted risks of the event by the horizon. The IDI, the
+  continuous NRI and, with ``cutoffs``, the categorical NRI, each with
+  its event and non-event parts and the four shares moving up and down;
+  censoring handled by IPCW (Uno, Tian, Cai, Kohane and Wei 2013) or, for
+  the NRI, by Kaplan-Meier (Pencina, D'Agostino and Steyerberg 2011);
+  perturbation-resampling (default) or bootstrap bounds and p-values;
+  the reclassification tables; ``RiskReclassification.to_dict`` /
+  ``from_dict``. Agrees with R's ``nricens`` to 1e-12 and with
+  ``survIDINRI``'s estimator to its integration grid. The docs say
+  plainly that the NRI is not a proper scoring rule and that the Brier
+  score and AUC differences (``score_predictions``) are the primary
+  comparison.
+
+- Exposure (person-years) tables, ``person_years(x, c, n, tl, factors=,
+  timescales=, rates=, per=, alpha_ci=)``, as R's ``survival::pyears``:
+  the total time at risk, the events and the units in each cell of fixed
+  factors crossed with time bands that each unit moves through while
+  followed (attained age, calendar period, time since entry: R's
+  ``tcut``), with each cell's event rate (per ``per`` units of time) and
+  its exact Garwood bounds. ``rate_ratio(cells, reference)`` gives the
+  ratio of two cells' rates with its exact conditional bounds and test
+  (R's ``poisson.test``); ``rates=`` (one rate or a table by some of the
+  dimensions) gives expected events and the observed to expected ratio
+  (standardised incidence or mortality ratio) with exact bounds;
+  ``margins(by)`` adds the table up; time outside every band is reported
+  in ``offtable``. The ``PersonYears`` result has ``to_dict`` /
+  ``from_dict``. Also ``poisson_rate_bounds(events, exposure)``, the
+  exact bounds of one rate. Left and interval censored rows are refused
+  with the fix. Checked against ``pyears`` and ``poisson.test`` on
+  ``mgus2`` (cells exact). Guide: the "Exposure (person-years) tables"
+  section of :doc:`Non-Parametric SurPyval Modelling`.
+- Sample size and power for four designs the plain log-rank calculation
+  does not answer, in ``surpyval.test_planning``: a Cox model's
+  coefficient for a continuous covariate or one correlated with the
+  others (``cox_events``, ``cox_sample_size``, ``cox_power``,
+  ``cox_detectable``; Hsieh and Lavori 2000, variance inflated by
+  ``1 / (1 - R^2)``); non-inferiority and equivalence of a hazard ratio
+  (``noninferiority_events``, ``noninferiority_sample_size``,
+  ``noninferiority_power``, ``equivalence_events``,
+  ``equivalence_sample_size``, ``equivalence_power``); a difference in
+  restricted mean survival time between two groups with given survival
+  curves, uniform entry, follow-up and dropout, the variance of each
+  Kaplan-Meier RMST computed from the curves (``rmst_sample_size``,
+  ``rmst_power``); and a log-rank test when some units are cured, from
+  the test's mean and variance under the two mixture-cure curves
+  (``cure_logrank_sample_size``, ``cure_logrank_events``,
+  ``cure_logrank_power``). Guide: the section "When the plain log-rank
+  calculation is wrong" in :doc:`Test Planning with SurPyval`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,
@@ -1031,6 +1105,30 @@ Unreleased
   each study's mean coverage over its bounds at each level, the gap from
   nominal and the count below it. It is a report only; nothing passes or
   fails on it, and no seed, replicate count or tolerance changed.
+- Group-sequential designs in ``surpyval.test_planning``: a comparison
+  looked at a few planned times, stopping early for efficacy or futility
+  while keeping its level. ``logrank_group_sequential(hazard_ratio, looks,
+  power)`` gives the boundaries at each look, the maximum and expected
+  events (the single-analysis events of ``logrank_events`` times the
+  inflation factor), the units (with ``event_probability``) and the hazard
+  ratio on each boundary; ``group_sequential_design`` gives the same for
+  any normal test statistic on the information scale, and
+  ``boundary_crossing`` the chances of crossing any boundaries. Efficacy
+  boundaries: O'Brien-Fleming, Pocock, Wang-Tsiatis and Haybittle-Peto, or
+  Lan-DeMets alpha spending (O'Brien-Fleming-type, Pocock-type,
+  Hwang-Shih-DeCani, Kim-DeMets); one- or two-sided; futility boundaries by
+  beta spending, binding or non-binding. The designs report the critical
+  values and nominal p-values, the alpha and beta spent, the inflation
+  factor, the stopping probabilities and expected information under both
+  hypotheses; ``update`` re-computes a spending design at the information
+  the looks came at; ``decide``, the stage-wise ``p_value``, the
+  median-unbiased ``estimate`` with its interval (``hazard_ratio_estimate``
+  for the log-rank design) and ``repeated_interval`` analyse a study.
+  Computed by recursive numerical integration (Jennison and Turnbull 2000,
+  chapter 19), not simulation; checked against R's gsDesign 3.11.0 and
+  rpact 4.4.0 (to about 1e-6) and Jennison and Turnbull's tables, and by
+  simulated log-rank studies. ``to_dict`` / ``from_dict``. Guide:
+  :doc:`Test Planning with SurPyval`.
 
 **Deprecated.**
 

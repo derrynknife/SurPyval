@@ -521,3 +521,88 @@ X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
 # model warns of).
 X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
 Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])
+
+
+# Panel data: fourteen units of an illness-death model with recovery seen
+# at visits: (unit, time, state seen, covariate). "dead" is entered at an
+# exact time; "alive" is a last visit that saw only that the unit was
+# alive (healthy or ill).
+_PANEL_ROWS = [
+    (1, 0.0, "healthy", 0.0),
+    (1, 1.0, "healthy", 0.0),
+    (1, 2.0, "ill", 0.0),
+    (1, 3.5, "dead", 0.0),
+    (2, 0.0, "healthy", 1.0),
+    (2, 1.5, "ill", 1.0),
+    (2, 2.5, "healthy", 1.0),
+    (2, 4.0, "ill", 1.0),
+    (3, 0.0, "healthy", 0.5),
+    (3, 1.0, "healthy", 0.5),
+    (3, 2.0, "healthy", 0.5),
+    (3, 3.0, "alive", 0.5),
+    (4, 0.0, "ill", 0.0),
+    (4, 1.0, "ill", 0.0),
+    (4, 2.0, "ill", 0.0),
+    (4, 2.2, "dead", 0.0),
+    (5, 0.0, "healthy", 1.0),
+    (5, 2.0, "ill", 1.0),
+    (5, 3.0, "ill", 1.0),
+    (5, 5.0, "healthy", 1.0),
+    (6, 0.0, "healthy", 0.0),
+    (6, 1.2, "healthy", 0.0),
+    (6, 3.9, "healthy", 0.0),
+    (6, 4.1, "dead", 0.0),
+    (7, 0.0, "healthy", 0.5),
+    (7, 1.0, "ill", 0.5),
+    (7, 2.0, "ill", 0.5),
+    (7, 3.0, "healthy", 0.5),
+    (7, 4.5, "healthy", 0.5),
+    (8, 0.0, "ill", 1.0),
+    (8, 1.5, "healthy", 1.0),
+    (8, 3.0, "alive", 1.0),
+    (9, 0.0, "healthy", 0.0),
+    (9, 2.5, "healthy", 0.0),
+    (9, 3.0, "dead", 0.0),
+    (10, 0.0, "healthy", 1.0),
+    (10, 1.0, "ill", 1.0),
+    (10, 1.8, "dead", 1.0),
+    (11, 0.0, "healthy", 0.5),
+    (11, 2.0, "healthy", 0.5),
+    (11, 4.0, "healthy", 0.5),
+    (11, 4.3, "dead", 0.5),
+    (12, 0.0, "ill", 0.0),
+    (12, 1.0, "healthy", 0.0),
+    (12, 2.0, "ill", 0.0),
+    (12, 3.0, "ill", 0.0),
+    (13, 0.0, "ill", 1.0),
+    (13, 0.8, "ill", 1.0),
+    (13, 1.0, "dead", 1.0),
+    (14, 0.0, "healthy", 0.5),
+    (14, 1.0, "ill", 0.5),
+    (14, 1.2, "dead", 0.5),
+]
+
+
+def panel_data(with_Z=False):
+    """Visits of fourteen units in an illness-death model with recovery,
+    with exactly timed deaths and two last visits that saw only
+    "alive"."""
+    d = {
+        "x": np.array([r[1] for r in _PANEL_ROWS], dtype=float),
+        "s": np.array([r[2] for r in _PANEL_ROWS], dtype=object),
+        "i": np.array([r[0] for r in _PANEL_ROWS], dtype=int),
+        "transitions": [
+            ("healthy", "ill"),
+            ("healthy", "dead"),
+            ("ill", "healthy"),
+            ("ill", "dead"),
+        ],
+        "censored": {"alive": ("healthy", "ill")},
+        "exact_entry": "dead",
+    }
+    if with_Z:
+        d["Z"] = np.array([[r[3]] for r in _PANEL_ROWS], dtype=float)
+    return d
+
+
+X_PANEL = np.array([0.5, 1.0, 2.0, 3.0, 4.5, 6.0, 8.0])
