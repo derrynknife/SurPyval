@@ -45,6 +45,7 @@ EXPECTED_SOURCES = {
     "r_multistate",
     "r_multistate_parametric",
     "r_mixture_cure",
+    "r_pyears",
     "r_adjusted_curves",
     "py_lifelines",
     "py_sksurv",
