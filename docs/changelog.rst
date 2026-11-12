@@ -5,6 +5,23 @@ Unreleased
 
 **Added.**
 
+- Sample size and power for four designs the plain log-rank calculation
+  does not answer, in ``surpyval.test_planning``: a Cox model's
+  coefficient for a continuous covariate or one correlated with the
+  others (``cox_events``, ``cox_sample_size``, ``cox_power``,
+  ``cox_detectable``; Hsieh and Lavori 2000, variance inflated by
+  ``1 / (1 - R^2)``); non-inferiority and equivalence of a hazard ratio
+  (``noninferiority_events``, ``noninferiority_sample_size``,
+  ``noninferiority_power``, ``equivalence_events``,
+  ``equivalence_sample_size``, ``equivalence_power``); a difference in
+  restricted mean survival time between two groups with given survival
+  curves, uniform entry, follow-up and dropout, the variance of each
+  Kaplan-Meier RMST computed from the curves (``rmst_sample_size``,
+  ``rmst_power``); and a log-rank test when some units are cured, from
+  the test's mean and variance under the two mixture-cure curves
+  (``cure_logrank_sample_size``, ``cure_logrank_events``,
+  ``cure_logrank_power``). Guide: the section "When the plain log-rank
+  calculation is wrong" in :doc:`Test Planning with SurPyval`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,
