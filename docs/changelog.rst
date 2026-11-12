@@ -1729,6 +1729,19 @@ Unreleased
   leading errors. Against the exact Hessian of a power-law process the
   standard errors agree to 1e-8 from years to seconds.
 
+  The error was largest for ``Duane`` with event times in the thousands of
+  hours, where ``b`` is a few millionths. On a fleet of 12 systems with
+  179 events to 18,000 hours, the standard error of ``alpha`` was 0.0213
+  where the likelihood gives 0.1135, so its 95% interval was 1.508 to
+  1.591, about five times too narrow, while ``CrowAMSAA``'s ``beta`` (the
+  same parameter) gave 1.342 to 1.788; Duane now gives 1.342 to 1.788
+  too. On other such fleets it gave no standard error at all (``nan``):
+  over 200 simulated fleets a 90% interval on ``alpha`` covered the true
+  shape in 31 (now 173). A test pins Duane's standard errors to the
+  closed-form observed information of the power-law likelihood and to
+  Crow-AMSAA's, and the recurrent calibration study now checks Duane's
+  ``param_cb`` coverage in hours.
+
   The Wald bounds on the curves (``cif_cb``, ``iif_cb``, ``mtbf_cb``,
   ``cb_tvc`` and the cause-specific ones) take the curve's gradient by
   finite differences too, with the same floor; their steps are now a
