@@ -33,6 +33,29 @@ Unreleased
   says what was applied). The factors agree with R ``WeibullR``'s
   ``rba`` to 1e-12.
 
+- Multi-state models for panel data, ``PanelMultiState`` and
+  ``PanelMultiStateRegression`` (also at the top level): units whose state
+  is seen only at visits (clinic visits, inspections, survey waves), so
+  that each move happened at an unknown time between two visits. A
+  continuous-time Markov model with a constant intensity for each allowed
+  move, fitted by maximum likelihood from the states seen (the likelihood
+  of R ``msm``: products of :math:`\exp(Q t)` over the gaps, by the
+  forward recursion). Data are one row per visit (``x``, ``s``, ``i``, and
+  ``fit_from_df`` with ``x_col``, ``s_col``, ``i_col``); a visit may see a
+  set of states (``censored``), a death may be timed exactly
+  (``exact_entry``) and a move may be seen as it happened
+  (``obstype="exact"``). Covariates act on the log intensities, per
+  transition or ``shared``, and may change between visits; ``pci`` lets
+  the intensities change at given times. ``intensity_matrix``,
+  ``transition_probabilities``, ``occupancy``, ``occupancy_se`` and ``cb``
+  (delta-method bounds from the exact derivatives of the matrix
+  exponential), ``mean_sojourn`` and ``sojourn_cb``, ``param_cb`` and
+  ``summary`` (Wald bounds, intensity ratios), a fit that warns where an
+  intensity runs to 0 (no finite maximum), and ``to_dict`` /
+  ``from_dict``. Checked against R ``msm`` 1.9: log-likelihoods to 1e-12,
+  intensities, standard errors and bounds to about 1e-6. Misclassified
+  states (hidden Markov models) are not built. See :doc:`Multi-State
+  Models`.
 - ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
   (IDI) and the net reclassification improvement (NRI) of a new risk
   model over an old one at a horizon, on right-censored data, from the
@@ -1091,6 +1114,30 @@ Unreleased
   each study's mean coverage over its bounds at each level, the gap from
   nominal and the count below it. It is a report only; nothing passes or
   fails on it, and no seed, replicate count or tolerance changed.
+- Group-sequential designs in ``surpyval.test_planning``: a comparison
+  looked at a few planned times, stopping early for efficacy or futility
+  while keeping its level. ``logrank_group_sequential(hazard_ratio, looks,
+  power)`` gives the boundaries at each look, the maximum and expected
+  events (the single-analysis events of ``logrank_events`` times the
+  inflation factor), the units (with ``event_probability``) and the hazard
+  ratio on each boundary; ``group_sequential_design`` gives the same for
+  any normal test statistic on the information scale, and
+  ``boundary_crossing`` the chances of crossing any boundaries. Efficacy
+  boundaries: O'Brien-Fleming, Pocock, Wang-Tsiatis and Haybittle-Peto, or
+  Lan-DeMets alpha spending (O'Brien-Fleming-type, Pocock-type,
+  Hwang-Shih-DeCani, Kim-DeMets); one- or two-sided; futility boundaries by
+  beta spending, binding or non-binding. The designs report the critical
+  values and nominal p-values, the alpha and beta spent, the inflation
+  factor, the stopping probabilities and expected information under both
+  hypotheses; ``update`` re-computes a spending design at the information
+  the looks came at; ``decide``, the stage-wise ``p_value``, the
+  median-unbiased ``estimate`` with its interval (``hazard_ratio_estimate``
+  for the log-rank design) and ``repeated_interval`` analyse a study.
+  Computed by recursive numerical integration (Jennison and Turnbull 2000,
+  chapter 19), not simulation; checked against R's gsDesign 3.11.0 and
+  rpact 4.4.0 (to about 1e-6) and Jennison and Turnbull's tables, and by
+  simulated log-rank studies. ``to_dict`` / ``from_dict``. Guide:
+  :doc:`Test Planning with SurPyval`.
 
 **Deprecated.**
 

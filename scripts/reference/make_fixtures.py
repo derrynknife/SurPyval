@@ -896,6 +896,85 @@ def rank_regression():
     }
 
 
+def multistate_panel(seed):
+    """A four-state Markov model seen at visits (1 well, 2 mild, 3
+    severe, 4 dead; the transitions of R msm's heart-transplant example):
+    300 units, 80% starting well, visited at time 0 and then every
+    uniform (0.5, 1.5) time units until a uniform (4, 10) end of
+    follow-up. Base intensities 1->2 0.15, 1->4 0.03, 2->1 0.10, 2->3
+    0.15, 2->4 0.05, 3->2 0.05, 3->4 0.20; a unit with male = 1 has every
+    intensity times exp(0.4). A death is recorded at its exact time
+    (state 4, obstype 3); a unit alive at the end of follow-up has a last
+    row there, whose state is seen (obstype 1) or, for a third of them,
+    recorded as 99, "alive, state not seen". w is a covariate drawn
+    afresh at each visit (uniform 0 to 1) with no effect. Times are
+    rounded to three decimals."""
+    rng = np.random.default_rng(seed)
+    base = {
+        (1, 2): 0.15,
+        (1, 4): 0.03,
+        (2, 1): 0.10,
+        (2, 3): 0.15,
+        (2, 4): 0.05,
+        (3, 2): 0.05,
+        (3, 4): 0.20,
+    }
+    rows = []
+    for unit in range(1, 301):
+        male = int(rng.uniform() < 0.4)
+        mult = math.exp(0.4 * male)
+        state = 1 if rng.uniform() < 0.8 else 2
+        end = round(float(rng.uniform(4, 10)), 3)
+        visits = [0.0]
+        while True:
+            nxt = round(visits[-1] + float(rng.uniform(0.5, 1.5)), 3)
+            if nxt >= end:
+                break
+            visits.append(nxt)
+        visits.append(end)
+        # the path: (time of each move, state entered)
+        t, path = 0.0, [(0.0, state)]
+        while state != 4:
+            out = [(b, r * mult) for (a, b), r in base.items() if a == state]
+            total = sum(r for _, r in out)
+            t += float(rng.exponential(1 / total))
+            if t >= end:
+                break
+            k = rng.choice(len(out), p=[r / total for _, r in out])
+            state = out[k][0]
+            path.append((t, state))
+        death = path[-1][0] if path[-1][1] == 4 else None
+
+        def at(time):
+            return [s for u, s in path if u <= time][-1]
+
+        hidden = rng.uniform() < 1 / 3
+        for k, v in enumerate(visits):
+            if death is not None and v >= death:
+                rows.append((unit, round(death, 3), 4, 3, male))
+                break
+            last = k == len(visits) - 1
+            code = 99 if last and hidden else at(v)
+            rows.append((unit, v, code, 1, male))
+    w = [round(float(v), 3) for v in rng.uniform(0, 1, len(rows))]
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.multistate_panel (rng "
+        "{}): a four-state Markov model seen at visits (state 1 well, 2 "
+        "mild, 3 severe, 4 dead, 99 alive in an unseen state; obstype 1 a "
+        "visit, 3 an exactly timed death; male multiplies every intensity "
+        "by exp(0.4); w has no effect)".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "time": _native(columns[1]),
+            "state": _native(columns[2]),
+            "obstype": _native(columns[3]),
+            "male": _native(columns[4]),
+            "w": w,
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -948,6 +1027,7 @@ def build():
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
         "rank_regression": rank_regression(),
+        "multistate_panel": multistate_panel(3801),
         "no_data": {
             "source": "none: a design calculation (a sample size or a "
             "power) from the arguments in its call alone",
