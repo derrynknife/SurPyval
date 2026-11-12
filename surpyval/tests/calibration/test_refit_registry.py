@@ -1493,6 +1493,11 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    "IntervalCoxPH": "its fixture is interval censored, and the "
+    "regression plans draw exact and right-censored times, which would "
+    "check the grouped-data likelihood rather than the interval one; its "
+    "coefficients' coverage on simulated interval-censored data is "
+    "calibration/test_coverage_interval_cox.py's",
     **dict.fromkeys(
         (
             "AndersenGill",
