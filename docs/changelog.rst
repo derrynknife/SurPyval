@@ -15,8 +15,8 @@ Unreleased
   within a cluster (Zhou, Fine, Latouche and Labopin, 2012). Both combine
   with each other and with weights; ``fit_from_df`` takes ``strata_col``
   and ``cluster_col``; ``to_dict``/``from_dict`` keep each stratum's
-  baseline. Checked against R ``crrSC`` 1.1.2 (``crrs``, ``crrc``) on its
-  example data to 1e-7. The diagnostics refuse a fit with strata or
+  baseline. Checked against R ``crrSC`` 1.1.2 (``crrs``, ``crrc``) on
+  simulated data, to 1e-7. The diagnostics refuse a fit with strata or
   clusters, with what to do instead.
 - The restricted mean time lost (RMTL) to a cause of failure: the area
   under the cause's cumulative incidence up to a horizon ``tau``, the

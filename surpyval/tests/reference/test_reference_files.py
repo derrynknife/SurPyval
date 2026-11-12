@@ -49,6 +49,7 @@ EXPECTED_SOURCES = {
     "r_pyears",
     "r_adjusted_curves",
     "r_rmtl",
+    "r_crrsc",
     "r_km_ci",
     "r_interval_cox",
     "r_weibullr",
