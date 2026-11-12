@@ -371,3 +371,71 @@ def test_665_bounds_before_the_first_and_past_the_last_value(fitter):
     with pytest.warns(UserWarning, match=r"x = 100, past the last .* 30"):
         past = model.cb([1, 100])
     assert np.isnan(past[1]).all() and np.all(past[0] == 1)
+
+
+# -- the other pointwise interval types --------------------------------------
+_NEW_TYPES = ["log", "logit", "arcsine", "peto", "rothman"]
+_X = np.array([1.0, 2.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+_C = np.array([0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1])
+
+
+@pytest.mark.parametrize("fitter", ["KaplanMeier", "NelsonAalen"])
+@pytest.mark.parametrize("bound_type", _NEW_TYPES)
+def test_new_bound_types_hold_the_estimate(fitter, bound_type):
+    model = getattr(surpyval, fitter).fit(_X, c=_C)
+    t = np.linspace(0.5, 10, 40)
+    b = model.cb(t, bound_type=bound_type)
+    sf = model.sf(t)
+    assert np.all(b[:, 0] <= sf + 1e-12)
+    assert np.all(sf <= b[:, 1] + 1e-12)
+    if bound_type != "peto":
+        assert np.all((b >= 0) & (b <= 1))
+    # On ff and Hf they are the transforms of those on sf.
+    ff = model.cb(t, on="ff", bound_type=bound_type)
+    np.testing.assert_allclose(ff, 1 - b[:, ::-1], atol=1e-14)
+
+
+def test_new_bound_types_by_hand():
+    model = surpyval.KaplanMeier.fit(_X, c=_C)
+    t = 4.0
+    S = float(model.sf(t))
+    i = np.searchsorted(model.x, t, side="right") - 1
+    sd = np.sqrt(model.greenwood[i])
+    z = norm.ppf(0.975)
+    np.testing.assert_allclose(
+        model.cb(t, bound_type="log"),
+        [S * np.exp(-z * sd), min(S * np.exp(z * sd), 1.0)],
+    )
+    se = S * np.sqrt((1 - S) / model.r[i])
+    np.testing.assert_allclose(
+        model.cb(t, bound_type="peto"), [S - z * se, S + z * se]
+    )
+
+
+def test_peto_is_refused_for_a_weighted_fit():
+    w = np.linspace(0.5, 1.5, _X.size)
+    with pytest.warns(UserWarning, match="effective sample size"):
+        model = surpyval.KaplanMeier.fit(_X, c=_C, w=w)
+    with pytest.raises(ValueError, match="bound_type='peto'"):
+        model.cb(3.0, bound_type="peto")
+    assert model.cb(3.0, bound_type="logit").shape == (2,)
+
+
+def test_unknown_bound_type_names_every_type():
+    model = surpyval.KaplanMeier.fit(_X, c=_C)
+    with pytest.raises(ValueError, match="'rothman'"):
+        model.cb(3.0, bound_type="wilson")
+
+
+def test_turnbull_and_competing_risks_take_the_new_types():
+    model = surpyval.Turnbull.fit(_X, c=_C)
+    assert np.all(np.isfinite(model.cb([3.0, 5.0], bound_type="arcsine")))
+    cr = surpyval.CompetingRisks.fit(
+        _X, np.where(_C == 0, np.array(list("ababababab" + "a")), None)
+    )
+    np.testing.assert_allclose(
+        cr.cb(4.0, on="sf", bound_type="logit"),
+        cr._single_event(None).cb(4.0, bound_type="logit"),
+    )
+    with pytest.raises(ValueError, match="'bound_type' must be one of"):
+        cr.cb(4.0, "a", bound_type="logit")

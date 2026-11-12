@@ -49,6 +49,8 @@ EXPECTED_SOURCES = {
     "r_pyears",
     "r_adjusted_curves",
     "r_rmtl",
+    "r_km_ci",
+    "r_weibullr",
     "r_logrank_extensions",
     "r_reclassification",
     "r_sample_size",

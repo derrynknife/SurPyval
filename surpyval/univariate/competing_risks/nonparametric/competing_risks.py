@@ -43,6 +43,7 @@ from surpyval.univariate.nonparametric._support import (
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
 from surpyval.univariate.nonparametric.nonparametric import (
+    POINTWISE_BOUND_TYPES,
     warn_bounds_past_data,
 )
 from surpyval.univariate.regression.regression_data import (
@@ -501,7 +502,8 @@ class CompetingRisks(SerialisableMixin):
             which keeps it within [0, 1]; 'normal' is
             :math:`\hat{F} \pm z\,\hat{\sigma}`, which can leave it. For
             ``sf``, ``ff`` and ``Hf`` it is the single-event ``cb``'s
-            ``bound_type``.
+            ``bound_type``, which also takes 'log', 'logit', 'arcsine',
+            'peto' and 'rothman' (see ``KaplanMeier.cb``).
 
         Returns
         -------
@@ -579,7 +581,17 @@ class CompetingRisks(SerialisableMixin):
             "('cif', 'sf', 'ff', 'Hf') instead.",
         )
         check_option("bound", bound, BOUNDS)
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        if on == "cif":
+            check_option(
+                "bound_type",
+                bound_type,
+                ("exp", "normal"),
+                "The cumulative incidence is bounded on the log(-log) "
+                "scale ('exp') or plainly ('normal'); the other types are "
+                "for the survival ('sf', 'ff', 'Hf').",
+            )
+        else:
+            check_option("bound_type", bound_type, POINTWISE_BOUND_TYPES)
         validate_event(self.event_idx_map, event)
         if on != "cif":
             return self._single_event(event).cb(

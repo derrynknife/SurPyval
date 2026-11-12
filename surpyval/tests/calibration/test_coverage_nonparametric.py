@@ -4,7 +4,8 @@ Four studies:
 
 - **Pointwise** ``cb`` of Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
   (default log(-log) bounds) at the true quartiles of a censored Weibull
-  sample, n = 100.
+  sample, n = 100; and the Kaplan-Meier's other interval types ('log',
+  'logit', 'arcsine', 'peto', 'rothman') on the same design.
 - **Competing risks**: the pointwise ``cb`` of ``CompetingRisks``' cumulative
   incidence (Aalen's variance, log(-log) bounds) at two times of a
   simulated wear-out-or-shock sample, n = 200, at 95% and 90%.
@@ -78,6 +79,55 @@ def test_pointwise_coverage(name):
         lo1[r] = model.cb(t_eval, on="sf", bound="lower")
     check_coverage(lo, hi, truth, 0.95, name + " cb(sf)")
     check_coverage(lo1, np.inf, truth, 0.95, name + " cb(sf, 'lower')")
+
+
+@pytest.mark.parametrize(
+    "bound_type", ["log", "logit", "arcsine", "peto", "rothman"]
+)
+def test_pointwise_coverage_by_type(bound_type):
+    # The other interval types of the Kaplan-Meier's ``cb``, on the same
+    # design as the default's above (n = 100, the true quartiles), two-sided
+    # and lower at 95%. The same seed for every type: the same samples.
+    rng = np.random.default_rng(206)
+    t_eval = TRUE.qf(np.array([0.25, 0.5, 0.75]))
+    truth = TRUE.sf(t_eval)
+    reps = 2000
+    lo, hi = np.empty((reps, 3)), np.empty((reps, 3))
+    lo1 = np.empty((reps, 3))
+    for r in range(reps):
+        x, c = _sample(rng)
+        model = sp.KaplanMeier.fit(x, c=c)
+        b = model.cb(t_eval, on="sf", bound_type=bound_type)
+        lo[r], hi[r] = b[:, 0], b[:, 1]
+        lo1[r] = model.cb(
+            t_eval, on="sf", bound="lower", bound_type=bound_type
+        )
+    label = f"KaplanMeier cb(sf, bound_type={bound_type!r})"
+    if bound_type == "peto":
+        # Peto's variance, S^2 (1 - S) / Y, counts the units at risk at t
+        # only, fewer than the information behind the estimate once
+        # censoring has thinned the risk set, so it overstates the
+        # variance late in follow-up and the interval is conservative there
+        # (Dorey and Korn, 1987). This check is one-sided (at least nominal
+        # less the tolerance). It was made so after the first run, whose
+        # two-sided check failed on over-coverage only: the lower bound at
+        # the third quartile covered 0.9770 (two-sided interval 0.9565).
+        for name, lower, upper in (
+            ("", lo, hi),
+            (", 'lower'", lo1, np.full_like(lo1, np.inf)),
+        ):
+            hits = (lower <= truth) & (truth <= upper)
+            for k in range(truth.size):
+                check_rate(
+                    int(hits[:, k].sum()),
+                    reps,
+                    0.95,
+                    f"{label}{name} [{k}]",
+                    side="lower",
+                )
+        return
+    check_coverage(lo, hi, truth, 0.95, label)
+    check_coverage(lo1, np.inf, truth, 0.95, label + ", 'lower'")
 
 
 def _band_covers(model, method):

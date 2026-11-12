@@ -18,6 +18,43 @@ Unreleased
   with its interval), as ``rmst_diff`` does for survival. Checked against
   R ``survival`` 3.8.12, ``cmprsk`` 2.2.12, ``survRM2`` 1.0.4 and
   ``GFDrmtl`` 0.1.0.
+- More pointwise confidence-interval types for the non-parametric
+  survival estimates (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington,
+  Turnbull, and the survival of ``CompetingRisks``):
+  ``cb(bound_type=...)`` now also takes ``'log'`` (the default of R's
+  ``survfit``), ``'logit'``, ``'arcsine'`` (arcsine-square-root),
+  ``'peto'`` (Peto's variance) and ``'rothman'`` (Rothman's Wilson-type
+  interval), beside ``'exp'`` (log(-log), still the default) and
+  ``'normal'``. ``quantile_cb`` and ``plot`` take them too. Checked
+  against R ``survival`` 3.8.12 (``survfit(conf.type=...)``) and
+  ``km.ci`` 0.5.6 to rounding.
+- Pivotal bounds for probability-plotting fits: ``cb``, ``quantile_cb``
+  and ``param_cb`` take ``method="pivotal"`` on a model fitted with
+  ``how="MPP"`` (rank regression) of the Weibull, LogNormal, LogLogistic,
+  Normal, Logistic, Gumbel, GumbelLEV or Exponential. The fitted line's
+  error, measured in units of its own slope, has a distribution free of
+  the parameters; it is simulated from ``n_sim`` standard samples (9999
+  by default) of the same size and rank pattern, fitted by the same
+  regression, and inverted for bounds on the parameters, the quantiles
+  (B-lives) and ``sf`` / ``ff`` / ``Hf`` (Lawless 2003, section 5.1;
+  the Monte Carlo pivotal bounds of Abernethy's *New Weibull Handbook*).
+  Exact for complete and type II censored samples up to Monte Carlo
+  error: over 1000 samples of 5, 10 and 20, 90% bounds covered 88.2% to
+  91.9%, where the MLE's Wald bounds covered 64% to 89%
+  (``calibration/test_coverage_pivotal.py``). Seeded by ``random_state``;
+  ``to_dict`` now records an MPP fit's plotting options
+  (``"mpp_options"``), so a model saved ``with_data=True`` gives the same
+  bounds. Refused, with what to use instead, for other methods and
+  families, offsets, left- or interval-censored and truncated data. The
+  fits agree exactly with R's ``WeibullR``, whose ``pivotal-rr`` bounds
+  are constructed differently (see :doc:`Parametric SurPyval Modelling`).
+- ``Parametric.rba(basis="median")``: Abernethy's reduced bias
+  adjustment of a maximum-likelihood fit, the Weibull shape multiplied by
+  ``C4^3.5`` (median-unbiased; ``basis="mean"``: ``C4^6``) or the
+  LogNormal or Normal ``sigma`` by ``sqrt(r / (r - 1)) / C4``, for ``r``
+  failures; opt-in, returning the adjusted model (``bias_adjustment``
+  says what was applied). The factors agree with R ``WeibullR``'s
+  ``rba`` to 1e-12.
 - Four more tests in the log-rank family, each with a result object,
   ``to_dict`` and a plain-words section in
   :doc:`Non-Parametric SurPyval Modelling`, checked against R:
@@ -1201,6 +1238,15 @@ Unreleased
 
 **Changed.**
 
+- **The bootstrap bounds of an MPP, MPS, MSE or MOM fit refit by that
+  method (an intentional change of numbers).** ``param_cb(...,
+  method="bootstrap")`` and ``bootstrap()`` refitted every resample by
+  maximum likelihood, whatever the model was fitted by, so the bound on,
+  say, a rank-regression shape was the spread of the maximum-likelihood
+  shape, centred by the share of those refits below the rank-regression
+  estimate. They now refit with the model's own ``how`` (and an MPP
+  fit's plotting options). On ten Weibull lifetimes the 95% bound on an
+  MPP shape of 1.43 moved from [0.82, 2.32] to [0.88, 2.70].
 - **Zero-inflated fits: a row "failed by t" includes the units dead on
   arrival (an intentional change of numbers).** In a univariate
   ``fit(..., zi=True)`` an interval starting at 0, ``[0, t]``, was read
