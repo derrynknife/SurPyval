@@ -67,6 +67,20 @@ Unreleased
   ``life_table`` refuse data in more than one state, naming the
   multi-state models and ``data[data.s == state]``; data in one state
   fits exactly as without ``s``. See :doc:`Conventions`.
+- The multi-state models fit a ``SurpyvalData``:
+  ``MultiState.fit(data, transitions=tm)``, and likewise
+  ``MultiStateProportionalHazards``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (which take the data's covariates
+  with their names), take ``x``, ``e``, ``s`` (as ``state``), ``tl``,
+  ``i``, ``n`` and the unit from the data, with the same result as from
+  the arrays. Data without ``s`` starts every row from the one initial
+  state (the one state of ``transitions`` nothing moves into, or
+  ``"event-free"``), so competing-risks data fits as it is. Interval- and
+  left-censored rows, weights, right truncation, time-varying covariates
+  and masked causes are refused, naming the rows or the fix. ``fit`` also
+  takes ``s=`` as another name for ``state=``, and ``fit_from_df``
+  ``s_col=`` for ``state_col=`` (give one). See
+  :doc:`Multi-State Models`.
 - Equivalent time scales, ``Equivalence(Weibull)`` (and
   ``WeibullEquivalence``, ``LogNormalEquivalence``,
   ``LogLogisticEquivalence``, ``GammaEquivalence``,

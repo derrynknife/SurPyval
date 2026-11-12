@@ -857,6 +857,17 @@ def _multistate():
             transitions=d["transitions"],
         )
 
+    def from_data(cls):
+        # fit(data): the spells as a SurpyvalData with states (s).
+        def fit(d):
+            data = sp.SurpyvalData(
+                d["x"], n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
+                Z=d.get("Z"),
+            )  # fmt: skip
+            return cls.fit(data, transitions=d["transitions"])
+
+        return fit
+
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
         Case(
@@ -872,7 +883,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": ms_from_df},
+            paths={
+                "fit_from_df": ms_from_df,
+                "fit(data)": from_data(ms.MultiState),
+            },
             rtol=1e-9,
             exclude={"convergence": exact},
         ),
@@ -892,7 +906,10 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": msph_from_df},
+            paths={
+                "fit_from_df": msph_from_df,
+                "fit(data)": from_data(ms.MultiStateProportionalHazards),
+            },
             rtol=1e-6,
             coefficients=lambda m: m.betas,
             intercept=True,
@@ -910,7 +927,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": pms_from_df},
+            paths={
+                "fit_from_df": pms_from_df,
+                "fit(data)": from_data(ms.ParametricMultiState),
+            },
             exclude={
                 "convergence": "each transition is fitted by its "
                 "distribution's own univariate fit, whose starved fits the "
@@ -934,7 +954,10 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": pmsr_from_df},
+            paths={
+                "fit_from_df": pmsr_from_df,
+                "fit(data)": from_data(ms.ParametricMultiStateRegression),
+            },
             coefficients=lambda m: m.betas,
             intercept=True,
         ),

@@ -13,6 +13,7 @@ import numpy.typing as npt
 from surpyval.multistate import _core, _forward
 from surpyval.multistate._base import check_bound_args, probability_bounds
 from surpyval.multistate._data import SpellData, check_spells
+from surpyval.multistate._entry import multistate_data, other_name
 from surpyval.multistate.regression import _covariates
 from surpyval.multistate.transitions import TransitionMatrix
 from surpyval.serialisation import (
@@ -22,6 +23,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
@@ -593,6 +595,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
     @classmethod
     @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -617,7 +622,8 @@ class ParametricMultiState(_ParametricMultiStateBase):
             (``x``), the state it ended in (``e``, missing where it was
             censored), the state it was in (``state``), when it began
             (``tl``), the unit (``i``), counts (``n``) and the allowed
-            transitions.
+            transitions. ``x`` may be a :class:`~surpyval.SurpyvalData`
+            holding them all, and ``s`` is another name for ``state``.
         dist : ParametricFitter or dict, optional
             The distribution of every transition (default ``Weibull``),
             or a ``{(from, to): distribution}`` dict with one for each.
@@ -658,6 +664,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
     def fit_from_df(
         cls,
         df: Any,
@@ -673,7 +680,8 @@ class ParametricMultiState(_ParametricMultiStateBase):
     ) -> ParametricMultiState:
         """
         Fit the model to a DataFrame of spells, one row each; the columns
-        are the arguments of :meth:`fit`.
+        are the arguments of :meth:`fit` (``s_col`` is another name for
+        ``state_col``).
 
         Examples
         --------
@@ -990,6 +998,9 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
     @classmethod
     @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -1010,7 +1021,10 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         Parameters
         ----------
         x, e, state, tl, i, n, transitions, clock
-            As for :meth:`ParametricMultiState.fit`.
+            As for :meth:`ParametricMultiState.fit`: ``x`` may be a
+            :class:`~surpyval.SurpyvalData` holding the spells and their
+            covariates ``Z`` (named by its ``covariate_names``), and
+            ``s`` is another name for ``state``.
         Z : array_like
             The covariates, one row per spell (a unit's covariates on each
             of its spells). Missing values are refused: dropping a spell
@@ -1073,6 +1087,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
     def fit_from_df(
         cls,
         df: Any,
@@ -1090,7 +1105,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         """
         Fit the model to a DataFrame of spells, one row each; ``Z_cols``
         names the covariate columns, and the other columns are the
-        arguments of :meth:`fit`.
+        arguments of :meth:`fit` (``s_col`` is another name for
+        ``state_col``).
 
         Examples
         --------
