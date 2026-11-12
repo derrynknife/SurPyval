@@ -98,6 +98,8 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
+    "PanelMultiState": "surpyval.multistate.panel",
+    "PanelMultiStateRegression": "surpyval.multistate.panel",
     "ParametricMultiState": "surpyval.multistate.parametric",
     "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
