@@ -231,6 +231,78 @@ Where few units are left at risk the predicted hazards of leaving a state
 can add up to more than 1 at one time, and the predicted probabilities can
 then leave [0, 1]; the model warns when a prediction reaches such a time.
 
+Effects shared by some transitions, and proportional baselines
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An effect can also be shared by *some* transitions only. Here sex is
+thought to act the same way on the two ways of dying (with or without
+PCM), but not necessarily on progression: ``shared`` takes a dictionary
+from the covariate to the transitions that share its coefficient, each a
+``(from, to)`` pair (or its name, ``"mgus -> death"``). The other
+transitions keep their own coefficient.
+
+.. jupyter-execute::
+
+    into_death = [("mgus", "death"), ("pcm", "death")]
+    grouped = MultiStateProportionalHazards.fit_from_df(
+        spells, "x", ["age70", "male"], "e", "state", tl_col="tl",
+        i_col="id", transitions=tm, shared={"male": into_death},
+    )
+    grouped.summary()[["coef", "se(coef)", "p"]].round(3)
+
+A covariate can have several such groups (a list of lists of
+transitions). Sharing is a constraint, so it is worth checking against
+the model without it: twice the difference in log partial likelihood is
+a likelihood-ratio statistic, here on one degree of freedom.
+
+.. jupyter-execute::
+
+    2 * (cox.log_likelihood - grouped.log_likelihood)
+
+At about 2.2 (a p-value of about 0.14) the data do not argue against one
+effect of sex on both ways of dying.
+
+Two transitions can also be thought to have the *same shape* of hazard
+over time, one a constant multiple of the other. For death with and
+without PCM, for example, PCM may simply multiply the hazard of dying.
+``proportional_baselines`` gives the transitions listed one baseline
+hazard, the first transition's, and estimates the log of each other's
+ratio to it as one more coefficient. Its exponential is the ratio of the
+two hazards for units with the same covariates:
+
+.. jupyter-execute::
+
+    prop = MultiStateProportionalHazards.fit_from_df(
+        spells, "x", ["age70", "male"], "e", "state", tl_col="tl",
+        i_col="id", transitions=tm, shared={"male": into_death},
+        proportional_baselines=into_death,
+    )
+    prop.summary()[["coef", "exp(coef)", "se(coef)"]].round(3).tail(1)
+
+The hazard of dying is about five and a half times as high with PCM as
+without it, at the same time since diagnosis, age and sex. Pooling the two baselines
+borrows strength from the larger transition (there are far more deaths
+without PCM), which helps where one transition has few events; the
+price is the assumption, which a plot of the two cumulative baseline
+hazards (``cumulative_hazard`` at zero covariates; their ratio should be
+roughly constant in the separate model) can check.
+
+This is R ``mstate``'s general design (Putter, Fiocco and Geskus, 2007):
+one Cox model of the stacked data with a stratum for each transition, or
+for each group with proportional baselines (with the indicator of each
+transition but the first as a covariate), and each covariate expanded
+into a column for each transition or group of transitions. The
+predictions and their standard errors account for the covariance of the
+shared coefficients across the transitions, as ``msfit`` and
+``probtrans`` do. One difference from ``mstate``: two transitions that
+share a baseline have the covariance :math:`\phi_h \phi_g \,
+\widehat{\mathrm{var}}\, d\hat{\Lambda}_0` of their predicted
+increments (:math:`\phi` each one's relative risk), whereas ``msfit``
+uses :math:`\phi_h^2` (``h`` the lower-numbered transition), which
+depends on the order the transitions are listed in. The estimates are the
+same; the standard errors of the predictions differ (by about 7% to 13%
+in the checks below).
+
 Parametric models: a distribution for each transition
 -----------------------------------------------------
 
@@ -499,7 +571,16 @@ delayed entry and tied times); the transition probabilities and their
 Greenwood-type and Aalen-type standard errors with ``mstate``'s
 ``probtrans``; and the Cox models' coefficients and predictions, with their
 standard errors, with ``mstate``'s ``msfit`` and ``probtrans`` (Breslow's
-and Efron's ties, transition-specific and shared effects). With one
+and Efron's ties, transition-specific effects, effects shared by every
+transition or by some, and proportional baselines; for the last, with
+``msfit``'s covariance of two transitions sharing a baseline, as above,
+and its log partial likelihood). The same was checked, outside the test
+suite, on ``mstate``'s own ``ebmt3`` data (an illness-death model of
+transplant patients, with transition-specific, partly shared and
+proportional-baseline models): the coefficients and log partial
+likelihood agree to about :math:`10^{-10}`, the probabilities to
+:math:`10^{-12}`, and the standard errors to :math:`10^{-11}` (with
+``msfit``'s covariance term; 7% with the one above). With one
 transient state the estimate is SurPyval's competing-risks cumulative
 incidence, and with one transition its Kaplan-Meier estimate with
 Greenwood's variance. Simulated Markov models are recovered within their
