@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Percentile bootstrap bounds use the same rule (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The `(n + 1) p` rule proposed below for the BC/BCa bounds applies to every bootstrap bound: the percentile bootstraps of `utils.linalg.percentile_bounds` (Kaplan-Meier and the other non-parametric `bootstrap_cb`, degradation, destructive degradation, Buckley-James) and the lowess band on the diagnostic plots. The rule lives in one place, `utils.linalg` (`BOOTSTRAP_QUANTILE_METHOD`, `bootstrap_position`, `bootstrap_quantile`), and `bca_bounds` takes its position from there. Announced with old and new numbers. Left alone, as they are not bootstrap bounds: posterior-predictive bands (`diagnostics/bayes.py`), Monte Carlo prediction intervals (`forecasting.py` counts, `degradation_model` RUL draws, `rul.py`'s `qf`), and quantiles used as grid points or summaries (`ml/forest/deviance_split.py`, `diagnostics/bayes.py` bin edges, `royston_parmar.py` knots, `life_table.py`'s IQR). | proposed | The same defect as the BC/BCa bounds: at 200 resamples a 95% interval spanned about 3.0-97.0% of the resamples, about 2% too narrow. Two rules for one quantity would let them drift again. The Monte Carlo prediction intervals draw from a fitted model rather than resample the data, and their rules (for example `inverted_cdf` on counts) were chosen for that. | done |
+
 ### Multi-state models, phase 1: parametric models of each transition (12 Nov 2026)
 
 | Decision | By | Reason | Status |

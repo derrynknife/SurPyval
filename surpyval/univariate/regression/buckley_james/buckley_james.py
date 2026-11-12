@@ -747,7 +747,7 @@ class BuckleyJames_(FitterRepr):
         >>> model.beta.round(3)
         array([0.435])
         >>> model.bootstrap_ci(random_state=1).round(3)
-        array([[0.343, 0.528]])
+        array([[0.342, 0.532]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
