@@ -44,9 +44,13 @@ EXPECTED_SOURCES = {
     "r_recurrent_cox",
     "r_multistate",
     "r_multistate_parametric",
+    "r_multistate_panel",
     "r_mixture_cure",
+    "r_pyears",
     "r_adjusted_curves",
     "r_rmtl",
+    "r_reclassification",
+    "r_sample_size",
     "py_lifelines",
     "py_sksurv",
 }
