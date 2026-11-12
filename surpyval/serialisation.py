@@ -76,6 +76,7 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "BayesianParametric": "surpyval.bayes.model",
     "JointModel": "surpyval.univariate.joint.joint_model",
+    "EquivalenceModel": "surpyval.univariate.equivalence",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"

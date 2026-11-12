@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### Equivalent time scales: one life on two clocks (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Equivalence(dist)` (prebuilt `WeibullEquivalence`, ...; `EquivalenceFitter`, `EquivalenceModel`) fits `T = x1 + k x2`, `k >= 0`, with Weibull, LogNormal, LogLogistic, Gamma or Exponential on `T`, by maximum likelihood on the first clock: a failure contributes `f(T) (1 + k rho)`, `rho = x2 / x1` its constant rate, a unit still running `S(T)`, late entry divides by `S(T_l)`. A failure with `x1 = 0` contributes on the second clock, `f(k x2) k`. | maintainer (name), proposed (method) | The ideal-time-scale model of Duchesne and Lawless (2000): an AFT model on hours with acceleration `1 + k rho`. Without the factor the likelihood falls with `k` because a stretched clock lowers every density; in tests the naive estimate of `k = 10` collapsed to the search's lower limit. At fixed `k` it equals `WeibullAFT` on `log(1 + k rho)` with coefficient 1 (tested). | done |
+| Not the minimum-CV shortcut (Kordonsky and Gertsbakh). | proposed | It has no likelihood: it cannot take censoring or truncation and gives no intervals or tests. | done |
+| `k` is reported in units of the first clock ("one start is worth k hours"); no option to reverse it. `fit(x2, x1)` gives `1/k` with the same fit (tested). | proposed | The five families are closed under scaling, so the reversed clock is a reparameterisation; one order keeps the API and the reading simple. | done |
+| `k = 0` is a boundary: the fit compares the search with the hours-only fit and reports `k = 0` exactly there (then the model is that fit). `param_cb("k")` is Wald on log `k` (`nan` with a warning at 0, pointing at `method="lr"`); `method="lr"` is the profile-likelihood interval, which starts at 0 there. `k_lr_test()` uses the 50:50 mixture of chi-square(0) and chi-square(1) (Self and Liang, 1987). LR bounds on the distribution's parameters, and bootstrap bounds, are refused with the reason. | proposed | The library's Wald convention for a positive parameter, kept as the default (principle 24); the profile interval covers near the edge. | done |
+| Bounds on the combined scale and along a usage path are Wald (delta method over every parameter, `k` included). `cb` on the combined scale refuses `method="lr"`/bootstrap: the distribution's own would hold `k` fixed. | proposed | Calibration (400 replicates, n = 300, k = 10): Wald `alpha` 0.948, `beta` 0.940, `k` 0.933, LR `k` 0.935, `sf` along a duty 0.938, B10 0.925, all within tolerance, all a little under 0.95. | done |
+| Refused: interval censoring (`c = 2`), data with one start rate for every unit (`k` is absorbed by the scale), every `x2 = 0` or every `x1 = 0`, weights. | proposed | An interval on two clocks needs both ends on each; the others leave `k` unidentified or are not built. | done |
+
 ### Percentile bootstrap bounds use the same rule (12 Nov 2026)
 
 | Decision | By | Reason | Status |

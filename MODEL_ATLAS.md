@@ -84,6 +84,7 @@ Worked classifications:
 | WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
+| Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
 | ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |

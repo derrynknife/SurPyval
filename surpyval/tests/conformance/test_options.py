@@ -102,6 +102,7 @@ NOT_SWEPT = {
     "total_cif_cb / total_iif_cb (swept) along a constant schedule, and "
     "against the causes' cb_tvc, in "
     "recurrent/test_cause_specific_proportional_intensity.py",
+    "reading": "a sentence quoting param_cb('k')'s interval (swept)",
     "forecast": "a prediction interval of a count (surpyval.forecast), "
     "where alpha_ci is its level, not a confidence bound's; checked in "
     "recurrent/test_event_marks.py",
@@ -330,6 +331,12 @@ def _estimate(case, spec, fname, event):
                 out.append(model.mean(tau=args[0]))
             else:
                 out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "cb_at_usage":
+            out.append(model.sf_at_usage(*args))
+        elif spec.method == "quantile_cb_at_usage":
+            out.append(model.qf_at_usage(*args))
+        elif spec.method == "param_cb":
+            out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)

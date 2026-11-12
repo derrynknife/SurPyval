@@ -5,6 +5,27 @@ Unreleased
 
 **Added.**
 
+- Equivalent time scales, ``Equivalence(Weibull)`` (and
+  ``WeibullEquivalence``, ``LogNormalEquivalence``,
+  ``LogLogisticEquivalence``, ``GammaEquivalence``,
+  ``ExponentialEquivalence``): one life measured on two clocks (hours and
+  starts, say) combined into one age ``x1 + k x2``, with ``k >= 0``, what
+  one unit of the second clock is worth on the first, estimated by
+  maximum likelihood together with the distribution on the combined
+  clock. The likelihood is the first clock's, each failure carrying the
+  clock-rate factor ``1 + k * rate`` (an accelerated failure time model
+  with acceleration ``1 + k * rate``, Duchesne and Lawless 2000); fitting
+  the distribution to ``x1 + k x2`` without it pulls ``k`` towards 0.
+  Takes failures, units still running, left-censored units, counts and
+  late entry (a pair of ages). ``param_cb("k")`` (Wald, or the profile
+  likelihood with ``method="lr"``), ``k_lr_test()`` (``k = 0`` on its
+  boundary: half the chi-square p-value), ``equivalent(x1, x2)``, the
+  distribution's functions and ``cb`` on the combined clock, and the life
+  along a usage path (``sf_at_usage``, ``qf_at_usage`` for B-lives,
+  ``cb_at_usage``, ``quantile_cb_at_usage``, with bounds that include
+  ``k``'s uncertainty), ``random``, ``to_dict`` / ``from_dict`` and a
+  plain reading of ``k`` in the ``repr``. Guide:
+  :doc:`Equivalent Time Scales`.
 - Parametric multi-state models, ``ParametricMultiState`` (a
   distribution for each transition, Weibull by default, or a different
   one per transition) and ``ParametricMultiStateRegression`` (a

@@ -197,6 +197,25 @@ def cure_data():
     }
 
 
+N_EQUIVALENCE = 40
+
+
+def equivalence_data():
+    """40 units on two clocks for the equivalent-scale fits: ``x`` (hours)
+    and ``x2`` (starts), each unit at its own constant start rate (0,
+    0.1, 0.3 or 1 per hour), with one start worth 2 hours; every fifth
+    unit still running at half its life, and two rows counted twice."""
+    m = N_EQUIVALENCE
+    rate = np.tile([0.0, 0.1, 0.3, 1.0], m // 4)
+    life = quantiles(m, 10.0, 2.0)[scramble(m)]
+    c = (np.arange(m) % 5 == 4).astype(int)
+    life = np.where(c == 1, life / 2.0, life)
+    x = np.round(life / (1.0 + 2.0 * rate), 3)
+    n = np.ones(m, int)
+    n[[3, 11]] = 2
+    return {"x": x, "x2": np.round(rate * x, 3), "c": c, "n": n}
+
+
 def zi_reg_data():
     """60 rows for the zero-inflated regressions: the regression
     fixture's covariates and lives, where 1 unit in 10 with ``z0 = 0``

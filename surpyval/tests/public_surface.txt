@@ -42,6 +42,9 @@ surpyval.Distributional
 surpyval.DistributionalFitter
 surpyval.DistributionalRegressionModel
 surpyval.Duane
+surpyval.Equivalence
+surpyval.EquivalenceFitter
+surpyval.EquivalenceModel
 surpyval.EventHistoryData
 surpyval.ExactEventTime
 surpyval.ExpoWeibull
@@ -49,6 +52,7 @@ surpyval.Exponential
 surpyval.ExponentialAFT
 surpyval.ExponentialAH
 surpyval.ExponentialDistributional
+surpyval.ExponentialEquivalence
 surpyval.ExponentialFrailty
 surpyval.ExponentialMixtureCure
 surpyval.ExponentialPH
@@ -65,6 +69,7 @@ surpyval.Gamma
 surpyval.GammaAFT
 surpyval.GammaAH
 surpyval.GammaDistributional
+surpyval.GammaEquivalence
 surpyval.GammaFrailty
 surpyval.GammaMixtureCure
 surpyval.GammaPH
@@ -96,12 +101,14 @@ surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
 surpyval.LogLogisticDistributional
+surpyval.LogLogisticEquivalence
 surpyval.LogLogisticMixtureCure
 surpyval.LogLogisticZeroInflated
 surpyval.LogNormal
 surpyval.LogNormalAFT
 surpyval.LogNormalAH
 surpyval.LogNormalDistributional
+surpyval.LogNormalEquivalence
 surpyval.LogNormalFrailty
 surpyval.LogNormalMixtureCure
 surpyval.LogNormalPH
@@ -174,6 +181,7 @@ surpyval.Weibull
 surpyval.WeibullAFT
 surpyval.WeibullAH
 surpyval.WeibullDistributional
+surpyval.WeibullEquivalence
 surpyval.WeibullFrailty
 surpyval.WeibullJointPH
 surpyval.WeibullMixtureCure
