@@ -1109,8 +1109,13 @@ the likelihood's terms, ``df(0)`` of a zero-inflated model is the mass
 :math:`f_{0}` itself, a probability rather than a density;
 ``df(x, continuous=True)`` is the continuous part alone, which integrates to
 :math:`p - f_{0}`. The zero mass sits at zero even for an offset model, and
-nothing fails before zero, so a left truncation below zero truncates nothing
-and one at zero excludes the mass (see :doc:`Conventions`). ``zi=True`` requires a distribution whose support starts at
+nothing fails before zero. A unit known only to have failed by :math:`t`
+(left censored at :math:`t`, or an interval :math:`[0, t]`) may have failed
+at zero, so it contributes :math:`\ln\left[f_{0} + (p - f_{0})
+F_{b}(t - \gamma)\right]`, the mass included (Moulton and Halsey 1995;
+Braekers and Grouwels 2016); an interval that opens above zero leaves the
+mass out. A left truncation at or below zero truncates nothing (see
+:doc:`Conventions`). ``zi=True`` requires a distribution whose support starts at
 zero, and like LFP it can only be fitted by MLE.
 
 Discrete distributions

@@ -216,7 +216,7 @@ class LogLikelihood:
                 )
                 lower = np.where(
                     lo_finite,
-                    f0 * (xl[None, :] >= 0)
+                    f0 * (xl[None, :] > 0)
                     + (p - f0) * np.where(lo_eval, dist.ff(l_safe, *dp), 0.0),
                     0.0,
                 )

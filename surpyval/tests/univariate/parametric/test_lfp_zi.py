@@ -392,7 +392,9 @@ class TestLFPTruncation:
 
 # ---------------------------------------------------------------------------
 # #548: the zero-inflation mass sits at 0, so a left truncation below 0
-# truncates nothing, and one at 0 excludes the mass.
+# truncates nothing. A window that opens at 0 holds the mass too: an
+# interval [0, t] is "failed by t", as left censoring at t, and a
+# truncation at 0 is no truncation (as in ``ZeroInflated``).
 # ---------------------------------------------------------------------------
 
 
@@ -423,15 +425,24 @@ def test_548_truncation_below_zero_is_no_truncation(structural, tl):
 
 
 def test_548_window_counts_the_mass_from_zero():
-    # The likelihood's window (lo, hi]: the mass f0 at 0 is inside
-    # (-1, 5] and outside (0, 5], as in the fitted model's ff
+    # The likelihood's window: the mass f0 at 0 is inside a window that
+    # opens at or below 0 ((-1, 5] and [0, 5]) and outside one that opens
+    # above it ((1, 5]); the fitted model's ff gives the rest
     model = Weibull.from_params([10, 1.5], f0=0.2)
     params = (10, 1.5, 0.0, 0.2, 1.0)
-    for lo, hi in [(-1.0, 5.0), (0.0, 5.0), (-1.0, np.inf), (0.0, np.inf)]:
+    for lo, hi in [
+        (-1.0, 5.0),
+        (0.0, 5.0),
+        (1.0, 5.0),
+        (-1.0, np.inf),
+        (0.0, np.inf),
+        (1.0, np.inf),
+    ]:
         log_window = Weibull.ll_interval_or_truncated(
             np.array([lo]), np.array([hi]), np.array([1]), *params
         )
-        expected = (1.0 if np.isinf(hi) else model.ff(hi)) - model.ff(lo)
+        below = model.ff(lo) if lo > 0 else 0.0
+        expected = (1.0 if np.isinf(hi) else model.ff(hi)) - below
         assert np.exp(log_window) == pytest.approx(expected, rel=1e-12)
     assert model.ff(-1.0) == 0.0
     assert model.ff(0.0) == pytest.approx(0.2)
