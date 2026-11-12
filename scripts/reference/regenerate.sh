@@ -35,6 +35,8 @@ Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_competing_entry.R
 # cmprsk (in R_LIBS_USER) for the Fine-Gray model's two covariances
 Rscript scripts/reference/reference_r_fine_gray_variance.R
+# survival and km.ci (in R_LIBS_USER) for the pointwise interval types
+Rscript scripts/reference/reference_r_km_ci.R
 # flexsurv (in R_LIBS_USER) for the parametric competing-risks regression
 Rscript scripts/reference/reference_r_parametric_competing_risks_regression.R
 Rscript scripts/reference/reference_r_reda.R
