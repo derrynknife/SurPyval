@@ -1498,6 +1498,14 @@ EXCLUDED: dict[str, str] = {
     "check the grouped-data likelihood rather than the interval one; its "
     "coefficients' coverage on simulated interval-censored data is "
     "calibration/test_coverage_interval_cox.py's",
+    "FineGray[strata]": "the competing-risks simulator draws every unit "
+    "from one baseline and one censoring distribution; recovery and "
+    "coverage of the stratified fit are checked by its own study "
+    "(test_coverage_regression.py, three strata with their own baselines "
+    "and censoring)",
+    "FineGray[cluster]": "the estimate is the plain FineGray fit's, planned "
+    "above; what the clusters change, the standard errors, is checked by "
+    "its own study with dependent units (test_coverage_regression.py)",
     **dict.fromkeys(
         (
             "AndersenGill",

@@ -79,6 +79,8 @@ _PARTIAL_LIKELIHOOD = (
     "CompetingRisksProportionalHazards[Cox]",
     "CompetingRisksProportionalHazards[Fine-Gray]",
     "FineGray",
+    "FineGray[strata]",
+    "FineGray[cluster]",
 )
 _PARAMETRIC = tuple(
     base + kind for kind in ("PH", "AFT", "PO", "AH") for base in BASELINES

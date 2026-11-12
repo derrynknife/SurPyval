@@ -816,7 +816,75 @@ def _competing_risks():
             },
         )
     )
+    out.append(
+        Case(
+            name="FineGray[strata]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_strata_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            call_kwargs={"stratum": 1},
+            rows=("x", "Z", "e", "n", "strata"),
+            covariates="Z",
+            labels=("strata",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
+    out.append(
+        Case(
+            name="FineGray[cluster]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_cluster_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n", "cluster"),
+            covariates="Z",
+            labels=("cluster",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
     return out
+
+
+def _fine_gray_strata_data():
+    """The Fine-Gray fixture in two strata of 12 rows, each with events of
+    both causes and censored rows."""
+    d = cr_data(True)
+    d["strata"] = np.repeat([0, 1], d["x"].size // 2)
+    return d
+
+
+def _fine_gray_cluster_data():
+    """The Fine-Gray fixture in 12 clusters of two rows."""
+    d = cr_data(True)
+    d["cluster"] = np.repeat(np.arange(d["x"].size // 2), 2)
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -2095,6 +2163,10 @@ def _df_paths():
         cr.CompetingRisks, ("x", "e", "n"), how="Kaplan-Meier"
     )
     paths["FineGray"] = _col_df(cr.FineGray, ("x", "e", "n"), event="a")
+    for label in ("strata", "cluster"):
+        paths[f"FineGray[{label}]"] = _col_df(
+            cr.FineGray, ("x", "e", "n", label), event="a"
+        )
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
         paths[name] = _col_df(getattr(rc, name))
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)

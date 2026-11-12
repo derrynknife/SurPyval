@@ -41,6 +41,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 from __future__ import annotations
 
 import functools
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -90,6 +91,9 @@ from surpyval.univariate.regression._summary import (
 from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
     newton_raphson,
 )
+from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
+    strata_labels as _labels_and_missing,
+)
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     PENALISED_ADVICE,
     warn_monotone,
@@ -129,11 +133,13 @@ from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     check_alpha_ci,
+    check_option,
     missing_cause_error,
     no_covariance_error,
     refuse_subdistribution_entry,
     unknown_cause_error,
 )
+from surpyval.utils.warnings import caller_stacklevel
 from surpyval.utils.weights import (
     effective_sample_size,
     refuse_weighted,
@@ -251,6 +257,30 @@ def _log_risk_set_sums(
     return anp.logaddexp(suffix[sets.start], log_G + before[sets.start])
 
 
+class _Part(NamedTuple):
+    """One stratum of a Fine-Gray fit (the whole sample when it has no
+    strata): its rows, in time order, as positions among all the rows,
+    and its subdistribution risk sets, built with its own censoring
+    distribution ``G``."""
+
+    rows: npt.NDArray
+    sets: Any
+
+
+def _parts_neg_ll(parts: tuple, beta: Any) -> Any:
+    """The negative weighted partial log-likelihood summed over the
+    strata, each ``parts`` entry the arguments of :func:`_weighted_neg_ll`
+    for one stratum but ``beta``; differentiable by autograd. A
+    module-level function, so the objective (a ``functools.partial`` of
+    it) pickles (#573)."""
+    total = 0.0
+    for n_sorted, sets, denom0, Zk, nZk_event in parts:
+        total = total + _weighted_neg_ll(
+            n_sorted, sets, denom0, Zk, nZk_event, beta
+        )
+    return total
+
+
 def _fit_cause(
     x: npt.NDArray,
     Z: npt.NDArray,
@@ -260,6 +290,9 @@ def _fit_cause(
     cause: Any,
     center: bool = False,
     w: npt.NDArray | None = None,
+    strata: npt.NDArray | None = None,
+    cluster: npt.NDArray | None = None,
+    common_censoring: bool = False,
 ) -> dict:
     """
     Fit the Fine-Gray subdistribution-hazard model for a single ``cause``.
@@ -290,6 +323,21 @@ def _fit_cause(
     sandwich with the sampling weights (:func:`_robust_covariance`),
     which is the unweighted one when ``w = 1``, and there is no
     model-based one.
+
+    With ``strata`` (an integer code per row, 0, 1, ...) the model is
+    stratified as R's ``crrSC::crrs`` (``ctype = 1``; Zhou, Latouche,
+    Rocha and Fine, 2011): each stratum has its own baseline
+    subdistribution hazard, its own risk sets and its own censoring
+    distribution ``G``, and the partial likelihood, its information and
+    the robust covariance's meat are sums over the strata. With
+    ``cluster`` (an integer code per row) the units of a cluster may be
+    dependent: the estimate is the same (an independence working model),
+    and the robust covariance sums each cluster's influence before
+    squaring it, as R's ``crrSC::crrc`` (Zhou, Fine, Latouche and Labopin,
+    2012). With ``common_censoring`` the strata share one censoring
+    distribution, of all the rows (``crrs`` with ``ctype = 2``, for many
+    small strata), and the robust covariance's censoring term is that of
+    the one ``G``.
     """
     counts = n
     if w is not None:
@@ -306,36 +354,46 @@ def _fit_cause(
     # weights (evaluating G(t) counted them against the events they tie with).
     # G(x_i-) > 0 for every row: row i (a positive count) is at risk and
     # uncensored at every earlier censoring time, so no step before x_i can
-    # reach zero and the ratio G(t-)/G(x_i-) needs no guard.
-    g_times, g_vals = censoring_survival(x, c == 1, n)
-    G_x = step_left_limit(g_times, g_vals, x, before=1.0)
-    sets = _risk_sets(x, n, is_event, is_competing, G_x, g_times, g_vals)
+    # reach zero and the ratio G(t-)/G(x_i-) needs no guard. A stratified
+    # fit takes G within each stratum, from that stratum's rows.
+    parts = _strata_parts(
+        x, c, n, is_event, is_competing, strata, common_censoring
+    )
+    # A stratum without events of the cause adds nothing to the fit.
+    fitted = [part for part in parts if part.sets.times.size]
 
     Z_raw = Z
     mean = (n @ Z) / n.sum()
     Z = Z - mean
     n_event = n[is_event]
-    # The rows in time order, which the risk-set sums run over, and the
-    # events' sum of n * Z, the linear term of the log-likelihood.
-    Z_sorted = Z[sets.order]
-    n_sorted = n[sets.order]
-    nZ_event = n_event @ Z[is_event]
+    # The rows of every stratum with events, each in time order, which the
+    # risk-set sums run over; and per stratum the rows, their counts and
+    # the events' sum of n * Z, the linear term of the log-likelihood.
+    rows = np.concatenate([part.rows for part in fitted])
+    Z_sorted = Z[rows]
+    nZ_events = [(n * is_event)[part.rows] @ Z[part.rows] for part in fitted]
     # The optimiser minimises the negative log-likelihood less its value at
     # beta = 0, sum d log(denom0): near the maximum its steps change the
     # likelihood (5e4 at 1e4 rows) by less than its last digit. BFGS
     # stopped there on "precision loss" in 10 of 450 fits at 3e3 rows
     # before #517, and in 17 with plain cumulative sums; with this and the
     # blocked sums of _cumsum, in 1.
-    denom0 = _risk_set_sums(n_sorted, sets)
-    offset = float(sets.d @ np.log(denom0))
+    denom0s = [_risk_set_sums(n[part.rows], part.sets) for part in fitted]
+    offset = float(
+        sum(
+            part.sets.d @ np.log(denom0)
+            for part, denom0 in zip(fitted, denom0s)
+        )
+    )
 
-    def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> tuple:
-        """The objective, differentiable by autograd (the no-maximum check
-        and the information take its derivatives); the objective with
-        its gradient for BFGS, ``-(nZ_event - sum_j d_j S1_j / S0_j)``
-        (``S1`` the risk-set sums of ``w Z``), by hand: a fit of 1e5 rows
-        took 1.2 s with autograd's gradient, 0.7 s with this; and the
-        gradient with the information, by hand, for Newton-Raphson.
+    def partial_neg_ll(cols: npt.NDArray) -> tuple:
+        """The objective on the columns ``cols``, differentiable by
+        autograd (the no-maximum check and the information take its
+        derivatives); the objective with its gradient for BFGS, ``-(nZ_event
+        - sum_j d_j S1_j / S0_j)`` (``S1`` the risk-set sums of ``w Z``), by
+        hand: a fit of 1e5 rows took 1.2 s with autograd's gradient, 0.7 s
+        with this; and the gradient with the information, by hand, for
+        Newton-Raphson. Each is a sum over the strata.
 
         Each shifts the linear predictor by its largest value inside the
         risk-set sums and adds the shift back outside the logarithm, as
@@ -344,11 +402,21 @@ def _fit_cause(
         first step, and the fit failed ("SVD did not converge", #606). The
         objective is a ``functools.partial`` of a module-level function,
         not a closure, so the model, which keeps it, pickles (#573)."""
-        neg_ll = functools.partial(
-            _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+        args = tuple(
+            (n[part.rows], part.sets, denom0, Z[part.rows][:, cols], nZ[cols])
+            for part, denom0, nZ in zip(fitted, denom0s, nZ_events)
+        )
+        # One stratum (the whole sample) keeps the objective a partial of
+        # _weighted_neg_ll itself.
+        neg_ll = (
+            functools.partial(_weighted_neg_ll, *args[0])
+            if len(args) == 1
+            else functools.partial(_parts_neg_ll, args)
         )
 
-        def shifted(beta: npt.NDArray) -> tuple:
+        def shifted(
+            n_sorted: npt.NDArray, sets: _RiskSets, Zk: npt.NDArray, beta: Any
+        ) -> tuple:
             # The weights e^(eta - shift), their risk-set sums and the shift
             eta = Zk @ beta
             shift = float(eta.max()) if eta.size else 0.0
@@ -363,61 +431,78 @@ def _fit_cause(
             return bool(finite and not np.all(denom >= _LEAST_SUM))
 
         def value_and_gradient(beta: npt.NDArray) -> tuple:
-            weighted_exp, denom, shift = shifted(beta)
-            if underflows(denom):
-                value, gradient = value_and_grad(neg_ll)(beta)
-                return float(value), np.asarray(gradient, dtype=float)
-            value = -(
-                nZk_event @ beta
-                - np.sum(sets.d * (np.log(denom / denom0) + shift))
-            )
-            # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
-            weights = _risk_set_weights(sets.d / denom, sets)
-            gradient = -(nZk_event - Zk.T @ (weighted_exp * weights))
+            value, gradient = 0.0, np.zeros(cols.size)
+            for n_sorted, sets, denom0, Zk, nZk_event in args:
+                weighted_exp, denom, shift = shifted(n_sorted, sets, Zk, beta)
+                if underflows(denom):
+                    one = functools.partial(
+                        _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+                    )
+                    v, gr = value_and_grad(one)(beta)
+                    value += float(v)
+                    gradient += np.asarray(gr, dtype=float)
+                    continue
+                value -= nZk_event @ beta - np.sum(
+                    sets.d * (np.log(denom / denom0) + shift)
+                )
+                # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
+                weights = _risk_set_weights(sets.d / denom, sets)
+                gradient -= nZk_event - Zk.T @ (weighted_exp * weights)
             return value, gradient
 
         def gradient_and_information(beta: npt.NDArray) -> tuple:
             # The information sum_j d_j (S2_j / S0_j - M_j M_j'), M_j =
             # S1_j / S0_j, in O(N p^2) as at beta = 0
             # (_information_at_zero); the shift cancels in every ratio.
-            weighted_exp, denom, _ = shifted(beta)
-            if underflows(denom):
-                return grad(neg_ll)(beta), hessian(neg_ll)(beta)
-            a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
-            M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
-            M = M / denom[:, None]
-            gradient = -(nZk_event - Zk.T @ a)
-            information = Zk.T @ (a[:, None] * Zk) - M.T @ (
-                sets.d[:, None] * M
-            )
+            gradient = np.zeros(cols.size)
+            information = np.zeros((cols.size, cols.size))
+            for n_sorted, sets, denom0, Zk, nZk_event in args:
+                weighted_exp, denom, _ = shifted(n_sorted, sets, Zk, beta)
+                if underflows(denom):
+                    one = functools.partial(
+                        _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+                    )
+                    gradient += grad(one)(beta)
+                    information += hessian(one)(beta)
+                    continue
+                a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
+                M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
+                M = M / denom[:, None]
+                gradient -= nZk_event - Zk.T @ a
+                information += Zk.T @ (a[:, None] * Zk) - M.T @ (
+                    sets.d[:, None] * M
+                )
             return gradient, information
 
         return neg_ll, value_and_gradient, gradient_and_information
 
     # Coefficients the weighted partial likelihood does not depend on are
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
-    # reported as nan.
+    # reported as nan. (Within strata, a column constant in every stratum
+    # carries no information, and is aliased too.)
     p = Z.shape[1]
-    neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
-        Z_sorted, nZ_event
-    )
+    every = np.arange(p)
+    neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(every)
     aliased = aliased_columns(
-        _information_at_zero(Z_sorted, n_sorted, sets),
+        sum(
+            _information_at_zero(Z[part.rows], n[part.rows], part.sets)
+            for part in fitted
+        ),
         Z.shape[0],
         constant_columns(Z_raw),
         float(n_event.sum()) * (n @ Z**2) / n.sum(),
     )
-    kept = np.setdiff1d(np.arange(p), aliased)
+    kept = np.setdiff1d(every, aliased)
     if aliased.size:
         warn_aliased(
             aliased,
             "the partial likelihood does not depend on them (a constant "
-            "column, or a linear combination of the others within the "
+            "column"
+            + ("" if strata is None else ", or one constant within strata")
+            + ", or a linear combination of the others within the "
             "risk sets, as the columns of every level of a factor are)",
         )
-        neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
-            Z_sorted[:, kept], nZ_event[kept]
-        )
+        neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(kept)
 
     beta0 = np.zeros(kept.size)
     if kept.size:
@@ -471,7 +556,7 @@ def _fit_cause(
             Z_sorted[:, kept],
             float(n_event.sum()),
             floor,
-            (x, Z[:, kept], is_event, is_competing, counts),
+            (x, Z[:, kept], is_event, is_competing, counts, strata),
         )
         off = runoff[0]
         runaway = [int(kept[k]) for k in off]
@@ -510,16 +595,16 @@ def _fit_cause(
         # (far out along a run-off a risk set's sum underflows; the
         # covariance is then nan, as the coefficients running off are)
         with np.errstate(divide="ignore", invalid="ignore"):
-            cov = _robust_covariance(
+            cov = _fit_robust_covariance(
                 cov,
-                Z_sorted[:, kept],
+                Z[:, kept],
                 res.x,
-                sets,
-                counts[sets.order],
-                None if w is None else w[sets.order],
-                is_event[sets.order],
-                (c == 1)[sets.order],
-                x[sets.order],
+                parts,
+                fitted,
+                (counts, w, is_event, c == 1, x),
+                strata is None and cluster is None,
+                cluster,
+                common_censoring,
             )
     # A coefficient running off has no standard error, as in CoxPH (#648)
     cov[off, :] = np.nan
@@ -546,36 +631,30 @@ def _fit_cause(
             model_cov = full
         beta = np.where(np.isnan(beta), 0.0, beta)
 
-    # Breslow baseline cumulative subdistribution hazard: at each event-of-
-    # interest time, dLambda0 = (events there) / (weighted risk set there).
-    # Past a linear predictor of 300 (a coefficient running off) exp
-    # overflowed, with numpy's warnings: the sums are then taken in logs
-    # (#760).
-    eta = Z_sorted @ beta
-    if np.all(np.abs(eta) <= _DIRECT_ETA):
-        increments = sets.d / _risk_set_sums(n_sorted * np.exp(eta), sets)
-    else:
-        with np.errstate(over="ignore", under="ignore"):
-            log_denom = _log_risk_set_sums(eta, n_sorted, sets)
-            increments = np.exp(np.log(sets.d) - log_denom)
-    uniq_t = sets.times
-    baseline_cumhaz = np.cumsum(increments)
+    # Breslow baseline cumulative subdistribution hazard, in each stratum:
+    # at each event-of-interest time, dLambda0 = (events there) / (weighted
+    # risk set there). Past a linear predictor of 300 (a coefficient
+    # running off) exp overflowed, with numpy's warnings: the sums are then
+    # taken in logs (#760).
+    baselines = [
+        _breslow_baseline(part, Z, n, beta, None if center else mean, Z_raw)
+        for part in parts
+    ]
     if not center:
-        baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
         mean = np.zeros_like(mean)
 
     if aliased.size:
         beta = np.array(beta, dtype=float)
         beta[aliased] = np.nan
-    return {
+    out = {
         "cause": cause,
         "beta": beta,
         "center": mean,
         "p_values": p_values,
         "cov": cov,
         "model_cov": model_cov,
-        "baseline_times": uniq_t,
-        "baseline_cumhaz": baseline_cumhaz,
+        "baseline_times": baselines[0][0],
+        "baseline_cumhaz": baselines[0][1],
         "neg_ll": float(res.fun),
         # BIC's sample size: the events of interest, the terms of the
         # partial likelihood (#604; Kuk and Varadhan's BIC_cr).
@@ -596,12 +675,213 @@ def _fit_cause(
             "w": w,
             "is_event": is_event,
             "is_competing": is_competing,
+            "strata": strata,
+            "cluster": cluster,
         },
         "weighted": w is not None,
         "effective_n": (
             None if w is None else effective_sample_size(counts, w)
         ),
     }
+    if strata is not None:
+        out["strata_baselines"] = baselines
+    if cluster is not None:
+        out["n_clusters"] = int(cluster.max()) + 1
+    return out
+
+
+def _strata_parts(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    is_event: npt.NDArray,
+    is_competing: npt.NDArray,
+    strata: npt.NDArray | None,
+    common_censoring: bool,
+) -> list:
+    """Each stratum's rows and subdistribution risk sets (one part, the
+    whole sample, without strata), with the censoring distribution ``G``
+    of the stratum's rows, or of all the rows (``common_censoring``)."""
+    n_strata = 1 if strata is None else int(strata.max()) + 1
+    if common_censoring:
+        common = censoring_survival(x, c == 1, n)
+        G_common = step_left_limit(*common, x, before=1.0)
+    parts = []
+    for s in range(n_strata):
+        g = (
+            np.arange(x.size)
+            if strata is None
+            else np.flatnonzero(strata == s)
+        )
+        if common_censoring:
+            (g_times, g_vals), G_x = common, G_common[g]
+        else:
+            g_times, g_vals = censoring_survival(x[g], c[g] == 1, n[g])
+            G_x = step_left_limit(g_times, g_vals, x[g], before=1.0)
+        sets = _risk_sets(
+            x[g], n[g], is_event[g], is_competing[g], G_x, g_times, g_vals
+        )
+        parts.append(_Part(g[sets.order], sets))
+    return parts
+
+
+def _breslow_baseline(
+    part: _Part,
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    beta: npt.NDArray,
+    mean: npt.NDArray | None,
+    Z_raw: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """One stratum's Breslow baseline cumulative subdistribution hazard,
+    its event times and values: at each event-of-interest time, dLambda0
+    = (events there) / (weighted risk set there), for a unit at the
+    covariate means (``Z`` centred), moved to ``Z = 0`` unless ``mean`` is
+    ``None``. Past a linear predictor of 300 (a coefficient running off)
+    exp overflowed, with numpy's warnings: the sums are then taken in
+    logs (#760). A stratum without events has none."""
+    if not part.sets.times.size:
+        return part.sets.times, np.zeros(0)
+    eta = Z[part.rows] @ beta
+    n_sorted = n[part.rows]
+    if np.all(np.abs(eta) <= _DIRECT_ETA):
+        increments = part.sets.d / _risk_set_sums(
+            n_sorted * np.exp(eta), part.sets
+        )
+    else:
+        with np.errstate(over="ignore", under="ignore"):
+            log_denom = _log_risk_set_sums(eta, n_sorted, part.sets)
+            increments = np.exp(np.log(part.sets.d) - log_denom)
+    cumhaz = np.cumsum(increments)
+    if mean is not None:
+        cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, cumhaz)
+    return part.sets.times, cumhaz
+
+
+def _fit_robust_covariance(
+    bread: npt.NDArray,
+    Z: npt.NDArray,
+    beta: npt.NDArray,
+    parts: list,
+    fitted: list,
+    rows: tuple,
+    plain: bool,
+    cluster: npt.NDArray | None,
+    common_censoring: bool,
+) -> npt.NDArray:
+    """The robust covariance of a fit: :func:`_robust_covariance` for a
+    fit without strata or clusters (``plain``), else
+    :func:`_stratified_robust_covariance`. ``rows`` are ``(n, w,
+    is_event, is_censored, x)`` in the rows' own order, ``Z`` centred."""
+    n, w, is_event, is_censored, x = rows
+    if plain:
+        (part,) = parts
+        at = part.rows
+        return _robust_covariance(
+            bread,
+            Z[at],
+            beta,
+            part.sets,
+            n[at],
+            None if w is None else w[at],
+            is_event[at],
+            is_censored[at],
+            x[at],
+        )
+    return _stratified_robust_covariance(
+        bread,
+        Z,
+        beta,
+        fitted,
+        n,
+        w,
+        is_event,
+        is_censored,
+        x,
+        cluster,
+        common_censoring,
+    )
+
+
+def _stratified_robust_covariance(
+    bread: npt.NDArray,
+    Z: npt.NDArray,
+    beta: npt.NDArray,
+    parts: list,
+    n: npt.NDArray,
+    w: npt.NDArray | None,
+    is_event: npt.NDArray,
+    is_censored: npt.NDArray,
+    x: npt.NDArray,
+    cluster: npt.NDArray | None,
+    common_censoring: bool = False,
+) -> npt.NDArray:
+    """
+    The robust covariance of a stratified or clustered Fine-Gray fit,
+    ``bread M bread``. Each unit's influence on the score,
+    :func:`_score_residuals`, is that of :func:`_robust_covariance` taken
+    within its stratum (its risk sets, baseline and censoring
+    distribution); a unit in a stratum without events of the cause has
+    none. Without clusters ``M`` is the sum of their outer products,
+    ``sum_i n_i w_i^2 r_i r_i'``, R's ``crrSC::crrs`` with ``ctype = 1``;
+    with clusters it is the sum over the clusters of the outer product of
+    each cluster's total influence, ``s_k = sum_{i in k} n_i w_i r_i``,
+    R's ``crrSC::crrc``. With ``common_censoring`` (one censoring
+    distribution for every stratum, ``crrs`` with ``ctype = 2``) a unit's
+    censoring term is that of the one ``G``, which every stratum's
+    weights use: :func:`_censoring_residuals` with ``q`` summed over the
+    strata and the censorings and numbers at risk of all the rows. The
+    rows are in their own order (``Z`` centred); each part's rows are
+    positions among them.
+    """
+    resid = np.zeros(Z.shape)
+    weights = np.ones(n.size) if w is None else w
+    if not common_censoring:
+        for part in parts:
+            at = part.rows
+            resid[at] = _score_residuals(
+                Z[at],
+                beta,
+                part.sets,
+                n[at],
+                None if w is None else w[at],
+                is_event[at],
+                is_censored[at],
+                x[at],
+            )
+    else:
+        times = np.unique(x[is_censored])
+        q = np.zeros((times.size, Z.shape[1]))
+        for part in parts:
+            at = part.rows
+            risk, omega, dH, mean, resid[at] = _event_residuals(
+                Z[at],
+                beta,
+                part.sets,
+                n[at],
+                None if w is None else w[at],
+                is_event[at],
+                x[at],
+            )
+            if times.size:
+                q += _censoring_q(
+                    Z[at], risk, part.sets, omega, x[at], dH, mean, times
+                )
+        if times.size:
+            order = np.argsort(x, kind="mergesort")
+            resid[order] += _censoring_martingale(
+                q,
+                times,
+                (n * weights)[order],
+                is_censored[order],
+                x[order],
+            )
+    if cluster is None:
+        return sandwich(bread, resid, n, weights)
+    totals = np.zeros((int(cluster.max()) + 1, Z.shape[1]))
+    np.add.at(totals, cluster, (n * weights)[:, None] * resid)
+    out = bread @ (totals.T @ totals) @ bread
+    return 0.5 * (out + out.T)
 
 
 def _robust_covariance(
@@ -651,6 +931,46 @@ def _robust_covariance(
     ``x``) are in time order (``sets.order``); every sum is O(N p)
     (:func:`_risk_set_sums`, :func:`_risk_set_weights`).
     """
+    resid = _score_residuals(Z, beta, sets, n, w, is_event, is_censored, x)
+    return sandwich(bread, resid, n, np.ones(n.size) if w is None else w)
+
+
+def _score_residuals(
+    Z: npt.NDArray,
+    beta: npt.NDArray,
+    sets: _RiskSets,
+    n: npt.NDArray,
+    w: npt.NDArray | None,
+    is_event: npt.NDArray,
+    is_censored: npt.NDArray,
+    x: npt.NDArray,
+) -> npt.NDArray:
+    """Each unit's influence on the score, ``eta_i + psi_i`` of
+    :func:`_robust_covariance` (one row per row, one unit of each), the
+    rows in time order."""
+    risk, omega, dH, mean, resid = _event_residuals(
+        Z, beta, sets, n, w, is_event, x
+    )
+    resid += _censoring_residuals(
+        Z, risk, sets, omega, is_censored, x, dH, mean
+    )
+    return resid
+
+
+def _event_residuals(
+    Z: npt.NDArray,
+    beta: npt.NDArray,
+    sets: _RiskSets,
+    n: npt.NDArray,
+    w: npt.NDArray | None,
+    is_event: npt.NDArray,
+    x: npt.NDArray,
+) -> tuple:
+    """The score residuals ``eta_i`` of :func:`_robust_covariance` (the
+    rows in time order), with what the censoring term is built from:
+    ``(risk, omega, dH, mean, eta)``, ``risk`` ``exp(beta'Z)`` (shifted),
+    ``omega`` the rows' ``n w``, ``dH`` the baseline's increments and
+    ``mean`` the risk sets' mean covariate at each event time."""
     with np.errstate(over="ignore", under="ignore"):
         eta = Z @ beta
         risk = np.exp(eta - (float(eta.max()) if eta.size else 0.0))
@@ -669,10 +989,7 @@ def _robust_covariance(
     events = np.flatnonzero(is_event)
     at = np.searchsorted(sets.times, x[events])
     resid[events] += Z[events] - mean[at]
-    resid += _censoring_residuals(
-        Z, risk, sets, omega, is_censored, x, dH, mean
-    )
-    return sandwich(bread, resid, n, np.ones(n.size) if w is None else w)
+    return risk, omega, dH, mean, resid
 
 
 def _censoring_residuals(
@@ -712,13 +1029,57 @@ def _censoring_residuals(
     and ``mean`` ``Zbar`` at each event time of ``sets``.
     """
     rows, p = Z.shape
-    out = np.zeros((rows, p))
     if not is_censored.any():
-        return out
-    times, inv = np.unique(x[is_censored], return_inverse=True)
+        return np.zeros((rows, p))
+    times = np.unique(x[is_censored])
+    q = _censoring_q(Z, risk, sets, n, x, dH, mean, times)
+    return _censoring_martingale(q, times, n, is_censored, x)
+
+
+def _censoring_martingale(
+    q: npt.NDArray,
+    times: npt.NDArray,
+    n: npt.NDArray,
+    is_censored: npt.NDArray,
+    x: npt.NDArray,
+) -> npt.NDArray:
+    """``psi_i = c_i q(x_i) / Y(x_i) - sum_{u <= x_i} dc(u) q(u) / Y(u)^2``
+    of :func:`_censoring_residuals` for each row (in time order, counts
+    ``n``), from ``q`` at the censoring times ``times`` of the rows."""
+    inv = np.searchsorted(times, x[is_censored])
     censored = np.bincount(inv, weights=n[is_censored], minlength=times.size)
     first = np.searchsorted(x, times, side="left")
     at_risk = _cumsum(n[::-1])[::-1][first]
+    out = np.zeros((x.size, q.shape[1]))
+    # The compensator up to each row's time, and the jump of a censored row
+    drift = np.concatenate(
+        [
+            np.zeros((1, q.shape[1])),
+            np.cumsum(q * (censored / at_risk**2)[:, None], axis=0),
+        ]
+    )
+    out -= drift[np.searchsorted(times, x, side="right")]
+    out[is_censored] += (q / at_risk[:, None])[inv]
+    return out
+
+
+def _censoring_q(
+    Z: npt.NDArray,
+    risk: npt.NDArray,
+    sets: _RiskSets,
+    n: npt.NDArray,
+    x: npt.NDArray,
+    dH: npt.NDArray,
+    mean: npt.NDArray,
+    times: npt.NDArray,
+) -> npt.NDArray:
+    """``q(u)`` of :func:`_censoring_residuals` at each time ``u`` of
+    ``times``: over the events at ``t >= u``, the part of the risk set's
+    covariate spread carried by the competing failures before ``u``. The
+    rows (``Z``, ``risk``, ``n``, ``x``) are in time order, those of the
+    risk sets ``sets``."""
+    p = Z.shape[1]
+    first = np.searchsorted(x, times, side="left")
     # The competing failures before each censoring time
     carried = sets.competing_over_G * n * risk
     before = np.concatenate([[0.0], _cumsum(carried)])[first]
@@ -735,17 +1096,7 @@ def _censoring_residuals(
             np.zeros((1, p)),
         ]
     )[later]
-    q = before_Z * after[:, None] - before[:, None] * after_mean
-    # The compensator up to each row's time, and the jump of a censored row
-    drift = np.concatenate(
-        [
-            np.zeros((1, p)),
-            np.cumsum(q * (censored / at_risk**2)[:, None], axis=0),
-        ]
-    )
-    out -= drift[np.searchsorted(times, x, side="right")]
-    out[is_censored] += (q / at_risk[:, None])[inv]
-    return out
+    return before_Z * after[:, None] - before[:, None] * after_mean
 
 
 def _runoff_of_cause(
@@ -787,7 +1138,8 @@ def _runoff_of_cause(
     data do not have is a search that stopped short: the answer is then
     verified or not afresh, with the derivatives, ``n_events`` and
     ``floor`` the judge uses. ``data`` are the rows ``(x, Z, is_event,
-    is_competing, n)``."""
+    is_competing, n, strata)`` (``strata`` an integer code per row, or
+    ``None``: the risk sets do not cross strata)."""
     with np.errstate(over="ignore", invalid="ignore"):
         eta = Z_sorted @ np.atleast_1d(res.x)
         info = (
@@ -804,14 +1156,14 @@ def _runoff_of_cause(
     none = np.zeros(0, dtype=int)
     if not suspect:
         return none, maximum, None
-    x, Z, is_event, is_competing, n = data
+    x, Z, is_event, is_competing, n, strata = data
     found = runoff_direction(
         np.where(is_competing, np.inf, x),
         Z,
         np.where(is_event, 0, 1),
         n,
         np.full(len(x), -np.inf),
-        None,
+        strata,
         "breslow",
     )
     if found is not None:
@@ -1041,7 +1393,14 @@ def _cumhaz_at_origin(
 
 
 def _validated(
-    x: Any, Z: Any, e: Any, c: Any, n: Any, w: Any, tl: Any = None
+    x: Any,
+    Z: Any,
+    e: Any,
+    c: Any,
+    n: Any,
+    w: Any,
+    tl: Any = None,
+    labels: tuple = (),
 ) -> tuple[
     npt.NDArray,
     npt.NDArray,
@@ -1054,13 +1413,20 @@ def _validated(
     """``validate_fine_gray_inputs``, with the weights ``w`` of the rows
     kept as a sixth entry and their entry times ``tl`` as a seventh
     (``None`` where not given), and the warning of a small effective
-    sample size, for the competing-risks regressions."""
-    out = validate_fine_gray_inputs(x, Z, e, c, n, w, tl)
+    sample size, for the competing-risks regressions. ``labels`` are
+    per-row arrays (stratum or cluster codes) dropped with the rows, and
+    returned after the rest."""
+    out = validate_fine_gray_inputs(x, Z, e, c, n, w, tl, labels=labels)
+    if labels:
+        kept_labels = out[-len(labels) :]
+        out = out[: -len(labels)]
+    else:
+        kept_labels = ()
     w_kept = None if w is None else out[5]
     tl_kept = None if tl is None else out[-1]
     if w_kept is not None:
         warn_if_few_effective(out[4], w_kept)
-    return (*out[:5], w_kept, tl_kept)
+    return (*out[:5], w_kept, tl_kept, *kept_labels)
 
 
 #: What a subdistribution method refusing delayed entry offers instead.
@@ -1070,6 +1436,38 @@ ENTRY_INSTEAD = (
     "e, tl=tl) (model='Cox'); for each cause's cumulative incidence, the "
     "Aalen-Johansen estimate CompetingRisks.fit(x, e, tl=tl)."
 )
+
+
+def _same_label(a: Any, b: Any) -> bool:
+    """Whether two stratum labels are the same (``1`` and ``1.0`` are;
+    ``"1"`` and ``1`` are not)."""
+    try:
+        return bool(a == b)
+    except (TypeError, ValueError):
+        return False
+
+
+def _label_codes(
+    labels: Any, name: str, rows: int
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The integer code of each row's label in ``labels`` (``strata`` or
+    ``cluster``), -1 where it is missing (``None``, ``NaN``, pandas
+    ``NA``), and the distinct labels in code order."""
+    arr, missing = _labels_and_missing(labels)
+    if arr.ndim != 1 or arr.shape[0] != rows:
+        raise ValueError(
+            "'{}' must have one label for each row of x: got {} for {} "
+            "rows.".format(name, np.size(arr), rows)
+        )
+    present = arr[~missing]
+    if not present.size:
+        raise ValueError(
+            f"Every '{name}' label is missing; give each row a label."
+        )
+    levels, codes = np.unique(present, return_inverse=True)
+    out = np.full(rows, -1, dtype=int)
+    out[~missing] = codes
+    return out, levels
 
 
 def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
@@ -1175,6 +1573,19 @@ class FineGrayModel(
     weighted: bool = False
     #: The effective sample size of the weights (``None`` unweighted).
     effective_n: float | None = None
+    #: The strata of a stratified fit (``strata=``), in order; ``None``
+    #: for a model without strata.
+    strata_labels: list | None = None
+    #: Each stratum's baseline cumulative subdistribution hazard, its step
+    #: times and values, by stratum label; ``None`` without strata.
+    strata_baselines: dict | None = None
+    #: The number of clusters of a fit with ``cluster=`` (its robust
+    #: covariance sums each cluster's influence); ``None`` without.
+    n_clusters: int | None = None
+    #: How a stratified fit estimated the censoring distribution:
+    #: ``"within"`` each stratum or ``"common"`` to all; ``None``
+    #: without strata.
+    strata_censoring: str | None = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -1199,6 +1610,54 @@ class FineGrayModel(
         self._fit_data = fit.get("fit_data")
         self.weighted = bool(fit.get("weighted", False))
         self.effective_n = fit.get("effective_n")
+        labels = fit.get("strata_labels")
+        if labels is not None:
+            self.strata_labels = list(labels)
+            self.strata_baselines = {
+                label: (
+                    np.asarray(times, dtype=float),
+                    np.asarray(cumhaz, dtype=float),
+                )
+                for label, (times, cumhaz) in zip(
+                    labels, fit["strata_baselines"]
+                )
+            }
+        self.strata_censoring = fit.get("strata_censoring")
+        clusters = fit.get("n_clusters")
+        self.n_clusters = None if clusters is None else int(clusters)
+
+    @property
+    def is_stratified(self) -> bool:
+        """Whether the model was fitted with ``strata``: each stratum then
+        has its own baseline, and :meth:`cif` takes ``stratum``."""
+        return self.strata_labels is not None
+
+    def _baseline(self, stratum: Any) -> tuple[npt.NDArray, npt.NDArray]:
+        """The baseline cumulative subdistribution hazard's step times and
+        values: the stratum's for a stratified model (``stratum``
+        required), the model's otherwise (``stratum`` refused)."""
+        if not self.is_stratified:
+            if stratum is not None:
+                raise ValueError(
+                    "'stratum' was given but this Fine-Gray model is not "
+                    "stratified; leave stratum out."
+                )
+            return self._times, self._cumhaz
+        assert self.strata_baselines is not None
+        if stratum is None:
+            raise ValueError(
+                "This Fine-Gray model is stratified, with a baseline for "
+                "each stratum; pass stratum=... to choose one (one of "
+                "{}).".format(self.strata_labels)
+            )
+        for label, baseline in self.strata_baselines.items():
+            if _same_label(label, stratum):
+                return baseline
+        raise ValueError(
+            "Unknown stratum {!r}; the strata are {}.".format(
+                stratum, self.strata_labels
+            )
+        )
 
     _ALIASED_WHY = (
         "a constant column, which the baseline subdistribution hazard "
@@ -1344,7 +1803,8 @@ class FineGrayModel(
         dict.
 
         Stores the coefficients and their covariance, plus the fitted
-        subdistribution baseline cumulative-hazard step arrays (and, for a
+        subdistribution baseline cumulative-hazard step arrays (each
+        stratum's, under ``"strata"``, for a stratified fit; and, for a
         fit with ``center=True``, the covariate ``center`` they are at,
         which makes the dict schema 2: a schema-1 reader would take the
         baseline for that at ``Z = 0``), so the reloaded model reproduces
@@ -1357,12 +1817,32 @@ class FineGrayModel(
             "cause": to_native(self.cause),
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-            "baseline_times": np.asarray(self._times, dtype=float).tolist(),
-            "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
+        if self.strata_baselines is None:
+            out["baseline_times"] = np.asarray(
+                self._times, dtype=float
+            ).tolist()
+            out["baseline_cumhaz"] = np.asarray(
+                self._cumhaz, dtype=float
+            ).tolist()
+        else:
+            # Each stratum's baseline, and no top-level one: a reader that
+            # does not know the strata cannot take one stratum's baseline
+            # for the model's.
+            out["strata"] = [
+                {
+                    "stratum": to_native(label),
+                    "baseline_times": np.asarray(t, dtype=float).tolist(),
+                    "baseline_cumhaz": np.asarray(h, dtype=float).tolist(),
+                }
+                for label, (t, h) in self.strata_baselines.items()
+            ]
+            out["strata_censoring"] = self.strata_censoring
+        if self.n_clusters is not None:
+            out["n_clusters"] = int(self.n_clusters)
         if self._covariance is not None:
             # The key every model's dict stores covariance() under (#605),
             # with its standard errors
@@ -1417,6 +1897,14 @@ class FineGrayModel(
             # rebuilt without the data.
             cov, model_cov = None, cov
             p_values = np.full(beta.shape, np.nan)
+        strata = model_dict.get("strata")
+        if strata is not None:
+            first = strata[0] if strata else {}
+            times = first.get("baseline_times", [])
+            cumhaz = first.get("baseline_cumhaz", [])
+        else:
+            times = model_dict["baseline_times"]
+            cumhaz = model_dict["baseline_cumhaz"]
         out = cls(
             {
                 "cause": label_from_native(model_dict["cause"]),
@@ -1425,12 +1913,8 @@ class FineGrayModel(
                 "p_values": p_values,
                 "cov": cov,
                 "model_cov": model_cov,
-                "baseline_times": np.array(
-                    model_dict["baseline_times"], dtype=float
-                ),
-                "baseline_cumhaz": np.array(
-                    model_dict["baseline_cumhaz"], dtype=float
-                ),
+                "baseline_times": np.array(times, dtype=float),
+                "baseline_cumhaz": np.array(cumhaz, dtype=float),
                 # "neg_ll" is the key of a dict written before v0.23.
                 "neg_ll": model_dict.get(
                     "_neg_ll", model_dict.get("neg_ll", np.nan)
@@ -1440,6 +1924,23 @@ class FineGrayModel(
                 "maximum": restored_maximum(model_dict),
                 "weighted": weighted,
                 "effective_n": model_dict.get("effective_n"),
+                "n_clusters": model_dict.get("n_clusters"),
+                **(
+                    {}
+                    if strata is None
+                    else {
+                        "strata_labels": [
+                            label_from_native(b["stratum"]) for b in strata
+                        ],
+                        "strata_baselines": [
+                            (b["baseline_times"], b["baseline_cumhaz"])
+                            for b in strata
+                        ],
+                        "strata_censoring": model_dict.get(
+                            "strata_censoring", "within"
+                        ),
+                    }
+                ),
             }
         )
         names = model_dict.get("feature_names")
@@ -1466,7 +1967,9 @@ class FineGrayModel(
             )
 
     @keeps_query_shape
-    def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+    def cif(
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, stratum: Any = None
+    ) -> npt.NDArray:
         """
         Cumulative incidence of the cause of interest at times ``x``:
         ``1 - exp(-Lambda0(x) * exp(beta'(Z - center)))``, the baseline
@@ -1476,11 +1979,21 @@ class FineGrayModel(
         before the first event time and after the last (the baseline is a
         step function estimated only on the observed range). A missing
         (``NaN``) time or covariate gives ``nan`` in its place.
+
+        A stratified model (fitted with ``strata``) has a baseline for
+        each stratum: ``stratum`` names the one to use, and is required;
+        a model without strata refuses it.
         """
+        times, cumhaz = self._baseline(stratum)
         x = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
         Z = named_covariates(Z, self.feature_names)
         rows = paired_covariate_rows(Z, x.size, np.size(self.beta))
-        H0 = step_at(self._times, self._cumhaz, x, before=0.0)
+        # (a stratum without events of the cause has no steps: 0)
+        H0 = (
+            step_at(times, cumhaz, x, before=0.0)
+            if np.size(times)
+            else np.zeros(x.size)
+        )
         # step_at reads a nan time as the value after the last jump.
         H0 = np.where(np.isnan(x), np.nan, H0)
         # H0 * exp(beta'(Z - center)) on the log scale: a baseline at Z = 0
@@ -1503,13 +2016,22 @@ class FineGrayModel(
         # One cause's model: event, where given, must be that cause.
         if event is not None and event != self.cause:
             raise unknown_cause_error(event, [self.cause])
+        if self.is_stratified:
+            raise ValueError(
+                "plot_partial_effects is not available for a stratified "
+                "Fine-Gray model, whose curves differ by stratum: plot "
+                "model.cif(x, Z, stratum=...) for the stratum wanted."
+            )
         return np.asarray(self.cif(x, row), dtype=float)
 
     @keeps_query_shape
-    def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+    def sf(
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, stratum: Any = None
+    ) -> npt.NDArray:
         """One minus the cumulative incidence (the cause-of-interest-free
-        probability under the subdistribution)."""
-        return 1.0 - self.cif(x, Z)
+        probability under the subdistribution); ``stratum`` as for
+        :meth:`cif`."""
+        return 1.0 - self.cif(x, Z, stratum=stratum)
 
     def __repr__(self) -> str:
         lines = [
@@ -1539,6 +2061,29 @@ class FineGrayModel(
             lines.append(
                 "Weights             : effective sample size "
                 f"{self.effective_n:.4g}; robust covariance"
+            )
+        if self.is_stratified:
+            assert self.strata_labels is not None
+            labels = self.strata_labels
+            shown = (
+                str(labels)
+                if len(labels) <= 8
+                else "{} strata ({}, ..., {})".format(
+                    len(labels), labels[0], labels[-1]
+                )
+            )
+            lines.append(
+                f"Strata              : {shown}, a baseline for each; "
+                + (
+                    "a censoring distribution within each"
+                    if self.strata_censoring != "common"
+                    else "one censoring distribution for all"
+                )
+            )
+        if self.n_clusters is not None:
+            lines.append(
+                f"Clusters            : {self.n_clusters} (cluster-robust "
+                "standard errors)"
             )
         return "\n".join(lines)
 
@@ -1581,6 +2126,8 @@ class FineGray_(FitterRepr):
         n_col: str | None = None,
         w_col: str | None = None,
         tl_col: str | None = None,
+        strata_col: str | None = None,
+        cluster_col: str | None = None,
         **fit_options: Any,
     ) -> FineGrayModel:
         """
@@ -1613,6 +2160,10 @@ class FineGray_(FitterRepr):
             Column of entry times (``tl`` of :meth:`fit`), refused, as
             there, where an entry is after the first time, with what to
             use instead.
+        strata_col : str, optional
+            Column of stratum labels (``strata`` of :meth:`fit`).
+        cluster_col : str, optional
+            Column of cluster labels (``cluster`` of :meth:`fit`).
         **fit_options
             ``event`` (the cause of interest) and ``center``, as for
             :meth:`fit`.
@@ -1651,8 +2202,15 @@ class FineGray_(FitterRepr):
         arrays |= read_columns(
             df, {"c": c_col, "n": n_col, "w": w_col, "tl": tl_col}
         )
+        for key, col, arg in (
+            ("strata", strata_col, "strata_col"),
+            ("cluster", cluster_col, "cluster_col"),
+        ):
+            if col is not None:
+                arrays[key] = frame_column(df, col, arg)
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
         names |= {"c": "c_col", "n": "n_col", "w": "w_col", "tl": "tl_col"}
+        names |= {"strata": "strata_col", "cluster": "cluster_col"}
         # The columns name the coefficients (#614)
         columns = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         with covariate_columns(columns):
@@ -1674,6 +2232,9 @@ class FineGray_(FitterRepr):
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
         tl: npt.ArrayLike | float | None = None,
+        strata: npt.ArrayLike | None = None,
+        cluster: npt.ArrayLike | None = None,
+        strata_censoring: str = "within",
     ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
@@ -1726,6 +2287,39 @@ class FineGray_(FitterRepr):
             another cause, and with late entry it needs truncation weights
             (Geskus 2011), which are not built. Entry times all before the
             first time change nothing and are taken.
+        strata : array_like, optional
+            A stratum label for each row, as for ``CoxPH``: the model is
+            then *stratified* (Zhou, Latouche, Rocha and Fine, 2011, R's
+            ``crrSC::crrs`` with ``ctype = 1``). Each stratum has its own
+            baseline subdistribution hazard, its own risk sets and its own
+            censoring distribution ``G`` (the Kaplan-Meier of the
+            censoring within the stratum), while the coefficients are
+            shared. Use it for a factor whose effect on the incidence is
+            not proportional, or whose censoring differs (a centre, a
+            site, a production line). Predictions (:meth:`~FineGrayModel.cif`)
+            then take ``stratum``. Rows with a missing label are dropped,
+            with a warning.
+        strata_censoring : ('within', 'common'), str, optional
+            How a stratified fit estimates the censoring distribution:
+            within each stratum (``'within'``, the default, ``crrs``'s
+            ``ctype = 1``), for a few large strata whose censoring may
+            differ; or one for all the strata (``'common'``, ``ctype =
+            2``), for many small strata (a stratum per centre, say), where
+            censoring does not depend on the stratum. Either way each
+            stratum keeps its own baseline. Taken only with ``strata``.
+        cluster : array_like, optional
+            A cluster label for each row, for units that are not
+            independent of each other within a cluster (the two eyes or
+            kidneys of a patient, the machines of one site, the
+            components of one system). The coefficients are those of the
+            fit without clusters (an independence working model), and the
+            robust covariance sums the influence of each cluster's units
+            before squaring it, so the standard errors allow for the
+            dependence (Zhou, Fine, Latouche and Labopin, 2012, R's
+            ``crrSC::crrc``). The model-based covariance
+            (``robust=False``) ignores the clusters. Rows with a missing
+            label are dropped, with a warning. It combines with
+            ``strata`` and ``w``.
 
         Returns
         -------
@@ -1764,7 +2358,52 @@ class FineGray_(FitterRepr):
         array([0.5808, 0.7395])
         """
         refuse_subdistribution_entry(x, tl, "FineGray", ENTRY_INSTEAD)
-        x, Z, e, c, n, w_kept, _ = _validated(x, Z, e, c, n, w)
+        check_option(
+            "strata_censoring", strata_censoring, ("within", "common")
+        )
+        if strata is None and strata_censoring != "within":
+            raise ValueError(
+                "strata_censoring='common' is for a stratified fit: give "
+                "strata=..., or leave strata_censoring out (a fit without "
+                "strata has one censoring distribution already)."
+            )
+        rows = int(np.size(np.atleast_1d(np.asarray(x, dtype=object)), 0))
+        coded = {}
+        for name, labels in (("strata", strata), ("cluster", cluster)):
+            if labels is not None:
+                coded[name] = _label_codes(labels, name, rows)
+        validated = _validated(
+            x, Z, e, c, n, w, labels=tuple(v[0] for v in coded.values())
+        )
+        x, Z, e, c, n, w_kept = validated[:6]
+        codes: list = list(validated[7:])
+        found = dict(zip(coded, codes))
+        missing = np.zeros(x.size, dtype=bool)
+        for name, values in found.items():
+            missing |= values < 0
+        if missing.any():
+            warnings.warn(
+                "Dropped {} of {} rows with a missing {} label.".format(
+                    int(missing.sum()),
+                    missing.size,
+                    " or ".join(k for k, v in found.items() if (v < 0).any()),
+                ),
+                UserWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            keep = ~missing
+            x, Z, e, c, n = x[keep], Z[keep], e[keep], c[keep], n[keep]
+            w_kept = None if w_kept is None else w_kept[keep]
+            found = {k: v[keep] for k, v in found.items()}
+        # Recode: a level whose rows were all dropped has no code
+        strata_levels = None
+        for name in found:
+            used, recoded = np.unique(found[name], return_inverse=True)
+            if name == "strata":
+                strata_levels = [
+                    to_native(level) for level in coded[name][1][used]
+                ]
+            found[name] = recoded.astype(int)
 
         causes = ordered_labels(e)
         if event is None:
@@ -1776,7 +2415,22 @@ class FineGray_(FitterRepr):
         elif event not in causes:
             raise unknown_cause_error(event, causes)
 
-        fit = _fit_cause(x, Z, e, c, n, event, center, w_kept)
+        fit = _fit_cause(
+            x,
+            Z,
+            e,
+            c,
+            n,
+            event,
+            center,
+            w_kept,
+            strata=found.get("strata"),
+            cluster=found.get("cluster"),
+            common_censoring=strata_censoring == "common",
+        )
+        if strata_levels is not None:
+            fit["strata_labels"] = strata_levels
+            fit["strata_censoring"] = strata_censoring
         maximum = _warn_if_monotone([fit])
         model = FineGrayModel(fit)
         model.maximum = maximum

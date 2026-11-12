@@ -15,10 +15,12 @@ Two kinds of fixture:
   own copy, and the PBC trial's baseline rows from ``load_pbc2``;
 * small seeded synthetic sets aimed at one feature each: ties between
   event and censoring times, left truncation, interval censoring,
-  competing risks with ties, a prediction matrix for the Brier score and
-  AUC, continuous data for the additive hazards model, and a deliberate
-  violation of proportional hazards for the Cox diagnostics, a covariate
-  that separates the events from the survivors (Firth's fit),
+  competing risks with ties, competing risks in strata with their own
+  censoring and in clusters of dependent units, a prediction matrix for
+  the Brier score and AUC, continuous data for the additive hazards
+  model, and a deliberate violation of proportional hazards for the Cox
+  diagnostics, a covariate that separates the events from the survivors
+  (Firth's fit),
   recurrent events of two groups of systems for the MCF comparison, and
   an illness-death model with recovery for the multi-state models.
 
@@ -961,6 +963,84 @@ def competing():
     }
 
 
+def _fine_gray_draw(rng, Z, beta, p, u):
+    """Fine and Gray's (1999) construction: the cumulative incidence of
+    cause 1 is 1 - (1 - p (1 - exp(-t)))^exp(beta'Z), cause 2 (exponential
+    times) takes the rest; the uniform ``u`` decides the cause and the
+    time."""
+    phi = np.exp(Z @ beta)
+    p1 = 1 - (1 - p) ** phi
+    first = u < p1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = -np.log(1 - (1 - (1 - u) ** (1 / phi)) / p)
+        t2 = -np.log1p(-(u - p1) / (1 - p1))
+    return np.where(first, t1, t2), np.where(first, 1, 2)
+
+
+def fine_gray_strata():
+    """Three strata of 80 units with their own cause-1 baselines (p = 0.3,
+    0.5, 0.7) and their own censoring (exponential, means 0.6, 1.2 and
+    2.5), a binary and a continuous covariate."""
+    rng = np.random.default_rng(3802)
+    n = 240
+    stratum = np.repeat([1, 2, 3], n // 3)
+    z1 = rng.binomial(1, 0.5, n)
+    z2 = np.round(rng.normal(0, 1, n), 1)
+    Z = np.column_stack([z1, z2]).astype(float)
+    p = np.array([0.3, 0.5, 0.7])[stratum - 1]
+    t, cause = _fine_gray_draw(
+        rng, Z, np.array([0.6, -0.4]), p, rng.uniform(size=n)
+    )
+    cens = rng.exponential(np.array([0.6, 1.2, 2.5])[stratum - 1])
+    x = np.round(np.minimum(t, cens), 4)
+    cause = np.where(cens < t, 0, cause)
+    return {
+        "source": "seeded synthetic, make_fixtures.fine_gray_strata (rng "
+        "3802): three strata with their own baselines and censoring; "
+        "cause 0 is censored",
+        "columns": {
+            "x": _native(x),
+            "cause": _native(cause),
+            "stratum": _native(stratum),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
+def fine_gray_cluster():
+    """100 clusters of two units that share the binary covariate and whose
+    uniforms are joined by a Gaussian copula (correlation 0.7), so each
+    unit follows the Fine-Gray model and the two are dependent; a
+    unit-level continuous covariate; exponential censoring (mean 1.5)."""
+    from scipy.stats import norm
+
+    rng = np.random.default_rng(3803)
+    k = 100
+    cluster = np.repeat(np.arange(1, k + 1), 2)
+    z1 = np.repeat(rng.binomial(1, 0.5, k), 2)
+    z2 = np.round(rng.normal(0, 1, 2 * k), 1)
+    Z = np.column_stack([z1, z2]).astype(float)
+    shared = np.repeat(rng.normal(size=k), 2)
+    u = norm.cdf(np.sqrt(0.7) * shared + np.sqrt(0.3) * rng.normal(size=2 * k))
+    t, cause = _fine_gray_draw(rng, Z, np.array([0.6, -0.4]), 0.5, u)
+    cens = rng.exponential(1.5, 2 * k)
+    x = np.round(np.minimum(t, cens), 4)
+    cause = np.where(cens < t, 0, cause)
+    return {
+        "source": "seeded synthetic, make_fixtures.fine_gray_cluster (rng "
+        "3803): pairs sharing z1, dependent through a Gaussian copula; "
+        "cause 0 is censored",
+        "columns": {
+            "x": _native(x),
+            "cause": _native(cause),
+            "cluster": _native(cluster),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
 def prediction(name, seed, digits):
     """An evaluation set and a matrix of predicted survival at four
     horizons, for the Brier score and the time-dependent AUC. With
@@ -1333,6 +1413,8 @@ def build():
         "left_truncation": left_truncation(),
         "interval": interval(),
         "competing": competing(),
+        "fine_gray_strata": fine_gray_strata(),
+        "fine_gray_cluster": fine_gray_cluster(),
         "prediction_ties": prediction("prediction_ties", 3795, 0),
         "prediction_continuous": prediction("prediction_continuous", 3795, 3),
         "additive": additive(),

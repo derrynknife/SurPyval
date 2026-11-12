@@ -35,6 +35,8 @@ Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_competing_entry.R
 # cmprsk (in R_LIBS_USER) for the Fine-Gray model's two covariances
 Rscript scripts/reference/reference_r_fine_gray_variance.R
+# crrSC and cmprsk (in R_LIBS_USER) for the stratified and clustered Fine-Gray model
+Rscript scripts/reference/reference_r_crrsc.R
 # survival, cmprsk and survRM2 (in R_LIBS_USER) for the restricted mean time lost
 Rscript scripts/reference/reference_r_rmtl.R
 # survival and km.ci (in R_LIBS_USER) for the pointwise interval types
