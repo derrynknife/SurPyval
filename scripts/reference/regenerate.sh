@@ -37,6 +37,10 @@ Rscript scripts/reference/reference_r_competing_entry.R
 Rscript scripts/reference/reference_r_fine_gray_variance.R
 # crrSC and cmprsk (in R_LIBS_USER) for the stratified and clustered Fine-Gray model
 Rscript scripts/reference/reference_r_crrsc.R
+# survival, cmprsk and survRM2 (in R_LIBS_USER) for the restricted mean time lost
+Rscript scripts/reference/reference_r_rmtl.R
+# survival and km.ci (in R_LIBS_USER) for the pointwise interval types
+Rscript scripts/reference/reference_r_km_ci.R
 # flexsurv (in R_LIBS_USER) for the parametric competing-risks regression
 Rscript scripts/reference/reference_r_parametric_competing_risks_regression.R
 Rscript scripts/reference/reference_r_reda.R
