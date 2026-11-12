@@ -44,6 +44,12 @@ Test planning: designing reliability tests before they are run.
   log-rank test when some units are cured
   (:func:`cure_logrank_sample_size`, :func:`cure_logrank_events`,
   :func:`cure_logrank_power`).
+- **Group-sequential designs**: a comparison looked at a few planned
+  times, stopping early for efficacy or futility while keeping its
+  level: :func:`group_sequential_design` (any normal test statistic),
+  :func:`logrank_group_sequential` (the events and units of a log-rank
+  test) and :func:`boundary_crossing` (the chances of crossing given
+  boundaries).
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -89,6 +95,13 @@ from surpyval.test_planning.estimation import (
     life_test_length,
     life_test_precision,
     life_test_sample_size,
+)
+from surpyval.test_planning.group_sequential import (
+    GroupSequentialDesign,
+    LogrankGroupSequentialDesign,
+    boundary_crossing,
+    group_sequential_design,
+    logrank_group_sequential,
 )
 from surpyval.test_planning.rate_ratio import (
     rate_ratio_detectable,
@@ -154,6 +167,12 @@ __all__ = [
     "rate_ratio_detectable",
     "rate_ratio_exposure",
     "rate_ratio_power",
+    # Group-sequential designs
+    "GroupSequentialDesign",
+    "LogrankGroupSequentialDesign",
+    "boundary_crossing",
+    "group_sequential_design",
+    "logrank_group_sequential",
     # Sample size beyond the plain log-rank test
     "cox_detectable",
     "cox_events",
