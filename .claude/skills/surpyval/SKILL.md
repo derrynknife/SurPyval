@@ -356,6 +356,13 @@ cm = sp.WeibullMixtureCure.fit(tc, lot, c=(~ever).astype(int))
 cm.cure_probability([1]); cm.sf(100, [1], susceptible=True)   # the latency alone
 cm.cure_given_survival(100, [1])       # P(never fails | still running at 100)
 
+# Equivalent time scale: one life on two clocks, T = hours + k * starts
+re_ = np.random.default_rng(1); rate = re_.choice([0.02, 0.1, 0.5], 300)  # starts/hour
+hrs = 2000 * re_.weibull(2.0, 300) / (1 + 10 * rate)   # one start = 10 h
+em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
+em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
+em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
+
 # Robust SEs, the global LR test, a forest plot
 ph = sp.WeibullPH.fit(x, Z, c)
 ph.robust_standard_errors(); ph.summary(robust=True)  # cluster= for groups

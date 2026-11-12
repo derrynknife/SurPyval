@@ -1206,7 +1206,46 @@ def _search_joint(model, data):
     return [Search(f, u, n).in_covariate_units(shifts + hazard, Z)]
 
 
+def _search_equivalence(model, data):
+    """The equivalent-scale likelihood (with the clock-rate Jacobian) at
+    the model's parameters, in the logs of the positive ones and of k; a
+    k fitted at 0 is held out, and the likelihood must fall as k moves
+    off it."""
+    if data is None:
+        return None
+    from surpyval.univariate.equivalence import _Data, _log_lik
+
+    d = _Data(data["x"], data["x2"], data.get("c"), data.get("n"))
+    dist = model.dist
+    positive = [b[0] == 0 for b in dist.bounds]
+    theta0 = np.asarray(model.params[:-1], dtype=float)
+    k0 = float(model.params[-1])
+
+    def natural(u):
+        theta = [
+            anp.exp(u[j]) if pos else u[j] for j, pos in enumerate(positive)
+        ]
+        k = u[-1] if k0 == 0 else anp.exp(u[-1])
+        return theta, k
+
+    def fun(u):
+        theta, k = natural(u)
+        return -_log_lik(dist, d, theta, k)
+
+    u = np.r_[
+        [np.log(t) if pos else t for t, pos in zip(theta0, positive)],
+        0.0 if k0 == 0 else np.log(k0),
+    ]
+    held = ()
+    if k0 == 0:
+        held = (u.size - 1,)
+        step = 1e-6 * np.median(d.h[d.h > 0]) / np.median(d.s[d.s > 0])
+        assert fun(u + np.r_[np.zeros(u.size - 1), step]) >= fun(u)
+    return [Search(fun, u, d.size, held=held)]
+
+
 SEARCHES: dict[str, Callable] = {
+    "EquivalenceModel": _search_equivalence,
     "JointModel": _search_joint,
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,

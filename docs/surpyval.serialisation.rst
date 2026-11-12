@@ -450,6 +450,10 @@ with its own ``schema``.
      - ``"model": "JointModel"``
      - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
      - --
+   * - ``EquivalenceModel``
+     - ``"model": "EquivalenceModel"``
+     - ``distribution``, ``clocks``, ``params``, ``parameter_names``, ``_neg_ll``, ``_null_neg_ll``, ``ic_n``, ``maximum``, ``covariance``
+     - --
    * - ``BayesianParametric``
      - ``"model": "BayesianParametric"``
      - ``distribution``, ``offset``, ``lfp``, ``zi``, ``fixed``, ``method``, ``priors``, ``data``, ``posterior``, ``log_evidence``, ``diagnostics``, ``exact``, ``surpyval_version``

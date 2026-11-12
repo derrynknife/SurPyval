@@ -142,3 +142,15 @@ distribution of the same family.
    :maxdepth: 1
 
    univariate/mixture
+
+Equivalent Time Scales
+----------------------
+
+One life measured on two clocks (hours and starts, say), combined into
+one age ``x1 + k x2`` with ``k`` learned from the data. See
+:doc:`Equivalent Time Scales` for the guide.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/equivalence

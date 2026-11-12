@@ -247,6 +247,20 @@ _LAZY = {
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
     ),
+    # Equivalent time scales: one life on two clocks (x1 + k x2)
+    **dict.fromkeys(
+        (
+            "Equivalence",
+            "EquivalenceFitter",
+            "EquivalenceModel",
+            "ExponentialEquivalence",
+            "GammaEquivalence",
+            "LogLogisticEquivalence",
+            "LogNormalEquivalence",
+            "WeibullEquivalence",
+        ),
+        "surpyval.univariate.equivalence",
+    ),
     # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
     # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
     "prior": "surpyval.bayes",
@@ -498,6 +512,16 @@ if TYPE_CHECKING:
         ParametricCompetingRisks,
         ParametricCompetingRisksRegression,
         gray_test,
+    )
+    from surpyval.univariate.equivalence import (
+        Equivalence,
+        EquivalenceFitter,
+        EquivalenceModel,
+        ExponentialEquivalence,
+        GammaEquivalence,
+        LogLogisticEquivalence,
+        LogNormalEquivalence,
+        WeibullEquivalence,
     )
     from surpyval.univariate.joint import (
         JointModel,

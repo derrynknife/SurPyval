@@ -328,6 +328,7 @@ Contents:
    Regression Modelling with SurPyval
    Distributional Regression
    Mixture-Cure Regression
+   Equivalent Time Scales
    Pseudo-Observations
    Adjusted Survival Curves
    Model Diagnostics

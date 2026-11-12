@@ -67,6 +67,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     cure_data,
     destructive_data,
+    equivalence_data,
     exact_event_data,
     joint_data,
     lfp_count_data,
@@ -1581,6 +1582,73 @@ def _mixture_cure():
 
 
 # ---------------------------------------------------------------------------
+# Equivalent time scales (surpyval.Equivalence): one life on two clocks
+# ---------------------------------------------------------------------------
+FAST_EQUIVALENCE = ("WeibullEquivalence",)
+
+
+def _equivalence_fit(fitter):
+    def fit(d):
+        return fitter.fit(
+            d["x"], d["x2"], c=d.get("c"), n=d.get("n"), init=d.get("init")
+        )
+
+    return fit
+
+
+def _equivalence_df(fitter):
+    def fit(d):
+        df = pd.DataFrame(
+            {"hours": d["x"], "starts": d["x2"], "c": d["c"], "n": d["n"]}
+        )
+        return fitter.fit_from_df(
+            df, x_cols=["hours", "starts"], c_col="c", n_col="n"
+        )
+
+    return fit
+
+
+def _equivalence():
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "Equivalence"
+        fitter = getattr(sp, name)
+        out.append(
+            Case(
+                name=name,
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.Equivalence",
+                        "surpyval.EquivalenceFitter",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                model_class="surpyval.EquivalenceModel",
+                interface=UNIVARIATE,
+                data=equivalence_data,
+                fit=_equivalence_fit(fitter),
+                functions=UNI_FUNCTIONS + ("qf",),
+                x=X_UNI,
+                paths={"fit_from_df": _equivalence_df(fitter)},
+                # the second clock (starts) is a count, not a time: the
+                # units property rescales the first, and k with it
+                rows=("x", "x2", "c", "n"),
+                times=("x",),
+                draw=lambda m, s: m.random(15, rate=0.2, random_state=s),
+                explicit_seed=True,
+                slow=(
+                    frozenset()
+                    if name in FAST_EQUIVALENCE
+                    else REFIT_PROPERTIES
+                ),
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Bayesian fits (surpyval.bayes)
 # ---------------------------------------------------------------------------
 def _bayes_weibull(d):
@@ -1713,6 +1781,7 @@ CASES: list[Case] = (
     + _spline_regression()
     + _distributional()
     + _mixture_cure()
+    + _equivalence()
     + _bayes()
 )
 
@@ -2357,6 +2426,34 @@ def _bounds(case):
         "ParametricMultiState": _multistate_bounds((None,)),
         "ParametricMultiStateRegression": _multistate_bounds((None,)),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # Wald bounds over every parameter, k included; the profile
+        # likelihood bound is on k alone; and the life along a usage path
+        # (hours at a constant number of starts per hour).
+        "EquivalenceModel": (
+            Bound("cb", on=_ON_SURVIVAL),
+            Bound("param_cb", kind="param", label="param_cb[wald]"),
+            Bound(
+                "param_cb",
+                kind="summary",
+                kwargs={"method": "lr"},
+                query=(("k",),),
+                wald=False,
+                rtol=1e-6,
+                label="param_cb[lr, k]",
+            ),
+            Bound(
+                "cb_at_usage",
+                kind="summary",
+                query=((4.0, 0.0), (4.0, 0.3), (8.0, 1.0)),
+                label="cb_at_usage",
+            ),
+            Bound(
+                "quantile_cb_at_usage",
+                kind="summary",
+                query=((0.1, 0.0), (0.5, 0.3), (0.9, 1.0)),
+                label="quantile_cb_at_usage",
+            ),
+        ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
         # The Cox model's predicted curves: R's survfit conf.types
         "SemiParametricRegressionModel": tuple(
@@ -2967,6 +3064,11 @@ def _starve(case):
         return lambda d: fit(_noise_free(lambda x: np.exp(4.0 - 0.02 * x))(d))
     if cls == "JointModel":
         return lambda d: fit(_no_event_level(d))
+    if cls == "EquivalenceModel":
+        # k a million times its estimate
+        return _far_start(
+            case, lambda m: _scaled_start(m.params, len(m.params) - 1)
+        )
     return None
 
 
