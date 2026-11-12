@@ -768,6 +768,34 @@ def _search_recurrent_cox(model, data):
     return _search_cox(model.cox, None)
 
 
+def _search_multistate_cox(model, data):
+    """The stratified Cox fit of the stacked data (one stratum per
+    transition), whose rows and expanded covariates are not the fixture's,
+    so the search stays in the fit's own covariate units."""
+    if np.isnan(np.asarray(model.params, dtype=float)).all():
+        return None
+    return _search_cox(model.cox, None)
+
+
+def _search_parametric_multistate(model, data):
+    """Each transition's own fit (it keeps its data: the spells in its
+    'from' state, the others censored, each left truncated at its
+    start)."""
+    out = []
+    for pair, m in model.models.items():
+        out += _search_parametric(m, None, name=f"transition {pair!r}")
+    return out
+
+
+def _search_parametric_multistate_regression(model, data):
+    """Each transition's own regression search (its fit keeps its
+    data)."""
+    out = []
+    for m in model.models.values():
+        out += _search_regression(m, None)
+    return out
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -1192,6 +1220,11 @@ SEARCHES: dict[str, Callable] = {
     "ProportionalOddsModel": _search_proportional_odds,
     "FineGrayModel": _search_fine_gray,
     "CompetingRisksProportionalHazards": _search_crph,
+    "MultiStateProportionalHazards": _search_multistate_cox,
+    "ParametricMultiState": _search_parametric_multistate,
+    "ParametricMultiStateRegression": (
+        _search_parametric_multistate_regression
+    ),
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (
         _search_parametric_competing_regression

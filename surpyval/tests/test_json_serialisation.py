@@ -21,7 +21,9 @@ method of the restored model with the original's.
 
 import inspect
 import json
+import re
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -50,6 +52,12 @@ from surpyval import (
 )
 from surpyval.bayes import prior as sp_prior
 from surpyval.life_models import Power
+from surpyval.multistate import (
+    MultiState,
+    MultiStateProportionalHazards,
+    ParametricMultiState,
+    ParametricMultiStateRegression,
+)
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
     _TAGGED_MODELS,
@@ -58,6 +66,7 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
+from surpyval.tests.conformance.registry_fixtures import ms_data
 
 # -- data ---------------------------------------------------------------------
 
@@ -372,6 +381,14 @@ def _build(name):
             np.abs(np.random.default_rng(3).weibull(1.3, 40) * 15) + 0.2,
             np.random.default_rng(4).choice([1, 2], 40),
         ),
+        "multistate": lambda: MultiState.fit(**ms_data()),
+        "multistate_cox": lambda: MultiStateProportionalHazards.fit(
+            **ms_data(True)
+        ),
+        "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
+        "multistate_parametric_regression": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True))
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -474,6 +491,10 @@ CASES = [
     "parametric_competing_risks",
     "parametric_competing_risks_regression",
     "competing_risks",
+    "multistate",
+    "multistate_cox",
+    "multistate_parametric",
+    "multistate_parametric_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
@@ -553,6 +574,86 @@ def test_cases_cover_every_registered_model_class(models):
     # "InstantlyOccurs"/"NeverOccurs" are classes that are the model.
     covered |= {m.__name__ for m in models.values() if isinstance(m, type)}
     assert registered <= covered, registered - covered
+
+
+# -- the documented layout of the saved-model dictionary ---------------------
+
+_SERIALISATION_PAGE = (
+    Path(surpyval.__file__).resolve().parent.parent
+    / "docs"
+    / "surpyval.serialisation.rst"
+)
+
+
+def _documented_tables():
+    """The key tables of "The saved-model dictionary" on the
+    serialisation page: the keys any model writes when they apply, and
+    each class's identifying key, keys always written and keys written
+    when they apply."""
+    if not _SERIALISATION_PAGE.exists():
+        pytest.skip("the docs are not next to the package")
+    text = _SERIALISATION_PAGE.read_text(encoding="utf-8")
+    section = text.split("The saved-model dictionary\n", 1)[1]
+    optional_table = section.split("Keys any model writes when they apply")[
+        1
+    ].split("Names shared between families")[0]
+    optional = set(re.findall(r"^   \* - ``(\w+)``", optional_table, re.M))
+    per_class = section.split("Keys of each class")[1]
+    rows = re.findall(
+        r"^   \* - ``(\w+)``\n     - (.*)\n     - (.*)\n     - (.*)$",
+        per_class,
+        re.M,
+    )
+
+    def names(cell):
+        return set(re.findall(r"``(\w+)``", cell))
+
+    classes = {
+        cls: (ident, names(always), names(when))
+        for cls, ident, always, when in rows
+    }
+    return optional, classes
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_every_dict_has_the_documented_common_keys(name, models):
+    # The keys the docs promise on every dictionary: the schema number
+    # and the key the package-level reader dispatches on.
+    model = models[name]
+    d = model.to_dict()
+    assert isinstance(d["schema"], int)
+    cls = _model_class(model).__name__
+    if d.get("model") in _TAGGED_MODELS:
+        assert d["model"] == cls
+    else:
+        assert _PARAMETERIZATIONS[d["parameterization"]][1] == cls
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_to_dict_keys_match_the_serialisation_page(name, models):
+    optional, classes = _documented_tables()
+    model = models[name]
+    cls = _model_class(model).__name__
+    assert cls in classes, f"{cls} has no row on the serialisation page"
+    ident, always, when = classes[cls]
+    d = model.to_dict()
+    if d.get("model") == cls:
+        assert ident == f'``"model": "{cls}"``'
+    else:
+        assert ident == (f'``"parameterization": "{d["parameterization"]}"``')
+    keys = set(d) - {"schema", "model", "parameterization"}
+    missing = always - keys
+    assert not missing, f"{cls}: documented as always written: {missing}"
+    undocumented = keys - always - when - optional
+    assert not undocumented, f"{cls}: not on the page: {undocumented}"
+
+
+def test_serialisation_page_lists_only_registered_classes():
+    _, classes = _documented_tables()
+    registered = set(_TAGGED_MODELS) | {
+        c for _, c in _PARAMETERIZATIONS.values()
+    }
+    assert set(classes) == registered
 
 
 # -- (a) strict JSON ----------------------------------------------------------

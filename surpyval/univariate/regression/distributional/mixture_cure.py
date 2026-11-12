@@ -40,6 +40,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
 
 from . import _links
@@ -198,7 +199,7 @@ def _check_latency(latency: Any) -> None:
             "MixtureCure takes the latency's distribution (Weibull, "
             "LogNormal, ...); got {!r}.".format(latency)
         )
-    if name not in LATENCIES:
+    if canonical_name(latency) not in LATENCIES:
         raise ValueError(
             "Mixture-cure regression is not available with a {} latency: "
             "the time to failure of the susceptible units is one of {} "
@@ -290,7 +291,7 @@ class MixtureCureFitter(DistributionalFitter):
         column on the incidence (``lfp_p``) and on the latency's life
         parameter (its scale, location or rate), none on its shape."""
         if covariates is None:
-            life = LATENCIES[self.dist.latency.name]
+            life = LATENCIES[canonical_name(self.dist.latency)]
             covariates = {INCIDENCE: list(range(p)), life: list(range(p))}
         return super()._resolve_covariates(covariates, p, names)
 
@@ -369,7 +370,7 @@ class MixtureCureModel(DistributionalRegressionModel):
     @classmethod
     def _fitter_from_dict(cls, model_dict: dict, links: tuple) -> Any:
         latency = str(model_dict.get("latency"))
-        if latency not in LATENCIES:
+        if canonical_name(latency) not in LATENCIES:
             raise ValueError(f"Unknown latency distribution {latency!r}")
         dist = _cured(latency)
         return MixtureCureFitter(

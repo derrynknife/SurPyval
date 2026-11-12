@@ -60,7 +60,7 @@ from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import LR_NAMES
-from ._prediction import quantiles_by_inversion
+from ._prediction import times_at_hazard
 
 #: What a refit that raises is counted as failing with.
 REFIT_ERRORS = (
@@ -459,34 +459,37 @@ def _times_at(
     if own is not None:
         return np.asarray(own(params, center, H_target, Z), dtype=float)
     rows = np.asarray(model._centred(Z, center), dtype=float)
-    with np.errstate(all="ignore"):
-        p = -np.expm1(-np.asarray(H_target, dtype=float))
-        start = np.asarray(
-            model.distribution.qf(p, *params[: model.k_dist]), dtype=float
-        ) * np.ones(p.shape)
-    return quantiles_by_inversion(
-        lambda t, k: model.model.Hf(t, rows[k], *params),
-        p,
-        model.distribution.support,
-        start,
-        lambda t, k: model.model.hf(t, rows[k], *params),
-    )
+    return times_at_hazard(model, params, rows, H_target)
 
 
 # -- the scores of the resamples ---------------------------------------------
+
+
+def _covariance_or_none(model: Any) -> npt.NDArray | None:
+    """The model's covariance (its sandwich's bread, for a fit with
+    weights), in the parameterisation of ``_eval_params``, or ``None``
+    where it has none: the scale of the derivatives' steps."""
+    try:
+        with ignoring_warnings():
+            if getattr(model, "weighted", False):
+                return np.asarray(_bread(model), dtype=float)
+            return np.asarray(model.covariance(), dtype=float)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
 
 
 def _score(model: Any, p_hat: npt.NDArray) -> Callable[[Any], npt.NDArray]:
     """``score(data)``: the gradient of the log-likelihood of ``data`` at
     the model's own parameters ``p_hat`` (its baseline at its
     ``center``), by central differences in the steps of its covariance
-    (``_hessian_step``); zero for a held parameter."""
+    (``_gradient_step``: of its standard errors); zero for a held
+    parameter."""
     from ._fit_skeleton import centred_copy
 
     names = model.parameter_names
     held = model._held()
     free = [i for i, nm in enumerate(names) if nm not in held]
-    step = model._hessian_step(p_hat)
+    step = model._gradient_step(p_hat, _covariance_or_none(model))
     center = model.center
     shift = center is not None and bool(np.any(center))
 
@@ -667,10 +670,11 @@ def _jacobian(
 ) -> npt.NDArray:
     """``(n_points, len(p_hat))``: the central-difference gradient of
     ``value`` at ``p_hat`` at each query point, in the steps of the
-    covariance; zero in a held parameter."""
+    covariance (``_gradient_step``: of its standard errors); zero in a
+    held parameter."""
     names = model.parameter_names
     held = model._held()
-    step = model._hessian_step(p_hat)
+    step = model._gradient_step(p_hat, _covariance_or_none(model))
     size = np.size(value(p_hat))
     cols = []
     with np.errstate(all="ignore"):

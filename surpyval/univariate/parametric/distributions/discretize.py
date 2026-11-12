@@ -64,6 +64,11 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
             plot_x_scale=distribution.plot_x_scale,
         )
 
+    @property
+    def canonical_name(self) -> str:
+        # Discretize of an alias (Galton) is Discretize of its distribution
+        return "Discretize(" + str(self.dist.canonical_name) + ")"
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:

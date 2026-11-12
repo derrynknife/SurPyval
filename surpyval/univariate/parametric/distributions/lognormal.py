@@ -68,6 +68,12 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     # log time (#477).
     _cb_link = "probit"
 
+    @property
+    def canonical_name(self) -> str:
+        # The same for both names of the distribution (``Galton``
+        # is another name for ``LogNormal``).
+        return "LogNormal"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

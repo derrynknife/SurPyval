@@ -131,6 +131,12 @@ so on.
        and Gray's test.
      - :doc:`Competing Risks Analysis` /
        :doc:`Competing Risks SurPyval Modelling`
+   * - Multi-state models
+     - Units that move between several states (healthy, ill, dead;
+       working, degraded, failed): Aalen-Johansen transition and state
+       occupation probabilities with delayed entry, and a Cox model of
+       each transition with the probabilities it predicts.
+     - :doc:`Multi-State Models`
    * - Recurrent events
      - Repairable items that fail again and again: the mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
@@ -327,6 +333,7 @@ Contents:
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
+   Multi-State Models
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Intervention Analysis with SurPyval

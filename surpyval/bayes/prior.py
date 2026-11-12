@@ -26,6 +26,7 @@ import numpy.typing as npt
 from scipy import stats
 
 from surpyval.bayes.transforms import Transform
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 __all__ = [
@@ -574,7 +575,9 @@ class PowerPrior(JointPrior):
     def bind(self, fit: Any) -> Any:
         from surpyval.bayes.likelihood import LogLikelihood
 
-        if self.dist is not None and self.dist.name != fit.dist.name:
+        if self.dist is not None and canonical_name(
+            self.dist
+        ) != canonical_name(fit.dist):
             raise ValueError(
                 f"The old data's prior was built for {self.dist.name}, but "
                 f"the fit is {fit.dist.name}."

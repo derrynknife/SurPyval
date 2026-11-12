@@ -286,7 +286,8 @@ def test_the_plan_prints_the_test():
     )
     assert isinstance(plan, AcceleratedTestPlan)
     text = repr(plan)
-    assert "Exponential(a=6000, b=0.00062), sigma=0.6" in text
+    # Planned with life_models.Arrhenius, so named as that
+    assert "Arrhenius(a=6000, b=0.00062), sigma=0.6" in text
     assert "B10 at 330" in text
 
 

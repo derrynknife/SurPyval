@@ -248,6 +248,66 @@ def load_lung() -> pd.DataFrame:
     return _read_csv("lung.csv")
 
 
+def load_mgus2(spells: bool = False) -> pd.DataFrame:
+    """
+    The natural history of 1,384 patients with monoclonal gammopathy of
+    undetermined significance (MGUS), from Kyle et al. [17]_, as R's
+    ``survival::mgus2``: some progress to a plasma-cell malignancy (PCM),
+    and patients die with or without it. The classic illness-death data.
+
+    One row per patient: ``id``, ``age`` at diagnosis (years), ``sex``
+    (``"F"`` or ``"M"``), ``dxyr`` (year of diagnosis), the laboratory
+    values ``hgb``, ``creat`` and ``mspike`` (some missing), ``ptime`` and
+    ``pstat`` (months to progression or last check, and 1 for a
+    progression), ``futime`` and ``death`` (months to death or last
+    contact, and 1 for a death).
+
+    With ``spells=True`` the same data as spells in the states ``"mgus"``,
+    ``"pcm"`` and ``"death"``, the long form the multi-state models take
+    (:class:`~surpyval.multistate.MultiState`): one row for each spell a
+    patient spent in a state, with ``id``, ``tl`` (its start), ``x`` (its
+    end), ``state``, ``e`` (the state entered at ``x``, ``None`` where the
+    spell was censored), ``age`` and ``male`` (1 for a man). As in the
+    survival package's vignette on multi-state models, a progression in
+    the month of death is put 0.1 months earlier, so the spell in PCM has
+    a length.
+
+    Examples
+    --------
+    >>> from surpyval.datasets import load_mgus2
+    >>> df = load_mgus2(spells=True)
+    >>> df["state"].value_counts().to_dict()
+    {'mgus': 1384, 'pcm': 115}
+
+    References
+    ----------
+    .. [17] Kyle, R. A., Therneau, T. M., Rajkumar, S. V., Offord, J. R.,
+            Larson, D. R., Plevak, M. F. and Melton, L. J. (2002). A
+            long-term study of prognosis in monoclonal gammopathy of
+            undetermined significance. New England Journal of Medicine,
+            346(8), 564-569.
+    """
+    df = _read_csv("mgus2.csv")
+    if not spells:
+        return df
+    rows: list[tuple] = []
+    for r in df.itertuples(index=False):
+        male = float(r.sex == "M")
+        dead = "death" if r.death == 1 else None
+        if r.pstat == 1:
+            p = r.ptime - 0.1 if r.ptime == r.futime else r.ptime
+            rows.append((r.id, 0.0, p, "mgus", "pcm", r.age, male))
+            rows.append((r.id, p, r.futime, "pcm", dead, r.age, male))
+        else:
+            rows.append((r.id, 0.0, r.futime, "mgus", dead, r.age, male))
+    out = pd.DataFrame(
+        rows, columns=["id", "tl", "x", "state", "e", "age", "male"]
+    )
+    out["x"] = out["x"].astype(float)
+    out["e"] = out["e"].astype(object).where(out["e"].notna(), None)
+    return out[out["x"] > out["tl"]].reset_index(drop=True)
+
+
 def load_mettas_and_zhao() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [7]_.

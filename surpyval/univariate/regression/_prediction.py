@@ -235,6 +235,76 @@ def step_draws(
     return out
 
 
+def times_at_hazard(
+    model: Any,
+    params: npt.NDArray,
+    rows: npt.NDArray,
+    H_target: npt.NDArray,
+    p: npt.NDArray | None = None,
+) -> npt.NDArray:
+    """The times at which the cumulative hazard of the parametric
+    regression ``model`` at ``params`` and the centred covariate ``rows``
+    (one per target) reaches each ``H_target``: ``0`` is the start of the
+    support, ``inf`` its end, ``nan`` gives ``nan``.
+
+    In closed form where the family and baseline have one
+    (:func:`._closed_form_qf.closed_form_times`); every other target, and
+    any the closed form cannot give as a finite float, by
+    :func:`quantiles_by_inversion`. ``p``, where given, is ``1 -
+    exp(-H_target)`` as the caller has it, which the inversion takes as
+    it is."""
+    from ._closed_form_qf import closed_form_times
+
+    H_target = np.asarray(H_target, dtype=float)
+    rows = np.asarray(rows, dtype=float)
+    out = closed_form_times(model.model, params, rows, H_target)
+    lower, upper = (float(v) for v in model.distribution.support)
+    if out is not None:
+        out = np.where(H_target == 0, lower, out)
+        out = np.where(H_target == np.inf, upper, out)
+        todo = np.flatnonzero(np.isnan(out) & ~np.isnan(H_target))
+        if not todo.size:
+            return out
+    else:
+        out = np.full(H_target.shape, np.nan)
+        todo = np.arange(H_target.size)
+    with np.errstate(all="ignore"):
+        if p is None:
+            p = -np.expm1(-H_target)
+        p = np.asarray(p, dtype=float)[todo]
+        # The baseline's quantile, a start for each search.
+        start = np.asarray(
+            model.distribution.qf(
+                np.clip(p, 0.0, 1.0), *params[: model.k_dist]
+            ),
+            dtype=float,
+        ) * np.ones(p.shape)
+    sub = rows[todo]
+    out[todo] = quantiles_by_inversion(
+        lambda t, k: model.model.Hf(t, sub[k], *params),
+        p,
+        model.distribution.support,
+        start,
+        lambda t, k: model.model.hf(t, sub[k], *params),
+    )
+    return out
+
+
+def times_at_probability(
+    model: Any,
+    params: npt.NDArray,
+    rows: npt.NDArray,
+    p: npt.NDArray,
+) -> npt.NDArray:
+    """:func:`times_at_hazard` at the cumulative hazards ``-log(1 -
+    p)``: the quantiles of a parametric regression at the probabilities
+    ``p`` (in [0, 1] or ``nan``) and the centred covariate ``rows``."""
+    with np.errstate(all="ignore"):
+        p = np.asarray(p, dtype=float)
+        H = -np.log1p(-p)
+    return times_at_hazard(model, params, rows, H, p)
+
+
 def quantiles_by_inversion(
     Hf: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
     p: npt.NDArray,
@@ -496,7 +566,10 @@ class RestrictedMeanMixin:
         value = self._rmst_at(taus, rows_c, params)
         with np.errstate(all="ignore"):
             se = delta_method_se(
-                lambda p: self._rmst_at(taus, rows_c, p), params, cov
+                lambda p: self._rmst_at(taus, rows_c, p),
+                params,
+                cov,
+                scale_free=True,
             )
         return value, np.asarray(se, dtype=float)
 
@@ -799,7 +872,11 @@ class RestrictedMeanMixin:
         mu_b = float(self._rmst_at(t, rb, params)[0])
         diff = mu_a - mu_b
         with np.errstate(all="ignore"):
-            se = float(np.ravel(delta_method_se(diff_of, params, cov))[0])
+            se = float(
+                np.ravel(
+                    delta_method_se(diff_of, params, cov, scale_free=True)
+                )[0]
+            )
         z_crit = norm.ppf(1 - alpha_ci / 2)
         p_value = (
             float(2.0 * norm.sf(abs(diff) / se)) if se > 0 else float("nan")

@@ -640,7 +640,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         var = onp.zeros(x.shape[0])
         if entries.size:
             with onp.errstate(all="ignore"):
-                J = jacobian(value, layout, entries)
+                J = jacobian(
+                    value, layout, entries, onp.sqrt(onp.abs(onp.diag(cov)))
+                )
             sub = cov[onp.ix_(entries, entries)]
             var = onp.einsum("ij,jk,ik->i", J, sub, J)
             # Rounding can leave a zero variance a hair below zero.
