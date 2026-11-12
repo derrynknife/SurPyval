@@ -654,6 +654,7 @@ class DistributionalFitter(
             [(pos, int(column_of[j])) for pos, j in coef_free],
             Z_data,
         )
+        floor = _in_own_units(floor, space, init_t, coef_free, positions)
         baseline = [
             (positions_free[i], all_names[i])
             for i in range(K)
@@ -1153,6 +1154,37 @@ class _SearchSpace:
                 entries[k] = _links.move(self.links[k], nat[k], sign * s)
                 start += cols.size
         return np.array(entries)
+
+
+def _in_own_units(
+    floor: npt.NDArray,
+    space: _SearchSpace,
+    init_t: npt.NDArray,
+    coef_free: list,
+    positions: tuple,
+) -> npt.NDArray:
+    """``floor`` with each parameter on the identity link -- a location,
+    in the unit of time -- and its coefficients measured in that
+    parameter's starting size (its coefficients' floors multiplied by
+    it), so the search is the same whatever the unit of time; a
+    parameter on another link is dimensionless on it and keeps its
+    floor."""
+    floor = np.array(floor, dtype=float)
+    with np.errstate(all="ignore"):
+        nat = np.asarray(space.to_natural(init_t), dtype=float)
+    owner = np.concatenate(
+        [np.full(np.asarray(cols).size, k) for k, cols in enumerate(positions)]
+    ).astype(int)
+    for k in range(space.k_dist):
+        size = abs(float(nat[k]))
+        if space.links[k] != "identity" or not (np.isfinite(size) and size):
+            continue
+        if k in space.positions_free:
+            floor[space.positions_free[k]] = size
+        for pos, j in coef_free:
+            if owner[j] == k:
+                floor[pos] = floor[pos] * size
+    return floor
 
 
 def _assemble(

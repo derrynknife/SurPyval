@@ -1478,6 +1478,82 @@ Unreleased
 
 **Fixed.**
 
+- **Fits that failed or ended in the wrong place when the time unit
+  changed (an intentional numerical change, in the sixth digit or beyond
+  in ordinary units).** Writing the same times in another unit should
+  give the same model. Every family with a unit check was fitted to its
+  test data as given and with the times multiplied by 1e-6, 3600, 1/8760
+  and 1e6. These failed:
+
+  - ``WeibullJointPH`` (every link) in seconds or in a million units
+    warned that its maximum was unverified, with ``sf`` up to 0.99 off.
+    The curvature of a slope per second is about 1e13 times that of a
+    slope per hour. The random effects' modes, their quadrature grid and
+    the outer search factorised and floored that curvature in raw units.
+    Each is now taken in the parameters' own scale (the random effects'
+    prior spread; the Hessian's diagonal). The fits now agree to 1e-12
+    in every unit.
+  - The parametric additive hazards models (``WeibullAH`` and the
+    others) with times a millionth of the unit stopped at their start,
+    with every coefficient 0, and called that a maximum. ``LogNormalAH``
+    had ``sf`` 1.3 off and ``GumbelAH`` 77 off. In seconds or a million
+    units some warned that their maximum was unverified. A coefficient
+    is a rate (about 1e5 there), and the search measured it in steps of
+    1. It is now measured in ``1 / (range(Z) T)``, with ``T`` the median
+    observed time, and an unbounded baseline location gets the
+    univariate fits' floor.
+  - The distributional regressions on a location (``Normal``,
+    ``Gumbel``, ``Logistic``): off by up to 1e5 and unverified in
+    millionths or a million units. A parameter on the identity link and
+    its coefficients are now searched in that parameter's starting
+    size. This also reaches the mixture cure models, which share the
+    search.
+  - ``HPP`` started its search at a rate of 1 in whatever unit was used,
+    and in millionths, years or a million units it stayed there,
+    unverified. It now starts at the events counted over the time
+    watched, which is the answer itself when nothing is truncated.
+  - ``GammaProcess`` and ``DestructiveDegradation`` took their densities
+    (and hazards) as differences in steps of at least 1e-6 of the unit.
+    That was most of a time measured in millionths, so they were off by
+    1% and 26%. The steps are now a millionth of the time itself.
+
+  Before and after, the largest relative difference in ``sf`` and
+  ``hf`` from the fit in the data's own units, in millionths / seconds /
+  years / a million units (``!``: the fit warned):
+
+  =========================== =============================== =============================
+  Model                       Before                          After
+  =========================== =============================== =============================
+  ``WeibullJointPH``          2e-15 / 1! / 6e-15 / 1!         4e-15 / 7e-15 / 2e-15 / 1e-14
+  Joint, value and slope      2e-14 / 9! / 4e-15 / 0.2!       4e-14 / 5e-14 / 5e-14 / 5e-15
+  ``LogNormalAH``             1 / 5e-08 / 8e-07 / 5e-08       8e-07 / 8e-07 / 7e-07 / 8e-07
+  ``NormalAH``                0.6! / 2e-07 / 2e-07 / 5e-07!   3e-07 / 8e-06 / 1e-07 / 8e-06
+  ``GumbelAH``                80! / 2e-05 / 2e-05 / 2e-05!    1e-06 / 5e-06 / 8e-06 / 5e-06
+  ``LogisticAH``              2 / 2e-07 / 2e-07 / 5e-07!      5e-06 / 3e-06 / 4e-06 / 3e-06
+  ``WeibullAH``               2e-05 / 5e-07! / 5e-07 / 5e-07! 3e-06 / 3e-06 / 3e-06 / 3e-06
+  ``GumbelDistributional``    2e5! / 1e-05 / 1e-05 / 1e3!     8e-06 / 6e-05 / 4e-05 / 1e-05
+  ``NormalDistributional``    1e-05! / 2e-05 / 1e-05 / 3!     3e-06 / 5e-06 / 1e-05 / 2e-05
+  ``HPP``                     1! / 3e-13 / 1! / 1e7!          9e-16 / 3e-16 / 3e-16 / 2e-15
+  ``GammaProcess`` ``hf``     0.01 / 2e-05 / 0.01 / 2e-05     2e-05 / 2e-05 / 2e-05 / 2e-05
+  =========================== =============================== =============================
+
+  In the data's own units the likelihood at the answer is unchanged to
+  1e-12. The changed searches stop elsewhere along flat directions
+  within their tolerance. Largest change in a parameter on the test
+  data: ``LogNormalDistributional`` 1.05e-5 (a coefficient -0.0990699,
+  now -0.0990689), ``LogisticDistributional`` 5.5e-6 (-2.214352, now
+  -2.214340), ``NormalDistributional`` 3.3e-6, ``GammaAH`` 1.4e-6
+  (``alpha`` 5.261436, now 5.261444), ``LogisticAH`` 1.2e-6, the other
+  additive hazards and mixture cure models below 1e-6, and the joint
+  models 1e-14. The largest changes in predictions are 1.3e-5 (a
+  ``NormalDistributional`` ``sf`` of 4.6e-13) and 1e-5 in a
+  ``LogisticDistributional`` ``sf`` of 0.186. The largest changes in
+  Wald bounds are 4.9e-4 (a ``GumbelDistributional`` bound of 1.4e-48)
+  and 7e-5 on an ordinary value (a ``LogisticDistributional``
+  coefficient's bound, -0.1776675, now -0.1776545). The seeded
+  bootstrap bounds of ``WeibullAH``'s coefficients moved by up to 0.6%
+  (-0.0018080, now -0.0018194), because every resample's fit follows
+  the new search.
 - **Bootstrap intervals read their bounds at the levels asked, so they
   are a little wider and hold their level (an intentional numerical
   change).** ``method="bootstrap"`` bounds (``param_cb``, ``cb``,

@@ -312,7 +312,10 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         CDF; the closed form depends on the time transform).
         """
         x = np.asarray(x, dtype=float)
-        h = np.maximum(np.abs(x), 1.0) * 1e-6
+        # Steps of a millionth of the time (of 1e-6 at 0 only): steps of
+        # at least 1e-6 were most of a time measured in millionths of the
+        # unit, and the density moved with the unit.
+        h = np.where(x != 0, np.abs(x), 1.0) * 1e-6
         return (self.ff(x + h) - self.ff(x - h)) / (2.0 * h)
 
     @keeps_query_shape

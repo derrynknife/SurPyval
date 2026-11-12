@@ -849,9 +849,17 @@ def _fit(
     info = 0.5 * (info + info.T)
     cov_u, positive = None, False
     if np.all(np.isfinite(info)):
+        # judged and inverted in each parameter's own scale: a slope a
+        # second has a curvature 1e7 squared times one an hour's
+        own = _equilibration(info)
+        scaled = info * np.outer(own, own)
         try:
-            positive = bool(np.all(np.linalg.eigvalsh(info) > 0))
-            cov_u = np.linalg.inv(info) if positive else None
+            positive = bool(np.all(np.linalg.eigvalsh(scaled) > 0))
+            cov_u = (
+                np.linalg.inv(scaled) * np.outer(own, own)
+                if positive
+                else None
+            )
         except np.linalg.LinAlgError:
             positive = False
     flat = False
@@ -936,13 +944,24 @@ def _whitening(curvature: Any, u: npt.NDArray, placed: tuple) -> npt.NDArray:
         H = np.asarray(curvature(u, placed), dtype=float)
     H = 0.5 * (H + H.T)
     if np.all(np.isfinite(H)):
+        size = _equilibration(H)
         try:
-            root = np.linalg.cholesky(H)
-            return np.linalg.inv(root).T
+            root = np.linalg.cholesky(H * np.outer(size, size))
+            return size[:, None] * np.linalg.inv(root).T
         except np.linalg.LinAlgError:
             pass
     diag = np.diag(H) if np.all(np.isfinite(np.diag(H))) else np.ones(u.size)
     return np.diag(1.0 / np.sqrt(np.where(diag > 0, diag, 1.0)))
+
+
+def _equilibration(H: npt.NDArray) -> npt.NDArray:
+    """``1 / sqrt(H_ii)`` (1 where that is not positive and finite):
+    the scaling that puts each parameter of ``H`` in its own units, so a
+    factorisation or an eigenvalue test of ``H`` does not depend on how
+    different their sizes are (on the unit of time)."""
+    diag = np.diag(H)
+    ok = np.isfinite(diag) & (diag > 0)
+    return np.where(ok, 1.0 / np.sqrt(np.where(ok, diag, 1.0)), 1.0)
 
 
 def search_space(model: JointModel, **data: Any) -> tuple:

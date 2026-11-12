@@ -238,6 +238,30 @@ class HPP(CountingProcess):
 
         return negll_func
 
+    @staticmethod
+    def _log_rate_start(data: EventHistoryData) -> float:
+        """The log of the events counted over the time watched, where
+        the search for the rate starts: the maximum itself for data with
+        no truncation, and in any case a rate in the data's unit of time.
+
+        The search started at a rate of 1 in whatever unit the times
+        were in. Its steps on the log of the rate are about -1 each from
+        far above the maximum and overflow from far below it, so for
+        times in millionths or millions of the unit (a rate of 7e4 or
+        7e-8) the search stopped at its start, unverified, with a rate
+        of 1."""
+        s = data.split_for_nhpp_likelihood()
+        events = len(s["x_o"]) + np.sum(s["n_left"]) + np.sum(s["n_i"])
+        watched = (
+            np.sum(s["x_o"] - s["x_o_prev"])
+            + np.sum(s["x_right"] - s["x_right_prev"])
+            + np.sum(s["x_left"] - s["x_left_prev"])
+            + np.sum(s["x_i_r"] - s["x_i_l"])
+        )
+        with np.errstate(all="ignore"):
+            start = float(np.log(events / watched))
+        return start if np.isfinite(start) else 0.0
+
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
@@ -285,7 +309,7 @@ class HPP(CountingProcess):
         hess = hessian(neg_ll)
 
         if init is None:
-            init = [0.0]
+            init = [self._log_rate_start(data)]
         else:
             init = np.atleast_1d(np.asarray(init, dtype=float))
             # The search runs on log(rate), so a start of 0 (or below) was
