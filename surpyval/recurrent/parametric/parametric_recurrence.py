@@ -27,7 +27,6 @@ from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
     check_option,
-    option_error,
     warn_outside_unit_interval,
 )
 
@@ -604,16 +603,7 @@ class ParametricRecurrenceModel(
             The residuals.
         """
         self._check_has_data("residuals")
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, self.cif)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, self.cif)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, self.cif, kind)
 
     def trend_test(
         self,

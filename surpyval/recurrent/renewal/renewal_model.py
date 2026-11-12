@@ -1357,20 +1357,16 @@ class RenewalModel(
         )
         c = np.asarray(self.data.c)
 
-        if kind in ("cumulative_hazard", "pit"):
-            e = increments[c == 0]
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
+        def martingale() -> np.ndarray:
             residuals = []
             for item in np.unique(self.data.i):
                 mask = self.data.i == item
                 observed = int((c[mask] == 0).sum())
                 residuals.append(observed - float(increments[mask].sum()))
             return np.array(residuals)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
+
+        return diagnostics.residuals_of(
+            kind, lambda: increments[c == 0], martingale
         )
 
     def trend_test(

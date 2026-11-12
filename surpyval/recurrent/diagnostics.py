@@ -31,7 +31,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval.utils.rng import as_generator
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import ignoring_warnings
 
 
@@ -162,6 +162,37 @@ def martingale_residuals(data: Any, cif: Any) -> np.ndarray:
         expected = float(cif_i(close) - cif_i(entry))
         residuals.append(events.size - expected)
     return np.array(residuals)
+
+
+def residuals_of(
+    kind: str,
+    gaps: Callable[[], np.ndarray],
+    martingale: Callable[[], np.ndarray],
+) -> np.ndarray:
+    """The ``residuals(kind)`` of a recurrent model: its rescaled gaps
+    (``'cumulative_hazard'``), their transform ``1 - exp(-e)``
+    (``'pit'``), or its martingale residuals, from the callables that
+    compute them."""
+    if kind in ("cumulative_hazard", "pit"):
+        e = gaps()
+        if kind == "pit":
+            return 1.0 - np.exp(-e)
+        return e
+    elif kind == "martingale":
+        return martingale()
+    raise option_error(
+        "kind", kind, ("cumulative_hazard", "pit", "martingale")
+    )
+
+
+def intensity_residuals(data: Any, cif: Any, kind: str) -> np.ndarray:
+    """:func:`residuals_of` for an intensity model, ``cif`` as for
+    :func:`cumulative_hazard_residuals`."""
+    return residuals_of(
+        kind,
+        lambda: cumulative_hazard_residuals(data, cif),
+        lambda: martingale_residuals(data, cif),
+    )
 
 
 class GoodnessOfFitResult:
@@ -432,6 +463,52 @@ def _simulate_window(
     return times, close
 
 
+def _simulate_windows(
+    rng: Any,
+    windows: list,
+    mass: Callable,
+    inv_cif: Callable,
+    Z_of: "Callable | None" = None,
+) -> Any:
+    """
+    One bootstrap data set for the Cramer-von Mises test of an intensity
+    model: each item's window (``windows``, as :func:`_per_item_windows`)
+    simulated by :func:`_simulate_window`, item by item in order, where
+    ``mass(item, entry, close)`` gives ``(e0, span)``, the cumulative
+    intensity at entry and over the window, and ``inv_cif(item)`` the
+    inverse cumulative intensity. With ``Z_of(item)``, each item's
+    covariate row, the data carries ``Z``. Raises ``ValueError`` for fewer
+    than two simulated events (too few to refit).
+    """
+    from surpyval.utils.event_history_data import EventHistoryData
+
+    x_b, i_b, c_b, tl_b, Z_b = [], [], [], [], []
+    for item_id, (item, _, entry, close, _) in enumerate(windows):
+        e0, span = mass(item, entry, close)
+        times, close = _simulate_window(
+            rng, entry, close, span, e0, inv_cif(item)
+        )
+        count = times.size
+        x_b.extend([*times, close])
+        i_b.extend([item_id] * (count + 1))
+        c_b.extend([0] * count + [1])
+        tl_b.extend([entry] * (count + 1))
+        if Z_of is not None:
+            Z_b.extend([Z_of(item)] * (count + 1))
+    if (np.asarray(c_b) == 0).sum() < 2:
+        raise ValueError("too few simulated events to refit")
+    sim_data = EventHistoryData(
+        np.asarray(x_b, dtype=float),
+        np.asarray(i_b),
+        np.asarray(c_b),
+        np.ones(len(x_b), dtype=int),
+        tl=np.asarray(tl_b, dtype=float),
+    )
+    if Z_of is not None:
+        sim_data.Z = np.asarray(Z_b, dtype=float)
+    return sim_data
+
+
 def cramer_von_mises(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -447,8 +524,6 @@ def cramer_von_mises(
     parameters having been estimated. Failure-truncated items are approximated
     by a window fixed at their last observed event.
     """
-    from surpyval.utils.event_history_data import EventHistoryData
-
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
         raise ValueError(
@@ -457,26 +532,13 @@ def cramer_von_mises(
         )
     windows = _per_item_windows(data)
 
+    def mass(item: Any, entry: float, close: float) -> tuple:
+        span = float(model.cif(close) - model.cif(entry))
+        return model.cif(entry), span
+
     def simulate_refit(rng: Any) -> tuple:
-        x_b, i_b, c_b, tl_b = [], [], [], []
-        for item_id, (_, _, entry, close, _) in enumerate(windows):
-            span = float(model.cif(close) - model.cif(entry))
-            times, close = _simulate_window(
-                rng, entry, close, span, model.cif(entry), model.inv_cif
-            )
-            count = times.size
-            x_b.extend([*times, close])
-            i_b.extend([item_id] * (count + 1))
-            c_b.extend([0] * count + [1])
-            tl_b.extend([entry] * (count + 1))
-        if (np.asarray(c_b) == 0).sum() < 2:
-            raise ValueError("too few simulated events to refit")
-        sim_data = EventHistoryData(
-            np.asarray(x_b, dtype=float),
-            np.asarray(i_b),
-            np.asarray(c_b),
-            np.ones(len(x_b), dtype=int),
-            tl=np.asarray(tl_b, dtype=float),
+        sim_data = _simulate_windows(
+            rng, windows, mass, lambda item: model.inv_cif
         )
         refit = model.dist.fit_from_recurrent_data(sim_data)
         return sim_data, refit.cif
@@ -495,8 +557,6 @@ def cramer_von_mises_regression(
     computed under its own covariate-scaled intensity ``Lambda_0 exp(Z'beta)``,
     and the bootstrap refits the full regression model per replicate.
     """
-    from surpyval.utils.event_history_data import EventHistoryData
-
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
         raise ValueError(
@@ -510,36 +570,17 @@ def cramer_von_mises_regression(
     item_cif = model._item_cif_map()
     windows = _per_item_windows(data)
 
+    def mass(item: Any, entry: float, close: float) -> tuple:
+        e0 = float(model.cif(entry, Z_by_item[item]))
+        return e0, float(model.cif(close, Z_by_item[item])) - e0
+
+    def inv_cif(item: Any) -> Callable:
+        return lambda x, Z=Z_by_item[item]: model.inv_cif(x, Z)
+
     def simulate_refit(rng: Any) -> tuple:
-        x_b, i_b, c_b, tl_b, Z_b = [], [], [], [], []
-        for item_id, (item, _, entry, close, _) in enumerate(windows):
-            Z_item = Z_by_item[item]
-            e0 = float(model.cif(entry, Z_item))
-            span = float(model.cif(close, Z_item)) - e0
-            times, close = _simulate_window(
-                rng,
-                entry,
-                close,
-                span,
-                e0,
-                lambda x, Z=Z_item: model.inv_cif(x, Z),
-            )
-            count = times.size
-            x_b.extend([*times, close])
-            i_b.extend([item_id] * (count + 1))
-            c_b.extend([0] * count + [1])
-            tl_b.extend([entry] * (count + 1))
-            Z_b.extend([Z_item] * (count + 1))
-        if (np.asarray(c_b) == 0).sum() < 2:
-            raise ValueError("too few simulated events to refit")
-        sim_data = EventHistoryData(
-            np.asarray(x_b, dtype=float),
-            np.asarray(i_b),
-            np.asarray(c_b),
-            np.ones(len(x_b), dtype=int),
-            tl=np.asarray(tl_b, dtype=float),
+        sim_data = _simulate_windows(
+            rng, windows, mass, inv_cif, Z_of=Z_by_item.__getitem__
         )
-        sim_data.Z = np.asarray(Z_b, dtype=float)
         # The fit warned once of an aliased column (#502); its refits, on
         # the same covariates, do not repeat it.
         from surpyval.univariate.regression._aliasing import collect_aliased

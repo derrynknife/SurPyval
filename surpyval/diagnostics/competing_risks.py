@@ -128,7 +128,14 @@ from surpyval.univariate.competing_risks.regression.fine_gray_diagnostics import
 from surpyval.utils.warnings import ignoring_warnings
 
 from . import cox as _cox
-from ._shared import _covariate_kind, _fmt, _note, _source, _trend_sign
+from ._shared import (
+    _covariate_kind,
+    _fmt,
+    _form_panel,
+    _note,
+    _source,
+    _trend_sign,
+)
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 __all__ = [
@@ -786,8 +793,6 @@ def _fg_form_rows(ctx: Context) -> list[dict]:
 
 
 def _fg_form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     panels = []
     for cause, fd in _fg_causes(ctx):
         martingale = ctx.cached(
@@ -797,29 +802,15 @@ def _fg_form_panels(ctx: Context) -> list[Panel]:
         for j, name in ctx.checked:
             if _fg_kind(fd, j) == "binary":
                 continue
-
-            def draw(
-                ax: Any,
-                options: Any,
-                z: np.ndarray = fd.Z_raw[:, j],
-                m: np.ndarray = martingale,
-                name: str = name,
-            ) -> None:
-                from surpyval.plotting import INK, PALETTE
-
-                grid = np.linspace(z.min(), z.max(), 60)
-                ax.scatter(z, m, s=10, color=INK["muted"], alpha=0.6)
-                ax.plot(grid, lowess(z, m, grid), color=PALETTE[0])
-                ax.axhline(0.0, color=INK["axis"], lw=0.8)
-                ax.set_xlabel(name)
-                ax.set_ylabel("subdistribution martingale residual")
-
             panels.append(
-                Panel(
+                _form_panel(
+                    name,
+                    fd.Z_raw[:, j],
+                    martingale,
+                    "subdistribution martingale residual",
                     "cause {}: {}: functional form".format(
                         _label(cause), name
                     ),
-                    draw,
                 )
             )
     return panels
