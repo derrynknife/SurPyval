@@ -868,6 +868,55 @@ def _search_cox_frailty(model, data):
     return [Search(profile, np.array([u]), n_obs, jac=jac, hess=hess)]
 
 
+def _search_cox_mixed_effects(model, data):
+    """The profile (integrated) likelihood in the log of the random
+    intercept's variance, from refits at a fixed variance; at variance 0
+    (the Cox model) the Cox fit's partial likelihood, and the profile not
+    rising off 0."""
+    if data is None:
+        return None
+    fit = {k: data[k] for k in ("x", "Z", "c", "n", "groups")}
+    n_obs = float(np.sum(data["n"]))
+    tie_method = model.tie_method
+    variance = float(model.variance_components()["variance"].iloc[0])
+    if variance == 0:
+        cox = sp.CoxPH.fit(
+            data["x"], data["Z"], data["c"], data["n"], tie_method=tie_method
+        )
+        off = sp.CoxMixedEffects.fit(
+            **fit, variance=[1e-6], tie_method=tie_method
+        )
+        rise = (off.log_likelihood - model.log_likelihood) / 1e-6 / n_obs
+        assert rise < OPTIMUM_GTOL, (
+            "the variance is 0, but the profile likelihood rises as it "
+            f"moves off it (by {rise:.3g} per observation per unit)"
+        )
+        return _search_cox(cox, data)
+
+    def profile(log_variance):
+        refit = sp.CoxMixedEffects.fit(
+            **fit,
+            variance=[float(np.exp(log_variance))],
+            tie_method=tie_method,
+        )
+        return -refit.log_likelihood
+
+    u = float(np.log(variance))
+    h = 1e-3
+
+    def jac(v):
+        v = float(np.ravel(v)[0])
+        return np.array([(profile(v + h) - profile(v - h)) / (2 * h)])
+
+    def hess(v):
+        v = float(np.ravel(v)[0])
+        return np.array(
+            [[(profile(v + h) - 2 * profile(v) + profile(v - h)) / h**2]]
+        )
+
+    return [Search(profile, np.array([u]), n_obs, jac=jac, hess=hess)]
+
+
 def _search_proportional_odds(model, data):
     """The profile likelihood in ``gamma = -beta``, the baseline solved at
     each point (the fit's inner problem), by central differences."""
@@ -1300,6 +1349,7 @@ SEARCHES: dict[str, Callable] = {
     "ZeroInflatedModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,
+    "CoxMixedEffectsModel": _search_cox_mixed_effects,
     "SemiParametricRegressionModel": _search_cox,
     "ProportionalOddsModel": _search_proportional_odds,
     "IntervalCoxPHModel": _search_interval_cox,

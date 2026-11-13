@@ -1291,6 +1291,61 @@ def multistate(seed):
     }
 
 
+def clustered(seed):
+    """Clustered event times for the mixed-effects Cox model: 12
+    hospitals of 3 wards each (wards nested in hospitals) and 6 batches
+    crossed with them, 432 rows. The log-hazard has a random intercept
+    per hospital (sd 0.5), per ward (sd 0.3) and per batch (sd 0.3), and a
+    random slope of ``trt`` per hospital (sd 0.4, correlation 0.5 with the
+    hospital's intercept), on top of ``0.5 trt + 0.3 age`` and a Weibull
+    (shape 1.3) baseline. A quarter of the rows enter late (``tl``) and
+    are kept only if they survive to it; ``sex`` is a stratum. Times are
+    rounded to one decimal, which ties some of them."""
+    rng = np.random.default_rng(seed)
+    n_hosp, n_ward, n_batch, per_ward = 12, 3, 6, 12
+    sd = np.array([0.5, 0.4])
+    corr = np.array([[1.0, 0.5], [0.5, 1.0]])
+    hosp_re = rng.multivariate_normal(
+        np.zeros(2), corr * np.outer(sd, sd), n_hosp
+    )
+    ward_re = rng.normal(0, 0.3, (n_hosp, n_ward))
+    batch_re = rng.normal(0, 0.3, n_batch)
+    rows = []
+    for h in range(n_hosp):
+        for w in range(n_ward):
+            for _ in range(per_ward):
+                trt = int(rng.binomial(1, 0.5))
+                age = round(float(rng.normal(0, 1)), 1)
+                sex = int(rng.binomial(1, 0.5)) + 1
+                batch = int(rng.integers(n_batch)) + 1
+                lp = (
+                    0.5 * trt
+                    + 0.3 * age
+                    + hosp_re[h, 0]
+                    + hosp_re[h, 1] * trt
+                    + ward_re[h, w]
+                    + batch_re[batch - 1]
+                )
+                late = rng.uniform() < 0.25
+                tl = round(float(rng.uniform(0, 2)), 1) if late else 0.0
+                while True:
+                    t = 8 * rng.weibull(1.3) * np.exp(-lp / 1.3)
+                    if t > tl + 0.1:
+                        break
+                cens = tl + rng.uniform(2, 15)
+                x = round(float(min(t, cens)), 1)
+                c = int(cens < t)
+                rows.append((x, c, tl, trt, age, sex, h + 1, w + 1, batch))
+    cols = list(zip(*rows))
+    names = ["x", "c", "tl", "trt", "age", "sex", "hospital", "ward"]
+    columns = {k: _native(v) for k, v in zip(names + ["batch"], cols)}
+    return {
+        "source": "seeded synthetic, make_fixtures.clustered (rng {}): "
+        "c 1 is censored; ward is numbered within its hospital".format(seed),
+        "columns": columns,
+    }
+
+
 def rank_regression():
     """Ten lifetimes for the rank-regression (probability plotting)
     references: complete (``c``), censored after the sixth failure at
@@ -1443,6 +1498,7 @@ def build():
         "mgus2_multistate": mgus2_multistate(),
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
+        "clustered": clustered(3851),
         "rank_regression": rank_regression(),
         "multistate_panel": multistate_panel(3801),
         "no_data": {

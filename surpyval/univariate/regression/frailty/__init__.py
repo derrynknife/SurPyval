@@ -8,6 +8,12 @@ from surpyval.univariate.parametric import (
 )
 
 from .cox_frailty import CoxFrailty, CoxFrailtyFitter, CoxFrailtyModel
+from .cox_mixed_effects import (
+    CoxMixedEffects,
+    CoxMixedEffectsFitter,
+    CoxMixedEffectsModel,
+    RandomEffect,
+)
 from .frailty_fitter import FrailtyFitter
 from .frailty_model import FrailtyModel
 
@@ -80,11 +86,15 @@ __all__ = [
     "CoxFrailty",
     "CoxFrailtyFitter",
     "CoxFrailtyModel",
+    "CoxMixedEffects",
+    "CoxMixedEffectsFitter",
+    "CoxMixedEffectsModel",
     "ExponentialFrailty",
     "Frailty",
     "FrailtyFitter",
     "FrailtyModel",
     "GammaFrailty",
     "LogNormalFrailty",
+    "RandomEffect",
     "WeibullFrailty",
 ]

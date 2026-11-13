@@ -318,6 +318,10 @@ with its own ``schema``.
      - ``"model": "CoxFrailtyModel"``
      - ``kind``, ``family``, ``tie_method``, ``beta``, ``theta``, ``center``, ``x``, ``h0``, ``H0``, ``parameter_names``, ``group_labels``, ``frailties``, ``n_obs``, ``n_events``, ``n_groups``, ``_neg_ll``, ``log_likelihood_no_frailty``, ``k``, ``n_events_weighted``, ``n_obs_weighted``, ``data_summary``, ``maximum``, ``covariance``
      - --
+   * - ``CoxMixedEffectsModel``
+     - ``"model": "CoxMixedEffectsModel"``
+     - ``kind``, ``tie_method``, ``beta``, ``center``, ``parameter_names``, ``strata``, ``baselines``, ``terms``, ``_neg_ll``, ``log_likelihood_penalised``, ``log_likelihood_fitted``, ``log_likelihood_null``, ``log_likelihood_no_random``, ``df_penalised``, ``fixed_variance``, ``k``, ``n_obs``, ``n_events``, ``n_events_weighted``, ``n_obs_weighted``, ``data_summary``, ``maximum``, ``covariance``
+     - --
    * - ``AdditiveHazardsModel``
      - ``"model": "AdditiveHazardsModel"``
      - ``beta``, ``params``, ``x``, ``h0``, ``H0``, ``covariance``, ``se``, ``p_values``, ``drift``
