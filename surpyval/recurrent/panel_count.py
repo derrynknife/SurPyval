@@ -64,6 +64,9 @@ _INTERP = ("step", "linear")
 
 # The EM (self-consistency) iteration of the likelihood estimators.
 _EM_TOL = 1e-10
+#: The tolerance of a bootstrap resample's refit: its error is far below
+#: the spread of the resamples that the bounds read.
+_BOOT_TOL = 1e-7
 _EM_MAXITER = 20000
 #: EM iterations before the projected Newton steps take over, the most of
 #: those, and the largest grid they are used on (their Hessian is L x L).
@@ -76,6 +79,8 @@ _NEWTON_MAX_GRID = 2000
 #: The Karush-Kuhn-Tucker gap accepted when the iterative convex minorant
 #: algorithm can no longer raise the likelihood in floating point.
 _STALL_TOL = 1e-6
+#: Iterative convex minorant steps before Newton's.
+_ICM_FIRST = 20
 #: The alternations of the likelihood regression.
 _ALT_MAXITER = 2000
 
@@ -494,9 +499,10 @@ def _projected_newton(
                 break
             t *= 0.5
         else:
-            return delta, False
+            # No ascent the likelihood can resolve in floating point
+            return delta, _kkt(delta, ratio) < _STALL_TOL
         if ll_new <= ll and np.array_equal(new, delta):
-            return delta, False
+            return delta, _kkt(delta, ratio) < _STALL_TOL
         delta, ll = new, ll_new
     return delta, False
 
@@ -508,6 +514,7 @@ def _icm(
     R: npt.NDArray,
     parts: tuple[npt.NDArray, npt.NDArray, npt.NDArray],
     tol: float,
+    maxiter: int = _EM_MAXITER,
 ) -> tuple[npt.NDArray, bool]:
     """The iterative convex minorant algorithm (Groeneboom and Wellner,
     1992; Jongbloed, 1998, with its line search), as Wellner and Zhang
@@ -521,7 +528,7 @@ def _icm(
     end_w = np.bincount(panel.r_last, w_unit, L)
     lam = np.cumsum(delta)
     ll = _full_loglik(panel, delta, w_unit, parts)
-    for _ in range(_EM_MAXITER):
+    for _ in range(maxiter):
         _, ratio = _em_map(delta, R, parts)
         if _kkt(delta, ratio) < tol:
             return delta, True
@@ -567,6 +574,7 @@ def _full_mean(
     w_unit: npt.NDArray,
     start: npt.NDArray | None = None,
     tol: float = _EM_TOL,
+    icm_first: int = _ICM_FIRST,
 ) -> tuple[npt.NDArray, bool]:
     """The maximum likelihood increments of the mean function on the grid,
     and whether they converged.
@@ -607,6 +615,16 @@ def _full_mean(
     before_newton = _EM_BEFORE_NEWTON if cold else 2
     for k in range(_EM_MAXITER):
         if k == before_newton:
+            # A few iterative convex minorant steps find which increments
+            # are 0 (their isotonic projection does it in one pass), then
+            # Newton finishes; the minorant algorithm to the end if it
+            # cannot.
+            if icm_first:
+                delta, ok = _icm(
+                    panel, delta, w_unit, R, parts, tol, icm_first
+                )
+                if ok:
+                    return delta, True
             for finish in (_projected_newton, _icm):
                 delta, ok = finish(panel, delta, w_unit, R, parts, tol)
                 if ok:
@@ -651,10 +669,12 @@ def _nonparametric_mean(
     panel: _Panel,
     how: str,
     near: tuple[npt.NDArray, npt.NDArray] | None = None,
+    tol: float = _EM_TOL,
 ) -> tuple[npt.NDArray, bool]:
     """The estimate at the panel's grid. ``near``, an estimate ``(times,
     values)`` of the same mean function (the full data's, for a
-    bootstrap resample), starts the likelihood's search."""
+    bootstrap resample), starts the likelihood's search, and ``tol`` is
+    its Karush-Kuhn-Tucker tolerance."""
     ones = np.ones(panel.n_units)
     if how == "pseudo":
         return _pseudo_mean(panel, ones[panel.unit]), True
@@ -663,9 +683,7 @@ def _nonparametric_mean(
         lam = _step_lookup(near[0], near[1], panel.grid[panel.rel], "step")
         lam = np.where(np.isfinite(lam), lam, near[1][-1])
         start = np.diff(np.r_[0.0, np.maximum.accumulate(lam)])
-        # Room for every cell to move: a share of the mean increment
-        start = start + 1e-3 * lam[-1] / lam.size
-    delta, ok = _full_mean(panel, ones, start)
+    delta, ok = _full_mean(panel, ones, start, tol)
     return panel.expand(np.cumsum(delta)), ok
 
 
@@ -691,6 +709,7 @@ def _regression_fit(
     how: str,
     init: npt.NDArray | None = None,
     near: tuple[npt.NDArray, npt.NDArray] | None = None,
+    tol: float = _EM_TOL,
 ) -> tuple[npt.NDArray, npt.NDArray, bool]:
     """The proportional means fit: ``beta`` and the baseline mean function
     at the grid at ``Z = 0``, and whether it converged. ``init`` starts
@@ -721,8 +740,8 @@ def _regression_fit(
             lam = _step_lookup(near[0], near[1], panel.grid[panel.rel], "step")
             lam = np.where(np.isfinite(lam), lam, near[1][-1])
             lam = np.maximum.accumulate(lam) * np.exp(float(zbar @ init))
-            start = np.diff(np.r_[0.0, lam]) + 1e-3 * lam[-1] / lam.size
-        b, lam_c, ok = _likelihood_regression(panel, Zs, b, start)
+            start = np.diff(np.r_[0.0, lam])
+        b, lam_c, ok = _likelihood_regression(panel, Zs, b, start, tol)
     beta = b / scale
     # The baseline at Z = 0, from the one at the mean covariates
     lam0 = lam_c * np.exp(-float(zbar @ beta))
@@ -756,10 +775,11 @@ def _joint_newton(
     delta: npt.NDArray,
     b: npt.NDArray,
     totals: npt.NDArray,
+    tol: float = _EM_TOL,
 ) -> tuple[npt.NDArray, npt.NDArray] | None:
     """Projected Newton steps on the likelihood in the baseline's
     increments and ``beta`` together, from a point near the maximum; the
-    increments and ``beta`` at a Karush-Kuhn-Tucker point (``_EM_TOL``),
+    increments and ``beta`` at a Karush-Kuhn-Tucker point (``tol``),
     or ``None`` where a step is not an ascent (the alternation then goes
     on)."""
     parts = _likelihood_parts(panel)
@@ -779,9 +799,7 @@ def _joint_newton(
         lam_last = np.cumsum(delta)[panel.r_last]
         g_b = totals - Zs.T @ (w * lam_last)
         size = max(float(np.sum(panel.total)), 1.0)
-        if _kkt(delta, ratio) < _EM_TOL and np.max(np.abs(g_b)) < (
-            1e-8 * size
-        ):
+        if _kkt(delta, ratio) < tol and np.max(np.abs(g_b)) < (1e-8 * size):
             return delta, b
         g_d = (ratio - 1.0) * R
         held = _epsilon_active(delta, g_d, parts)
@@ -838,13 +856,17 @@ def _likelihood_regression(
     Zs: npt.NDArray,
     b0: npt.NDArray,
     start: npt.NDArray | None = None,
+    final_tol: float = _EM_TOL,
 ) -> tuple[npt.NDArray, npt.NDArray, bool]:
     b = b0.copy()
     totals = Zs.T @ panel.total
     delta = start
-    tol = 1e-4
+    tol = max(1e-4, final_tol)
     converged = False
     tried_joint = False
+    # A start near the maximum (a bootstrap resample's, from the full
+    # data's fit) goes to the joint Newton steps after one alternation
+    warm = start is not None
     for _ in range(_ALT_MAXITER):
         delta, inner_ok = _full_mean(panel, np.exp(Zs @ b), delta, tol)
         at_last = np.cumsum(delta)[panel.r_last]
@@ -863,22 +885,22 @@ def _likelihood_regression(
             if np.max(np.abs(step)) < 1e-12:
                 break
         change = float(np.max(np.abs(b - before)))
-        if change < 1e-9 and tol <= _EM_TOL and inner_ok:
+        if change < 1e-9 and tol <= final_tol and inner_ok:
             converged = True
             break
         if (
-            change < 1e-3
+            (change < 1e-3 or warm)
             and not tried_joint
             and panel.r_L <= (_NEWTON_MAX_GRID)
         ):
             # Near the maximum: Newton on the baseline and beta together
             # converges quadratically where the alternation zigzags.
             tried_joint = True
-            joint = _joint_newton(panel, Zs, delta, b, totals)
+            joint = _joint_newton(panel, Zs, delta, b, totals, final_tol)
             if joint is not None:
                 return joint[1], panel.expand(np.cumsum(joint[0])), True
         # Solve the baseline more tightly as beta settles
-        tol = max(_EM_TOL, min(tol, 1e-3 * change))
+        tol = max(final_tol, min(tol, 1e-3 * change))
     assert delta is not None
     return b, panel.expand(np.cumsum(delta)), converged
 
@@ -1158,7 +1180,7 @@ class PanelCountMCF(SerialisableMixin):
         for b in range(n_boot):
             panel = self._panel.resample(rng)
             lam, _ = _nonparametric_mean(
-                panel, self.how, (self.x, self.mcf_hat)
+                panel, self.how, (self.x, self.mcf_hat), _BOOT_TOL
             )
             draws[b] = _step_lookup(panel.grid, lam, self.x, "step")
         if key[1] is not None:
@@ -1583,7 +1605,11 @@ class PanelCountRegression(SerialisableMixin):
                 failed += 1
                 continue
             beta, lam0, _ = _regression_fit(
-                panel, self.how, self.params[kept], (self.x, self.baseline_hat)
+                panel,
+                self.how,
+                self.params[kept],
+                (self.x, self.baseline_hat),
+                _BOOT_TOL,
             )
             betas[b, kept] = beta
             base[b] = _step_lookup(panel.grid, lam0, self.x, "step")

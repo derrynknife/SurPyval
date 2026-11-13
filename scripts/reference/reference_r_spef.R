@@ -13,17 +13,20 @@
 # Run from the repository root, after make_fixtures.py. Needs spef and
 # jsonlite. Re-running reproduces the file byte for byte.
 #
-# The data are the bladder tumour panel counts (the shared fixture
-# "bladder_panel", checked here against spef's own copy, blaTum): 85
-# patients, the new tumours counted at each clinic visit.
+# The data are the shared fixture "panel_counts": 85 simulated units,
+# each seen at its own visits, with the number of new events at each and
+# a treatment indicator and two baseline covariates (see
+# make_fixtures.panel_counts).
 #
 # The entries:
 #
 # * mpl: panelReg(PanelSurv(id, time, count) ~ treatment + size + num,
 #   method = "MPL"), the maximum pseudo-likelihood estimator of Wellner
-#   and Zhang (2007), iterated to absTol = relTol = 1e-12 (the default
-#   1e-6 stops about 5e-4 short of the maximum on these data). The
-#   coefficients and the baseline mean function at every visit time.
+#   and Zhang (2007), run with absTol = relTol = 1e-12: at the default
+#   tolerances (1e-6) spef's iteration and SurPyval's search stop at
+#   slightly different points, so the two are compared at the tighter
+#   setting. The coefficients and the baseline mean function at every
+#   visit time.
 # * mls: the same with method = "MLs", the sieve maximum likelihood
 #   estimator of Lu, Zhang and Huang (2007): the likelihood SurPyval's
 #   how="likelihood" maximises, with the baseline a monotone cubic
@@ -45,18 +48,14 @@ if (!file.exists(file.path(data_dir, "fixtures.json"))) {
 }
 out_file <- file.path(data_dir, "r_spef.json")
 fx <- fromJSON(file.path(data_dir, "fixtures.json"))
-bp <- as.data.frame(fx$bladder_panel$columns)
-data(blaTum, package = "spef")
-for (col in c("id", "time", "count", "treatment", "size", "num")) {
-    stopifnot(isTRUE(all.equal(bp[[col]], as.numeric(blaTum[[col]]))))
-}
+bp <- as.data.frame(fx$panel_counts$columns)
 version <- as.character(packageVersion("spef"))
 formula <- PanelSurv(id, time, count) ~ treatment + size + num
 grid <- sort(unique(bp$time))
 
 entry <- function(call, settings, values) {
     list(
-        fixture = "bladder_panel",
+        fixture = "panel_counts",
         software = "R spef",
         version = version,
         call = call,
@@ -99,7 +98,7 @@ references <- list(
     mpl = entry(
         paste(
             "panelReg(PanelSurv(id, time, count) ~ treatment + size + num,",
-            "blaTum, method = 'MPL', se = 'NULL', control = list(absTol =",
+            "panel_counts, method = 'MPL', se = 'NULL', control = list(absTol =",
             "1e-12, relTol = 1e-12, maxIter = 10000))"
         ),
         list(
@@ -115,7 +114,7 @@ references <- list(
     mls = entry(
         paste(
             "panelReg(PanelSurv(id, time, count) ~ treatment + size + num,",
-            "blaTum, method = 'MLs', se = 'NULL')"
+            "panel_counts, method = 'MLs', se = 'NULL')"
         ),
         list(
             estimator = paste(
@@ -126,7 +125,7 @@ references <- list(
         list(coef = unname(mls$beta))
     ),
     mpl_nonparametric = entry(
-        "spef doPanelFit.MPL iso() at beta = 0 on blaTum",
+        "spef doPanelFit.MPL iso() at beta = 0 on panel_counts",
         list(
             estimator = paste(
                 "maximum pseudo-likelihood mean function with no",

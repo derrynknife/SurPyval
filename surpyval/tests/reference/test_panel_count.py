@@ -1,12 +1,15 @@
-"""The panel-count models against R's ``spef`` on the bladder tumour panel
-counts (the shared fixture ``bladder_panel``, spef's ``blaTum``;
+"""The panel-count models against R's ``spef`` on simulated panel counts
+(the shared fixture ``panel_counts``: 85 units seen at their own visits,
+a treatment indicator and two baseline covariates;
 ``scripts/reference/reference_r_spef.R`` wrote the values with spef
 1.0.9).
 
 The maximum pseudo-likelihood fits (with and without covariates) are the
-same estimator as spef's ``"MPL"`` and agree to the precision of the
-searches. spef has no step-function maximum likelihood fit with
-covariates: its ``"MLs"`` maximises the same likelihood over a monotone
+same estimator as spef's ``"MPL"``, run with ``absTol = relTol = 1e-12``
+(at the default tolerances the two optimisers stop at slightly different
+points, so they are compared at the tighter setting), and agree to the
+precision of the searches. spef has no step-function maximum likelihood fit
+with covariates: its ``"MLs"`` maximises the same likelihood over a monotone
 spline baseline (Lu, Zhang and Huang 2007), a smaller family than the step
 functions, so it is compared with a tolerance and by the likelihood
 (SurPyval's maximum is at least as high as the likelihood at spef's
@@ -25,7 +28,7 @@ Z_COLS = ["treatment", "size", "num"]
 
 
 def _df():
-    return pd.DataFrame(fixture("bladder_panel"))
+    return pd.DataFrame(fixture("panel_counts"))
 
 
 def _fit(how):

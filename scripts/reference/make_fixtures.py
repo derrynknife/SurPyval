@@ -23,8 +23,8 @@ Two kinds of fixture:
   (Firth's fit),
   recurrent events of two groups of systems for the MCF comparison, and
   an illness-death model with recovery for the multi-state models;
-* the bladder tumour panel counts (``load_bladder_panel``), checked by
-  ``reference_r_spef.R`` against R spef's ``blaTum``.
+* simulated panel counts (events counted at each unit's own visits) for
+  the panel-count models (``reference_r_spef.R``).
 
 Run from the repository root::
 
@@ -40,7 +40,6 @@ from pathlib import Path
 import numpy as np
 
 from surpyval.datasets import (
-    load_bladder_panel,
     load_heart_transplants,
     load_kidney,
     load_lung,
@@ -1199,17 +1198,43 @@ def recurrent_groups(seed, ties):
     }
 
 
-def bladder_panel():
-    df = load_bladder_panel()
+def panel_counts(seed):
+    """Panel counts of the character of a clinic-visit study: 85 units,
+    each seen at its own visits (whole months, gaps of 1 to 6, to an end
+    at 10 to 53 months), the number of new events counted at each visit
+    (often 0). A treatment indicator (probability 0.45) and two baseline
+    covariates (``size`` and ``num``, 1 plus a Poisson count, at most 7
+    and 8). Each unit's events are a Poisson process with mean
+    ``f exp(-1.0 treatment - 0.05 size + 0.25 num) 0.12 t^0.95``, ``f`` a
+    gamma frailty with mean 1 and variance 0.5, so the counts are
+    over-dispersed."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for unit in range(1, 86):
+        treatment = int(rng.random() < 0.45)
+        size = int(min(1 + rng.poisson(1.0), 7))
+        num = int(min(1 + rng.poisson(1.1), 8))
+        frailty = rng.gamma(2.0, 0.5)
+        end = int(rng.integers(10, 54))
+        visits, t = [], 0
+        while True:
+            t += int(rng.integers(1, 7))
+            if t >= end:
+                visits.append(end)
+                break
+            visits.append(t)
+        eta = -1.0 * treatment - 0.05 * size + 0.25 * num
+        mean = 0.12 * np.asarray(visits, dtype=float) ** 0.95
+        counts = rng.poisson(frailty * np.exp(eta) * np.diff(np.r_[0.0, mean]))
+        for v, c in zip(visits, counts):
+            rows.append((unit, v, int(c), treatment, size, num))
+    columns = list(zip(*rows))
+    names = ("id", "time", "count", "treatment", "size", "num")
     return {
-        "source": "surpyval.datasets.load_bladder_panel(); R spef::blaTum "
-        "(Sun and Wei 2000): new bladder tumours counted at each clinic "
-        "visit, one row per visit; count is the number since the previous "
-        "visit",
-        "columns": {
-            k: _native(df[k])
-            for k in ("id", "time", "count", "treatment", "size", "num")
-        },
+        "source": "seeded synthetic, make_fixtures.panel_counts (rng {}): "
+        "the number of events found at each visit since the previous one, "
+        "one row per visit".format(seed),
+        "columns": {k: _native(v) for k, v in zip(names, columns)},
     }
 
 
@@ -1532,7 +1557,7 @@ def build():
             "and er_event the same lives exact or right censored",
             "columns": IC_MIXED,
         },
-        "bladder_panel": bladder_panel(),
+        "panel_counts": panel_counts(3820),
     }
 
 

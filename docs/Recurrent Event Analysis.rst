@@ -1195,7 +1195,8 @@ Poisson count with mean :math:`\Lambda(t_{ij})` [SunKalbfleisch1995]_:
 over non-decreasing :math:`\Lambda` [WellnerZhang2000]_. This uses
 the counts in each interval, not only their running totals, and is more
 efficient when units are inspected at very different times. It has no
-closed form: SurPyval finds it with the self-consistency (EM) algorithm and
+closed form: SurPyval finds it with the self-consistency (EM) algorithm, the
+iterative convex minorant algorithm and
 Newton steps on the increments, and checks the Karush-Kuhn-Tucker
 conditions of the maximum. The likelihood reads :math:`\Lambda` only at
 the ends of the intervals with a count and at each unit's last inspection;

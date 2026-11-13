@@ -15,13 +15,12 @@ Unreleased
   cumulative counts (Sun and Kalbfleisch 1995). ``PanelCountRegression``
   fits the proportional means model ``E[N(t) | Z] = Lambda0(t)
   exp(beta'Z)`` with the baseline unspecified, by the pseudo-likelihood
-  (the default; R ``spef``'s ``"MPL"``, matched on the bladder tumour
-  data) or the likelihood (Wellner and Zhang 2007). Both are consistent
+  (the default; R ``spef``'s ``"MPL"``, matched on simulated panel
+  counts) or the likelihood (Wellner and Zhang 2007). Both are consistent
   when the counts are not Poisson; ``mcf_cb``, ``param_cb`` and
   ``standard_errors`` are bootstraps over units. ``fit_from_df``,
   ``to_dict`` / ``from_dict``, aliased covariates as the other
-  regressions. ``surpyval.datasets.load_bladder_panel()`` adds the
-  bladder tumour panel counts. The parametric intensity models
+  regressions. The parametric intensity models
   (``CrowAMSAA``, ``CoxLewis``, ``ProportionalIntensityNHPP``, ...) now
   take a count of 0 on an interval-counted row (``c=2`` or ``c=-1``), so
   they fit panel counts too; a 0 on an exact-event or end-of-observation

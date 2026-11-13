@@ -931,39 +931,56 @@ curve agrees with the non-parametric estimate.
 fits :math:`E[N(t) \mid Z] = \Lambda_0(t) e^{\beta' Z}`, with the
 baseline left unspecified, by the pseudo-likelihood (the default, R
 ``spef``'s ``"MPL"``) or the likelihood. :math:`e^{\beta}` is the ratio of
-the expected counts at every time. The bladder tumour data
-(``load_bladder_panel``) record the new tumours found at each clinic visit
-of 85 patients on placebo or thiotepa:
+the expected counts at every time. Here a simulated clinic-visit study:
+120 patients, about half on a treatment that truly halves the expected
+number of new lesions (:math:`\beta = \ln 0.5 \approx -0.69`), each seen
+at visits one to six months apart for three years, with the new lesions
+counted at each visit, and patients differing in their underlying rates:
 
 .. jupyter-execute::
 
-    from surpyval.datasets import load_bladder_panel
     from surpyval.recurrent import PanelCountRegression
 
-    bladder = load_bladder_panel()
-    bladder_model = PanelCountRegression.fit_from_df(
-        bladder, "time", ["treatment", "size", "num"], "count", i_col="id"
+    clinic_rng = np.random.default_rng(11)
+    clinic_rows = []
+    for patient in range(120):
+        treated = int(clinic_rng.random() < 0.5)
+        rate = 0.15 * clinic_rng.gamma(2.0, 0.5) * 0.5**treated  # per month
+        month = 0
+        while True:
+            gap = int(clinic_rng.integers(1, 7))
+            if month + gap > 36:
+                break
+            month += gap
+            clinic_rows.append(
+                (patient, month, clinic_rng.poisson(rate * gap), treated)
+            )
+    clinic = pd.DataFrame(
+        clinic_rows, columns=["patient", "month", "new_lesions", "treated"]
     )
-    print(bladder_model)
-    print("ratio of expected tumours, thiotepa / placebo:",
-          np.exp(bladder_model.params[0]).round(3))
-    print("95% bootstrap interval for beta:",
-          bladder_model.param_cb("treatment", n_boot=200, random_state=1).round(3))
 
-Thiotepa patients are expected to have about a quarter as many new
-tumours by any time as placebo patients with the same initial tumours. The
-likelihood estimator (``how="likelihood"``) gives a smaller effect on these
-data (:math:`\hat\beta \approx -0.79`), as in the published analyses; the
-two weight the visits differently, and they agree when the model holds and
-the visit times carry no information about the counts. Standard errors and
-intervals for either come from resampling patients (``standard_errors``,
-``param_cb``, ``mcf_cb``).
+    clinic_model = PanelCountRegression.fit_from_df(
+        clinic, "month", "treated", "new_lesions", i_col="patient"
+    )
+    print(clinic_model)
+    print("ratio of expected lesions, treated / untreated:",
+          np.exp(clinic_model.params[0]).round(3))
+    print("95% bootstrap interval for beta:",
+          clinic_model.param_cb("treated", n_boot=200, random_state=1).round(3))
+
+The estimated ratio is close to the true 0.5, and its interval comes from
+resampling whole patients, so it allows for patients differing in their
+rates. ``how="likelihood"`` uses the counts in each interval rather than
+their running totals; the two estimators agree when the model holds and
+the visit times carry no information about the counts, and differ in how
+they weight the visits. Standard errors and intervals for either come
+from the same bootstrap (``standard_errors``, ``param_cb``, ``mcf_cb``).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(bladder_model.params, [-1.32638, -0.06262, 0.25041], atol=1e-4)
+    assert abs(clinic_model.params[0] - np.log(0.5)) < 0.35
 
 Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
