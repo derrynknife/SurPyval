@@ -1323,12 +1323,13 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-PLANS["CoxFrailty"] = Plan(
-    _regression(own_random=False, step=True),
-    _REG_N,
-    _REG_REPS,
-    note=_SEMI + "; " + _NO_FRAILTY,
-)
+for _name in ("CoxFrailty", "CoxMixedEffects"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False, step=True),
+        _REG_N,
+        _REG_REPS,
+        note=_SEMI + "; " + _NO_FRAILTY,
+    )
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
@@ -1560,6 +1561,18 @@ EXCLUDED: dict[str, str] = {
         "give (no simulator of paths): recovery of each transition's "
         "parameters and of the occupation probabilities from simulated "
         "Markov paths is tested in tests/multistate/test_parametric.py",
+    ),
+    **dict.fromkeys(
+        (
+            "ParametricMultiState[reset]",
+            "ParametricMultiStateRegression[reset]",
+        ),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters from simulated semi-Markov paths is tested in "
+        "tests/multistate/test_semimarkov.py, and the coverage of the "
+        "occupancy and length-of-stay bounds in "
+        "calibration/test_coverage_semimarkov.py",
     ),
     **dict.fromkeys(
         ("PanelMultiState", "PanelMultiStateRegression"),

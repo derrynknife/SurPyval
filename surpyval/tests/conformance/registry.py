@@ -328,6 +328,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
     "surpyval.CoxFrailtyFitter": _BASE,
+    "surpyval.CoxMixedEffectsFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
@@ -349,6 +350,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
     "surpyval.CovariatePath": _DATA,
+    "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.IntervalLogRankResult": _RESULT,
@@ -358,7 +360,6 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PermutationLogRankResult": _RESULT,
     "surpyval.MaxStatResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
-    "surpyval.RiskReclassification": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -456,7 +457,6 @@ for _fn in (
     "compare_concordance",
     "concordance_estimate",
     "concordance_index",
-    "idi_nri",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",

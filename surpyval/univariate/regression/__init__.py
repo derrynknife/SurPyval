@@ -46,12 +46,16 @@ from .frailty import (
     CoxFrailty,
     CoxFrailtyFitter,
     CoxFrailtyModel,
+    CoxMixedEffects,
+    CoxMixedEffectsFitter,
+    CoxMixedEffectsModel,
     ExponentialFrailty,
     Frailty,
     FrailtyFitter,
     FrailtyModel,
     GammaFrailty,
     LogNormalFrailty,
+    RandomEffect,
     WeibullFrailty,
 )
 from .life_at import LifeAtCovariates
@@ -112,6 +116,9 @@ __all__ = [
     "CoxFrailty",
     "CoxFrailtyFitter",
     "CoxFrailtyModel",
+    "CoxMixedEffects",
+    "CoxMixedEffectsFitter",
+    "CoxMixedEffectsModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
     "FrailtyFitter",
@@ -119,6 +126,7 @@ __all__ = [
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty",
+    "RandomEffect",
     # Time-varying-covariate paths for sf_tvc evaluation: steps, continuous
     "StepSchedule",
     "CovariatePath",

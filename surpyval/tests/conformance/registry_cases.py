@@ -960,7 +960,7 @@ def _multistate():
             **shared_options(d),
         )
 
-    def pms_from_df(d):
+    def pms_from_df(d, clock="forward"):
         return ms.ParametricMultiState.fit_from_df(
             frame(d),
             "x",
@@ -969,9 +969,10 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
 
-    def pmsr_from_df(d):
+    def pmsr_from_df(d, clock="forward"):
         return ms.ParametricMultiStateRegression.fit_from_df(
             frame(d),
             "x",
@@ -981,6 +982,7 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
 
     exact = "an exact (Aalen-Johansen) estimate of the spells"
@@ -1091,6 +1093,53 @@ def _multistate():
             covariates="Z",
             drops_missing_covariate=False,
             paths={"fit_from_df": pmsr_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        ),
+        # The semi-Markov models: each transition's hazard a function of
+        # the time spent in its state, the probabilities by convolution.
+        Case(
+            name="ParametricMultiState[reset]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=_fit(ms.ParametricMultiState, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={
+                "fit_from_df": functools.partial(pms_from_df, clock="reset")
+            },
+            exclude={
+                "convergence": "each transition is fitted by its "
+                "distribution's own univariate fit, whose starved fits the "
+                "Parametric cases check; the model adds no search of its "
+                "own and takes no init"
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression[reset]",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=_fit(ms.ParametricMultiStateRegression, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": functools.partial(pmsr_from_df, clock="reset")
+            },
             coefficients=lambda m: m.betas,
             intercept=True,
         ),
@@ -2773,6 +2822,15 @@ def _multistate_bounds(variances):
     )
 
 
+_LENGTH_OF_STAY = Bound(
+    "length_of_stay_cb",
+    point="length_of_stay",
+    per_cause=True,
+    # (inside (0, x - s), not the range of a probability)
+    in_range=False,
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
@@ -2785,9 +2843,13 @@ def _bounds(case):
         "MultiStateProportionalHazards": _multistate_bounds(
             ("aalen", "greenwood")
         ),
-        # The delta method over every transition's parameters.
-        "ParametricMultiState": _multistate_bounds((None,)),
-        "ParametricMultiStateRegression": _multistate_bounds((None,)),
+        # The delta method over every transition's parameters, on the
+        # occupation probabilities and on the expected length of stay
+        # (logit of the fraction of the time, inside (0, x - s)).
+        "ParametricMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        "ParametricMultiStateRegression": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
         # The delta method over the intensities (and coefficients), Wald
         # bounds on each parameter, and on each transient state's mean
         # stay.
@@ -3048,7 +3110,9 @@ def _bounds(case):
             slow=True,
         )
         return (_PARAM_CB, lr)
-    if cls == "CoxFrailtyModel":
+    if cls in ("CoxFrailtyModel", "CoxMixedEffectsModel"):
+        # (CoxMixedEffectsModel's variance_cb, a table, is not swept: see
+        # test_options.NOT_SWEPT)
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (

@@ -1223,9 +1223,14 @@ def _parametric_notes(ctx: Context) -> list[str]:
 def _cox_notes(ctx: Context) -> list[str]:
     notes = [] if _variance_fixed(ctx.model) else [_variance_note(ctx)]
     return notes + [
-        "Frailty family: CoxFrailty fits the gamma frailty only, so there "
-        "is no other family to compare it with (the parametric "
-        "Frailty(dist, family='lognormal') has one).",
+        "Frailty family: not compared here; fit the other family with "
+        "CoxFrailty.fit(..., family={!r}) and compare the integrated "
+        "log-likelihoods (aic()), which have the same number of "
+        "parameters.".format(
+            "gamma"
+            if getattr(ctx.model, "family", "gamma") == "lognormal"
+            else "lognormal"
+        ),
         "Proportional hazards, functional form, influence and outliers "
         "are not checked: given the frailty they need each row's group, "
         "which a CoxFrailtyModel does not keep, and the Cox family's "

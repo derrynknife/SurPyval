@@ -105,8 +105,9 @@ Worked classifications:
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
 | ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
 | ParametricMultiStateRegression (a parametric regression per transition) | univariate | single_event | single/competing | multi_state | with | continuous | parametric |
+| ParametricMultiState / ParametricMultiStateRegression with `clock="reset"` (semi-Markov: hazards of the time in the state) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
 | PanelMultiState, PanelMultiStateRegression (a Markov model of states seen only at visits: the moves interval censored) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
-| (not built yet) semi-Markov (clock-reset); hidden Markov (misclassified states) for panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| (not built yet) hidden Markov (misclassified states) for panel data; semi-Markov Cox per transition | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric/semiparametric |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:
@@ -119,7 +120,10 @@ model exist:
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula.
+  Archimedean copula; `CoxFrailty` takes a gamma or log-normal frailty.
+  `CoxMixedEffects` (R's `coxme`) generalises the log-normal one to several
+  Gaussian random-effect terms: nested and crossed grouping factors and
+  correlated random slopes.
 - **Joint frailty of recurrent and terminal events** (`JointFrailty`):
   each item's own frailty acts on its recurrent intensity and, raised to
   a power `alpha`, on the hazard of a terminal event that ends its
@@ -132,6 +136,7 @@ model exist:
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
+| CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself

@@ -263,6 +263,22 @@ def _cox_frailty():
     )
 
 
+def _cox_mixed_effects():
+    from surpyval import CoxMixedEffects, RandomEffect
+    from surpyval.datasets import load_kidney
+
+    df = load_kidney()
+    Z = np.column_stack([df["age"], df["sex"] == 2])
+    strata = np.arange(len(df)) % 2
+    return CoxMixedEffects.fit(
+        df["time"],
+        Z=Z,
+        c=1 - df["status"],
+        strata=strata,
+        random_effects=RandomEffect(df["id"], slopes=[1]),
+    )
+
+
 def _joint():
     from surpyval import WeibullJointPH
     from surpyval.tests.univariate.joint._fleet import fleet
@@ -396,6 +412,7 @@ def _build(name):
         "cox_delayed_entry": _cox_delayed_entry,
         "frailty": _frailty,
         "cox_frailty": _cox_frailty,
+        "cox_mixed_effects": _cox_mixed_effects,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
         "aalen_additive": lambda: AalenAdditive.fit(
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
@@ -439,6 +456,12 @@ def _build(name):
         "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
+        ),
+        "multistate_parametric_reset": lambda: ParametricMultiState.fit(
+            **ms_data(), clock="reset"
+        ),
+        "multistate_parametric_regression_reset": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True), clock="reset")
         ),
         "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
         "multistate_panel_regression": lambda: (
@@ -547,6 +570,7 @@ CASES = [
     "cox_delayed_entry",
     "frailty",
     "cox_frailty",
+    "cox_mixed_effects",
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
@@ -564,6 +588,8 @@ CASES = [
     "multistate_cox_shared",
     "multistate_parametric",
     "multistate_parametric_regression",
+    "multistate_parametric_reset",
+    "multistate_parametric_regression_reset",
     "multistate_panel",
     "multistate_panel_regression",
     "cause_specific_mcf",

@@ -314,6 +314,16 @@ PENDING: tuple[Pending, ...] = (
         "incidences with the cause-specific Cox model's, "
         "CompetingRisksProportionalHazards, on the same data.",
     ),
+    Pending(
+        "mixed-effects Cox models",
+        _instance_of(_REG + "frailty.cox_mixed_effects.CoxMixedEffectsModel"),
+        "Test the random effects with model.lr_test() and bound them "
+        "with model.variance_cb(); check proportional hazards and the "
+        "covariates' form with CoxPH.fit(...).diagnose() on the same "
+        "rows (the model without the random effects), and, for a random "
+        "intercept alone, CoxFrailty.fit(..., family='lognormal')"
+        ".diagnose().",
+    ),
 )
 
 #: What the refusal says for a model with neither a family nor a

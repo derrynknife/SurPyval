@@ -131,6 +131,8 @@ RULES = {
     "cif": (0.0, 1.0, 1),
     # A state's occupation probability: rises or falls (a transient state)
     "occupancy": (0.0, 1.0, 0),
+    # The expected time spent in a state since the start: grows with time
+    "length_of_stay": (0.0, np.inf, 1),
     "mcf": (0.0, np.inf, 1),
     "iif": (0.0, np.inf, 0),
     "qf": (-np.inf, np.inf, 1),
