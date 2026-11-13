@@ -61,9 +61,15 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         columns["tl"] = [time_text(v) for v in tl[:shown]]
     if np.isfinite(tr).any():
         columns["tr"] = [time_text(v) for v in tr[:shown]]
+    s = None if recurrent else getattr(data, "s", None)
+    if s is not None:
+        columns["s"] = [repr(plain(v)) for v in s[:shown]]
     e = getattr(data, "e", None)
     if e is not None:
         columns["e"] = [repr(plain(v)) for v in e[:shown]]
+    a = None if recurrent else getattr(data, "a", None)
+    if a is not None:
+        columns["a"] = [str(int(v)) for v in a[:shown]]
     Z = getattr(data, "Z", None)
     if Z is not None:
         Z = np.asarray(Z, dtype=float)
@@ -73,13 +79,20 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         ]
         for j, name in enumerate(names):
             columns[name] = [time_text(v) for v in Z[:shown, j]]
-    markers = getattr(data, "markers", None)
-    if markers is not None and not recurrent:
+    m = None if recurrent else getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if markers is not None:
         keys = data.ids if data.ids is not None else range(len(data.x))
-        columns["markers"] = [
-            plural(len(markers.get(key, {})), "reading")
-            for key in list(keys)[:shown]
-        ]
+        columns["markers"] = _on_first_rows(
+            list(keys)[:shown],
+            lambda key: plural(len(markers.get(key, {})), "reading"),
+        )
+    elif m is not None:
+        # Named measurements: each unit's readings, of them all
+        columns["m"] = _on_first_rows(
+            list(data.ids[:shown]),
+            lambda key: plural(m._readings_of_unit(key), "reading"),
+        )
     attributes = getattr(data, "attributes", None)
     if attributes:
         if recurrent:
@@ -95,6 +108,17 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
     return columns
 
 
+def _on_first_rows(keys: list, text: Any) -> list:
+    """``text(key)`` on each unit's first row, blank on its later rows:
+    a unit's readings are the unit's, not each of its rows'."""
+    seen: set = set()
+    out = []
+    for key in keys:
+        out.append("" if key in seen else text(key))
+        seen.add(key)
+    return out
+
+
 def heading(data: Any, recurrent: bool) -> str:
     """``"SurpyvalData: 4 items, 3 rows"``: the number of items (the rows
     weighted by their counts, for lifetimes; the distinct ids, for
@@ -103,7 +127,8 @@ def heading(data: Any, recurrent: bool) -> str:
     if recurrent:
         items = len(data.ids)
     else:
-        items = int(np.asarray(data.n).sum())
+        # The rows weighted by their counts; with states, the units
+        items = data.n_items
     head = f"{name}: {plural(items, 'item')}, {plural(len(data.x), 'row')}"
     unit = getattr(data, "unit", None)
     return head if unit is None else f"{head}, ages in {unit}"
@@ -184,7 +209,10 @@ def held_lines(data: Any, recurrent: bool) -> list:
                 if np.isfinite(b).any()
             )
         )
-    e = getattr(data, "e", None)
+    s = None if recurrent else getattr(data, "s", None)
+    if s is not None:
+        lines += _state_lines(data, s, n)
+    e = None if s is not None else getattr(data, "e", None)
     if e is not None:
         counts: Counter = Counter()
         masked = 0
@@ -217,7 +245,10 @@ def held_lines(data: Any, recurrent: bool) -> list:
             "  time-varying covariates: "
             + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
         )
-    markers = getattr(data, "markers", None)
+    m = getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if m is not None and markers is None:
+        lines.append(f"  m: {m._describe()}")
     if markers is not None:
         readings = sum(len(m) for m in markers.values())
         read = sum(1 for m in markers.values() if m)
@@ -237,6 +268,31 @@ def held_lines(data: Any, recurrent: bool) -> list:
     if attributes:
         names = list(dict.fromkeys(k for a in attributes if a for k in a))
         lines.append("  attributes: " + ", ".join(names))
+    return lines
+
+
+def _state_lines(data: Any, s: Any, n: Any) -> list:
+    """The summary lines of lifetime data with states: the states (in the
+    order first seen, in ``s`` then ``e``) and the moves between them,
+    counting units (a row counted ``n`` is ``n`` moves)."""
+    e = getattr(data, "e", None)
+    entered = [None] * len(s) if e is None else list(e)
+    named = [plain(v) for v in s]
+    named += [plain(v) for v in entered if v is not None]
+    found = list(dict.fromkeys(named))
+    lines = ["  states: " + ", ".join(map(str, found))]
+    moves: Counter = Counter()
+    for frm, to, flag, k in zip(s, entered, data.c, n):
+        if flag != 1:
+            moves[(plain(frm), plain(to))] += int(k)
+    if moves:
+        lines.append(
+            "  moves: "
+            + ", ".join(
+                f"{frm} to {'not recorded' if to is None else to} ({k})"
+                for (frm, to), k in moves.items()
+            )
+        )
     return lines
 
 

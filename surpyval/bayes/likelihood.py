@@ -337,6 +337,9 @@ def log_likelihood_fn(
             f"{dist.name} is discrete."
         )
     if isinstance(x, SurpyvalData):
+        from surpyval.utils.surpyval_data import refuse_multi_state
+
+        refuse_multi_state(x, "log_likelihood_fn")
         data = x
     else:
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)

@@ -463,7 +463,9 @@ def test_issue_932_ids_on_the_constructor():
     assert data.select(ids="b").x.tolist() == [5.0]
     with pytest.raises(ValueError, match="one id per entry"):
         SurpyvalData([9, 1, 5], ids=["c", "a"])
-    with pytest.raises(ValueError, match="given more than once: 'a'"):
+    # A repeated id is a unit with several rows, which must be in time
+    # order (test_terminal_flag.py)
+    with pytest.raises(ValueError, match="overlaps the previous row"):
         SurpyvalData([9, 1, 5], ids=["a", "a", "b"])
 
 

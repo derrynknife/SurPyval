@@ -129,6 +129,7 @@ surpyval.LogisticPH
 surpyval.LogisticPO
 surpyval.MaxComboResult
 surpyval.MaxStatResult
+surpyval.Measurements
 surpyval.MixtureCure
 surpyval.MixtureCureFitter
 surpyval.MixtureCureModel
