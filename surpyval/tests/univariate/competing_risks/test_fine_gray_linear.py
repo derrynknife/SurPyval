@@ -297,8 +297,11 @@ def test_fit_matches_the_dense_weight_matrix(case, cause, center):
         # No finite maximum: BFGS stops where the rise along the runaway
         # direction drops below its tolerance, a point the last digits of
         # the likelihood move by 1e-8 (relatively), and the standard
-        # errors there are meaningless (and warned about, #392).
-        keys, rtol = ["beta", "center", "baseline_cumhaz"], 1e-7
+        # errors there are meaningless (and warned about, #392). Where the
+        # two fits stop differs with the platform's rounding: on Python
+        # 3.13 on x86-64 Linux the baseline differed by 1.08e-7 (13 Nov
+        # 2026), so the comparison allows 1e-6.
+        keys, rtol = ["beta", "center", "baseline_cumhaz"], 1e-6
     for key in keys:
         _assert_close(new[key], old[key], rtol)
     _assert_close(new["neg_ll"], old["neg_ll"], rtol)

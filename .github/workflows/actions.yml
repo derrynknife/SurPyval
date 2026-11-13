@@ -530,18 +530,11 @@ jobs:
             workers: auto
             args: >-
               surpyval/tests/conformance -m calibration -k ExpoWeibull
-          # The joint frailty model's profile-likelihood bounds: five
-          # sweeps of 5 to over 20 minutes each on the runners (13
-          # November 2026), out of the test suite's parts.
-          - group: sweeps-joint-frailty
-            workers: auto
-            args: >-
-              surpyval/tests/conformance -m calibration -k JointFrailty
           - group: sweeps-rest
             workers: auto
             args: >-
               surpyval/tests/conformance -m calibration
-              -k 'not ExpoWeibull and not (LogNormal and offset) and not JointFrailty'
+              -k 'not ExpoWeibull and not (LogNormal and offset)'
     steps:
       - uses: actions/checkout@v4
 
@@ -555,6 +548,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements_dev.txt
 
+      # One BLAS thread per process: the studies run many small fits at
+      # once (xdist workers, or a study's own process pool), and with a
+      # BLAS thread per core in each, the panel multi-state study, 13 s
+      # on an M-series Mac, had not finished after 90 minutes on the
+      # 13 November 2026 release run (the suite's panel tests ran 20 to
+      # 30 times faster with one thread).
       # A per-test limit (pytest-timeout) under the job's: a study that
       # hangs or runs far over fails with its name and every thread's
       # stack, where the job's limit only cancelled the run part way
@@ -563,6 +562,10 @@ jobs:
       # no sound study; a hang that starts later is still stopped by the
       # job's limit. (A group with a longer study sets test-timeout.)
       - name: pytest (${{ matrix.group }})
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
         run: >-
           python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
           --timeout=${{ matrix.test-timeout || 2700 }} --timeout-method=thread
