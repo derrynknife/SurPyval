@@ -221,7 +221,9 @@ def test_571_fit_from_df_takes_the_times_once():
         {"xl_col": "lo"},
         {},
     ):
-        with pytest.raises(ValueError, match="Give the times exactly once"):
+        with pytest.raises(
+            ValueError, match="Give the times exactly once|both an exact time"
+        ):
             WeibullPH.fit_from_df(df, Z_cols=["age"], **kwargs)
 
 
