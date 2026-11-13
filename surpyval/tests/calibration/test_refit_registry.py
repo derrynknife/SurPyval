@@ -1563,6 +1563,18 @@ EXCLUDED: dict[str, str] = {
         "Markov paths is tested in tests/multistate/test_parametric.py",
     ),
     **dict.fromkeys(
+        (
+            "ParametricMultiState[reset]",
+            "ParametricMultiStateRegression[reset]",
+        ),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters from simulated semi-Markov paths is tested in "
+        "tests/multistate/test_semimarkov.py, and the coverage of the "
+        "occupancy and length-of-stay bounds in "
+        "calibration/test_coverage_semimarkov.py",
+    ),
+    **dict.fromkeys(
         ("PanelMultiState", "PanelMultiStateRegression"),
         "states seen only at visits, a history which a model draw does not "
         "give (no simulator of visit schedules or paths): recovery of the "

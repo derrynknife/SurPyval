@@ -26,6 +26,23 @@ Unreleased
   take a count of 0 on an interval-counted row (``c=2`` or ``c=-1``), so
   they fit panel counts too; a 0 on an exact-event or end-of-observation
   row is still refused.
+- Semi-Markov ("clock reset") parametric multi-state models:
+  ``ParametricMultiState.fit(..., clock="reset")`` and
+  ``ParametricMultiStateRegression.fit(..., clock="reset")`` (and their
+  ``fit_from_df``), where each transition's hazard is a function of the
+  time spent in the current state (the time since a repair, a relapse).
+  Each transition is fitted on the durations ``x - tl``. The occupation
+  and transition probabilities come from the renewal equations, solved
+  by convolution on a grid refined until they settle (about 1e-6), with
+  or without recovery (a cycle); ``cb`` gives delta-method bounds as on
+  the forward clock. A distribution that does not live on (0, inf), and a
+  prediction from a later start without ``from_state``, are refused with
+  the reason.
+- The expected length of stay in each state for both clocks of the
+  parametric multi-state models: ``length_of_stay(x, state, ...)``,
+  ``length_of_stay_se`` and ``length_of_stay_cb`` (delta method on the
+  logit of the fraction of ``x - s`` spent in the state). Checked against
+  R ``flexsurv`` (``totlos.fs``, ``totlos.simfs``).
 - Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
   Cox model whose log hazard has Gaussian random effects, a random
   intercept per group of one or more grouping factors, nested (wards in
@@ -208,22 +225,6 @@ Unreleased
   intensities, standard errors and bounds to about 1e-6. Misclassified
   states (hidden Markov models) are not built. See :doc:`Multi-State
   Models`.
-- ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
-  (IDI) and the net reclassification improvement (NRI) of a new risk
-  model over an old one at a horizon, on right-censored data, from the
-  two models' predicted risks of the event by the horizon. The IDI, the
-  continuous NRI and, with ``cutoffs``, the categorical NRI, each with
-  its event and non-event parts and the four shares moving up and down;
-  censoring handled by IPCW (Uno, Tian, Cai, Kohane and Wei 2013) or, for
-  the NRI, by Kaplan-Meier (Pencina, D'Agostino and Steyerberg 2011);
-  perturbation-resampling (default) or bootstrap bounds and p-values;
-  the reclassification tables; ``RiskReclassification.to_dict`` /
-  ``from_dict``. Agrees with R's ``nricens`` to 1e-12 and with
-  ``survIDINRI``'s estimator to its integration grid. The docs say
-  plainly that the NRI is not a proper scoring rule and that the Brier
-  score and AUC differences (``score_predictions``) are the primary
-  comparison.
-
 - Exposure (person-years) tables, ``person_years(x, c, n, tl, factors=,
   timescales=, rates=, per=, alpha_ci=)``, as R's ``survival::pyears``:
   the total time at risk, the events and the units in each cell of fixed

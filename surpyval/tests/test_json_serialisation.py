@@ -458,6 +458,12 @@ def _build(name):
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
         ),
+        "multistate_parametric_reset": lambda: ParametricMultiState.fit(
+            **ms_data(), clock="reset"
+        ),
+        "multistate_parametric_regression_reset": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True), clock="reset")
+        ),
         "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
         "multistate_panel_regression": lambda: (
             PanelMultiStateRegression.fit(**panel_data(True))
@@ -584,6 +590,8 @@ CASES = [
     "multistate_cox_shared",
     "multistate_parametric",
     "multistate_parametric_regression",
+    "multistate_parametric_reset",
+    "multistate_parametric_regression_reset",
     "multistate_panel",
     "multistate_panel_regression",
     "cause_specific_mcf",
