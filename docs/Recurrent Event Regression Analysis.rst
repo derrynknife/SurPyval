@@ -612,7 +612,9 @@ What the model gives:
   null the frailty acts through two variances on the edge of their range,
   :math:`\theta` in the recurrent part and :math:`\alpha^2 \theta` in the
   terminal part (the reference for one such variance, half a
-  :math:`\chi^2_1`, rejects a true null far too often); and of
+  :math:`\chi^2_1`, rejected a true null 18% of the time at the 5% level
+  in a simulation study; this mixture held 5.0% there and 4.6% in a
+  second study of a different design); and of
   :math:`\alpha = 0` (the terminal event independent of the
   recurrences), against :math:`\chi^2_1`.
 - ``frailties``: each item's predicted frailty, its mean given its own
@@ -628,10 +630,10 @@ What the model gives:
 - ``random``: items simulated from the model, as rows ``fit`` takes.
 
 R's ``frailtypack`` (``frailtyPenal`` with ``terminal()``) fits the same
-model; SurPyval's agrees with its log-normal fits to three or four figures. Its
-gamma fits use Gauss-Laguerre quadrature with fixed nodes, whose answer
-moves with the number of nodes; SurPyval's are the maximum of the exact
-likelihood. Not built: spline (penalised) baselines, covariates that
+model; SurPyval's agrees with its log-normal fits to three or four figures.
+With the gamma frailty the two integrate the frailty differently (a fixed
+Gauss-Laguerre rule there; here a rule checked against scipy's adaptive
+quadrature to 1e-10), so their estimates agree to a few per cent. Not built: spline (penalised) baselines, covariates that
 change over time, several terminal events, and frailties shared by
 groups of items (a fleet, a hospital).
 

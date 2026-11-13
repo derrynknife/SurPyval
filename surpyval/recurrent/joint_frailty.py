@@ -2221,7 +2221,8 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
           :math:`\\chi^2_1` and :math:`\\chi^2_2` (Self and Liang 1987;
           Stram and Lee 1994), an approximation whose size is checked in
           the calibration study. (The single-variance reference, half a
-          :math:`\\chi^2_1`, rejected a true null 18% of the time at 5%.)
+          :math:`\\chi^2_1`, rejected a true null 18% of the time at 5%;
+          this mixture held 5.0% in that study and 4.6% in a second one.)
         - ``alpha = 0``: the frailty acts on the recurrent events only, so
           the terminal event does not depend on how often a unit has
           recurrences. The model is refitted with ``alpha`` held at 0

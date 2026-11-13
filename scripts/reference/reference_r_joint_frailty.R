@@ -31,29 +31,25 @@
 # log-normal), alpha, the Weibull shapes and scales and the reported
 # log-likelihood. frailtypack's Weibull baseline is SurPyval's,
 # R0(t) = (t / scale) ^ shape (checked: SurPyval's likelihood at
-# frailtypack's estimates is within frailtypack's quadrature error of its
-# reported log-likelihood, and far from it in the other parameterisation).
+# frailtypack's estimates is close to its reported log-likelihood, and far
+# from it in the other parameterisation).
 #
 # R's readmission data (frailtypack's, so not copied into the repository)
-# were compared by hand with the covariates sex, dukes and chemo in both
+# were compared locally (not part of the test suite) with the covariates sex, dukes and chemo in both
 # parts (charlson changes within a patient):
 #
 # * calendar, gamma: frailtypack logLik -4227.026, theta 1.0419, alpha
-#   1.0322 (nb.gl = 20 gives -4227.482, theta 0.988); SurPyval -4225.725,
-#   theta 1.2755, alpha 0.9554, every coefficient within 0.05 of
-#   frailtypack's; the exact log-likelihood at frailtypack's estimate is
-#   -4226.758 (SurPyval's, and scipy's quadrature item by item).
+#   1.0322; SurPyval -4225.725, theta 1.2755, alpha 0.9554, every
+#   coefficient within 0.05 of frailtypack's; SurPyval's log-likelihood at
+#   frailtypack's estimate is -4226.758.
 # * calendar, log-normal: frailtypack -4218.881, sigma2 1.3125, alpha
 #   0.9992; SurPyval -4218.869, 1.3121, 0.9988.
 #
-# The gap time scale with the gamma frailty is left out: on this fixture
-# frailtypack 3.8.2 stops with "Problem in the loglikelihood computation"
-# (istop = 4, theta 1e-8, every baseline parameter 0). On R's
-# readmission data it converges (logLik -4159.127, theta 0.741, alpha
-# 1.531), and SurPyval's fit there (theta 0.703, alpha 1.577) has the
-# higher exact log-likelihood (-4159.730 against -4159.777 at
-# frailtypack's estimate); readmission is not stored here, as it is
-# frailtypack's data.
+# The gap time scale with the gamma frailty is left out: frailtypack 3.8.2
+# returned no fit for it on this fixture (istop 4). On R's readmission
+# data it gives logLik -4159.127, theta 0.741, alpha 1.531; SurPyval
+# -4159.730, theta 0.703, alpha 1.577, and -4159.777 at frailtypack's
+# estimate. readmission is not stored here, as it is frailtypack's data.
 suppressPackageStartupMessages({
   library(survival)
   library(frailtypack)

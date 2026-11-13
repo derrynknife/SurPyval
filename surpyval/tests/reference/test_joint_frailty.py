@@ -11,18 +11,16 @@ quadrature in ``tests/recurrent/test_joint_frailty.py``). So:
 
 * with the log-normal frailty the two agree closely: every parameter to
   0.2% (relative) and the log-likelihood to 2e-3;
-* with the gamma frailty frailtypack's quadrature is not exact (on R's
-  readmission data its estimate of theta moves from 0.99 to 1.04 between
-  ``nb.gl = 20`` and 32), so its estimates are those of an approximate
-  likelihood. They are checked as such: SurPyval's maximum is at least
-  the exact log-likelihood at frailtypack's estimates (so SurPyval's is
-  the better maximum of the exact likelihood), that exact value is within
-  0.05 of it, the reported log-likelihoods within 0.05, and the
-  parameters within 3% (relative; 0.02 absolute on the coefficients).
+* with the gamma frailty the two rules differ, so the estimates agree to a
+  few per cent and are compared by log-likelihood at each other's
+  estimates: SurPyval's maximum is at least its log-likelihood at
+  frailtypack's estimates, and within 0.05 of it; the reported
+  log-likelihoods are within 0.05, and the parameters within 3%
+  (relative; 0.02 absolute on the coefficients).
 
-frailtypack's gamma fit on the gap time scale fails on this fixture
-(istop = 4, recorded in the R script), so there is no gap-gamma entry; on
-the gap scale the log-normal one is compared.
+frailtypack returned no fit for the gamma gap-time model on this fixture
+(istop 4, recorded in the R script), so there is no stored entry; on the
+gap scale the log-normal one is compared.
 """
 
 import warnings
@@ -87,7 +85,7 @@ def test_gamma_frailty_against_frailtypack():
     assert istop == 1
     assert model.maximum == "verified"
     at_theirs = -float(model._lik(params))
-    # SurPyval's is the higher maximum of the exact likelihood ...
+    # SurPyval's maximum is at least its likelihood at frailtypack's ...
     assert model.log_likelihood >= at_theirs - 1e-8
     # ... and frailtypack's estimate is close to it.
     assert model.log_likelihood - at_theirs < 0.05

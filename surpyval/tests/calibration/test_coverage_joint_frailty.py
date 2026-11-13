@@ -25,7 +25,8 @@ and the rate is printed. With the shared-frailty models' reference (a
 50:50 mixture of chi-square(0) and chi-square(1)) this study rejected
 18.0% of the time and failed; the test now uses the 50:50 mixture of
 chi-square(1) and chi-square(2) (see ``frailty_tests``), with which the
-same study, unchanged, gives 5.0%.
+same study, unchanged, gives 5.0%. The second size study at the end of
+this file, designed and committed before its one run, gives 4.6%.
 
 The seeds, replicates, sizes and tolerances (the suite's: 3 Monte Carlo
 standard errors plus a slack of 0.01 for the rates and coverages, 0.2 of
