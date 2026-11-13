@@ -51,6 +51,20 @@ Unreleased
   ``extend_running`` and ``update`` of data with marker
   readings, which took its records for event histories and failed, now
   work. See :doc:`Conventions`.
+- Degradation and joint fits from measurements: ``DegradationAnalysis``,
+  ``WienerProcess`` and ``GammaProcess`` take their readings as a
+  ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``
+  holding them as ``data.m`` (its covariates ``Z`` are each unit's
+  stress), in place of the arrays ``x``, ``y`` and ``i``, and give the
+  arrays' fit exactly; their ``fit_from_df`` also names the readings'
+  column ``m_col`` (``y_col`` is its other name, unchanged). The joint
+  models (``WeibullJointPH``, ``JointPH(...)``) take a ``Measurements`` as
+  ``markers`` (or its other name ``m``), matched to the life rows by unit:
+  beside arrays with ``i=``, beside a ``SurpyvalData`` without readings,
+  or in ``fit_from_df(..., i_col=..., m=...)``. Several measurements are
+  refused until one is chosen with ``with_measurement(name)``, now also
+  a method of ``Measurements``. See :doc:`Degradation Modelling with
+  SurPyval` and :doc:`Joint Models`.
 - States in the data model: ``SurpyvalData(..., s=...)`` takes the state
   each row's unit was in during the row (from its entry ``tl`` to ``x``),
   with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one

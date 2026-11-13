@@ -1230,6 +1230,33 @@ def _recurrent():
 # ---------------------------------------------------------------------------
 # Degradation
 # ---------------------------------------------------------------------------
+def _readings(d):
+    """The readings ``x``, ``y``, ``i`` of a degradation fixture as a
+    Measurements (units as first seen, each in time order: the arrays'
+    own order)."""
+    store = {}
+    for t, v, k in zip(d["x"], d["y"], np.asarray(d["i"]).tolist()):
+        store.setdefault(k, {})[float(t)] = float(v)
+    return sp.Measurements(store)
+
+
+def _readings_paths(fitter, **kw):
+    """A degradation fitter's fits from a Measurements and from a
+    SurpyvalData holding it (``data.m``), each unit's life row running."""
+
+    def from_data(d):
+        m = _readings(d)
+        life = sp.SurpyvalData(
+            np.full(m.n_units, 1e4), c=np.ones(m.n_units), i=m.ids, m=m
+        )
+        return fitter.fit(life, **kw)
+
+    return {
+        "fit(measurements)": lambda d: fitter.fit(_readings(d), **kw),
+        "fit(data)": from_data,
+    }
+
+
 def _degradation():
     def da(path):
         return Case(
@@ -1249,7 +1276,10 @@ def _degradation():
             paths={
                 "fit_from_df": lambda d: dg.DegradationAnalysis.fit_from_df(
                     pd.DataFrame(d), threshold=150.0, path=path
-                )
+                ),
+                **_readings_paths(
+                    dg.DegradationAnalysis, threshold=150.0, path=path
+                ),
             },
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
@@ -1273,7 +1303,8 @@ def _degradation():
                 paths={
                     "fit_from_df": lambda d, f=fitter: f.fit_from_df(
                         pd.DataFrame(d), threshold=100.0
-                    )
+                    ),
+                    **_readings_paths(fitter, threshold=100.0),
                 },
                 draw=lambda m, s: m.random(15, random_state=s),
                 explicit_seed=True,
@@ -1386,6 +1417,30 @@ def _joint_coefficients(model):
     return np.array([[params[names.index(n)] for n in row] for row in rows])
 
 
+def _joint_readings_paths(fitter):
+    """A joint fitter's fits with the readings as a Measurements matched by
+    unit: beside the life arrays (``i=``, ``m=``), and in a SurpyvalData
+    (``data.m``)."""
+
+    def readings(d):
+        ids = [f"u{k}" for k in range(len(d["x"]))]
+        return ids, sp.Measurements(
+            {k: dict(r) for k, r in zip(ids, d["markers"])}
+        )
+
+    def from_arrays(d):
+        ids, m = readings(d)
+        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+
+    def from_data(d):
+        ids, m = readings(d)
+        return fitter.fit(
+            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        )
+
+    return {"fit(measurements)": from_arrays, "fit(data)": from_data}
+
+
 def _joint():
     """The joint models, predicting for one item read four times and still
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
@@ -1431,7 +1486,8 @@ def _joint():
                     c_col="c",
                     n_col="n",
                     Z_cols=["z0"],
-                )
+                ),
+                **_joint_readings_paths(fitter),
             },
             rows=("x", "Z", "c", "n", "markers"),
             coefficients=_joint_coefficients,
