@@ -1323,12 +1323,13 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-PLANS["CoxFrailty"] = Plan(
-    _regression(own_random=False, step=True),
-    _REG_N,
-    _REG_REPS,
-    note=_SEMI + "; " + _NO_FRAILTY,
-)
+for _name in ("CoxFrailty", "CoxMixedEffects"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False, step=True),
+        _REG_N,
+        _REG_REPS,
+        note=_SEMI + "; " + _NO_FRAILTY,
+    )
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)

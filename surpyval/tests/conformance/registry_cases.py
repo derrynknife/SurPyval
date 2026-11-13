@@ -3044,7 +3044,9 @@ def _bounds(case):
             slow=True,
         )
         return (_PARAM_CB, lr)
-    if cls == "CoxFrailtyModel":
+    if cls in ("CoxFrailtyModel", "CoxMixedEffectsModel"):
+        # (CoxMixedEffectsModel's variance_cb, a table, is not swept: see
+        # test_options.NOT_SWEPT)
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
