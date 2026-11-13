@@ -12,7 +12,8 @@ beginning, and this page will then make sense.
 Everything in *SurPyval* follows one pattern. A **fitter** (``surv.Weibull``,
 ``surv.KaplanMeier``, ``surv.CoxPH``, ...) has a ``fit()`` method that takes
 your data and returns a fitted **model**. You then ask the model questions:
-what fraction survives to time :math:`t`, what is the median life, what is the
+what fraction survives to time :math:`t`, what is the median life (the median
+time to the event), what is the
 hazard, and so on. Once you know that pattern, and the way data is passed in
 (the ``x``, ``c``, ``n``, ``t`` arrays described in :doc:`Types of Data` and
 :doc:`Conventions`), every family of models in the package works the same way.
@@ -56,7 +57,7 @@ model has the same set of functions of time:
     print("95% bounds on R(50)        :", model.cb(50))
 
 ``sf`` is the survival (reliability) function, ``ff`` the CDF (the
-probability of having failed), ``qf`` the quantile function (its inverse), and
+probability of having failed, or of having had the event, by that time), ``qf`` the quantile function (its inverse), and
 ``cb`` gives confidence bounds; by default two-sided 95% bounds on the survival
 function. The shape :math:`\beta \approx 2.1` is greater than one, which says
 the hazard is increasing: these bearings wear out. The full list of functions
@@ -163,8 +164,8 @@ The available distributions are listed in the API reference,
 Regression
 ~~~~~~~~~~
 
-Regression models let the life depend on covariates ``Z`` (a stress, a
-treatment, a design option). Each row of ``Z`` holds the covariates of the
+Regression models let the life (the time to the event) depend on covariates
+``Z`` (a stress, a treatment, a design option). Each row of ``Z`` holds the covariates of the
 matching row of ``x``. Here about half the units run in condition ``Z = 1``, which
 lengthens life by a factor of :math:`e^{0.7} \approx 2`:
 
@@ -201,8 +202,9 @@ Competing risks
 ~~~~~~~~~~~~~~~
 
 When an item can fail from one of several causes and the first one ends its
-life, pass the cause of each failure as ``e`` (use ``None`` for censored
-rows). The cumulative incidence function (CIF) gives the probability of
+life (a part that fails by wear or by shock; a patient who can die of one of
+several causes), pass the cause of each failure as ``e`` (use ``None`` for
+censored rows). The cumulative incidence function (CIF) gives the probability of
 having failed from each cause by time :math:`t`:
 
 .. jupyter-execute::
@@ -229,7 +231,8 @@ regression: :doc:`Competing Risks SurPyval Modelling`.
 Recurrent events
 ~~~~~~~~~~~~~~~~
 
-Repairable items fail, are repaired and fail again. Recurrent event data adds
+Repairable items fail, are repaired and fail again; a patient can be admitted
+to hospital more than once. Recurrent event data adds
 an item identifier ``i`` to each row; ``x`` is the *cumulative* time of each
 event on that item, and the last row of an item is usually the end of its
 observation, flagged right censored (``c = 1``):
@@ -331,6 +334,8 @@ Where to go next
   each needs different treatment.
 - :doc:`Conventions` is the reference for the input arrays, the censoring flags
   and the functions every model has.
+- :doc:`Glossary` maps the engineering, medical and statistical words for the
+  same ideas (failure and event, reliability and survival) to each other.
 - :doc:`Handy References - Aide-mémoire` collects the identities between
   :math:`f`, :math:`F`, :math:`R`, :math:`h` and :math:`H`.
 - :doc:`Data Wrangler Examples` shows how to get data from the format you have

@@ -2768,6 +2768,26 @@ are all optional. What can look different:
   infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
   which breaks mutmut 3.8.
 
+**Documentation.**
+
+- New page: :doc:`Survival Analysis from Scratch`, for readers who have
+  never met censoring. It explains time-to-event data, why the times cannot
+  simply be averaged, censoring and truncation, the survival, hazard and
+  cumulative hazard functions, the Kaplan-Meier estimate worked by hand, a
+  Weibull fit and how to read it, bounds, comparing groups and regression,
+  with an engineering example (pump failures) and a medical one (time to
+  relapse) throughout. Linked from the front page and the Quickstart.
+- New page: :doc:`Glossary`, mapping the engineering, medical and
+  statistical words for the same ideas (failure and event, unit and subject,
+  reliability and survival, suspension and right censored, B10 life and
+  10th percentile) to each other and to SurPyval's names, with the
+  conversion of an event indicator (1 = event) to the censoring flag ``c``.
+- Field-neutral wording: the README, the front page, Quickstart, Types of
+  Data, Conventions, the aide-mémoire and the introductions of the
+  non-parametric and regression theory pages pair the engineering and the
+  general terms on first use, so they read naturally whatever the field.
+  Wording only: no name, argument, message or number changes.
+
 v0.26 (31 October 2026)
 -----------------------
 
