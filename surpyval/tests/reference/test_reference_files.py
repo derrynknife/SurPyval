@@ -55,7 +55,6 @@ EXPECTED_SOURCES = {
     "r_interval_cox",
     "r_weibullr",
     "r_logrank_extensions",
-    "r_reclassification",
     "r_sample_size",
     "py_lifelines",
     "py_sksurv",
