@@ -46,12 +46,16 @@ from .frailty import (
     CoxFrailty,
     CoxFrailtyFitter,
     CoxFrailtyModel,
+    CoxMixedEffects,
+    CoxMixedEffectsFitter,
+    CoxMixedEffectsModel,
     ExponentialFrailty,
     Frailty,
     FrailtyFitter,
     FrailtyModel,
     GammaFrailty,
     LogNormalFrailty,
+    RandomEffect,
     WeibullFrailty,
 )
 from .life_at import LifeAtCovariates
@@ -64,6 +68,8 @@ from .proportional_hazards import (
     ExponentialPH,
     GammaPH,
     GumbelPH,
+    IntervalCoxPH,
+    IntervalCoxPHModel,
     LogisticPH,
     LogNormalPH,
     NormalPH,
@@ -103,12 +109,16 @@ __all__ = [
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
+    "IntervalCoxPHModel",
     "FrailtyModel",
     # A regression's life at fixed covariates, model.at(Z)
     "LifeAtCovariates",
     "CoxFrailty",
     "CoxFrailtyFitter",
     "CoxFrailtyModel",
+    "CoxMixedEffects",
+    "CoxMixedEffectsFitter",
+    "CoxMixedEffectsModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
     "FrailtyFitter",
@@ -116,6 +126,7 @@ __all__ = [
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty",
+    "RandomEffect",
     # Time-varying-covariate paths for sf_tvc evaluation: steps, continuous
     "StepSchedule",
     "CovariatePath",
@@ -190,4 +201,6 @@ __all__ = [
     "ProportionalOdds",
     "ProportionalOddsFitter",
     "WeibullPO",
+    # Cox for interval-censored data (NPMLE baseline)
+    "IntervalCoxPH",
 ]

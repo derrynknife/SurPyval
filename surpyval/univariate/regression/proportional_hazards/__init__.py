@@ -11,6 +11,7 @@ from surpyval.univariate.parametric import (
 )
 
 from .cox_ph import CoxPH
+from .interval_cox import IntervalCoxPH, IntervalCoxPH_, IntervalCoxPHModel
 from .proportional_hazards_fitter import ProportionalHazardsFitter
 
 
@@ -62,6 +63,9 @@ __all__ = [
     "ExponentialPH",
     "GammaPH",
     "GumbelPH",
+    "IntervalCoxPH",
+    "IntervalCoxPH_",
+    "IntervalCoxPHModel",
     "LogisticPH",
     "LogNormalPH",
     "NormalPH",

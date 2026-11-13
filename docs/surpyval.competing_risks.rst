@@ -25,6 +25,14 @@ variance its confidence bounds (``cb``) use.
 
 .. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_variance
 
+The restricted mean time lost to a cause (``CompetingRisks.rmtl``, and
+``ParametricCompetingRisks.rmtl`` below), its variance, and the
+comparison of two groups.
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.rmtl_diff
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl
+
 Parametric
 ----------
 

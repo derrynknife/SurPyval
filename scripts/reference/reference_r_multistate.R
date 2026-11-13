@@ -43,6 +43,12 @@
 #   covariate profile and probtrans(predt = s) (method "aalen", the
 #   default): P(s, t | z) and its standard errors, and the coefficients
 #   with their standard errors.
+# * mstate's general expanded design: a covariate's effect shared by some
+#   transitions only, and transitions with proportional baselines (one
+#   stratum, with an indicator), on the MGUS data and on the simulated
+#   data with two covariates made from the unit number; the coefficients,
+#   their standard errors, the log partial likelihood and P(s, t | z) with
+#   its standard errors.
 suppressPackageStartupMessages({
   library(survival)
   library(mstate)
@@ -269,6 +275,111 @@ for (name in names(fits)) {
     }
   }
 }
+
+# ---------------------------------------------------------------------------
+# mstate with effects shared by some transitions, and proportional
+# baselines
+# ---------------------------------------------------------------------------
+# The general expanded design of mstate (Putter, Fiocco and Geskus, 2007,
+# section 4.3): each column of the design applies a covariate (or, for a
+# proportional baseline, the constant 1) to a set of transitions and is 0
+# on the others; the strata are the transitions, with transitions whose
+# baselines are proportional put in one stratum. Each design is a list of
+# columns list(name, covariate (NA for the indicator), transitions).
+design_data <- function(st, design) {
+  for (col in design) {
+    on <- st$trans %in% col$trans
+    v <- if (is.na(col$cov)) 1 else st[[col$cov]]
+    st[[col$name]] <- ifelse(on, v, 0)
+  }
+  st
+}
+design_newdata <- function(design, profile, stratum) {
+  K <- length(stratum)
+  nd <- data.frame(trans = 1:K, strata = stratum)
+  for (col in design) {
+    v <- if (is.na(col$cov)) 1 else profile[[col$cov]]
+    nd[[col$name]] <- ifelse(nd$trans %in% col$trans, v, 0)
+  }
+  nd
+}
+design_case <- function(id, fixture, st, tmat, states, times, design,
+                        stratum, profile, ties, starts, describe) {
+  ex <- design_data(st, design)
+  ex$stratum <- stratum[ex$trans]
+  f <- as.formula(paste("Surv(Tstart, Tstop, status) ~",
+                        paste(sapply(design, `[[`, "name"), collapse = " + "),
+                        "+ strata(stratum)"))
+  cx <- coxph(f, data = ex, method = ties)
+  msf <- msfit(cx, newdata = design_newdata(design, profile, stratum),
+               trans = tmat)
+  for (s in starts) {
+    pt <- suppressWarnings(probtrans(msf, predt = s))
+    vals <- probtrans_values(pt, states, times[times >= s])
+    vals$coef <- nums(coef(cx))
+    vals$coef_names <- names(coef(cx))
+    vals$se_coef <- nums(sqrt(diag(vcov(cx))))
+    vals$loglik <- nums(cx$loglik[2])
+    vals$profile <- as.list(profile)
+    add(paste0(id, "_", ties, "_s", s), fixture, "mstate",
+        sprintf("probtrans(msfit(coxph(%s, method = '%s'), newdata), predt = %g)",
+                deparse(f, width.cutoff = 500L), ties, s),
+        c(describe, list(ties = ties, method = "aalen",
+                         strata = paste(stratum, collapse = ", "))),
+        vals)
+  }
+}
+col <- function(name, cov, trans) list(name = name, cov = cov, trans = trans)
+
+# MGUS (transitions 1 mgus -> pcm, 2 mgus -> death, 3 pcm -> death).
+# (a) The effect of age shared by the two transitions into death, sex per
+# transition.
+mgus_groups <- list(
+  col("z1.1", "z1", 1), col("z1.23", "z1", c(2, 3)),
+  col("male.1", "male", 1), col("male.2", "male", 2),
+  col("male.3", "male", 3)
+)
+# (b) The baselines of the two transitions into death proportional (one
+# stratum, pr the indicator of pcm -> death), age per transition, sex
+# shared by all.
+mgus_prop <- list(
+  col("z1.1", "z1", 1), col("z1.2", "z1", 2), col("z1.3", "z1", 3),
+  col("male", "male", 1:3), col("pr", NA, 3)
+)
+for (ties in c("breslow", "efron")) {
+  design_case("mstate_cox_mgus2_groups", "mgus2_multistate", mgus_st,
+              mgus_tmat, mgus_states, mgus_times, mgus_groups, 1:3,
+              profile, ties, c(0, 60),
+              list(effects = "z1 shared by mgus -> death and pcm -> death",
+                   profile = "z1 = 0.5, male = 1"))
+  design_case("mstate_cox_mgus2_proportional", "mgus2_multistate", mgus_st,
+              mgus_tmat, mgus_states, mgus_times, mgus_prop, c(1, 2, 2),
+              profile, ties, c(0, 60),
+              list(effects = paste("baselines of mgus -> death and",
+                                   "pcm -> death proportional; male shared"),
+                   profile = "z1 = 0.5, male = 1"))
+}
+
+# The simulated model with recovery (transitions 1 healthy -> ill, 2
+# healthy -> dead, 3 ill -> healthy, 4 ill -> dead), with two covariates
+# made from the unit number: zb = 1 for every third unit, zc = (id mod 7)
+# / 7. zb is shared by the transitions into death, zc by every
+# transition, and the baselines into death are proportional.
+sim_long$zb <- as.numeric(sim_long$id %% 3 == 0)
+sim_long$zc <- (sim_long$id %% 7) / 7
+sim_cov_st <- stack(sim_long, sim_tmat, c("zb", "zc"))
+sim_design <- list(
+  col("zb.1", "zb", 1), col("zb.24", "zb", c(2, 4)), col("zb.3", "zb", 3),
+  col("zc", "zc", 1:4), col("pr", NA, 4)
+)
+design_case("mstate_cox_sim_groups", "multistate", sim_cov_st, sim_tmat,
+            sim_states, sim_times, sim_design, c(1, 2, 3, 2),
+            c(zb = 1, zc = 0.5), "efron", c(0, 2),
+            list(effects = paste("zb shared by the transitions into dead,",
+                                 "zc by all; baselines into dead",
+                                 "proportional"),
+                 covariates = "zb = id %% 3 == 0, zc = (id %% 7) / 7",
+                 profile = "zb = 1, zc = 0.5"))
 
 out <- list(
   generator = "scripts/reference/reference_r_multistate.R",

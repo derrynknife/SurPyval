@@ -71,6 +71,9 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "variance_cb": "a table of the variance components' profile-likelihood "
+    "intervals of a mixed-effects Cox model (no point method to sweep; "
+    "checked in regression/test_cox_mixed_effects.py)",
     "summary": "a table of the parameters' Wald intervals (param_cb's for "
     "the baseline; checked in regression/test_summary.py, #484)",
     "trend_test": "a hypothesis test: alpha_ci is the level its trend is "

@@ -26,6 +26,133 @@ Unreleased
   take a count of 0 on an interval-counted row (``c=2`` or ``c=-1``), so
   they fit panel counts too; a 0 on an exact-event or end-of-observation
   row is still refused.
+- Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
+  Cox model whose log hazard has Gaussian random effects, a random
+  intercept per group of one or more grouping factors, nested (wards in
+  hospitals) or crossed (batches and machines), and random slopes,
+  correlated with the intercept or not. Terms are given as
+  ``groups=``, as ``RandomEffect(groups, slopes=[...])`` objects, or in
+  ``fit_from_df`` in the bar notation (``random_effects="(1 + trt |
+  centre) + (1 | hospital/ward)"``). Fitted by maximum likelihood as
+  ``coxme`` fits it: the coefficients and random effects maximise the
+  penalised partial likelihood, the variances its Laplace approximation to
+  the integrated partial likelihood. Efron or Breslow ties, counts, late
+  entry and strata as in ``CoxPH``. Reports Wald intervals on the fixed
+  coefficients, ``variance_components()`` with profile-likelihood
+  intervals (``variance_cb()``), the predicted random effects,
+  ``lr_test()`` against the Cox model (a boundary-aware chi-square
+  mixture), coxme's integrated, penalised and null log-likelihoods, and
+  predictions averaged over the random effects (the default, as
+  ``CoxFrailty``), for an observed group, or with the random effects at 0
+  (``marginal=False``). Checked against coxme 2.2.22 on the
+  kidney, lung and a nested/crossed/random-slope data set. Guide:
+  :doc:`regression/frailty`.
+- ``CoxFrailty.fit(..., family="lognormal")``: the log-normal shared
+  frailty with a Cox baseline (coxme's ``(1 | group)``), beside the gamma
+  frailty.
+- Stratified and clustered Fine-Gray regression. ``FineGray.fit(...,
+  strata=...)`` gives each stratum its own baseline subdistribution hazard
+  and its own censoring distribution, with shared coefficients (Zhou,
+  Latouche, Rocha and Fine, 2011), or, with ``strata_censoring="common"``,
+  one censoring distribution for every stratum (for many small strata);
+  ``cif``/``sf`` then take ``stratum=``. ``cluster=...`` keeps the
+  estimates and makes the robust standard errors allow for dependent units
+  within a cluster (Zhou, Fine, Latouche and Labopin, 2012). Both combine
+  with each other and with weights; ``fit_from_df`` takes ``strata_col``
+  and ``cluster_col``; ``to_dict``/``from_dict`` keep each stratum's
+  baseline. Checked against R ``crrSC`` 1.1.2 (``crrs``, ``crrc``) on
+  simulated data, to 1e-7. The diagnostics refuse a fit with strata or
+  clusters, with what to do instead.
+- The restricted mean time lost (RMTL) to a cause of failure: the area
+  under the cause's cumulative incidence up to a horizon ``tau``, the
+  average time of the first ``tau`` lost to that cause.
+  ``CompetingRisks.rmtl(event, tau)`` gives it exactly for the step
+  estimate, with a delta-method standard error (with one cause it is
+  ``tau`` less ``KaplanMeier.rmst``, with the same standard error) and a
+  normal interval; ``ParametricCompetingRisks.rmtl(event, tau)`` from the
+  fitted distributions, with a delta-method interval on the logit of
+  ``rmtl / tau``; and ``surpyval.rmtl_diff(model_a, model_b, event, tau)``
+  compares two groups (difference, its interval and z-test, and the ratio
+  with its interval), as ``rmst_diff`` does for survival. Checked against
+  R ``survival`` 3.8.12, ``cmprsk`` 2.2.12, ``survRM2`` 1.0.4 and
+  ``GFDrmtl`` 0.1.0.
+- More pointwise confidence-interval types for the non-parametric
+  survival estimates (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington,
+  Turnbull, and the survival of ``CompetingRisks``):
+  ``cb(bound_type=...)`` now also takes ``'log'`` (the default of R's
+  ``survfit``), ``'logit'``, ``'arcsine'`` (arcsine-square-root),
+  ``'peto'`` (Peto's variance) and ``'rothman'`` (Rothman's Wilson-type
+  interval), beside ``'exp'`` (log(-log), still the default) and
+  ``'normal'``. ``quantile_cb`` and ``plot`` take them too. Checked
+  against R ``survival`` 3.8.12 (``survfit(conf.type=...)``) and
+  ``km.ci`` 0.5.6 to rounding.
+- The Cox model for interval-censored data, ``IntervalCoxPH`` (model
+  ``IntervalCoxPHModel``): the covariates multiply the hazard,
+  ``S(x | Z) = S0(x) ** exp(beta'Z)``, and the baseline is a
+  non-parametric maximum-likelihood estimate with mass only on the
+  Turnbull intervals of the pooled data, fitted jointly with the
+  coefficients (the model of R's ``icenReg::ic_sp(model = "ph")``, whose
+  coefficients, log-likelihood and curves it matches). Takes exact,
+  right-, left- and interval-censored rows (``x`` as ``[left, right]``
+  pairs), counts and left truncation; ``fit_from_df`` reads intervals
+  from ``xl_col`` and ``xr_col``. Standard errors from the profile
+  likelihood (Murphy and van der Vaart 2000); ``param_cb`` with Wald,
+  profile likelihood-ratio (``method="lr"``) and case-bootstrap
+  (``method="bootstrap"``) intervals, and ``covariance(method=
+  "bootstrap")``. ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``qf``,
+  ``baseline_sf``, ``random``, ``with_params``, ``summary``,
+  ``to_dict`` / ``from_dict``. ``cb`` on the curves, right truncation and
+  ``diagnose()`` refuse, saying what to use instead. ``CoxPH`` still
+  refuses interval-censored rows. Guide:
+  :doc:`Interval-Censored Cox Regression`.
+- ``MultiStateProportionalHazards`` can share a covariate's effect among
+  some transitions only: ``shared={"age": [("healthy", "dead"), ("ill",
+  "dead")]}`` gives age one coefficient on the two transitions into death
+  and its own on the others (several groups are a list of such lists;
+  transitions may also be named ``"healthy -> dead"``). The list form,
+  ``shared=["age"]``, still shares it among every transition. A new
+  ``proportional_baselines`` option takes transitions whose baseline
+  hazards are proportional: they share one baseline (the first's) and the
+  log of each other's ratio to it is one more coefficient (``"baseline:
+  ill -> dead vs healthy -> dead"``). Both are R ``mstate``'s general
+  expanded design, one stratified Cox model of the stacked data; the
+  predictions' standard errors carry the shared parameters' covariance
+  across transitions. Checked against ``mstate`` 0.3.3 on the MGUS data
+  and a simulated model with recovery (coefficients, standard errors, log
+  partial likelihood and ``probtrans``'s probabilities and standard
+  errors). For two transitions sharing a baseline, the standard errors
+  use the covariance :math:`\phi_h \phi_g` times the baseline's
+  variance; ``msfit`` uses :math:`\phi_h^2`, which depends on the order
+  of the transitions, so the standard errors differ from mstate's there
+  (by about 7% to 13% in the checks). Saved models gain the keys
+  ``shared_groups`` and ``baseline_groups`` when the options are used.
+- Pivotal bounds for probability-plotting fits: ``cb``, ``quantile_cb``
+  and ``param_cb`` take ``method="pivotal"`` on a model fitted with
+  ``how="MPP"`` (rank regression) of the Weibull, LogNormal, LogLogistic,
+  Normal, Logistic, Gumbel, GumbelLEV or Exponential. The fitted line's
+  error, measured in units of its own slope, has a distribution free of
+  the parameters; it is simulated from ``n_sim`` standard samples (9999
+  by default) of the same size and rank pattern, fitted by the same
+  regression, and inverted for bounds on the parameters, the quantiles
+  (B-lives) and ``sf`` / ``ff`` / ``Hf`` (Lawless 2003, section 5.1;
+  the Monte Carlo pivotal bounds of Abernethy's *New Weibull Handbook*).
+  Exact for complete and type II censored samples up to Monte Carlo
+  error: over 1000 samples of 5, 10 and 20, 90% bounds covered 88.2% to
+  91.9%, where the MLE's Wald bounds covered 64% to 89%
+  (``calibration/test_coverage_pivotal.py``). Seeded by ``random_state``;
+  ``to_dict`` now records an MPP fit's plotting options
+  (``"mpp_options"``), so a model saved ``with_data=True`` gives the same
+  bounds. Refused, with what to use instead, for other methods and
+  families, offsets, left- or interval-censored and truncated data. The
+  fits agree exactly with R's ``WeibullR``, whose ``pivotal-rr`` bounds
+  are constructed differently (see :doc:`Parametric SurPyval Modelling`).
+- ``Parametric.rba(basis="median")``: Abernethy's reduced bias
+  adjustment of a maximum-likelihood fit, the Weibull shape multiplied by
+  ``C4^3.5`` (median-unbiased; ``basis="mean"``: ``C4^6``) or the
+  LogNormal or Normal ``sigma`` by ``sqrt(r / (r - 1)) / C4``, for ``r``
+  failures; opt-in, returning the adjusted model (``bias_adjustment``
+  says what was applied). The factors agree with R ``WeibullR``'s
+  ``rba`` to 1e-12.
 - Four more tests in the log-rank family, each with a result object,
   ``to_dict`` and a plain-words section in
   :doc:`Non-Parametric SurPyval Modelling`, checked against R:
@@ -1209,6 +1336,15 @@ Unreleased
 
 **Changed.**
 
+- **The bootstrap bounds of an MPP, MPS, MSE or MOM fit refit by that
+  method (an intentional change of numbers).** ``param_cb(...,
+  method="bootstrap")`` and ``bootstrap()`` refitted every resample by
+  maximum likelihood, whatever the model was fitted by, so the bound on,
+  say, a rank-regression shape was the spread of the maximum-likelihood
+  shape, centred by the share of those refits below the rank-regression
+  estimate. They now refit with the model's own ``how`` (and an MPP
+  fit's plotting options). On ten Weibull lifetimes the 95% bound on an
+  MPP shape of 1.43 moved from [0.82, 2.32] to [0.88, 2.70].
 - **Zero-inflated fits: a row "failed by t" includes the units dead on
   arrival (an intentional change of numbers).** In a univariate
   ``fit(..., zi=True)`` an interval starting at 0, ``[0, t]``, was read

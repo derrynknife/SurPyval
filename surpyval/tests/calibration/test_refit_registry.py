@@ -1146,6 +1146,12 @@ for _base in ("Weibull", "Exponential"):
 PLANS["Weibull[xcnt]"] = Plan(
     _xcnt_parametric, 300, 100, params=_parametric_params
 )
+# Probability-plotting fits (how="MPP"), a closed-form regression on the
+# plotting positions: refitted as the maximum-likelihood fits are, on the
+# same censored draws (their pivotal bounds' coverage is
+# calibration/test_coverage_pivotal.py's business).
+for _base in ("Weibull", "LogNormal"):
+    PLANS[f"{_base}[MPP]"] = _CENSORED
 # The fixture's 1000 units, 3% of which fail within the 24 months
 PLANS["Weibull[lfp-counts]"] = Plan(
     _lfp_counts, 1000, 100, params=_parametric_params
@@ -1239,6 +1245,35 @@ for _base in reg.CURE_LATENCIES:
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+
+
+def _equivalence_draw(case, truth, n):
+    # The model's own random, at usage rates resampled from the fixture's
+    # (each unit's second clock per unit of the first); censored on the
+    # first clock by two further lives at the same rate, and the second
+    # clock read at the same rate.
+    d = case.data()
+    rates = np.asarray(d["x2"], dtype=float) / np.asarray(d["x"], dtype=float)
+
+    def draw(rng):
+        rate = rng.choice(rates, n)
+        t = np.vstack(
+            [truth.random(n, rate=rate, random_state=rng)[0] for _ in "abc"]
+        )
+        out = _censor(*t)
+        out["x2"] = rate * out["x"]
+        return out
+
+    return draw
+
+
+for _base in reg.CURE_LATENCIES:
+    PLANS[_base + "Equivalence"] = Plan(
+        _equivalence_draw,
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
@@ -1288,12 +1323,13 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-PLANS["CoxFrailty"] = Plan(
-    _regression(own_random=False, step=True),
-    _REG_N,
-    _REG_REPS,
-    note=_SEMI + "; " + _NO_FRAILTY,
-)
+for _name in ("CoxFrailty", "CoxMixedEffects"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False, step=True),
+        _REG_N,
+        _REG_REPS,
+        note=_SEMI + "; " + _NO_FRAILTY,
+    )
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
@@ -1458,6 +1494,19 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    "IntervalCoxPH": "its fixture is interval censored, and the "
+    "regression plans draw exact and right-censored times, which would "
+    "check the grouped-data likelihood rather than the interval one; its "
+    "coefficients' coverage on simulated interval-censored data is "
+    "calibration/test_coverage_interval_cox.py's",
+    "FineGray[strata]": "the competing-risks simulator draws every unit "
+    "from one baseline and one censoring distribution; recovery and "
+    "coverage of the stratified fit are checked by its own study "
+    "(test_coverage_regression.py, three strata with their own baselines "
+    "and censoring)",
+    "FineGray[cluster]": "the estimate is the plain FineGray fit's, planned "
+    "above; what the clusters change, the standard errors, is checked by "
+    "its own study with dependent units (test_coverage_regression.py)",
     **dict.fromkeys(
         (
             "AndersenGill",
@@ -1472,7 +1521,11 @@ EXCLUDED: dict[str, str] = {
         "tests/recurrent/test_recurrent_cox.py",
     ),
     **dict.fromkeys(
-        ("MultiState", "MultiStateProportionalHazards"),
+        (
+            "MultiState",
+            "MultiStateProportionalHazards",
+            "MultiStateProportionalHazards[shared]",
+        ),
         "no simulation from the model: its fit is a step estimate of the "
         "transition hazards with no shape beyond the data, and the models "
         "have no random() to draw a unit's path through the states. "
@@ -1508,6 +1561,14 @@ EXCLUDED: dict[str, str] = {
         "give (no simulator of paths): recovery of each transition's "
         "parameters and of the occupation probabilities from simulated "
         "Markov paths is tested in tests/multistate/test_parametric.py",
+    ),
+    **dict.fromkeys(
+        ("PanelMultiState", "PanelMultiStateRegression"),
+        "states seen only at visits, a history which a model draw does not "
+        "give (no simulator of visit schedules or paths): recovery of the "
+        "intensities and the coverage of their bounds from simulated "
+        "panels is calibration/test_coverage_multistate_panel.py, and the "
+        "models' special cases are in tests/multistate/test_panel.py",
     ),
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "

@@ -1,0 +1,199 @@
+{
+  "generator": "scripts/reference/reference_r_weibullr.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "mrr_weibull_xony_complete": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'weibull', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "complete",
+        "dist": "weibull",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 141.325128810577,
+        "p2": 1.74574079451401,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [1.84558888111205, 15.7109869210007, 77.9556336961717, 157.185701479404],
+        "datum": [10.2072372554024, 38.7878767641641, 114.013269367285, 228.932696756385],
+        "upper": [33.4196925379503, 75.0718287054271, 156.327734865767, 328.003725551294]
+      }
+    },
+    "mrr_lognormal2p_xony_complete": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'lognormal2p', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "complete",
+        "dist": "lognormal2p",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 4.65141194695159,
+        "p2": 0.685111328326088,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [9.95082513928736, 26.1980605181109, 73.8631944413251, 157.043993161901],
+        "datum": [21.1877573594997, 43.2312921686189, 104.732758327775, 253.230842228277],
+        "upper": [41.5356593341657, 70.0084044678413, 148.629099249764, 424.303303815807]
+      }
+    },
+    "mrr_weibull_xony_type2": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'weibull', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "type2",
+        "dist": "weibull",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 141.861103942404,
+        "p2": 1.72829598040335,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [1.20820805485865, 15.1149915596162, 76.4896264064888, 125.340886724036],
+        "datum": [9.56989166200238, 37.3558354478659, 114.645382941752, 230.044269893431],
+        "upper": [33.6556753825262, 67.9660933766897, 162.242938395282, 522.432862328309]
+      }
+    },
+    "mrr_lognormal2p_xony_type2": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'lognormal2p', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "type2",
+        "dist": "lognormal2p",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 4.76847315767445,
+        "p2": 0.8647389828714,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [5.7531103645779, 22.6596246582363, 73.4123463003639, 146.740560498428],
+        "datum": [15.3594456492274, 37.936791517624, 117.739335250589, 355.254379347307],
+        "upper": [35.8502335837456, 62.9207449154759, 192.476851028092, 1019.8576138925]
+      }
+    },
+    "mrr_weibull_xony_mixed": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'weibull', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "mixed",
+        "dist": "weibull",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 157.998544684138,
+        "p2": 1.61129147753092,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [1.13432784275018, 13.3126240581369, 79.7449261006025, 162.686278853297],
+        "datum": [8.9562168683381, 38.451087714832, 124.856820493134, 265.808034435682],
+        "upper": [35.2985695268952, 80.2245500541307, 179.277509840403, 442.933200855402]
+      }
+    },
+    "mrr_lognormal2p_xony_mixed": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.conf(wblr.fit(wblr(fail, susp, pp = 'benard'), dist = 'lognormal2p', method.fit = 'rr-xony'), method.conf = 'pivotal-rr', ci = 0.9, S = 1e4, seed = 1234)",
+      "settings": {
+        "design": "mixed",
+        "dist": "lognormal2p",
+        "method": "rr-xony"
+      },
+      "values": {
+        "p1": 4.74971405763195,
+        "p2": 0.777874693673129,
+        "unrel": [0.01, 0.1, 0.5, 0.9],
+        "lower": [7.51019073541861, 23.36424060283, 75.1506005286964, 165.603410131389],
+        "datum": [18.9027054446345, 42.6086587300655, 115.551238807972, 315.087158685892],
+        "upper": [43.0596526695606, 74.440413294029, 179.56400263097, 640.41437736418]
+      }
+    },
+    "mle_rba_weibull_complete": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.fit(wblr(fail, susp), dist = 'weibull', method.fit = 'mle' and 'mle-rba')",
+      "settings": {
+        "design": "complete",
+        "dist": "weibull"
+      },
+      "values": {
+        "mle_p1": 139.121624634094,
+        "mle_p2": 2.07698038871992,
+        "p1": 139.121624634094,
+        "p2": 1.88492883456656
+      }
+    },
+    "mle_rba_lognormal2p_complete": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.fit(wblr(fail, susp), dist = 'lognormal2p', method.fit = 'mle' and 'mle-rba')",
+      "settings": {
+        "design": "complete",
+        "dist": "lognormal2p"
+      },
+      "values": {
+        "mle_p1": 4.65132695293288,
+        "mle_p2": 0.609732277652568,
+        "p1": 4.65132695293288,
+        "p2": 0.660780471162632
+      }
+    },
+    "mle_rba_weibull_mixed": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.fit(wblr(fail, susp), dist = 'weibull', method.fit = 'mle' and 'mle-rba')",
+      "settings": {
+        "design": "mixed",
+        "dist": "weibull"
+      },
+      "values": {
+        "mle_p1": 154.315746764752,
+        "mle_p2": 1.99458714376355,
+        "p1": 154.315746764752,
+        "p2": 1.76094821529187
+      }
+    },
+    "mle_rba_lognormal2p_mixed": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "wblr.fit(wblr(fail, susp), dist = 'lognormal2p', method.fit = 'mle' and 'mle-rba')",
+      "settings": {
+        "design": "mixed",
+        "dist": "lognormal2p"
+      },
+      "values": {
+        "mle_p1": 4.76432256407671,
+        "mle_p2": 0.685456428844018,
+        "p1": 4.76432256407671,
+        "p2": 0.759337429332826
+      }
+    },
+    "rba_factors": {
+      "fixture": "rank_regression",
+      "software": "R WeibullR",
+      "version": "1.2.4",
+      "call": "rba(r, dist, basis)",
+      "settings": {
+        "r": "3..30, 50, 100, 343, 344"
+      },
+      "values": {
+        "r": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 50, 100, 343, 344],
+        "weibull_median": [0.655250396462581, 0.75064224857132, 0.805237898347941, 0.840394633673282, 0.864867442970551, 0.882863514285551, 0.896644984403421, 0.907533284764561, 0.916350939173345, 0.923636254926628, 0.929756122229306, 0.934969119938653, 0.939462689345842, 0.943375997621029, 0.946814524238456, 0.949859664324101, 0.952575226491235, 0.955011936079772, 0.95721062290791, 0.959204520800715, 0.961020954675591, 0.962682597309417, 0.964208418563934, 0.965614411396318, 0.96691415356142, 0.968119246797642, 0.969239663570118, 0.970284023295975, 0.982302568116962, 0.991200708814963, 0.997444794223431, 1],
+        "weibull_mean": [0.484473073129685, 0.611584652955486, 0.689806387327227, 0.742237255853533, 0.779674826532691, 0.807692627617549, 0.829426754799123, 0.84676791232918, 0.860920671869533, 0.872687606942995, 0.882623545357559, 0.891124065885238, 0.8984786825177, 0.904904092725672, 0.910565678726347, 0.915591826548922, 0.920083710231242, 0.924122130587638, 0.927772392437779, 0.931087846084415, 0.934112500825012, 0.936882982075539, 0.939430016564687, 0.941779573145115, 0.943953748860845, 0.945971464216887, 0.947849013897909, 0.949600506806086, 0.969853624941469, 0.984962945272203, 0.995623645607557, 1],
+        "lognormal": [1.38197659788534, 1.2533141373155, 1.18941607743518, 1.1512425464398, 1.12586886550527, 1.10778365681595, 1.09424168338679, 1.08372230793914, 1.07531528704025, 1.06844247743369, 1.06271905648514, 1.05787896002132, 1.05373235530269, 1.05014016583662, 1.04699817154608, 1.04422673314609, 1.0417639490538, 1.03956097771174, 1.03757876598162, 1.03578571405466, 1.03415597836571, 1.03266821800247, 1.03130465504261, 1.03005036077783, 1.02889270691488, 1.02782093891761, 1.02682584091027, 1.02589947000992, 1.01531919459649, 1.00757895349003, 1.00219324982352, 1]
+      }
+    }
+  }
+}
