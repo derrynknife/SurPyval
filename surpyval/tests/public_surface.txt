@@ -104,6 +104,7 @@ surpyval.JointPH
 surpyval.KaplanMeier
 surpyval.LandmarkCox
 surpyval.LifeAtCovariates
+surpyval.LifeAtUsage
 surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
 surpyval.LogLogistic
