@@ -81,7 +81,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 __all__ = ["JointFrailty", "JointFrailtyModel"]
 
@@ -906,8 +906,7 @@ def _minimise(search: _Search, start: npt.NDArray) -> Any:
             g = np.asarray(jac(u), dtype=float)
         return np.where(np.isfinite(g), g, 0.0)
 
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
+    with np.errstate(all="ignore"), ignoring_warnings(RuntimeWarning):
         res = minimize(
             fun,
             start,
@@ -2426,8 +2425,9 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
     def random(
         self,
         size: int,
-        end: Any,
         Z: Any = None,
+        *,
+        end: Any,
         random_state: Any = None,
     ) -> dict:
         """
@@ -2445,11 +2445,11 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         ----------
         size : int
             The number of units.
-        end : float or array_like
-            The age at which each unit's observation ends (one value, or
-            one per unit).
         Z : array_like, optional
             The units' covariates: one row for all, or one per unit.
+        end : float or array_like
+            The age at which each unit's observation ends (one value, or
+            one per unit); keyword only.
         random_state : optional
             A seed or ``numpy.random.Generator``; ``None`` draws from
             numpy's global generator.

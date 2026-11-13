@@ -55,6 +55,7 @@ from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 __all__ = ["PanelCountMCF", "PanelCountRegression"]
 
@@ -1811,8 +1812,10 @@ class PanelCountRegression(SerialisableMixin):
         if init is not None:
             init = [np.nan if b is None else b for b in init]
         names = model_dict.get("feature_names")
-        with warnings.catch_warnings(), covariate_columns(names):
-            warnings.simplefilter("ignore", PanelCountConvergenceWarning)
+        with (
+            ignoring_warnings(PanelCountConvergenceWarning),
+            covariate_columns(names),
+        ):
             out = cls.fit(
                 model_dict["x"],
                 model_dict["Z"],

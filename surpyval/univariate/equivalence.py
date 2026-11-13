@@ -78,7 +78,6 @@ conditions. *Journal of the American Statistical Association* 82,
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as anp
@@ -1652,8 +1651,7 @@ class EquivalenceModel(InformationCriteriaMixin, SerialisableMixin):
         if self._covariance is None and self.__dict__.get("_data") is None:
             return text
         level = f"{100 * (1 - alpha_ci):.4g}%"
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             try:
                 method = "wald" if self.k > 0 else "lr"
                 if method == "lr" and self.__dict__.get("_data") is None:

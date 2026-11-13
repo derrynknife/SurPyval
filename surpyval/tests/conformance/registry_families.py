@@ -237,6 +237,9 @@ ROBUST_COVARIANCE = frozenset(
     {
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
+        # (robust by default: a unit's rows at different landmarks are
+        # dependent)
+        "surpyval.LandmarkCox",
     }
 )
 

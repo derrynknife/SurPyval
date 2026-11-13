@@ -94,7 +94,7 @@ def _refusals():
             lambda: sp.RoystonParmar.fit(X, C, scale="logit")
         ),
         "KaplanMeier.cb bound_type": (
-            lambda: sp.KaplanMeier.fit(X, C).cb([2.0], bound_type="log")
+            lambda: sp.KaplanMeier.fit(X, C).cb([2.0], bound_type="log-log")
         ),
         "KaplanMeier.band method": (
             lambda: sp.KaplanMeier.fit(X, C).band([2.0], method="eqp")

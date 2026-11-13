@@ -582,30 +582,21 @@ class LandmarkCox(SerialisableMixin):
     def summary(self, alpha_ci: float = 0.05, robust: bool = True) -> Any:
         """
         The coefficients' table: estimate, standard error (robust,
-        clustered on the unit, by default), z, p-value, the Wald bounds
-        and the hazard ratio ``exp(coef)``.
+        clustered on the unit, by default), z, p-value and the Wald
+        bounds of the coefficient and of the hazard ratio ``exp(coef)``,
+        with the columns of every regression model's ``summary``.
         """
-        import pandas as pd
+        from surpyval.univariate.regression._summary import (
+            coefficient_table,
+        )
 
         check_alpha_ci(alpha_ci)
-        b = self.params
-        se = self.standard_errors(robust)
-        z = norm.isf(alpha_ci / 2)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            stat = b / se
-        table = pd.DataFrame(
-            {
-                "coef": b,
-                "exp(coef)": np.exp(b),
-                "se": se,
-                "z": stat,
-                "p": 2 * norm.sf(np.abs(stat)),
-                "lower": b - z * se,
-                "upper": b + z * se,
-            },
-            index=pd.Index(self.parameter_names, name="term"),
+        return coefficient_table(
+            list(self.parameter_names),
+            self.params,
+            self.standard_errors(robust),
+            alpha_ci,
         )
-        return table
 
     def _check_effect_s(self, s: npt.NDArray) -> None:
         lo, hi = self.landmarks[0], self.landmarks[-1]

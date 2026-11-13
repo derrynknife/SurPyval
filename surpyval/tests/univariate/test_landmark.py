@@ -290,7 +290,7 @@ def test_supermodel_robust_differs_from_model_based():
     )
     table = model.summary()
     assert list(table.index) == model.parameter_names
-    assert_allclose(table["se"], model.standard_errors())
+    assert_allclose(table["se(coef)"], model.standard_errors())
 
 
 def test_predict_shapes_and_table():

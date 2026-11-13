@@ -332,6 +332,8 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "rmtl":
+            out.append(model.rmtl(*args)["rmtl"])
         elif spec.method == "rmst_cb":
             # (the point alone: a model with no covariance, the Uniform,
             # has likelihood-ratio bounds but no rmst() interval)
@@ -1064,8 +1066,16 @@ def _how(sigs):
     # copula's default is the two-stage inference-functions-for-margins
     # estimate (documented; MLE is the joint alternative), and the
     # non-parametric competing risks' is its Nelson-Aalen survival (it
-    # has no likelihood).
-    own = {"Copula": "IFM", "CompetingRisks": "Nelson-Aalen"}
+    # has no likelihood). The panel-count models choose between the
+    # likelihood and the pseudo-likelihood ("likelihood" / "pseudo"); the
+    # regression's default is the pseudo-likelihood, whose profile is
+    # concave with an exact baseline (both recorded in DECISIONS.md).
+    own = {
+        "Copula": "IFM",
+        "CompetingRisks": "Nelson-Aalen",
+        "PanelCountMCF": "likelihood",
+        "PanelCountRegression": "pseudo",
+    }
     return [
         f"{o}.{m}(how={p.default!r})"
         for o, m, ps in sigs
