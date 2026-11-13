@@ -176,7 +176,6 @@ surpyval.ProportionalOddsModel
 surpyval.PseudoRegressionResult
 surpyval.RandomEffect
 surpyval.Rayleigh
-surpyval.RiskReclassification
 surpyval.RoystonParmar
 surpyval.RoystonParmarModel
 surpyval.RoystonParmarPH
@@ -296,7 +295,6 @@ surpyval.fsli_handler
 surpyval.fsli_to_xcnt
 surpyval.gray_test
 surpyval.handle_xicn
-surpyval.idi_nri
 surpyval.integrated_brier_score
 surpyval.interval_logrank
 surpyval.life_models.Arrhenius
@@ -320,13 +318,11 @@ surpyval.maxstat_logrank
 surpyval.metrics.ConcordanceComparison
 surpyval.metrics.ConcordanceResult
 surpyval.metrics.PredictionScores
-surpyval.metrics.RiskReclassification
 surpyval.metrics.auc_td
 surpyval.metrics.brier_score
 surpyval.metrics.compare_concordance
 surpyval.metrics.concordance_estimate
 surpyval.metrics.concordance_index
-surpyval.metrics.idi_nri
 surpyval.metrics.integrated_brier_score
 surpyval.metrics.score_predictions
 surpyval.metrics.survival_probability

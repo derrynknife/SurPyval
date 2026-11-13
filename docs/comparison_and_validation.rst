@@ -167,13 +167,3 @@ and Uno's version" on the :doc:`regression analysis` page):
 .. autofunction:: surpyval.metrics.concordance.compare_concordance
 
 .. autoclass:: surpyval.metrics.concordance.ConcordanceComparison
-
-The integrated discrimination improvement and the net reclassification
-improvement of a new risk model over an old one at a horizon, with their
-event and non-event parts and resampling bounds (see "Does a new marker
-improve the predictions?" on the :doc:`regression analysis` page, which
-also says why the Brier score difference comes first):
-
-.. autofunction:: surpyval.metrics.reclassification.idi_nri
-
-.. autoclass:: surpyval.metrics.reclassification.RiskReclassification
