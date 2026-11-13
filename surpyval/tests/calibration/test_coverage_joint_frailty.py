@@ -144,3 +144,49 @@ def test_size_of_no_frailty_test():
         "JointFrailty size of the theta = 0 test at 5%",
         side="upper",
     )
+
+
+# ---------------------------------------------------------------------------
+# A second size study of the theta = 0 test, an independent check of its
+# reference: the 50:50 chi-square(1):chi-square(2) mixture was chosen
+# after the study above failed with the single-variance reference and was
+# confirmed on that same study, so its 5.0% there is not independent
+# evidence. This design was written down and committed before it was run
+# once: a new seed; 1000 replicates of 120 units with no frailty; a
+# decreasing recurrent intensity (Weibull scale 5, shape 0.8) and a
+# steeply rising terminal hazard (scale 8, shape 2.5), so the terminal
+# event closes most histories (heavier censoring by the terminal event
+# than above); one standard-normal covariate with effects -0.4
+# (recurrent) and 0.6 (terminal); follow-up uniform on (5, 15). The same
+# nominal level (5%) and the file's tolerance rule (3 Monte Carlo
+# standard errors plus 0.01, one sided).
+# ---------------------------------------------------------------------------
+N_2 = 120
+REPS_2 = 1000
+SEED_2 = 24131
+
+
+def _null_2(r):
+    rng = np.random.default_rng([SEED_2, r])
+    truth = JointFrailty.from_params(
+        (5.0, 0.8), (8.0, 2.5), 0.0, 1.0, beta=[-0.4], gamma=[0.6]
+    )
+    Z = rng.normal(size=(N_2, 1))
+    end = rng.uniform(5.0, 15.0, N_2)
+    rows = truth.random(N_2, end=end, Z=Z, random_state=rng)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = JointFrailty.fit(**rows)
+        return float(model.frailty_tests().loc["theta = 0", "p"])
+
+
+def test_size_of_no_frailty_test_second_design():
+    with process_pool(max_workers=WORKERS) as pool:
+        p = np.array(list(pool.map(_null_2, range(REPS_2))))
+    check_rate(
+        int(np.sum(p < 0.05)),
+        REPS_2,
+        0.05,
+        "JointFrailty size of the theta = 0 test at 5%, second design",
+        side="upper",
+    )
