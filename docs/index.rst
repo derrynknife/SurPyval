@@ -331,6 +331,7 @@ Contents:
    Mixture-Cure Regression
    Equivalent Time Scales
    Zero-Inflated Regression
+   Interval-Censored Cox Regression
    Pseudo-Observations
    Adjusted Survival Curves
    Model Diagnostics

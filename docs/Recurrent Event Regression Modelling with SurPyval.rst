@@ -1548,5 +1548,130 @@ a refusal or an absent method rather than a wrong answer:
   with the other modes' rows flagged ``c = 1`` (as
   ``CauseSpecificProportionalIntensity`` does for the parametric models).
 
+Recurrent events that end in a terminal event
+---------------------------------------------
+
+The models above take the end of an item's observation as uninformative.
+When the history ends in an event that depends on the recurrences -- a
+unit scrapped after too many repairs, a patient who dies after repeated
+admissions -- ``JointFrailty`` models the two kinds of event together:
+each item has one unobserved frailty that raises its rate of recurrences
+and its hazard of the terminal event (the theory is on
+:doc:`Recurrent Event Regression Analysis`).
+
+The rows are those of the other recurrent models -- each event at its age
+(``c = 0``), and one row per item closing its observation (``c = 1``) --
+plus a flag ``terminal``, 1 on the closing row where the terminal event
+closed it and 0 where observation simply stopped.
+
+A fleet of pumps
+~~~~~~~~~~~~~~~~
+
+120 pumps, half of them on a harsh duty, are followed for 10 years: every
+repair is logged, and a pump scrapped as beyond economic repair ends its
+history. The data are simulated here from a joint frailty model (with
+``random``, which returns the rows ``fit`` takes), so the truth is known.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval.recurrent import CrowAMSAA, JointFrailty, ProportionalIntensityNHPP
+
+    truth = JointFrailty.from_params(
+        recurrent=(3.0, 1.3), terminal=(14.0, 2.0), theta=0.6, alpha=1.5,
+        beta=[0.4], gamma=[0.5],
+    )
+    duty = np.repeat([[0.0], [1.0]], 60, axis=0)
+    pumps = truth.random(120, end=10.0, Z=duty, random_state=2026)
+    model = JointFrailty.fit(**pumps)
+    model.summary().round(3)
+
+``theta`` is how much the pumps differ beyond their duty, and ``alpha``
+how scrapping depends on it: a positive ``alpha`` says the pumps that are
+repaired most are the ones scrapped soonest. Both are tested against no
+effect by ``frailty_tests``:
+
+.. jupyter-execute::
+
+    model.frailty_tests().round(4)
+
+Treating scrapping as ordinary censoring (a proportional-intensity model of
+the repairs alone) understates the repair rate, because the worst pumps
+leave the data early. The expected number of repairs over 10 years of
+harsh duty for a pump that is never scrapped:
+
+.. jupyter-execute::
+
+    naive = ProportionalIntensityNHPP.fit(
+        pumps["x"], pumps["Z"], i=pumps["i"], c=pumps["c"], baseline=CrowAMSAA
+    )
+    print(round(float(naive.cif(10.0, [1.0])), 2),
+          round(float(model.cif(10.0, [1.0])), 2),
+          round(float(truth.cif(10.0, [1.0])), 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(float(naive.cif(10.0, [1.0])), 1) == 6.0
+    assert round(float(model.cif(10.0, [1.0])), 1) == 7.5
+    assert round(float(truth.cif(10.0, [1.0])), 1) == 7.1
+
+The naive model says about 6.0 repairs, the joint model 7.5, and the truth
+is 7.1. The repairs a pump actually gets, the scrapping stopping them, are
+``mcf``; the chance it is still in service is ``sf``; both with bounds,
+for the population of harsh-duty pumps, or for one pump given its own
+predicted frailty (``model.frailties``):
+
+.. jupyter-execute::
+
+    print(model.mcf(10.0, [1.0]).round(2), model.mcf_cb(10.0, [1.0]).round(2))
+    print(model.sf([5.0, 10.0], [1.0]).round(3))
+    worst = max(model.frailties, key=model.frailties.get)
+    print(worst, round(model.frailties[worst], 2),
+          model.sf(10.0, [1.0], frailty=model.frailties[worst]).round(3))
+
+Hospital readmissions
+~~~~~~~~~~~~~~~~~~~~~
+
+The same model serves a clinical study: 300 patients, half of them
+treated, followed for up to 1500 days, with every readmission recorded
+and death ending the follow-up. Here the time to the next readmission
+is counted from the last discharge (``time_scale="gap"``), each
+readmission starting the clock again; death is on the time since
+entry.
+
+.. jupyter-execute::
+
+    truth = JointFrailty.from_params(
+        recurrent=(400.0, 0.9), terminal=(2500.0, 1.3), theta=0.8, alpha=1.0,
+        beta=[-0.3], gamma=[-0.4], time_scale="gap",
+    )
+    treated = np.repeat([[0.0], [1.0]], 150, axis=0)
+    patients = truth.random(300, end=1500.0, Z=treated, random_state=7)
+    study = JointFrailty.fit(**patients, time_scale="gap")
+    rate_ratio = np.exp(study.beta[0])
+    print(round(rate_ratio, 2), np.exp(study.param_cb("recurrent: coef_0")).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(rate_ratio, 2) == 0.61
+
+The treatment cuts the rate of readmission to about 0.61 of the untreated
+rate, for patients of equal frailty. The patients differ a good deal
+(``theta``), and the frailest are the ones who die soonest (``alpha``):
+
+.. jupyter-execute::
+
+    print(round(study.theta, 2), round(study.alpha, 2))
+    study.frailty_tests().round(4)
+
+Not available yet, each refused with a message rather than answered
+wrongly: ``mcf`` on the gap time scale (simulate with ``random``),
+delayed entry on the gap time scale, left- and interval-censored counts,
+covariates that change over time, and spline baselines.
+
 See :doc:`Recurrent Event Regression Analysis` for the theory and references
 behind these models.

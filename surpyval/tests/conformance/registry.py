@@ -328,6 +328,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
     "surpyval.CoxFrailtyFitter": _BASE,
+    "surpyval.CoxMixedEffectsFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
@@ -344,6 +345,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
+    "surpyval.Measurements": _DATA,
     "surpyval.TransitionMatrix": _DATA
     + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
@@ -352,12 +354,16 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.landmark_kaplan_meier": _FUNCTION
     + " (Kaplan-Meier fits, registered, of landmark data)",
     "surpyval.CovariatePath": _DATA,
+    "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
+    "surpyval.MaxComboResult": _RESULT,
+    "surpyval.TrendLogRankResult": _RESULT,
+    "surpyval.PermutationLogRankResult": _RESULT,
+    "surpyval.MaxStatResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
-    "surpyval.RiskReclassification": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -433,6 +439,10 @@ for _fn in (
     "logrank",
     "interval_logrank",
     "pairwise_logrank",
+    "maxcombo_logrank",
+    "trend_logrank",
+    "permutation_logrank",
+    "maxstat_logrank",
     "plot_nonparametric",
     "at_risk_table",
     "plot_coefficients",
@@ -441,6 +451,7 @@ for _fn in (
     "person_years",
     "poisson_rate_bounds",
     "rmst_diff",
+    "rmtl_diff",
     "sf_diff",
     "success_run",
     "weibayes",
@@ -450,7 +461,6 @@ for _fn in (
     "compare_concordance",
     "concordance_estimate",
     "concordance_index",
-    "idi_nri",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",
@@ -463,6 +473,9 @@ for _fn in (
     "weight_diagnostics",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
+OUT_OF_SCOPE["surpyval.univariate.competing_risks.rmtl_diff"] = (
+    _FUNCTION + ": compares two fitted competing-risks models"
+)
 for _fn in ("to_stacked", "from_stacked"):
     OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
         _FUNCTION + ": converts multi-state data between its forms"

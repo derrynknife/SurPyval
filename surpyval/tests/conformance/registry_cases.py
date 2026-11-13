@@ -51,14 +51,17 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_COP,
     X_CR,
     X_DESTR,
+    X_JF,
     X_JOINT,
     X_MS,
     X_MSR,
+    X_PANEL,
     X_PATH,
     X_PROC,
     X_REC,
     X_UNI,
     Z_CR,
+    Z_JF,
     Z_MS,
     Z_REC,
     beta_geometric_data,
@@ -70,11 +73,14 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     joint_data,
+    joint_frailty_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
     ms_data,
     offset_data,
+    panel_count_data,
+    panel_data,
     path_data,
     process_data,
     quantiles,
@@ -141,6 +147,10 @@ def _nonparametric(name, data=uni_data, **kw):
         },
         **kw,
     )
+
+
+#: The probability-plotting fits registered, with their pivotal bounds.
+_MPP_FAMILIES = ("Weibull", "LogNormal")
 
 
 def _univariate():
@@ -228,6 +238,29 @@ def _univariate():
             paths={},
         )
     )
+    # Probability-plotting fits, whose bounds are the pivotal ones
+    for name in _MPP_FAMILIES:
+        out.append(
+            continuous(
+                name,
+                case_name=f"{name}[MPP]",
+                fitters=(),
+                fixed={"how": "MPP"},
+                exclude={
+                    "convergence[initial guess]": "a closed-form "
+                    "regression: no search, so no initial guess to leave",
+                    "maximum": "not a maximum-likelihood fit: its "
+                    "maximum is 'not applicable'",
+                    "maximum[starved]": "not a maximum-likelihood fit",
+                    "derivatives": "no likelihood is maximised, so no "
+                    "gradient or Hessian is taken",
+                    "cb_declared": "mean_cb, mrl_cb and rmst_cb refuse, as "
+                    "documented: a probability-plotting fit's bounds are "
+                    "the pivotal ones on sf/ff/Hf, the quantiles and the "
+                    "parameters (swept)",
+                },
+            )
+        )
     # A limited failure population in interval-censored counts, whose
     # default start ran p to its bound of 1 (#579)
     out.append(
@@ -788,7 +821,75 @@ def _competing_risks():
             },
         )
     )
+    out.append(
+        Case(
+            name="FineGray[strata]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_strata_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            call_kwargs={"stratum": 1},
+            rows=("x", "Z", "e", "n", "strata"),
+            covariates="Z",
+            labels=("strata",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
+    out.append(
+        Case(
+            name="FineGray[cluster]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_cluster_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n", "cluster"),
+            covariates="Z",
+            labels=("cluster",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
     return out
+
+
+def _fine_gray_strata_data():
+    """The Fine-Gray fixture in two strata of 12 rows, each with events of
+    both causes and censored rows."""
+    d = cr_data(True)
+    d["strata"] = np.repeat([0, 1], d["x"].size // 2)
+    return d
+
+
+def _fine_gray_cluster_data():
+    """The Fine-Gray fixture in 12 clusters of two rows."""
+    d = cr_data(True)
+    d["cluster"] = np.repeat(np.arange(d["x"].size // 2), 2)
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +936,33 @@ def _multistate():
             transitions=d["transitions"],
         )
 
-    def pms_from_df(d):
+    # The covariate's effect shared by the two transitions into "dead",
+    # whose baselines are also taken as proportional (one stratum, with an
+    # indicator). The transitions are read from the data, so the case
+    # follows its states when they are relabelled.
+    def shared_options(d):
+        into_dead = [tuple(d["transitions"][1]), tuple(d["transitions"][3])]
+        return {"shared": {0: into_dead}, "proportional_baselines": into_dead}
+
+    def msph_shared(d):
+        return ms.MultiStateProportionalHazards.fit(
+            **{**shared_options(d), **d}
+        )
+
+    def msph_shared_from_df(d):
+        return ms.MultiStateProportionalHazards.fit_from_df(
+            frame(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            **shared_options(d),
+        )
+
+    def pms_from_df(d, clock="forward"):
         return ms.ParametricMultiState.fit_from_df(
             frame(d),
             "x",
@@ -844,9 +971,10 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
 
-    def pmsr_from_df(d):
+    def pmsr_from_df(d, clock="forward"):
         return ms.ParametricMultiStateRegression.fit_from_df(
             frame(d),
             "x",
@@ -856,7 +984,19 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
+
+    def from_data(cls):
+        # fit(data): the spells as a SurpyvalData with states (s).
+        def fit(d):
+            data = sp.SurpyvalData(
+                d["x"], n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
+                Z=d.get("Z"),
+            )  # fmt: skip
+            return cls.fit(data, transitions=d["transitions"])
+
+        return fit
 
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
@@ -873,7 +1013,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": ms_from_df},
+            paths={
+                "fit_from_df": ms_from_df,
+                "fit(data)": from_data(ms.MultiState),
+            },
             rtol=1e-9,
             exclude={"convergence": exact},
         ),
@@ -893,10 +1036,43 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": msph_from_df},
+            paths={
+                "fit_from_df": msph_from_df,
+                "fit(data)": from_data(ms.MultiStateProportionalHazards),
+            },
             rtol=1e-6,
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+        Case(
+            name="MultiStateProportionalHazards[shared]",
+            fitters=(),
+            model_class="surpyval.multistate.MultiStateProportionalHazards",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=msph_shared,
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": msph_shared_from_df},
+            rtol=1e-6,
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude=dict.fromkeys(
+                ("aliasing", "aliasing_constant"),
+                "a copy of a covariate shared by some transitions only is "
+                "aliased in one combination of its per-transition "
+                "coefficients (the shared column is their sum), not in all "
+                "of them; a constant on the two proportional baselines is "
+                "aliased with their indicator. The unshared case checks the "
+                "aliasing itself",
+            ),
         ),
         Case(
             name="ParametricMultiState",
@@ -911,7 +1087,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": pms_from_df},
+            paths={
+                "fit_from_df": pms_from_df,
+                "fit(data)": from_data(ms.ParametricMultiState),
+            },
             exclude={
                 "convergence": "each transition is fitted by its "
                 "distribution's own univariate fit, whose starved fits the "
@@ -935,9 +1114,136 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": pmsr_from_df},
+            paths={
+                "fit_from_df": pmsr_from_df,
+                "fit(data)": from_data(ms.ParametricMultiStateRegression),
+            },
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+        # The semi-Markov models: each transition's hazard a function of
+        # the time spent in its state, the probabilities by convolution.
+        Case(
+            name="ParametricMultiState[reset]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=_fit(ms.ParametricMultiState, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={
+                "fit_from_df": functools.partial(pms_from_df, clock="reset")
+            },
+            exclude={
+                "convergence": "each transition is fitted by its "
+                "distribution's own univariate fit, whose starved fits the "
+                "Parametric cases check; the model adds no search of its "
+                "own and takes no init"
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression[reset]",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=_fit(ms.ParametricMultiStateRegression, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": functools.partial(pmsr_from_df, clock="reset")
+            },
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Multi-state, states seen at visits (panel data)
+# ---------------------------------------------------------------------------
+_PANEL_EXCLUDE = {
+    "counts": "the rows are visits of units, and a visit repeated is a "
+    "unit seen twice at one time (refused); the model takes no counts",
+    "convergence": "the search starts from the data's crude rates and "
+    "takes no init or iteration limit to starve; a search that ends "
+    "short is checked by 'maximum'",
+}
+
+
+def _panel_multistate():
+    def frame(d):
+        df = pd.DataFrame({"x": d["x"], "s": d["s"], "i": d["i"]})
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def options(d):
+        return {
+            "transitions": d["transitions"],
+            "censored": d["censored"],
+            "exact_entry": d["exact_entry"],
+        }
+
+    def from_df(d):
+        return ms.PanelMultiState.fit_from_df(
+            frame(d), "x", "s", "i", **options(d)
+        )
+
+    def reg_from_df(d):
+        return ms.PanelMultiStateRegression.fit_from_df(
+            frame(d), "x", ["z0"], "s", "i", **options(d)
+        )
+
+    return [
+        Case(
+            name="PanelMultiState",
+            fitters=("surpyval.multistate.PanelMultiState",),
+            model_class="surpyval.multistate.PanelMultiState",
+            interface=STATES,
+            data=panel_data,
+            fit=_fit(ms.PanelMultiState),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            rows=("x", "s", "i"),
+            times=("x",),
+            paths={"fit_from_df": from_df},
+            exclude=_PANEL_EXCLUDE,
+        ),
+        Case(
+            name="PanelMultiStateRegression",
+            fitters=("surpyval.multistate.PanelMultiStateRegression",),
+            model_class="surpyval.multistate.PanelMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(ms.PanelMultiStateRegression),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            Z=Z_MS[: X_PANEL.size],
+            rows=("x", "Z", "s", "i"),
+            times=("x",),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude=_PANEL_EXCLUDE,
         ),
     ]
 
@@ -1220,17 +1526,156 @@ def _recurrent():
             intercept=True,
         )
     )
+    # The joint frailty model of recurrent and terminal events: the
+    # recurrent part's cif / iif / mcf and the terminal event's survival
+    # functions, at the query rows.
+    out.append(
+        Case(
+            name="JointFrailty",
+            fitters=("surpyval.recurrent.JointFrailty",),
+            model_class="surpyval.recurrent.JointFrailtyModel",
+            interface=COUNTING_REGRESSION,
+            data=joint_frailty_data,
+            fit=_fit(rc.JointFrailty),
+            functions=("cif", "iif", "mcf", "sf", "ff", "Hf", "hf", "df"),
+            x=X_JF,
+            Z=Z_JF,
+            paths={
+                "fit_from_df": lambda d: rc.JointFrailty.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "i": d["i"],
+                            "c": d["c"],
+                            "terminal": d["terminal"],
+                            "z": np.asarray(d["Z"])[:, 0],
+                        }
+                    ),
+                    "x",
+                    "i",
+                    "c",
+                    "terminal",
+                    Z_cols=["z"],
+                ),
+                # The terminal event as the data model gives it: a = 1 on
+                # its event row.
+                "fit(data)": lambda d: rc.JointFrailty.fit(
+                    **_joint_as_data(d)
+                ),
+                "fit_from_df(a_col)": lambda d: rc.JointFrailty.fit_from_df(
+                    _joint_as_frame(d), "x", "i", "c", a_col="a", Z_cols=["z"]
+                ),
+            },
+            rows=("x", "Z", "i", "c", "terminal"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array([m.beta, m.gamma]),
+            # Each part's Weibull scale absorbs a constant.
+            intercept=True,
+            draw=lambda m, s: (lambda r: (r["x"], r["c"], r["terminal"]))(
+                m.random(4, end=15.0, Z=[0.5], random_state=s)
+            ),
+            explicit_seed=True,
+        )
+    )
     # A count above one is refused on an observed recurrent event (the
     # xicn convention: several events at one instant are not a count).
     no_counts = {
         "counts": "the xicn format refuses a count above 1 on an event row"
     }
-    return [replace(c, exclude={**no_counts, **c.exclude}) for c in out]
+    return [
+        _with_data_path(replace(c, exclude={**no_counts, **c.exclude}))
+        for c in out
+    ]
+
+
+def _recurrent_as_data(d):
+    """The fixture's arrays as one SurpyvalData with units ``i`` (its
+    ``x``), the other entries (options) kept."""
+    keys = ("x", "i", "c", "n", "Z", "e")
+    data = sp.SurpyvalData(
+        **{k: (d[k].tolist() if k == "i" else d[k]) for k in keys if k in d}
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _with_data_path(case):
+    """The case with its ``fit(data)`` path: the fixture as a
+    SurpyvalData, fitted by the case's own ``fit`` (unless the case has
+    its own)."""
+    return replace(
+        case,
+        paths={
+            "fit(data)": lambda d, fit=case.fit: fit(_recurrent_as_data(d)),
+            **case.paths,
+        },
+    )
+
+
+def _joint_terminal_rows(d):
+    """The joint frailty fixture's rows in the data model: the closing
+    row of a unit's terminal event (``c = 1``, ``terminal = 1``) is its
+    event row with ``a = 1``."""
+    c, t = np.asarray(d["c"]), np.asarray(d["terminal"])
+    ended = (c == 1) & (t == 1)
+    return np.where(ended, 0, c), ended.astype(int)
+
+
+def _joint_as_data(d):
+    """The joint frailty fixture as one SurpyvalData (its ``x``), the
+    other entries (options) kept."""
+    c, a = _joint_terminal_rows(d)
+    keys = ("x", "i", "c", "terminal", "Z")
+    data = sp.SurpyvalData(
+        x=d["x"], c=c, a=a, i=np.asarray(d["i"]).tolist(), Z=d.get("Z")
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _joint_as_frame(d):
+    """The joint frailty fixture as a table with the terminal flag a."""
+    c, a = _joint_terminal_rows(d)
+    return pd.DataFrame(
+        {
+            "x": d["x"],
+            "i": d["i"],
+            "c": c,
+            "a": a,
+            "z": np.asarray(d["Z"])[:, 0],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Degradation
 # ---------------------------------------------------------------------------
+def _readings(d):
+    """The readings ``x``, ``y``, ``i`` of a degradation fixture as a
+    Measurements (units as first seen, each in time order: the arrays'
+    own order)."""
+    store = {}
+    for t, v, k in zip(d["x"], d["y"], np.asarray(d["i"]).tolist()):
+        store.setdefault(k, {})[float(t)] = float(v)
+    return sp.Measurements(store)
+
+
+def _readings_paths(fitter, **kw):
+    """A degradation fitter's fits from a Measurements and from a
+    SurpyvalData holding it (``data.m``), each unit's life row running."""
+
+    def from_data(d):
+        m = _readings(d)
+        life = sp.SurpyvalData(
+            np.full(m.n_units, 1e4), c=np.ones(m.n_units), i=m.ids, m=m
+        )
+        return fitter.fit(life, **kw)
+
+    return {
+        "fit(measurements)": lambda d: fitter.fit(_readings(d), **kw),
+        "fit(data)": from_data,
+    }
+
+
 def _degradation():
     def da(path):
         return Case(
@@ -1250,7 +1695,10 @@ def _degradation():
             paths={
                 "fit_from_df": lambda d: dg.DegradationAnalysis.fit_from_df(
                     pd.DataFrame(d), threshold=150.0, path=path
-                )
+                ),
+                **_readings_paths(
+                    dg.DegradationAnalysis, threshold=150.0, path=path
+                ),
             },
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
@@ -1274,7 +1722,8 @@ def _degradation():
                 paths={
                     "fit_from_df": lambda d, f=fitter: f.fit_from_df(
                         pd.DataFrame(d), threshold=100.0
-                    )
+                    ),
+                    **_readings_paths(fitter, threshold=100.0),
                 },
                 draw=lambda m, s: m.random(15, random_state=s),
                 explicit_seed=True,
@@ -1387,6 +1836,30 @@ def _joint_coefficients(model):
     return np.array([[params[names.index(n)] for n in row] for row in rows])
 
 
+def _joint_readings_paths(fitter):
+    """A joint fitter's fits with the readings as a Measurements matched by
+    unit: beside the life arrays (``i=``, ``m=``), and in a SurpyvalData
+    (``data.m``)."""
+
+    def readings(d):
+        ids = [f"u{k}" for k in range(len(d["x"]))]
+        return ids, sp.Measurements(
+            {k: dict(r) for k, r in zip(ids, d["markers"])}
+        )
+
+    def from_arrays(d):
+        ids, m = readings(d)
+        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+
+    def from_data(d):
+        ids, m = readings(d)
+        return fitter.fit(
+            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        )
+
+    return {"fit(measurements)": from_arrays, "fit(data)": from_data}
+
+
 def _joint():
     """The joint models, predicting for one item read four times and still
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
@@ -1432,7 +1905,8 @@ def _joint():
                     c_col="c",
                     n_col="n",
                     Z_cols=["z0"],
-                )
+                ),
+                **_joint_readings_paths(fitter),
             },
             rows=("x", "Z", "c", "n", "markers"),
             coefficients=_joint_coefficients,
@@ -1866,8 +2340,70 @@ def _landmark():
                 "data, whose maximum the CoxPH case checks",
                 "comparison": "no likelihood of its own: the stacked rows "
                 "repeat units, so a pseudo-likelihood's AIC would mislead",
+                "convergence": "the fit is CoxPH's on the stacked landmark "
+                "data, with no search or start of its own; CoxPH's starved "
+                "fits are checked by its case",
             },
         )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Panel counts (recurrent events counted at inspections)
+# ---------------------------------------------------------------------------
+def _panel_count():
+    def mcf_from_df(d):
+        df = pd.DataFrame({"x": d["x"], "n": d["n"], "i": d["i"]})
+        return rc.PanelCountMCF.fit_from_df(df, "x", "n", i_col="i")
+
+    def reg_from_df(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "n": d["n"], "i": d["i"], "z": d["Z"][:, 0]}
+        )
+        return rc.PanelCountRegression.fit_from_df(
+            df, "x", ["z"], "n", i_col="i"
+        )
+
+    counts = (
+        "n is the number of events found at an inspection, not a "
+        "frequency: a row with n = 2 is not two rows"
+    )
+    return [
+        Case(
+            name="PanelCountMCF",
+            fitters=("surpyval.recurrent.PanelCountMCF",),
+            model_class="surpyval.recurrent.PanelCountMCF",
+            interface=COUNTING,
+            data=panel_count_data,
+            fit=_fit(rc.PanelCountMCF),
+            functions=("mcf",),
+            x=X_REC,
+            rows=("x", "n", "i"),
+            paths={"fit_from_df": mcf_from_df},
+            rtol=1e-7,
+            exclude={"counts": counts},
+        ),
+        Case(
+            name="PanelCountRegression",
+            fitters=("surpyval.recurrent.PanelCountRegression",),
+            model_class="surpyval.recurrent.PanelCountRegression",
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(panel_count_data, True),
+            fit=_fit(rc.PanelCountRegression),
+            functions=("mcf",),
+            x=X_REC,
+            Z=Z_REC,
+            z_style="single",
+            rows=("x", "Z", "n", "i"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.params,
+            # The unspecified baseline absorbs a constant.
+            intercept=True,
+            rtol=1e-6,
+            exclude={"counts": counts},
+        ),
     ]
 
 
@@ -1890,7 +2426,9 @@ CASES: list[Case] = (
     + _equivalence()
     + _zero_inflated()
     + _landmark()
+    + _panel_multistate()
     + _bayes()
+    + _panel_count()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -2004,6 +2542,10 @@ def _df_paths():
         cr.CompetingRisks, ("x", "e", "n"), how="Kaplan-Meier"
     )
     paths["FineGray"] = _col_df(cr.FineGray, ("x", "e", "n"), event="a")
+    for label in ("strata", "cluster"):
+        paths[f"FineGray[{label}]"] = _col_df(
+            cr.FineGray, ("x", "e", "n", label), event="a"
+        )
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
         paths[name] = _col_df(getattr(rc, name))
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
@@ -2175,7 +2717,31 @@ def _bootstrap_bounds(case, on):
     ]
 
 
+def _pivotal_bounds(case):
+    """The pivotal Monte Carlo bounds of a probability-plotting fit, its
+    only bounds: on sf, ff and Hf, the quantiles and the parameters. The
+    calls with one ``n_sim`` and seed share one simulation."""
+    kw = dict(
+        kwargs={"method": "pivotal", "n_sim": 999, "random_state": 1},
+        wald=False,
+    )
+    on = tuple(f for f in ("sf", "ff", "Hf") if f in case.functions)
+    return (
+        Bound("cb", on=on, label="cb[pivotal]", **kw),
+        Bound("param_cb", kind="param", label="param_cb[pivotal]", **kw),
+        Bound(
+            "quantile_cb",
+            point="qf",
+            query=(0.1, 0.3),
+            label="quantile_cb[pivotal]",
+            **kw,
+        ),
+    )
+
+
 def _parametric_bounds(case):
+    if case.name.endswith("[MPP]"):
+        return _pivotal_bounds(case)
     on = tuple(f for f in _ON_ALL if f in case.functions)
     out = []
     if case.name not in _NO_WALD:
@@ -2372,7 +2938,21 @@ def _nonparametric_bounds(case):
                 label=f"quantile_cb[{bound_type}]",
             )
         )
-    # The band's default scale (#390), which the pointwise bounds lack.
+    # The other pointwise interval types (R's survfit conf.type and
+    # km.ci's Peto and Rothman intervals).
+    for bound_type in ("log", "logit", "arcsine", "peto", "rothman"):
+        for interp in ("step", "linear", "cubic"):
+            out.append(
+                Bound(
+                    "cb",
+                    on=_ON_SURVIVAL,
+                    kwargs={"bound_type": bound_type, "interp": interp},
+                    in_range=bound_type != "peto",
+                    nan_ok=True,
+                    label=f"cb[{bound_type},{interp}]",
+                )
+            )
+    # The band's default scale (#390).
     for method in ("hall-wellner", "nair"):
         out.append(
             Bound(
@@ -2525,21 +3105,91 @@ def _multistate_bounds(variances):
     )
 
 
+def _panel_count_bounds(regression):
+    # Percentile bootstraps of refits to resampled units (and, on the
+    # coefficients, the normal interval from the bootstrap's spread)
+    out = tuple(
+        Bound(
+            "mcf_cb",
+            point="mcf",
+            kwargs={"interp": interp, **_BOOT},
+            wald=False,
+            nan_ok=True,
+            label=f"mcf_cb[{interp}]",
+        )
+        for interp in ("step", "linear")
+    )
+    if not regression:
+        return out
+    return out + (
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs=_BOOT,
+            wald=False,
+            label="param_cb[percentile]",
+        ),
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "normal", **_BOOT},
+            in_range=False,
+            label="param_cb[normal]",
+        ),
+    )
+
+
+_LENGTH_OF_STAY = Bound(
+    "length_of_stay_cb",
+    point="length_of_stay",
+    per_cause=True,
+    # (inside (0, x - s), not the range of a probability)
+    in_range=False,
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "PanelCountMCF": _panel_count_bounds(False),
+        "PanelCountRegression": _panel_count_bounds(True),
         # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
         # variances; the Cox model's include its coefficients'.
         "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
         "MultiStateProportionalHazards": _multistate_bounds(
             ("aalen", "greenwood")
         ),
-        # The delta method over every transition's parameters.
-        "ParametricMultiState": _multistate_bounds((None,)),
-        "ParametricMultiStateRegression": _multistate_bounds((None,)),
+        # The delta method over every transition's parameters, on the
+        # occupation probabilities and on the expected length of stay
+        # (logit of the fraction of the time, inside (0, x - s)).
+        "ParametricMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        "ParametricMultiStateRegression": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        # The delta method over the intensities (and coefficients), Wald
+        # bounds on each parameter, and on each transient state's mean
+        # stay.
+        "PanelMultiState": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy",), ("ill",)),
+            ),
+        ),
+        "PanelMultiStateRegression": _multistate_bounds((None,))
+        + (
+            _PARAM_CB,
+            Bound(
+                "sojourn_cb",
+                kind="summary",
+                query=(("healthy", [0.5]), ("ill", [1.0])),
+            ),
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         # Robust (clustered) Wald bounds on the dynamic prediction from
         # the landmark s, on each of its scales.
@@ -2552,6 +3202,25 @@ def _bounds(case):
                 label=f"cb[{t}]",
             )
             for t in ("log-log", "log", "plain")
+        ),
+        # The delta method on each function, Wald and profile-likelihood
+        # bounds on the parameters.
+        "JointFrailtyModel": (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mcf_cb", point="mcf"),
+            Bound("sf_cb", point="sf"),
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
         ),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
@@ -2579,6 +3248,30 @@ def _bounds(case):
                 kind="summary",
                 query=((0.1, 0.0), (0.5, 0.3), (0.9, 1.0)),
                 label="quantile_cb_at_usage",
+            ),
+        ),
+        # Wald from the profile likelihood's curvature, the profile
+        # likelihood-ratio interval and the case bootstrap; the curves
+        # have no bounds (cb refuses, pointing to these and WeibullPH).
+        "IntervalCoxPHModel": (
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "bootstrap", **_BOOT},
+                label="param_cb[bootstrap]",
+                wald=False,
+                slow=True,
             ),
         ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
@@ -2748,7 +3441,9 @@ def _bounds(case):
             slow=True,
         )
         return (_PARAM_CB, lr)
-    if cls == "CoxFrailtyModel":
+    if cls in ("CoxFrailtyModel", "CoxMixedEffectsModel"):
+        # (CoxMixedEffectsModel's variance_cb, a table, is not swept: see
+        # test_options.NOT_SWEPT)
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
@@ -2866,6 +3561,7 @@ _INTERP = {
     "Turnbull": _NP_INTERP,
     "NonParametricCounting": ("step", "linear"),
     "CauseSpecificMCF": ("step", "linear"),
+    "PanelCountMCF": ("step", "linear"),
     # Its baselines are steps: interp= takes "step" only (#416).
     "CompetingRisksProportionalHazards[Cox]": ("step",),
 }
@@ -3134,6 +3830,7 @@ def _starve(case):
         "SemiParametricRegressionModel",
         "FineGrayModel",
         "ProportionalOddsModel",
+        "IntervalCoxPHModel",
         "CoxFrailtyModel",
         "RecurrentCoxModel",
         "MultiStateProportionalHazards",
@@ -3165,6 +3862,8 @@ def _starve(case):
         return _far_start(
             case, lambda m: _scaled_start(np.r_[m.params, m.coeffs])
         )
+    if cls == "JointFrailtyModel":
+        return _far_start(case, lambda m: _scaled_start(m.params))
     if cls == "CauseSpecificNHPP":
         return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
     if cls == "CauseSpecificProportionalIntensity":

@@ -285,6 +285,51 @@ such fleets: the last reading carried forward was biased by -39%, its 95%
 intervals covering the truth 0.3% of the time; the joint model by +1%,
 covering it 96% of the time.
 
+From measurements
+~~~~~~~~~~~~~~~~~
+
+The readings and the lifetimes are two things, and they can be kept as
+two: the life data, one row per pump, and the readings as a
+:class:`~surpyval.Measurements` (see :doc:`Conventions`), built from a
+long table of one row per reading. The fit matches the two by the pump's
+id, never by position, so the tables need not be in the same order:
+
+.. jupyter-execute::
+
+    import pandas as pd
+    from surpyval import Measurements
+
+    readings = pd.DataFrame(
+        [
+            (pump_id, age, value)
+            for pump_id, held in fleet.markers.items()
+            for age, value in held.items()
+        ],
+        columns=["pump", "day", "vibration"],
+    ).sample(frac=1.0, random_state=0)
+    vibration = Measurements.from_dataframe(
+        readings, i_col="pump", x_col="day", m_col="vibration"
+    )
+    life = fleet.without("markers")
+    separate = WeibullJointPH.fit(life, m=vibration, unit="days")
+    separate.params[-1], model.params[-1]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(separate.params, model.params)
+
+``m`` is the other name of ``markers``; a Measurements may also be given
+beside arrays, with each row's unit as ``i``,
+``WeibullJointPH.fit(life.x, c=life.c, i=life.i, m=vibration)``, or in a
+DataFrame fit, ``fit_from_df(df, x_col=..., c_col=..., i_col="pump",
+m=vibration)``. A pump with no readings is fitted on its lifetime alone,
+as an item with ``{}`` is; readings of a pump with no life row are warned
+of, naming it, and not used. The model takes one marker: readings of
+several measurements are refused until one is chosen with
+``vibration.with_measurement(name)``.
+
 Covariates in each part
 ~~~~~~~~~~~~~~~~~~~~~~~
 

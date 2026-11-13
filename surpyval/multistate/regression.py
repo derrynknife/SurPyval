@@ -16,6 +16,7 @@ from surpyval.multistate._base import (
     step_index,
 )
 from surpyval.multistate._data import SpellData, check_spells
+from surpyval.multistate._entry import multistate_data, other_name
 from surpyval.multistate.transitions import TransitionMatrix
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -24,6 +25,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
@@ -45,7 +47,12 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
     each transition with its own baseline hazard and, by default, its own
     coefficients :math:`\beta_h`. A covariate named in ``shared`` has one
-    coefficient for every transition instead. The model is fitted as one
+    coefficient for every transition instead, or one for each group of
+    transitions given for it (the others keep their own). Transitions
+    named together in ``proportional_baselines`` share one baseline
+    hazard up to a constant factor, :math:`\lambda_{h,0}(t) =
+    \lambda_{r,0}(t) e^{\gamma_h}`, with :math:`r` the group's first
+    transition. The model is fitted as one
     Cox model to the stacked data (one row for each transition a spell
     could have ended in; see :func:`~surpyval.multistate.to_stacked`),
     stratified by transition, with each covariate expanded into one
@@ -95,6 +102,13 @@ class MultiStateProportionalHazards(SerialisableMixin):
     covariate_names: list
     #: The columns of ``Z`` whose effect is shared by every transition.
     shared: tuple
+    #: The columns of ``Z`` with an effect shared by some transitions
+    #: only: ``{column: ((transition, ...), ...)}``, the groups of
+    #: transition numbers that have one coefficient each.
+    shared_groups: dict
+    #: The groups of transitions (their numbers) whose baseline hazards
+    #: are proportional, each group's reference first.
+    baseline_groups: tuple
     #: ``"efron"`` or ``"breslow"``: the ties of the partial likelihood
     #: and of the baseline hazards.
     tie_method: str
@@ -107,12 +121,16 @@ class MultiStateProportionalHazards(SerialisableMixin):
     _beta: npt.NDArray
     _stacked: dict
     _baselines: dict
+    _strata: npt.NDArray
     _cache: dict
 
     # -- fitting ------------------------------------------------------------
 
     @classmethod
     @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -125,6 +143,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         transitions: Any = None,
         shared: Any = None,
         tie_method: str = "efron",
+        proportional_baselines: Any = None,
     ) -> MultiStateProportionalHazards:
         """
         Fit a Cox model to each transition of spells in states.
@@ -133,20 +152,38 @@ class MultiStateProportionalHazards(SerialisableMixin):
         ----------
         x, e, state, tl, i, n, transitions
             The spells, as for :meth:`MultiState.fit
-            <surpyval.multistate.MultiState.fit>`.
+            <surpyval.multistate.MultiState.fit>`: ``x`` may be a
+            :class:`~surpyval.SurpyvalData` holding the spells and their
+            covariates ``Z`` (named by its ``covariate_names``), and
+            ``s`` is another name for ``state``.
         Z : array_like
             The covariates, one row per spell (a unit's covariates on each
             of its spells). Missing values are refused: dropping a spell
             would cut a unit's path through its states.
-        shared : sequence, optional
+        shared : sequence or dict, optional
             The covariates (columns of ``Z``, by position, or by name for
-            ``fit_from_df``) whose effect is the same on every transition:
-            one coefficient for all of them. The others have one per
-            transition (the default for all).
+            ``fit_from_df``) whose effect is the same on more than one
+            transition. A sequence (``["age"]``) gives each covariate in
+            it one coefficient for every transition. A dict gives a
+            covariate one coefficient for the transitions listed for it,
+            each a ``(from, to)`` pair (or its name, ``"from -> to"``):
+            ``{"age": [("healthy", "dead"), ("ill", "dead")]}`` shares the
+            effect of age on the two transitions into death, and the
+            other transitions keep their own. Several groups for one
+            covariate are a list of such lists. Covariates not named have
+            one coefficient per transition (the default for all).
         tie_method : ('efron', 'breslow'), str, optional
             The handling of tied event times, in the partial likelihood
             and the baseline hazards, as :meth:`CoxPH.fit
             <surpyval.CoxPH.fit>`. Defaults to ``'efron'``.
+        proportional_baselines : sequence, optional
+            Transitions whose baseline hazards are taken as proportional:
+            a list of ``(from, to)`` pairs (or a list of such lists for
+            several groups). The group shares one baseline hazard, the
+            first transition's, and each other transition has its own
+            constant factor on it, estimated as a coefficient (named
+            ``"baseline: <transition> vs <first>"``, the log of the
+            ratio). By default every transition has its own baseline.
 
         Returns
         -------
@@ -179,12 +216,28 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
         >>> model.occupancy(120, [1], "pcm", from_state="mgus").round(4)
         np.float64(0.0105)
+
+        Sex acting the same way on both ways of dying (with or without
+        PCM), and its own way on progression:
+
+        >>> into_death = [("mgus", "death"), ("pcm", "death")]
+        >>> grouped = MultiStateProportionalHazards.fit(
+        ...     df["x"], df[["male"]], df["e"], df["state"], tl=df["tl"],
+        ...     i=df["id"], transitions=tm, shared={"male": into_death},
+        ... )
+        >>> grouped.parameter_names
+        ['male: mgus -> pcm', 'male: mgus -> death, pcm -> death']
+        >>> grouped.params.round(3)
+        array([-0.059,  0.208])
         """
         check_option("tie_method", tie_method, _TIES)
         data = check_spells(x, e, state, tl, i, n, transitions)
         Z_arr, names = _covariates(Z, data.x.size)
-        shared_cols = _shared_columns(shared, names)
-        return cls._fit(data, Z_arr, names, shared_cols, tie_method)
+        every, groups = _shared_effects(shared, names, data.tm)
+        baselines = _baseline_groups(proportional_baselines, data.tm)
+        return cls._fit(
+            data, Z_arr, names, every, tie_method, groups, baselines
+        )
 
     @classmethod
     def _fit(
@@ -194,6 +247,8 @@ class MultiStateProportionalHazards(SerialisableMixin):
         names: list,
         shared: tuple,
         tie_method: str,
+        groups: dict | None = None,
+        baselines: tuple = (),
     ) -> MultiStateProportionalHazards:
         from surpyval import CoxPH
 
@@ -214,6 +269,12 @@ class MultiStateProportionalHazards(SerialisableMixin):
         out.transitions = tm
         out.covariate_names = list(names)
         out.shared = tuple(shared)
+        out.shared_groups = dict(groups or {})
+        out.baseline_groups = tuple(tuple(g) for g in baselines)
+        strata = np.arange(n_trans)
+        for g in out.baseline_groups:
+            strata[list(g)] = g[0]
+        out._strata = np.unique(strata, return_inverse=True)[1].ravel()
         out.tie_method = tie_method
         out._data = data
         out._Z = Z
@@ -239,7 +300,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
                 stacked["n"],
                 tl=tl_arg,
                 tie_method=tie_method,
-                strata=stacked["trans"],
+                strata=out._strata[stacked["trans"]],
             )
         if found:
             # Said of the columns of Z, not of their expansion.
@@ -272,6 +333,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
     def fit_from_df(
         cls,
         df: Any,
@@ -285,11 +347,13 @@ class MultiStateProportionalHazards(SerialisableMixin):
         transitions: Any = None,
         shared: Any = None,
         tie_method: str = "efron",
+        proportional_baselines: Any = None,
     ) -> MultiStateProportionalHazards:
         """
         Fit the model to a DataFrame of spells, one row each; ``Z_cols``
         names the covariate columns, and ``shared`` may name some of
-        them. The other columns are the arguments of :meth:`fit`.
+        them. The other arguments are those of :meth:`fit`
+        (``s_col`` is another name for ``state_col``).
 
         Examples
         --------
@@ -331,21 +395,31 @@ class MultiStateProportionalHazards(SerialisableMixin):
         )
         Z_arr, _ = _covariates(Z, data.x.size)
         names = [str(c) for c in cols]
+        every, groups = _shared_effects(shared, names, data.tm)
+        baselines = _baseline_groups(proportional_baselines, data.tm)
         return cls._fit(
-            data, Z_arr, names, _shared_columns(shared, names), tie_method
+            data, Z_arr, names, every, tie_method, groups, baselines
         )
 
     # -- the design ---------------------------------------------------------
 
-    def _columns(self) -> list[tuple[int, int | None]]:
-        """The expanded columns: ``(covariate, transition)``, the
-        transition None for a shared covariate."""
-        out: list[tuple[int, int | None]] = []
+    def _columns(self) -> list[tuple[int | None, tuple]]:
+        """The expanded columns: ``(covariate, transitions)``, the
+        transitions a column's coefficient applies to; a covariate of
+        None is the indicator of a transition whose baseline is
+        proportional to its group's first."""
+        n_trans = self.transitions.n_transitions
+        out: list[tuple[int | None, tuple]] = []
         for j in range(len(self.covariate_names)):
             if j in self.shared:
-                out.append((j, None))
-            else:
-                out += [(j, h) for h in range(self.transitions.n_transitions)]
+                out.append((j, tuple(range(n_trans))))
+                continue
+            groups = list(self.shared_groups.get(j, ()))
+            grouped = {h for g in groups for h in g}
+            groups += [(h,) for h in range(n_trans) if h not in grouped]
+            out += [(j, g) for g in sorted(groups)]
+        for g in self.baseline_groups:
+            out += [(None, (h,)) for h in g[1:]]
         return out
 
     def _design_rows(self, h: int) -> npt.NDArray:
@@ -354,9 +428,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         return np.array(
             [
                 next(
-                    i
-                    for i, (jj, hh) in enumerate(cols)
-                    if jj == j and hh in (None, h)
+                    i for i, (jj, hh) in enumerate(cols) if jj == j and h in hh
                 )
                 for j in range(len(self.covariate_names))
             ],
@@ -369,8 +441,8 @@ class MultiStateProportionalHazards(SerialisableMixin):
         cols = self._columns()
         U = np.zeros((z.shape[0], len(cols)))
         for i, (j, hh) in enumerate(cols):
-            if hh is None or hh == h:
-                U[:, i] = z[:, j]
+            if h in hh:
+                U[:, i] = 1.0 if j is None else z[:, j]
         return U
 
     def _stack(self) -> dict:
@@ -393,18 +465,23 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
     @property
     def parameter_names(self) -> list[str]:
-        """The coefficients' names: the covariate and, for a
-        transition-specific one, the transition (``"age: healthy ->
-        ill"``)."""
+        """The coefficients' names: the covariate and, unless it is shared
+        by every transition, the transitions it applies to (``"age:
+        healthy -> ill"``, ``"age: healthy -> dead, ill -> dead"``); and
+        ``"baseline: <transition> vs <reference>"`` for the log ratio of
+        two proportional baselines."""
         names = self.transitions.transition_names()
-        return [
-            (
-                self.covariate_names[j]
-                if h is None
-                else f"{self.covariate_names[j]}: {names[h]}"
-            )
-            for j, h in self._columns()
-        ]
+        out = []
+        for j, hh in self._columns():
+            if j is None:
+                ref = next(g[0] for g in self.baseline_groups if hh[0] in g)
+                out.append(f"baseline: {names[hh[0]]} vs {names[ref]}")
+            elif j in self.shared:
+                out.append(self.covariate_names[j])
+            else:
+                which = ", ".join(names[h] for h in hh)
+                out.append(f"{self.covariate_names[j]}: {which}")
+        return out
 
     @property
     def params(self) -> npt.NDArray:
@@ -471,13 +548,21 @@ class MultiStateProportionalHazards(SerialisableMixin):
         cols = self._columns()
         nan = np.isnan(np.asarray(self.cox.beta, dtype=float))
         return np.array(
-            sorted({cols[i][0] for i in np.flatnonzero(nan)}), dtype=int
+            sorted(
+                {
+                    j
+                    for j in (cols[i][0] for i in np.flatnonzero(nan))
+                    if j is not None
+                }
+            ),
+            dtype=int,
         )
 
     # -- the baselines ------------------------------------------------------
 
     def _baseline_parts(self) -> dict:
-        """Per transition, at each event time: the baseline hazard
+        """Per stratum (a transition, or a group of transitions with
+        proportional baselines), at each event time: the baseline hazard
         increment, the variance term and :math:`\\bar{x}` times the
         increment (survival's ``agsurv``)."""
         st = self._stacked
@@ -486,8 +571,9 @@ class MultiStateProportionalHazards(SerialisableMixin):
         q = st["U"].shape[1]
         lp = st["U"] @ self._beta
         out: dict = {"haz": [], "varhaz": [], "xbar": []}
-        for h in range(self.transitions.n_transitions):
-            rows = st["trans"] == h
+        stratum = self._strata[st["trans"]]
+        for h in range(int(self._strata.max()) + 1):
+            rows = stratum == h
             x, tl = st["x"][rows], st["tl"][rows]
             n, U = st["n"][rows], st["U"][rows]
             dead = st["status"][rows] == 1
@@ -548,6 +634,8 @@ class MultiStateProportionalHazards(SerialisableMixin):
         for h in range(n_trans):
             U[h] = self._expand(z[None, :], h)[0]
             phi[h] = np.exp(U[h] @ self._beta)
+        # each transition's stratum's baseline
+        base = {k: v[self._strata] for k, v in base.items()}
         dH = base["haz"] * phi[:, None]  # (n_trans, m)
         dA = np.zeros((m, k, k))
         dA[:, frm, to] = dH.T
@@ -558,8 +646,18 @@ class MultiStateProportionalHazards(SerialisableMixin):
             np.any(np.diagonal(dA, axis1=1, axis2=2) < -1, 1)
         )
         first_over = float(self.t[over[0]]) if over.size else np.inf
-        # Cumulative covariances of the cumulative hazards (msfit).
-        varh = np.cumsum(base["varhaz"] * phi[:, None] ** 2, axis=1)
+        # Cumulative covariances of the cumulative hazards (msfit). Two
+        # transitions h, g sharing a baseline share its variance term,
+        # times phi_h phi_g. (mstate's agmssurv uses phi_h^2 there, h the
+        # lower-numbered of the two, which depends on the order of the
+        # transitions; _mstate_cross reproduces it, for the reference
+        # check only.)
+        same = self._strata[:, None] == self._strata[None, :]
+        cross = np.outer(phi, phi)
+        if getattr(self, "_mstate_cross", False):
+            lo = np.minimum.outer(np.arange(n_trans), np.arange(n_trans))
+            cross = phi[lo] ** 2
+        varh = np.cumsum(base["varhaz"], axis=1)  # (n_trans, m)
         qv = np.cumsum(
             (base["xbar"] - U[:, None, :] * base["haz"][:, :, None])
             * phi[:, None, None],
@@ -568,8 +666,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         V = self.covariance()
         V = np.where(np.isnan(V), 0.0, V)
         cumcov = np.einsum("hjq,qr,gjr->jhg", qv, V, qv)
-        idx = np.arange(n_trans)
-        cumcov[:, idx, idx] += varh.T
+        cumcov += np.einsum("hj,hg->jhg", varh, np.where(same, cross, 0.0))
         inc = np.diff(cumcov, axis=0, prepend=0.0)
         cov = np.zeros((m, k, k, k, k))
         for h in range(n_trans):
@@ -973,6 +1070,15 @@ class MultiStateProportionalHazards(SerialisableMixin):
             "shared": [int(j) for j in self.shared],
             "tie_method": self.tie_method,
         }
+        if self.shared_groups:
+            out["shared_groups"] = [
+                [int(j), [[int(h) for h in g] for g in groups]]
+                for j, groups in sorted(self.shared_groups.items())
+            ]
+        if self.baseline_groups:
+            out["baseline_groups"] = [
+                [int(h) for h in g] for g in self.baseline_groups
+            ]
         return stamp_schema(out)
 
     @classmethod
@@ -1007,6 +1113,14 @@ class MultiStateProportionalHazards(SerialisableMixin):
             list(model_dict["covariate_names"]),
             tuple(model_dict["shared"]),
             model_dict["tie_method"],
+            {
+                int(j): tuple(tuple(int(h) for h in g) for g in groups)
+                for j, groups in model_dict.get("shared_groups", [])
+            },
+            tuple(
+                tuple(int(h) for h in g)
+                for g in model_dict.get("baseline_groups", [])
+            ),
         )
 
     def __repr__(self) -> str:
@@ -1069,25 +1183,137 @@ def _covariates(Z: Any, size: int) -> tuple[npt.NDArray, list]:
     return arr, names
 
 
-def _shared_columns(shared: Any, names: list) -> tuple:
+def _covariate_column(item: Any, names: list) -> int:
+    """A covariate named by position or by name, as its column."""
+    if isinstance(item, (int, np.integer)) and not isinstance(item, bool):
+        if not 0 <= int(item) < len(names):
+            raise ValueError(
+                f"shared names column {item}, but Z has {len(names)} "
+                "column(s)."
+            )
+        return int(item)
+    if item in names:
+        return names.index(item)
+    raise ValueError(
+        f"shared names {item!r}, which is not a covariate; the "
+        f"covariates are {names!r}."
+    )
+
+
+def _transition(item: Any, tm: TransitionMatrix) -> int | None:
+    """The number of the transition ``item`` names (a ``(from, to)``
+    pair, or its name ``"from -> to"``), or None if it names none."""
+    if isinstance(item, str):
+        names = tm.transition_names()
+        return names.index(item) if item in names else None
+    if isinstance(item, (tuple, list)) and len(item) == 2:
+        try:
+            return tm.transition_index(item[0], item[1])
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _transition_groups(value: Any, tm: TransitionMatrix, arg: str) -> list:
+    """Groups of transitions: one group (a sequence of transitions) or
+    several (a sequence of such sequences), as tuples of their numbers in
+    the order given; no transition in two groups."""
+    how = (
+        "a list of transitions, each a (from, to) pair such as "
+        f"{tm.transitions[0]!r}, or a list of such lists"
+    )
+    if isinstance(value, (str, bytes)) or not hasattr(value, "__iter__"):
+        raise ValueError(f"{arg} must be {how}; got {value!r}.")
+    items = list(value)
+    if not items:
+        raise ValueError(f"{arg} is empty: it must be {how}.")
+    if all(_transition(item, tm) is not None for item in items):
+        raw = [items]
+    else:
+        raw = []
+        for group in items:
+            if isinstance(group, (str, bytes)) or not hasattr(
+                group, "__iter__"
+            ):
+                raise ValueError(
+                    f"{arg} names {group!r}, which is not a transition; it "
+                    f"must be {how}. The transitions are "
+                    f"{list(tm.transitions)!r}."
+                )
+            members = list(group)
+            bad = [m for m in members if _transition(m, tm) is None]
+            if bad or not members:
+                raise ValueError(
+                    f"{arg} names {bad[0] if bad else group!r}, which is "
+                    f"not a transition; it must be {how}. The transitions "
+                    f"are {list(tm.transitions)!r}."
+                )
+            raw.append(members)
+    groups = []
+    seen: set = set()
+    for members in raw:
+        hs: list = []
+        for m in members:
+            h = _transition(m, tm)
+            if h not in hs:
+                hs.append(h)
+        twice = seen.intersection(hs)
+        if twice:
+            raise ValueError(
+                f"{arg} puts the transition {tm.transitions[min(twice)]!r} "
+                "in two groups: give each transition at most one group."
+            )
+        seen.update(hs)
+        groups.append(tuple(hs))
+    return groups
+
+
+def _shared_effects(
+    shared: Any, names: list, tm: TransitionMatrix
+) -> tuple[tuple, dict]:
+    """``shared`` as the covariates shared by every transition and, for
+    the others, their groups of transitions with one coefficient each:
+    ``(all, {column: ((h, ...), ...)})``."""
     if shared is None:
-        return ()
+        return (), {}
     if isinstance(shared, (str, int, np.integer)):
         shared = [shared]
-    out = []
-    for item in shared:
-        if isinstance(item, (int, np.integer)) and not isinstance(item, bool):
-            if not 0 <= int(item) < len(names):
+    every: set = set()
+    groups: dict = {}
+    if isinstance(shared, dict):
+        n_trans = tm.n_transitions
+        for key, value in shared.items():
+            j = _covariate_column(key, names)
+            if j in every or j in groups:
                 raise ValueError(
-                    f"shared names column {item}, but Z has {len(names)} "
-                    "column(s)."
+                    f"shared names the covariate {names[j]!r} twice (by "
+                    "name and by position, say): give it once."
                 )
-            out.append(int(item))
-        elif item in names:
-            out.append(names.index(item))
-        else:
+            if value is None or (isinstance(value, str) and value == "all"):
+                every.add(j)
+                continue
+            found = _transition_groups(value, tm, f"shared[{key!r}]")
+            found = [tuple(sorted(g)) for g in found if len(g) > 1]
+            if len(found) == 1 and len(found[0]) == n_trans:
+                every.add(j)
+            elif found:
+                groups[j] = tuple(sorted(found))
+    else:
+        for item in shared:
+            every.add(_covariate_column(item, names))
+    return tuple(sorted(every)), groups
+
+
+def _baseline_groups(value: Any, tm: TransitionMatrix) -> tuple:
+    """``proportional_baselines`` as groups of two or more transitions,
+    each group's first transition (in the order given) its reference."""
+    if value is None:
+        return ()
+    groups = _transition_groups(value, tm, "proportional_baselines")
+    for g in groups:
+        if len(g) < 2:
             raise ValueError(
-                f"shared names {item!r}, which is not a covariate; the "
-                f"covariates are {names!r}."
+                "Each group of proportional_baselines needs two or more "
+                f"transitions; {[tm.transitions[h] for h in g]!r} has one."
             )
-    return tuple(sorted(set(out)))
+    return tuple(groups)

@@ -13,7 +13,7 @@ Pre-built instances: ``WeibullEquivalence``, ``LogNormalEquivalence``,
 ``ExponentialEquivalence``.
 
 .. automodule:: surpyval.univariate.equivalence
-    :no-members:
+    :exclude-members: Equivalence, EquivalenceFitter, EquivalenceModel
 
 .. autofunction:: surpyval.univariate.equivalence.Equivalence
 

@@ -53,6 +53,11 @@ from surpyval.utils.dataframe import (
 from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+    takes_terminal_column,
+)
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import check_alpha_ci
 
@@ -424,6 +429,11 @@ class RecurrentCoxModel(SerialisableMixin):
     >>> model.cif([6, 12], [1]).round(4)
     array([1.6667, 3.1111])
     """
+
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
 
     #: Which model: ``"Andersen-Gill"``, ``"Prentice-Williams-Peterson,
     #: total time"``, ``"Prentice-Williams-Peterson, gap time"`` or
@@ -903,7 +913,7 @@ class RecurrentCoxModel(SerialisableMixin):
             self.standard_errors(),
         )
         lines.append(coefficient_repr(table))
-        return "\n".join(lines)
+        return "\n".join(lines) + notes_text(self)
 
     def to_dict(self) -> dict:
         """
@@ -1117,6 +1127,7 @@ class _RecurrentCoxFitter(FitterRepr):
         "a regression's fit_from_df(df, x_col, Z_cols, c_col)", column=True
     )
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -1248,6 +1259,7 @@ class AndersenGill(_StartStopFrame):
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1269,6 +1281,13 @@ class AndersenGill(_StartStopFrame):
             its observation. An item is observed from 0 (for a later
             entry, or a break in observation, use :meth:`fit_tvc`); one
             whose last row is an event is observed up to that event.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         Z : array-like
             The covariates, one row per row of ``x``: those in force
             over the interval that ends at the row's time. They may
@@ -1427,6 +1446,7 @@ class PrenticeWilliamsPeterson(_StartStopFrame):
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1450,6 +1470,13 @@ class PrenticeWilliamsPeterson(_StartStopFrame):
             event and end-of-observation times, the covariates in force
             up to each row, the item of each row, and the flags (0 an
             event, 1 the end of an item's observation).
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         time_scale : str, optional
             ``"total"`` (default): the clock is the item's age.
             ``"gap"``: it restarts at each event.
@@ -1622,6 +1649,7 @@ class WeiLinWeissfeld(_RecurrentCoxFitter):
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1643,6 +1671,13 @@ class WeiLinWeissfeld(_RecurrentCoxFitter):
             The event log, as :data:`AndersenGill`'s ``fit`` takes it,
             with covariates that are constant within an item (refused
             otherwise: every event number's clock starts at 0).
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         max_events : int, optional
             The number of event numbers modelled, each with its own
             baseline: an item with fewer events is censored, at the end

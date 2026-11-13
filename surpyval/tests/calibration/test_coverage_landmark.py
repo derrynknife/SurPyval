@@ -70,7 +70,7 @@ def _one(r):
             )
             b = model.params[:4]
             se = model.standard_errors()[:4]
-            band = model.cb(S_QUERY + W, Z_QUERY, s=S_QUERY)
+            band = model.cb(S_QUERY + W, Z_QUERY, s=S_QUERY, on="ff")
             out.append(
                 (b - 1.959963984540054 * se, b + 1.959963984540054 * se, band)
             )

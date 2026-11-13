@@ -35,6 +35,12 @@ Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_competing_entry.R
 # cmprsk (in R_LIBS_USER) for the Fine-Gray model's two covariances
 Rscript scripts/reference/reference_r_fine_gray_variance.R
+# crrSC and cmprsk (in R_LIBS_USER) for the stratified and clustered Fine-Gray model
+Rscript scripts/reference/reference_r_crrsc.R
+# survival, cmprsk and survRM2 (in R_LIBS_USER) for the restricted mean time lost
+Rscript scripts/reference/reference_r_rmtl.R
+# survival and km.ci (in R_LIBS_USER) for the pointwise interval types
+Rscript scripts/reference/reference_r_km_ci.R
 # flexsurv (in R_LIBS_USER) for the parametric competing-risks regression
 Rscript scripts/reference/reference_r_parametric_competing_risks_regression.R
 Rscript scripts/reference/reference_r_reda.R
@@ -73,8 +79,14 @@ Rscript scripts/reference/reference_r_recurrent_cox.R
 # JM (in R_LIBS_USER) for the joint model's links; prints the values typed
 # into surpyval/tests/reference/test_joint_links.py (about ten minutes)
 Rscript scripts/reference/reference_r_joint_links.R
+# icenReg (in R_LIBS_USER) for the interval-censored Cox model
+Rscript scripts/reference/reference_r_interval_cox.R
 # mstate (in R_LIBS_USER) for the multi-state models
 Rscript scripts/reference/reference_r_multistate.R
+# frailtypack (in R_LIBS_USER) for the joint frailty model
+Rscript scripts/reference/reference_r_joint_frailty.R
+# msm (in R_LIBS_USER) for the panel-data multi-state models
+Rscript scripts/reference/reference_r_multistate_panel.R
 # gsDesign and rpact (in R_LIBS_USER) for the group-sequential designs
 Rscript scripts/reference/reference_r_group_sequential.R
 "${1:-python}" scripts/reference/reference_python.py

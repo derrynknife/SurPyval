@@ -881,6 +881,18 @@ class Parametric(
                 ]
             }
 
+        mpp_options = model_dict.get("mpp_options")
+        if mpp_options:
+            info = dict(getattr(out, "fitting_info", None) or {})
+            info.update(
+                heuristic=str(mpp_options["heuristic"]),
+                rr=str(mpp_options["rr"]),
+                on_d_is_0=bool(mpp_options["on_d_is_0"]),
+            )
+            out.fitting_info = info
+        if model_dict.get("bias_adjustment") is not None:
+            out.bias_adjustment = str(model_dict["bias_adjustment"])
+
         out.params = dict_numbers(model_dict, "params")
 
         # Dicts written before ``"maximum"`` existed keep the constructor's
@@ -1001,6 +1013,17 @@ class Parametric(
         # Informational: a reader that predates it ignores it and restores
         # the same model, so it needs no newer schema.
         out["maximum"] = self.maximum
+        # The plotting options of a probability-plotting fit, which its
+        # pivotal bounds refit simulated samples with (with the data).
+        info = getattr(self, "fitting_info", None) or {}
+        if self.method == "MPP" and "rr" in info:
+            out["mpp_options"] = {
+                "heuristic": str(info["heuristic"]),
+                "rr": str(info["rr"]),
+                "on_d_is_0": bool(info["on_d_is_0"]),
+            }
+        if self.bias_adjustment is not None:
+            out["bias_adjustment"] = self.bias_adjustment
         # The printout's "Data" line (#508), informational like "maximum",
         # so a model restored without its data prints the same.
         if self._data_repr():
@@ -1165,11 +1188,20 @@ class Parametric(
     #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
     _bootstrap_refits: dict | None = None
 
+    #: The simulated fits drawn for ``method="pivotal"``
+    #: (``_pivotal.pivots``), by ``(n_sim, random_state)``; not pickled.
+    _pivotal_draws: dict | None = None
+
+    #: The small-sample adjustment applied by :meth:`rba` (``None`` for
+    #: any other model).
+    bias_adjustment: str | None = None
+
     def __getstate__(self) -> dict:
         # The bootstrap refits are a cache, rebuilt on demand (#645), as
         # are the likelihood-ratio bounds' (the mixin's own)
         state = super().__getstate__()
         state.pop("_bootstrap_refits", None)
+        state.pop("_pivotal_draws", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
@@ -1329,6 +1361,76 @@ class Parametric(
         _check_drawn_extras(extras)
         # The data's unit is the model's whatever its parameters (#845)
         return self.dist.from_params(core, **extras, unit=self.unit)
+
+    def rba(self, basis: str = "median") -> Parametric:
+        r"""
+        The fit with Abernethy's reduced bias adjustment (RBA): a
+        small-sample correction of the Weibull shape, or of the LogNormal
+        or Normal ``sigma``, of a maximum-likelihood fit. Opt-in; the fit
+        itself is never changed.
+
+        In plain words: with few failures, the maximum-likelihood Weibull
+        shape comes out too large more often than too small (with 5
+        failures, a true shape of 2 is estimated above 2 about two times
+        in three), and the (log)normal ``sigma`` comes out too small. The
+        adjustment shrinks the shape (or stretches ``sigma``) by a factor
+        that depends only on the number of failures ``r`` and tends to 1
+        as ``r`` grows, so that the estimate is as often above the truth
+        as below it (``basis="median"``, the RBA), or right on average
+        (``basis="mean"``). It moves the point estimate only; it is not a
+        bound, and it removes a bias of the estimate, not its spread.
+
+        With :math:`C_4(r) = \sqrt{2 / (r - 1)}\,\Gamma(r / 2) /
+        \Gamma((r - 1) / 2)`, the Weibull shape is multiplied by
+        :math:`C_4^{3.5}` (median basis) or :math:`C_4^{6}` (mean basis),
+        and the (log)normal ``sigma`` by :math:`\sqrt{r / (r - 1)} / C_4`
+        (which makes a complete sample's ``sigma`` the mean-unbiased
+        :math:`s / C_4`); the other parameter is kept. ``r`` counts the
+        units that were not right censored. These are R ``WeibullR``'s
+        ``rba`` factors and its ``"mle-rba"`` fit, which applies them to
+        maximum-likelihood fits only, as here (Abernethy, *The New
+        Weibull Handbook*, 5th ed., chapter 5); the factors are exact
+        for any ``r`` (``WeibullR`` returns 1 above 343 failures).
+
+        Parameters
+        ----------
+        basis : {'median', 'mean'}, optional
+            For the Weibull shape: ``"median"`` (the default, Abernethy's
+            RBA) or ``"mean"``. The (log)normal ``sigma`` has one
+            adjustment.
+
+        Returns
+        -------
+        Parametric
+            The distribution at the adjusted parameters, built as
+            :meth:`with_params` builds a model (no data or covariance,
+            so no bounds of its own: bound the fit itself), with
+            ``bias_adjustment`` saying what was applied.
+
+        Raises
+        ------
+        ValueError
+            For a fit that is not a plain two-parameter maximum-likelihood
+            fit of the Weibull, LogNormal or Normal (an offset, ``lfp``,
+            ``zi``, weights, truncation, a fixed shape), or with fewer
+            than 3 failures: the message says what to use instead.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [43, 61, 79, 92, 107, 120, 141, 163]
+        >>> model = Weibull.fit(x)
+        >>> model.params.round(4)
+        array([113.2223,   2.9674])
+        >>> adjusted = model.rba()
+        >>> adjusted.params.round(4)
+        array([113.2223,   2.6198])
+        >>> adjusted.bias_adjustment
+        'rba (median, 8 failures)'
+        """
+        from . import _rba
+
+        return _rba.rba(self, basis)
 
     def bootstrap(self, n_boot: int = 200, random_state: Any = None) -> Any:
         """
@@ -1545,6 +1647,7 @@ class Parametric(
         method: str | None = None,
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
@@ -1600,6 +1703,16 @@ class Parametric(
           edge when enough refits do. Their intervals are BCa: the
           bias-corrected percentiles moved by an acceleration from the
           jackknife (the model refitted without each unit in turn).
+          The refits are by the model's own method: an MPP, MPS, MSE or
+          MOM fit is refitted the same way (they were refitted by
+          maximum likelihood before).
+        - ``"pivotal"`` -- for a probability-plotting fit
+          (``how="MPP"``) of the Weibull, LogNormal, LogLogistic,
+          Normal, Logistic, Gumbel, GumbelLEV or Exponential: the Monte
+          Carlo pivotal bound, from the fits of ``n_sim`` standard
+          samples of the same size and rank pattern by the same
+          regression. Exact for complete and type II censored samples,
+          up to Monte Carlo error; approximate with other censoring.
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
@@ -1634,14 +1747,19 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default), ``"lr"`` or ``"bootstrap"``, as
-            above; ``"exact"`` (the default), ``"wald"`` or ``"lr"`` for
-            the probability models.
+            ``"wald"`` (the default), ``"lr"``, ``"bootstrap"`` or
+            ``"pivotal"``, as above; ``"exact"`` (the default), ``"wald"``
+            or ``"lr"`` for the probability models.
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -1665,6 +1783,13 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
+        if self._is_pivotal(method):
+            check_option("bound", bound, BOUNDS)
+            from . import _pivotal
+
+            return _pivotal.param_cb_pivotal(
+                self, name, alpha_ci, bound, n_sim, random_state
+            )
         self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
@@ -2954,6 +3079,7 @@ class Parametric(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
@@ -2995,7 +3121,7 @@ class Parametric(
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
-        method : ('wald', 'lr', 'bootstrap'), str, optional
+        method : ('wald', 'lr', 'bootstrap', 'pivotal'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
             the ``on`` function by the delta method. For an offset model
             the covariance leaves the offset out (it is a threshold, whose
@@ -3042,11 +3168,27 @@ class Parametric(
             The refits are kept on the model for each ``n_boot`` and integer
             ``random_state``, so bounds at other ``x`` (and ``quantile_cb``
             and ``param_cb``) reuse them.
+            ``"pivotal"`` is for a probability-plotting fit (``how="MPP"``) of
+            the Weibull, LogNormal, LogLogistic, Normal, Logistic, Gumbel,
+            GumbelLEV or Exponential, and only for it: the Monte Carlo
+            pivotal bound, from the fits of ``n_sim`` simulated standard
+            samples of the same size and rank pattern by the same
+            regression; exact for complete and type II censored samples,
+            up to Monte Carlo error (see :doc:`/Parametric SurPyval
+            Modelling`, "Bounds for a probability-plotting fit").
+            It bounds ``sf``, ``ff`` and ``Hf`` (one band, the inverse of
+            ``quantile_cb``'s), not ``hf`` or ``df``.
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations; the pivotal fits are kept on the model for an
+            integer seed, as the refits are.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -3071,6 +3213,13 @@ class Parametric(
         """
         check_alpha_ci(alpha_ci)
         t = np.atleast_1d(x)
+        if self._is_pivotal(method):
+            check_option("bound", bound, BOUNDS)
+            from . import _pivotal
+
+            return _pivotal.cb_pivotal(
+                self, t, on, alpha_ci, bound, n_sim, random_state
+            )
         if self.method != "MLE":
             raise self._no_bounds_error()
         self._refuse_probability_model("cb")
@@ -3132,6 +3281,7 @@ class Parametric(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
@@ -3152,7 +3302,7 @@ class Parametric(
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
-        method : ('wald', 'lr'), str, optional
+        method : ('wald', 'lr', 'bootstrap', 'pivotal'), str, optional
             ``"wald"`` (default) is the delta method on the log of the
             quantile above the support's start (``log t_p`` for a lifetime,
             ``log(t_p - gamma)`` with an offset; the quantile itself for a
@@ -3172,11 +3322,24 @@ class Parametric(
             For an offset model the Wald bound holds the offset at its
             estimate, with a warning; ``"bootstrap"`` (the parametric
             bootstrap, as for ``cb``) includes its uncertainty (#645).
+            ``"pivotal"`` is for a probability-plotting fit (``how="MPP"``) of
+            the Weibull, LogNormal, LogLogistic, Normal, Logistic, Gumbel,
+            GumbelLEV or Exponential, and only for it: the Monte Carlo
+            pivotal bound, from the fits of ``n_sim`` simulated standard
+            samples of the same size and rank pattern by the same
+            regression; exact for complete and type II censored samples,
+            up to Monte Carlo error (see :doc:`/Parametric SurPyval
+            Modelling`, "Bounds for a probability-plotting fit").
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -3199,6 +3362,12 @@ class Parametric(
         >>> model.quantile_cb(0.1, bound="lower", method="lr").round(3)
         np.float64(2.648)
 
+        A probability-plotting fit has the pivotal bound:
+
+        >>> mpp = Weibull.fit(x, how="MPP")
+        >>> mpp.quantile_cb(0.1, method="pivotal", random_state=1).round(3)
+        array([1.465, 4.298])
+
         Notes
         -----
         The nonparametric models' ``quantile_cb`` is the same bound for a
@@ -3207,7 +3376,11 @@ class Parametric(
         """
         check_alpha_ci(alpha_ci)
         probs = np.atleast_1d(np.asarray(p, dtype=float))
-        self._check_summary_cb(alpha_ci, bound, "quantile_cb")
+        pivotal = self._is_pivotal(method)
+        if pivotal:
+            check_option("bound", bound, BOUNDS)
+        else:
+            self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
         # As qf (#611): NaN, with one warning, where p is outside (0, 1),
@@ -3222,9 +3395,21 @@ class Parametric(
             )
             if ok.any():
                 out[ok] = self.quantile_cb(
-                    probs[ok], alpha_ci, bound, method, n_boot, random_state
+                    probs[ok],
+                    alpha_ci,
+                    bound,
+                    method,
+                    n_boot,
+                    random_state,
+                    n_sim,
                 )
             return out
+        if pivotal:
+            from . import _pivotal
+
+            return _pivotal.quantile_cb_pivotal(
+                self, probs, alpha_ci, bound, n_sim, random_state
+            )
         if self.dist.discrete:
             self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
@@ -3926,6 +4111,12 @@ class Parametric(
             raise refuse_bootstrap()
 
     @staticmethod
+    def _is_pivotal(method: Any) -> bool:
+        """Whether ``method`` asks for the pivotal Monte Carlo bound of a
+        probability-plotting fit (``_pivotal``)."""
+        return isinstance(method, str) and method.lower() == "pivotal"
+
+    @staticmethod
     def _is_lr(method: str, bootstrap: bool = False) -> bool:
         """Whether ``method`` asks for the likelihood-ratio bound;
         ``"wald"`` (and, where the caller has it, ``"bootstrap"``) is not,
@@ -3985,6 +4176,14 @@ class Parametric(
         are the bound, so asking ``cb`` for one is a misunderstanding the
         bare "Only MLE" message does not clear up."""
         message = "Only MLE has confidence bounds"
+        if self.method == "MPP":
+            message += (
+                ", except the pivotal bounds of a probability-plotting fit: "
+                "cb, quantile_cb and param_cb with method='pivotal' (for "
+                "the Weibull, LogNormal, LogLogistic, Normal, Logistic, "
+                "Gumbel, GumbelLEV and Exponential). For other bounds "
+                "refit with how='MLE'"
+            )
         if self._weibayes_alpha_ci is not None:
             message += ": " + self._weibayes_note()
         return ValueError(message)

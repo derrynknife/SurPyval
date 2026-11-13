@@ -69,6 +69,35 @@ def _life():
 LIFE = _life()
 
 
+def _stretches():
+    """The fixture as rows of each unit, z2 fixed in each (split at v)."""
+    d = fixture("landmark")
+    cols = {k: [] for k in ("i", "x", "c", "tl", "z1", "z2")}
+
+    def row(u, x, c, tl, z1, z2):
+        for k, v in zip(cols, (int(u), x, c, tl, z1, z2)):
+            cols[k].append(v)
+
+    for u, e, t, st, z1, v in zip(
+        d["id"], d["entry"], d["time"], d["status"], d["z1"], d["v"]
+    ):
+        entry = e if e > 0 else -np.inf
+        c = 0 if st == 1 else 1
+        if np.isnan(v):
+            row(u, t, c, entry, z1, 0.0)
+        else:
+            row(u, v, 1, entry, z1, 0.0)
+            row(u, t, c, v, z1, 1.0)
+    return SurpyvalData(
+        x=cols["x"],
+        c=cols["c"],
+        tl=cols["tl"],
+        i=cols["i"],
+        Z=np.column_stack([cols["z1"], cols["z2"]]),
+        covariate_names=["z1", "z2"],
+    )
+
+
 def _profiles(v):
     return np.column_stack([v["profiles"]["z1"], v["profiles"]["z2"]])
 
@@ -77,11 +106,22 @@ def _profiles(v):
 def test_landmark_data_is_cutLM(L):
     v = values(SOURCE, f"cutLM_{L}")
     data = landmark(LIFE, at=L, horizon=3)
-    assert_allclose(np.array(data.ids, dtype=float), v["id"])
+    assert_allclose(np.array(data.i, dtype=float), v["id"])
     assert_allclose(data.x, v["time"])
     assert_allclose(1 - data.c, v["status"])
     assert_allclose(data.Z[:, 1], v["z2"])
     assert_allclose(data.tl, L)
+
+
+@pytest.mark.parametrize("L", AT)
+def test_landmark_data_from_a_units_rows_is_cutLM(L):
+    # The same data as rows of each unit, the covariate fixed in each
+    v = values(SOURCE, f"cutLM_{L}")
+    data = landmark(_stretches(), at=L, horizon=3)
+    assert_allclose(np.array(data.i, dtype=float), v["id"])
+    assert_allclose(data.x, v["time"])
+    assert_allclose(1 - data.c, v["status"])
+    assert_allclose(data.Z[:, 1], v["z2"])
 
 
 def test_cox_at_one_landmark():

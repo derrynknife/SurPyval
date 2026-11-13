@@ -15,6 +15,7 @@ from surpyval.multistate._base import (
     step_index,
 )
 from surpyval.multistate._data import SpellData, check_spells
+from surpyval.multistate._entry import multistate_data, other_name
 from surpyval.multistate.transitions import TransitionMatrix
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -23,6 +24,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
@@ -113,6 +115,9 @@ class MultiState(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -128,14 +133,19 @@ class MultiState(SerialisableMixin):
 
         Parameters
         ----------
-        x : array_like
+        x : array_like or SurpyvalData
             The end of each spell: the time the unit left the state, or
-            was last seen in it.
+            was last seen in it. Or a :class:`~surpyval.SurpyvalData`
+            holding the spells (``x``, ``e``, ``s``, ``tl``, ``i``,
+            ``n``), whose arrays are then used; the other data arguments
+            are left out. Data without ``s`` starts every row from the
+            one initial state (see :ref:`multistate-from-data`).
         e : array_like
             The state the unit moved into at ``x``; a missing value
             (``None``, ``NaN``) where the spell ended by censoring.
         state : array_like
-            The state the unit was in during the spell.
+            The state the unit was in during the spell. Its other name is
+            ``s`` (the name ``SurpyvalData`` gives it): give one of them.
         tl : array_like or scalar, optional
             The start of each spell, its entry: the unit is at risk in the
             state in ``(tl, x]``. A unit with several spells needs it (the
@@ -200,6 +210,7 @@ class MultiState(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
     def fit_from_df(
         cls,
         df: Any,
@@ -213,7 +224,8 @@ class MultiState(SerialisableMixin):
     ) -> MultiState:
         """
         Fit the model to a DataFrame of spells, one row each: the columns
-        are the arguments of :meth:`fit`.
+        are the arguments of :meth:`fit` (``s_col`` is another name for
+        ``state_col``).
 
         Examples
         --------

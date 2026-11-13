@@ -136,6 +136,80 @@ gives on the same columns:
     same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
     assert np.allclose(from_log.params, same.params)
 
+From a SurpyvalData
+~~~~~~~~~~~~~~~~~~~
+
+Every recurrent ``fit`` also takes a ``SurpyvalData`` with each row's unit,
+``i`` (see :doc:`Conventions`): ``CrowAMSAA.fit(data)``. In plain words, a
+unit's rows are its history, in time order:
+
+- ``x`` is the unit's age at each row: an event, or the last time it was seen;
+- ``c = 1`` closes the record (the unit was still running when we stopped
+  watching), and ``c = 0`` is an event;
+- ``a = 1`` marks an event that ended the unit for good (scrapped, written
+  off), and ``a = 0`` an event the unit carried on from;
+- ``e`` is the event's type (its failure mode), for the cause-specific
+  models, and ``Z`` the covariates, for the regressions;
+- ``n`` and ``tl`` / ``tr`` are the counts and the observation window, as
+  above. A row whose ``tl`` is after the previous row's ``x`` starts a new
+  period of observation after a gap, which is given to the fit as
+  ``windows``.
+
+The fit is exactly that of the arrays the rows stand for. Here pump P1 was
+watched to 500 hours, not watched until 800, then watched to 1,400; pump P2
+was scrapped at its fourth failure, at 650 hours:
+
+.. jupyter-execute::
+
+    from surpyval import SurpyvalData
+
+    inf = np.inf
+    pumps = SurpyvalData(
+        x=[120, 380, 500, 900, 1150, 1400, 90, 400, 520, 650],
+        c=[0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        tl=[-inf, -inf, -inf, 800, -inf, -inf, -inf, -inf, -inf, -inf],
+        a=[0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        i=["P1"] * 6 + ["P2"] * 4,
+        unit="hours",
+    )
+    pump_model = CrowAMSAA.fit(pumps)
+    print(pump_model)
+
+Apart from the joint frailty model, none of the recurrent models models a
+terminal event, so a unit that ended for good (``a = 1``) is fitted as an
+event followed by the end of its observation: what the arrays give for a unit with no ``c = 1`` row. The
+model's ``notes`` say so, and say where ``a`` was read rather than given
+(an event on a unit's last row with no ``a`` is read as ``a = 1``). A unit
+whose last row is an event with ``a = 0`` and no ``c = 1`` row is also taken
+to be watched until that event, with a note. Covariates that change within a
+unit (rows with different ``Z``) are fitted by the model's ``fit_tvc``, for
+the models that have one; ``fit_from_df(..., a_col=...)`` reads ``a`` from a
+table and adds the same notes. Data without ``i``, in more than one state
+(``s``), or with what the model has no argument for is refused, saying what
+to use.
+
+The joint frailty model (``JointFrailty``, see :doc:`counting/joint_frailty`)
+does model the terminal event, so ``JointFrailty.fit(data)`` reads the event
+with ``a = 1`` as the unit's terminal event and a ``c = 1`` row as the end of
+its record without one; where ``a`` was read rather than given, its notes say
+that the last event was taken as the terminal event, and to give ``a = 0`` on
+a last event that was an ordinary one. The panel-count models
+(``PanelCountMCF``, ``PanelCountRegression``) take counts found at
+inspections, which have no rows in a ``SurpyvalData``: they take arrays (or
+``fit_from_df``) and refuse a ``SurpyvalData`` in words.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _same = CrowAMSAA.fit(
+        [120, 380, 900, 1150, 90, 400, 520, 650],
+        i=["P1"] * 4 + ["P2"] * 4,
+        windows={"P1": [(0, 500), (800, 1400)], "P2": [(0, 650)]},
+    )
+    assert np.array_equal(pump_model.params, _same.params)
+    assert "terminal event" in pump_model.notes[0]
+
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -805,7 +879,7 @@ Interval-counted (grouped) data
 Sometimes the exact event times are unknown and only the number of events
 between inspections is recorded. Give each inspection interval as an
 ``[start, end]`` pair in ``x`` with ``c=2``, and the number of events found
-in ``n``. A count of events since new up to a time can be given as a
+in ``n`` (0 for an inspection that found none). A count of events since new up to a time can be given as a
 left-censored row (``c=-1``). The HPP and NHPP models accept these rows,
 alone or mixed with exact events (when mixing, write an exact event at
 :math:`t` as the pair ``[t, t]`` with ``c=0``, and the end of observation as
@@ -835,6 +909,152 @@ event times, so they are not available for grouped data.
 
     assert sum(n) == 32
     assert np.isclose(HPP.fit(x, i=i, c=c, n=n).params[0], 32 / 80)
+
+Counts at inspections (panel counts)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When each unit is inspected at its own times and only the number of events
+since the previous inspection is recorded -- pumps checked every few hundred
+hours, with the failures found at each check counted; patients seen at
+clinic visits, with the new tumours counted -- the data are *panel counts*.
+Many inspections find nothing, and those zeros matter: they say no events
+happened in the interval. ``PanelCountMCF`` estimates the mean cumulative
+function (the expected number of events per unit by each time) from such
+data without assuming a process or a shape; the theory is in
+:doc:`Recurrent Event Analysis` (Panel Counts). The data are one row per
+inspection: the unit, the inspection time (from the start of the unit's
+observation) and the count since the previous inspection.
+
+Here, 40 pumps are inspected every 300 to 900 hours over their first 5000
+hours of service:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    from surpyval.recurrent import PanelCountMCF
+
+    # Failures of each pump follow a power law (mean (t / 1000)^1.4), faster
+    # on some pumps than others; only the counts found at inspections are kept
+    pump_rng = np.random.default_rng(7)
+    pump_rows = []
+    for pump in range(40):
+        pump_rate = pump_rng.gamma(2.0, 0.5)
+        failures = np.cumsum(pump_rng.exponential(size=50)) / pump_rate
+        failures = 1000 * failures ** (1 / 1.4)
+        hours, seen = 0.0, 0
+        while True:
+            hours += pump_rng.uniform(300, 900)
+            if hours > 5000:
+                break
+            found = int(np.sum(failures <= hours)) - seen
+            seen += found
+            pump_rows.append((pump, round(hours), found))
+    pump_log = pd.DataFrame(pump_rows, columns=["pump", "hours", "found"])
+    print(pump_log.head(5))
+
+    pump_mcf = PanelCountMCF.fit_from_df(
+        pump_log, "hours", "found", i_col="pump", unit="hours"
+    )
+    pump_mcf
+
+The estimate is a non-decreasing step function with a step only where the
+data say the mean can change. Its bounds resample whole pumps and refit
+(the bootstrap), so they do not assume the pumps share one rate:
+
+.. jupyter-execute::
+
+    t_query = [1000, 2500, 4500]
+    print("MCF   :", pump_mcf.mcf(t_query).round(2))
+    print("bounds:", pump_mcf.mcf_cb(t_query, n_boot=200, random_state=1).round(2).tolist())
+
+The default estimator is the maximum likelihood one (Wellner and Zhang);
+``how="pseudo"`` gives the isotonic regression of the cumulative counts
+(Sun and Kalbfleisch), which is exact and fast but uses the data less
+fully when units are inspected at different times. The same counts fit a
+parametric model through the grouped-count likelihood: each inspection
+interval is a ``[previous, this]`` pair with ``c=2``, and a count of 0 is
+allowed there:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA
+
+    pump_pseudo = PanelCountMCF.fit_from_df(pump_log, "hours", "found", i_col="pump", how="pseudo")
+    pump_log = pump_log.sort_values(["pump", "hours"])
+    pump_start = pump_log.groupby("pump")["hours"].shift(fill_value=0)
+    pump_ca = CrowAMSAA.fit(
+        np.c_[pump_start, pump_log["hours"]], i=pump_log["pump"], c=np.full(len(pump_log), 2), n=pump_log["found"]
+    )
+    print("pseudo-likelihood MCF:", pump_pseudo.mcf(t_query).round(2))
+    print("Crow-AMSAA            :", pump_ca.cif(t_query).round(2), "shape", pump_ca.params[1].round(2))
+
+The parametric fit assumes the counts are Poisson; here the pumps differ
+in their rates, so its bounds would be too narrow, while the shape of the
+curve agrees with the non-parametric estimate.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (pump_log["found"] == 0).any()
+    assert np.all(np.diff(pump_mcf.mcf_hat) >= 0)
+    assert abs(pump_ca.params[1] - 1.4) < 0.3
+
+**Covariates: the proportional means model.** ``PanelCountRegression``
+fits :math:`E[N(t) \mid Z] = \Lambda_0(t) e^{\beta' Z}`, with the
+baseline left unspecified, by the pseudo-likelihood (the default, R
+``spef``'s ``"MPL"``) or the likelihood. :math:`e^{\beta}` is the ratio of
+the expected counts at every time. Here a simulated clinic-visit study:
+120 patients, about half on a treatment that truly halves the expected
+number of new lesions (:math:`\beta = \ln 0.5 \approx -0.69`), each seen
+at visits one to six months apart for three years, with the new lesions
+counted at each visit, and patients differing in their underlying rates:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import PanelCountRegression
+
+    clinic_rng = np.random.default_rng(11)
+    clinic_rows = []
+    for patient in range(120):
+        treated = int(clinic_rng.random() < 0.5)
+        rate = 0.15 * clinic_rng.gamma(2.0, 0.5) * 0.5**treated  # per month
+        month = 0
+        while True:
+            gap = int(clinic_rng.integers(1, 7))
+            if month + gap > 36:
+                break
+            month += gap
+            clinic_rows.append(
+                (patient, month, clinic_rng.poisson(rate * gap), treated)
+            )
+    clinic = pd.DataFrame(
+        clinic_rows, columns=["patient", "month", "new_lesions", "treated"]
+    )
+
+    clinic_model = PanelCountRegression.fit_from_df(
+        clinic, "month", "treated", "new_lesions", i_col="patient"
+    )
+    print(clinic_model)
+    print("ratio of expected lesions, treated / untreated:",
+          np.exp(clinic_model.params[0]).round(3))
+    print("95% bootstrap interval for beta:",
+          clinic_model.param_cb("treated", n_boot=200, random_state=1).round(3))
+
+The estimated ratio is close to the true 0.5, and its interval comes from
+resampling whole patients, so it allows for patients differing in their
+rates. ``how="likelihood"`` uses the counts in each interval rather than
+their running totals; the two estimators agree when the model holds and
+the visit times carry no information about the counts, and differ in how
+they weight the visits. Standard errors and intervals for either come
+from the same bootstrap (``standard_errors``, ``param_cb``, ``mcf_cb``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(clinic_model.params[0] - np.log(0.5)) < 0.35
 
 Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

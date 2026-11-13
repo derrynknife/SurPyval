@@ -22,6 +22,7 @@ the data, and only the covariate effect is parameterised.
     :maxdepth: 1
 
     regression/cox_ph
+    regression/interval_cox
     regression/additive_hazards
     regression/aalen_additive
     regression/proportional_odds

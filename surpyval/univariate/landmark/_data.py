@@ -79,21 +79,79 @@ class Lives:
                 "built: give the data of one event (drop e, with the other "
                 "events as censored)."
             )
-        k = x.size
-        ids = life.ids if life.ids is not None else list(range(k))
-        self.ids = list(ids)
-        self.entry = np.asarray(life.tl, dtype=float)
-        self.end = x
-        self.event = c == 0
-        self.n = np.asarray(life.n, dtype=float)
+        rows_n = x.size
+        ids = life.ids if life.ids is not None else list(range(rows_n))
+        tl = np.asarray(life.tl, dtype=float)
+        n_row = np.asarray(life.n, dtype=float)
+        # The units in order of first appearance, and each unit's rows in
+        # the order given (SurpyvalData keeps a unit's rows in time order).
+        order: dict = {}
+        for r, u in enumerate(ids):
+            order.setdefault(u, []).append(r)
+        self.ids = list(order)
+        k = len(self.ids)
+        self.rows = [np.array(rs, dtype=int) for rs in order.values()]
+        self.entry = np.empty(k)
+        self.end = np.empty(k)
+        self.event = np.zeros(k, dtype=bool)
+        self.n = np.empty(k)
+        # Each row's start: its tl where finite, else where the unit's
+        # previous row ended (-inf for a first row with no entry).
+        self.start = np.empty(rows_n)
+        for j, rs in enumerate(self.rows):
+            prev = -np.inf
+            for q, r in enumerate(rs):
+                if np.isfinite(tl[r]):
+                    if q and tl[r] > prev:
+                        raise ValueError(
+                            "Landmarking needs each unit followed without "
+                            "a break: unit {!r} has no row from {:g} to "
+                            "{:g}. Add a row for the gap (its covariates "
+                            "carried forward) if the unit was at risk "
+                            "then, or end its follow-up at {:g}.".format(
+                                self.ids[j], prev, tl[r], prev
+                            )
+                        )
+                    self.start[r] = tl[r]
+                else:
+                    self.start[r] = prev
+                if q < len(rs) - 1 and c[r] == 0:
+                    raise ValueError(
+                        "Unit {!r} has an event before its last row: "
+                        "landmarking takes one event per unit (repeated "
+                        "events are the recurrent models' data, in "
+                        "surpyval.recurrent).".format(self.ids[j])
+                    )
+                prev = x[r]
+            if np.unique(n_row[rs]).size > 1:
+                raise ValueError(
+                    "'n' counts identical units, so it must be the same on "
+                    "every row of a unit; unit {!r} has {}.".format(
+                        self.ids[j], sorted(set(n_row[rs].tolist()))
+                    )
+                )
+            self.entry[j] = self.start[rs[0]]
+            self.end[j] = x[rs[-1]]
+            self.event[j] = c[rs[-1]] == 0
+            self.n[j] = n_row[rs[0]]
+        a = getattr(life, "a", None)
+        if a is not None:
+            last = np.array([rs[-1] for rs in self.rows], dtype=int)
+            if (self.event & (np.asarray(a)[last] == 0)).any():
+                raise ValueError(
+                    "A unit's last event has a = 0 (a recurrent event, not "
+                    "the end of its life): landmarking takes one terminal "
+                    "event per unit; the recurrent models in "
+                    "surpyval.recurrent take repeated events."
+                )
         names: list[str] = []
         fixed = None
         if life.Z is not None:
-            fixed = np.asarray(life.Z, dtype=float).reshape(k, -1)
+            fixed = np.asarray(life.Z, dtype=float).reshape(rows_n, -1)
             bad = ~np.isfinite(fixed).all(axis=1)
             if bad.any():
                 raise ValueError(
-                    "{} unit(s) have a missing (NaN) or infinite "
+                    "{} row(s) have a missing (NaN) or infinite "
                     "covariate. A landmark data set keeps or drops whole "
                     "units, so give every unit its covariates, or leave "
                     "those units out of the data first.".format(int(bad.sum()))
@@ -114,6 +172,13 @@ class Lives:
         names += list(self.readings)
         self.names = names
 
+    def _row_at(self, j: int, L: float) -> int:
+        """The row of unit ``j`` whose covariates are in force at ``L``:
+        its last row starting at or before ``L``."""
+        rs = self.rows[j]
+        k = int(np.searchsorted(self.start[rs], L, side="right")) - 1
+        return int(rs[max(k, 0)])
+
     @property
     def p(self) -> int:
         return len(self.names)
@@ -126,7 +191,8 @@ class Lives:
         rows = np.flatnonzero((self.entry <= L) & (self.end > L))
         parts = []
         if self.fixed is not None:
-            parts.append(self.fixed[rows])
+            held = np.array([self._row_at(int(j), L) for j in rows], int)
+            parts.append(self.fixed[held])
         if self.schedules is not None:
             parts.append(
                 np.array(
@@ -173,14 +239,23 @@ def _value_at(schedule: Any, L: float) -> npt.NDArray:
 
 
 def _measurements(m: Any, ids: list) -> dict:
-    """Each named measurement's readings per unit, ``{name: [(ages,
-    values), ...]}`` in the order of ``ids``, sorted by age, from the
-    data's measurements ``m`` (``{}`` without any)."""
+    """Each measurement's readings per unit, ``{name: [(ages, values),
+    ...]}`` in the order of ``ids``, sorted by age, from the data's
+    :class:`~surpyval.Measurements` ``m`` (``{}`` without any). The one
+    unnamed measurement is named ``"m"``."""
     if m is None:
         return {}
-    from ._measurements import readings_by_unit
-
-    return readings_by_unit(m, ids)
+    out = {}
+    for name in m.names:
+        per_unit = m[name]
+        series = []
+        for u in ids:
+            readings = per_unit.get(u, {})
+            ages = np.array(sorted(readings), dtype=float)
+            values = np.array([readings[a] for a in sorted(readings)], float)
+            series.append((ages, values))
+        out["m" if name is None else str(name)] = series
+    return out
 
 
 def _last_reading(reading: tuple, L: float) -> float:
@@ -267,12 +342,16 @@ def landmark(
     Parameters
     ----------
     life : SurpyvalData
-        One row per unit: its time ``x``, ``c`` (0 the event, 1 still
-        running), counts ``n``, entry ``tl``, unit ids ``i`` (``ids``),
-        fixed covariates ``Z``, time-varying ones (``from_items`` with a
-        ``StepSchedule`` or ``CovariatePath`` per unit) and measurements
-        ``m`` read on the units. The last reading of each measurement at
-        or before ``L`` becomes a covariate named after it; a unit at
+        The units' lifetimes: time ``x``, ``c`` (0 the event, 1 still
+        running), counts ``n``, entry ``tl``, unit ids ``i`` and
+        covariates ``Z``. A covariate that changes is given as rows of
+        the unit, ``(tl, x]`` stretches with ``Z`` fixed in each, only
+        the last ending in the event (or as a ``StepSchedule`` or
+        ``CovariatePath`` per unit, from ``from_items``); a gap between a
+        unit's rows, or an event before its last row, is refused.
+        Readings taken on the units are its measurements ``m``. The last
+        reading of each measurement at or before ``L`` becomes a
+        covariate named after it; a unit at
         risk with no reading of one by ``L`` is left out of that
         landmark, with a warning that counts them.
     at : float or array_like
@@ -289,8 +368,11 @@ def landmark(
         One row per unit at risk at each landmark, ordered by landmark,
         with ``x``, ``c``, ``n``, ``tl`` (the landmark) and ``Z`` (named
         by ``covariate_names``). Each row's ``attributes`` hold its unit
-        (``"i"``) and landmark (``"L"``); with one landmark the unit ids
-        are also its ``ids``.
+        (``"i"``) and landmark (``"L"``); with one landmark the units are
+        also its ``i``. (Stacked, a unit's rows overlap in time, each
+        running from its landmark, which ``SurpyvalData`` does not allow
+        for one unit's rows, so there the unit is in the attributes
+        only.)
 
     Examples
     --------
@@ -299,9 +381,9 @@ def landmark(
 
     >>> from surpyval import SurpyvalData, landmark
     >>> life = SurpyvalData(x=[1.5, 6, 4], c=[0, 0, 1], Z=[[1], [0], [1]],
-    ...                     ids=["a", "b", "c"])
+    ...                     i=["a", "b", "c"])
     >>> data = landmark(life, at=2, horizon=3)
-    >>> data.ids, data.x, data.c, data.tl
+    >>> data.i, data.x, data.c, data.tl
     (['b', 'c'], array([5., 4.]), array([1, 1]), array([2., 2.]))
 
     Stacked over two landmarks, the landmark becomes a covariate:
@@ -335,24 +417,20 @@ def landmark(
             "landmarks within the follow-up.".format(L_all.tolist())
         )
     unit_ids = [lives.ids[u] for u in st["unit"]]
+    # One landmark: a unit is on one row, so its id is the row's i. Stacked,
+    # a unit is on a row per landmark, and those rows overlap in time
+    # (each runs from its landmark), which SurpyvalData refuses for one
+    # unit's rows: the unit is then each row's attribute "i".
     data = SurpyvalData(
         x=st["x"],
         c=st["c"],
         n=st["n"],
         tl=st["L"],
         Z=Z if Z.shape[1] else None,
-        ids=unit_ids if L_all.size == 1 else None,
+        i=unit_ids if L_all.size == 1 else None,
         covariate_names=names if Z.shape[1] else None,
+        group_and_sort=False,
     )
-    if not Z.shape[1]:
-        # Without covariates the rows were grouped: keep them per unit.
-        data = SurpyvalData(
-            x=st["x"],
-            c=st["c"],
-            n=st["n"],
-            tl=st["L"],
-            group_and_sort=False,
-        )
     data.attributes = [
         {"i": u, "L": float(L)} for u, L in zip(unit_ids, st["L"])
     ]

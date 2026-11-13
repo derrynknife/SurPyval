@@ -49,21 +49,22 @@ The landmark data
 -----------------
 
 :func:`~surpyval.landmark` derives the landmark data from a
-:class:`~surpyval.SurpyvalData` of the units' lifetimes (one row per unit,
-with its time, censoring, counts, entry, id and covariates; time-varying
-covariates and measurements as :meth:`SurpyvalData.from_items
-<surpyval.SurpyvalData.from_items>` carries them). The result is another
-``SurpyvalData``, which any model fits:
+:class:`~surpyval.SurpyvalData` of the units' lifetimes: each unit's time,
+censoring, count, entry, id ``i`` and covariates. A covariate that changes
+is given as rows of the unit, ``(tl, x]`` stretches with the covariates
+fixed in each (only the last row ends in the event); readings taken on the
+units are its measurements ``m`` (a :class:`~surpyval.Measurements`).
+The result is another ``SurpyvalData``, which any model fits:
 
 .. code:: python
 
     import numpy as np
     import surpyval as sp
 
-    # A unit's covariate switches from 0 to 1 at some time (a recovery, a
-    # change of duty); z1 is fixed.
+    # A unit's covariate z2 switches from 0 to 1 at some time (a recovery,
+    # a change of duty); z1 is fixed. A unit that switches has two rows.
     rng = np.random.default_rng(1)
-    items = []
+    i, x, c, tl, Z = [], [], [], [], []
     for unit in range(300):
         switch = rng.exponential(3.0)
         z1 = float(rng.uniform() < 0.5)
@@ -71,30 +72,33 @@ covariates and measurements as :meth:`SurpyvalData.from_items
         if t > switch:  # the hazard doubles after the switch
             t = switch + rng.exponential(1 / (0.3 * np.exp(0.5 * z1)))
         end = rng.uniform(4, 10)
-        outcome = {"observed": t} if t <= end else {"right_censored": end}
-        items.append(sp.ItemLifetime(
-            unit, **outcome, covariates={"z1": z1},
-            time_varying_covariates=sp.StepSchedule.from_changepoints(
-                [0, switch], [0, 1]),
-        ))
-    life = sp.SurpyvalData.from_items(items)
+        stop, event = min(t, end), int(t <= end)
+        if switch < stop:
+            i += [unit, unit]; x += [switch, stop]; c += [1, 1 - event]
+            tl += [-np.inf, switch]; Z += [[z1, 0.0], [z1, 1.0]]
+        else:
+            i.append(unit); x.append(stop); c.append(1 - event)
+            tl.append(-np.inf); Z.append([z1, 0.0])
+    life = sp.SurpyvalData(x=x, c=c, tl=tl, i=i, Z=Z,
+                           covariate_names=["z1", "z2"])
 
     data = sp.landmark(life, at=2, horizon=3)
-    data.covariate_names     # ['z1', 'time_varying_0'], as known at 2
+    data.covariate_names     # ['z1', 'z2'], as known at 2
     data.tl[:3], data.x[:3]  # entered at 2, followed at most to 5
 
 At one landmark the rows are the units at risk then, entered at the
-landmark (``tl = s``), each with its covariates as known then. With
-several landmarks, ``at=[0, 1, 2, 3]``, the landmark data sets are stacked
-into one, the *super landmark data set*: a unit appears once for each
-landmark it is at risk at, the landmark is a covariate column ``L``, and
-``interactions=True`` adds each covariate times ``L``. Each row's unit and
-landmark are in its ``attributes`` (provisional: once ``SurpyvalData`` can
-hold a unit's id on several rows, the unit will be its ``i``). A
-measurement with no reading at or before a landmark leaves that unit out
-of that landmark, with a warning that counts them: nothing is known about
-it there. (The form in which ``SurpyvalData`` carries measurements,
-``data.m``, is provisional too, and will follow its measurements class.)
+landmark (``tl = s``), each with its covariates as known then, the unit's
+id its ``i``. With several landmarks, ``at=[0, 1, 2, 3]``, the landmark
+data sets are stacked into one, the *super landmark data set*: a unit
+appears once for each landmark it is at risk at, the landmark is a
+covariate column ``L``, and ``interactions=True`` adds each covariate
+times ``L``. A unit's rows there overlap in time (each runs from its own
+landmark), which ``SurpyvalData`` does not allow for one unit's rows, so
+each row's unit and landmark are in its ``attributes`` (``"i"`` and
+``"L"``). Each measurement in ``m`` becomes a covariate named after it,
+its last reading at or before the landmark; a unit with no reading of it
+by then is left out of that landmark, with a warning that counts them:
+nothing is known about it there.
 
 Landmark models
 ---------------
@@ -169,7 +173,7 @@ of units by their covariates known at :math:`s`, with its usual bounds
 
 .. code:: python
 
-    km = sp.landmark_kaplan_meier(life, at=2, horizon=3, by="time_varying_0")
+    km = sp.landmark_kaplan_meier(life, at=2, horizon=3, by="z2")
     km[1.0].sf([3, 4, 5])      # switched by time 2
     km[0.0].sf([3, 4, 5])      # not yet switched at 2
 

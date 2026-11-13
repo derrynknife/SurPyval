@@ -28,6 +28,7 @@ from surpyval.serialisation import (
 # The ``"class"`` tags of the data dictionaries, and their readers.
 DATA_CLASSES = {
     "SurpyvalData": "surpyval.utils.surpyval_data",
+    "Measurements": "surpyval.utils.measurements",
     "EventHistoryData": "surpyval.utils.event_history_data",
     "ItemLifetime": "surpyval.utils.item_lifetime",
     "ItemHistory": "surpyval.utils.item_history",

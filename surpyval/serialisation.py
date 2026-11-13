@@ -52,6 +52,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "CoxFrailtyModel": ("surpyval.univariate.regression.frailty.cox_frailty"),
+    "CoxMixedEffectsModel": (
+        "surpyval.univariate.regression.frailty.cox_mixed_effects"
+    ),
     "AalenAdditiveModel": (
         "surpyval.univariate.regression.additive_hazards.aalen_additive"
     ),
@@ -60,6 +63,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
+    ),
+    "IntervalCoxPHModel": (
+        "surpyval.univariate.regression.proportional_hazards.interval_cox"
     ),
     "ProportionalOddsModel": (
         "surpyval.univariate.regression.proportional_odds.proportional_odds"
@@ -99,6 +105,8 @@ _TAGGED_MODELS: dict[str, str] = {
     "LandmarkCox": "surpyval.univariate.landmark.landmark_cox",
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
+    "PanelMultiState": "surpyval.multistate.panel",
+    "PanelMultiStateRegression": "surpyval.multistate.panel",
     "ParametricMultiState": "surpyval.multistate.parametric",
     "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
@@ -112,6 +120,9 @@ _TAGGED_MODELS: dict[str, str] = {
         ".cause_specific_proportional_intensity"
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "PanelCountMCF": "surpyval.recurrent.panel_count",
+    "PanelCountRegression": "surpyval.recurrent.panel_count",
     "ParametricRecurrenceModel": (
         "surpyval.recurrent.parametric.parametric_recurrence"
     ),
@@ -197,7 +208,9 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # Schema 4 is the layout of v0.27, which a v0.26 reader (schema 3) refuses.
 # It is needed by a stratified Cox model (a ``"strata"`` list of
 # baselines): a schema-3 reader would read the first stratum's baseline,
-# which the dict also holds at the top level, as the model's. And by a
+# which the dict also holds at the top level, as the model's. (A
+# stratified Fine-Gray model, whose dict has no top-level baseline, is
+# stamped 4 for the same list.) And by a
 # distributional regression model whose coefficients carry SurPyval's sign
 # convention (``"coefficient_signs"``): a v0.26 reader would read a scale's
 # coefficients with the opposite sign and predict the opposite effect.
@@ -211,6 +224,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # every cause's parameters and the joint likelihood, which a v0.26 reader
 # would silently drop, bounding the incidences without the terms between
 # causes.
+# And by data with states (a ``SurpyvalData`` with ``"s"``): a v0.26
+# reader would drop the states and take the stays in every state as one
+# sample; and data with terminal flags (``"a"``), whose units' several
+# rows it would take as units of their own.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 4
 
@@ -234,6 +251,14 @@ _SCHEMA_SIGNED = 4
 # The schema of a jointly fitted ParametricCompetingRisks model (its
 # ``"joint"`` entry): v0.27's schema 4.
 _SCHEMA_JOINT = 4
+
+# The schema of data with states (``"s"``): v0.27's schema 4.
+_SCHEMA_STATES = 4
+
+# The schema of data with named measurements (``"m"``; the old unnamed
+# ``"markers"`` keep their layout): v0.27's schema 4, which a v0.26
+# reader refuses rather than silently drop the readings.
+_SCHEMA_MEASUREMENTS = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -732,6 +757,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         return _SCHEMA_SIGNED
     if any(_is_joint(d) for d in dicts):
         return _SCHEMA_JOINT
+    if any(_has_states(d) for d in dicts):
+        return _SCHEMA_STATES
+    if any(_has_measurements(d) for d in dicts):
+        return _SCHEMA_MEASUREMENTS
     if any(d.get("weighted") is True for d in dicts):
         return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
@@ -753,10 +782,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 
 
 def _is_stratified(d: dict) -> bool:
-    """Whether ``d`` is a stratified Cox model (its baselines under
-    ``"strata"``)."""
+    """Whether ``d`` is a stratified Cox or Fine-Gray model (its
+    baselines under ``"strata"``)."""
     return (
-        d.get("model") == "SemiParametricRegressionModel"
+        d.get("model") in ("SemiParametricRegressionModel", "FineGrayModel")
         and d.get("strata") is not None
     )
 
@@ -768,6 +797,21 @@ def _is_joint(d: dict) -> bool:
         d.get("model") == "ParametricCompetingRisks"
         and d.get("joint") is not None
     )
+
+
+def _has_states(d: dict) -> bool:
+    """Whether ``d`` is data with states or terminal flags (a
+    ``SurpyvalData`` with ``"s"`` or ``"a"``): an older reader would take
+    a unit's several rows as units of their own."""
+    return d.get("class") == "SurpyvalData" and (
+        d.get("s") is not None or d.get("a") is not None
+    )
+
+
+def _has_measurements(d: dict) -> bool:
+    """Whether ``d`` is data with named measurements (a ``SurpyvalData``
+    with ``"m"``)."""
+    return d.get("class") == "SurpyvalData" and d.get("m") is not None
 
 
 def _is_weighted(d: dict) -> bool:

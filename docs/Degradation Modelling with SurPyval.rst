@@ -93,6 +93,58 @@ level, with measurement noise. A unit fails when its measurement reaches 450.
 
     pd.DataFrame({"x": x, "y": y, "i": i}).head(12)
 
+From measurements
+~~~~~~~~~~~~~~~~~
+
+The same readings can be kept as a :class:`~surpyval.Measurements`, the
+data model's object for readings taken on units over their lives (see
+:doc:`Conventions`): each unit's readings, ``{time: value}``. Give it to a
+degradation fit in place of ``x``, ``y`` and ``i``; the fit is the one from
+the arrays, number for number. ``DegradationAnalysis``, ``WienerProcess``
+and ``GammaProcess`` all take it.
+
+.. jupyter-execute::
+
+    from surpyval import Measurements, SurpyvalData
+
+    long = pd.DataFrame({"unit": i, "hours": x, "wear": y})
+    wear = Measurements.from_dataframe(
+        long, i_col="unit", x_col="hours", m_col="wear"
+    )
+    from_readings = DegradationAnalysis.fit(wear, threshold=450)
+    from_arrays = DegradationAnalysis.fit(x, y, i, threshold=450)
+    from_readings.life_model.params, from_arrays.life_model.params
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(
+        from_readings.life_model.params, from_arrays.life_model.params
+    )
+
+The readings may also come attached to the units' life data, as ``data.m``
+of a :class:`~surpyval.SurpyvalData`: then the data's covariates ``Z`` are
+each unit's stress, held over all its readings (an accelerated test with
+one stress per unit), and its life times and censoring are not used, since
+a unit fails where its path reaches the threshold. A unit with no readings
+is left out, with a warning naming it.
+
+.. jupyter-execute::
+
+    units = sorted(set(i))
+    life = SurpyvalData(
+        np.full(len(units), 1000.0), c=np.ones(len(units)), i=units, m=wear
+    )
+    DegradationAnalysis.fit(life, threshold=450).life_model.params
+
+The fits take one measurement: with several (wear and temperature, say),
+choose one with ``m.with_measurement("wear")`` (or
+``data.with_measurement("wear")``). ``fit_from_df`` names the readings'
+columns the same way, ``i_col``, ``x_col`` and ``m_col`` (``y_col`` is
+``m_col``'s other name). Destructive degradation, one reading per unit
+with its own censoring, keeps its arrays.
+
 Degradation path models
 -----------------------
 

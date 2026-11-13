@@ -770,10 +770,13 @@ counts, each such record contributes
 
 the Poisson log-probability of the observed count. SurPyval's HPP and NHPP
 models accept these as interval-censored rows (``c=2`` with ``x`` given as
-``[a, b]`` and the count in ``n``), and a count of events in
-:math:`(0, b]` as a left-censored row (``c=-1``). Mixed exact and grouped
-records are combined in the same likelihood. The renewal models and the
-non-parametric MCF do not accept grouped counts.
+``[a, b]`` and the count in ``n``, which may be 0: an inspection that found
+nothing), and a count of events in :math:`(0, b]` as a left-censored row
+(``c=-1``). Mixed exact and grouped records are combined in the same
+likelihood. The renewal models and ``NonParametricCounting`` do not accept
+grouped counts; for counts alone, ``PanelCountMCF`` and
+``PanelCountRegression`` estimate the mean function without a parametric
+form (see `Panel Counts: Events Counted at Inspections`_ below).
 
 Imperfect-repair likelihoods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1148,6 +1151,93 @@ observation period, anything computed per item is computed per *window* for
 gapped data: the martingale residuals come one per window, and the trend
 tests test each window as its own observation period. The covariate (regression) and cause-specific models do not accept windows.
 
+Panel Counts: Events Counted at Inspections
+-------------------------------------------
+
+Often the events themselves are never seen. A unit is inspected from time
+to time, and all that is recorded is how many events happened since the
+last inspection: the failures found at each inspection of a machine, or
+the new tumours found at each clinic visit. Each unit has its own
+inspection times, and many inspections find nothing. These are *panel
+counts*. The question is the same as for exact event times -- how many
+events a unit has had, on average, by time :math:`t` (the mean function, or
+MCF) -- but the Nelson-Aalen MCF cannot be computed, because it needs the
+times of the events.
+
+The non-parametric answer treats the mean function :math:`\Lambda(t)` as
+any non-decreasing curve, and asks which one best fits the counts.
+
+**Pseudo-likelihood (isotonic regression).** Add up each unit's counts to
+get its cumulative count :math:`N_{ij}` at each inspection :math:`t_{ij}`.
+The mean of the cumulative counts seen at a time estimates
+:math:`\Lambda` there, but those means need not rise with time; the
+estimate is the non-decreasing curve closest to them, each time weighted by
+how many inspections fell on it (an isotonic regression, by the
+pool-adjacent-violators algorithm). It is the maximum of the
+*pseudo-likelihood* that treats each cumulative count as an independent
+Poisson count with mean :math:`\Lambda(t_{ij})` [SunKalbfleisch1995]_:
+
+
+.. math::
+
+    \ell_{ps}(\Lambda) = \sum_{i,j} \left[N_{ij} \ln \Lambda(t_{ij})
+    - \Lambda(t_{ij})\right].
+
+**Likelihood.** Treat instead each count :math:`n_{ij}` in
+:math:`(t_{i,j-1}, t_{ij}]` as Poisson with mean :math:`\Lambda(t_{ij}) -
+\Lambda(t_{i,j-1})`, as for a Poisson process, and maximise
+
+.. math::
+
+    \ell(\Lambda) = \sum_{i,j} n_{ij} \ln\left[\Lambda(t_{ij}) -
+    \Lambda(t_{i,j-1})\right] - \sum_i \Lambda(t_{i J_i})
+
+over non-decreasing :math:`\Lambda` [WellnerZhang2000]_. This uses
+the counts in each interval, not only their running totals, and is more
+efficient when units are inspected at very different times. It has no
+closed form: SurPyval finds it with the self-consistency (EM) algorithm, the
+iterative convex minorant algorithm and
+Newton steps on the increments, and checks the Karush-Kuhn-Tucker
+conditions of the maximum. The likelihood reads :math:`\Lambda` only at
+the ends of the intervals with a count and at each unit's last inspection;
+between those times it is a step function.
+
+**Neither assumes the Poisson model.** Both likelihoods are working
+models: the estimates are consistent for the mean function of any counting
+process, as long as the inspection times do not depend on the counts.
+When every unit is inspected at the same times, both are simply the mean
+count per unit at each time; when inspections are very frequent, both
+approach the Nelson-Aalen MCF of the exact times. The bounds come from the
+bootstrap: whole units are resampled with replacement and the estimate
+refitted, which keeps each unit's counts together and so does not assume
+them independent. With inspection times that vary continuously the
+estimate at a fixed time converges more slowly than usual (the cube root
+of the number of units), and the bootstrap is then not guaranteed to give
+the stated coverage; with inspections on a schedule (visits due monthly,
+say, some missed) it is the usual square-root rate.
+
+**Regression: the proportional means model.** With covariates :math:`Z`,
+
+.. math::
+
+    E[N(t) \mid Z] = \Lambda_0(t)\, e^{\beta' Z},
+
+so :math:`e^{\beta}` is the ratio of the expected counts at every time.
+The baseline :math:`\Lambda_0` is left as a non-decreasing step function,
+and each likelihood above, with :math:`\Lambda` replaced by
+:math:`\Lambda_0 e^{\beta' Z_i}`, is maximised over both [Zhang2002]_
+[WellnerZhang2007]_. Both estimates of :math:`\beta` are consistent
+and asymptotically normal without the Poisson assumption; their standard
+errors and intervals come from the same bootstrap of units. The
+pseudo-likelihood is R ``spef``'s ``"MPL"`` method.
+
+**Parametric models.** A parametric mean function (Crow-AMSAA, Cox-Lewis,
+...) is fitted to panel counts by the grouped-count likelihood of the
+previous section: give each inspection interval as ``[t_{i,j-1}, t_{ij}]``
+with ``c=2`` and its count (0 included) in ``n``. The fit assumes the
+counts are Poisson; for counts that vary more than that between units,
+the non-parametric estimate is a check on the parametric curve.
+
 For worked examples — fitting the NHPP, HPP and renewal models, estimating and
 plotting the mean cumulative function, and handling gapped observation — see the
 :doc:`Recurrent Event Modelling with SurPyval` page. For covariate models see
@@ -1206,3 +1296,18 @@ References
 .. [Kaminskiy2010] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process
    as repairable system model. *Reliability: Theory & Applications*, 1(3)
    (issue 18). arXiv:1006.3718.
+
+.. [SunKalbfleisch1995] Sun, J. and Kalbfleisch, J.D., 1995. Estimation of the
+   mean function of point processes based on panel count data. *Statistica
+   Sinica*, 5(1), pp.279-289.
+
+.. [WellnerZhang2000] Wellner, J.A. and Zhang, Y., 2000. Two estimators of the
+   mean of a counting process with panel count data. *Annals of Statistics*,
+   28(3), pp.779-814.
+
+.. [WellnerZhang2007] Wellner, J.A. and Zhang, Y., 2007. Two likelihood-based
+   semiparametric estimation methods for panel count data with covariates.
+   *Annals of Statistics*, 35(5), pp.2106-2142.
+
+.. [Zhang2002] Zhang, Y., 2002. A semiparametric pseudolikelihood estimation
+   method for panel count data. *Biometrika*, 89(1), pp.39-48.

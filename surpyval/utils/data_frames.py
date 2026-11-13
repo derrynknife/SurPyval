@@ -107,6 +107,31 @@ def _times(
     return np.column_stack([lower, upper]), True
 
 
+def _exact_or_range(
+    df: Any, x_col: Any, xl_col: Any, xr_col: Any, c_col: Any, event_col: Any
+) -> tuple[Any, np.ndarray, Any]:
+    """The frame, times and flags where ``x_col`` is given with ``xl_col``
+    and/or ``xr_col``: each row an exact time in ``x_col`` or a range in
+    the other two (a blank lower end ``-inf``, a blank upper end ``inf``,
+    as for ``xl_col`` and ``xr_col`` alone), read by
+    :func:`~surpyval.utils.data_formats.exact_or_range`; the rows giving
+    both are left out of the frame, with a warning."""
+    from surpyval.utils.data_formats import exact_or_range
+
+    x = frame_column(df, x_col, "x_col", time=True)
+    xl = None if xl_col is None else frame_column(df, xl_col, "xl_col", True)
+    xr = None if xr_col is None else frame_column(df, xr_col, "xr_col", True)
+    c: Any = (
+        frame_column(df, c_col, "c_col")
+        if c_col is not None and event_col is None
+        else _flags(df, c_col, event_col)
+    )
+    bounds, flags, keep = exact_or_range(x, xl, xr, c, blank_is_infinite=True)
+    if keep is not None:
+        df = df.iloc[np.flatnonzero(keep)]
+    return df, bounds, None if flags is None else flags.astype(int)
+
+
 def _bounds_by_flag(
     x: np.ndarray, c: Any, xl_col: Any, xr_col: Any, flag_col: Any
 ) -> np.ndarray:
@@ -240,6 +265,20 @@ def _event_types(df: Any, e_col: Any) -> np.ndarray | None:
     return out
 
 
+def _whole_states(entered: Any, states: Any) -> Any:
+    """The states entered, as whole numbers where the states are: pandas
+    stores a column of whole numbers with a blank as floats (``2.0``),
+    which would not name the same state as ``2`` in the states column."""
+    if entered is None or not np.issubdtype(states.dtype, np.integer):
+        return entered
+    values = [v for v in entered if v is not None]
+    if not all(isinstance(v, float) and v.is_integer() for v in values):
+        return entered
+    out = np.empty(len(entered), dtype=object)
+    out[:] = [None if v is None else int(v) for v in entered]
+    return out
+
+
 def lifetime_from_frame(
     cls: Any,
     df: Any,
@@ -258,25 +297,39 @@ def lifetime_from_frame(
     attribute_cols: Any = None,
     unit: Any = None,
     w_col: Any = None,
+    s_col: Any = None,
+    a_col: Any = None,
 ) -> Any:
     """A ``SurpyvalData`` from a DataFrame with one row per item (or per
-    group of identical items, counted ``n_col``); see
-    ``SurpyvalData.from_dataframe``."""
+    group of identical items, counted ``n_col``; with ``s_col``, one row
+    per stay of a unit in a state); see ``SurpyvalData.from_dataframe``."""
     from surpyval.utils.units import normalise_unit
 
     df = require_frame(df)
     if len(df) == 0:
         raise ValueError("The DataFrame has no rows.")
-    x, intervals = _times(df, x_col, xl_col, xr_col)
-    c = _flags(df, c_col, event_col)
-    if intervals and c is not None:
-        x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
+    if x_col is not None and (xl_col is not None or xr_col is not None):
+        df, x, c = _exact_or_range(df, x_col, xl_col, xr_col, c_col, event_col)
+    else:
+        x, intervals = _times(df, x_col, xl_col, xr_col)
+        c = _flags(df, c_col, event_col)
+        if intervals and c is not None:
+            x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
     n = _counts(df, n_col)
     w = None if w_col is None else frame_column(df, w_col, "w_col")
     ids = None
     if i_col is not None:
         ids = [_plain(v) for v in frame_column(df, i_col, "i_col")]
+    states = None
+    entered = _event_types(df, e_col)
+    if s_col is not None:
+        column = frame_column(df, s_col, "s_col")
+        states = [_plain(v) for v in column]
+        entered = _whole_states(entered, column)
     Z, names = _covariates(df, Z_cols, "a regression's fit_from_df(df, ...)")
+    a = None
+    if a_col is not None:
+        a = [_plain(v) for v in frame_column(df, a_col, "a_col")]
     data = cls(
         x,
         c,
@@ -284,10 +337,12 @@ def lifetime_from_frame(
         tl=_bound(df, tl_col, "tl_col"),
         tr=_bound(df, tr_col, "tr_col"),
         Z=Z,
-        e=_event_types(df, e_col),
+        e=entered,
         covariate_names=names,
         ids=ids,
         w=w,
+        s=states,
+        a=a,
     )
     attributes = _attributes(df, attribute_cols)
     if attributes is not None:
@@ -301,9 +356,11 @@ def lifetime_from_frame(
 def lifetime_to_frame(data: Any) -> Any:
     """The rows of a ``SurpyvalData`` as a DataFrame: ``id`` (where it has
     ids), ``x`` (or ``xl`` and ``xr`` where any row is an interval),
-    ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite), ``e``
-    (where it has event types), the covariates by name (``Z0``, ``Z1``,
-    ... unnamed) and the attributes."""
+    ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite), ``s``
+    (where it has states), ``e`` (where it has event types), ``a``
+    (where it has terminal flags), the
+    covariates by name (``Z0``, ``Z1``, ... unnamed) and the
+    attributes."""
     import pandas as pd
 
     if data.time_varying_covariates is not None:
@@ -331,8 +388,12 @@ def lifetime_to_frame(data: Any) -> Any:
         columns["tl"] = tl
     if np.isfinite(tr).any():
         columns["tr"] = tr
+    if getattr(data, "s", None) is not None:
+        columns["s"] = list(data.s)
     if data.e is not None:
         columns["e"] = list(data.e)
+    if getattr(data, "a", None) is not None:
+        columns["a"] = np.asarray(data.a)
     _covariate_columns(columns, data)
     _attribute_columns(columns, getattr(data, "attributes", None))
     return pd.DataFrame(columns)

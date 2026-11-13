@@ -18,6 +18,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.utils.validation import check_alpha_ci, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._data import Lives, check_landmarks, stack
 
@@ -169,11 +170,11 @@ class LandmarkCox(SerialisableMixin):
         Parameters
         ----------
         life : SurpyvalData
-            One row per unit: time ``x``, ``c`` (0 the event, 1 still
-            running), counts ``n``, entry ``tl``, unit ids, fixed
-            covariates ``Z``, time-varying ones and measurements ``m``;
-            the covariates at each landmark are those known then (see
-            :func:`~surpyval.landmark`).
+            The units' lifetimes: time ``x``, ``c`` (0 the event, 1 still
+            running), counts ``n``, entry ``tl``, unit ids ``i``,
+            covariates ``Z`` (rows of a unit for one that changes) and
+            measurements ``m``; the covariates at each landmark are those
+            known then (see :func:`~surpyval.landmark`).
         at : float or array_like
             The landmark times ``L``.
         horizon : float
@@ -254,12 +255,13 @@ class LandmarkCox(SerialisableMixin):
         **unknown: Any,
     ) -> LandmarkCox:
         """
-        Fit from a DataFrame with one row per unit: the columns of its
-        time (``x_col``), censoring flag, count, entry, id and fixed
-        covariates, read by :meth:`SurpyvalData.from_dataframe
-        <surpyval.SurpyvalData.from_dataframe>`; the rest is as
-        :meth:`fit`. Time-varying covariates and measurements need a
-        ``SurpyvalData`` (``from_items``) and :meth:`fit`.
+        Fit from a DataFrame of the units' rows: the columns of the time
+        (``x_col``), censoring flag, count, entry, unit id and covariates,
+        read by :meth:`SurpyvalData.from_dataframe
+        <surpyval.SurpyvalData.from_dataframe>` (a covariate that changes
+        as several rows of a unit, with ``i_col`` and ``tl_col``); the
+        rest is as :meth:`fit`. Measurements need a ``SurpyvalData`` with
+        ``m`` and :meth:`fit`.
         """
         from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -400,9 +402,8 @@ class LandmarkCox(SerialisableMixin):
             tie_method=tie_method,
             strata=strata,
         )
-        with warnings.catch_warnings():
+        with ignoring_warnings(message=".*cannot be estimated"):
             # Aliased columns are said in the covariates' terms below
-            warnings.filterwarnings("ignore", message=".*cannot be estimated")
             cox = CoxPH.fit(Z=X, **fit_args)
         kept = np.flatnonzero(~np.isnan(np.asarray(cox.params, float)))
         if kept.size < X.shape[1]:
@@ -414,8 +415,7 @@ class LandmarkCox(SerialisableMixin):
                     "None of the coefficients can be estimated: the "
                     "covariates do not vary within the risk sets."
                 )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 cox = CoxPH.fit(Z=X[:, kept], **fit_args)
         model.cox = cox
         model._kept = kept
@@ -977,14 +977,15 @@ class LandmarkCox(SerialisableMixin):
         x: npt.ArrayLike,
         Z: Any,
         s: float,
-        on: str = "ff",
+        on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         bound_type: str = "log-log",
     ) -> npt.NDArray:
         r"""
-        Robust pointwise confidence bounds on the dynamic prediction
-        (:meth:`ff`, the default), :meth:`sf` or :meth:`Hf` from the
+        Robust pointwise confidence bounds on the dynamic survival
+        (:meth:`sf`, the default, as for every model), the dynamic
+        prediction (:meth:`ff`, ``on="ff"``) or :meth:`Hf`, from the
         landmark ``s`` to ``x``.
 
         The standard error of :math:`\log \hat H(x \mid s, Z)` is the
@@ -1072,7 +1073,9 @@ class LandmarkCox(SerialisableMixin):
         for sv in s_all:
             t = np.full(rows.shape[0], sv + w)
             p = self.ff(t, rows, sv)
-            b = self.cb(t, rows, sv, alpha_ci=alpha_ci, bound_type=bound_type)
+            b = self.cb(
+                t, rows, sv, on="ff", alpha_ci=alpha_ci, bound_type=bound_type
+            )
             for k, label in enumerate(labels):
                 records.append(
                     {
@@ -1121,8 +1124,7 @@ class LandmarkCox(SerialisableMixin):
 
         require_model_tag(model_dict, "LandmarkCox", "a landmark Cox model")
         life = SurpyvalData.from_dict(model_dict["life"])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             return cls._fit(
                 Lives(life),
                 life,

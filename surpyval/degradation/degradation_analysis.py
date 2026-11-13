@@ -39,6 +39,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
 from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
+from surpyval.utils.readings_entry import readings_column, takes_readings
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
@@ -156,12 +157,13 @@ class DegradationAnalysis_(FitterRepr):
     fitter_kind = "degradation fitter"
 
     @takes_unit
+    @takes_readings
     def fit(
         self,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
         path: str | PathModel = "linear",
         distribution: Any = Weibull,
         how: str = "MLE",
@@ -176,16 +178,25 @@ class DegradationAnalysis_(FitterRepr):
 
         Parameters
         ----------
-        x : array like
-            Times at which the degradation measurements were taken.
+        x : array like, Measurements or SurpyvalData
+            Times at which the degradation measurements were taken; or
+            the readings themselves, as a
+            :class:`~surpyval.Measurements` (one measurement,
+            ``{i: {x: value}}``) or a :class:`~surpyval.SurpyvalData`
+            holding them as ``data.m``, with ``y``, ``i`` and ``Z`` left
+            out. A SurpyvalData's covariates ``Z`` are each unit's
+            stress, held over all its readings; its life times and
+            censoring are not used (a unit fails where its path reaches
+            ``threshold``). See "From measurements" in the degradation
+            documentation.
         y : array like
-            The degradation measurements.
+            The degradation measurements (with arrays).
         i : array like
             The unit each measurement belongs to. Must have the same
-            length as ``x`` and ``y``.
+            length as ``x`` and ``y`` (with arrays).
         threshold : float
             The degradation level at which a unit is defined to have
-            failed.
+            failed. Required.
         path : str or PathModel, optional
             The degradation path model fitted to each unit: one of
             ``"linear"`` (default), ``"quadratic"``, ``"exponential"``,
@@ -1181,9 +1192,10 @@ class DegradationAnalysis_(FitterRepr):
         self,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
         Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> DegradationModel:
         """
@@ -1198,9 +1210,11 @@ class DegradationAnalysis_(FitterRepr):
             DataFrame with the degradation data.
         x_col : str, optional
             Column of the measurement times. Defaults to ``"x"``.
-        y_col : str, optional
-            Column of the degradation measurements. Defaults to
-            ``"y"``.
+        y_col, m_col : str, optional
+            Column of the degradation measurements (the readings'
+            values): ``m_col``, or its other name ``y_col``, as in
+            ``Measurements.from_dataframe``; giving both is a TypeError.
+            Defaults to ``"y"``.
         i_col : str, optional
             Column of the unit identifiers. Defaults to ``"i"``.
         Z_cols : str or list of str, optional
@@ -1222,6 +1236,7 @@ class DegradationAnalysis_(FitterRepr):
             The fitted degradation model.
         """
         refuse_column_names(fit_kwargs, "x", "y", "i")
+        y_col = readings_column(m_col, y_col)
         cols = None
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

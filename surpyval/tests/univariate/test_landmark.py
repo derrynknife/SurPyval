@@ -19,6 +19,7 @@ from surpyval import (
     ItemLifetime,
     KaplanMeier,
     LandmarkCox,
+    Measurements,
     StepSchedule,
     SurpyvalData,
     landmark,
@@ -68,11 +69,11 @@ def test_landmark_keeps_units_at_risk_and_cuts_at_the_horizon():
         x=[1.5, 6, 4, 9],
         c=[0, 0, 1, 0],
         Z=[[1], [0], [1], [0]],
-        ids=["a", "b", "c", "d"],
+        i=["a", "b", "c", "d"],
         covariate_names=["z"],
     )
     data = landmark(life, at=2, horizon=3)
-    assert data.ids == ["b", "c", "d"]
+    assert data.i == ["b", "c", "d"]
     assert_allclose(data.x, [5, 4, 5])
     # b fails at 6, after the horizon 5: censored there
     assert_allclose(data.c, [1, 1, 1])
@@ -100,7 +101,7 @@ def test_stacked_adds_the_landmark_and_interactions():
     life = SurpyvalData(x=[1.5, 6, 4], c=[0, 0, 1], Z=[[1], [0], [1]])
     data = landmark(life, at=[0, 2], horizon=3, interactions=True)
     assert data.covariate_names == ["Z0", "L", "Z0*L"]
-    assert data.ids is None
+    assert data.i is None
     assert_allclose(data.Z[:, 1], [0, 0, 0, 2, 2])
     assert_allclose(data.Z[:, 2], data.Z[:, 0] * data.Z[:, 1])
     assert [a["i"] for a in data.attributes] == [0, 1, 2, 1, 2]
@@ -122,15 +123,78 @@ def test_stacked_data_fits_an_ordinary_cox_model():
 
 
 def test_measurements_last_reading_at_or_before_the_landmark():
-    life = SurpyvalData(x=[5, 6, 7], c=[0, 0, 1], ids=["a", "b", "c"])
-    life.m = {
-        "wear": {"a": {0: 1.0, 2: 3.0}, "b": {1: 2.0, 3: 9.0}, "c": {4: 5}}
-    }
+    m = Measurements(
+        {"wear": {"a": {0: 1.0, 2: 3.0}, "b": {1: 2.0, 3: 9.0}, "c": {4: 5}}}
+    )
+    life = SurpyvalData(x=[5, 6, 7], c=[0, 0, 1], i=["a", "b", "c"], m=m)
     with pytest.warns(UserWarning, match="1 at L = 2"):
         data = landmark(life, at=2, horizon=3)
-    assert data.ids == ["a", "b"]
+    assert data.i == ["a", "b"]
     assert data.covariate_names == ["wear"]
     assert_allclose(data.Z[:, 0], [3.0, 2.0])
+
+
+def test_one_unnamed_measurement_is_named_m():
+    life = SurpyvalData(
+        x=[5, 6], c=[0, 1], i=["a", "b"], m={"a": {0: 1.0}, "b": {1: 4.0}}
+    )
+    data = landmark(life, at=2, horizon=3)
+    assert data.covariate_names == ["m"]
+    assert_allclose(data.Z[:, 0], [1.0, 4.0])
+
+
+def test_stretches_are_time_varying_covariates():
+    # A unit's rows, its covariates fixed in each, are the same data as a
+    # step schedule
+    rows = SurpyvalData(
+        x=[2, 5, 3, 1, 6],
+        c=[1, 0, 1, 1, 1],
+        Z=[[0], [1], [0], [0], [1]],
+        i=["a", "a", "b", "c", "c"],
+    )
+    steps = SurpyvalData.from_items(
+        [
+            ItemLifetime(
+                "a",
+                observed=5,
+                time_varying_covariates=StepSchedule.from_changepoints(
+                    [0, 2], [0, 1]
+                ),
+            ),
+            ItemLifetime(
+                "b",
+                right_censored=3,
+                time_varying_covariates=StepSchedule.from_changepoints(
+                    [0], [0]
+                ),
+            ),
+            ItemLifetime(
+                "c",
+                right_censored=6,
+                time_varying_covariates=StepSchedule.from_changepoints(
+                    [0, 1], [0, 1]
+                ),
+            ),
+        ]
+    )
+    for L in (0.5, 1, 2, 2.5):
+        a = landmark(rows, at=L, horizon=3)
+        b = landmark(steps, at=L, horizon=3)
+        assert a.i == b.i
+        assert_allclose(a.Z, b.Z)
+        assert_allclose(a.x, b.x)
+        assert_allclose(a.c, b.c)
+    # a change at the landmark is known there
+    assert_allclose(landmark(rows, at=2, horizon=3).Z[:, 0], [1, 0, 1])
+
+
+def test_repeated_events_and_gaps_are_refused():
+    events = SurpyvalData(x=[2, 5], c=[0, 0], a=[0, 1], i=["a", "a"])
+    with pytest.raises(ValueError, match="recurrent"):
+        landmark(events, at=1, horizon=3)
+    gap = SurpyvalData(x=[2, 5], c=[1, 0], tl=[0, 3], i=["a", "a"])
+    with pytest.raises(ValueError, match="without a break"):
+        landmark(gap, at=1, horizon=3)
 
 
 @pytest.mark.parametrize(
@@ -175,7 +239,7 @@ def test_single_landmark_is_the_cox_model_of_its_landmark_data():
     assert_allclose(model.predict(2, Z), cox.ff(5, Z), rtol=1e-10)
     # every unit once: the predicted curve's bounds are close to the
     # model-based ones (the robust variance is another estimate)
-    ours = model.cb(5, Z, s=2, bound_type="log")
+    ours = model.cb(5, Z, s=2, on="ff", bound_type="log")
     theirs = 1 - cox.cb(5, Z, bound_type="log")[:, ::-1]
     assert_allclose(ours, theirs, rtol=0.15)
 
@@ -257,6 +321,13 @@ def test_predict_shapes_and_table():
     ).all()
     with pytest.raises(ValueError, match="at most the fitted window"):
         model.predict(1, [1, 0], window=4)
+
+
+def test_cb_default_is_sf_and_ff_is_its_complement():
+    model = LandmarkCox.fit(LIFE, at=[0, 1, 2], horizon=3)
+    sf = model.cb(4.0, [1, 0], s=1)
+    ff = model.cb(4.0, [1, 0], s=1, on="ff")
+    assert_allclose(ff, 1 - sf[::-1])
 
 
 def test_dynamic_curve_from_the_landmark():
@@ -403,7 +474,7 @@ def test_no_warnings_on_a_plain_fit():
 
 def test_missing_covariate_is_refused():
     life = SurpyvalData(x=[1, 2, 3], c=[0, 0, 1], Z=[[0], [np.nan], [1]])
-    with pytest.raises(ValueError, match="1 unit"):
+    with pytest.raises(ValueError, match="1 row"):
         landmark(life, at=0, horizon=2)
 
 
@@ -439,7 +510,7 @@ def test_fit_from_df_is_fit():
 
 def test_aliased_covariate_warns_once_naming_it():
     life = SurpyvalData(
-        x=LIFE.x, c=LIFE.c, Z=np.c_[LIFE.Z, LIFE.Z[:, :1]], ids=LIFE.ids
+        x=LIFE.x, c=LIFE.c, Z=np.c_[LIFE.Z, LIFE.Z[:, :1]], i=LIFE.i
     )
     with pytest.warns(UserWarning, match=r"^Covariate column\(s\) 1 of Z"):
         model = LandmarkCox.fit(life, at=[0, 1, 2], horizon=3, degree=1)
