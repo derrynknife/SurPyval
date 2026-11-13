@@ -443,7 +443,7 @@ in that release run (or locally when the maintainer asks for it).
      - none
    * - Pull request into ``main`` (the release)
      - lint, the conformance suite, the test suite across three
-       interpreters (each split into four parts that run at once, with
+       interpreters (each split into six parts that run at once, with
        the docstring examples; 3.12 measures coverage), the calibration
        studies and scenario cards (on 3.12, in groups that run at
        once, chosen by the studies' measured times), the wheel check and
@@ -473,7 +473,7 @@ Every job in both workflows has a time limit (``timeout-minutes``, about
 twice its usual time), and the test suite, the conformance suite and the
 calibration studies have a per-test limit too (pytest-timeout), so a test
 that hangs fails with its name and stack instead of holding the release.
-The suite's four parts per interpreter are balanced by recorded test times
+The suite's six parts per interpreter are balanced by recorded test times
 when ``.github/test_durations.json`` exists, and split by a hash of the
 test id otherwise. Each release run records the times: download its
 ``test-durations`` artifact (from the ``coverage`` job) and commit it as

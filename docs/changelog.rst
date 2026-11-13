@@ -37,9 +37,8 @@ v0.27 (13 November 2026)
   starts).
 - **Comparing groups and reporting**: adjusted survival curves for groups
   not assigned at random, exposure (person-years) tables, four more tests
-  in the log-rank family, the restricted mean time lost to a cause, IDI
-  and NRI, and more confidence-interval types for the non-parametric
-  curves.
+  in the log-rank family, the restricted mean time lost to a cause, and
+  more confidence-interval types for the non-parametric curves.
 - **The survival tree and random survival forest are stable**, as
   ``surpyval.ml`` (``surpyval.beta.ml`` still imports them, with a
   warning).
@@ -121,21 +120,6 @@ are all optional. What can look different:
   landmark by group. Checked against R ``dynpred`` and ``survival``
   (``coxph(... + cluster(id))``) to about 1e-10. Guide:
   :doc:`Landmark Analysis`.
-- ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
-  (IDI) and the net reclassification improvement (NRI) of a new risk
-  model over an old one at a horizon, on right-censored data, from the
-  two models' predicted risks of the event by the horizon. The IDI, the
-  continuous NRI and, with ``cutoffs``, the categorical NRI, each with
-  its event and non-event parts and the four shares moving up and down;
-  censoring handled by IPCW (Uno, Tian, Cai, Kohane and Wei 2013) or, for
-  the NRI, by Kaplan-Meier (Pencina, D'Agostino and Steyerberg 2011);
-  perturbation-resampling (default) or bootstrap bounds and p-values;
-  the reclassification tables; ``RiskReclassification.to_dict`` /
-  ``from_dict``. Agrees with R's ``nricens`` to 1e-12 and with
-  ``survIDINRI``'s estimator to its integration grid. The docs say
-  plainly that the NRI is not a proper scoring rule and that the Brier
-  score and AUC differences (``score_predictions``) are the primary
-  comparison.
 - Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
   have several rows without states, stretches of its own clock in time
   order (covariate stretches still running at ``x``, or repeated events),

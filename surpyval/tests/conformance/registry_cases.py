@@ -3231,6 +3231,12 @@ def _bounds(case):
                 nan_ok=True,
                 rtol=1e-3,
                 slow=True,
+                # Each of its five sweeps took 5 to over 20 minutes on the
+                # release run's runners (13 November 2026; one ran into
+                # the suite's 20-minute per-test limit), in every one of
+                # the suite's twelve parts, so they run once, with the
+                # calibration studies (a group of their own).
+                nightly=True,
             ),
         ),
         # Wald bounds over every parameter, k included; the profile

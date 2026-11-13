@@ -10,7 +10,7 @@ run-name: SurPyval CI
 # branching / release flow.
 #
 # Every job below runs in that one run: lint, the conformance suite, the
-# test suite on three interpreters (each split into four parts that run at
+# test suite on three interpreters (each split into six parts that run at
 # once) with the docstring examples, the calibration studies and scenario
 # cards (in groups that run at once), the PyMC helpers with PyMC installed,
 # the wheel check and the documentation build. Publishing a release
@@ -117,9 +117,9 @@ jobs:
   # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).
   #
-  # Each interpreter's run is split into four parts that run at once
-  # (``--shard K/4``, in the root conftest.py), so the suite takes about a
-  # quarter of the time it takes in one job. The parts together run every
+  # Each interpreter's run is split into six parts that run at once
+  # (``--shard K/6``, in the root conftest.py), so the suite takes about a
+  # sixth of the time it takes in one job. The parts together run every
   # test. With the recorded test times in .github/test_durations.json the
   # parts are balanced by time; without that file a test belongs to the
   # part its id hashes to, which left the parts uneven (on the 0.26
@@ -130,19 +130,23 @@ jobs:
   # docs/Contributing.rst).
   #
   # 3.12 also measures coverage, which the ``coverage`` job combines
-  # across its four parts. The doctests run in part 1 of each interpreter.
+  # across its six parts. The doctests run in part 1 of each interpreter.
   # The calibration studies and scenario cards run in the ``calibration``
   # job below.
   surpyval_ci:
     runs-on: ubuntu-latest
     # The slowest part took 27 minutes on the 0.26 release run, with the
-    # doctests (part 1) and installation; runners vary by about two.
-    timeout-minutes: 60
+    # doctests (part 1) and installation; runners vary by about two. On
+    # the 0.27 release run (13 November 2026), with the suite about twice
+    # as long and split by hash into four, seven parts ran into a
+    # 60-minute limit: the suite is now in six parts balanced by the
+    # recorded times, each about 25 minutes of tests.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
 
@@ -178,7 +182,15 @@ jobs:
         # the slowest part on the 0.26 release run waited about six
         # minutes on its last tests), so the limit stops no sound test;
         # ``--durations=20`` lists the slowest in the log, to check it by.
+        #
+        # One BLAS thread per xdist worker: with -n auto every worker's
+        # BLAS started a thread per core, and the matrix exponentials of
+        # the panel multi-state models ran many times slower (one test
+        # 312 s on 3.12 and over the 20-minute limit on 3.11).
         env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
           COVERAGE_CORE: sysmon
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
           ONLY_312: >-
@@ -186,7 +198,7 @@ jobs:
             && '--cov=surpyval --cov-report=' || '' }}
         run: >-
           python -m pytest -n auto --run-ml
-          --shard=${{ matrix.shard }}/4 $ONLY_312
+          --shard=${{ matrix.shard }}/6 $ONLY_312
           --shard-durations=.github/test_durations.json
           --store-durations=test-durations-${{ matrix.python-version }}-${{ matrix.shard }}.json
           --timeout=1200 --timeout-method=thread --durations=20
@@ -414,15 +426,57 @@ jobs:
               surpyval/tests/calibration/test_coverage_weights.py
               surpyval/tests/calibration/test_size_power.py
               --deselect 'surpyval/tests/calibration/test_coverage_weights.py::test_case_bootstrap_coverage'
-          # The panel-data studies added since 0.26 (the panel-count
-          # bootstrap, about 11 minutes, and the panel multi-state
-          # model's coverage), out of "rest", which was still running at
-          # 40 of its 60 minutes on 13 November 2026 with them in it.
-          - group: panel
-            workers: auto
+          # The studies added since 0.26 that run their replicates on
+          # every core themselves (process_pool), so without xdist
+          # (workers 0), as #617's does: under xdist each of four workers
+          # started its own pool, and on the release run of 13 November
+          # 2026 the "rest" group was half done at its 60-minute limit and
+          # the panel-count bootstrap (MLE regression) took 2,532 s. Their
+          # times on the runners are not known yet, so the limits are
+          # generous (90 minutes a study, 120 a group); no seed, size or
+          # tolerance changes.
+          - group: panel-count
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_panel_count.py
+          - group: panel-multistate
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
               surpyval/tests/calibration/test_coverage_multistate_panel.py
+          - group: pool-joint-frailty
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_frailty.py
+          - group: pool-cox
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_cox_mixed_effects.py
+              surpyval/tests/calibration/test_coverage_interval_cox.py
+          - group: pool-multistate-landmark
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_semimarkov.py
+              surpyval/tests/calibration/test_coverage_multistate_cox.py
+              surpyval/tests/calibration/test_coverage_landmark.py
+          - group: pool-cure-zi
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_pivotal.py
+              surpyval/tests/calibration/test_coverage_zero_inflated.py
+              surpyval/tests/calibration/test_coverage_mixture_cure.py
+              surpyval/tests/calibration/test_coverage_equivalence.py
           - group: rest
             workers: auto
             args: >-
@@ -443,6 +497,16 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_bootstrap.py
               --ignore=surpyval/tests/calibration/test_coverage_panel_count.py
               --ignore=surpyval/tests/calibration/test_coverage_multistate_panel.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_cox_mixed_effects.py
+              --ignore=surpyval/tests/calibration/test_coverage_interval_cox.py
+              --ignore=surpyval/tests/calibration/test_coverage_semimarkov.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_cox.py
+              --ignore=surpyval/tests/calibration/test_coverage_landmark.py
+              --ignore=surpyval/tests/calibration/test_coverage_pivotal.py
+              --ignore=surpyval/tests/calibration/test_coverage_zero_inflated.py
+              --ignore=surpyval/tests/calibration/test_coverage_mixture_cure.py
+              --ignore=surpyval/tests/calibration/test_coverage_equivalence.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
@@ -466,11 +530,18 @@ jobs:
             workers: auto
             args: >-
               surpyval/tests/conformance -m calibration -k ExpoWeibull
+          # The joint frailty model's profile-likelihood bounds: five
+          # sweeps of 5 to over 20 minutes each on the runners (13
+          # November 2026), out of the test suite's parts.
+          - group: sweeps-joint-frailty
+            workers: auto
+            args: >-
+              surpyval/tests/conformance -m calibration -k JointFrailty
           - group: sweeps-rest
             workers: auto
             args: >-
               surpyval/tests/conformance -m calibration
-              -k 'not ExpoWeibull and not (LogNormal and offset)'
+              -k 'not ExpoWeibull and not (LogNormal and offset) and not JointFrailty'
     steps:
       - uses: actions/checkout@v4
 
