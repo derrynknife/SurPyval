@@ -36,13 +36,15 @@ def _best_time(items, runs=3):
 
 
 def test_from_items_is_linear():
-    small = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(5_000)]
-    big = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(80_000)]
+    small = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(2_000)]
+    big = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(128_000)]
     per_small = _best_time(small) / len(small)
     per_big = _best_time(big) / len(big)
-    # 16 times the items: the time per item stays about level when linear
-    # (it grows ~2.5x here with memory), and grows 16x when quadratic
-    assert per_big < 8 * per_small, (per_small, per_big)
+    # 64 times the items: the time per item stays about level when linear
+    # (it grows ~2.5x here with memory, and up to 8x on a busy CI runner
+    # with 16 times the items), and grows 64x when quadratic. The wider
+    # ratio keeps the two apart where a loaded machine's timing is noisy.
+    assert per_big < 16 * per_small, (per_small, per_big)
 
 
 def test_repeated_ids_are_still_found():

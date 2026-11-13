@@ -303,6 +303,18 @@ DESIGNS = [
 def _compare_predictions(model, v, s, se_rtol):
     profile = list(v["profile"].values())
     t = v["times"]
+    # The recursion builds every variance from terms the size of the
+    # largest variance of any transition probability (see
+    # test_cox_per_transition_matches_mstate), so that, not the largest in
+    # one array, sets the rounding floor: an array whose variances are all
+    # small (P(mgus -> pcm) from s = 60, at most 3.5e-4) still carries
+    # rounding of a few eps times the largest (8.9e-18 against mstate's
+    # 4.2e-19 on x86-64 Linux, both 0 to rounding).
+    largest = max(
+        np.nanmax(np.asarray(w, float) ** 2)
+        for k, w in v.items()
+        if k.startswith("se_")
+    )
     for from_state in model.states:
         for to_state in model.states:
             key = f"{from_state}_{to_state}"
@@ -324,7 +336,7 @@ def _compare_predictions(model, v, s, se_rtol):
                 se[ok] ** 2,
                 want[ok],
                 rtol=se_rtol,
-                atol=64 * np.finfo(float).eps * np.nanmax(want),
+                atol=64 * np.finfo(float).eps * largest,
             )
 
 
