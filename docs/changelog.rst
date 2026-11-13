@@ -8,6 +8,15 @@ Unreleased (0.28)
   (whether two labels name the same unit, read with pint, so ``"h"``,
   ``"hrs"`` and ``"hours"`` agree). Tools that combine models can check
   they are in one unit. See the Units section of :doc:`Conventions`.
+- ``EquivalenceModel.at_usage(rate)`` gives the life of a unit used at one
+  constant rate (the second clock's units per unit of the first, such as
+  starts per hour) as a plain life model on the first clock,
+  ``LifeAtUsage``: ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+  ``random(size, random_state=)``, ``mean`` (and ``mean(tau=)``), ``rmst``,
+  ``cb`` and ``quantile_cb``, each the model's ``*_at_usage`` at that rate,
+  with bounds that include the uncertainty in ``k``. Tools that take a
+  univariate life (a block of a reliability block diagram) can take it as
+  one. See :doc:`Equivalent Time Scales`.
 
 v0.27 (13 November 2026)
 ------------------------

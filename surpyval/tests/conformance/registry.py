@@ -379,6 +379,7 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
     "surpyval.univariate.regression.LifeAtCovariates": _RESULT,
+    "surpyval.LifeAtUsage": _RESULT,
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
     "surpyval.univariate.regression.penalty_path": _FUNCTION,
     "surpyval.penalty_path": _FUNCTION,

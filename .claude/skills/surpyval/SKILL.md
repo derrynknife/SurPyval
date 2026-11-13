@@ -382,6 +382,8 @@ hrs = 2000 * re_.weibull(2.0, 300) / (1 + 10 * rate)   # one start = 10 h
 em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
 em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
+life = em.at_usage(0.1)   # the life at 0.1 starts/hour, a plain life model in hours
+life.sf(500); life.qf(0.1); life.random(5, random_state=1); life.cb(500)
 
 # Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
 # covariates on who arrives dead (f0) and on the life of the rest

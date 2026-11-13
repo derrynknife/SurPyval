@@ -13,7 +13,7 @@ Pre-built instances: ``WeibullEquivalence``, ``LogNormalEquivalence``,
 ``ExponentialEquivalence``.
 
 .. automodule:: surpyval.univariate.equivalence
-    :exclude-members: Equivalence, EquivalenceFitter, EquivalenceModel
+    :exclude-members: Equivalence, EquivalenceFitter, EquivalenceModel, LifeAtUsage
 
 .. autofunction:: surpyval.univariate.equivalence.Equivalence
 
@@ -21,4 +21,7 @@ Pre-built instances: ``WeibullEquivalence``, ``LogNormalEquivalence``,
     :members: fit, fit_from_df, from_params
 
 .. autoclass:: surpyval.univariate.equivalence.EquivalenceModel
-    :members: k, dist_params, equivalent, sf, ff, df, hf, Hf, qf, mean, sf_at_usage, ff_at_usage, hf_at_usage, qf_at_usage, mean_at_usage, cb, cb_at_usage, quantile_cb_at_usage, param_cb, k_lr_test, covariance, standard_errors, random, reading, to_dict, from_dict
+    :members: k, dist_params, equivalent, sf, ff, df, hf, Hf, qf, mean, sf_at_usage, ff_at_usage, hf_at_usage, qf_at_usage, mean_at_usage, at_usage, cb, cb_at_usage, quantile_cb_at_usage, param_cb, k_lr_test, covariance, standard_errors, random, reading, to_dict, from_dict
+
+.. autoclass:: surpyval.univariate.equivalence.LifeAtUsage
+    :members: acceleration, clocks, unit, sf, ff, df, hf, Hf, qf, random, mean, rmst, cb, quantile_cb
