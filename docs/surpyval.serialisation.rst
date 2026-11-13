@@ -394,6 +394,10 @@ with its own ``schema``.
      - ``"model": "MultiStateProportionalHazards"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``Z``, ``covariate_names``, ``shared``, ``tie_method``
      - ``shared_groups``, ``baseline_groups``
+   * - ``LandmarkCox``
+     - ``"model": "LandmarkCox"``
+     - ``life``, ``at``, ``horizon``, ``baseline``, ``degree``, ``varying``, ``tie_method``
+     - --
    * - ``CauseSpecificMCF``
      - ``"model": "CauseSpecificMCF"``
      - ``event_types``, ``models``

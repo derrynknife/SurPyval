@@ -66,6 +66,9 @@ RULES = {
     "FineGray[cluster]": "hold",
     "NonParametricCounting": "nan",
     "CauseSpecificMCF": "nan",
+    # A dynamic prediction from its landmark s: 1 (sf) before s, NaN past
+    # the horizon s + w it was fitted to.
+    "LandmarkCox": "nan",
 }
 # Parametric cases that look data-bounded on their fixture but are not,
 # each with the reason: defined by a formula everywhere, they are flat
@@ -100,6 +103,8 @@ WITHOUT_SET_SUPPORT = {
     "FineGray": _SEMI,
     "FineGray[strata]": _SEMI,
     "FineGray[cluster]": _SEMI,
+    "LandmarkCox": "a Cox supermodel: its horizon s + w bounds it, not the "
+    "data",
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
 }

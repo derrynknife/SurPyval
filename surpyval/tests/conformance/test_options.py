@@ -88,6 +88,11 @@ NOT_SWEPT = {
     "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
+    "beta_cb": "Wald intervals on a landmark model's covariate effects at "
+    "landmark times, b(s) +/- z se (robust), not on a function of time; "
+    "checked in univariate/test_landmark.py",
+    "table": "the dynamic prediction table: cb's bounds (swept) at each "
+    "landmark and covariate profile",
     "rmst": "the restricted mean with rmst_cb's Wald interval (swept) in a "
     "dict, as the non-parametric models' rmst",
     "rmst_diff": "a comparison of two covariate rows' restricted means (a "
@@ -1140,7 +1145,10 @@ CONVENTIONS = {
     # as R's cmprsk::crr reports it (documented, 0.27).
     "robust": (
         "robust= chooses the robust covariance, default False",
-        _default_is("robust", False, own={"FineGrayModel": True}),
+        # (and a landmark supermodel's, whose stacked rows repeat units)
+        _default_is(
+            "robust", False, own={"FineGrayModel": True, "LandmarkCox": True}
+        ),
     ),
     "id column": (
         "the item-id column of a data frame has one spelling",

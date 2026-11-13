@@ -5,6 +5,41 @@ Unreleased
 
 **Added.**
 
+- Landmark analysis and dynamic prediction (van Houwelingen 2007; van
+  Houwelingen and Putter 2011): ``landmark(life, at, horizon)`` derives
+  the landmark data of a ``SurpyvalData`` -- the units still at risk at
+  each landmark ``L``, entered at ``L``, their covariates as known then
+  (the last value at or before ``L`` of time-varying covariates and
+  measurements) and their follow-up cut at ``L + horizon`` -- as another
+  ``SurpyvalData``, stacked over several landmarks with ``L`` (and, with
+  ``interactions=True``, each covariate times ``L``) as covariates.
+  ``LandmarkCox`` fits a Cox model at one landmark or a supermodel over
+  several (effects polynomial in the landmark, or any basis given; a
+  baseline per landmark or one pooled baseline), with robust standard
+  errors clustered on the unit, and gives the dynamic prediction
+  ``P(T <= s + w | T > s, Z(s))`` (``predict``, ``sf``/``ff``/``Hf``
+  from ``s``, ``table`` for landmarks by covariate profiles) with robust
+  bounds (``cb``, the infinitesimal jackknife over units), the effects
+  at each landmark (``beta``, ``beta_cb``), ``summary`` and ``to_dict`` /
+  ``from_dict``. ``landmark_kaplan_meier`` gives the survival from a
+  landmark by group. Checked against R ``dynpred`` and ``survival``
+  (``coxph(... + cluster(id))``) to about 1e-10. Guide:
+  :doc:`Landmark Analysis`.
+- ``surpyval.metrics.idi_nri``: the integrated discrimination improvement
+  (IDI) and the net reclassification improvement (NRI) of a new risk
+  model over an old one at a horizon, on right-censored data, from the
+  two models' predicted risks of the event by the horizon. The IDI, the
+  continuous NRI and, with ``cutoffs``, the categorical NRI, each with
+  its event and non-event parts and the four shares moving up and down;
+  censoring handled by IPCW (Uno, Tian, Cai, Kohane and Wei 2013) or, for
+  the NRI, by Kaplan-Meier (Pencina, D'Agostino and Steyerberg 2011);
+  perturbation-resampling (default) or bootstrap bounds and p-values;
+  the reclassification tables; ``RiskReclassification.to_dict`` /
+  ``from_dict``. Agrees with R's ``nricens`` to 1e-12 and with
+  ``survIDINRI``'s estimator to its integration grid. The docs say
+  plainly that the NRI is not a proper scoring rule and that the Brier
+  score and AUC differences (``score_predictions``) are the primary
+  comparison.
 - Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
   have several rows without states, stretches of its own clock in time
   order (covariate stretches still running at ``x``, or repeated events),

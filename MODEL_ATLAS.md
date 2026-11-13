@@ -160,7 +160,12 @@ current value. Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
 truncation; one item's dynamic prediction given its readings so far is
-`JointModel.predict`.
+`JointModel.predict`. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
+predictions without a model of the covariates' paths: a Cox model of the
+units at risk at each landmark, by their covariates known then; it
+classifies as univariate / single_event / single / terminal / with
+covariates (time-varying, as known at the landmark) / continuous /
+semiparametric.
 
 ## Gaps
 
