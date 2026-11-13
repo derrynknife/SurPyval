@@ -83,16 +83,16 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
     markers = None if m is None or not m._plain else data.markers
     if markers is not None:
         keys = data.ids if data.ids is not None else range(len(data.x))
-        columns["markers"] = [
-            plural(len(markers.get(key, {})), "reading")
-            for key in list(keys)[:shown]
-        ]
+        columns["markers"] = _on_first_rows(
+            list(keys)[:shown],
+            lambda key: plural(len(markers.get(key, {})), "reading"),
+        )
     elif m is not None:
-        # Named measurements: each row's unit's readings, of them all
-        columns["m"] = [
-            plural(m._readings_of_unit(key), "reading")
-            for key in data.ids[:shown]
-        ]
+        # Named measurements: each unit's readings, of them all
+        columns["m"] = _on_first_rows(
+            list(data.ids[:shown]),
+            lambda key: plural(m._readings_of_unit(key), "reading"),
+        )
     attributes = getattr(data, "attributes", None)
     if attributes:
         if recurrent:
@@ -106,6 +106,17 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
                 repr(None if a is None else a.get(name)) for a in rows
             ]
     return columns
+
+
+def _on_first_rows(keys: list, text: Any) -> list:
+    """``text(key)`` on each unit's first row, blank on its later rows:
+    a unit's readings are the unit's, not each of its rows'."""
+    seen: set = set()
+    out = []
+    for key in keys:
+        out.append("" if key in seen else text(key))
+        seen.add(key)
+    return out
 
 
 def heading(data: Any, recurrent: bool) -> str:

@@ -511,3 +511,96 @@ def test_extend_running_and_update_of_data_with_markers():
     assert updated.ids == ["A", "B", "C", "D"]
     named = _data().extend_running(100)
     assert named.m == _data().m
+
+
+# -- several rows per unit (a) and rows left out (x with xl, xr) -------------
+
+
+def _repairs(m):
+    # Unit A repaired at 2 and 5, scrapped at 9; B still running at 4
+    return SurpyvalData(
+        x=[2, 5, 9, 4], c=[0, 0, 0, 1], i=["A", "A", "A", "B"], m=m
+    )
+
+
+def _readings():
+    return {
+        "vib": {"A": {0: 1.0, 3: 2.0}, "B": {1: 1.5}},
+        "temp": {"A": {2: 50.0}},
+    }
+
+
+def test_m_is_per_unit_when_a_unit_has_several_rows():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        data = _repairs(_readings())
+    assert data.a.tolist() == [0, 0, 1, 0]
+    assert data.m.ids == ["A", "B"]
+    # The unit's count shows on its first row only
+    rows = repr(data).splitlines()[2:]
+    assert rows[0].endswith("3 readings") and rows[1].endswith("  ")
+    assert rows[3].endswith("1 reading")
+    assert "  m: vib, temp - 2 units, 4 readings" in data.summary()
+    plain = _repairs({"A": {0: 1.0}, "B": {1: 2.0}})
+    rows = repr(plain).splitlines()[2:]
+    assert rows[0].endswith("1 reading") and not rows[1].endswith("reading")
+    assert "markers: 2 readings on 2 items" in plain.summary()
+
+
+def test_a_unit_keeps_its_readings_while_any_of_its_rows_is_kept():
+    data = _repairs(_readings())
+    assert data[[1]].m.ids == ["A"]
+    assert data[[1]].m["vib"] == {"A": {0.0: 1.0, 3.0: 2.0}}
+    assert data[[3]].m.ids == ["B"]
+    assert data.select(ids=["A"]).m.ids == ["A"]
+    # A unit's window is the span of its rows: cut at 4, A keeps 0 to 4
+    cut = data.censor_at(4)
+    assert cut.m.for_unit("A") == {
+        "vib": {0.0: 1.0, 3.0: 2.0},
+        "temp": {2.0: 50.0},
+    }
+    assert data.censor_at(2.5).m.for_unit("A") == {
+        "vib": {0.0: 1.0},
+        "temp": {2.0: 50.0},
+    }
+
+
+def test_dict_with_a_and_m_round_trips_and_is_schema_4():
+    data = _repairs(_readings())
+    d = json.loads(data.to_json())
+    assert d["schema"] == 4 and "a" in d and "m" in d
+    again = SurpyvalData.from_dict(d)
+    assert again.m == data.m
+    assert again.a.tolist() == data.a.tolist()
+    assert again.a_inferred.tolist() == data.a_inferred.tolist()
+    plain = _repairs({"A": {0: 1.0}, "B": {1: 2.0}})
+    d = plain.to_dict()
+    assert d["schema"] == 4 and "markers" in d
+    assert SurpyvalData.from_dict(d).markers == plain.markers
+
+
+def test_no_fit_is_handed_a_units_readings_once_per_row():
+    plain = _repairs({"A": {0: 1.0}, "B": {1: 2.0}})
+    with pytest.raises(ValueError, match="one row per unit"):
+        sp.WeibullJointPH.fit(plain)
+    from surpyval.utils.surpyval_data import _markers_taken
+
+    # Even a fit that would take the terminal flags (and so passes the
+    # one-row-per-unit check) is not handed the readings row by row
+    with pytest.raises(ValueError, match="one row per unit"):
+        _markers_taken(plain, {"x", "c", "markers", "a"})
+
+
+def test_a_unit_whose_only_row_was_left_out_is_warned_of_once():
+    with pytest.warns(UserWarning) as caught:
+        data = SurpyvalData(
+            x=[3, None],
+            xl=[1, 2],
+            xr=[4, 6],
+            i=["A", "B"],
+            m={"A": {0: 1.0}, "B": {1: 1.0}},
+        )
+    messages = [str(w.message) for w in caught]
+    assert "left out" in messages[0]
+    assert messages[1].startswith("1 unit in m has no life rows: 'A'. Its")
+    assert data.ids == ["B"] and data.m.ids == ["A", "B"]

@@ -2698,6 +2698,20 @@ def _markers_taken(data: SurpyvalData, names: set) -> dict:
             + "): keep one with data.with_measurement(name), or leave "
             'them out with data.without("m").'
         )
+    several = units_with_several_rows(data)
+    if several:
+        # A unit's readings are the unit's: handing them to each of its
+        # rows would count them once per row
+        clause = several_rows_clause(data)
+        raise ValueError(
+            lost_message([clause], "e" in names)
+            if clause is not None
+            else "This fit takes one {age: value} of markers per unit on "
+            f"one row, and unit{'s' if len(several) > 1 else ''} "
+            f"{named(several)} {'have' if len(several) > 1 else 'has'} "
+            "several rows (stays in states), which would hand a unit's "
+            "readings to each of them."
+        )
     return {"markers": data._markers_by_row()}
 
 

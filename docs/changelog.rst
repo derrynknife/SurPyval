@@ -45,7 +45,10 @@ Unreleased
   the units kept; ``without("m")`` (or ``"measurements"``) leaves them
   out; ``with_measurement(name)`` keeps one, which the joint models then
   fit; data with several measurements is refused by a fit until one is
-  chosen. ``extend_running`` and ``update`` of data with marker
+  chosen. Readings are per unit: where a unit has several rows they are
+  kept while any of its rows is, and a fit that takes markers refuses
+  such units rather than hand the readings to each row.
+  ``extend_running`` and ``update`` of data with marker
   readings, which took its records for event histories and failed, now
   work. See :doc:`Conventions`.
 - States in the data model: ``SurpyvalData(..., s=...)`` takes the state

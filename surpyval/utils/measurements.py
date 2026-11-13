@@ -664,7 +664,9 @@ def attached(data: Any, value: Any) -> Measurements | None:
         warnings.warn(
             f"{_plural(len(missing), 'unit')} in m "
             + ("has" if len(missing) == 1 else "have")
-            + f" no life rows: {named(missing)}. Their readings are kept "
+            + f" no life rows: {named(missing)}. "
+            + ("Its" if len(missing) == 1 else "Their")
+            + " readings are kept "
             "(data.m), and a fit uses only the readings of units in the "
             "life rows; check the ids match (text '1' and the number 1 "
             "differ).",
