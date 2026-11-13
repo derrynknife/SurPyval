@@ -58,6 +58,7 @@ EXPECTED_SOURCES = {
     "r_weibullr",
     "r_logrank_extensions",
     "r_sample_size",
+    "r_spef",
     "py_lifelines",
     "py_sksurv",
 }

@@ -152,6 +152,8 @@ surpyval.NormalPO
 surpyval.PH
 surpyval.PO
 surpyval.PairwiseLogRankResult
+surpyval.PanelCountMCF
+surpyval.PanelCountRegression
 surpyval.PanelMultiState
 surpyval.PanelMultiStateRegression
 surpyval.ParameterSubstitutionFitter
@@ -389,6 +391,8 @@ surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.MCFDiffResult
 surpyval.recurrent.NonParametricCounting
+surpyval.recurrent.PanelCountMCF
+surpyval.recurrent.PanelCountRegression
 surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP

@@ -7,6 +7,7 @@ from .diagnostics import GoodnessOfFitResult
 from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
+from .panel_count import PanelCountMCF, PanelCountRegression
 from .parametric import HPP, CountingProcess, CoxLewis, CrowAMSAA, Duane
 from .regression import (
     AndersenGill,

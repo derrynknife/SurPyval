@@ -49,6 +49,17 @@ the comparison of two groups' MCFs.
     counting/nonparametric_mcf
     counting/mcf_diff
 
+Panel Counts
+------------
+
+Events counted at inspections, with no event times: the mean cumulative
+function and a proportional means regression.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/panel_count
+
 Renewal Models
 --------------
 

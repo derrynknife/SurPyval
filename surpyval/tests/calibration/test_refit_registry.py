@@ -1494,6 +1494,15 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        ("PanelCountMCF", "PanelCountRegression"),
+        "no simulation from the model: the mean function is a step "
+        "function with no shape beyond the inspection times and the model "
+        "does not say how counts vary about the mean. Recovery from "
+        "simulated (mixed Poisson) panel counts is tested in "
+        "tests/recurrent/test_panel_count.py and the bounds' coverage in "
+        "calibration/test_coverage_panel_count.py",
+    ),
     "IntervalCoxPH": "its fixture is interval censored, and the "
     "regression plans draw exact and right-censored times, which would "
     "check the grouped-data likelihood rather than the interval one; its "

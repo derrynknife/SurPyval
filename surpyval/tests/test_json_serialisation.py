@@ -360,6 +360,8 @@ def _build(name):
         GeneralizedRenewal,
         JointFrailty,
         NonParametricCounting,
+        PanelCountMCF,
+        PanelCountRegression,
         PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
         WeiLinWeissfeld,
@@ -501,6 +503,17 @@ def _build(name):
             np.array([1, 1, 1, 2, 2, 2]),
             np.array([0, 0, 1, 0, 0, 1]),
         ),
+        "panel_count_mcf": lambda: PanelCountMCF.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0],
+            [1, 0, 2, 1, 2, 0, 2, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3],
+        ),
+        "panel_count_regression": lambda: PanelCountRegression.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0, 3.0, 7.0],
+            [0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+            [1, 0, 2, 1, 2, 0, 2, 1, 0, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
+        ),
         "parametric_recurrence": lambda: CrowAMSAA.fit(
             np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
         ),
@@ -597,6 +610,8 @@ CASES = [
     "cause_specific_proportional_intensity",
     "joint_frailty",
     "mcf",
+    "panel_count_mcf",
+    "panel_count_regression",
     "parametric_recurrence",
     "proportional_intensity",
     "recurrent_cox_andersen_gill",

@@ -410,6 +410,14 @@ with its own ``schema``.
      - ``"model": "NonParametricCounting"``
      - ``x``, ``mcf_hat``, ``var``, ``origin``
      - ``support``
+   * - ``PanelCountMCF``
+     - ``"model": "PanelCountMCF"``
+     - ``how``, ``x``, ``i``, ``n``
+     - --
+   * - ``PanelCountRegression``
+     - ``"model": "PanelCountRegression"``
+     - ``how``, ``x``, ``i``, ``n``, ``Z``, ``params``
+     - --
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``

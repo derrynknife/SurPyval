@@ -5,6 +5,26 @@ Unreleased
 
 **Added.**
 
+- Panel counts: recurrent events seen only as the number found at each
+  inspection, each unit inspected at its own times (failures found at
+  each check of a machine, new tumours at each clinic visit).
+  ``PanelCountMCF`` (also at the top level) estimates the mean cumulative
+  function without assuming a process: the maximum likelihood estimator
+  under a Poisson working model (Wellner and Zhang 2000; the default) or
+  the maximum pseudo-likelihood estimator, the isotonic regression of the
+  cumulative counts (Sun and Kalbfleisch 1995). ``PanelCountRegression``
+  fits the proportional means model ``E[N(t) | Z] = Lambda0(t)
+  exp(beta'Z)`` with the baseline unspecified, by the pseudo-likelihood
+  (the default; R ``spef``'s ``"MPL"``, matched on simulated panel
+  counts) or the likelihood (Wellner and Zhang 2007). Both are consistent
+  when the counts are not Poisson; ``mcf_cb``, ``param_cb`` and
+  ``standard_errors`` are bootstraps over units. ``fit_from_df``,
+  ``to_dict`` / ``from_dict``, aliased covariates as the other
+  regressions. The parametric intensity models
+  (``CrowAMSAA``, ``CoxLewis``, ``ProportionalIntensityNHPP``, ...) now
+  take a count of 0 on an interval-counted row (``c=2`` or ``c=-1``), so
+  they fit panel counts too; a 0 on an exact-event or end-of-observation
+  row is still refused.
 - The joint frailty model of recurrent events and a terminal event,
   ``JointFrailty`` (``surpyval.recurrent``, and at the top level), with
   ``JointFrailtyModel``: items with repeated events (repairs,
