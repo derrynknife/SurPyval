@@ -15,8 +15,8 @@ your data and returns a fitted **model**. You then ask the model questions:
 what fraction survives to time :math:`t`, what is the median life (the median
 time to the event), what is the
 hazard, and so on. Once you know that pattern, and the way data is passed in
-(the ``x``, ``c``, ``n``, ``t`` arrays described in :doc:`Types of Data` and
-:doc:`Conventions`), every family of models in the package works the same way.
+(the ``x``, ``c``, ``n``, ``t`` arrays described in :doc:`Types of Data`, and
+the other letters of :doc:`Data Model`), every family of models in the package works the same way.
 
 Your first fit
 --------------
@@ -332,6 +332,11 @@ Where to go next
 
 - :doc:`Types of Data` explains observed, censored and truncated data, and why
   each needs different treatment.
+- :doc:`Data Model` is the reference for every letter of a row of data
+  (``x``, ``c``, ``n``, ``t``, ``i``, ``e``, ``s``, ``a``, ``m``, ``Z``,
+  ``w``), with an example of each shape of data (recurrent events,
+  multi-state, measurements, changing covariates) and which models take
+  what.
 - :doc:`Conventions` is the reference for the input arrays, the censoring flags
   and the functions every model has.
 - :doc:`Glossary` maps the engineering, medical and statistical words for the
