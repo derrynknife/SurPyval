@@ -5,20 +5,6 @@ Unreleased
 
 **Added.**
 
-- Recurrent fits from a ``SurpyvalData``: every recurrent model's ``fit``
-  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``,
-  ``NonParametricCounting``, the renewal models, the
-  proportional-intensity and recurrent Cox models and the cause-specific
-  models) takes a ``SurpyvalData`` with units ``i``: ``CrowAMSAA.fit(data)``.
-  Each unit's rows are read as its history (``x`` its age at each row,
-  ``c = 1`` the end of its record), a row starting (``tl``) after the
-  previous one ended as a gap (``windows``), and covariates that change
-  within a unit are fitted by the model's ``fit_tvc``; the fit is that of
-  the same arrays. A terminal event (``a = 1``) is fitted as an event
-  followed by the end of the unit's observation, and the model's new
-  ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
-  Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
-  ``EventHistoryData`` and ``handle_xicn`` are unchanged.
 - Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
   have several rows without states, stretches of its own clock in time
   order (covariate stretches still running at ``x``, or repeated events),
@@ -66,20 +52,6 @@ Unreleased
   ``extend_running`` and ``update`` of data with marker
   readings, which took its records for event histories and failed, now
   work. See :doc:`Conventions`.
-- Degradation and joint fits from measurements: ``DegradationAnalysis``,
-  ``WienerProcess`` and ``GammaProcess`` take their readings as a
-  ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``
-  holding them as ``data.m`` (its covariates ``Z`` are each unit's
-  stress), in place of the arrays ``x``, ``y`` and ``i``, and give the
-  arrays' fit exactly; their ``fit_from_df`` also names the readings'
-  column ``m_col`` (``y_col`` is its other name, unchanged). The joint
-  models (``WeibullJointPH``, ``JointPH(...)``) take a ``Measurements`` as
-  ``markers`` (or its other name ``m``), matched to the life rows by unit:
-  beside arrays with ``i=``, beside a ``SurpyvalData`` without readings,
-  or in ``fit_from_df(..., i_col=..., m=...)``. Several measurements are
-  refused until one is chosen with ``with_measurement(name)``, now also
-  a method of ``Measurements``. See :doc:`Degradation Modelling with
-  SurPyval` and :doc:`Joint Models`.
 - States in the data model: ``SurpyvalData(..., s=...)`` takes the state
   each row's unit was in during the row (from its entry ``tl`` to ``x``),
   with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one
@@ -95,7 +67,9 @@ Unreleased
   ``"schema": 4``). Fits that are not multi-state, ``to_xrd`` and
   ``life_table`` refuse data in more than one state, naming the
   multi-state models and ``data[data.s == state]``; data in one state
-  fits exactly as without ``s``. See :doc:`Conventions`.
+  fits exactly as without ``s``. Without ``c``, a row given as a range
+  (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
+  agree. See :doc:`Conventions`.
 - The multi-state models fit a ``SurpyvalData``:
   ``MultiState.fit(data, transitions=tm)``, and likewise
   ``MultiStateProportionalHazards``, ``ParametricMultiState`` and
@@ -110,11 +84,38 @@ Unreleased
   several rows are refused, naming the rows or the fix; the terminal flag
   ``a`` is ignored (the transitions say which states absorb). ``fit`` also
   takes ``s=`` as another name for ``state=``, and ``fit_from_df``
-  ``s_col=`` for ``state_col=`` (give one). See
-  :doc:`Multi-State Models`.
-  fits exactly as without ``s``. Without ``c``, a row given as a range
-  (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
-  agree. See :doc:`Conventions`.
+  ``s_col=`` for ``state_col=`` (give one). The panel models
+  (``PanelMultiState``, ``PanelMultiStateRegression``), whose ``s`` is
+  the state seen at a visit, take arrays and refuse a ``SurpyvalData``
+  in words. See :doc:`Multi-State Models`.
+- Recurrent fits from a ``SurpyvalData``: every recurrent model's ``fit``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``,
+  ``NonParametricCounting``, the renewal models, the
+  proportional-intensity and recurrent Cox models and the cause-specific
+  models) takes a ``SurpyvalData`` with units ``i``: ``CrowAMSAA.fit(data)``.
+  Each unit's rows are read as its history (``x`` its age at each row,
+  ``c = 1`` the end of its record), a row starting (``tl``) after the
+  previous one ended as a gap (``windows``), and covariates that change
+  within a unit are fitted by the model's ``fit_tvc``; the fit is that of
+  the same arrays. A terminal event (``a = 1``) is fitted as an event
+  followed by the end of the unit's observation, and the model's new
+  ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
+  Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
+  ``EventHistoryData`` and ``handle_xicn`` are unchanged.
+- Degradation and joint fits from measurements: ``DegradationAnalysis``,
+  ``WienerProcess`` and ``GammaProcess`` take their readings as a
+  ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``
+  holding them as ``data.m`` (its covariates ``Z`` are each unit's
+  stress), in place of the arrays ``x``, ``y`` and ``i``, and give the
+  arrays' fit exactly; their ``fit_from_df`` also names the readings'
+  column ``m_col`` (``y_col`` is its other name, unchanged). The joint
+  models (``WeibullJointPH``, ``JointPH(...)``) take a ``Measurements`` as
+  ``markers`` (or its other name ``m``), matched to the life rows by unit:
+  beside arrays with ``i=``, beside a ``SurpyvalData`` without readings,
+  or in ``fit_from_df(..., i_col=..., m=...)``. Several measurements are
+  refused until one is chosen with ``with_measurement(name)``, now also
+  a method of ``Measurements``. See :doc:`Degradation Modelling with
+  SurPyval` and :doc:`Joint Models`.
 - Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
   Cox model whose log hazard has Gaussian random effects, a random
   intercept per group of one or more grouping factors, nested (wards in

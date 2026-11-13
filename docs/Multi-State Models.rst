@@ -133,6 +133,9 @@ These models take neither interval- nor left-censored rows (``c`` of 2 or
 truncation, time-varying covariates nor measurements (``m``); data holding any of them is
 refused, saying what to do. ``s`` is also another name for ``state`` in
 ``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
+The panel models below take arrays of visits, not a ``SurpyvalData``:
+their ``s`` is the state seen at a visit, not the state during a row, so
+``fit(data)`` is refused, saying so.
 
 How the estimate works, in words
 --------------------------------

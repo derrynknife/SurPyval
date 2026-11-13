@@ -2711,6 +2711,9 @@ def _markers_taken(data: SurpyvalData, names: set) -> dict:
         # A unit's readings are the unit's: handing them to each of its
         # rows would count them once per row
         clause = several_rows_clause(data)
+        if clause is None and len(_distinct_states(data)) > 1:
+            # Stays in several states: the multi-state models take them.
+            clause = "states"
         raise ValueError(
             lost_message([clause], "e" in names)
             if clause is not None

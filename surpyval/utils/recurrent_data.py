@@ -178,7 +178,7 @@ def _refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
     records."""
     if len(_distinct_states(data)) > 1:
         raise ValueError(lost_message(["states"], False))
-    if data.markers is not None:
+    if data.m is not None:
         raise ValueError(_NO_MARKERS)
     if data.w is not None:
         raise ValueError(
@@ -247,6 +247,21 @@ def _lost(
             )
         )
     if tvc:
+        # fit_tvc reads a row as the stretch from where its unit's previous
+        # row ended, and a range (xl, xr) starts after that.
+        ranged = layout.lo < layout.hi
+        if ranged.any():
+            ids = list(data.ids)  # type: ignore[arg-type]
+            units = list(dict.fromkeys(ids[r] for r in np.flatnonzero(ranged)))
+            lost.append(
+                (
+                    "ranges (xl, xr) with covariates that change within a "
+                    f"unit (unit{'s' if len(units) > 1 else ''} "
+                    f"{named(units)})",
+                    "data with each event at its time, x, or with one row "
+                    "of covariates per unit",
+                )
+            )
         if np.isfinite(data.tr).any():
             lost.append(
                 (

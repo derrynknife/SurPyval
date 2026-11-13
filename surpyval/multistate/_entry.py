@@ -237,3 +237,25 @@ def multistate_data(method: F) -> F:
         return method(*bound.args, **bound.kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def refuses_surpyval_data(method: F) -> F:
+    """Refuse a SurpyvalData given to a panel model's ``fit``, which takes
+    arrays of visits: there ``s`` is the state seen at each visit, not the
+    state a unit was in during a row, as in a SurpyvalData."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        given = kwargs.get("x", args[1] if len(args) > 1 else None)
+        if isinstance(given, SurpyvalData):
+            raise TypeError(
+                "The panel multi-state models take arrays of visits (x, s, "
+                "i), not a SurpyvalData: their s is the state seen at each "
+                "visit, while a SurpyvalData's s is the state a unit was "
+                "in during the row. Pass the arrays, or use fit_from_df; "
+                "for stays in states with the times of the moves, "
+                "MultiState.fit(data) takes a SurpyvalData."
+            )
+        return method(*args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
