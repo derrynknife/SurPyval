@@ -419,11 +419,15 @@ _SHIM_NAMES = frozenset(
         "renamed_arguments",
         "RenamedAttribute",
         "renamed_name",
-        "positional_option",
-        "ambiguous_item_ids",
         "DeprecationWarning",
     }
 )
+
+# The FutureWarnings that promise no release (a positional argument read
+# as something else, the recurrent fits' ambiguous item ids): the
+# maintainer decided they stay until 2.0 at least (DECISIONS.md, 12 Nov
+# 2026), so no release-based removal applies to them.
+_UNDATED_NAMES = frozenset({"positional_option", "ambiguous_item_ids"})
 
 # The deprecations given a longer window, each with its own release
 # (SCHEDULED_REMOVALS): test_scheduled_removals_are_not_overdue fails
@@ -511,7 +515,7 @@ def test_the_scan_sees_every_kind_of_shim():
     # behind.
     assert (
         set(deprecation.__all__)
-        <= _SHIM_NAMES | _DATED_NAMES | _SCHEDULED_NAMES
+        <= _SHIM_NAMES | _DATED_NAMES | _SCHEDULED_NAMES | _UNDATED_NAMES
     )
     for name in sorted(_SHIM_NAMES):
         assert _deprecation_shims(f"x = {name}\n") == [1], name

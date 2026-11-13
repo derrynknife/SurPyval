@@ -1,7 +1,103 @@
 Changelog
 ==
-Unreleased
-----------
+v0.27 (13 November 2026)
+------------------------
+
+**Highlights.**
+
+- **Multi-state models**, ``surpyval.multistate``: units that move
+  between several states (working, degraded, failed; healthy, ill, dead).
+  Non-parametric (``MultiState``, Aalen-Johansen), Cox
+  (``MultiStateProportionalHazards``), parametric with either clock
+  (``ParametricMultiState``, ``ParametricMultiStateRegression``, with
+  ``clock="reset"`` for semi-Markov models), and ``PanelMultiState`` for
+  states seen only at visits or inspections, with the expected length of
+  stay in each state. See :doc:`Multi-State Models`.
+- **Landmark analysis and dynamic prediction**, ``landmark``: the chance
+  of the event in the next window for a unit that has lasted to now,
+  given what is known about it now. See :doc:`Landmark Analysis`.
+- **One data object for everything**, ``SurpyvalData``: beside ``x``,
+  ``c``, ``n``, ``t`` and the weights ``w``, it now takes the unit ``i``
+  with several rows per unit, the state ``s`` and the state moved into
+  ``e``, the terminal flag ``a`` (the event that ended a unit's history
+  for good), ``x`` mixed with ``xl``/``xr`` row by row, and readings over
+  time (``Measurements``, ``data.m``). The multi-state, recurrent,
+  degradation and joint fits all take it, so ``CrowAMSAA.fit(data)``
+  works as ``Weibull.fit(data)`` does.
+- **Panel counts**: recurrent events seen only as the number found at
+  each inspection (``PanelCountMCF``, ``PanelCountRegression``).
+- **More regression and recurrent models**: mixed-effects Cox
+  (``CoxMixedEffects``) and the log-normal frailty, Cox regression for
+  interval-censored data (``IntervalCoxPH``), mixture-cure and
+  zero-inflated regression, parametric competing-risks regression,
+  stratified and clustered Fine-Gray, the joint frailty model of repeat
+  events and a terminal event (``JointFrailty``), Andersen-Gill,
+  Prentice-Williams-Peterson and Wei-Lin-Weissfeld, and equivalent time
+  scales (``Equivalence``: one life on two clocks, such as hours and
+  starts).
+- **Comparing groups and reporting**: adjusted survival curves for groups
+  not assigned at random, exposure (person-years) tables, four more tests
+  in the log-rank family, the restricted mean time lost to a cause, IDI
+  and NRI, and more confidence-interval types for the non-parametric
+  curves.
+- **The survival tree and random survival forest are stable**, as
+  ``surpyval.ml`` (``surpyval.beta.ml`` still imports them, with a
+  warning).
+
+**Upgrading from 0.26.** No name is removed in this release (0.26
+deprecated only ``check_ph``, which goes in 0.28), and the new arguments
+are all optional. What can look different:
+
+- **Numbers that change on purpose.** Each is described, with examples
+  of the old and new values, under *Changed* or *Fixed* below:
+
+  - the bootstrap bounds of a fit by rank regression (MPP), MPS, MSE or
+    the method of moments now refit each resample by that method, not by
+    maximum likelihood (a 95% bound on an MPP Weibull shape moved from
+    [0.82, 2.32] to [0.88, 2.70] on ten lifetimes);
+  - every bootstrap bound (parametric, regression, non-parametric
+    ``bootstrap_cb``, degradation and Buckley-James) reads its bounds at
+    the levels asked, so it is a little wider and holds its level;
+  - zero-inflated fits read a ``[0, t]`` interval, and a truncation at 0,
+    as including the units dead on arrival (``f0`` can be larger);
+  - Fine-Gray standard errors are the robust (sandwich) ones by default,
+    as R's ``crr`` reports them; ``robust=False`` gives the old ones;
+  - a distributional regression's coefficients on a scale or a location
+    change sign (a positive coefficient now means a shorter life, as in
+    the AFT and PH models); the fitted model and its predictions are the
+    same, and a model saved by 0.26 is converted when it loads;
+  - ``hess_inv`` of a weighted parametric fit is the inverse Hessian (it
+    held the robust covariance); ``covariance()`` is unchanged;
+  - penalised Cox on start-stop data counts subjects, not rows, so the
+    same ``penalizer`` shrinks the same however the follow-up is split;
+  - ``random`` of a Bayesian fit gives different lives for the same
+    seed (the distribution of the draws is unchanged);
+  - joint models that stopped at a correlation of 1 now reach the
+    maximum;
+  - fits, standard errors and bounds that moved, or failed, when the
+    times were written in another unit (the repairable-system models and
+    every other family that takes finite differences) now give the same
+    model in any unit (changes in the sixth or seventh digit in ordinary
+    units);
+  - smaller corrections: a penalised fit that stopped short now searches
+    again; clustered standard errors of a distributional regression with
+    rows not in time order; likelihood-ratio bounds on a flattening
+    profile; Aalen's constant-effects test and its last event time;
+    ``ProportionalIntensityNHPP``'s start on data the item records refuse;
+    Bayesian fits' tails and upper quantiles; the parametric regressions'
+    quantiles in closed form (at rounding level); the renewal models'
+    simulated draws (at rounding level).
+
+- **Warnings you may see.** Arguments that, given by position, were
+  silently read as something else now warn with a ``FutureWarning`` (see
+  *Deprecated*); ``AalenAdditive``'s ``coef_penalty`` is now
+  ``penalizer`` (the old name works, with a warning, until 0.28); and
+  ``surpyval.beta.ml`` warns at its import.
+- **Saved files.** Weighted models, models with coefficient signs and
+  data with states are saved as schema 4, which 0.26 refuses to read
+  rather than misread them. Files saved by 0.26 load in 0.27.
+- **Labels.** Unit labels are kept exactly as typed (``"hrs"`` stays
+  ``"hrs"``, not pint's ``"hour"``).
 
 **Added.**
 
@@ -1469,49 +1565,6 @@ Unreleased
   simulated log-rank studies. ``to_dict`` / ``from_dict``. Guide:
   :doc:`Test Planning with SurPyval`.
 
-**Deprecated.**
-
-- Arguments that, given by position, were silently read as something
-  else now warn, with a ``FutureWarning`` (shown wherever the call is
-  made) that says what the value was taken as and the keyword to use.
-  Nothing else changes: each call returns exactly what it did before,
-  and the arguments stay positional (making them keyword-only, or
-  refusing the call, would be a breaking change, which waits for 2.0).
-  Passing the argument by name silences the warning.
-
-  - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
-    ``CoxLewis``, ``HPP``, ``NonParametricCounting``, ``ARA``, ``ARI``,
-    ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
-    ``CauseSpecificMCF`` and ``CauseSpecificNHPP`` take the item ids
-    ``i`` second, where every other ``fit(x, c, n, t)`` takes the
-    censoring flags, so ``CrowAMSAA.fit(x, c)`` read the flags as two
-    items with nothing censored: on ``x = [5, 12, 20, 31, 45, 60, 80]``,
-    ``c = [0, 0, 0, 0, 0, 0, 1]`` it gives ``alpha`` 19.99 and ``beta``
-    1.00, where ``fit(x, c=c)`` gives 7.63 and 0.76. The same holds after
-    ``Z`` in ``ProportionalIntensityHPP``, ``ProportionalIntensityNHPP``,
-    ``AndersenGill``, ``PrenticeWilliamsPeterson``, ``WeiLinWeissfeld``
-    and ``CauseSpecificProportionalIntensity`` (``fit``,
-    ``fit_penalised``), and for ``i_col`` in every recurrent
-    ``fit_from_df``. The ids stay a positional data argument
-    (``fit(x, i, c)`` is unchanged), so the warning fires only for the
-    call that cannot be told apart: ``i`` given by position, no ``c``, and
-    values of 0s and 1s. Name the argument (``c=`` or ``i=``).
-  - ``Parametric.mean(defective, tau)`` and
-    ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
-    as ``defective`` and ignored it (6.524 on a Weibull fitted to
-    ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
-    mean restricted to 5 (``mean(tau=5)`` is 4.671). Pass ``defective``
-    by name.
-  - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
-    ``mean_cb`` takes ``tau`` first. Pass ``alpha_ci`` by name.
-  - ``Parametric.random(size, a, b)`` and ``random_data``: every other
-    model's ``random(size, random_state)`` takes the seed second, so
-    ``model.random(10, 42)`` truncated the draws below 42 (every draw
-    ``inf`` on that Weibull). Pass ``a`` and ``b`` by name.
-  - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
-    axes first, so ``plot(ax)`` drew stacked curves on new axes. Pass
-    ``stacked`` by name.
-
 **Changed.**
 
 - Unit labels are kept exactly as typed wherever they are shown or saved:
@@ -1854,7 +1907,6 @@ Unreleased
   Wald p-values on the robust standard errors, the ``p`` column of
   ``summary(robust=True)``.
 
-**Changed.**
 
 - **Robust is all or none on the parametric regressions.** In 0.26
   ``summary(robust=True)`` showed robust (sandwich) standard errors while
@@ -1872,7 +1924,6 @@ Unreleased
   bound and ``p_values`` stay model-based (with weights ``w`` that
   covariance is already the robust one).
 
-**Changed.**
 
 - **``hess_inv`` is always the inverse Hessian.** In 0.26 a parametric
   model fitted with weights ``w`` (``Weibull.fit(x, c, w=w)`` and the
@@ -1929,7 +1980,85 @@ Unreleased
   difference is (a factor of :math:`\sqrt{N / (N - 1)}`), and how to
   reproduce a lifelines fit. No change in behaviour.
 
+
+- Penalised Cox on start-stop data counts subjects, not rows:
+  ``CoxPH.fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` divide
+  the partial likelihood by the number of subjects and standardise the
+  covariates over the subjects (each subject's covariate averaged over its
+  follow-up), so splitting the same follow-up into more rows no longer
+  changes how hard a ``penalizer`` shrinks. In 0.26 the way to fit
+  start-stop rows was ``CoxPH.fit_penalised(stop, Z, tl=start)``, which
+  counts rows (as glmnet); with no ids it still does, unchanged, and the
+  guide now points start-stop data to ``fit_tvc_penalised``.
+
+
+- Refusals no longer send users to issue numbers: the ``diagnose()``
+  refusals of models whose checks are not built yet, and a few other
+  messages, said "tracked in #NNN" (issues that are now closed). Each now
+  says what to use instead: a parametric competing-risks model points to
+  each cause's ``models[cause].diagnose()``, Buckley-James and
+  distributional regressions to a PH or AFT fit's ``diagnose()``, and so
+  on.
+- ``diagnose()`` on an ``AalenAdditiveModel`` or a ``BayesianParametric``
+  was an ``AttributeError``; it now refuses with ``NotImplementedError``,
+  pointing to ``constant_effects_test()`` and ``model.mle.diagnose()``.
+- ``fit_bayes(..., w=...)`` and ``fit_bayes_from_df(..., w_col=...)`` were
+  Python's ``TypeError``; they now raise a ``ValueError`` naming the
+  method and the argument, why, and what to use instead (the weighted
+  maximum-likelihood ``fit``, or counts ``n``).
+- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
+  of 1 (within 1e-5) now says so and what to do: the data show no sign of
+  units that never fail, so fit without ``lfp=True``.
+- Documented two results that surprised readers: a competing-risks
+  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
+  so is below the sum of the cumulative incidences unless fitted with
+  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
+  estimate holds its last value past the data, while the interpolated
+  forms give ``nan`` there.
+
 **Deprecated.**
+
+- Arguments that, given by position, were silently read as something
+  else now warn, with a ``FutureWarning`` (shown wherever the call is
+  made) that says what the value was taken as and the keyword to use.
+  Nothing else changes: each call returns exactly what it did before,
+  and the arguments stay positional (making them keyword-only, or
+  refusing the call, would be a breaking change, which waits for 2.0).
+  Passing the argument by name silences the warning.
+
+  - **The recurrent fits' item ids.** ``CrowAMSAA``, ``Duane``,
+    ``CoxLewis``, ``HPP``, ``NonParametricCounting``, ``ARA``, ``ARI``,
+    ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+    ``CauseSpecificMCF`` and ``CauseSpecificNHPP`` take the item ids
+    ``i`` second, where every other ``fit(x, c, n, t)`` takes the
+    censoring flags, so ``CrowAMSAA.fit(x, c)`` read the flags as two
+    items with nothing censored: on ``x = [5, 12, 20, 31, 45, 60, 80]``,
+    ``c = [0, 0, 0, 0, 0, 0, 1]`` it gives ``alpha`` 19.99 and ``beta``
+    1.00, where ``fit(x, c=c)`` gives 7.63 and 0.76. The same holds after
+    ``Z`` in ``ProportionalIntensityHPP``, ``ProportionalIntensityNHPP``,
+    ``AndersenGill``, ``PrenticeWilliamsPeterson``, ``WeiLinWeissfeld``
+    and ``CauseSpecificProportionalIntensity`` (``fit``,
+    ``fit_penalised``), and for ``i_col`` in every recurrent
+    ``fit_from_df``. The ids stay a positional data argument
+    (``fit(x, i, c)`` is unchanged), so the warning fires only for the
+    call that cannot be told apart: ``i`` given by position, no ``c``, and
+    values of 0s and 1s. Name the argument (``c=`` or ``i=``).
+  - ``Parametric.mean(defective, tau)`` and
+    ``ParametricCompetingRisks.mean(defective)``: ``mean(5)`` took the 5
+    as ``defective`` and ignored it (6.524 on a Weibull fitted to
+    ``3, ..., 10``), where a non-parametric model's ``mean(5)`` is the
+    mean restricted to 5 (``mean(tau=5)`` is 4.671). Pass ``defective``
+    by name.
+  - ``Parametric.mean_cb(alpha_ci, ...)``: a non-parametric model's
+    ``mean_cb`` takes ``tau`` first. Pass ``alpha_ci`` by name.
+  - ``Parametric.random(size, a, b)`` and ``random_data``: every other
+    model's ``random(size, random_state)`` takes the seed second, so
+    ``model.random(10, 42)`` truncated the draws below 42 (every draw
+    ``inf`` on that Weibull). Pass ``a`` and ``b`` by name.
+  - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
+    axes first, so ``plot(ax)`` drew stacked curves on new axes. Pass
+    ``stacked`` by name.
+
 
 - ``AalenAdditive.fit(..., coef_penalty=)`` (and ``fit_from_df``) is now
   ``penalizer=``, the name every other penalised fit uses; the model's
@@ -1978,44 +2107,6 @@ Unreleased
   ``fit_from_df`` that passes other keywords on to ``fit`` (the
   univariate, recurrent and Fine-Gray ones) still refuses a column given
   by the ``fit`` argument's name and names the ``_col`` argument.
-
-**Changed.**
-
-- Penalised Cox on start-stop data counts subjects, not rows:
-  ``CoxPH.fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` divide
-  the partial likelihood by the number of subjects and standardise the
-  covariates over the subjects (each subject's covariate averaged over its
-  follow-up), so splitting the same follow-up into more rows no longer
-  changes how hard a ``penalizer`` shrinks. In 0.26 the way to fit
-  start-stop rows was ``CoxPH.fit_penalised(stop, Z, tl=start)``, which
-  counts rows (as glmnet); with no ids it still does, unchanged, and the
-  guide now points start-stop data to ``fit_tvc_penalised``.
-
-**Changed.**
-
-- Refusals no longer send users to issue numbers: the ``diagnose()``
-  refusals of models whose checks are not built yet, and a few other
-  messages, said "tracked in #NNN" (issues that are now closed). Each now
-  says what to use instead: a parametric competing-risks model points to
-  each cause's ``models[cause].diagnose()``, Buckley-James and
-  distributional regressions to a PH or AFT fit's ``diagnose()``, and so
-  on.
-- ``diagnose()`` on an ``AalenAdditiveModel`` or a ``BayesianParametric``
-  was an ``AttributeError``; it now refuses with ``NotImplementedError``,
-  pointing to ``constant_effects_test()`` and ``model.mle.diagnose()``.
-- ``fit_bayes(..., w=...)`` and ``fit_bayes_from_df(..., w_col=...)`` were
-  Python's ``TypeError``; they now raise a ``ValueError`` naming the
-  method and the argument, why, and what to use instead (the weighted
-  maximum-likelihood ``fit``, or counts ``n``).
-- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
-  of 1 (within 1e-5) now says so and what to do: the data show no sign of
-  units that never fail, so fit without ``lfp=True``.
-- Documented two results that surprised readers: a competing-risks
-  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
-  so is below the sum of the cumulative incidences unless fitted with
-  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
-  estimate holds its last value past the data, while the interpolated
-  forms give ``nan`` there.
 
 **Fixed.**
 
@@ -2575,16 +2666,6 @@ Unreleased
   that made the singular step look estimable. The estimate now stops
   before that step, as it was meant to.
 
-**Documentation.**
-
-- The description of the censoring flag ``c`` in the docstrings of the main
-  entry points (the parametric and non-parametric ``fit``, ``MixtureModel``,
-  ``fit_best``, ``plotting_positions``, ``logrank``, the proportional
-  hazards ``fit``, ``SurpyvalData`` and the pseudo-observation functions)
-  says what each code means in words any field uses (0 is the observed
-  event, such as a failure, a death or a relapse) and how to convert a
-  status column in which 1 marks the event. Wording only.
-
 **Performance.**
 
 - **Survival along a step schedule is several times faster** for the
@@ -2627,6 +2708,25 @@ Unreleased
   ``ProportionalIntensityNHPP`` fit 1,021 -> 575 ms (a loaded machine;
   run back to back); the fits' numbers are unchanged.
 
+**Documentation.**
+
+- The description of the censoring flag ``c`` in the docstrings of the main
+  entry points (the parametric and non-parametric ``fit``, ``MixtureModel``,
+  ``fit_best``, ``plotting_positions``, ``logrank``, the proportional
+  hazards ``fit``, ``SurpyvalData`` and the pseudo-observation functions)
+  says what each code means in words any field uses (0 is the observed
+  event, such as a failure, a death or a relapse) and how to convert a
+  status column in which 1 marks the event. Wording only.
+
+
+- New page: :doc:`Survival Analysis from Scratch`, for readers who have
+  never met censoring. It explains time-to-event data, why the times cannot
+  simply be averaged, censoring and truncation, the survival, hazard and
+  cumulative hazard functions, the Kaplan-Meier estimate worked by hand, a
+  Weibull fit and how to read it, bounds, comparing groups and regression,
+  with an engineering example (pump failures) and a medical one (time to
+  relapse) throughout. Linked from the front page and the Quickstart.
+
 **Internal.**
 
 - The Bayesian calibration study's left-truncated scenario draws its
@@ -2667,16 +2767,6 @@ Unreleased
   round to 1 at some of the posterior's points, and a mean that is
   infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
   which breaks mutmut 3.8.
-
-**Documentation.**
-
-- New page: :doc:`Survival Analysis from Scratch`, for readers who have
-  never met censoring. It explains time-to-event data, why the times cannot
-  simply be averaged, censoring and truncation, the survival, hazard and
-  cumulative hazard functions, the Kaplan-Meier estimate worked by hand, a
-  Weibull fit and how to read it, bounds, comparing groups and regression,
-  with an engineering example (pump failures) and a medical one (time to
-  relapse) throughout. Linked from the front page and the Quickstart.
 
 v0.26 (31 October 2026)
 -----------------------
