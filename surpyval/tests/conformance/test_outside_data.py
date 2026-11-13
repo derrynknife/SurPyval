@@ -51,6 +51,7 @@ RULES = {
     "CoxPH": "hold",
     "CoxPH[strata]": "hold",
     "CoxFrailty": "hold",
+    "CoxMixedEffects": "hold",
     "AdditiveHazards": "hold",
     "AalenAdditive": "hold",
     "ProportionalOdds": "hold",
@@ -66,6 +67,8 @@ RULES = {
     "FineGray[cluster]": "hold",
     "NonParametricCounting": "nan",
     "CauseSpecificMCF": "nan",
+    "PanelCountMCF": "nan",
+    "PanelCountRegression": "nan",
 }
 # Parametric cases that look data-bounded on their fixture but are not,
 # each with the reason: defined by a formula everywhere, they are flat
@@ -90,6 +93,7 @@ WITHOUT_SET_SUPPORT = {
     "CoxPH": _SEMI,
     "CoxPH[strata]": _SEMI,
     "CoxFrailty": _SEMI,
+    "CoxMixedEffects": _SEMI,
     "AdditiveHazards": _SEMI,
     "AalenAdditive": "non-parametric regression: the explicit support is "
     "for the univariate non-parametric estimates only",
@@ -102,6 +106,10 @@ WITHOUT_SET_SUPPORT = {
     "FineGray[cluster]": _SEMI,
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
+    "PanelCountMCF": "a mean function known only at the inspection times "
+    "(interval-counted data): not given set_support yet",
+    "PanelCountRegression": "semi-parametric: a baseline mean function known "
+    "only at the inspection times; not given set_support yet",
 }
 
 

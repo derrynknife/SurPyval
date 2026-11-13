@@ -2802,6 +2802,17 @@ def _competing_risks_bounds():
                 **common,
             ),
         ]
+    # Each cause's restricted mean time lost to two horizons, with its
+    # normal interval (rmtl +- z se, as rmst's: not kept above 0).
+    out.append(
+        Bound(
+            "rmtl",
+            kind="summary",
+            sides=False,
+            in_range=False,
+            query=(("a", 10.0), ("b", 20.0)),
+        )
+    )
     return tuple(out)
 
 
@@ -3107,6 +3118,19 @@ def _bounds(case):
             Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
             Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),
             Bound("cb", on=_ON_SURVIVAL, per_cause=True, label="cb[net]"),
+        ) + (
+            # Each cause's restricted mean time lost to two horizons
+            # (a logit interval on rmtl / tau, inside (0, tau)).
+            (
+                Bound(
+                    "rmtl",
+                    kind="summary",
+                    sides=False,
+                    query=(("a", 10.0), ("b", 20.0)),
+                ),
+            )
+            if cls == "ParametricCompetingRisks"
+            else ()
         )
     if cls == "MixtureModel":
         # Wald bounds only (#651)
@@ -3576,6 +3600,17 @@ def _noise_free(y):
     return lambda d: {**d, "y": y(np.asarray(d["x"], dtype=float))}
 
 
+def _separated_panel(d):
+    """A two-level covariate whose level 0 counted no events: its
+    coefficient runs to infinity (a panel count has no ``c``)."""
+    events = np.asarray(d["Z"], dtype=float)[:, 0] > 0
+    return {
+        **d,
+        "n": np.where(events, d["n"], 0.0),
+        "Z": events[:, None].astype(float),
+    }
+
+
 def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
@@ -3598,6 +3633,7 @@ def _starve(case):
         "ProportionalOddsModel",
         "IntervalCoxPHModel",
         "CoxFrailtyModel",
+        "CoxMixedEffectsModel",
         "RecurrentCoxModel",
         "MultiStateProportionalHazards",
         # (each transition's regression: a group with no events)
@@ -3656,6 +3692,8 @@ def _starve(case):
         return lambda d: fit(_noise_free(lambda x: np.exp(4.0 - 0.02 * x))(d))
     if cls == "JointModel":
         return lambda d: fit(_no_event_level(d))
+    if cls == "PanelCountRegression":
+        return lambda d: fit(_separated_panel(d))
     if cls == "EquivalenceModel":
         # k a million times its estimate
         return _far_start(
@@ -3692,6 +3730,10 @@ _NO_STARVE: dict[str, str] = {
     "countermonotone data, test_no_finite_maximum.py)",
     "InducedFailureDistribution": "a Monte Carlo of the DegradationAnalysis "
     "fit, which is starved in its own case",
+    "PanelCountMCF": "no public iteration limit or starting point, and "
+    "nothing to run off: the likelihood estimate maximises a concave "
+    "function of the mean function's increments (the pseudo-likelihood "
+    "one is a closed-form isotonic regression)",
     "RoystonParmar": "no public iteration limit or starting point, and no "
     "data found whose fit fails (its Nelder-Mead result is not checked "
     "for convergence, only for a finite likelihood)",

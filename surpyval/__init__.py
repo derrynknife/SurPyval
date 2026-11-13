@@ -416,7 +416,6 @@ __all__ = [
     "PersonYears",
     "poisson_rate_bounds",
     "rmst_diff",
-    "rmtl_diff",
     "sf_diff",
     "success_run",
     # Parametric

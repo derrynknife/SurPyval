@@ -327,6 +327,8 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "rmtl":
+            out.append(model.rmtl(*args)["rmtl"])
         elif spec.method == "rmst_cb":
             # (the point alone: a model with no covariance, the Uniform,
             # has likelihood-ratio bounds but no rmst() interval)
