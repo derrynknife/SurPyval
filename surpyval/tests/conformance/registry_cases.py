@@ -1477,7 +1477,32 @@ def _recurrent():
     no_counts = {
         "counts": "the xicn format refuses a count above 1 on an event row"
     }
-    return [replace(c, exclude={**no_counts, **c.exclude}) for c in out]
+    return [
+        _with_data_path(replace(c, exclude={**no_counts, **c.exclude}))
+        for c in out
+    ]
+
+
+def _recurrent_as_data(d):
+    """The fixture's arrays as one SurpyvalData with units ``i`` (its
+    ``x``), the other entries (options) kept."""
+    keys = ("x", "i", "c", "n", "Z", "e")
+    data = sp.SurpyvalData(
+        **{k: (d[k].tolist() if k == "i" else d[k]) for k in keys if k in d}
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _with_data_path(case):
+    """The case with its ``fit(data)`` path: the fixture as a
+    SurpyvalData, fitted by the case's own ``fit``."""
+    return replace(
+        case,
+        paths={
+            **case.paths,
+            "fit(data)": lambda d, fit=case.fit: fit(_recurrent_as_data(d)),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -136,6 +136,70 @@ gives on the same columns:
     same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
     assert np.allclose(from_log.params, same.params)
 
+From a SurpyvalData
+~~~~~~~~~~~~~~~~~~~
+
+Every recurrent ``fit`` also takes a ``SurpyvalData`` with each row's unit,
+``i`` (see :doc:`Conventions`): ``CrowAMSAA.fit(data)``. In plain words, a
+unit's rows are its history, in time order:
+
+- ``x`` is the unit's age at each row: an event, or the last time it was seen;
+- ``c = 1`` closes the record (the unit was still running when we stopped
+  watching), and ``c = 0`` is an event;
+- ``a = 1`` marks an event that ended the unit for good (scrapped, written
+  off), and ``a = 0`` an event the unit carried on from;
+- ``e`` is the event's type (its failure mode), for the cause-specific
+  models, and ``Z`` the covariates, for the regressions;
+- ``n`` and ``tl`` / ``tr`` are the counts and the observation window, as
+  above. A row whose ``tl`` is after the previous row's ``x`` starts a new
+  period of observation after a gap, which is given to the fit as
+  ``windows``.
+
+The fit is exactly that of the arrays the rows stand for. Here pump P1 was
+watched to 500 hours, not watched until 800, then watched to 1,400; pump P2
+was scrapped at its fourth failure, at 650 hours:
+
+.. jupyter-execute::
+
+    from surpyval import SurpyvalData
+
+    inf = np.inf
+    pumps = SurpyvalData(
+        x=[120, 380, 500, 900, 1150, 1400, 90, 400, 520, 650],
+        c=[0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        tl=[-inf, -inf, -inf, 800, -inf, -inf, -inf, -inf, -inf, -inf],
+        a=[0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        i=["P1"] * 6 + ["P2"] * 4,
+        unit="hours",
+    )
+    pump_model = CrowAMSAA.fit(pumps)
+    print(pump_model)
+
+None of the recurrent models models a terminal event, so a unit that ended
+for good (``a = 1``) is fitted as an event followed by the end of its
+observation: what the arrays give for a unit with no ``c = 1`` row. The
+model's ``notes`` say so, and say where ``a`` was read rather than given
+(an event on a unit's last row with no ``a`` is read as ``a = 1``). A unit
+whose last row is an event with ``a = 0`` and no ``c = 1`` row is also taken
+to be watched until that event, with a note. Covariates that change within a
+unit (rows with different ``Z``) are fitted by the model's ``fit_tvc``, for
+the models that have one; ``fit_from_df(..., a_col=...)`` reads ``a`` from a
+table and adds the same notes. Data without ``i``, in more than one state
+(``s``), or with what the model has no argument for is refused, saying what
+to use.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _same = CrowAMSAA.fit(
+        [120, 380, 900, 1150, 90, 400, 520, 650],
+        i=["P1"] * 4 + ["P2"] * 4,
+        windows={"P1": [(0, 500), (800, 1400)], "P2": [(0, 650)]},
+    )
+    assert np.array_equal(pump_model.params, _same.params)
+    assert "terminal event" in pump_model.notes[0]
+
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

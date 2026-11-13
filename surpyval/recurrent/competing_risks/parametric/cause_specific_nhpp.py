@@ -57,6 +57,11 @@ from surpyval.utils.linalg import (
     wald_bound_on_support,
 )
 from surpyval.utils.no_maximum import combined_maximum
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+    takes_terminal_column,
+)
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
@@ -180,6 +185,11 @@ class CauseSpecificNHPP(SerialisableMixin):
     array([2.6773])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fit classmethods; declared for the type checker.
     df: Any
     data: Any
@@ -294,7 +304,7 @@ class CauseSpecificNHPP(SerialisableMixin):
     def __repr__(self) -> str:
         return "Cause-specific {} with causes: {}".format(
             self.dist.name, self.event_types
-        )
+        ) + notes_text(self)
 
     # -- serialisation -----------------------------------------------------
 
@@ -496,6 +506,7 @@ class CauseSpecificNHPP(SerialisableMixin):
     @classmethod
     @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         cls,
@@ -517,6 +528,13 @@ class CauseSpecificNHPP(SerialisableMixin):
         ----------
         x : array like
             Event (and censoring) times.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array like, optional
             Item / subject id for each row. Defaults to a single item.
         c : array like, optional
@@ -565,6 +583,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
     )
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         cls,
         df: Any,

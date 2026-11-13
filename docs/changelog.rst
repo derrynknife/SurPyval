@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- Recurrent fits from a ``SurpyvalData``: every recurrent model's ``fit``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``,
+  ``NonParametricCounting``, the renewal models, the
+  proportional-intensity and recurrent Cox models and the cause-specific
+  models) takes a ``SurpyvalData`` with units ``i``: ``CrowAMSAA.fit(data)``.
+  Each unit's rows are read as its history (``x`` its age at each row,
+  ``c = 1`` the end of its record), a row starting (``tl``) after the
+  previous one ended as a gap (``windows``), and covariates that change
+  within a unit are fitted by the model's ``fit_tvc``; the fit is that of
+  the same arrays. A terminal event (``a = 1``) is fitted as an event
+  followed by the end of the unit's observation, and the model's new
+  ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
+  Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
+  ``EventHistoryData`` and ``handle_xicn`` are unchanged.
 - Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
   have several rows without states, stretches of its own clock in time
   order (covariate stretches still running at ``x``, or repeated events),

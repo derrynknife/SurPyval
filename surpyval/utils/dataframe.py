@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 from surpyval.utils import is_missing_event, refuse_time_values
 from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.recurrent_data import takes_terminal_column
 from surpyval.utils.units import takes_unit
 
 
@@ -476,6 +477,7 @@ class RecurrentDataFrameMixin:
     @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -516,6 +518,13 @@ class RecurrentDataFrameMixin:
             Columns of per-row left / right truncation (the start and end
             of each unit's observation window), for a fitter whose
             :meth:`fit` takes ``tl`` / ``tr``.
+        a_col : str, optional
+            Column of terminal flags: 1 where the row's event ended the
+            unit's history for good, 0 or blank elsewhere (a blank event
+            on a unit's last row is read as 1). It does not change the
+            fit: the model's ``notes`` say that each terminal event is
+            fitted as an event followed by the end of that unit's
+            observation.
         **fit_options
             Every other option of :meth:`fit`.
 
@@ -609,6 +618,7 @@ class RecurrentRegressionDataFrameMixin:
     )
     @column_arguments("x", "i", "c", "n")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -650,6 +660,13 @@ class RecurrentRegressionDataFrameMixin:
             Column of event counts per row.
         tl_col, tr_col : str, optional
             Columns of per-row left / right truncation.
+        a_col : str, optional
+            Column of terminal flags: 1 where the row's event ended the
+            unit's history for good, 0 or blank elsewhere (a blank event
+            on a unit's last row is read as 1). It does not change the
+            fit: the model's ``notes`` say that each terminal event is
+            fitted as an event followed by the end of that unit's
+            observation.
         **fit_options
             Every other option of :meth:`fit` (``dist``, ``init``, ...).
 

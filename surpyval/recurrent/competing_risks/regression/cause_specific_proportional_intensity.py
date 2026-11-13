@@ -85,6 +85,11 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import combined_maximum
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+    takes_terminal_column,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     refuse_right_truncation,
@@ -319,6 +324,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
     np.float64(3.5)
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fit classmethods; declared for the type checker.
     df: Any
     data: Any
@@ -453,6 +463,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         cls,
@@ -481,6 +492,13 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         ----------
         x : array_like
             The event (and end-of-observation) times, pooled over items.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D
             array is a single covariate), a DataFrame (its column names
@@ -567,6 +585,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
     )
     @column_arguments("x", "i", "c", "n", "e", "tl", "tr")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         cls,
         df: Any,
@@ -1152,6 +1171,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             "causes: {}".format(
                 self.models[self.event_types[0]].dist.name, self.event_types
             )
+            + notes_text(self)
         )
 
     # -- serialisation -----------------------------------------------------

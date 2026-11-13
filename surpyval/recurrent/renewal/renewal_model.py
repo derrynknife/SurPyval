@@ -31,6 +31,7 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
@@ -1002,6 +1003,11 @@ class RenewalModel(
     >>> model.mcf(np.array([20.0, 60.0]), items=1000, random_state=0).round(3)
     array([1.296, 4.56 ])
     """
+
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
 
     # Set by the GeneralizedRenewal fitter for its Kijima sampler.
     _virtual_age_function: Any
@@ -2155,6 +2161,7 @@ class RenewalModel(
                 + "\nParameters          :\n"
                 + param_string
                 + "\nRepair test         : not available (no data)"
+                + notes_text(self)
             )
         table = self.summary()
         lines.append("Parameters          : Wald 95% intervals")
@@ -2163,7 +2170,7 @@ class RenewalModel(
         if note:
             lines.append(note)
         lines.append(self._repair_line())
-        return "\n".join(lines)
+        return "\n".join(lines) + notes_text(self)
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
