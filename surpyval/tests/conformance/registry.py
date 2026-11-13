@@ -350,6 +350,9 @@ OUT_OF_SCOPE: dict[str, str] = {
     + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
+    "surpyval.landmark": _FUNCTION + ": derives landmark data from data",
+    "surpyval.landmark_kaplan_meier": _FUNCTION
+    + " (Kaplan-Meier fits, registered, of landmark data)",
     "surpyval.CovariatePath": _DATA,
     "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",

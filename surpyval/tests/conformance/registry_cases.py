@@ -85,6 +85,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     process_data,
     quantiles,
     recurrent_data,
+    reg_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -2275,6 +2276,79 @@ def _bayes():
 
 
 # ---------------------------------------------------------------------------
+# Landmark supermodels: dynamic prediction from a landmark s
+# ---------------------------------------------------------------------------
+#: The landmark the conformance queries predict from (inside X_REG).
+LANDMARK_S = 2.0
+
+
+def _landmark_data():
+    """The regression fixture, with the landmarks 0, 2 and 4 and a window
+    of 20 (every query time of X_REG is within 2 + 20)."""
+    return {**reg_data(), "at": np.array([0.0, 2.0, 4.0]), "horizon": 20.0}
+
+
+def _landmark_fit(d):
+    life = sp.SurpyvalData(x=d["x"], c=d["c"], n=d.get("n"), Z=d["Z"])
+    return sp.LandmarkCox.fit(life, at=d["at"], horizon=d["horizon"], degree=1)
+
+
+def _landmark():
+    """The stratified supermodel, queried by its dynamic ``sf``, ``ff``
+    and ``Hf`` from the landmark ``s = 2`` (1 and 0 before it)."""
+    return [
+        regression(
+            "LandmarkCox",
+            sp.LandmarkCox,
+            fitters=("surpyval.LandmarkCox",),
+            model_class="surpyval.LandmarkCox",
+            data=_landmark_data,
+            fit=_landmark_fit,
+            functions=("sf", "ff", "Hf"),
+            paths={
+                "fit_from_df": lambda d: sp.LandmarkCox.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "c": d["c"],
+                            "n": d.get("n", np.ones(len(d["x"]), int)),
+                            "z0": d["Z"][:, 0],
+                            "z1": d["Z"][:, 1],
+                        }
+                    ),
+                    x_col="x",
+                    c_col="c",
+                    n_col="n",
+                    Z_cols=["z0", "z1"],
+                    at=d["at"],
+                    horizon=d["horizon"],
+                    degree=1,
+                )
+            },
+            times=("x", "at", "horizon"),
+            call_kwargs={"s": LANDMARK_S},
+            call_times=("s",),
+            drops_missing_covariate=False,
+            coefficients=lambda m: m.params[: len(m.feature_names)],
+            draw=None,
+            exclude={
+                "random_sf": "a dynamic prediction has no random(): it is "
+                "a probability over a window, not a lifetime model",
+                "df_hf_sf": "the baseline is a step function (a Cox "
+                "model's): no density or hazard",
+                "maximum": "the fit is CoxPH's on the stacked landmark "
+                "data, whose maximum the CoxPH case checks",
+                "comparison": "no likelihood of its own: the stacked rows "
+                "repeat units, so a pseudo-likelihood's AIC would mislead",
+                "convergence": "the fit is CoxPH's on the stacked landmark "
+                "data, with no search or start of its own; CoxPH's starved "
+                "fits are checked by its case",
+            },
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Panel counts (recurrent events counted at inspections)
 # ---------------------------------------------------------------------------
 def _panel_count():
@@ -2351,6 +2425,7 @@ CASES: list[Case] = (
     + _mixture_cure()
     + _equivalence()
     + _zero_inflated()
+    + _landmark()
     + _panel_multistate()
     + _bayes()
     + _panel_count()
@@ -3127,6 +3202,18 @@ def _bounds(case):
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # Robust (clustered) Wald bounds on the dynamic prediction from
+        # the landmark s, on each of its scales.
+        "LandmarkCox": tuple(
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"s": LANDMARK_S, "bound_type": t},
+                in_range=t != "plain",
+                label=f"cb[{t}]",
+            )
+            for t in ("log-log", "log", "plain")
+        ),
         # The delta method on each function, Wald and profile-likelihood
         # bounds on the parameters.
         "JointFrailtyModel": (

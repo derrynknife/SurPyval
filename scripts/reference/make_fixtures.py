@@ -1335,6 +1335,46 @@ def multistate(seed):
     }
 
 
+def landmark_fixture(seed):
+    """A fixed covariate z1 (0 or 1) and a covariate that switches from 0
+    to 1 at a time v (z2(t) = 1 from v on) for 300 units: the hazard is
+    0.15 exp(0.5 z1 + 0.8 z2(t)), and each unit is censored at a uniform
+    time in (4, 10). Times are rounded to two decimals, which ties some of
+    them; unit 1 switches at exactly 2, a landmark of the tests, and
+    unit 2 enters late (at 0.5). ``v`` is null where the unit never
+    switches while followed."""
+    rng = np.random.default_rng(seed)
+    rows = {k: [] for k in ("id", "entry", "time", "status", "z1", "v")}
+    for unit in range(1, 301):
+        z1 = int(rng.uniform() < 0.5)
+        v = 2.0 if unit == 1 else round(float(rng.exponential(3.0)), 2)
+        rate = 0.15 * math.exp(0.5 * z1)
+        t = float(rng.exponential(1 / rate))
+        if t > v:
+            t = v + float(rng.exponential(1 / (rate * math.exp(0.8))))
+        cens = float(rng.uniform(4, 10))
+        time = round(min(t, cens), 2)
+        status = int(t <= cens)
+        entry = 0.5 if unit == 2 else 0.0
+        if time <= entry:
+            time = round(entry + 0.01, 2)
+        if v <= 0:
+            v = 0.01
+        rows["id"].append(unit)
+        rows["entry"].append(entry)
+        rows["time"].append(time)
+        rows["status"].append(status)
+        rows["z1"].append(z1)
+        rows["v"].append(v if v < time else None)
+    return {
+        "source": "seeded synthetic, make_fixtures.landmark_fixture (rng "
+        "{}): lifetimes with a fixed covariate z1 and a covariate that "
+        "switches from 0 to 1 at v (null: no switch while followed); "
+        "status 1 is the event".format(seed),
+        "columns": rows,
+    }
+
+
 def joint_frailty(seed):
     """Recurrent events and a dependent terminal event for 250 units: a
     gamma frailty u (mean 1, variance 0.6) multiplies the recurrent
@@ -1590,6 +1630,7 @@ def build():
         "mgus2_multistate": mgus2_multistate(),
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
+        "landmark": landmark_fixture(3801),
         "joint_frailty": joint_frailty(3801),
         "clustered": clustered(3851),
         "rank_regression": rank_regression(),

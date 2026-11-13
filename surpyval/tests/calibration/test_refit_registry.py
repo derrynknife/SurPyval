@@ -1543,6 +1543,12 @@ EXCLUDED: dict[str, str] = {
         "and predicted probabilities, against the matrix exponential) is "
         "tested in tests/multistate/test_multistate.py",
     ),
+    "LandmarkCox": "no simulation from the model: a dynamic prediction "
+    "from a landmark, with a step baseline per landmark and no random(); "
+    "its own study, calibration/test_coverage_landmark.py, simulates "
+    "lifetimes from a proportional-hazards truth and checks the coverage "
+    "of the robust intervals on the coefficients and a window "
+    "probability",
     "Weibull[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
