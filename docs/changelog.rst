@@ -101,7 +101,12 @@ Unreleased
   followed by the end of the unit's observation, and the model's new
   ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
   Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
-  ``EventHistoryData`` and ``handle_xicn`` are unchanged.
+  ``EventHistoryData`` and ``handle_xicn`` are unchanged. The joint frailty
+  model reads ``a`` as its terminal event: ``JointFrailty.fit(data)`` and
+  ``JointFrailty.fit_from_df(..., a_col=...)`` (in place of
+  ``terminal_col``) fit as the arrays with ``terminal``, with a note where
+  ``a`` was inferred; ``PanelCountMCF`` and ``PanelCountRegression`` take
+  arrays of visits and counts and refuse a ``SurpyvalData`` in words.
 - Degradation and joint fits from measurements: ``DegradationAnalysis``,
   ``WienerProcess`` and ``GammaProcess`` take their readings as a
   ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``

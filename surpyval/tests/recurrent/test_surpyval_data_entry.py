@@ -201,22 +201,304 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
         "GeneralizedOneRenewal",
         "GeneralizedRenewal",
         "HPP",
+        "JointFrailty",
         "NonParametricCounting",
+        "PanelCountMCF",
+        "PanelCountRegression",
         "PrenticeWilliamsPeterson",
         "ProportionalIntensityHPP",
         "ProportionalIntensityNHPP",
         "WeiLinWeissfeld",
     }
+    # The panel-count models take counts found at inspections, which have
+    # no rows in a SurpyvalData: they refuse one, in words.
+    refusing = {"PanelCountMCF", "PanelCountRegression"}
 
-    def entry(f):
+    def marked(f, flag):
         while f is not None:
-            if getattr(f, "_accepts_recurrent_surpyval_data", False):
+            if getattr(f, flag, False):
                 return True
             f = getattr(f, "__wrapped__", None)
         return False
 
     for name, fitter in fitters.items():
-        assert entry(fitter.fit), name
+        if name in refusing:
+            assert marked(fitter.fit, "_refuses_surpyval_data"), name
+            assert not marked(fitter.fit, "_accepts_recurrent_surpyval_data")
+        else:
+            assert marked(fitter.fit, "_accepts_recurrent_surpyval_data"), name
+
+
+# --- the joint frailty model reads a as its terminal event -----------------
+
+
+def _joint_arrays():
+    from surpyval.tests.conformance.registry_fixtures import (
+        joint_frailty_data,
+    )
+
+    d = joint_frailty_data()
+    return {k: np.asarray(v) for k, v in d.items()}
+
+
+def _joint_data(d, a=True, **extra):
+    """The arrays as the data model gives them: a unit's terminal event
+    is an event row with a = 1, and c = 1 ends a record without one."""
+    ended = (d["c"] == 1) & (d["terminal"] == 1)
+    return SurpyvalData(
+        x=d["x"],
+        c=np.where(ended, 0, d["c"]),
+        i=d["i"].tolist(),
+        a=ended.astype(int) if a else None,
+        Z=d["Z"],
+        **extra,
+    )
+
+
+JF_Z = np.array([[0.0], [1.0], [0.0], [1.0], [0.0], [1.0]])
+
+
+def _same_joint(got, ref):
+    _same(got, ref)
+    np.testing.assert_array_equal(got.params, ref.params)
+    np.testing.assert_array_equal(got.covariance(), ref.covariance())
+    np.testing.assert_array_equal(got.standard_errors(), ref.standard_errors())
+    np.testing.assert_array_equal(
+        got.mcf(X_QUERY, JF_Z), ref.mcf(X_QUERY, JF_Z)
+    )
+    np.testing.assert_array_equal(got.sf(X_QUERY, JF_Z), ref.sf(X_QUERY, JF_Z))
+    assert got.frailties == ref.frailties
+
+
+def test_joint_frailty_reads_a_as_its_terminal_event():
+    d = _joint_arrays()
+    got = rc.JointFrailty.fit(_joint_data(d, covariate_names=["z"]))
+    ref = rc.JointFrailty.fit(
+        d["x"],
+        pd.DataFrame(d["Z"], columns=["z"]),
+        i=d["i"],
+        c=d["c"],
+        terminal=d["terminal"],
+    )
+    _same_joint(got, ref)
+    assert got.feature_names == ["z"]
+    # a given: nothing inferred, and no "does not model terminal events".
+    assert got.notes == () and "Notes" not in repr(got)
+
+
+def test_joint_frailty_options_and_entry():
+    d = _joint_arrays()
+    tl = np.where(d["i"] % 3 == 0, 0.5, 0.0)
+    first = np.r_[True, d["i"][1:] != d["i"][:-1]]
+    data = _joint_data(d, tl=np.where(first, tl, -np.inf))
+    got = rc.JointFrailty.fit(data, family="lognormal")
+    ref = rc.JointFrailty.fit(
+        d["x"],
+        d["Z"],
+        i=d["i"],
+        c=d["c"],
+        terminal=d["terminal"],
+        tl=tl,
+        family="lognormal",
+    )
+    _same_joint(got, ref)
+
+
+def _small_joint(a):
+    # Unit 1: events at 2 and 5, terminal event at 7. Unit 2: events at 3
+    # and 6, still running at 9. Unit 3: events at 1 and 4, then its last
+    # event at 8.
+    return SurpyvalData(
+        x=[2, 5, 7, 3, 6, 9, 1, 4, 8],
+        c=[0, 0, 0, 0, 0, 1, 0, 0, 0],
+        i=[1, 1, 1, 2, 2, 2, 3, 3, 3],
+        a=a,
+    )
+
+
+SMALL_JOINT = dict(
+    x=[2, 5, 7, 3, 6, 9, 1, 4, 8],
+    i=[1, 1, 1, 2, 2, 2, 3, 3, 3],
+    c=[0, 0, 1, 0, 0, 1, 0, 0, 1],
+)
+
+
+def test_joint_frailty_inferred_terminal_event_is_noted():
+    # No a on the last events of units 1 and 3: each is read as the
+    # unit's terminal event.
+    got = rc.JointFrailty.fit(_small_joint(None))
+    ref = rc.JointFrailty.fit(
+        **SMALL_JOINT, terminal=[0, 0, 1, 0, 0, 0, 0, 0, 1]
+    )
+    _same(got, ref)
+    np.testing.assert_array_equal(got.params, ref.params)
+    assert got.notes == (
+        "a was not given for the last event of 2 units (1, 3), so each "
+        "was read as the unit's terminal event (a = 1): the joint frailty "
+        "model fits it as the terminal event, not as a recurrent event. "
+        "Where a unit's last event was an ordinary (recurrent) one, give "
+        "a = 0 on it, and a row with c = 1 at the end of its record.",
+    )
+    assert "Notes" in repr(got) and "a was not given" in repr(got)
+    assert not any("does not model terminal events" in n for n in got.notes)
+
+
+def test_joint_frailty_last_event_with_a_0_ends_the_record():
+    # Unit 3's last event is an ordinary one (a = 0 given) with no c = 1
+    # row: an event, then the end of its record there.
+    got = rc.JointFrailty.fit(_small_joint([0, 0, 1, 0, 0, 0, 0, 0, 0]))
+    ref = rc.JointFrailty.fit(
+        x=[2, 5, 7, 3, 6, 9, 1, 4, 8, 8],
+        i=[1, 1, 1, 2, 2, 2, 3, 3, 3, 3],
+        c=[0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        terminal=[0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    )
+    _same(got, ref)
+    np.testing.assert_array_equal(got.params, ref.params)
+    assert got.notes == (
+        "1 unit ends at a recurrent event with a = 0 and no end-of-record "
+        "(c = 1) row (3): its observation is taken to end at that event, "
+        "with no terminal event.",
+    )
+
+
+def test_joint_frailty_stretch_rows_dropped_and_simultaneous_terminal():
+    # Unit 2's c = 1 row at 4 is a stretch boundary (watched throughout);
+    # unit 1's recurrent event at 7 also ended it (both rows at 7).
+    data = SurpyvalData(
+        x=[2, 5, 7, 7, 3, 4, 6, 9],
+        c=[0, 0, 0, 0, 0, 1, 0, 1],
+        i=[1, 1, 1, 1, 2, 2, 2, 2],
+        a=[0, 0, 0, 1, 0, 0, 0, 0],
+    )
+    got = rc.JointFrailty.fit(data)
+    ref = rc.JointFrailty.fit(
+        [2, 5, 7, 7, 3, 6, 9],
+        i=[1, 1, 1, 1, 2, 2, 2],
+        c=[0, 0, 0, 1, 0, 0, 1],
+        terminal=[0, 0, 0, 1, 0, 0, 0],
+    )
+    _same(got, ref)
+    assert got.notes == ()
+
+
+def test_joint_frailty_fit_from_df_a_col():
+    d = _joint_arrays()
+    ended = (d["c"] == 1) & (d["terminal"] == 1)
+    log = pd.DataFrame(
+        {
+            "x": d["x"],
+            "i": d["i"],
+            "c": np.where(ended, 0, d["c"]),
+            "a": ended.astype(int),
+            "z": d["Z"][:, 0],
+        }
+    ).iloc[
+        ::-1
+    ]  # rows in any order
+    got = rc.JointFrailty.fit_from_df(
+        log, "x", "i", "c", a_col="a", Z_cols="z"
+    )
+    ref = rc.JointFrailty.fit_from_df(
+        pd.DataFrame(
+            {
+                "x": d["x"],
+                "i": d["i"],
+                "c": d["c"],
+                "t": d["terminal"],
+                "z": d["Z"][:, 0],
+            }
+        ),
+        "x",
+        "i",
+        "c",
+        "t",
+        Z_cols="z",
+    )
+    _same_joint(got, ref)
+    # Blank flags: the last event read as terminal, noted.
+    blank = log.assign(a=np.where(ended, np.nan, 0.0)[::-1])
+    model = rc.JointFrailty.fit_from_df(
+        blank, "x", "i", "c", a_col="a", Z_cols="z"
+    )
+    _same(model, ref)
+    assert "a was not given for the last event of" in model.notes[0]
+    with pytest.raises(TypeError, match="terminal_col .* or a_col"):
+        rc.JointFrailty.fit_from_df(log, "x", "i", "c", "a", a_col="a")
+
+
+def test_joint_frailty_refusals():
+    d = _joint_arrays()
+    data = _joint_data(d)
+    with pytest.raises(TypeError, match="leave out 'terminal'"):
+        rc.JointFrailty.fit(data, terminal=d["terminal"])
+    with pytest.raises(TypeError, match=r"each row's unit \(Surpy"):
+        rc.JointFrailty.fit(SurpyvalData(x=[1, 2, 3]))
+    with pytest.raises(ValueError, match="multi-state models"):
+        rc.JointFrailty.fit(
+            SurpyvalData(
+                x=[3, 5, 7, 4],
+                tl=[0, 3, 0, 0],
+                s=["well", "ill", "well", "well"],
+                e=["ill", "dead", None, "dead"],
+                i=["A", "A", "B", "C"],
+            )
+        )
+    with pytest.raises(ValueError, match="no recurrent model takes weights"):
+        rc.JointFrailty.fit(_joint_data(d, w=np.full(len(d["x"]), 2.0)))
+    with pytest.raises(ValueError, match="takes no event types"):
+        rc.JointFrailty.fit(
+            _joint_data(d, e=np.where(d["c"] == 0, "wear", None))
+        )
+    with pytest.raises(ValueError, match="gaps in observation"):
+        rc.JointFrailty.fit(_gapped())
+    with pytest.raises(ValueError, match="interval-censored rows"):
+        rc.JointFrailty.fit(
+            SurpyvalData(
+                x=[[1, 2], [5, 5], [9, 9]],
+                c=[2, 0, 1],
+                i=[1, 1, 1],
+            )
+        )
+    with pytest.raises(ValueError, match="takes no counts"):
+        rc.JointFrailty.fit(
+            SurpyvalData(x=[2, 5, 9], c=[0, 0, 1], n=[2, 1, 1], i=[1] * 3)
+        )
+    with pytest.raises(ValueError, match="change within a unit"):
+        rc.JointFrailty.fit(
+            SurpyvalData(
+                x=[2, 4, 7, 3, 9],
+                c=[0, 1, 0, 0, 1],
+                i=[1, 1, 1, 2, 2],
+                Z=[[0.0], [0.0], [1.0], [1.0], [1.0]],
+            )
+        )
+    with pytest.raises(ValueError, match="right truncation"):
+        rc.JointFrailty.fit(_joint_data(d, tr=np.full(len(d["x"]), 50.0)))
+
+
+# --- the panel-count models take arrays of visits ---------------------------
+
+
+@pytest.mark.parametrize("name", ("PanelCountMCF", "PanelCountRegression"))
+def test_panel_count_models_refuse_a_surpyval_data(name):
+    data = SurpyvalData(
+        x=[2, 5, 9, 3, 8], c=[0, 0, 1, 0, 1], i=[1, 1, 1, 2, 2], Z=[[1.0]] * 5
+    )
+    fitter = getattr(rc, name)
+    with pytest.raises(TypeError, match="arrays of visits and counts") as info:
+        if name == "PanelCountMCF":
+            fitter.fit(data, n=[1, 0, 2, 1, 2])
+        else:
+            fitter.fit(data, Z=[1.0] * 5, n=[1, 0, 2, 1, 2])
+    assert "fit_from_df" in str(info.value)
+    assert "NonParametricCounting.fit(data)" in str(info.value)
+    # The arrays still fit.
+    x, n, i = [2, 5, 9, 3, 8], [1, 0, 2, 1, 2], [1, 1, 1, 2, 2]
+    if name == "PanelCountMCF":
+        assert fitter.fit(x, n, i=i).mcf_hat.size
+    else:
+        assert fitter.fit(x, [0.0, 0.0, 0.0, 1.0, 1.0], n, i=i).params.size
 
 
 # --- several windows, counts, delayed entry ---------------------------------

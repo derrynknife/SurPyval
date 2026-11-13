@@ -175,9 +175,9 @@ was scrapped at its fourth failure, at 650 hours:
     pump_model = CrowAMSAA.fit(pumps)
     print(pump_model)
 
-None of the recurrent models models a terminal event, so a unit that ended
-for good (``a = 1``) is fitted as an event followed by the end of its
-observation: what the arrays give for a unit with no ``c = 1`` row. The
+Apart from the joint frailty model, none of the recurrent models models a
+terminal event, so a unit that ended for good (``a = 1``) is fitted as an
+event followed by the end of its observation: what the arrays give for a unit with no ``c = 1`` row. The
 model's ``notes`` say so, and say where ``a`` was read rather than given
 (an event on a unit's last row with no ``a`` is read as ``a = 1``). A unit
 whose last row is an event with ``a = 0`` and no ``c = 1`` row is also taken
@@ -187,6 +187,16 @@ the models that have one; ``fit_from_df(..., a_col=...)`` reads ``a`` from a
 table and adds the same notes. Data without ``i``, in more than one state
 (``s``), or with what the model has no argument for is refused, saying what
 to use.
+
+The joint frailty model (``JointFrailty``, see :doc:`counting/joint_frailty`)
+does model the terminal event, so ``JointFrailty.fit(data)`` reads the event
+with ``a = 1`` as the unit's terminal event and a ``c = 1`` row as the end of
+its record without one; where ``a`` was read rather than given, its notes say
+that the last event was taken as the terminal event, and to give ``a = 0`` on
+a last event that was an ordinary one. The panel-count models
+(``PanelCountMCF``, ``PanelCountRegression``) take counts found at
+inspections, which have no rows in a ``SurpyvalData``: they take arrays (or
+``fit_from_df``) and refuse a ``SurpyvalData`` in words.
 
 .. jupyter-execute::
     :hide-code:

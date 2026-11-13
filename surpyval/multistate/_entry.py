@@ -20,7 +20,11 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from surpyval.utils.surpyval_data import SurpyvalData, units_with_several_rows
+from surpyval.utils.surpyval_data import (
+    SurpyvalData,
+    refuses_surpyval_data_with,
+    units_with_several_rows,
+)
 from surpyval.utils.warnings import named
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -239,23 +243,18 @@ def multistate_data(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
+#: The refusal of a SurpyvalData by the panel multi-state models.
+PANEL_REFUSAL = (
+    "The panel multi-state models take arrays of visits (x, s, i), not a "
+    "SurpyvalData: their s is the state seen at each visit, while a "
+    "SurpyvalData's s is the state a unit was in during the row. Pass the "
+    "arrays, or use fit_from_df; for stays in states with the times of "
+    "the moves, MultiState.fit(data) takes a SurpyvalData."
+)
+
+
 def refuses_surpyval_data(method: F) -> F:
     """Refuse a SurpyvalData given to a panel model's ``fit``, which takes
     arrays of visits: there ``s`` is the state seen at each visit, not the
     state a unit was in during a row, as in a SurpyvalData."""
-
-    @functools.wraps(method)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        given = kwargs.get("x", args[1] if len(args) > 1 else None)
-        if isinstance(given, SurpyvalData):
-            raise TypeError(
-                "The panel multi-state models take arrays of visits (x, s, "
-                "i), not a SurpyvalData: their s is the state seen at each "
-                "visit, while a SurpyvalData's s is the state a unit was "
-                "in during the row. Pass the arrays, or use fit_from_df; "
-                "for stays in states with the times of the moves, "
-                "MultiState.fit(data) takes a SurpyvalData."
-            )
-        return method(*args, **kwargs)
-
-    return wrapper  # type: ignore[return-value]
+    return refuses_surpyval_data_with(PANEL_REFUSAL)(method)

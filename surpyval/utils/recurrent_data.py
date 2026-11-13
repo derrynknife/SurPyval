@@ -23,9 +23,16 @@ How a unit's rows are read:
   throughout), unless the covariates change there, in which case the fit
   is made by the model's ``fit_tvc`` from the rows as start-stop rows.
 - ``a`` (the terminal flag) does not change the arrays: none of the
-  recurrent models models a terminal event, and a unit's record without a
-  ``c = 1`` row ends at its last event, which is where a terminal event
-  ends it. What the fit made of ``a`` is said in the model's ``notes``.
+  recurrent models but the joint frailty model models a terminal event,
+  and a unit's record without a ``c = 1`` row ends at its last event,
+  which is where a terminal event ends it. What the fit made of ``a`` is
+  said in the model's ``notes``.
+
+The joint frailty model (``JointFrailty``) does model the terminal event,
+so :func:`accepts_terminal_surpyval_data` reads ``a`` as it: a unit's
+event with ``a = 1`` is its terminal event (the closing row with
+``terminal = 1`` of its arrays), and a ``c = 1`` row the end of its record
+without one.
 """
 
 from __future__ import annotations
@@ -622,3 +629,232 @@ def _terminal_column_notes(
         )
         raise ValueError(text.replace("a = 1", "a_col = 1", 1)) from None
     return terminal_notes(c[order], a, inferred, ids)
+
+
+# The arguments the joint frailty model's ``fit`` takes its data in,
+# besides ``x``: given with a SurpyvalData they are refused.
+_JOINT_BESIDE = ("Z", "i", "c", "terminal", "tl")
+
+
+def accepts_terminal_surpyval_data(method: F) -> F:
+    """Let the joint frailty model's ``fit`` take a
+    :class:`~surpyval.utils.surpyval_data.SurpyvalData` with units ``i``
+    as its ``x``: ``JointFrailty.fit(data)``. Unlike the other recurrent
+    models it models the terminal event, so it reads ``a``: a unit's rows
+    are its recurrent events (``c = 0``, ``a = 0``), then either its
+    terminal event (``c = 0``, ``a = 1``) or the end of its record without
+    one (``c = 1``). They become the arrays ``fit`` takes: each event a
+    row ``c = 0``, and one closing row per unit, ``c = 1`` with
+    ``terminal = 1`` at the terminal event or ``terminal = 0`` at the end
+    of the record; the unit's entry is its first row's ``tl``. So the fit
+    is that of those arrays. A last event with ``a = 0`` given and no
+    ``c = 1`` row is an event followed by the end of the record there,
+    with a note; where ``a`` was inferred (an event on a unit's last row
+    with no ``a`` is read as terminal), the model's ``notes`` say so. What
+    the model cannot take is refused, saying what to use: states,
+    measurements, weights, event types, counts, ranges and left- or
+    interval-censored rows, gaps in observation, covariates that change
+    within a unit, right truncation."""
+    signature = inspect.signature(method)
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(*args, **kwargs)
+        data = bound.arguments.get("x")
+        if not isinstance(data, SurpyvalData):
+            return method(*args, **kwargs)
+        if data.ids is None:
+            raise TypeError(
+                "The joint frailty model compares units, and the "
+                "SurpyvalData has no units: give each row's unit "
+                "(SurpyvalData(x, c, ..., i=i, a=a))."
+            )
+        given = [
+            name
+            for name in _JOINT_BESIDE
+            if bound.arguments.get(name) is not None
+        ]
+        if given:
+            raise TypeError(
+                "x is a SurpyvalData, which holds the data: leave out "
+                + ", ".join(repr(g) for g in given)
+                + " (give the covariates, entry times and terminal flags "
+                "a in the data, or pass arrays rather than a SurpyvalData)."
+            )
+        _refuse_what_no_recurrent_fit_takes(data)
+        layout = _Layout(data)
+        lost = _joint_lost(data, layout)
+        if lost:
+            raise ValueError(_refusal(lost))
+        rows, notes = _joint_rows(data, layout)
+        bound.arguments.update(rows)
+
+        def run() -> Any:
+            return method(*bound.args, **bound.kwargs)
+
+        model = with_data_unit(
+            named_fit(
+                run, data.covariate_names if data.Z is not None else None
+            ),
+            data,
+        )
+        try:
+            model.notes = tuple(notes)
+        except AttributeError:  # pragma: no cover - the model takes it
+            pass
+        return model
+
+    setattr(wrapper, "_accepts_recurrent_surpyval_data", True)
+    return wrapper  # type: ignore[return-value]
+
+
+def _joint_lost(data: SurpyvalData, layout: _Layout) -> list:
+    """What ``data`` holds that the joint frailty model cannot take, as
+    ``(what, how)`` pairs."""
+    lost = []
+    if data.e is not None:
+        lost.append(
+            (
+                "event types",
+                "data.without('event_types') to fit one kind of recurrent "
+                "event (the terminal event is given by a), or "
+                "data.for_event_type(t) for the events of one type",
+            )
+        )
+    odd = (layout.lo < layout.hi) | ~np.isin(np.asarray(data.c), (0, 1))
+    if odd.any():
+        ids = list(data.ids)  # type: ignore[arg-type]
+        units = list(dict.fromkeys(ids[r] for r in np.flatnonzero(odd)))
+        lost.append(
+            (
+                "ranges or left- or interval-censored rows (unit"
+                f"{'s' if len(units) > 1 else ''} {named(units)})",
+                "data with each event at its time, x (c = 0 or 1)",
+            )
+        )
+    if np.any(np.asarray(data.n) != 1):
+        lost.append(("counts", "data with n = 1 on every row"))
+    if layout.gapped:
+        units = layout.gapped
+        lost.append(
+            (
+                "gaps in observation (unit"
+                f"{'s' if len(units) > 1 else ''} {named(units)}: a row "
+                "starting, tl, after the previous row of its unit ended)",
+                "data watched throughout from each unit's entry; "
+                + _TAKE_GAPS,
+            )
+        )
+    if layout.varying:
+        units = layout.varying
+        lost.append(
+            (
+                "covariates that change within a unit (unit"
+                f"{'s' if len(units) > 1 else ''} {named(units)})",
+                "one row of covariates per unit (the joint frailty model's "
+                "covariates describe the unit); for covariates that change, "
+                "the proportional-intensity models' fit_tvc",
+            )
+        )
+    if np.isfinite(np.asarray(data.tr, dtype=float)).any():
+        lost.append(
+            (
+                "right truncation",
+                "data.without('truncation') to fit without it",
+            )
+        )
+    return lost
+
+
+def _joint_rows(data: SurpyvalData, layout: _Layout) -> tuple[dict, list]:
+    """The arrays of the joint frailty model's ``fit`` for ``data`` (see
+    :func:`accepts_terminal_surpyval_data`), with the notes on what was
+    made of ``a``."""
+    c = np.asarray(data.c)
+    x = layout.hi
+    k = len(c)
+    if data.a is None:
+        # One row per unit and no a: an event is the unit's last row, so
+        # it is read as terminal, as SurpyvalData reads it elsewhere.
+        a = np.where(c != 1, 1, 0)
+        inferred = c != 1
+    else:
+        a = np.asarray(data.a)
+        inferred = (
+            np.zeros(k, dtype=bool)
+            if data.a_inferred is None
+            else np.asarray(data.a_inferred, dtype=bool)
+        )
+    ids = _id_array(data.ids)
+    Z = None if data.Z is None else np.asarray(data.Z, dtype=float)
+    rows_x: list = []
+    rows_r: list = []  # the data row each array row comes from
+    rows_c: list = []
+    rows_t: list = []
+    guessed, carried = [], []
+    for unit, rows in layout.rows_of.items():
+        last = rows[-1]
+        for r in rows:
+            if c[r] == 1 and r != last:
+                continue  # a stretch boundary: watched throughout
+            closing = r == last and (c[r] == 1 or a[r] == 1)
+            if r == last and c[r] == 0 and a[r] == 0:
+                # an ordinary last event and no end of record: the record
+                # ends at that event, with no terminal event.
+                rows_x += [x[r], x[r]]
+                rows_r += [r, r]
+                rows_c += [0, 1]
+                rows_t += [0, 0]
+                carried.append(unit)
+                continue
+            rows_x.append(x[r])
+            rows_r.append(r)
+            rows_c.append(1 if closing else 0)
+            rows_t.append(int(closing and c[r] == 0))
+            if closing and c[r] == 0 and inferred[r]:
+                guessed.append(unit)
+    picked = np.asarray(rows_r, dtype=int)
+    out: dict = {
+        "x": np.asarray(rows_x, dtype=float),
+        "i": ids[picked],
+        "c": np.asarray(rows_c, dtype=int),
+        "terminal": np.asarray(rows_t, dtype=int),
+    }
+    if np.isfinite(layout.entry).any():
+        out["tl"] = np.where(
+            np.isfinite(layout.entry[picked]), layout.entry[picked], 0.0
+        )
+    if Z is not None:
+        out["Z"] = Z[picked]
+    return out, _joint_notes(guessed, carried)
+
+
+def _joint_notes(guessed: list, carried: list) -> list:
+    """The joint frailty model's notes on ``a``: the units whose last
+    event was read as their terminal event because ``a`` was not given,
+    and those whose last event has ``a = 0`` and no end of record."""
+    notes = []
+    if guessed:
+        one = len(guessed) == 1
+        notes.append(
+            f"a was not given for the last event of {len(guessed)} "
+            f"unit{'' if one else 's'} ({named(guessed)}), so "
+            + ("it was" if one else "each was")
+            + " read as the unit's terminal event (a = 1): the joint "
+            "frailty model fits it as the terminal event, not as a "
+            "recurrent event. Where a unit's last event was an ordinary "
+            "(recurrent) one, give a = 0 on it, and a row with c = 1 at "
+            "the end of its record."
+        )
+    if carried:
+        one = len(carried) == 1
+        notes.append(
+            f"{len(carried)} unit{'' if one else 's'} "
+            + ("ends" if one else "end")
+            + " at a recurrent event with a = 0 and no end-of-record "
+            f"(c = 1) row ({named(carried)}): "
+            + ("its" if one else "their")
+            + " observation is taken to end at that event, with no "
+            "terminal event."
+        )
+    return notes

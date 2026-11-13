@@ -1555,7 +1555,15 @@ def _recurrent():
                     "c",
                     "terminal",
                     Z_cols=["z"],
-                )
+                ),
+                # The terminal event as the data model gives it: a = 1 on
+                # its event row.
+                "fit(data)": lambda d: rc.JointFrailty.fit(
+                    **_joint_as_data(d)
+                ),
+                "fit_from_df(a_col)": lambda d: rc.JointFrailty.fit_from_df(
+                    _joint_as_frame(d), "x", "i", "c", a_col="a", Z_cols=["z"]
+                ),
             },
             rows=("x", "Z", "i", "c", "terminal"),
             covariates="Z",
@@ -1592,13 +1600,48 @@ def _recurrent_as_data(d):
 
 def _with_data_path(case):
     """The case with its ``fit(data)`` path: the fixture as a
-    SurpyvalData, fitted by the case's own ``fit``."""
+    SurpyvalData, fitted by the case's own ``fit`` (unless the case has
+    its own)."""
     return replace(
         case,
         paths={
-            **case.paths,
             "fit(data)": lambda d, fit=case.fit: fit(_recurrent_as_data(d)),
+            **case.paths,
         },
+    )
+
+
+def _joint_terminal_rows(d):
+    """The joint frailty fixture's rows in the data model: the closing
+    row of a unit's terminal event (``c = 1``, ``terminal = 1``) is its
+    event row with ``a = 1``."""
+    c, t = np.asarray(d["c"]), np.asarray(d["terminal"])
+    ended = (c == 1) & (t == 1)
+    return np.where(ended, 0, c), ended.astype(int)
+
+
+def _joint_as_data(d):
+    """The joint frailty fixture as one SurpyvalData (its ``x``), the
+    other entries (options) kept."""
+    c, a = _joint_terminal_rows(d)
+    keys = ("x", "i", "c", "terminal", "Z")
+    data = sp.SurpyvalData(
+        x=d["x"], c=c, a=a, i=np.asarray(d["i"]).tolist(), Z=d.get("Z")
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _joint_as_frame(d):
+    """The joint frailty fixture as a table with the terminal flag a."""
+    c, a = _joint_terminal_rows(d)
+    return pd.DataFrame(
+        {
+            "x": d["x"],
+            "i": d["i"],
+            "c": c,
+            "a": a,
+            "z": np.asarray(d["Z"])[:, 0],
+        }
     )
 
 

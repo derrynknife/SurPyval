@@ -501,3 +501,41 @@ def _arrays_small():
     return dict(
         x=d["x"], e=d["e"], state=d["s"], tl=d["tl"], i=d["i"]
     )  # fmt: skip
+
+
+# --- the clock reset (semi-Markov) ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cls, Z, opts",
+    [
+        (ParametricMultiState, False, {"dist": sp.Weibull}),
+        (ParametricMultiStateRegression, True, {"model": sp.WeibullPH}),
+    ],
+    ids=["ParametricMultiState", "ParametricMultiStateRegression"],
+)
+def test_clock_reset_from_data_is_the_fit_from_arrays(frame, cls, Z, opts):
+    opts = {**opts, "clock": "reset"}
+    ref = _array_fit(cls, frame, Z, opts)
+    got = cls.fit(_data(frame, Z), transitions=TM, **opts)
+    assert got.clock == ref.clock == "reset"
+    assert_array_equal(ref.params, got.params)
+    assert ref.to_dict() == got.to_dict()
+    if Z:
+        z = [1, 7.0]
+        assert_array_equal(
+            ref.occupancy(TIMES, [z] * len(TIMES), "pcm"),
+            got.occupancy(TIMES, [z] * len(TIMES), "pcm"),
+        )
+        assert_array_equal(
+            ref.length_of_stay(120.0, z, "pcm"),
+            got.length_of_stay(120.0, z, "pcm"),
+        )
+    else:
+        assert_array_equal(
+            ref.occupancy(TIMES, "pcm"), got.occupancy(TIMES, "pcm")
+        )
+        assert_array_equal(
+            ref.length_of_stay(120.0, "pcm"),
+            got.length_of_stay(120.0, "pcm"),
+        )
