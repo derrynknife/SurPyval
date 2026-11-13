@@ -27,6 +27,7 @@ from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
 
@@ -128,6 +129,11 @@ class ProportionalIntensityModel(
     array([0.00107511, 0.00284451, 0.00502557])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fitters; declared for the type checker.
     kind: str
     parameterization: str
@@ -178,7 +184,7 @@ class ProportionalIntensityModel(
             out += f"   {name}  :  {p}\n"
         if self.penalty is not None:
             out += self._penalty_printout().lstrip("\n") + "\n"
-        return out
+        return out + notes_text(self).lstrip("\n")
 
     # -- serialisation -----------------------------------------------------
 

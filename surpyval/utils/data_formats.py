@@ -591,10 +591,12 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         if recurrent:
             raise TypeError(
                 "x is a SurpyvalData (one lifetime per item), which a "
-                "recurrent fit does not take: a lifetime model fits it "
-                "(Weibull.fit(data), KaplanMeier.fit(data), ...); a "
-                "recurrent model takes each item's history of repeated "
-                "events, an EventHistoryData "
+                "recurrent fit does not take without each row's unit: a "
+                "lifetime model fits it (Weibull.fit(data), "
+                "KaplanMeier.fit(data), ...); a recurrent model takes each "
+                "unit's history of repeated events, a SurpyvalData with "
+                "each row's unit (SurpyvalData(x, c, ..., i=i)) or an "
+                "EventHistoryData "
                 "(EventHistoryData.from_items([ItemHistory(...), ...]))."
             )
         raise TypeError(

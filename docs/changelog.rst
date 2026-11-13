@@ -70,6 +70,57 @@ Unreleased
   fits exactly as without ``s``. Without ``c``, a row given as a range
   (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
   agree. See :doc:`Conventions`.
+- The multi-state models fit a ``SurpyvalData``:
+  ``MultiState.fit(data, transitions=tm)``, and likewise
+  ``MultiStateProportionalHazards``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (which take the data's covariates
+  with their names), take ``x``, ``e``, ``s`` (as ``state``), ``tl``,
+  ``i``, ``n`` and the unit from the data, with the same result as from
+  the arrays. Data without ``s`` starts every row from the one initial
+  state (the one state of ``transitions`` nothing moves into, or
+  ``"event-free"``), so competing-risks data fits as it is. Interval- and
+  left-censored rows, weights, right truncation, time-varying covariates,
+  measurements, masked causes and data without ``s`` whose units have
+  several rows are refused, naming the rows or the fix; the terminal flag
+  ``a`` is ignored (the transitions say which states absorb). ``fit`` also
+  takes ``s=`` as another name for ``state=``, and ``fit_from_df``
+  ``s_col=`` for ``state_col=`` (give one). The panel models
+  (``PanelMultiState``, ``PanelMultiStateRegression``), whose ``s`` is
+  the state seen at a visit, take arrays and refuse a ``SurpyvalData``
+  in words. See :doc:`Multi-State Models`.
+- Recurrent fits from a ``SurpyvalData``: every recurrent model's ``fit``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``,
+  ``NonParametricCounting``, the renewal models, the
+  proportional-intensity and recurrent Cox models and the cause-specific
+  models) takes a ``SurpyvalData`` with units ``i``: ``CrowAMSAA.fit(data)``.
+  Each unit's rows are read as its history (``x`` its age at each row,
+  ``c = 1`` the end of its record), a row starting (``tl``) after the
+  previous one ended as a gap (``windows``), and covariates that change
+  within a unit are fitted by the model's ``fit_tvc``; the fit is that of
+  the same arrays. A terminal event (``a = 1``) is fitted as an event
+  followed by the end of the unit's observation, and the model's new
+  ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
+  Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
+  ``EventHistoryData`` and ``handle_xicn`` are unchanged. The joint frailty
+  model reads ``a`` as its terminal event: ``JointFrailty.fit(data)`` and
+  ``JointFrailty.fit_from_df(..., a_col=...)`` (in place of
+  ``terminal_col``) fit as the arrays with ``terminal``, with a note where
+  ``a`` was inferred; ``PanelCountMCF`` and ``PanelCountRegression`` take
+  arrays of visits and counts and refuse a ``SurpyvalData`` in words.
+- Degradation and joint fits from measurements: ``DegradationAnalysis``,
+  ``WienerProcess`` and ``GammaProcess`` take their readings as a
+  ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``
+  holding them as ``data.m`` (its covariates ``Z`` are each unit's
+  stress), in place of the arrays ``x``, ``y`` and ``i``, and give the
+  arrays' fit exactly; their ``fit_from_df`` also names the readings'
+  column ``m_col`` (``y_col`` is its other name, unchanged). The joint
+  models (``WeibullJointPH``, ``JointPH(...)``) take a ``Measurements`` as
+  ``markers`` (or its other name ``m``), matched to the life rows by unit:
+  beside arrays with ``i=``, beside a ``SurpyvalData`` without readings,
+  or in ``fit_from_df(..., i_col=..., m=...)``. Several measurements are
+  refused until one is chosen with ``with_measurement(name)``, now also
+  a method of ``Measurements``. See :doc:`Degradation Modelling with
+  SurPyval` and :doc:`Joint Models`.
 - Panel counts: recurrent events seen only as the number found at each
   inspection, each unit inspected at its own times (failures found at
   each check of a machine, new tumours at each clinic visit).

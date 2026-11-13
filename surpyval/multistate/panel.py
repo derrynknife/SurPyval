@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.multistate._base import check_bound_args, probability_bounds
+from surpyval.multistate._entry import refuses_surpyval_data
 from surpyval.multistate.transitions import TransitionMatrix
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -1604,6 +1605,7 @@ class PanelMultiState(_PanelMultiStateBase):
 
     @classmethod
     @takes_unit
+    @refuses_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -2012,6 +2014,7 @@ class PanelMultiStateRegression(_PanelMultiStateBase):
 
     @classmethod
     @takes_unit
+    @refuses_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,

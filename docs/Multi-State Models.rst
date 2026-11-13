@@ -79,6 +79,64 @@ data. R's ``mstate`` uses a "stacked" form instead, with one row for every
 transition a spell could have ended in; ``surpyval.multistate.to_stacked``
 and ``from_stacked`` convert between the two.
 
+.. _multistate-from-data:
+
+From a SurpyvalData
+-------------------
+
+The spells can also be held in a :class:`~surpyval.SurpyvalData`, the
+package's one container for data: ``s`` is the state during each row (the
+spell), ``e`` the state moved into at ``x`` (blank where the unit was still
+in ``s`` when last seen), ``i`` the unit and ``tl`` the entry. Every
+multi-state model fits it directly, ``fit(data, transitions=...)``, with
+the same result as from the arrays; the other data arguments are then left
+out, and the regressions take the data's covariates ``Z`` with their
+names. Five patients in an illness-death model:
+
+.. jupyter-execute::
+
+    import surpyval as sp
+    from surpyval.multistate import MultiState, TransitionMatrix
+
+    data = sp.SurpyvalData(
+        x=[2, 6, 3, 8, 4, 7, 9],
+        s=["healthy", "ill", "healthy", "ill", "healthy", "healthy",
+           "healthy"],
+        e=["ill", "dead", "ill", None, "dead", None, None],
+        i=[1, 1, 2, 2, 3, 4, 5],
+        tl=[0, 2, 0, 3, 0, 0, 0],
+        unit="months",
+    )
+    model = MultiState.fit(data, transitions=TransitionMatrix.illness_death())
+    model.occupancy(5, "ill")
+
+Two in five patients are ill at 5 months. ``SurpyvalData.from_dataframe``
+builds the same data from a table (``s_col``, ``e_col``, ``i_col``,
+``tl_col``).
+
+Data without ``s`` is the case of one starting state: every row starts
+from it, so competing-risks data (the cause in ``e``) fits as it is. The
+starting state is the one state of ``transitions`` that nothing moves
+into, or ``"event-free"`` (the name ``TransitionMatrix.competing_risks``
+gives it) where no ``transitions`` are given; where the transitions have
+several such states, give ``s``. A row that failed with no state entered
+(a masked cause), data with no ``e``, and data without ``s`` whose units
+have several rows (stretches of a unit's life, or repeated events) are
+refused, saying what fits them.
+
+The terminal flag ``a`` of a ``SurpyvalData`` is not needed here: a
+terminal event is the same idea as entering an absorbing state, which the
+transitions already say, so the fits ignore it.
+
+These models take neither interval- nor left-censored rows (``c`` of 2 or
+-1: a change of state seen only between two inspections), weights, right
+truncation, time-varying covariates nor measurements (``m``); data holding any of them is
+refused, saying what to do. ``s`` is also another name for ``state`` in
+``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
+The panel models below take arrays of visits, not a ``SurpyvalData``:
+their ``s`` is the state seen at a visit, not the state during a row, so
+``fit(data)`` is refused, saying so.
+
 How the estimate works, in words
 --------------------------------
 

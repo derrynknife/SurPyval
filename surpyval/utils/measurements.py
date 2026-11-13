@@ -452,6 +452,22 @@ class Measurements:
             raise KeyError(f"No readings of unit {i!r}.")
         return out
 
+    def with_measurement(self, name: Any) -> Measurements:
+        """
+        Only the measurement ``name`` (with its unit label), for a fit
+        that takes one measurement: a degradation fit, or a joint
+        model's markers. As ``data.with_measurement(name)`` for a
+        :class:`~surpyval.utils.surpyval_data.SurpyvalData`.
+
+        Examples
+        --------
+        >>> from surpyval import Measurements
+        >>> m = Measurements({"wear": {"A": {0: 1.0}}, "oil": {"A": {5: 2.0}}})
+        >>> m.with_measurement("wear")
+        Measurements: wear - 1 unit, 1 reading
+        """
+        return self._only(name)
+
     def to_dataframe(self) -> Any:
         """
         The readings as a long DataFrame, one row per reading: ``i``,

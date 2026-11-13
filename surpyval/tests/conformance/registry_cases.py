@@ -986,6 +986,17 @@ def _multistate():
             clock=clock,
         )
 
+    def from_data(cls):
+        # fit(data): the spells as a SurpyvalData with states (s).
+        def fit(d):
+            data = sp.SurpyvalData(
+                d["x"], n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
+                Z=d.get("Z"),
+            )  # fmt: skip
+            return cls.fit(data, transitions=d["transitions"])
+
+        return fit
+
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
         Case(
@@ -1001,7 +1012,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": ms_from_df},
+            paths={
+                "fit_from_df": ms_from_df,
+                "fit(data)": from_data(ms.MultiState),
+            },
             rtol=1e-9,
             exclude={"convergence": exact},
         ),
@@ -1021,7 +1035,10 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": msph_from_df},
+            paths={
+                "fit_from_df": msph_from_df,
+                "fit(data)": from_data(ms.MultiStateProportionalHazards),
+            },
             rtol=1e-6,
             coefficients=lambda m: m.betas,
             intercept=True,
@@ -1069,7 +1086,10 @@ def _multistate():
             x=X_MS,
             rows=("x", "e", "state", "tl", "n"),
             times=("x", "tl"),
-            paths={"fit_from_df": pms_from_df},
+            paths={
+                "fit_from_df": pms_from_df,
+                "fit(data)": from_data(ms.ParametricMultiState),
+            },
             exclude={
                 "convergence": "each transition is fitted by its "
                 "distribution's own univariate fit, whose starved fits the "
@@ -1093,7 +1113,10 @@ def _multistate():
             times=("x", "tl"),
             covariates="Z",
             drops_missing_covariate=False,
-            paths={"fit_from_df": pmsr_from_df},
+            paths={
+                "fit_from_df": pmsr_from_df,
+                "fit(data)": from_data(ms.ParametricMultiStateRegression),
+            },
             coefficients=lambda m: m.betas,
             intercept=True,
         ),
@@ -1532,7 +1555,15 @@ def _recurrent():
                     "c",
                     "terminal",
                     Z_cols=["z"],
-                )
+                ),
+                # The terminal event as the data model gives it: a = 1 on
+                # its event row.
+                "fit(data)": lambda d: rc.JointFrailty.fit(
+                    **_joint_as_data(d)
+                ),
+                "fit_from_df(a_col)": lambda d: rc.JointFrailty.fit_from_df(
+                    _joint_as_frame(d), "x", "i", "c", a_col="a", Z_cols=["z"]
+                ),
             },
             rows=("x", "Z", "i", "c", "terminal"),
             covariates="Z",
@@ -1551,12 +1582,99 @@ def _recurrent():
     no_counts = {
         "counts": "the xicn format refuses a count above 1 on an event row"
     }
-    return [replace(c, exclude={**no_counts, **c.exclude}) for c in out]
+    return [
+        _with_data_path(replace(c, exclude={**no_counts, **c.exclude}))
+        for c in out
+    ]
+
+
+def _recurrent_as_data(d):
+    """The fixture's arrays as one SurpyvalData with units ``i`` (its
+    ``x``), the other entries (options) kept."""
+    keys = ("x", "i", "c", "n", "Z", "e")
+    data = sp.SurpyvalData(
+        **{k: (d[k].tolist() if k == "i" else d[k]) for k in keys if k in d}
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _with_data_path(case):
+    """The case with its ``fit(data)`` path: the fixture as a
+    SurpyvalData, fitted by the case's own ``fit`` (unless the case has
+    its own)."""
+    return replace(
+        case,
+        paths={
+            "fit(data)": lambda d, fit=case.fit: fit(_recurrent_as_data(d)),
+            **case.paths,
+        },
+    )
+
+
+def _joint_terminal_rows(d):
+    """The joint frailty fixture's rows in the data model: the closing
+    row of a unit's terminal event (``c = 1``, ``terminal = 1``) is its
+    event row with ``a = 1``."""
+    c, t = np.asarray(d["c"]), np.asarray(d["terminal"])
+    ended = (c == 1) & (t == 1)
+    return np.where(ended, 0, c), ended.astype(int)
+
+
+def _joint_as_data(d):
+    """The joint frailty fixture as one SurpyvalData (its ``x``), the
+    other entries (options) kept."""
+    c, a = _joint_terminal_rows(d)
+    keys = ("x", "i", "c", "terminal", "Z")
+    data = sp.SurpyvalData(
+        x=d["x"], c=c, a=a, i=np.asarray(d["i"]).tolist(), Z=d.get("Z")
+    )
+    return {"x": data, **{k: v for k, v in d.items() if k not in keys}}
+
+
+def _joint_as_frame(d):
+    """The joint frailty fixture as a table with the terminal flag a."""
+    c, a = _joint_terminal_rows(d)
+    return pd.DataFrame(
+        {
+            "x": d["x"],
+            "i": d["i"],
+            "c": c,
+            "a": a,
+            "z": np.asarray(d["Z"])[:, 0],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Degradation
 # ---------------------------------------------------------------------------
+def _readings(d):
+    """The readings ``x``, ``y``, ``i`` of a degradation fixture as a
+    Measurements (units as first seen, each in time order: the arrays'
+    own order)."""
+    store = {}
+    for t, v, k in zip(d["x"], d["y"], np.asarray(d["i"]).tolist()):
+        store.setdefault(k, {})[float(t)] = float(v)
+    return sp.Measurements(store)
+
+
+def _readings_paths(fitter, **kw):
+    """A degradation fitter's fits from a Measurements and from a
+    SurpyvalData holding it (``data.m``), each unit's life row running."""
+
+    def from_data(d):
+        m = _readings(d)
+        life = sp.SurpyvalData(
+            np.full(m.n_units, 1e4), c=np.ones(m.n_units), i=m.ids, m=m
+        )
+        return fitter.fit(life, **kw)
+
+    return {
+        "fit(measurements)": lambda d: fitter.fit(_readings(d), **kw),
+        "fit(data)": from_data,
+    }
+
+
 def _degradation():
     def da(path):
         return Case(
@@ -1576,7 +1694,10 @@ def _degradation():
             paths={
                 "fit_from_df": lambda d: dg.DegradationAnalysis.fit_from_df(
                     pd.DataFrame(d), threshold=150.0, path=path
-                )
+                ),
+                **_readings_paths(
+                    dg.DegradationAnalysis, threshold=150.0, path=path
+                ),
             },
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
@@ -1600,7 +1721,8 @@ def _degradation():
                 paths={
                     "fit_from_df": lambda d, f=fitter: f.fit_from_df(
                         pd.DataFrame(d), threshold=100.0
-                    )
+                    ),
+                    **_readings_paths(fitter, threshold=100.0),
                 },
                 draw=lambda m, s: m.random(15, random_state=s),
                 explicit_seed=True,
@@ -1713,6 +1835,30 @@ def _joint_coefficients(model):
     return np.array([[params[names.index(n)] for n in row] for row in rows])
 
 
+def _joint_readings_paths(fitter):
+    """A joint fitter's fits with the readings as a Measurements matched by
+    unit: beside the life arrays (``i=``, ``m=``), and in a SurpyvalData
+    (``data.m``)."""
+
+    def readings(d):
+        ids = [f"u{k}" for k in range(len(d["x"]))]
+        return ids, sp.Measurements(
+            {k: dict(r) for k, r in zip(ids, d["markers"])}
+        )
+
+    def from_arrays(d):
+        ids, m = readings(d)
+        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+
+    def from_data(d):
+        ids, m = readings(d)
+        return fitter.fit(
+            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        )
+
+    return {"fit(measurements)": from_arrays, "fit(data)": from_data}
+
+
 def _joint():
     """The joint models, predicting for one item read four times and still
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
@@ -1758,7 +1904,8 @@ def _joint():
                     c_col="c",
                     n_col="n",
                     Z_cols=["z0"],
-                )
+                ),
+                **_joint_readings_paths(fitter),
             },
             rows=("x", "Z", "c", "n", "markers"),
             coefficients=_joint_coefficients,

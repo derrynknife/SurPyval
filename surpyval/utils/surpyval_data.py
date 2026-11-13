@@ -2361,6 +2361,32 @@ _DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr", "w")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
+    """A decorator for a ``fit`` whose arrays' rows mean something other
+    than a :class:`SurpyvalData`'s rows (the panel models' visits): given
+    a ``SurpyvalData`` as its ``x``, it raises a ``TypeError`` with
+    ``message``, which says what to pass instead. The wrapper keeps the
+    message as ``_refuses_surpyval_data``."""
+
+    def decorate(method: F) -> F:
+        signature = inspect.signature(method)
+
+        @functools.wraps(method)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                bound = signature.bind_partial(*args, **kwargs)
+            except TypeError:
+                return method(*args, **kwargs)
+            if isinstance(bound.arguments.get("x"), SurpyvalData):
+                raise TypeError(message)
+            return method(*args, **kwargs)
+
+        setattr(wrapper, "_refuses_surpyval_data", message)
+        return wrapper  # type: ignore[return-value]
+
+    return decorate
+
+
 def accepts_surpyval_data(method: F) -> F:
     """Let a fitter's ``fit`` take a :class:`SurpyvalData` as its ``x``:
     ``Weibull.fit(data)``. The data is the whole of it, so its other data
@@ -2711,6 +2737,9 @@ def _markers_taken(data: SurpyvalData, names: set) -> dict:
         # A unit's readings are the unit's: handing them to each of its
         # rows would count them once per row
         clause = several_rows_clause(data)
+        if clause is None and len(_distinct_states(data)) > 1:
+            # Stays in several states: the multi-state models take them.
+            clause = "states"
         raise ValueError(
             lost_message([clause], "e" in names)
             if clause is not None
