@@ -52,7 +52,10 @@ Where to start
   every area of the package.
 - New to survival data, or not sure whether your data is censored or
   truncated? Read :doc:`Types of Data`. Getting this right matters more than
-  any choice of model.
+  any choice of model. :doc:`Data Model` then lists every letter a row of
+  data can carry (time, censoring, counts, entry, unit, event type, state,
+  terminal flag, measurements, covariates, weights) and which models take
+  which.
 - Have data in a spreadsheet, a list of failures and survivors, or a
   maintenance log? :doc:`Data Wrangler Examples` shows how to turn it into
   the ``x``, ``c``, ``n``, ``t`` arrays every fitter takes, and
@@ -305,6 +308,7 @@ Contents:
    Quickstart
    Survival Analysis from Scratch
    Types of Data
+   Data Model
    Conventions
    Glossary
    Design Principles

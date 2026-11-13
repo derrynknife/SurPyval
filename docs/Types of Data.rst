@@ -11,6 +11,8 @@ Throughout, the quantity being measured is called :math:`x` (and passed to SurPy
 - **Censoring**: we know an item exists, but we only know a *range* in which its value lies.
 - **Truncation**: some items are missing from the data altogether, because their values fell outside the range in which we could have seen them.
 
+This page covers the ideas behind the censoring flag ``c`` and the truncation ``t``. :doc:`Data Model` is the reference for every letter a row of data can carry, including the unit ``i``, event types and states (``e``, ``s``), the terminal flag ``a``, measurements ``m`` and covariates ``Z``, and for which models take which.
+
 The running example on this page is a test of light bulbs, so it speaks of *items* and *failures*. Nothing depends on that: read *subject* for item and *event* (a death, a relapse, a loan default) for failure, and every statement holds. The :doc:`Glossary` maps the words each field uses.
 
 Exactly Observed

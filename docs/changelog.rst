@@ -2754,6 +2754,19 @@ are all optional. What can look different:
 
 **Documentation.**
 
+- New page: :doc:`Data Model`, the one reference for the data every fitter
+  takes: a table of every letter (``x``, ``xl``/``xr``, ``c``, ``n``,
+  ``t``, ``i``, ``e``, ``s``, ``a``, ``m``, ``Z``, ``w``) with its meaning,
+  allowed values and default; the rules between them in plain words (exact
+  times and ranges on one row, a unit's rows in time order, the default
+  and the refusals of ``a``, measurements linked by unit); a worked example
+  of each shape of data (single-event life data, exact times with ranges,
+  recurrent events with a terminal event, multi-state, measurements,
+  covariates, changing covariates as counting-process rows, landmarks);
+  and which models take which letters. :doc:`Conventions` now points to it
+  rather than repeating it, and principle 1 of :doc:`Design Principles`
+  describes the whole data model. Linked from the front page, the
+  Quickstart and :doc:`Types of Data`.
 - New page: :doc:`Survival Analysis from Scratch`, for readers who have
   never met censoring. It explains time-to-event data, why the times cannot
   simply be averaged, censoring and truncation, the survival, hazard and

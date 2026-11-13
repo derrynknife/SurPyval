@@ -2,7 +2,7 @@
 Conventions
 ===========
 
-This page is the reference for the conventions the rest of the documentation relies on: how data is laid out, what each variable name means, how censoring and truncation are flagged, which functions every model provides, and how the optional structure of a parametric model (offset, limited failure population, zero-inflation) is defined. :doc:`Types of Data` explains the ideas behind censoring and truncation; this page pins down exactly how SurPyval represents them.
+This page is the reference for the conventions the rest of the documentation relies on: how data is laid out, what each variable name means, how censoring and truncation are flagged, which functions every model provides, and how the optional structure of a parametric model (offset, limited failure population, zero-inflation) is defined. :doc:`Types of Data` explains the ideas behind censoring and truncation, and :doc:`Data Model` is the reference for every letter of a row (``x``, ``c``, ``n``, ``t``, ``i``, ``e``, ``s``, ``a``, ``m``, ``Z``, ``w``) and the rules between them; this page pins down the formats and the conventions every model shares.
 
 Data Formats
 ------------
@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. The parametric, non-parametric and regression ``fit`` methods accept a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``; ``fit_from_surpyval_data`` does the same), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. Every fitter's ``fit`` accepts a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``, ``CrowAMSAA.fit(data)``; ``fit_from_surpyval_data`` does the same for the univariate and regression models), refusing what the model cannot take (see :doc:`Data Model`), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
 
 .. jupyter-execute::
     :hide-code:
@@ -57,183 +57,7 @@ Notice three things. The two right censored values at 2 have been merged into on
 The letters of the data model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Every row of a ``SurpyvalData`` is described by the same letters. In plain words:
-
-- ``x``: when the row ends: the time something happened, or the last time the unit was seen. ``xl`` and ``xr`` give a range instead, where the time is known only to lie between two ages.
-- ``c``: what is known at ``x``: 0 the event happened at ``x``, 1 the unit was still running at ``x``, -1 the event happened before ``x``, 2 it happened within the range.
-- ``n``: how many identical units the row stands for.
-- ``t`` (``tl`` and ``tr``): the window in which the unit could be seen. ``tl`` is also where a row starts on the unit's clock when a unit has several rows.
-- ``i``: which unit the row belongs to (``ids`` is its other name).
-- ``e``: what kind of event happened at ``x``: a failure mode, or the state the unit moved into.
-- ``s``: the state the unit was in during the row (multi-state data).
-- ``m``: the readings taken on a unit over its life (a vibration level, a temperature), on their own timeline rather than in the rows: kept in a ``Measurements`` object and linked to the rows by ``i`` (see `Measurements: m`_).
-- ``a``: whether the event at ``x`` ended the unit's history for good (1: scrapped, written off, died) or the unit carried on (0).
-- ``Z``: the covariates, what the row's unit was like or exposed to during the row.
-- ``w``: how many units of the population each unit of the row stands for (a sampling, propensity or censoring weight).
-
-The sections below say how ``x`` with ``xl`` and ``xr``, ``i``, ``e`` and ``s``, ``a``, and ``m`` work together.
-
-Exact times and ranges together: x, xl and xr
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A table often has a column for the times seen exactly and two for the ranges of the rest: the age a unit was last seen working (``xl``) and the age it was first found failed (``xr``). Give all three, and each row is read on its own. A row has either an exact time in ``x`` or a range in ``xl`` and ``xr``, and the other cells blank (None, NaN or pandas' ``NA``). A range is read by its bounds, as a ``[xl, xr]`` row always has been:
-
-====================================  ==============================  ===
-row                                   read as                         c
-====================================  ==============================  ===
-``x = v``, ``xl``, ``xr`` blank       exact at v (``c`` as given)     0
-``xl = v``, ``xr = inf``              right censored at v             1
-``xl = -inf``, ``xr = v``             left censored at v              -1
-``xl = v1``, ``xr = v2``              interval censored, (v1, v2]     2
-``xl = xr = v``                       exact at v                      0
-====================================  ==============================  ===
-
-A range from 0, ``(0, v)``, stays an interval: the data does not know the distribution's support, so it is not turned into left censoring. A row that gives both an exact time and a range (``x`` and either of ``xl``, ``xr``) cannot be read either way: it is left out, with a warning that says how many rows and which, and its entries in every other per-row argument (``c``, ``n``, ``tl``, ``tr``, ``Z``, ``e``, ``s``, ``i``, ``w``) are left out with it. A row with nothing, or a range with one end blank, is refused (``SurpyvalData.from_dataframe`` and the competing-risks ``fit_from_df`` read a blank end as infinite, as they do when the two columns are given alone). A ``c`` given must agree with each range (2 is also taken on any range with different ends, as for a ``[xl, xr]`` row), and a blank ``c`` on a range row is read from the range. The same holds for the ``xcnt`` handler, ``SurpyvalData.from_dataframe`` and every ``fit_from_df`` with ``x_col``, ``xl_col`` and ``xr_col``. Passing only ``x``, or only ``xl`` and ``xr``, is read as before.
-
-.. jupyter-execute::
-
-    nan, inf = float("nan"), float("inf")
-    data = surv.SurpyvalData(
-        x=[3, nan, nan, nan],
-        xl=[nan, 5, -inf, 2],
-        xr=[nan, inf, 4, 6],
-    )
-    print(data)
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    assert sorted(data.c.tolist()) == [-1, 0, 1, 2]
-
-Units, states and moves: i, e and s
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Three more columns say what each row is about:
-
-- ``i``: which unit the row belongs to (``ids`` is its other name; the two are one argument and one list).
-- ``s``: the state the unit was in during the row, from its entry (``tl``) to ``x``.
-- ``e``: the state it moved into at ``x``; blank (None, NaN or an empty string) where it had not moved.
-- ``c`` then says whether it moved (0) or was still in ``s`` when last seen (1).
-
-Without ``s`` there is one starting state, and every row starts from it. Ordinary survival data is that case with one way out (the event), and competing-risks data is that case with several ways out: the failure mode in ``e`` is the state entered. Nothing about such data changes when ``s`` is not given.
-
-With ``s``, a unit has a row for each stay in a state, so its id repeats. This is an illness-death study: patient A was well until 3, then ill until dying at 5; B was still well when last seen at 7; C died at 4 without falling ill.
-
-=======  ====  ===  ======  ======  ===
-unit     tl    x    s       e       c
-=======  ====  ===  ======  ======  ===
-A        0     3    well    ill     0
-A        3     5    ill     dead    0
-B        0     7    well            1
-C        0     4    well    dead    0
-=======  ====  ===  ======  ======  ===
-
-.. jupyter-execute::
-
-    data = surv.SurpyvalData(
-        x=[3, 5, 7, 4],
-        tl=[0, 3, 0, 0],
-        s=["well", "ill", "well", "well"],
-        e=["ill", "dead", None, "dead"],
-        i=["A", "A", "B", "C"],
-    )
-    print(data)
-    print(data.summary())
-
-``c`` was left out, so it was read from ``e``: a blank ``e`` is 1, a state 0. A row given as a range (``xl`` and ``xr``) takes its flag from its bounds instead: ``(v, inf)`` was still in its state at ``v`` (1, so ``e`` is blank), ``(-inf, v)`` moved by ``v`` (-1) and ``(v1, v2)`` moved between them (2), each with the state it moved into in ``e``. A ``c`` given with ``e`` must agree with it row by row; a row with ``c = 1`` and a state in ``e``, or a move with no state entered, is refused, naming the rows. The states are kept as given (text or whole numbers, never turned into floats), and ``data.n_items`` counts the units (3 here), not the rows. The multi-state models (:class:`~surpyval.multistate.MultiState` and the others in ``surpyval.multistate``) take this data; a fit that is not multi-state refuses data in more than one state, since putting every stay into one risk set is another model, and ``data[data.s == "well"]`` keeps the stays in one state (which fit as competing risks, as data without ``s`` would).
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    assert data.c.tolist() == [0, 0, 1, 0]
-    assert data.n_items == 3 and data.i == ["A", "A", "B", "C"]
-
-Several rows per unit, and the end of a unit's history: a
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A unit may have several rows without states too. Each row is a stretch of the unit's own clock, from ``tl`` to ``x``, and the rows of a unit come in time order: each starts at or after the previous row's ``x``. ``a`` says whether the event that ends a row ended the unit's history for good (1: the unit was scrapped, written off or died) or the unit carried on (0: it was repaired, or the event recurs). Ending for good is the same idea as entering an absorbing state in multi-state data. What a unit's rows mean depends on how they end:
-
-======================================================  ===============================================================
-a unit's rows                                           what they are
-======================================================  ===============================================================
-rows with ``c = 1``, then one event with ``a = 1``      single-event life data with time-varying covariates
-events with ``a = 0``, then more rows                   recurrent events (repairs; the unit carries on)
-events with ``a = 0``, then an event with ``a = 1``     recurrent events ending in a terminal event
-a last row with ``c = 1``                               still running at the end of the record
-======================================================  ===============================================================
-
-In the first kind, each ``c = 1`` row is a stretch with the covariates ``Z`` fixed, "still running at ``x``", and the next row starts at ``x`` with the new covariates. ``a`` may be left out, or blank on some rows: an event row with no ``a`` is read as terminal (1) on its unit's last row and as not (0) on an earlier one, and ``data.a_inferred`` marks the rows read so. An ``a`` given always wins. A ``c = 1`` row has no event, so ``a = 1`` there is refused; a row after one with ``a = 1`` of the same unit is refused, and so is a row that starts before the previous row of its unit ends. Only events may share a time (simultaneous events, or the end of the record at an event's time), as for the recurrent models' data. ``e`` stays optional: an event with ``a = 0`` and no ``e`` is an event of an unrecorded kind.
-
-Covariate stretches: unit A ran under load 0 until 4, then under load 1 until it failed at 9; B was still running at 6.
-
-.. jupyter-execute::
-
-    stretches = surv.SurpyvalData(
-        x=[4, 9, 6],
-        tl=[0, 4, 0],
-        c=[1, 0, 1],
-        i=["A", "A", "B"],
-        Z=[[0.0], [1.0], [0.0]],
-    )
-    print(stretches)
-    print(stretches.a_inferred)
-
-Repairs, then the end: unit 1 was repaired at 2 and 5 and scrapped at 9; unit 2 was repaired at 4 and still running at 7.
-
-.. jupyter-execute::
-
-    repairs = surv.SurpyvalData(
-        x=[2, 5, 9, 4, 7], c=[0, 0, 0, 0, 1], i=[1, 1, 1, 2, 2]
-    )
-    print(repairs)
-    print(repairs.summary())
-
-Without ``a``, and with every unit on one row, ``data.a`` is None and the data is exactly what it was before ``a`` existed; with states ``s``, ``a`` is kept and checked but not inferred (the transitions say which states are absorbing). ``data.n_items`` counts units, not rows. A fit of one row per unit (a distribution, Kaplan-Meier, a regression) refuses data whose units have several rows, saying which kind it is: covariate stretches go to the model's ``fit_tvc``, repeated events to the recurrent models in ``surpyval.recurrent``. A fit with an ``a`` argument is given ``data.a`` and ``data.i``. ``item``, ``to_items`` and ``records`` refuse such data (a record is one unit's single row); ``to_dataframe`` writes ``a`` as a column (``from_dataframe(a_col=...)`` reads it, as given), and ``to_dict`` writes ``"a"`` and ``"a_inferred"``, stamped ``"schema": 4``.
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    assert stretches.a.tolist() == [0, 1, 0]
-    assert repairs.a.tolist() == [0, 0, 1, 0, 0] and repairs.n_items == 2
-
-Measurements: m
-~~~~~~~~~~~~~~~
-
-``m`` is the readings taken on a unit over its life, on their own timeline: a vibration level, a temperature, a wear or oil-debris reading, a biomarker. They are not life events, and they are taken when someone looks, not when something happens, so they are kept apart from the rows in a :class:`~surpyval.utils.measurements.Measurements` object and linked to the rows by the unit ``i``. A reading is a time on the same clock as ``x`` and a value; it has no censoring and no count (a reading not taken is left out). Several named measurements may be kept together, and they need not share times or units.
-
-This example has two units, each with vibration readings and one with a temperature reading, attached to their life data:
-
-.. jupyter-execute::
-
-    m = surv.Measurements(
-        {
-            "vibration": {"A": {0: 2.1, 30: 2.6}, "B": {0: 1.9, 15: 2.0}},
-            "temperature": {"A": {10: 61.0}},
-        },
-        units={"vibration": "mm/s"},
-    )
-    data = surv.SurpyvalData([40, 55], c=[0, 1], i=["A", "B"], m=m)
-    print(data.summary())
-    print(data.m["vibration"])
-
-``Measurements`` takes ``{i: {x: value}}`` for one measurement (unnamed, or named with ``name=``) or ``{name: {i: {x: value}}}`` for several; the shape is read from what the innermost dicts hold, and a dict with no readings at all is refused, since it says neither. ``Measurements.from_dataframe(df, i_col=, x_col=, m_col=, m_name_col=)`` reads a long frame with one row per reading, and ``to_dataframe()`` writes one back. ``m.names``, ``m.units``, ``m.ids``, ``m.n_units``, ``m.n_readings``, ``m[name]`` and ``m.for_unit(i)`` read it back. Times and values are finite numbers, one reading per unit, measurement and time.
-
-``m`` needs the rows' units, ``i``; a unit with readings but no rows is warned of, by count and id, and kept. Indexing and every reshape keep the readings of the units kept; a reshape that moves a unit's observation (``censor_at``, ``enter_at``) keeps the readings inside its new window. ``data.without("m")`` leaves them out (``"measurements"`` and ``"markers"`` are the same part). Readings belong to a unit, not to a row: where a unit has several rows (stays in states, stretches, repeated events), its readings are kept while any of its rows is, counted on its first row in the table, and its observation window is the span of its rows. A fit is never handed a unit's readings once per row: a fit that takes markers refuses units of several rows.
-
-``data.markers`` is the same store under its older name: the one measurement's ``{i: {x: value}}``, as the joint models (:class:`~surpyval.WeibullJointPH`) have always taken it, and as ``SurpyvalData.from_items`` gives it from the records' ``markers``. Data with one unnamed measurement prints and saves exactly as it always has. A fit takes one measurement as its markers, so data with several is refused until one is chosen with ``data.with_measurement(name)``; reading ``data.markers`` of such data is refused the same way. Data with named measurements is saved under ``"m"`` (``"schema": 4``).
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    assert data.m.names == ["vibration", "temperature"]
-    assert data.with_measurement("vibration").markers == {
-        "A": {0.0: 2.1, 30.0: 2.6},
-        "B": {0.0: 1.9, 15.0: 2.0},
-    }
+Beside ``x``, ``c``, ``n`` and ``t``, a row can say which unit it belongs to (``i``), what kind of event ended it (``e``), the state the unit was in (``s``), whether the event ended the unit's history for good (``a``), the covariates (``Z``) and a weight (``w``), and the data can carry readings taken on the units over time (``m``). :doc:`Data Model` is the reference for every letter: what it means, its allowed values and default, the rules that tie them together (exact times and ranges on one row, the order of a unit's rows, the default of ``a``), one worked example of each shape of data, and which models take which letters.
 
 The xrd format
 ~~~~~~~~~~~~~~
@@ -293,8 +117,9 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
 - i = the unit (item) each row belongs to (``ids`` is its other name in ``SurpyvalData``).
 - e = the event type of each row: the failure mode for competing risks, or, with ``s``, the state the unit moved into at x; blank where it had not.
-- s = the state the unit was in during the row (multi-state data); without it every row starts from the one initial state. See "Units, states and moves" above.
-- a = whether the row's event ended the unit's history for good (1) or the unit carried on (0). See "Several rows per unit" above.
+- s = the state the unit was in during the row (multi-state data); without it every row starts from the one initial state. See :doc:`Data Model`.
+- a = whether the row's event ended the unit's history for good (1) or the unit carried on (0); by default 1 on a unit's last event and 0 on an earlier one. See :doc:`Data Model`.
+- m = the readings taken on each unit over its life (a ``Measurements`` object), linked to the rows by ``i``. See :doc:`Data Model`.
 
 Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
 
