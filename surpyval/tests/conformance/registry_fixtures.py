@@ -172,6 +172,34 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def ic_reg_data():
+    """The regression fixture's 30 lives seen at inspections every 2: an
+    interval ``(lo, lo + 2]`` for most, every fifth from the third exact,
+    every seventh right censored at its last inspection, and a life
+    before the first inspection left censored at 2; counts 2 on two
+    rows. For ``IntervalCoxPH``."""
+    z0 = np.tile([0.0, 1.0], N_REG // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_REG), 3)
+    life = quantiles(N_REG, 1.0, 2.0)[scramble(N_REG)]
+    t = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    lo = 2.0 * np.floor(t / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(N_REG, 2)
+    rows = np.arange(N_REG)
+    exact = rows % 5 == 2
+    x[exact] = t[exact, None]
+    c[exact] = 0
+    right = rows % 7 == 0
+    x[right] = lo[right, None]
+    c[right] = 1
+    left = (c == 2) & (lo == 0.0)
+    x[left] = 2.0
+    c[left] = -1
+    n = np.ones(N_REG, int)
+    n[[3, 11]] = 2
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
 N_CURE = 60
 
 

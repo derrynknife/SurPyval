@@ -406,8 +406,10 @@ def _old_required_schema(model_dict):
     def stratified(d):
         # Schema 4 (a stratified Cox model's per-stratum baselines) came
         # after the walk was rewritten; the old walks had no such rule.
+        # A stratified Fine-Gray model's per-stratum baselines too.
         return (
-            d.get("model") == "SemiParametricRegressionModel"
+            d.get("model")
+            in ("SemiParametricRegressionModel", "FineGrayModel")
             and d.get("strata") is not None
         )
 

@@ -816,7 +816,75 @@ def _competing_risks():
             },
         )
     )
+    out.append(
+        Case(
+            name="FineGray[strata]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_strata_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            call_kwargs={"stratum": 1},
+            rows=("x", "Z", "e", "n", "strata"),
+            covariates="Z",
+            labels=("strata",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
+    out.append(
+        Case(
+            name="FineGray[cluster]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.fine_gray"
+                ".FineGrayModel"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=_fine_gray_cluster_data,
+            fit=_fit(cr.FineGray, event="a"),
+            functions=("sf", "cif"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n", "cluster"),
+            covariates="Z",
+            labels=("cluster",),
+            rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
+            exclude={
+                "cif_sum": "one cause of interest: sf is 1 - cif by "
+                "definition, checked by sf_ff instead",
+            },
+        )
+    )
     return out
+
+
+def _fine_gray_strata_data():
+    """The Fine-Gray fixture in two strata of 12 rows, each with events of
+    both causes and censored rows."""
+    d = cr_data(True)
+    d["strata"] = np.repeat([0, 1], d["x"].size // 2)
+    return d
+
+
+def _fine_gray_cluster_data():
+    """The Fine-Gray fixture in 12 clusters of two rows."""
+    d = cr_data(True)
+    d["cluster"] = np.repeat(np.arange(d["x"].size // 2), 2)
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -2144,6 +2212,10 @@ def _df_paths():
         cr.CompetingRisks, ("x", "e", "n"), how="Kaplan-Meier"
     )
     paths["FineGray"] = _col_df(cr.FineGray, ("x", "e", "n"), event="a")
+    for label in ("strata", "cluster"):
+        paths[f"FineGray[{label}]"] = _col_df(
+            cr.FineGray, ("x", "e", "n", label), event="a"
+        )
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
         paths[name] = _col_df(getattr(rc, name))
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
@@ -2536,7 +2608,21 @@ def _nonparametric_bounds(case):
                 label=f"quantile_cb[{bound_type}]",
             )
         )
-    # The band's default scale (#390), which the pointwise bounds lack.
+    # The other pointwise interval types (R's survfit conf.type and
+    # km.ci's Peto and Rothman intervals).
+    for bound_type in ("log", "logit", "arcsine", "peto", "rothman"):
+        for interp in ("step", "linear", "cubic"):
+            out.append(
+                Bound(
+                    "cb",
+                    on=_ON_SURVIVAL,
+                    kwargs={"bound_type": bound_type, "interp": interp},
+                    in_range=bound_type != "peto",
+                    nan_ok=True,
+                    label=f"cb[{bound_type},{interp}]",
+                )
+            )
+    # The band's default scale (#390).
     for method in ("hall-wellner", "nair"):
         out.append(
             Bound(
@@ -2765,6 +2851,30 @@ def _bounds(case):
                 kind="summary",
                 query=((0.1, 0.0), (0.5, 0.3), (0.9, 1.0)),
                 label="quantile_cb_at_usage",
+            ),
+        ),
+        # Wald from the profile likelihood's curvature, the profile
+        # likelihood-ratio interval and the case bootstrap; the curves
+        # have no bounds (cb refuses, pointing to these and WeibullPH).
+        "IntervalCoxPHModel": (
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "bootstrap", **_BOOT},
+                label="param_cb[bootstrap]",
+                wald=False,
+                slow=True,
             ),
         ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
@@ -3320,6 +3430,7 @@ def _starve(case):
         "SemiParametricRegressionModel",
         "FineGrayModel",
         "ProportionalOddsModel",
+        "IntervalCoxPHModel",
         "CoxFrailtyModel",
         "RecurrentCoxModel",
         "MultiStateProportionalHazards",

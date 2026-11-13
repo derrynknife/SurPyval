@@ -270,7 +270,7 @@ The options are:
 - ``on``: the function to bound, ``'sf'`` (default), ``'ff'`` or ``'Hf'``. The rows are always ``[lower, upper]`` for the function you asked about;
 - ``bound``: ``'two-sided'`` (default), ``'lower'`` or ``'upper'``;
 - ``alpha_ci``: the significance level, 0.05 by default;
-- ``bound_type``: ``'exp'`` (default), the log(-log) interval that always stays within [0, 1], or ``'normal'``, the plain symmetric interval;
+- ``bound_type``: how the interval is formed. ``'exp'`` (default) is the log(-log) interval, which always stays within [0, 1]; ``'normal'`` the plain symmetric interval. The others match the choices other software offers: ``'log'`` (the default of R's ``survfit``), ``'logit'`` and ``'arcsine'`` form the interval on the log, log-odds or arcsine-square-root scale and map it back (all within [0, 1]); ``'peto'`` is the plain interval with Peto's variance, which uses the number still at risk and is cautious late in follow-up; ``'rothman'`` is Rothman's Wilson-type interval, within [0, 1]. They are listed with their formulas in the ``cb`` reference;
 - ``interp``: as for ``sf``.
 
 .. jupyter-execute::
@@ -279,6 +279,7 @@ The options are:
     print('on Hf:        ', model.cb(3, on='Hf').round(4))
     print('90% lower sf: ', model.cb(3, bound='lower', alpha_ci=0.1).round(4))
     print("'normal' type:", model.cb(6, bound_type='normal').round(4))
+    print("'logit' type: ", model.cb(6, bound_type='logit').round(4))
     print('at last value:', model.cb(8).round(4))
     print('before first: ', model.cb(0.5))
 
@@ -300,6 +301,7 @@ The formulas are in the section *From a variance to confidence bounds* of :doc:`
     assert np.allclose(model.cb(3, on='ff'), 1 - _sf[::-1])
     assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
     assert model.cb(6, bound_type='normal')[0] < 0
+    assert 0 < model.cb(6, bound_type='logit')[0] < model.sf(6)
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(model.cb(0.5) == 1) and np.all(model.cb(0.5, on='ff') == 0)
     assert np.all(model.cb(0.5, on='Hf') == 0)

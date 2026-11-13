@@ -296,6 +296,61 @@ def _exploitable(
     return unpaid & (_coverage(lo[gains], hi[gains], M) > 0)
 
 
+def turnbull_pieces(
+    xl: npt.NDArray,
+    xr: npt.NDArray,
+    c: npt.NDArray,
+    tl: npt.NDArray,
+    n: npt.NDArray,
+) -> tuple[
+    npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, str
+]:
+    """The Turnbull pieces of rows ``(xl, xr]`` (``xl == xr`` exact,
+    ``xr = inf`` right censored, ``xl = -inf`` left censored) with entry
+    times ``tl`` (``-inf`` for none), for the estimates that put mass on
+    them (``IntervalCoxPH``).
+
+    Returns ``(bounds, lo, hi, w_lo, keep, verdict)``: the sorted bounds
+    (piece ``j`` is ``(bounds[j], bounds[j + 1]]``; each exact time in
+    twice), each row's support ``[lo, hi]`` (inside its window) and window
+    start ``w_lo`` as piece indices, the pieces that can carry mass (the
+    innermost intervals without truncation, every piece some support
+    covers with it) and whether the truncated likelihood has a maximum
+    (``npmle_existence``; ``"exists"`` without truncation).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric.turnbull import (
+    ...     turnbull_pieces,
+    ... )
+    >>> xl, xr = np.array([1.0, 2.0, 4.0]), np.array([3.0, 5.0, 4.0])
+    >>> c, tl = np.array([2, 2, 0]), np.full(3, -np.inf)
+    >>> bounds, lo, hi, w_lo, keep, verdict = turnbull_pieces(
+    ...     xl, xr, c, tl, np.ones(3)
+    ... )
+    >>> bounds[keep].tolist(), verdict
+    ([2.0, 4.0], 'exists')
+    """
+    ends = np.concatenate([xl, xr, tl, [-np.inf, np.inf]])
+    exact_times = np.unique(xl[c == 0])
+    bounds = np.sort(np.concatenate([np.unique(ends), exact_times]))
+    M = bounds.size
+    lo, hi, _, _, _ = _censoring_supports(bounds, xl, xr, exact_times)
+    if np.isfinite(tl).any():
+        w_lo, w_hi = _truncation_windows(
+            bounds, tl, np.full(tl.shape, np.inf), exact_times
+        )
+        lo, hi = _intersect_windows(lo, hi, w_lo, w_hi)
+        keep = _coverage(lo, hi, M) > 0
+        verdict = npmle_existence(lo, hi, w_lo, w_hi, n, M)[0]
+    else:
+        w_lo = np.zeros(lo.size, dtype=np.int64)
+        keep = _innermost(lo, hi, M)
+        verdict = EXISTS
+    return bounds, lo, hi, w_lo, keep, verdict
+
+
 def _initial_mass(
     lo: npt.NDArray,
     hi: npt.NDArray,

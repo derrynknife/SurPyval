@@ -1060,6 +1060,89 @@ differences in *early* incidence:
     print("rho = 1: p = %.2g" % gray_test(x, e, group, event=1, rho=1.0).p_value)
 
 
+Time lost to a cause: the restricted mean time lost
+---------------------------------------------------
+
+The cumulative incidence answers "what fraction has failed from this cause
+by time t". A single number that summarises the whole curve up to a
+horizon is the **restricted mean time lost** (RMTL): of the first
+:math:`\tau` units of time, how much, on average, a unit loses to that
+cause. A unit that fails from the cause at time :math:`t < \tau` loses
+:math:`\tau - t`; a unit that survives to :math:`\tau`, or fails from
+another cause, loses nothing to it. It is the area under the cause's
+cumulative incidence,
+
+.. math::
+    \text{RMTL}_k(\tau) = \int_0^\tau F_k(t)\,dt,
+
+so it is in units of time and needs no model for how the causes act
+(Andersen, 2013). The times lost to all the causes add up to
+:math:`\tau` less the restricted mean survival time (``rmst``), so with
+one cause the time lost is just :math:`\tau - \text{RMST}`.
+
+``rmtl(event, tau)`` gives it with a standard error and a 95% interval;
+``tau`` defaults to the largest observed time:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as sp
+
+    rng = np.random.default_rng(3)
+
+    def simulate(n, shock_mean):
+        wear = 100.0 * rng.weibull(3.0, n)
+        shock = rng.exponential(shock_mean, n)
+        censor = rng.uniform(0.0, 250.0, n)
+        x = np.minimum.reduce([wear, shock, censor])
+        e = np.where(x == censor, None, np.where(wear < shock, "wear", "shock"))
+        return x, e.astype(object)
+
+    old = sp.CompetingRisks.fit(*simulate(200, 150.0))
+    new = sp.CompetingRisks.fit(*simulate(200, 600.0))
+    res = old.rmtl("shock", tau=100)
+    print("time lost to shocks in the first 100 hours: %.1f (%.1f to %.1f)"
+          % (res["rmtl"], res["lower"], res["upper"]))
+
+``surpyval.rmtl_diff`` compares the time lost to a cause between two
+groups, as ``rmst_diff`` compares survival: the difference with its interval
+and a z-test of no difference, and the ratio with its interval. Here a
+design change that makes shocks four times rarer saves many hours in the first 100:
+
+.. jupyter-execute::
+
+    cmp = sp.rmtl_diff(old, new, "shock", tau=100)
+    print("difference %.1f hours (%.1f to %.1f), p = %.2g"
+          % (cmp["difference"], cmp["lower"], cmp["upper"], cmp["p_value"]))
+    print("ratio %.2f (%.2f to %.2f)"
+          % (cmp["ratio"], cmp["ratio_lower"], cmp["ratio_upper"]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0 < res["lower"] < res["rmtl"] < res["upper"] < 100
+    assert cmp["difference"] > 0 and cmp["p_value"] < 0.05
+
+The standard error is the delta method's on the hazard increments at each
+event time (a multinomial at each time, as Greenwood's formula takes a
+binomial); with one cause it is exactly the Greenwood-based standard error of
+``KaplanMeier.rmst``. It is the standard error of R's ``GFDrmtl`` package,
+and within 1% of R ``survival``'s ``summary(fit, rmean = tau)`` (an
+infinitesimal-jackknife standard error) on the data checked. The interval is ``rmtl +- 1.96 se``; in simulation (n = 200) it
+covers the true time lost about 95% of the time, and ``rmtl_diff``'s test
+rejects about 5% of the time when the groups do not differ. A ``tau`` past
+the last observed time is refused while some units are still event-free
+there, as for ``rmst``. A model fitted with weights refuses ``rmtl``: its
+robust variance is not built.
+
+``ParametricCompetingRisks.rmtl`` gives the same quantity from the fitted
+distributions, by numerical integration of the cumulative incidence, with
+a delta-method standard error over every cause's parameters and an interval
+on the logit of ``rmtl / tau`` (so within 0 and ``tau``); a ``tau`` past
+the data is allowed, the fit extrapolating. ``rmtl_diff`` accepts either
+kind of model in either position.
+
 Fine-Gray Sub-distribution Hazards
 ----------------------------------
 
@@ -1207,6 +1290,63 @@ optimiser result (``model.res``) is not stored:
     reloaded = surv.from_dict(model.to_dict())
     np.allclose(reloaded.cif([0.5, 1.0], Z=[1.0, 0.0]),
                 model.cif([0.5, 1.0], Z=[1.0, 0.0]))
+
+Strata and clusters
+~~~~~~~~~~~~~~~~~~~
+
+Two common departures from the plain model have their own options.
+
+**Strata.** When the units come from a few groups (sites, centres,
+production lines) whose cause-1 incidence has a different shape over time,
+or whose censoring differs, ``strata=`` gives each group its own baseline
+subdistribution hazard and its own censoring distribution, while the
+covariates' effects are shared (Zhou, Latouche, Rocha and Fine, 2011; R's
+``crrSC::crrs``). This is the competing-risks counterpart of a stratified
+Cox model: use it for a factor you need to allow for but do not need an
+effect for. Predictions then name the stratum:
+
+.. jupyter-execute::
+
+    site = np.where(np.arange(N) % 3 == 0, "east", "west")
+    by_site = FineGray.fit(x, Z, e, c=c, event=1, strata=site)
+    print(by_site.beta.round(3), by_site.standard_errors().round(3))
+    print(by_site.cif([0.5, 1.0], Z=[1.0, 0.0], stratum="east").round(3))
+
+With many small strata (a stratum per centre with a handful of units each)
+a censoring distribution per stratum is poorly estimated; then
+``strata_censoring="common"`` estimates one for all the strata, each still
+with its own baseline (``crrs``'s ``ctype = 2``).
+
+**Clusters.** When units are not independent of each other within a group
+(the two eyes or kidneys of a patient, the pumps of one station, the
+components of one machine), ``cluster=`` keeps the estimates and makes the
+standard errors allow for the dependence: the robust covariance adds up
+the influence of a cluster's units before squaring it (Zhou, Fine,
+Latouche and Labopin, 2012; R's ``crrSC::crrc``). Without it, a covariate
+shared by the units of a cluster has standard errors that are too small.
+
+.. jupyter-execute::
+
+    pair = np.arange(N) // 2
+    paired = FineGray.fit(x, Z, e, c=c, event=1, cluster=pair)
+    print(paired.beta.round(3), paired.standard_errors().round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(paired.beta, model.beta)
+    assert by_site.cif(1.0, Z=[1.0, 0.0], stratum="east") > 0
+
+Both combine with each other and with weights ``w``, and ``fit_from_df``
+takes them as ``strata_col`` and ``cluster_col``. R's ``crrs`` with
+``ctype = 2`` treats each stratum as a cluster too: its standard errors are
+those of ``strata_censoring="common", cluster=<the strata>``. The
+model-based covariance (``covariance(robust=False)``) ignores the clusters,
+and the diagnostics (``diagnose()``, the proportionality tests and the
+residuals) refuse a fit with strata or clusters, as their tests take one
+baseline and independent units: check proportionality on the fit without
+them, or within each stratum.
 
 Cause-Specific Proportional Hazards
 -----------------------------------
