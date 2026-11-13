@@ -20,7 +20,8 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, units_with_several_rows
+from surpyval.utils.warnings import named
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -126,8 +127,16 @@ def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
             f"Rows {_rows(odd)} are left or interval censored (c = -1 or "
             "2): a change of state seen only between two times is not "
             "supported by this model. Give each move at the time it was "
-            "seen, or leave those rows out (data[data.c != 2])."
+            "seen, or leave those rows out "
+            "(data[(data.c == 0) | (data.c == 1)])."
         )
+    out = data
+    if np.ndim(data.x) == 2:
+        # Ranges read row by row (x, xl and xr together) keep every row's
+        # time as [lower, upper]: with only exact and right-censored rows
+        # left, each row's time is its lower end.
+        out = copy.copy(data)
+        out.x = np.asarray(data.x)[:, 0]
     if bool(np.isfinite(data.tr).any()):
         raise ValueError(
             "The SurpyvalData has right truncation (tr), which this model "
@@ -148,8 +157,8 @@ def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
             "MultiStateProportionalHazards or "
             "ParametricMultiStateRegression, which take them."
         )
-    out = data
     if data.s is None:
+        _refuse_several_rows(data)
         masked = (data.c == 0) & np.array([v is None for v in data.e])
         if masked.any():
             raise ValueError(
@@ -158,7 +167,7 @@ def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
                 "move went into. Give it in e, or use CompetingRisks, "
                 "which takes masked causes."
             )
-        out = copy.copy(data)
+        out = copy.copy(out) if out is data else out
         s = np.empty(n_rows, dtype=object)
         s[:] = [initial_state(transitions)] * n_rows
         out.s = s
@@ -171,6 +180,36 @@ def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
             np.asarray(data.Z), columns=list(data.covariate_names)
         )
     return out
+
+
+def _refuse_several_rows(data: SurpyvalData) -> None:
+    """Refuse data without ``s`` whose units have several rows: they are
+    not stays from the one initial state, so fitting them as such would
+    be another model."""
+    units = units_with_several_rows(data)
+    if not units:
+        return
+    which = (
+        f"Unit{'s' if len(units) > 1 else ''} {named(units)} "
+        f"{'have' if len(units) > 1 else 'has'} several rows"
+    )
+    repeated = data.a is not None and bool(
+        ((np.asarray(data.c) != 1) & (np.asarray(data.a) == 0)).any()
+    )
+    kind = (
+        "repeated events (a = 0 where the unit carried on), which the "
+        "recurrent models in surpyval.recurrent take"
+        if repeated
+        else "stretches of the unit's life with the covariates fixed in "
+        "each, which a regression's fit_tvc takes (CoxPH.fit_tvc, for "
+        "example)"
+    )
+    raise ValueError(
+        f"{which} and the SurpyvalData has no states (s): without s every "
+        "row is a unit starting from the one initial state, and these "
+        f"rows read as {kind}. For a multi-state model, give each row's "
+        "state in the data, SurpyvalData(x, ..., s=s, e=e, i=i)."
+    )
 
 
 def multistate_data(method: F) -> F:

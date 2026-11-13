@@ -371,3 +371,133 @@ def test_other_refusals():
     del no_e["e"]
     with pytest.raises(ValueError, match="has no e"):
         MultiState.fit(sp.SurpyvalData(**no_e, c=[0, 0, 0, 1, 0]))
+
+
+# -- the data model's terminal flag, several rows, measurements, ranges -------
+
+NAN = np.nan
+
+
+@pytest.mark.parametrize("cls, Z, opts", FITS, ids=IDS)
+def test_terminal_flag_is_ignored(frame, cls, Z, opts):
+    # a = 1 on each unit's move into death: the transitions already say
+    # death absorbs, so the fit is the one without a.
+    a = (frame["e"] == "death").astype(int).to_numpy()
+    with_a = _data(frame, Z, a=a)
+    assert_array_equal(with_a.a, a)
+    ref = cls.fit(_data(frame, Z), transitions=TM, **opts)
+    got = cls.fit(with_a, transitions=TM, **opts)
+    _same_model(ref, got, Z=[[1, 7.0]] * len(TIMES) if Z else None)
+
+
+def test_without_s_several_rows_per_unit_is_refused():
+    # Repeated events (an event with a = 0, then more rows)
+    repeated = sp.SurpyvalData(
+        [2.0, 6, 3, 8, 4],
+        c=[0, 0, 0, 1, 0],
+        e=["a", "b", "a", None, "b"],
+        tl=[0.0, 2, 0, 3, 0],
+        i=[1, 1, 2, 2, 3],
+    )
+    match = r"Units 1, 2 have several rows.*repeated events.*recurrent.*s=s"
+    with pytest.raises(ValueError, match=match):
+        MultiState.fit(repeated)
+    # Stretches (running rows, then the event)
+    stretches = sp.SurpyvalData(
+        [2.0, 6, 3, 8, 4],
+        c=[1, 0, 1, 1, 0],
+        e=[None, "b", None, None, "b"],
+        tl=[0.0, 2, 0, 3, 0],
+        i=[1, 1, 2, 2, 3],
+        Z=[[0.0], [1], [0], [1], [0]],
+    )
+    for cls in (MultiStateProportionalHazards, ParametricMultiStateRegression):
+        with pytest.raises(ValueError, match=r"stretches.*fit_tvc.*s=s"):
+            cls.fit(stretches)
+    # One row per unit, with ids, is still the one-starting-state case.
+    one = sp.SurpyvalData(
+        [2.0, 6, 3], c=[0, 1, 0], e=["a", None, "b"], i=["p", "q", "r"]
+    )
+    got = MultiState.fit(one)
+    ref = MultiState.fit(
+        [2.0, 6, 3], ["a", None, "b"], ["event-free"] * 3, i=["p", "q", "r"]
+    )
+    assert got.to_dict() == ref.to_dict()
+
+
+@pytest.mark.parametrize("cls, Z, opts", FITS, ids=IDS)
+def test_measurements_are_refused(cls, Z, opts):
+    zkw = {"Z": [[0.0], [0], [1], [1], [0]]} if Z else {}
+    data = sp.SurpyvalData(
+        **_small(), m={1: {1.0: 3.0}, 2: {1.0: 2.0, 2.5: 2.2}}, **zkw
+    )
+    with pytest.raises(ValueError, match="takes no markers"):
+        cls.fit(data, **opts)
+
+
+def test_ranges_refused_and_rows_left_out_fit_on_the_rest():
+    s = ["healthy", "ill", "healthy", "ill", "healthy"]
+    e = ["ill", "dead", "ill", "dead", "dead"]
+    # A range in xl/xr beside exact times: an interval and a left-censored
+    # change of state, both refused.
+    for low, flag in ((5.0, 2), (-np.inf, -1)):
+        data = sp.SurpyvalData(
+            x=[2, 6, 3, NAN, 4],
+            xl=[NAN, NAN, NAN, low, NAN],
+            xr=[NAN, NAN, NAN, 9, NAN],
+            c=[0, 0, 0, flag, 0],
+            e=e,
+            s=s,
+            tl=[0, 2, 0, 3, 0],
+            i=[1, 1, 2, 2, 3],
+        )
+        with pytest.raises(ValueError, match="Rows 3 are left or interval"):
+            MultiState.fit(data)
+        # The fix the message names fits
+        kept = data[(data.c == 0) | (data.c == 1)]
+        MultiState.fit(kept)
+    # A row with both an exact time and a range is left out, with a
+    # warning; the fit is that of the other rows.
+    with pytest.warns(UserWarning, match="left out"):
+        data = sp.SurpyvalData(
+            x=[2, 6, 3, 8, 4],
+            xl=[NAN, NAN, NAN, 5, NAN],
+            xr=[NAN, NAN, NAN, 9, NAN],
+            e=["ill", "dead", "ill", None, "dead"],
+            s=s,
+            tl=[0, 2, 0, 3, 0],
+            i=[1, 1, 2, 2, 3],
+        )
+    ref = MultiState.fit(
+        [2.0, 6, 3, 4],
+        ["ill", "dead", "ill", "dead"],
+        ["healthy", "ill", "healthy", "healthy"],
+        tl=[0.0, 2, 0, 0],
+        i=[1, 1, 2, 3],
+    )
+    assert MultiState.fit(data).to_dict() == ref.to_dict()
+
+
+def test_a_right_censored_range_row_is_its_censoring_time():
+    # (8, inf) in xl/xr beside exact times: still in "ill" at 8. (c is
+    # given: with s, the data model refuses this row when c is read from
+    # a blank e.)
+    data = sp.SurpyvalData(
+        x=[2, 6, 3, NAN, 4],
+        xl=[NAN, NAN, NAN, 8, NAN],
+        xr=[NAN, NAN, NAN, np.inf, NAN],
+        c=[0, 0, 0, 1, 0],
+        e=["ill", "dead", "ill", None, "dead"],
+        s=["healthy", "ill", "healthy", "ill", "healthy"],
+        tl=[0, 2, 0, 3, 0],
+        i=[1, 1, 2, 2, 3],
+    )
+    ref = MultiState.fit(**_arrays_small())
+    assert MultiState.fit(data).to_dict() == ref.to_dict()
+
+
+def _arrays_small():
+    d = _small()
+    return dict(
+        x=d["x"], e=d["e"], state=d["s"], tl=d["tl"], i=d["i"]
+    )  # fmt: skip

@@ -76,8 +76,10 @@ Unreleased
   the arrays. Data without ``s`` starts every row from the one initial
   state (the one state of ``transitions`` nothing moves into, or
   ``"event-free"``), so competing-risks data fits as it is. Interval- and
-  left-censored rows, weights, right truncation, time-varying covariates
-  and masked causes are refused, naming the rows or the fix. ``fit`` also
+  left-censored rows, weights, right truncation, time-varying covariates,
+  measurements, masked causes and data without ``s`` whose units have
+  several rows are refused, naming the rows or the fix; the terminal flag
+  ``a`` is ignored (the transitions say which states absorb). ``fit`` also
   takes ``s=`` as another name for ``state=``, and ``fit_from_df``
   ``s_col=`` for ``state_col=`` (give one). See
   :doc:`Multi-State Models`.

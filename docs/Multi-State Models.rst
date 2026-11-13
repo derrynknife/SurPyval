@@ -120,11 +120,17 @@ starting state is the one state of ``transitions`` that nothing moves
 into, or ``"event-free"`` (the name ``TransitionMatrix.competing_risks``
 gives it) where no ``transitions`` are given; where the transitions have
 several such states, give ``s``. A row that failed with no state entered
-(a masked cause), and data with no ``e``, are refused.
+(a masked cause), data with no ``e``, and data without ``s`` whose units
+have several rows (stretches of a unit's life, or repeated events) are
+refused, saying what fits them.
+
+The terminal flag ``a`` of a ``SurpyvalData`` is not needed here: a
+terminal event is the same idea as entering an absorbing state, which the
+transitions already say, so the fits ignore it.
 
 These models take neither interval- nor left-censored rows (``c`` of 2 or
 -1: a change of state seen only between two inspections), weights, right
-truncation nor time-varying covariates; data holding any of them is
+truncation, time-varying covariates nor measurements (``m``); data holding any of them is
 refused, saying what to do. ``s`` is also another name for ``state`` in
 ``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
 
