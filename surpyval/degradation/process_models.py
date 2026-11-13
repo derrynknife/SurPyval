@@ -72,6 +72,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
 )
 from surpyval.utils.numeric import solve_bracketed
+from surpyval.utils.readings_entry import readings_column, takes_readings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
@@ -256,14 +257,17 @@ def _fit_from_df(
     fitter: Any,
     df: pd.DataFrame,
     x_col: str,
-    y_col: str,
+    y_col: str | None,
     i_col: str,
     Z_cols: str | list[str] | None,
     fit_kwargs: dict,
+    m_col: str | None = None,
 ) -> Any:
     """The shared body of the process fitters' ``fit_from_df``: fit from
-    the columns of ``df`` and record the covariate names on the model."""
+    the columns of ``df`` and record the covariate names on the model.
+    The readings' column is ``m_col`` or its other name ``y_col``."""
     refuse_column_names(fit_kwargs, "x", "y", "i")
+    y_col = readings_column(m_col, y_col)
     cols = None
     if Z_cols is not None:
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
@@ -2368,12 +2372,13 @@ class WienerProcess:
 
     @classmethod
     @takes_unit
+    @takes_readings
     def fit(
         cls,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         y0: float | None = None,
@@ -2388,12 +2393,18 @@ class WienerProcess:
 
         Parameters
         ----------
-        x : array_like
-            Measurement times, from the start of each unit's life.
+        x : array_like, Measurements or SurpyvalData
+            Measurement times, from the start of each unit's life; or
+            the readings themselves, as a :class:`~surpyval.Measurements`
+            (one measurement, ``{i: {x: value}}``) or a
+            :class:`~surpyval.SurpyvalData` holding them as ``data.m``,
+            with ``y``, ``i`` and ``Z`` left out. A SurpyvalData's
+            covariates ``Z`` are each unit's stress, held over all its
+            readings; its life times and censoring are not used.
         y : array_like
-            Degradation measurements.
+            Degradation measurements (with arrays).
         i : array_like
-            Unit identifier for each measurement.
+            Unit identifier for each measurement (with arrays).
         threshold : float
             The degradation level defining failure (a level, not a
             distance from the start), reached from below: for a signal
@@ -2552,9 +2563,10 @@ class WienerProcess:
         cls,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
         Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> WienerProcessModel:
         """
@@ -2569,6 +2581,11 @@ class WienerProcess:
             unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
             DataFrame entry point names its columns with a ``_col``
             suffix, principle 21).
+        m_col : str, optional
+            The measurements' column by the name
+            ``Measurements.from_dataframe`` gives it (unit ``i_col``, time
+            ``x_col``, value ``m_col``): ``y_col``'s other name, the same
+            in every way; giving both is a TypeError.
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -2583,7 +2600,9 @@ class WienerProcess:
         WienerProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
+        return _fit_from_df(
+            cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
+        )
 
     @staticmethod
     def _check_noise(
@@ -2816,12 +2835,13 @@ class GammaProcess:
 
     @classmethod
     @takes_unit
+    @takes_readings
     def fit(
         cls,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         resolution: float | None = None,
@@ -2878,12 +2898,18 @@ class GammaProcess:
 
         Parameters
         ----------
-        x : array_like
-            Measurement times.
+        x : array_like, Measurements or SurpyvalData
+            Measurement times; or the readings themselves, as a
+            :class:`~surpyval.Measurements` (one measurement, ``{i: {x:
+            value}}``) or a :class:`~surpyval.SurpyvalData` holding them
+            as ``data.m``, with ``y``, ``i`` and ``Z`` left out. A
+            SurpyvalData's covariates ``Z`` are each unit's stress, held
+            over all its readings; its life times and censoring are not
+            used.
         y : array_like
-            Degradation measurements.
+            Degradation measurements (with arrays).
         i : array_like
-            Unit identifier for each measurement.
+            Unit identifier for each measurement (with arrays).
         threshold : float
             The degradation level defining failure, reached from below:
             for a signal that falls to a lower threshold, fit ``-y`` with
@@ -3187,9 +3213,10 @@ class GammaProcess:
         cls,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
         Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> GammaProcessModel:
         """
@@ -3204,6 +3231,11 @@ class GammaProcess:
             unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
             DataFrame entry point names its columns with a ``_col``
             suffix, principle 21).
+        m_col : str, optional
+            The measurements' column by the name
+            ``Measurements.from_dataframe`` gives it (unit ``i_col``, time
+            ``x_col``, value ``m_col``): ``y_col``'s other name, the same
+            in every way; giving both is a TypeError.
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -3218,7 +3250,9 @@ class GammaProcess:
         GammaProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
+        return _fit_from_df(
+            cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
+        )
 
     @staticmethod
     def _zero_increments(

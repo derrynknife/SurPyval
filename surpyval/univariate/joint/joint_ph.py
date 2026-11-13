@@ -22,6 +22,7 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.utils.covariates import finite_covariate_mask
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
@@ -176,6 +177,7 @@ class JointPHFitter(FitterRepr):
 
     @dataframe_covariates
     @takes_unit
+    @takes_joint_readings
     @accepts_surpyval_data
     def fit(
         self,
@@ -190,6 +192,8 @@ class JointPHFitter(FitterRepr):
         marker_reference: float | None = None,
         path_covariates: Any = None,
         hazard_covariates: Any = None,
+        i: npt.ArrayLike | None = None,
+        m: Any = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -243,9 +247,15 @@ class JointPHFitter(FitterRepr):
             Each item's covariates, a row each (a DataFrame's columns name
             them). By default they shift every path parameter's mean and
             enter the hazard.
-        markers : list of dict
+        markers : list of dict or Measurements
             With arrays: each item's readings, ``{age: value}`` (``{}``
-            for none).
+            for none), in the rows' order; or a
+            :class:`~surpyval.Measurements` of one measurement, matched
+            to the rows by unit (``i``), never by position: an item with
+            no readings has none, as ``{}``, and readings of a unit with
+            no row are warned of and not used. Beside a SurpyvalData
+            without readings, a Measurements is attached to it by its
+            units (as ``data.m``).
         marker_reference : float, optional
             The marker value at which ``alpha`` is reported (the
             baseline's item has its marker there). Default the mean
@@ -260,6 +270,13 @@ class JointPHFitter(FitterRepr):
             The covariates in the hazard (``<cov>``). Default every
             covariate; ``[]`` for none. Each covariate must be in one part
             or both. Unnamed covariates are ``coef_0``, ``coef_1``, ...
+        i : array_like, optional
+            With arrays and ``markers`` a Measurements: each row's unit,
+            one row per unit.
+        m : Measurements, optional
+            The other name of ``markers``, as ``SurpyvalData(..., m=...)``
+            calls the readings; the same in every way. Giving both is a
+            TypeError.
 
         Returns
         -------
@@ -306,6 +323,7 @@ class JointPHFitter(FitterRepr):
                 f"this one follows its {' and '.join(self.link)} (alpha "
                 "is at a slope and an area of 0): leave it out."
             )
+        markers = markers_by_row(markers, i, x)
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
         parts = covariate_parts(
             list(self.path_model.parameter_names),
@@ -331,6 +349,8 @@ class JointPHFitter(FitterRepr):
         marker_reference: float | None = None,
         path_covariates: Any = None,
         hazard_covariates: Any = None,
+        i_col: str | None = None,
+        m: Any = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -343,6 +363,14 @@ class JointPHFitter(FitterRepr):
         place of ``x_col``; ``c_col`` 2 for those rows). As :meth:`fit`
         otherwise, ``path_covariates`` and ``hazard_covariates`` naming
         which of ``Z_cols`` enter which part.
+
+        The readings may instead be kept in a long frame of their own, one
+        row per reading: build a :class:`~surpyval.Measurements` from it
+        (``Measurements.from_dataframe(readings, i_col=..., x_col=...,
+        m_col=...)``) and give it as ``m``, with ``i_col`` naming the
+        column of each item's unit in ``df``; the readings are matched to
+        the items by unit. ``m`` and ``markers_col`` are two ways of
+        giving the readings: give one.
 
         Examples
         --------
@@ -375,6 +403,7 @@ class JointPHFitter(FitterRepr):
         check_columns(
             df,
             x_col=x_col,
+            i_col=i_col,
             markers_col=markers_col,
             c_col=c_col,
             n_col=n_col,
@@ -384,10 +413,16 @@ class JointPHFitter(FitterRepr):
             xr_col=xr_col,
             Z_cols=Z_cols,
         )
-        if markers_col is None:
+        if m is not None and markers_col is not None:
+            raise TypeError(
+                "m and markers_col are two ways of giving the readings: "
+                "give one."
+            )
+        if m is None and markers_col is None:
             raise ValueError(
                 "markers_col names the column of each item's readings, "
-                "{age: value}: the joint model needs them."
+                "{age: value} (or give them as m=, a Measurements matched "
+                "to the items by i_col): the joint model needs them."
             )
         if x_col is not None and (xl_col is not None or xr_col is not None):
             raise ValueError(
@@ -416,10 +451,12 @@ class JointPHFitter(FitterRepr):
                 tl=None if tl_col is None else df[tl_col].to_numpy(float),
                 tr=None if tr_col is None else df[tr_col].to_numpy(float),
                 Z=Z,
-                markers=list(df[markers_col]),
+                markers=None if m is not None else list(df[markers_col]),
                 marker_reference=marker_reference,
                 path_covariates=path_covariates,
                 hazard_covariates=hazard_covariates,
+                i=None if i_col is None else list(df[i_col]),
+                m=m,
             )
 
 
