@@ -1339,9 +1339,13 @@ shared by the units of a cluster has standard errors that are too small.
     assert by_site.cif(1.0, Z=[1.0, 0.0], stratum="east") > 0
 
 Both combine with each other and with weights ``w``, and ``fit_from_df``
-takes them as ``strata_col`` and ``cluster_col``. R's ``crrs`` with
-``ctype = 2`` treats each stratum as a cluster too: its standard errors are
-those of ``strata_censoring="common", cluster=<the strata>``. The
+takes them as ``strata_col`` and ``cluster_col``. SurPyval treats each unit
+as independent unless ``cluster=`` says otherwise. R's ``crrs`` with
+``ctype = 2`` also treats each stratum as a cluster, which widens the
+standard errors (on the test data, by 1.5 to 1.7 times); to get R's numbers,
+fit with ``strata_censoring="common", cluster=<the strata>``. With only a few
+strata, a cluster per stratum makes the standard errors themselves unreliable,
+which is why it is not the default. The
 model-based covariance (``covariance(robust=False)``) ignores the clusters,
 and the diagnostics (``diagnose()``, the proportionality tests and the
 residuals) refuse a fit with strata or clusters, as their tests take one
