@@ -5,6 +5,7 @@ from .competing_risks import (
 )
 from .diagnostics import GoodnessOfFitResult
 from .intervention import InterventionTestResult, intervention_test
+from .joint_frailty import JointFrailty, JointFrailtyModel
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .parametric import HPP, CountingProcess, CoxLewis, CrowAMSAA, Duane
 from .regression import (

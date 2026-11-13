@@ -49,6 +49,7 @@ EXPECTED_SOURCES = {
     "r_mixture_cure",
     "r_pyears",
     "r_adjusted_curves",
+    "r_frailtypack",
     "r_coxme",
     "r_rmtl",
     "r_crrsc",
