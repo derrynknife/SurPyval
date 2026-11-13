@@ -17,6 +17,9 @@ simplest cases.
   a parametric distribution (or regression) for each transition, and the
   probabilities from the Kolmogorov forward equations, smooth and
   extendable past the data.
+- :class:`PanelMultiState` and :class:`PanelMultiStateRegression`: a
+  Markov model of states seen only at visits (panel data, R's ``msm``),
+  with covariates on the intensities in the second.
 - :func:`to_stacked` and :func:`from_stacked`: the long form the models
   take (one row per spell in a state) and the stacked form (one row per
   possible transition, as R's ``mstate`` uses).
@@ -24,6 +27,10 @@ simplest cases.
 
 from surpyval.multistate._data import from_stacked, to_stacked
 from surpyval.multistate.nonparametric import MultiState
+from surpyval.multistate.panel import (
+    PanelMultiState,
+    PanelMultiStateRegression,
+)
 from surpyval.multistate.parametric import (
     ParametricMultiState,
     ParametricMultiStateRegression,
@@ -34,6 +41,8 @@ from surpyval.multistate.transitions import TransitionMatrix
 __all__ = [
     "MultiState",
     "MultiStateProportionalHazards",
+    "PanelMultiState",
+    "PanelMultiStateRegression",
     "ParametricMultiState",
     "ParametricMultiStateRegression",
     "TransitionMatrix",

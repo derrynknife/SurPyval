@@ -1,0 +1,484 @@
+{
+  "generator": "scripts/reference/reference_r_sample_size.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "ssize_cont_hsieh_lavori": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "ssizeEpiCont.default(power = 0.80600000000000005, theta = 2.7182818284590451, sigma2 = 0.097718759999999988, psi = 0.73799999999999999, rho2 = 0.1837, alpha = 0.10000000000000001)",
+      "settings": {
+        "test": "two-sided Wald test of one coefficient"
+      },
+      "values": {
+        "power": 0.806,
+        "theta": 2.71828182845905,
+        "sigma2": 0.09771876,
+        "psi": 0.738,
+        "rho2": 0.1837,
+        "alpha": 0.1,
+        "n": 107
+      }
+    },
+    "ssize_cont_continuous_a": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "ssizeEpiCont.default(power = 0.80000000000000004, theta = 1.5, sigma2 = 1, psi = 0.40000000000000002, rho2 = 0, alpha = 0.050000000000000003)",
+      "settings": {
+        "test": "two-sided Wald test of one coefficient"
+      },
+      "values": {
+        "power": 0.8,
+        "theta": 1.5,
+        "sigma2": 1,
+        "psi": 0.4,
+        "rho2": 0,
+        "alpha": 0.05,
+        "n": 120
+      }
+    },
+    "ssize_cont_continuous_b": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "ssizeEpiCont.default(power = 0.90000000000000002, theta = 0.69999999999999996, sigma2 = 2.5, psi = 0.25, rho2 = 0.34999999999999998, alpha = 0.01)",
+      "settings": {
+        "test": "two-sided Wald test of one coefficient"
+      },
+      "values": {
+        "power": 0.9,
+        "theta": 0.7,
+        "sigma2": 2.5,
+        "psi": 0.25,
+        "rho2": 0.35,
+        "alpha": 0.01,
+        "n": 288
+      }
+    },
+    "power_cont_a": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "powerEpiCont.default(n = 300, theta = 1.3999999999999999, sigma2 = 0.80000000000000004, psi = 0.29999999999999999, rho2 = 0.20000000000000001, alpha = 0.050000000000000003)",
+      "settings": {
+        "test": "two-sided Wald test of one coefficient"
+      },
+      "values": {
+        "n": 300,
+        "theta": 1.4,
+        "sigma2": 0.8,
+        "psi": 0.3,
+        "rho2": 0.2,
+        "alpha": 0.05,
+        "power": 0.723637167880782
+      }
+    },
+    "power_cont_b": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "powerEpiCont.default(n = 120, theta = 2.7182818284590451, sigma2 = 0.097718759999999988, psi = 0.73799999999999999, rho2 = 0.1837, alpha = 0.050000000000000003)",
+      "settings": {
+        "test": "two-sided Wald test of one coefficient"
+      },
+      "values": {
+        "n": 120,
+        "theta": 2.71828182845905,
+        "sigma2": 0.09771876,
+        "psi": 0.738,
+        "rho2": 0.1837,
+        "alpha": 0.05,
+        "power": 0.757379986573802
+      }
+    },
+    "events_binary_latouche": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "numDEpi.default(power = 0.80000000000000004, theta = 2, p = 0.39000000000000001, rho2 = 0.017424000000000002, alpha = 0.050000000000000003)",
+      "settings": {
+        "test": "two-sided Wald test of a two-level covariate"
+      },
+      "values": {
+        "power": 0.8,
+        "theta": 2,
+        "p": 0.39,
+        "rho2": 0.017424,
+        "alpha": 0.05,
+        "events": 70
+      }
+    },
+    "events_binary_binary_b": {
+      "fixture": "no_data",
+      "software": "R powerSurvEpi",
+      "version": "0.1.5",
+      "call": "numDEpi.default(power = 0.90000000000000002, theta = 0.59999999999999998, p = 0.25, rho2 = 0.40000000000000002, alpha = 0.050000000000000003)",
+      "settings": {
+        "test": "two-sided Wald test of a two-level covariate"
+      },
+      "values": {
+        "power": 0.9,
+        "theta": 0.6,
+        "p": 0.25,
+        "rho2": 0.4,
+        "alpha": 0.05,
+        "events": 358
+      }
+    },
+    "noninferiority_gsdesign_a": {
+      "fixture": "no_data",
+      "software": "R gsDesign",
+      "version": "3.11.0",
+      "call": "nEvents(hr = 1, hr0 = 1.3, ratio = 1, alpha = 0.025, beta = 0.20000000000000001, sided = 1)",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below hr0",
+        "ratio": "experimental per control"
+      },
+      "values": {
+        "hr": 1,
+        "hr0": 1.3,
+        "ratio": 1,
+        "beta": 0.2,
+        "events": 456.098142249728
+      }
+    },
+    "noninferiority_rpact_a": {
+      "fixture": "no_data",
+      "software": "R rpact",
+      "version": "4.4.0",
+      "call": "getSampleSizeSurvival(hazardRatio = 1, thetaH0 = 1.3, allocationRatioPlanned = 1, alpha = 0.025, beta = 0.20000000000000001, sided = 1, lambda2 = 0.1, accrualTime = c(0, 12), followUpTime = 12)$maxNumberOfEvents",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below thetaH0",
+        "note": "the events only; the accrual is a placeholder"
+      },
+      "values": {
+        "hr": 1,
+        "hr0": 1.3,
+        "ratio": 1,
+        "beta": 0.2,
+        "events": 456.098142249729
+      }
+    },
+    "noninferiority_gsdesign_b": {
+      "fixture": "no_data",
+      "software": "R gsDesign",
+      "version": "3.11.0",
+      "call": "nEvents(hr = 0.90000000000000002, hr0 = 1.25, ratio = 2, alpha = 0.025, beta = 0.10000000000000001, sided = 1)",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below hr0",
+        "ratio": "experimental per control"
+      },
+      "values": {
+        "hr": 0.9,
+        "hr0": 1.25,
+        "ratio": 2,
+        "beta": 0.1,
+        "events": 438.15445438547
+      }
+    },
+    "noninferiority_rpact_b": {
+      "fixture": "no_data",
+      "software": "R rpact",
+      "version": "4.4.0",
+      "call": "getSampleSizeSurvival(hazardRatio = 0.90000000000000002, thetaH0 = 1.25, allocationRatioPlanned = 2, alpha = 0.025, beta = 0.10000000000000001, sided = 1, lambda2 = 0.1, accrualTime = c(0, 12), followUpTime = 12)$maxNumberOfEvents",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below thetaH0",
+        "note": "the events only; the accrual is a placeholder"
+      },
+      "values": {
+        "hr": 0.9,
+        "hr0": 1.25,
+        "ratio": 2,
+        "beta": 0.1,
+        "events": 438.15445438547
+      }
+    },
+    "noninferiority_gsdesign_c": {
+      "fixture": "no_data",
+      "software": "R gsDesign",
+      "version": "3.11.0",
+      "call": "nEvents(hr = 1.05, hr0 = 1.5, ratio = 0.5, alpha = 0.025, beta = 0.20000000000000001, sided = 1)",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below hr0",
+        "ratio": "experimental per control"
+      },
+      "values": {
+        "hr": 1.05,
+        "hr0": 1.5,
+        "ratio": 0.5,
+        "beta": 0.2,
+        "events": 277.635492615778
+      }
+    },
+    "noninferiority_rpact_c": {
+      "fixture": "no_data",
+      "software": "R rpact",
+      "version": "4.4.0",
+      "call": "getSampleSizeSurvival(hazardRatio = 1.05, thetaH0 = 1.5, allocationRatioPlanned = 0.5, alpha = 0.025, beta = 0.20000000000000001, sided = 1, lambda2 = 0.1, accrualTime = c(0, 12), followUpTime = 12)$maxNumberOfEvents",
+      "settings": {
+        "test": "one-sided 2.5%: the upper 95% limit below thetaH0",
+        "note": "the events only; the accrual is a placeholder"
+      },
+      "values": {
+        "hr": 1.05,
+        "hr0": 1.5,
+        "ratio": 0.5,
+        "beta": 0.2,
+        "events": 277.635492615778
+      }
+    },
+    "rmst_exponential": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.16666666666666666), loss_scale = 9.9999999999999998e-13, follow_time = 4), create_arm(size = 1, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.10000000000000001), loss_scale = 9.9999999999999998e-13, follow_time = 4), list(test = 'rmst difference', milestone = 5), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 152, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.16666666666666666), loss_scale = 9.9999999999999998e-13, follow_time = 4), create_arm(size = 152, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.10000000000000001), loss_scale = 9.9999999999999998e-13, follow_time = 4), list(test = 'rmst difference', milestone = 5), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'rmst difference', milestone = 5)",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0,
+          "interval": ["0", "Inf"],
+          "shape": 1,
+          "scale": 0.1
+        },
+        "arm0": {
+          "cure": 0,
+          "interval": ["0", "Inf"],
+          "shape": 1,
+          "scale": 0.166666666666667
+        },
+        "loss_rate": 1e-12,
+        "accrual_time": 2,
+        "follow_up": 4,
+        "ratio": 1,
+        "n1": 151.885668286848,
+        "n0": 151.885668286848,
+        "d": 145.179143952532,
+        "d_integral": 145.179113385018,
+        "lachin": true,
+        "power_at": [152, 152],
+        "power": 0.800295017839949
+      }
+    },
+    "rmst_weibull_piecewise": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 2, surv_cure = 0, surv_interval = c(0, 2, Inf), surv_shape = 1, surv_scale = c(0.14999999999999999, 0.25), loss_scale = 0.050000000000000003, follow_time = 4), create_arm(size = 1, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1.3, surv_scale = c(0.125), loss_scale = 0.050000000000000003, follow_time = 4), list(test = 'rmst difference', milestone = 5), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 84, accr_time = 2, surv_cure = 0, surv_interval = c(0, 2, Inf), surv_shape = 1, surv_scale = c(0.14999999999999999, 0.25), loss_scale = 0.050000000000000003, follow_time = 4), create_arm(size = 84, accr_time = 2, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 1.3, surv_scale = c(0.125), loss_scale = 0.050000000000000003, follow_time = 4), list(test = 'rmst difference', milestone = 5), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'rmst difference', milestone = 5)",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0,
+          "interval": ["0", "Inf"],
+          "shape": 1.3,
+          "scale": 0.125
+        },
+        "arm0": {
+          "cure": 0,
+          "interval": ["0", "2", "Inf"],
+          "shape": 1,
+          "scale": [0.15, 0.25]
+        },
+        "loss_rate": 0.05,
+        "accrual_time": 2,
+        "follow_up": 4,
+        "ratio": 1,
+        "n1": 83.9606507443621,
+        "n0": 83.9606507443621,
+        "d": 79.123361047695,
+        "d_integral": 79.123361047695,
+        "lachin": false,
+        "power_at": [84, 84],
+        "power": 0.80018372263463
+      }
+    },
+    "rmst_unequal": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 1.5, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 0.80000000000000004, surv_scale = c(0.40000000000000002), loss_scale = 0.02, follow_time = 2), create_arm(size = 2, accr_time = 1.5, surv_cure = 0.20000000000000001, surv_interval = c(0, Inf), surv_shape = 0.80000000000000004, surv_scale = c(0.29999999999999999), loss_scale = 0.02, follow_time = 2), list(test = 'rmst difference', milestone = 3), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 150, accr_time = 1.5, surv_cure = 0, surv_interval = c(0, Inf), surv_shape = 0.80000000000000004, surv_scale = c(0.40000000000000002), loss_scale = 0.02, follow_time = 2), create_arm(size = 300, accr_time = 1.5, surv_cure = 0.20000000000000001, surv_interval = c(0, Inf), surv_shape = 0.80000000000000004, surv_scale = c(0.29999999999999999), loss_scale = 0.02, follow_time = 2), list(test = 'rmst difference', milestone = 3), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'rmst difference', milestone = 3)",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0.2,
+          "interval": ["0", "Inf"],
+          "shape": 0.8,
+          "scale": 0.3
+        },
+        "arm0": {
+          "cure": 0,
+          "interval": ["0", "Inf"],
+          "shape": 0.8,
+          "scale": 0.4
+        },
+        "loss_rate": 0.02,
+        "accrual_time": 1.5,
+        "follow_up": 2,
+        "ratio": 2,
+        "n1": 169.676907057336,
+        "n0": 84.8384535286682,
+        "d": 130.733376219158,
+        "d_integral": 130.733376219158,
+        "lachin": false,
+        "power_at": [300, 150],
+        "power": 0.961240468276669
+      }
+    },
+    "cure_fraction": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), create_arm(size = 1, accr_time = 1, surv_cure = 0.45000000000000001, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), list(test = 'weighted logrank'), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 247, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), create_arm(size = 247, accr_time = 1, surv_cure = 0.45000000000000001, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), list(test = 'weighted logrank'), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'weighted logrank')",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0.45,
+          "interval": ["0", "Inf"],
+          "shape": 1.2,
+          "scale": 0.5
+        },
+        "arm0": {
+          "cure": 0.3,
+          "interval": ["0", "Inf"],
+          "shape": 1.2,
+          "scale": 0.5
+        },
+        "loss_rate": 1e-12,
+        "accrual_time": 1,
+        "follow_up": 3,
+        "ratio": 1,
+        "n1": 246.998557748749,
+        "n0": 246.998557748749,
+        "d": 264.38824201431,
+        "d_integral": 264.38824201431,
+        "lachin": false,
+        "power_at": [247, 247],
+        "power": 0.800002289903515
+      }
+    },
+    "cure_latency": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), create_arm(size = 1, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.37143689282883807), loss_scale = 9.9999999999999998e-13, follow_time = 3), list(test = 'weighted logrank'), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 474, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.5), loss_scale = 9.9999999999999998e-13, follow_time = 3), create_arm(size = 474, accr_time = 1, surv_cure = 0.29999999999999999, surv_interval = c(0, Inf), surv_shape = 1.2, surv_scale = c(0.37143689282883807), loss_scale = 9.9999999999999998e-13, follow_time = 3), list(test = 'weighted logrank'), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'weighted logrank')",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0.3,
+          "interval": ["0", "Inf"],
+          "shape": 1.2,
+          "scale": 0.371436892828838
+        },
+        "arm0": {
+          "cure": 0.3,
+          "interval": ["0", "Inf"],
+          "shape": 1.2,
+          "scale": 0.5
+        },
+        "loss_rate": 1e-12,
+        "accrual_time": 1,
+        "follow_up": 3,
+        "ratio": 1,
+        "n1": 473.53739177205,
+        "n0": 473.53739177205,
+        "d": 530.422477700572,
+        "d_integral": 530.422477700572,
+        "lachin": false,
+        "power_at": [474, 474],
+        "power": 0.800382803329935
+      }
+    },
+    "cure_both_dropout_unequal": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 2, surv_cure = 0.25, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.40000000000000002), loss_scale = 0.050000000000000003, follow_time = 2), create_arm(size = 2, accr_time = 2, surv_cure = 0.34999999999999998, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.32000000000000006), loss_scale = 0.050000000000000003, follow_time = 2), list(test = 'weighted logrank'), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 200, accr_time = 2, surv_cure = 0.25, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.40000000000000002), loss_scale = 0.050000000000000003, follow_time = 2), create_arm(size = 400, accr_time = 2, surv_cure = 0.34999999999999998, surv_interval = c(0, Inf), surv_shape = 1, surv_scale = c(0.32000000000000006), loss_scale = 0.050000000000000003, follow_time = 2), list(test = 'weighted logrank'), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'weighted logrank')",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0.35,
+          "interval": ["0", "Inf"],
+          "shape": 1,
+          "scale": 0.32
+        },
+        "arm0": {
+          "cure": 0.25,
+          "interval": ["0", "Inf"],
+          "shape": 1,
+          "scale": 0.4
+        },
+        "loss_rate": 0.05,
+        "accrual_time": 2,
+        "follow_up": 2,
+        "ratio": 2,
+        "n1": 384.275624720807,
+        "n0": 192.137812360404,
+        "d": 345.306743048904,
+        "d_integral": 236.949806971733,
+        "lachin": true,
+        "power_at": [400, 200],
+        "power": 0.815504857882656
+      }
+    },
+    "cure_piecewise_latency": {
+      "fixture": "no_data",
+      "software": "R npsurvSS",
+      "version": "1.1.0",
+      "call": "size_two_arm(create_arm(size = 1, accr_time = 0.5, surv_cure = 0.20000000000000001, surv_interval = c(0, 1, Inf), surv_shape = 1, surv_scale = c(0.59999999999999998, 0.29999999999999999), loss_scale = 9.9999999999999998e-13, follow_time = 2.5), create_arm(size = 1, accr_time = 0.5, surv_cure = 0.40000000000000002, surv_interval = c(0, 1, Inf), surv_shape = 1, surv_scale = c(0.59999999999999998, 0.29999999999999999), loss_scale = 9.9999999999999998e-13, follow_time = 2.5), list(test = 'weighted logrank'), power = 0.8, alpha = 0.025, sides = 1); power_two_arm(create_arm(size = 150, accr_time = 0.5, surv_cure = 0.20000000000000001, surv_interval = c(0, 1, Inf), surv_shape = 1, surv_scale = c(0.59999999999999998, 0.29999999999999999), loss_scale = 9.9999999999999998e-13, follow_time = 2.5), create_arm(size = 150, accr_time = 0.5, surv_cure = 0.40000000000000002, surv_interval = c(0, 1, Inf), surv_shape = 1, surv_scale = c(0.59999999999999998, 0.29999999999999999), loss_scale = 9.9999999999999998e-13, follow_time = 2.5), list(test = 'weighted logrank'), alpha = 0.025, sides = 1)",
+      "settings": {
+        "test": "list(test = 'weighted logrank')",
+        "sides": "one-sided 2.5% (two-sided 5%)",
+        "arms": "arm1 is SurPyval's first group, arm0 its second"
+      },
+      "values": {
+        "arm1": {
+          "cure": 0.4,
+          "interval": ["0", "1", "Inf"],
+          "shape": 1,
+          "scale": [0.6, 0.3]
+        },
+        "arm0": {
+          "cure": 0.2,
+          "interval": ["0", "1", "Inf"],
+          "shape": 1,
+          "scale": [0.6, 0.3]
+        },
+        "loss_rate": 1e-12,
+        "accrual_time": 0.5,
+        "follow_up": 2.5,
+        "ratio": 1,
+        "n1": 221.097847809333,
+        "n0": 221.097847809333,
+        "d": 208.950803661203,
+        "d_integral": 208.950803661203,
+        "lachin": false,
+        "power_at": [150, 150],
+        "power": 0.635936595561949
+      }
+    }
+  }
+}

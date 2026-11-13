@@ -334,6 +334,10 @@ with its own ``schema``.
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
      - --
+   * - ``IntervalCoxPHModel``
+     - ``"model": "IntervalCoxPHModel"``
+     - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``H0``, ``H0_infinite``, ``intervals``, ``p0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
+     - --
    * - ``MixtureModel``
      - ``"model": "MixtureModel"``
      - ``dist``, ``m``, ``params``, ``w``, ``maximum``, ``_neg_ll``, ``ic_n``, ``theta_covariance``
@@ -366,6 +370,14 @@ with its own ``schema``.
      - ``"model": "ParametricMultiStateRegression"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``, ``Z``, ``covariate_names``
      - --
+   * - ``PanelMultiState``
+     - ``"model": "PanelMultiState"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
+     - ``maximum``
+   * - ``PanelMultiStateRegression``
+     - ``"model": "PanelMultiStateRegression"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
+     - ``maximum``
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
@@ -377,7 +389,7 @@ with its own ``schema``.
    * - ``MultiStateProportionalHazards``
      - ``"model": "MultiStateProportionalHazards"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``Z``, ``covariate_names``, ``shared``, ``tie_method``
-     - --
+     - ``shared_groups``, ``baseline_groups``
    * - ``CauseSpecificMCF``
      - ``"model": "CauseSpecificMCF"``
      - ``event_types``, ``models``

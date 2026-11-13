@@ -824,6 +824,24 @@ def _search_joint_frailty(model, data):
     return [search.in_covariate_units(coefs, lik.Z)]
 
 
+def _search_panel_multistate(model, data):
+    """The panel likelihood (the forward recursion over each unit's
+    visits) in the space the fit searches: log intensities in units of
+    the mean gap between visits, coefficients of standardised covariates
+    and period log ratios, with its exact gradient and the Hessian by
+    central differences of it."""
+    lik = model._likelihood()
+    return [
+        Search(
+            lik.fun,
+            np.asarray(model._theta, dtype=float),
+            float(lik.n_obs),
+            jac=lik.jac,
+            hess=lik.hess,
+        )
+    ]
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -899,6 +917,32 @@ def _search_proportional_odds(model, data):
     n_events = float(n[c == 0].sum())
     search = _numerical(fun, gamma, n_events)
     return [search.in_covariate_units(_columns(gamma), Z)]
+
+
+def _search_interval_cox(model, data):
+    """The profile likelihood of the interval-censored Cox model, the
+    baseline's increments maximised at each ``beta`` (the fit's own
+    projected Newton, from the fitted baseline), by central differences."""
+    from surpyval.univariate.regression.proportional_hazards import (
+        _interval_npmle as engine,
+    )
+    from surpyval.univariate.regression.proportional_hazards import (
+        interval_cox,
+    )
+
+    fd = model._fit_data
+    kept = np.flatnonzero(~np.isnan(np.asarray(model.beta, dtype=float)))
+    fit = interval_cox._Fit(fd, kept, 1e-12)
+    d_hat = fit.solution.d
+
+    def fun(beta):
+        sol = engine.profile(fit.lik, np.asarray(beta, float), d_hat)
+        return -float(sol.value)
+
+    beta = np.asarray(model.beta, dtype=float)[kept]
+    events = float(np.sum(fd.n[fd.c != 1]))
+    search = _numerical(fun, beta, events)
+    return [search.in_covariate_units(_columns(beta), fd.Z[:, kept])]
 
 
 def _numerical(fun, x, n_obs):
@@ -1286,6 +1330,7 @@ SEARCHES: dict[str, Callable] = {
     "CoxFrailtyModel": _search_cox_frailty,
     "SemiParametricRegressionModel": _search_cox,
     "ProportionalOddsModel": _search_proportional_odds,
+    "IntervalCoxPHModel": _search_interval_cox,
     "FineGrayModel": _search_fine_gray,
     "CompetingRisksProportionalHazards": _search_crph,
     "MultiStateProportionalHazards": _search_multistate_cox,
@@ -1294,6 +1339,8 @@ SEARCHES: dict[str, Callable] = {
     "ParametricMultiStateRegression": (
         _search_parametric_multistate_regression
     ),
+    "PanelMultiState": _search_panel_multistate,
+    "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (
         _search_parametric_competing_regression

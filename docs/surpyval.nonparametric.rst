@@ -55,11 +55,13 @@ Several estimates on one figure, with the number at risk under it.
 Other Non-Parametric Functions
 ------------------------------
 
-Zero-failure (success-run) testing, and the plotting positions used by
-probability plots and by the ``MPP`` parametric fitting method.
+Zero-failure (success-run) testing, the plotting positions used by
+probability plots and by the ``MPP`` parametric fitting method, and
+exposure (person-years) tables of event rates by factor and time band.
 
 .. toctree::
    :maxdepth: 1
 
    univariate/success_run
    univariate/plotting_positions
+   univariate/person_years

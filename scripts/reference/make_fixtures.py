@@ -15,10 +15,12 @@ Two kinds of fixture:
   own copy, and the PBC trial's baseline rows from ``load_pbc2``;
 * small seeded synthetic sets aimed at one feature each: ties between
   event and censoring times, left truncation, interval censoring,
-  competing risks with ties, a prediction matrix for the Brier score and
-  AUC, continuous data for the additive hazards model, and a deliberate
-  violation of proportional hazards for the Cox diagnostics, a covariate
-  that separates the events from the survivors (Firth's fit),
+  competing risks with ties, competing risks in strata with their own
+  censoring and in clusters of dependent units, a prediction matrix for
+  the Brier score and AUC, continuous data for the additive hazards
+  model, and a deliberate violation of proportional hazards for the Cox
+  diagnostics, a covariate that separates the events from the survivors
+  (Firth's fit),
   recurrent events of two groups of systems for the MCF comparison, an
   illness-death model with recovery for the multi-state models, and
   recurrent events with a dependent terminal event for the joint frailty
@@ -419,6 +421,276 @@ CURE_REGRESSION = {
 }
 
 
+# Interval-censored PH data simulated by reference_r_interval_cox.R (R
+# 4.6.2, set.seed(20261113)): 300 units, binary z1 and normal z2,
+# Weibull PH lives (shape 1.5, scale 10, log hazard ratio 0.7 z1 - 0.4
+# z2) inspected every uniform(1, 3) from uniform(0, 2) to 25: l = 0 is
+# left censored, u = None (Inf) right censored, l == u exact. er_time and
+# er_event are the same lives seen exactly to the last visit. The script
+# stops if its draws differ.
+IC_MIXED = {
+    "l": [
+        10.4873,
+        6.9455,
+        15.4275,
+        7.2238,
+        3.2186,
+        2.1829,
+        0.8492,
+        3.5941,
+        9.9403,
+    ]
+    + [2.7096, 3.1063, 1.2252, 0.856, 6.5059, 6.8439, 0, 3.4575, 0, 18.4893]
+    + [15.3563, 0.925, 2.0253, 8.2675, 5.4977, 11.0862, 13.4017, 9.4964]
+    + [0.7973, 0.6973, 0, 1.5807, 2.9551, 5.1699, 0, 8.3077, 9.1288, 1.1185]
+    + [8.9017, 10.3004, 11.4298, 10.3473, 3.511, 7.7708, 5.9978, 4.9858]
+    + [0.3765, 6.2835, 6.5754, 22.6579, 0.8117, 6.9073, 5.4983, 3.8862, 4.6521]
+    + [15.5596, 9.5952, 3.5772, 8.5719, 3.3212, 1.0188, 1.9674, 0.5719, 2.8035]
+    + [5.8991, 5.0914, 7.2637, 8.6489, 3.4197, 0, 11.8417, 8.935, 18.227]
+    + [0.4448, 5.2716, 5.5053, 7.0055, 3.2985, 1.1198, 1.8282, 7.3878, 3.0477]
+    + [1.4835, 21.5001, 24.5993, 19.3629, 13.3304, 3.8775, 4.3485, 3.7339]
+    + [7.9986, 6.9695, 8.6694, 4.6865, 3.9181, 4.3678, 3.9611, 7.4365, 0.9182]
+    + [6.83, 2.8489, 5.5933, 11.6227, 11.4276, 7.2518, 5.9696, 9.1651, 12.7875]
+    + [23.814, 6.478, 0.8005, 9.7604, 20.156, 4.5317, 0, 4.923, 1.5462]
+    + [15.4433, 5.4691, 4.5625, 9.274, 14.2714, 4.7461, 0.1113, 4.3695, 4.8529]
+    + [7.9371, 13.3304, 6.4763, 7.6092, 6.9763, 1.8501, 24.3276, 2.2002]
+    + [3.1897, 1.958, 4.299, 3.5972, 14.0405, 0.0938, 6.521, 11.7941, 13.9288]
+    + [7.3638, 4.4915, 1.5721, 7.168, 10.6179, 9.6338, 8.1754, 1.9216, 1.2336]
+    + [6.8519, 0, 15.5123, 3.743, 11.2655, 0, 8.8821, 1.8547, 24.4893, 9.0048]
+    + [19.4675, 4.099, 24.3342, 12.9381, 4.991, 3.2388, 6.9151, 7.5847, 1.7393]
+    + [1.8763, 15.0287, 11.437, 8.7261, 6.9344, 8.1462, 3.4511, 2.8679, 6.1885]
+    + [1.7299, 1.7212, 1.0667, 4.4931, 2.4224, 0, 15.7122, 16.7181, 1.5286]
+    + [3.6105, 0, 12.5576, 11.7898, 4.4818, 3.0164, 3.6901, 14.4681, 5.625]
+    + [15.8514, 0.0805, 3.3655, 4.728, 0.0591, 2.4204, 5.6862, 23.8199, 4.8485]
+    + [16.1115, 12.7654, 2.9891, 2.0329, 8.933, 10.0119, 24.1723, 6.2689]
+    + [0.1827, 8.2002, 2.5206, 7.9632, 1.7495, 7.3546, 7.6429, 9.6786, 5.3532]
+    + [4.3737, 6.9409, 7.6444, 3.7979, 6.1971, 5.5141, 17.6606, 3.0648]
+    + [10.2007, 7.1028, 5.3858, 2.8534, 12.4984, 24.4572, 3.6817, 5.8377]
+    + [4.6641, 3.8151, 2.7621, 1.7232, 0, 2.9197, 3.4361, 7.58, 24.6121]
+    + [6.1549, 5.6203, 12.7423, 6.7828, 2.6972, 1.0421, 6.6452, 11.5623]
+    + [1.9133, 0, 5.5793, 2.2225, 8.1188, 18.2553, 6.5981, 4.1234, 4.7301]
+    + [0.8919, 19.252, 1.3651, 1.9534, 3.5118, 1.5895, 1.2896, 10.7866, 6.7524]
+    + [1.7518, 12.5978, 4.6139, 5.9814, 1.0457, 2.7831, 6.7117, 14.581, 2.6796]
+    + [2.0143, 7.6552, 2.7411, 5.7564, 0.1387, 6.0411, 2.292, 4.4551, 7.2806]
+    + [2.8635, 1.3081, 3.5228, 8.7238, 10.2664, 7.4057, 6.7246, 17.7685],
+    "u": [
+        10.4873,
+        9.2751,
+        18.3278,
+        8.3891,
+        3.2186,
+        4.3344,
+        2.8862,
+        6.318,
+        9.9403,
+    ]
+    + [4.4515, 5.5494, 3.5286, 3.5429, 7.567, 9.0621, 0.9211, 5.3179, 0.8674]
+    + [18.4893, 16.6234, 3.4466, 3.7912, 9.4897, 7.0662, 12.5775, 15.9713]
+    + [9.4964, 2.9615, 2.2221, 1.5914, 4.3285, 4.3622, 7.7641, 1.898, 10.1327]
+    + [11.3229, 3.9743, 11.4486, 12.9707, 13.9214, 12.7339, 5.5807, 10.562]
+    + [7.5576, 7.1672, 1.952, 9.0682, 7.6853, 22.6579, 3.4757, 8.3196, 8.4475]
+    + [5.6558, 6.4175, 17.4959, 9.5952, 5.8782, 10.472, 5.9515, 3.6308, 3.9643]
+    + [3.2005, 2.8035, 8.3974, 7.3523, 9.7561, 8.6489, 5.6584, 0.6947, 11.8417]
+    + [10.6386, 18.227, 1.8994, 8.0009, 7.9775, 9.8946, 5.9915, 3.8361, 4.2721]
+    + [9.8211, 3.0477, 1.4835, 24.1769, None, 21.3799, 15.1396, 6.5772, 6.7158]
+    + [3.7339, 10.4501, 8.8047, 11.4771, 7.518, 6.7927, 6.0175, 5.8889, 8.7867]
+    + [2.3274, 8.6456, 2.8489, 5.5933, 12.9009, 13.9957, 10.1166, 8.0122]
+    + [9.1651, 14.9212, None, 6.478, 3.6151, 11.1855, 20.156, 7.468, 0.2618]
+    + [6.3685, 4.0873, 18.2605, 7.2113, 6.2977, 12.1736, 15.8044, 4.7461]
+    + [2.0094, 6.4647, 7.6415, 9.3609, 14.53, 6.4763, 8.6654, 9.4778, 4.6133]
+    + [None, 4.9492, 5.7987, 4.3345, 4.299, 3.5972, 14.0405, 1.1019, 9.4226]
+    + [14.5038, 15.3329, 9.8955, 6.8713, 1.5721, 7.168, 10.6179, 12.5643]
+    + [8.1754, 3.6356, 3.5856, 9.4378, 1.9175, 18.1262, 5.3786, 11.2655]
+    + [0.8547, 10.4547, 1.8547, None, 11.7609, 22.371, 6.2486, None, 15.3798]
+    + [7.7813, 5.2037, 8.6473, 10.0655, 4.2096, 1.8763, 17.8639, 14.284]
+    + [11.5504, 8.8752, 10.5236, 4.7732, 4.4917, 8.1956, 1.7299, 3.8933, 3.931]
+    + [5.602, 4.1318, 1.2602, 18.3828, 19.5345, 4.0545, 6.5406, 1.7451]
+    + [14.0693, 13.0149, 5.6139, 4.2802, 3.6901, 16.39, 5.625, 17.0922, 1.827]
+    + [5.7567, 7.7045, 2.952, 4.8566, 7.5201, None, 7.5706, 18.9207, 13.9561]
+    + [4.0217, 4.6214, 10.7568, 12.7878, 24.1723, 8.6447, 3.0137, 9.9757]
+    + [4.979, 10.6104, 1.7495, 9.5248, 10.417, 11.9383, 8.1815, 7.053, 9.8594]
+    + [9.1727, 3.7979, 8.7063, 7.3822, 19.3956, 4.7356, 10.2007, 9.1116]
+    + [7.4765, 5.8298, 15.3604, None, 3.6817, 8.0385, 6.5751, 5.7457, 2.7621]
+    + [3.3855, 1.637, 4.851, 4.4408, 9.176, None, 8.5981, 5.6203, 12.7423]
+    + [9.0324, 4.0569, 3.371, 8.0769, 13.5923, 4.8865, 1.8559, 7.1517, 4.844]
+    + [10.925, 20.4849, 8.6883, 4.1234, 6.5575, 3.5089, 19.252, 1.3651, 4.8547]
+    + [6.3814, 4.4362, 4.1823, 12.784, 8.4303, 3.9734, 14.3885, 4.6139, 8.237]
+    + [3.7642, 5.2657, 6.7117, 16.1718, 3.9811, 3.7865, 9.7816, 2.7411, 5.7564]
+    + [2.5157, 8.0057, 3.9267, 5.6979, 9.5039, 4.8346, 2.5037, 6.1527, 10.4089]
+    + [13.0543, 9.3522, 7.9668, 20.2157],
+    "z1": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+    ]
+    + [0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0]
+    + [1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0]
+    + [1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1]
+    + [1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1]
+    + [1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1]
+    + [1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0]
+    + [0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1]
+    + [1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1]
+    + [0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1]
+    + [1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1]
+    + [0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]
+    + [0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0],
+    "z2": [
+        1.4815,
+        0.1071,
+        0.6597,
+        0.675,
+        0.2355,
+        -0.4237,
+        0.1505,
+        -0.7284,
+        -0.8165,
+    ]
+    + [-0.823, 1.2653, -0.5348, -0.6669, -0.4927, 0.3215, -0.3677, 0.2026]
+    + [-0.9114, 0.1179, -0.0636, 0.8135, 0.8445, -1.0182, -0.0275, -0.1547]
+    + [-0.2034, -0.3256, -0.0984, -0.7579, -0.3237, -0.3132, -0.0754, -0.202]
+    + [0.4564, 0.6528, -0.0531, 1.7871, 1.2957, -0.0469, 0.7971, -0.6851]
+    + [0.4648, 1.8232, -1.1268, -0.9355, -0.9923, 2.2336, 1.2709, 1.0357]
+    + [0.4623, 0.0762, -0.1815, 0.8524, 0.7606, 0.215, 0.8842, 0.1905, -0.6561]
+    + [0.3212, -1.7378, 0.3279, -0.9605, -0.4513, 0.2276, -0.1752, 0.351]
+    + [-0.3239, -1.4987, -0.5155, 0.0968, -0.4543, 0.4809, 0.1393, 0.5028]
+    + [-1.7307, -0.2272, -2.015, 1.3303, -1.9075, 1.2714, -1.5771, -0.0481]
+    + [0.6235, 1.1594, -0.1201, -0.1198, 1.2518, 1.5514, 1.2177, -0.4348]
+    + [-0.9022, 1.3941, -0.0667, 0.0604, -1.0829, 0.4336, -0.4108, -1.0941]
+    + [-0.7082, -1.0574, 0.002, 0.3103, -0.646, -0.3728, -0.0806, -0.9365]
+    + [1.2883, 1.525, 0.2427, 0.0193, -0.6389, -1.0204, -0.436, 0.204, 0.5029]
+    + [-1.2411, 0.2143, -1.1571, -0.0014, 0.4618, 0.093, 0.1839, -0.1893]
+    + [1.0114, -0.4867, -0.1614, 0.1864, -0.2261, -0.2431, 0.0298, -0.2997]
+    + [1.1657, -1.0435, 1.2539, -1.3853, 0.645, -0.1251, 0.3018, -0.6028]
+    + [-1.5592, 0.8611, 0.5639, 1.8068, 0.9895, -0.5269, 0.8983, -1.0941]
+    + [0.2756, -0.3479, -0.1616, 0.4997, -0.8313, 0.3357, -0.3088, -0.0335]
+    + [0.0064, -1.7132, 0.4704, -1.7432, 0.8347, 1.8383, 0.1186, 1.3018]
+    + [0.8294, 0.5915, -1.3368, -0.7875, 0.6991, -0.1657, 0.1936, 0.7112]
+    + [1.1581, -0.4073, 0.1574, -0.698, -0.3165, -0.2172, -1.2771, 1.684]
+    + [0.966, 0.3817, 0.5374, -0.2517, -0.5433, 0.3628, 2.0874, 0.8378, 1.0003]
+    + [-0.87, -0.8586, -0.1656, -0.4188, 0.4411, -0.9635, -0.3745, -0.4909]
+    + [-1.4093, -0.824, -0.2724, -1.8377, -0.2195, 0.0099, -0.8416, -1.5469]
+    + [2.0094, 0.123, 1.8419, 1.3429, 0.5851, 1.8088, 0.261, -0.4459, 1.6616]
+    + [-0.101, -0.9226, 1.2181, 0.8239, 0.0555, -0.0034, 0.4654, 1.4004]
+    + [0.0167, -1.2245, 1.311, 0.9635, -0.2404, -0.5704, 1.9679, 0.5786]
+    + [-0.5951, 0.6399, -0.6449, 0.549, -1.7041, -0.464, 0.6191, 1.2604]
+    + [-0.7482, 1.4558, 1.1807, -0.9683, -0.8418, -1.7774, -0.9001, -1.6163]
+    + [-0.0682, -1.0128, 0.9444, 1.5435, -0.598, -0.1353, -0.2821, -2.1295]
+    + [-0.9087, 0.1992, -0.4904, -0.2816, -1.7166, -1.2411, 0.2022, 0.1259]
+    + [1.5189, -1.2643, -2.0845, 0.1209, -1.3633, 1.432, 1.237, 0.5974]
+    + [-1.1446, -1.8271, 1.2757, 1.3797, -2.5018, -0.8499, 1.0786, -0.0154]
+    + [0.5998, -1.0213, -1.9675, -1.4788, 1.4504, -1.6671, 1.452, 0.4387]
+    + [-0.7423, 0.3512, 0.5346, 1.2176, 0.1447, -0.2952, -0.1089, -1.4354]
+    + [-0.0087, 0.3917, 0.0413, -0.8693, 0.3751, -0.3516, -0.7511],
+    "er_time": [
+        10.4873,
+        8.327,
+        17.8527,
+        7.3063,
+        3.2186,
+        4.3268,
+        0.869,
+        4.8087,
+        9.9403,
+    ]
+    + [2.8031, 3.2304, 1.6898, 2.173, 7.4647, 8.1934, 0.5565, 4.5856, 0.2507]
+    + [18.4893, 16.229, 2.5617, 3.4855, 8.8773, 5.5227, 11.839, 14.9685]
+    + [9.4964, 2.536, 0.7228, 1.1693, 2.5075, 3.9179, 5.8368, 1.751, 8.5954]
+    + [11.2996, 2.412, 9.2335, 11.1035, 12.3374, 12.7338, 4.4642, 9.5936]
+    + [6.9113, 6.0163, 1.4301, 8.3519, 7.4176, 22.6579, 1.5862, 7.9114, 6.3735]
+    + [5.3373, 4.9144, 16.7098, 9.5952, 5.6088, 9.8553, 4.1749, 1.9613, 2.3691]
+    + [2.2287, 2.8035, 7.9465, 6.511, 8.0568, 8.6489, 4.0004, 0.4394, 11.8417]
+    + [10.0937, 18.227, 1.0496, 5.6596, 5.7705, 9.5624, 3.5014, 2.3134, 3.2883]
+    + [7.6272, 3.0477, 1.4835, 23.6346, 24.5993, 21.2711, 13.6294, 5.0438]
+    + [6.595, 3.7339, 9.4047, 7.4758, 9.6402, 5.1467, 3.9373, 4.6463, 4.8515]
+    + [7.5906, 1.6164, 6.9855, 2.8489, 5.5933, 12.2461, 13.6827, 9.3483]
+    + [7.5674, 9.1651, 14.1485, 23.814, 6.478, 1.2388, 11.0611, 20.156, 5.5189]
+    + [0.2503, 5.8243, 1.6638, 17.0196, 6.7461, 5.1013, 10.7471, 14.8452]
+    + [4.7461, 0.3305, 4.979, 6.5959, 8.9075, 14.4811, 6.4763, 8.4085, 7.2154]
+    + [1.9631, 24.3276, 2.6889, 5.0019, 2.0371, 4.299, 3.5972, 14.0405, 1.0854]
+    + [9.181, 11.8374, 14.9251, 7.9527, 4.657, 1.5721, 7.168, 10.6179, 10.308]
+    + [8.1754, 2.3508, 2.1544, 8.1774, 1.2496, 16.6947, 3.7926, 11.2655]
+    + [0.7783, 9.2277, 1.8547, 24.4893, 9.6109, 20.0225, 4.7834, 24.3342]
+    + [14.0612, 5.0318, 3.6429, 7.3284, 8.001, 2.8789, 1.8763, 17.1218]
+    + [12.8412, 10.1486, 8.6728, 8.5949, 4.2792, 4.4449, 7.6043, 1.7299]
+    + [2.4096, 3.2314, 5.3819, 4.0391, 0.8811, 18.0104, 17.916, 3.6092, 6.5263]
+    + [1.5103, 13.0414, 12.9426, 4.8353, 4.0997, 3.6901, 15.4505, 5.625]
+    + [16.7338, 1.2506, 5.568, 5.6603, 2.5065, 4.3743, 6.8026, 23.8199, 7.2205]
+    + [17.4802, 13.5192, 3.1968, 2.255, 9.9692, 11.1685, 24.1723, 6.8673]
+    + [2.1264, 9.6304, 4.731, 9.2873, 1.7495, 8.1316, 9.6473, 11.7426, 6.0145]
+    + [4.9462, 8.2172, 7.9665, 3.7979, 6.536, 7.3134, 18.3448, 3.4141, 10.2007]
+    + [9.0752, 5.3859, 5.6503, 15.1557, 24.4572, 3.6817, 6.5313, 5.5868]
+    + [5.3398, 2.7621, 2.1821, 0.9523, 3.3338, 3.7814, 8.8417, 24.6121, 6.8037]
+    + [5.6203, 12.7423, 7.3609, 2.882, 1.3219, 8.0467, 12.3597, 2.0221, 1.223]
+    + [6.9552, 4.4324, 9.6234, 18.7398, 7.366, 4.1234, 4.7643, 1.7448, 19.252]
+    + [1.3651, 4.5059, 5.3774, 3.0956, 4.0047, 12.0201, 8.3865, 1.9116]
+    + [14.0229, 4.6139, 6.0942, 1.8836, 2.8928, 6.7117, 14.7278, 3.7845]
+    + [2.7744, 8.422, 2.7411, 5.7564, 1.3015, 7.7937, 3.6451, 4.7731, 8.4972]
+    + [3.0899, 2.3585, 4.4495, 9.3724, 11.0062, 8.0939, 7.6343, 18.5341],
+    "er_event": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+    ]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+}
+
+
 def _native(values):
     """A list of plain floats/ints with ``None`` for NaN or infinity, so
     the file is strict JSON."""
@@ -429,6 +701,71 @@ def _native(values):
         else:
             out.append(v)
     return out
+
+
+def ic_current_status():
+    """Current-status data of the kind of icenReg's miceData: each of 150
+    units is inspected once, at a whole-number time uniform on (350,
+    1000), and found to have failed by then (left censored, ``l = 0``,
+    ``u`` the inspection) or not (right censored, ``l`` the inspection,
+    ``u`` null). Lives Weibull PH, shape 3, scale 700, log hazard ratio
+    0.7 for ``grp = 1``."""
+    rng = np.random.default_rng(3802)
+    n = 150
+    grp = rng.binomial(1, 0.4, n)
+    life = 700.0 * (rng.exponential(size=n) / np.exp(0.7 * grp)) ** (1 / 3)
+    seen = np.round(rng.uniform(350.0, 1000.0, n))
+    failed = life <= seen
+    l = np.where(failed, 0.0, seen)
+    u = np.where(failed, seen, np.inf)
+    return {
+        "source": "seeded synthetic, make_fixtures.ic_current_status (rng "
+        "3802): current status; l = 0 left censored at u, u null (Inf) "
+        "right censored at l",
+        "columns": {"l": _native(l), "u": _native(u), "grp": _native(grp)},
+    }
+
+
+def ic_wide_narrow():
+    """General interval-censored data of the kind of icenReg's
+    IR_diabetes: 400 lives in years, Weibull PH, shape 2, scale 25, log
+    hazard ratio -0.15 for ``male = 1``. A fifth are seen exactly, to the
+    nearest year (``left == right``, with ties); a tenth are right
+    censored at a whole-year end of follow-up (``right`` null); the rest
+    lie between whole-year visits, 7 in 10 narrowly (1 to 3 years) and 3
+    in 10 widely (5 to 15 years), ``left = 0`` where the interval starts
+    at the origin. Endpoints are shared between rows."""
+    rng = np.random.default_rng(3803)
+    n = 400
+    male = rng.binomial(1, 0.5, n)
+    life = 25.0 * (rng.exponential(size=n) / np.exp(-0.15 * male)) ** 0.5
+    width = np.where(
+        rng.random(n) < 0.7,
+        rng.uniform(1.0, 3.0, n),
+        rng.uniform(5.0, 15.0, n),
+    )
+    share = rng.random(n)
+    left = np.maximum(np.floor(life - share * width), 0.0)
+    right = np.ceil(life + (1.0 - share) * width)
+    kind = rng.random(n)
+    exact = kind < 0.2
+    exact_time = np.maximum(np.round(life), 1.0)
+    left = np.where(exact, exact_time, left)
+    right = np.where(exact, exact_time, right)
+    follow = np.floor(rng.uniform(10.0, 40.0, n))
+    censored = (kind > 0.9) & (life > follow)
+    left = np.where(censored, follow, left)
+    right = np.where(censored, np.inf, right)
+    return {
+        "source": "seeded synthetic, make_fixtures.ic_wide_narrow (rng "
+        "3803): years in [left, right], exact where equal, right null (Inf) "
+        "right censored, left = 0 from the origin",
+        "columns": {
+            "left": _native(left),
+            "right": _native(right),
+            "male": _native(male),
+        },
+    }
 
 
 def lung():
@@ -628,6 +965,84 @@ def competing():
     }
 
 
+def _fine_gray_draw(rng, Z, beta, p, u):
+    """Fine and Gray's (1999) construction: the cumulative incidence of
+    cause 1 is 1 - (1 - p (1 - exp(-t)))^exp(beta'Z), cause 2 (exponential
+    times) takes the rest; the uniform ``u`` decides the cause and the
+    time."""
+    phi = np.exp(Z @ beta)
+    p1 = 1 - (1 - p) ** phi
+    first = u < p1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = -np.log(1 - (1 - (1 - u) ** (1 / phi)) / p)
+        t2 = -np.log1p(-(u - p1) / (1 - p1))
+    return np.where(first, t1, t2), np.where(first, 1, 2)
+
+
+def fine_gray_strata():
+    """Three strata of 80 units with their own cause-1 baselines (p = 0.3,
+    0.5, 0.7) and their own censoring (exponential, means 0.6, 1.2 and
+    2.5), a binary and a continuous covariate."""
+    rng = np.random.default_rng(3802)
+    n = 240
+    stratum = np.repeat([1, 2, 3], n // 3)
+    z1 = rng.binomial(1, 0.5, n)
+    z2 = np.round(rng.normal(0, 1, n), 1)
+    Z = np.column_stack([z1, z2]).astype(float)
+    p = np.array([0.3, 0.5, 0.7])[stratum - 1]
+    t, cause = _fine_gray_draw(
+        rng, Z, np.array([0.6, -0.4]), p, rng.uniform(size=n)
+    )
+    cens = rng.exponential(np.array([0.6, 1.2, 2.5])[stratum - 1])
+    x = np.round(np.minimum(t, cens), 4)
+    cause = np.where(cens < t, 0, cause)
+    return {
+        "source": "seeded synthetic, make_fixtures.fine_gray_strata (rng "
+        "3802): three strata with their own baselines and censoring; "
+        "cause 0 is censored",
+        "columns": {
+            "x": _native(x),
+            "cause": _native(cause),
+            "stratum": _native(stratum),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
+def fine_gray_cluster():
+    """100 clusters of two units that share the binary covariate and whose
+    uniforms are joined by a Gaussian copula (correlation 0.7), so each
+    unit follows the Fine-Gray model and the two are dependent; a
+    unit-level continuous covariate; exponential censoring (mean 1.5)."""
+    from scipy.stats import norm
+
+    rng = np.random.default_rng(3803)
+    k = 100
+    cluster = np.repeat(np.arange(1, k + 1), 2)
+    z1 = np.repeat(rng.binomial(1, 0.5, k), 2)
+    z2 = np.round(rng.normal(0, 1, 2 * k), 1)
+    Z = np.column_stack([z1, z2]).astype(float)
+    shared = np.repeat(rng.normal(size=k), 2)
+    u = norm.cdf(np.sqrt(0.7) * shared + np.sqrt(0.3) * rng.normal(size=2 * k))
+    t, cause = _fine_gray_draw(rng, Z, np.array([0.6, -0.4]), 0.5, u)
+    cens = rng.exponential(1.5, 2 * k)
+    x = np.round(np.minimum(t, cens), 4)
+    cause = np.where(cens < t, 0, cause)
+    return {
+        "source": "seeded synthetic, make_fixtures.fine_gray_cluster (rng "
+        "3803): pairs sharing z1, dependent through a Gaussian copula; "
+        "cause 0 is censored",
+        "columns": {
+            "x": _native(x),
+            "cause": _native(cause),
+            "cluster": _native(cluster),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
 def prediction(name, seed, digits):
     """An evaluation set and a matrix of predicted survival at four
     horizons, for the Brier score and the time-dependent AUC. With
@@ -803,6 +1218,27 @@ def mgus2_multistate():
     }
 
 
+def mgus2_pyears():
+    df = load_mgus2()
+    tl = np.where(df["id"] % 4 == 0, df["futime"] // 3, 0)
+    return {
+        "source": "surpyval.datasets.load_mgus2(); R survival::mgus2, "
+        "one row per patient: age at diagnosis and dxyr (years), futime "
+        "(months), death 1 for a death, male 1 for a man; tl a late "
+        "entry made for the tests, futime %/% 3 months for every fourth "
+        "id (id %% 4 == 0) and 0 otherwise",
+        "columns": {
+            "id": _native(df["id"]),
+            "age": _native(df["age"]),
+            "dxyr": _native(df["dxyr"]),
+            "male": _native((df["sex"] == "M").astype(int)),
+            "futime": _native(df["futime"]),
+            "death": _native(df["death"]),
+            "tl": _native(tl),
+        },
+    }
+
+
 def multistate(seed):
     """An illness-death model with recovery and constant hazards
     (healthy -> ill 0.3, healthy -> dead 0.1, ill -> healthy 0.4, ill ->
@@ -905,6 +1341,105 @@ def joint_frailty(seed):
     }
 
 
+def rank_regression():
+    """Ten lifetimes for the rank-regression (probability plotting)
+    references: complete (``c``), censored after the sixth failure at
+    126 (``c_type2``, ``x_type2``), and with two suspensions among them
+    (``c_mixed``)."""
+    x = [30, 49, 82, 90, 96, 125, 151, 172, 199, 236]
+    return {
+        "source": "made up for reference_r_weibullr.R: ten lifetimes; "
+        "c_type2 censors the last four at 126 (x_type2), c_mixed makes "
+        "82 and 172 suspensions",
+        "columns": {
+            "x": x,
+            "c": [0] * 10,
+            "x_type2": x[:6] + [126] * 4,
+            "c_type2": [0] * 6 + [1] * 4,
+            "c_mixed": [0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        },
+    }
+
+
+def multistate_panel(seed):
+    """A four-state Markov model seen at visits (1 well, 2 mild, 3
+    severe, 4 dead; the transitions of R msm's heart-transplant example):
+    300 units, 80% starting well, visited at time 0 and then every
+    uniform (0.5, 1.5) time units until a uniform (4, 10) end of
+    follow-up. Base intensities 1->2 0.15, 1->4 0.03, 2->1 0.10, 2->3
+    0.15, 2->4 0.05, 3->2 0.05, 3->4 0.20; a unit with male = 1 has every
+    intensity times exp(0.4). A death is recorded at its exact time
+    (state 4, obstype 3); a unit alive at the end of follow-up has a last
+    row there, whose state is seen (obstype 1) or, for a third of them,
+    recorded as 99, "alive, state not seen". w is a covariate drawn
+    afresh at each visit (uniform 0 to 1) with no effect. Times are
+    rounded to three decimals."""
+    rng = np.random.default_rng(seed)
+    base = {
+        (1, 2): 0.15,
+        (1, 4): 0.03,
+        (2, 1): 0.10,
+        (2, 3): 0.15,
+        (2, 4): 0.05,
+        (3, 2): 0.05,
+        (3, 4): 0.20,
+    }
+    rows = []
+    for unit in range(1, 301):
+        male = int(rng.uniform() < 0.4)
+        mult = math.exp(0.4 * male)
+        state = 1 if rng.uniform() < 0.8 else 2
+        end = round(float(rng.uniform(4, 10)), 3)
+        visits = [0.0]
+        while True:
+            nxt = round(visits[-1] + float(rng.uniform(0.5, 1.5)), 3)
+            if nxt >= end:
+                break
+            visits.append(nxt)
+        visits.append(end)
+        # the path: (time of each move, state entered)
+        t, path = 0.0, [(0.0, state)]
+        while state != 4:
+            out = [(b, r * mult) for (a, b), r in base.items() if a == state]
+            total = sum(r for _, r in out)
+            t += float(rng.exponential(1 / total))
+            if t >= end:
+                break
+            k = rng.choice(len(out), p=[r / total for _, r in out])
+            state = out[k][0]
+            path.append((t, state))
+        death = path[-1][0] if path[-1][1] == 4 else None
+
+        def at(time):
+            return [s for u, s in path if u <= time][-1]
+
+        hidden = rng.uniform() < 1 / 3
+        for k, v in enumerate(visits):
+            if death is not None and v >= death:
+                rows.append((unit, round(death, 3), 4, 3, male))
+                break
+            last = k == len(visits) - 1
+            code = 99 if last and hidden else at(v)
+            rows.append((unit, v, code, 1, male))
+    w = [round(float(v), 3) for v in rng.uniform(0, 1, len(rows))]
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.multistate_panel (rng "
+        "{}): a four-state Markov model seen at visits (state 1 well, 2 "
+        "mild, 3 severe, 4 dead, 99 alive in an unseen state; obstype 1 a "
+        "visit, 3 an exactly timed death; male multiplies every intensity "
+        "by exp(0.4); w has no effect)".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "time": _native(columns[1]),
+            "state": _native(columns[2]),
+            "obstype": _native(columns[3]),
+            "male": _native(columns[4]),
+            "w": w,
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -928,6 +1463,8 @@ def build():
         "left_truncation": left_truncation(),
         "interval": interval(),
         "competing": competing(),
+        "fine_gray_strata": fine_gray_strata(),
+        "fine_gray_cluster": fine_gray_cluster(),
         "prediction_ties": prediction("prediction_ties", 3795, 0),
         "prediction_continuous": prediction("prediction_continuous", 3795, 3),
         "additive": additive(),
@@ -954,8 +1491,25 @@ def build():
         "recurrent_groups": recurrent_groups(3798, False),
         "recurrent_groups_ties": recurrent_groups(3799, True),
         "mgus2_multistate": mgus2_multistate(),
+        "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
         "joint_frailty": joint_frailty(3801),
+        "rank_regression": rank_regression(),
+        "multistate_panel": multistate_panel(3801),
+        "no_data": {
+            "source": "none: a design calculation (a sample size or a "
+            "power) from the arguments in its call alone",
+            "columns": {},
+        },
+        "ic_current_status": ic_current_status(),
+        "ic_wide_narrow": ic_wide_narrow(),
+        "ic_mixed": {
+            "source": "simulated by reference_r_interval_cox.R (seed "
+            "20261113): 300 interval-censored Weibull PH lives; l = 0 left "
+            "censored, u null (Inf) right censored, l == u exact; er_time "
+            "and er_event the same lives exact or right censored",
+            "columns": IC_MIXED,
+        },
     }
 
 

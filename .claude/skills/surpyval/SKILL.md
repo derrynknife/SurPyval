@@ -103,7 +103,12 @@ Extra `fit` options on parametric distributions: `how` (`"MLE"` default, or
 location/threshold `gamma`, e.g. 3-parameter Weibull), `zi=True`
 (zero-inflation), `lfp=True` (limited failure population / cure fraction),
 `fixed={"beta": 2}` (hold parameters), `init=[...]`. For `how="MPP"`,
-`heuristic` picks the plotting positions (`"Nelson-Aalen"` default).
+`heuristic` picks the plotting positions (`"Nelson-Aalen"` default); an
+MPP fit's bounds are `method="pivotal"` on `cb`/`quantile_cb`/`param_cb`
+(exact for complete or type II samples; Weibull, LogNormal, LogLogistic,
+Normal, Logistic, Gumbel, GumbelLEV, Exponential). `model.rba()` gives an
+MLE fit's small-sample (reduced bias) adjusted Weibull shape or (log)normal
+`sigma`, opt-in.
 **Note:** `offset`/`zi`/`lfp` are univariate-distribution features only — the
 **regression** fitters do not accept them (they raise `TypeError`).
 
@@ -280,9 +285,9 @@ silently wrong numbers, not errors.
 | **Parametric distributions** | `sp.<Name>` | Weibull, Exponential, Gamma, LogNormal, Normal, Gumbel, Logistic, LogLogistic, ExpoWeibull, Rayleigh, Beta, Beta4, Uniform, and discrete (Bernoulli, Poisson, Binomial, Geometric, NegativeBinomial, DiscreteWeibull, ...) |
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
 | **Non-parametric plot** | `sp.plot_nonparametric` | One or more fitted non-parametric models (a list, or `{label: model}` for groups) on one axes: `sf`/`ff`/`Hf`, `cb` or `band`, censor ticks, `quantiles=0.5` median lines and a number-at-risk table (`at_risk_rows="all"`); returns `fig`, `ax`, `counts`, `quantiles`. The table alone, no matplotlib: `sp.at_risk_table(models, times=, rows=, counts=)` |
-| **Tests** | `sp.logrank`, `sp.pairwise_logrank`, `sp.interval_logrank` (interval-censored data), `sp.sf_diff`, `model.likelihood_ratio_test()`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
+| **Tests** | `sp.logrank`, `sp.pairwise_logrank`, `sp.interval_logrank` (interval-censored data), `sp.maxcombo_logrank` (non-proportional hazards), `sp.trend_logrank` (ordered groups), `sp.permutation_logrank` (exact / Monte Carlo p-value), `sp.maxstat_logrank` (cut-point of a continuous covariate, search-corrected p-value), `sp.sf_diff`, `model.likelihood_ratio_test()`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
 | **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
-| **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). |
+| **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). `sp.IntervalCoxPH` takes interval-, left- and right-censored rows (`x` as `[left, right]` pairs, `c=2`): Cox PH with an NPMLE baseline on the Turnbull intervals (icenReg's `ic_sp`); `param_cb` Wald (profile likelihood), `"lr"`, `"bootstrap"`; no `cb` on curves. |
 | **Time-varying covariates** | `sp.StepSchedule`, `sp.CovariatePath` | Evaluate a fitted regression along a covariate path with `sf_tvc` / `Hf_tvc`; `CovariatePath.from_points` / `from_callable` (**0.22**) for ramps and cycles; item records with a `CovariatePath` as `time_varying_covariates` are fitted on it (cut into steps, halved until the fit stops moving: `model.path_steps`; `path.to_steps(t_max, steps)` gives the steps) |
 | **Frailty** | `sp.WeibullFrailty`, ... | Shared gamma frailty PH; `params` = baseline, coefficients, `theta` |
 | **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards`, `ParametricCompetingRisksRegression` (a parametric regression per cause, `model=WeibullPH` or `{cause: fitter}`: `cif(x, Z, event)` past the data, `probability_of_cause(Z, event)`, `cb`) |
@@ -384,6 +389,9 @@ ka = sp.KaplanMeier.fit(x[:40], c[:40]); kb = sp.KaplanMeier.fit(x[40:], c[40:])
 sp.sf_diff(ka, kb, 8)["p_value"]      # survival at one time, log(-log) scale
 ka.cs(2, 6)                           # conditional survival from an estimate
 sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
+py = sp.person_years(x, c, factors={"g": g},          # exposure table:
+                     timescales={"age": (0, [0, 5, 10, np.inf])}, per=1000)
+py.table; py.rate_ratio({"g": "B"}, {"g": "A"})  # rates, exact bounds
 ```
 
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
