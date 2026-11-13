@@ -101,6 +101,13 @@ jobs:
           PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
             --jq '[.[] | select(.base.ref == "main" and .merged_at != null)]
                   | .[0].number // empty')
+          # GitHub doesn't always link a merge commit back to its pull
+          # request (it didn't for 0.27's): find it by its merge commit.
+          if [ -z "$PR" ]; then
+            PR=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=50" \
+              --jq "[.[] | select(.merge_commit_sha == \"$GITHUB_SHA\" and .merged_at != null)]
+                    | .[0].number // empty")
+          fi
           if [ -z "$PR" ]; then
             echo "$GITHUB_SHA is not the merge of a pull request into main" >&2
             exit 1
