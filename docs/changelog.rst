@@ -166,8 +166,12 @@ Unreleased
   cumulative counts (Sun and Kalbfleisch 1995). ``PanelCountRegression``
   fits the proportional means model ``E[N(t) | Z] = Lambda0(t)
   exp(beta'Z)`` with the baseline unspecified, by the pseudo-likelihood
-  (the default; R ``spef``'s ``"MPL"``, matched on simulated panel
-  counts) or the likelihood (Wellner and Zhang 2007). Both are consistent
+  (``how="pseudo"``, the default; R ``spef``'s ``"MPL"``, matched on
+  simulated panel counts) or the likelihood (``how="MLE"``, the default of
+  ``PanelCountMCF``; Wellner and Zhang 2007). Where a covariate separates
+  the units that counted events from those that did not, so the
+  coefficient has no finite estimate, the fit says "No finite maximum"
+  and is not ``converged``, by either method. Both are consistent
   when the counts are not Poisson; ``mcf_cb``, ``param_cb`` and
   ``standard_errors`` are bootstraps over units. ``fit_from_df``,
   ``to_dict`` / ``from_dict``, aliased covariates as the other

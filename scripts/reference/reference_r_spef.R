@@ -29,7 +29,7 @@
 #   visit time.
 # * mls: the same with method = "MLs", the sieve maximum likelihood
 #   estimator of Lu, Zhang and Huang (2007): the likelihood SurPyval's
-#   how="likelihood" maximises, with the baseline a monotone cubic
+#   how="MLE" maximises, with the baseline a monotone cubic
 #   spline instead of a step function, so close to but not equal to the
 #   step-function maximum. The coefficients.
 # * mpl_nonparametric: the maximum pseudo-likelihood mean function with

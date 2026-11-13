@@ -51,7 +51,7 @@ def _panel(events, inspections):
 # --- the two reductions that are exact --------------------------------------
 
 
-@pytest.mark.parametrize("how", ["pseudo", "likelihood"])
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
 def test_common_inspection_times_give_the_mean_count(how):
     # Every unit inspected at the same times: both estimators are the
     # mean cumulative count at each time.
@@ -89,7 +89,7 @@ def test_likelihood_estimate_on_a_common_grid_is_the_nelson_aalen_mcf():
     np.testing.assert_allclose(model.mcf(grid), mcf.mcf(grid), rtol=1e-8)
 
 
-@pytest.mark.parametrize("how", ["pseudo", "likelihood"])
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
 def test_fine_own_inspections_approach_the_mcf(how):
     # Each unit inspected at its own times, about every 0.05: the panel
     # estimate is close to the MCF of the exact event times (tolerance
@@ -171,7 +171,7 @@ def test_mcf_is_non_decreasing_and_a_step_function():
 # --- regression -------------------------------------------------------------
 
 
-@pytest.mark.parametrize("how", ["pseudo", "likelihood"])
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
 def test_regression_recovers_the_effect_under_a_mixed_poisson(how):
     # A gamma frailty (variance 0.5): the counts are not Poisson, the mean
     # model holds. Effect 0.7; 400 units; tolerance fixed in advance.
@@ -198,9 +198,112 @@ def test_regression_mcf_scales_the_baseline():
 
 
 def test_regression_init_does_not_change_the_answer():
-    a = PanelCountRegression.fit(X, Z, N, i=I, how="likelihood")
-    b = PanelCountRegression.fit(X, Z, N, i=I, how="likelihood", init=[2.0])
+    a = PanelCountRegression.fit(X, Z, N, i=I, how="MLE")
+    b = PanelCountRegression.fit(X, Z, N, i=I, how="MLE", init=[2.0])
     np.testing.assert_allclose(a.params, b.params, atol=1e-7)
+
+
+# Units with covariate 0 counted no events: the coefficient runs to +inf.
+SEP_N = [1, 0, 2, 0, 0, 0, 2, 1, 0, 0]
+# Separation in time: unit 2 (Z = 0) has no events by time 1, when unit 1
+# (Z = 1) has its one, and nothing later is compared with unit 1.
+TIME_SEP = ([1, 1, 2], [1, 0, 0], [1, 0, 1], [1, 2, 2])
+
+
+def _no_maximum(caught):
+    return [w for w in caught if "No finite maximum" in str(w.message)]
+
+
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
+@pytest.mark.parametrize(
+    "data",
+    [(X, [1, 1, 1, 0, 0, 1, 1, 1, 0, 0], SEP_N, I), TIME_SEP],
+    ids=["level-with-no-events", "in-time"],
+)
+def test_regression_with_no_finite_maximum_warns_and_is_not_converged(
+    how, data
+):
+    x, z, n, i = data
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = PanelCountRegression.fit(x, z, n, i=i, how=how)
+    found = _no_maximum(caught)
+    assert len(found) == 1
+    message = str(found[0].message)
+    assert "covariate column(s) 0" in message and "+inf" in message
+    # One warning: not also the search's own
+    assert not [
+        w for w in caught if w.category is pc.PanelCountConvergenceWarning
+    ]
+    assert not model.converged
+    assert model.params[0] > 5
+
+
+def test_runoff_direction_finds_a_combination():
+    # Neither covariate separates alone; z1 - z0 does (units with events
+    # have z1 - z0 = 1, the rest 0 or -1).
+    z = np.array([[0, 1], [1, 2], [2, 3], [1, 1], [0, 0], [3, 2]], float)
+    unit = np.repeat(np.arange(6), 2)
+    x = np.tile([2.0, 5.0], 6)
+    n = np.where(np.repeat(z[:, 1] - z[:, 0] == 1, 2), 1.0, 0.0)
+    panel = pc._panel_data(x, unit, n, z[unit])
+    for k in range(2):
+        alone = pc._panel_data(x, unit, n, z[unit][:, [k]])
+        assert pc._runoff_direction(alone) is None
+    d = pc._runoff_direction(panel)
+    assert d is not None
+    np.testing.assert_allclose(d / d[1], [-1.0, 1.0], atol=1e-6)
+
+
+def test_a_large_finite_estimate_is_not_a_runoff():
+    # The two units with events have nearly equal covariates and the
+    # later of them the lower: the mean function cannot fall, so the
+    # profile peaks at a large but finite coefficient (about -27.7).
+    x = [7, 5, 6, 1, 3, 6, 1, 3, 4]
+    i = [0, 1, 1, 2, 2, 2, 3, 3, 3]
+    z = [-0.625, -0.6, -0.6, -0.087, -0.087, -0.087, -1.077, -1.077, -1.077]
+    n = [2, 0, 1, 0, 0, 0, 0, 0, 0]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = PanelCountRegression.fit(x, z, n, i=i)
+    assert not _no_maximum(caught)
+    assert model.converged
+    assert -30 < model.params[0] < -25
+
+
+@pytest.mark.parametrize(
+    "how, ordinary, fixture",
+    [
+        ("pseudo", 0.18232155679395265, -0.30770781375147804),
+        ("MLE", 0.3709192553360213, -0.2946531871780949),
+    ],
+)
+def test_the_separation_check_leaves_an_ordinary_fit_unchanged(
+    how, ordinary, fixture
+):
+    # The coefficients the fit gave before the check was added
+    from surpyval.tests.conformance.registry_fixtures import panel_count_data
+
+    d = panel_count_data(True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        a = PanelCountRegression.fit(X, Z, N, i=I, how=how)
+        b = PanelCountRegression.fit(d["x"], d["Z"], d["n"], i=d["i"], how=how)
+    assert a.converged and b.converged
+    assert a.params.tolist() == [ordinary]
+    assert b.params.tolist() == [fixture]
+
+
+def test_a_saved_separated_fit_reloads_without_warning():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = PanelCountRegression.fit(
+            X, [1, 1, 1, 0, 0, 1, 1, 1, 0, 0], SEP_N, i=I
+        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        again = PanelCountRegression.from_dict(model.to_dict())
+    assert not again.converged
 
 
 def test_regression_is_invariant_to_shifting_a_covariate():
@@ -329,7 +432,7 @@ def test_fit_from_df_is_fit():
     )
 
 
-@pytest.mark.parametrize("how", ["pseudo", "likelihood"])
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
 def test_round_trips(how):
     for model in (
         PanelCountMCF.fit(X, N, i=I, how=how, unit="hours"),

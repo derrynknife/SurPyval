@@ -1067,13 +1067,12 @@ def _how(sigs):
     # estimate (documented; MLE is the joint alternative), and the
     # non-parametric competing risks' is its Nelson-Aalen survival (it
     # has no likelihood). The panel-count models choose between the
-    # likelihood and the pseudo-likelihood ("likelihood" / "pseudo"); the
+    # likelihood and the pseudo-likelihood ("MLE" / "pseudo"); the
     # regression's default is the pseudo-likelihood, whose profile is
-    # concave with an exact baseline (both recorded in DECISIONS.md).
+    # concave with an exact baseline (recorded in DECISIONS.md).
     own = {
         "Copula": "IFM",
         "CompetingRisks": "Nelson-Aalen",
-        "PanelCountMCF": "likelihood",
         "PanelCountRegression": "pseudo",
     }
     return [

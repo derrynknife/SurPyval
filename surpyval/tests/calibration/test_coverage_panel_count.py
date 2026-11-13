@@ -20,11 +20,11 @@ Two inspection designs, both independent of the counts:
 Checked, with 95% percentile bootstrap bounds (``n_boot = 200``) from 300
 replicates:
 
-* ``PanelCountMCF`` (``how="likelihood"``, the default) at t = 2, 4 and 6,
+* ``PanelCountMCF`` (``how="MLE"``, the default) at t = 2, 4 and 6,
   the truth the population mean ``Lambda0(t) (1 + e^0.5) / 2``, under both
   designs;
 * ``PanelCountRegression`` (``how="pseudo"``, the default, and
-  ``"likelihood"``), the coefficient ``beta = 0.5``, under the irregular
+  ``"MLE"``), the coefficient ``beta = 0.5``, under the irregular
   design.
 
 With irregular times the non-parametric estimate at a fixed time converges
@@ -114,7 +114,7 @@ def test_mcf_bootstrap_coverage(design):
     )
 
 
-@pytest.mark.parametrize("how", ["pseudo", "likelihood"])
+@pytest.mark.parametrize("how", ["pseudo", "MLE"])
 def test_regression_bootstrap_coverage(how):
     out = _run(_beta, how)
     check_coverage(
