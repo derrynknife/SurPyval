@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from .registry import Context
+from .registry import Context, Panel
 
 #: The most distinct values a covariate has and still counts as
 #: categorical (one with two is binary); more is continuous.
@@ -89,3 +89,72 @@ class _Fit(SimpleNamespace):
     theta: np.ndarray
     value: float
     ok: bool
+
+
+def _draw_form(
+    ax: Any,
+    z: np.ndarray,
+    residual: np.ndarray,
+    name: str,
+    ylabel: str,
+    grid: np.ndarray | None = None,
+) -> None:
+    """Draw the functional-form plot on ``ax``: each row's ``residual``
+    against its covariate value ``z``, with a lowess trend over ``grid``
+    (default: 60 points across ``z``) and a line at 0."""
+    from surpyval.plotting import INK, PALETTE
+
+    from .smooth import lowess
+
+    if grid is None:
+        grid = np.linspace(z.min(), z.max(), 60)
+    ax.scatter(z, residual, s=10, color=INK["muted"], alpha=0.6)
+    ax.plot(grid, lowess(z, residual, grid), color=PALETTE[0])
+    ax.axhline(0.0, color=INK["axis"], lw=0.8)
+    ax.set_xlabel(name)
+    ax.set_ylabel(ylabel)
+
+
+def _form_panel(
+    name: str,
+    z: np.ndarray,
+    residual: np.ndarray,
+    ylabel: str,
+    title: str | None = None,
+) -> Panel:
+    """The functional-form plot of covariate ``name`` (:func:`_draw_form`;
+    Cox, frailty, parametric PH/AFT and Fine-Gray), titled ``title``
+    (default ``"<name>: functional form"``)."""
+
+    def draw(ax: Any, options: Any) -> None:
+        _draw_form(ax, z, residual, name, ylabel)
+
+    return Panel(title or f"{name}: functional form", draw)
+
+
+def _cox_snell_panel(
+    r: np.ndarray, c: np.ndarray, n: np.ndarray, xlabel: str, title: str
+) -> Panel:
+    """The overall-fit plot: the Nelson-Aalen cumulative hazard of the
+    Cox-Snell residuals ``r`` (censoring ``c``, counts ``n``) against the
+    line of slope 1 they follow when the model fits."""
+    order = np.argsort(r, kind="stable")
+    r, c, n = r[order], c[order], n[order]
+    uniq, first = np.unique(r, return_index=True)
+    at_risk = n[::-1].cumsum()[::-1][first]
+    deaths = np.bincount(
+        np.searchsorted(uniq, r), weights=n * (c == 0), minlength=uniq.size
+    )
+    H = np.cumsum(deaths / at_risk)
+    keep = deaths > 0
+
+    def draw(ax: Any, options: Any) -> None:
+        from surpyval.plotting import INK, PALETTE
+
+        ax.step(uniq[keep], H[keep], where="post", color=PALETTE[0])
+        top = float(max(uniq[keep].max(), H[keep].max())) if keep.any() else 1
+        ax.plot([0, top], [0, top], color=INK["secondary"], ls="--", lw=0.8)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("cumulative hazard")
+
+    return Panel(title, draw)

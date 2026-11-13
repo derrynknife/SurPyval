@@ -13,6 +13,7 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -22,12 +23,17 @@ from surpyval.recurrent.renewal._derivatives import (
     negated,
 )
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.utils.dataframe import column_arguments
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    takes_terminal_column,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -38,7 +44,6 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_censoring,
     validate_restoration,
 )
-from surpyval.utils.removed_names import column_arguments, removed_arguments
 from surpyval.utils.units import takes_unit
 
 
@@ -542,7 +547,6 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
-    @removed_arguments("0.23", dist="'baseline'")
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
@@ -637,8 +641,9 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(baseline.parameter_initialiser(data.x))
         return base_params
 
-    @removed_arguments("0.23", dist="'baseline'")
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
@@ -660,6 +665,13 @@ class ARI(RenewalFitMixin):
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``), measured from the start of each item's life.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.
@@ -727,8 +739,10 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
+    @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n", "tl", "tr")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: Any,
@@ -801,9 +815,6 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    @removed_arguments(
-        "0.23", dist="'baseline'", dist_params="'baseline_params'"
-    )
     def fit_from_parameters(
         self,
         baseline_params: ArrayLike,

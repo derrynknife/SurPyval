@@ -25,6 +25,14 @@ variance its confidence bounds (``cb``) use.
 
 .. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_variance
 
+The restricted mean time lost to a cause (``CompetingRisks.rmtl``, and
+``ParametricCompetingRisks.rmtl`` below), its variance, and the
+comparison of two groups.
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.rmtl_diff
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl
+
 Parametric
 ----------
 
@@ -39,9 +47,11 @@ Regression
 
 Covariate models for competing risks: the Fine-Gray subdistribution
 hazards model (``FineGray`` is an instance of ``FineGray_`` below; its
-``fit`` returns a ``FineGrayModel``), and
+``fit`` returns a ``FineGrayModel``),
 ``CompetingRisksProportionalHazards``, which fits either a cause-specific
-Cox model per cause or a Fine-Gray model per cause.
+Cox model per cause or a Fine-Gray model per cause, and
+``ParametricCompetingRisksRegression``, which fits a parametric regression
+per cause.
 
 .. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGray_
    :members:
@@ -50,4 +60,7 @@ Cox model per cause or a Fine-Gray model per cause.
    :members:
 
 .. autoclass:: surpyval.univariate.competing_risks.regression.competing_risks_proportional_hazard.CompetingRisksProportionalHazards
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.parametric_competing_risks_regression.ParametricCompetingRisksRegression
    :members:

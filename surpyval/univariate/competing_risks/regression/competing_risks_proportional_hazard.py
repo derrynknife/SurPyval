@@ -23,6 +23,9 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks._assembly import (
+    aalen_johansen_steps,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -35,7 +38,6 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
@@ -49,14 +51,10 @@ from surpyval.univariate.regression._summary import (
     coefficient_table,
 )
 from surpyval.univariate.regression.regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
-    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
-)
-from surpyval.utils import (
-    finite_covariate_mask,
-    is_missing_event,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
@@ -65,7 +63,7 @@ from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
 )
-from surpyval.utils.removed_names import RemovedName, column_arguments
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
@@ -308,9 +306,12 @@ class CompetingRisksProportionalHazards(
             }
         model.results = None
         if model.model == "Fine-Gray":
-            model._covariances = [
-                fg.covariance() for fg in model._fg_models.values()
-            ]
+            # (None where a cause's model was saved before v0.27, with
+            # only its model-based covariance: covariance() then refuses)
+            robust = [fg._covariance for fg in model._fg_models.values()]
+            model._covariances = (
+                None if any(cov is None for cov in robust) else robust
+            )
         elif "covariances" in model_dict:
             model._covariances = [
                 np.array(cov, dtype=float) for cov in model_dict["covariances"]
@@ -410,14 +411,21 @@ class CompetingRisksProportionalHazards(
     def covariance(self) -> npt.NDArray:
         """
         The covariance of ``params``: block-diagonal across the causes,
-        each block the inverse information of that cause's fit (its Cox
-        partial likelihood, or its Fine-Gray weighted partial likelihood),
-        as the causes' fits are separate. An aliased coefficient's row and
-        column are ``nan``. For a fit with weights ``w`` each block is
-        the cause's robust (sandwich) covariance (see :meth:`fit`).
+        each block that cause's fit's, as the causes' fits are separate.
+        For ``model="Cox"`` a block is the inverse information of the
+        cause's Cox partial likelihood; for ``model="Fine-Gray"`` it is
+        the cause's robust (sandwich) covariance, Fine and Gray's, as
+        ``FineGray``'s ``covariance()`` (the model-based one is
+        ``models[cause].covariance(robust=False)``). An aliased
+        coefficient's row and column are ``nan``. For a fit with weights
+        ``w`` each block is the cause's robust (sandwich) covariance (see
+        :meth:`fit`).
 
         Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
-        dict saved before the covariances were stored, and for a penalised
+        dict saved before the covariances were stored, for a
+        ``model="Fine-Gray"`` model restored from a dict saved before
+        v0.27 (which stored only the model-based covariances, and the
+        robust ones need the data), and for a penalised
         fit (:meth:`fit_penalised`), which has none.
         """
         self._refuse_if_penalised()
@@ -425,6 +433,9 @@ class CompetingRisksProportionalHazards(
             raise no_covariance_error(
                 "it was saved before the causes' covariances were stored; "
                 "refit it"
+                if self.model == "Cox"
+                else "the robust one: it was saved before v0.27, which "
+                "stored only each cause's model-based covariance; refit it"
             )
         return block_diag(*[np.atleast_2d(c) for c in self._covariances])
 
@@ -873,17 +884,9 @@ class CompetingRisksProportionalHazards(
             ],
             dtype=float,
         )
-        total = increments.sum(axis=0)
-        # exp(-H(t-)): the survival just before each step.
-        before = np.exp(-np.concatenate([[0.0], np.cumsum(total)[:-1]]))
-        positive = total > 0
-        share = np.where(
-            positive, increments / np.where(positive, total, 1.0), 0.0
-        )
-        return before * -np.expm1(-total) * share
+        return aalen_johansen_steps(increments)
 
     @classmethod
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         cls,
@@ -980,38 +983,20 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            model=model,
+            tie_method=tie_method,
+            center=center,
+            w=design.column(w_col),
+            tl=design.column(tl_col),
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        # A censored row's cause is ``None``; accept a blank/NaN cell for it.
-        e = sub[e_col].to_numpy(dtype=object).copy()
-        e[[is_missing_event(v) for v in e]] = None
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
-        w = sub[w_col].values if w_col is not None else None
-        tl = sub[tl_col].values if tl_col is not None else None
-
-        with covariate_columns(feature_names, Z, model_spec):
-            fitted = cls.fit(
-                x,
-                Z,
-                e,
-                c=c,
-                n=n,
-                model=model,
-                tie_method=tie_method,
-                center=center,
-                w=w,
-                tl=tl,
-            )
-        fitted.formula = formula
-        fitted.feature_names = feature_names
-        fitted._model_spec = model_spec
-        return fitted
 
     @classmethod
     @dataframe_covariates

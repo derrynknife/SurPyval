@@ -172,6 +172,98 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def ic_reg_data():
+    """The regression fixture's 30 lives seen at inspections every 2: an
+    interval ``(lo, lo + 2]`` for most, every fifth from the third exact,
+    every seventh right censored at its last inspection, and a life
+    before the first inspection left censored at 2; counts 2 on two
+    rows. For ``IntervalCoxPH``."""
+    z0 = np.tile([0.0, 1.0], N_REG // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_REG), 3)
+    life = quantiles(N_REG, 1.0, 2.0)[scramble(N_REG)]
+    t = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    lo = 2.0 * np.floor(t / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(N_REG, 2)
+    rows = np.arange(N_REG)
+    exact = rows % 5 == 2
+    x[exact] = t[exact, None]
+    c[exact] = 0
+    right = rows % 7 == 0
+    x[right] = lo[right, None]
+    c[right] = 1
+    left = (c == 2) & (lo == 0.0)
+    x[left] = 2.0
+    c[left] = -1
+    n = np.ones(N_REG, int)
+    n[[3, 11]] = 2
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
+N_CURE = 60
+
+
+def cure_data():
+    """60 rows for the mixture-cure regressions: the regression
+    fixture's covariates and lives, where 2 units in 5 with ``z0 = 0``
+    and 3 in 5 with ``z0 = 1`` never fail and are still running at 60,
+    far past the lives (a plateau)."""
+    z0 = np.tile([0.0, 1.0], N_CURE // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_CURE), 3)
+    life = quantiles(N_CURE, 1.0, 2.0)[scramble(N_CURE)]
+    x = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    pair = np.arange(N_CURE) // 2
+    cured = np.where(z0 == 0, pair % 5 < 2, pair % 5 < 3)
+    x = np.where(cured, 60.0, x)
+    n = np.ones(N_CURE, int)
+    n[[3, 11]] = 2
+    return {
+        "x": x,
+        "Z": np.column_stack([z0, z1]),
+        "c": cured.astype(int),
+        "n": n,
+    }
+
+
+N_EQUIVALENCE = 40
+
+
+def equivalence_data():
+    """40 units on two clocks for the equivalent-scale fits: ``x`` (hours)
+    and ``x2`` (starts), each unit at its own constant start rate (0,
+    0.1, 0.3 or 1 per hour), with one start worth 2 hours; every fifth
+    unit still running at half its life, and two rows counted twice."""
+    m = N_EQUIVALENCE
+    rate = np.tile([0.0, 0.1, 0.3, 1.0], m // 4)
+    life = quantiles(m, 10.0, 2.0)[scramble(m)]
+    c = (np.arange(m) % 5 == 4).astype(int)
+    life = np.where(c == 1, life / 2.0, life)
+    x = np.round(life / (1.0 + 2.0 * rate), 3)
+    n = np.ones(m, int)
+    n[[3, 11]] = 2
+    return {"x": x, "x2": np.round(rate * x, 3), "c": c, "n": n}
+
+
+def zi_reg_data():
+    """60 rows for the zero-inflated regressions: the regression
+    fixture's covariates and lives, where 1 unit in 10 with ``z0 = 0``
+    and 2 in 10 with ``z0 = 1`` fail at time 0 (dead on arrival), and
+    every seventh of the rest is right censored."""
+    z0 = np.tile([0.0, 1.0], N_CURE // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_CURE), 3)
+    life = quantiles(N_CURE, 1.0, 2.0)[scramble(N_CURE)]
+    x = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    pair = np.arange(N_CURE) // 2
+    doa = np.where(z0 == 0, pair % 10 == 0, pair % 5 == 0)
+    x = np.where(doa, 0.0, x)
+    c = np.zeros(N_CURE, int)
+    c[1::7] = 1
+    c[doa] = 0
+    n = np.ones(N_CURE, int)
+    n[[3, 11]] = 2
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
 def ah_data():
     """The regression fixture with its covariates turned to add hazard,
     for the additive hazards cases (#828): ``1 - z1`` for ``z1``, so both
@@ -375,3 +467,200 @@ def copula_data():
 X_COP = np.array(
     [[2.0, 1.0], [5.0, 2.0], [8.0, 3.0], [10.0, 5.0], [14.0, 7.0], [3.0, 6.0]]
 )
+
+
+# Multi-state: an illness-death model with recovery, as spells
+_MS_UNITS = [
+    # (spells as (tl, x, state, entered), count, covariate)
+    ([(0, 2, "healthy", "ill"), (2, 5, "ill", "healthy"),
+      (5, 9, "healthy", "dead")], 1, 0.0),
+    ([(0, 3, "healthy", "dead")], 1, 1.0),
+    ([(0, 1.5, "healthy", "ill"), (1.5, 4, "ill", "dead")], 1, 1.0),
+    ([(0.5, 6, "healthy", None)], 1, 0.0),
+    ([(0, 4.5, "healthy", "ill"), (4.5, 10, "ill", None)], 1, 1.0),
+    ([(1, 3.5, "ill", "healthy"), (3.5, 8, "healthy", "ill"),
+      (8, 12, "ill", "dead")], 1, 0.25),
+    ([(0, 7, "healthy", "dead")], 2, 0.0),
+    ([(2, 11, "healthy", None)], 1, 1.0),
+    ([(0, 2.5, "healthy", "ill"), (2.5, 6.5, "ill", "dead")], 1, 0.5),
+    ([(0, 5.5, "healthy", "ill"), (5.5, 7.5, "ill", "healthy"),
+      (7.5, 12, "healthy", None)], 1, 1.0),
+]  # fmt: skip
+
+
+def ms_data(with_Z=False):
+    """Ten units' spells in an illness-death model with recovery, some
+    entering late (one in "ill"), one row counted twice."""
+    rows = [
+        (tl, x, st, e, n, z)
+        for spells, n, z in _MS_UNITS
+        for tl, x, st, e in spells
+    ]
+    d = {
+        "x": np.array([r[1] for r in rows], dtype=float),
+        "e": np.array([r[3] for r in rows], dtype=object),
+        "state": np.array([r[2] for r in rows], dtype=object),
+        "tl": np.array([r[0] for r in rows], dtype=float),
+        "n": np.array([r[4] for r in rows], dtype=int),
+        "transitions": [
+            ("healthy", "ill"),
+            ("healthy", "dead"),
+            ("ill", "healthy"),
+            ("ill", "dead"),
+        ],
+    }
+    if with_Z:
+        d["Z"] = np.array([[r[5]] for r in rows], dtype=float)
+    return d
+
+
+X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
+# The Cox model's predictions: from 7.5 on, the one unit left at risk in
+# "ill" makes the predicted hazards of leaving it add up to more than 1
+# for the other covariate rows (a property of the fit to so few, which the
+# model warns of).
+X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
+Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])
+
+
+def joint_frailty_data():
+    """60 units of a joint frailty model: a gamma frailty (variance 0.5)
+    from quantiles in a scrambled order acts on Weibull recurrent events
+    (scale 10, shape 1.2, on the age) and, as ``u ** 1``, on a Weibull
+    terminal event (scale 20, shape 1.5), each followed to 15; the
+    terminal ages' and the event steps' exponential draws from fixed
+    sequences of fractional parts. Covariate ``z`` 0 or 1 (effects 0.5
+    and 0.3)."""
+    from scipy.stats import gamma
+
+    size = 60
+    u = gamma.ppf((scramble(size) + 0.5) / size, 2.0, scale=0.5)
+    p_end = ((np.arange(size) * 29 + 7) * 0.4142135623730951) % 1.0
+    z = (np.arange(size) % 2).astype(float)
+    x, i, c, term, Z = [], [], [], [], []
+    for k in range(size):
+        death = 20.0 * (-np.log(p_end[k]) / (u[k] * np.exp(0.3 * z[k]))) ** (
+            1 / 1.5
+        )
+        stop = round(min(death, 15.0), 3)
+        rate = u[k] * np.exp(0.5 * z[k])
+        cum, j = 0.0, 0
+        while True:
+            q = ((k * 37 + j * 11 + 1) * 0.6180339887498949) % 1.0
+            cum += -np.log(q) / rate
+            t = round(10.0 * cum ** (1 / 1.2), 3)
+            if t >= stop:
+                break
+            x.append(t), i.append(k), c.append(0), term.append(0)
+            Z.append(z[k])
+            j += 1
+        x.append(stop), i.append(k), c.append(1)
+        term.append(int(death <= 15.0)), Z.append(z[k])
+    return {
+        "x": np.array(x),
+        "Z": np.array(Z)[:, None],
+        "i": np.array(i),
+        "c": np.array(c),
+        "terminal": np.array(term),
+    }
+
+
+X_JF = np.array([1.0, 3.0, 6.0, 9.0, 12.0, 14.0])
+Z_JF = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.2]])
+# Panel data: fourteen units of an illness-death model with recovery seen
+# at visits: (unit, time, state seen, covariate). "dead" is entered at an
+# exact time; "alive" is a last visit that saw only that the unit was
+# alive (healthy or ill).
+_PANEL_ROWS = [
+    (1, 0.0, "healthy", 0.0),
+    (1, 1.0, "healthy", 0.0),
+    (1, 2.0, "ill", 0.0),
+    (1, 3.5, "dead", 0.0),
+    (2, 0.0, "healthy", 1.0),
+    (2, 1.5, "ill", 1.0),
+    (2, 2.5, "healthy", 1.0),
+    (2, 4.0, "ill", 1.0),
+    (3, 0.0, "healthy", 0.5),
+    (3, 1.0, "healthy", 0.5),
+    (3, 2.0, "healthy", 0.5),
+    (3, 3.0, "alive", 0.5),
+    (4, 0.0, "ill", 0.0),
+    (4, 1.0, "ill", 0.0),
+    (4, 2.0, "ill", 0.0),
+    (4, 2.2, "dead", 0.0),
+    (5, 0.0, "healthy", 1.0),
+    (5, 2.0, "ill", 1.0),
+    (5, 3.0, "ill", 1.0),
+    (5, 5.0, "healthy", 1.0),
+    (6, 0.0, "healthy", 0.0),
+    (6, 1.2, "healthy", 0.0),
+    (6, 3.9, "healthy", 0.0),
+    (6, 4.1, "dead", 0.0),
+    (7, 0.0, "healthy", 0.5),
+    (7, 1.0, "ill", 0.5),
+    (7, 2.0, "ill", 0.5),
+    (7, 3.0, "healthy", 0.5),
+    (7, 4.5, "healthy", 0.5),
+    (8, 0.0, "ill", 1.0),
+    (8, 1.5, "healthy", 1.0),
+    (8, 3.0, "alive", 1.0),
+    (9, 0.0, "healthy", 0.0),
+    (9, 2.5, "healthy", 0.0),
+    (9, 3.0, "dead", 0.0),
+    (10, 0.0, "healthy", 1.0),
+    (10, 1.0, "ill", 1.0),
+    (10, 1.8, "dead", 1.0),
+    (11, 0.0, "healthy", 0.5),
+    (11, 2.0, "healthy", 0.5),
+    (11, 4.0, "healthy", 0.5),
+    (11, 4.3, "dead", 0.5),
+    (12, 0.0, "ill", 0.0),
+    (12, 1.0, "healthy", 0.0),
+    (12, 2.0, "ill", 0.0),
+    (12, 3.0, "ill", 0.0),
+    (13, 0.0, "ill", 1.0),
+    (13, 0.8, "ill", 1.0),
+    (13, 1.0, "dead", 1.0),
+    (14, 0.0, "healthy", 0.5),
+    (14, 1.0, "ill", 0.5),
+    (14, 1.2, "dead", 0.5),
+]
+
+
+def panel_data(with_Z=False):
+    """Visits of fourteen units in an illness-death model with recovery,
+    with exactly timed deaths and two last visits that saw only
+    "alive"."""
+    d = {
+        "x": np.array([r[1] for r in _PANEL_ROWS], dtype=float),
+        "s": np.array([r[2] for r in _PANEL_ROWS], dtype=object),
+        "i": np.array([r[0] for r in _PANEL_ROWS], dtype=int),
+        "transitions": [
+            ("healthy", "ill"),
+            ("healthy", "dead"),
+            ("ill", "healthy"),
+            ("ill", "dead"),
+        ],
+        "censored": {"alive": ("healthy", "ill")},
+        "exact_entry": "dead",
+    }
+    if with_Z:
+        d["Z"] = np.array([[r[3]] for r in _PANEL_ROWS], dtype=float)
+    return d
+
+
+X_PANEL = np.array([0.5, 1.0, 2.0, 3.0, 4.5, 6.0, 8.0])
+
+
+def panel_count_data(with_Z=False):
+    """Four units, each inspected at its own times, with the number of
+    events found since the previous inspection (some 0)."""
+    x = np.array([5.0, 20, 35, 60, 10, 25, 60, 15, 40, 60, 8, 30, 50])
+    n = np.array([1.0, 2, 0, 3, 1, 1, 2, 2, 1, 2, 0, 2, 1])
+    i = np.array([1] * 4 + [2] * 3 + [3] * 3 + [4] * 3)
+    d = {"x": x, "n": n, "i": i}
+    if with_Z:
+        d["Z"] = np.array([0.0] * 4 + [1.0] * 3 + [0.5] * 3 + [0.0] * 3)[
+            :, None
+        ]
+    return d

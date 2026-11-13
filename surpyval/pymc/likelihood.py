@@ -8,6 +8,7 @@ import numpy as np
 
 from surpyval.pymc._logp import FAMILIES, Family, log1mexp
 from surpyval.pymc._optional import pymc, pytensor_assert, pytensor_tensor
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.surpyval_data import SurpyvalData
 
 SUPPORTED = tuple(FAMILIES)
@@ -19,19 +20,21 @@ def _family(dist: Any, what: str) -> Family:
     """The pytensor functions of ``dist``, or a refusal naming the
     families that have them."""
     name = getattr(dist, "name", None)
+    # By the canonical name: an alias (Gauss, Galton) is its distribution
+    family = canonical_name(dist) if isinstance(name, str) else name
     if hasattr(dist, "dist") and hasattr(dist, "params"):
         raise TypeError(
             f"{what} takes the distribution, such as surpyval.Weibull, not "
             f"a fitted model ({type(dist).__name__}). To start from a "
             "fitted model's estimates, use prior_from_model(model)."
         )
-    if not isinstance(name, str) or name not in FAMILIES:
+    if not isinstance(family, str) or family not in FAMILIES:
         raise ValueError(
             f"{what} has no PyMC likelihood for {name or dist!r}. It "
             f"supports {', '.join(SUPPORTED)}: pass one of those (as "
             "surpyval.Weibull, ...)."
         )
-    return FAMILIES[name]
+    return FAMILIES[family]
 
 
 def as_surpyval_data(
@@ -59,6 +62,9 @@ def as_surpyval_data(
             "whose robust covariance gives valid Wald intervals, or pass "
             "the data without its weights (data.x, data.c, data.n, data.t).",
         )
+        from surpyval.utils.surpyval_data import refuse_multi_state
+
+        refuse_multi_state(data, what)
         return data
     if data is not None:
         if hasattr(data, "to_xcnt") or hasattr(data, "x_i"):

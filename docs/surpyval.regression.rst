@@ -22,6 +22,7 @@ the data, and only the covariate effect is parameterised.
     :maxdepth: 1
 
     regression/cox_ph
+    regression/interval_cox
     regression/additive_hazards
     regression/aalen_additive
     regression/proportional_odds
@@ -42,6 +43,17 @@ AFT, AH and PO families can be evaluated along.
 
     regression/parametric
 
+Which Family a Model Is
+-----------------------
+
+A fitted parametric regression model names its family in ``model.kind``.
+Compare it with the constants in ``surpyval.univariate.regression.kinds``
+rather than with a string:
+
+.. automodule:: surpyval.univariate.regression.kinds
+    :members:
+    :no-index:
+
 Covariates on Every Parameter
 -----------------------------
 
@@ -53,6 +65,8 @@ and the shape, say) has its own linear predictor and link. See
     :maxdepth: 1
 
     regression/distributional
+    regression/mixture_cure
+    regression/zero_inflated
 
 Correlated Observations
 -----------------------

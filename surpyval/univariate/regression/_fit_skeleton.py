@@ -42,6 +42,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
@@ -49,7 +50,6 @@ from surpyval.utils.covariates import (
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
@@ -62,12 +62,12 @@ from ._aliasing import (
 )
 from ._baseline_profile import filled_derivatives, to_log, walk_profile
 from ._covariate_link import CovariateLink
-from ._kinds import (
+from ._robust import note_source_rows
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
-from ._robust import note_source_rows
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -686,7 +686,9 @@ class Centring:
             return None
         if center:
             return cls(covariate_center(Z, n), fitter.k_dist)
-        entry = ORIGIN_MAPS.get((kind or "", getattr(fitter.dist, "name", "")))
+        entry = ORIGIN_MAPS.get(
+            (kind or "", canonical_name(fitter.dist) or "")
+        )
         if entry is None:
             return None
         moved, move = entry
@@ -911,7 +913,7 @@ def alias_coefficients(
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
     Zf = Z[:, free]
-    intercept = (kind or "", getattr(fitter.dist, "name", "")) in ORIGIN_MAPS
+    intercept = (kind or "", canonical_name(fitter.dist) or "") in ORIGIN_MAPS
     if intercept:
         Zf = Zf - covariate_center(Zf, n)
         constant = constant_columns(Z[:, free])
@@ -1156,11 +1158,7 @@ def check_fixed_and_init(
     if unknown:
         raise ValueError(
             "Unknown parameter(s) {} in `fixed`; this model's parameters "
-            "are {}{}.".format(
-                unknown,
-                names,
-                "".join(removed_parameter_note(k, names) for k in unknown),
-            )
+            "are {}.".format(unknown, names)
         )
     if len({**(always_fixed or {}), **fixed}) >= len(param_map):
         raise ValueError(

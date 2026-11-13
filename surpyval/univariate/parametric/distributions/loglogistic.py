@@ -46,6 +46,15 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
     array([0.8889, 0.5   , 0.1111])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        alpha : numpy array or scalar
+            scale parameter for the LogLogistic distribution
+        beta : numpy array or scalar
+            shape parameter for the LogLogistic distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the logit of ff, on which this family is a straight line in
     # log time (#477).

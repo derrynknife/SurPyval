@@ -17,7 +17,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import log1mexp, on_support, positive_or_one
@@ -48,6 +47,13 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     >>> round(float(model.mean()), 6)
     100.0
     """
+
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
+        """
 
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
@@ -164,7 +170,6 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 

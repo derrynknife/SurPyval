@@ -144,7 +144,7 @@ def test_fit_from_df_takes_the_entry_column():
     assert_array_equal(from_df.r, arrays.r)
     with pytest.raises(ValueError, match="tl_col='entry' is not a column"):
         sp.CompetingRisks.fit_from_df(df, x_col="x", e_col="e", tl_col="entry")
-    with pytest.raises(TypeError, match="tl_col"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'tl'"):
         sp.CompetingRisks.fit_from_df(df, x_col="x", e_col="e", tl="tl")
 
 

@@ -36,9 +36,8 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.integrate import IntegrationWarning, quad, quad_vec
+from scipy.integrate import IntegrationWarning, quad
 from scipy.optimize import brentq
-from scipy.special import ndtri as z
 
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
@@ -46,6 +45,15 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
     to_native,
+)
+from surpyval.univariate.competing_risks._assembly import (
+    block_diagonal,
+    central_differences,
+    first_failures,
+    incidence_on_probability_scale,
+    summed_ic_terms,
+    wald_all_cause_bound,
+    wald_cif_bound,
 )
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
@@ -55,6 +63,7 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.univariate.competing_risks.parametric import (
     _interval_likelihood as joint,
 )
+from surpyval.univariate.competing_risks.rmtl import rmtl_result
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
@@ -64,14 +73,10 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
-from surpyval.utils.dataframe import frame_column
-from surpyval.utils.linalg import (
-    bound_signs,
-    standard_errors_of,
-    warn_wald_undefined,
-)
+from surpyval.utils.dataframe import exact_or_range_frame, frame_column
+from surpyval.utils.deprecation import positional_option
+from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -85,7 +90,7 @@ from surpyval.utils.validation import (
     validate_cif_event,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
+from surpyval.utils.warnings import ignoring_warnings
 
 _CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
 _CB_METHODS = ("wald", "lr", "bootstrap")
@@ -465,6 +470,13 @@ class ParametricCompetingRisks(
             q[i] = self._invert_Hf(float(flat[i]))
         return q.reshape(u.shape)[()]
 
+    @positional_option(
+        "defective",
+        "whether the mean counts only the units that fail",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean(tau)",
+        "defective=...",
+    )
     def mean(self, defective: bool = False) -> float:
         """
         The mean time to the first failure from any cause (the all-cause
@@ -715,31 +727,12 @@ class ParametricCompetingRisks(
             upper = top[todo]
             # The survival of the other causes at the far end of a cause's
             # support, used where its quantile is infinite.
-            s_inf = [1.0 - _ff_limit(m) for m in others]
-
-            def integrand(t: float) -> npt.NDArray:
-                with np.errstate(all="ignore"):
-                    s = np.asarray(model.qf(t * upper), dtype=float).ravel()
-                val = np.ones_like(s)
-                far = np.isposinf(s)
-                for m, s_end in zip(others, s_inf):
-                    with np.errstate(all="ignore"):
-                        sj = np.asarray(m.sf(s), dtype=float).ravel()
-                    val = val * np.where(far, s_end, sj)
-                # Below a model's support its survival formula can give
-                # NaN; it is 1 there.
-                return np.where(np.isfinite(val), val, 1.0)
-
-            integral, _ = quad_vec(
-                integrand,
-                0.0,
-                1.0,
-                epsabs=1e-13,
-                epsrel=1e-11,
-                norm="max",
-                limit=2000,
+            out[todo] = incidence_on_probability_scale(
+                upper,
+                model.qf,
+                [m.sf for m in others],
+                [1.0 - _ff_limit(m) for m in others],
             )
-            out[todo] = upper * np.asarray(integral, dtype=float)
         if np.ndim(x) == 0:
             return float(out[0])
         return out.reshape(x_arr.shape)
@@ -783,17 +776,7 @@ class ParametricCompetingRisks(
                 for k in self.causes
             ]
         )
-        idx = np.argmin(latent, axis=1)
-        x = latent[np.arange(size), idx]
-        e = np.array([self.causes[i] for i in idx], dtype=object)
-        # A unit with no finite latent time never fails from any cause.
-        never = ~np.isfinite(x)
-        if never.any():
-            e[never] = None
-        out = np.empty(size, dtype=[("x", float), ("e", object)])
-        out["x"] = x
-        out["e"] = e
-        return out
+        return first_failures(latent, self.causes)
 
     # -- parameters, their covariance and the model at other values -------
 
@@ -941,15 +924,7 @@ class ParametricCompetingRisks(
                     "its optimum"
                 )
             return np.array(cov, dtype=float)
-        blocks = [self._cause_covariance(k) for k in self.causes]
-        size = sum(b.shape[0] for b in blocks)
-        out = np.zeros((size, size))
-        start = 0
-        for b in blocks:
-            stop = start + b.shape[0]
-            out[start:stop, start:stop] = b
-            start = stop
-        return out
+        return block_diagonal([self._cause_covariance(k) for k in self.causes])
 
     def _cause_covariance(self, k: Any) -> npt.NDArray:
         """Cause ``k``'s covariance, or the refusal naming it."""
@@ -1278,28 +1253,13 @@ class ParametricCompetingRisks(
             def H_of(values: npt.NDArray) -> npt.NDArray:
                 return np.asarray(self.with_params(values).Hf(t), float)
 
-            grad = _central_differences(H_of, self._estimates(), cov, t.size)
+            grad = central_differences(H_of, self._estimates(), cov, t.size)
             var = np.einsum("jt,jk,kt->t", grad, cov, grad)
         else:
             var = np.zeros(t.shape)
             for k in self.causes:
                 var = var + self._var_Hf_cause(k, t)
-        ok = np.isfinite(H) & (H > 0)
-        sd = np.where(ok, _checked_sd(var, t, "Hf", ok), 0.0) / np.where(
-            ok, H, 1.0
-        )
-        alpha, signs = bound_signs(alpha_ci, bound)
-        if on == "sf":
-            # sf falls as H rises: its lower bound is at H's upper one.
-            signs = -signs
-        H_b = H[:, None] * np.exp(signs[None, :] * z(1 - alpha) * sd[:, None])
-        if on == "Hf":
-            out = H_b
-        elif on == "sf":
-            out = np.exp(-H_b)
-        else:
-            out = -np.expm1(-H_b)
-        return out if bound == "two-sided" else out[:, 0]
+        return wald_all_cause_bound(H, var, t, on, alpha_ci, bound)
 
     def _var_Hf_cause(self, k: Any, t: npt.NDArray) -> npt.NDArray:
         """The delta-method variance of cause ``k``'s cumulative hazard at
@@ -1328,7 +1288,7 @@ class ParametricCompetingRisks(
             rebuilt = _rebuild_cause(k, model, values, None)
             return np.asarray(rebuilt.Hf(t), dtype=float)
 
-        grad = _central_differences(H_of, est, cov, t.size)
+        grad = central_differences(H_of, est, cov, t.size)
         return np.einsum("jt,jk,kt->t", grad, cov, grad)
 
     def _cb_cif(
@@ -1348,20 +1308,133 @@ class ParametricCompetingRisks(
                 self.with_params(values).cif(t, event), dtype=float
             )
 
-        grad = _central_differences(cif_of, self._estimates(), cov, t.size)
+        grad = central_differences(cif_of, self._estimates(), cov, t.size)
         var = np.einsum("jt,jk,kt->t", grad, cov, grad)
-        ok = (F > 0) & (F < 1) & np.isfinite(F)
-        sd = np.where(ok, _checked_sd(var, t, "cif", ok), 0.0)
-        sd_logit = sd / np.where(ok, F * (1 - F), 1.0)
-        alpha, signs = bound_signs(alpha_ci, bound)
-        logit_F = np.log(np.where(ok, F, 0.5)) - np.log1p(
-            -np.where(ok, F, 0.5)
+        return wald_cif_bound(F, var, t, alpha_ci, bound)
+
+    # -- restricted mean time lost ---------------------------------------
+
+    def _rmtl_default_tau(self, what: str) -> float:
+        """The default horizon: the largest finite time in the data the
+        causes were fitted to."""
+        for k in self.causes:
+            data = getattr(self.models[k], "data", None)
+            if isinstance(data, dict) and data.get("x") is not None:
+                x = np.asarray(data["x"], dtype=float).ravel()
+                x = x[np.isfinite(x)]
+                if x.size:
+                    return float(np.max(x))
+        raise ValueError(
+            f"{what}: this model holds no data to take the default horizon "
+            "from (it was built from parameters or fitted jointly); pass "
+            "tau."
         )
-        moved = logit_F[:, None] + signs[None, :] * z(1 - alpha) * (
-            sd_logit[:, None]
-        )
-        out = np.where(ok[:, None], 1.0 / (1.0 + np.exp(-moved)), F[:, None])
-        return out if bound == "two-sided" else out[:, 0]
+
+    def _rmtl_at(self, event: Any, tau: float) -> float:
+        """The area under cause ``event``'s cumulative incidence from 0
+        to ``tau``: ``tau CIF(0) + int_0^tau (tau - u) iif(u) du`` (by
+        parts), by adaptive quadrature."""
+        if tau == 0:
+            return 0.0
+        start = float(self.cif(0.0, event))
+
+        def integrand(u: float) -> float:
+            with np.errstate(all="ignore"):
+                v = float(self.iif(np.asarray([u]), event)[0])
+            return (tau - u) * v if np.isfinite(v) else 0.0
+
+        with ignoring_warnings(IntegrationWarning):
+            area, _ = quad(
+                integrand, 0.0, tau, limit=400, epsabs=0.0, epsrel=1e-10
+            )
+        return tau * start + float(area)
+
+    def _rmtl_estimate(
+        self, event: Any, tau: float, who: str = "the model"
+    ) -> tuple[float, float]:
+        """The time lost to ``event`` up to ``tau`` and its delta-method
+        variance over every cause's parameters."""
+        validate_cif_event(event)
+        self._check_event(event)
+        tau = float(tau)
+        if not np.isfinite(tau) or tau < 0:
+            raise ValueError(
+                f"tau must be a finite number at least 0; got {tau!r}."
+            )
+        try:
+            cov = self.covariance()
+        except ValueError as err:
+            raise ValueError(
+                f"{who} has no standard error of the time lost: {err}"
+            ) from err
+        mu = self._rmtl_at(event, tau)
+
+        def rmtl_of(values: npt.NDArray) -> npt.NDArray:
+            return np.array([self.with_params(values)._rmtl_at(event, tau)])
+
+        grad = central_differences(rmtl_of, self._estimates(), cov, 1)
+        var = float(np.einsum("jt,jk,kt->t", grad, cov, grad)[0])
+        return mu, max(var, 0.0)
+
+    def rmtl(
+        self, event: Any, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        r"""
+        Restricted mean time lost to cause ``event`` up to ``tau``, with
+        inference: the area under the fitted cumulative incidence, as
+        ``CompetingRisks.rmtl`` gives it from the non-parametric estimate,
+
+        .. math::
+            \text{RMTL}_k(\tau) = \int_0^\tau \text{CIF}_k(t)\,dt,
+
+        by adaptive quadrature (to about :math:`10^{-10}`, relative). The
+        standard error is the delta method's over every cause's
+        parameters (:meth:`covariance`), with the gradient by central
+        differences, and the interval is that Wald bound on the logit of
+        ``rmtl / tau``, so it stays inside ``(0, tau)``, as the parametric
+        ``rmst``.
+
+        Parameters
+        ----------
+        event : hashable
+            The cause.
+        tau : scalar, optional
+            The horizon; defaults to the largest observed time. A ``tau``
+            past the data is allowed: the fitted distributions
+            extrapolate.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmtl", "se", "lower", "upper", "tau"}``.
+
+        Raises
+        ------
+        ValueError
+            If ``event`` is not a cause, ``tau`` is negative or not
+            finite, or the model has no covariance (see
+            :meth:`covariance`).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> res = model.rmtl('a', tau=8)
+        >>> print(round(res["rmtl"], 4), round(res["se"], 4))
+        2.0452 0.7458
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmtl_default_tau("rmtl")
+        mu, var = self._rmtl_estimate(event, float(tau))
+        return rmtl_result(mu, var, float(tau), alpha_ci, "logit")
 
     # -- goodness of fit (the joint likelihood factorises over causes) ----
 
@@ -1459,12 +1532,7 @@ class ParametricCompetingRisks(
         # the whole data (see bic): every failure, in a window or not.
         if self._joint is not None:
             return int(self._joint["k"]), float(self._joint["n"])
-        k_total, n_total = 0, 0.0
-        for k in self.causes:
-            k_cause, n_cause = _ic_terms(self.models[k])
-            k_total += k_cause
-            n_total += n_cause
-        return k_total, n_total
+        return summed_ic_terms([self.models[k] for k in self.causes])
 
     # -- helpers ----------------------------------------------------------
 
@@ -1744,7 +1812,6 @@ class ParametricCompetingRisks(
         return out
 
     @classmethod
-    @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         cls,
@@ -1781,13 +1848,19 @@ class ParametricCompetingRisks(
             upper time, ``[xl, xr]`` in :meth:`fit` (equal for a failure
             or censoring at one time; a blank lower end is a row left
             censored at the upper one, a blank upper end one right
-            censored at the lower one).
+            censored at the lower one). Given with ``x_col``, each row is
+            an exact time in ``x_col`` (``xl_col`` and ``xr_col`` blank) or
+            a window in these (``x_col`` blank); a row giving both is left
+            out, with a warning.
 
         Returns
         -------
         ParametricCompetingRisks
             The fitted model.
         """
+        df, x_col, xl_col, xr_col = exact_or_range_frame(
+            df, x_col, xl_col, xr_col, c_col, blank_is_infinite=True
+        )
         if xl_col is not None or xr_col is not None:
             if x_col is not None or xl_col is None or xr_col is None:
                 raise ValueError(
@@ -1820,16 +1893,6 @@ class ParametricCompetingRisks(
         )
         model = cls.fit(x, e, c=c, n=n, dist=dist, how=how, tl=tl)
         return model
-
-
-def _ic_terms(model: Any) -> tuple[int, float]:
-    """``(k, n)`` of one cause's model: the parameters it estimated and
-    the sample size of its BIC (its observed failures). A parametric
-    model counts only the parameters it estimated (``_ic_k``); a
-    Royston-Parmar model carries both as attributes."""
-    if hasattr(model, "_ic_k"):
-        return int(model._ic_k()), float(model._ic_sample_size())
-    return int(model.k), float(model._ic_n)
 
 
 def _ff_limit(model: Any) -> float:
@@ -1917,65 +1980,3 @@ def _rebuild_cause(k: Any, model: Any, values: npt.NDArray, gamma: Any) -> Any:
             "with_params, so it cannot be rebuilt from parameters"
         )
     return rebuild(values)
-
-
-def _central_differences(
-    func: Any, est: npt.NDArray, cov: npt.NDArray, size: int
-) -> npt.NDArray:
-    """The gradient of ``func`` (a vector of ``size`` values) at ``est``
-    by central differences, one row per parameter: each step ``1e-5`` of
-    the parameter's value or standard error, whichever is larger. A
-    parameter with no variance (fixed) gets a zero row; where a step
-    leaves the parameter's range (``from_params`` refuses it), the
-    one-sided difference on the other side is used."""
-    grad = np.zeros((est.size, size))
-    sd = np.sqrt(np.clip(np.diag(cov), 0.0, None))
-    centre: list = []
-
-    def at(values: npt.NDArray) -> Any:
-        try:
-            return np.ravel(np.asarray(func(values), dtype=float))
-        except ValueError:
-            return None
-
-    def mid() -> npt.NDArray:
-        if not centre:
-            centre.append(np.ravel(np.asarray(func(est), dtype=float)))
-        return centre[0]
-
-    for j in range(est.size):
-        if not sd[j] > 0:
-            continue
-        h = 1e-5 * max(abs(float(est[j])), float(sd[j]))
-        up, down = est.copy(), est.copy()
-        up[j] += h
-        down[j] -= h
-        f_up, f_down = at(up), at(down)
-        if f_up is not None and f_down is not None:
-            grad[j] = (f_up - f_down) / (2 * h)
-        elif f_up is not None:
-            grad[j] = (f_up - mid()) / h
-        elif f_down is not None:
-            grad[j] = (mid() - f_down) / h
-        else:
-            grad[j] = np.nan
-    return grad
-
-
-def _checked_sd(
-    var: npt.NDArray, t: npt.NDArray, on: str, where: npt.NDArray
-) -> npt.NDArray:
-    """``sqrt(var)``, ``nan`` with one warning where (among ``where``) the
-    delta-method variance is negative or not finite. A variance a hair
-    below 0 by rounding (a flat direction) is 0."""
-    var = np.where((var < 0) & (var > -1e-14), 0.0, var)
-    bad = where & ~(var >= 0) & ~np.isnan(t)
-    if bad.any():
-        warn_wald_undefined(
-            f"{on} at x = {t[bad].tolist()}",
-            "its delta-method variance is negative or not finite (the "
-            "parameter covariance is not positive definite, or the "
-            "function's derivatives overflow there)",
-            stacklevel=caller_stacklevel(),
-        )
-    return np.sqrt(np.where(bad | ~(var >= 0), np.nan, var))

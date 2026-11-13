@@ -20,6 +20,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -27,6 +28,10 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -69,6 +74,11 @@ class NonParametricCounting(
     returns a new, fitted instance, which carries ``mcf``, ``mcf_cb`` and
     ``plot``.
     """
+
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
 
     #: The ``repr`` of the fitter (#614)
     fitter_kind = "non-parametric recurrence fitter"
@@ -114,7 +124,7 @@ class NonParametricCounting(
                     float(self.mcf_hat[-1]), float(self.x[-1])
                 )
             )
-        return "\n".join(lines)
+        return "\n".join(lines) + notes_text(self)
 
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a
@@ -664,7 +674,9 @@ class NonParametricCounting(
         out.origin = _observation_origin(data)
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
@@ -683,6 +695,13 @@ class NonParametricCounting(
         ----------
         x : array like
             Event (and censoring) times.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array like, optional
             Item / subject id for each row. Defaults to a single item.
         c : array like, optional

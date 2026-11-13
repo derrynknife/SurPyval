@@ -923,6 +923,41 @@ def from_given(path: Any, given: float, item: Any = None) -> Any:
     return held_back(path)
 
 
+def given_covariates(
+    Z: Any, xl: npt.ArrayLike | None, names: list | None, given: float | None
+) -> tuple[Any, npt.ArrayLike | None]:
+    """``(Z, xl)`` for survival given the age ``given`` (as
+    :func:`from_given`); unchanged without one (``None`` or ``nan``)."""
+    if given is None or np.isnan(given):
+        return Z, xl
+    return as_covariate_path(Z, xl, names, given=given), None
+
+
+def less_at_given(
+    H: npt.NDArray,
+    given: float | None,
+    H_at: Callable[[float], npt.NDArray],
+) -> npt.NDArray:
+    """``H - H_at(given)``; ``H`` without an age, ``nan`` for a ``nan``
+    one (nothing is known)."""
+    if given is None:
+        return H
+    if np.isnan(given):
+        return np.full(np.shape(H), np.nan)
+    return H - H_at(given)
+
+
+def survival_given(
+    x: npt.ArrayLike, H: npt.NDArray, given: float | None
+) -> npt.NDArray:
+    """``exp(-H)``, survival to an ``x`` at or before the age ``given``
+    certain (``H(x) - H(given)`` is no cumulative hazard there, #523)."""
+    if given is not None and not np.isnan(given):
+        xq = np.atleast_1d(np.asarray(x, dtype=float))
+        H = np.where(xq <= given, 0.0, H)
+    return np.exp(-H)
+
+
 def held_back(path: Any) -> Any:
     """
     ``path`` (a :class:`StepSchedule` or a

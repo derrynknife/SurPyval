@@ -136,13 +136,21 @@ so on.
        and Gray's test.
      - :doc:`Competing Risks Analysis` /
        :doc:`Competing Risks SurPyval Modelling`
+   * - Multi-state models
+     - Units that move between several states (healthy, ill, dead;
+       working, degraded, failed): Aalen-Johansen transition and state
+       occupation probabilities with delayed entry, and a Cox model of
+       each transition with the probabilities it predicts.
+     - :doc:`Multi-State Models`
    * - Recurrent events
      - Events that happen again and again to the same unit (a repairable
        item that keeps failing, a patient with repeated admissions): the
        mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
        (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
-       ARI), trend tests, proportional-intensity regression, and whether
+       ARI), trend tests, proportional-intensity regression (parametric,
+       and the Andersen-Gill, Prentice-Williams-Peterson and
+       Wei-Lin-Weissfeld models with robust standard errors), and whether
        a corrective action changed the failure rate.
      - :doc:`Recurrent Event Analysis` /
        :doc:`Recurrent Event Modelling with SurPyval`;
@@ -316,6 +324,7 @@ Contents:
    Recurrent Event Regression Analysis
    Degradation Analysis
    Joint Models
+   Landmark Analysis
    Multivariate Analysis
 
 .. toctree::
@@ -327,10 +336,16 @@ Contents:
    Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
    Distributional Regression
+   Mixture-Cure Regression
+   Equivalent Time Scales
+   Zero-Inflated Regression
+   Interval-Censored Cox Regression
    Pseudo-Observations
+   Adjusted Survival Curves
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
+   Multi-State Models
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Intervention Analysis with SurPyval

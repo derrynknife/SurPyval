@@ -1,0 +1,142 @@
+{
+  "generator": "scripts/reference/reference_r_rmtl.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "competing_all": {
+      "fixture": "competing",
+      "software": "R survival, cmprsk, survRM2, GFDrmtl",
+      "version": "survival 3.8.12, cmprsk 2.2.12, survRM2 1.0.4, GFDrmtl 0.1.0",
+      "call": "fit <- survfit(Surv(x, factor(cause, 0:2)) ~ 1) with x, cause = competing$x, $cause; step_area(fit$time, fit$pstate[, k], tau); cuminc(x, cause, cencode = 0); summary(fit, rmean = tau); survRM2:::rmst1(x, cause != 0, tau = tau)$rmtl; GFDrmtl:::RMTL(x, cause, tau, 2)",
+      "settings": {
+        "causes": [1, 2],
+        "censored": "cause 0",
+        "rmtl": "area under the step cumulative incidence from 0 to tau",
+        "se_delta": "SurPyval's delta-method formula, written in R",
+        "se_rmean_survival": "survival's infinitesimal-jackknife se",
+        "se_gfdrmtl": "sqrt of GFDrmtl's var_rmtl diagonal",
+        "one_cause": "every failure one cause: survRM2 rmst1's rmtl and se"
+      },
+      "values": {
+        "taus": [5, 10, 20],
+        "rmtl_survfit_1": [0.920870535714286, 3.14972748391146, 8.90606453801253],
+        "rmtl_cuminc_1": [0.920870535714286, 3.14972748391146, 8.90606453801253],
+        "rmean_survival_1": [0.920870535714286, 3.14972748391146, 8.90606453801253],
+        "se_rmean_survival_1": [0.161819266536873, 0.408245569315159, 0.920678485147525],
+        "se_delta_1": [0.161819266536873, 0.408245569315159, 0.918972264242775],
+        "rmtl_survfit_2": [0.570455994897959, 1.85226045346023, 4.7542000183852],
+        "rmtl_cuminc_2": [0.570455994897959, 1.85226045346023, 4.7542000183852],
+        "rmean_survival_2": [0.570455994897959, 1.85226045346023, 4.7542000183852],
+        "se_rmean_survival_2": [0.143529322590743, 0.368167914803115, 0.879207356129417],
+        "se_delta_2": [0.143529322590743, 0.368167914803115, 0.877655157736267],
+        "rmtl_gfdrmtl_1": [0.920870535714286, 3.14972748391146, 8.90606453801253],
+        "se_gfdrmtl_1": [0.161819266536873, 0.408245569315159, 0.918972264242775],
+        "rmtl_gfdrmtl_2": [0.570455994897959, 1.85226045346023, 4.7542000183852],
+        "se_gfdrmtl_2": [0.143529322590743, 0.368167914803115, 0.877655157736268],
+        "one_cause_rmtl": [1.49132653061224, 5.00198793737169, 13.6602645563977],
+        "one_cause_se": [0.183096078081022, 0.390680154831367, 0.697248852736941]
+      }
+    },
+    "competing_group0": {
+      "fixture": "competing",
+      "software": "R survival, cmprsk, survRM2, GFDrmtl",
+      "version": "survival 3.8.12, cmprsk 2.2.12, survRM2 1.0.4, GFDrmtl 0.1.0",
+      "call": "fit <- survfit(Surv(x, factor(cause, 0:2)) ~ 1) with the rows of competing with group == 0; step_area(fit$time, fit$pstate[, k], tau); cuminc(x, cause, cencode = 0); summary(fit, rmean = tau); survRM2:::rmst1(x, cause != 0, tau = tau)$rmtl; GFDrmtl:::RMTL(x, cause, tau, 2)",
+      "settings": {
+        "causes": [1, 2],
+        "censored": "cause 0",
+        "rmtl": "area under the step cumulative incidence from 0 to tau",
+        "se_delta": "SurPyval's delta-method formula, written in R",
+        "se_rmean_survival": "survival's infinitesimal-jackknife se",
+        "se_gfdrmtl": "sqrt of GFDrmtl's var_rmtl diagonal",
+        "one_cause": "every failure one cause: survRM2 rmst1's rmtl and se"
+      },
+      "values": {
+        "taus": [5, 10, 15],
+        "rmtl_survfit_1": [0.542735042735043, 1.87706248000366, 3.51681978152566],
+        "rmtl_cuminc_1": [0.542735042735043, 1.87706248000366, 3.51681978152566],
+        "rmean_survival_1": [0.542735042735043, 1.87706248000366, 3.51681978152566],
+        "se_rmean_survival_1": [0.209636013533832, 0.53729061306728, 0.918497294495462],
+        "se_delta_1": [0.209636013533832, 0.532856714266078, 0.918497294495462],
+        "rmtl_survfit_2": [0.794871794871795, 2.68966817496229, 4.6184012066365],
+        "rmtl_cuminc_2": [0.794871794871795, 2.68966817496229, 4.6184012066365],
+        "rmean_survival_2": [0.794871794871795, 2.68966817496229, 4.6184012066365],
+        "se_rmean_survival_2": [0.24153370617414, 0.611218677575861, 1.01960373280738],
+        "se_delta_2": [0.24153370617414, 0.609470321514873, 1.01960373280738],
+        "rmtl_gfdrmtl_1": [0.542735042735043, 1.87706248000366, 3.51681978152566],
+        "se_gfdrmtl_1": [0.209636013533832, 0.532856714266078, 0.918497294495462],
+        "rmtl_gfdrmtl_2": [0.794871794871795, 2.68966817496229, 4.6184012066365],
+        "se_gfdrmtl_2": [0.24153370617414, 0.609470321514873, 1.01960373280738],
+        "one_cause_rmtl": [1.33760683760684, 4.56673065496595, 8.13522098816216],
+        "one_cause_se": [0.279362685207949, 0.603324041879048, 0.967013922495735]
+      }
+    },
+    "competing_group1": {
+      "fixture": "competing",
+      "software": "R survival, cmprsk, survRM2, GFDrmtl",
+      "version": "survival 3.8.12, cmprsk 2.2.12, survRM2 1.0.4, GFDrmtl 0.1.0",
+      "call": "fit <- survfit(Surv(x, factor(cause, 0:2)) ~ 1) with the rows of competing with group == 1; step_area(fit$time, fit$pstate[, k], tau); cuminc(x, cause, cencode = 0); summary(fit, rmean = tau); survRM2:::rmst1(x, cause != 0, tau = tau)$rmtl; GFDrmtl:::RMTL(x, cause, tau, 2)",
+      "settings": {
+        "causes": [1, 2],
+        "censored": "cause 0",
+        "rmtl": "area under the step cumulative incidence from 0 to tau",
+        "se_delta": "SurPyval's delta-method formula, written in R",
+        "se_rmean_survival": "survival's infinitesimal-jackknife se",
+        "se_gfdrmtl": "sqrt of GFDrmtl's var_rmtl diagonal",
+        "one_cause": "every failure one cause: survRM2 rmst1's rmtl and se"
+      },
+      "values": {
+        "taus": [5, 10, 15],
+        "rmtl_survfit_1": [1.21363636363636, 4.12665404040404, 7.49811868686868],
+        "rmtl_cuminc_1": [1.21363636363636, 4.12665404040404, 7.49811868686869],
+        "rmean_survival_1": [1.21363636363636, 4.12665404040404, 7.49811868686868],
+        "se_rmean_survival_1": [0.226697246615039, 0.549813269713116, 0.882797641331925],
+        "se_delta_1": [0.226697246615039, 0.549813269713116, 0.882797641331925],
+        "rmtl_survfit_2": [0.386363636363636, 1.1830303030303, 2.25861426767677],
+        "rmtl_cuminc_2": [0.386363636363636, 1.1830303030303, 2.25861426767677],
+        "rmean_survival_2": [0.386363636363636, 1.1830303030303, 2.25861426767677],
+        "se_rmean_survival_2": [0.164567769364931, 0.420656135559417, 0.720422692046129],
+        "se_delta_2": [0.164567769364931, 0.420656135559417, 0.720422692046129],
+        "rmtl_gfdrmtl_1": [1.21363636363636, 4.12665404040404, 7.49811868686869],
+        "se_gfdrmtl_1": [0.226697246615039, 0.549813269713116, 0.882797641331925],
+        "rmtl_gfdrmtl_2": [0.386363636363636, 1.1830303030303, 2.25861426767677],
+        "se_gfdrmtl_2": [0.164567769364931, 0.420656135559417, 0.720422692046129],
+        "one_cause_rmtl": [1.6, 5.30968434343434, 9.75673295454546],
+        "one_cause_se": [0.239082267386171, 0.505466782480133, 0.699722049125234]
+      }
+    },
+    "pbc": {
+      "fixture": "pbc",
+      "software": "R survival, cmprsk, survRM2, GFDrmtl",
+      "version": "survival 3.8.12, cmprsk 2.2.12, survRM2 1.0.4, GFDrmtl 0.1.0",
+      "call": "fit <- survfit(Surv(x, factor(cause, 0:2)) ~ 1) with x, cause = pbc$years, pbc$cause; step_area(fit$time, fit$pstate[, k], tau); cuminc(x, cause, cencode = 0); summary(fit, rmean = tau); survRM2:::rmst1(x, cause != 0, tau = tau)$rmtl; GFDrmtl:::RMTL(x, cause, tau, 2)",
+      "settings": {
+        "causes": [1, 2],
+        "censored": "cause 0",
+        "rmtl": "area under the step cumulative incidence from 0 to tau",
+        "se_delta": "SurPyval's delta-method formula, written in R",
+        "se_rmean_survival": "survival's infinitesimal-jackknife se",
+        "se_gfdrmtl": "sqrt of GFDrmtl's var_rmtl diagonal",
+        "one_cause": "every failure one cause: survRM2 rmst1's rmtl and se"
+      },
+      "values": {
+        "taus": [2, 5, 10],
+        "rmtl_survfit_1": [0.00173296659168962, 0.086663908099334, 0.522772945759017],
+        "rmtl_cuminc_1": [0.00173296659168962, 0.086663908099334, 0.522772945759017],
+        "rmean_survival_1": [0.00173296659168962, 0.086663908099334, 0.522772945759017],
+        "se_rmean_survival_1": [0.00173018717275293, 0.0248392099516152, 0.0958247557165215],
+        "se_delta_1": [0.00173018717275292, 0.0248391925296776, 0.0958246845136088],
+        "rmtl_survfit_2": [0.119493259086403, 0.744310376474511, 2.63306139254462],
+        "rmtl_cuminc_2": [0.119493259086403, 0.74431037647451, 2.63306139254461],
+        "rmean_survival_2": [0.119493259086403, 0.744310376474511, 2.63306139254462],
+        "se_rmean_survival_2": [0.0220378720217758, 0.0790922387879975, 0.195489955675642],
+        "se_delta_2": [0.022037254422115, 0.0790922094447829, 0.195489612498007],
+        "rmtl_gfdrmtl_1": [0.00173296659168962, 0.0866639080993339, 0.522772945759017],
+        "se_gfdrmtl_1": [0.00173018717275292, 0.0248391925296776, 0.0958246845136088],
+        "rmtl_gfdrmtl_2": [0.119493259086403, 0.744310376474511, 2.63306139254462],
+        "se_gfdrmtl_2": [0.022037254422115, 0.0790922094447829, 0.195489612498007],
+        "one_cause_rmtl": [0.121226225678093, 0.830974284573846, 3.15583433830363],
+        "one_cause_se": [0.0220750245335471, 0.080368260914992, 0.196040567226656]
+      }
+    }
+  }
+}

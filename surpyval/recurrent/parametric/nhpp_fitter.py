@@ -15,6 +15,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -22,6 +23,7 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -324,7 +326,9 @@ class NHPPFitter(IntensityModel):
         model._n_obs = bic_sample_size(data)
         return model
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
@@ -354,6 +358,13 @@ class NHPPFitter(IntensityModel):
             also takes negative times inside a negative ``tl`` window.
             Data with no events, or with a single event and no observation
             after it, raise a ``ValueError``.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i: array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.

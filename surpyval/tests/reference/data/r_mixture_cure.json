@@ -1,0 +1,131 @@
+{
+  "generator": "scripts/reference/reference_r_mixture_cure.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "weibull_logit": {
+      "fixture": "cure_regression",
+      "software": "R flexsurvcure",
+      "version": "1.3.3",
+      "call": "flexsurvcure(Surv(time, event) ~ z1 + z2, data = data, anc = list(scale = ~ z1 + z2), dist = 'weibull', link = 'logistic', mixture = TRUE)",
+      "settings": {
+        "flexsurv": "2.3.2",
+        "rows": "all",
+        "theta": "the cured fraction, with the main formula's covariates"
+      },
+      "values": {
+        "names": ["theta", "shape", "scale", "z1", "z2", "scale(z1)", "scale(z2)"],
+        "est": [0.123803126104535, 0.53979405975415, 2.25656376420011, -1.08972182873412, -0.684310454079955, -0.465956999585042, 0.291335519110915],
+        "se": [0.155548311205758, 0.0545941789994121, 0.0702201205782257, 0.226794736072198, 0.128844966476838, 0.0864992461913831, 0.0462630904898959],
+        "loglik": -858.832812865057,
+        "n": 400,
+        "times": [2, 5, 10, 20, 35],
+        "newdata": {
+          "z1": [0, 1],
+          "z2": [0, 0.5]
+        },
+        "sf_row1": [0.96898403030709, 0.868326169002166, 0.689868423509071, 0.54432794986846, 0.530954898951572],
+        "sf_row2": [0.91202735802552, 0.657635259623091, 0.333562119829085, 0.214476318756472, 0.21280940538661]
+      }
+    },
+    "lnorm_probit": {
+      "fixture": "cure_regression",
+      "software": "R flexsurvcure",
+      "version": "1.3.3",
+      "call": "flexsurvcure(Surv(time, event) ~ z1 + z2, data = data, anc = list(meanlog = ~ z1 + z2), dist = 'lnorm', link = 'probit', mixture = TRUE)",
+      "settings": {
+        "flexsurv": "2.3.2",
+        "rows": "all",
+        "theta": "the cured fraction, with the main formula's covariates"
+      },
+      "values": {
+        "names": ["theta", "meanlog", "sdlog", "z1", "z2", "meanlog(z1)", "meanlog(z2)"],
+        "est": [0.003120127717069, 1.95435101347658, -0.235287925108684, -0.661895776716702, -0.477730853849755, -0.438692622398747, 0.338564933785656],
+        "se": [0.105718236012681, 0.0961634975097598, 0.0565601154174962, 0.14555281174816, 0.0850288540668961, 0.116627106387734, 0.0587083432983112],
+        "loglik": -871.985169419678,
+        "n": 400,
+        "times": [2, 5, 10, 20, 35],
+        "newdata": {
+          "z1": [0, 1],
+          "z2": [0, 0.5]
+        },
+        "sf_row1": [0.972433602064057, 0.83477738899849, 0.665707922254202, 0.54803472408243, 0.511917039850593],
+        "sf_row2": [0.914588463545823, 0.623369934720571, 0.361821088123286, 0.224318627955465, 0.192007313746029]
+      }
+    },
+    "llogis_loglog": {
+      "fixture": "cure_regression",
+      "software": "R flexsurvcure",
+      "version": "1.3.3",
+      "call": "flexsurvcure(Surv(time, event) ~ z1 + z2, data = data, anc = list(scale = ~ z1 + z2), dist = 'llogis', link = 'loglog', mixture = TRUE)",
+      "settings": {
+        "flexsurv": "2.3.2",
+        "rows": "all",
+        "theta": "the cured fraction, with the main formula's covariates"
+      },
+      "values": {
+        "names": ["theta", "shape", "scale", "z1", "z2", "scale(z1)", "scale(z2)"],
+        "est": [-0.397002035944586, 0.811473800303687, 2.01136525210479, 0.715409731200426, 0.511831453496933, -0.44327648164312, 0.336851920169157],
+        "se": [0.121162417711479, 0.0647796679507105, 0.0893900996627556, 0.158131385804455, 0.0930005216304434, 0.109895353376972, 0.0548857600386816],
+        "loglik": -867.378163101143,
+        "n": 400,
+        "times": [2, 5, 10, 20, 35],
+        "newdata": {
+          "z1": [0, 1],
+          "z2": [0, 0.5]
+        },
+        "sf_row1": [0.976058819525931, 0.858999673295258, 0.677786846915029, 0.558642456499101, 0.525204378083211],
+        "sf_row2": [0.927601000184783, 0.643670627664865, 0.350839488442792, 0.215406458877067, 0.182940327109972]
+      }
+    },
+    "weibull_logit_entry": {
+      "fixture": "cure_regression",
+      "software": "R flexsurvcure",
+      "version": "1.3.3",
+      "call": "flexsurvcure(Surv(entry, time, event) ~ z1 + z2, data = data, anc = list(scale = ~ z1 + z2), dist = 'weibull', link = 'logistic', mixture = TRUE, inits = c(0.5, 1.5, 10, 0, 0, 0, 0))",
+      "settings": {
+        "flexsurv": "2.3.2",
+        "rows": "the rows with time > entry (late entry)",
+        "theta": "the cured fraction, with the main formula's covariates"
+      },
+      "values": {
+        "names": ["theta", "shape", "scale", "z1", "z2", "scale(z1)", "scale(z2)"],
+        "est": [0.146625914638077, 0.564993142703788, 2.27332317545175, -1.07117693791565, -0.677379962495367, -0.459036580708319, 0.283157515921831],
+        "se": [0.161355928380487, 0.0751880212419425, 0.0739307683890733, 0.234974382442977, 0.133744154240955, 0.0896750528188848, 0.0495571011967072],
+        "loglik": -741.701586180787,
+        "n": 369,
+        "times": [2, 5, 10, 20, 35],
+        "newdata": {
+          "z1": [0, 1],
+          "z2": [0, 0.5]
+        },
+        "sf_row1": [0.972130305898436, 0.876147863338949, 0.698296533628297, 0.549710182214705, 0.536624226169925],
+        "sf_row2": [0.919892913036132, 0.673078770305629, 0.344167441672706, 0.221949890607905, 0.220416520376248]
+      }
+    },
+    "weibull_logit_scale_only": {
+      "fixture": "cure_regression",
+      "software": "R flexsurvcure",
+      "version": "1.3.3",
+      "call": "flexsurvcure(Surv(time, event) ~ 1, data = data, anc = list(scale = ~ z1 + z2), dist = 'weibull', link = 'logistic', mixture = TRUE)",
+      "settings": {
+        "flexsurv": "2.3.2",
+        "rows": "all",
+        "theta": "the cured fraction, with the main formula's covariates"
+      },
+      "values": {
+        "names": ["theta", "shape", "scale", "scale(z1)", "scale(z2)"],
+        "est": [-0.316143959529151, 0.547090354852846, 2.25568322653142, -0.469426348062113, 0.267736787676703],
+        "se": [0.10275375852161, 0.0539114547692013, 0.0697616050708554, 0.0852816346321698, 0.0438709000223824],
+        "loglik": -886.310134969486,
+        "n": 400,
+        "times": [2, 5, 10, 20, 35],
+        "newdata": {
+          "z1": [0, 1],
+          "z2": [0, 0.5]
+        },
+        "sf_row1": [0.962421371687587, 0.838550612984442, 0.617163825105204, 0.437531663170722, 0.421661255639956],
+        "sf_row2": [0.934610174266473, 0.743986250212156, 0.505008528382386, 0.422561013690615, 0.421615807880597]
+      }
+    }
+  }
+}

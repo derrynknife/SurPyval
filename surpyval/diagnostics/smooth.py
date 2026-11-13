@@ -1,11 +1,13 @@
 """Smoothers for the diagnostic plots: a lowess trend and its bootstrap
-band (#867). numpy only."""
+band (#867). numpy, and the bootstrap quantile rule of ``utils.linalg``."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import numpy as np
+
+from surpyval.utils.linalg import bootstrap_quantile
 
 
 def lowess(
@@ -97,7 +99,8 @@ def bootstrap_band(
 ) -> np.ndarray:
     """
     A pointwise percentile band for the :func:`lowess` trend: the
-    ``(1 - level) / 2`` and ``(1 + level) / 2`` quantiles at each point
+    ``(1 - level) / 2`` and ``(1 + level) / 2`` bootstrap quantiles
+    (``utils.linalg.bootstrap_quantile``) at each point
     of ``at`` of the trends of ``n_boot`` resamples of the ``(x, y)``
     pairs, drawn with replacement from ``rng``. To keep a band of 200
     resamples of a few thousand points to a second or so, each resample's
@@ -132,7 +135,7 @@ def bootstrap_band(
     band = np.full((at.size, 2), np.nan)
     has = np.isfinite(draws).any(axis=0)
     if has.any():
-        q = np.nanquantile(draws[:, has], [lo, hi], axis=0)
+        q = bootstrap_quantile(draws[:, has], [lo, hi], nan_skip=True)
         for k in range(2):
             band[:, k] = np.interp(at, coarse[has], q[k])
     return band

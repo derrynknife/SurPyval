@@ -15,7 +15,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval import plotting
-from surpyval.utils.units import axis_label
+from surpyval.utils.units import axis_label, same_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .at_risk import (
@@ -204,6 +204,8 @@ def plot_nonparametric(
         ``Hf``, or the hazard rate ``hf``, which is drawn as the
         kernel-smoothed rate of ``smoothed_hf`` (the step estimate has no
         rate of its own, so it has no bounds, ticks or quantiles).
+        ``"R"`` and ``"F"`` are accepted spellings of ``"sf"`` and
+        ``"ff"``.
     ax : matplotlib Axes, optional
         The axes to draw on. Without one a new figure is made, with room
         for the table. On axes of your own, save with
@@ -326,7 +328,8 @@ def plot_nonparametric(
     (np.float64(7.0), np.float64(10.0))
     >>> plt.close(out.fig)
     """
-    check_option("on", on, _ON)
+    check_option("on", on, _ON + ("R", "F"))
+    on = {"R": "sf", "F": "ff"}.get(on, on)
     check_alpha_ci(alpha_ci)
     check_option("bound", bound, BOUNDS)
     check_option("ci_style", ci_style, _CI_STYLES)
@@ -634,8 +637,8 @@ def _finish_axes(
         ax.set_ylim(0, 1.02)
     else:
         ax.set_ylim(bottom=0)
-    units = {getattr(m, "unit", None) for _, m in pairs}
-    unit = units.pop() if len(units) == 1 else None
+    units = [getattr(m, "unit", None) for _, m in pairs]
+    unit = units[0] if all(same_unit(units[0], u) for u in units) else None
     ax.set_xlabel(xlabel if xlabel is not None else axis_label(unit))
     ax.set_ylabel(ylabel if ylabel is not None else _YLABELS[on])
     if title is None:

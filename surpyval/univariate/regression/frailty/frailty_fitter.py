@@ -53,12 +53,11 @@ from surpyval.utils import (
 from surpyval.utils.covariates import coefficient_floor, coefficient_names
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
-from surpyval.utils.linalg import numerical_hessian
-from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.linalg import curvature_scales, numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
-from .._aliasing import covariate_columns, expand, fit_columns
+from .._aliasing import expand, fit_columns
 from .._fit_skeleton import (
     _gradient,
     alias_coefficients,
@@ -68,9 +67,9 @@ from .._fit_skeleton import (
     optimise_ph,
     require_finite_fit,
 )
-from .._kinds import PROPORTIONAL_HAZARD
+from ..kinds import PROPORTIONAL_HAZARD
 from ..proportional_hazards.cox_likelihood import strata_labels
-from ..regression_data import design_matrix_from_df
+from ..regression_data import FrameDesign
 from .families import (
     check_family,
     lognormal_log_integral,
@@ -702,7 +701,20 @@ class FrailtyFitter(FitterRepr):
                 if exact is not None:
                     Hmat = exact
                 else:
+                    # The baseline's and the coefficients' steps are a
+                    # thousandth of their scale in the likelihood, not a
+                    # fraction of each parameter floored at 1: an
+                    # exponential baseline's rate of 2.4e-5 (times in
+                    # seconds) was stepped by 40% of itself, and its
+                    # standard error was 37% off the one in hours. The
+                    # frailty variance has no unit and keeps its step: on
+                    # its boundary, 0, its variance is not a Wald one and
+                    # is a function of that step.
                     steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
+                    scales = curvature_scales(nll_nat, nat)
+                    usable = np.isfinite(scales) & (scales > 0)
+                    usable[-1] = False
+                    steps = np.where(usable, 1e-3 * scales, steps)
                     Hmat = numerical_hessian(nll_nat, nat, step=steps)
                 cov = np.linalg.inv(Hmat)
                 if np.all(np.isfinite(cov)):
@@ -750,7 +762,6 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,
@@ -801,19 +812,7 @@ class FrailtyFitter(FitterRepr):
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values
         groups = df[group_col].values
-
-        feature_names = None
-        model_spec = None
-        if Z_cols is None and formula is None:
-            Z = None
-        else:
-            Z, feature_names, model_spec = design_matrix_from_df(
-                df, Z_cols=Z_cols, formula=formula
-            )
-
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z=Z, c=c, n=n, groups=groups, init=init)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
+        design = FrameDesign(df, Z_cols, formula, optional=True)
+        return design.fit(
+            self.fit, x, Z=design.Z, c=c, n=n, groups=groups, init=init
+        )

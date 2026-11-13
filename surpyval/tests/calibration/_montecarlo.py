@@ -31,6 +31,12 @@ not a flake rate.
 
 Each check prints a one-line summary (run pytest with ``-rP`` to see them
 for passing tests), so a run's log records how close every study is.
+
+A coverage of a point or two short in every cell of a study is inside each
+cell's tolerance at a few hundred replicates, so ``check_coverage`` also
+keeps the coverages it checked (``POOLED``), and the run ends with the mean
+of each study's cells at each level (``surpyval/tests/conftest.py``). That
+mean is a report, not a check.
 """
 
 import math
@@ -42,6 +48,11 @@ from multiprocessing.context import BaseContext
 import numpy as np
 
 Z_TOL = 3.0
+
+#: ``(nominal, coverages)`` of each ``check_coverage`` in the running test,
+#: for the pooled summary at the end of the run; the test-suite conftest
+#: moves them onto the test's report and empties the list.
+POOLED: "list[tuple[float, list[float]]]" = []
 
 
 def process_pool(max_workers: "int | None" = None) -> ProcessPoolExecutor:
@@ -109,6 +120,7 @@ def check_coverage(
     nominal: float,
     label: str,
     slack: float = 0.01,
+    pooled: bool = True,
 ) -> np.ndarray:
     """Coverage of ``truth`` by ``[lower, upper]`` over the first axis.
 
@@ -116,6 +128,10 @@ def check_coverage(
     column per quantity, each checked separately against ``nominal``). A
     ``nan`` bound counts as a miss: an interval the method failed to produce
     is not an interval that covered. Returns the coverages.
+
+    ``pooled=False`` leaves the cells out of the pooled mean printed at the
+    end of the run, for a target that is not the nominal level (a parameter
+    on the edge of its space).
     """
     lower = np.asarray(lower, dtype=float)
     upper = np.asarray(upper, dtype=float)
@@ -127,6 +143,8 @@ def check_coverage(
         _report(f"{label} [{k}]", c, nominal, tol) for k, c in enumerate(cov)
     ]
     print("\n".join(lines))
+    if pooled:
+        POOLED.append((float(nominal), [float(v) for v in cov]))
     bad = [line for line, c in zip(lines, cov) if abs(c - nominal) > tol]
     assert not bad, "\n".join(bad)
     return cov

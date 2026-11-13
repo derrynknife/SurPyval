@@ -89,6 +89,20 @@ class LifeModel(FitterRepr, ABC):
         self.phi_param_map = phi_param_map
         self.phi_bounds = phi_bounds
 
+    @property
+    def canonical_name(self) -> str:
+        """The life model's canonical name: its :attr:`name`, except for
+        an alias (``Arrhenius`` gives ``"Exponential"``). The package
+        identifies a life model by it.
+
+        Examples
+        --------
+        >>> from surpyval import life_models
+        >>> life_models.Arrhenius.canonical_name
+        'Exponential'
+        """
+        return self.name
+
     def resolve(self, n_stresses: int) -> "LifeModel":
         """
         The life model for ``n_stresses`` stress columns. A model with a

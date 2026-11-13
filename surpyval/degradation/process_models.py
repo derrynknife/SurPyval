@@ -61,6 +61,7 @@ from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.linalg import (
     delta_method_se,
     numerical_hessian,
+    scale_free_hessian,
     sf_link_bound,
     standard_errors_of,
     wald_bound_on_support,
@@ -71,7 +72,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
 )
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.removed_names import RemovedNames
+from surpyval.utils.readings_entry import readings_column, takes_readings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
@@ -256,14 +257,17 @@ def _fit_from_df(
     fitter: Any,
     df: pd.DataFrame,
     x_col: str,
-    y_col: str,
+    y_col: str | None,
     i_col: str,
     Z_cols: str | list[str] | None,
     fit_kwargs: dict,
+    m_col: str | None = None,
 ) -> Any:
     """The shared body of the process fitters' ``fit_from_df``: fit from
-    the columns of ``df`` and record the covariate names on the model."""
+    the columns of ``df`` and record the covariate names on the model.
+    The readings' column is ``m_col`` or its other name ``y_col``."""
     refuse_column_names(fit_kwargs, "x", "y", "i")
+    y_col = readings_column(m_col, y_col)
     cols = None
     if Z_cols is not None:
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
@@ -319,10 +323,20 @@ def _covariance_of(
     to the model's parameters by the delta method, with ``jac`` the
     diagonal of ``d parameter / d v``. ``None`` where the Hessian is not
     finite or not invertible.
+
+    Without a ``step`` the Hessian is taken in steps found from the
+    likelihood's own curvature (``scale_free_hessian``): a Wiener drift
+    is a level per unit of time, and stepped by a fraction of itself
+    floored at ``1e-2`` its standard error moved with the time unit. A
+    caller whose likelihood carries round-off noise (the quantised gamma
+    process) passes its own, larger ``step``.
     """
     v_hat = np.asarray(v_hat, dtype=float)
     with np.errstate(all="ignore"):
-        H = numerical_hessian(neg_ll, v_hat, step)
+        if step is None:
+            H = scale_free_hessian(neg_ll, v_hat)
+        else:
+            H = numerical_hessian(neg_ll, v_hat, step)
     if not np.all(np.isfinite(H)):
         return None
     try:
@@ -1319,7 +1333,9 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             return np.atleast_1d(model.sf(flat, Z, y0=y0))
 
         with np.errstate(all="ignore"):
-            se = delta_method_se(sf_of, self._estimates(), cov)
+            se = delta_method_se(
+                sf_of, self._estimates(), cov, scale_free=True
+            )
         out = sf_link_bound(
             sf_hat, se, alpha_ci, bound, "logit", ff_hat=ff_hat, on=on
         )
@@ -2350,18 +2366,19 @@ class WienerProcessModel(FirstPassageProcessModel):
         )
 
 
-class WienerProcess(RemovedNames):
+class WienerProcess:
     """Fitter for the Wiener-process degradation model (see
     :class:`WienerProcessModel`)."""
 
     @classmethod
     @takes_unit
+    @takes_readings
     def fit(
         cls,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         y0: float | None = None,
@@ -2376,12 +2393,18 @@ class WienerProcess(RemovedNames):
 
         Parameters
         ----------
-        x : array_like
-            Measurement times, from the start of each unit's life.
+        x : array_like, Measurements or SurpyvalData
+            Measurement times, from the start of each unit's life; or
+            the readings themselves, as a :class:`~surpyval.Measurements`
+            (one measurement, ``{i: {x: value}}``) or a
+            :class:`~surpyval.SurpyvalData` holding them as ``data.m``,
+            with ``y``, ``i`` and ``Z`` left out. A SurpyvalData's
+            covariates ``Z`` are each unit's stress, held over all its
+            readings; its life times and censoring are not used.
         y : array_like
-            Degradation measurements.
+            Degradation measurements (with arrays).
         i : array_like
-            Unit identifier for each measurement.
+            Unit identifier for each measurement (with arrays).
         threshold : float
             The degradation level defining failure (a level, not a
             distance from the start), reached from below: for a signal
@@ -2540,9 +2563,10 @@ class WienerProcess(RemovedNames):
         cls,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
         Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> WienerProcessModel:
         """
@@ -2557,6 +2581,11 @@ class WienerProcess(RemovedNames):
             unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
             DataFrame entry point names its columns with a ``_col``
             suffix, principle 21).
+        m_col : str, optional
+            The measurements' column by the name
+            ``Measurements.from_dataframe`` gives it (unit ``i_col``, time
+            ``x_col``, value ``m_col``): ``y_col``'s other name, the same
+            in every way; giving both is a TypeError.
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -2571,7 +2600,9 @@ class WienerProcess(RemovedNames):
         WienerProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
+        return _fit_from_df(
+            cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
+        )
 
     @staticmethod
     def _check_noise(
@@ -2695,15 +2726,19 @@ class GammaProcessModel(FirstPassageProcessModel):
         return out
 
     def _df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
-        # Density of the first-passage time (numeric derivative of ``ff``).
+        # Density of the first-passage time (numeric derivative of ``ff``),
+        # in central steps of a millionth of the time: steps of at least
+        # 1e-6 (and a lower end of at least 1e-12) were most of a time
+        # measured in millionths of the unit, and the density and hazard
+        # moved with the unit by 1%.
         h = 1e-6
         out = np.zeros_like(t)
         pos = t > 0
         tp = t[pos]
-        step = np.maximum(h, tp * h)
+        step = tp * h
         f_hi = self._ff_distance(tp + step, distance)
-        f_lo = self._ff_distance(np.maximum(tp - step, 1e-12), distance)
-        out[pos] = (f_hi - f_lo) / ((tp + step) - np.maximum(tp - step, 1e-12))
+        f_lo = self._ff_distance(tp - step, distance)
+        out[pos] = (f_hi - f_lo) / ((tp + step) - (tp - step))
         out = np.clip(out, 0.0, None)
         return out
 
@@ -2794,18 +2829,19 @@ class GammaProcessModel(FirstPassageProcessModel):
         )
 
 
-class GammaProcess(RemovedNames):
+class GammaProcess:
     """Fitter for the Gamma-process degradation model (see
     :class:`GammaProcessModel`)."""
 
     @classmethod
     @takes_unit
+    @takes_readings
     def fit(
         cls,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         resolution: float | None = None,
@@ -2862,12 +2898,18 @@ class GammaProcess(RemovedNames):
 
         Parameters
         ----------
-        x : array_like
-            Measurement times.
+        x : array_like, Measurements or SurpyvalData
+            Measurement times; or the readings themselves, as a
+            :class:`~surpyval.Measurements` (one measurement, ``{i: {x:
+            value}}``) or a :class:`~surpyval.SurpyvalData` holding them
+            as ``data.m``, with ``y``, ``i`` and ``Z`` left out. A
+            SurpyvalData's covariates ``Z`` are each unit's stress, held
+            over all its readings; its life times and censoring are not
+            used.
         y : array_like
-            Degradation measurements.
+            Degradation measurements (with arrays).
         i : array_like
-            Unit identifier for each measurement.
+            Unit identifier for each measurement (with arrays).
         threshold : float
             The degradation level defining failure, reached from below:
             for a signal that falls to a lower threshold, fit ``-y`` with
@@ -3171,9 +3213,10 @@ class GammaProcess(RemovedNames):
         cls,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
         Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> GammaProcessModel:
         """
@@ -3188,6 +3231,11 @@ class GammaProcess(RemovedNames):
             unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
             DataFrame entry point names its columns with a ``_col``
             suffix, principle 21).
+        m_col : str, optional
+            The measurements' column by the name
+            ``Measurements.from_dataframe`` gives it (unit ``i_col``, time
+            ``x_col``, value ``m_col``): ``y_col``'s other name, the same
+            in every way; giving both is a TypeError.
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -3202,7 +3250,9 @@ class GammaProcess(RemovedNames):
         GammaProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
+        return _fit_from_df(
+            cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
+        )
 
     @staticmethod
     def _zero_increments(

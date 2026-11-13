@@ -15,6 +15,10 @@ past bugs lived in the others. This module sweeps them:
   are those on ``sf`` transformed, and the documented shapes;
 - every ``interp=`` value a case declares: a valid curve, equal to the
   step estimate at its step times, and an unknown value refused;
+- the choice of covariance, ``robust=``, on every model whose
+  ``covariance()`` takes it: both values give a symmetric, positive
+  semi-definite covariance, and ``standard_errors()`` and ``summary()``
+  follow the same choice;
 - every estimation option a case declares (``how=``, Cox's ``method=``,
   the non-parametric estimator choices): each gives a valid model, and on
   a large sample from the model they agree;
@@ -47,6 +51,7 @@ from surpyval.tests.conformance.registry import (
     KNOWN_INCONSISTENCIES,
     NON_STRICT,
     Q_PROBS,
+    ROBUST_COVARIANCE,
     WITH_COVARIATES,
     call,
     cases_for,
@@ -66,6 +71,9 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "variance_cb": "a table of the variance components' profile-likelihood "
+    "intervals of a mixed-effects Cox model (no point method to sweep; "
+    "checked in regression/test_cox_mixed_effects.py)",
     "summary": "a table of the parameters' Wald intervals (param_cb's for "
     "the baseline; checked in regression/test_summary.py, #484)",
     "trend_test": "a hypothesis test: alpha_ci is the level its trend is "
@@ -80,6 +88,11 @@ NOT_SWEPT = {
     "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
+    "beta_cb": "Wald intervals on a landmark model's covariate effects at "
+    "landmark times, b(s) +/- z se (robust), not on a function of time; "
+    "checked in univariate/test_landmark.py",
+    "table": "the dynamic prediction table: cb's bounds (swept) at each "
+    "landmark and covariate profile",
     "rmst": "the restricted mean with rmst_cb's Wald interval (swept) in a "
     "dict, as the non-parametric models' rmst",
     "rmst_diff": "a comparison of two covariate rows' restricted means (a "
@@ -97,6 +110,7 @@ NOT_SWEPT = {
     "total_cif_cb / total_iif_cb (swept) along a constant schedule, and "
     "against the causes' cb_tvc, in "
     "recurrent/test_cause_specific_proportional_intensity.py",
+    "reading": "a sentence quoting param_cb('k')'s interval (swept)",
     "forecast": "a prediction interval of a count (surpyval.forecast), "
     "where alpha_ci is its level, not a confidence bound's; checked in "
     "recurrent/test_event_marks.py",
@@ -318,6 +332,8 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "rmtl":
+            out.append(model.rmtl(*args)["rmtl"])
         elif spec.method == "rmst_cb":
             # (the point alone: a model with no covariance, the Uniform,
             # has likelihood-ratio bounds but no rmst() interval)
@@ -325,6 +341,14 @@ def _estimate(case, spec, fname, event):
                 out.append(model.mean(tau=args[0]))
             else:
                 out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "cb_at_usage":
+            out.append(model.sf_at_usage(*args))
+        elif spec.method == "quantile_cb_at_usage":
+            out.append(model.qf_at_usage(*args))
+        elif spec.method == "param_cb":
+            out.append(model.params[model.parameter_names.index(args[0])])
+        elif spec.method == "sojourn_cb":
+            out.append(model.mean_sojourn(*args))
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)
@@ -750,6 +774,50 @@ def test_unknown_interp_is_refused(case):
 
 
 # ---------------------------------------------------------------------------
+# The covariance option, robust=
+# ---------------------------------------------------------------------------
+def _takes_robust(dotted):
+    method = getattr(_resolve(dotted), "covariance", None)
+    if not callable(method):
+        return False
+    try:
+        return "robust" in inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def test_every_model_with_a_robust_covariance_is_swept():
+    takes = {c.model_class for c in CASES if _takes_robust(c.model_class)}
+    assert takes == set(ROBUST_COVARIANCE), takes ^ set(ROBUST_COVARIANCE)
+
+
+@pytest.mark.parametrize("robust", [True, False], ids=["robust", "model"])
+@pytest.mark.parametrize("case", cases_for("covariance_robust"))
+def test_robust_option_gives_a_consistent_covariance(case, robust):
+    skip_without_finite_maximum(case)
+    model = fitted(case)
+    cov = np.asarray(model.covariance(robust=robust), float)
+    kept = ~np.isnan(np.diag(cov))
+    cov = cov[np.ix_(kept, kept)]
+    assert np.all(np.isfinite(cov))
+    np.testing.assert_allclose(cov, cov.T, rtol=0, atol=1e-12)
+    assert np.linalg.eigvalsh(cov).min() >= -1e-10 * max(
+        1.0, np.abs(cov).max()
+    )
+    se = np.asarray(model.standard_errors(robust=robust), float)
+    np.testing.assert_allclose(se[kept], np.sqrt(np.diag(cov)), rtol=1e-12)
+    table = model.summary(robust=robust)
+    np.testing.assert_allclose(
+        np.asarray(table["se(coef)"], float)[kept], se[kept], rtol=1e-12
+    )
+    # The default is one of the two, the same in all three methods
+    default = inspect.signature(model.covariance).parameters["robust"]
+    for name in ("standard_errors", "summary"):
+        param = inspect.signature(getattr(model, name)).parameters["robust"]
+        assert param.default == default.default, name
+
+
+# ---------------------------------------------------------------------------
 # Estimation options
 # ---------------------------------------------------------------------------
 def _estimator_params():
@@ -998,8 +1066,15 @@ def _how(sigs):
     # copula's default is the two-stage inference-functions-for-margins
     # estimate (documented; MLE is the joint alternative), and the
     # non-parametric competing risks' is its Nelson-Aalen survival (it
-    # has no likelihood).
-    own = {"Copula": "IFM", "CompetingRisks": "Nelson-Aalen"}
+    # has no likelihood). The panel-count models choose between the
+    # likelihood and the pseudo-likelihood ("MLE" / "pseudo"); the
+    # regression's default is the pseudo-likelihood, whose profile is
+    # concave with an exact baseline (recorded in DECISIONS.md).
+    own = {
+        "Copula": "IFM",
+        "CompetingRisks": "Nelson-Aalen",
+        "PanelCountRegression": "pseudo",
+    }
     return [
         f"{o}.{m}(how={p.default!r})"
         for o, m, ps in sigs
@@ -1034,6 +1109,8 @@ CONVENTIONS = {
             "sf",
             own={
                 "CompetingRisks": "cif",
+                # its regression counterpart, likewise
+                "ParametricCompetingRisksRegression": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
@@ -1071,6 +1148,16 @@ CONVENTIONS = {
         "how= is the estimation method, default 'MLE' where there is a "
         "likelihood",
         _how,
+    ),
+    # The choice between the robust (sandwich) and the model-based
+    # covariance is robust=, off by default; the Fine-Gray model's is on,
+    # as R's cmprsk::crr reports it (documented, 0.27).
+    "robust": (
+        "robust= chooses the robust covariance, default False",
+        # (and a landmark supermodel's, whose stacked rows repeat units)
+        _default_is(
+            "robust", False, own={"FineGrayModel": True, "LandmarkCox": True}
+        ),
     ),
     "id column": (
         "the item-id column of a data frame has one spelling",

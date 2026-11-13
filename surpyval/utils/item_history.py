@@ -5,14 +5,57 @@ them is a dataset (:meth:`EventHistoryData.from_items
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 __all__ = ["ItemHistory"]
 
 
-class ItemHistory:
+class _ItemRecord:
+    """What ``ItemHistory`` and ``ItemLifetime`` share: frozen once
+    built, written as JSON, and equal to another record of the same class
+    with the same id and the same fields (``_fields``)."""
+
+    if TYPE_CHECKING:
+        id: Any
+        time_varying_covariates: Any
+
+        def _fields(self) -> dict: ...
+
+        def to_dict(self) -> dict: ...
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        frozen_setattr(self, name, value)
+
+    def __setstate__(self, state: dict) -> None:
+        frozen_setstate(self, state)
+
+    def to_json(self, filepath: Any = None) -> str | None:
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.id == other.id and self._compared() == other._compared()
+
+    def __hash__(self) -> int:
+        return hash((self.id, hashable(self._compared())))
+
+    def _compared(self) -> dict:
+        return comparable(self._fields(), self.time_varying_covariates)
+
+    def _as_dict(self) -> bool:
+        # A record pickled before #930 has no _tvc_dict: its schedule
+        # showed as a dict.
+        return getattr(self, "_tvc_dict", True)
+
+
+class ItemHistory(_ItemRecord):
     """
     One repairable item's history: its failures, observed exactly, found
     in an interval or known only to have happened before an age, how long
@@ -273,12 +316,6 @@ class ItemHistory:
         )
         self._check()
         freeze(self)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        frozen_setattr(self, name, value)
-
-    def __setstate__(self, state: dict) -> None:
-        frozen_setstate(self, state)
 
     def attribute(self, name: str) -> Any:
         """The value of the attribute ``name`` (``attributes={name:
@@ -824,13 +861,6 @@ class ItemHistory:
 
         return record_from_dict(cls, record_dict)
 
-    def to_json(self, filepath: Any = None) -> str | None:
-        """The record as strict JSON text (:meth:`to_dict` dumped), or
-        written to the file ``filepath``."""
-        from surpyval.utils.data_json import dump
-
-        return dump(self.to_dict(), filepath)
-
     @classmethod
     def from_json(cls, source: Any) -> ItemHistory:
         """The record back from JSON text (a string starting with ``{``)
@@ -844,22 +874,6 @@ class ItemHistory:
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ItemHistory):
-            return NotImplemented
-        return self.id == other.id and self._compared() == other._compared()
-
-    def __hash__(self) -> int:
-        return hash((self.id, hashable(self._compared())))
-
-    def _compared(self) -> dict:
-        return comparable(self._fields(), self.time_varying_covariates)
-
-    def _as_dict(self) -> bool:
-        # A record pickled before #930 has no _tvc_dict: its schedule
-        # showed as a dict.
-        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         """One line where it fits in 79 columns, else one argument per
@@ -1084,8 +1098,8 @@ def _attributes(item: Any, value: Any) -> dict | None:
 
 
 def _unit(item: Any, unit: Any) -> str | None:
-    """A record's unit, as the models store it (:func:`normalise_unit`):
-    text, or None."""
+    """A record's unit, as the models store it (:func:`normalise_unit`,
+    the label as typed): text, or None."""
     from surpyval.utils.units import normalise_unit
 
     if unit is None:
@@ -1102,14 +1116,19 @@ def units_of(records: list, unit: Any, what: str) -> str | None:
     """The unit of a dataset built from ``records``: the records' unit,
     which must agree (refused naming the items and units otherwise), and
     must agree with ``unit`` where that is given; ``unit`` alone where
-    the records have none; None where neither (#945)."""
-    from surpyval.utils.units import normalise_unit
+    the records have none; None where neither (#945). Labels are
+    compared with :func:`~surpyval.utils.units.same_unit` (``"h"`` and
+    ``"hours"`` agree); the dataset keeps ``unit`` where it is given,
+    else the first record's label, as typed."""
+    from surpyval.utils.units import normalise_unit, same_unit
 
     given = normalise_unit(unit)
     found: dict = {}
     for record in records:
-        if record.unit is not None:
-            found.setdefault(record.unit, record.id)
+        if record.unit is not None and not any(
+            same_unit(record.unit, u) for u in found
+        ):
+            found[record.unit] = record.id
     if len(found) > 1:
         raise ValueError(
             f"The {what} are in different units: "
@@ -1122,12 +1141,12 @@ def units_of(records: list, unit: Any, what: str) -> str | None:
     if not found:
         return given
     ((held, item),) = found.items()
-    if given is not None and given != held:
+    if given is not None and not same_unit(given, held):
         raise ValueError(
             f"unit={unit!r} was given, but the {what} are in {held!r} "
             f"(item {item!r}): a dataset is in one unit."
         )
-    return held
+    return held if given is None else given
 
 
 def _covariate_field(row: np.ndarray, names: tuple | None) -> Any:

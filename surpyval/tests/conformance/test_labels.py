@@ -57,16 +57,36 @@ def _params():
     return out
 
 
+def _mapping(case, labels):
+    """Original label -> new label: of the causes "a" and "b", or of a
+    multi-state model's states (its ``events``), which ``e`` holds too."""
+    if "state" not in case.rows:
+        return RELABEL[labels]
+    if labels == "tuple":
+        return {s: (s, k) for k, s in enumerate(case.events)}
+    return {s: s if k % 2 == 0 else k for k, s in enumerate(case.events)}
+
+
+def _relabel(values, mapping):
+    # One element per row: ``np.array`` would split tuples into columns.
+    out = np.empty(len(values), dtype=object)
+    for k, v in enumerate(values):
+        out[k] = None if v is None else mapping[v]
+    return out
+
+
 def _relabelled(name, labels):
     """The case with its events renamed, and its fixture relabelled."""
     case = CASE_BY_NAME[name]
-    mapping = RELABEL[labels]
+    mapping = _mapping(case, labels)
     data = case.data()
-    # One element per row: ``np.array`` would split tuples into columns.
-    e = np.empty(len(data["e"]), dtype=object)
-    for k, v in enumerate(data["e"]):
-        e[k] = None if v is None else mapping[v]
-    data = {**data, "e": e}
+    data = {**data, "e": _relabel(data["e"], mapping)}
+    if "state" in data:
+        # A multi-state model's states, and its transitions between them
+        data["state"] = _relabel(data["state"], mapping)
+        data["transitions"] = [
+            (mapping[a], mapping[b]) for a, b in data["transitions"]
+        ]
     if not case.events:
         # One cause of interest (Fine-Gray), "a" in the fixture.
         data["event"] = mapping["a"]
@@ -81,16 +101,16 @@ def _fit(name, labels):
         return case, case.fit(data)
 
 
-def _per_cause(case, model, mapping=None):
+def _per_cause(case, model, names, mapping=None):
     """Every function at the case's query, keyed by function and the
-    fixture's original cause name."""
+    fixture's original cause name (``names``)."""
     out = {}
     for fname in case.functions:
         # Probabilities for qf, the case's times otherwise.
         xq = query(case, fname)
         out[fname] = np.asarray(call(case, model, fname, xq), float)
     for fname in case.event_functions:
-        for e in RELABEL["tuple"]:
+        for e in names:
             label = e if mapping is None else mapping[e]
             out[f"{fname}[{e}]"] = np.asarray(
                 call(case, model, fname, case.x, event=label), float
@@ -103,8 +123,9 @@ def test_labels_fit_and_predict(name, labels):
     """Relabelled causes predict what the original labels did."""
     case, model = _fit(name, labels)
     original = CASE_BY_NAME[name]
-    got = _per_cause(case, model, RELABEL[labels])
-    ref = _per_cause(original, fitted(original))
+    mapping = _mapping(original, labels)
+    got = _per_cause(case, model, list(mapping), mapping)
+    ref = _per_cause(original, fitted(original), list(mapping))
     assert got.keys() == ref.keys()
     for key in ref:
         np.testing.assert_allclose(

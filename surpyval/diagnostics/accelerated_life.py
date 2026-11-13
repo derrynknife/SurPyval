@@ -84,6 +84,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2
 
+from surpyval.utils.aliases import canonical_life_model_name, canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt
@@ -485,7 +486,7 @@ def _shape_rows(ctx: Context) -> list[dict]:
                 model.distribution.name,
                 (
                     ""
-                    if model.distribution.name == "Exponential"
+                    if canonical_name(model.distribution) == "Exponential"
                     else " (its shape was held fixed)"
                 ),
             )
@@ -678,11 +679,13 @@ def _comparison(ctx: Context) -> list[dict]:
 
         model = ctx.model
         own = model.reg_model.name
+        # By the canonical name: Arrhenius is the Exponential life model
+        key = canonical_life_model_name(model.reg_model)
         n_stresses = int(np.asarray(model.data.Z).shape[1])
         names = [
             n
             for n in CANDIDATES.get(n_stresses, ("GeneralLogLinear",))
-            if n != EQUIVALENT.get(own, own)
+            if n != EQUIVALENT.get(key, key)
         ]
         out = [
             {"name": own, "model": model, "aic": float(model.aic())},
@@ -893,7 +896,7 @@ def _extrapolation_rows(ctx: Context) -> list[dict]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _is_accelerated_life(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ACCELERATED_LIFE
+    from surpyval.univariate.regression.kinds import ACCELERATED_LIFE
     from surpyval.univariate.regression.parametric_regression_model import (
         ParametricRegressionModel,
     )
@@ -1082,7 +1085,7 @@ def _far_message(row: dict, ctx: Context) -> str:
 
 def _for_distribution(dist: str) -> Callable[[Any, Context], bool]:
     def when(row: Any, ctx: Context) -> bool:
-        return bool(ctx.model.distribution.name == dist)
+        return bool(canonical_name(ctx.model.distribution) == dist)
 
     return when
 

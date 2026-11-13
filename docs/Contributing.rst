@@ -42,14 +42,28 @@ The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
 skipped by default). The second executes the ``>>>`` examples in the
 docstrings and checks their printed output, so a docstring example is a
-tested promise like any other. ``--run-invariants`` opts in to a slower
+tested promise like any other.
+
+A distribution's methods repeat their parameter entries, literally, in
+every docstring, so the source reads the same as ``help()``. The class
+states them once more in ``_param_docs``, and that is the copy to edit:
+``python scripts/sync_docstrings.py --write`` rewrites the methods' copies
+from it, and ``surpyval/tests/utils/test_shared_docstrings.py`` fails,
+naming the class, method and difference, when a copy has drifted.
+``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which the release pull request's full run also runs, on
-3.12. They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
+3.12. Each coverage check prints one line per cell (``-rP`` shows them for
+passing tests), and the run ends with a "pooled calibration coverage"
+section: for every study and level, the mean coverage over its cells, the
+gap from nominal in points and how many cells fall below. A shortfall of a
+point or two in every cell passes each cell's check at a few hundred
+replicates, and shows only there. It is a report; nothing fails on it.
+They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
@@ -379,11 +393,13 @@ never removed or renamed in one step:
    documentation, and add a line under **Removed**.
 3. **Leave a hint.** Register the old name in
    ``surpyval/utils/removed_names.py`` so that using it raises the error
-   Python would, naming the release and the replacement:
-   ``REMOVED_ATTRIBUTES`` for a model attribute, ``REMOVED_TOP_LEVEL`` for
-   a name in ``surpyval``, ``removed_arguments`` for an argument, or a
-   subpackage ``__getattr__`` that raises with ``removed_message``. An
-   entry is dropped once the old name has been gone for a release or two.
+   Python would, naming the release and the replacement: a
+   ``RemovedName`` class attribute for a model attribute,
+   ``REMOVED_TOP_LEVEL`` for a name in ``surpyval``, ``removed_arguments``
+   for an argument, or a subpackage ``__getattr__`` that raises with
+   ``removed_message``. An entry is dropped once the old name has been
+   gone for a release or two (with ``--update --force`` for the public
+   surface list, below, if the name is listed there).
 
 ``surpyval/tests/test_public_surface.py`` holds this in place for the
 public namespaces. ``surpyval/tests/public_surface.txt`` lists every

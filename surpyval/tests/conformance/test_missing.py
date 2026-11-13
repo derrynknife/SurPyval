@@ -77,6 +77,12 @@ def _quantile_functions(case, model):
         # ``params`` has a row per component: the mixture's qf alone
         out["qf"] = model.qf
         return out
+    if type(model).__name__ == "EquivalenceModel":
+        # ``params`` ends with k, the clocks' exchange rate: the
+        # distribution's qf is at the others
+        out["dist.qf"] = lambda p: model.dist.qf(p, *model.dist_params)
+        out["qf"] = model.qf
+        return out
     dist = getattr(model, "dist", None)
     if callable(getattr(dist, "qf", None)) and hasattr(model, "params"):
         out["dist.qf"] = lambda p: dist.qf(p, *model.params)

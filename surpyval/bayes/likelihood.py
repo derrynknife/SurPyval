@@ -216,7 +216,7 @@ class LogLikelihood:
                 )
                 lower = np.where(
                     lo_finite,
-                    f0 * (xl[None, :] >= 0)
+                    f0 * (xl[None, :] > 0)
                     + (p - f0) * np.where(lo_eval, dist.ff(l_safe, *dp), 0.0),
                     0.0,
                 )
@@ -337,6 +337,9 @@ def log_likelihood_fn(
             f"{dist.name} is discrete."
         )
     if isinstance(x, SurpyvalData):
+        from surpyval.utils.surpyval_data import refuse_multi_state
+
+        refuse_multi_state(x, "log_likelihood_fn")
         data = x
     else:
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)

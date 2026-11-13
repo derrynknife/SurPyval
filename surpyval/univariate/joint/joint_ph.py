@@ -1,4 +1,7 @@
-"""The joint model fitter: :func:`JointPH` and ``WeibullJointPH`` (#891)."""
+"""The joint model fitter: :func:`JointPH` and ``WeibullJointPH`` (#891).
+
+The hazard follows the marker's current value, its slope, the area under
+it, or more than one (``link``)."""
 
 from __future__ import annotations
 
@@ -19,11 +22,13 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.utils.covariates import finite_covariate_mask
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
+    LINKS,
     MAX_VARYING,
     JointArrays,
     Layout,
@@ -65,7 +70,11 @@ class JointPHFitter(FitterRepr):
     fitter_kind = "joint model fitter"
 
     def __init__(
-        self, distribution: Any, path_model: Any, varying: Any = None
+        self,
+        distribution: Any,
+        path_model: Any,
+        varying: Any = None,
+        link: Any = "value",
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -108,7 +117,32 @@ class JointPHFitter(FitterRepr):
                 "items (the quadrature is a grid of 7 points in each); "
                 f"got {len(varying)}."
             )
-        every = parameter_names(names, [n for n in names if n in varying], [])
+        try:
+            links = [link] if isinstance(link, str) else list(link)
+        except TypeError:
+            links = []
+        if (
+            not links
+            or any(name not in LINKS for name in links)
+            or len(set(links)) < len(links)
+        ):
+            raise ValueError(
+                "link names what of the marker's path the hazard follows: "
+                "'value' (its current value), 'slope' (its rate of change) "
+                "or 'cumulative' (the area under it from age 0), or a "
+                f"list of them, each once; got {link!r}."
+            )
+        self.link = tuple(name for name in LINKS if name in links)
+        base = getattr(path_model, "base", path_model)
+        if "cumulative" in self.link and base.name == "Lloyd-Lipow":
+            raise ValueError(
+                "The Lloyd-Lipow path a - b / t has no finite area from age "
+                "0, so the hazard cannot follow its cumulative: use "
+                "link='value' or 'slope', or another path."
+            )
+        every = parameter_names(
+            names, [n for n in names if n in varying], [], links=self.link
+        )
         twice = sorted({n for n in every if every.count(n) > 1})
         if twice:
             raise ValueError(
@@ -137,10 +171,13 @@ class JointPHFitter(FitterRepr):
         ]
         if len(self.varying) < len(names):
             out.append("varying: " + ", ".join(self.varying))
+        if self.link != ("value",):
+            out.append("link: " + ", ".join(self.link))
         return out
 
     @dataframe_covariates
     @takes_unit
+    @takes_joint_readings
     @accepts_surpyval_data
     def fit(
         self,
@@ -155,6 +192,8 @@ class JointPHFitter(FitterRepr):
         marker_reference: float | None = None,
         path_covariates: Any = None,
         hazard_covariates: Any = None,
+        i: npt.ArrayLike | None = None,
+        m: Any = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -164,8 +203,9 @@ class JointPHFitter(FitterRepr):
         parameters of its own -- those that vary between items
         multivariate normal about means that its covariates shift, the
         rest common -- read with normal noise; its hazard is Weibull
-        proportional hazards in the path's current, noise-free value and
-        its covariates. The varying parameters are integrated out of each
+        proportional hazards in the path's current, noise-free value (or
+        its slope or the area under it: the fitter's ``link``) and its
+        covariates. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
         the log-likelihood stops moving), and the likelihood is maximised
@@ -207,13 +247,20 @@ class JointPHFitter(FitterRepr):
             Each item's covariates, a row each (a DataFrame's columns name
             them). By default they shift every path parameter's mean and
             enter the hazard.
-        markers : list of dict
+        markers : list of dict or Measurements
             With arrays: each item's readings, ``{age: value}`` (``{}``
-            for none).
+            for none), in the rows' order; or a
+            :class:`~surpyval.Measurements` of one measurement, matched
+            to the rows by unit (``i``), never by position: an item with
+            no readings has none, as ``{}``, and readings of a unit with
+            no row are warned of and not used. Beside a SurpyvalData
+            without readings, a Measurements is attached to it by its
+            units (as ``data.m``).
         marker_reference : float, optional
             The marker value at which ``alpha`` is reported (the
             baseline's item has its marker there). Default the mean
-            reading. It changes ``alpha`` only.
+            reading. It changes ``alpha`` only. Refused where the hazard
+            does not follow the marker's value (the fitter's ``link``).
         path_covariates : list of str or dict, optional
             The covariates that shift the path parameters' means
             (``a_<cov>``, ``b_<cov>``, ...): a list (each path parameter),
@@ -223,6 +270,13 @@ class JointPHFitter(FitterRepr):
             The covariates in the hazard (``<cov>``). Default every
             covariate; ``[]`` for none. Each covariate must be in one part
             or both. Unnamed covariates are ``coef_0``, ``coef_1``, ...
+        i : array_like, optional
+            With arrays and ``markers`` a Measurements: each row's unit,
+            one row per unit.
+        m : Measurements, optional
+            The other name of ``markers``, as ``SurpyvalData(..., m=...)``
+            calls the readings; the same in every way. Giving both is a
+            TypeError.
 
         Returns
         -------
@@ -262,6 +316,14 @@ class JointPHFitter(FitterRepr):
                     "is reported, one finite number; got "
                     f"{marker_reference!r}."
                 )
+        if reference is not None and "value" not in self.link:
+            raise ValueError(
+                "'marker_reference' is the marker value at which alpha is "
+                "reported, for a hazard that follows the marker's value; "
+                f"this one follows its {' and '.join(self.link)} (alpha "
+                "is at a slope and an area of 0): leave it out."
+            )
+        markers = markers_by_row(markers, i, x)
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
         parts = covariate_parts(
             list(self.path_model.parameter_names),
@@ -287,6 +349,8 @@ class JointPHFitter(FitterRepr):
         marker_reference: float | None = None,
         path_covariates: Any = None,
         hazard_covariates: Any = None,
+        i_col: str | None = None,
+        m: Any = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -299,6 +363,14 @@ class JointPHFitter(FitterRepr):
         place of ``x_col``; ``c_col`` 2 for those rows). As :meth:`fit`
         otherwise, ``path_covariates`` and ``hazard_covariates`` naming
         which of ``Z_cols`` enter which part.
+
+        The readings may instead be kept in a long frame of their own, one
+        row per reading: build a :class:`~surpyval.Measurements` from it
+        (``Measurements.from_dataframe(readings, i_col=..., x_col=...,
+        m_col=...)``) and give it as ``m``, with ``i_col`` naming the
+        column of each item's unit in ``df``; the readings are matched to
+        the items by unit. ``m`` and ``markers_col`` are two ways of
+        giving the readings: give one.
 
         Examples
         --------
@@ -331,6 +403,7 @@ class JointPHFitter(FitterRepr):
         check_columns(
             df,
             x_col=x_col,
+            i_col=i_col,
             markers_col=markers_col,
             c_col=c_col,
             n_col=n_col,
@@ -340,10 +413,16 @@ class JointPHFitter(FitterRepr):
             xr_col=xr_col,
             Z_cols=Z_cols,
         )
-        if markers_col is None:
+        if m is not None and markers_col is not None:
+            raise TypeError(
+                "m and markers_col are two ways of giving the readings: "
+                "give one."
+            )
+        if m is None and markers_col is None:
             raise ValueError(
                 "markers_col names the column of each item's readings, "
-                "{age: value}: the joint model needs them."
+                "{age: value} (or give them as m=, a Measurements matched "
+                "to the items by i_col): the joint model needs them."
             )
         if x_col is not None and (xl_col is not None or xr_col is not None):
             raise ValueError(
@@ -372,15 +451,20 @@ class JointPHFitter(FitterRepr):
                 tl=None if tl_col is None else df[tl_col].to_numpy(float),
                 tr=None if tr_col is None else df[tr_col].to_numpy(float),
                 Z=Z,
-                markers=list(df[markers_col]),
+                markers=None if m is not None else list(df[markers_col]),
                 marker_reference=marker_reference,
                 path_covariates=path_covariates,
                 hazard_covariates=hazard_covariates,
+                i=None if i_col is None else list(df[i_col]),
+                m=m,
             )
 
 
 def JointPH(
-    distribution: Any, path_model: Any = None, varying: Any = None
+    distribution: Any,
+    path_model: Any = None,
+    varying: Any = None,
+    link: Any = "value",
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -388,8 +472,8 @@ def JointPH(
     by default; ``QuadraticPath``, ``ExponentialPath``, ... or a
     ``PathModel`` of one's own), and the hazard is proportional hazards
     on the baseline ``distribution`` (the Weibull for now, #891) in the
-    path's current value. ``WeibullJointPH`` is ``JointPH(Weibull,
-    LinearPath)``.
+    path's current value, or in what ``link`` names. ``WeibullJointPH``
+    is ``JointPH(Weibull, LinearPath)``.
 
     Parameters
     ----------
@@ -401,6 +485,14 @@ def JointPH(
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
         items. Default all of them (at most three).
+    link : str or sequence of str, optional
+        What of the marker's path the hazard follows: ``"value"`` (the
+        default: its current value, so risk follows the level),
+        ``"slope"`` (its rate of change: risk follows how fast it is
+        changing) or ``"cumulative"`` (the area under it from age 0:
+        risk follows the accumulated exposure), or a list of them, each
+        with an effect of its own (``marker_effect``, ``slope_effect``,
+        ``cumulative_effect``).
 
     Returns
     -------
@@ -417,12 +509,15 @@ def JointPH(
     >>> JointPH(Weibull, QuadraticPath, varying=("a", "b"))
     ... # doctest: +ELLIPSIS
     WeibullQuadraticJointPH: joint model fitter (..., varying: a, b)
+    >>> JointPH(Weibull, link=["value", "slope"])
+    ... # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., link: value, slope)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying)
+    return JointPHFitter(distribution, path_model, varying, link)
 
 
 # -- the data ----------------------------------------------------------------
@@ -664,7 +759,7 @@ def _fit(
     shifts, hazard = parts
     p_all = len(names)
     every = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard
+        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -709,8 +804,9 @@ def _fit(
             dtype=bool,
         ).reshape(len(path_names), p),
         np.array([cov in hazard for cov in kept_names], dtype=bool),
+        fitter.link,
     )
-    model = Model(layout, PathFunction(path_model), centre)
+    model = Model(layout, PathFunction(path_model, fitter.link), centre)
     # Starting values: each item's path alone, their spread, then the
     # survival part on each item's predicted path
     theta = marker_start(model, ages, values, Z - zbar, counts)
@@ -741,6 +837,148 @@ def _fit(
             "The joint fit could not start: the likelihood is not finite at "
             "its starting values (check the readings and the path model)."
         )
+    u, value, placed, starts, converged = _descend(
+        u, value, placed, starts, search, curvature, evaluated
+    )
+    value, grad, cov_u, positive, flat = _check_maximum(
+        u, placed, search, curvature
+    )
+    # A search can stop short of the maximum on the flat shelf where the
+    # items' spread nears a correlation of +-1 (the log-scale Cholesky
+    # diagonal reaches it only at -inf, and the gradient vanishes well
+    # before): its answer is then not a verified maximum. Such an answer
+    # gets one more search, from the same sds uncorrelated. A verified
+    # answer from it is kept; otherwise the lower of the two. The first
+    # answer's likelihood is not compared with a verified one: it is not
+    # a maximum, and near a correlation of +-1 the adaptive nodes can be
+    # far off (one fleet: 5099.8 by the nodes, 5197.8 by a grid integral,
+    # against the maximum inside at 5159.0). A verified answer is kept as
+    # it is, with no second search.
+    inside = None
+    if layout.q >= 2 and not (converged and positive and flat):
+        inside = _uncorrelated(u, layout)
+    if inside is not None and np.all(np.isfinite(inside)):
+        retry_value, retry_placed, retry_starts = evaluated(
+            inside, (None, None)
+        )
+        if retry_placed is not None and np.isfinite(retry_value):
+            retry = _descend(
+                inside,
+                retry_value,
+                retry_placed,
+                retry_starts,
+                search,
+                curvature,
+                evaluated,
+            )
+            checked = _check_maximum(retry[0], retry[2], search, curvature)
+            sound = retry[4] and checked[3] and checked[4]
+            lower = retry[1] < value - _ROUND_TOL * max(1.0, abs(value))
+            if sound or lower:
+                u, _, placed, starts, converged = retry
+                value, grad, cov_u, positive, flat = checked
+    verified = converged and positive and flat and np.all(np.isfinite(u))
+    if not verified:
+        reason = None
+        if not converged:
+            reason = "the rounds of placing the nodes did not settle"
+        elif not positive:
+            reason = "the Hessian is not positive definite there"
+        elif not flat:
+            reason = "the gradient is not zero there"
+        warn_unverified("The joint fit", reason)
+    estimated = np.asarray(
+        reported_params(layout.unpack(u), layout, refs), dtype=float
+    )
+    covariance = None
+    if cov_u is not None:
+        J = jacobian(
+            lambda v: reported_params(layout.unpack(v), layout, refs)
+        )(u)
+        covariance = J @ cov_u @ J.T
+        covariance = 0.5 * (covariance + covariance.T)
+    else:
+        warn_no_covariance()
+    # every parameter, nan for an aliased covariate's
+    full_names = parameter_names(
+        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
+    )
+    kept_names = parameter_names(
+        path_names,
+        list(fitter.varying),
+        kept_names,
+        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
+        [c for c in hazard if c in kept_names],
+        fitter.link,
+    )
+    where = [full_names.index(name) for name in kept_names]
+    params = np.full(len(full_names), np.nan)
+    params[where] = estimated
+    out = JointModel()
+    out.dist = fitter.dist
+    out.path_model = path_model
+    out.varying = list(fitter.varying)
+    out.params = params
+    out.feature_names = list(names)
+    out.aliased = aliased
+    every_one = all(shifts[n] == list(names) for n in path_names) and list(
+        hazard
+    ) == list(names)
+    # saved as None where every covariate is in both parts (as before)
+    out.path_covariates = (
+        None if every_one else {n: list(shifts[n]) for n in path_names}
+    )
+    out.hazard_covariates = None if every_one else list(hazard)
+    out.parameter_names = full_names
+    out.link = tuple(fitter.link)
+    out.marker_reference = float(reference) if "value" in fitter.link else None
+    out._centre = centre
+    out._zbar = zbar
+    if covariance is not None:
+        full_cov = np.full((len(full_names),) * 2, np.nan)
+        full_cov[np.ix_(where, where)] = covariance
+        out._covariance = full_cov
+    out._neg_ll = float(value)
+    out.k = len(estimated)
+    out.maximum = "verified" if verified else "unverified"
+    out.n_items = total
+    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
+    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
+    return out
+
+
+def _whitening(curvature: Any, u: npt.NDArray, placed: tuple) -> npt.NDArray:
+    """``S`` with ``S' H S = I`` for the Hessian ``H`` at ``u`` (its
+    inverse Cholesky factor), so the search sees each parameter in its
+    standard errors; the diagonal where ``H`` is not positive definite."""
+    with np.errstate(all="ignore"):
+        H = np.asarray(curvature(u, placed), dtype=float)
+    H = 0.5 * (H + H.T)
+    if np.all(np.isfinite(H)):
+        size = _equilibration(H)
+        try:
+            root = np.linalg.cholesky(H * np.outer(size, size))
+            return size[:, None] * np.linalg.inv(root).T
+        except np.linalg.LinAlgError:
+            pass
+    diag = np.diag(H) if np.all(np.isfinite(np.diag(H))) else np.ones(u.size)
+    return np.diag(1.0 / np.sqrt(np.where(diag > 0, diag, 1.0)))
+
+
+def _descend(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    search: Any,
+    curvature: Any,
+    evaluated: Any,
+) -> tuple:
+    """Rounds of search from ``u`` (its likelihood ``value`` by the
+    nodes ``placed``): ``(u, value, placed, starts, converged)``.
+    ``search`` and ``curvature`` are the likelihood's value and gradient
+    and its Hessian by given nodes, ``evaluated`` the likelihood by nodes
+    placed at a point (``_fit``'s)."""
     converged = False
     for _ in range(_ROUNDS):
         # A search with the nodes held where they are, then the step it
@@ -782,106 +1020,60 @@ def _fit(
         if settled and moved < 1e-3:
             converged = True
             break
-    # The maximum, verified at the last nodes: a zero gradient (in
-    # standard errors) and a positive-definite Hessian
+    return u, value, placed, starts, converged
+
+
+def _check_maximum(
+    u: npt.NDArray, placed: tuple, search: Any, curvature: Any
+) -> tuple:
+    """``(value, grad, cov_u, positive, flat)`` at ``u`` by the nodes
+    ``placed``: the likelihood and its gradient, the inverse Hessian
+    (``None`` where it is not positive definite), whether it is, and
+    whether the gradient is zero in standard errors (below ``_GTOL``).
+    The Hessian is judged and inverted in each parameter's own scale: a
+    slope a second has a curvature 1e7 squared times one an hour's."""
     with np.errstate(all="ignore"):
         value, grad = search(u, placed)
         info = curvature(u, placed)
     info = 0.5 * (info + info.T)
     cov_u, positive = None, False
     if np.all(np.isfinite(info)):
+        own = _equilibration(info)
+        scaled = info * np.outer(own, own)
         try:
-            positive = bool(np.all(np.linalg.eigvalsh(info) > 0))
-            cov_u = np.linalg.inv(info) if positive else None
+            positive = bool(np.all(np.linalg.eigvalsh(scaled) > 0))
+            cov_u = (
+                np.linalg.inv(scaled) * np.outer(own, own)
+                if positive
+                else None
+            )
         except np.linalg.LinAlgError:
             positive = False
     flat = False
     if cov_u is not None and np.all(np.isfinite(grad)):
         sd = np.sqrt(np.abs(np.diag(cov_u)))
         flat = bool(np.max(np.abs(grad) * sd) < _GTOL)
-    verified = converged and positive and flat and np.all(np.isfinite(u))
-    if not verified:
-        reason = None
-        if not converged:
-            reason = "the rounds of placing the nodes did not settle"
-        elif not positive:
-            reason = "the Hessian is not positive definite there"
-        elif not flat:
-            reason = "the gradient is not zero there"
-        warn_unverified("The joint fit", reason)
-    estimated = np.asarray(
-        reported_params(layout.unpack(u), layout, refs), dtype=float
-    )
-    covariance = None
-    if cov_u is not None:
-        J = jacobian(
-            lambda v: reported_params(layout.unpack(v), layout, refs)
-        )(u)
-        covariance = J @ cov_u @ J.T
-        covariance = 0.5 * (covariance + covariance.T)
-    else:
-        warn_no_covariance()
-    # every parameter, nan for an aliased covariate's
-    full_names = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard
-    )
-    kept_names = parameter_names(
-        path_names,
-        list(fitter.varying),
-        kept_names,
-        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
-        [c for c in hazard if c in kept_names],
-    )
-    where = [full_names.index(name) for name in kept_names]
-    params = np.full(len(full_names), np.nan)
-    params[where] = estimated
-    out = JointModel()
-    out.dist = fitter.dist
-    out.path_model = path_model
-    out.varying = list(fitter.varying)
-    out.params = params
-    out.feature_names = list(names)
-    out.aliased = aliased
-    every_one = all(shifts[n] == list(names) for n in path_names) and list(
-        hazard
-    ) == list(names)
-    # saved as None where every covariate is in both parts (as before)
-    out.path_covariates = (
-        None if every_one else {n: list(shifts[n]) for n in path_names}
-    )
-    out.hazard_covariates = None if every_one else list(hazard)
-    out.parameter_names = full_names
-    out.marker_reference = float(reference)
-    out._centre = centre
-    out._zbar = zbar
-    if covariance is not None:
-        full_cov = np.full((len(full_names),) * 2, np.nan)
-        full_cov[np.ix_(where, where)] = covariance
-        out._covariance = full_cov
-    out._neg_ll = float(value)
-    out.k = len(estimated)
-    out.maximum = "verified" if verified else "unverified"
-    out.n_items = total
-    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
-    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
-    return out
+    return value, grad, cov_u, positive, flat
 
 
-def _whitening(curvature: Any, u: npt.NDArray, placed: tuple) -> npt.NDArray:
-    """``S`` with ``S' H S = I`` for the Hessian ``H`` at ``u`` (its
-    inverse Cholesky factor), so the search sees each parameter in its
-    standard errors; the diagonal where ``H`` is not positive definite."""
-    with np.errstate(all="ignore"):
-        H = np.asarray(curvature(u, placed), dtype=float)
-    H = 0.5 * (H + H.T)
-    if np.all(np.isfinite(H)):
-        try:
-            root = np.linalg.cholesky(H)
-            return np.linalg.inv(root).T
-        except np.linalg.LinAlgError:
-            pass
-    diag = np.diag(H) if np.all(np.isfinite(np.diag(H))) else np.ones(u.size)
-    return np.diag(1.0 / np.sqrt(np.where(diag > 0, diag, 1.0)))
+def _uncorrelated(u: npt.NDArray, layout: Layout) -> npt.NDArray:
+    """``u`` with the items' spread made uncorrelated, each varying
+    parameter's sd kept."""
+    theta = layout.unpack(np.asarray(u, dtype=float))
+    theta = {k: np.asarray(v, dtype=float) for k, v in theta.items()}
+    L = theta["L"]
+    theta["L"] = np.diag(np.sqrt(np.sum(L**2, axis=1)))
+    return layout.pack(theta)
+
+
+def _equilibration(H: npt.NDArray) -> npt.NDArray:
+    """``1 / sqrt(H_ii)`` (1 where that is not positive and finite):
+    the scaling that puts each parameter of ``H`` in its own units, so a
+    factorisation or an eigenvalue test of ``H`` does not depend on how
+    different their sizes are (on the unit of time)."""
+    diag = np.diag(H)
+    ok = np.isfinite(diag) & (diag > 0)
+    return np.where(ok, 1.0 / np.sqrt(np.where(ok, diag, 1.0)), 1.0)
 
 
 def search_space(model: JointModel, **data: Any) -> tuple:
@@ -890,7 +1082,7 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     the model's parameters; the model's point ``u`` in that space; and
     the number of items. For the checks that a fit's answer is a
     maximum (``tests/conformance``)."""
-    fitter = JointPH(model.dist, model.path_model, model.varying)
+    fitter = JointPH(model.dist, model.path_model, model.varying, model.link)
     records, counts, names = _records(
         data["x"],
         data.get("c"),
@@ -908,7 +1100,7 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     Z = Z_all[:, model._kept] - model._zbar
     arrays = JointArrays.build(counts, T, d, L, Z, ages, values, U=U, Rt=Rt)
     layout = model._layout
-    lik = Model(layout, PathFunction(model.path_model), model._centre)
+    lik = model._likelihood_model()
     theta = model._theta()
     u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
     placed, _ = place(u, lik, arrays, (None, None))

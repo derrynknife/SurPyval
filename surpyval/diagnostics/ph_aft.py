@@ -133,6 +133,7 @@ from surpyval.univariate.regression._fit_skeleton import (
     LogLinearPhi,
 )
 from surpyval.univariate.regression._likelihood import regression_neg_ll
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
@@ -140,6 +141,7 @@ from ._shared import (
     _covariate_kind,
     _Fit,
     _fmt,
+    _form_panel,
     _gap,
     _note,
     _source,
@@ -221,7 +223,7 @@ def _base(ctx: Context) -> SimpleNamespace:
             model=m,
             fitter=m.model,
             dist=m.distribution,
-            name=m.distribution.name,
+            name=canonical_name(m.distribution),
             data=data,
             raw=raw,
             Z=Z,
@@ -1192,27 +1194,14 @@ def _form_rows_of(scale: str) -> Callable[[Context], list[dict]]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     b = _base(ctx)
     rows, m = _martingale(ctx)
-    panels = []
-    for j, name in _form_columns(ctx):
-
-        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
-            from surpyval.plotting import INK, PALETTE
-
-            z = b.raw[rows, j]
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z, m[rows], s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z, m[rows], grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(name)
-            ax.set_ylabel("martingale residual")
-
-        if rows.any():
-            panels.append(Panel(f"{name}: functional form", draw))
-    return panels
+    if not rows.any():
+        return []
+    return [
+        _form_panel(name, b.raw[rows, j], m[rows], "martingale residual")
+        for j, name in _form_columns(ctx)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -2286,7 +2275,7 @@ def _dist_is(
     AFT models are (True) or are not (False) the same model)."""
 
     def test(ctx: Context) -> bool:
-        baseline = ctx.model.distribution.name
+        baseline = canonical_name(ctx.model.distribution)
         if name is None:
             return baseline not in BASELINES and (
                 same is None or (baseline in SAME_PH_AFT) == same

@@ -51,25 +51,17 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils import finite_covariate_mask
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_alpha_ci
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._prediction import (
     ConditionalSurvivalMixin,
@@ -78,10 +70,10 @@ from .._prediction import (
 )
 from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     NoLikelihoodMixin,
     canonical_rows,
-    design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -755,7 +747,7 @@ class BuckleyJames_(FitterRepr):
         >>> model.beta.round(3)
         array([0.435])
         >>> model.bootstrap_ci(random_state=1).round(3)
-        array([[0.343, 0.528]])
+        array([[0.342, 0.532]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
@@ -828,7 +820,6 @@ class BuckleyJames_(FitterRepr):
             (Y, delta, Z_a, n_a),
         )
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,
@@ -867,23 +858,16 @@ class BuckleyJames_(FitterRepr):
             so it predicts from DataFrame rows.
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tol=tol,
+            max_iter=max_iter,
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
-
-        # The aliasing warning (#476) names the columns.
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
-        model.formula = formula
-        model.feature_names = feature_names
-        model._model_spec = model_spec
-        return model
 
 
 BuckleyJames = BuckleyJames_()

@@ -27,9 +27,9 @@ from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
-from surpyval.utils.validation import option_error
 
 from ._tvc_evaluation import TVCEvaluationMixin, refuse_schedule
 
@@ -129,6 +129,11 @@ class ProportionalIntensityModel(
     array([0.00107511, 0.00284451, 0.00502557])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fitters; declared for the type checker.
     kind: str
     parameterization: str
@@ -179,7 +184,7 @@ class ProportionalIntensityModel(
             out += f"   {name}  :  {p}\n"
         if self.penalty is not None:
             out += self._penalty_printout().lstrip("\n") + "\n"
-        return out
+        return out + notes_text(self).lstrip("\n")
 
     # -- serialisation -----------------------------------------------------
 
@@ -191,8 +196,12 @@ class ProportionalIntensityModel(
         Stores the base-rate intensity model's name, the base-rate ``params``
         and the covariate ``coeffs``; the reloaded model reproduces
         ``cif``/``iif`` (``Lambda_0(t; params) * exp(Z . coeffs)``) exactly.
-        The likelihood-inference state (data, ``neg_ll`` closure) is not
-        stored.
+        A fit's parameter covariance is stored too (``"covariance"``), so
+        the reloaded model gives the same ``covariance()``,
+        ``standard_errors()``, ``summary()``, ``param_cb`` and Wald bounds
+        (``cif_cb``, ``iif_cb``, ``cb_tvc``). The data and the likelihood
+        are not stored: the likelihood, the information criteria and the
+        diagnostics need a refit, and say so.
 
         See Also
         --------
@@ -206,6 +215,12 @@ class ProportionalIntensityModel(
             "param_names": list(self._rate_names),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            # What the Wald bounds need (null for a model with no
+            # likelihood, and for a penalised fit, which has no
+            # covariance); optional on reading.
+            "covariance": (
+                None if self.penalty is not None else self._covariance_entry()
+            ),
             **maximum_entry(self.maximum),
         }
         if self.feature_names is not None:
@@ -248,6 +263,7 @@ class ProportionalIntensityModel(
         out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
         out._restore_penalty(model_dict)
+        out._restore_covariance(model_dict, np.r_[out.params, out.coeffs])
         return out
 
     def _penalised_coefficients(self) -> tuple[list, np.ndarray]:
@@ -431,16 +447,7 @@ class ProportionalIntensityModel(
         )
         self._check_has_data("residuals")
         cif_map = self._item_cif_map()
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, cif_map)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, cif_map)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, cif_map, kind)
 
     def trend_test(
         self,
@@ -639,7 +646,7 @@ class ProportionalIntensityModel(
         """Delta-method bounds, on the log scale, on the ``cif`` or the
         ``iif`` (``function``) at ``x`` for covariates ``Z``."""
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(named_covariates(Z, self.feature_names), dtype=float)
         n_dist_params = len(self.params)
@@ -655,7 +662,9 @@ class ProportionalIntensityModel(
         cov = self.covariance()
         cov[held, :] = 0.0
         cov[:, held] = 0.0
-        se = delta_method_se(function_at, self._mle_values(), cov)
+        se = delta_method_se(
+            function_at, self._mle_values(), cov, scale_free=True
+        )
         estimate = getattr(self, function)(x, Z)
         return log_transformed_cb(estimate, se, alpha_ci, bound)
 

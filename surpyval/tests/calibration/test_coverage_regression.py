@@ -5,6 +5,17 @@
   (Lin-Wei) covariance, n = 200, two covariates, 30% censoring; once with
   continuous times (Breslow) and once with times grouped onto a coarse grid
   (heavy ties, Efron's method).
+- **Fine-Gray**: 95% Wald intervals of the coefficients from the robust
+  covariance (Fine and Gray's sandwich, the default), n = 200, two
+  covariates, data from the model itself with about half the rows
+  censored, independently of the covariates. The model-based intervals'
+  coverage is printed beside it, and not checked.
+- **Fine-Gray, stratified and clustered**: the same construction in three
+  strata with their own baselines and censoring (``strata=``, n = 300),
+  and in 150 clusters of two dependent units sharing a covariate
+  (``cluster=``, a Gaussian copula on the units' uniforms); the robust
+  intervals are checked, those of the fit without the strata or the
+  clusters printed beside them.
 - **Parametric families**: ``param_cb`` of every parameter of ``WeibullPH``,
   ``WeibullAFT``, ``LogNormalAFT``, ``WeibullPO`` and ``WeibullAH``, each
   simulated from its own model, n = 200.
@@ -65,6 +76,126 @@ def test_cox_coefficient_coverage(tied):
     label = "CoxPH ({})".format("efron, ties" if tied else "breslow")
     check_coverage(lo, hi, beta, 0.95, label + " model-based", slack=slack)
     check_coverage(rlo, rhi, beta, 0.95, label + " robust", slack=slack)
+
+
+def test_fine_gray_coefficient_coverage():
+    rng = np.random.default_rng(331)
+    beta = np.array([0.7, -0.5])
+    reps, p = 1000, 0.5
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    mlo, mhi = np.empty((reps, 2)), np.empty((reps, 2))
+    censored = 0.0
+    for r in range(reps):
+        Z = _covariates(rng)
+        # Fine and Gray's (1999) construction: the cumulative incidence of
+        # cause 1 is 1 - (1 - p (1 - exp(-t)))^exp(beta'Z); cause 2, with
+        # exponential times, takes the rest.
+        phi = np.exp(Z @ beta)
+        p1 = 1 - (1 - p) ** phi
+        first = rng.uniform(size=N) < p1
+        v = rng.uniform(size=N)
+        t1 = -np.log(1 - (1 - (1 - v * p1) ** (1 / phi)) / p)
+        t = np.where(first, t1, rng.exponential(1.0, N))
+        cens = rng.exponential(1.0, N)
+        e = np.where(first, 1, 2).astype(object)
+        e[cens < t] = None
+        censored += np.mean(cens < t) / reps
+        model = sp.FineGray.fit(np.minimum(t, cens), Z, e, event=1)
+        b = np.asarray(model.params)
+        se = model.standard_errors()
+        mse = model.standard_errors(robust=False)
+        lo[r], hi[r] = b - Z_CRIT * se, b + Z_CRIT * se
+        mlo[r], mhi[r] = b - Z_CRIT * mse, b + Z_CRIT * mse
+    print(f"censored rows: {censored:.0%}")
+    covered = ((mlo <= beta) & (beta <= mhi)).mean(axis=0)
+    print("FineGray model-based (not checked):", covered)
+    check_coverage(lo, hi, beta, 0.95, "FineGray robust")
+
+
+def _fine_gray_times(rng, Z, beta, p, u=None):
+    """Times and causes from Fine and Gray's (1999) construction, as
+    above: the cumulative incidence of cause 1 is ``1 - (1 - p (1 -
+    exp(-t)))^exp(beta'Z)``, cause 2 (exponential times) takes the rest.
+    ``u`` (one uniform per row) decides the cause and the time, so that
+    dependent uniforms give dependent units with these margins."""
+    phi = np.exp(Z @ beta)
+    p1 = 1 - (1 - p) ** phi
+    if u is None:
+        u = rng.uniform(size=phi.size)
+    first = u < p1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = -np.log(1 - (1 - (1 - u) ** (1 / phi)) / p)
+        v = (u - p1) / (1 - p1)
+        t2 = -np.log1p(-v)
+    return np.where(first, t1, t2), np.where(first, 1, 2)
+
+
+def test_stratified_fine_gray_coefficient_coverage():
+    # Three strata with their own baselines (p = 0.3, 0.5, 0.7) and their
+    # own censoring (exponential, means 0.5, 1 and 2), 100 rows each: the
+    # robust intervals of strata=... (the censoring within each stratum,
+    # crrs's ctype = 1). The fit without strata, whose one baseline and
+    # one censoring distribution are wrong here, is printed, not checked.
+    rng = np.random.default_rng(341)
+    beta = np.array([0.7, -0.5])
+    reps, per = 1000, 100
+    strata = np.repeat([0, 1, 2], per)
+    p = np.array([0.3, 0.5, 0.7])[strata]
+    mean_cens = np.array([0.5, 1.0, 2.0])[strata]
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    plain = np.empty((reps, 2))
+    for r in range(reps):
+        Z = _covariates(rng, strata.size)
+        t, cause = _fine_gray_times(rng, Z, beta, p)
+        cens = rng.exponential(mean_cens)
+        e = cause.astype(object)
+        e[cens < t] = None
+        x = np.minimum(t, cens)
+        model = sp.FineGray.fit(x, Z, e, event=1, strata=strata)
+        b, se = np.asarray(model.params), model.standard_errors()
+        lo[r], hi[r] = b - Z_CRIT * se, b + Z_CRIT * se
+        plain[r] = sp.FineGray.fit(x, Z, e, event=1).params
+    print("FineGray without strata, mean estimate (not checked):", end=" ")
+    print(plain.mean(axis=0), "for", beta)
+    check_coverage(lo, hi, beta, 0.95, "FineGray stratified robust")
+
+
+def test_clustered_fine_gray_coefficient_coverage():
+    # 150 clusters of two units sharing the first covariate (a cluster
+    # property) whose uniforms are joined by a Gaussian copula (correlation
+    # 0.8), so each unit follows the Fine-Gray model and the two are
+    # dependent: the cluster-robust intervals of cluster=... (crrc). The
+    # coverage of the intervals that ignore the clusters is printed, not
+    # checked.
+    rng = np.random.default_rng(342)
+    beta = np.array([0.7, -0.5])
+    reps, k = 1000, 150
+    cluster = np.repeat(np.arange(k), 2)
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    nlo, nhi = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        Z = np.column_stack(
+            [
+                np.repeat(rng.binomial(1, 0.5, k), 2),
+                rng.normal(0, 1, 2 * k),
+            ]
+        )
+        shared = rng.normal(size=k)
+        own = rng.normal(size=2 * k)
+        u = norm.cdf(np.sqrt(0.8) * np.repeat(shared, 2) + np.sqrt(0.2) * own)
+        t, cause = _fine_gray_times(rng, Z, beta, 0.5, u)
+        cens = rng.exponential(1.0, 2 * k)
+        e = cause.astype(object)
+        e[cens < t] = None
+        x = np.minimum(t, cens)
+        model = sp.FineGray.fit(x, Z, e, event=1, cluster=cluster)
+        b, se = np.asarray(model.params), model.standard_errors()
+        lo[r], hi[r] = b - Z_CRIT * se, b + Z_CRIT * se
+        nse = sp.FineGray.fit(x, Z, e, event=1).standard_errors()
+        nlo[r], nhi[r] = b - Z_CRIT * nse, b + Z_CRIT * nse
+    covered = ((nlo <= beta) & (beta <= nhi)).mean(axis=0)
+    print("FineGray ignoring the clusters (not checked):", covered)
+    check_coverage(lo, hi, beta, 0.95, "FineGray cluster-robust")
 
 
 def test_proportional_odds_coefficient_coverage():

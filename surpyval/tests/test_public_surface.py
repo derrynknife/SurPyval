@@ -47,7 +47,9 @@ NAMESPACES: tuple[str, ...] = (
     "surpyval.univariate.parametric",
     "surpyval.univariate.nonparametric",
     "surpyval.univariate.regression",
+    "surpyval.univariate.regression.kinds",
     "surpyval.univariate.competing_risks",
+    "surpyval.multistate",
     "surpyval.recurrent",
     "surpyval.degradation",
     "surpyval.multivariate",
@@ -143,7 +145,12 @@ def test_how_retired_tells_the_kinds_apart() -> None:
     # by date, a removed module, and two that would be silent.
     assert how_retired("surpyval.RecurrentEventData") == "hint"
     assert how_retired("surpyval.TrendTestResult") == "hint"
-    assert how_retired("surpyval.utils.score.score") == "hint"
+    assert (
+        how_retired("surpyval.utils.recurrent_event_data.RecurrentEventData")
+        == "hint"
+    )
+    # Its hint retired, a name removed in v0.23 is silent
+    assert how_retired("surpyval.utils.score.score") is None
     assert how_retired("surpyval.fs_to_xcnt") == "deprecated"
     assert how_retired("surpyval.recurrent.NoSuchModel") is None
     assert how_retired("surpyval.Weibull") is None  # there, no warning

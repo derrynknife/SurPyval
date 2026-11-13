@@ -69,9 +69,9 @@ not yet built.
 | Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.ml`) |
+| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`, `CoxMixedEffects`; survival trees and forests (`surpyval.ml`) |
 | Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF, with confidence bounds) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
+| Continuous time | Single event | Competing | With | `ParametricCompetingRisksRegression` (a parametric regression per cause) | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | `CauseSpecificNHPP` | `CauseSpecificMCF` |
@@ -90,7 +90,11 @@ univariate, regression or repairable-system model. The parametric regression
 models have `qf`, `cs` and `quantile_cb`, with Wald, likelihood-ratio and
 bootstrap bounds, and the semi-parametric and frailty regressions have `qf`.
 An offset model's bounds can be bootstrapped (`method="bootstrap"`) to take
-in the offset's uncertainty.
+in the offset's uncertainty. Units that move between several states
+(healthy, ill, dead; working, degraded, failed) have multi-state models
+(`surpyval.multistate`): Aalen-Johansen transition and state occupation
+probabilities (`MultiState`) and a Cox model of each transition
+(`MultiStateProportionalHazards`), with standard errors and bounds.
 
 # Install and Quick Intro
 

@@ -72,13 +72,12 @@ The checks
 from __future__ import annotations
 
 import math
-import warnings
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2, norm
 
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
 
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -440,8 +439,7 @@ def _cvm(ctx: Context) -> Any:
     that failed (and were resampled)."""
 
     def compute() -> tuple:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught:
             with np.errstate(all="ignore"):
                 try:
                     res = ctx.model.cramer_von_mises(

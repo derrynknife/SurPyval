@@ -41,6 +41,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -75,9 +76,9 @@ from .._fit_skeleton import (
     say_verdict,
     uniform_draws,
 )
-from .._kinds import DISTRIBUTIONAL
 from .._likelihood import regression_neg_ll
 from .._robust import note_source_rows
+from ..kinds import DISTRIBUTIONAL
 from ..regression_data import (
     DataFrameRegressionMixin,
     design_matrix_from_df,
@@ -135,7 +136,7 @@ def _check_distribution(distribution: Any) -> None:
             "LogNormal, Gamma, ...); got {!r}. For a fitted model, pass its "
             "distribution (model.dist).".format(distribution)
         )
-    if name not in SUPPORTED:
+    if canonical_name(distribution) not in SUPPORTED:
         raise ValueError(
             "Distributional regression is not available for the {} "
             "distribution: it takes a continuous distribution whose support "
@@ -188,15 +189,33 @@ class DistributionalFitter(
         covariates: Mapping[str, Any] | None = None,
         links: Mapping[str, str] | None = None,
     ) -> None:
-        _check_distribution(distribution)
+        self._check_distribution(distribution)
         mirror_distribution(self, distribution)
         self.name = distribution.name + self.name_suffix
         self._covariates = covariates
         self._links_given = links
         self.links = self._resolve_links(links)
 
+    #: The check a distribution passes to be taken; a subclass with its
+    #: own distributions replaces it.
+    _check_distribution = staticmethod(_check_distribution)
+
+    def _say_verdict(self, verdict: Any, values: dict) -> None:
+        """The one warning of a search that did not end at a verified
+        maximum."""
+        say_verdict(verdict, dist=self.dist.name, values=values)
+
+    def _model_class(self) -> Any:
+        """The class of the model a fit returns."""
+        from .model import DistributionalRegressionModel
+
+        return DistributionalRegressionModel
+
     def __reduce__(self) -> Any:
-        return (_rebuild_fitter, (self.dist, self.__getstate__()))
+        return (
+            _rebuild_fitter,
+            (self.dist, self.__getstate__(), type(self)),
+        )
 
     def __getstate__(self) -> dict:
         return {
@@ -218,7 +237,8 @@ class DistributionalFitter(
         SurPyval's AFT models; +1 otherwise (a rate, or a shape or spread
         with no direction of its own). See :func:`._links.sign`."""
         return tuple(
-            _links.sign(self.dist.name, name) for name in self.parameter_names
+            _links.sign(canonical_name(self.dist), name)
+            for name in self.parameter_names
         )
 
     def _resolve_links(
@@ -347,7 +367,7 @@ class DistributionalFitter(
         """A copy of this fitter for the model fitted with ``positions``
         (its ``fit`` refits with the same columns, as the bootstrap
         does)."""
-        out = DistributionalFitter.__new__(DistributionalFitter)
+        out = type(self).__new__(type(self))
         mirror_distribution(out, self.dist)
         out.name = self.name
         out.links = links
@@ -634,6 +654,7 @@ class DistributionalFitter(
             [(pos, int(column_of[j])) for pos, j in coef_free],
             Z_data,
         )
+        floor = _in_own_units(floor, space, init_t, coef_free, positions)
         baseline = [
             (positions_free[i], all_names[i])
             for i in range(K)
@@ -698,10 +719,8 @@ class DistributionalFitter(
             fit_centring,
         )
         mark_weighted(model, data)
-        say_verdict(
-            verdict,
-            dist=self.dist.name,
-            values=dict(zip(self.parameter_names, model.params)),
+        self._say_verdict(
+            verdict, dict(zip(self.parameter_names, model.params))
         )
         model.maximum = verdict.maximum
 
@@ -985,7 +1004,7 @@ class DistributionalFitter(
             )
         target = self
         if covariates is not None or links is not None:
-            target = DistributionalFitter(
+            target = type(self)(
                 self.dist,
                 covariates if covariates is not None else self._covariates,
                 links if links is not None else self._links_given,
@@ -1137,6 +1156,37 @@ class _SearchSpace:
         return np.array(entries)
 
 
+def _in_own_units(
+    floor: npt.NDArray,
+    space: _SearchSpace,
+    init_t: npt.NDArray,
+    coef_free: list,
+    positions: tuple,
+) -> npt.NDArray:
+    """``floor`` with each parameter on the identity link -- a location,
+    in the unit of time -- and its coefficients measured in that
+    parameter's starting size (its coefficients' floors multiplied by
+    it), so the search is the same whatever the unit of time; a
+    parameter on another link is dimensionless on it and keeps its
+    floor."""
+    floor = np.array(floor, dtype=float)
+    with np.errstate(all="ignore"):
+        nat = np.asarray(space.to_natural(init_t), dtype=float)
+    owner = np.concatenate(
+        [np.full(np.asarray(cols).size, k) for k, cols in enumerate(positions)]
+    ).astype(int)
+    for k in range(space.k_dist):
+        size = abs(float(nat[k]))
+        if space.links[k] != "identity" or not (np.isfinite(size) and size):
+            continue
+        if k in space.positions_free:
+            floor[space.positions_free[k]] = size
+        for pos, j in coef_free:
+            if owner[j] == k:
+                floor[pos] = floor[pos] * size
+    return floor
+
+
 def _assemble(
     bound: DistributionalFitter,
     params: npt.NDArray,
@@ -1150,10 +1200,8 @@ def _assemble(
     fit_centring: tuple | None,
 ) -> Any:
     """The fitted model."""
-    from .model import DistributionalRegressionModel
-
     K = bound.k_dist
-    model = DistributionalRegressionModel()
+    model = bound._model_class()()
     model.center = center
     model._fit_centring = fit_centring
     model.distribution_param_map = dict(bound.param_map)
@@ -1231,10 +1279,13 @@ def _coefficient_penalizer(
     return onp.concatenate([value[onp.asarray(c, int)] for c in positions])
 
 
-def _rebuild_fitter(dist: Any, state: dict) -> DistributionalFitter:
-    out = DistributionalFitter.__new__(DistributionalFitter)
+def _rebuild_fitter(
+    dist: Any, state: dict, cls: Any = None
+) -> DistributionalFitter:
+    cls = DistributionalFitter if cls is None else cls
+    out: DistributionalFitter = cls.__new__(cls)
     mirror_distribution(out, dist)
-    out.name = dist.name + DistributionalFitter.name_suffix
+    out.name = dist.name + cls.name_suffix
     for key, value in state.items():
         setattr(out, key, value)
     return out

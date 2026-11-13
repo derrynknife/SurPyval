@@ -140,9 +140,12 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
         lost.append("event types")
     if getattr(data, "time_varying_covariates", None) is not None:
         lost.append("time-varying covariates")
+    states = getattr(data, "s", None)
+    if states is not None and len(set(states.tolist())) > 1:
+        lost.append("states")
     if lost:
         raise ValueError(f"{what}: {lost_message(lost, False)}")
-    if getattr(data, "markers", None) is not None:
+    if getattr(data, "m", None) is not None:
         raise ValueError(
             f"{what}: this fit takes no markers, which the SurpyvalData "
             'holds; use data.without("markers") (the joint models, such as '
@@ -334,7 +337,7 @@ def fit(
     unit: Any = None,
 ) -> Any:
     """The Bayesian fit; see ``ParametricFitter.fit_bayes``."""
-    from surpyval.utils.units import normalise_unit
+    from surpyval.utils.units import normalise_unit, same_unit
 
     _check_dist(dist, method)
     data = bayes_data(
@@ -342,7 +345,11 @@ def fit(
     )
     canonical = normalise_unit(unit)
     held = getattr(data, "unit", None)
-    if canonical is not None and held is not None and held != canonical:
+    if (
+        canonical is not None
+        and held is not None
+        and not same_unit(held, canonical)
+    ):
         raise ValueError(
             f"The data's ages are in {held!r}, but unit={unit!r} was given "
             "to the fit: leave unit= out, or convert the data."
@@ -592,6 +599,7 @@ def fit_from_df(
     """``fit_bayes`` on the columns of a DataFrame, named as
     ``fit_from_df`` names them."""
     from surpyval.utils.dataframe import (
+        exact_or_range_frame,
         frame_column,
         refuse_column_names,
         require_frame,
@@ -608,10 +616,9 @@ def fit_from_df(
 
     df = require_frame(df)
     refuse_column_names(options, "x", "c", "n", "xl", "xr", "tl", "tr")
-    if x_col is not None and (xl_col is not None or xr_col is not None):
-        raise ValueError(
-            "Cannot use `x_col` and (`xl_col` and `xr_col`) together"
-        )
+    df, x_col, xl_col, xr_col = exact_or_range_frame(
+        df, x_col, xl_col, xr_col, c_col
+    )
     arrays: dict[str, Any] = {}
     if x_col is not None:
         arrays["x"] = frame_column(df, x_col, "x_col", time=True)

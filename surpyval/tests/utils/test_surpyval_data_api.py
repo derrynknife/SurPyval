@@ -220,7 +220,7 @@ def test_parametric_and_nonparametric_fits_take_data():
         sp.KaplanMeier.fit(data).sf([5, 10]),
         sp.KaplanMeier.fit(X, C).sf([5, 10]),
     )
-    assert sp.Weibull.fit(data, unit="hours").unit == "hour"
+    assert sp.Weibull.fit(data, unit="hours").unit == "hours"
 
 
 def test_mixture_and_fit_best_take_data():
@@ -324,6 +324,7 @@ def test_a_star_import_still_gets_the_old_names_with_the_warning():
 def test_the_warning_shows_in_code_outside_main(tmp_path):
     # A DeprecationWarning would be hidden here by Python's default
     # filters; the removal is on a date, so the warning must show.
+    import os
     import subprocess
     import sys
 
@@ -337,6 +338,15 @@ def test_the_warning_shows_in_code_outside_main(tmp_path):
         capture_output=True,
         text=True,
         cwd=tmp_path,
+        # The surpyval under test, installed or not (run from tmp_path,
+        # a checkout's own copy is not on the path).
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                [str(Path(sp.__file__).resolve().parent.parent)]
+                + [p for p in [os.environ.get("PYTHONPATH")] if p]
+            ),
+        },
         check=True,
     )
     assert "FutureWarning" in out.stderr and "fs_to_xcnt" in out.stderr

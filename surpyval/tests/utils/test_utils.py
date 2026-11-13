@@ -222,22 +222,16 @@ def test_xcnt_handler():
     with pytest.raises(ValueError, match="Must enter some data!"):
         xcnt_handler()
 
-    # Test with conflicting inputs for x and xl, xr
-    with pytest.raises(
-        ValueError, match="Must use either 'x' or both 'xl and 'xr'"
-    ):
+    # x with xl / xr is read row by row: each holds one cell per row
+    with pytest.raises(ValueError, match="hold one cell per row"):
         xcnt_handler(x=[1, 2, 3], xl=[1, 2], xr=[3, 4])
 
-    # Test with conflicting inputs for x and xl, xr
-    with pytest.raises(
-        ValueError, match="Must use either 'x' or both 'xl and 'xr'"
-    ):
+    # x with xl / xr is read row by row: each holds one cell per row
+    with pytest.raises(ValueError, match="hold one cell per row"):
         xcnt_handler(x=[1, 2, 3], xl=[1, 2])
 
-    # Test with conflicting inputs for x and xl, xr
-    with pytest.raises(
-        ValueError, match="Must use either 'x' or both 'xl and 'xr'"
-    ):
+    # x with xl / xr is read row by row: each holds one cell per row
+    with pytest.raises(ValueError, match="hold one cell per row"):
         xcnt_handler(x=[1, 2, 3], xr=[3, 4])
 
     # Test with only xl input

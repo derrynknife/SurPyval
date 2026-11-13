@@ -40,32 +40,16 @@ FAMILIES = [
     and case.model_class == "surpyval.ParametricRegressionModel"
 ]
 
-#: Where the old numerical standard errors are further than 1e-4 from the
-#: exact ones, by their own rounding error: coefficients near 0 (-0.13 and
-#: 0.07) get the step's floor, eps^(1/3) * 1e-2, at which rounding in the
-#: likelihood (about 84) reaches the fourth digit. Ten times the step
-#: agrees with the exact values to 1.5e-5 and 3.3e-7. How far the default
-#: step lands depends on the point: at the ExponentialPO fit the gradient
-#: ladder reaches (#499; neg_ll 4e-9 lower) it is 1.8e-3, while ten times
-#: the step still agrees to 1.3e-5, and the exact values move by 1e-6.
-#: The additive hazards cases on their own fixture (``ah_data``, #828) are
-#: the same: 3.6e-4 at most at the default step (WeibullAH), 1.8e-5 at
-#: most at ten times it. NormalAH's is 6.2e-5 at the default step on
-#: arm64 and 1.05e-4 on x86-64 (the exact values agree to 1e-12; the
-#: numerical ones move with the platform's rounding), and 6.7e-7 at ten
-#: times the step. The spline baselines (RoystonParmarPH, RoystonParmarPO)
-#: are 2.7e-4 and 1.3e-4 at the default step, and 7.5e-7 and 2.3e-6 at
-#: ten times it.
-OLD_ROUNDING = {
-    "ExponentialPO": 2e-3,
-    "ExponentialAH": 2e-4,
-    "WeibullAH": 5e-4,
-    "GammaAH": 2e-4,
-    "LogisticAH": 2e-4,
-    "NormalAH": 2e-4,
-    "RoystonParmarPH": 5e-4,
-    "RoystonParmarPO": 5e-4,
-}
+#: The comparisons with the numerical standard errors allow the
+#: numerical ones' own error (``_numerical_rtol``): their rounding, worked
+#: out per parameter, plus this for their truncation, which is under 2e-6
+#: at ten times the default step over every family here. The exact ones
+#: agree with a 40-digit (mpmath) Hessian to 1e-15 (NormalAH, checked by
+#: hand). A table of looser tolerances by family, set from the errors seen
+#: on one machine or another, stood here before; NormalAH's 2e-4 then
+#: failed on x86-64 with Python 3.13 (2.1e-4) with the exact values the
+#: same.
+TRUNCATION = 1e-4
 
 
 def _fit(fit):
@@ -93,6 +77,62 @@ def _numerical_se(model, scale=1.0):
         model._covariance_cache = None
 
 
+def _numerical_rtol(model, scale=1.0):
+    """The relative error the numerical standard errors (at ``scale``
+    times the default step) can have from rounding alone, per parameter,
+    plus ``TRUNCATION`` for the rest.
+
+    The central second difference behind each entry of the numerical
+    Hessian adds four values of the negative log-likelihood ``f``
+    (``f(x + 2h) - 2 f(x) + f(x - 2h)`` on the diagonal), each rounded by
+    up to ``delta``, and divides by ``4 h_k h_l``: an entry is off by up
+    to ``delta / (h_k h_l)``. A change ``dH`` of the Hessian moves the
+    covariance ``C`` by ``-C dH C``, so the variance ``C_jj`` moves by up
+    to ``delta (sum_k |C_jk| / h_k)^2`` and the standard error by half
+    that relative to ``C_jj``. ``delta`` is ``2 eps |f|``: ``f``'s rounding
+    noise measured around the NormalAH fit is at most 1.5 ``eps |f|``,
+    and it differs between platforms (numpy's ``exp`` and ``log`` round
+    differently on AVX2, AVX-512 and arm64 kernels).
+
+    The default step is ``eps^(1/3) * max(|p|, 1e-2)``, so a coefficient
+    near 0 gets a step of about 1e-7 whatever its standard error. The
+    NormalAH ``coef_1`` (0.0224, a standard error of 0.0248) is the worst
+    there: its bound is 8.7e-4, and the numerical value was 3.0e-5 off
+    on arm64 and 2.1e-4 off on x86-64 with Python 3.13, where 2e-4 had
+    been allowed. The rounding
+    falls with the step squared, so the comparison at ten times the step
+    has a hundredth of it; the truncation error there is under 2e-6.
+    """
+    (p_hat, center, data, _), kept = model._information
+    free = [
+        i
+        for i, name in enumerate(model.parameter_names)
+        if name not in model.fixed
+    ]
+    if center is not None:
+        data = centred_copy(data, center)
+    delta = (
+        2.0
+        * np.finfo(float).eps
+        * abs(float(model.model.neg_ll(data, *p_hat)))
+    )
+    step = scale * model._hessian_step(np.asarray(p_hat, dtype=float))[free]
+    cov = np.linalg.inv(kept)
+    spread = (np.abs(cov) / step[None, :]).sum(axis=1)
+    rtol = np.full(len(model.parameter_names), TRUNCATION)
+    rtol[free] += delta * spread**2 / (2.0 * np.diag(cov))
+    return rtol
+
+
+def _assert_close(exact, numerical, rtol):
+    """``exact`` within ``rtol`` (one per parameter) of ``numerical``."""
+    off = np.abs(exact - numerical)
+    assert np.all(off <= rtol * np.abs(numerical)), (
+        f"exact {exact}, numerical {numerical}, "
+        f"relative {off / np.abs(numerical)}, allowed {rtol}"
+    )
+
+
 def _count_numerical(monkeypatch, module):
     calls = []
     numerical = module.numerical_hessian
@@ -110,12 +150,11 @@ def test_standard_errors_match_the_numerical_ones(name):
     model = _registry(name)
     assert model._information is not None
     exact = model.standard_errors()
-    rtol = OLD_ROUNDING.get(name, 1e-4)
-    np.testing.assert_allclose(exact, _numerical_se(model), rtol=rtol)
-    if name in OLD_ROUNDING:
-        np.testing.assert_allclose(
-            exact, _numerical_se(model, 10.0), rtol=1e-4
-        )
+    # (the tolerances first: the numerical standard errors drop the
+    # kept information)
+    rtol, rtol_10 = _numerical_rtol(model), _numerical_rtol(model, 10.0)
+    _assert_close(exact, _numerical_se(model), rtol)
+    _assert_close(exact, _numerical_se(model, 10.0), rtol_10)
 
 
 def _direct_hessian(model):
@@ -275,12 +314,8 @@ def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
     for name in options.get("fixed", {}):
         k = model.parameter_names.index(name)
         assert not np.any(exact[k]) and not np.any(exact[:, k])
-    np.testing.assert_allclose(
-        np.sqrt(np.diag(exact)),
-        _numerical_se(model),
-        rtol=OLD_ROUNDING.get(fitter, 1e-4),
-        atol=0,
-    )
+    rtol = _numerical_rtol(model)
+    _assert_close(np.sqrt(np.diag(exact)), _numerical_se(model), rtol)
 
 
 def test_a_runaway_keeps_no_hessian():
@@ -441,10 +476,13 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     # The subdistribution fit's standard errors invert the exact Hessian
     # the no-maximum check took (``judge_search``, which checks the
-    # maximum with it too), rather than taking it again.
+    # maximum with it too), rather than taking it again: the model-based
+    # covariance (``robust=False``) is that inverse, and the robust one
+    # (the default) has it as its bread.
     case = CASE_BY_NAME["FineGray"]
-    calls, seen = [], []
+    calls, seen, breads = [], [], []
     original, take = fine_gray.hessian, skeleton.search_derivatives
+    sandwich = fine_gray._robust_covariance
 
     def counted(f):
         calls.append(1)
@@ -455,10 +493,19 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
         return take(neg_ll, beta)
 
     monkeypatch.setattr(fine_gray, "hessian", counted)
+
+    def with_bread(bread, *args):
+        breads.append(np.array(bread))
+        return sandwich(bread, *args)
+
     monkeypatch.setattr(skeleton, "search_derivatives", taking)
+    monkeypatch.setattr(fine_gray, "_robust_covariance", with_bread)
     model = _fit(lambda: case.fit(case.data()))
-    assert calls == [] and len(seen) == 1
+    assert calls == [] and len(seen) == 1 and len(breads) == 1
     neg_ll, beta = seen[0]
     np.testing.assert_array_equal(beta, model.beta)
     direct = np.linalg.inv(original(neg_ll)(beta))
-    np.testing.assert_allclose(model.covariance(), direct, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(
+        model.covariance(robust=False), direct, rtol=1e-10, atol=0
+    )
+    np.testing.assert_allclose(breads[0], direct, rtol=1e-10, atol=0)

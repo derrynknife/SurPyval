@@ -60,12 +60,16 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import (
+    NoFiniteMaximumError,
     maximum_entry,
+    quiet_maximum_warnings,
     restored_maximum,
+    warn_bootstrap_refits,
     warn_no_maximum,
 )
 from surpyval.utils.rng import as_generator
@@ -77,6 +81,7 @@ from surpyval.utils.validation import (
     check_option,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._maximum import verified_search
 from ._measurements import validate_xy
@@ -307,7 +312,10 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         CDF; the closed form depends on the time transform).
         """
         x = np.asarray(x, dtype=float)
-        h = np.maximum(np.abs(x), 1.0) * 1e-6
+        # Steps of a millionth of the time (of 1e-6 at 0 only): steps of
+        # at least 1e-6 were most of a time measured in millionths of the
+        # unit, and the density moved with the unit.
+        h = np.where(x != 0, np.abs(x), 1.0) * 1e-6
         return (self.ff(x + h) - self.ff(x - h)) / (2.0 * h)
 
     @keeps_query_shape
@@ -547,23 +555,41 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         n = xd.shape[0]
 
         draws = []
+        counts = {"no finite maximum": 0, "unverified": 0, "no estimate": 0}
         for _ in range(n_boot):
             idx = rng.integers(0, n, size=n)
             try:
-                m = DestructiveDegradation.fit(
-                    xd[idx],
-                    yd[idx],
-                    threshold=self.threshold,
-                    c=cd[idx],
-                    distribution=self.distribution,
-                    transform=self.transform,
-                    direction=self.direction,
-                )
+                # Each refit's own warnings (a run-off sigma, say) are
+                # counted below and said once, not once per refit.
+                with ignoring_warnings(), quiet_maximum_warnings():
+                    m = DestructiveDegradation.fit(
+                        xd[idx],
+                        yd[idx],
+                        threshold=self.threshold,
+                        c=cd[idx],
+                        distribution=self.distribution,
+                        transform=self.transform,
+                        direction=self.direction,
+                    )
+            except NoFiniteMaximumError:
+                counts["no estimate"] += 1
+                continue
             except Exception:
                 continue
+            if m.maximum in counts:
+                counts[m.maximum] += 1
             draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
+        warn_bootstrap_refits(
+            n_boot,
+            no_maximum=counts["no finite maximum"],
+            no_estimate=counts["no estimate"],
+            unverified=counts["unverified"],
+            failed=n_boot - len(draws) - counts["no estimate"],
+            advice="treat the bounds as rough; more specimens, or more of "
+            "them failing within the test, would settle them",
+        )
         return percentile_bounds(np.vstack(draws), alpha_ci, bound)
 
     # -- serialisation ----------------------------------------------------
@@ -719,7 +745,7 @@ class DestructiveDegradation_(FitterRepr):
         # OLS initial values (on the log response for positive-support dists).
         resp = (
             np.log(y)
-            if (dist.name in _LOG_RESPONSE and np.all(y > 0))
+            if (canonical_name(dist) in _LOG_RESPONSE and np.all(y > 0))
             else y.astype(float)
         )
         A = np.column_stack([np.ones_like(phi_t), phi_t])

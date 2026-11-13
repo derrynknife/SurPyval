@@ -235,6 +235,9 @@ def _data(
             )
         data = SurpyvalData(d["x"], d["c"], d.get("n"), t=d.get("t"))
     elif isinstance(x, SurpyvalData):
+        from surpyval.utils.surpyval_data import refuse_multi_state
+
+        refuse_multi_state(x, "life_table")
         data = x
     else:
         data = SurpyvalData(x, c, n, tl=tl)

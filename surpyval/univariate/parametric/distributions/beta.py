@@ -53,6 +53,15 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
     array([0.8857, 0.4202, 0.1094])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -354,7 +363,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another shape parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -390,7 +399,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another shape parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------

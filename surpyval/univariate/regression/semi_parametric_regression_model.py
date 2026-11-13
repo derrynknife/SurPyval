@@ -270,7 +270,7 @@ class SemiParametricRegressionModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def neg_ll(self, *beta: Any) -> float:
+    def neg_ll(self) -> float:
         """The negative partial log-likelihood at the fitted coefficients:
         a number, as every model's ``neg_ll()`` is (#604), so that
         :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
@@ -291,13 +291,6 @@ class SemiParametricRegressionModel(
         >>> round(model.log_likelihood, 3), round(model.aic(), 3)
         (-660.857, 1327.714)
         """
-        if beta:
-            # The function of the coefficients' old name says where it went
-            # (#653), rather than "takes 1 positional argument".
-            raise TypeError(
-                "neg_ll() takes no arguments: it is the fitted value; "
-                "neg_ll(beta) was removed in v0.24: use neg_ll_of(beta)."
-            )
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
@@ -2047,32 +2040,26 @@ class SemiParametricRegressionModel(
         True
         """
         from .tvc_path import CovariatePath
+        from .tvc_schedule import (
+            given_covariates,
+            less_at_given,
+            survival_given,
+        )
 
         g = None if given is None else float(given)
-        if g is not None and not np.isnan(g):
-            # Given an age, the covariates need only start by then (#962).
-            from .tvc_schedule import as_covariate_path
-
-            names = getattr(self, "feature_names", None)
-            Z, xl = as_covariate_path(Z, xl, names, given=g), None
+        # Given an age, the covariates need only start by then (#962).
+        names = getattr(self, "feature_names", None)
+        Z, xl = given_covariates(Z, xl, names, g)
         if isinstance(Z, CovariatePath) and g is not None and not np.isnan(g):
             # Summed from given on.
             H = self._hf_tvc(x, Z, xl, stratum, given=g)
         else:
-            H = self._hf_tvc(x, Z, xl, stratum)
-            if g is not None:
-                if np.isnan(g):
-                    # A missing conditioning age: nothing is known.
-                    H = np.full(np.shape(H), np.nan)
-                else:
-                    H = H - self._hf_tvc(g, Z, xl, stratum)
-        if g is not None and not np.isnan(g):
-            # Given survival to g, survival to any x <= g is certain: the
-            # difference H(x) - H(g) is not a cumulative hazard there, and
-            # gave a "survival" above 1 (#523).
-            xq = np.atleast_1d(np.asarray(x, dtype=float))
-            H = np.where(xq <= g, 0.0, H)
-        return np.exp(-H)
+            H = less_at_given(
+                self._hf_tvc(x, Z, xl, stratum),
+                g,
+                lambda t: self._hf_tvc(t, Z, xl, stratum),
+            )
+        return survival_given(x, H, g)
 
 
 def _check_jumps_covered(

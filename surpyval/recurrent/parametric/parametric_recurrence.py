@@ -20,6 +20,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
@@ -27,7 +28,6 @@ from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
     check_option,
-    option_error,
     warn_outside_unit_interval,
 )
 
@@ -70,6 +70,11 @@ class ParametricRecurrenceModel(
     >>> model = HPP.fit(x)
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fitters; declared for the type checker.
     dist: Any
     params: "np.ndarray"
@@ -96,9 +101,13 @@ class ParametricRecurrenceModel(
 
         The intensity model is stateless, so only its name and the fitted
         ``params`` are stored; the reloaded model reproduces ``cif``/``iif``/
-        ``mcf``/``inv_cif`` exactly. Likelihood-inference state (the data and
-        the ``neg_ll`` closure) is not stored, so a reloaded model behaves like
-        a ``from_params`` one for confidence bounds and diagnostics.
+        ``mcf``/``inv_cif`` exactly. A maximum-likelihood fit's parameter
+        covariance is stored too (``"covariance"``), so the reloaded model
+        gives the same ``covariance()``, ``standard_errors()``,
+        ``summary()``, ``param_cb`` and Wald bounds (``cif_cb``, ``iif_cb``,
+        ``mtbf_cb``). The data and the likelihood are not stored: the
+        likelihood, the information criteria, the diagnostics and Crow's
+        exact bounds (``method="crow"``) need a refit, and say so.
 
         See Also
         --------
@@ -110,6 +119,9 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
+                # What the Wald bounds need (null for a model with no
+                # likelihood); optional on reading.
+                "covariance": self._covariance_entry(),
                 **maximum_entry(self.maximum),
             }
         )
@@ -131,6 +143,7 @@ class ParametricRecurrenceModel(
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)
+        out._restore_covariance(model_dict, out.params)
         return out
 
     def _parameter_names(self) -> list:
@@ -154,6 +167,7 @@ class ParametricRecurrenceModel(
             + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
+            + notes_text(self)
         )
 
     # Simulation uses the shared conditional inverse-CIF sampler and the
@@ -258,7 +272,12 @@ class ParametricRecurrenceModel(
             item = np.asarray(self.data.i)
             x = np.asarray(self.data.x, dtype=float)
             x = x.reshape(item.size, -1).max(axis=1)
-            return np.array([x[item == u].max() for u in np.unique(item)])
+            # Each item's largest time, in the order of its sorted labels
+            # (a maximum, so the same whatever order it is taken in).
+            _, inverse = np.unique(item, return_inverse=True)
+            ages = np.full(inverse.max() + 1, -np.inf)
+            np.maximum.at(ages, inverse.reshape(-1), x)
+            return ages
         now = np.atleast_1d(np.asarray(age, dtype=float)).reshape(-1)
         if not np.all(np.isfinite(now)) or np.any(now < 0):
             raise ValueError(
@@ -591,16 +610,7 @@ class ParametricRecurrenceModel(
             The residuals.
         """
         self._check_has_data("residuals")
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, self.cif)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, self.cif)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, self.cif, kind)
 
     def trend_test(
         self,
@@ -723,12 +733,13 @@ class ParametricRecurrenceModel(
             The confidence bounds on the CIF.
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.cif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
@@ -820,12 +831,13 @@ class ParametricRecurrenceModel(
             return self._reciprocal_cb(
                 self._crow_mtbf_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
             )
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.iif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.iif(x), se, alpha_ci, bound)
 

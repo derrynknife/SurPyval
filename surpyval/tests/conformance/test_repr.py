@@ -34,6 +34,18 @@ FACTORIES = {
         lambda: sp.Distributional(sp.Weibull),
         "WeibullDistributional",
     ),
+    "surpyval.MixtureCure": (
+        lambda: sp.MixtureCure(sp.Weibull),
+        "WeibullMixtureCure",
+    ),
+    "surpyval.Equivalence": (
+        lambda: sp.Equivalence(sp.Weibull),
+        "WeibullEquivalence",
+    ),
+    "surpyval.ZeroInflated": (
+        lambda: sp.ZeroInflated(sp.Weibull),
+        "WeibullZeroInflated",
+    ),
     "surpyval.Discretize": (
         lambda: sp.Discretize(sp.Weibull),
         "Discretize(Weibull)",

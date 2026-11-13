@@ -42,6 +42,38 @@ exact, right, left and interval-censored rows), and the result they return:
 .. autoclass:: surpyval.univariate.nonparametric.interval_logrank.IntervalLogRankResult
    :members: to_dict
 
+The max-combo test of two groups, the largest of several
+Fleming-Harrington weighted log-rank statistics with a p-value that allows
+for taking the largest (for hazards that are not proportional):
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_maxcombo.maxcombo_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_maxcombo.MaxComboResult
+   :members: to_dict
+
+The log-rank test for trend across ordered groups (one degree of freedom):
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_trend.trend_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_trend.TrendLogRankResult
+   :members: to_dict
+
+The log-rank test with an exact or Monte Carlo permutation p-value, for
+small samples:
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank_permutation.permutation_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank_permutation.PermutationLogRankResult
+   :members: to_dict
+
+The maximally selected log-rank statistic: the cut-point of a continuous
+covariate, with a p-value corrected for the search:
+
+.. autofunction:: surpyval.univariate.nonparametric.maxstat.maxstat_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.maxstat.MaxStatResult
+   :members: to_dict
+
 The test of two groups' survival at one time:
 
 .. autofunction:: surpyval.univariate.nonparametric.survival_difference.sf_diff
@@ -63,6 +95,21 @@ The two-group restricted-mean-survival-time difference (the per-model
 :doc:`non-parametric model class <univariate/non_parametric_class>`):
 
 .. autofunction:: surpyval.univariate.nonparametric.nonparametric.rmst_diff
+
+Adjusted survival curves
+------------------------
+
+A comparison of groups that were not assigned at random, on one mix of
+covariates: direct adjustment (standardisation) of a fitted regression
+model, and the checks on a set of weights before a weighted comparison.
+The guide is :doc:`Adjusted Survival Curves`.
+
+.. autofunction:: surpyval.direct_adjustment
+
+.. autoclass:: surpyval.AdjustedCurves
+   :members: sf, ff, cb, sf_diff, rmst, rmst_diff, plot
+
+.. autofunction:: surpyval.weight_diagnostics
 
 Automatic distribution selection
 --------------------------------

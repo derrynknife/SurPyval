@@ -26,11 +26,12 @@ from surpyval.serialisation import (
 from surpyval.univariate.regression._summary import format_table
 from surpyval.utils.linalg import (
     bound_signs,
-    numerical_hessian,
+    scale_free_hessian,
     wald_bound_on_support,
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
@@ -1003,6 +1004,11 @@ class RenewalModel(
     array([1.296, 4.56 ])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Set by the GeneralizedRenewal fitter for its Kijima sampler.
     _virtual_age_function: Any
 
@@ -1067,7 +1073,15 @@ class RenewalModel(
         parameter, and the family's discrete option (``kijima_type`` for the
         generalized renewal, memory ``m`` for ARA/ARI). On load the family's
         fitter rebuilds the sampler from those, so ``mcf`` and the simulation
-        methods reproduce exactly. The likelihood/data state is not stored.
+        methods reproduce exactly. A maximum-likelihood fit's parameter
+        covariance (that of :meth:`covariance`) is stored too
+        (``"covariance"``), so the reloaded model gives the same
+        ``covariance()``, ``standard_errors()``, ``summary()`` and Wald
+        ``param_cb``. The data and the likelihood are not stored: the
+        likelihood, the information criteria, the repair test and the
+        profile-likelihood intervals (``method="lr"``, and the restoration
+        parameter's interval on the edge of its range) need a refit, and
+        say so.
 
         See Also
         --------
@@ -1080,6 +1094,9 @@ class RenewalModel(
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
             "how": self.how,
+            # What the Wald bounds need (null for a model with no
+            # likelihood); optional on reading.
+            "covariance": self._covariance_entry(),
             **maximum_entry(self.maximum),
         }
         if getattr(self, "kijima_type", None) is not None:
@@ -1118,7 +1135,23 @@ class RenewalModel(
         # likelihood, as a reloaded parametric model does not).
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)
+        out._restore_covariance(
+            model_dict,
+            np.r_[float(out.restoration), np.asarray(out.model.params)],
+        )
         return out
+
+    def _covariance_entry(self) -> "list | None":
+        """The covariance as ``to_dict`` saves it: the fit's
+        :meth:`covariance` (with the restoration parameter's row and
+        column ``nan`` on the edge of its range), a restored model's
+        saved one, or ``None`` for a model with no likelihood."""
+        if not hasattr(self, "_neg_ll"):
+            if self._saved_covariance is None:
+                return None
+            return np.asarray(self._saved_covariance, dtype=float).tolist()
+        with ignoring_warnings():
+            return np.asarray(self.covariance(), dtype=float).tolist()
 
     @staticmethod
     def _rebuild(fitter: Any, family: str, model_dict: dict) -> "RenewalModel":
@@ -1330,20 +1363,16 @@ class RenewalModel(
         )
         c = np.asarray(self.data.c)
 
-        if kind in ("cumulative_hazard", "pit"):
-            e = increments[c == 0]
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
+        def martingale() -> np.ndarray:
             residuals = []
             for item in np.unique(self.data.i):
                 mask = self.data.i == item
                 observed = int((c[mask] == 0).sum())
                 residuals.append(observed - float(increments[mask].sum()))
             return np.array(residuals)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
+
+        return diagnostics.residuals_of(
+            kind, lambda: increments[c == 0], martingale
         )
 
     def trend_test(
@@ -2132,6 +2161,7 @@ class RenewalModel(
                 + "\nParameters          :\n"
                 + param_string
                 + "\nRepair test         : not available (no data)"
+                + notes_text(self)
             )
         table = self.summary()
         lines.append("Parameters          : Wald 95% intervals")
@@ -2140,7 +2170,7 @@ class RenewalModel(
         if note:
             lines.append(note)
         lines.append(self._repair_line())
-        return "\n".join(lines)
+        return "\n".join(lines) + notes_text(self)
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
@@ -2182,7 +2212,7 @@ class RenewalModel(
         beta      2.754  0.652      1.732      4.379
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         with ignoring_warnings():
             # The boundary is reported in the table (nan), not warned.
             cov = self.covariance()
@@ -2240,7 +2270,13 @@ class RenewalModel(
         parameter took steps across the edge, where the likelihood is not
         the model's, and gave negative variances to the others too (-10.8
         for a Weibull ``alpha``, #461).
+
+        A model restored with ``from_dict`` returns the covariance it was
+        saved with.
         """
+        if not hasattr(self, "_neg_ll") and self._saved_covariance is not None:
+            # The saved one, edge row and all: as the fit gave it.
+            return np.array(self._saved_covariance, dtype=float)
         self._check_fitted()
         edge = self._edge_value()
         if edge is None:
@@ -2250,7 +2286,7 @@ class RenewalModel(
         def neg_ll_rest(params: np.ndarray) -> float:
             return self._neg_ll(np.r_[mle[0], params])
 
-        H = numerical_hessian(neg_ll_rest, mle[1:])
+        H = scale_free_hessian(neg_ll_rest, mle[1:])
         n = mle.size
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):

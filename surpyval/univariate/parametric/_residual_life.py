@@ -19,6 +19,8 @@ from typing import Any
 import numpy as np
 from scipy.special import gammaincc, gammaln
 
+from surpyval.utils.warnings import collecting_warnings
+
 #: Terms of a discrete distribution's tail sum taken directly before the
 #: sum is taken as the mean less its head instead.
 _MAX_TERMS = 1 << 22
@@ -72,8 +74,7 @@ def continuous_mrl(dist: Any, x: np.ndarray, *params: Any) -> np.ndarray:
             breaks = np.asarray(dist.qf(F[F < 1.0], *params), dtype=float)
         breaks = np.unique(breaks[np.isfinite(breaks) & (breaks > xk)])
         breaks = breaks[breaks < hi]
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always", IntegrationWarning)
+        with collecting_warnings(IntegrationWarning) as caught:
             head = 0.0
             start = float(xk)
             if breaks.size:

@@ -11,7 +11,16 @@ rename it was written for):
 - :func:`renamed_arguments`, an argument of a function or method;
 - :class:`RenamedAttribute`, an attribute or property of a class;
 - :func:`renamed_name`, a class or other name in a module's namespace
-  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25).
+  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25);
+- :func:`positional_option`, an argument that, given by position, is
+  silently read as something other than what that place holds in the
+  package's other methods of the name (``Parametric.mean(5)`` takes the
+  5 as ``defective``, where ``KaplanMeier`` models' ``mean(5)`` takes it
+  as ``tau``): a ``FutureWarning`` that names the keyword to use;
+- :func:`ambiguous_item_ids`, the recurrent fits' item ids ``i``, which
+  stand where the other fits take the censoring flags ``c``: a
+  ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
+  flags as ids.
 
 A name deprecated in v0.27 is accepted until :data:`REMOVED_IN_NEXT`.
 
@@ -33,12 +42,15 @@ a warning from :func:`beta_ml_alias`, until the first release on or after
 
 import datetime
 import functools
+import inspect
 import os
 import sys
 import warnings
 from collections.abc import Callable
 from types import FrameType
 from typing import Any, TypeVar
+
+import numpy as np
 
 __all__ = [
     "DATA_FUNCTIONS_DEPRECATED_ON",
@@ -55,6 +67,8 @@ __all__ = [
     "RenamedAttribute",
     "renamed_arguments",
     "renamed_name",
+    "positional_option",
+    "ambiguous_item_ids",
 ]
 
 #: The release in which the names deprecated in v0.26 stop being
@@ -363,3 +377,257 @@ class RenamedAttribute:
     def __set__(self, obj: Any, value: Any) -> None:
         self._warn(type(obj))
         setattr(obj, self.new, value)
+
+
+_ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth")
+
+
+def _owner_name(owner: Any, method: str) -> str:
+    """How a user names what ``method`` was called on: a fitter by its
+    name (``CrowAMSAA``, ``Weibull``), a model by its class."""
+    if method.startswith("fit"):
+        # The fitter's own name where it reads as one (``Weibull``), not a
+        # display name ("Crow-AMSAA"): as its ``repr`` names it.
+        repr_name = getattr(owner, "_repr_name", None)
+        if callable(repr_name) and not isinstance(owner, type):
+            return str(repr_name())
+        name = getattr(owner, "name", None)
+        if (
+            isinstance(name, str)
+            and name
+            and " " not in name
+            and "-" not in name
+        ):
+            return name
+    cls = owner if isinstance(owner, type) else type(owner)
+    return cls.__name__.rstrip("_")
+
+
+def _position(func: Callable[..., Any], name: str) -> tuple[int, bool, str]:
+    """Where ``name`` sits among ``func``'s positional arguments: its
+    index in ``args`` (``self`` or ``cls`` counted), whether ``func`` is a
+    method, and the place a caller sees ("second")."""
+    names = [
+        p.name
+        for p in inspect.signature(func).parameters.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    if name not in names:
+        raise ValueError(
+            f"{func.__qualname__} has no positional argument {name!r}"
+        )
+    index = names.index(name)
+    bound = names[0] in ("self", "cls")
+    place = index - 1 if bound else index
+    ordinal = _ORDINALS[place] if place < len(_ORDINALS) else f"{place + 1}th"
+    return index, bound, ordinal
+
+
+def positional_option(
+    name: str,
+    taken_as: str,
+    elsewhere: str,
+    advice: str,
+) -> Callable[[F], F]:
+    """
+    Decorate a method whose argument ``name`` is read, when it is given by
+    position, as something other than what the same position holds in the
+    package's other methods of that name (or in the ``x, c, n, t`` order
+    of the data), so that a value meant for one is silently taken as the
+    other. Passing ``name``, or any argument after it, by position then
+    warns with a ``FutureWarning`` (shown wherever the call is made, since
+    the risk is a wrong number, not an error) that says what the value was
+    taken as and how to pass it by name. The call and its result are
+    unchanged, and the argument stays positional: making it keyword-only
+    would be a breaking change, which waits for 2.0 (DECISIONS.md).
+
+    Parameters
+    ----------
+    name : str
+        The argument, a parameter of the decorated function that can be
+        given by position.
+    taken_as : str
+        What ``name`` is, in a few words: "the item each row belongs to".
+    elsewhere : str
+        What a user from another family would have meant at that place:
+        "the censoring flags 'c', as in fit(x, c, n, t)".
+    advice : str
+        How to pass it by name: "i=... (or c=... for censoring flags)".
+
+    Returns
+    -------
+    callable
+        A decorator. Put it outermost (above any decorator that adds a
+        frame), so that the warning points at the caller's line.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import positional_option
+    >>> class Model:
+    ...     @positional_option(
+    ...         "defective", "whether to include the never-failing part",
+    ...         "the time 'tau' to restrict the mean to", "defective=...",
+    ...     )
+    ...     def mean(self, defective=False, tau=None):
+    ...         return 1.0
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().mean(5)
+    1.0
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.mean: the first positional argument was taken as 'defective'
+    (whether to include the never-failing part), not as the time 'tau' to
+    restrict the mean to. The call is ambiguous: pass it by name,
+    defective=...; the result is unchanged.
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().mean(defective=True)
+    1.0
+    >>> caught
+    []
+    """
+
+    def decorate(func: F) -> F:
+        index, bound, ordinal = _position(func, name)
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if len(args) > index:
+                where = (
+                    _owner_name(args[0], func.__name__) + "." if bound else ""
+                ) + func.__name__
+                warnings.warn(
+                    f"{where}: the {ordinal} positional argument was taken "
+                    f"as '{name}' ({taken_as}), not as {elsewhere}. "
+                    f"The call is ambiguous: pass it by name, {advice}; "
+                    "the result is unchanged.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+            return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorate
+
+
+def ambiguous_item_ids(
+    elsewhere: str,
+    column: bool = False,
+) -> Callable[[F], F]:
+    """
+    Decorate a recurrent-event ``fit`` (or, with ``column=True``, its
+    ``fit_from_df``) whose item ids ``i`` stand where the other fits take
+    the censoring flags ``c``, to catch the call that silently reads
+    censoring flags as item ids: ``CrowAMSAA.fit(x, c)``.
+
+    The ids stay a positional data argument (``fit(x, i, c)`` is the
+    recurrent data, as ``fit(x, c, n, t)`` is the univariate). The warning,
+    a ``FutureWarning``, fires only for the call that cannot be told
+    apart: ``i`` given by position, ``c`` not given at all, and the values
+    of ``i`` (or of its column) 0s and 1s, as censoring flags are. (Ids
+    all 0 or all 1, one item, are left alone: read as flags they would
+    give the same fit, or mark every row censored.)
+    The call and its result are unchanged; refusing it would be a
+    breaking change, which waits for 2.0 (DECISIONS.md).
+
+    Parameters
+    ----------
+    elsewhere : str
+        The call whose order the user may have meant:
+        "fit(x, c, n, t)".
+    column : bool, optional
+        ``True`` for a ``fit_from_df``, whose ``i_col`` names a column of
+        its ``df``.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import ambiguous_item_ids
+    >>> class Fitter:
+    ...     @ambiguous_item_ids("fit(x, c, n, t)")
+    ...     def fit(self, x, i=None, c=None):
+    ...         return len(set(i or [1]))
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Fitter().fit([1, 2, 3], [0, 0, 1])
+    2
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Fitter.fit: the second positional argument was taken as 'i', the item
+    each event belongs to, but no 'c' was given and its values are 0s and
+    1s, as censoring flags are (the 'c' of fit(x, c, n, t)). Read as item
+    ids, every row is an event and none is censored. Name it to say which
+    it is: c=... for censoring flags, or i=... for item ids. The call is
+    ambiguous; the result is unchanged.
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Fitter().fit([1, 2, 3], [1, 1, 2])  # ids, not flags
+    ...     Fitter().fit([1, 2, 3], [1, 1, 1])  # one item
+    ...     Fitter().fit([1, 2, 3], i=[0, 0, 1])  # named
+    ...     Fitter().fit([1, 2, 3], [0, 0, 1], [0, 0, 1])  # c given
+    2
+    1
+    2
+    2
+    >>> caught
+    []
+    """
+    i_name, c_name = ("i_col", "c_col") if column else ("i", "c")
+    what = (
+        "the column of item ids"
+        if column
+        else ("the item each event belongs to")
+    )
+
+    def decorate(func: F) -> F:
+        index, bound, ordinal = _position(func, i_name)
+        c_index = _position(func, c_name)[0]
+        df_index = _position(func, "df")[0] if column else -1
+
+        def flags_like(args: tuple) -> bool:
+            value = args[index]
+            if column:
+                try:
+                    value = args[df_index][value]
+                except Exception:
+                    return False
+            if value is None or isinstance(value, str):
+                return False
+            try:
+                values = set(np.unique(np.asarray(value, dtype=float)))
+            except (TypeError, ValueError):
+                return False
+            return values == {0.0, 1.0}
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if (
+                index < len(args) <= c_index
+                and kwargs.get(c_name) is None
+                and flags_like(args)
+            ):
+                where = (
+                    _owner_name(args[0], func.__name__) + "." if bound else ""
+                ) + func.__name__
+                warnings.warn(
+                    f"{where}: the {ordinal} positional argument was taken "
+                    f"as '{i_name}', {what}, but no '{c_name}' was given "
+                    "and its values are 0s and 1s, as censoring flags "
+                    f"are (the '{c_name}' of {elsewhere}). Read as item "
+                    "ids, every row is an event and none is censored. Name "
+                    f"it to say which it is: {c_name}=... for censoring "
+                    f"flags, or {i_name}=... for item ids. The call is "
+                    "ambiguous; the result is unchanged.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+            return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorate

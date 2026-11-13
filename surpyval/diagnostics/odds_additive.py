@@ -88,6 +88,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _covariate_kind, _fmt
@@ -963,7 +964,7 @@ def _ah_notes(ctx: Context) -> list[str]:
 def _distribution(model: Any) -> str | None:
     if not _is_parametric(model):
         return None
-    return str(getattr(model.distribution, "name", ""))
+    return str(canonical_name(model.distribution) or "")
 
 
 def _failing_name(row: dict) -> str:
@@ -1171,7 +1172,7 @@ def _ah_rules() -> tuple[AdviceRule, ...]:
 # ---------------------------------------------------------------------------
 def _is_po(model: Any) -> bool:
     from surpyval.univariate.regression import ProportionalOddsModel
-    from surpyval.univariate.regression._kinds import PROPORTIONAL_ODDS
+    from surpyval.univariate.regression.kinds import PROPORTIONAL_ODDS
 
     if isinstance(model, ProportionalOddsModel):
         return True
@@ -1179,7 +1180,7 @@ def _is_po(model: Any) -> bool:
 
 
 def _is_ah(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ADDITIVE_HAZARD
+    from surpyval.univariate.regression.kinds import ADDITIVE_HAZARD
 
     if _is_lin_ying(model):
         return True

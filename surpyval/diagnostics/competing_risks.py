@@ -128,7 +128,14 @@ from surpyval.univariate.competing_risks.regression.fine_gray_diagnostics import
 from surpyval.utils.warnings import ignoring_warnings
 
 from . import cox as _cox
-from ._shared import _covariate_kind, _fmt, _note, _source, _trend_sign
+from ._shared import (
+    _covariate_kind,
+    _fmt,
+    _form_panel,
+    _note,
+    _source,
+    _trend_sign,
+)
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 __all__ = [
@@ -786,8 +793,6 @@ def _fg_form_rows(ctx: Context) -> list[dict]:
 
 
 def _fg_form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     panels = []
     for cause, fd in _fg_causes(ctx):
         martingale = ctx.cached(
@@ -797,29 +802,15 @@ def _fg_form_panels(ctx: Context) -> list[Panel]:
         for j, name in ctx.checked:
             if _fg_kind(fd, j) == "binary":
                 continue
-
-            def draw(
-                ax: Any,
-                options: Any,
-                z: np.ndarray = fd.Z_raw[:, j],
-                m: np.ndarray = martingale,
-                name: str = name,
-            ) -> None:
-                from surpyval.plotting import INK, PALETTE
-
-                grid = np.linspace(z.min(), z.max(), 60)
-                ax.scatter(z, m, s=10, color=INK["muted"], alpha=0.6)
-                ax.plot(grid, lowess(z, m, grid), color=PALETTE[0])
-                ax.axhline(0.0, color=INK["axis"], lw=0.8)
-                ax.set_xlabel(name)
-                ax.set_ylabel("subdistribution martingale residual")
-
             panels.append(
-                Panel(
+                _form_panel(
+                    name,
+                    fd.Z_raw[:, j],
+                    martingale,
+                    "subdistribution martingale residual",
                     "cause {}: {}: functional form".format(
                         _label(cause), name
                     ),
-                    draw,
                 )
             )
     return panels
@@ -1317,7 +1308,10 @@ def incidence_bootstrap(
         REFIT_ERRORS,
         check_n_boot,
     )
-    from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.no_maximum import (
+        NoFiniteMaximumError,
+        quiet_maximum_warnings,
+    )
     from surpyval.utils.rng import as_generator
 
     uni = _univariate()
@@ -1361,7 +1355,7 @@ def incidence_bootstrap(
             ]
         refit_entry = {"tl": design.tl}
     draws = []
-    failed = 0
+    failed = no_estimate = no_maximum = 0
     for _ in range(n_boot):
         with np.errstate(all="ignore"):
             latent = np.column_stack(
@@ -1404,9 +1398,17 @@ def incidence_bootstrap(
                 gaps = incidence_distance(
                     refit, x, e, censored.astype(int), **refit_entry
                 )
+        except NoFiniteMaximumError:
+            failed += 1
+            no_estimate += 1
+            continue
         except REFIT_ERRORS:
             failed += 1
             continue
+        no_maximum += any(
+            getattr(f, "maximum", None) == "no finite maximum"
+            for f in fits.values()
+        )
         draws.append([gaps[j]["D"] for j in range(len(causes))])
     values = np.array(draws, dtype=float).reshape(len(draws), len(causes))
     p = {}
@@ -1422,6 +1424,8 @@ def incidence_bootstrap(
         "p": p,
         "draws": values,
         "failed": failed,
+        "no_estimate": no_estimate,
+        "no_maximum": no_maximum,
         "n_boot": n_boot,
     }
 
@@ -1528,6 +1532,9 @@ _INCIDENCE_TEST = "sup |CIF - Aalen-Johansen| (parametric bootstrap)"
 
 def _incidence_rows(ctx: Context) -> list[dict]:
     boot = _incidence(ctx)
+    note = None if boot is None else _univariate().no_maximum_note(boot)
+    if note and note not in ctx.notes:
+        ctx.notes.append(note)
     rows = []
     for cause in ctx.model.causes:
         row = {

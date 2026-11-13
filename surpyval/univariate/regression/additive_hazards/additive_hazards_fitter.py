@@ -85,6 +85,7 @@ from .._fit_skeleton import (
     MirroredDistributionAttrs,
     _gradient,
     assemble_regression_model,
+    free_baseline,
     free_coefficients,
     judge_search,
     keep_information,
@@ -94,11 +95,20 @@ from .._fit_skeleton import (
     say_verdict,
     uniform_draws,
 )
-from .._kinds import ADDITIVE_HAZARD
 from .._likelihood import regression_neg_ll
+from ..kinds import ADDITIVE_HAZARD
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
+
+
+def _typical_time(data: SurpyvalData) -> float:
+    """The median of the data's finite positive times (interval ends
+    included), 1 where there are none: the unit of time a rate's
+    coefficient is searched in."""
+    x = np.asarray(getval(data.x), dtype=float).ravel()
+    x = x[np.isfinite(x) & (x > 0)]
+    return float(np.median(x)) if x.size else 1.0
 
 
 class _OverBudget(Exception):
@@ -500,6 +510,37 @@ class AdditiveHazardsFitter(
         )
         return True
 
+    def _search_floor(
+        self, data: SurpyvalData, size: int, coefs: list, fixed: dict
+    ) -> npt.NDArray:
+        """Each component's least unit for the search and its check.
+
+        A coefficient in its own covariate's units (#577) and in the
+        unit of time: ``beta'Z`` is a rate, so a change of ``1 /
+        (range(Z_j) T)`` in a coefficient, ``T`` the data's typical time
+        (:func:`_typical_time`), moves the cumulative hazard by about 1
+        there. With a floor of 1 whatever the unit, a fit to times in
+        millionths of the unit (coefficients of about 1e5) stopped at
+        its start, every coefficient 0, and called that a maximum; and
+        in seconds or millions of the unit the search could not verify
+        its answer. A baseline parameter with no bound (a location, in
+        the unit of time) has the univariate fits' floor, the data's
+        spread capped at 1 (``search_floor``). Every other component
+        keeps 1.
+        """
+        floor = coefficient_floor(size, coefs, data.Z)
+        unit = _typical_time(data)
+        for pos, _ in coefs:
+            floor[pos] = floor[pos] / unit
+        x = np.asarray(getval(data.x), dtype=float).ravel()
+        x = x[np.isfinite(x)]
+        spread = float(np.std(x)) if x.size > 1 else 0.0
+        for pos, name in free_baseline(self, fixed):
+            low, upp = self.bounds[self.param_map[name]]
+            if low is None and upp is None and spread > 0:
+                floor[pos] = min(spread, 1.0)
+        return floor
+
     @staticmethod
     def _gradient_first(
         fun: Any,
@@ -719,9 +760,7 @@ class AdditiveHazardsFitter(
 
             n_obs = float(np.sum(data.n))
             coefs = free_coefficients(self, fixed, pmap)
-            # Each coefficient searched and judged in its own covariate's
-            # units (#577)
-            floor = coefficient_floor(np.size(init), coefs, data.Z)
+            floor = self._search_floor(data, np.size(init), coefs, fixed)
             res, converged = self._gradient_first(
                 fun, true_neg_ll, init, n_obs, floor=floor
             )

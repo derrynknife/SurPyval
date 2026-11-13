@@ -341,9 +341,158 @@ estimated jointly and a wrong baseline can bias the coefficients.
   estimates remain sensible but the model-based standard errors tend to be
   too small, and the goodness-of-fit test and martingale residuals are the
   place to look for it.
-- **Scope.** Covariates are available for the HPP and NHPP intensity models.
-  The imperfect-repair (renewal) models, the cause-specific (marked) models
-  and gapped (multi-window) observation do not take covariates.
+- **Scope.** Covariates are available for the HPP and NHPP intensity models,
+  and for the models with an unspecified baseline in the next section.
+  The imperfect-repair (renewal) models and gapped (multi-window)
+  observation of the parametric models do not take covariates.
+
+Without a baseline shape: four ways to treat a repeat event
+-----------------------------------------------------------
+
+The models above give the baseline intensity a formula. When you only care
+how the covariates change the rate, and would rather not say what the
+baseline looks like, the baseline can be left unspecified, exactly as a Cox
+model leaves the baseline hazard of a single event unspecified. The
+coefficients are then estimated from the *order* in which the items had
+their events: at each event the model asks which of the items that could
+have had it did.
+
+"Could have had it" is the whole question, because an item that has had an
+event is still there and can have another. There are four standard answers.
+They are four different statements about what a repeat event is, so they
+answer different questions, and choosing between them is a matter of the
+subject, not of fit.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 41 41
+
+   * - Model
+     - What it says about repeat events
+     - The question it answers
+   * - Andersen-Gill [AndersenGill1982]_
+     - An event does not change the item. Its rate at any age depends on
+       its covariates and its age, not on how many events it has had or
+       when. One baseline for every event.
+     - How do the covariates change the *rate of events*?
+   * - Prentice-Williams-Peterson, total time
+     - An event changes the item. The rate of a second event is its own
+       function of age, different from that of a first; an item cannot have
+       a second before its first.
+     - Among items that have had :math:`k - 1` events, how do the covariates
+       change the rate of the :math:`k`-th, at a given age?
+   * - Prentice-Williams-Peterson, gap time
+     - The same, but the clock restarts at each event: what matters is the
+       time since the last event, not the age.
+     - How do the covariates change the *time between* one event and the
+       next?
+   * - Wei-Lin-Weissfeld
+     - Nothing about how one event leads to the next. Each of "the time
+       from the start to the first event", "... to the second event", and
+       so on, is modelled on its own.
+     - How do the covariates change the time, *from the start*, until the
+       :math:`k`-th event?
+
+Two examples make the difference concrete.
+
+*A fleet of pumps.* Pumps trip and are restarted. If a restart leaves a
+pump as it was, the number of earlier trips tells you nothing more than
+its age and duty do, and the Andersen-Gill model is the natural one: "an
+abrasive duty multiplies the trip rate by 1.8". If instead each trip is
+followed by a repair that changes the pump, so that a pump on its third
+repair is not the machine it was when new, each repair number deserves a
+baseline of its own: the gap-time Prentice-Williams-Peterson model says
+"an abrasive duty shortens the time from one repair to the next", with a
+different typical gap after the first, second and third repair.
+
+*A trial of a treatment for a relapsing illness.* Patients are randomised
+at time 0 and may relapse several times. The Andersen-Gill model answers
+"does the treatment lower the relapse rate?". The conditional models answer
+"among patients who have relapsed once, does the treatment delay the
+second relapse?", which is a question about a selected group: patients who
+relapsed early despite treatment are not like those who relapsed on
+placebo. The Wei-Lin-Weissfeld model keeps the comparison the trial
+randomised: every patient counts towards "time from randomisation to the
+second relapse", whether or not they have had the first.
+
+In formulas, with :math:`Y_i(t)` equal to 1 while item :math:`i` is "at
+risk" and 0 otherwise, each model is
+
+.. math::
+
+    \lambda_{ik}(t \mid Z_i) = Y_{ik}(t)\, \lambda_{0k}(t)\, e^{\beta' Z_i}
+
+and they differ in the baseline and in the risk indicator:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 52
+
+   * - Model
+     - Baseline
+     - Item :math:`i` is at risk of event :math:`k` ...
+   * - Andersen-Gill
+     - :math:`\lambda_0(t)`, shared
+     - whenever it is under observation.
+   * - PWP, total time
+     - :math:`\lambda_{0k}(t)`, :math:`t` the age
+     - from its :math:`(k-1)`-th event to its :math:`k`-th.
+   * - PWP, gap time
+     - :math:`\lambda_{0k}(u)`, :math:`u` the time since the last event
+     - from its :math:`(k-1)`-th event to its :math:`k`-th.
+   * - Wei-Lin-Weissfeld
+     - :math:`\lambda_{0k}(t)`, :math:`t` from the start
+     - from the start until its :math:`k`-th event.
+
+Each is fitted by the Cox partial likelihood on rows laid out to match:
+one row per interval at risk, in the stratum of its event number where the
+baseline depends on it [Therneau2000]_. So the tie handling, the treatment
+of a coefficient the data cannot determine and the check that a maximum
+was reached are those of the Cox model.
+
+.. rubric:: Why the standard errors are "robust"
+
+One item contributes several rows, and they are not independent: a pump
+that trips often does so for reasons the covariates do not record (its
+installation, its operator), and a patient who relapses early tends to
+relapse again. The partial likelihood's own standard errors take every row
+as a separate piece of evidence, so when items differ in such unrecorded
+ways they are too small, often by a wide margin. The remedy keeps the
+estimates and replaces the standard errors: add up, item by item, how much
+each item pulls the estimate (its score residuals), and measure the spread
+of those pulls *between items*. Items are independent of each other even
+when an item's events are not.
+
+This is the sandwich estimator with each item a cluster [LinWei1989]_. If
+:math:`A` is the information of the partial likelihood and :math:`s_i` is
+item :math:`i`'s summed score residual,
+
+.. math::
+
+    V_{robust} = A^{-1} \Big( \sum_i s_i s_i^{\top} \Big) A^{-1},
+
+where the model-based covariance is :math:`A^{-1}` alone. With it the
+Andersen-Gill coefficients remain valid as effects on the *mean number of
+events* even when events are not Poisson [LinWeiYangYing2000]_, and it is
+what makes the Wei-Lin-Weissfeld model usable at all, since there every
+item appears in every stratum [WeiLinWeissfeld1989]_. SurPyval reports the
+robust standard errors by default for all four models, and the model-based
+ones beside them; the two being close is itself a finding (the covariates
+explain the differences between items).
+
+.. rubric:: What these models do not give
+
+- **A formula for the baseline.** The cumulative baseline is a step
+  function known only up to the last event, so it cannot be extrapolated.
+  To forecast beyond the data, use the parametric proportional-intensity
+  models above.
+- **A simple expected count from the conditional and marginal models.**
+  The Andersen-Gill cumulative baseline, scaled by the covariates, is the
+  expected number of events by an age. The others give the cumulative
+  hazard of one event number, not a count.
+- **Later events for free.** A baseline per event number is estimated from
+  the items that reached that number, which soon become few. It is usual
+  to model the first few events only [PrenticeWilliamsPeterson1981]_.
 
 Model checking
 --------------
@@ -385,8 +534,115 @@ reading off the event-count ratio between covariate settings, and plotting the
 covariate-conditional cumulative intensity with confidence bounds — see the
 :doc:`Recurrent Event Regression Modelling with SurPyval` page.
 
+A terminal event that depends on the recurrences: the joint frailty model
+-------------------------------------------------------------------------
+
+Every model above ends an item's history with a right-censored row, and
+takes that end to say nothing about the item's events: the observation
+stopped because the study did. Often it stopped because of an event
+that ends the history for good -- a machine scrapped after one repair
+too many, a patient who dies after repeated hospital admissions -- and
+the items with many recurrences are the ones that reach it sooner. That
+end is then informative, and a model of the recurrences alone is biased:
+the items with the highest rates leave the data early, so the rate looks
+lower than it is.
+
+The **joint frailty model** [LiuWolfeHuang2004]_ [Rondeau2007]_ models
+the two kinds of event together. Each item has its own unobserved
+*frailty* :math:`u` -- how prone it is to events, beyond what its
+covariates say -- which multiplies its rate of recurrent events, and,
+raised to a power :math:`\alpha`, its hazard of the terminal event:
+
+.. math::
+
+    r_i(t \mid u) = u\, r_0(t)\, e^{\beta' Z_i}, \qquad
+    \lambda_i(t \mid u) = u^{\alpha}\, \lambda_0(t)\, e^{\gamma' Z_i}.
+
+In words:
+
+- :math:`\theta`, the variance of the frailty, says how much the items
+  differ: 0 is no difference beyond the covariates, and the two kinds of
+  event are then independent.
+- :math:`\alpha` says how the terminal event depends on that difference:
+  positive when the items with more recurrences reach it sooner, 0 when
+  the terminal event does not depend on the recurrences (given the
+  covariates), negative when the frail items last longer.
+- :math:`\beta` and :math:`\gamma` are the covariates' effects on each
+  kind of event, as log rate ratios given the frailty.
+
+The frailty is gamma with mean 1 (``family="gamma"``, the default) or
+log-normal with :math:`\log u \sim N(0, \theta)`
+(``family="lognormal"``). The baselines are Weibull:
+:math:`R_0(t) = (t / \eta_r)^{k_r}`, the power-law (Crow-AMSAA)
+intensity, and :math:`\Lambda_0(t) = (t / \eta_t)^{k_t}`. The recurrent
+intensity runs on the item's age (``time_scale="calendar"``, the
+Andersen-Gill form) or on the time since its last event
+(``time_scale="gap"``: each event renews the baseline); the terminal
+hazard is always on the age. An item seen only from an age :math:`e`
+(delayed entry, ``tl``) is one that had not reached the terminal event
+by then, and the likelihood divides by the chance of that, which
+depends on the frailty.
+
+The fit maximises the marginal likelihood, the frailty integrated out of
+each item's likelihood,
+
+.. math::
+
+    L_i = \frac{\int_0^\infty \prod_j u\, r_0(t_{ij}) e^{\beta' Z_i}
+    \, e^{-u R_i e^{\beta' Z_i}} \,
+    \big(u^\alpha \lambda_0(X_i) e^{\gamma' Z_i}\big)^{\delta_i}
+    e^{-u^\alpha \Lambda_0(X_i) e^{\gamma' Z_i}} \, dG_\theta(u)}
+    {\int_0^\infty e^{-u^\alpha \Lambda_0(e_i) e^{\gamma' Z_i}}
+    \, dG_\theta(u)},
+
+with :math:`R_i` the item's cumulative baseline intensity over its
+observation and :math:`\delta_i` 1 if the terminal event ended it. The
+integral has no closed form unless :math:`\alpha = 1`, and is computed
+in :math:`w = \log u` over each item's own range, from the integrand's
+peak out to where it has fallen by :math:`e^{-36}`, by a trapezoid rule,
+which on an integrand this smooth is exact to rounding. The parameters'
+covariance is the inverse of the exact (automatic-derivative) Hessian;
+``param_cb`` gives Wald or profile-likelihood bounds.
+
+What the model gives:
+
+- ``frailty_tests()``: the likelihood-ratio test of :math:`\theta = 0`
+  (no frailty: the two parts fitted separately), whose p-value is that of
+  an even mixture of :math:`\chi^2_1` and :math:`\chi^2_2`: near the
+  null the frailty acts through two variances on the edge of their range,
+  :math:`\theta` in the recurrent part and :math:`\alpha^2 \theta` in the
+  terminal part (the reference for one such variance, half a
+  :math:`\chi^2_1`, rejected a true null 18% of the time at the 5% level
+  in a simulation study; this mixture held 5.0% there and 4.6% in a
+  second study of a different design); and of
+  :math:`\alpha = 0` (the terminal event independent of the
+  recurrences), against :math:`\chi^2_1`.
+- ``frailties``: each item's predicted frailty, its mean given its own
+  history.
+- ``cif`` and ``iif``: the recurrent events' cumulative intensity and
+  intensity with no terminal event to stop them; ``mcf``: the expected
+  number of recurrences by an age, the terminal event stopping them,
+  :math:`e^{\beta' Z} \int_0^t r_0(s)\, E[u\, S(s \mid u)]\, ds`.
+- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``: the terminal event's functions.
+  Each prediction is for the population of items with the covariates
+  (``frailty=None``, averaged over the frailty) or for one item of known
+  frailty (``frailty=u``).
+- ``random``: items simulated from the model, as rows ``fit`` takes.
+
+R's ``frailtypack`` (``frailtyPenal`` with ``terminal()``) fits the same
+model; SurPyval's agrees with its log-normal fits to three or four figures.
+With the gamma frailty the two integrate the frailty differently (a fixed
+Gauss-Laguerre rule there; here a rule checked against scipy's adaptive
+quadrature to 1e-10), so their estimates agree to a few per cent. Not built: spline (penalised) baselines, covariates that
+change over time, several terminal events, and frailties shared by
+groups of items (a fleet, a hospital).
+
 References
 ----------
+
+.. [AndersenGill1982] Andersen, P.K. and Gill, R.D., 1982. Cox's regression
+   model for counting processes: a large sample study. *The Annals of
+   Statistics*, 10(4), pp.1100-1120.
 
 .. [Cook2007r] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
    Recurrent Events*. Springer.
@@ -397,3 +653,33 @@ References
 
 .. [Rigdon2000r] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
    Reliability of Repairable Systems*. John Wiley & Sons.
+
+.. [LinWei1989] Lin, D.Y. and Wei, L.J., 1989. The robust inference for the
+   Cox proportional hazards model. *Journal of the American Statistical
+   Association*, 84(408), pp.1074-1078.
+
+.. [LinWeiYangYing2000] Lin, D.Y., Wei, L.J., Yang, I. and Ying, Z., 2000.
+   Semiparametric regression for the mean and rate functions of recurrent
+   events. *Journal of the Royal Statistical Society: Series B*, 62(4),
+   pp.711-730.
+
+.. [PrenticeWilliamsPeterson1981] Prentice, R.L., Williams, B.J. and
+   Peterson, A.V., 1981. On the regression analysis of multivariate failure
+   time data. *Biometrika*, 68(2), pp.373-379.
+
+.. [Therneau2000] Therneau, T.M. and Grambsch, P.M., 2000. *Modeling
+   Survival Data: Extending the Cox Model*. Springer. (Chapter 8.)
+
+.. [WeiLinWeissfeld1989] Wei, L.J., Lin, D.Y. and Weissfeld, L., 1989.
+   Regression analysis of multivariate incomplete failure time data by
+   modeling marginal distributions. *Journal of the American Statistical
+   Association*, 84(408), pp.1065-1073.
+
+.. [LiuWolfeHuang2004] Liu, L., Wolfe, R.A. and Huang, X., 2004. Shared
+   frailty models for recurrent events and a terminal event.
+   *Biometrics*, 60(3), pp.747-756.
+
+.. [Rondeau2007] Rondeau, V., Mathoulin-Pelissier, S., Jacqmin-Gadda, H.,
+   Brouste, V. and Soubeyran, P., 2007. Joint frailty models for recurring
+   events and death using maximum penalized likelihood estimation:
+   application on cancer events. *Biostatistics*, 8(4), pp.708-721.

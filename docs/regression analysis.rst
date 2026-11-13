@@ -332,6 +332,10 @@ The built-in stress-life relationships, in ``surpyval.life_models`` (all are ``L
    * - ``Exponential``
      - :math:`b\, e^{a / Z}`
      - Arrhenius: temperature (in kelvin) with :math:`a = E_a / k_B`
+   * - ``Arrhenius``
+     - another name for ``Exponential``
+     - A model built with it saves and loads as ``Arrhenius`` and is
+       otherwise identical
    * - ``InverseExponential``
      - :math:`1 / (b\, e^{a / Z})`
      - Reciprocal of the above

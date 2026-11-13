@@ -425,7 +425,7 @@ def test_from_df_with_interval_columns_and_a_scalar_truncation():
         xl=df.lo, xr=df.hi, c=df.c, tl=0.5, priors=SHAPE
     )
     np.testing.assert_array_equal(by_df.params, direct.params)
-    with pytest.raises(ValueError, match="x_col"):
+    with pytest.raises(ValueError, match="x_col|both an exact time"):
         sp.Weibull.fit_bayes_from_df(
             df, x_col="lo", xl_col="lo", xr_col="hi", priors=SHAPE
         )
@@ -444,9 +444,9 @@ def test_deterministic(seals):
 
 def test_unit():
     model = sp.Weibull.fit_bayes(X, C, priors=SHAPE, unit="hours")
-    assert model.unit == "hour"
+    assert model.unit == "hours"
     assert "Unit : hour" in repr(model)
-    assert sp.from_dict(model.to_dict()).unit == "hour"
+    assert sp.from_dict(model.to_dict()).unit == "hours"
 
 
 # ---------------------------------------------------------------------------

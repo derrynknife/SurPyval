@@ -637,9 +637,9 @@ class BandsMixin:
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
         >>> model.bootstrap_cb([2, 4, 6], n_boot=100, random_state=1)
-        array([[0.625     , 1.        ],
-               [0.19739583, 0.875     ],
-               [0.        , 0.75      ]])
+        array([[0.625    , 1.       ],
+               [0.1815625, 0.934375 ],
+               [0.       , 0.75     ]])
         """
         weighted = bool(getattr(self, "weighted", False))
         if weighted and self.model != "Turnbull":

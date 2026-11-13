@@ -5,6 +5,7 @@ regression and renewal recurrent models -- the behaviour provided by
 import matplotlib
 import numpy as np
 import pytest
+from scipy.optimize import brentq
 from scipy.stats import norm
 
 matplotlib.use("Agg")
@@ -558,3 +559,123 @@ def test_666_intensity_and_proportional_intensity_models_have_summary():
     )
     pi = ProportionalIntensityHPP.fit(x, [[0.0]] * 5 + [[1.0]] * 6, i, c)
     assert list(pi.summary().index) == pi.parameter_names
+
+
+# -- standard errors under a change of the time unit ------------------------
+
+# Months as hours, as seconds and as years.
+_UNITS = [1.0, 730.0, 730.0 * 3600.0, 1.0 / 12.0]
+
+
+# Months as seconds failed until the search started at the data's own
+# rate: it began at a rate of 1 and stopped there, unverified.
+@pytest.mark.parametrize("k", _UNITS)
+def test_hpp_standard_error_is_its_closed_form_in_any_unit(k):
+    # One item, 5 failures in (0, 60]: the rate is 5 / 60 and, the
+    # information being n / rate^2, its standard error rate / sqrt(n).
+    x = np.array([3, 9, 20, 35, 56, 60.0]) * k
+    model = HPP.fit(x, c=[0, 0, 0, 0, 0, 1])
+    assert model.params == pytest.approx([5 / (60 * k)], rel=1e-6)
+    assert model.standard_errors() == pytest.approx(
+        [np.sqrt(5) / (60 * k)], rel=1e-6
+    )
+
+
+@pytest.mark.parametrize("dist", [Duane, CoxLewis], ids=["Duane", "CoxLewis"])
+@pytest.mark.parametrize("k", _UNITS)
+def test_standard_errors_are_those_of_the_exact_hessian_in_any_unit(dist, k):
+    """The two baselines whose parameters are tiny in small units (the
+    Duane scale ``b``, the Cox-Lewis slope ``beta``), against the Hessian
+    automatic differentiation gives at the fitted parameters. The plain
+    finite-difference rule was 4e-3 off for Duane in hours and failed in
+    seconds."""
+    from autograd import hessian
+
+    model = dist.fit(
+        np.array(REPAIR_FLEET_X) * k, i=REPAIR_FLEET_I, c=REPAIR_FLEET_C
+    )
+    exact = np.sqrt(np.diag(np.linalg.inv(hessian(model._neg_ll)(model._mle))))
+    assert model.standard_errors() == pytest.approx(exact, rel=1e-5)
+
+
+@pytest.mark.parametrize(
+    "baseline", [Duane, CrowAMSAA, CoxLewis], ids=lambda d: d.name
+)
+def test_regression_bounds_do_not_move_with_the_time_unit(baseline):
+    # Months to hours: the coefficient's standard error and the bounds on
+    # the expected number of failures stay (to the fit's own tolerance).
+    x = np.array(REPAIR_FLEET_X, dtype=float)
+    Z = np.array([0.0] * 6 + [1.0] * 5)
+    kwargs = dict(i=REPAIR_FLEET_I, c=REPAIR_FLEET_C, baseline=baseline)
+    ref = ProportionalIntensityNHPP.fit(x, Z, **kwargs)
+    hours = ProportionalIntensityNHPP.fit(x * 730.0, Z, **kwargs)
+    t = np.array([10.0, 30.0, 60.0])
+    np.testing.assert_allclose(
+        hours.standard_errors()[-1], ref.standard_errors()[-1], rtol=1e-3
+    )
+    np.testing.assert_allclose(
+        hours.cif_cb(t * 730.0, [1.0]), ref.cif_cb(t, [1.0]), rtol=1e-3
+    )
+
+
+def _power_law_fleet_in_hours():
+    # Twelve systems observed for 11,500 to 18,000 hours from a power-law
+    # process with eta = 3000 h and shape 1.6 (142 events), so that
+    # Duane's scale b = eta ** -1.6 is about 3e-6: the size at which the
+    # old fixed-step Hessian gave alpha a standard error about five times
+    # too small, or none.
+    rng = np.random.default_rng(1112)
+    x, i, c = [], [], []
+    for k in range(12):
+        end = rng.uniform(11_500.0, 18_000.0)
+        m = rng.poisson((end / 3000.0) ** 1.6)
+        x += [*np.sort(end * rng.uniform(size=m) ** (1 / 1.6)), end]
+        i += [k] * (m + 1)
+        c += [0] * m + [1]
+    return np.array(x), np.array(i), np.array(c)
+
+
+def test_duane_standard_errors_match_the_closed_form_information():
+    """Duane's standard errors in hours, against the observed information
+    of the power-law likelihood written out by hand,
+
+        ll(a, b) = n log a + n log b + (a - 1) sum log t_j - b sum T_k ** a
+
+    (events t_j, observation ends T_k), and against Crow-AMSAA's ``beta``,
+    which is the same parameter. On data like this the fixed-step
+    finite-difference Hessian gave alpha's standard error as 0.021 where
+    the likelihood gives 0.113."""
+    x, i, c = _power_law_fleet_in_hours()
+    t, ends = x[c == 0], x[c == 1]
+    n = t.size
+    log_ends = np.log(ends)
+    # The exact maximum: b = n / sum T ** a, and a solves the profile score.
+    a = brentq(
+        lambda a: n / a
+        + np.sum(np.log(t))
+        - n * np.sum(ends**a * log_ends) / np.sum(ends**a),
+        0.5,
+        5.0,
+        xtol=1e-14,
+    )
+    b = n / np.sum(ends**a)
+    info = np.array(
+        [
+            [
+                n / a**2 + b * np.sum(ends**a * log_ends**2),
+                np.sum(ends**a * log_ends),
+            ],
+            [np.sum(ends**a * log_ends), n / b**2],
+        ]
+    )
+    exact = np.sqrt(np.diag(np.linalg.inv(info)))
+
+    model = Duane.fit(x, i, c=c)
+    assert model.params == pytest.approx([a, b], rel=1e-4)
+    assert model.standard_errors() == pytest.approx(exact, rel=1e-3)
+    crow = CrowAMSAA.fit(x, i, c=c)
+    assert crow.params[1] == pytest.approx(a, rel=1e-4)
+    assert crow.standard_errors()[1] == pytest.approx(exact[0], rel=1e-3)
+    np.testing.assert_allclose(
+        model.param_cb("alpha"), crow.param_cb("beta"), rtol=1e-3
+    )

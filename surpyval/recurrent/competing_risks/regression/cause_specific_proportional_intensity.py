@@ -68,30 +68,32 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.data_formats import is_missing_event
 from surpyval.utils.dataframe import (
-    call_fit,
-    frame_column,
-    frame_columns,
+    column_arguments,
     refuse_recurrent_column_names,
-    require_frame,
+    regression_fit_from_df,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import combined_maximum
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+    takes_terminal_column,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     refuse_right_truncation,
 )
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -322,6 +324,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
     np.float64(3.5)
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fit classmethods; declared for the type checker.
     df: Any
     data: Any
@@ -453,8 +460,10 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         return out
 
     @classmethod
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         cls,
@@ -483,6 +492,13 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         ----------
         x : array_like
             The event (and end-of-observation) times, pooled over items.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D
             array is a single covariate), a DataFrame (its column names
@@ -562,8 +578,14 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         return cls.fit_from_recurrent_data(data, baseline=baseline, init=init)
 
     @classmethod
+    @ambiguous_item_ids(
+        "a competing-risks regression's fit_from_df(df, x_col, e_col, "
+        "Z_cols, c_col)",
+        column=True,
+    )
     @column_arguments("x", "i", "c", "n", "e", "tl", "tr")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         cls,
         df: Any,
@@ -621,20 +643,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             "tl": tl_col,
             "tr": tr_col,
         }
-        df = require_frame(df)
-        arrays = {
-            key: frame_column(
-                df, name, f"{key}_col", time=key in ("x", "tl", "tr")
-            )
-            for key, name in {"x": x_col, **columns}.items()
-            if name is not None
-        }
-        arrays["Z"] = frame_columns(df, Z_cols, "Z_cols").astype(float)
-        arg_names = {k: f"{k}_col" for k in arrays} | {"Z": "Z_cols"}
+        model = regression_fit_from_df(
+            cls, df, x_col, Z_cols, columns, fit_options
+        )
+        # The columns name the coefficients.
         names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        # An aliasing warning names the columns, as do the coefficients.
-        with covariate_columns(names):
-            model = call_fit(cls, arrays, arg_names, fit_options)
         model.feature_names = [str(name) for name in names]
         model.df = df
         return model
@@ -1158,6 +1171,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             "causes: {}".format(
                 self.models[self.event_types[0]].dist.name, self.event_types
             )
+            + notes_text(self)
         )
 
     # -- serialisation -----------------------------------------------------
@@ -1602,7 +1616,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             function_at = curve(self.models[cause])
             estimate = estimate + function_at(values)
             variance = (
-                variance + delta_method_se(function_at, values, cov) ** 2
+                variance
+                + delta_method_se(function_at, values, cov, scale_free=True)
+                ** 2
             )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 

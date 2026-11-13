@@ -20,6 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -28,6 +29,7 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.units import takes_unit
@@ -167,13 +169,25 @@ class ProportionalIntensityNHPP(
         5-40 worse than the same model fitted as Crow-AMSAA). The fit that
         ignores the covariates is the natural start, with coefficients 0;
         if it fails, the old unit start is used.
+
+        Data the items' records refuse but this fit takes (a blank id, an
+        end of observation at entry, a failure at the top of an
+        inspection window, observation windows) is read without its
+        covariates as it is; it used to get the unit start, on which a
+        Cox-Lewis baseline on ages in the thousands did not converge.
         """
+        from surpyval.utils.history_reshape import covariates_dropped
+
         fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
                 # Without the covariates, which the baseline's own fit
                 # refuses (#959).
-                base = dist.fit_from_recurrent_data(data.without("covariates"))
+                try:
+                    free = data.without("covariates")
+                except Exception:
+                    free = covariates_dropped(data)
+                base = dist.fit_from_recurrent_data(free)
             start = np.asarray(base.params, dtype=float)
         except Exception:
             return fallback
@@ -376,9 +390,11 @@ class ProportionalIntensityNHPP(
 
         return out
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @removed_arguments("0.25", dist="'baseline'")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
@@ -402,6 +418,13 @@ class ProportionalIntensityNHPP(
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``).
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D array
             is a single covariate), or a ``{item: covariates}`` dict. They

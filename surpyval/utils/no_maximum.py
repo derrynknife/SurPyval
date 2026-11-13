@@ -259,3 +259,154 @@ def warn_unverified(
         UserWarning,
         stacklevel=caller_stacklevel(),
     )
+
+
+class NoFiniteMaximumError(ValueError):
+    """A fit refused its data because the likelihood has no finite
+    maximum on them: no failures, or fewer distinct failure times than
+    free parameters. A ``ValueError``, so that code catching that still
+    catches it; a bootstrap tells such a resample from a refit that
+    failed for another reason by it.
+
+    Examples
+    --------
+    >>> import surpyval as sp
+    >>> from surpyval.utils.no_maximum import NoFiniteMaximumError
+    >>> try:
+    ...     sp.Weibull.fit([1, 2, 3], c=[1, 1, 1])
+    ... except NoFiniteMaximumError:
+    ...     print("no finite maximum")
+    no finite maximum
+    """
+
+
+#: The share of a bootstrap's refits that may stop at an unverified
+#: maximum, or fail for a reason other than the data, before the bounds
+#: warn: a few in a thousand are expected of small samples. A refit with
+#: no finite maximum is always reported (:func:`warn_bootstrap_refits`).
+FAILED_SHARE = 0.02
+
+
+class BootstrapRefitWarning(UserWarning):
+    """Some of a bootstrap's refits reached no verified maximum of the
+    likelihood. The counts are on the warning, so that a caller can read
+    them without parsing the message.
+
+    Attributes
+    ----------
+    n_boot : int
+        The refits asked for.
+    no_maximum : int
+        Refits whose likelihood had no finite maximum, kept at the
+        estimate they reached.
+    no_estimate : int
+        Resamples whose likelihood has no maximum at all (no failures,
+        or fewer distinct failure times than parameters), so the fit
+        refused them; left out.
+    unverified : int
+        Refits at an unverified maximum, kept.
+    failed : int
+        Refits that failed for another reason, left out.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.no_maximum import (
+    ...     BootstrapRefitWarning,
+    ...     warn_bootstrap_refits,
+    ... )
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     warn_bootstrap_refits(200, no_maximum=0, no_estimate=3)
+    >>> w = caught[0].message
+    >>> isinstance(w, BootstrapRefitWarning), w.no_estimate, w.n_boot
+    (True, 3, 200)
+    """
+
+    def __init__(
+        self,
+        message: str,
+        n_boot: int = 0,
+        no_maximum: int = 0,
+        no_estimate: int = 0,
+        unverified: int = 0,
+        failed: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.n_boot = n_boot
+        self.no_maximum = no_maximum
+        self.no_estimate = no_estimate
+        self.unverified = unverified
+        self.failed = failed
+
+
+def _plural(count: int, one: str, many: str) -> str:
+    return one if count == 1 else many
+
+
+def warn_bootstrap_refits(
+    n_boot: int,
+    no_maximum: int = 0,
+    no_estimate: int = 0,
+    unverified: int = 0,
+    failed: int = 0,
+    advice: str = "treat the bounds as rough, or use bounds that need no "
+    "refits",
+    what: str = "bounds",
+) -> None:
+    """One :class:`BootstrapRefitWarning` for the refits of a bootstrap
+    that reached no verified maximum of the likelihood: always where any
+    had no finite maximum (``no_maximum`` kept at the estimate it
+    reached, ``no_estimate`` left out), and where more than
+    :data:`FAILED_SHARE` of the ``n_boot`` stopped at an unverified
+    maximum or failed for another reason (``unverified``, kept;
+    ``failed``, left out). ``what`` names what the refits make (the
+    bounds, the refits' spread, the p-values) and ``advice`` what to do.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.no_maximum import warn_bootstrap_refits
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     warn_bootstrap_refits(200, unverified=2)
+    >>> caught
+    []
+    """
+    bad = no_maximum + no_estimate + unverified + failed
+    if not (no_maximum or no_estimate) and bad <= FAILED_SHARE * n_boot:
+        return
+    parts = []
+    if no_maximum:
+        parts.append(
+            f"{no_maximum} with no finite maximum, kept at the estimate "
+            + _plural(no_maximum, "it", "they")
+            + " reached (a parameter running off to its limit), so that "
+            + _plural(no_maximum, "it counts", "they count")
+            + f" toward the end of the {what} it ran to"
+        )
+    if no_estimate:
+        parts.append(
+            f"{no_estimate} on "
+            + _plural(no_estimate, "a resample", "resamples")
+            + " whose likelihood has no maximum at all (no failures, or "
+            "fewer distinct failure times than parameters), left out, "
+            f"which narrows the {what}"
+        )
+    if unverified:
+        parts.append(f"{unverified} at an unverified maximum, kept")
+    if failed:
+        parts.append(f"{failed} failed for another reason and left out")
+    warnings.warn(
+        BootstrapRefitWarning(
+            f"{bad} of the {n_boot} bootstrap refits did not reach a "
+            f"verified maximum of the likelihood: {'; '.join(parts)}. "
+            f"The data barely determine the model: {advice}.",
+            n_boot=n_boot,
+            no_maximum=no_maximum,
+            no_estimate=no_estimate,
+            unverified=unverified,
+            failed=failed,
+        ),
+        stacklevel=caller_stacklevel(),
+    )

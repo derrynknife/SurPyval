@@ -99,6 +99,19 @@ def test_quantile_inverts_cdf(case):
         np.testing.assert_array_equal(q, x[keep])
 
 
+@pytest.mark.parametrize("case", cases_for("occupancy_sum"))
+def test_occupation_probabilities_sum_to_one(case):
+    model = fitted(case)
+    for z in _z_rows(case):
+        total = sum(
+            np.asarray(
+                call(case, model, "occupancy", case.x, z, event=e), float
+            )
+            for e in case.events
+        )
+        np.testing.assert_allclose(total, 1.0, rtol=0, atol=1e-12)
+
+
 @pytest.mark.parametrize("case", cases_for("cif_sum", needs=("cif", "ff")))
 def test_cumulative_incidences_sum_to_ff(case):
     model = fitted(case)

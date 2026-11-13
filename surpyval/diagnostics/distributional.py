@@ -85,9 +85,10 @@ from typing import Any
 
 import numpy as np
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
-from ._shared import _covariate_kind, _fmt, _gap, _note
+from ._shared import _covariate_kind, _draw_form, _fmt, _gap, _note
 from .cox import INFLUENCE_LIMIT
 from .ph_aft import (
     AIC_MARGIN,
@@ -194,7 +195,7 @@ def _own(ctx: Context) -> str:
     """How the advice names the model's fitter: ``WeibullDistributional``,
     or ``Distributional(<name>)`` for a distribution with no prebuilt
     one."""
-    name = ctx.model.distribution.name
+    name = canonical_name(ctx.model.distribution)
     if name in CANDIDATES:
         return name + "Distributional"
     return f"Distributional({name})"
@@ -212,7 +213,7 @@ def _candidate_covariates(model: Any, candidate: str) -> dict:
     params = list(model.distribution.parameter_names)
     positions = _positions(model)
     every = sorted({j for p in positions for j in p.tolist()})
-    life = LIFE.get(model.distribution.name)
+    life = LIFE.get(canonical_name(model.distribution))
     if life is None:
         life_cols, other_cols = every, every
     else:
@@ -271,7 +272,7 @@ def _aic_candidates(ctx: Context) -> list[dict]:
 
     def compute() -> list[dict]:
         model = ctx.model
-        own = model.distribution.name
+        own = canonical_name(model.distribution)
         out = [
             {
                 "label": _own(ctx),
@@ -531,24 +532,22 @@ def _form_rows(ctx: Context) -> list[dict]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     b = _base(ctx)
     panels = []
     for c in _form_coefficients(ctx):
 
         def draw(ax: Any, options: Any, c: dict = c) -> None:
-            from surpyval.plotting import INK, PALETTE
-
             r = _score_residuals(ctx)[:, c["k"]]
             z = b.raw[:, c["j"]]
             keep = np.isfinite(r)
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z[keep], r[keep], s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z[keep], r[keep], grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(c["name"])
-            ax.set_ylabel("score residual of {}".format(c["parameter"]))
+            _draw_form(
+                ax,
+                z[keep],
+                r[keep],
+                c["name"],
+                "score residual of {}".format(c["parameter"]),
+                grid=np.linspace(z.min(), z.max(), 60),
+            )
 
         panels.append(
             Panel(
@@ -706,7 +705,7 @@ def _validate(model: Any) -> None:
 
 
 def _notes(ctx: Context) -> list[str]:
-    name = ctx.model.distribution.name
+    name = canonical_name(ctx.model.distribution)
     others = [c for c in CANDIDATES if c != name]
     return [
         "Distribution: the Cox-Snell residuals H(x | z), each unit's fitted "
@@ -740,7 +739,7 @@ def _on(name: str | None) -> Any:
     one with no prebuilt fitter)."""
 
     def test(ctx: Context) -> bool:
-        own = ctx.model.distribution.name
+        own = canonical_name(ctx.model.distribution)
         return own not in CANDIDATES if name is None else own == name
 
     return test

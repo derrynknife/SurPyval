@@ -13,7 +13,6 @@ from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -531,6 +530,22 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @property
+    def canonical_name(self) -> str:
+        """The distribution's canonical name: its :attr:`name`, except for
+        an alias (``Gauss`` and ``Galton`` give ``"Normal"`` and
+        ``"LogNormal"``). The package identifies a distribution by it, so
+        a model fitted with an alias behaves as one fitted with the
+        canonical name (see :mod:`surpyval.utils.aliases`).
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.Gauss.canonical_name, sp.Weibull.canonical_name
+        ('Normal', 'Weibull')
+        """
+        return self.name
+
     def __init__(
         self,
         name: str,
@@ -701,7 +716,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         distribution has a closed form."""
         return continuous_mrl(self, x, *params)
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -970,8 +984,14 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
         # 0 nothing has failed, and a window opening below 0 contains the
         # mass. Counting it at a ``tl`` of -1 made a no-op truncation
-        # divide by ``1 - f0``, and f0 ran to 1 (#548). (With ``f0 = 0``
-        # this is the same arithmetic as before.)
+        # divide by ``1 - f0``, and f0 ran to 1 (#548). A window that
+        # opens *at* 0 holds the mass too: an interval ``[0, t]`` says
+        # "failed by t", perhaps at 0, the same as left censoring at
+        # ``t`` (``f0 + (p - f0) F(t)``), and a ``tl`` of 0 is no
+        # truncation, as in the zero-inflated regression (Moulton &
+        # Halsey 1995; Braekers & Grouwels 2016). So the lower bound
+        # counts the mass only when it is above 0. (With ``f0 = 0`` this
+        # is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
             f0 * (xr >= 0) + (p - f0) * ff(xr_safe - gamma, *dist_params),
@@ -979,7 +999,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         )
         lower = np.where(
             lo_finite,
-            f0 * (xl >= 0)
+            f0 * (xl > 0)
             + (p - f0)
             * np.where(lo_evaluated, ff(xl_safe - gamma, *dist_params), 0.0),
             0.0,
@@ -1180,7 +1200,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
-    @removed_arguments("0.24", p="'lfp_p'")
     @takes_unit
     def from_params(
         self,

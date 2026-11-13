@@ -145,8 +145,14 @@ Every distribution is an object in the ``surpyval`` namespace
      - no
      -
 
-``Galton`` and ``Gauss`` are the same distributions as ``LogNormal`` and
-``Normal`` under their other names. Every distribution in the table except the
+``Gauss`` is another name for ``Normal``, and ``Galton`` another name for
+``LogNormal``. A model fitted with one saves and loads as that name (its
+``repr`` and ``to_dict`` show it) and is otherwise identical: the same fit to
+the last digit, the same checks and refusals, and wherever SurPyval asks
+which distribution a model has (``fit_best``, ``AcceleratedLife``, the
+diagnostics), it is taken as the ``Normal`` or ``LogNormal``.
+``dist.canonical_name`` gives that name (``sp.Gauss.canonical_name`` is
+``"Normal"``). Every distribution in the table except the
 ``Hypoexponential`` also accepts ``lfp=True``. The discrete lifetimes
 (``Geometric``, ``DiscreteWeibull``, ``NegativeBinomial``, ``BetaGeometric``,
 ``Discretize`` and ``Poisson``) and the per-demand and degenerate models
@@ -2315,7 +2321,8 @@ available for models fitted by maximum likelihood (the default), including
 limited-failure-population and zero-inflated models, whose extra parameters
 widen the bounds. A model fitted with ``how='MPS'``, ``'MSE'``, ``'MPP'`` or
 ``'MOM'`` raises instead; so does a Uniform, whose MLE sits on the edge of its
-support.
+support. A probability-plotting (``how='MPP'``) fit has its own bounds,
+``method='pivotal'`` (see `Bounds for a probability-plotting fit`_ below).
 
 The band above is a *Wald* band: it propagates the parameter covariance through
 the function by the delta method. ``cb`` also offers a **likelihood-ratio**
@@ -2390,6 +2397,132 @@ explained in :doc:`Parametric Estimation`.
     _b = model.params[1]
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
+
+Bounds for a probability-plotting fit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A probability-plotting fit (``how='MPP'``, also called rank or median-rank
+regression) draws a straight line through the plotted points. It has no
+likelihood, so no Wald or likelihood-ratio bound. It has a better one:
+**pivotal** bounds, ``method='pivotal'`` on ``cb``, ``quantile_cb`` and
+``param_cb``.
+
+In plain words: for the Weibull, LogNormal, LogLogistic, Normal, Logistic,
+Gumbel, GumbelLEV and Exponential, how far the fitted line is from the true
+line, measured in units of the fitted line's own slope, has the same
+distribution whatever the true parameters are. So SurPyval works that
+distribution out by simulation, once: it draws many samples of the same size
+from the standard member of the family, with failures and suspensions in the
+same rank positions as the data, fits each one by exactly the same regression
+(the same plotting positions, the same direction of regression), and reads the
+bounds off the spread of those fits. For a complete sample, and for a sample
+censored after its ``r``-th failure (type II censoring), the bounds then hold
+their level exactly, however small the sample; the only error is the Monte
+Carlo error of the simulation. These are the "Monte Carlo pivotal" bounds of
+Abernethy's *New Weibull Handbook*, computed as the exact pivotal intervals of
+Lawless (2003, section 5.1).
+
+.. jupyter-execute::
+
+    x = [43, 61, 79, 92, 107, 120, 141, 163]     # eight failures
+    mpp = Weibull.fit(x, how='MPP')
+    mle = Weibull.fit(x)
+
+    rows = [
+        ('MLE, Wald', mle, dict(method='wald')),
+        ('MLE, likelihood ratio', mle, dict(method='lr')),
+        ('MLE, bootstrap', mle, dict(method='bootstrap', random_state=1)),
+        ('MPP, pivotal', mpp, dict(method='pivotal', random_state=1)),
+    ]
+    for label, m, kw in rows:
+        beta = m.param_cb('beta', alpha_ci=0.1, **kw)
+        b10 = m.quantile_cb(0.1, alpha_ci=0.1, **kw)
+        print(f"{label:22s} beta {beta.round(2)}   B10 {b10.round(1)}")
+
+With eight failures the 90% pivotal interval on the shape is the widest of
+the four, and it is the one that holds its level: over 1000 samples of 5, 10
+and 20 Weibull lifetimes, complete or type II censored, the 90% pivotal bounds
+on the shape, the scale, the B10 life and the reliability covered between
+88.9% and 91.9% of the time, where the Wald bounds of the maximum-likelihood
+fit to the same samples covered 64% to 89%
+(``calibration/test_coverage_pivotal.py``).
+
+What to know before using them:
+
+- **The number of simulations**, ``n_sim``, defaults to 9999. A bound is the
+  ``(n_sim + 1) a``-th smallest simulated value (``a`` the tail probability,
+  ``alpha_ci / 2`` for a two-sided bound), so with 9999 the coverage is exact
+  over the simulation too at any level that is a multiple of 0.0001. A
+  different ``n_sim`` or seed moves a bound a little, not its coverage: two
+  seeds give 95% bounds on the shape of eight failures within about 1% of
+  each other. ``random_state`` seeds the simulation as everywhere in SurPyval;
+  with an integer seed the simulated fits are kept on the model and reused by
+  every later bound with the same ``n_sim`` and seed, so the bounds on ``sf``,
+  on the quantiles and on the parameters come from one simulation and agree
+  with each other (the band on ``ff`` at a quantile's bound is ``p``).
+- **Other right censoring.** With suspensions among the failures the
+  simulation keeps them in the same rank positions, as the handbook and R's
+  ``WeibullR`` do; the bounds are then approximate (the rank pattern itself
+  would vary in another sample). Tied times are simulated as untied.
+- **What is refused**, each with what to use instead: a fit by any other
+  method (an MLE fit has the Wald, likelihood-ratio and bootstrap bounds), any
+  other family (the pivotal argument needs a location and a scale), an offset
+  (3-parameter) fit, left- or interval-censored data, truncated data, fixed
+  parameters, a model without its data (save it with
+  ``to_dict(with_data=True)``, which also keeps the plotting options), and
+  ``on='hf'`` or ``'df'`` (the hazard and density are not a monotone function
+  of the line's error).
+
+The fits agree with R's ``WeibullR`` exactly (``heuristic='Benard',
+rr='x'`` is its default). ``WeibullR``'s ``pivotal-rr`` bounds are
+constructed differently (from percentiles of the simulated lines, rotated
+about the fitted line) from the exact pivotal intervals of Lawless used here,
+so the two are not expected to coincide.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _piv = mpp.param_cb('beta', alpha_ci=0.1, method='pivotal', random_state=1)
+    _lr = mle.param_cb('beta', alpha_ci=0.1, method='lr')
+    _wald = mle.param_cb('beta', alpha_ci=0.1, method='wald')
+    _boot = mle.param_cb('beta', alpha_ci=0.1, method='bootstrap', random_state=1)
+    _w = lambda b: b[1] - b[0]
+    assert _w(_piv) > max(_w(_lr), _w(_wald), _w(_boot))
+    _a = mpp.param_cb('beta', method='pivotal', random_state=1)
+    _b = mpp.param_cb('beta', method='pivotal', random_state=2)
+    assert np.allclose(_a, _b, rtol=0.015), (_a, _b)
+
+Reduced bias adjustment
+^^^^^^^^^^^^^^^^^^^^^^^
+
+With few failures the maximum-likelihood Weibull shape is too large more often
+than it is too small, and a LogNormal or Normal ``sigma`` too small.
+``model.rba()`` gives the fit with Abernethy's **reduced bias adjustment**: the
+shape (or ``sigma``) multiplied by a factor that depends only on the number of
+failures ``r`` and tends to 1 as ``r`` grows; the scale (or ``mu``) is kept.
+For the Weibull the default, ``basis='median'``, makes the shape as often above
+the truth as below it (a median-unbiased estimate); ``basis='mean'`` makes it
+right on average instead. It is opt-in, never the default: it moves the point
+estimate of a small sample, and does nothing about its spread, so it is not a
+substitute for a bound.
+
+.. jupyter-execute::
+
+    adjusted = mle.rba()
+    print("MLE shape         :", mle.params[1].round(3))
+    print("RBA shape (median):", adjusted.params[1].round(3))
+    print("RBA shape (mean)  :", mle.rba('mean').params[1].round(3))
+    print(adjusted.bias_adjustment)
+
+With :math:`C_4(r) = \sqrt{2 / (r - 1)}\,\Gamma(r / 2) / \Gamma((r - 1) / 2)`,
+the Weibull shape is multiplied by :math:`C_4^{3.5}` (median) or
+:math:`C_4^{6}` (mean), and a (log)normal ``sigma`` by
+:math:`\sqrt{r / (r - 1)} / C_4`, which turns a complete sample's MLE into
+the mean-unbiased :math:`s / C_4`. These are ``WeibullR``'s factors (it
+applies them to maximum-likelihood fits only, as SurPyval does) and agree with
+them to 1e-12. The adjusted model is built from its parameters, like
+``with_params``: bound the fit itself, or use pivotal bounds on an MPP fit.
 
 Joint likelihood contours
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -2523,6 +2656,45 @@ simulated samples of 100 units each
 (``calibration/test_coverage_extra_parameters.py``) its 95% intervals
 covered 90% to 96.5% of the time and its 90% ones 83.5% to 92.5%, a little
 short at 90% for a zero-inflated model and for ``lfp_p`` near its edge.
+(Those figures were measured before 0.27, which widened every bootstrap
+interval a little by reading its bounds from the refits at the levels
+asked; see the note below.)
+
+.. note::
+
+   **How close the bootstrap intervals come to their level.** A bootstrap
+   interval (``method="bootstrap"``, on ``param_cb``, ``cb`` or
+   ``quantile_cb``) on a plain Weibull or LogNormal fit covers the truth
+   within about a point of its level from 100 units up, and one to two
+   points less with 30 units: a "90%" interval about 88-89% of the time, a
+   "95%" one about 93-95%. The figures come from the package's calibration
+   study (``calibration/test_coverage_bootstrap.py``), each the average
+   over every bound checked (parameters, ``sf`` and quantiles at three
+   points), 200 simulated data sets per design, about 30% right censored,
+   with the default ``n_boot=200``:
+
+   ==================================  ============  ============
+   Design                              90% interval  95% interval
+   ==================================  ============  ============
+   Weibull / LogNormal, 30 units       88.0%         93.0%
+   Weibull / LogNormal, 100 units      89.1%         94.7%
+   Weibull / LogNormal, 300 units      88.8%         94.6%
+   ==================================  ============  ============
+
+   At 200 data sets a design's average is uncertain by about a point, so
+   these agree with the level from 100 units up. A larger check of the
+   same method, written independently (8,000 data sets of 300 Weibull
+   units, 200 refits each), covered 90.0% and 95.0%. Before version 0.27
+   these intervals were about 2% too narrow and covered about a point
+   less at every sample size, because each bound was read from the
+   refits at a level nearer the middle than asked (see the changelog).
+
+   The likelihood-ratio bounds (``method="lr"``) hold their level as well
+   or better on the same kinds of data, cost no refits, and are the
+   default choice where they are available. The bootstrap is the choice
+   where the likelihood-ratio bound is not available or not regular (an
+   offset with a shape below 2, above), and with 30 units or fewer either
+   method can fall a point or two short.
 
 An offset model's region can reach the offset at the first failure, where its
 likelihood is unbounded (a shape below 1 puts infinite density there; see the

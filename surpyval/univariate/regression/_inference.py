@@ -26,7 +26,6 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
-from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -421,6 +420,34 @@ class InferenceMixin:
                 step[i] = h * gap
         return step
 
+    def _gradient_step(
+        self, p_hat: npt.NDArray, cov: npt.NDArray | None
+    ) -> npt.NDArray:
+        """Finite-difference step for a first derivative at ``p_hat`` (the
+        rows' scores of a robust covariance, a bootstrap's acceleration):
+        ``eps**(1/3)`` of each parameter's standard error (from ``cov``,
+        in the parameterisation of ``p_hat``), which moves with the
+        parameter's unit, so the derivative does not depend on it; the
+        :meth:`_hessian_step` where there is no usable standard error, and
+        never longer than that step where it is shortened near a bound.
+
+        The :meth:`_hessian_step` alone has a fixed floor (``1e-2`` of a
+        parameter), far too long a step for an additive hazard's
+        coefficient of 1e-10 per second: the cluster-robust bounds of a
+        log-normal additive hazards fit were 16 times as wide with its
+        times in millionths of their unit as in the unit itself.
+        """
+        plain = self._hessian_step(p_hat)
+        if cov is None:
+            return plain
+        h = np.finfo(float).eps ** (1.0 / 3.0)
+        with np.errstate(invalid="ignore"):
+            sd = np.sqrt(np.diag(np.asarray(cov, dtype=float)))
+        usable = np.isfinite(sd) & (sd > 0)
+        step = np.where(usable, h * np.where(usable, sd, 1.0), plain)
+        near = plain < h * np.maximum(np.abs(p_hat), 1e-2)
+        return np.where(near, np.minimum(step, plain), step)
+
     def standard_errors(self) -> npt.NDArray:
         """
         Standard errors of the fitted parameters (square roots of the diagonal
@@ -618,8 +645,8 @@ class InferenceMixin:
         names = self.parameter_names
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}{}".format(
-                    name, names, removed_parameter_note(name, names)
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
                 )
             )
         if name == self.life_parameter:
@@ -817,7 +844,9 @@ class InferenceMixin:
         if on in ("hf", "df"):
             fn = self.model.hf if on == "hf" else self.model.df
             est = np.asarray(fn(x, Zp, *params), dtype=float)
-            se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
+            se = delta_method_se(
+                lambda p: fn(x, Zp, *p), params, cov, scale_free=True
+            )
             return _nan_outside(
                 log_transformed_cb(est, se, alpha_ci, bound), outside
             )
@@ -1012,7 +1041,10 @@ class InferenceMixin:
         Zc = self._centred(rows, center)
         with np.errstate(all="ignore"):
             se_H = delta_method_se(
-                lambda q: self.model.Hf(t_hat, Zc, *q), params, cov
+                lambda q: self.model.Hf(t_hat, Zc, *q),
+                params,
+                cov,
+                scale_free=True,
             )
             h = np.asarray(self.model.hf(t_hat, Zc, *params), dtype=float)
             se_t = se_H / h
@@ -1064,7 +1096,7 @@ class InferenceMixin:
         with np.errstate(invalid="ignore"):
             # inf - inf where sf is 1 or 0: the bounds are the estimate
             # there (link_band)
-            se_u = delta_method_se(u_of, params, cov)
+            se_u = delta_method_se(u_of, params, cov, scale_free=True)
         cb = link_band(u_hat, se_u, alpha_ci, bound, link, name)
         # A negative H (an additive hazards sf above 1, documented) has no
         # point on these scales: it keeps the clipped-sf logit bound.
@@ -1072,7 +1104,7 @@ class InferenceMixin:
         if not negative.any():
             return cb
         sf_hat = np.asarray(sf_of(params), dtype=float)
-        se = delta_method_se(sf_of, params, cov)
+        se = delta_method_se(sf_of, params, cov, scale_free=True)
 
         def end(sign: float, tail: float) -> npt.NDArray:
             # One end on the scale of ``on``; sign +1 is sf's upper.

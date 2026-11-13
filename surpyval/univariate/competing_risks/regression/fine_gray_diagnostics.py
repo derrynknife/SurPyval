@@ -90,6 +90,19 @@ def fine_gray_data(model: Any) -> FineGrayData:
             "Use the robust Wald tests of summary() on the weighted fit, "
             "or run the diagnostics on the fit without its weights.",
         )
+    if getattr(model, "is_stratified", False) or (
+        getattr(model, "n_clusters", None) is not None
+    ):
+        raise ValueError(
+            "The diagnostics of a Fine-Gray model (the proportional "
+            "subdistribution hazards test, the added-covariate test and "
+            "the martingale residuals) are not built for a fit with "
+            "strata or clusters: their tests take one baseline and "
+            "independent units. Check proportionality on the fit without "
+            "them, or within each stratum (FineGray.fit on the stratum's "
+            "rows), and use the robust Wald tests of summary() on this "
+            "fit."
+        )
     data = getattr(model, "_fit_data", None)
     if data is None:
         raise _restored()

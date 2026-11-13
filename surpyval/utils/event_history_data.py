@@ -34,6 +34,14 @@ from surpyval.utils.warnings import (
 )
 
 
+def _grouped_in_order(inverse: npt.NDArray) -> bool:
+    """Whether rows whose items are at positions ``inverse`` (of the sorted
+    ids) come grouped by item, in the sorted order: as ``handle_xicn``
+    leaves them."""
+    inverse = np.asarray(inverse).reshape(-1)
+    return bool(np.all(inverse[1:] >= inverse[:-1]))
+
+
 class EventHistoryData(ReshapeMixin):
     """
     Event history data: the history of each of several items over time --
@@ -402,10 +410,25 @@ class EventHistoryData(ReshapeMixin):
         numpy.ndarray
             An array of interarrival times.
         """
-        _, idx = np.unique(self.i, return_index=True)
-        arrival_times = np.split(self.x, idx)[1:]
-        interarrival_times = [np.diff(arr, prepend=0) for arr in arrival_times]
-        return np.concatenate(interarrival_times)
+        _, idx, inverse = np.unique(
+            self.i, return_index=True, return_inverse=True
+        )
+        if self.x.ndim != 1 or not _grouped_in_order(inverse):
+            # Rows not grouped by sorted item (data built by hand rather
+            # than by ``handle_xicn``, which sorts them), or 2-D ``x``: the
+            # item-by-item form, which gives such data what it always did.
+            arrival_times = np.split(self.x, idx)[1:]
+            return np.concatenate(
+                [np.diff(arr, prepend=0) for arr in arrival_times]
+            )
+        # One subtraction over all the rows, then each item's first row
+        # from the origin 0: the numbers ``np.diff(item, prepend=0)`` gives
+        # item by item, in its dtype, without a pass per item.
+        x = self.x.astype(np.result_type(np.zeros(1, dtype=int), self.x))
+        gaps = np.empty_like(x)
+        gaps[1:] = x[1:] - x[:-1]
+        gaps[idx] = x[idx] - np.zeros(1, dtype=int)
+        return gaps
 
     def get_previous_x(self, min_x: float = 0) -> npt.NDArray:
         """
@@ -428,21 +451,30 @@ class EventHistoryData(ReshapeMixin):
         numpy.ndarray
             An array of previous event times.
         """
-        unique_items = np.unique(self.i)
-        x_previous = []
-        for item in unique_items:
-            mask_item = self.i == item
-            x_item = self.x[mask_item]
-            x_prev_item = np.roll(x_item, shift=1, axis=0)
-            # The first interval of an item starts at its observation entry:
-            # the left truncation bound when one is given (which may be
-            # negative), otherwise the ``min_x`` origin for untruncated data.
-            tl_item = float(self.tl[mask_item][0])
-            entry = tl_item if np.isfinite(tl_item) else min_x
-            x_prev_item[0] = entry
-            x_previous.append(x_prev_item)
-
-        return np.concatenate(x_previous)
+        # The rows grouped by item, in the order of the sorted ids and in
+        # their own order within an item (the rows of ``handle_xicn``'s
+        # data already are; others are returned in that order, as the
+        # item-by-item form returned them): each row's previous time is
+        # the row before it, found for every item at once.
+        _, first, inverse = np.unique(
+            self.i, return_index=True, return_inverse=True
+        )
+        inverse = inverse.reshape(-1)
+        x = (
+            self.x
+            if _grouped_in_order(inverse)
+            else self.x[np.argsort(inverse, kind="stable")]
+        )
+        starts = np.concatenate([[0], np.cumsum(np.bincount(inverse))[:-1]])
+        x_previous = np.empty_like(x)
+        x_previous[1:] = x[:-1]
+        # The first interval of an item starts at its observation entry:
+        # the left truncation bound when one is given (which may be
+        # negative), otherwise the ``min_x`` origin for untruncated data.
+        tl_first = self.tl[first].astype(float)
+        entry = np.where(np.isfinite(tl_first), tl_first, min_x)
+        x_previous[starts] = entry if x.ndim == 1 else entry[:, None]
+        return x_previous
 
     def _refuse_crossed_inspections(self) -> None:
         """Refuse an all-failure intensity fit of data whose inspection
@@ -693,10 +725,9 @@ class EventHistoryData(ReshapeMixin):
 
     def _first_event_times(self) -> SurpyvalData:
         """Each item's first row, grouped (the renewal fits' start)."""
-        x_ttff = np.array([self.x[self.i == item][0] for item in self.ids])
-        c_ttff = np.array([self.c[self.i == item][0] for item in self.ids])
-        n_ttff = np.array([self.n[self.i == item][0] for item in self.ids])
-        return SurpyvalData(x_ttff, c_ttff, n_ttff)
+        # Each item's first row, in the order of ``ids`` (np.unique's).
+        first, _ = self.item_rows()
+        return SurpyvalData(self.x[first], self.c[first], self.n[first])
 
     @classmethod
     def from_histories(
@@ -1257,6 +1288,16 @@ class EventHistoryData(ReshapeMixin):
 
     def _from_records(self, records: list, counts: list) -> EventHistoryData:
         return EventHistoryData.from_items(records)
+
+    def _without_on_arrays(self, parts: tuple) -> EventHistoryData | None:
+        # Without the covariates, the data is built from its arrays where
+        # that gives what the items' records give (the default start of
+        # the proportional-intensity fits reads it); else None.
+        if tuple(parts) != ("covariates",):
+            return None
+        from surpyval.utils.history_reshape import without_covariates
+
+        return without_covariates(self)
 
     def item(self, id: Any) -> Any:
         """
