@@ -10,8 +10,8 @@ estimator accepts arbitrary combinations of observed, censored, and truncated
 data** through one consistent input convention (the "xcnt" data model). Fit a
 model, then call `sf`/`ff`/`hf`/`Hf`/`df`/`qf` on it.
 
-This skill describes SurPyval 0.26. Check the installed version with
-`surpyval.__version__`; a note marked **0.22** to **0.26** says the release
+This skill describes SurPyval 0.27. Check the installed version with
+`surpyval.__version__`; a note marked **0.22** to **0.27** says the release
 whose behaviour it describes, which earlier versions do not share.
 Import as `import surpyval` (commonly `import surpyval as sp`). Every code
 block below runs as written (`surpyval/tests/test_skill.py` executes them).

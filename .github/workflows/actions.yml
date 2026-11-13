@@ -414,6 +414,15 @@ jobs:
               surpyval/tests/calibration/test_coverage_weights.py
               surpyval/tests/calibration/test_size_power.py
               --deselect 'surpyval/tests/calibration/test_coverage_weights.py::test_case_bootstrap_coverage'
+          # The panel-data studies added since 0.26 (the panel-count
+          # bootstrap, about 11 minutes, and the panel multi-state
+          # model's coverage), out of "rest", which was still running at
+          # 40 of its 60 minutes on 13 November 2026 with them in it.
+          - group: panel
+            workers: auto
+            args: >-
+              surpyval/tests/calibration/test_coverage_panel_count.py
+              surpyval/tests/calibration/test_coverage_multistate_panel.py
           - group: rest
             workers: auto
             args: >-
@@ -432,6 +441,8 @@ jobs:
               --ignore=surpyval/tests/calibration/test_refit_registry.py
               --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py
               --ignore=surpyval/tests/calibration/test_coverage_bootstrap.py
+              --ignore=surpyval/tests/calibration/test_coverage_panel_count.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_panel.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'

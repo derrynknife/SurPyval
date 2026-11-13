@@ -55,7 +55,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.deprecation import (
-    REMOVED_IN_NEXT,
+    REMOVED_IN,
     RenamedAttribute,
     renamed_arguments,
 )
@@ -345,7 +345,7 @@ class AalenAdditiveModel(
     #: The ridge penalty the fit took (0 for none).
     penalizer: float = 0.0
     #: The name of ``penalizer`` before v0.27.
-    coef_penalty = RenamedAttribute("penalizer", REMOVED_IN_NEXT)
+    coef_penalty = RenamedAttribute("penalizer", REMOVED_IN)
     #: The aliased covariate columns (#476).
     _aliased: npt.NDArray
     #: The rows fitted ``(x, c, n, tl, Z)``, for ``concordance`` and the
@@ -1339,7 +1339,7 @@ class AalenAdditive_(FitterRepr):
 
     fitter_kind = "non-parametric (Aalen) additive hazards fitter"
 
-    @renamed_arguments(REMOVED_IN_NEXT, coef_penalty="penalizer")
+    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1473,7 +1473,7 @@ class AalenAdditive_(FitterRepr):
             warn_if_few_effective(n, w_arr)
         return model
 
-    @renamed_arguments(REMOVED_IN_NEXT, coef_penalty="penalizer")
+    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
     @takes_unit
     def fit_from_df(
         self,
