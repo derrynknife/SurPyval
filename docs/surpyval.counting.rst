@@ -100,6 +100,7 @@ Intensities that depend on covariates.
     counting/hpp_pi
     counting/nhpp_pi
     counting/recurrent_cox
+    counting/joint_frailty
 
 Trend Tests and Diagnostics
 ---------------------------

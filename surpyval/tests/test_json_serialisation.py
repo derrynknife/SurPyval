@@ -358,6 +358,7 @@ def _build(name):
         AndersenGill,
         CrowAMSAA,
         GeneralizedRenewal,
+        JointFrailty,
         NonParametricCounting,
         PanelCountMCF,
         PanelCountRegression,
@@ -487,6 +488,16 @@ def _build(name):
                 baseline=CrowAMSAA,
             )
         ),
+        "joint_frailty": lambda: JointFrailty.fit(
+            **JointFrailty.from_params(
+                (10.0, 1.2), (20.0, 1.5), 0.5, 1.0, beta=[0.5], gamma=[0.3]
+            ).random(
+                80,
+                end=15.0,
+                Z=(np.arange(80) % 2)[:, None].astype(float),
+                random_state=1,
+            )
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
@@ -597,6 +608,7 @@ CASES = [
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
+    "joint_frailty",
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",

@@ -51,6 +51,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_COP,
     X_CR,
     X_DESTR,
+    X_JF,
     X_JOINT,
     X_MS,
     X_MSR,
@@ -60,6 +61,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_REC,
     X_UNI,
     Z_CR,
+    Z_JF,
     Z_MS,
     Z_REC,
     beta_geometric_data,
@@ -71,6 +73,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     joint_data,
+    joint_frailty_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -1499,6 +1502,50 @@ def _recurrent():
             intercept=True,
         )
     )
+    # The joint frailty model of recurrent and terminal events: the
+    # recurrent part's cif / iif / mcf and the terminal event's survival
+    # functions, at the query rows.
+    out.append(
+        Case(
+            name="JointFrailty",
+            fitters=("surpyval.recurrent.JointFrailty",),
+            model_class="surpyval.recurrent.JointFrailtyModel",
+            interface=COUNTING_REGRESSION,
+            data=joint_frailty_data,
+            fit=_fit(rc.JointFrailty),
+            functions=("cif", "iif", "mcf", "sf", "ff", "Hf", "hf", "df"),
+            x=X_JF,
+            Z=Z_JF,
+            paths={
+                "fit_from_df": lambda d: rc.JointFrailty.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "i": d["i"],
+                            "c": d["c"],
+                            "terminal": d["terminal"],
+                            "z": np.asarray(d["Z"])[:, 0],
+                        }
+                    ),
+                    "x",
+                    "i",
+                    "c",
+                    "terminal",
+                    Z_cols=["z"],
+                )
+            },
+            rows=("x", "Z", "i", "c", "terminal"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array([m.beta, m.gamma]),
+            # Each part's Weibull scale absorbs a constant.
+            intercept=True,
+            draw=lambda m, s: (lambda r: (r["x"], r["c"], r["terminal"]))(
+                m.random(4, end=15.0, Z=[0.5], random_state=s)
+            ),
+            explicit_seed=True,
+        )
+    )
     # A count above one is refused on an observed recurrent event (the
     # xicn convention: several events at one instant are not a count).
     no_counts = {
@@ -2922,6 +2969,25 @@ def _bounds(case):
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # The delta method on each function, Wald and profile-likelihood
+        # bounds on the parameters.
+        "JointFrailtyModel": (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mcf_cb", point="mcf"),
+            Bound("sf_cb", point="sf"),
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+        ),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
         # (hours at a constant number of starts per hour).
@@ -3562,6 +3628,8 @@ def _starve(case):
         return _far_start(
             case, lambda m: _scaled_start(np.r_[m.params, m.coeffs])
         )
+    if cls == "JointFrailtyModel":
+        return _far_start(case, lambda m: _scaled_start(m.params))
     if cls == "CauseSpecificNHPP":
         return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
     if cls == "CauseSpecificProportionalIntensity":

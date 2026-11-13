@@ -523,6 +523,50 @@ X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
 Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])
 
 
+def joint_frailty_data():
+    """60 units of a joint frailty model: a gamma frailty (variance 0.5)
+    from quantiles in a scrambled order acts on Weibull recurrent events
+    (scale 10, shape 1.2, on the age) and, as ``u ** 1``, on a Weibull
+    terminal event (scale 20, shape 1.5), each followed to 15; the
+    terminal ages' and the event steps' exponential draws from fixed
+    sequences of fractional parts. Covariate ``z`` 0 or 1 (effects 0.5
+    and 0.3)."""
+    from scipy.stats import gamma
+
+    size = 60
+    u = gamma.ppf((scramble(size) + 0.5) / size, 2.0, scale=0.5)
+    p_end = ((np.arange(size) * 29 + 7) * 0.4142135623730951) % 1.0
+    z = (np.arange(size) % 2).astype(float)
+    x, i, c, term, Z = [], [], [], [], []
+    for k in range(size):
+        death = 20.0 * (-np.log(p_end[k]) / (u[k] * np.exp(0.3 * z[k]))) ** (
+            1 / 1.5
+        )
+        stop = round(min(death, 15.0), 3)
+        rate = u[k] * np.exp(0.5 * z[k])
+        cum, j = 0.0, 0
+        while True:
+            q = ((k * 37 + j * 11 + 1) * 0.6180339887498949) % 1.0
+            cum += -np.log(q) / rate
+            t = round(10.0 * cum ** (1 / 1.2), 3)
+            if t >= stop:
+                break
+            x.append(t), i.append(k), c.append(0), term.append(0)
+            Z.append(z[k])
+            j += 1
+        x.append(stop), i.append(k), c.append(1)
+        term.append(int(death <= 15.0)), Z.append(z[k])
+    return {
+        "x": np.array(x),
+        "Z": np.array(Z)[:, None],
+        "i": np.array(i),
+        "c": np.array(c),
+        "terminal": np.array(term),
+    }
+
+
+X_JF = np.array([1.0, 3.0, 6.0, 9.0, 12.0, 14.0])
+Z_JF = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.2]])
 # Panel data: fourteen units of an illness-death model with recovery seen
 # at visits: (unit, time, state seen, covariate). "dead" is entered at an
 # exact time; "alive" is a last visit that saw only that the unit was

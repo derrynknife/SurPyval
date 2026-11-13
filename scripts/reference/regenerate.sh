@@ -83,6 +83,8 @@ Rscript scripts/reference/reference_r_joint_links.R
 Rscript scripts/reference/reference_r_interval_cox.R
 # mstate (in R_LIBS_USER) for the multi-state models
 Rscript scripts/reference/reference_r_multistate.R
+# frailtypack (in R_LIBS_USER) for the joint frailty model
+Rscript scripts/reference/reference_r_joint_frailty.R
 # msm (in R_LIBS_USER) for the panel-data multi-state models
 Rscript scripts/reference/reference_r_multistate_panel.R
 # gsDesign and rpact (in R_LIBS_USER) for the group-sequential designs

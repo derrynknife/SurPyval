@@ -1591,6 +1591,11 @@ EXCLUDED: dict[str, str] = {
         "panels is calibration/test_coverage_multistate_panel.py, and the "
         "models' special cases are in tests/multistate/test_panel.py",
     ),
+    "JointFrailty": "recurrent events and a terminal event per unit, "
+    "which a model draw of one function does not give: its own study, "
+    "calibration/test_coverage_joint_frailty.py, simulates units with "
+    "random() and checks the parameters' bias and coverage, the bands and "
+    "the size of the test of no frailty",
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
     "calibration/test_coverage_joint.py, simulates fleets with markers and "
