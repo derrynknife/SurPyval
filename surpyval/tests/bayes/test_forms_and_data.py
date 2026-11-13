@@ -505,7 +505,7 @@ def test_combining_data_keeps_the_unit_and_refuses_extras():
 
     a = sp.SurpyvalData(x=[1.0, 2.0], unit="hours")
     b = sp.SurpyvalData(x=[3.0], unit="hours")
-    assert _combine(a, b).unit == a.unit == "hour"
+    assert _combine(a, b).unit == a.unit == "hours"
     with pytest.raises(ValueError, match="same unit"):
         _combine(a, sp.SurpyvalData(x=[3.0], unit="days"))
     with pytest.raises(ValueError, match="covariates"):

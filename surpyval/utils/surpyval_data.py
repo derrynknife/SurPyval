@@ -2816,7 +2816,9 @@ def with_data_unit(model: Any, data: Any) -> Any:
     if unit is None or model is None:
         return model
     held = getattr(model, "unit", None)
-    if held is not None and held != unit:
+    from surpyval.utils.units import same_unit
+
+    if held is not None and not same_unit(held, unit):
         raise ValueError(
             f"The data's ages are in {unit!r}, but unit={held!r} was given "
             "to the fit: a model is in the unit of its data (no conversion "

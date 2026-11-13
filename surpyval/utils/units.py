@@ -4,11 +4,14 @@ storage only.
 ``fit``, ``fit_from_df`` and ``from_params`` take ``unit=`` -- any unit,
 not only of time (``"hours"``, ``"km"``, ``"cycles"``, ``"pump starts"``)
 -- and the model keeps it as ``model.unit``, shows it in its ``repr`` and
-on the axes of its plots, and saves it in ``to_dict``. A unit pint knows
-is stored by its canonical name, so the same unit always reads the same
-(``"hrs"``, ``"hours"`` and ``"Hour"`` are all ``"hour"``); anything else
-is kept as given. Nothing is converted or checked: a tool that combines
-models (RePyability, say) converts with pint from these names.
+on the axes of its plots, and saves it in ``to_dict``. The label is kept
+exactly as it was typed (``"mm/s"`` stays ``"mm/s"``, ``"hrs"`` stays
+``"hrs"``), apart from spaces at its ends. pint works behind the scenes
+only: where two labels are compared (the data's and the fit's, two
+datasets combined, two models compared), :func:`same_unit` reads both
+with pint, so ``"h"`` and ``"hours"`` agree, and the label kept is the
+one typed for the result. Nothing is converted: a tool that combines
+models (RePyability, say) converts with pint from these labels.
 
 It is ``unit``, not ``units``: in SurPyval "units" are the items measured
 (a degradation model's ``units`` are its unit ids).
@@ -26,6 +29,7 @@ from typing import Any, TypeVar
 
 __all__ = [
     "normalise_unit",
+    "same_unit",
     "unit_symbol",
     "axis_label",
     "label_axes",
@@ -85,18 +89,19 @@ def _parse(text: str) -> Any:
 
 
 def normalise_unit(unit: Any) -> str | None:
-    """``unit`` as a model stores it: pint's canonical name for a unit it
-    knows, else the text as given (stripped, with runs of spaces made
-    one); None for None (unknown).
+    """``unit`` as a model stores it: the label exactly as typed (only
+    spaces at its ends removed); None for None (unknown). A pint unit
+    passed directly is stored by its name. The label is not rewritten by
+    pint (#1218, decided 13 Nov 2026): ``"mm/s"`` is shown and saved as
+    ``"mm/s"``; :func:`same_unit` reads labels with pint where they are
+    compared.
 
     Examples
     --------
     >>> from surpyval.utils.units import normalise_unit
-    >>> normalise_unit("hrs"), normalise_unit("Hours"), normalise_unit("h")
-    ('hour', 'hour', 'hour')
-    >>> normalise_unit("kilometres"), normalise_unit("cycles")
-    ('kilometer', 'cycle')
-    >>> normalise_unit("  pump   starts ")
+    >>> normalise_unit("hrs"), normalise_unit("mm/s"), normalise_unit("°C")
+    ('hrs', 'mm/s', '°C')
+    >>> normalise_unit("  pump starts ")
     'pump starts'
     """
     if unit is None:
@@ -109,21 +114,44 @@ def normalise_unit(unit: Any) -> str | None:
             "unit must be text naming the unit of the data, such as "
             f"'hours', 'km' or 'cycles'; got {type(unit).__name__}."
         )
-    text = " ".join(unit.split())
+    text = unit.strip()
     if not text:
         raise ValueError(
             "unit must name the unit of the data, such as 'hours', 'km' "
             "or 'cycles'; leave it out (None) when the unit is unknown."
         )
-    parsed = _parse(text)
-    return text if parsed is None else str(parsed)
+    return text
+
+
+def same_unit(a: str | None, b: str | None) -> bool:
+    """Whether the labels ``a`` and ``b`` name the same unit: the same
+    text (runs of spaces aside), or units pint reads as equal (``"h"``,
+    ``"hrs"``, ``"hours"`` and ``"hour"``; ``"mm/s"`` and
+    ``"millimeter / second"``, as files saved before labels were kept as
+    typed hold them). None (unknown) is the same only as None.
+
+    Examples
+    --------
+    >>> from surpyval.utils.units import same_unit
+    >>> same_unit("h", "hours"), same_unit("mm/s", "millimeter / second")
+    (True, True)
+    >>> same_unit("h", "km"), same_unit("pump starts", "pump  starts")
+    (False, True)
+    """
+    if a is None or b is None:
+        return a is None and b is None
+    ta, tb = " ".join(a.split()), " ".join(b.split())
+    if ta == tb:
+        return True
+    pa, pb = _parse(ta), _parse(tb)
+    return pa is not None and pb is not None and pa == pb
 
 
 def unit_symbol(unit: str | None) -> str | None:
-    """The short form of ``unit`` for an axis: pint's symbol (``"h"``,
+    """The short form of ``unit``: pint's symbol (``"h"``,
     ``"km"``, ``"kWh"``, ``"°C"``; ``"yr"`` for a year), the plural of a
     count (``"cycles"``), or the text as stored for a unit pint does not
-    know.
+    know. (Axes show the label as typed, see :func:`axis_label`.)
 
     Examples
     --------
@@ -156,16 +184,17 @@ def _is_count(parsed: Any) -> bool:
 def axis_label(unit: str | None, default: str = "Time") -> str:
     """The label of an axis that measures the data's ``unit``:
     ``default`` alone where the unit is unknown, and otherwise named by
-    what the unit measures -- ``"Time (h)"``, ``"Distance (km)"``, and
-    ``"Usage (cycles)"`` for a count, an energy or a unit pint does not
-    know (``"Usage (pump starts)"``).
+    what the unit measures (read with pint), with the label as typed --
+    ``"Time (hrs)"``, ``"Distance (km)"``, and ``"Usage (cycles)"`` for a
+    count, an energy or a unit pint does not know
+    (``"Usage (pump starts)"``).
 
     Examples
     --------
     >>> from surpyval.utils.units import axis_label
-    >>> axis_label(None), axis_label("hour"), axis_label("kilometer")
-    ('Time', 'Time (h)', 'Distance (km)')
-    >>> axis_label("cycle"), axis_label("pump starts")
+    >>> axis_label(None), axis_label("hrs"), axis_label("km")
+    ('Time', 'Time (hrs)', 'Distance (km)')
+    >>> axis_label("cycles"), axis_label("pump starts")
     ('Usage (cycles)', 'Usage (pump starts)')
     """
     if unit is None:
@@ -178,7 +207,7 @@ def axis_label(unit: str | None, default: str = "Time") -> str:
             what = "Time"
         elif dims == {"[length]": 1}:
             what = "Distance"
-    return f"{what} ({unit_symbol(unit)})"
+    return f"{what} ({unit})"
 
 
 def label_axes(ax: Any, unit: str | None, ylabel: str) -> None:
@@ -236,7 +265,7 @@ def takes_unit(method: Callable[..., R]) -> Callable[..., R]:
         model = method(*args, **kwargs)
         if canonical is not None and model is not None:
             held = getattr(model, "unit", None)
-            if held is not None and held != canonical:
+            if held is not None and not same_unit(held, canonical):
                 # The data (a SurpyvalData or EventHistoryData with a
                 # unit) gave the model its unit (#945)
                 raise ValueError(

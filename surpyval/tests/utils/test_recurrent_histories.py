@@ -270,4 +270,4 @@ def test_fit_data_refusals(call, error, match):
 
 
 def test_unit_still_applies():
-    assert rc.CrowAMSAA.fit(DATA, unit="hours").unit == "hour"
+    assert rc.CrowAMSAA.fit(DATA, unit="hours").unit == "hours"

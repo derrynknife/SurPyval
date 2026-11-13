@@ -374,7 +374,7 @@ def test_default_grid_spans_the_data_with_units(ph, ax):
     np.testing.assert_array_equal(
         line.get_xdata(), np.linspace(0, DF["x"].max(), 200)
     )
-    assert ax.get_xlabel() == "Time (h)"
+    assert ax.get_xlabel() == "Time (hour)"
     assert ax.get_ylabel() == "Survival probability"
 
 

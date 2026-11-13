@@ -220,7 +220,7 @@ def test_parametric_and_nonparametric_fits_take_data():
         sp.KaplanMeier.fit(data).sf([5, 10]),
         sp.KaplanMeier.fit(X, C).sf([5, 10]),
     )
-    assert sp.Weibull.fit(data, unit="hours").unit == "hour"
+    assert sp.Weibull.fit(data, unit="hours").unit == "hours"
 
 
 def test_mixture_and_fit_best_take_data():

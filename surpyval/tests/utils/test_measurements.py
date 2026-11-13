@@ -91,10 +91,10 @@ def test_the_two_shapes_are_told_apart_or_refused():
 def test_units_labels():
     m = Measurements(_named(), units={"vibration": "mm/s"})
     assert m.units["temperature"] is None
-    assert m.units["vibration"] == sp.utils.units.normalise_unit("mm/s")
-    assert "vibration (" in repr(m)
+    assert m.units["vibration"] == "mm/s"
+    assert "vibration (mm/s)" in repr(m)
     one = Measurements({"A": {0: 1.0}}, units="mm")
-    assert one.units == {None: sp.utils.units.normalise_unit("mm")}
+    assert one.units == {None: "mm"}
     with pytest.raises(ValueError, match="one label per measurement"):
         Measurements(_named(), units="mm")
     with pytest.raises(ValueError, match="'pressure'"):
@@ -239,6 +239,54 @@ def test_equality():
     assert Measurements(_named()) != Measurements(
         _named(), units={"vibration": "mm/s"}
     )
+
+
+@pytest.mark.parametrize("typed", ["mm/s", "°C", "bar", "h"])
+def test_unit_labels_print_and_round_trip_as_typed(typed):
+    # Decided 13 Nov 2026: never pint's "millimeter / second"
+    m = Measurements(_named(), units={"vibration": typed})
+    assert m.units["vibration"] == typed
+    assert f"vibration ({typed})" in repr(m)
+    saved = m.to_dict()
+    assert saved["measurements"][0]["unit"] == typed
+    back = Measurements.from_dict(saved)
+    assert back.units["vibration"] == typed and back == m
+    data = SurpyvalData([40, 55, 70], c=[0, 1, 0], i=["A", "B", "C"], m=m)
+    assert f"vibration ({typed})" in data.summary()
+    assert SurpyvalData.from_json(data.to_json()).m.units["vibration"] == (
+        typed
+    )
+    assert SurpyvalData.from_dict(data.to_dict()).m.units["vibration"] == (
+        typed
+    )
+    again = Measurements.from_dataframe(
+        m.to_dataframe(),
+        i_col="i",
+        x_col="x",
+        m_col="value",
+        m_name_col="name",
+        units=m.units,
+    )
+    assert again.units["vibration"] == typed
+
+
+def test_a_file_with_pints_unit_name_still_loads():
+    saved = Measurements(_named(), units={"vibration": "mm/s"}).to_dict()
+    saved["measurements"][0]["unit"] = "millimeter / second"
+    old = Measurements.from_dict(saved)
+    assert old.units["vibration"] == "millimeter / second"
+    # The same unit, read with pint
+    assert old == Measurements(_named(), units={"vibration": "mm/s"})
+    assert old != Measurements(_named(), units={"vibration": "m/s"})
+
+
+def test_a_unit_label_pint_does_not_know_is_kept():
+    m = Measurements(_named(), units={"vibration": "counts per sweep"})
+    assert m.units["vibration"] == "counts per sweep"
+    with pytest.raises(TypeError, match="unit must be text"):
+        Measurements(_named(), units={"vibration": 5})
+    with pytest.raises(ValueError, match="leave it out"):
+        Measurements(_named(), units={"vibration": "  "})
 
 
 # -- attached to life data ----------------------------------------------------

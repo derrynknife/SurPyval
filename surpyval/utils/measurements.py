@@ -169,7 +169,8 @@ def _shape(readings: dict) -> str | None:
 
 
 def _checked_units(units: Any, names: list) -> dict:
-    """``{name: label}``, each label as a model stores a unit."""
+    """``{name: label}``, each label as a model stores a unit: as typed
+    (``"mm/s"`` stays ``"mm/s"``)."""
     from surpyval.utils.units import normalise_unit
 
     if units is None:
@@ -561,10 +562,15 @@ class Measurements:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Measurements):
             return NotImplemented
+        from surpyval.utils.units import same_unit
+
         return (
             list(self._store) == list(other._store)
             and self._store == other._store
-            and self.units == other.units
+            and all(
+                same_unit(self._units.get(k), other._units.get(k))
+                for k in self._store
+            )
         )
 
     __hash__ = None  # type: ignore[assignment]

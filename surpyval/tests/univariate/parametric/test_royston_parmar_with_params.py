@@ -87,7 +87,7 @@ def test_structure_kept_and_fit_left_behind(rossi_fit):
     assert_allclose(m.params, before, rtol=0)  # not mutated
     assert r.scale == m.scale
     assert_allclose(r.knots, m.knots, rtol=0)
-    assert r.unit == m.unit == "week"
+    assert r.unit == m.unit == "weeks"
     assert r.maximum == "not applicable"
     assert r.n == 0 and r.n_events == 0
 
@@ -109,7 +109,7 @@ def test_saved_and_restored(rossi_fit):
     back = surv.from_dict(r.to_dict())
     assert_allclose(back.sf(T), r.sf(T), rtol=0)
     assert back.maximum == "not applicable"
-    assert back.unit == "week"
+    assert back.unit == "weeks"
     with pytest.raises(ValueError, match="data"):
         back.aic()
 

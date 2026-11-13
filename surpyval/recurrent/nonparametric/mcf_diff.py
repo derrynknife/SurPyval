@@ -34,7 +34,7 @@ from scipy.stats import chi2, norm
 from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.units import label_axes
+from surpyval.utils.units import label_axes, same_unit
 from surpyval.utils.validation import BOUNDS, check_option
 
 if TYPE_CHECKING:
@@ -691,5 +691,5 @@ def mcf_diff(
         tau=tau,
         n_items=[len(set(a.cluster.tolist())), len(set(b.cluster.tolist()))],
         n_events=[a.n_events, b.n_events],
-        unit=unit_a if unit_a == unit_b else None,
+        unit=unit_a if same_unit(unit_a, unit_b) else None,
     )

@@ -497,7 +497,7 @@ def test_renewal_with_params_keeps_the_structure():
     fit_unit = GeneralizedRenewal.fit(
         fit.data.x, fit.data.i, fit.data.c, unit="hours"
     )
-    assert fit_unit.with_params(fit_unit._estimates()).unit == "hour"
+    assert fit_unit.with_params(fit_unit._estimates()).unit == "hours"
 
 
 def test_intensity_with_params_refuses_outside_the_range():

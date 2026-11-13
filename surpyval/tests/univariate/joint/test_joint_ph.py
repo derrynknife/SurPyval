@@ -509,8 +509,8 @@ def test_round_trips_through_json_and_pickle():
 
 def test_unit_is_kept():
     model = WeibullJointPH.fit(fleet(60, seed=8), unit="days")
-    assert model.unit == "day"
-    assert JointModel.from_dict(model.to_dict()).unit == "day"
+    assert model.unit == "days"
+    assert JointModel.from_dict(model.to_dict()).unit == "days"
 
 
 # -- the fitter --------------------------------------------------------------

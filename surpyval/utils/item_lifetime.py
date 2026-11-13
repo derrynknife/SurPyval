@@ -104,9 +104,9 @@ class ItemLifetime(_ItemRecord):
         ``data.groupby(name)`` and ``data.select(where={name: value})``.
     unit : str, optional
         The unit its ages are in (``"hours"``, ``"km"``, ``"cycles"``), a
-        label kept with the record (pint's canonical name for a unit it
-        knows): a dataset takes it from its records, which must agree,
-        and ``fit(data)`` gives it to the model.
+        label kept with the record as typed: a dataset takes it from its
+        records, which must agree, and ``fit(data)`` gives it to the
+        model.
 
     Examples
     --------

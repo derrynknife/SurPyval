@@ -15,7 +15,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval import plotting
-from surpyval.utils.units import axis_label
+from surpyval.utils.units import axis_label, same_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .at_risk import (
@@ -637,8 +637,8 @@ def _finish_axes(
         ax.set_ylim(0, 1.02)
     else:
         ax.set_ylim(bottom=0)
-    units = {getattr(m, "unit", None) for _, m in pairs}
-    unit = units.pop() if len(units) == 1 else None
+    units = [getattr(m, "unit", None) for _, m in pairs]
+    unit = units[0] if all(same_unit(units[0], u) for u in units) else None
     ax.set_xlabel(xlabel if xlabel is not None else axis_label(unit))
     ax.set_ylabel(ylabel if ylabel is not None else _YLABELS[on])
     if title is None:

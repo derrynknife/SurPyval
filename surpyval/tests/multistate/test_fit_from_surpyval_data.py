@@ -134,12 +134,12 @@ def test_unit_and_from_dataframe(frame, cls, Z, opts):
     )
     got = cls.fit(data, transitions=TM, **opts)
     ref = _array_fit(cls, frame, Z, opts)
-    assert got.unit == "month"
+    assert got.unit == "months"
     ref.unit = got.unit
     _same_model(ref, got, Z=[[0, 6.5]] * len(TIMES) if Z else None)
     # unit= that agrees is fine; one that does not is refused
     cls.fit(data, transitions=TM, unit="month", **opts)
-    with pytest.raises(ValueError, match="in 'month'"):
+    with pytest.raises(ValueError, match="in 'months'"):
         cls.fit(data, transitions=TM, unit="day", **opts)
 
 

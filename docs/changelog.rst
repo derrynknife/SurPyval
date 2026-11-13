@@ -1514,6 +1514,16 @@ Unreleased
 
 **Changed.**
 
+- Unit labels are kept exactly as typed wherever they are shown or saved:
+  ``Measurements(..., units={"vibration": "mm/s"})`` prints, plots and
+  saves ``"mm/s"`` (not pint's ``"millimeter / second"``), and a model's
+  ``unit="hrs"`` stays ``"hrs"`` (it was stored as ``"hour"``), as do the
+  data classes' ``unit``. pint still reads the labels where they are
+  compared (the data's and the fit's, a dataset's records, combined data),
+  so ``"h"`` and ``"hours"`` still agree; the new
+  ``surpyval.utils.units.same_unit`` does it. Axes show the label as typed
+  (``"Time (hrs)"``). Files saved with pint's names load as before.
+
 - **The bootstrap bounds of an MPP, MPS, MSE or MOM fit refit by that
   method (an intentional change of numbers).** ``param_cb(...,
   method="bootstrap")`` and ``bootstrap()`` refitted every resample by
