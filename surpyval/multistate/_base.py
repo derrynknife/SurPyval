@@ -57,3 +57,40 @@ def step_index(t: npt.NDArray, x: npt.NDArray) -> npt.NDArray:
     """For each query time, the index of the last event time at or
     before it (-1 before the first)."""
     return np.searchsorted(t, x, side="right") - 1
+
+
+def time_fraction_bounds(
+    value: npt.NDArray,
+    se: npt.NDArray,
+    span: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
+    r"""Pointwise bounds on expected times ``value`` spent in a state
+    within ``span`` (so between 0 and ``span``), with standard errors
+    ``se``: the Wald bound on the logit of the fraction ``value / span``,
+    carried back, so the bounds stay in ``(0, span)``. Where the fraction
+    is 0 or 1, or ``se`` is 0, the bounds are the value."""
+    from scipy.special import expit, logit
+    from scipy.stats import norm
+
+    z = norm.ppf(1.0 - alpha_ci / (2.0 if bound == "two-sided" else 1.0))
+    value = np.asarray(value, dtype=float)
+    se = np.asarray(se, dtype=float)
+    span = np.asarray(span, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        frac = value / span
+        inside = (se > 0) & (frac > 0) & (frac < 1)
+        f = np.where(inside, frac, 0.5)
+        w = z * (se / np.where(span > 0, span, 1.0)) / (f * (1.0 - f))
+        centre = logit(f)
+        lower = np.where(inside, span * expit(centre - w), value)
+        upper = np.where(inside, span * expit(centre + w), value)
+    nan = np.isnan(value) | np.isnan(se)
+    lower = np.where(nan, np.nan, lower)
+    upper = np.where(nan, np.nan, upper)
+    if bound == "lower":
+        return lower
+    if bound == "upper":
+        return upper
+    return np.column_stack([lower, upper])

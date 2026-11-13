@@ -454,11 +454,8 @@ def test_fit_from_df_is_fit(sim):
 # -- refusals -----------------------------------------------------------------
 
 
-def test_clock_reset_is_refused_with_the_reason(sim):
-    with pytest.raises(ValueError, match="semi-Markov"):
-        ParametricMultiState.fit(
-            sim["x"], sim["e"], sim["state"], tl=sim["tl"], clock="reset"
-        )
+def test_an_unknown_clock_is_refused(sim):
+    # (clock="reset" is tested in test_semimarkov.py)
     with pytest.raises(ValueError, match="clock"):
         ParametricMultiState.fit(
             sim["x"], sim["e"], sim["state"], tl=sim["tl"], clock="gap"

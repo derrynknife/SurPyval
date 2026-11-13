@@ -5,6 +5,23 @@ Unreleased
 
 **Added.**
 
+- Semi-Markov ("clock reset") parametric multi-state models:
+  ``ParametricMultiState.fit(..., clock="reset")`` and
+  ``ParametricMultiStateRegression.fit(..., clock="reset")`` (and their
+  ``fit_from_df``), where each transition's hazard is a function of the
+  time spent in the current state (the time since a repair, a relapse).
+  Each transition is fitted on the durations ``x - tl``. The occupation
+  and transition probabilities come from the renewal equations, solved
+  by convolution on a grid refined until they settle (about 1e-6), with
+  or without recovery (a cycle); ``cb`` gives delta-method bounds as on
+  the forward clock. A distribution that does not live on (0, inf), and a
+  prediction from a later start without ``from_state``, are refused with
+  the reason.
+- The expected length of stay in each state for both clocks of the
+  parametric multi-state models: ``length_of_stay(x, state, ...)``,
+  ``length_of_stay_se`` and ``length_of_stay_cb`` (delta method on the
+  logit of the fraction of ``x - s`` spent in the state). Checked against
+  R ``flexsurv`` (``totlos.fs``, ``totlos.simfs``).
 - Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
   Cox model whose log hazard has Gaussian random effects, a random
   intercept per group of one or more grouping factors, nested (wards in
