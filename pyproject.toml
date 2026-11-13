@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "surpyval"
-version = "0.26"
+version = "0.27"
 description = "A python package for survival analysis"
 readme = "README.md"
 license = {text = "MIT"}
@@ -42,6 +42,9 @@ tests = [
     "pymongo>=4",
     # Property-based tests (surpyval/tests/properties).
     "hypothesis>=6",
+    # Arbitrary-precision references (the closed-form regression
+    # quantiles' tests).
+    "mpmath>=1.3",
 ]
 docs = [
     # The documentation build toolchain, used by Read the Docs and by a
@@ -78,6 +81,10 @@ where = ["."]
 # The reference results the installed test suite reads (#661)
 "surpyval.tests.reference" = ["data/*.json"]
 "surpyval.tests.diagnostics" = ["data/*.json"]
+# The values recorded before the terminal flag was added (test_terminal_flag.py)
+"surpyval.tests.utils" = ["terminal_flag_baseline.json"]
+# The frozen list of public names (test_public_surface.py)
+"surpyval.tests" = ["public_surface.txt"]
 
 # pytest
 [tool.pytest.ini_options]
@@ -137,6 +144,19 @@ module = [
     'surpyval.tests.*',
     'conftest',
     'scripts.*',
+    # The hooks (and ``mypy scripts``) check each script as a top-level
+    # module, so the dotted ``scripts.*`` pattern above never matches
+    # them; their bare names are listed too.
+    'check_all_pythons',
+    'merge_test_durations',
+    'mutmut_plugin',
+    'recheck',
+    'summarise',
+    'snapshot',
+    'make_fixtures',
+    'reference_python',
+    'tails_mpmath',
+    'study',
 ]
 disallow_untyped_defs = false
 
@@ -152,6 +172,10 @@ module = [
     'sklearn.*',
     'sksurv.*',
     'joblib.*',
+    # Used only by the reference-value scripts, not installed with the
+    # development requirements.
+    'mpmath',
+    'lifelines',
 ]
 ignore_missing_imports = true
 

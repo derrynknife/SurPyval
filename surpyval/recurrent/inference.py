@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -11,9 +12,9 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
-from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+from surpyval.utils.linalg import scale_free_hessian, wald_bound_on_support
 from surpyval.utils.validation import alpha_ci_error
-from surpyval.utils.warnings import warn_no_covariance
+from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 
 def check_alpha_ci(alpha_ci: Any) -> None:
@@ -87,7 +88,10 @@ class LikelihoodInferenceMixin:
     ``_n_obs`` alone.
 
     Standard errors come from inverting a numerical Hessian of the negative
-    log-likelihood (the observed Fisher information). When a parameter sits on
+    log-likelihood (the observed Fisher information), taken with steps
+    sized by the likelihood itself
+    (:func:`~surpyval.utils.linalg.scale_free_hessian`), so they do not
+    depend on the unit of time. When a parameter sits on
     a boundary (e.g. a repair parameter driven to its limit) the asymptotic
     normal approximation does not hold and the corresponding standard error is
     returned as NaN with a warning.
@@ -104,6 +108,49 @@ class LikelihoodInferenceMixin:
     _mle: np.ndarray
     _n_obs: float
     _fitter: Any
+    #: The parameter covariance a model restored with ``from_dict`` was
+    #: saved with (``None`` without one): what its ``covariance()``,
+    #: ``standard_errors()`` and Wald bounds are computed from, in place
+    #: of the likelihood a fitted model holds.
+    _saved_covariance: "np.ndarray | None" = None
+
+    def _check_inference(self) -> None:
+        """Refuse a model with neither a likelihood nor a saved
+        covariance: what the covariance, the standard errors, the
+        coefficient table and the Wald bounds need."""
+        if self._saved_covariance is None:
+            self._check_fitted()
+
+    def _covariance_entry(self) -> "list | None":
+        """The covariance as ``to_dict`` saves it: the fit's (``nan``
+        where it could not be found), a restored model's saved one, or
+        ``None`` for a model with no likelihood."""
+        if not hasattr(self, "_neg_ll") and self._saved_covariance is None:
+            return None
+        return np.asarray(self._covariance_matrix()[0], dtype=float).tolist()
+
+    def _restore_covariance(
+        self, model_dict: dict, estimates: np.ndarray
+    ) -> None:
+        """Read the covariance :meth:`_covariance_entry` saved, if any,
+        with the ``estimates`` it belongs to (in the order of
+        :attr:`parameter_names`)."""
+        from surpyval.serialisation import dict_numbers
+
+        if model_dict.get("covariance") is None:
+            # (no likelihood, or a dictionary saved before it was kept)
+            return
+        saved = dict_numbers(model_dict, "covariance", matrix=True)
+        size = np.asarray(estimates).size
+        if saved.shape != (size, size):
+            raise ValueError(
+                "The serialised 'covariance' must have one row and column "
+                "per parameter ({}); got a matrix of shape {}.".format(
+                    size, saved.shape
+                )
+            )
+        self._saved_covariance = saved
+        self._mle = np.asarray(estimates, dtype=float)
 
     def _check_fitted(self) -> None:
         if not hasattr(self, "_neg_ll"):
@@ -112,12 +159,23 @@ class LikelihoodInferenceMixin:
                     "a how='MSE' fit minimises squared error on the MCF "
                     "and has no likelihood; refit with how='MLE'."
                 )
+            elif self._saved_covariance is not None:
+                reason = (
+                    "this model was restored with from_dict / from_json, "
+                    "which keeps the parameter covariance (so covariance(), "
+                    "standard_errors(), summary() and the Wald bounds are "
+                    "available) but not the data, so there is no "
+                    "likelihood; refit it to the data for the likelihood "
+                    "and the information criteria."
+                )
             elif getattr(self, "how", None) == "MLE":
                 # A fit restored with from_dict / from_json still says how
                 # it was fitted (#663).
                 reason = (
-                    "this model was restored with from_dict / from_json, "
-                    "and restored models carry no data, so no likelihood; "
+                    "this model was restored with from_dict / from_json "
+                    "from a dictionary that holds no parameter covariance "
+                    "(one saved by an earlier version), and "
+                    "restored models carry no data, so no likelihood; "
                     "refit it to the data for bounds and standard errors."
                 )
             else:
@@ -189,7 +247,7 @@ class LikelihoodInferenceMixin:
            property.
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return float(2.0 * k - 2.0 * self.log_likelihood)
 
     def bic(self) -> float:
@@ -208,7 +266,7 @@ class LikelihoodInferenceMixin:
            property.
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return float(k * np.log(self._n_obs) - 2.0 * self.log_likelihood)
 
     def aic_c(self) -> float:
@@ -219,8 +277,13 @@ class LikelihoodInferenceMixin:
         other model (#605).
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return corrected_aic(self.aic(), k, self._n_obs)
+
+    def _ic_k(self) -> float:
+        """The parameter count of ``aic``, ``bic`` and ``aic_c``: the
+        estimated parameters."""
+        return int(self._estimated().sum())
 
     def covariance(self) -> np.ndarray:
         """
@@ -230,12 +293,26 @@ class LikelihoodInferenceMixin:
         that was not estimated (an aliased coefficient, #502) has a ``nan``
         row and column.
         """
-        self._check_fitted()
+        out, found = self._covariance_matrix()
+        if not found:
+            warn_no_covariance()
+        return out
+
+    def _covariance_matrix(self) -> tuple[np.ndarray, bool]:
+        """:meth:`covariance` and whether the information could be
+        evaluated and inverted (``nan`` where not), without the warning:
+        for a caller that reports a missing covariance in its own way (a
+        table's ``nan``, a saved model's ``null``)."""
+        self._check_inference()
+        if not hasattr(self, "_neg_ll"):
+            saved = np.array(self._saved_covariance, dtype=float)
+            kept = np.ix_(self._estimated(), self._estimated())
+            return saved, bool(np.all(np.isfinite(saved[kept])))
         full = self._mle_values()
         n = full.size
         free = self._estimated()
         if free.all():
-            H = numerical_hessian(self._neg_ll, full)
+            H = scale_free_hessian(self._neg_ll, full)
         else:
 
             def neg_ll_free(values: np.ndarray) -> float:
@@ -243,16 +320,15 @@ class LikelihoodInferenceMixin:
                 params[free] = values
                 return self._neg_ll(params)
 
-            H = numerical_hessian(neg_ll_free, full[free])
+            H = scale_free_hessian(neg_ll_free, full[free])
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
-            warn_no_covariance()
-            return out
+            return out, False
         try:
             out[np.ix_(free, free)] = np.linalg.inv(H)
         except np.linalg.LinAlgError:
-            warn_no_covariance()
-        return out
+            return out, False
+        return out, True
 
     def standard_errors(self) -> np.ndarray:
         """
@@ -314,7 +390,7 @@ class LikelihoodInferenceMixin:
             The confidence bound(s) on the parameter.
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         names = self.parameter_names
         if name not in names:
             raise ValueError(
@@ -369,12 +445,11 @@ class LikelihoodInferenceMixin:
         import pandas as pd
 
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
-        with warnings.catch_warnings():
+        self._check_inference()
+        with ignoring_warnings():
             # A boundary is reported in the table (nan), not warned.
-            warnings.simplefilter("ignore")
             cov = self.covariance()
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         rows = []
         for k, (value, (lo, hi)) in enumerate(
             zip(np.asarray(self._mle, dtype=float), self._parameter_bounds())
@@ -383,8 +458,7 @@ class LikelihoodInferenceMixin:
             if not (np.isfinite(value) and var > 0):
                 rows.append([value, np.nan, np.nan, np.nan])
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 cb = wald_bound_on_support(
                     float(value), var, lo, hi, alpha_ci, "two-sided"
                 )

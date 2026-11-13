@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -20,12 +21,14 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
     rows_by_position,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -255,7 +258,7 @@ class VirtualAgeLikelihood:
 
     def value_and_grad(
         self, terms: Any, params: Any, age: np.ndarray, age_slope: np.ndarray
-    ) -> "tuple[float, float, np.ndarray] | None":
+    ) -> tuple[float, float, np.ndarray] | None:
         """The likelihood with its derivatives in a restoration parameter
         and in ``params``, in one pass of plain numpy, for the search
         (#728): ``(ll, d ll / d r, d ll / d params)`` where the ages
@@ -588,7 +591,7 @@ class GeneralizedRenewal(RenewalFitMixin):
 
     def _make_model(
         self, underlying_model: Any, q: float, kijima_type: str
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         out = RenewalModel(
             underlying_model,
             q,
@@ -695,8 +698,8 @@ class GeneralizedRenewal(RenewalFitMixin):
         data: Any,
         dist: Any = Weibull,
         kijima: str = "i",
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -802,19 +805,21 @@ class GeneralizedRenewal(RenewalFitMixin):
         self._attach_inference(out, neg_ll, [q, *dist_params], res, data)
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         dist: Any = Weibull,
         kijima: str = "i",
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model.
 
@@ -824,6 +829,13 @@ class GeneralizedRenewal(RenewalFitMixin):
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``), measured from the start of each item's life.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.
@@ -911,7 +923,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         q: float,
         kijima: str = "i",
         dist: Any = Weibull,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from given parameters.
 

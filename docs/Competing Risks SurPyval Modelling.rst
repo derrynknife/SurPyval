@@ -29,10 +29,14 @@ SurPyval's competing-risks tools, and the question each one answers:
    * - ``CompetingRisksProportionalHazards``
      - How do covariates change each cause-specific hazard (``model="Cox"``),
        or the incidence of every cause (``model="Fine-Gray"``)?
+   * - ``ParametricCompetingRisksRegression``
+     - A parametric regression per cause; smooth CIFs at any covariates,
+       beyond the last observation.
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
-right-censored data only. For repeated events with several failure modes see
+right-censored data, and ``ParametricCompetingRisks`` also failures found at
+inspections (left- and interval-censored rows). For repeated events with several failure modes see
 the cause-specific MCF and NHPP models in
 :doc:`Recurrent Event Modelling with SurPyval`.
 
@@ -61,17 +65,23 @@ Every competing-risks fit takes the same core arrays:
 - ``e`` -- the cause of each row. Any hashable labels work (integers,
   strings, ...). A censored row has no cause: use ``None`` (or ``NaN``, or a
   blank cell in a DataFrame);
-- ``c`` -- optional censoring flags, ``0`` observed and ``1`` right-censored.
+- ``c`` -- optional censoring flags, ``0`` observed and ``1`` right-censored
+  (and, for ``ParametricCompetingRisks``, ``-1`` left- and ``2``
+  interval-censored).
   When ``c`` is omitted it is derived from ``e``: a missing cause means
   censored. If you do pass ``c``, every row with ``c == 1`` must have a missing
   cause and every other row must have one, otherwise a ``ValueError`` explains
   the mismatch;
 - ``n`` -- optional counts, when each row stands for several identical units;
-- ``tl`` -- for ``ParametricCompetingRisks``, the optional age at which each
-  row came under observation (left truncation; see `Assembling a model from
-  separately fitted causes`_).
+- ``tl`` -- for ``CompetingRisks``, ``ParametricCompetingRisks`` and the
+  cause-specific ``CompetingRisksProportionalHazards``, the optional age at
+  which each row came under observation (left truncation, or delayed entry;
+  see `Delayed entry`_, `Assembling a model from separately fitted causes`_
+  and `Delayed entry in the cause-specific model`_).
 
-Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
+Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected by
+every fit but ``ParametricCompetingRisks`` (see `Failures found at
+inspections`_), whose error says so.
 
 lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
 integer column with ``0`` for a censored row. Here ``0`` is a cause like any
@@ -196,6 +206,26 @@ data with every cause treated as a failure -- exactly, not approximately:
 
     assert np.allclose(total, all_cause_km.ff(t), rtol=0, atol=1e-12)
 
+The model's own all-cause ``ff`` is a different estimate unless you ask for
+this one. ``sf``, ``ff`` and ``Hf`` use the estimator given by ``how``, and
+the default is Nelson-Aalen, ``ff = 1 - exp(-H)``. That is never above the
+sum of the CIFs, and is below it from the first event on; the gap is small
+while few units have failed and grows as the risk sets shrink. Fit with ``how="Kaplan-Meier"`` when ``ff`` should match
+the CIFs:
+
+.. jupyter-execute::
+
+    km_fit = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+    print("ff, Nelson-Aalen :", np.round(model.ff(t), 4))
+    print("ff, Kaplan-Meier :", np.round(km_fit.ff(t), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(km_fit.ff(t), total, rtol=0, atol=1e-12)
+    assert np.all(model.ff(t) <= total + 1e-12)
+
 Now compare the CIF of wear-out with the naive "1 - Kaplan-Meier with shocks
 censored" curve, and with the truth. For this simulation the true CIF of wear
 is :math:`\int_0^t f_{\text{wear}}(u)\, S_{\text{shock}}(u)\, du`:
@@ -233,6 +263,52 @@ wear-out, rather than a shock, is what ends a component's life.
     assert naive_wear.ff(200.0) > 0.95, naive_wear.ff(200.0)
     _err = [model.cif(ti, "wear") - true_cif_wear(ti) for ti in t]
     assert np.max(np.abs(_err)) < 0.08, _err
+
+Delayed entry
+^^^^^^^^^^^^^
+
+Often a unit comes under observation only some time after it started: a
+patient joins a study at diagnosis but the clock is their age, or a component
+enters the records when they began, long after it was installed. A unit that
+failed before it would have entered is never seen, so the units you do see
+are the ones that survived to their entry. Pass each unit's entry time as
+``tl``: the unit then counts as at risk only between its entry and its exit
+(``tl < t <= x``), and the estimates are those of the units still running at
+each time. They are conditional on surviving to the earliest entry, as a
+``KaplanMeier`` fit with ``tl`` is. Here half the components were watched
+from new and the rest only came under observation at a random age; the fit
+with the entry ages comes close to the fit of every component from new (the
+``model`` above), while the fit that ignores them counts too many at risk
+early on and understates the shocks:
+
+.. jupyter-execute::
+
+    rng_entry = np.random.default_rng(1)
+    entry = np.where(rng_entry.uniform(size=N) < 0.5, 0.0,
+                     rng_entry.uniform(0, 80, N))
+    seen = x > entry                         # failed before entry: never seen
+    late = CompetingRisks.fit(x[seen], e[seen], tl=entry[seen])
+    ignored = CompetingRisks.fit(x[seen], e[seen])
+    print("with entry     :", np.round(late.cif(t, "shock"), 4))
+    print("ignoring entry :", np.round(ignored.cif(t, "shock"), 4))
+    print("all from new   :", np.round(model.cif(t, "shock"), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _full = model.cif(t, "shock")
+    _late = np.abs(late.cif(t, "shock") - _full)
+    _ignored = np.abs(ignored.cif(t, "shock") - _full)
+    assert np.all(_late < 0.03), _late
+    assert np.all(_late < _ignored), (_late, _ignored)
+
+``fit_from_df`` takes the column as ``tl_col``, and ``fit(data)`` passes a
+``SurpyvalData``'s entry times through. The bounds (``cb``) work as before:
+the variance is a function of the numbers at risk and of failures at each
+time, which already count only the units that have entered. This is R's
+``survfit(Surv(entry, x, factor(e)) ~ 1)``; right truncation is not
+supported.
 
 What the fitted model returns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -457,7 +533,9 @@ has a cure fraction):
 
 The other methods follow the same conventions as ``CompetingRisks``:
 ``hf``/``Hf`` take an optional ``event`` (cause-specific) and otherwise sum over
-causes; ``sf`` and ``ff`` are the all-cause survival and failure probability;
+causes; ``sf`` and ``ff`` are the all-cause survival and failure probability,
+and with ``event=k`` the net survival and failure probability of cause ``k``
+alone (its own model, as if the other causes were removed);
 ``iif(x, event)`` is the sub-distribution density; and ``cif(x)`` without an
 ``event`` is the all-cause incidence ``1 - sf``. ``cif`` returns a float for a
 scalar time:
@@ -501,6 +579,123 @@ how="MLE")``; ``how`` is passed to each cause's distribution fit.
     assert sum(e == "wear") == 83 and sum(e == "shock") == 106
     assert np.isclose(pmodel.bic(), 2 * pmodel.neg_ll() + 3 * np.log(189))
 
+Lifetime of the whole unit: MTTF and B-lives
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A unit's life ends at its first failure from any cause, so the questions
+"how long does a unit last on average?" (the mean time to failure, MTTF) and
+"by when have 10% failed?" (the B10 life) are about the all-cause
+lifetime. The fitted model answers them with ``mean()`` and ``qf(p)``, and
+``df(x)`` gives the density of that lifetime.
+
+In formulas: the all-cause survival is the product of the causes' survivals,
+:math:`S(t) = \prod_k S_k(t)`, its density is
+:math:`f(t) = S(t)\sum_k h_k(t)`, and
+
+.. math::
+    \mathrm{MTTF} = \int_0^\infty S(t)\,dt, \qquad
+    B_{10} = F^{-1}(0.1) = H^{-1}\!\left(-\log 0.9\right),
+
+with :math:`H = \sum_k H_k`. Neither has a closed form in general, so the
+mean is integrated numerically and the quantile found by root finding on the
+cumulative hazard (which keeps its precision far into the upper tail).
+
+.. jupyter-execute::
+
+    print("MTTF          : %.2f" % pmodel.mean())
+    print("B10 life      : %.2f" % pmodel.qf(0.1))
+    print("median life   : %.2f" % pmodel.qf(0.5))
+    print("net B10, wear : %.2f" % pmodel.qf(0.1, event="wear"))
+
+The net B10 of wear-out alone, ``qf(0.1, event="wear")``, is much later: it is
+the B10 a unit would have if shocks could not happen. The all-cause figures are
+the ones that describe the units actually in service.
+
+If a cause has a cure (limited-failure) fraction, some units never fail, so
+the MTTF is infinite and a quantile above the share that ever fails is
+infinite too; ``mean(defective=True)`` gives :math:`\int t\,dF(t)` over the
+units that fail, as ``Parametric.mean`` does.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b10 = pmodel.qf(0.1)
+    assert np.isclose(pmodel.ff(_b10), 0.1)
+    assert pmodel.qf(0.1, event="wear") > _b10
+    from scipy.integrate import quad
+    _area = quad(lambda t: float(pmodel.sf(t)), 0, np.inf, limit=200)[0]
+    assert np.isclose(_area, pmodel.mean(), rtol=1e-8)
+
+How sure are these numbers? Bands and parameter uncertainty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Every number above comes from parameters estimated from a sample, so each
+has sampling error. ``cb`` gives a confidence band: with 95% confidence the
+true cumulative incidence of a cause, or the all-cause survival, lies
+between its two curves at each time. A narrow band says the data pin the
+curve down; a wide one says more failures are needed.
+
+.. jupyter-execute::
+
+    for k, colour in [("wear", "C0"), ("shock", "C1")]:
+        band = pmodel.cb(t_plot, k)          # on="cif" is the default
+        plt.plot(t_plot, pmodel.cif(t_plot, k), color=colour, label=k)
+        plt.fill_between(t_plot, band[:, 0], band[:, 1], color=colour,
+                         alpha=0.2)
+    plt.xlabel("Time")
+    plt.ylabel("Cumulative incidence (95% band)")
+    plt.legend()
+
+.. jupyter-execute::
+
+    print("CIF wear at 100   : %.3f, 95%% band %s"
+          % (pmodel.cif(100.0, "wear"), pmodel.cb(100.0, "wear").round(3)))
+    print("survival at 100   : %.3f, 95%% band %s"
+          % (pmodel.sf(100.0), pmodel.cb(100.0, on="sf").round(3)))
+
+How the band is made: the fit's parameter covariance, ``covariance()``,
+holds every cause's parameters, named by ``covariance_names``
+(``"wear: alpha"``, ...). It is block diagonal, because each cause is
+estimated from its own part of the likelihood. The delta method carries it
+to the curve on a scale that keeps the band in range: the logit of the
+cumulative incidence, and the log of the all-cause cumulative hazard for
+``sf``, ``ff`` and ``Hf``. ``cb(x, event=k, on="sf")`` is cause ``k``'s net
+survival, whose band is its own model's (likelihood-ratio bands too, with
+``method="lr"``). A simulation study,
+``scripts/studies/parametric_competing_risks_cb_coverage.py``, checks that
+the 95% bands cover about 95% of the time.
+
+For a number with no ``cb`` of its own, such as the MTTF or the B10 life,
+draw parameter vectors from the covariance and rebuild the model at each
+with ``with_params``; the spread of the number over the draws shows its
+uncertainty. This rests on the same normal approximation as the bands:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(1)
+    draws = rng.multivariate_normal(pmodel._estimates(), pmodel.covariance(),
+                                    size=300)
+    mttf, b10 = [], []
+    for d in draws:
+        other = pmodel.with_params(d)
+        mttf.append(other.mean())
+        b10.append(other.qf(0.1))
+    print("MTTF %.1f, 95%% range of the draws %s"
+          % (pmodel.mean(), np.percentile(mttf, [2.5, 97.5]).round(1)))
+    print("B10  %.1f, 95%% range of the draws %s"
+          % (pmodel.qf(0.1), np.percentile(b10, [2.5, 97.5]).round(1)))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _band = pmodel.cb(100.0, "wear")
+    assert _band[0] < pmodel.cif(100.0, "wear") < _band[1]
+    assert np.percentile(mttf, 2.5) < pmodel.mean() < np.percentile(mttf, 97.5)
+    assert np.percentile(b10, 2.5) < pmodel.qf(0.1) < np.percentile(b10, 97.5)
+    assert pmodel.covariance_names[0] == "shock: failure_rate"
+
 Assembling a model from separately fitted causes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -518,8 +713,9 @@ Ignoring the entry ages biases the fit; ``ParametricCompetingRisks.fit`` takes
 them as ``tl`` (and ``fit_from_df`` as ``tl_col``), which is the exact
 maximum-likelihood fit: the truncated likelihood factorises by cause too, so it
 is the same as fitting each cause with ``tl=entry`` and assembling the result
-with ``from_fitted``. (Right truncation and interval censoring do not factorise
-by cause, and ``fit`` takes neither.)
+with ``from_fitted``. (Right truncation does not factorise by cause, and
+``fit`` does not take it; interval censoring does not either, and ``fit``
+takes it by fitting the causes together, below.)
 
 .. jupyter-execute::
 
@@ -567,6 +763,83 @@ wear-out. The truncation-aware fit recovers both.
     for _k, _dist in [("wear", surv.Weibull), ("shock", surv.Exponential)]:
         _alone = _dist.fit(x_t, c=np.where(e_t == _k, 0, 1), tl=tl)
         assert np.allclose(_alone.params, adjusted.models[_k].params)
+
+Failures found at inspections
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Often a failure is not seen when it happens but found at the next
+inspection: the unit was working at one inspection and found failed, with
+its cause, at the next. Its failure time is known only to lie between the
+two (interval censored, ``c = 2``, with ``x`` the row ``[xl, xr]``); one
+found failed at the first inspection is left censored (``c = -1``, ``x`` the
+inspection time). ``ParametricCompetingRisks.fit`` takes such rows. A row
+like that counts the chance that the unit failed from its cause between
+the two inspections, and that chance depends on every cause -- the unit had
+to survive all of them until it failed -- so the causes can no longer be
+fitted one at a time: with any such row, ``fit`` fits them together, by
+maximum likelihood over all of their parameters at once. Without such rows
+nothing changes.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(6)
+    sim = truth.random(400, random_state=7)
+    end = rng.uniform(40, 300, 400)              # end of each unit's follow-up
+    last = 20 * np.floor(end / 20)               # inspected every 20 hours
+    found = sim["x"] <= last
+    hi = 20 * np.ceil(sim["x"] / 20)             # the inspection that found it
+    lo = hi - 20
+    x_i = np.column_stack([np.where(found & (lo > 0), lo, np.where(found, hi, last)),
+                           np.where(found, hi, last)])
+    c_i = np.where(found, np.where(lo > 0, 2, -1), 1)
+    e_i = np.where(found, sim["e"], None)
+
+    inspected = ParametricCompetingRisks.fit(
+        x_i, e_i, c=c_i, dist={"wear": surv.Weibull, "shock": surv.Exponential}
+    )
+    print(inspected.parameter_names)
+    print(inspected.params.round(4))
+    print("P(wear) true / fitted: %.3f / %.3f" % (
+        truth.probability_of_cause("wear"),
+        inspected.probability_of_cause("wear"),
+    ))
+    print(inspected.cb([50.0, 100.0], "wear").round(3))
+
+Because the causes are fitted together, their estimates are correlated:
+:meth:`~surpyval.univariate.competing_risks.ParametricCompetingRisks.covariance`
+is the inverse of the joint Hessian, with terms between causes, and every
+bound (``cb`` on ``cif``, ``sf``, ``ff`` and ``Hf``, ``standard_errors``) uses
+it. Each cause's model in ``models`` carries its parameters and its block of
+that covariance, so its own Wald bounds hold; it has no data of its own, so
+its likelihood-ratio and bootstrap bounds, ``neg_ll`` and ``aic`` are the
+model's, not the cause's. Only ``how="MLE"`` and continuous distributions
+are supported, and a row in a window needs its cause. ``diagnose()`` does
+not yet check such a fit (its checks need each failure's exact time) and
+says so; compare distributions by their ``aic()``, and the all-cause
+survival ``sf`` with ``surpyval.Turnbull.fit`` of the same windows. Saved
+with ``to_dict``, such a fit keeps the covariance between causes and is
+stamped schema 4, which SurPyval 0.26 and older refuse, asking for an
+upgrade, rather than load it without those terms.
+
+In formulas: a unit that entered at :math:`t_l` and was found failed from
+cause :math:`k` in :math:`(x_l, x_r]` contributes
+
+.. math::
+    \frac{\mathrm{CIF}_k(x_r) - \mathrm{CIF}_k(x_l)}{S(t_l)}
+    = \frac{1}{S(t_l)} \int_{x_l}^{x_r} f_k(u) \prod_{j \neq k} S_j(u)\,du,
+
+a left-censored one the same from :math:`t_l` (or the start) to :math:`x`.
+The integral is taken by Gauss-Legendre quadrature on the cause's own
+probability scale, refined until it holds to about :math:`10^{-12}`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert inspected.maximum == "verified"
+    assert abs(inspected.probability_of_cause("wear")
+               - truth.probability_of_cause("wear")) < 0.05
+    assert abs(inspected.covariance()[0, 2]) > 0
 
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -787,6 +1060,89 @@ differences in *early* incidence:
     print("rho = 1: p = %.2g" % gray_test(x, e, group, event=1, rho=1.0).p_value)
 
 
+Time lost to a cause: the restricted mean time lost
+---------------------------------------------------
+
+The cumulative incidence answers "what fraction has failed from this cause
+by time t". A single number that summarises the whole curve up to a
+horizon is the **restricted mean time lost** (RMTL): of the first
+:math:`\tau` units of time, how much, on average, a unit loses to that
+cause. A unit that fails from the cause at time :math:`t < \tau` loses
+:math:`\tau - t`; a unit that survives to :math:`\tau`, or fails from
+another cause, loses nothing to it. It is the area under the cause's
+cumulative incidence,
+
+.. math::
+    \text{RMTL}_k(\tau) = \int_0^\tau F_k(t)\,dt,
+
+so it is in units of time and needs no model for how the causes act
+(Andersen, 2013). The times lost to all the causes add up to
+:math:`\tau` less the restricted mean survival time (``rmst``), so with
+one cause the time lost is just :math:`\tau - \text{RMST}`.
+
+``rmtl(event, tau)`` gives it with a standard error and a 95% interval;
+``tau`` defaults to the largest observed time:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as sp
+
+    rng = np.random.default_rng(3)
+
+    def simulate(n, shock_mean):
+        wear = 100.0 * rng.weibull(3.0, n)
+        shock = rng.exponential(shock_mean, n)
+        censor = rng.uniform(0.0, 250.0, n)
+        x = np.minimum.reduce([wear, shock, censor])
+        e = np.where(x == censor, None, np.where(wear < shock, "wear", "shock"))
+        return x, e.astype(object)
+
+    old = sp.CompetingRisks.fit(*simulate(200, 150.0))
+    new = sp.CompetingRisks.fit(*simulate(200, 600.0))
+    res = old.rmtl("shock", tau=100)
+    print("time lost to shocks in the first 100 hours: %.1f (%.1f to %.1f)"
+          % (res["rmtl"], res["lower"], res["upper"]))
+
+``surpyval.rmtl_diff`` compares the time lost to a cause between two
+groups, as ``rmst_diff`` compares survival: the difference with its interval
+and a z-test of no difference, and the ratio with its interval. Here a
+design change that makes shocks four times rarer saves many hours in the first 100:
+
+.. jupyter-execute::
+
+    cmp = sp.rmtl_diff(old, new, "shock", tau=100)
+    print("difference %.1f hours (%.1f to %.1f), p = %.2g"
+          % (cmp["difference"], cmp["lower"], cmp["upper"], cmp["p_value"]))
+    print("ratio %.2f (%.2f to %.2f)"
+          % (cmp["ratio"], cmp["ratio_lower"], cmp["ratio_upper"]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0 < res["lower"] < res["rmtl"] < res["upper"] < 100
+    assert cmp["difference"] > 0 and cmp["p_value"] < 0.05
+
+The standard error is the delta method's on the hazard increments at each
+event time (a multinomial at each time, as Greenwood's formula takes a
+binomial); with one cause it is exactly the Greenwood-based standard error of
+``KaplanMeier.rmst``. It is the standard error of R's ``GFDrmtl`` package,
+and within 1% of R ``survival``'s ``summary(fit, rmean = tau)`` (an
+infinitesimal-jackknife standard error) on the data checked. The interval is ``rmtl +- 1.96 se``; in simulation (n = 200) it
+covers the true time lost about 95% of the time, and ``rmtl_diff``'s test
+rejects about 5% of the time when the groups do not differ. A ``tau`` past
+the last observed time is refused while some units are still event-free
+there, as for ``rmst``. A model fitted with weights refuses ``rmtl``: its
+robust variance is not built.
+
+``ParametricCompetingRisks.rmtl`` gives the same quantity from the fitted
+distributions, by numerical integration of the cumulative incidence, with
+a delta-method standard error over every cause's parameters and an interval
+on the logit of ``rmtl / tau`` (so within 0 and ``tau``); a ``tau`` past
+the data is allowed, the fit extrapolating. ``rmtl_diff`` accepts either
+kind of model in either position.
+
 Fine-Gray Sub-distribution Hazards
 ----------------------------------
 
@@ -851,9 +1207,21 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
     print("SHR      :", np.round(np.exp(model.beta), 3))
     print("cov      :\n", np.round(model.covariance(), 4))
 
-The standard errors come from the inverse Hessian of the weighted partial
-likelihood (the robust variance of Fine and Gray is not implemented), so treat
-them as approximate. ``covariance()`` is that inverse, and ``log_likelihood``
+The standard errors, and the p-values and ``summary()`` built on them, are
+the robust ones Fine and Gray derived (a sandwich variance that allows for
+the censoring weights being estimated from the same data), which is what
+R's ``cmprsk::crr`` prints. The model-based ones, from the curvature of the
+weighted partial likelihood alone, are there on request, with
+``robust=False``:
+
+.. jupyter-execute::
+
+    print("robust se      :", np.round(model.standard_errors(), 4))
+    print("model-based se :", np.round(model.standard_errors(robust=False), 4))
+    model.summary(robust=False)[["coef", "se(coef)", "p"]]
+
+``covariance()`` and ``covariance(robust=False)`` are the two matrices; see
+:doc:`Competing Risks Analysis` for the formulas. ``log_likelihood`` is
 the maximised weighted partial log-likelihood (``cmprsk::crr``'s ``loglik``),
 whose ``aic()`` and ``bic()`` (with the events of the cause as BIC's sample
 size) compare Fine-Gray models of the same cause on the same data; a
@@ -922,6 +1290,67 @@ optimiser result (``model.res``) is not stored:
     reloaded = surv.from_dict(model.to_dict())
     np.allclose(reloaded.cif([0.5, 1.0], Z=[1.0, 0.0]),
                 model.cif([0.5, 1.0], Z=[1.0, 0.0]))
+
+Strata and clusters
+~~~~~~~~~~~~~~~~~~~
+
+Two common departures from the plain model have their own options.
+
+**Strata.** When the units come from a few groups (sites, centres,
+production lines) whose cause-1 incidence has a different shape over time,
+or whose censoring differs, ``strata=`` gives each group its own baseline
+subdistribution hazard and its own censoring distribution, while the
+covariates' effects are shared (Zhou, Latouche, Rocha and Fine, 2011; R's
+``crrSC::crrs``). This is the competing-risks counterpart of a stratified
+Cox model: use it for a factor you need to allow for but do not need an
+effect for. Predictions then name the stratum:
+
+.. jupyter-execute::
+
+    site = np.where(np.arange(N) % 3 == 0, "east", "west")
+    by_site = FineGray.fit(x, Z, e, c=c, event=1, strata=site)
+    print(by_site.beta.round(3), by_site.standard_errors().round(3))
+    print(by_site.cif([0.5, 1.0], Z=[1.0, 0.0], stratum="east").round(3))
+
+With many small strata (a stratum per centre with a handful of units each)
+a censoring distribution per stratum is poorly estimated; then
+``strata_censoring="common"`` estimates one for all the strata, each still
+with its own baseline (``crrs``'s ``ctype = 2``).
+
+**Clusters.** When units are not independent of each other within a group
+(the two eyes or kidneys of a patient, the pumps of one station, the
+components of one machine), ``cluster=`` keeps the estimates and makes the
+standard errors allow for the dependence: the robust covariance adds up
+the influence of a cluster's units before squaring it (Zhou, Fine,
+Latouche and Labopin, 2012; R's ``crrSC::crrc``). Without it, a covariate
+shared by the units of a cluster has standard errors that are too small.
+
+.. jupyter-execute::
+
+    pair = np.arange(N) // 2
+    paired = FineGray.fit(x, Z, e, c=c, event=1, cluster=pair)
+    print(paired.beta.round(3), paired.standard_errors().round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(paired.beta, model.beta)
+    assert by_site.cif(1.0, Z=[1.0, 0.0], stratum="east") > 0
+
+Both combine with each other and with weights ``w``, and ``fit_from_df``
+takes them as ``strata_col`` and ``cluster_col``. SurPyval treats each unit
+as independent unless ``cluster=`` says otherwise. R's ``crrs`` with
+``ctype = 2`` also treats each stratum as a cluster, which widens the
+standard errors (on the test data, by 1.5 to 1.7 times); to get R's numbers,
+fit with ``strata_censoring="common", cluster=<the strata>``. With only a few
+strata, a cluster per stratum makes the standard errors themselves unreliable,
+which is why it is not the default. The
+model-based covariance (``covariance(robust=False)``) ignores the clusters,
+and the diagnostics (``diagnose()``, the proportionality tests and the
+residuals) refuse a fit with strata or clusters, as their tests take one
+baseline and independent units: check proportionality on the fit without
+them, or within each stratum.
 
 Cause-Specific Proportional Hazards
 -----------------------------------
@@ -1109,6 +1538,63 @@ in ``results`` are not stored, so a restored model has ``results = None``:
               np.array_equal(reloaded.cif(times, Z=z, event=1),
                              fitted.cif(times, Z=z, event=1)))
 
+Delayed entry in the cause-specific model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Records often start after the units did: patients enter a registry at
+diagnosis, machines enter the maintenance system when it goes live. A unit
+that failed before it entered is never seen, and a unit that entered at age
+3 was not at risk, as far as the data know, before age 3. Pass each row's
+entry age as ``tl`` (``tl_col`` for ``fit_from_df``) and the cause-specific
+model counts a unit in a risk set only once it has entered, ``tl < t <= x``,
+as ``CoxPH`` does; every cause's coefficients and baseline, and so the
+incidences, use those risk sets. Here the units come under observation at a
+uniform age between 0 and 4, and only those still working then are seen:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(11)
+    z_u = rng.binomial(1, 0.5, 3000).astype(float)
+    t_wear = rng.exponential(1 / (0.2 * np.exp(0.8 * z_u)))  # log HR 0.8
+    t_shock = rng.exponential(1 / 0.1, 3000)
+    x_u = np.minimum(t_wear, t_shock)
+    e_u = np.where(t_wear < t_shock, "wear", "shock")
+    entry = rng.uniform(0, 4, 3000)
+    seen = x_u > entry                       # only units working at entry
+    x_s, z_s, e_s, tl = x_u[seen], z_u[seen, None], e_u[seen], entry[seen]
+
+    naive = CompetingRisksProportionalHazards.fit(x_s, z_s, e_s)
+    entered = CompetingRisksProportionalHazards.fit(x_s, z_s, e_s, tl=tl)
+    true_cif = 0.2 * np.exp(0.8) / (0.2 * np.exp(0.8) + 0.1) * (
+        1 - np.exp(-2 * (0.2 * np.exp(0.8) + 0.1)))
+    print("wear log HR, ignoring entry / with tl: %.3f / %.3f" % (
+        naive.betas[naive.event_idx_map["wear"], 0],
+        entered.betas[entered.event_idx_map["wear"], 0]))
+    print("P(wear by 2 | z = 1), true / ignoring entry / with tl: "
+          "%.3f / %.3f / %.3f" % (true_cif, naive.cif(2, [1], "wear"),
+                                  entered.cif(2, [1], "wear")))
+
+Ignoring the entry ages counts the late entrants at risk from age 0, when
+they could not have been seen to fail, so the baseline hazards come out far
+too low and the incidence of wear by age 2 is about half the truth. With
+``tl`` it is recovered. The estimates are conditional on being event-free at
+the earliest entry, as for ``KaplanMeier`` with ``tl``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert naive.cif(2, [1], "wear") < 0.6 * true_cif
+    assert abs(entered.cif(2, [1], "wear") - true_cif) < 0.06
+    assert abs(entered.betas[entered.event_idx_map["wear"], 0] - 0.8) < 0.1
+
+The Fine-Gray model (``model="Fine-Gray"``, ``FineGray``) and Gray's test
+refuse ``tl`` where an entry is after the first time, with a message naming
+the cause-specific model and the Aalen-Johansen estimate: their
+subdistribution risk set keeps the units that already failed from another
+cause, and with late entry it needs truncation weights, which SurPyval does
+not build (see :doc:`Competing Risks Analysis`).
+
 Fitting from a DataFrame
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1158,3 +1644,315 @@ other rows as they are:
         csph_f.cif([2.0], pd.DataFrame({"z1": [0.5], "band": ["mid"]}), 1)
     except ValueError as err:
         print(textwrap.fill(str(err), 79))
+
+Parametric Competing-Risks Regression
+-------------------------------------
+
+The cause-specific Cox model above tells you how a covariate changes each
+cause's hazard, but its cumulative incidences are step functions that stop
+at the last event: it cannot say what happens after the study ends.
+``ParametricCompetingRisksRegression`` answers the same question with a
+parametric model for every cause, so each cause's cumulative incidence is a
+smooth curve, at any covariate values, that carries on past the data:
+
+- an engineer with two years of field returns asks what share of pumps
+  running hot will have had a seal failure by the end of a five-year
+  warranty, when bearings fail too;
+- a clinician asks for a patient's ten-year probability of dying of the
+  disease, given age and stage, from a study with six years of follow-up,
+  when patients also die of other causes.
+
+Each cause gets its own regression of its hazard on the covariates: a
+Weibull proportional hazards model by default (``model=WeibullPH``), or any
+of the parametric regressions (``ExponentialPH``, ``WeibullAFT``,
+``LogNormalAFT``, ``LogLogisticPO`` and the rest), the same for every cause
+or one per cause in a dict. Each cause is fitted with the failures of the
+other causes treated as censored; that is the maximum-likelihood fit of the
+whole model, and it does not assume the causes are independent (the theory
+page, :doc:`Competing Risks Analysis`, explains why).
+
+Here 600 pumps run at a temperature between 40 and 80 degrees. Seals wear
+out, faster when hot; bearings fail at a rate that temperature does not
+change. The test stops at 8 (thousand hours), so the data end there:
+
+.. jupyter-execute::
+
+    from surpyval import (
+        ExponentialPH,
+        ParametricCompetingRisksRegression,
+        WeibullPH,
+    )
+
+    pump_rng = np.random.default_rng(7)
+    n_pumps = 600
+    pump_temp = pump_rng.uniform(40, 80, n_pumps)
+    pump_hot = (pump_temp - 60) / 10                  # per 10 degrees above 60
+    pump_seal = 12 * pump_rng.weibull(2.5, n_pumps) * np.exp(-0.5 * pump_hot / 2.5)
+    pump_bearing = pump_rng.exponential(25, n_pumps)
+    pump_first = np.minimum(pump_seal, pump_bearing)
+    pump_x = np.minimum(pump_first, 8.0)
+    pump_e = np.where(pump_seal < pump_bearing, "seal", "bearing").astype(object)
+    pump_e[pump_first > 8.0] = None            # still running at the end
+    pump_Z = pump_hot[:, None]
+
+    pcr = ParametricCompetingRisksRegression.fit(pump_x, pump_Z, pump_e)
+    print(pcr)
+    pcr.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(3)
+
+The table stacks each cause's own regression table. The seal's coefficient
+is its log hazard ratio per 10 degrees (the data were simulated with 0.5),
+and the bearing's is indistinguishable from zero, as simulated:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _table = pcr.summary()
+    _seal = _table.loc[("seal", "coefficients", "coef_0")]
+    _bearing = _table.loc[("bearing", "coefficients", "coef_0")]
+    assert abs(_seal["coef"] - 0.5) < 2 * _seal["se(coef)"], _seal
+    assert _bearing["p"] > 0.05, _bearing
+
+The fitted per-cause models are ordinary regression models, in
+``pcr.models["seal"]`` and ``pcr.models["bearing"]``, with everything those
+offer. The cumulative incidence of a cause is ``cif(x, Z, event)``. The
+covariate rows ``Z`` are paired with the times as in every regression: one
+row used at every time, one row per time, or several rows at one time.
+Below, the seal's cumulative incidence at 50 and at 75 degrees, with the
+cause-specific Cox model's step estimate for comparison. The test ended at
+8; the parametric curves carry on to 20:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.competing_risks import (
+        CompetingRisksProportionalHazards,
+    )
+
+    pump_cox = CompetingRisksProportionalHazards.fit(pump_x, pump_Z, pump_e)
+    t_pump = np.linspace(0, 20, 201)
+    for degrees, colour in [(50, "C0"), (75, "C3")]:
+        row = [(degrees - 60) / 10]
+        plt.plot(t_pump, pcr.cif(t_pump, row, "seal"), color=colour,
+                 label=f"{degrees} degrees (parametric)")
+        seen = t_pump <= 8
+        plt.step(t_pump[seen], pump_cox.cif(t_pump[seen], row, "seal"),
+                 where="post", color=colour, alpha=0.5,
+                 label=f"{degrees} degrees (Cox)")
+    plt.axvline(8, color="grey", linestyle=":")
+    plt.xlabel("Time (thousand hours)")
+    plt.ylabel("Cumulative incidence of a seal failure")
+    plt.legend()
+
+Inside the data the two agree; past it only the parametric model has an
+answer, and that answer rests on the assumed shape of each hazard, which
+the data cannot check beyond 8. Use the cause-specific Cox model when you
+only need the covariates' effects or predictions inside the follow-up, and
+this one when you need a smooth curve or a prediction beyond it, after
+checking the fit of each cause's model (``pcr.models[cause].diagnose()``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = np.array([2.0, 4.0, 6.0, 7.5])
+    for _row in ([-1.0], [1.5]):
+        _gap = np.abs(pcr.cif(_t, _row, "seal") - pump_cox.cif(_t, _row, "seal"))
+        assert _gap.max() < 0.05, _gap
+
+``probability_of_cause(Z, event)`` is the eventual share of each cause, the
+cumulative incidence at infinity, and ``cb`` gives confidence bounds on the
+cumulative incidence (or, with ``on=``, on the all-cause survival, failure
+probability or cumulative hazard):
+
+.. jupyter-execute::
+
+    pump_rows = [[-1.0], [1.5]]                  # 50 and 75 degrees
+    print("eventual share of seal failures:",
+          pcr.probability_of_cause(pump_rows, "seal").round(3))
+    print("by 15, at 75 degrees           :",
+          round(float(pcr.cif(15, [1.5], "seal")), 3),
+          pcr.cb(15, [1.5], "seal").round(3))
+
+The hotter pumps lose more of their units to the seal, because the seal's
+hazard rises with temperature and the bearing's does not. The causes'
+eventual shares sum to one:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _share = pcr.probability_of_cause(pump_rows, "seal")
+    assert _share[1] > _share[0], _share
+    assert np.allclose(
+        _share + pcr.probability_of_cause(pump_rows, "bearing"), 1.0
+    )
+    _lo, _hi = pcr.cb(15, [1.5], "seal")
+    assert _lo < pcr.cif(15, [1.5], "seal") < _hi
+
+The other functions follow ``ParametricCompetingRisks``, with ``Z`` after
+the times. Without ``event``, ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` are
+of the first failure of any cause; with ``event=k`` they are cause ``k``'s
+net ones, its own model's. ``qf(p, Z)`` and ``mean(Z)`` are the B-lives
+and the mean life of the whole unit, and ``random(size, Z)`` simulates
+units at each covariate row:
+
+.. jupyter-execute::
+
+    print("survival to 8 at 75 degrees:", round(float(pcr.sf(8, [1.5])), 3))
+    print("B10 life at 50 and 75      :", pcr.qf(0.1, pump_rows).round(2))
+    print("mean life at 50 and 75     :", pcr.mean(pump_rows).round(2))
+    pump_draws, pump_drawn_at = pcr.random(4, [[1.5]], random_state=0)
+    print(pump_draws["x"].round(2), list(pump_draws["e"]))
+
+A different model per cause is a dict. The bearing's hazard is constant in
+the simulation, so an exponential model for it has one parameter fewer;
+``aic`` and ``bic`` are those of the whole model (the log-likelihood sums
+over the causes, and BIC's sample size is the failures of any cause), so
+they compare the two:
+
+.. jupyter-execute::
+
+    simpler = ParametricCompetingRisksRegression.fit(
+        pump_x, pump_Z, pump_e,
+        model={"seal": WeibullPH, "bearing": ExponentialPH},
+    )
+    print("Weibull + Weibull     AIC: %.1f" % pcr.aic())
+    print("Weibull + Exponential AIC: %.1f" % simpler.aic())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert simpler.aic() < pcr.aic(), (simpler.aic(), pcr.aic())
+
+The simpler model has the lower AIC. ``fit_from_df`` takes the column
+names, and the covariates as ``Z_cols`` or as a ``formula``; the fitted
+model then predicts from a DataFrame of the raw covariates. Entry times
+(``tl``, ``tl_col``) are taken as in the single-cause regressions. The
+model saves and loads with ``to_dict`` / ``from_dict`` like every other.
+Left- and interval-censored rows are refused (without covariates,
+``ParametricCompetingRisks`` takes them), and so are weights:
+
+.. jupyter-execute::
+
+    pumps = pd.DataFrame({
+        "hours": pump_x, "mode": pump_e, "temp": pump_temp,
+        "site": np.where(pump_rng.uniform(size=n_pumps) < 0.5, "coast", "inland"),
+    })
+    by_site = ParametricCompetingRisksRegression.fit_from_df(
+        pumps, x_col="hours", e_col="mode", formula="temp + site"
+    )
+    print(by_site.feature_names)
+    new_pumps = pd.DataFrame({"temp": [75, 75], "site": ["coast", "inland"]})
+    print(by_site.cif([15, 15], new_pumps, "seal").round(3))
+
+Scoring predictions of one cause: Brier score and AUC
+-----------------------------------------------------
+
+Once a model predicts each subject's cumulative incidence of a cause, two
+questions follow: are the predicted probabilities close to what happened
+(the *Brier score*: lower is better), and do the subjects who went on to have
+that cause by a time get higher predictions than those who did not (the
+*time-dependent AUC*: 0.5 is chance, 1 is perfect)? The prediction metrics of
+:mod:`surpyval.metrics` answer both for one cause at a time: pass the event
+types as ``e`` and the cause scored as ``cause``, and the predicted cumulative
+incidences ``F_k(t | Z)`` of that cause in place of predicted survival.
+
+Censored subjects are handled as for the ordinary metrics, by weighting the
+others by the inverse of the probability of being still under observation
+(IPCW, with the Kaplan-Meier estimate of the censoring of every cause). What
+is new is the subject whose first event is of *another* cause: they can never
+have the scored cause, so
+
+* in the Brier score they count, with their weight, as subjects whose
+  outcome is "no event of this cause", and
+* in the AUC they count as controls, alongside the subjects still free of
+  every event (``controls="cause_free"``, the default, as R's
+  ``riskRegression::Score`` and ``timeROC``'s ``AUC_2``);
+  ``controls="event_free"`` leaves them out and compares the cases with the
+  event-free subjects only (``timeROC``'s ``AUC_1``).
+
+Here two cause-specific Cox models are fitted to the first 500 subjects of
+the Fine-Gray simulation above, one with both covariates and one with
+:math:`Z_2` only, and scored for cause 1 on the other 300. A model's ``cif``
+pairs each time with a row of ``Z``, so a column of the matrix is one horizon
+for every subject:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    train = np.arange(N) < 500
+    test = ~train
+    both = CompetingRisksProportionalHazards.fit(
+        x[train], Z[train], e[train], c=c[train]
+    )
+    z2_only = CompetingRisksProportionalHazards.fit(
+        x[train], Z[train][:, [1]], e[train], c=c[train]
+    )
+    horizons = [0.25, 0.5, 1.0]
+
+
+    def incidence(model, Z_new, cause):
+        n = len(Z_new)
+        return np.column_stack(
+            [model.cif(np.full(n, t), Z_new, event=cause) for t in horizons]
+        )
+
+
+    scores = score_predictions(
+        x[test],
+        c[test],
+        {
+            "Z2 only": incidence(z2_only, Z[test][:, [1]], 1),
+            "Z1 and Z2": incidence(both, Z[test], 1),
+        },
+        horizons,
+        e=e[test],
+        cause=1,
+    )
+    scores.scores.round(4)
+
+The model with both covariates ranks the subjects who had cause 1 clearly
+better from half a time unit on, while its Brier scores are only a little
+lower; the paired comparisons say how sure that is:
+
+.. jupyter-execute::
+
+    scores.comparisons.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _auc = scores.comparisons.query("metric == 'auc'")
+    assert (_auc.difference > 0).all() and _auc.p_value.iloc[-1] < 0.05
+
+:func:`~surpyval.metrics.validation.brier_score`,
+:func:`~surpyval.metrics.validation.integrated_brier_score` and
+:func:`~surpyval.metrics.validation.auc_td` take the same ``e`` and ``cause``
+and return the bare estimates. A ``cause`` that is not among the event types
+is refused, as is ``cause`` without ``e``.
+
+In formulas, with :math:`\hat G` the censoring Kaplan-Meier, :math:`\delta_i`
+the event indicator and :math:`\epsilon_i` the cause of subject :math:`i`'s
+event, the Brier score of cause :math:`k` at :math:`t` is
+
+.. math::
+    BS_k(t) = \frac1n \sum_i \Big[
+        \frac{(I(\epsilon_i = k) - F_k(t\mid Z_i))^2\,
+              I(x_i \le t,\ \delta_i=1)}{\hat G(x_i-)}
+      + \frac{F_k(t\mid Z_i)^2\, I(x_i > t)}{\hat G(t)} \Big],
+
+and the AUC is the weighted proportion of (case, control) pairs the
+predictions order correctly, ties counting half, with the cases
+(:math:`x_i \le t`, :math:`\epsilon_i = k`) weighted by
+:math:`1/\hat G(x_i-)`, the event-free controls by :math:`1/\hat G(t)` and the
+competing-event controls by :math:`1/\hat G(x_j-)` (Blanche, Dartigues and
+Jacqmin-Gadda 2013). The standard errors come from the same influence
+functions as for one cause, and agree with ``riskRegression::Score(cause = k,
+se.fit = TRUE)`` to rounding: Brier score, AUC, the integrated Brier score
+and the comparisons, with and without tied times. For a cause other than the
+first one, ``Score`` (version 2026.3.11) gives AUC standard errors that change
+when the causes are relabelled; SurPyval's match those it gives with the cause
+coded 1, which also agree with ``timeROC``.

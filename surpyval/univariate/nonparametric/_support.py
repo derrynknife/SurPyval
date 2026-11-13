@@ -9,7 +9,8 @@ interpolating an estimate and its confidence bounds between its times.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -27,7 +28,7 @@ def check_support(
             bounds[name] = float(value)
         except (TypeError, ValueError):
             raise ValueError(
-                "'{}' must be a number; got {!r}.".format(name, value)
+                f"'{name}' must be a number; got {value!r}."
             ) from None
         if np.isnan(bounds[name]):
             raise ValueError(
@@ -53,7 +54,7 @@ def check_support(
     return lo, hi
 
 
-def support_from_dict(model_dict: dict) -> "tuple[Any, Any] | None":
+def support_from_dict(model_dict: dict) -> tuple[Any, Any] | None:
     """The ``"support"`` a ``to_dict`` wrote (see ``set_support``), as a
     ``(lower, upper)`` pair for the model's ``set_support`` to check, or
     ``None`` when it has none."""

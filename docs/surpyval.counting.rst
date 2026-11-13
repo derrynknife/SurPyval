@@ -17,7 +17,8 @@ Each fitter below returns one of three fitted-model classes: a
 (the Poisson processes), a :doc:`RenewalModel <counting/renewal_model>`
 (the renewal and imperfect-repair models) or a
 :doc:`ProportionalIntensityModel <counting/proportional_intensity_models>`
-(the regression models). The non-parametric and cause-specific fitters
+(the regression models; the semi-parametric ones return a
+:doc:`RecurrentCoxModel <counting/recurrent_cox>`). The non-parametric and cause-specific fitters
 return a fitted instance of their own class.
 
 Recurrent Event (Poisson Process) Models
@@ -39,12 +40,25 @@ system as it was just before the failure ("as bad as old").
 Non-Parametric Models
 ---------------------
 
-The mean cumulative function estimated without assuming a process.
+The mean cumulative function estimated without assuming a process, and
+the comparison of two groups' MCFs.
 
 .. toctree::
     :maxdepth: 1
 
     counting/nonparametric_mcf
+    counting/mcf_diff
+
+Panel Counts
+------------
+
+Events counted at inspections, with no event times: the mean cumulative
+function and a proportional means regression.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/panel_count
 
 Renewal Models
 --------------
@@ -65,13 +79,14 @@ Competing Risks (Marked) Models
 -------------------------------
 
 Recurrent processes with several kinds of event, each with its own
-intensity.
+intensity (and, for the last, its own covariate effects).
 
 .. toctree::
     :maxdepth: 1
 
     counting/cause_specific_mcf
     counting/cause_specific_nhpp
+    counting/cause_specific_proportional_intensity
 
 Recurrent Event Regression Models
 ----------------------------------
@@ -84,6 +99,8 @@ Intensities that depend on covariates.
     counting/proportional_intensity_models
     counting/hpp_pi
     counting/nhpp_pi
+    counting/recurrent_cox
+    counting/joint_frailty
 
 Trend Tests and Diagnostics
 ---------------------------

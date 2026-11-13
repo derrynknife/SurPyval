@@ -150,7 +150,7 @@ def _ph_rows(d, cause, transform):
 def test_cause_specific_matches_cox_zph(name, cause):
     df, covs = _reference_frame(name)
     model = _fit(df, covs)
-    ref = values(SOURCE, "cs_{}_cause{}".format(name, cause))
+    ref = values(SOURCE, f"cs_{name}_cause{cause}")
     assert_allclose(model.models[cause].beta, ref["coef"], **TOL)
     d = model.diagnose()
     for transform in ("km", "rank"):
@@ -175,7 +175,7 @@ def test_cause_specific_matches_cox_zph(name, cause):
 def test_fine_gray_matches_cox_zph_on_the_weighted_data(name, cause):
     df, covs = _reference_frame(name)
     model = _fit(df, covs, model="Fine-Gray")
-    ref = values(SOURCE, "fg_{}_cause{}".format(name, cause))
+    ref = values(SOURCE, f"fg_{name}_cause{cause}")
     assert_allclose(model.models[cause].beta, ref["coef"], rtol=1e-8)
     d = model.diagnose()
     for transform in ("cif", "rank"):
@@ -212,9 +212,11 @@ def test_fine_gray_functions_on_a_fine_gray_fit():
         stats = [r["statistic"] for r in res["per_covariate"]]
         stats.append(res["global"]["statistic"])
         assert_allclose(stats, ref[transform + "_chisq"], **TOL)
-    # The information is the inverse of the model's covariance.
+    # The information is the inverse of the model-based covariance.
     assert_allclose(
-        np.linalg.inv(res["information"]), model.covariance(), rtol=1e-8
+        np.linalg.inv(res["information"]),
+        model.covariance(robust=False),
+        rtol=1e-8,
     )
     res = fine_gray_added_covariate_test(model, df["age"] ** 2)
     assert_allclose(res["statistic"], ref["square_age"], **TOL)
@@ -277,7 +279,7 @@ def test_a_crossing_cause_alone_is_flagged_and_stratified(crossing):
     assert stratify[0].features == ("CoxPH.fit(strata=)",)
     assert stratify[0].covariates == ("z",)
     # The model-level advice: Fine-Gray where incidence is the question
-    (fg,) = [a for a in d.advice if "Fine-Gray" in a]
+    (fg,) = (a for a in d.advice if "Fine-Gray" in a)
     assert fg.check is None
     assert fg.features == (
         "CompetingRisksProportionalHazards.fit(model=)",
@@ -316,7 +318,7 @@ def test_a_continuous_violation_is_advised_a_time_varying_effect():
     assert set(_rows(d, "proportional_hazards", verdict="fail")["cause"]) == {
         "a"
     }
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
     assert "CoxPH.fit_tvc" in advice and "pandas.cut" in advice
     assert "cause 'a'" in advice and "Stratify" not in advice
     assert advice.features == ("CoxPH.fit_tvc", "CoxPH.fit(strata=)")
@@ -354,7 +356,7 @@ def test_a_non_linear_effect_fails_functional_form():
     d = _fit(df, ["w"]).diagnose()
     failed = _rows(d, "functional_form", verdict="fail")
     assert list(failed["cause"]) == ["a"]
-    (advice,) = [a for a in d.advice if a.check == "functional_form"]
+    (advice,) = (a for a in d.advice if a.check == "functional_form")
     assert "cause 'a'" in advice and 'formula="np.log(w)' in advice
     assert advice.features == (
         "CompetingRisksProportionalHazards.fit_from_df(formula=)",
@@ -374,9 +376,9 @@ def test_an_influential_outlying_row_warns():
     influence = _rows(d, "influence", "a")
     assert list(influence["verdict"]) == ["warn"]
     assert list(_rows(d, "outliers", "a")["verdict"]) == ["warn"]
-    (infl,) = [a for a in d.advice if a.check == "influence"]
+    (infl,) = (a for a in d.advice if a.check == "influence")
     assert "Row 0" in infl and "models['a'].compute_residuals" in infl
-    (out,) = [a for a in d.advice if a.check == "outliers"]
+    (out,) = (a for a in d.advice if a.check == "outliers")
     assert "cause 'a'" in out and "row 0" in out
     assert out.features == ("compute_residuals(kind=)",)
 
@@ -426,7 +428,7 @@ def test_a_fine_gray_violation_is_flagged_and_advised():
     d = _fit(df, ["z"], model="Fine-Gray").diagnose()
     failed = _rows(d, "proportional_hazards", verdict="fail")
     assert set(failed["cause"]) == {"a"}
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
     assert "cause 'a'" in advice
     assert 'model="Cox"' in advice and "gray_test" in advice
     assert advice.features == (
@@ -486,18 +488,6 @@ def test_restored_models_refuse(crossing, fine_gray_proportional):
     assert one._fit_data is not None
     with pytest.raises(ValueError, match="Fine-Gray model restored"):
         type(one).from_dict(one.to_dict()).diagnose()
-
-
-def test_parametric_competing_risks_refuses_naming_the_issue():
-    rng = np.random.default_rng(0)
-    x = rng.weibull(1.5, 100)
-    e = rng.choice(["a", "b"], 100)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        model = sp.ParametricCompetingRisks.fit(x, e)
-    with pytest.raises(NotImplementedError, match="#874") as info:
-        model.diagnose()
-    assert "#875" in str(info.value)
 
 
 def test_an_aliased_coefficient_refuses():

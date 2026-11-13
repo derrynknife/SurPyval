@@ -40,6 +40,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
 )
 from surpyval.utils.linalg import safe_quadform
+from surpyval.utils.validation import refuse_subdistribution_entry
 
 
 class GrayTestResult(NamedTuple):
@@ -55,9 +56,11 @@ def gray_test(
     e: npt.ArrayLike,
     group: npt.ArrayLike,
     event: Any,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
     rho: float = 0.0,
+    w: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | float | None = None,
 ) -> GrayTestResult:
     """
     Gray's k-sample test comparing the cumulative incidence of one cause
@@ -90,6 +93,17 @@ def gray_test(
         Weight-family parameter: the per-time weight is ``(1 - F(t-))**rho``
         with ``F`` the pooled cumulative incidence of ``event``. ``0``
         (the default) is the standard Gray test.
+    w : array_like, optional
+        Sampling weights are not taken yet: given, the test refuses with a
+        ``WeightedRefusal`` (a ``ValueError``) saying what to use instead.
+        R's ``cmprsk`` has no weighted Gray test to check one against.
+    tl : array_like or float, optional
+        Delayed entry (left truncation) is refused with a ``ValueError``
+        that names what to use instead: the subdistribution risk set keeps
+        the items that failed from another cause, and with late entry it
+        needs truncation weights, which are not built (``cmprsk`` has no
+        delayed entry either). Entry times all before the first time
+        change nothing and are taken.
 
     Returns
     -------
@@ -149,6 +163,29 @@ def gray_test(
     >>> bool(res.p_value < 0.001)
     True
     """
+    if w is not None:
+        from surpyval.utils.weights import refuse_weighted
+
+        raise refuse_weighted(
+            "Gray's test",
+            "its variance treats the counts as units seen, and a weighted, "
+            "design-based version (with a reference to check it against) is "
+            "not built yet",
+            "Use logrank(..., w=w) on the cause-specific hazards (the other "
+            "causes censored), or compare the weighted cumulative "
+            "incidences of CompetingRisks.fit(..., w=w) fitted per group "
+            "by their robust bounds (cb).",
+        )
+    refuse_subdistribution_entry(
+        x,
+        tl,
+        "Gray's test",
+        "Compare the cause's hazard across the groups with delayed entry "
+        "by logrank(x, group, c=c_k, tl=tl), c_k censoring every row that "
+        "did not fail from the cause (the cause-specific log-rank test), "
+        "or compare each group's cumulative incidence, CompetingRisks.fit("
+        "x, e, tl=tl) fitted per group, by its bounds.",
+    )
     x_arr, n_arr, gi, groups, is_cause, is_competing, rho = _validate(
         x, e, group, event, c, n, rho
     )
@@ -287,8 +324,8 @@ def _validate(
     e: npt.ArrayLike,
     group: npt.ArrayLike,
     cause: Any,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
     rho: float,
 ) -> tuple[
     npt.NDArray,

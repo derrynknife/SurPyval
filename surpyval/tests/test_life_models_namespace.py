@@ -1,6 +1,6 @@
 """The life models live in ``surpyval.life_models``; the names they had at
-the top level until v0.22 are removed in v0.23, and asking for one says
-where it is."""
+the top level until v0.22 were removed in v0.23 (their hints were retired
+in v0.27)."""
 
 import warnings
 
@@ -34,20 +34,24 @@ def test_every_life_model_is_in_the_namespace():
     assert sp.Exponential is not life_models.Exponential
     assert set(life_models.__all__) == set(MOVED.values()) | {
         "GeneralLogLinear",
+        "GeneralLinear",
         "Arrhenius",
     }
 
 
-def test_arrhenius_is_the_exponential_life_model():
-    # The name engineers look for: the same class, so a model fitted with
-    # it is the Exponential life model (and saves and loads as one).
-    assert life_models.Arrhenius is life_models.Exponential
-    assert life_models.Arrhenius.name == "Exponential"
+def test_arrhenius_is_another_name_for_the_exponential_life_model():
+    # The same model under the name engineers look for: the same class,
+    # its own name (so a model built with it saves and loads as
+    # Arrhenius), and the Exponential's canonical name.
+    assert type(life_models.Arrhenius) is type(life_models.Exponential)
+    assert life_models.Arrhenius.name == "Arrhenius"
+    assert life_models.Arrhenius.canonical_name == "Exponential"
+    assert life_models.Exponential.canonical_name == "Exponential"
 
 
 @pytest.mark.parametrize("old, new", sorted(MOVED.items()))
-def test_old_top_level_name_is_gone_and_says_where(old, new):
-    with pytest.raises(AttributeError, match=rf"surpyval\.life_models\.{new}"):
+def test_old_top_level_name_is_gone(old, new):
+    with pytest.raises(AttributeError, match=f"no attribute '{old}'"):
         getattr(sp, old)
     assert not hasattr(sp, old)
     assert old not in dir(sp)
@@ -65,3 +69,6 @@ def test_general_log_linear_is_not_at_the_top_level():
     # New in 0.22, so never at the top level in a release: no shim
     with pytest.raises(AttributeError):
         sp.GeneralLogLinear
+    # Nor GeneralLinear, new in 0.27
+    with pytest.raises(AttributeError):
+        sp.GeneralLinear

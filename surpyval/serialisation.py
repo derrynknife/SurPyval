@@ -42,8 +42,6 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
-from surpyval.utils.removed_names import RemovedNames
-
 # ``"model"`` tag -> defining module. The tag every class writes into
 # its dict is its own class name, so the registry only needs to find
 # the defining module, lazily (importing everything eagerly here would
@@ -54,6 +52,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "CoxFrailtyModel": ("surpyval.univariate.regression.frailty.cox_frailty"),
+    "CoxMixedEffectsModel": (
+        "surpyval.univariate.regression.frailty.cox_mixed_effects"
+    ),
     "AalenAdditiveModel": (
         "surpyval.univariate.regression.additive_hazards.aalen_additive"
     ),
@@ -63,6 +64,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "IntervalCoxPHModel": (
+        "surpyval.univariate.regression.proportional_hazards.interval_cox"
+    ),
     "ProportionalOddsModel": (
         "surpyval.univariate.regression.proportional_odds.proportional_odds"
     ),
@@ -70,8 +74,15 @@ _TAGGED_MODELS: dict[str, str] = {
     "DistributionalRegressionModel": (
         "surpyval.univariate.regression.distributional.model"
     ),
+    "MixtureCureModel": (
+        "surpyval.univariate.regression.distributional.mixture_cure"
+    ),
+    "ZeroInflatedModel": (
+        "surpyval.univariate.regression.distributional.zero_inflated"
+    ),
     "BayesianParametric": "surpyval.bayes.model",
     "JointModel": "surpyval.univariate.joint.joint_model",
+    "EquivalenceModel": "surpyval.univariate.equivalence",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
@@ -84,30 +95,49 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.competing_risks.parametric"
         ".parametric_competing_risks"
     ),
+    "ParametricCompetingRisksRegression": (
+        "surpyval.univariate.competing_risks.regression"
+        ".parametric_competing_risks_regression"
+    ),
     "CompetingRisks": (
         "surpyval.univariate.competing_risks.nonparametric.competing_risks"
     ),
+    "LandmarkCox": "surpyval.univariate.landmark.landmark_cox",
+    "MultiState": "surpyval.multistate.nonparametric",
+    "MultiStateProportionalHazards": "surpyval.multistate.regression",
+    "PanelMultiState": "surpyval.multistate.panel",
+    "PanelMultiStateRegression": "surpyval.multistate.panel",
+    "ParametricMultiState": "surpyval.multistate.parametric",
+    "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
         "surpyval.recurrent.competing_risks.nonparametric.cause_specific_mcf"
     ),
     "CauseSpecificNHPP": (
         "surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp"
     ),
+    "CauseSpecificProportionalIntensity": (
+        "surpyval.recurrent.competing_risks.regression"
+        ".cause_specific_proportional_intensity"
+    ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "PanelCountMCF": "surpyval.recurrent.panel_count",
+    "PanelCountRegression": "surpyval.recurrent.panel_count",
     "ParametricRecurrenceModel": (
         "surpyval.recurrent.parametric.parametric_recurrence"
     ),
     "ProportionalIntensityModel": (
         "surpyval.recurrent.regression.proportional_intensity"
     ),
+    "RecurrentCoxModel": "surpyval.recurrent.regression.recurrent_cox",
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
     "DegradationModel": "surpyval.degradation.degradation_model",
     "InducedFailureDistribution": "surpyval.degradation.rul",
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
-    "SurvivalTree": "surpyval.beta.ml.forest.tree",
-    "RandomSurvivalForest": "surpyval.beta.ml.forest.forest",
+    "SurvivalTree": "surpyval.ml.forest.tree",
+    "RandomSurvivalForest": "surpyval.ml.forest.forest",
     # The degenerate distributions are stateless: the class is the model,
     # so they serialise by name alone.
     "NeverOccurs": ("surpyval.univariate.parametric.distributions.degenerate"),
@@ -170,18 +200,65 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # in schema 2, #459, #463; a schema-1 reader would ignore it and take the
 # baseline, which is that of a unit at the centre, for the baseline at 0).
 #
-# Schema 3 is a model fitted with sampling weights ``w`` (``"weighted":
-# true``, or data with ``"w"``): a schema-2 reader would drop the weights
-# and give the model's bounds the classical meaning, so it is refused
-# there. Every other document keeps the schema it had.
-SCHEMA_VERSION = 3
+# Schema 3 is data with sampling weights ``w`` (``"w"``), and was a model
+# fitted with them (``"weighted": true``) until v0.27: a schema-2 reader
+# would drop the weights and give the model's bounds the classical
+# meaning, so it is refused there.
+#
+# Schema 4 is the layout of v0.27, which a v0.26 reader (schema 3) refuses.
+# It is needed by a stratified Cox model (a ``"strata"`` list of
+# baselines): a schema-3 reader would read the first stratum's baseline,
+# which the dict also holds at the top level, as the model's. (A
+# stratified Fine-Gray model, whose dict has no top-level baseline, is
+# stamped 4 for the same list.) And by a
+# distributional regression model whose coefficients carry SurPyval's sign
+# convention (``"coefficient_signs"``): a v0.26 reader would read a scale's
+# coefficients with the opposite sign and predict the opposite effect.
+# And by every model fitted with weights (``"weighted": true``): its
+# ``"hess_inv"`` is the inverse Hessian, as the attribute is, and its
+# robust covariance is under ``"covariance"``, where v0.26 wrote the
+# robust block as ``"hess_inv"`` and its bounds read it there; a v0.26
+# reader would bound the model with the (smaller) inverse Hessian.
+# And by a ParametricCompetingRisks model fitted jointly (left- or
+# interval-censored rows): its ``"joint"`` entry holds the covariance over
+# every cause's parameters and the joint likelihood, which a v0.26 reader
+# would silently drop, bounding the incidences without the terms between
+# causes.
+# And by data with states (a ``SurpyvalData`` with ``"s"``): a v0.26
+# reader would drop the states and take the stays in every state as one
+# sample; and data with terminal flags (``"a"``), whose units' several
+# rows it would take as units of their own.
+# Every other document keeps the schema it had.
+SCHEMA_VERSION = 4
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
 _SCHEMA_NON_FINITE = 2
 
-# The schema of a weighted model or data.
+# The schema of weighted data.
 _SCHEMA_WEIGHTED = 3
+
+# The schema of a weighted model: v0.27's schema 4, its "hess_inv" the
+# inverse Hessian (a v0.26 weighted model's "hess_inv" is the robust
+# covariance).
+WEIGHTED_MODEL_SCHEMA = 4
+
+# The schema of a stratified Cox model, and of a model whose coefficients
+# carry their signs: both are v0.27's schema 4.
+_SCHEMA_STRATIFIED = 4
+_SCHEMA_SIGNED = 4
+
+# The schema of a jointly fitted ParametricCompetingRisks model (its
+# ``"joint"`` entry): v0.27's schema 4.
+_SCHEMA_JOINT = 4
+
+# The schema of data with states (``"s"``): v0.27's schema 4.
+_SCHEMA_STATES = 4
+
+# The schema of data with named measurements (``"m"``; the old unnamed
+# ``"markers"`` keep their layout): v0.27's schema 4, which a v0.26
+# reader refuses rather than silently drop the readings.
+_SCHEMA_MEASUREMENTS = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -670,6 +747,22 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_STRATIFIED in stamped_versions or any(
+        _is_stratified(d) for d in dicts
+    ):
+        return _SCHEMA_STRATIFIED
+    if _SCHEMA_SIGNED in stamped_versions or any(
+        "coefficient_signs" in d for d in dicts
+    ):
+        return _SCHEMA_SIGNED
+    if any(_is_joint(d) for d in dicts):
+        return _SCHEMA_JOINT
+    if any(_has_states(d) for d in dicts):
+        return _SCHEMA_STATES
+    if any(_has_measurements(d) for d in dicts):
+        return _SCHEMA_MEASUREMENTS
+    if any(d.get("weighted") is True for d in dicts):
+        return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
         _is_weighted(d) for d in dicts
     ):
@@ -686,6 +779,39 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         )
         else _SCHEMA_WITHOUT_NON_FINITE
     )
+
+
+def _is_stratified(d: dict) -> bool:
+    """Whether ``d`` is a stratified Cox or Fine-Gray model (its
+    baselines under ``"strata"``)."""
+    return (
+        d.get("model") in ("SemiParametricRegressionModel", "FineGrayModel")
+        and d.get("strata") is not None
+    )
+
+
+def _is_joint(d: dict) -> bool:
+    """Whether ``d`` is a ParametricCompetingRisks model fitted jointly
+    (its ``"joint"`` entry)."""
+    return (
+        d.get("model") == "ParametricCompetingRisks"
+        and d.get("joint") is not None
+    )
+
+
+def _has_states(d: dict) -> bool:
+    """Whether ``d`` is data with states or terminal flags (a
+    ``SurpyvalData`` with ``"s"`` or ``"a"``): an older reader would take
+    a unit's several rows as units of their own."""
+    return d.get("class") == "SurpyvalData" and (
+        d.get("s") is not None or d.get("a") is not None
+    )
+
+
+def _has_measurements(d: dict) -> bool:
+    """Whether ``d`` is data with named measurements (a ``SurpyvalData``
+    with ``"m"``)."""
+    return d.get("class") == "SurpyvalData" and d.get("m") is not None
 
 
 def _is_weighted(d: dict) -> bool:
@@ -1100,7 +1226,7 @@ def with_unit_line(text: str, unit: str) -> str:
     return text + "\nUnit : " + unit
 
 
-class SerialisableMixin(RemovedNames):
+class SerialisableMixin:
     """Shared ``to_json`` / ``from_json`` plumbing for serialisable
     models: every class keeps only its ``to_dict`` / ``from_dict``
     pair (this used to be copy-pasted into ~20 classes).

@@ -1,3 +1,4 @@
+import operator
 from typing import Any
 
 import numpy as np
@@ -19,17 +20,19 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
 from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
     check_option,
-    option_error,
+    warn_outside_unit_interval,
 )
 
 # The bound on 1 / f that a bound on f gives.
-_OPPOSITE = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
+OPPOSITE_BOUND = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -67,6 +70,11 @@ class ParametricRecurrenceModel(
     >>> model = HPP.fit(x)
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fitters; declared for the type checker.
     dist: Any
     params: "np.ndarray"
@@ -93,9 +101,13 @@ class ParametricRecurrenceModel(
 
         The intensity model is stateless, so only its name and the fitted
         ``params`` are stored; the reloaded model reproduces ``cif``/``iif``/
-        ``mcf``/``inv_cif`` exactly. Likelihood-inference state (the data and
-        the ``neg_ll`` closure) is not stored, so a reloaded model behaves like
-        a ``from_params`` one for confidence bounds and diagnostics.
+        ``mcf``/``inv_cif`` exactly. A maximum-likelihood fit's parameter
+        covariance is stored too (``"covariance"``), so the reloaded model
+        gives the same ``covariance()``, ``standard_errors()``,
+        ``summary()``, ``param_cb`` and Wald bounds (``cif_cb``, ``iif_cb``,
+        ``mtbf_cb``). The data and the likelihood are not stored: the
+        likelihood, the information criteria, the diagnostics and Crow's
+        exact bounds (``method="crow"``) need a refit, and say so.
 
         See Also
         --------
@@ -107,6 +119,9 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
+                # What the Wald bounds need (null for a model with no
+                # likelihood); optional on reading.
+                "covariance": self._covariance_entry(),
                 **maximum_entry(self.maximum),
             }
         )
@@ -128,6 +143,7 @@ class ParametricRecurrenceModel(
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)
+        out._restore_covariance(model_dict, out.params)
         return out
 
     def _parameter_names(self) -> list:
@@ -139,7 +155,7 @@ class ParametricRecurrenceModel(
     def __repr__(self) -> str:
         param_string = "\n".join(
             [
-                "{:>10}".format(name) + ": " + str(p)
+                f"{name:>10}" + ": " + str(p)
                 for p, name in zip(self.params, self.dist.parameter_names)
             ]
         )
@@ -151,6 +167,7 @@ class ParametricRecurrenceModel(
             + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
+            + notes_text(self)
         )
 
     # Simulation uses the shared conditional inverse-CIF sampler and the
@@ -243,9 +260,317 @@ class ParametricRecurrenceModel(
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
         else:
+            raise ValueError(f"Inverse cif undefined for {self.dist.name}")
+
+    # -- the next event from a time t (minimal repair) ----------------------
+
+    def _ages(self, age: "ArrayLike | None") -> np.ndarray:
+        """The units' times now: ``age``, or the end of each fitted item's
+        observation (in the order of its labels)."""
+        if age is None:
+            self._check_has_data("Prediction for the fitted items")
+            item = np.asarray(self.data.i)
+            x = np.asarray(self.data.x, dtype=float)
+            x = x.reshape(item.size, -1).max(axis=1)
+            # Each item's largest time, in the order of its sorted labels
+            # (a maximum, so the same whatever order it is taken in).
+            _, inverse = np.unique(item, return_inverse=True)
+            ages = np.full(inverse.max() + 1, -np.inf)
+            np.maximum.at(ages, inverse.reshape(-1), x)
+            return ages
+        now = np.atleast_1d(np.asarray(age, dtype=float)).reshape(-1)
+        if not np.all(np.isfinite(now)) or np.any(now < 0):
             raise ValueError(
-                "Inverse cif undefined for {}".format(self.dist.name)
+                "age must be finite times of at least 0 (each unit's time "
+                "since new); got {}".format(
+                    now[~(np.isfinite(now) & (now >= 0))][:5]
+                )
             )
+        return now
+
+    @staticmethod
+    def _ahead(x: ArrayLike) -> np.ndarray:
+        values = np.asarray(x, dtype=float)
+        if not np.all(values[~np.isnan(values)] >= 0):
+            raise ValueError(
+                "x is time ahead of now, so it cannot be negative; got "
+                "{}".format(values[values < 0][:5])
+            )
+        return values
+
+    def next_failure_sf(
+        self, x: ArrayLike, age: "ArrayLike | None" = None
+    ) -> np.ndarray:
+        """
+        The chance that each unit runs a further ``x`` from its age
+        without an event: the survival function of the time to its next
+        event, :math:`\\exp(-[\\Lambda(t + x) - \\Lambda(t)])`.
+
+        Each event of these processes is a minimal repair, so the time to
+        the next one depends only on the time now :math:`t`, not on the
+        events before it. The names and arguments are those of
+        ``RenewalModel.next_failure_sf``, so either kind of model can be
+        stepped forward the same way.
+
+        Parameters
+        ----------
+        x : array_like
+            Times ahead of now (at least 0).
+        age : array_like, optional
+            Each unit's time now (since new). By default the units are the
+            fitted data's items, each at the end of its observation.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, len(x))``, one row per unit; ``(units,)`` for a
+            scalar ``x``.
+
+        Examples
+        --------
+        A Crow-AMSAA process with :math:`\\Lambda(t) = (t / 10)^{1.5}`:
+        the chance of no event between 10 and 20 is
+        :math:`e^{-(2^{1.5} - 1)}`:
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> model = CrowAMSAA.from_params([10, 1.5])
+        >>> model.next_failure_sf(10.0, age=[0.0, 10.0]).round(4)
+        array([0.3679, 0.1607])
+        """
+        values = self._ahead(x)
+        now = self._ages(age)[:, None]
+        flat = np.atleast_1d(values).reshape(-1)[None, :]
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            gained = np.asarray(
+                self.cif(now + flat), dtype=float
+            ) - np.asarray(self.cif(now + 0.0 * flat), dtype=float)
+            out = np.exp(-gained)
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_hf(
+        self, x: ArrayLike, age: "ArrayLike | None" = None
+    ) -> np.ndarray:
+        """
+        Each unit's intensity a further ``x`` from its age, :math:`\\lambda(t
+        + x)`: the hazard function of the time to its next event. See
+        :meth:`next_failure_sf` for the arguments and the shape of the
+        result.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import HPP
+        >>> HPP.from_params([0.1]).next_failure_hf(5.0, age=[0.0, 50.0])
+        array([0.1, 0.1])
+        """
+        values = self._ahead(x)
+        now = self._ages(age)[:, None]
+        flat = np.atleast_1d(values).reshape(-1)[None, :]
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = np.broadcast_to(
+                np.asarray(self.iif(now + flat), dtype=float),
+                (now.shape[0], flat.shape[1]),
+            )
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_qf(
+        self, p: ArrayLike, age: "ArrayLike | None" = None
+    ) -> np.ndarray:
+        """
+        The time ahead of each unit's age by which it has its next event
+        with probability ``p``: the quantile function of the time to its
+        next event, :math:`\\Lambda^{-1}(\\Lambda(t) - \\log(1 - p)) - t`,
+        the inverse of :meth:`next_failure_sf`. Found from the
+        cumulative intensity, the time is exact to about the double's
+        rounding of the age :math:`t` (an absolute error near
+        :math:`10^{-16} t`), which a tiny gap after a long life carries.
+
+        Parameters
+        ----------
+        p : array_like
+            Probabilities in [0, 1]. ``p = 0`` gives 0 and ``p = 1``
+            ``inf``; a value outside [0, 1] gives ``nan``, with a
+            warning. Where the cumulative intensity is bounded (a falling
+            Cox-Lewis intensity) a ``p`` it never reaches gives ``inf``:
+            the unit may never have another event.
+        age : array_like, optional
+            Each unit's time now (since new). By default the units are the
+            fitted data's items, each at the end of its observation.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, len(p))``, one row per unit; ``(units,)`` for a
+            scalar ``p``.
+
+        Examples
+        --------
+        For a homogeneous Poisson process the time to the next event is
+        exponential whatever the age, :math:`-\\log(1 - p) / \\lambda`:
+
+        >>> from surpyval.recurrent import HPP
+        >>> HPP.from_params([0.1]).next_failure_qf(0.5, age=[0.0, 50.0])
+        array([6.93147181, 6.93147181])
+        """
+        values = np.asarray(p, dtype=float)
+        outside = warn_outside_unit_interval(values, "next_failure_qf")
+        now = self._ages(age)
+        flat = np.where(outside, np.nan, values).reshape(-1)
+        out = self._next_gaps(now, flat[None, :])
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_random(
+        self,
+        size: int,
+        age: "ArrayLike | None" = None,
+        *,
+        random_state: Any = None,
+    ) -> np.ndarray:
+        """
+        Draw each unit's time to its next event, ahead of its age:
+        ``size`` draws per unit, each :meth:`next_failure_qf` at one
+        uniform ``u`` (the uniforms fill the result row by row), i.e.
+        :math:`\\Lambda^{-1}(\\Lambda(t) - \\log(1 - u)) - t`.
+
+        Each event is a minimal repair, so a unit's next age is its age
+        plus the draw: stepping ``age`` forward this way reproduces
+        :meth:`time_terminated_simulation` in distribution.
+
+        Parameters
+        ----------
+        size : int
+            The number of draws for each unit.
+        age : array_like, optional
+            Each unit's time now (since new). By default the units are the
+            fitted data's items, each at the end of its observation.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw (keyword only); by
+            default one seeded from numpy's global stream, so
+            ``np.random.seed`` makes the draw reproducible.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, size)``: one row per unit.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> model = CrowAMSAA.from_params([10, 1.5])
+        >>> model.next_failure_random(3, age=[0.0, 100.0],
+        ...                           random_state=1).round(3)
+        array([[ 8.011, 20.824,  2.894],
+               [ 6.165,  0.786,  1.157]])
+        """
+        try:
+            count = operator.index(size)
+        except TypeError:
+            count = -1
+        if count < 0:
+            raise ValueError(
+                "size is the number of draws for each unit, a whole number "
+                f"of at least 0; got {size!r}"
+            )
+        now = self._ages(age)
+        u = as_generator(random_state).random((now.size, count))
+        return self._next_gaps(now, u)
+
+    def _next_gaps(self, now: np.ndarray, p: np.ndarray) -> np.ndarray:
+        """``(units, m)``: the quantiles ``p`` (broadcast to that shape)
+        of the time to each unit's next event from the times ``now``."""
+        p = np.broadcast_to(
+            np.asarray(p, dtype=float), (now.size, np.shape(p)[1])
+        )
+        t = np.broadcast_to(now[:, None], p.shape)
+        out = np.full(p.shape, np.nan)
+        out[p == 0] = 0.0
+        out[p == 1] = np.inf
+        inside = (p > 0) & (p < 1)
+        if inside.any():
+            t_in = t[inside]
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                target = np.asarray(self.cif(t_in), dtype=float) - np.log1p(
+                    -p[inside]
+                )
+                reached = np.asarray(self.inv_cif(target), dtype=float)
+            out[inside] = np.maximum(reached - t_in, 0.0)
+        return out
+
+    # -- with_params ---------------------------------------------------------
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order, which :meth:`with_params` takes: the process's parameters,
+        ``parameter_names``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> CrowAMSAA.from_params([10, 1.5]).covariance_names
+        ['alpha', 'beta']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> np.ndarray:
+        """The parameters in the order of :attr:`covariance_names`."""
+        return np.asarray(self.params, dtype=float)
+
+    def with_params(self, params: ArrayLike) -> "ParametricRecurrenceModel":
+        """
+        The same process (and unit) at other parameters, as its
+        ``from_params`` builds it: for drawing a fit's parameters from
+        its covariance and carrying them into a prediction or
+        simulation, say.
+
+        Parameters
+        ----------
+        params : array_like
+            A flat vector in the order of :attr:`covariance_names`, as a
+            draw from :meth:`covariance` comes. A value outside the
+            parameter's range (a negative Crow-AMSAA ``beta``) is
+            refused.
+
+        Returns
+        -------
+        ParametricRecurrenceModel
+            A model built from parameters: no data, covariance or fitted
+            likelihood, so data-based methods (bounds, diagnostics,
+            prediction for the fitted items) are not available on it. A
+            model fitted with weights becomes the plain process at these
+            parameters.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> model = CrowAMSAA.from_params([10, 1.5])
+        >>> model.with_params([20, 1.5]).cif([20, 40])
+        array([1.        , 2.82842712])
+        """
+        names = self.covariance_names
+        values = np.asarray(params, dtype=float)
+        if values.shape != (len(names),):
+            raise ValueError(
+                "params must be a flat vector of {} values in the order "
+                "of covariance_names {}; got shape {}".format(
+                    len(names), names, np.shape(params)
+                )
+            )
+        for name, value, (lo, hi) in zip(names, values, self.dist.bounds):
+            if (
+                not np.isfinite(value)
+                or (lo is not None and value <= lo)
+                or (hi is not None and value >= hi)
+            ):
+                raise ValueError(
+                    f"{name} = {value:g} is outside its range "
+                    f"({lo}, {hi}) for the {self.dist.name} process"
+                )
+        out = self.dist.from_params(values)
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            out.unit = unit
+        return out
 
     def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """
@@ -285,16 +610,7 @@ class ParametricRecurrenceModel(
             The residuals.
         """
         self._check_has_data("residuals")
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, self.cif)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, self.cif)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, self.cif, kind)
 
     def trend_test(
         self,
@@ -417,12 +733,13 @@ class ParametricRecurrenceModel(
             The confidence bounds on the CIF.
         """
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.cif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
@@ -512,14 +829,15 @@ class ParametricRecurrenceModel(
         check_alpha_ci(alpha_ci)
         if method == "crow":
             return self._reciprocal_cb(
-                self._crow_mtbf_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+                self._crow_mtbf_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
             )
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
             lambda params: self.dist.iif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.iif(x), se, alpha_ci, bound)
 
@@ -622,7 +940,7 @@ class ParametricRecurrenceModel(
         if method == "crow":
             return self._crow_mtbf_cb(x, alpha_ci, bound)
         return self._reciprocal_cb(
-            self.iif_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+            self.iif_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
         )
 
     @staticmethod

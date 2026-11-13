@@ -1,23 +1,29 @@
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
+from .at_risk import at_risk_table
 from .filliben import filliben
 from .fleming_harrington import (
     FlemingHarrington,
     fleming_harrington,
     fleming_harrington_variance,
 )
+from .interval_logrank import IntervalLogRankResult, interval_logrank
 from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
+from .life_table import life_table
 from .logrank import (
     LogRankResult,
     PairwiseLogRankResult,
     logrank,
     pairwise_logrank,
 )
+from .logrank_maxcombo import MaxComboResult, maxcombo_logrank
+from .logrank_permutation import PermutationLogRankResult, permutation_logrank
+from .logrank_trend import TrendLogRankResult, trend_logrank
+from .maxstat import MaxStatResult, maxstat_logrank
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric, rmst_diff
-from .at_risk import at_risk_table
-from .life_table import life_table
+from .person_years import PersonYears, person_years, poisson_rate_bounds
 from .plot_estimates import NonParametricPlot, plot_nonparametric
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust

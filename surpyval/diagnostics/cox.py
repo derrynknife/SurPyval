@@ -52,7 +52,6 @@ which.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import numpy as np
@@ -70,6 +69,17 @@ from surpyval.univariate.regression.proportional_hazards.diagnostics import (
 )
 from surpyval.utils.validation import check_option
 
+from ._shared import (  # noqa: F401 (CATEGORICAL_LEVELS: was defined here)
+    CATEGORICAL_LEVELS,
+    _covariate_kind,
+    _cox_snell_panel,
+    _fmt,
+    _form_panel,
+    _is_cox,
+    _ph_name,
+    _source,
+    _trend_sign,
+)
 from .calibration import calibration_advice, calibration_check
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -78,9 +88,6 @@ TRANSFORMS = ("km", "rank")
 #: The scale of ``d.tables["proportional_hazards"]`` when ``diagnose()``
 #: is given no ``transform`` (``check_ph``'s default, as R's).
 DEFAULT_TRANSFORM = "km"
-#: The most distinct values a covariate has and still counts as
-#: categorical (one with two is binary); more is continuous.
-CATEGORICAL_LEVELS = 5
 #: ``|dfbeta| / se`` above this warns: one row moves the coefficient by
 #: more than a standard error.
 INFLUENCE_LIMIT = 1.0
@@ -97,21 +104,7 @@ def _raw_Z(ctx: Context) -> np.ndarray:
 def _kind(ctx: Context, j: int) -> str:
     """``"binary"``, ``"categorical"`` or ``"continuous"``, by the number
     of distinct values of covariate ``j``."""
-    levels = np.unique(_raw_Z(ctx)[:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
-
-
-def _source(name: str) -> str:
-    """The variable a formula-coded column comes from (``sex`` for
-    ``C(sex)[T.male]`` or ``sex[T.male]``), else the name itself."""
-    match = re.match(r"^C\(\s*([A-Za-z_][\w.]*)[^)]*\)\[", name)
-    if match is None:
-        match = re.match(r"^([A-Za-z_][\w.]*)\[", name)
-    return match.group(1) if match else name
+    return _covariate_kind(np.unique(_raw_Z(ctx)[:, j]).size)
 
 
 def _zph(ctx: Context, transform: str) -> dict:
@@ -156,10 +149,6 @@ def _event_rows(ctx: Context) -> np.ndarray:
     return np.flatnonzero(np.asarray(ctx.model._fit_data["c"]) == 0)
 
 
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
-
-
 # ---------------------------------------------------------------------------
 # Proportional hazards
 # ---------------------------------------------------------------------------
@@ -171,7 +160,7 @@ def _trend(ctx: Context, j: int) -> float:
     g = zph_times(cox_fit_data(ctx.model), "km")[events]
     scaled = _residuals(ctx, "scaled_schoenfeld")[:, j]
     weights = np.asarray(ctx.model._fit_data["n"], dtype=float)[events]
-    return float(np.sign(np.cov(g, scaled, aweights=weights)[0, 1]))
+    return _trend_sign(g, scaled, weights)
 
 
 def _ph_rows(ctx: Context) -> list[dict]:
@@ -325,26 +314,12 @@ def _form_rows(ctx: Context) -> list[dict]:
 
 
 def _form_panels(ctx: Context) -> list[Panel]:
-    from .smooth import lowess
-
     Z = _raw_Z(ctx)
     martingale = _residuals(ctx, "martingale")
-    panels = []
-    for j, name in _form_columns(ctx):
-
-        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
-            from surpyval.plotting import INK, PALETTE
-
-            z = Z[:, j]
-            grid = np.linspace(z.min(), z.max(), 60)
-            ax.scatter(z, martingale, s=10, color=INK["muted"], alpha=0.6)
-            ax.plot(grid, lowess(z, martingale, grid), color=PALETTE[0])
-            ax.axhline(0.0, color=INK["axis"], lw=0.8)
-            ax.set_xlabel(name)
-            ax.set_ylabel("martingale residual")
-
-        panels.append(Panel(f"{name}: functional form", draw))
-    return panels
+    return [
+        _form_panel(name, Z[:, j], martingale, "martingale residual")
+        for j, name in _form_columns(ctx)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -477,26 +452,11 @@ def _overall_panels(ctx: Context) -> list[Panel]:
     # Cox-Snell residual: each row's cumulative hazard over its time at
     # risk, delta - martingale.
     r = (c == 0).astype(float) - _residuals(ctx, "martingale")
-    order = np.argsort(r, kind="stable")
-    r, c, n = r[order], c[order], n[order]
-    uniq, first = np.unique(r, return_index=True)
-    at_risk = n[::-1].cumsum()[::-1][first]
-    deaths = np.bincount(
-        np.searchsorted(uniq, r), weights=n * (c == 0), minlength=uniq.size
-    )
-    H = np.cumsum(deaths / at_risk)
-    keep = deaths > 0
-
-    def draw(ax: Any, options: Any) -> None:
-        from surpyval.plotting import INK, PALETTE
-
-        ax.step(uniq[keep], H[keep], where="post", color=PALETTE[0])
-        top = float(max(uniq[keep].max(), H[keep].max())) if keep.any() else 1
-        ax.plot([0, top], [0, top], color=INK["secondary"], ls="--", lw=0.8)
-        ax.set_xlabel("Cox-Snell residual")
-        ax.set_ylabel("cumulative hazard")
-
-    return [Panel("overall fit (Cox-Snell)", draw)]
+    return [
+        _cox_snell_panel(
+            r, c, n, "Cox-Snell residual", "overall fit (Cox-Snell)"
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -506,13 +466,16 @@ def _validate(model: Any) -> None:
     # A penalised fit has no p-values; the message is the one its
     # covariance and bounds give.
     refuse_penalised(model)
-    if getattr(model, "is_stratified", False):
-        raise NotImplementedError(
-            "diagnose() is not yet available for a stratified Cox model: "
-            "the residuals its checks use (compute_residuals) do not "
-            "handle strata yet; tracked in #868. Diagnose the model "
-            "fitted without strata= to see which covariates break "
-            "proportional hazards."
+    if getattr(model, "time_interaction", None):
+        raise ValueError(
+            "diagnose() does not check a Cox model with time-varying "
+            "coefficients (fitted with time_interaction), as R's cox.zph "
+            "does not take a tt() model. In summary(), the Wald test of "
+            "each interaction (its p) tests proportional hazards for that "
+            "covariate against its function of time, and "
+            "time_varying_effect(covariate).plot() draws its coefficient "
+            "over time; diagnose() the model without time_interaction for "
+            "the other checks."
         )
     if getattr(model, "maximum", None) == "no finite maximum":
         raise ValueError(
@@ -548,6 +511,14 @@ def _notes(ctx: Context) -> list[str]:
         "Cox-Snell residuals sum to its number of events by construction, "
         "so they have no useful test.",
     ]
+    if getattr(ctx.model, "is_stratified", False):
+        notes.append(
+            "The model is stratified ({} strata): every residual and test "
+            "is within each stratum's risk sets, as R's residuals and "
+            "cox.zph compute them for a fit with strata(), and the "
+            "calibration curve predicts each row from its own stratum's "
+            "baseline.".format(len(ctx.model.strata_labels))
+        )
     tie_method = str(getattr(ctx.model, "tie_method", "efron")).lower()
     if tie_method not in ("efron", "breslow"):
         notes.append(
@@ -568,10 +539,6 @@ def _notes(ctx: Context) -> list[str]:
 # ---------------------------------------------------------------------------
 # Advice
 # ---------------------------------------------------------------------------
-def _ph_name(row: dict) -> str:
-    return row["covariates"][0]
-
-
 def _stratify(row: dict, ctx: Context) -> str:
     name = _ph_name(row)
     var = _source(name)
@@ -585,19 +552,35 @@ def _stratify(row: dict, ctx: Context) -> str:
     )
 
 
+def _interaction_key(row: dict, ctx: Context) -> str:
+    """How ``time_interaction`` names the covariate of ``row``: by name
+    where the model's covariates are named, else by its position."""
+    name = _ph_name(row)
+    names = getattr(ctx.model, "feature_names", None)
+    if names is not None and name in list(names):
+        return repr(name)
+    return str(list(ctx.names).index(name))
+
+
 def _time_varying(row: dict, ctx: Context) -> str:
     return (
         "The effect of {name} changes with time (it fails the "
-        "proportional-hazards test). Give it a time-varying effect: split "
-        "each unit's follow-up at one or more times (where its scaled "
-        "Schoenfeld residuals in d.plot('proportional_hazards') bend) and "
-        "fit CoxPH.fit_tvc on the pieces, with one column per period "
-        "holding {name} in that period and 0 elsewhere, so that each "
-        "period has its own coefficient. Or bin {name} (with pandas.cut, "
-        "say) and stratify on the bins (CoxPH.fit(..., strata=...)). Or "
-        "fit a parametric accelerated failure time model, such as "
-        "WeibullAFT.fit or LogNormalAFT.fit, which does not assume "
-        "proportional hazards.".format(name=_ph_name(row))
+        "proportional-hazards test). Give it a time-varying coefficient, "
+        "beta + gamma log(t): refit with CoxPH.fit(..., "
+        'time_interaction={{{key}: "log"}}) (or "t" for beta + gamma t; '
+        "see where its scaled Schoenfeld residuals in "
+        "d.plot('proportional_hazards') bend), then read the interaction's "
+        "row in summary() and draw the coefficient over time with "
+        "time_varying_effect({key}).plot(). For an effect that changes "
+        "at one or more times instead, split each unit's follow-up there "
+        "and fit CoxPH.fit_tvc on the pieces, with one column per period "
+        "holding {name} in that period and 0 elsewhere. Or bin {name} "
+        "(with pandas.cut, say) and stratify on the bins (CoxPH.fit(..., "
+        "strata=...)). Or fit a parametric accelerated failure time model, "
+        "such as WeibullAFT.fit or LogNormalAFT.fit, which does not assume "
+        "proportional hazards.".format(
+            name=_ph_name(row), key=_interaction_key(row, ctx)
+        )
     )
 
 
@@ -675,14 +658,6 @@ def _cluster_message(row: Any, ctx: Context) -> str:
     )
 
 
-def _is_cox(model: Any) -> bool:
-    from surpyval.univariate.regression.semi_parametric_regression_model import (  # noqa: E501
-        SemiParametricRegressionModel,
-    )
-
-    return isinstance(model, SemiParametricRegressionModel)
-
-
 #: The Cox family: its checks, in the order of the table, and its advice.
 COX = register(
     Family(
@@ -739,6 +714,7 @@ COX = register(
                 "proportional_hazards",
                 _time_varying,
                 (
+                    "CoxPH.fit(time_interaction=)",
                     "CoxPH.fit_tvc",
                     "CoxPH.fit(strata=)",
                     "WeibullAFT.fit",

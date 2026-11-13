@@ -58,7 +58,7 @@ def validate_xy(
         else "{}, {}, and {}".format(*names)
     )
     if any(a.ndim != 1 for a in arrays.values()):
-        raise ValueError("{} must be one dimensional".format(listed))
+        raise ValueError(f"{listed} must be one dimensional")
     lengths = [len(a) for a in arrays.values()]
     if len(set(lengths)) > 1:
         raise ValueError(
@@ -70,8 +70,8 @@ def validate_xy(
             )
         )
     if lengths[0] == 0:
-        raise ValueError("{} must not be empty".format(listed))
+        raise ValueError(f"{listed} must not be empty")
     for name in ("x", "y"):
         if not np.isfinite(arrays[name]).all():
-            raise ValueError("{} must contain only finite values".format(name))
+            raise ValueError(f"{name} must contain only finite values")
     return arrays["x"], arrays["y"], arrays.get(i_name)

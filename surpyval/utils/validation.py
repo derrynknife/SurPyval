@@ -7,7 +7,8 @@ and they may change without notice.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -218,7 +219,7 @@ def unknown_cause_error(cause: Any, causes: Any) -> ValueError:
     ValueError("Unknown cause 'c'; the causes are ['a', 'b']")
     """
     return ValueError(
-        "Unknown cause {!r}; the causes are {}".format(cause, list(causes))
+        f"Unknown cause {cause!r}; the causes are {list(causes)}"
     )
 
 
@@ -249,8 +250,41 @@ def missing_cause_error(what: str) -> ValueError:
     >>> missing_cause_error("The CIF")
     ValueError('The CIF is of one cause at a time; pass `event`.')
     """
-    return ValueError(
-        "{} is of one cause at a time; pass `event`.".format(what)
+    return ValueError(f"{what} is of one cause at a time; pass `event`.")
+
+
+def refuse_subdistribution_entry(
+    x: Any, tl: Any, what: str, instead: str
+) -> None:
+    """Refuse delayed entry ``tl`` in a subdistribution (Fine-Gray) method.
+
+    The subdistribution risk set keeps the units that failed from another
+    cause; with late entry it needs truncation weights (Geskus 2011) that
+    are not built. Entry times that are all before the first time change
+    no risk set, so they are taken (and ignored): a ``SurpyvalData``
+    without truncation passes its ``tl`` of ``-inf``.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import refuse_subdistribution_entry
+    >>> refuse_subdistribution_entry([2, 3], [0, 0], "FineGray", "")
+    >>> try:
+    ...     refuse_subdistribution_entry([2, 3], [0, 2.5], "FineGray", "")
+    ... except ValueError as error:
+    ...     print(str(error).split(" where")[0])
+    FineGray takes no delayed entry (left truncation, `tl`)
+    """
+    if tl is None:
+        return
+    x_arr = np.asarray(x, dtype=float)
+    tl_arr = np.asarray(tl, dtype=float)
+    if x_arr.size == 0 or not np.any(tl_arr >= np.nanmin(x_arr)):
+        return
+    raise ValueError(
+        f"{what} takes no delayed entry (left truncation, `tl`) where an "
+        "item enters after the first time: its subdistribution risk set "
+        "keeps the items that failed from another cause, and with late "
+        "entry that needs truncation weights, which are not built. " + instead
     )
 
 
@@ -392,7 +426,7 @@ def validate_1d(arr: npt.ArrayLike, name: str) -> npt.NDArray:
     """
     out = np.atleast_1d(np.asarray(arr, dtype=float))
     if out.ndim != 1:
-        raise ValueError("'{}' must be one-dimensional".format(name))
+        raise ValueError(f"'{name}' must be one-dimensional")
     return out
 
 
@@ -450,8 +484,8 @@ def validate_cr_df_inputs(
     df: Any,
     x_col: str,
     e_col: str,
-    c_col: "str | None" = None,
-    n_col: "str | None" = None,
+    c_col: str | None = None,
+    n_col: str | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x = df[x_col].values
     e = df[e_col].values
@@ -470,8 +504,8 @@ def validate_cr_df_inputs(
 
 def validate_cr_inputs(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
     e: npt.ArrayLike,
     method: str,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -516,13 +550,18 @@ def validate_cif_event(event: Any) -> None:
 def validate_coxph_df_inputs(
     df: Any,
     x_col: str,
-    c_col: "str | None",
-    n_col: "str | None",
-    Z_cols: "str | list[str] | None",
-    formula: "str | None",
-    tl_col: "str | None" = None,
-    strata_col: "str | None" = None,
+    c_col: str | None,
+    n_col: str | None,
+    Z_cols: str | list[str] | None,
+    formula: str | None,
+    tl_col: str | None = None,
+    strata_col: str | None = None,
+    w_col: str | None = None,
 ) -> tuple:
+    """The arrays of a ``CoxPH.fit_from_df``: ``(x, c, n, tl, strata, Z,
+    formula, feature_names, model_spec)``, every column through the one
+    mask of the rows with every covariate, and the weights ``w`` last
+    where ``w_col`` is given (the tuple is as before without it)."""
     from surpyval.univariate.regression.regression_data import (
         design_matrix_from_df,
     )
@@ -538,6 +577,7 @@ def validate_coxph_df_inputs(
         n_col=n_col,
         tl_col=tl_col,
         strata_col=strata_col,
+        w_col=w_col,
     )
     # Rows with a missing covariate drop (with one warning), and the times,
     # flags, counts, entry times and strata with them.
@@ -562,7 +602,11 @@ def validate_coxph_df_inputs(
     # covariates drop.
     tl = None if tl_col is None else df.loc[mask, tl_col].values
     strata = None if strata_col is None else df.loc[mask, strata_col].values
+    # The weights too: a row dropped for a missing covariate drops its
+    # weight with it.
+    w = None if w_col is None else df.loc[mask, w_col].values
 
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    return x, c, n, tl, strata, Z, formula, feature_names, model_spec
+    out = (x, c, n, tl, strata, Z, formula, feature_names, model_spec)
+    return out if w_col is None else out + (w,)

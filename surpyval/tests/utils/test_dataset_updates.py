@@ -33,7 +33,7 @@ def test_the_monthly_refresh_is_two_lines():
     assert refreshed.c.tolist() == [0, 1, 0, 1]
     assert refreshed.x.tolist() == [560.0, 760.0, 300.0, 760.0]
     assert refreshed.n.tolist() == [1, 3, 2, 5]  # counts kept and given
-    assert refreshed.covariate_names == ["load"] and refreshed.unit == "hour"
+    assert refreshed.covariate_names == ["load"] and refreshed.unit == "hours"
     assert list(refreshed.e) == ["seal", None, None, None]
     assert FLEET.item("CV-1").right_censored == 500  # the old data as it was
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from autograd import numpy as np
 from numpy.typing import ArrayLike
@@ -15,6 +15,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -22,6 +23,7 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -31,7 +33,7 @@ def nhpp_log_likelihood(
     cif: Callable,
     log_iif: Callable,
     s: dict,
-    eta: "dict | None" = None,
+    eta: dict | None = None,
 ) -> float:
     """The log-likelihood of an NHPP, for the plain and the
     proportional-intensity fitters (#350).
@@ -97,7 +99,7 @@ def nhpp_log_likelihood(
     return ll
 
 
-def log_one_minus_exp(delta: "np.ndarray") -> "np.ndarray":
+def log_one_minus_exp(delta: np.ndarray) -> np.ndarray:
     """``log(1 - exp(-delta))``, the log chance of at least one event of a
     Poisson count with mean ``delta``, without the loss of precision of
     the direct form for small ``delta``."""
@@ -141,7 +143,7 @@ class NHPPFitter(IntensityModel):
         over the longest time)."""
         return np.ones(len(self.parameter_names))
 
-    def _closed_form_mle(self, data: EventHistoryData) -> "np.ndarray | None":
+    def _closed_form_mle(self, data: EventHistoryData) -> np.ndarray | None:
         """The exact maximum-likelihood parameters where the model has a
         closed form for ``data``, else ``None`` (the default): the search
         is then run."""
@@ -152,7 +154,7 @@ class NHPPFitter(IntensityModel):
         self,
         data: EventHistoryData,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> ParametricRecurrenceModel:
         """
         Fit the NHPP model from recurrent data using either Maximum Likelihood
@@ -324,20 +326,22 @@ class NHPPFitter(IntensityModel):
         model._n_obs = bic_sample_size(data)
         return model
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        t: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
-        windows: "dict | None" = None,
+        init: ArrayLike | None = None,
+        windows: dict | None = None,
     ) -> ParametricRecurrenceModel:
         """
         Fit the NHPP model from the provided data. This function prepares the
@@ -354,6 +358,13 @@ class NHPPFitter(IntensityModel):
             also takes negative times inside a negative ``tl`` window.
             Data with no events, or with a single event and no observation
             after it, raise a ``ValueError``.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i: array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.

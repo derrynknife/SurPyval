@@ -77,7 +77,9 @@ class ExponentialLifeModel_(LifeModel):
       pre-exponential factor).
 
     In ``surpyval.life_models`` it is ``Exponential``; at the top level
-    that name is the distribution.
+    that name is the distribution. ``life_models.Arrhenius`` is another
+    name for it: a model built with it saves and loads as ``Arrhenius``
+    and is otherwise identical.
 
     Examples
     --------
@@ -92,12 +94,18 @@ class ExponentialLifeModel_(LifeModel):
     phi_takes_rows = True
     log_scale_parameters = ("b",)
 
-    def __init__(self) -> None:
+    def __init__(self, name: str = "Exponential") -> None:
         super().__init__(
-            "Exponential",
+            name,
             {"a": 0, "b": 1},
             ((None, None), (0, None)),
         )
+
+    @property
+    def canonical_name(self) -> str:
+        # The same for both names of the model (``Arrhenius`` is another
+        # name for ``Exponential``).
+        return "Exponential"
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
         # One exponent, which e^(a / Z) alone can overflow (#634)
@@ -113,3 +121,7 @@ class ExponentialLifeModel_(LifeModel):
 
 
 ExponentialLifeModel = ExponentialLifeModel_()
+#: The exponential life model by the name it is known by for temperature:
+#: the Arrhenius model. The same model under another name; a model built
+#: with it carries the name (its repr, what it saves as).
+ArrheniusLifeModel = ExponentialLifeModel_("Arrhenius")

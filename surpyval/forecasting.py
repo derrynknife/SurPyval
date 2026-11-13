@@ -190,7 +190,7 @@ class Forecast:
         if self.per_unit is not None:
             head += "; every failure counted"
         if self.simulations is not None:
-            head += " ({} simulated futures per unit)".format(self.simulations)
+            head += f" ({self.simulations} simulated futures per unit)"
         columns = [
             ("horizon", self.horizon),
             ("expected", self.expected),
@@ -201,8 +201,7 @@ class Forecast:
             ("period upper", self.period_upper),
         ]
         cells = [
-            [name] + ["{:.4g}".format(v) for v in values]
-            for name, values in columns
+            [name] + [f"{v:.4g}" for v in values] for name, values in columns
         ]
         widths = [max(len(c) for c in col) for col in cells]
         rows = [
@@ -245,7 +244,9 @@ def forecast(
       :math:`h`, with mean :math:`\mu_i = \Lambda(a_i + h) -
       \Lambda(a_i)`; the fleet's count is Poisson with mean
       :math:`\sum_i n_i \mu_i` (also its variance), and its interval is
-      the Poisson one.
+      the Poisson one. A ``CauseSpecificNHPP`` is forecast as the sum of
+      its causes' processes, failures of every type (its ``forecast``
+      method takes one type as ``event``).
     - a renewal or imperfect-repair model (``GeneralizedRenewal``,
       ``GeneralizedOneRenewal``, ``ARA``, ``ARI``): each unit's future
       depends on its own history, so each is simulated ``items`` times
@@ -263,8 +264,8 @@ def forecast(
         A univariate model (a distribution, a mixture, a non-parametric
         estimate; anything with ``sf(x)``), a regression model (with
         ``sf(x, Z)``), or a recurrent-event model: a Poisson process
-        (``ParametricRecurrenceModel``, ``ProportionalIntensityModel``) or
-        a renewal model (``RenewalModel``).
+        (``ParametricRecurrenceModel``, ``ProportionalIntensityModel``,
+        ``CauseSpecificNHPP``) or a renewal model (``RenewalModel``).
     age : array_like, optional
         The current age of each unit or cohort: the time it has survived
         so far, on the model's time scale (for a recurrent-event model,
@@ -532,6 +533,12 @@ def _counts(n: Any, k: int) -> npt.NDArray:
 def _recurrent_kind(model: Any) -> str | None:
     """``"renewal"`` for a renewal model, ``"intensity"`` for a Poisson
     process (plain or proportional intensity), else ``None``."""
+    from surpyval.recurrent.competing_risks.parametric import (
+        CauseSpecificNHPP,
+    )
+    from surpyval.recurrent.competing_risks.regression import (
+        CauseSpecificProportionalIntensity,
+    )
     from surpyval.recurrent.parametric.parametric_recurrence import (
         ParametricRecurrenceModel,
     )
@@ -540,10 +547,19 @@ def _recurrent_kind(model: Any) -> str | None:
     )
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
+    if isinstance(model, CauseSpecificProportionalIntensity):
+        # Several event types with covariates: not forecast yet. The
+        # model's own refusal says what to use instead.
+        model.forecast()
     if isinstance(model, RenewalModel):
         return "renewal"
     if isinstance(
-        model, (ParametricRecurrenceModel, ProportionalIntensityModel)
+        model,
+        (
+            ParametricRecurrenceModel,
+            ProportionalIntensityModel,
+            CauseSpecificNHPP,
+        ),
     ):
         return "intensity"
     return None
@@ -581,6 +597,10 @@ def _intensity_forecast(
     )
 
     regression = isinstance(model, ProportionalIntensityModel)
+    if callable(getattr(model, "_superposed", None)):
+        # A cause-specific model: events of every type, the sum of its
+        # independent Poisson processes, which is one too.
+        model = model._superposed()
     units = None
     if age is None:
         data = getattr(model, "data", None)
@@ -674,7 +694,7 @@ def _renewal_forecast(
         )
     items = 1000 if items is None else int(items)
     if items < 2:
-        raise ValueError("items must be at least 2; got {}".format(items))
+        raise ValueError(f"items must be at least 2; got {items}")
     states = model._states(None if age is None else _ages(age))
     k = states.now.size
     end_limit = _limits(limit, k)

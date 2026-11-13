@@ -7,6 +7,7 @@ Cox fits; ``test_cox.py`` covers the family's own checks.
 import importlib
 import inspect
 import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -336,33 +337,40 @@ REG = "surpyval.univariate.regression."
 
 
 @pytest.mark.parametrize(
-    "path, attributes, issue",
+    "path, attributes, instead",
     [
-        (
-            "surpyval.univariate.competing_risks.ParametricCompetingRisks",
-            {},
-            874,
-        ),
-        (REG + "BuckleyJamesModel", {}, 867),
+        (REG + "BuckleyJamesModel", {}, "diagnose\\(\\) on an AFT fit"),
     ],
 )
-def test_families_not_built_yet_refuse_naming_their_issue(
-    path, attributes, issue
+def test_families_not_built_yet_refuse_saying_what_to_use(
+    path, attributes, instead
 ):
     model = _bare(path, **attributes)
     assert isinstance(model, DiagnoseMixin)
-    with pytest.raises(NotImplementedError, match="#{}".format(issue)):
+    with pytest.raises(NotImplementedError, match="not built yet") as info:
         model.diagnose()
+    assert re.search(instead, str(info.value))
+    assert "#" not in str(info.value)
+
+
+def test_a_model_with_no_family_refuses_saying_what_to_use(monkeypatch):
+    # Neither a family nor a PENDING entry: the general refusal.
+    monkeypatch.setattr(registry, "PENDING", ())
+    model = _bare(REG + "BuckleyJamesModel")
+    with pytest.raises(NotImplementedError) as info:
+        model.diagnose()
+    message = str(info.value)
+    assert "not yet available for BuckleyJamesModel" in message
+    assert "KaplanMeier" in message and "CoxPH" in message
+    assert "#" not in message
 
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
     x, c = rossi["week"].values, rossi["censored"].values
-    e = np.where(rossi["prio"].values > 2, "a", "b").astype(object)
-    e[c == 1] = None
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        model = sp.ParametricCompetingRisks.fit(x, e, c=c)
-    with pytest.raises(NotImplementedError, match="#874"):
+        model = sp.BuckleyJames.fit(x, rossi[["prio"]].values, c=c)
+    with pytest.raises(NotImplementedError, match="are not built yet"):
         model.diagnose()
 
 

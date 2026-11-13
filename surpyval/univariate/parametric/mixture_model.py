@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import functools
 import numbers
-import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
@@ -41,12 +41,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import (
-    MIXTURE_EM_ATTRIBUTES,
-    RemovedName,
-    removed_arguments,
-    removed_attributes,
-)
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -60,7 +55,7 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -86,20 +81,8 @@ _FIT_CACHES = ("_Q_jac_cache", "_Q_value_and_grad_cache", "_log_resp_cache")
 
 
 class _NonFiniteGradient(ArithmeticError):
-    """An autograd gradient that is not finite (see ``_finite_gradient``)."""
-
-
-def _finite_gradient(jac: Callable[..., Any]) -> Callable[..., Any]:
-    """``jac``, raising ``_NonFiniteGradient`` where it is not finite, which
-    L-BFGS-B would otherwise follow to the bounds."""
-
-    def checked(x: npt.NDArray) -> npt.NDArray:
-        g = np.asarray(jac(x), dtype=float)
-        if not np.all(np.isfinite(g)):
-            raise _NonFiniteGradient
-        return g
-
-    return checked
+    """An autograd gradient that is not finite, which L-BFGS-B would
+    otherwise follow to the bounds."""
 
 
 class _FitMethod:
@@ -157,6 +140,20 @@ class _FitMethod:
         fit.__dict__.pop("__signature__", None)
         fit.__dict__.pop("_takes_unit", None)
         return takes_unit(accepts_surpyval_data(fit))
+
+
+def _stack(values: list, n: int) -> npt.NDArray:
+    """The components' values at ``n`` points as an ``(m, n)`` array (a
+    component may give a scalar for one point)."""
+    try:
+        out = onp.array(values, dtype=float)
+    except ValueError:  # ragged: a scalar beside arrays
+        out = onp.empty(0)
+    if out.shape != (len(values), n):
+        out = onp.array(
+            [onp.broadcast_to(onp.asarray(v, float), n) for v in values]
+        )
+    return out
 
 
 class MixtureModel(
@@ -856,8 +853,7 @@ class MixtureModel(
             return cached or None
         jac = grad(self._Q)
         try:
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 g = np.asarray(jac(self.params.ravel()), dtype=float)
             usable = bool(np.all(np.isfinite(g)))
         except Exception:
@@ -1005,8 +1001,7 @@ class MixtureModel(
         params = np.zeros((m, k))
         w = np.zeros(m)
         try:
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 for i, rows in enumerate(blocks):
                     rows = np.sort(rows)
                     params[i] = self.dist.fit(
@@ -1173,8 +1168,7 @@ class MixtureModel(
             # A weight of 0, or a parameter on its bound: no interior
             # point to polish from.
             return False
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             try:
                 f0 = float(fun(x0))
                 res = preconditioned_bfgs(fun, x0, (), jac, obj_scale=n_obs)
@@ -1242,9 +1236,12 @@ class MixtureModel(
             Array of observations of the random variables. If x is
             :code:`None`, xl and xr must be provided.
         c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. If not provided
-            will assume all values are observed.
+            Array of censoring flags. 0 is observed (the event, such as a
+            failure, a death or a relapse, happened at ``x``), 1 is right
+            censored (no event by ``x``), -1 is left censored (the event was
+            before ``x``) and 2 is interval censored. A status column in which
+            1 marks the event is the reverse: pass ``1 - status``. If not
+            provided will assume all values are observed.
         n : array like, optional
             Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
@@ -1677,6 +1674,50 @@ class MixtureModel(
             S = S + self.w[i] * self.dist.sf(x, *self.params[i])
         return S
 
+    def _component_hazards(
+        self, x: npt.NDArray, rate: bool
+    ) -> tuple[npt.NDArray, npt.NDArray | None] | None:
+        """The mixture's cumulative hazard at the 1-d ``x``, and its hazard
+        rate too if ``rate``, from one call of each component's ``Hf``
+        (and ``hf``); ``None`` where these do not apply (a discrete
+        distribution, or one without ``Hf`` / ``hf``), for the caller to
+        use the survival functions instead.
+
+        ``H`` is ``-log1p(-sum_i w_i F_i)`` while the mixture has failed
+        less than half (each ``F_i = -expm1(-H_i)`` is accurate where it
+        is small), and ``-log sum_i exp(log w_i - H_i)`` (summed in logs)
+        beyond, which stays finite where every survival underflows. The
+        hazard rate is ``sum_i pi_i h_i`` with ``pi_i = w_i S_i / S =
+        exp(log w_i - H_i + H)``, the share of the survivors that come
+        from component ``i``. Plain NumPy: nothing here is differentiated.
+        """
+        dist = self.dist
+        if (
+            getattr(dist, "discrete", False)
+            or not callable(getattr(dist, "Hf", None))
+            or (rate and not callable(getattr(dist, "hf", None)))
+        ):
+            return None
+        n = x.size
+        with onp.errstate(all="ignore"):
+            H_i = _stack([dist.Hf(x, *row) for row in self.params], n)
+            w = onp.asarray(self.w, dtype=float)[:, None]
+            F = onp.sum(w * -onp.expm1(-H_i), axis=0)
+            H = -onp.log1p(-F)
+            far = ~(F < 0.5) & ~onp.isnan(F)
+            if far.any():
+                terms = onp.log(w) - H_i[:, far]
+                top = onp.max(terms, axis=0)
+                lse = top + onp.log(onp.sum(onp.exp(terms - top), axis=0))
+                H[far] = -onp.where(onp.isfinite(top), lse, top)
+            if not rate:
+                return H, None
+            h_i = _stack([dist.hf(x, *row) for row in self.params], n)
+            share = w * onp.exp(H - H_i)
+            h = onp.sum(onp.where(share > 0, share * h_i, 0.0), axis=0)
+            h = onp.where(onp.isnan(H), onp.nan, h)
+        return H, h
+
     @keeps_query_shape
     def Hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
@@ -1684,10 +1725,12 @@ class MixtureModel(
         sf(x)``.
 
         It keeps its precision at both ends: where the mixture has failed
-        less than half it is ``-log1p(-ff(x))`` (``ff`` is accurate where
-        it is small), elsewhere ``-log sf(x)`` from the summed survival,
-        and where that survival underflows to 0 it is the log-sum-exp of
-        the components' log survivals, so it stays finite far in the tail.
+        less than half it is ``-log1p(-ff(x))``, with each component's
+        failure probability taken from its own cumulative hazard
+        (accurate where it is small); beyond, it is ``-log`` of the
+        weighted sum of the components' survivals, summed in logs, so it
+        stays finite far in the tail where the survival underflows. Each
+        component's ``Hf`` is called once.
 
         Parameters
         ----------
@@ -1710,6 +1753,9 @@ class MixtureModel(
         array([0.3505, 1.1196])
         """
         x = np.asarray(x, dtype=float)
+        fast = self._component_hazards(x, rate=False)
+        if fast is not None:
+            return fast[0]
         F = np.asarray(self.ff(x), dtype=float)
         S = np.asarray(self.sf(x), dtype=float)
         with np.errstate(all="ignore"):
@@ -1724,7 +1770,6 @@ class MixtureModel(
                 H[gone] = -logsumexp(log_w + log_s, axis=0)
         return H
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
@@ -1770,9 +1815,13 @@ class MixtureModel(
         """
         The hazard function of the fitted mixture, ``df(x) / sf(x)``.
 
-        Where the mixture's survival underflows to 0 (far in its upper
-        tail) the ratio is taken from the components' log densities and
-        log survivals instead, so it stays finite there.
+        It is computed as the components' hazards averaged over the
+        survivors: ``sum_i pi_i h_i(x)``, where ``pi_i = w_i S_i(x) /
+        S(x)`` is the share of the items still running at ``x`` that
+        belong to component ``i``, found in logs from the components'
+        cumulative hazards. So it stays finite and precise far in the
+        upper tail, where the survival underflows, and calls each
+        component's ``Hf`` and ``hf`` once.
 
         Parameters
         ----------
@@ -1795,6 +1844,35 @@ class MixtureModel(
         array([0.1091, 0.1435])
         """
         x = np.asarray(x, dtype=float)
+        both = self._hazard_and_rate(x)
+        if both is None:
+            return self._hf_from_densities(x)
+        return both[1]
+
+    def _hazard_and_rate(
+        self, x: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray] | None:
+        """``(Hf(x), hf(x))`` at the 1-d ``x`` from one pass over the
+        components (see ``_component_hazards``), or ``None`` where that
+        does not apply. The renewal models' simulations call it to take
+        Newton steps on ``H``."""
+        fast = self._component_hazards(x, rate=True)
+        if fast is None:
+            return None
+        H, rate = fast
+        assert rate is not None
+        # Past every component's support (no survivors) the shares are
+        # undefined: there it is the ratio of the sums, as before.
+        empty = H == np.inf
+        if np.any(empty):
+            rate = onp.array(rate)
+            rate[empty] = self._hf_from_densities(x[empty])
+        return H, rate
+
+    def _hf_from_densities(self, x: npt.NDArray) -> npt.NDArray:
+        """``df(x) / sf(x)`` from the summed densities and survivals (in
+        logs where the survival underflows), for a mixture whose
+        components' hazards cannot be used directly."""
         sf = self.sf(x)
         with np.errstate(all="ignore"):
             hf = self.df(x) / sf
@@ -1964,6 +2042,16 @@ class MixtureModel(
         ]
         return names + [f"w_{i}" for i in range(self.m)]
 
+    def _estimates(self) -> npt.NDArray:
+        """The fitted values in the order of :attr:`covariance_names`: the
+        components' parameters row by row, then the weights, so
+        ``with_params(model._estimates())`` is the mixture."""
+        if self.params is None or self.w is None:
+            raise ValueError("_estimates() needs a fitted mixture")
+        return np.concatenate(
+            [np.ravel(self.params), np.ravel(self.w)]
+        ).astype(float)
+
     def _theta_covariance(self) -> npt.NDArray:
         """The inverse of the observed information in the unconstrained
         coordinates of :meth:`_pack` (the weights' log-ratios to the last
@@ -1995,8 +2083,7 @@ class MixtureModel(
             w, params = self._unpack(th)
             return self.neg_ll_of(w, params)
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             info = np.asarray(hessian(fun)(theta), dtype=float)
             if not np.all(np.isfinite(info)):
                 # autograd's second derivative can be NaN where the first
@@ -2627,8 +2714,3 @@ class MixtureModel(
             xlabel=axis_label(self.unit),
             **kwargs,
         )
-
-
-# The EM steps' public names before v0.24 say where they went (#653).
-for _old, _removed in removed_attributes(MIXTURE_EM_ATTRIBUTES).items():
-    setattr(MixtureModel, _old, _removed)

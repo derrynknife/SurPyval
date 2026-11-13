@@ -1,5 +1,6 @@
 import functools
-from typing import TYPE_CHECKING, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -181,6 +182,7 @@ class CrowAMSAA(NHPPFitter):
         i: "ArrayLike | None" = None,
         c: "ArrayLike | None" = None,
         bc: "Iterable | None" = None,
+        bias_corrected: bool = True,
     ) -> "GrowthProjection":
         """
         Project the MTBF of a reliability growth test once the fixes
@@ -220,6 +222,16 @@ class CrowAMSAA(NHPPFitter):
         potential is the same without that term: every BD mode found and
         fixed with these factors.
 
+        MIL-HDBK-00189A uses those bias-corrected shapes. MIL-HDBK-189C
+        prints the same worked example with the plain maximum-likelihood
+        shapes (:math:`\\hat\\beta_{CA} N / (kT)` and
+        :math:`\\hat\\beta = K / \\sum_i \\ln(T / t_i)`), which gives a
+        lower projection; ``bias_corrected=False`` reproduces it. The
+        handbook itself recommends the bias-corrected form (its section
+        6.3.2.8). Only exact failure times are taken, so the handbook's
+        grouped-data rule (always the plain maximum likelihood shape) does
+        not arise.
+
         Parameters
         ----------
         x : array_like
@@ -239,6 +251,10 @@ class CrowAMSAA(NHPPFitter):
             row (a time-terminated test).
         bc : iterable, optional
             The BC modes, fixed during the test.
+        bias_corrected : bool, default True
+            Use the bias-corrected shapes, as MIL-HDBK-00189A does (the
+            default). ``False`` uses the plain maximum-likelihood shapes,
+            as the worked example of MIL-HDBK-189C does.
 
         Returns
         -------
@@ -288,7 +304,11 @@ class CrowAMSAA(NHPPFitter):
         section 7.5; ReliaWiki's Crow Extended examples), 56 failures to
         T = 400 with 14 BC and 16 BD modes, is reproduced: shape 0.9103
         (bias-corrected; the MLE is 0.9268), demonstrated MTBF 7.84708,
-        BD modes' shape 0.7472, projected MTBF 11.29418 (#730).
+        BD modes' shape 0.7472, projected MTBF 11.29418 (#730). With
+        ``bias_corrected=False`` the same data give MIL-HDBK-189C's version
+        of it (section 6.3.3.8): shapes 0.9268 and 0.7970, demonstrated
+        MTBF 7.71, projected MTBF 10.82 (10.83 unrounded: the handbook
+        adds rounded terms).
 
         Examples
         --------
@@ -321,7 +341,16 @@ class CrowAMSAA(NHPPFitter):
         """
         from .growth_projection import growth_projection
 
-        return growth_projection(self, x, modes, fef, i=i, c=c, bc=bc)
+        return growth_projection(
+            self,
+            x,
+            modes,
+            fef,
+            i=i,
+            c=c,
+            bc=bc,
+            bias_corrected=bias_corrected,
+        )
 
 
 # -- Crow's (1982) exact bounds on the demonstrated MTBF (#578) ------------

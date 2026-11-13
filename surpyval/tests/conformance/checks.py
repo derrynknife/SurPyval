@@ -29,7 +29,7 @@ from surpyval.tests.conformance.registry import predictions, scramble
 # ---------------------------------------------------------------------------
 # How each function scales with the time unit: value(K x) * K**power
 # in the new unit equals value(x) in the old one.
-_POWER = {"hf": 1, "df": 1, "iif": 1, "pdf": 2, "qf": -1}
+_POWER = {"hf": 1, "df": 1, "iif": 1, "total_iif": 1, "pdf": 2, "qf": -1}
 
 
 def unit_power(case, key):
@@ -129,6 +129,10 @@ RULES = {
     "hf": (0.0, np.inf, 0),
     "df": (0.0, np.inf, 0),
     "cif": (0.0, 1.0, 1),
+    # A state's occupation probability: rises or falls (a transient state)
+    "occupancy": (0.0, 1.0, 0),
+    # The expected time spent in a state since the start: grows with time
+    "length_of_stay": (0.0, np.inf, 1),
     "mcf": (0.0, np.inf, 1),
     "iif": (0.0, np.inf, 0),
     "qf": (-np.inf, np.inf, 1),
@@ -138,6 +142,12 @@ RULES = {
 # For recurrent events ``cif`` is a cumulative intensity, not a probability.
 # The instantaneous MTBF, 1 / iif, of a recurrence model (#578).
 COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1), mtbf=(0.0, np.inf, 0))
+# The totals over the causes of a cause-specific intensity model
+COUNTING_RULES.update(
+    total_cif=COUNTING_RULES["cif"],
+    total_iif=COUNTING_RULES["iif"],
+    total_mtbf=COUNTING_RULES["mtbf"],
+)
 
 
 def check_valid(name, values, rule):

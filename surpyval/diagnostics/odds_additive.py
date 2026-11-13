@@ -83,13 +83,15 @@ one with more *continuous*, as for the Cox family.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2, norm
 
-from .cox import CATEGORICAL_LEVELS, _fmt
+from surpyval.utils.aliases import canonical_name
+from surpyval.utils.warnings import ignoring_warnings
+
+from ._shared import _covariate_kind, _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The number of periods follow-up is split into for the trend tests, at
@@ -190,12 +192,7 @@ def _data(ctx: Context) -> dict:
 def _kind(ctx: Context, j: int) -> str:
     """``"binary"``, ``"categorical"`` or ``"continuous"``, by the number
     of distinct values of covariate ``j``."""
-    levels = np.unique(_data(ctx)["Z"][:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
+    return _covariate_kind(np.unique(_data(ctx)["Z"][:, j]).size)
 
 
 def _cuts(ctx: Context) -> np.ndarray:
@@ -273,8 +270,8 @@ class _NotComputed(Exception):
 def _fit_split(
     ctx: Context,
     design: np.ndarray,
-    start: "np.ndarray | None" = None,
-    where: "list[int | None] | None" = None,
+    start: np.ndarray | None = None,
+    where: list[int | None] | None = None,
 ) -> Any:
     """The model's own estimator on the split rows with covariates
     ``design`` (one row per split row, the model's covariates less its
@@ -285,8 +282,7 @@ def _fit_split(
     which ``where[j]`` is the column of the model's covariate ``j``)."""
     s = _split(ctx)
     model = ctx.model
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         try:
             if _is_parametric(model):
                 beta = _coefficients(model)
@@ -344,7 +340,7 @@ _UNVERIFIED = (
 )
 
 
-def _fixed(model: Any, where: "list[int | None] | None" = None) -> dict:
+def _fixed(model: Any, where: list[int | None] | None = None) -> dict:
     """The model's fixed parameters, named as a fit from arrays names
     them: ``coef_k`` for the coefficient of the model's covariate ``j``,
     ``k = where[j]`` (``j`` by default); ``None`` in ``where`` leaves it
@@ -360,7 +356,7 @@ def _fixed(model: Any, where: "list[int | None] | None" = None) -> dict:
             continue
         k = j if where is None else where[j]
         if k is not None:
-            out["coef_{}".format(k)] = value
+            out[f"coef_{k}"] = value
     return out
 
 
@@ -604,7 +600,7 @@ def _log_odds_panel(ctx: Context, j: int, name: str) -> Panel:
                     odds,
                     where="post",
                     color=PALETTE[k % len(PALETTE)],
-                    label="{} = {:g}".format(name, level),
+                    label=f"{name} = {level:g}",
                 )
         ax.set_xscale("log")
         ax.set_xlabel("time (log scale)")
@@ -662,7 +658,7 @@ def _period_panel(ctx: Context, j: int, name: str) -> Panel:
             fmt="o",
             color=PALETTE[0],
             capsize=3,
-            label="by period, {:g}% Wald".format(100 * (1 - options.alpha)),
+            label=f"by period, {100 * (1 - options.alpha):g}% Wald",
         )
         ax.axhline(beta, color=PALETTE[1], ls="--", label="fitted")
         for cut in _cuts(ctx):
@@ -808,7 +804,7 @@ def _ah_panels(ctx: Context) -> list[Panel]:
                 color=PALETTE[0],
                 alpha=BAND_ALPHA,
                 linewidth=0,
-                label="pointwise {:g}%".format(100 * (1 - options.alpha)),
+                label=f"pointwise {100 * (1 - options.alpha):g}%",
             )
             ax.plot(
                 [0.0, t[-1]],
@@ -852,7 +848,9 @@ def _validate(model: Any) -> None:
                 "proportional odds or additive hazards model fitted to "
                 "left- or interval-censored data: its trend tests split "
                 "each row's follow-up at the cut times, which a censoring "
-                "interval cannot be split by; tracked in #870."
+                "interval cannot be split by. Test each covariate by "
+                "comparing the fits with and without it, with "
+                "model.likelihood_ratio_test(), meanwhile."
             )
         t = np.asarray(model.data.t, dtype=float)
         if np.any(np.isfinite(t[:, 1])):
@@ -861,7 +859,9 @@ def _validate(model: Any) -> None:
                 "proportional odds or additive hazards model fitted to "
                 "right-truncated data (a finite tr): its trend tests "
                 "split each row at the cut times, which a right-truncated "
-                "row cannot be split by; tracked in #870."
+                "row cannot be split by. Test each covariate by "
+                "comparing the fits with and without it, with "
+                "model.likelihood_ratio_test(), meanwhile."
             )
     elif getattr(model, "_fit_data", None) is None:
         raise ValueError(
@@ -912,7 +912,7 @@ def _period_note(ctx: Context) -> str:
 
 _NOT_CHECKED = (
     "Not checked yet for these models: the functional form of the "
-    "covariates, influential rows and outliers (#870)."
+    "covariates, influential rows and outliers."
 )
 
 
@@ -961,10 +961,10 @@ def _ah_notes(ctx: Context) -> list[str]:
 # ---------------------------------------------------------------------------
 # Advice
 # ---------------------------------------------------------------------------
-def _distribution(model: Any) -> "str | None":
+def _distribution(model: Any) -> str | None:
     if not _is_parametric(model):
         return None
-    return str(getattr(model.distribution, "name", ""))
+    return str(canonical_name(model.distribution) or "")
 
 
 def _failing_name(row: dict) -> str:
@@ -1000,13 +1000,13 @@ def _po_semi_message(row: dict, ctx: Context) -> str:
     )
 
 
-def _po_parametric_message(dist: "str | None") -> Any:
+def _po_parametric_message(dist: str | None) -> Any:
     def message(row: dict, ctx: Context) -> str:
         name = _distribution(ctx.model) if dist is None else dist
         if dist is None:
-            ph, aft = "PH({0}).fit".format(name), "AFT({0}).fit".format(name)
+            ph, aft = f"PH({name}).fit", f"AFT({name}).fit"
         else:
-            ph, aft = "{}PH.fit".format(name), "{}AFT.fit".format(name)
+            ph, aft = f"{name}PH.fit", f"{name}AFT.fit"
         return _po_lead(row, ctx) + (
             " Fit the {name} baseline in a model that does not assume "
             "proportional odds: proportional hazards, {ph}, or an "
@@ -1058,12 +1058,12 @@ def _ah_semi_message(row: dict, ctx: Context) -> str:
     )
 
 
-def _ah_parametric_message(dist: "str | None") -> Any:
+def _ah_parametric_message(dist: str | None) -> Any:
     def message(row: dict, ctx: Context) -> str:
         if dist is None:
-            fitter = "AH({}).fit_tvc".format(_distribution(ctx.model))
+            fitter = f"AH({_distribution(ctx.model)}).fit_tvc"
         else:
-            fitter = "{}AH.fit_tvc".format(dist)
+            fitter = f"{dist}AH.fit_tvc"
         return _ah_lead(row, ctx) + _tvc_recipe(row, fitter)
 
     return message
@@ -1079,7 +1079,7 @@ def _global_only(row: dict, ctx: Context) -> bool:
     return True
 
 
-def _when(dist: "str | None", semi: bool) -> Any:
+def _when(dist: str | None, semi: bool) -> Any:
     """A rule's condition: the row calls for advice (a covariate's, or a
     GLOBAL failure alone) and the model is semi-parametric (``semi``) or
     parametric with the baseline ``dist`` (``None``: one that has no
@@ -1113,8 +1113,8 @@ def _po_rules() -> tuple[AdviceRule, ...]:
                 "proportional_odds",
                 _po_parametric_message(dist),
                 (
-                    "{}PH.fit".format(dist),
-                    "{}AFT.fit".format(dist),
+                    f"{dist}PH.fit",
+                    f"{dist}AFT.fit",
                     "CoxPH.fit",
                 ),
                 when=_when(dist, semi=False),
@@ -1150,8 +1150,8 @@ def _ah_rules() -> tuple[AdviceRule, ...]:
                 "constant_effects",
                 _ah_parametric_message(dist),
                 (
-                    "{}AH.fit_tvc".format(dist),
-                    "{}AH.fit_tvc_from_df".format(dist),
+                    f"{dist}AH.fit_tvc",
+                    f"{dist}AH.fit_tvc_from_df",
                 ),
                 when=_when(dist, semi=False),
             )
@@ -1172,7 +1172,7 @@ def _ah_rules() -> tuple[AdviceRule, ...]:
 # ---------------------------------------------------------------------------
 def _is_po(model: Any) -> bool:
     from surpyval.univariate.regression import ProportionalOddsModel
-    from surpyval.univariate.regression._kinds import PROPORTIONAL_ODDS
+    from surpyval.univariate.regression.kinds import PROPORTIONAL_ODDS
 
     if isinstance(model, ProportionalOddsModel):
         return True
@@ -1180,7 +1180,7 @@ def _is_po(model: Any) -> bool:
 
 
 def _is_ah(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ADDITIVE_HAZARD
+    from surpyval.univariate.regression.kinds import ADDITIVE_HAZARD
 
     if _is_lin_ying(model):
         return True

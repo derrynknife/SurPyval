@@ -83,17 +83,33 @@ Worked classifications:
 | KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
 | WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
-| Survival trees and forests (`surpyval.beta.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
+| IntervalCoxPH (Cox PH for interval-censored data: NPMLE baseline on the Turnbull intervals, fitted jointly with the coefficients) | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
+| Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
+| ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
+| Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
+| ParametricCompetingRisksRegression | univariate | single_event | competing | terminal | with | continuous | parametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
 | HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis) | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
+| AndersenGill, PrenticeWilliamsPeterson, WeiLinWeissfeld | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
+| CauseSpecificNHPP | univariate | recurrent | competing | recurrent | none | continuous | parametric |
+| CauseSpecificProportionalIntensity | univariate | recurrent | competing | recurrent | with | continuous | parametric |
+| PanelCountMCF (counts at inspections, no event times) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
+| PanelCountRegression (proportional means, panel counts) | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
-| (future, #808) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
+| MultiState (Aalen–Johansen) | univariate | single_event | single/competing | multi_state | none | continuous | nonparametric |
+| MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
+| ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
+| ParametricMultiStateRegression (a parametric regression per transition) | univariate | single_event | single/competing | multi_state | with | continuous | parametric |
+| ParametricMultiState / ParametricMultiStateRegression with `clock="reset"` (semi-Markov: hazards of the time in the state) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| PanelMultiState, PanelMultiStateRegression (a Markov model of states seen only at visits: the moves interval censored) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| (not built yet) hidden Markov (misclassified states) for panel data; semi-Markov Cox per transition | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric/semiparametric |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:
@@ -102,17 +118,27 @@ model exist:
   Student-t, Clayton, Frank, Gumbel, Joe and AMH, with rotations) glue two
   univariate margins together with a dependence parameter, with full
   censoring/truncation support in the joint likelihood, standard errors and
-  confidence bounds. More than two lifetimes is #809.
+  confidence bounds. More than two lifetimes is not built yet.
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula. Frailty for repairable systems is #810.
+  Archimedean copula; `CoxFrailty` takes a gamma or log-normal frailty.
+  `CoxMixedEffects` (R's `coxme`) generalises the log-normal one to several
+  Gaussian random-effect terms: nested and crossed grouping factors and
+  correlated random slopes.
+- **Joint frailty of recurrent and terminal events** (`JointFrailty`):
+  each item's own frailty acts on its recurrent intensity and, raised to
+  a power `alpha`, on the hazard of a terminal event that ends its
+  history (scrapping, death), so the two series are dependent. The frailty
+  is per item, not shared by a group of items.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
+| JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
+| CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
@@ -134,22 +160,25 @@ current value. Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
 truncation; one item's dynamic prediction given its readings so far is
-`JointModel.predict`.
+`JointModel.predict`. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
+predictions without a model of the covariates' paths: a Cox model of the
+units at risk at each landmark, by their covariates known then; it
+classifies as univariate / single_event / single / terminal / with
+covariates (time-varying, as known at the landmark) / continuous /
+semiparametric.
 
 ## Gaps
 
-Cells of the axes with nothing built yet, each filed as an issue:
+Cells of the axes with nothing built yet:
 
-| Gap | Cell | Issue |
-|-----|------|-------|
-| Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric | #804 |
-| Recurrent events with covariates, semi-parametric (Andersen–Gill, PWP, mean model) | univariate / recurrent / single / recurrent / with / continuous / semiparametric | #805 |
-| Recurrent events with competing failure modes, parametric | univariate / recurrent / competing / recurrent / none / continuous / parametric | #806 |
-| Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric | #807 |
-| Multi-state models (illness-death, progressive) | `multi_state` | #808 |
-| Copulas for more than two lifetimes | multivariate, more than two series | #809 |
-| Shared frailty and correlated series for repairable systems | multivariate / recurrent | #810 |
-| Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis | — |
+| Gap | Cell |
+|-----|------|
+| Recurrent events with covariates, semi-parametric: robust bounds on the cumulative baseline, and simulation (Andersen–Gill, PWP and WLW are built) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
+| Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
+| Multi-state models (illness-death, progressive) | `multi_state` |
+| Copulas for more than two lifetimes | multivariate, more than two series |
+| Shared frailty and correlated series for repairable systems, beyond the one built (a frailty shared by a group of items, such as a fleet; several recurrent series per item; spline baselines) | multivariate / recurrent |
+| Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis |
 
 Not gaps, by choice: discrete time with covariates is logistic or binomial
 regression, out of scope for the package; and discrete time without
@@ -171,6 +200,7 @@ the observed proportion).
 - **Effect type** — fixed vs random effects (frailty). Frailty is both the
   *clustered* kind of `multivariate` data and a random-effect modality of the
   covariate axis; the single-event frailty regressions above exist, and
-  frailty for repairable systems is #810. (Shared-frailty models coincide with Archimedean copulas — a
+  an item-level frailty for repairable systems exists only in the joint
+  model of recurrent and terminal events (`JointFrailty`). (Shared-frailty models coincide with Archimedean copulas — a
   reason the multivariate-dependence machinery could be framed as
   `none / frailty / copula`.)

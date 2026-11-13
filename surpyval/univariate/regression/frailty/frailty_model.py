@@ -25,7 +25,6 @@ frailty's are computed by quadrature) -- so prediction comes in two flavours:
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -47,7 +46,6 @@ from surpyval.utils import is_missing_event
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
-from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -59,6 +57,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._concordance import ConcordanceMixin
 from .._prediction import (
@@ -454,10 +453,8 @@ class _SharedFrailty(
         cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}{}".format(
-                    name,
-                    self.parameter_names,
-                    removed_parameter_note(name, self.parameter_names),
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, self.parameter_names
                 )
             )
         idx = self.parameter_names.index(name)
@@ -602,7 +599,7 @@ class _SharedFrailty(
                 se = np.asarray(
                     _standard_error(np.diag(self._covariance)), dtype=float
                 )
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         columns = list(coefficient_table([], [], [], alpha_ci).columns)
 
         def others(indices: "list[int]") -> pd.DataFrame:
@@ -614,10 +611,9 @@ class _SharedFrailty(
                 if np.isfinite(se[i]):
                     try:
                         with (
-                            warnings.catch_warnings(),
+                            ignoring_warnings(),
                             np.errstate(all="ignore"),
                         ):
-                            warnings.simplefilter("ignore")
                             bounds = np.asarray(
                                 self.param_cb(
                                     self.parameter_names[i], alpha_ci
@@ -817,10 +813,8 @@ class FrailtyModel(_SharedFrailty):
         check_option("bound", bound, BOUNDS)
         if name not in self.parameter_names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}{}".format(
-                    name,
-                    self.parameter_names,
-                    removed_parameter_note(name, self.parameter_names),
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, self.parameter_names
                 )
             )
         return profile_interval(self._lr_region(), name, alpha_ci, bound)

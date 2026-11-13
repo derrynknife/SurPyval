@@ -8,7 +8,7 @@ Four groups are skipped unless asked for, because all are expensive and
 none guards a regression that the default run would miss quickly:
 
 ``ml``
-    The beta-stage survival tree and forest tests. They fit hundreds of
+    The survival tree and forest tests (``surpyval.ml``). They fit hundreds of
     small Weibulls per test and take 97 of the suite's ~180 seconds --
     over half the runtime for 85 of its 2000-odd tests.
 
@@ -62,8 +62,11 @@ the run dies on "unrecognized arguments".
 """
 
 import doctest
+import json
+import statistics
 import sys
 import zlib
+from pathlib import Path
 
 import pytest
 
@@ -134,7 +137,28 @@ def pytest_addoption(parser):
         help=(
             "run only the K-th of N parts of the collected tests (1-based), "
             "chosen by a hash of each test's id; CI splits each "
-            "interpreter's run into parts that run at once"
+            "interpreter's run into parts that run at once; balanced by "
+            "the recorded test times when --shard-durations names a file"
+        ),
+    )
+    parser.addoption(
+        "--shard-durations",
+        default=None,
+        metavar="PATH",
+        help=(
+            "a JSON file of recorded test times (seconds by test id, as "
+            "--store-durations writes); with --shard, the parts are "
+            "balanced by these times instead of split by hash. A missing "
+            "file falls back to the hash split"
+        ),
+    )
+    parser.addoption(
+        "--store-durations",
+        default=None,
+        metavar="PATH",
+        help=(
+            "write each test's time (setup, call and teardown, in "
+            "seconds) to this JSON file at the end of the run"
         ),
     )
     parser.addoption(
@@ -154,14 +178,53 @@ def pytest_configure(config):
         doctest.OutputChecker.check_output = _forced_check_output
 
 
+def _read_durations(path):
+    """The recorded test times in ``path``, or ``None`` with no file."""
+    if not path or not Path(path).is_file():
+        return None
+    with open(path) as f:
+        durations = json.load(f)
+    if not isinstance(durations, dict):
+        raise pytest.UsageError(
+            f"--shard-durations {path}: give a JSON object of seconds by "
+            "test id, as --store-durations writes"
+        )
+    return {k: float(v) for k, v in durations.items()}
+
+
+def _balanced_parts(nodeids, durations, n):
+    """Each test's part (0-based) out of ``n``, balanced by time.
+
+    The longest tests are placed first, each in the part with the least
+    time so far (ties to the lower part). A test with no recorded time (a
+    new one) counts as the median recorded time. The order depends only on
+    the ids and the times, so every xdist worker and the controller agree
+    on the parts."""
+    default = statistics.median(durations.values()) if durations else 1.0
+    timed = sorted(
+        ((durations.get(i, default), i) for i in set(nodeids)),
+        key=lambda t: (-t[0], t[1]),
+    )
+    load = [0.0] * n
+    part = {}
+    for seconds, nodeid in timed:
+        k = min(range(n), key=lambda j: (load[j], j))
+        part[nodeid] = k
+        load[k] += seconds
+    return part
+
+
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items):
-    """``--shard K/N``: keep the tests whose id hashes to part K of N.
+    """``--shard K/N``: keep the tests in part K of N.
 
-    The hash (CRC-32 of the test id) is the same in every process, so the
-    xdist workers and the controller agree on the part, and every test
-    falls in exactly one part. Parametrised cases of one test land in
-    different parts, which spreads the heavy families of cases."""
+    With ``--shard-durations`` naming a file of recorded times, the parts
+    are balanced by those times (``_balanced_parts``); otherwise a test
+    belongs to the part its id hashes to (CRC-32 of the test id, the same
+    in every process). Either way the xdist workers and the controller
+    agree on the part, and every test falls in exactly one part.
+    Parametrised cases of one test land in different parts, which spreads
+    the heavy families of cases."""
     shard = config.getoption("--shard")
     if not shard:
         return
@@ -171,23 +234,53 @@ def pytest_collection_modifyitems(config, items):
         raise pytest.UsageError(f"--shard takes K/N, not {shard!r}")
     if not 1 <= k <= n:
         raise pytest.UsageError(f"--shard {shard}: K must be in 1..N")
+    durations = _read_durations(config.getoption("--shard-durations"))
+    if durations is None:
+        parts = {
+            item.nodeid: zlib.crc32(item.nodeid.encode()) % n for item in items
+        }
+    else:
+        parts = _balanced_parts([item.nodeid for item in items], durations, n)
     keep, drop = [], []
     for item in items:
-        part = zlib.crc32(item.nodeid.encode()) % n
-        (keep if part == k - 1 else drop).append(item)
+        (keep if parts[item.nodeid] == k - 1 else drop).append(item)
     if drop:
         config.hook.pytest_deselected(items=drop)
         items[:] = keep
 
 
+# ``--store-durations``: each test's time, summed over its setup, call and
+# teardown. Under xdist the reports reach the controller, which writes the
+# file; the workers write nothing.
+_durations: dict = {}
+
+
+def pytest_runtest_logreport(report):
+    _durations[report.nodeid] = (
+        _durations.get(report.nodeid, 0.0) + report.duration
+    )
+
+
+def pytest_sessionfinish(session):
+    path = session.config.getoption("--store-durations")
+    if not path or hasattr(session.config, "workerinput"):
+        return
+    with open(path, "w") as f:
+        json.dump(
+            {k: round(v, 3) for k, v in sorted(_durations.items())},
+            f,
+            indent=0,
+        )
+
+
 def pytest_runtest_setup(item):
-    """Each doctest starts with no figure open: an example that draws on
-    ``plt.gca()`` would otherwise draw on an earlier example's axes (its
-    labels and lines), and the doctests run one after another in one
-    process."""
-    if isinstance(item, pytest.DoctestItem) and "matplotlib.pyplot" in (
-        sys.modules
-    ):
+    """Each test and doctest starts with no figure open: one that draws on
+    ``plt.gca()`` would otherwise draw on the axes an earlier test left
+    open in the same process (its labels and artists), and which test ran
+    before it depends on how the run is split across workers. (A
+    Crow-AMSAA plot test counted the scatter of a diagnostics panel left
+    open before it.)"""
+    if "matplotlib.pyplot" in sys.modules:
         sys.modules["matplotlib.pyplot"].close("all")
 
 

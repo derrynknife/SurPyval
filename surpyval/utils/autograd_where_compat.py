@@ -30,7 +30,8 @@ itself still gets this wrong, so the patch can be dropped once it does
 not.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 from autograd.extend import defjvp, defvjp

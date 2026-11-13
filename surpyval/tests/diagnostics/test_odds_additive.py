@@ -94,16 +94,16 @@ def test_lin_ying_trend_tests_match_timereg(case):
     model, names = CASES[case]()
     d = model.diagnose()
     for name in names:
-        ref = _reference("trend_{}_{}".format(case, name))
+        ref = _reference(f"trend_{case}_{name}")
         row = _row(d, name)
         assert row["df"] == int(ref["df"])
         assert_allclose(row["statistic"], ref["statistic"], **EXACT)
-    ref = _reference("trend_{}_global".format(case))
+    ref = _reference(f"trend_{case}_global")
     glob = d.table[d.table["test"].str.contains("GLOBAL")].iloc[0]
     assert glob["df"] == int(ref["df"])
     assert_allclose(glob["statistic"], ref["statistic"], **EXACT)
     # The cuts are R's (the event-time quartiles)
-    cuts = ", ".join("{:.3g}".format(v) for v in np.atleast_1d(ref["cuts"]))
+    cuts = ", ".join(f"{v:.3g}" for v in np.atleast_1d(ref["cuts"]))
     assert any(cuts in note for note in d.notes), (cuts, d.notes)
     assert_allclose(oa._cuts(d._context), ref["cuts"], rtol=0, atol=0)
 
@@ -265,7 +265,7 @@ def test_non_parallel_log_odds_are_advised_ph_or_aft(crossing):
     assert z["detail"].startswith(
         "its groups' log-odds of failure are not parallel"
     )
-    (advice,) = [a for a in d.advice if a.covariates == ("z",)]
+    (advice,) = (a for a in d.advice if a.covariates == ("z",))
     assert "CoxPH.fit" in advice and "WeibullAFT.fit" in advice
     assert advice.features == (
         "CoxPH.fit",
@@ -286,7 +286,7 @@ def test_non_parallel_log_odds_are_advised_ph_or_aft(crossing):
 def test_a_parametric_failure_names_the_same_baseline(crossing, fitter, named):
     d = _fit(fitter, crossing, ["z", "w"]).diagnose()
     assert _row(d, "z")["verdict"] == "fail"
-    (advice,) = [a for a in d.advice if a.covariates == ("z",)]
+    (advice,) = (a for a in d.advice if a.covariates == ("z",))
     for feature in named:
         assert feature in advice
     if fitter is sp.WeibullPO:
@@ -354,7 +354,7 @@ def test_a_time_varying_additive_effect_is_advised_fit_tvc():
     row = _row(d, "z")
     assert row["verdict"] == "fail"
     assert row["detail"] == "its coefficient falls with time"
-    (advice,) = [a for a in d.advice if a.covariates == ("z",)]
+    (advice,) = (a for a in d.advice if a.covariates == ("z",))
     assert "WeibullAH.fit_tvc" in advice and "ExponentialAH.fit_tvc" in advice
     assert advice.features[0] == "WeibullAH.fit_tvc"
     # The fix the advice names: z in its own column in each period
@@ -380,7 +380,7 @@ def test_a_parametric_additive_failure_names_its_fitter():
     df = _frame(t, np.full(400, 3.0), z=z)
     d = _fit(sp.ExponentialAH, df, ["z"]).diagnose()
     assert _row(d, "z")["verdict"] == "fail"
-    (advice,) = [a for a in d.advice if a.covariates == ("z",)]
+    (advice,) = (a for a in d.advice if a.covariates == ("z",))
     assert "ExponentialAH.fit_tvc" in advice
     assert advice.features == (
         "ExponentialAH.fit_tvc",
@@ -636,17 +636,22 @@ def test_censoring_intervals_and_right_truncation_refuse():
     t = _po_times(rng, 0.5 * z)
     xl = np.column_stack([np.floor(t * 4) / 4, np.floor(t * 4) / 4 + 0.25])
     model = _quiet(sp.WeibullPO.fit, xl, z, c=np.full(n, 2))
-    with pytest.raises(NotImplementedError, match="interval.*#870"):
+    with pytest.raises(
+        NotImplementedError, match="interval.*likelihood_ratio_test"
+    ):
         model.diagnose()
     model = _quiet(sp.WeibullPO.fit, t, z, tr=np.full(n, 10.0))
-    with pytest.raises(NotImplementedError, match="right-truncated.*#870"):
+    with pytest.raises(
+        NotImplementedError, match="right-truncated.*likelihood_ratio_test"
+    ):
         model.diagnose()
 
 
 def test_real_fits_are_no_longer_pending():
     families = [f.name for f in registry.families()]
     assert "Proportional odds" in families and "Additive hazards" in families
-    assert not any(p.issue == 870 for p in registry.PENDING)
+    pending = [p.label for p in registry.PENDING]
+    assert not any("odds" in label for label in pending)
 
 
 # -- plots -------------------------------------------------------------------

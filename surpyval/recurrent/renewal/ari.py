@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -12,6 +13,7 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -21,12 +23,17 @@ from surpyval.recurrent.renewal._derivatives import (
     negated,
 )
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.utils.dataframe import column_arguments
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    takes_terminal_column,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -37,13 +44,12 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_censoring,
     validate_restoration,
 )
-from surpyval.utils.removed_names import column_arguments, removed_arguments
 from surpyval.utils.units import takes_unit
 
 
 def ari_reduction(
-    failure_intensities: np.ndarray, rho: float, m: "int | float"
-) -> "np.ndarray | float":
+    failure_intensities: np.ndarray, rho: float, m: int | float
+) -> np.ndarray | float:
     """
     Intensity reduction ``R_n`` in force just after the most recent failure for
     the Arithmetic Reduction of Intensity model with memory ``m`` (Doyen &
@@ -67,11 +73,84 @@ def ari_reduction(
     return rho * np.sum(weights * recent)
 
 
+def ari_gaps(
+    dist: Any,
+    dp: Any,
+    t0: np.ndarray,
+    reduction: np.ndarray,
+    energy: np.ndarray,
+    polish: bool = False,
+) -> np.ndarray:
+    """
+    The time ``x`` to the next failure of units at times ``t0`` with the
+    intensity reductions ``reduction`` in force, for the Exp(1) amounts
+    ``energy``: the root of ``Lambda_0(t0 + x) - Lambda_0(t0) - R x =
+    energy`` for the baseline intensity ``dist`` with parameters ``dp``.
+
+    The root is bracketed by doubling from 1 (60 times at most: a draw
+    still short of its energy then is the last bracket's end) and found by
+    ``solve_bracketed`` to an absolute 2e-12. The ARI sampler draws with
+    it (``energy = -log u``) and :meth:`RenewalModel.next_failure_qf`
+    inverts with it (``energy = -log1p(-p)``), with ``polish``: two
+    Newton steps on the root, each kept only where it brings the
+    equation closer to 0, take a small gap from 2e-12 to the double's
+    rounding.
+    """
+    from surpyval.utils.numeric import solve_bracketed
+
+    t0 = np.asarray(t0, dtype=float)
+    reduction = np.asarray(reduction, dtype=float)
+    energy = np.asarray(energy, dtype=float)
+    cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
+
+    def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
+        cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
+        return cif - cif0[sel] - reduction[sel] * x - energy[sel]
+
+    everything = np.arange(t0.size)
+    hi = np.ones(t0.size)
+    growing = everything
+    for _ in range(60):
+        growing = growing[g(hi[growing], growing) < 0]
+        if not growing.size:
+            break
+        hi[growing] *= 2.0
+    g_hi = g(hi, everything)
+    # Still short of the energy after 60 doublings: take hi, as the
+    # scalar sampler did.
+    gap = hi.copy()
+    rest = np.flatnonzero(g_hi > 0)
+    if rest.size:
+        gap[rest] = solve_bracketed(
+            lambda x, sel: g(x, rest[sel]),
+            np.zeros(rest.size),
+            hi[rest],
+            -energy[rest],
+            g_hi[rest],
+            xtol=2e-12,
+        )
+    if polish:
+        everything = np.arange(t0.size)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            for _ in range(2):
+                miss = g(gap, everything)
+                rate = (
+                    np.asarray(dist.iif(t0 + gap, *dp), dtype=float)
+                    - reduction
+                )
+                step = np.maximum(gap - miss / rate, 0.0)
+                better = np.isfinite(step) & (
+                    np.abs(g(step, everything)) < np.abs(miss)
+                )
+                gap = np.where(better, step, gap)
+    return gap
+
+
 def _reduction_sequence(
     failure_intensities: np.ndarray,
     position: int,
     rho: float,
-    m: "int | float",
+    m: int | float,
 ) -> np.ndarray:
     """``R_n`` after every failure at once, for failures from many items.
 
@@ -104,7 +183,7 @@ class _Reductions:
     of that linear map of ``lam``: what autograd's derivatives in ``lam``
     and ``rho`` are made of."""
 
-    def __init__(self, position: Any, m: "int | float") -> None:
+    def __init__(self, position: Any, m: int | float) -> None:
         self.pos = np.asarray(position)
         longest = int(self.pos.max()) + 1 if self.pos.size else 0
         self.span = longest if np.isinf(m) else min(int(m), longest)
@@ -266,7 +345,6 @@ class ARI(RenewalFitMixin):
     @staticmethod
     def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
         from surpyval.recurrent.renewal.renewal_model import DiscountedMemory
-        from surpyval.utils.numeric import solve_bracketed
 
         dist = model.model.dist
         dp = model.model.params
@@ -292,35 +370,7 @@ class ARI(RenewalFitMixin):
         def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
             t0 = running[idx]
             reduction = rho * memory.value(idx)
-            energy = -np.log(u)
-            cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
-
-            def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
-                cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
-                return cif - cif0[sel] - reduction[sel] * x - energy[sel]
-
-            everything = np.arange(idx.size)
-            hi = np.ones(idx.size)
-            growing = everything
-            for _ in range(60):
-                growing = growing[g(hi[growing], growing) < 0]
-                if not growing.size:
-                    break
-                hi[growing] *= 2.0
-            g_hi = g(hi, everything)
-            # Still short of the energy after 60 doublings: take hi, as the
-            # scalar sampler did.
-            gap = hi.copy()
-            rest = np.flatnonzero(g_hi > 0)
-            if rest.size:
-                gap[rest] = solve_bracketed(
-                    lambda x, sel: g(x, rest[sel]),
-                    np.zeros(rest.size),
-                    hi[rest],
-                    -energy[rest],
-                    g_hi[rest],
-                    xtol=2e-12,
-                )
+            gap = ari_gaps(dist, dp, t0, reduction, -np.log(u))
             arrival = t0 + gap
             running[idx] = arrival
             memory.record(idx, np.asarray(dist.iif(arrival, *dp), dtype=float))
@@ -333,8 +383,8 @@ class ARI(RenewalFitMixin):
         baseline: Any,
         baseline_params: ArrayLike,
         rho: float,
-        m: "int | float",
-    ) -> "RenewalModel":
+        m: int | float,
+    ) -> RenewalModel:
         from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
         model = baseline.from_params(np.asarray(baseline_params).tolist())
@@ -380,7 +430,7 @@ class ARI(RenewalFitMixin):
         )
 
     def create_negll_func(
-        self, data: Any, baseline: Any, m: "int | float"
+        self, data: Any, baseline: Any, m: int | float
     ) -> Callable:
         """The negative log-likelihood of ``[rho, *baseline_params]`` on
         ``data``, for the baseline intensity model ``baseline`` and memory
@@ -497,15 +547,14 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
-    @removed_arguments("0.23", dist="'baseline'")
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
         baseline: Any = CrowAMSAA,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARI model from recurrent data.
 
@@ -592,20 +641,21 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(baseline.parameter_initialiser(data.x))
         return base_params
 
-    @removed_arguments("0.23", dist="'baseline'")
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         baseline: Any = CrowAMSAA,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARI model.
 
@@ -615,6 +665,13 @@ class ARI(RenewalFitMixin):
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``), measured from the start of each item's life.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.
@@ -682,19 +739,21 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
+    @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n", "tl", "tr")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: Any,
         x_col: str,
-        i_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
         **fit_options: Any,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Fit to an event log held in the columns of a
         :class:`pandas.DataFrame`.
@@ -756,16 +815,13 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    @removed_arguments(
-        "0.23", dist="'baseline'", dist_params="'baseline_params'"
-    )
     def fit_from_parameters(
         self,
         baseline_params: ArrayLike,
         rho: float,
-        m: "int | float" = 1,
+        m: int | float = 1,
         baseline: Any = CrowAMSAA,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Build an ARI model from given parameters.
 

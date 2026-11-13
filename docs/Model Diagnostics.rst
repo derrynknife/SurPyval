@@ -28,11 +28,13 @@ The families, each with its section below: Cox proportional hazards
 (#868); parametric proportional hazards and accelerated failure time
 models (#869); proportional odds and additive hazards (#870); accelerated
 life models (#871); shared frailty (#872); recurrent events (#873);
-competing risks (#874); and univariate distributions (#875). The Cox and
+competing risks (#874); univariate distributions (#875); distributional
+regressions; and Aalen's additive hazards model. The Cox and
 parametric proportional hazards and accelerated failure time reports also
-check the calibration of the predicted survival (#881). Two models still
-refuse, naming the issue that tracks their checks: parametric competing
-risks (#874) and Buckley-James (#867).
+check the calibration of the predicted survival (#881). A few models have
+no checks yet, and their ``diagnose()`` refuses, saying what to check the
+model with meanwhile: Buckley-James (diagnose an AFT fit of the same data).
+Bayesian fits have theirs: see `Bayesian fits`_.
 
 Verdicts
 --------
@@ -218,8 +220,8 @@ says so, offering standard errors that allow for it:
     [a for a in tv.diagnose().advice if a.check is None]
 
 For ``wexp``, stratify: ``CoxPH.fit_from_df(..., strata_col='wexp')``
-gives each level its own baseline hazard. (``diagnose()`` does not yet
-handle a stratified fit; it says so.)
+gives each level its own baseline hazard, and ``diagnose()`` checks the
+stratified fit as well.
 
 The checks
 ~~~~~~~~~~
@@ -290,7 +292,7 @@ Every tie method (Efron's and Breslow's exactly; with ``"exact"`` and
 ``"kalbfleisch-prentice"`` the residuals use Breslow's risk sets, as R's
 ``cox.zph`` does, and the report notes it), delayed entry (``tl``), counts
 (``n``) and time-varying covariates (``fit_tvc``). ``diagnose()`` refuses,
-saying what to do: a stratified fit (not yet supported), a model restored
+saying what to do: a model restored
 with ``from_dict`` (it has no data to check), one with an aliased
 coefficient and one whose fit has no finite maximum.
 
@@ -536,13 +538,180 @@ Every kind of censoring, delayed entry and right truncation, counts
 then sets the fitted baseline against the built-in ones). The martingale
 and deviance residuals are of the exact and right-censored rows that are
 not right truncated (the report says how many it left out); the tests use
-every row. ``diagnose()`` refuses, saying what to do: a fit to
-time-varying covariates (``fit_tvc``, not yet supported, #869), a
-custom covariate link, a model restored with ``from_dict``, one with an
-aliased coefficient, and one whose fit is not a verified maximum (the
-tests compare it with larger models). The accelerated life models (#871)
-and the proportional odds and additive hazards models (#870) have their
-own families.
+every row. A fit to time-varying covariates (``fit_tvc``) is checked too
+(below). ``diagnose()`` refuses, saying what to do: a ``fit_tvc`` model
+fitted with weights (``w=``), a custom covariate link, a model restored
+with ``from_dict``, one with an aliased coefficient, and one whose fit is
+not a verified maximum (the tests compare it with larger models). The
+accelerated life models (#871) and the proportional odds and additive
+hazards models (#870) have their own families.
+
+Time-varying covariates (``fit_tvc``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model fitted with ``fit_tvc`` (or ``fit_tvc_timeline`` and their
+``_from_df`` forms) gets the same checks. A unit there has several rows,
+one for each stretch of time its covariates held still, so each residual
+is the unit's, added up over its rows: how much hazard the model says the
+unit went through over the time it was watched, compared with whether it
+failed. The tests are the same likelihood-ratio tests, on the fit's own
+likelihood. Influence and outliers are screened unit by unit and name the
+unit by the identifier ``fit_tvc`` was given. The functional form plot is
+of each row against the covariate value on that row, since a unit's
+covariate can change. A fit with constant covariates, one row per unit or
+a unit split into rows with the same values, gets the residuals,
+statistics and verdicts of the ordinary fit.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from surpyval.datasets import load_heart_transplants
+
+    heart = load_heart_transplants()   # Stanford heart transplants
+    heart["c"] = 1 - heart["event"]    # a transplant starts a new row
+    tvc = surv.WeibullPH.fit_tvc_from_df(
+        heart, "id", "start", "stop", "c", Z_cols=["age", "transplant"]
+    )
+    d = tvc.diagnose()
+    d.table[["check", "covariates", "statistic", "p", "verdict"]]
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+No covariate's effect changes with time (the joint test, p = 0.07, and
+the square of ``age``, p = 0.05, are borderline and warn), and the
+log-normal baseline fits markedly better than the Weibull: the advice is
+to refit with ``LogNormalPH.fit_tvc``.
+
+How each check carries over:
+
+* The residuals. For a proportional hazards model a unit's Cox-Snell
+  residual is the sum over its rows of :math:`H(\text{stop} \mid Z_{row})
+  - H(\text{start} \mid Z_{row})`, and its martingale residual is its
+  event indicator less that. For an accelerated failure time model the
+  unit's standardised residual is its accumulated age
+  :math:`\psi = \sum_{rows} e^{\beta' Z_{row}} (\text{stop} -
+  \text{start})`, the time on the baseline's scale, as the fit's
+  likelihood accumulates it; a row's share of the unit's cumulative hazard
+  is :math:`H_0(\psi(\text{stop})) - H_0(\psi(\text{start}))`. Against
+  R's ``flexsurvreg(Surv(start, stop, event) ~ ..., dist = "weibullPH")``
+  on the heart data the per-unit Cox-Snell and martingale residuals agree
+  to 1e-5 (the two fits' maximisations) and the step and quadratic tests
+  to 1e-6.
+* ``proportional_hazards``, ``functional_form`` and ``common_shape`` are
+  the same likelihood-ratio tests, of the time-varying fit's likelihood.
+  The square in ``functional_form`` is of the covariate's value on each
+  row. ``common_shape`` gives each unit one shape (an accelerated failure
+  time model evaluates the baseline once, at the unit's accumulated age),
+  so it tests a categorical covariate that keeps one level through each
+  unit, and a note names any that changes within a unit.
+* ``functional_form``'s plot is of each row's martingale residual (its
+  event indicator less the row's share of the hazard) against the row's
+  covariate value, as Therneau and Grambsch (2000, section 5.6) draw it
+  for start-stop data.
+* ``influence`` is each unit's one-step change of the coefficients, its
+  score the sum of its rows'; ``outliers`` is each unit's deviance
+  residual, with the Bonferroni cutoff over the units.
+* The AIC screens refit each other model with its own ``fit_tvc`` to the
+  same rows. An accelerated failure time model refuses delayed entry and
+  gaps between a unit's rows, and is then left out with a note.
+* ``calibration`` is not made: a unit's predicted survival depends on its
+  covariate path, not on one row (as for ``CoxPH.fit_tvc``).
+
+Distributional regression
+-------------------------
+
+A distributional regression (``WeibullDistributional``,
+``LogNormalDistributional``, ..., ``Distributional(dist)``) lets the
+covariates move every parameter of the distribution, the shape as well as
+the scale. Its checks ask the same three questions as the PH and AFT
+families, of each parameter in turn: does the distribution fit the data
+once each unit has its own parameters; does each covariate act in a
+straight line on each parameter it is on; and does any one unit decide a
+coefficient? The report's covariates are the columns of ``Z``, and a
+``parameter`` column says which parameter's predictor a row is about.
+
+The lung cancer data again, with age, sex and ECOG score on both the
+Weibull's scale and its shape:
+
+.. jupyter-execute::
+
+    dr = surv.WeibullDistributional.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    d = dr.diagnose()
+    d.table[['check', 'parameter', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.ok and not d.advice
+
+Every check passes. Age and the ECOG score act linearly on both the scale
+and the shape (adding a square to either predictor does not improve the
+fit), no other distribution has an AIC more than 2 lower (the gamma's is
+1.7 lower, too little to matter), and no patient moves a coefficient by as
+much as one standard error. The plot shows the Cox-Snell residuals on
+exponential paper, where a distribution that fits puts them on the line,
+and each unit's score residual against each covariate on each parameter:
+
+.. jupyter-execute::
+
+    fig = d.plot(['distribution', 'functional_form'])
+
+The checks
+~~~~~~~~~~
+
+``distribution``
+    The Cox-Snell residuals :math:`H(x_i \mid z_i)`, each unit's fitted
+    cumulative hazard at its own parameters, drawn on exponential
+    probability paper (they agree with flexsurv's
+    ``coxsnell_flexsurvreg`` to 1e-4, with delayed entry too; their
+    transform :math:`\Phi^{-1}(1 - e^{-H})` is the normalised quantile
+    residual of gamlss's ``plot()``, matched to 1e-5). As for the PH
+    family they have no test of their own. The screen, which warns and
+    never fails: the AIC of the model against each other built-in
+    distribution fitted as a distributional regression to the same data,
+    each with the model's life-parameter columns on its own scale,
+    location or rate and the model's other columns on its other
+    parameters; it warns when one is more than 2 lower.
+``functional_form``
+    For each covariate with three or more distinct values, on each
+    parameter whose predictor holds it, the likelihood-ratio test of
+    adding its square to that predictor (flexsurv's ``flexsurvreg(...,
+    anc = ...)`` with and without ``I(z^2)``, to 1e-6). Drawn as each
+    unit's score residual :math:`\partial \log L_i / \partial \eta_{ik}`
+    against the covariate with a lowess trend: for a scale it is the
+    martingale residual times :math:`-\beta`, and every row has one,
+    whatever its censoring.
+``influence``
+    For each coefficient, the largest one-step ``|dfbeta| / se`` (the
+    observed information times each unit's score); it warns above 1.
+
+The advice: the better distribution the AIC screen found
+(``LogNormalDistributional.fit``, say), a transform of a covariate on the
+one parameter where it is not linear
+(``fit_from_df(..., formulas={"beta": "np.log(load) + ..."})``), and a
+look at an influential row. In a simulation with n = 200 and a quarter of
+the units censored, the quadratic-term test rejects a true model at close
+to its 5% level (5.3% on the scale and 4.4% on the shape, in 1000
+replicates), and found a shape that bends with the load, and the AIC
+screen log-normal data fitted with a Weibull, in all of 200
+(``tests/calibration/test_size_distributional_diagnostics.py``).
+
+Every kind of censoring, delayed entry and right truncation, counts,
+``center=True``, ``fixed=`` (the AIC comparison is then left out, and a
+fixed coefficient has no influence row) and a parameter with only some of
+the columns are supported. ``diagnose()`` refuses, saying what to do
+instead: a fit with weights ``w`` (its likelihood-ratio statistics are not
+chi-squared; diagnose the unweighted fit), a penalised fit, a model
+restored with ``from_dict``, one with an aliased coefficient and one whose
+fit is not a verified maximum. Whether a covariate left off a parameter
+belongs on it is not checked: refit with it there and use
+``likelihood_ratio_test(parameter=...)``.
 
 Proportional odds and additive hazards
 --------------------------------------
@@ -696,6 +865,106 @@ refit the model once per covariate and once for the ``GLOBAL`` row, which
 for a parametric additive hazards model can take some seconds.
 
 .. autofunction:: surpyval.diagnostics.odds_additive.aalen_cumulative_coefficients
+
+Aalen's additive hazards model
+------------------------------
+
+Aalen's model (``AalenAdditive``) lets each covariate add to the hazard an
+amount that may change freely with time, so it has no constant effect to
+test. Its report asks two other questions. First, does any effect in fact
+change? If none does, the simpler Lin and Ying model (``AdditiveHazards``,
+one number per covariate) fits as well. Second, does the fit give any
+observed unit a negative hazard? An additive model can: a covariate that
+lowers the hazard, over a wide enough range, takes some units below 0,
+and their estimated cumulative hazard then falls, which a cumulative
+hazard cannot do. On the Rossi data:
+
+.. jupyter-execute::
+
+    aalen = surv.AalenAdditive.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'prio'],
+    )
+    d = aalen.diagnose(random_state=1)
+    d.table[['check', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.family == 'Aalen additive hazards'
+    assert (d.table['verdict'] == 'ok').all()
+
+The effect of ``age`` changes over the year, as in the models above, and
+no man's estimated cumulative hazard falls by more than chance explains.
+Aalen's model allows a changing effect, so the ``age`` row is ``ok`` with
+a small p-value, and the advice says how to read the effect rather than
+how to fix it:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+The plots are each covariate's cumulative coefficient :math:`B_j(t)` with
+its pointwise band, against the straight line a constant effect would
+give, and the cumulative hazards of the units whose estimates fall the
+furthest (dotted: the prediction, which holds the estimate at its running
+maximum):
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks of an Aalen model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``constant_effects``
+    For each covariate, the model's own ``constant_effects_test()``: the
+    largest distance of :math:`B_j(t)` from the straight line to its last
+    value (Kolmogorov-Smirnov), with a p-value from ``n_boot`` resampled
+    processes (1000 by default; ``random_state`` seeds them). The
+    Cramér-von Mises p-value is in the detail, and the whole table, with
+    the baseline, is ``d.tables['constant_effects']``. The rows never
+    fail: a small p-value says the effect changes, which the model
+    allows. With every effect constant the advice is ``AdditiveHazards``;
+    with one that changes, how to read it.
+
+    The statistics are those of R's ``timereg::aalen`` test for
+    time-invariant effects, with two differences of detail: the straight
+    line runs to the last time :math:`B` is estimated (``timereg`` runs it
+    to the last event time, holding :math:`B` where it cannot estimate
+    it), and the supremum includes the left limits of the steps. The
+    p-values differ by design: ``timereg`` resamples each unit's
+    martingale residuals, and in simulations with constant effects it
+    rejected 47% of the time at the 5% level with 100 units and 17% with
+    300; SurPyval resamples each event's contribution, and rejected 3-3.5%
+    with 300. The price is power: an effect of 0.5 that falls to 0.1 at
+    a third of follow-up was found a third of the time with 500 units.
+``non_negative_hazard``
+    The largest fall of any observed covariate row's estimated cumulative
+    hazard below its running maximum, in standard errors, against the
+    falls of the same resampled processes. Those are the falls a zero
+    hazard would show by chance, the most a non-negative hazard can, so
+    the test is conservative: in simulations it rejected none of 200 data
+    sets with positive hazards, and 90% of those with a hazard convex in
+    the covariate, which the additive line takes below 0. The detail
+    gives the share of units whose own fall is beyond chance. A failure
+    is advised a multiplicative model, ``CoxPH.fit``, whose hazards cannot
+    be negative.
+
+.. autofunction:: surpyval.diagnostics.aalen_additive.falls
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts (``n``), delayed entry (``tl``), ``fit_from_df`` and formulas, and
+penalised fits (``penalizer``). An aliased covariate's row warns, as its
+test cannot be computed. ``diagnose()`` refuses, saying what to do, a model
+restored with ``from_dict`` (it has no data) and a fit with weights
+``w``, whose resampled nulls would be those of an unweighted fit (use the
+robust bands of ``model.plot()``). The functional form, influence and
+outliers are not checked.
 
 Accelerated life (life-stress) models
 -------------------------------------
@@ -1172,9 +1441,7 @@ one cause's with the others removed, does.
 
 A model restored with ``from_dict`` has no data to check and refuses, as
 do one with an aliased coefficient and one whose fit of a cause has no
-finite maximum (the message names the cause). ``ParametricCompetingRisks``
-refuses for now, naming #874: its checks are each cause's goodness of fit,
-which waits for the univariate checks (#875). The Fine-Gray tests and
+finite maximum (the message names the cause). The Fine-Gray tests and
 residuals are also functions, in
 ``surpyval.univariate.competing_risks.regression.fine_gray_diagnostics``:
 
@@ -1183,6 +1450,86 @@ residuals are also functions, in
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_added_covariate_test
 
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_martingale_residuals
+
+Parametric competing risks
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A ``ParametricCompetingRisks`` model fits one distribution to each cause,
+with the other causes' failures censored. Its ``diagnose()`` asks two
+questions, cause by cause: does the cause's distribution fit that cause's
+failures, and does the model's cumulative incidence of the cause (the
+chance of having failed from it by a time) follow the non-parametric
+Aalen-Johansen estimate of the same data (``CompetingRisks.fit``)?
+
+Two causes, the first a Weibull and the second starting only after time
+4, both fitted with a 2-parameter Weibull:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(2890)
+    t_a = 10 * rng.weibull(2.0, 300)
+    t_b = 4 + 6 * rng.weibull(1.0, 300)
+    cens = rng.uniform(0, 25, 300)
+    first = np.minimum(t_a, t_b)
+    e = np.where(cens < first, None, np.where(t_a < t_b, 'a', 'b'))
+    pcr = surv.ParametricCompetingRisks.fit(
+        np.minimum(first, cens), e.astype(object), dist=surv.Weibull)
+    d_pcr = pcr.diagnose(n_boot=49, random_state=1)
+    d_pcr.table.loc[d_pcr.table['check'] != 'alternatives',
+                    ['check', 'cause', 'test', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gof = d_pcr.table[d_pcr.table['check'] == 'goodness_of_fit']
+    _ad = _gof[_gof['test'].str.startswith('Anderson')].set_index('cause')
+    assert _ad.loc['b', 'verdict'] == 'fail'
+    assert _ad.loc['a', 'verdict'] != 'fail'
+
+The second cause's goodness of fit fails, and only its: its failures do
+not follow a Weibull from time 0. Both incidences fail, the first because
+it depends on the second cause's survival too (see below). The advice
+names the distributions that fit the second cause better and how to give
+that cause its own (``dist={'b': ...}``, or a cause fitted on its own
+with an option such as an offset and the causes assembled with
+``from_fitted``):
+
+.. jupyter-execute::
+
+    for advice in [a for a in d_pcr.advice if "cause 'b'" in str(a)][:2]:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+
+    fig = d_pcr.plot('incidence')
+
+Each cause's goodness of fit is the univariate distributions' test (below)
+on the cause's own fit, ``pcr.models[cause]``. It tests the cause's
+Cox-Snell residuals ``r = H_k(x) - H_k(t_l)``, the cause's cumulative
+hazard over each unit's time at risk (from its entry, for delayed entry),
+which are a censored sample of the unit exponential when the cause's
+distribution is right; the test compares ``u = 1 - exp(-r)`` with the
+uniform, with parametric bootstrap p-values. The ``alternatives`` rows
+are the univariate AIC screen, cause by cause. The incidence test is the
+largest gap between the two incidences up to the last time observed,
+``D_k = sup_t |CIF_k(t) - AJ_k(t)|``, with a p-value from a parametric
+bootstrap: each resample draws every unit's latent time from each cause's
+model, keeps the earliest, censors it as the data were, refits every
+cause and recomputes ``D_k``. A cause's incidence depends on every cause's
+hazard, ``CIF_k(t) = int_0^t h_k(u) S(u) du``, so a wrong distribution for
+one cause can move another's incidence; the goodness-of-fit rows say which
+cause is wrong. With delayed entry (``tl``) the Aalen-Johansen estimate
+counts each unit at risk only from its entry, and when every unit entered
+late it is conditional on surviving to the first entry ``s``; the model's
+incidence is then conditioned the same way, ``(CIF_k(t) - CIF_k(s)) /
+S(s)``, and each resample draws a unit's latent times beyond its own
+entry. A model fitted to left- or interval-censored rows (its causes fitted
+jointly) is not checked yet: ``diagnose()`` refuses it, saying to compare
+distributions by AIC and the all-cause survival with the Turnbull
+estimate. A model restored with ``from_dict``, or assembled with
+``from_fitted`` from fits of different data or from models that are not
+fitted distributions, refuses, saying what to do.
 
 Univariate distributions
 ------------------------
@@ -1331,6 +1678,144 @@ model of its own, without ``diagnose()`` yet.
 .. autofunction:: surpyval.diagnostics.univariate.gof_statistics
 
 .. autofunction:: surpyval.diagnostics.univariate.bootstrap
+
+Bayesian fits
+-------------
+
+A Bayesian fit (``Weibull.fit_bayes(...)``, by the grid, the Laplace
+approximation or a closed form, or ``BayesianParametric.from_draws`` with
+its data) has ``diagnose()`` too. It asks three questions. Does data
+simulated from the posterior look like the data? Do the prior and the
+data disagree? And was the posterior computed accurately?
+
+Forty units from a Weibull of shape about 2, fitted with a prior that is
+sure the shape is between 5 and 7 (a prior from other units, say):
+
+.. jupyter-execute::
+
+    import warnings
+    import surpyval as surv
+
+    x = surv.Weibull.random(40, 10, 2, random_state=31)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')   # the fit warns of the conflict
+        model = surv.Weibull.fit_bayes(
+            x, priors={'beta': surv.prior.around(6, between=(5, 7))})
+    d = model.diagnose(n_boot=200, random_state=1)
+    d.table[['check', 'test', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = d.table[d.table['check'] == 'prior_data_conflict']
+    assert (_c['verdict'] == 'fail').all(), d
+    _g = d.table[d.table['check'] == 'goodness_of_fit']
+    assert (_g['verdict'] != 'fail').all(), d
+    _p = d.table[d.table['check'] == 'posterior_predictive']
+    assert (_p['verdict'] == 'fail').any(), d
+    assert any('prior pulls' in a for a in d.advice)
+
+The prior and the data disagree on the shape by several standard
+deviations, the posterior (pulled towards the prior) does not reproduce
+the data, and yet the Weibull itself is not rejected: its
+maximum-likelihood fit fails none of the goodness-of-fit tests. So the
+advice blames the prior, not the distribution, and names what to look at:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+The plots show the posterior predictive checks (each draw's discrepancy
+for the data against its replicate's; the failures in time bins against
+the replicates'), the maximum-likelihood fit's P-P plot and the prior, the
+data and the posterior side by side:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks
+~~~~~~~~~~
+
+``posterior_predictive``
+    In plain words: draw a set of parameters from the posterior, simulate
+    a data set like the one observed from them, and see whether the real
+    data look unusual among the simulated ones; do it ``n_boot`` times
+    (1000 by default). Each replicate keeps the observed design: every
+    unit is drawn within its own truncation window and censored as the
+    data were, a censored unit at its own observed censoring time and a
+    failed one at a time drawn from the Kaplan-Meier estimate of the
+    censoring distribution beyond its failure (fixed-time censoring is
+    reproduced exactly; random censoring from the censoring times
+    observed). Two discrepancies: the Anderson-Darling statistic of the
+    data's :math:`u = F(x \mid \theta)` against the uniform, computed for
+    the data and the replicate at the same draw :math:`\theta` (a
+    realised discrepancy, Gelman, Meng and Stern 1996); and Pearson's
+    :math:`\sum (O - E)^2 / E` of the failures in up to ten time bins
+    (one per five failures, at the observed failure times' quantiles;
+    with fewer than ten failures, the number of failures), :math:`E` the
+    replicates' mean. The p-value is the share of draws whose replicate is
+    at least as far off as the data, :math:`(1 + k) / (1 + B)`.
+
+    A posterior predictive p-value is conservative: under a correct model
+    it gathers near 0.5 instead of being uniform (Robins, van der Vaart
+    and Ventura 2000), so a small one is strong evidence against the model
+    and a moderate one is no evidence for it. In 300 randomly censored
+    Weibull samples of 40 fitted with the right model, the
+    Anderson-Darling check rejected at 5% in none and the bins check in 3
+    (1%) (``tests/calibration/test_size_bayes_diagnostics.py``). The
+    price is power: against 100 log-normal lifetimes fitted with a
+    Weibull, the two checks rejected in 12% and 25% of 100 samples, where
+    the maximum-likelihood fit's Anderson-Darling test below rejected in
+    90% (``scripts/studies/bayes_diagnose_power.py``). Left- and
+    interval-censored data have no such check (a replicate would need the
+    inspection times): the rows warn and say so.
+``goodness_of_fit``
+    The univariate family's Anderson-Darling, Kolmogorov-Smirnov and
+    Cramer-von Mises tests (see `Univariate distributions`_), run on the
+    same distribution fitted to the same data by maximum likelihood,
+    ``model.mle``: their bootstrap's null distribution is that of a
+    maximum-likelihood refit, so they test that fit, not the posterior's
+    centre. They check the distribution, which the prior does not change,
+    and have more power than the posterior predictive checks. Left out,
+    with a note, where the data alone have no maximum-likelihood fit.
+``prior_data_conflict``
+    In plain words: how many standard deviations apart are what the prior
+    says and what the data alone say? On each parameter's log scale
+    (logit for a proportion), the prior's mean and variance, and the
+    maximum-likelihood estimate with its variance; if the prior is right,
+    the estimate is a draw from the prior plus estimation error, so their
+    gap :math:`\delta` has variance :math:`V_{prior} + V_{data}` and
+    :math:`z = \delta / \sqrt{V_{prior} + V_{data}}` is standard normal.
+    This is Box's (1980) prior predictive check in its normal form (Evans
+    and Moshonov 2006). One row per parameter with a proper prior, and a
+    joint chi-square, :math:`\delta' (V_{prior} + V_{data})^{-1}
+    \delta`, when more than one has one. Drawing the truth from the prior
+    itself, the rows rejected at 5% in 4.7%, 3.7% and 3.0% (joint) of 300
+    samples of 40. A flat parameter, a power prior's old data and data
+    with no maximum-likelihood fit are not checked (the last rows warn).
+``grid_accuracy``
+    A grid posterior is computed again on a finer grid, and the largest
+    change in any parameter's 2.5%, 50% and 97.5% points is reported as a
+    fraction of the 95% interval's width: it warns at 1% and fails at 5%.
+    A screen beside it warns when more than :math:`10^{-6}` of the
+    posterior sits in the grid's outermost cells. A Laplace approximation
+    is compared with the grid posterior the same way. A closed form is
+    exact, and another sampler's draws have that sampler's diagnostics:
+    neither has rows.
+
+The advice: for a distribution that does not reproduce the data, the
+distributions ``fit_best`` ranks; for a posterior that fails while the
+distribution fits, or a conflict, ``model.compare()`` and a wider prior;
+for an inaccurate grid, ``fit_bayes(points=)`` or ``method='grid'``.
+``diagnose()`` refuses, saying what to do, a model without its data and
+a ``Bernoulli`` fit (whose posterior fits the proportion of events).
+
+.. autofunction:: surpyval.diagnostics.bayes.posterior_predictive
+
+.. autofunction:: surpyval.diagnostics.bayes.prior_data_conflict
 
 Calibration of predicted survival
 ---------------------------------

@@ -2,11 +2,11 @@
 Regression Analysis
 ===================
 
-The time until some event happens will, almost certainly, be impacted by factors. For example, when considering how long a machine will last before failure an engineer will want to account for the operational conditions. It may operate in a humid environment, or it may operate at a higher rate. The question is then, how do we account for these variations, or 'covariates', on the time until failure?
+The time until some event happens will, almost certainly, be impacted by factors. For example, when considering how long a machine will last before failure an engineer will want to account for the operational conditions. It may operate in a humid environment, or it may operate at a higher rate. A clinician asking how long patients stay free of a disease will, in the same way, want to account for age, dose and other conditions. The question is then, how do we account for these variations, or 'covariates', on the time until failure, or until any other event?
 
-Regression analysis is the process of capturing the effect that covariates have on the item. That is, we use data on other factors to 'regress' onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like "what effect will increasing X have on the survival time?"
+Regression analysis is the process of capturing the effect that covariates have on the item (the unit, or the subject). That is, we use data on other factors to 'regress' onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like "what effect will increasing X have on the survival time?"
 
-Survival regression differs from ordinary (least-squares) regression in two ways. First, the response is a *time* that is often not fully observed: an item still running when the test stopped is right censored, one that was only inspected occasionally is interval censored, and one that only entered the study after it had already survived a while is left truncated (see :doc:`Types of Data`). Second, the answer is a whole *distribution* of lifetimes for each covariate value, not a single predicted number. Every model on this page is therefore defined by how the covariates change a survival distribution, and every one is fitted by a likelihood that knows about censoring and truncation.
+Survival regression differs from ordinary (least-squares) regression in two ways. First, the response is a *time* that is often not fully observed: an item still running when the test stopped (or a patient still alive when the study ended) is right censored, one that was only inspected occasionally is interval censored, and one that only entered the study after it had already survived a while is left truncated (see :doc:`Types of Data`). Second, the answer is a whole *distribution* of lifetimes for each covariate value, not a single predicted number. Every model on this page is therefore defined by how the covariates change a survival distribution, and every one is fitted by a likelihood that knows about censoring and truncation.
 
 Surpyval covers five families of regression model, distinguished by *how* the covariates act on the distribution:
 
@@ -332,6 +332,10 @@ The built-in stress-life relationships, in ``surpyval.life_models`` (all are ``L
    * - ``Exponential``
      - :math:`b\, e^{a / Z}`
      - Arrhenius: temperature (in kelvin) with :math:`a = E_a / k_B`
+   * - ``Arrhenius``
+     - another name for ``Exponential``
+     - A model built with it saves and loads as ``Arrhenius`` and is
+       otherwise identical
    * - ``InverseExponential``
      - :math:`1 / (b\, e^{a / Z})`
      - Reciprocal of the above
@@ -356,6 +360,10 @@ The built-in stress-life relationships, in ``surpyval.life_models`` (all are ``L
    * - ``GeneralLogLinear``
      - :math:`c\, e^{\beta' Z}`, one :math:`\beta_j` per column of ``Z``
      - Any number of stresses (transformed as needed, e.g. :math:`1/T`)
+   * - ``GeneralLinear``
+     - :math:`a + \beta' Z`, one :math:`\beta_j` per column of ``Z``
+     - Several covariates shifting a location (``Normal``, ``Gumbel``,
+       ``Logistic`` ``mu``): a quantity with no natural zero
 
 **Accelerated life versus AFT.** For a Weibull, substituting a log-linear life :math:`\alpha(Z) = e^{a + b' Z}` gives :math:`S(t \mid Z) = \exp\bigl(-(t e^{-b'Z} / e^{a})^{k}\bigr)`, which is exactly an AFT model with :math:`\beta = -b`. So for scale-family distributions the two coincide under a log-linear link, with opposite signs: an accelerated life coefficient says how much *life* a unit of stress buys, an AFT coefficient how much *faster* it ages. They part company for location-family distributions (Normal, Gumbel, Logistic), where accelerated life shifts the location but AFT rescales time, and whenever the stress-life relationship is not log-linear — which is the point of having physically motivated life models. The distinction follows [Bagdonavicius]_; see also :doc:`Handy References - Aide-mémoire`.
 
@@ -617,6 +625,70 @@ with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conve
     _ev = _lung["time"][_lung["censored"] == 0].value_counts()
     assert (_ev * (_ev - 1) // 2).sum() == 28
 
+**How sure is C, and Uno's version.** A C computed from a sample is an estimate, and the
+question that follows is how far it could move with another sample. ``concordance_estimate``
+gives it a standard error and a confidence interval, as R's ``survival::concordance``
+reports its ``var``: the *infinitesimal jackknife* asks how much :math:`C` changes when one
+subject's weight is nudged, and adds up the squares of those changes. With :math:`N_i` the
+subject's share of the concordant pairs (a tied score counting half), :math:`M_i` its share of
+the comparable pairs and :math:`M` all comparable pairs,
+
+.. math::
+
+    d_i = \frac{N_i - C\, M_i}{M}, \qquad \widehat{\operatorname{var}}(C) = \sum_i d_i^2 .
+
+Harrell's :math:`C` has a quieter weakness: censoring decides which pairs are comparable.
+When many subjects are censored early, the comparable pairs are mostly early failures, so
+:math:`C` mostly describes how well the score ranks early failures, and two studies with the
+same model but different follow-up get different values. **Uno's C** (Uno, Cai, Pencina,
+D'Agostino and Wei, 2011) weights each comparable pair by how unlikely it was to survive the
+censoring, :math:`1 / \hat G(t_i-)^2`, where :math:`\hat G` is the Kaplan-Meier estimate of
+the chance of being still uncensored and :math:`t_i` the pair's failure time. The late pairs
+that censoring thinned out then count as much as they would have without it, and the estimate
+no longer depends on the censoring pattern (if censoring is independent of the score). Because
+:math:`\hat G` falls towards 0 at the end of follow-up, the weights blow up there, so Uno's C is
+used up to a horizon :math:`\tau` where enough subjects remain: ``tau=`` keeps only the pairs
+whose failure is at or before it (R's ``ymax``):
+
+.. math::
+
+    C_\tau = \frac{\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i < t_j,\ t_i \le \tau)
+        \left[I(r_i > r_j) + \tfrac12 I(r_i = r_j)\right]}
+        {\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i < t_j,\ t_i \le \tau)} .
+
+Two models scored on the same subjects have correlated C's, so their difference cannot be
+tested as if they were independent; ``compare_concordance`` uses the subjects' influences on
+both, :math:`\widehat{\operatorname{var}}(C_a - C_b) = \sum_i (d_{a,i} - d_{b,i})^2`, and a
+normal test, as ``survival::concordance(fit_a, fit_b)`` does. These reproduce R's estimates
+and standard errors (``timewt = "n"`` for Harrell, ``"n/G2"`` for Uno) to rounding:
+
+.. jupyter-execute::
+
+    import surpyval as sp
+    from surpyval.datasets import load_lung
+    from surpyval.metrics import compare_concordance
+
+    lung = load_lung().dropna(subset=["ph.ecog"])
+    lung["censored"] = 1 - lung["status"]
+    cox = sp.CoxPH.fit_from_df(lung, x_col="time", c_col="censored",
+                               Z_cols=["age", "sex", "ph.ecog"])
+    harrell = cox.concordance_estimate()
+    uno = cox.concordance_estimate(weighting="uno", tau=500)
+    print("Harrell: %.4f (SE %.4f)" % (harrell.estimate, harrell.se))
+    print("Uno, tau = 500 days: %.4f (SE %.4f)" % (uno.estimate, uno.se))
+
+    # does the ECOG score alone rank the patients as well as the model?
+    lp = lung[["age", "sex", "ph.ecog"]].to_numpy() @ cox.beta
+    compare_concordance(lung["time"], lung["censored"], lp, lung["ph.ecog"])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # R survival 3.8.12: concordance(coxph(...)) 0.637135, sqrt(var) 0.025068
+    assert round(harrell.estimate, 4) == 0.6371
+    assert round(harrell.se, 4) == 0.0251
+
 Survival trees and forests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -650,7 +722,7 @@ surpyval's trees couple the split rule with the leaf model (``kind=``):
 
 Choosing the split by the best cut over every covariate (``selection="greedy"``, the default) has two known faults. A covariate with many distinct values offers many more cuts than one with a few, so by chance alone its best cut looks better: greedy search prefers continuous covariates whether or not they matter. And it always finds a cut, so the tree has to be stopped by its size. **Conditional inference** (``selection="ctree"``) separates choosing the covariate from choosing its cut [Hothorn2006reg]_. At each node every unit gets a score from the node's split statistic, computed once: the log-rank scores above for ``"non-parametric"`` (with delayed entry :math:`\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]`, whose sum over a child is again :math:`O - E`), and for ``"exponential"`` and ``"weibull"`` each unit's contribution to the score :math:`\partial \ell_i / \partial \theta` of the working model at the node's pooled estimate (one score for :math:`\log \lambda`, two for :math:`(\log \alpha, \log \beta)`), as in model-based recursive partitioning [Zeileis2008reg]_. For a cut leaving :math:`m` of :math:`N` units on the left, the sum :math:`T_m` of the left child's centred scores has permutation covariance :math:`\frac{m(N-m)}{N(N-1)}\sum_i (h_i - \bar h)(h_i - \bar h)^\top`, and :math:`Q_m = T_m^\top \Sigma_m^{+} T_m` is maximised over the covariate's allowed cuts: the maximally selected statistic [LausenSchumacher1992reg]_, which, like the tree, depends on a covariate only through the order of its values. Its p-value accounts for the number of cuts: the standardised statistics at successive cuts form, asymptotically, a Gauss-Markov chain with correlation :math:`\sqrt{m_{k-1}(N - m_k)/(m_k(N - m_{k-1}))}` between neighbours, and surpyval computes the probability that the chain's maximum exceeds the observed one exactly for that chain, by quadrature, rather than by the Hunter-Worsley bound of ``maxstat`` [HothornLausen2003reg]_, which is about twice too large for a continuous covariate. One cut gives the plain :math:`\chi^2` p-value, many close cuts not much more than a few independent ones. The covariate with the smallest p-value is chosen, and the node is split, at that covariate's best cut by the kind's criterion, only if the p-value times the number of covariates tested (Bonferroni) is below ``alpha_split`` (0.05 by default); otherwise the node is a leaf. On data with no effect the tree then usually stays a single leaf, and a covariate with two values competes on equal terms with continuous noise.
 
-A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. Because every tree is grown without about a third of the rows, each row can be scored by the trees that never saw it: the forest's out-of-bag log-likelihood is the mean of those rows' full likelihoods (density, survival, failure or interval probability, over the truncation probability), an estimate of how well it predicts new data for every kind of censoring, and shuffling one covariate among the out-of-bag rows and measuring the drop gives its permutation importance [Breiman2001reg]_. In surpyval both live in ``surpyval.beta.ml`` — tested and usable, but with an interface that may still change (see :doc:`surpyval.beta`).
+A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. Because every tree is grown without about a third of the rows, each row can be scored by the trees that never saw it: the forest's out-of-bag log-likelihood is the mean of those rows' full likelihoods (density, survival, failure or interval probability, over the truncation probability), an estimate of how well it predicts new data for every kind of censoring, and shuffling one covariate among the out-of-bag rows and measuring the drop gives its permutation importance [Breiman2001reg]_. In surpyval both live in ``surpyval.ml`` (see :doc:`surpyval.ml`).
 
 Choosing a model
 ^^^^^^^^^^^^^^^^

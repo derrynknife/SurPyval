@@ -270,7 +270,7 @@ The options are:
 - ``on``: the function to bound, ``'sf'`` (default), ``'ff'`` or ``'Hf'``. The rows are always ``[lower, upper]`` for the function you asked about;
 - ``bound``: ``'two-sided'`` (default), ``'lower'`` or ``'upper'``;
 - ``alpha_ci``: the significance level, 0.05 by default;
-- ``bound_type``: ``'exp'`` (default), the log(-log) interval that always stays within [0, 1], or ``'normal'``, the plain symmetric interval;
+- ``bound_type``: how the interval is formed. ``'exp'`` (default) is the log(-log) interval, which always stays within [0, 1]; ``'normal'`` the plain symmetric interval. The others match the choices other software offers: ``'log'`` (the default of R's ``survfit``), ``'logit'`` and ``'arcsine'`` form the interval on the log, log-odds or arcsine-square-root scale and map it back (all within [0, 1]); ``'peto'`` is the plain interval with Peto's variance, which uses the number still at risk and is cautious late in follow-up; ``'rothman'`` is Rothman's Wilson-type interval, within [0, 1]. They are listed with their formulas in the ``cb`` reference;
 - ``interp``: as for ``sf``.
 
 .. jupyter-execute::
@@ -279,6 +279,7 @@ The options are:
     print('on Hf:        ', model.cb(3, on='Hf').round(4))
     print('90% lower sf: ', model.cb(3, bound='lower', alpha_ci=0.1).round(4))
     print("'normal' type:", model.cb(6, bound_type='normal').round(4))
+    print("'logit' type: ", model.cb(6, bound_type='logit').round(4))
     print('at last value:', model.cb(8).round(4))
     print('before first: ', model.cb(0.5))
 
@@ -300,6 +301,7 @@ The formulas are in the section *From a variance to confidence bounds* of :doc:`
     assert np.allclose(model.cb(3, on='ff'), 1 - _sf[::-1])
     assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
     assert model.cb(6, bound_type='normal')[0] < 0
+    assert 0 < model.cb(6, bound_type='logit')[0] < model.sf(6)
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(model.cb(0.5) == 1) and np.all(model.cb(0.5, on='ff') == 0)
     assert np.all(model.cb(0.5, on='Hf') == 0)
@@ -1357,6 +1359,234 @@ values with your significance level. Here, three groups of which only the third 
 A and B are not told apart; C differs from each. ``pairwise_logrank`` takes every argument of
 ``logrank`` (``c``, ``n``, ``weighting``, ``strata``, ``tl``, ``t0``).
 
+Interval-censored groups: ``interval_logrank``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When failures are found at inspections or clinic visits, each failure time is only known to lie
+between the last visit where all was well and the first where it was not. ``logrank`` needs exact
+or right censored times, so it refuses such data; ``interval_logrank`` takes any mix of exact,
+right, left and interval-censored rows, in the usual forms (``x`` and ``c``, a two-column ``x``,
+or ``xl`` and ``xr``).
+
+In plain words, it works in three steps:
+
+1. Pool every group and estimate one survival curve, the Turnbull estimate.
+2. Give each unit a score from that curve: high if it failed early, low if it lasted, averaged
+   over the interval it is known to have failed in. A unit still running at its last visit gets a
+   low score.
+3. If the groups truly share one survival curve, which group a unit is in tells nothing about its
+   score. So compare each group's total score with how much it would vary if the labels were
+   shuffled at random.
+
+The scores come in three flavours (``scores``): ``'log-rank'`` (Sun's, the default; on exact and
+right censored data each group's score total is exactly the log-rank test's observed minus
+expected events), ``'finkelstein'`` (Finkelstein's log-rank scores, from a proportional hazards
+model of the grouped data) and ``'wilcoxon'`` (the Wilcoxon-type scores, which weigh early
+differences more). The p-value is from the chi-squared distribution by default, or from random
+relabellings of the units with ``method='permutation'`` (seeded with ``random_state``), better for
+small samples.
+
+The breast cosmesis study (Finkelstein and Wolfe, 1985) followed 94 women after radiotherapy for
+early breast cancer, alone or with chemotherapy, and recorded at each visit whether breast
+retraction had appeared. Here are 30 of each group:
+
+.. jupyter-execute::
+
+    from surpyval import interval_logrank
+
+    inf = np.inf
+    xl = [45, 6, 0, 46, 46, 7, 17, 7, 37, 0, 4, 15, 11, 22, 46, 46, 25, 46, 26, 46,
+          27, 36, 46, 36, 37, 40, 17, 46, 11, 38,
+          8, 0, 24, 17, 17, 24, 16, 13, 11, 16, 18, 17, 32, 23, 44, 14, 0, 5, 12, 11,
+          33, 31, 13, 19, 34, 13, 16, 35, 15, 11]
+    xr = [inf, 10, 7, inf, inf, 16, inf, 14, 44, 8, 11, inf, 15, inf, inf, inf, 37, inf, 40, inf,
+          34, 44, inf, 48, inf, inf, 25, inf, 18, inf,
+          12, 22, 31, 27, 23, 30, 24, inf, 13, 20, 25, 26, inf, inf, 48, 17, 5, 8, 20, inf,
+          40, inf, 39, 32, inf, inf, 24, inf, 22, 17]
+    regimen = ['radiotherapy'] * 30 + ['with chemotherapy'] * 30
+    print(interval_logrank(xl=xl, xr=xr, Z=regimen))
+    res = interval_logrank(xl=xl, xr=xr, Z=regimen, scores='wilcoxon',
+                           method='permutation', random_state=1)
+    print('Wilcoxon, permutation p-value: %.3g' % res.p_value)
+    print(res.U)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = interval_logrank(xl=xl, xr=xr, Z=regimen)
+    assert _r.p_value < 0.05 and _r.U['with chemotherapy'] > 0, _r
+
+``U`` holds each group's score total: positive means earlier failures than the pooled curve
+suggests, so retraction came sooner with chemotherapy.
+
+With :math:`S` the pooled Turnbull estimate and a unit known to fail in :math:`(a_i, b_i]`, the
+scores are
+
+.. math::
+
+    c_i = \frac{\psi(S(a_i)) - \psi(S(b_i))}{S(a_i) - S(b_i)},
+
+with :math:`\psi(s) = s \log s` for Finkelstein's scores and :math:`\psi(s) = s^2 - s` for the
+Wilcoxon's (so :math:`c_i = S(a_i) + S(b_i) - 1`); Sun's use :math:`\psi = S \log \tilde S`, with
+:math:`\tilde S` the exponential of minus the cumulative hazard of the estimate. With :math:`N`
+units, :math:`d_i = c_i - \bar c` and :math:`\bar d_g` the mean of :math:`d_i` over the
+:math:`N_g` units of group :math:`g`, the statistic is
+
+.. math::
+
+    \chi^2 = \frac{N - 1}{\sum_i d_i^2} \sum_g N_g \bar d_g^2,
+
+on :math:`k - 1` degrees of freedom (Fay and Shaw, 2010). It is R's
+``interval::ictest(L, R, group, scores = 'logrank1' | 'logrank2' | 'wmw', method = 'pclt')``, and
+agrees with it to rounding when both estimates are converged tightly (checked in the test suite
+on the full 94 women and on simulated data with every kind of censoring). Truncated data (``tl``, ``tr``) are refused: delayed entry
+makes the units not exchangeable, which the test relies on; use ``logrank`` with ``tl`` for exact
+and right censored data with delayed entry.
+
+When the hazards are not proportional: the max-combo test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The log-rank test is at its best when one group's hazard is a constant multiple of the other's.
+When the difference only shows after a while (a treatment that takes time to work), fades, or the
+curves cross, a weighting that stresses late or early times does better -- but which one is not
+known in advance, and trying several and keeping the smallest p-value overstates the evidence.
+``maxcombo_logrank`` runs several Fleming-Harrington weightings at once (by default FH(0, 0), the
+log-rank test; FH(0, 1), late; FH(1, 0), early; and FH(1, 1), the middle), takes the strongest,
+and gets its p-value from the joint distribution of all of them, so the chance of a false
+rejection stays at the level chosen. Here the treatment does nothing for 5 time units and then
+halves the hazard:
+
+.. jupyter-execute::
+
+    from surpyval import maxcombo_logrank
+
+    rng = np.random.default_rng(11)
+    control = rng.exponential(10, 150)
+    treated = rng.exponential(10, 150)
+    late = treated > 5
+    treated[late] = 5 + rng.exponential(20, late.sum())
+    x_d = np.minimum(np.concatenate([control, treated]), 25)
+    c_d = (np.concatenate([control, treated]) > 25).astype(int)
+    arm = np.repeat(['control', 'treated'], 150)
+    print('log-rank : p = %.3g' % logrank(x_d, arm, c=c_d).p_value)
+    combo = maxcombo_logrank(x_d, arm, c=c_d)
+    print(combo)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert combo.p_value < logrank(x_d, arm, c=c_d).p_value, combo
+
+Each component's ``z`` is the first group's (here ``'control'``) observed minus expected events
+over its standard deviation; the p-value is :math:`P(\max_j |Z_j| \ge m)` for normal
+:math:`Z_j` with the components' estimated correlation (``combo.correlation``), R's
+``nph::logrank.maxtest``. ``alternative='greater'`` or ``'less'`` gives a one-sided test, and
+``strata``, ``tl`` and ``t0`` work as for ``logrank``.
+
+Ordered groups: the test for trend
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the groups have an order -- doses, stages, load levels -- the question is usually whether
+the hazard rises with the order, not whether any group differs. ``trend_logrank`` gives each group
+a score (1, 2, ..., k by default, or your own through ``scores``) and tests whether the groups'
+observed minus expected events line up with the scores, on one degree of freedom. It finds a
+steady trend with fewer data than the k-group test, and misses a difference that does not follow
+the order. It takes every option of ``logrank`` (``weighting``, ``strata``, ``tl``, ``t0``, ``w``):
+
+.. jupyter-execute::
+
+    from surpyval import trend_logrank
+
+    rng = np.random.default_rng(12)
+    dose = np.repeat([0, 10, 20, 40], 40)
+    x_t = rng.exponential(10 / np.exp(0.02 * dose))
+    print('k-group : p = %.3g' % logrank(x_t, dose).p_value)
+    print(trend_logrank(x_t, dose, scores=[0, 10, 20, 40]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _tr = trend_logrank(x_t, dose, scores=[0, 10, 20, 40])
+    assert _tr.z > 0 and _tr.p_value < logrank(x_t, dose).p_value, _tr
+
+A positive ``z`` means the hazard rises with the score. With :math:`U` the groups' observed minus
+expected events, :math:`V` their covariance and :math:`s` the scores,
+:math:`z = s^\top U / \sqrt{s^\top V s}` (Tarone, 1975).
+
+Small samples: the permutation log-rank test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The chi-squared p-value of ``logrank`` is an approximation that can be poor with a handful of
+units. ``permutation_logrank`` takes the p-value from the data instead: if the groups share one
+survival curve, the labels are just tags, so it counts how many ways of shuffling them give a
+statistic at least as large as the one observed -- every way when there are few (an exact
+p-value), a random sample of them otherwise (a Monte Carlo p-value, seeded with
+``random_state``, with its standard error):
+
+.. jupyter-execute::
+
+    from surpyval import permutation_logrank
+
+    x_s = [6, 6, 6, 7, 10, 13, 16, 22, 23, 1, 1, 2, 2, 3, 4, 4, 5]
+    c_s = [0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    arm_s = ['treated'] * 9 + ['control'] * 8
+    print(permutation_logrank(x_s, arm_s, c=c_s))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pl = permutation_logrank(x_s, arm_s, c=c_s)
+    assert _pl.method == 'exact' and _pl.p_value < 0.05, _pl
+
+**When the permutation p-value is valid.** Shuffling the labels assumes the units are
+exchangeable under the null hypothesis: the same survival *and the same censoring* in every
+group. When one group is followed for longer or loses more units, the shuffles mix up the
+censoring patterns too, and the test can reject a true null too often (Heinze, Gnant and Schemper,
+2003). Then use ``logrank``, whose chi-squared p-value does not assume equal censoring. For the
+same reason delayed entry (``tl``) and sampling weights (``w``) are refused.
+
+Cut-points of a continuous covariate: maximally selected statistics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+People often want a threshold: "patients over this age", "parts above this vibration level".
+``maxstat_logrank`` tries every cut of a continuous covariate between the 10% and 90% quantiles
+(``minprop``, ``maxprop``), scores each split with the log-rank statistic, and reports the best.
+
+Two warnings in plain words. First, the ordinary log-rank p-value *at the best cut* is wrong:
+with dozens of cuts tried, one of them looks significant by chance alone, and that naive p-value
+rejects a true null hypothesis far more often than 5% (about 4 times in 10 with 100 units and the default range of cuts, in the package's own simulation study).
+``maxstat_logrank`` reports it as ``naive_p_value`` only to show the size of the correction; report
+``p_value``, which allows for the search. Second, cutting a continuous covariate in two throws
+information away and the best cut rarely replicates; to learn how the covariate affects survival,
+fit a regression on the covariate itself (``CoxPH``). Use a cut only when a two-way decision is
+really needed.
+
+.. jupyter-execute::
+
+    from surpyval import maxstat_logrank
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    res = maxstat_logrank(lung['time'], lung['age'], c=1 - lung['status'])
+    print(res)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert res.naive_p_value < 0.05 < res.p_value, res
+
+The best cut, 70 years, would look significant on its own (p = 0.044), but once the 24 cuts tried
+are allowed for there is no real evidence of a threshold in age. The default p-value
+(``method='exact'``) is the probability that the largest of the standardised statistics, jointly
+normal under the null hypothesis, reaches the one observed (R's ``maxstat``, ``pmethod =
+'exactGauss'``); ``'lausen94'`` (an upper bound), ``'lausen92'`` (a large-sample approximation) and
+``'permutation'`` (Monte Carlo) are the alternatives.
+
 Plotting groups with the number at risk
 ---------------------------------------
 
@@ -1498,6 +1728,143 @@ width. Late entrants are counted in the ``entered`` column of the interval they 
 withdrawals, as half at risk there. Data already grouped is given as one row per interval and
 outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
 into intervals; estimate it with ``Turnbull`` instead.
+
+Exposure (person-years) tables
+------------------------------
+
+An **exposure table** answers "how often do events happen here?" for each group and each stretch
+of life. In every cell it adds up the time the units were watched there (the *exposure*: unit-hours,
+person-years), counts the events there, and divides: the event rate, failures per 1,000 operating
+hours or deaths per 1,000 person-years. A unit counts in every cell it passes through. A pump
+watched from 3,000 to 7,000 operating hours, with bands every 2,000 hours, adds 1,000 hours to the
+2,000-4,000 band, 2,000 to the 4,000-6,000 band and 1,000 to the 6,000-8,000 band, and its failure
+counts in the band it was in when it failed. Reading each unit's band from its age at the start of
+the record instead would put all its time, and its failure, in one band, which overstates the
+rates of the young bands and understates the old.
+
+``surv.person_years`` builds the table, as R's ``survival::pyears``. Fixed groupings (a site, a
+model, a sex) are ``factors``; time bands are ``timescales``, each given as ``(start, breaks)``:
+each unit's value on that clock at time 0 of ``x``, and the band edges. Attained age is ``(age at
+time 0, age bands)``, calendar period ``(date at time 0 as a number, period edges)``, the clock of
+``x`` itself ``(0, bands)`` and time since entry ``(-tl, bands)``.
+
+A fleet: twelve pumps at two sites, each recorded from some age (``start``, in operating hours
+since installation) until it failed or the record ended. Failures per 1,000 hours by site and by
+age band:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    pumps = pd.DataFrame({
+        "site": ["North"] * 6 + ["South"] * 6,
+        "start": [0, 0, 2000, 4500, 6000, 9000, 0, 1000, 3000, 5000, 7000, 8000],
+        "end": [6200, 11800, 9400, 12000, 8100, 15500,
+                3900, 7400, 9800, 6900, 13000, 12100],
+        "failed": [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1],
+    })
+    fleet = surv.person_years(
+        pumps["end"], 1 - pumps["failed"], tl=pumps["start"],
+        factors={"site": pumps["site"]},
+        timescales={"age": (0, [0, 5000, 10000, 20000])},
+        per=1000,
+    )
+    print(fleet.table[["site", "age", "age_end", "units", "exposure", "events",
+                       "rate", "rate_lower", "rate_upper"]].round(3))
+    print(fleet.margins("site")[["site", "exposure", "events", "rate",
+                                 "rate_lower", "rate_upper"]].round(3))
+
+In plain terms: the North pumps ran 41,500 hours and failed 3 times, 0.072 failures per 1,000
+hours; the South pumps 29,100 hours and 5 failures, 0.172. The bounds (95% by default,
+``alpha_ci``) are exact: with so few failures they are wide, from 0.015 to 0.21 at North. Is South
+really worse?
+
+.. jupyter-execute::
+
+    rr = fleet.rate_ratio({"site": "South"}, {"site": "North"})
+    print(round(rr["ratio"], 2), round(rr["lower"], 2), round(rr["upper"], 2),
+          round(rr["p_value"], 2))
+
+South's rate is 2.4 times North's, but anything from about half to 15 times fits these eight
+failures (p = 0.29): the data cannot yet tell the sites apart.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s = fleet.margins("site").set_index("site")
+    assert _s.loc["North", "exposure"] == 41500 and _s.loc["North", "events"] == 3
+    assert _s.loc["South", "exposure"] == 29100 and _s.loc["South", "events"] == 5
+    assert round(_s.loc["North", "rate"], 3) == 0.072 and round(_s.loc["South", "rate"], 3) == 0.172
+    assert round(_s.loc["North", "rate_lower"], 3) == 0.015 and round(_s.loc["North", "rate_upper"], 2) == 0.21
+    assert round(rr["ratio"], 1) == 2.4 and round(rr["p_value"], 2) == 0.29
+    assert 0.4 < rr["lower"] < 0.5 and 15 < rr["upper"] < 16
+
+A cohort: the 1,384 patients of ``mgus2`` followed from diagnosis, deaths per 1,000
+person-years by sex and attained age. With reference rates (here an illustrative table, by sex and
+age band, in the same units: deaths per 1,000 person-years), each cell also gets its expected
+deaths and the observed to expected ratio, the standardised mortality (or incidence) ratio:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_mgus2
+
+    mgus = load_mgus2()
+    reference = pd.DataFrame({
+        "sex": ["F"] * 4 + ["M"] * 4,
+        "age": [0, 60, 70, 80] * 2,
+        "rate": [5, 15, 40, 120, 8, 25, 60, 160],
+    })
+    cohort = surv.person_years(
+        mgus["futime"] / 12, 1 - mgus["death"],
+        factors={"sex": mgus["sex"]},
+        timescales={"age": (mgus["age"], [0, 60, 70, 80, np.inf])},
+        rates=reference, per=1000,
+    )
+    print(cohort.table[["sex", "age", "units", "exposure", "events", "rate",
+                        "expected", "oe_ratio", "oe_lower", "oe_upper"]].round(2))
+    print(cohort.margins()[["exposure", "events", "expected", "oe_ratio",
+                            "oe_lower", "oe_upper"]].round(3))
+
+The patients lived 11,048.5 person-years and 963 died, 1.37 times the deaths the reference rates
+predict (95% bounds 1.28 to 1.46). The excess is largest under 60, four to five times the
+reference (14 women died there against 3.4 expected), and shrinks with age. ``units`` counts the patients who spent time in each cell, so a patient who
+crossed an age band is counted in both.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = cohort.margins().iloc[0]
+    assert round(_t["exposure"], 1) == 11048.5 and _t["events"] == 963
+    assert round(_t["oe_ratio"], 2) == 1.37
+    assert round(_t["oe_lower"], 2) == 1.28 and round(_t["oe_upper"], 2) == 1.46
+    _f = cohort.table.iloc[0]
+    assert _f["events"] == 14 and round(_f["expected"], 1) == 3.4
+
+What it does, in more detail:
+
+- **The rate and its bounds.** A cell's rate is its events over its exposure, :math:`d / T`, the
+  estimate of a hazard taken as constant within the cell. Its bounds are the exact (Garwood)
+  Poisson bounds, :math:`\chi^2_{2d, \alpha/2} / 2T` and :math:`\chi^2_{2d+2, 1-\alpha/2} / 2T`
+  (R's ``poisson.test``); they cover the true rate at least 95% of the time, more where the counts
+  are small. ``surv.poisson_rate_bounds(d, T)`` gives them for any count and exposure.
+- **The rate ratio** of two sets of cells (``rate_ratio(cells, reference)``) uses that, given the
+  total events in the two, the share in the first is binomial: its exact (Clopper-Pearson) bounds
+  and binomial test give the ratio's bounds and p-value, as R's ``poisson.test`` with two counts.
+- **Observed to expected.** The expected events of a cell are its reference rate times its
+  exposure, and the ratio's bounds are the Garwood bounds of the events divided by them (the
+  expected count taken as known). ``rates`` is one rate for every cell or a table with a ``rate``
+  column and columns for the factors and time scales it varies by (a time band by its lower edge).
+  A reference rate that changes within a cell is taken at one value there; to integrate a finer
+  rate table, cut the bands at its edges and add the cells up (``margins``).
+- **Bands** are ``(lower, upper]``: an event exactly on an edge is in the band ending there, as in
+  R. Time outside every band is reported in ``offtable`` with a warning; end the last band at
+  ``inf`` to keep everything. ``margins(by)`` adds the table up over the other dimensions and
+  recomputes the rates; ``units`` do not add up across cells and are left out there.
+- **Refused:** left and interval censored rows (``c=-1``, ``c=2``), whose exposure ends at an
+  unknown time: a failure found at an inspection is recorded as an event at the inspection; or
+  estimate the survival with ``Turnbull``.
 
 Conditional survival
 --------------------

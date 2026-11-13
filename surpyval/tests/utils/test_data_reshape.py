@@ -463,7 +463,9 @@ def test_issue_932_ids_on_the_constructor():
     assert data.select(ids="b").x.tolist() == [5.0]
     with pytest.raises(ValueError, match="one id per entry"):
         SurpyvalData([9, 1, 5], ids=["c", "a"])
-    with pytest.raises(ValueError, match="given more than once: 'a'"):
+    # A repeated id is a unit with several rows, which must be in time
+    # order (test_terminal_flag.py)
+    with pytest.raises(ValueError, match="overlaps the previous row"):
         SurpyvalData([9, 1, 5], ids=["a", "a", "b"])
 
 
@@ -474,14 +476,20 @@ def test_issue_932_reshapes_are_fast_at_fifty_thousand_items():
     x = rng.weibull(2, 50_000) * 100
     c = (x > 120).astype(int)
     data = SurpyvalData(x, c, ids=[f"P{k}" for k in range(len(x))])
+    # Each takes about 0.01 s on an M-series Mac. The best of three runs,
+    # against 2 s, keeps a busy machine's pauses out (one run took 0.72 s
+    # on a loaded CI runner) and still fails a quadratic reshape (#932).
     for op in (
         lambda: data.without("truncation"),
         lambda: data.select(ids=[f"P{k}" for k in range(0, 50_000, 2)]),
         lambda: data.censor_at(100),
     ):
-        start = time.perf_counter()
-        op()
-        assert time.perf_counter() - start < 0.5
+        best = float("inf")
+        for _ in range(3):
+            start = time.perf_counter()
+            op()
+            best = min(best, time.perf_counter() - start)
+        assert best < 2.0
 
 
 # -- #937: a cut-off per item, by dict or by a function of the record ----

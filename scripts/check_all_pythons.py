@@ -2,7 +2,7 @@
 """Run the deployment checks locally, across every supported Python.
 
 Continuous integration runs the test suite only on the release pull
-request into ``master`` (see docs/Contributing.rst). That keeps the
+request into ``main`` (see docs/Contributing.rst). That keeps the
 edit-review loop fast, at the cost of finding an interpreter-specific
 failure at release time rather than when it lands. This script is the
 other half of that trade: it runs what CI would have run, on all three
@@ -175,10 +175,10 @@ def main() -> int:
 
     print("\n" + "=" * 60)
     failed = False
-    for version, name, status, elapsed in results:
-        if status != "ok":
+    for version, name, outcome, elapsed in results:
+        if outcome != "ok":
             failed = True
-        print(f"{version:6s} {name:28s} {status:12s} {elapsed:6.1f}s")
+        print(f"{version:6s} {name:28s} {outcome:12s} {elapsed:6.1f}s")
     print("=" * 60)
 
     if failed:

@@ -13,7 +13,6 @@ from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -531,6 +530,22 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @property
+    def canonical_name(self) -> str:
+        """The distribution's canonical name: its :attr:`name`, except for
+        an alias (``Gauss`` and ``Galton`` give ``"Normal"`` and
+        ``"LogNormal"``). The package identifies a distribution by it, so
+        a model fitted with an alias behaves as one fitted with the
+        canonical name (see :mod:`surpyval.utils.aliases`).
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.Gauss.canonical_name, sp.Weibull.canonical_name
+        ('Normal', 'Weibull')
+        """
+        return self.name
+
     def __init__(
         self,
         name: str,
@@ -701,7 +716,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         distribution has a closed form."""
         return continuous_mrl(self, x, *params)
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -970,8 +984,14 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
         # 0 nothing has failed, and a window opening below 0 contains the
         # mass. Counting it at a ``tl`` of -1 made a no-op truncation
-        # divide by ``1 - f0``, and f0 ran to 1 (#548). (With ``f0 = 0``
-        # this is the same arithmetic as before.)
+        # divide by ``1 - f0``, and f0 ran to 1 (#548). A window that
+        # opens *at* 0 holds the mass too: an interval ``[0, t]`` says
+        # "failed by t", perhaps at 0, the same as left censoring at
+        # ``t`` (``f0 + (p - f0) F(t)``), and a ``tl`` of 0 is no
+        # truncation, as in the zero-inflated regression (Moulton &
+        # Halsey 1995; Braekers & Grouwels 2016). So the lower bound
+        # counts the mass only when it is above 0. (With ``f0 = 0`` this
+        # is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
             f0 * (xr >= 0) + (p - f0) * ff(xr_safe - gamma, *dist_params),
@@ -979,7 +999,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         )
         lower = np.where(
             lo_finite,
-            f0 * (xl >= 0)
+            f0 * (xl > 0)
             + (p - f0)
             * np.where(lo_evaluated, ff(xl_safe - gamma, *dist_params), 0.0),
             0.0,
@@ -1180,7 +1200,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
-    @removed_arguments("0.24", p="'lfp_p'")
     @takes_unit
     def from_params(
         self,
@@ -1349,6 +1368,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         method: str = "auto",
         points: int | None = None,
         unit: Any = None,
+        w: Any = None,
     ) -> Any:
         """
         Fit the distribution by Bayes' rule: the prior times the
@@ -1386,6 +1406,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             The grid's starting points per parameter.
         unit : str, optional
             The unit of the times, as for ``fit``.
+        w : None
+            Weights are not taken: a ``w`` is refused with a
+            ``ValueError`` that says what to use instead (``fit`` with
+            ``w``, or counts ``n`` for identical units).
 
         Examples
         --------
@@ -1398,6 +1422,8 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.params.round(2)
         array([1.441299e+04, 2.090000e+00])
         """
+        if w is not None:
+            raise self._bayes_weights_refusal("fit_bayes", "w")
         from surpyval.bayes.fitting import fit as _fit
 
         return _fit(
@@ -1430,6 +1456,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         xr_col: str | None = None,
         tl_col: Any = None,
         tr_col: Any = None,
+        w_col: Any = None,
         **fit_options: Any,
     ) -> Any:
         """
@@ -1450,6 +1477,8 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.method
         'conjugate'
         """
+        if w_col is not None:
+            raise self._bayes_weights_refusal("fit_bayes_from_df", "w_col")
         from surpyval.bayes.fitting import fit_from_df as _fit_from_df
 
         return _fit_from_df(
@@ -1463,6 +1492,35 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             tl_col=tl_col,
             tr_col=tr_col,
             **fit_options,
+        )
+
+    def _bayes_weights_refusal(self, method: str, argument: str) -> Any:
+        """The refusal of weights given to a Bayesian fit: a
+        ``ValueError`` naming the method and the argument, why, and what
+        to use instead (principle 2), in place of Python's ``TypeError``
+        for an unexpected keyword."""
+        import inspect
+
+        from surpyval.utils.weights import BAYES_WHY, WeightedRefusal
+
+        name = self.name
+        without = (
+            f"call {method} without {argument} (identical units can be "
+            "given as counts, n)"
+        )
+        fit = getattr(self, "fit", None)
+        if fit is not None and "w" in inspect.signature(fit).parameters:
+            instead = (
+                "Fit by maximum likelihood with the weights, "
+                f"{name}.fit(x, c, w=w) or {name}.fit_from_df(df, ..., "
+                "w_col=...), whose robust covariance gives valid Wald "
+                f"intervals, or {without}."
+            )
+        else:
+            instead = f"{name}.fit takes no weights either: {without}."
+        return WeightedRefusal(
+            f"{name}.{method} does not take weights ({argument}): "
+            f"{BAYES_WHY}. {instead}"
         )
 
     def _check_params(self, params: Any) -> None:

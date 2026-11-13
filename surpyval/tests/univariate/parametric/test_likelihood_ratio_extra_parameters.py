@@ -382,6 +382,28 @@ def test_a_side_with_unbounded_likelihood_points_is_the_edge(alpha_ci):
     assert list(beta) == [0.0, np.inf]
 
 
+def test_flat_gamma_offset_bounds_do_not_depend_on_rounding():
+    # The profile of the Gamma offset model's alpha tends to the Normal
+    # limit, whose deviance (0.854) is below the 80% two-sided critical
+    # value (1.64): the upper bound is infinite at every level. Its
+    # offset's lower side runs the same way, but the searches lose the
+    # profile before it shows it has converged: that bound is not found,
+    # and the warning says why.
+    model = _small_gamma_offset()
+    for alpha_ci in (0.01, 0.05, 0.2):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            alpha = model.param_cb("alpha", alpha_ci=alpha_ci, method="lr")
+            gamma = model.param_cb("gamma", alpha_ci=alpha_ci, method="lr")
+        assert alpha[1] == np.inf
+        assert np.isnan(gamma[0])
+        assert gamma[1] == pytest.approx(7.411)
+        messages = [str(w.message) for w in caught]
+        assert len(messages) == 1, messages
+        assert "so flat" in messages[0]
+        assert caught[0].filename == __file__
+
+
 def test_a_side_without_unbounded_likelihood_points_is_searched():
     # A Weibull shape above 1 has a density of 0 at the offset: its upper
     # side is walked to the critical value, while its lower side and both

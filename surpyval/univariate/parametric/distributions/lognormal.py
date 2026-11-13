@@ -54,10 +54,25 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     array([0.8845, 0.4941, 0.1131])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        mu : numpy array or scalar
+            The location parameter for the LogNormal distribution
+        sigma : numpy array or scalar
+            The scale parameter for the LogNormal distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the normal quantile of ff, on which this family is a straight line in
     # log time (#477).
     _cb_link = "probit"
+
+    @property
+    def canonical_name(self) -> str:
+        # The same for both names of the distribution (``Galton``
+        # is another name for ``LogNormal``).
+        return "LogNormal"
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -475,7 +490,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         mu, sigma = norm_mod.params
         return mu, sigma
 
-    def _mom_offset(self, x: npt.NDArray) -> "npt.NDArray | None":
+    def _mom_offset(self, x: npt.NDArray) -> npt.NDArray | None:
         r"""The offset LogNormal matching the sample's mean, variance and
         third central moment exactly, as ``(gamma, mu, sigma)``; ``None``
         where no such model exists and the optimiser has to find the

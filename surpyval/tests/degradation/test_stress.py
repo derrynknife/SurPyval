@@ -495,7 +495,7 @@ def test_induced_life_at_stress(linked_model, stage1_model):
         stage1 = float(np.ravel(stage1_model.qf(0.5, Z=[z]))[0])
         assert induced.median() == pytest.approx(stage1, rel=0.1)
         assert induced.stress == [z]
-        assert "Z=[{}]".format(z) in repr(induced)
+        assert f"Z=[{z}]" in repr(induced)
     assert medians[0] > medians[1] > medians[2]
 
 

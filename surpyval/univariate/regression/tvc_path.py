@@ -1,6 +1,6 @@
 r"""
 Continuously varying covariate paths for time-varying-covariate
-*evaluation* (#172).
+*evaluation* (#172), and their steps for *fitting*.
 
 A :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
 describes a covariate that is constant between change-points, and along it
@@ -34,14 +34,20 @@ outer nodes being more query times of the same pass (#172 phase 2).
 The path is an *external* covariate, known in advance (a planned load, a
 test profile, ambient conditions): the survival along it is a probability
 only when the path does not depend on the item's own failure process.
-Fitting a model on continuous paths is not provided; measured covariates
-are fitted as steps with ``fit_tvc``.
+
+A model is *fitted* to steps (``fit_tvc``). An item record whose
+time-varying covariates are a ``CovariatePath`` is fitted on the path cut
+into steps, :meth:`CovariatePath.to_steps`: midpoint values, whose error
+in the cumulative hazard falls with the square of the step, halved until
+the fit stops moving (``surpyval.utils.surpyval_data``). Measured
+covariates are fitted as the steps they were read at, with ``fit_tvc``.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -115,7 +121,7 @@ def _as_rows(values: Any, name: str) -> npt.NDArray:
     try:
         arr = np.asarray(values, dtype=float)
     except (TypeError, ValueError) as exc:
-        raise ValueError("'{}' must be numeric: {}".format(name, exc)) from exc
+        raise ValueError(f"'{name}' must be numeric: {exc}") from exc
     if arr.ndim == 1:
         arr = arr.reshape(-1, 1)
     if arr.ndim != 2:
@@ -131,26 +137,26 @@ def _as_rows(values: Any, name: str) -> npt.NDArray:
     return arr
 
 
-def _as_period(period: "float | None") -> "float | None":
+def _as_period(period: float | None) -> float | None:
     if period is None:
         return None
     try:
         value = float(period)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            "'period' must be a positive number, got {!r}".format(period)
+            f"'period' must be a positive number, got {period!r}"
         ) from exc
     if not (np.isfinite(value) and value > 0):
-        raise ValueError(
-            "'period' must be a positive number, got {!r}".format(period)
-        )
+        raise ValueError(f"'period' must be a positive number, got {period!r}")
     return value
 
 
 class CovariatePath:
     r"""
-    A continuously varying covariate path ``Z(t)`` for time-varying-covariate
-    evaluation: ``model.sf_tvc(x, path)`` and ``model.Hf_tvc(x, path)``.
+    A continuously varying covariate path ``Z(t)``: for evaluating a model
+    along it, ``model.sf_tvc(x, path)`` and ``model.Hf_tvc(x, path)``, and,
+    as the ``time_varying_covariates`` of item records, for fitting one on
+    it.
 
     Build one with a class method rather than the raw constructor:
 
@@ -180,9 +186,12 @@ class CovariatePath:
 
     The path must be *external* -- known in advance and not driven by the
     unit's own failure process (a planned load, a test profile, ambient
-    conditions) -- for the survival along it to be a probability. Models are
-    still fitted on step paths (``fit_tvc``); a ``CovariatePath`` only
-    evaluates a fitted model.
+    conditions) -- for the survival along it to be a probability. A model
+    is fitted to steps (``fit_tvc``): items whose
+    ``time_varying_covariates`` are a ``CovariatePath`` are fitted on the
+    path cut into steps (:meth:`to_steps`), halved until no estimate moves
+    by more than 1% of its standard error; the model's ``path_steps`` says
+    what that took.
 
     Examples
     --------
@@ -217,7 +226,7 @@ class CovariatePath:
         evaluate: Callable[[npt.NDArray, bool], npt.NDArray],
         p: int,
         knots: npt.NDArray,
-        period: "float | None",
+        period: float | None,
         kind: str,
     ) -> None:
         # Private: build a path with from_points or from_callable.
@@ -255,8 +264,8 @@ class CovariatePath:
         cls,
         times: npt.ArrayLike,
         values: npt.ArrayLike,
-        period: "float | None" = None,
-    ) -> "CovariatePath":
+        period: float | None = None,
+    ) -> CovariatePath:
         """
         A piecewise-linear path through ``(time, value)`` points.
 
@@ -297,7 +306,7 @@ class CovariatePath:
         t = np.atleast_1d(np.asarray(times, dtype=float))
         if t.ndim != 1:
             raise ValueError(
-                "'times' must be one-dimensional; got shape {}".format(t.shape)
+                f"'times' must be one-dimensional; got shape {t.shape}"
             )
         if t.size == 0:
             raise ValueError("'times' must hold at least one point")
@@ -356,9 +365,9 @@ class CovariatePath:
         cls,
         func: Callable[[npt.NDArray], Any],
         p: int = 1,
-        breakpoints: "npt.ArrayLike | None" = None,
-        period: "float | None" = None,
-    ) -> "CovariatePath":
+        breakpoints: npt.ArrayLike | None = None,
+        period: float | None = None,
+    ) -> CovariatePath:
         """
         A path given by a vectorised function of time.
 
@@ -407,13 +416,9 @@ class CovariatePath:
                 "{!r}".format(type(func).__name__)
             )
         if isinstance(p, bool) or not isinstance(p, (int, np.integer)):
-            raise ValueError(
-                "'p' must be a positive integer, got {!r}".format(p)
-            )
+            raise ValueError(f"'p' must be a positive integer, got {p!r}")
         if p < 1:
-            raise ValueError(
-                "'p' must be a positive integer, got {!r}".format(p)
-            )
+            raise ValueError(f"'p' must be a positive integer, got {p!r}")
         p = int(p)
         period = _as_period(period)
         if breakpoints is None:
@@ -531,16 +536,140 @@ class CovariatePath:
             k = np.add.outer(starts, pattern).ravel()
         return np.unique(k[(k > 0) & (k < t_max)])
 
+    def to_steps(
+        self, t_max: float, steps: int = 8, start: float | None = None
+    ) -> Any:
+        """
+        The path up to ``t_max`` as a step schedule, for fitting a model
+        on it: a model is fitted to steps (``fit_tvc``), so a continuous
+        path is cut into steps fine enough that the fit no longer depends
+        on them.
+
+        Each stretch of the path between two of its breakpoints (the
+        points of :meth:`from_points`, the declared ``breakpoints`` of
+        :meth:`from_callable`, the ends of each period) is cut into
+        ``steps`` steps of equal width, each holding the path's value at
+        its midpoint. A stretch on which the path takes one value (at
+        every midpoint, and near both ends) is one step, and neighbouring
+        steps of one value are merged, so a path that is flat, or made of
+        steps, comes back as exactly those steps whatever ``steps`` is.
+        For a straight ramp the midpoint value is the step's average, and
+        in general the error of a model's cumulative hazard along the
+        steps falls with the square of their width.
+
+        Parameters
+        ----------
+        t_max : float
+            The age to step the path up to. The last step's value holds
+            beyond it.
+        steps : int, optional
+            The steps in each stretch between breakpoints. Default 8.
+        start : float, optional
+            The age the schedule starts at. Default the path's own
+            :attr:`start`, or 0 for a path with a value at every time (a
+            function, a repeating pattern).
+
+        Returns
+        -------
+        StepSchedule
+            The steps, starting at ``start``.
+
+        Examples
+        --------
+        A ramp from 0 to 1 over 10 hours, then held, as four steps and
+        the hold:
+
+        >>> from surpyval import CovariatePath
+        >>> ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
+        >>> stepped = ramp.to_steps(25, steps=4)
+        >>> stepped.edges
+        array([ 0. ,  2.5,  5. ,  7.5, 10. ,  inf])
+        >>> stepped.Z.ravel()
+        array([0.125, 0.375, 0.625, 0.875, 1.   ])
+        """
+        from .tvc_schedule import StepSchedule
+
+        if (
+            isinstance(steps, bool)
+            or not isinstance(steps, (int, np.integer))
+            or steps < 1
+        ):
+            raise ValueError(
+                f"'steps' is the number of steps in each stretch of the "
+                f"path, a whole number of 1 or more; got {steps!r}."
+            )
+        own = self.start
+        if start is None:
+            start = own if np.isfinite(own) else 0.0
+        try:
+            start, t_max = float(start), float(t_max)
+        except (TypeError, ValueError):
+            start = t_max = np.nan
+        if not (np.isfinite(start) and np.isfinite(t_max)):
+            raise ValueError(
+                "'t_max' and 'start' are finite ages (a continuous path "
+                "is stepped over a finite stretch)."
+            )
+        if start < own:
+            raise ValueError(
+                f"The path starts at {own:g}, after 'start' = {start:g}: "
+                "it has no value there."
+            )
+        if t_max <= start:
+            raise ValueError(
+                f"'t_max' ({t_max:g}) must be after the schedule's start "
+                f"({start:g})."
+            )
+        edges = self._edges_between(start, t_max)
+        times: list = []
+        values: list = []
+        inner = (np.arange(steps) + 0.5) / steps
+        probe = np.concatenate([[1e-6], inner, [1.0 - 1e-6]])
+        for a, b in zip(edges[:-1], edges[1:]):
+            width = b - a
+            sampled = self._values(a + width * probe)
+            if np.all(sampled == sampled[0]):
+                times.append(np.array([a]))
+                values.append(sampled[:1])
+            else:
+                times.append(a + width * np.arange(steps) / steps)
+                values.append(sampled[1:-1])
+        # the value after the last breakpoint holds from t_max on
+        at = np.concatenate(times)
+        Z = np.concatenate(values)
+        keep = np.ones(at.size, dtype=bool)
+        keep[1:] = np.any(Z[1:] != Z[:-1], axis=1)
+        return StepSchedule.from_changepoints(at[keep], Z[keep])
+
+    def _edges_between(self, start: float, t_max: float) -> npt.NDArray:
+        """``start``, the path's breakpoints (repeated every period) in
+        ``(start, t_max)``, and ``t_max``."""
+        if self.period is None:
+            k = self._knots
+        else:
+            pattern = np.unique(np.concatenate([[0.0], self._knots]))
+            first = math.floor(start / self.period)
+            last = math.ceil(t_max / self.period)
+            if (last - first + 1) * pattern.size > _PANEL_CAP:
+                raise ValueError(
+                    "stepping this CovariatePath from {:g} to {:g} crosses "
+                    "{:,} periods of {:g}, more stretches than the limit "
+                    "of {:,}: describe a path that repeats this often by "
+                    "its average over a period.".format(
+                        start, t_max, last - first, self.period, _PANEL_CAP
+                    )
+                )
+            offsets = self.period * np.arange(first, last + 1)
+            k = np.add.outer(offsets, pattern).ravel()
+        inside = k[(k > start) & (k < t_max)]
+        return np.unique(np.concatenate([[start], inside, [t_max]]))
+
     def __repr__(self) -> str:
         count = "{} {}(s)".format(
             self._knots.size,
             "knot" if self._kind == "points" else "breakpoint",
         )
-        period = (
-            ", period={:g}".format(self.period)
-            if self.period is not None
-            else ""
-        )
+        period = f", period={self.period:g}" if self.period is not None else ""
         return "CovariatePath({}, {}, p={}{})".format(
             self._kind, count, self.p, period
         )
@@ -556,7 +685,7 @@ class CovariatePath:
 
 def _evaluate_panels(
     panel_terms: Callable, a: npt.NDArray, b: npt.NDArray
-) -> "tuple[npt.NDArray, ...]":
+) -> tuple[npt.NDArray, ...]:
     exact, g, scale, flag = panel_terms(a, b)
     half = 0.5 * (b - a)
     with np.errstate(invalid="ignore", over="ignore"):
@@ -579,7 +708,7 @@ def _evaluate_panels(
 def path_mesh(
     path: CovariatePath,
     points: npt.NDArray,
-    scale: "float | None" = None,
+    scale: float | None = None,
 ) -> npt.NDArray:
     """
     The starting panel edges for integrating ``path`` up to the largest of
@@ -612,7 +741,7 @@ def path_mesh(
                 count,
                 _PANEL_CAP,
                 (
-                    " (the path repeats every {:g})".format(path.period)
+                    f" (the path repeats every {path.period:g})"
                     if path.period is not None
                     else ""
                 ),
@@ -640,8 +769,8 @@ def integrate_panels(
     panel_terms: Callable,
     edges: npt.NDArray,
     rtol: float,
-    max_rounds: "int | None" = None,
-) -> "dict[str, Any]":
+    max_rounds: int | None = None,
+) -> dict[str, Any]:
     """
     Integrate over the panels between ``edges``, refining until the error
     estimate accumulated from 0 is within ``rtol`` of the integral at every
@@ -735,12 +864,12 @@ def sum_between(
 
 
 def missed_target(
-    res: "dict[str, Any]",
+    res: dict[str, Any],
     origin: float,
     reach: npt.NDArray,
     rtol: float,
     missing: npt.NDArray,
-) -> "tuple[int, int, float, str] | None":
+) -> tuple[int, int, float, str] | None:
     """
     ``(missed, total, worst, limit)``: how many of the (non-missing) query
     times, whose values sum the panels from ``origin`` to ``reach``, have
@@ -777,9 +906,9 @@ def warn_missed_target(
     import warnings
 
     stopped = (
-        "{} rounds of refinement".format(_MAX_ROUNDS)
+        f"{_MAX_ROUNDS} rounds of refinement"
         if limit == "rounds"
-        else "reaching the limit of {:,} panels".format(_PANEL_CAP)
+        else f"reaching the limit of {_PANEL_CAP:,} panels"
     )
     warnings.warn(
         "The quadrature along the CovariatePath missed its {:.0e} "
@@ -866,9 +995,9 @@ def integrate_to_infinity(
     origin: float,
     scale: float,
     rtol: float,
-    knots: "Callable[[float], npt.NDArray] | None" = None,
-    edges_out: "list | None" = None,
-) -> "tuple[float, tuple[float, float] | None]":
+    knots: Callable[[float], npt.NDArray] | None = None,
+    edges_out: list | None = None,
+) -> tuple[float, tuple[float, float] | None]:
     r"""
     :math:`\int_{\text{origin}}^\infty f(t)\,dt` for a vectorised ``func``
     that falls to 0 (a survival function), by

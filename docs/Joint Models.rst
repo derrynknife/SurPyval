@@ -21,6 +21,11 @@ SurPyval's joint model (``WeibullJointPH``, #891) is the standard one
 - **the hazard** is Weibull proportional hazards in the path's *current,
   noise-free* value, and the item's covariates, which also shift its path.
 
+The hazard need not follow the marker's level. It can follow **how fast the
+marker is changing** (its slope), or **the exposure accumulated so far**
+(the area under its path), or more than one of these: see `What the hazard
+follows: the link`_.
+
 Why not the obvious approaches?
 -------------------------------
 
@@ -39,7 +44,9 @@ Two shortcuts are common, and both are biased:
 
 The joint likelihood fixes both: each item's line is integrated over what
 its readings leave uncertain, and its readings and its lifetime inform the
-same line.
+same line. (A third approach, which models no path at all, is
+:doc:`landmarking <Landmark Analysis>`: a model of the units still at risk
+at a time, by their last readings then.)
 
 The model
 ---------
@@ -277,6 +284,51 @@ it was simulated with; the joint model's 0.98 is within its standard error
 such fleets: the last reading carried forward was biased by -39%, its 95%
 intervals covering the truth 0.3% of the time; the joint model by +1%,
 covering it 96% of the time.
+
+From measurements
+~~~~~~~~~~~~~~~~~
+
+The readings and the lifetimes are two things, and they can be kept as
+two: the life data, one row per pump, and the readings as a
+:class:`~surpyval.Measurements` (see :doc:`Conventions`), built from a
+long table of one row per reading. The fit matches the two by the pump's
+id, never by position, so the tables need not be in the same order:
+
+.. jupyter-execute::
+
+    import pandas as pd
+    from surpyval import Measurements
+
+    readings = pd.DataFrame(
+        [
+            (pump_id, age, value)
+            for pump_id, held in fleet.markers.items()
+            for age, value in held.items()
+        ],
+        columns=["pump", "day", "vibration"],
+    ).sample(frac=1.0, random_state=0)
+    vibration = Measurements.from_dataframe(
+        readings, i_col="pump", x_col="day", m_col="vibration"
+    )
+    life = fleet.without("markers")
+    separate = WeibullJointPH.fit(life, m=vibration, unit="days")
+    separate.params[-1], model.params[-1]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(separate.params, model.params)
+
+``m`` is the other name of ``markers``; a Measurements may also be given
+beside arrays, with each row's unit as ``i``,
+``WeibullJointPH.fit(life.x, c=life.c, i=life.i, m=vibration)``, or in a
+DataFrame fit, ``fit_from_df(df, x_col=..., c_col=..., i_col="pump",
+m=vibration)``. A pump with no readings is fitted on its lifetime alone,
+as an item with ``{}`` is; readings of a pump with no life row are warned
+of, naming it, and not used. The model takes one marker: readings of
+several measurements are refused until one is chosen with
+``vibration.with_measurement(name)``.
 
 Covariates in each part
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -516,6 +568,220 @@ ratio of rates:
 ``varying=`` then names ``log(b)``. The two fits describe the same fleet
 with a different spread of rates, and predict alike where the data are.
 
+What the hazard follows: the link
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+So far the risk has followed the marker's *level*: a pump at 5 mm/s is at
+more risk than one at 3 mm/s, however each got there. That is one of three
+things a marker can say about risk, and ``JointPH(..., link=...)`` chooses
+between them:
+
+- ``link="value"`` (the default): **risk follows the level.** What matters
+  is where the marker is now. A vibration level that is a symptom of the
+  present damage; a biomarker that measures how ill the patient is today.
+- ``link="slope"``: **risk follows how fast it is changing.** What matters
+  is the marker's rate of rise, not where it stands. Bearings that settle
+  at different vibration levels by their mounting, where a level that is
+  *climbing* is the sign of trouble; a tumour marker whose doubling time,
+  not its level, says how aggressive the disease is.
+- ``link="cumulative"``: **risk follows the accumulated exposure.** What
+  matters is the total so far, the area under the marker's path from age
+  0: every hour at a high reading adds to the damage, and it does not go
+  away when the reading falls. A load, temperature or contamination
+  reading where the wear done is the dose received; a patient's cumulative
+  exposure to a raised blood pressure or blood sugar.
+
+A list gives the hazard more than one, each with an effect of its own:
+``link=["value", "slope"]`` asks whether, at a given level, a marker that
+is rising is at more risk than one that is steady.
+
+In formulas, with :math:`m_i(t) = m(t; \theta_i)` the item's noise-free
+path, the hazard is
+
+.. math::
+
+    h_i(t) = h_0(t) \exp\left(\gamma' z_i
+    + \zeta_v \bigl(m_i(t) - r\bigr)
+    + \zeta_s\, m_i'(t)
+    + \zeta_c \int_0^t m_i(s)\, ds\right),
+
+with only the terms of the links chosen: ``marker_effect``
+(:math:`\zeta_v`) per unit of the marker, ``slope_effect``
+(:math:`\zeta_s`) per unit of the marker *a unit of time*, and
+``cumulative_effect`` (:math:`\zeta_c`) per unit of the marker *times a
+unit of time*. The slope is the path model's own derivative (``slope``;
+exact for the built-in paths, central differences for a path of one's
+own without one), and the area is by 15-point Gauss--Legendre quadrature
+(exact for a line or a quadratic). Everything else -- the data, the
+quadrature over each item's path, the predictions, the bounds, saving --
+is as before.
+
+Three things to know:
+
+- **The baseline.** ``alpha`` and ``beta`` are the Weibull of an item whose
+  slope is 0 and whose accumulated area is 0 (the printout says so:
+  ``alpha at slope = 0``). ``marker_reference`` is the value's reference
+  only, and is refused where the hazard does not follow the value. The
+  area is of the marker itself, from age 0: for the exposure *above* a
+  level -- the hours above a rated temperature, say -- subtract that level
+  from the readings first.
+- **The units.** A slope's and an area's effects depend on the unit of
+  age: a ``slope_effect`` per mm/s a *day* is 365 times one per mm/s a
+  *year*. Ages in years (or a rate per year) keep them readable.
+- **What the data can tell apart.** For a straight line the slope is the
+  item's rate ``b``, constant in age: its effect is found from how
+  lifetimes differ *between* items with different rates, so it needs
+  rates that vary between items (``b`` in ``varying``, or shifted by a
+  covariate). The links are compared by ``aic()``, the models having the
+  same data.
+
+A fleet of gearboxes, their oil debris read monthly for two years (ages
+in years). Each starts near 3 ppm and rises about 1 ppm a year, at a level
+and rate of its own; what wears a gearbox out here is how fast the debris
+is rising, each ppm a year multiplying the hazard by :math:`e^{1.0} = 2.7`:
+
+.. jupyter-execute::
+
+    gen = np.random.default_rng(5)
+
+
+    def gearboxes(n, alpha, beta, slope=0.0, cumulative=0.0):
+        spread = np.array([[0.36, 0.06], [0.06, 0.25]])  # sds 0.6, 0.5
+        lines = gen.multivariate_normal([3.0, 1.0], spread, size=n)
+        target = gen.exponential(size=n)
+        t = np.linspace(0.0, 40.0, 400001)
+        items = []
+        for k, (level, rate) in enumerate(lines):
+            log_ratio = slope * rate + cumulative * (level * t + rate * t**2 / 2)
+            h = beta / alpha * (t / alpha) ** (beta - 1) * np.exp(log_ratio)
+            H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+            life = np.interp(target[k], H, t)
+            end = min(life, 2.0)                      # followed for two years
+            ages = np.arange(0.0, end + 1e-9, 1 / 12)  # read monthly
+            readings = level + rate * ages + gen.normal(0, 0.7, ages.size)
+            outcome = "observed" if life <= 2.0 else "right_censored"
+            items.append(
+                ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, readings)))
+            )
+        return SurpyvalData.from_items(items)
+
+
+    rising = gearboxes(300, alpha=3.0, beta=2.0, slope=1.0)
+    by_slope = JointPH(Weibull, link="slope").fit(rising, unit="years")
+    by_slope.summary()[["coef", "se(coef)", "exp(coef)"]].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert by_slope.maximum == "verified"
+    assert by_slope.parameter_names[-1] == "slope_effect"
+    z = (by_slope.params[-1] - 1.0) / by_slope.standard_errors()[-1]
+    assert abs(z) < 3
+    assert round(by_slope.params[-1], 2) == 0.96
+
+The ``slope_effect`` recovers the 1.0 it was simulated with. The model
+that follows the level instead fits the same fleet worse:
+
+.. jupyter-execute::
+
+    by_level = JointPH(Weibull).fit(rising, unit="years")
+    print(f"AIC, slope link: {by_slope.aic():.1f}")
+    print(f"AIC, value link: {by_level.aic():.1f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert by_slope.aic() < by_level.aic()
+
+Two gearboxes at the same reading now, one steady and one climbing, are
+then at different risk:
+
+.. jupyter-execute::
+
+    steady = {0.0: 3.5, 0.3: 3.5, 0.6: 3.6, 0.9: 3.5}
+    climbing = {0.0: 2.6, 0.3: 3.0, 0.6: 3.3, 0.9: 3.6}
+    for name, readings in [("steady", steady), ("climbing", climbing)]:
+        print(name, by_slope.ff(1.5, markers=readings, given=0.9).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert by_slope.ff(1.5, markers=climbing, given=0.9) > by_slope.ff(
+        1.5, markers=steady, given=0.9
+    )
+
+The same fleet with the damage accumulating instead -- every ppm-year of
+debris so far multiplying the hazard by :math:`e^{0.3}`:
+
+.. jupyter-execute::
+
+    worn = gearboxes(300, alpha=4.0, beta=1.5, cumulative=0.3)
+    by_area = JointPH(Weibull, link="cumulative").fit(worn, unit="years")
+    by_area.summary()[["coef", "se(coef)", "exp(coef)"]].round(3).tail(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert by_area.maximum == "verified"
+    z = (by_area.params[-1] - 0.3) / by_area.standard_errors()[-1]
+    assert abs(z) < 3
+
+A medical example: the Mayo Clinic trial in primary biliary cirrhosis
+(``load_pbc2``), 312 patients whose serum bilirubin was measured at each
+visit, followed to death (a transplant or the end of follow-up is a
+censoring). Does a bilirubin that is *rising* say more than its level
+does? The log of the bilirubin as a line in years, the hazard following
+both its level and its slope:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_pbc2
+
+    pbc = load_pbc2()
+    pbc["log_bilirubin"] = np.log(pbc["serBilir"])
+    patients = pbc.groupby("id").agg(
+        years=("years", "first"), died=("status2", "first")
+    )
+    patients["censored"] = 1 - patients["died"]
+    patients["readings"] = [
+        dict(zip(visits["year"], visits["log_bilirubin"]))
+        for _, visits in pbc.groupby("id")
+    ]
+    level_and_slope = JointPH(Weibull, link=["value", "slope"]).fit_from_df(
+        patients,
+        x_col="years",
+        c_col="censored",
+        markers_col="readings",
+        marker_reference=0.0,
+        unit="years",
+    )
+    level_and_slope.summary()[["coef", "se(coef)", "exp(coef)", "p"]].round(3).tail(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert level_and_slope.maximum == "verified"
+    est = dict(zip(level_and_slope.parameter_names, level_and_slope.params))
+    se = dict(
+        zip(level_and_slope.parameter_names, level_and_slope.standard_errors())
+    )
+    assert round(est["marker_effect"], 2) == 1.03
+    assert round(est["slope_effect"], 1) == 3.0
+    assert est["slope_effect"] > 2.5 * se["slope_effect"]
+
+Both matter. A patient whose log bilirubin is one unit higher is at about
+2.8 times the hazard, and at the same level one whose log bilirubin is
+rising 0.1 a year faster is at :math:`e^{0.30} = 1.3` times the hazard.
+R's ``JM`` (``jointModel`` with ``parameterization = "both"``) gives the
+same estimates on these data, as it does for the value, the slope and the
+cumulative links alone: the comparison, with the treatment in the hazard,
+is ``tests/reference/test_joint_links.py``.
+
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
 the same curvature ``c``. At most three may vary (the quadrature's grid is
@@ -709,18 +975,19 @@ before:
     restored = surpyval.from_json(model.to_json())
     restored.sf(545, rising) == model.sf(545, rising)
 
-What v1 does and does not do
+What it does and does not do
 ----------------------------
 
-The joint model of v1 (#891) is the standard one. It has:
+The joint model (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
   default), with up to three of its parameters varying between items
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``) and the rest common;
-- a Weibull proportional hazards survival part in the path's current value
-  (``JointPH(Weibull, path_model)``; ``WeibullJointPH`` is the line; other
-  baselines are refused);
+- a Weibull proportional hazards survival part (``JointPH(Weibull,
+  path_model)``; ``WeibullJointPH`` is the line; other baselines are
+  refused) in the path's current value, its slope, the area under it, or
+  more than one of them (``link=``);
 - covariates in both parts (every path parameter's mean, and the hazard)
   by default, or each in the parts named by ``hazard_covariates`` and
   ``path_covariates``;
@@ -731,8 +998,9 @@ The joint model of v1 (#891) is the standard one. It has:
   prediction (``predict``: the hazard, remaining life, the smoothed and
   projected marker, and draws).
 
-Not yet (see #891's roadmap): spline paths; the slope or the cumulative
-marker as the link; other survival parts (AFT, splines); several
+Not yet (see #891's roadmap): spline paths; other survival parts (an
+accelerated failure time part, in which the marker speeds the item's
+clock instead of multiplying its hazard, and spline baselines); several
 markers.
 
 References

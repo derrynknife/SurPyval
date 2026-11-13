@@ -16,15 +16,19 @@ one that is not. Each is checked for:
 5. each offered bound is finite; each refused
    bound raises a ``WeightedRefusal`` naming what to use instead;
 6. the information criteria refuse;
-7. ``to_dict`` / ``from_dict`` (stamped schema 3) and ``pickle`` keep
-   the robust intervals and the refusals.
+7. ``to_dict`` / ``from_dict`` (stamped schema 4) and ``pickle`` keep
+   the robust intervals, the covariance, ``hess_inv`` (the inverse
+   Hessian, saved as ``"hess_inv"``) and the refusals;
+8. the case-bootstrap bounds (``bootstrap``) are finite, and the same
+   (to the optimisers' tolerance) with every weight multiplied by 7.3
+   for the same seed.
 """
 
 import inspect
 import json
 import pickle
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -36,6 +40,10 @@ from surpyval.tests._helpers import quietly, weighted_reference_data
 from surpyval.utils.weights import WeightedRefusal
 
 QUERY = np.array([1.5, 3.0, 6.0])
+#: The case bootstrap of the weighted fits: few refits, so the check is
+#: of the mechanics (finite bounds, the weight scale), not of coverage
+#: (calibration/test_coverage_weights.py).
+BOOT = {"method": "bootstrap", "n_boot": 8, "random_state": 1}
 
 
 @dataclass
@@ -47,6 +55,10 @@ class WeightedCase:
     estimates: Callable[[Any], np.ndarray]
     offered: dict = field(default_factory=dict)
     refused: dict = field(default_factory=dict)
+    #: The case-bootstrap bounds offered (a few refits, seeded), checked
+    #: apart from ``offered``: a resample depends on the rows' order and
+    #: counts, but not on the scale of the weights.
+    bootstrap: dict = field(default_factory=dict)
     covariates: bool = False
     #: The tolerance of the bounds and covariance between fits that reach
     #: the same maximum: a regression's covariance is a numerical Hessian
@@ -58,6 +70,16 @@ class WeightedCase:
     #: False where the outcome of a known failure depends on the numpy /
     #: scipy build, so that either outcome passes
     xfail_strict: bool = True
+    #: True for a penalised fit, which has no covariance (refused, with
+    #: or without weights: test_penalised_weighted.py)
+    no_covariance: bool = False
+
+
+def _causes(x, c):
+    """Two causes for the competing-risks fits, chosen by the value of
+    each failure's time; ``None`` for a censored row."""
+    cause = np.where(np.round(np.asarray(x) * 10) % 3 == 0, "b", "a")
+    return np.where(np.asarray(c) != 0, None, cause)
 
 
 def _np(fitter):
@@ -100,14 +122,23 @@ def _parametric(dist, no_tl=False, discrete=False):
         },
         refused={
             "cb(lr)": lambda m: m.cb(QUERY, method="lr"),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, method="bootstrap", random_state=1
-            ),
             "param_cb(lr)": lambda m: m.param_cb(
                 m.dist.parameter_names[0], method="lr"
             ),
             "plot(Blom)": lambda m: m.get_plot_data(heuristic="Blom"),
         },
+        # (a discrete distribution has no bootstrap, weighted or not)
+        bootstrap=(
+            {}
+            if discrete
+            else {
+                "cb(bootstrap)": lambda m: m.cb(QUERY, **BOOT),
+                "param_cb(bootstrap)": lambda m: m.param_cb(
+                    m.dist.parameter_names[0], **BOOT
+                ),
+                "quantile_cb(bootstrap)": lambda m: m.quantile_cb(0.3, **BOOT),
+            }
+        ),
     )
 
 
@@ -126,8 +157,14 @@ def _regression(fitter, no_tl=False):
             "param_cb(lr)": lambda m: m.param_cb(
                 m.parameter_names[-1], method="lr"
             ),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, np.zeros((3, 2)), method="bootstrap", random_state=1
+        },
+        bootstrap={
+            "cb(bootstrap)": lambda m: m.cb(QUERY, np.zeros((3, 2)), **BOOT),
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
+            ),
+            "quantile_cb(bootstrap)": lambda m: m.quantile_cb(
+                0.3, np.zeros(2), **BOOT
             ),
         },
         covariates=True,
@@ -135,10 +172,50 @@ def _regression(fitter, no_tl=False):
     )
 
 
+def _penalised(fitter, **options):
+    return WeightedCase(
+        f"{fitter}.fit_penalised",
+        lambda x, c, n, w, Z, tl: getattr(sp, fitter).fit_penalised(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            penalizer=0.05,
+            l1_ratio=0.5,
+            **options,
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={"sf": lambda m: m.sf(QUERY, np.zeros((3, 2)))},
+        covariates=True,
+        no_covariance=True,
+    )
+
+
 WEIGHTED = [
     _np("KaplanMeier"),
     _np("NelsonAalen"),
     _np("FlemingHarrington"),
+    # The weighted NPMLE has no variance formula: its bounds are the
+    # weighted case bootstrap (bootstrap_cb), and everything built on the
+    # variance refuses, naming it.
+    WeightedCase(
+        "Turnbull",
+        lambda x, c, n, w, Z, tl: sp.Turnbull.fit(x, c, n, w=w, tl=tl),
+        lambda m: m.sf(QUERY),
+        refused={
+            "cb": lambda m: m.cb(QUERY),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+            "rmst": lambda m: m.rmst(6.0),
+            "band": lambda m: m.band(),
+        },
+        bootstrap={
+            "bootstrap_cb": lambda m: m.bootstrap_cb(
+                QUERY, n_boot=8, random_state=1
+            ),
+        },
+    ),
     _parametric("Weibull"),
     _parametric("LogNormal"),
     _parametric("Exponential"),
@@ -162,7 +239,24 @@ WEIGHTED = [
     # late entries sits on the boundary beta = 1, where the covariance is
     # NaN (weighted or not), so it is fitted without the truncation; there
     # cb(sf) at Z = 0 is finite, and is offered.
-    _regression("WeibullAH", no_tl=True),
+    # One of its 8 bootstrap refits has no finite maximum, and is kept at
+    # the estimate its search reached while running off: that stopping
+    # point moves by 1% to 4% of the coefficient with the scale of the
+    # weights and with the numpy / scipy build (the other seven refits
+    # agree to 1e-10 at weights times 0.01, 7.3 and 100). Where it is the
+    # refit the upper bound falls on, the bound moves with it: 0.10855
+    # against 0.11280 on Linux with numpy 2.5.4 and scipy 1.18.1, equal
+    # with numpy 2.4.6 and scipy 1.17.1 and on arm64.
+    replace(
+        _regression("WeibullAH", no_tl=True),
+        xfail={
+            "bootstrap": "a bootstrap refit with no finite maximum stops "
+            "at a point that depends on the scale of the weights and on "
+            "the numpy / scipy build, and with 8 refits the upper bound "
+            "can fall on it"
+        },
+        xfail_strict=False,
+    ),
     # audit W-A: an accelerated-life model (a Weibull life at a power-law
     # stress); the stress is 1 + the first covariate, so positive.
     WeightedCase(
@@ -179,8 +273,10 @@ WEIGHTED = [
             "param_cb(lr)": lambda m: m.param_cb(
                 m.parameter_names[-1], method="lr"
             ),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, 1.5, method="bootstrap", random_state=1
+        },
+        bootstrap={
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
             ),
         },
         covariates=True,
@@ -249,6 +345,73 @@ WEIGHTED = [
             "quantile_cb": lambda m: m.quantile_cb(0.3),
         },
     ),
+    # Weights stage 2: distributional regression, covariates on the
+    # Weibull's scale (both columns) and shape (the first)
+    WeightedCase(
+        "WeibullDistributional",
+        lambda x, c, n, w, Z, tl: sp.WeibullDistributional.fit(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            covariates={"alpha": [0, 1], "beta": [0]},
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
+            "parameter_cb": lambda m: m.parameter_cb("beta", np.eye(2)),
+        },
+        refused={
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.parameter_names[-1], method="lr"
+            ),
+            "parameter_cb(lr)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), method="lr"
+            ),
+            "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+            "diagnose": lambda m: m.diagnose(),
+        },
+        bootstrap={
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
+            ),
+            "parameter_cb(bootstrap)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), **BOOT
+            ),
+        },
+        covariates=True,
+        rtol=5e-3,
+    ),
+    # Weights stage 2: Royston-Parmar (the PH family on the spline
+    # baseline); its knots are placed on the event times counted by n
+    _regression("RoystonParmarPH"),
+    # The Aalen-Johansen cumulative incidences: each failure's cause is
+    # "a" where the first covariate is 1 and "b" otherwise (as the R
+    # reference, reference/test_weighted_aalen_johansen.py). Fitted
+    # without the late entries, which the estimate does not take.
+    WeightedCase(
+        "CompetingRisks",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisks.fit(
+            x,
+            [
+                None if flag else ("a" if z == 1 else "b")
+                for flag, z in zip(c, Z[:, 0])
+            ],
+            c,
+            n,
+            w=w,
+        ),
+        lambda m: np.concatenate([m.cif(QUERY, "a"), m.cif(QUERY, "b")]),
+        offered={
+            "cb(cif)": lambda m: m.cb(QUERY, "a"),
+            "cb(cif, normal)": lambda m: m.cb(QUERY, "b", bound_type="normal"),
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "cb(Hf, cause)": lambda m: m.cb(QUERY, "a", on="Hf"),
+        },
+    ),
     WeightedCase(
         "CoxPH",
         lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),
@@ -259,6 +422,67 @@ WEIGHTED = [
         },
         covariates=True,
     ),
+    # The competing-risks regressions: two causes by the value of each
+    # failure's time (so that they move with the rows), no late entries
+    # (these fits take none). Cox under Breslow's ties, which the
+    # integer-weights property needs (as for CoxPH above).
+    WeightedCase(
+        "CompetingRisksProportionalHazards",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisksProportionalHazards.fit(
+            x, Z, _causes(x, c), n=n, w=w, tie_method="breslow"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
+        covariates=True,
+    ),
+    WeightedCase(
+        "CompetingRisksProportionalHazards[Fine-Gray]",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisksProportionalHazards.fit(
+            x, Z, _causes(x, c), n=n, w=w, model="Fine-Gray"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
+        covariates=True,
+    ),
+    WeightedCase(
+        "FineGray",
+        lambda x, c, n, w, Z, tl: sp.FineGray.fit(
+            x, Z, _causes(x, c), n=n, w=w, event="a"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
+        covariates=True,
+    ),
+    # Aalen's non-parametric additive model: weighted least squares at
+    # each event time, the robust (martingale-residual) variance of B.
+    WeightedCase(
+        "AalenAdditive",
+        lambda x, c, n, w, Z, tl: sp.AalenAdditive.fit(
+            x, Z, c=c, n=n, w=w, tl=tl
+        ),
+        lambda m: np.asarray(m.cumulative_coefficients(QUERY), dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "cb(Hf)": lambda m: m.cb(QUERY, np.ones((3, 2)), on="Hf"),
+            "cumulative_coefficients_cb": lambda m: (
+                m.cumulative_coefficients_cb(QUERY)
+            ),
+        },
+        refused={
+            "constant_effects_test": lambda m: m.constant_effects_test(
+                n_sim=10, random_state=1
+            ),
+            "diagnose": lambda m: m.diagnose(n_boot=10, random_state=1),
+        },
+        covariates=True,
+    ),
+    # Penalised fits (fit_penalised) with weights: the estimates and the
+    # predictions they give; a penalised model has no covariance or
+    # bounds, so none is offered (its refusals, and the R reference, are
+    # in univariate/regression/test_penalised_weighted.py). Breslow's ties,
+    # so that whole-number weights are counts.
+    _penalised("CoxPH", tie_method="breslow"),
+    _penalised("WeibullPH"),
 ]
 IDS = [case.name for case in WEIGHTED]
 
@@ -334,7 +558,7 @@ def test_weight_scale_changes_nothing(case, data, scale):
             atol=1e-8,
             err_msg=key,
         )
-    if hasattr(base, "covariance"):
+    if hasattr(base, "covariance") and not case.no_covariance:
         assert_allclose(
             scaled.covariance(), base.covariance(), rtol=case.rtol, atol=1e-10
         )
@@ -379,6 +603,16 @@ def test_counts_still_equal_repetition(case, data):
         assert_allclose(_bounds(case, counted)[key], value, rtol=case.rtol)
 
 
+def _no_likelihood(model):
+    """A model with no likelihood at all (Aalen's least squares), whose
+    information criteria refuse whether it is weighted or not."""
+    from surpyval.univariate.regression.regression_data import (
+        NoLikelihoodMixin,
+    )
+
+    return isinstance(model, NoLikelihoodMixin)
+
+
 def _value(attr):
     """An attribute that is a number on some models and a method on
     others."""
@@ -392,6 +626,11 @@ def _breslow_cox(x, c, n, w, Z, tl):
 #: The cases whose fit with whole-number weights is not expected to equal
 #: the counted fit, with why.
 NOT_COUNTED = {
+    "Turnbull": (
+        "its default estimator is Fleming-Harrington's, whose tied deaths "
+        "are taken at their mean weight as FlemingHarrington's are (the "
+        "Kaplan-Meier option is checked in test_turnbull_weighted.py)"
+    ),
     "FlemingHarrington": (
         "by design: each of the m tied deaths is taken at the deaths' mean "
         "weight, m the units from the counts (R's ctype = 2; docs/Weighted "
@@ -400,6 +639,12 @@ NOT_COUNTED = {
     "WeibullAH": (
         "the fit ends on the boundary of the model's support (it warns), "
         "not at a maximum, with or without weights"
+    ),
+    "RoystonParmarPH": (
+        "by design: the knots are placed on the event times counted by n, "
+        "not weighted, so a weight of 2 leaves them where they are while a "
+        "count of 2 moves them; with the knots given the fits agree "
+        "(test_weighted_distributional_rp.py)"
     ),
     "Weibull[offset]": (
         "with these weights (or these counts) the likelihood has no finite "
@@ -465,21 +710,51 @@ def test_offered_bounds_are_finite_and_refused_ones_refuse(case, data):
             word in str(info.value) for word in ("Use", "use", "Fit")
         ), key
     for criterion in ("aic", "bic", "aic_c"):
-        if not hasattr(model, criterion):
+        if not hasattr(model, criterion) or _no_likelihood(model):
             continue  # a non-parametric estimate has none
         with pytest.raises(WeightedRefusal, match="pseudo-likelihood"):
             getattr(model, criterion)()
+
+
+@pytest.mark.parametrize(
+    "case", [c for c in _cases("bootstrap") if c.values[0].bootstrap]
+)
+def test_case_bootstrap_bounds_are_finite_and_scale_free(case, data):
+    base = _fit(case, data, data["w"])
+    scaled = _fit(case, data, data["w"] * 7.3)
+    for key, call in case.bootstrap.items():
+        value = np.asarray(quietly(call, base), dtype=float)
+        assert np.isfinite(value).all(), key
+        assert_allclose(
+            np.asarray(quietly(call, scaled), dtype=float),
+            value,
+            # The same resamples; each refit reaches its maximum to the
+            # optimiser's tolerance, as the fit itself (the scale test).
+            rtol=case.rtol,
+            atol=1e-8,
+            err_msg=key,
+        )
 
 
 @pytest.mark.parametrize("case", _cases("round_trip"))
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    # Schema 4, which 0.26 (schema 3) refuses; every matrix under its own
+    # name: "hess_inv" the inverse Hessian, "covariance" the robust one
+    assert d["schema"] == 4 and d["weighted"] is True
+    assert "inverse_hessian" not in d
+    hess_inv = getattr(model, "hess_inv", None)
+    if hess_inv is not None:
+        assert_allclose(d["hess_inv"], hess_inv, rtol=0)
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     pickled = pickle.loads(pickle.dumps(model))
     for again in (restored, pickled):
         assert again.weighted
+        if hess_inv is not None:
+            assert_allclose(again.hess_inv, hess_inv, rtol=1e-15)
+        else:
+            assert getattr(again, "hess_inv", None) is None
         for key, call in case.offered.items():
             if key == "rmst" and again is restored:
                 # The jackknife of the area needs the data
@@ -487,16 +762,16 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
                     call(again)
                 continue
             assert_allclose(call(again), call(model), rtol=1e-10)
-        if hasattr(model, "covariance"):
+        if hasattr(model, "covariance") and not case.no_covariance:
             assert_allclose(again.covariance(), model.covariance())
-        if hasattr(model, "aic"):
+        if hasattr(model, "aic") and not _no_likelihood(model):
             with pytest.raises(WeightedRefusal):
                 again.aic()
 
 
 def test_refused_by_the_fitters_that_take_no_w(data):
     weighted = sp.SurpyvalData(data["x"], data["c"], w=data["w"])
-    for fitter in (sp.Turnbull, sp.MixtureModel(sp.Weibull, 2)):
+    for fitter in (sp.MixtureModel(sp.Weibull, 2),):
         with pytest.raises(ValueError, match="weights|w"):
             fitter.fit(weighted)
     with pytest.raises(WeightedRefusal, match="fit_best"):
@@ -506,14 +781,7 @@ def test_refused_by_the_fitters_that_take_no_w(data):
 
 
 #: Fitters that take ``w`` only to refuse it (a later stage), with why.
-REFUSES_W = {
-    "Turnbull": "its weighted EM and variance are not built yet",
-}
-
-
-def test_turnbull_refuses_weights(data):
-    with pytest.raises(WeightedRefusal, match="Turnbull"):
-        sp.Turnbull.fit(data["x"], data["c"], w=data["w"])
+REFUSES_W: dict[str, str] = {}
 
 
 def _takes_w(obj):
@@ -592,14 +860,25 @@ def test_fit_from_df_without_weights_refuses_w_col(name):
 
 
 def test_refusal_names_the_public_fitter():
-    for name in ["WeibullDistributional", "RoystonParmarPH", "CoxFrailty"]:
+    for name in ["WeibullFrailty", "CoxFrailty"]:
         with pytest.raises(WeightedRefusal, match=rf"^{name}\.fit "):
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
 
 
-def test_cox_fit_from_df_points_to_fit_for_weights():
+def test_cox_fit_from_df_takes_w_col(data):
     import pandas as pd
 
-    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "z": [0.0, 1.0, 0.5]})
-    with pytest.raises(WeightedRefusal, match=r"CoxPH\.fit does: pass"):
-        sp.CoxPH.fit_from_df(df, x_col="x", Z_cols=["z"], w_col="w")
+    df = pd.DataFrame(
+        {
+            "x": data["x"],
+            "c": data["c"],
+            "w": data["w"],
+            "z1": data["Z"][:, 0],
+            "z2": data["Z"][:, 1],
+        }
+    )
+    from_df = sp.CoxPH.fit_from_df(df, "x", ["z1", "z2"], c_col="c", w_col="w")
+    arrays = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    assert from_df.weighted
+    assert_allclose(from_df.params, arrays.params, rtol=0, atol=0)
+    assert_allclose(from_df.covariance(), arrays.covariance(), rtol=0, atol=0)

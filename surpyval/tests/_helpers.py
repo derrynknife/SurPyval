@@ -8,6 +8,7 @@ import json
 import warnings
 
 import numpy as np
+from scipy.stats import kstwo
 
 import surpyval as sp
 from surpyval import AcceleratedLife, Exponential, Turnbull, Weibull
@@ -168,7 +169,7 @@ def neg_ll_at(model, theta):
 
 def tree_leaves(node):
     """The terminal nodes under ``node`` of a survival tree."""
-    from surpyval.beta.ml.forest.node import TerminalNode
+    from surpyval.ml.forest.node import TerminalNode
 
     if isinstance(node, TerminalNode):
         return [node]
@@ -397,3 +398,122 @@ def weighted_reference_data():
         "Z": np.column_stack([z1, z2]).astype(float),
         "tl": np.array(tl),
     }
+
+
+#: The 0.1% critical one-sample Kolmogorov-Smirnov distance for 20,000
+#: draws (#285); conservative for a step distribution.
+KS_BAND_20000 = float(kstwo.ppf(0.999, 20_000))
+
+
+def ks_distance(draws, ff):
+    """The one-sample Kolmogorov-Smirnov distance of ``draws`` from a
+    model's ``ff`` (a function of the times): the supremum over every time
+    of ``|ECDF - ff|``: at each distinct
+    finite draw (right limits), just before it (left limits, where a step
+    model's curve may jump with no draw there), and beyond the last
+    (where the share of ``inf`` draws meets the curve's end)."""
+    finite = np.sort(draws[np.isfinite(draws)])
+    times, counts = np.unique(finite, return_counts=True)
+    n = draws.size
+    ecdf = np.cumsum(counts) / n
+    before = np.concatenate([[0.0], ecdf[:-1]])
+    left = np.nextafter(times, -np.inf)
+    F_right = np.asarray(ff(times), dtype=float)
+    F_left = np.asarray(ff(left), dtype=float)
+    # Beyond the last finite draw: a step curve holds there, and a
+    # continuous one is already within ``1 - ff`` of its last value.
+    end = times[-1] + abs(times[-1]) + 1.0 if times.size else 1.0
+    F_end = float(np.asarray(ff(np.array([end])), dtype=float)[0])
+    gaps = np.concatenate(
+        [
+            np.abs(ecdf - F_right),
+            np.abs(before - F_left),
+            [abs((ecdf[-1] if ecdf.size else 0.0) - F_end)],
+        ]
+    )
+    return float(np.max(gaps))
+
+
+#: How far a computed ``ff`` may fall below its value at an earlier time
+#: (or rise above its value at a later one) before
+#: :func:`ks_distance_bracketed` stops trusting its brackets. A predictive
+#: ``ff`` is a non-decreasing function of time, and its computed values
+#: are too except for roundings: about 1e-16 for a probability, a few
+#: dozen of them for a weighted sum of a few hundred thousand terms. 1e-9
+#: is millions of those; it widens every bracket, so it costs evaluations
+#: but never changes the distance (see the function).
+MONOTONE_SLACK = 1e-9
+
+
+def ks_distance_bracketed(draws, ff, start=64):
+    """:func:`ks_distance`, the supremum over every time, with ``ff``
+    evaluated at only as many times as it takes to know it.
+
+    :func:`ks_distance` takes the largest of ``|e_j - ff(s_j)|`` over a
+    sorted list of times ``s_j``: each distinct finite draw (with the
+    ECDF there as ``e_j``), the double just before it (with the ECDF
+    just before it), and one time past the last. ``ff`` is
+    non-decreasing, so at a time between two at which it is known,
+    ``s_a < s_j < s_b``, it lies between ``ff(s_a)`` and ``ff(s_b)``, and
+    the gap there is at most ``max(e_j - ff(s_a), ff(s_b) - e_j)``. A time
+    whose bound is no more than the largest gap already known cannot be
+    the supremum and is never evaluated; every other one is, by halving
+    the brackets until none is left. The result is the largest gap over
+    every time, exactly the number :func:`ks_distance` gives (each time's
+    ``ff`` is the same number whichever other times it is evaluated
+    with), from ``ff`` at ``start`` times evenly spaced in the list and
+    the few near the supremum.
+
+    The brackets are widened by :data:`MONOTONE_SLACK` against roundings
+    that make the computed ``ff`` fall back by an ulp or two, and the
+    values it does evaluate are checked to be in order to within half of
+    that, so the assumption that makes the bound hold is itself tested.
+    """
+    finite = np.sort(draws[np.isfinite(draws)])
+    times, counts = np.unique(finite, return_counts=True)
+    n = draws.size
+    ecdf = np.cumsum(counts) / n
+    before = np.concatenate([[0.0], ecdf[:-1]])
+    end = times[-1] + abs(times[-1]) + 1.0 if times.size else 1.0
+    # the times in order, each with the ECDF it is compared with
+    s = np.r_[
+        np.column_stack([np.nextafter(times, -np.inf), times]).ravel(), end
+    ]
+    e = np.r_[
+        np.column_stack([before, ecdf]).ravel(),
+        ecdf[-1] if ecdf.size else 0.0,
+    ]
+    F = np.full(s.size, np.nan)
+    known = np.zeros(s.size, dtype=bool)
+
+    def evaluate(idx):
+        idx = np.unique(idx)
+        F[idx] = np.asarray(ff(s[idx]), dtype=float)
+        known[idx] = True
+
+    evaluate(
+        np.linspace(0, s.size - 1, min(start, s.size)).round().astype(int)
+    )
+    while True:
+        at = np.flatnonzero(known)
+        fall = float(np.max(F[at][:-1] - F[at][1:], initial=0.0))
+        assert fall <= MONOTONE_SLACK / 2, (
+            f"ff falls by {fall:.3g} between evaluated times: the "
+            "brackets assume it does not"
+        )
+        D = float(np.max(np.abs(e[at] - F[at])))
+        todo = np.flatnonzero(~known)
+        # the known times either side of each unknown one
+        cell = np.searchsorted(at, todo)
+        lo = F[at[cell - 1]] - MONOTONE_SLACK
+        hi = F[at[cell]] + MONOTONE_SLACK
+        open_ = np.maximum(e[todo] - lo, hi - e[todo]) > D
+        if not open_.any():
+            return D
+        # halve each bracket that may hold the supremum at the middle of
+        # its open times
+        todo, cell = todo[open_], cell[open_]
+        cells = np.unique(cell)
+        first = np.searchsorted(cell, cells, side="left")
+        last = np.searchsorted(cell, cells, side="right") - 1
+        evaluate(todo[(first + last) // 2])

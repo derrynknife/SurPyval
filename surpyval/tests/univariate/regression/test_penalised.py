@@ -650,15 +650,17 @@ def test_tiny_penalty_is_the_truncated_fit(fitter, which):
     assert np.all(np.abs(pen.params - fit.params) <= 1e-2 * se)
 
 
-def test_refuses_weights():
+def test_takes_weights_from_arrays_or_data():
+    # Weighted penalised fits are tested in test_penalised_weighted.py;
+    # here, that weights held by a SurpyvalData are the weights given.
     x, c, Z = _rossi()
     w = np.linspace(0.5, 2.0, x.size)
     data = sp.SurpyvalData(x=x, c=c, Z=Z, w=w)
     for fitter in (CoxPH, WeibullPH):
-        with pytest.raises(ValueError, match="does not take weights"):
-            fitter.fit_penalised(x, Z, c=c, w=w)
-        with pytest.raises(ValueError, match="does not take weights"):
-            fitter.fit_penalised(data)
+        given = fitter.fit_penalised(x, Z, c=c, w=w, penalizer=0.05)
+        held = fitter.fit_penalised(data, penalizer=0.05)
+        assert given.weighted and held.weighted
+        np.testing.assert_allclose(held.params, given.params, atol=1e-9)
 
 
 def test_refuses_robust_errors_and_tests():
@@ -1008,3 +1010,67 @@ def test_stratified_counts_equal_repetition_and_with_entry():
     assert model.maximum == "verified"
     assert np.isfinite(model.penalty.effective_df)
     assert 0 < model.penalty.effective_df < 2
+
+
+def test_shared_helper_without_a_hessian_reaches_the_glmnet_answer():
+    # A model that gives no Hessian is solved with one by finite
+    # differences of its gradient, and the result says so; the answer is
+    # glmnet's still (the Newton polish converges on the gradient).
+    from surpyval.univariate.regression._fit_skeleton import (
+        covariate_center,
+    )
+    from surpyval.univariate.regression._penalised import (
+        PenalisedObjective,
+        penalised_fit,
+    )
+
+    x, c, Z = _rossi()
+    n = np.ones_like(x)
+    gen = CoxPH._resolve_func_generator("breslow")
+    Zc = Z - covariate_center(Z, n)
+
+    def build(scale, N):
+        neg_ll, jac = gen(x, Zc / scale, c, n, np.zeros_like(x))
+        return PenalisedObjective(
+            lambda b: float(neg_ll(b)) / N,
+            lambda b: np.atleast_1d(jac(b)[0]) / N,
+            None,
+            np.zeros(Z.shape[1]),
+        )
+
+    for alpha, lam in [(0.0, 0.05), (1.0, 0.02)]:
+        fit = penalised_fit(
+            build, Z, n, np.arange(Z.shape[1]), lam, alpha, True, 1e-10
+        )
+        assert fit.result.hessian == "finite differences"
+        assert fit.result.verified
+        assert fit.N == x.size
+        ref = np.asarray(GLMNET[("breslow", lam, alpha)])
+        np.testing.assert_array_equal(fit.coefficients == 0, ref == 0)
+        np.testing.assert_allclose(
+            fit.coefficients, ref, rtol=1e-6, atol=1e-10
+        )
+        exact = CoxPH.fit_penalised(
+            x, Z, c=c, penalizer=lam, l1_ratio=alpha, tie_method="breslow"
+        )
+        assert exact.res.hessian == "exact"
+        np.testing.assert_allclose(
+            fit.penalty.effective_df, exact.penalty.effective_df, rtol=1e-5
+        )
+
+
+@pytest.mark.parametrize("fitter", [CoxPH, WeibullAFT])
+def test_both_model_classes_share_the_penalised_mixin(fitter):
+    from surpyval.univariate.regression._penalised import (
+        PenalisedModelMixin,
+    )
+
+    x, c, Z = _rossi()
+    model = fitter.fit_penalised(x, Z[:, :3], c=c, penalizer=0.1)
+    plain = fitter.fit(x, Z[:, :3], c=c)
+    for m in (model, plain):
+        assert isinstance(m, PenalisedModelMixin)
+    assert plain.penalty is None
+    assert plain._penalty_entry() == {} and plain._penalty_printout() == ""
+    assert model._penalised_ic_k() == model.penalty.effective_df
+    assert "Penalty" in model._penalty_printout()

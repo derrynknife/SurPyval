@@ -236,6 +236,21 @@ def regression_knots(
     return knots
 
 
+def _no_entry_at_zero(t: Any) -> Any:
+    """``t`` with each left truncation at or below 0 read as none (-inf):
+    the spline is in log time, so its value at 0 is not finite, and an
+    entry at 0 (the usual "no late entry") made the truncation term, its
+    derivatives and so the fit's verdict and covariance ``nan``, where it
+    is exactly 0 (S(0) = 1)."""
+    if t is None:
+        return t
+    arr = np.array(t, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        return t
+    arr[:, 0] = np.where(arr[:, 0] <= 0, -np.inf, arr[:, 0])
+    return arr
+
+
 class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
     """
     Royston-Parmar (flexible parametric) regression: a restricted cubic
@@ -341,6 +356,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit by maximum likelihood: the knots are placed on the data (or
@@ -362,6 +378,13 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
             column name or ``"coef_j"``).
         center : bool, optional
             As for ``WeibullPH.fit``.
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive
+            finite weight per row (or one for every row), as for
+            ``WeibullPH.fit``: the weighted estimates with the robust
+            (sandwich) covariance. The knots are placed on the event
+            times counted by ``n`` alone, not weighted (so that they do not
+            depend on the weights at all); pass ``knots`` to choose them.
 
         Returns
         -------
@@ -379,12 +402,84 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         >>> model.parameter_names
         ['gamma_0', 'gamma_1', 'gamma_2', 'coef_0']
         """
-        t = truncation_window(x, t, tl, tr)
+        t = _no_entry_at_zero(truncation_window(x, t, tl, tr))
         knots = self.knots
         if knots is None:
             knots = regression_knots(x, Z, c, n, t, self.df)
         return self.family(knots).fit(
-            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, center=center
+            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, center=center, w=w
+        )
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+    ) -> ParametricRegressionModel:
+        """
+        Fit with a ridge, lasso or elastic-net penalty on the covariate
+        coefficients (the spline coefficients are not penalised): the
+        knots are placed as :meth:`fit` places them, then the ``PH`` or
+        ``PO`` family on the spline baseline is fitted by its
+        ``fit_penalised`` (see ``WeibullPH.fit_penalised`` for the
+        objective). The model has no covariance, standard errors, bounds
+        or tests.
+
+        Parameters
+        ----------
+        x, Z, c, n, t, tl, tr : array_like
+            As for :meth:`fit`.
+        penalizer, l1_ratio, standardise, tol, w
+            As for ``WeibullPH.fit_penalised`` (weights ``w`` are
+            refused).
+
+        Returns
+        -------
+        ParametricRegressionModel
+            The fitted model, with ``penalty`` set.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import RoystonParmarPH
+        >>> rng = np.random.default_rng(2)
+        >>> Z = rng.normal(size=(300, 3))
+        >>> x = 10 * rng.weibull(1.5, 300) * np.exp(-0.4 * Z[:, 0])
+        >>> model = RoystonParmarPH.fit_penalised(
+        ...     x, Z, penalizer=0.05, l1_ratio=1
+        ... )
+        >>> model.params[-3:].round(3)
+        array([ 0.572,  0.017, -0.028])
+        """
+        from ._penalised import refuse_weights
+
+        refuse_weights(w)
+        t = truncation_window(x, t, tl, tr)
+        knots = self.knots
+        if knots is None:
+            knots = regression_knots(x, Z, c, n, t, self.df)
+        return self.family(knots).fit_penalised(
+            x,
+            Z,
+            c=c,
+            n=n,
+            t=t,
+            penalizer=penalizer,
+            l1_ratio=l1_ratio,
+            standardise=standardise,
+            tol=tol,
         )
 
 

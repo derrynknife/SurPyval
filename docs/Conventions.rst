@@ -2,7 +2,7 @@
 Conventions
 ===========
 
-This page is the reference for the conventions the rest of the documentation relies on: how data is laid out, what each variable name means, how censoring and truncation are flagged, which functions every model provides, and how the optional structure of a parametric model (offset, limited failure population, zero-inflation) is defined. :doc:`Types of Data` explains the ideas behind censoring and truncation; this page pins down exactly how SurPyval represents them.
+This page is the reference for the conventions the rest of the documentation relies on: how data is laid out, what each variable name means, how censoring and truncation are flagged, which functions every model provides, and how the optional structure of a parametric model (offset, limited failure population, zero-inflation) is defined. :doc:`Types of Data` explains the ideas behind censoring and truncation, and :doc:`Data Model` is the reference for every letter of a row (``x``, ``c``, ``n``, ``t``, ``i``, ``e``, ``s``, ``a``, ``m``, ``Z``, ``w``) and the rules between them; this page pins down the formats and the conventions every model shares.
 
 Data Formats
 ------------
@@ -15,7 +15,7 @@ The conventional formats used in SurPyval are:
 
 All functions in SurPyval have default handling for c and n. That is,
 if these variables aren't passed, it is assumed that there was one observation
-and it was a failure (``c = 0``, ``n = 1``) for every x. Truncation defaults to none (an observation
+and it was an observed event, such as a failure (``c = 0``, ``n = 1``), for every x. Truncation defaults to none (an observation
 window of :math:`(-\infty, \infty)`). For recurrent event models, if i is not passed
 it is assumed that it is all from the same item.
 
@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. The parametric, non-parametric and regression ``fit`` methods accept a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``; ``fit_from_surpyval_data`` does the same), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. Every fitter's ``fit`` accepts a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``, ``CrowAMSAA.fit(data)``; ``fit_from_surpyval_data`` does the same for the univariate and regression models), refusing what the model cannot take (see :doc:`Data Model`), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
 
 .. jupyter-execute::
     :hide-code:
@@ -53,6 +53,11 @@ Notice three things. The two right censored values at 2 have been merged into on
     assert data.n[_row].tolist() == [2], data.n
     assert data.x.ndim == 2 and data.x.shape[1] == 2
     assert np.all(data.t[:, 0] == 0) and np.all(np.isinf(data.t[:, 1]))
+
+The letters of the data model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Beside ``x``, ``c``, ``n`` and ``t``, a row can say which unit it belongs to (``i``), what kind of event ended it (``e``), the state the unit was in (``s``), whether the event ended the unit's history for good (``a``), the covariates (``Z``) and a weight (``w``), and the data can carry readings taken on the units over time (``m``). :doc:`Data Model` is the reference for every letter: what it means, its allowed values and default, the rules that tie them together (exact times and ranges on one row, the order of a unit's rows, the default of ``a``), one worked example of each shape of data, and which models take which letters.
 
 The xrd format
 ~~~~~~~~~~~~~~
@@ -105,11 +110,16 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - xr = The random variable (time, stress etc.) array for the right interval of interval censored data.
 - c  = An array with the censor flag for each x
 - n  = The count array associated with x: the number of items that share the row's value, flag and truncation. Must be positive integers (it is a count, not a weight; for weights use ``w``).
-- w  = The weight array associated with x (optional): how many units of the population each unit of the row stands for -- a sampling, propensity or censoring weight -- any positive finite number, beside the count ``n``. ``n = 3, w = 12.5`` is three identical units, each standing for 12.5. Multiplying every weight by a constant changes nothing; multiplying every count by a constant is more data. A fit given ``w`` takes the weighted estimate with a robust (sandwich) variance and refuses the bounds weights make invalid. The fitters that take it are the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the parametric distributions (maximum likelihood), the parametric regressions and Cox; ``SurpyvalData`` holds it (rows are grouped only where their weights are equal too), and ``fit_from_df`` reads it with ``w_col``. See :doc:`Weighted Data`.
+- w  = The weight array associated with x (optional): how many units of the population each unit of the row stands for -- a sampling, propensity or censoring weight -- any positive finite number, beside the count ``n``. ``n = 3, w = 12.5`` is three identical units, each standing for 12.5. Multiplying every weight by a constant changes nothing; multiplying every count by a constant is more data. A fit given ``w`` takes the weighted estimate with a robust (sandwich) variance and refuses the bounds weights make invalid. The fitters that take it are the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the parametric distributions (maximum likelihood), the parametric regressions, Cox and Aalen's additive model; ``SurpyvalData`` holds it (rows are grouped only where their weights are equal too), and ``fit_from_df`` reads it with ``w_col``. See :doc:`Weighted Data`.
 - t  = the truncation values for the left and right truncation at x (must be two dim, or use tl and tr instead)
 - tl = one dimensional array or scalar value. If an array it is the value at which each value of x is left truncated. If a scalar all values of x are left truncated at the same value.
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
+- i = the unit (item) each row belongs to (``ids`` is its other name in ``SurpyvalData``).
+- e = the event type of each row: the failure mode for competing risks, or, with ``s``, the state the unit moved into at x; blank where it had not.
+- s = the state the unit was in during the row (multi-state data); without it every row starts from the one initial state. See :doc:`Data Model`.
+- a = whether the row's event ended the unit's history for good (1) or the unit carried on (0); by default 1 on a unit's last event and 0 on an earlier one. See :doc:`Data Model`.
+- m = the readings taken on each unit over its life (a ``Measurements`` object), linked to the rows by ``i``. See :doc:`Data Model`.
 
 Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
 
@@ -185,7 +195,7 @@ For the censoring values, surpyval uses the convention used in Meeker and Escoba
 - 1 = right
 - 2 = interval censoring. Must have left and right value in x
 
-This convention gives an intuitive feel for the placement of the data on a timeline: the failure is at the recorded value (0), somewhere to its left (-1), somewhere to its right (1), or between two values (2).
+This convention gives an intuitive feel for the placement of the data on a timeline: the event (the failure, the death, the relapse) is at the recorded value (0), somewhere to its left (-1), somewhere to its right (1), or between two values (2).
 
 .. list-table::
    :header-rows: 1
@@ -207,7 +217,9 @@ This convention gives an intuitive feel for the placement of the data on a timel
      - interval censored
      - :math:`x_{l,j} < X \le x_{r,j}`
 
-The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored. The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
+The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored (the proportional-intensity models' start-stop form is the same, with ``c = 2`` for a count ``n`` of events within the interval). The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
+
+The words for these ideas differ between fields (failure and event, suspension and right censored, reliability and survival); the :doc:`Glossary` maps them to each other.
 
 ``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 events at 9 unique times, 51 right censored``: if you had 51 failures, the flag was read backwards. The counts are weighted by ``n``, and the number of distinct event times shows how far they are aggregated.
 
@@ -231,13 +243,15 @@ The conventions for single event SurPyval models are that each object returned f
 - :code:`hf()` - The (instantaneous) hazard function
 - :code:`Hf()` - The cumulative hazard function
 
-A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
+These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
 
-- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life. Every ``qf`` -- a fitted model's, with or without covariates, and a distribution's own (``surv.Weibull.qf(u, alpha, beta)``) -- gives ``nan`` with one warning for a probability outside [0, 1] (most often a percentage given for a probability, ``qf(10)`` for the B10 life), as scipy's ``ppf`` gives ``nan``; ``nan`` gives ``nan``.
+- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life (the 10th percentile of the time to the event), and ``qf(0.5)`` the median. Every ``qf`` -- a fitted model's, with or without covariates, and a distribution's own (``surv.Weibull.qf(u, alpha, beta)``) -- gives ``nan`` with one warning for a probability outside [0, 1] (most often a percentage given for a probability, ``qf(10)`` for the B10 life), as scipy's ``ppf`` gives ``nan``; ``nan`` gives ``nan``.
 - :code:`cb()` - Confidence bounds on a function (the survival function by default).
 - :code:`mean()` - The mean.
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
+
+The function a confidence bound is on is chosen with ``on=``, named as the method is: ``"sf"``, ``"ff"``, ``"Hf"`` and, where the model offers bounds on them, ``"hf"``, ``"df"`` or ``"cif"``. ``on="R"`` and ``on="F"`` are accepted spellings of ``"sf"`` and ``"ff"``, after the reliability and the unreliability: ``model.cb(5, on="R")`` is ``model.cb(5, on="sf")``. Both spellings are kept, and every argument named ``on`` that takes ``"sf"`` or ``"ff"`` takes them, ``plot_nonparametric`` and ``compare_to`` of a Bayesian fit included (unless its distribution has a parameter named ``R`` or ``F``).
 
 For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``log_likelihood`` (a number) and ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` (methods) for comparing fits, spelt so on every model that has them, ``covariance()`` for the parameters' covariance and ``standard_errors()`` for their standard errors (the square roots of its diagonal, an array in its order; so on every model that has a covariance, the Cox model included), ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
@@ -377,7 +391,8 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
 - :math:`p` (the model's ``lfp_p``; ``p`` before v0.23) is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
 - The zero-inflation mass sits at :math:`x = 0`, even when there is an offset. Before 0 nothing has failed: :math:`F(x) = 0` and :math:`R(x) = 1` for :math:`x < 0`.
 - Between 0 and the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
-- Truncation follows from that, with the window :math:`(t_l, t_r]` open on the left as everywhere: a left truncation below 0 truncates nothing (the mass at 0 is inside the window), and one at 0 excludes the mass: the window's probability is :math:`1 - f_0`, so where every row is truncated at 0, :math:`f_0` cancels from the likelihood and cannot be estimated (an exact 0 at ``tl = 0`` is refused, as any observation at its own truncation time is). This is the convention of the discrete distributions, whose mass at :math:`t_l` is outside the window too.
+- A row that says only "failed by :math:`t`" may have failed at 0, so it includes the mass: left censoring at :math:`t` and an interval :math:`[0, t]` (lower bound 0) each contribute :math:`f_0 + (p - f_0) F_b(t - \gamma)`, the likelihood of zero-inflated data with such rows (Moulton and Halsey 1995; Braekers and Grouwels 2016; Grouwels 2015, section 2.1). An interval whose lower bound is above 0, :math:`(a, b]`, leaves the mass out: :math:`(p - f_0)(F_b(b - \gamma) - F_b(a - \gamma))`. Before this change (see the changelog) an interval :math:`[0, t]` was read as :math:`(0, t]`, without the mass.
+- Truncation follows the same rule: a left truncation at or below 0 truncates nothing (a unit cannot enter before it exists, and the mass at 0 is inside the window), and a late entry at :math:`t_l > 0` divides by :math:`R(t_l) = 1 - f_0 - (p - f_0) F_b(t_l - \gamma)`, so :math:`f_0` cancels for those units. A right truncation at :math:`t_r \ge 0` keeps the mass: the window's probability is :math:`F(t_r)`. These are ``ZeroInflated``'s rules too, so its fit with no covariates is the univariate fit. An exact 0 at ``tl = 0`` is still refused, as any observation at its own truncation time is.
 - ``df(0)`` of a zero-inflated model is the point mass :math:`f_0` itself (a probability, as the likelihood uses it), not a density. ``df(x, continuous=True)`` is the continuous part alone, :math:`p - f_0` times the base density at :math:`x - \gamma`, which integrates to :math:`p - f_0`: use it to integrate the density numerically.
 - ``hf(0)`` of a zero-inflated model is the point mass's discrete hazard :math:`f_0 / R(0^-) = f_0`, the probability of failing at 0 given survival to it, as a discrete distribution's hazard :math:`P(T = k) / R(k - 1)`; ``Hf`` jumps there by :math:`-\log(1 - f_0)`. Its ``cb`` on ``hf`` and ``df`` at 0 is the Wald bound on :math:`f_0`.
 - ``qf(q)`` is infinite for :math:`q \ge p` (that fraction of the population never fails), and 0 for :math:`q \le f_0`.
@@ -442,11 +457,13 @@ Every ``fit``, ``fit_from_df`` and ``from_params`` takes an optional
 ``unit=``: the unit the data were measured in, of any kind -- ``"hours"``,
 ``"km"``, ``"cycles"``, ``"pump starts"``. It is a label. The model keeps it
 as ``model.unit``, shows it in its printout and on its plots, and saves it
-with ``to_dict``; nothing is converted or checked. A unit `pint
-<https://pint.readthedocs.io>`_ knows is stored by its canonical name, so
-the same unit always reads the same (``"hrs"``, ``"hours"`` and ``"Hours"``
-are all ``"hour"``, and ``"cycles"`` is ``"cycle"``, a count); anything else
-is kept as written. Left out, it is ``None``: unknown, as before.
+with ``to_dict``, exactly as it was typed (``"hrs"`` stays ``"hrs"`` and
+``"mm/s"`` stays ``"mm/s"``; only spaces at its ends are dropped); nothing is
+converted. Where two labels are compared -- the data's and the fit's, the
+records of one dataset, two models -- they are read with `pint
+<https://pint.readthedocs.io>`_, so ``"h"``, ``"hrs"`` and ``"hours"`` agree
+(and ``"cycles"`` is a count, not pint's angle), and the label kept is the one
+typed for the result. Left out, it is ``None``: unknown, as before.
 
 .. jupyter-execute::
 
@@ -454,10 +471,10 @@ is kept as written. Left out, it is ``None``: unknown, as before.
     print(model.unit)
     print(model)
 
-A plot names its time axis by what the unit measures: "Time (h)",
-"Distance (km)", or "Usage (cycles)" for a count or any other unit. A label
-already on the axes is kept. Tools that combine models (RePyability, say)
-can convert between units with pint from the stored names.
+A plot names its time axis by what the unit measures, with the label as
+typed: "Time (hrs)", "Distance (km)", or "Usage (cycles)" for a count or any
+other unit. A label already on the axes is kept. Tools that combine models
+(RePyability, say) can convert between units with pint from the labels.
 
 The data classes carry the unit too: ``ItemLifetime(..., unit="hours")``,
 ``SurpyvalData(..., unit=)``, ``from_items`` (from its records, which must
@@ -465,16 +482,17 @@ agree), ``from_observations``, ``from_histories``, ``from_dataframe`` and
 ``handle_xicn`` all take it, every reshape, slice, ``to_first_events``,
 ``to_gaps`` and the JSON form keep it, the summary and printout show it,
 and ``fit(data)`` gives it to the model, so it is given once:
-``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hour"``. A
-``unit=`` at the fit that differs from the data's is refused, as are
-records in different units in one dataset; nothing is converted.
+``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hours"``. A
+``unit=`` at the fit that names a different unit from the data's is
+refused, as are records in different units in one dataset; nothing is
+converted.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert model.unit == "hour"
-    assert surv.from_dict(model.to_dict()).unit == "hour"
+    assert model.unit == "hrs"
+    assert surv.from_dict(model.to_dict()).unit == "hrs"
 
 Plots
 ~~~~~
@@ -535,7 +553,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
+Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A model fitted with sampling weights is stamped 3 and a stratified Cox model 4, which older releases refuse rather than misread (one as unweighted, the other as its first stratum's baseline); so is a ``ParametricCompetingRisks`` fitted to left- or interval-censored rows (schema 4), whose covariance between causes SurPyval 0.26 would drop, and data with states, a ``SurpyvalData`` with ``s`` (schema 4), whose states it would drop. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
 A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 
@@ -561,7 +579,7 @@ The univariate parametric and non-parametric models can carry their data with th
     with_data = surv.from_dict(weibull.to_dict(with_data=True))
     print("with the data    :", with_data.data["x"])
 
-A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, and a copula of a custom family. A regression fitted with a formula keeps its categorical levels and fitted transform statistics (``scale()``, ``poly()``, splines), so it is read back predicting exactly as before. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.
+A few models cannot be saved, and say so when ``to_dict`` is called: an accelerated-life model with a life model of your own, and a copula of a custom family. A regression fitted with a formula keeps its categorical levels and fitted transform statistics (``scale()``, ``poly()``, splines), so it is read back predicting exactly as before. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.
 
 Every fitted model also pickles, the stratified Cox model included, so it can be sent to worker processes (``multiprocessing``, ``concurrent.futures``, ``joblib``, Dask, Ray) or cached with ``pickle`` or ``joblib.dump``. (A model built on a function of your own -- a custom ``phi``, life model or ``CustomDistribution`` -- pickles where pickle can save that function: one defined at the top level of a module, not a ``lambda``.) Unlike ``to_dict``, a pickle keeps everything, the data and the likelihood too, so the unpickled model predicts and gives bounds exactly as the original; but it is for passing a model between processes or caching it on one machine, not for keeping it: a pickle may not load in another version of SurPyval (or of Python, numpy or autograd), and unpickling runs code, so load only pickles you made. Use ``to_json`` to store a model. The recurrence fitters (``CrowAMSAA``, ``HPP`` and the others) unpickle as themselves, so ``model.dist is surv.CrowAMSAA`` still holds.
 

@@ -21,7 +21,8 @@ import contextvars
 import functools
 import inspect
 import warnings
-from typing import Any, Callable, Iterator, TypeVar
+from collections.abc import Callable, Iterator
+from typing import Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -67,7 +68,7 @@ def warn_collected(found: list, where: str) -> None:
     if not found:
         return
     columns = sorted({j for cols, _ in found for j in cols})
-    warn_aliased(columns, "{}, {}".format(found[0][1], where))
+    warn_aliased(columns, f"{found[0][1]}, {where}")
 
 
 @contextlib.contextmanager
@@ -232,7 +233,7 @@ def describe_columns(columns: "npt.ArrayLike") -> str:
     out = []
     for j in np.asarray(columns, dtype=int).tolist():
         if names is not None and j < len(names):
-            out.append("{} ({!r})".format(j, names[j]))
+            out.append(f"{j} ({names[j]!r})")
         else:
             out.append(str(j))
     return ", ".join(out)

@@ -613,6 +613,30 @@ def _cr(case, truth, n):
     return draw
 
 
+def _cr_entry(case, truth, n):
+    """:func:`_cr` with delayed entry. Four in ten units enter late, at a
+    uniform time up to the 20th percentile of the fixture's times, and
+    are seen only if they are still under observation then (their event
+    or censoring comes after their entry); units are drawn until ``n``
+    have been seen."""
+    base = _cr(case, truth, n)
+    q20 = float(np.quantile(np.unique(case.data()["x"]), 0.2))
+
+    def draw(rng):
+        x, e, tl = np.empty(0), np.empty(0, object), np.empty(0)
+        while x.size < n:
+            d = base(rng)
+            late = rng.uniform(size=n) < 0.4
+            entry = np.where(late, rng.uniform(0, q20, n), 0.0)
+            seen = d["x"] > entry
+            x = np.r_[x, d["x"][seen]]
+            e = np.r_[e, d["e"][seen]]
+            tl = np.r_[tl, entry[seen]]
+        return {"x": x[:n], "e": e[:n], "tl": tl[:n]}
+
+    return draw
+
+
 def _pcr(case, truth, n):
     # The model's own sampler: (time, cause) records.
     def draw(rng):
@@ -623,6 +647,62 @@ def _pcr(case, truth, n):
         out = t[0] > cens
         e[out] = None
         return {"x": np.where(out, cens, t[0]), "e": e}
+
+    return draw
+
+
+def _pcr_inspected(case, truth, n):
+    """:func:`_pcr` with a third of the failures found at inspections, as
+    in the fixture: the inspections are a third of the all-cause median
+    apart, and such a failure is recorded with its cause in the window
+    between the inspections around it (left censored before the first).
+    Which failures are found at an inspection is a draw independent of
+    their times."""
+    base = _pcr(case, truth, n)
+    step = _step(truth)
+
+    def draw(rng):
+        d = base(rng)
+        t = d["x"]
+        failed = np.array([v is not None for v in d["e"]])
+        found = failed & (rng.uniform(size=n) < 1 / 3)
+        # (lo, hi] holds t
+        lo = (np.ceil(t / step) - 1) * step
+        hi = lo + step
+        left = found & (lo <= 0)
+        x = np.column_stack(
+            [
+                np.where(found & ~left, lo, np.where(left, hi, t)),
+                np.where(found, hi, t),
+            ]
+        )
+        c = np.where(found, np.where(left, -1, 2), np.where(failed, 0, 1))
+        return {"x": x, "c": c, "e": d["e"]}
+
+    return draw
+
+
+def _pcrr(case, truth, n):
+    # The model's own sampler, at each of the fixture's covariate rows:
+    # (time, cause) records.
+    design = _design(case, n)
+    Z = design["Z"]
+    rows, where = np.unique(Z, axis=0, return_inverse=True)
+    where = where.ravel()
+
+    def draw(rng):
+        t = np.empty((3, Z.shape[0]))
+        e = np.empty(Z.shape[0], object)
+        for j, row in enumerate(rows):
+            at = where == j
+            m = int(at.sum())
+            rec, _ = truth.random(3 * m, row[None, :], random_state=rng)
+            t[:, at] = np.asarray(rec["x"], float).reshape(3, m)
+            e[at] = np.asarray(rec["e"], object)[:m]
+        cens = np.maximum(t[1], t[2])
+        out = t[0] > cens
+        e[out] = None
+        return {"x": np.where(out, cens, t[0]), "e": e, **design}
 
     return draw
 
@@ -739,6 +819,53 @@ def _superposed(case, truth, n):
         return out
 
     return draw
+
+
+def _superposed_at_levels(case, truth, n):
+    """As :func:`_superposed`, for causes with covariates: n / 3 items at
+    each of the fixture's covariate values (0, 1 and 0.5), each cause's
+    events drawn from its own cumulative intensity at that value."""
+    levels = np.unique(case.data()["Z"])
+    per_level = n // len(levels)
+
+    def draw(rng):
+        xs, ids, cs, es, zs = [], [], [], [], []
+        for j, z in enumerate(levels):
+            per_cause = {
+                e: _nhpp_events(
+                    rng,
+                    lambda t, e=e, z=z: truth.cif(t, [z], e),
+                    T_REC,
+                    per_level,
+                )
+                for e in case.events
+            }
+            for k in range(per_level):
+                times = [
+                    (t, e) for e, lists in per_cause.items() for t in lists[k]
+                ]
+                times.sort(key=lambda te: te[0])
+                xs.extend([t for t, _ in times] + [T_REC])
+                es.extend([e for _, e in times] + [None])
+                ids.extend([1000 * j + k] * (len(times) + 1))
+                cs.extend([0] * len(times) + [1])
+                zs.extend([z] * (len(times) + 1))
+        return {
+            "x": np.array(xs),
+            "i": np.array(ids),
+            "c": np.array(cs),
+            "n": np.ones(len(xs), int),
+            "e": np.array(es, dtype=object),
+            "Z": np.array(zs)[:, None],
+        }
+
+    return draw
+
+
+def _cause_pi_params(model):
+    return np.concatenate(
+        [np.asarray(model.models[e]._mle) for e in model.event_types]
+    )
 
 
 def _renewal_params(boundary: bool):
@@ -1019,6 +1146,12 @@ for _base in ("Weibull", "Exponential"):
 PLANS["Weibull[xcnt]"] = Plan(
     _xcnt_parametric, 300, 100, params=_parametric_params
 )
+# Probability-plotting fits (how="MPP"), a closed-form regression on the
+# plotting positions: refitted as the maximum-likelihood fits are, on the
+# same censored draws (their pivotal bounds' coverage is
+# calibration/test_coverage_pivotal.py's business).
+for _base in ("Weibull", "LogNormal"):
+    PLANS[f"{_base}[MPP]"] = _CENSORED
 # The fixture's 1000 units, 3% of which fail within the 24 months
 PLANS["Weibull[lfp-counts]"] = Plan(
     _lfp_counts, 1000, 100, params=_parametric_params
@@ -1095,6 +1228,52 @@ for _base in reg.DISTRIBUTIONAL_BASELINES:
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+for _base in reg.CURE_LATENCIES:
+    # The model's own random: a unit that never fails is drawn as inf,
+    # and censored at the last finite time
+    PLANS[_base + "MixtureCure"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
+for _base in reg.CURE_LATENCIES:
+    # The model's own random: a unit dead on arrival is drawn as 0
+    PLANS[_base + "ZeroInflated"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
+
+
+def _equivalence_draw(case, truth, n):
+    # The model's own random, at usage rates resampled from the fixture's
+    # (each unit's second clock per unit of the first); censored on the
+    # first clock by two further lives at the same rate, and the second
+    # clock read at the same rate.
+    d = case.data()
+    rates = np.asarray(d["x2"], dtype=float) / np.asarray(d["x"], dtype=float)
+
+    def draw(rng):
+        rate = rng.choice(rates, n)
+        t = np.vstack(
+            [truth.random(n, rate=rate, random_state=rng)[0] for _ in "abc"]
+        )
+        out = _censor(*t)
+        out["x2"] = rate * out["x"]
+        return out
+
+    return draw
+
+
+for _base in reg.CURE_LATENCIES:
+    PLANS[_base + "Equivalence"] = Plan(
+        _equivalence_draw,
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
@@ -1102,6 +1281,12 @@ for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+PLANS["NormalAL[GeneralLinear]"] = Plan(
+    _regression(own_random=True),
+    _REG_N,
+    _REG_REPS,
+    params=lambda m: np.asarray(m.params, dtype=float),
+)
 _NO_FRAILTY = (
     "the fixture's frailty variance is 0, on its boundary: the data are "
     "drawn from the (then frailty-free) sf"
@@ -1138,16 +1323,24 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-PLANS["CoxFrailty"] = Plan(
-    _regression(own_random=False, step=True),
-    _REG_N,
-    _REG_REPS,
-    note=_SEMI + "; " + _NO_FRAILTY,
-)
+for _name in ("CoxFrailty", "CoxMixedEffects"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False, step=True),
+        _REG_N,
+        _REG_REPS,
+        note=_SEMI + "; " + _NO_FRAILTY,
+    )
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
+PLANS["CompetingRisks[tl]"] = Plan(_cr_entry, 300, 60)
 PLANS["ParametricCompetingRisks"] = Plan(_pcr, 300, 60, params=_pcr_params)
+PLANS["ParametricCompetingRisksRegression"] = Plan(
+    _pcrr, 300, 60, params=_pcr_params
+)
+PLANS["ParametricCompetingRisks[interval]"] = Plan(
+    _pcr_inspected, 300, 60, params=_pcr_params
+)
 for _name in (
     "CompetingRisksProportionalHazards[Cox]",
     "CompetingRisksProportionalHazards[Fine-Gray]",
@@ -1207,6 +1400,9 @@ PLANS["CauseSpecificMCF"] = Plan(
 )
 PLANS["CauseSpecificNHPP"] = Plan(
     _superposed, 40, 60, params=_cause_nhpp_params
+)
+PLANS["CauseSpecificProportionalIntensity"] = Plan(
+    _superposed_at_levels, 42, 60, params=_cause_pi_params
 )
 
 # Degradation: n is the number of units.
@@ -1298,6 +1494,61 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        ("PanelCountMCF", "PanelCountRegression"),
+        "no simulation from the model: the mean function is a step "
+        "function with no shape beyond the inspection times and the model "
+        "does not say how counts vary about the mean. Recovery from "
+        "simulated (mixed Poisson) panel counts is tested in "
+        "tests/recurrent/test_panel_count.py and the bounds' coverage in "
+        "calibration/test_coverage_panel_count.py",
+    ),
+    "IntervalCoxPH": "its fixture is interval censored, and the "
+    "regression plans draw exact and right-censored times, which would "
+    "check the grouped-data likelihood rather than the interval one; its "
+    "coefficients' coverage on simulated interval-censored data is "
+    "calibration/test_coverage_interval_cox.py's",
+    "FineGray[strata]": "the competing-risks simulator draws every unit "
+    "from one baseline and one censoring distribution; recovery and "
+    "coverage of the stratified fit are checked by its own study "
+    "(test_coverage_regression.py, three strata with their own baselines "
+    "and censoring)",
+    "FineGray[cluster]": "the estimate is the plain FineGray fit's, planned "
+    "above; what the clusters change, the standard errors, is checked by "
+    "its own study with dependent units (test_coverage_regression.py)",
+    **dict.fromkeys(
+        (
+            "AndersenGill",
+            "PrenticeWilliamsPeterson",
+            "PrenticeWilliamsPeterson[gap]",
+            "WeiLinWeissfeld",
+        ),
+        "no simulation from the model: the baseline is a step function "
+        "with no shape beyond the data, and the conditional and marginal "
+        "models do not define a process to draw an item's history from. "
+        "Recovery from simulated processes is tested in "
+        "tests/recurrent/test_recurrent_cox.py",
+    ),
+    **dict.fromkeys(
+        (
+            "MultiState",
+            "MultiStateProportionalHazards",
+            "MultiStateProportionalHazards[shared]",
+        ),
+        "no simulation from the model: its fit is a step estimate of the "
+        "transition hazards with no shape beyond the data, and the models "
+        "have no random() to draw a unit's path through the states. "
+        "Recovery of Markov models simulated with known constant hazards "
+        "(the Aalen-Johansen estimate, and the Cox model's coefficients "
+        "and predicted probabilities, against the matrix exponential) is "
+        "tested in tests/multistate/test_multistate.py",
+    ),
+    "LandmarkCox": "no simulation from the model: a dynamic prediction "
+    "from a landmark, with a step baseline per landmark and no random(); "
+    "its own study, calibration/test_coverage_landmark.py, simulates "
+    "lifetimes from a proportional-hazards truth and checks the coverage "
+    "of the robust intervals on the coefficients and a window "
+    "probability",
     "Weibull[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
@@ -1319,11 +1570,49 @@ EXCLUDED: dict[str, str] = {
     "in Z and refits of it are biased (0.061 at worst over 40 refits of "
     "300): its own study, calibration/test_coverage_aalen.py, simulates "
     "from a true additive model",
+    **dict.fromkeys(
+        ("ParametricMultiState", "ParametricMultiStateRegression"),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters and of the occupation probabilities from simulated "
+        "Markov paths is tested in tests/multistate/test_parametric.py",
+    ),
+    **dict.fromkeys(
+        (
+            "ParametricMultiState[reset]",
+            "ParametricMultiStateRegression[reset]",
+        ),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters from simulated semi-Markov paths is tested in "
+        "tests/multistate/test_semimarkov.py, and the coverage of the "
+        "occupancy and length-of-stay bounds in "
+        "calibration/test_coverage_semimarkov.py",
+    ),
+    **dict.fromkeys(
+        ("PanelMultiState", "PanelMultiStateRegression"),
+        "states seen only at visits, a history which a model draw does not "
+        "give (no simulator of visit schedules or paths): recovery of the "
+        "intensities and the coverage of their bounds from simulated "
+        "panels is calibration/test_coverage_multistate_panel.py, and the "
+        "models' special cases are in tests/multistate/test_panel.py",
+    ),
+    "JointFrailty": "recurrent events and a terminal event per unit, "
+    "which a model draw of one function does not give: its own study, "
+    "calibration/test_coverage_joint_frailty.py, simulates units with "
+    "random() and checks the parameters' bias and coverage, the bands and "
+    "the size of the test of no frailty",
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
     "calibration/test_coverage_joint.py, simulates fleets with markers and "
     "checks the parameters' bias and coverage and the dynamic-prediction "
     "bands",
+    **{
+        f"WeibullJointPH[{_link}]": "a lifetime with marker readings along "
+        "it, which a model draw does not give: recovery of fleets simulated "
+        "from this link is in univariate/joint/test_joint_links.py"
+        for _link in ("slope", "cumulative", "value+slope")
+    },
 }
 
 

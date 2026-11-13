@@ -145,8 +145,14 @@ Every distribution is an object in the ``surpyval`` namespace
      - no
      -
 
-``Galton`` and ``Gauss`` are the same distributions as ``LogNormal`` and
-``Normal`` under their other names. Every distribution in the table except the
+``Gauss`` is another name for ``Normal``, and ``Galton`` another name for
+``LogNormal``. A model fitted with one saves and loads as that name (its
+``repr`` and ``to_dict`` show it) and is otherwise identical: the same fit to
+the last digit, the same checks and refusals, and wherever SurPyval asks
+which distribution a model has (``fit_best``, ``AcceleratedLife``, the
+diagnostics), it is taken as the ``Normal`` or ``LogNormal``.
+``dist.canonical_name`` gives that name (``sp.Gauss.canonical_name`` is
+``"Normal"``). Every distribution in the table except the
 ``Hypoexponential`` also accepts ``lfp=True``. The discrete lifetimes
 (``Geometric``, ``DiscreteWeibull``, ``NegativeBinomial``, ``BetaGeometric``,
 ``Discretize`` and ``Poisson``) and the per-demand and degenerate models
@@ -248,15 +254,70 @@ that converged (see :doc:`Parametric Estimation`), whether a maximum
 likelihood fit reached a verified maximum (``maximum``: ``'verified'``,
 ``'unverified'`` or ``'no finite maximum'``, the last two with a warning; see
 :class:`~surpyval.univariate.parametric.parametric.Parametric`), the support,
-and, for a maximum likelihood fit, the parameter covariance ``hess_inv`` whose
-diagonal holds the squared standard errors:
+and, for a maximum likelihood fit, the parameter covariance ``covariance()``
+whose diagonal holds the squared standard errors (``standard_errors()``).
+``hess_inv`` is the inverse Hessian of the negative log-likelihood; without
+weights it is the same matrix, but with weights ``w`` the covariance is the
+robust one and ``hess_inv`` is not a variance (see :doc:`Weighted Data`), so
+use ``covariance()`` for a variance:
 
 .. jupyter-execute::
 
     print("fitted by :", model.method, "using", model.optimizer)
     print("maximum   :", model.maximum)
     print("support   :", model.support)
-    print("std errors:", np.sqrt(np.diag(model.hess_inv)))
+    print("std errors:", model.standard_errors())
+
+Which parameter is each row of the covariance?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``covariance_names`` names the rows (and columns) of ``covariance()`` and
+the entries of ``standard_errors()``, in order. A plain fit has one row per
+distribution parameter, the same as ``parameter_names``. A fit with a
+limited failure population (``lfp=True``) adds a row for the proportion
+that can fail, ``lfp_p``, and one with zero inflation (``zi=True``) adds a
+row for the fraction failed at time 0, ``f0``, in that order:
+
+.. jupyter-execute::
+
+    import numpy as np
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.weibull(2, 200) * 100, np.zeros(20)]
+    zi_model = surv.Weibull.fit(x, zi=True)
+    print(zi_model.covariance_names)
+    se = zi_model.standard_errors()
+    print({n: round(float(v), 4) for n, v in zip(zi_model.covariance_names, se)})
+
+Two cases keep a parameter out of the variances:
+
+- A parameter **fixed** at fit time (``fixed={"beta": 2}``) is known, so
+  its row and column are zeros; it keeps its name and place.
+- The **offset** ``gamma`` of an ``offset=True`` fit has no row. It is a
+  threshold, the earliest time a failure can happen, and the usual
+  standard error is unreliable for it: the fit often sits on or near the
+  first failure, where the likelihood is not smooth. In a simulation of
+  200-unit Weibull samples, a 95% interval from that standard error caught
+  the true offset only 89% of the time for a shape of 3.5 and 76% for a
+  shape of 1.5, and below a shape of 1 there was no standard error at all.
+  So the covariance holds ``gamma`` at its estimate, and the other rows are
+  the variances given ``gamma``. Bound the offset itself with
+  ``param_cb("gamma", method="lr")`` or ``method="bootstrap"``.
+
+To simulate parameter uncertainty, draw from a multivariate normal with
+these names: the estimates are ``params`` then ``lfp_p`` and ``f0`` (where
+the model has them), in the order of ``covariance_names``.
+
+.. jupyter-execute::
+
+    est = {**dict(zip(zi_model.parameter_names, zi_model.params)),
+           "f0": zi_model.f0}
+    centre = [est[name] for name in zi_model.covariance_names]
+    draws = rng.multivariate_normal(centre, zi_model.covariance(), 5)
+    print({n: round(float(v), 3) for n, v in zip(zi_model.covariance_names, draws[0])})
+
+``parameter_names`` stays the distribution's parameters (the entries of
+``params``), and ``hess_inv`` stays the distribution's block of the inverse
+Hessian, so neither changes with ``lfp`` or ``zi``.
 
 The distributions can also be used directly, without a model, by passing
 the parameters after ``x``. This is handy for a quick calculation:
@@ -1497,7 +1558,7 @@ The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9),
 
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit, and polishes and checks the answer as it does EM's.
 
-A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it was removed in v0.24.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it was removed in v0.24.) It has no confidence bounds. Its ``Hf`` and ``hf`` stay precise far into the upper tail, where the mixture's survival is too small to hold in a double (below about 1e-308): they are worked out from each component's own cumulative hazard and hazard rate, so that the hazard is the components' hazards averaged over the items still running, :math:`h(x) = \sum_i \pi_i(x) h_i(x)` with :math:`\pi_i(x) = w_i R_i(x) / R(x)`, and :math:`H(x) = -\ln \sum_i w_i e^{-H_i(x)}` is summed in logs. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
 
 .. jupyter-execute::
 
@@ -1881,6 +1942,33 @@ spline's linear predictor and are available on ``'sf'``, ``'ff'`` and
 boundary knots, can be given with ``knots``. See
 :doc:`univariate/royston_parmar` for the full API.
 
+``with_params`` gives the same spline (its knots, scale and unit) at other
+coefficients, in the order of ``covariance_names``. A draw from the fit's
+``covariance()`` becomes a model this way, so the uncertainty in the
+coefficients can be carried into anything computed from the curve. The
+model it returns has no data or covariance of its own. A draw whose spline
+falls somewhere (so the cumulative hazard would decrease) is not a survival
+distribution and is refused: leave it out and count it. If many are, the
+spline has more knots than the data support, and a smaller ``df`` is the
+remedy. Here the 2.5% and 97.5% points of the survival at 40 over 2000
+draws land on the Wald band of ``cb``:
+
+.. jupyter-execute::
+
+    model = RoystonParmar.fit(x, df=3)
+    print(model.covariance_names)
+    rng = np.random.default_rng(1)
+    draws = rng.multivariate_normal(model.params, model.covariance(), 2000)
+    sf_40, left_out = [], 0
+    for gamma in draws:
+        try:
+            sf_40.append(model.with_params(gamma).sf(40.0))
+        except ValueError:
+            left_out += 1
+    print("left out:", left_out)
+    print("draws:", np.quantile(sf_40, [0.025, 0.975]).round(3))
+    print("cb   :", model.cb(40.0).round(3))
+
 Discrete Distributions
 ----------------------
 
@@ -2233,7 +2321,8 @@ available for models fitted by maximum likelihood (the default), including
 limited-failure-population and zero-inflated models, whose extra parameters
 widen the bounds. A model fitted with ``how='MPS'``, ``'MSE'``, ``'MPP'`` or
 ``'MOM'`` raises instead; so does a Uniform, whose MLE sits on the edge of its
-support.
+support. A probability-plotting (``how='MPP'``) fit has its own bounds,
+``method='pivotal'`` (see `Bounds for a probability-plotting fit`_ below).
 
 The band above is a *Wald* band: it propagates the parameter covariance through
 the function by the delta method. ``cb`` also offers a **likelihood-ratio**
@@ -2309,6 +2398,202 @@ explained in :doc:`Parametric Estimation`.
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
+Bounds for a probability-plotting fit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A probability-plotting fit (``how='MPP'``, also called rank or median-rank
+regression) draws a straight line through the plotted points. It has no
+likelihood, so no Wald or likelihood-ratio bound. It has a better one:
+**pivotal** bounds, ``method='pivotal'`` on ``cb``, ``quantile_cb`` and
+``param_cb``.
+
+In plain words: for the Weibull, LogNormal, LogLogistic, Normal, Logistic,
+Gumbel, GumbelLEV and Exponential, how far the fitted line is from the true
+line, measured in units of the fitted line's own slope, has the same
+distribution whatever the true parameters are. So SurPyval works that
+distribution out by simulation, once: it draws many samples of the same size
+from the standard member of the family, with failures and suspensions in the
+same rank positions as the data, fits each one by exactly the same regression
+(the same plotting positions, the same direction of regression), and reads the
+bounds off the spread of those fits. For a complete sample, and for a sample
+censored after its ``r``-th failure (type II censoring), the bounds then hold
+their level exactly, however small the sample; the only error is the Monte
+Carlo error of the simulation. These are the "Monte Carlo pivotal" bounds of
+Abernethy's *New Weibull Handbook*, computed as the exact pivotal intervals of
+Lawless (2003, section 5.1).
+
+.. jupyter-execute::
+
+    x = [43, 61, 79, 92, 107, 120, 141, 163]     # eight failures
+    mpp = Weibull.fit(x, how='MPP')
+    mle = Weibull.fit(x)
+
+    rows = [
+        ('MLE, Wald', mle, dict(method='wald')),
+        ('MLE, likelihood ratio', mle, dict(method='lr')),
+        ('MLE, bootstrap', mle, dict(method='bootstrap', random_state=1)),
+        ('MPP, pivotal', mpp, dict(method='pivotal', random_state=1)),
+    ]
+    for label, m, kw in rows:
+        beta = m.param_cb('beta', alpha_ci=0.1, **kw)
+        b10 = m.quantile_cb(0.1, alpha_ci=0.1, **kw)
+        print(f"{label:22s} beta {beta.round(2)}   B10 {b10.round(1)}")
+
+With eight failures the 90% pivotal interval on the shape is the widest of
+the four, and it is the one that holds its level: over 1000 samples of 5, 10
+and 20 Weibull lifetimes, complete or type II censored, the 90% pivotal bounds
+on the shape, the scale, the B10 life and the reliability covered between
+88.9% and 91.9% of the time, where the Wald bounds of the maximum-likelihood
+fit to the same samples covered 64% to 89%
+(``calibration/test_coverage_pivotal.py``).
+
+What to know before using them:
+
+- **The number of simulations**, ``n_sim``, defaults to 9999. A bound is the
+  ``(n_sim + 1) a``-th smallest simulated value (``a`` the tail probability,
+  ``alpha_ci / 2`` for a two-sided bound), so with 9999 the coverage is exact
+  over the simulation too at any level that is a multiple of 0.0001. A
+  different ``n_sim`` or seed moves a bound a little, not its coverage: two
+  seeds give 95% bounds on the shape of eight failures within about 1% of
+  each other. ``random_state`` seeds the simulation as everywhere in SurPyval;
+  with an integer seed the simulated fits are kept on the model and reused by
+  every later bound with the same ``n_sim`` and seed, so the bounds on ``sf``,
+  on the quantiles and on the parameters come from one simulation and agree
+  with each other (the band on ``ff`` at a quantile's bound is ``p``).
+- **Other right censoring.** With suspensions among the failures the
+  simulation keeps them in the same rank positions, as the handbook and R's
+  ``WeibullR`` do; the bounds are then approximate (the rank pattern itself
+  would vary in another sample). Tied times are simulated as untied.
+- **What is refused**, each with what to use instead: a fit by any other
+  method (an MLE fit has the Wald, likelihood-ratio and bootstrap bounds), any
+  other family (the pivotal argument needs a location and a scale), an offset
+  (3-parameter) fit, left- or interval-censored data, truncated data, fixed
+  parameters, a model without its data (save it with
+  ``to_dict(with_data=True)``, which also keeps the plotting options), and
+  ``on='hf'`` or ``'df'`` (the hazard and density are not a monotone function
+  of the line's error).
+
+The fits agree with R's ``WeibullR`` exactly (``heuristic='Benard',
+rr='x'`` is its default). ``WeibullR``'s ``pivotal-rr`` bounds are
+constructed differently (from percentiles of the simulated lines, rotated
+about the fitted line) from the exact pivotal intervals of Lawless used here,
+so the two are not expected to coincide.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _piv = mpp.param_cb('beta', alpha_ci=0.1, method='pivotal', random_state=1)
+    _lr = mle.param_cb('beta', alpha_ci=0.1, method='lr')
+    _wald = mle.param_cb('beta', alpha_ci=0.1, method='wald')
+    _boot = mle.param_cb('beta', alpha_ci=0.1, method='bootstrap', random_state=1)
+    _w = lambda b: b[1] - b[0]
+    assert _w(_piv) > max(_w(_lr), _w(_wald), _w(_boot))
+    _a = mpp.param_cb('beta', method='pivotal', random_state=1)
+    _b = mpp.param_cb('beta', method='pivotal', random_state=2)
+    assert np.allclose(_a, _b, rtol=0.015), (_a, _b)
+
+Reduced bias adjustment
+^^^^^^^^^^^^^^^^^^^^^^^
+
+With few failures the maximum-likelihood Weibull shape is too large more often
+than it is too small, and a LogNormal or Normal ``sigma`` too small.
+``model.rba()`` gives the fit with Abernethy's **reduced bias adjustment**: the
+shape (or ``sigma``) multiplied by a factor that depends only on the number of
+failures ``r`` and tends to 1 as ``r`` grows; the scale (or ``mu``) is kept.
+For the Weibull the default, ``basis='median'``, makes the shape as often above
+the truth as below it (a median-unbiased estimate); ``basis='mean'`` makes it
+right on average instead. It is opt-in, never the default: it moves the point
+estimate of a small sample, and does nothing about its spread, so it is not a
+substitute for a bound.
+
+.. jupyter-execute::
+
+    adjusted = mle.rba()
+    print("MLE shape         :", mle.params[1].round(3))
+    print("RBA shape (median):", adjusted.params[1].round(3))
+    print("RBA shape (mean)  :", mle.rba('mean').params[1].round(3))
+    print(adjusted.bias_adjustment)
+
+With :math:`C_4(r) = \sqrt{2 / (r - 1)}\,\Gamma(r / 2) / \Gamma((r - 1) / 2)`,
+the Weibull shape is multiplied by :math:`C_4^{3.5}` (median) or
+:math:`C_4^{6}` (mean), and a (log)normal ``sigma`` by
+:math:`\sqrt{r / (r - 1)} / C_4`, which turns a complete sample's MLE into
+the mean-unbiased :math:`s / C_4`. These are ``WeibullR``'s factors (it
+applies them to maximum-likelihood fits only, as SurPyval does) and agree with
+them to 1e-12. The adjusted model is built from its parameters, like
+``with_params``: bound the fit itself, or use pivotal bounds on an MPP fit.
+
+Joint likelihood contours
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``param_cb`` bounds one parameter at a time. The two parameters of a fit are
+usually estimated together and trade off against each other: for a Weibull, a
+larger scale fits the same data with a larger shape too. The **joint
+confidence region** shows them together. It is the set of pairs of values that
+a likelihood-ratio test does not reject, drawn as a closed curve (a contour)
+around the estimate; at the 95% level it covers the true pair in 95% of
+samples. Two fits whose regions do not overlap, say the old and the new design
+of a part, are evidence that the two really differ, which two separate
+intervals per parameter do not show as clearly.
+
+``model.likelihood_contour(alpha_ci, n_points)`` finds the contour, and
+``surpyval.plot_likelihood_contour`` draws one or more of them, at one or
+several levels, with each estimate marked:
+
+.. jupyter-execute::
+
+    from matplotlib import pyplot as plt
+
+    old = surv.Weibull.fit([52, 66, 81, 95, 104, 118, 131, 150, 160],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    new = surv.Weibull.fit([88, 102, 115, 127, 139, 156, 170, 191, 200],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    contour = old.likelihood_contour(alpha_ci=0.1)
+    print(contour)
+
+    out = surv.plot_likelihood_contour({"Old design": old, "New design": new},
+                                       alpha_ci=[0.1, 0.05])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    plt.close(out.fig)
+    _ll = np.array([-old._lr_neg_ll(p) for p in contour.points])
+    assert np.allclose(_ll, contour.log_likelihood_cut, atol=1e-6)
+
+The contour is where the log-likelihood has fallen from its maximum by half the
+chi-squared critical value with two degrees of freedom:
+
+.. math::
+
+    \log L(\theta_1, \theta_2) = \log L(\hat\theta_1, \hat\theta_2) - \tfrac12 \chi^2_{2, 1-\alpha},
+    \qquad \chi^2_{2, 1-\alpha} = -2 \log \alpha.
+
+SurPyval finds it as it finds the likelihood-ratio interval: by root finding
+along ``n_points`` rays from the estimate (in the log of a positive parameter,
+the logit of a bounded one), spaced evenly in the Wald metric, where the
+region is close to a circle. The four points where the contour touches its
+bounding box are each parameter's profile-likelihood bound at the same
+critical value, so ``contour.bounds`` holds the smallest and largest value of
+each parameter over the region exactly. Note the critical value: a
+one-parameter interval uses one degree of freedom, so the joint region's
+extremes are wider than the ``param_cb`` intervals at the same level. Some
+software (WeibullR's ``MLEcontour`` by default, and Weibull++'s contours) uses
+one degree of freedom for contours too; ``likelihood_contour(alpha_ci=a)`` at
+``a = chi2.sf(chi2.ppf(1 - a1, 1), 2)`` reproduces that contour for a level
+``a1``. The contours match WeibullR's ``MLEcontour(..., dof = 2)``, and the
+extremes the profile likelihood solved in base R, in SurPyval's reference
+tests.
+
+The contour is of exactly two fitted parameters. A one-parameter model's
+region is its interval (``param_cb(name, method='lr')``); a model with three
+or more (or an offset, limited-failure or zero-inflated part) is refused, and
+fixing all but two at fit time (``fixed={...}``) gives the contour of those
+two. A fit with sampling weights is refused, as its likelihood-ratio bounds
+are. ``LikelihoodContour.to_dict()`` gives the result as strict JSON.
+
 Likelihood-ratio bounds with an offset, a limited failure population or zero inflation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2359,6 +2644,57 @@ on the edge in 82% of them). The calibration studies
 (``calibration/test_coverage_extra_parameters.py``) check both. The mean and the
 mean residual life of a limited failure population are infinite (a fraction
 never fails), so their bounds are too.
+
+``method="bootstrap"`` bounds a limited-failure or zero-inflated model too,
+``lfp_p`` and ``f0`` included: each refit is of the same model, to data
+drawn from the fit, and a refit whose ``lfp_p`` (``f0``) the data put on its
+edge counts at 1 (0). Where the estimate is on the edge the refits mostly
+are too, so the interval on ``lfp_p`` closes up to 1. The intervals are BCa:
+the bias-corrected percentiles of the refits, moved by an acceleration from
+the jackknife (the model refitted without each unit in turn). On 200
+simulated samples of 100 units each
+(``calibration/test_coverage_extra_parameters.py``) its 95% intervals
+covered 90% to 96.5% of the time and its 90% ones 83.5% to 92.5%, a little
+short at 90% for a zero-inflated model and for ``lfp_p`` near its edge.
+(Those figures were measured before 0.27, which widened every bootstrap
+interval a little by reading its bounds from the refits at the levels
+asked; see the note below.)
+
+.. note::
+
+   **How close the bootstrap intervals come to their level.** A bootstrap
+   interval (``method="bootstrap"``, on ``param_cb``, ``cb`` or
+   ``quantile_cb``) on a plain Weibull or LogNormal fit covers the truth
+   within about a point of its level from 100 units up, and one to two
+   points less with 30 units: a "90%" interval about 88-89% of the time, a
+   "95%" one about 93-95%. The figures come from the package's calibration
+   study (``calibration/test_coverage_bootstrap.py``), each the average
+   over every bound checked (parameters, ``sf`` and quantiles at three
+   points), 200 simulated data sets per design, about 30% right censored,
+   with the default ``n_boot=200``:
+
+   ==================================  ============  ============
+   Design                              90% interval  95% interval
+   ==================================  ============  ============
+   Weibull / LogNormal, 30 units       88.0%         93.0%
+   Weibull / LogNormal, 100 units      89.1%         94.7%
+   Weibull / LogNormal, 300 units      88.8%         94.6%
+   ==================================  ============  ============
+
+   At 200 data sets a design's average is uncertain by about a point, so
+   these agree with the level from 100 units up. A larger check of the
+   same method, written independently (8,000 data sets of 300 Weibull
+   units, 200 refits each), covered 90.0% and 95.0%. Before version 0.27
+   these intervals were about 2% too narrow and covered about a point
+   less at every sample size, because each bound was read from the
+   refits at a level nearer the middle than asked (see the changelog).
+
+   The likelihood-ratio bounds (``method="lr"``) hold their level as well
+   or better on the same kinds of data, cost no refits, and are the
+   default choice where they are available. The bootstrap is the choice
+   where the likelihood-ratio bound is not available or not regular (an
+   offset with a shape below 2, above), and with 30 units or fewer either
+   method can fall a point or two short.
 
 An offset model's region can reach the offset at the first failure, where its
 likelihood is unbounded (a shape below 1 puts infinite density there; see the
@@ -2431,6 +2767,118 @@ with the same ``alpha_ci``, ``bound`` and ``method`` (``"wald"``, ``"lr"`` or
     assert abs(model.mrl(0) - model.mean()) < 1e-8 * model.mean()
     _r = model.mrl_cb(5)
     assert _r[0] < model.mrl(5) < _r[1]
+
+The restricted mean survival time (RMST) answers "on average, how much of the
+first ``tau`` hours does a unit run?" It is the area under the survival curve
+from 0 to ``tau``, the expected value of :math:`\min(T, \tau)`, and is the
+usual summary in clinical trials, where the follow-up ends before most units
+have failed and the mean would rest on the tail the model extrapolates.
+``rmst(tau)`` returns it with its standard error and a 95% interval, in the
+same form as the non-parametric models' ``rmst``; ``rmst_cb(tau)`` bounds it
+at one horizon or several with the same ``alpha_ci``, ``bound`` and ``method``
+(``"wald"``, ``"lr"`` or ``"bootstrap"``), and ``mean(tau=tau)`` is the point
+alone. A ``tau`` left out is the largest observed time.
+
+.. math::
+
+    \mu(\tau) = \int_0^\tau S(t)\, dt = E[\min(T, \tau)]
+
+It is exact for the Exponential, :math:`(1 - e^{-\lambda\tau})/\lambda`, the
+Weibull, :math:`\alpha\,\Gamma(1 + 1/\beta)\,P(1/\beta, (\tau/\alpha)^\beta)`
+with :math:`P` the regularised lower incomplete gamma function, the Gamma and
+the LogNormal, and an adaptive quadrature of ``sf`` for the others. An offset
+adds the time before it, a limited failure population adds
+:math:`(1 - p)\tau` for the units that never fail (so its RMST is finite while
+its mean is not), and zero inflation removes the units failed at 0. The Wald
+standard error is the delta method's, :math:`\sqrt{g^\top \Sigma g}`, with
+:math:`g` the gradient of :math:`\mu(\tau)` in the parameters and
+:math:`\Sigma` their covariance; the interval is taken on the logit of
+:math:`\mu(\tau)/\tau`, so it stays between 0 and ``tau``. The values agree
+with R (``survreg`` or ``optim`` fits, ``integrate`` and the delta method) to
+better than one part in a million, and with flexsurv's
+``summary(fit, type="rmst")`` at its own estimate to 1e-7.
+
+.. jupyter-execute::
+
+    print("RMST to 8:", model.rmst(8))
+    print("RMST to 4 and 8, 95% LR bounds:", model.rmst_cb([4, 8], method="lr"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _res = model.rmst(8)
+    assert _res["lower"] < _res["rmst"] < _res["upper"] <= 8
+    assert _res["rmst"] == model.mean(tau=8)
+
+Two groups fitted separately are compared with :func:`surpyval.rmst_diff`,
+which takes parametric fits as well as non-parametric ones (or one of each):
+the difference of the two RMSTs, its standard error (the groups are
+independent, so the variances add), its interval and the z-test's p-value.
+
+
+Carrying a fit's uncertainty forward
+------------------------------------
+
+A fitted model is an estimate: other samples from the same population would
+have given other parameters. When the model feeds something else -- a
+simulation, a system model, a cost calculation -- that uncertainty can be
+carried along by running the calculation on many plausible versions of the
+model and looking at the spread of the answers. SurPyval gives two ways to
+get those versions.
+
+**Draws from the covariance.** ``model.covariance()`` describes how much the
+parameters could vary, and how together; ``model.covariance_names`` names its
+rows (the distribution's parameters, then ``lfp_p`` and ``f0`` where the
+model has them). Draw parameter vectors from a normal distribution with that
+covariance and turn each back into a model with ``model.with_params(draw)``.
+This is quick, and matches the Wald bounds of ``cb``. A draw can land outside
+a parameter's range when the estimate is near an edge (an ``lfp_p`` above 1,
+say); ``with_params`` refuses it and says so, and such draws are left out or
+the parameter is drawn on the logit scale.
+
+**Bootstrap refits.** ``model.bootstrap(n_boot, random_state)`` refits the
+model to ``n_boot`` data sets simulated like the original one and returns the
+refitted models (``boot.models``) and their parameters (``boot.params``, in
+the order of ``covariance_names``). It is slower but makes no normal
+approximation, so it is the one to use with small samples and for an offset
+fit, whose ``gamma`` is not in the covariance (each refit's offset is in
+``boot.gamma``). The refits are the ones behind the ``method="bootstrap"``
+bounds: the same ``n_boot`` and seed give the same refits.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(3)
+    life = surv.Weibull.fit(10 * rng.weibull(2.0, 40))
+
+    # Draws from the covariance, each rebuilt as a model
+    draws = rng.multivariate_normal(life.params, life.covariance(), 2000)
+    sf_draws = np.array([life.with_params(d).sf(5.0) for d in draws])
+
+    # Bootstrap refits
+    boot = life.bootstrap(200, random_state=1)
+    sf_boot = np.array([m.sf(5.0) for m in boot.models])
+
+    print("sf(5):", life.sf(5.0))
+    print("95% of the draws:", np.quantile(sf_draws, [0.025, 0.975]))
+    print("95% of the refits:", np.quantile(sf_boot, [0.025, 0.975]))
+    print("Wald bounds from cb:", life.cb(5.0, on="sf"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(np.quantile(sf_draws, [0.025, 0.975]),
+                       life.cb(5.0, on="sf"), atol=0.03)
+    assert boot.params.shape == (len(boot.models), 2)
+
+A model with a limited failure population or zero inflation takes the whole
+vector, so ``lfp_p`` and ``f0`` vary with the rest: ``with_params([alpha,
+beta, lfp_p])``. The shorter vector of the distribution's parameters alone
+keeps the fitted ``lfp_p`` and ``f0``, and the offset is kept unless given as
+``with_params(params, gamma=...)``. A model rebuilt this way has no data, so
+it has no bounds of its own; a model fitted with weights gives just the
+distribution at the new parameters.
 
 
 Forecasting failures in service
@@ -2621,12 +3069,11 @@ What a cumulative hazard gives you, and what it does not:
   ``var``, integrated numerically from the survival function
   (:math:`E[X^m] = \int m x^{m-1} R(x)\,dx` on a positive support); confidence
   bounds (``cb`` and ``param_cb``, Wald or likelihood ratio); ``neg_ll``,
-  ``aic`` and ``bic``; and ``plot``, on linear axes.
-- **Not available:** ``qf``, ``random`` and ``entropy``, since a quantile
-  function does not follow from :math:`H(x)` without a numerical inversion
-  SurPyval does not attempt. ``how='MPP'`` needs a linearising transform that
-  a custom distribution does not have, so it is refused with a
-  ``ValueError``.
+  ``aic`` and ``bic``; ``plot``, on linear axes; and ``qf``, by numerically
+  inverting :math:`H(x)`, so ``random`` works too.
+- **Not available:** ``entropy``, which has no general form from
+  :math:`H(x)`. ``how='MPP'`` needs a linearising transform that a custom
+  distribution does not have, so it is refused with a ``ValueError``.
 
 Credit for this idea must be given to the creators of the *lifelines* package. *lifelines* is capable
 of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
@@ -2989,3 +3436,382 @@ about :math:`10^{-12}` at :math:`t = 60`. It fits with any censoring:
 
 The estimates are within two standard errors of the :math:`\mu = 2` and
 :math:`\lambda = 3` simulated.
+
+Recipes in flexsurv's parameterisations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The generalised gamma and generalised F above are written in their
+original forms. Prentice's forms, which R's ``flexsurv`` uses as
+``dist="gengamma"`` and ``dist="genf"``, describe the same families
+differently, and are often the more useful: they put the lognormal *inside*
+the family, at a finite parameter value, so a single fit can be tested
+against the Weibull, the lognormal and the gamma at once. Both recipes below
+reproduce ``flexsurv``'s survival functions, maximised log-likelihoods,
+estimates and standard errors (checked in SurPyval's tests against stored
+``flexsurv`` 2.3.2 results on ``survival``'s ``lung`` data).
+
+**The generalised gamma, (mu, sigma, Q).** Reach for it when you cannot
+decide between a Weibull and a lognormal, or when the hazard might rise
+and then fall. In plain words: :math:`\mu` and :math:`\sigma` are the
+location and spread of :math:`\ln T`, as for the lognormal, and :math:`Q`
+bends the shape. :math:`Q = 1` is the Weibull (shape :math:`1/\sigma`,
+scale :math:`e^\mu`), :math:`Q = 0` the lognormal, :math:`Q = \sigma` the
+gamma, and a negative :math:`Q` gives shapes none of them has. With
+:math:`w = (\ln t - \mu)/\sigma`, :math:`\gamma = Q^{-2}` and
+:math:`u = \gamma e^{Q w}`,
+
+.. math::
+
+    R(t) = \begin{cases}
+        Q(\gamma, u) & Q > 0, \\
+        1 - \Phi(w) & Q = 0, \\
+        P(\gamma, u) & Q < 0,
+    \end{cases}
+
+with :math:`P` and :math:`Q(\cdot, \cdot)` the regularised lower and upper
+incomplete gamma functions. :math:`Q = 0` is a limit (the lognormal is what
+the other two branches tend to), so the recipe takes that branch only at
+exactly zero; it is there so that ``fixed={'Q': 0}`` gives the lognormal.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from autograd import numpy as np
+    from autograd.scipy.stats import norm
+    from surpyval.utils.autograd_gamma_compat import gammainccln, gammaincln
+
+    def ggp_Hf(x, mu, sigma, Q):
+        w = (np.log(x) - mu) / sigma
+        if Q == 0:
+            # the lognormal limit
+            return -norm.logcdf(-w)
+        g = Q ** -2
+        u = g * np.exp(Q * w)
+        if Q > 0:
+            return -gammainccln(g, u)
+        return -gammaincln(g, u)
+
+    GenGammaPrentice = surv.CustomDistribution(
+        'GenGammaPrentice', ggp_Hf, ['mu', 'sigma', 'Q'],
+        ((None, None), (0, None), (None, None)), (0, np.inf))
+
+The branches are plain Python ``if`` statements on the value of
+:math:`Q`, which autograd follows. The survival function agrees with
+``scipy.stats.gengamma``, which uses Stacy's form, for either sign of
+:math:`Q`, and tends to the lognormal as :math:`Q` shrinks:
+
+.. jupyter-execute::
+
+    def stacy(mu, sigma, Q):
+        # scipy's gengamma(a, c, scale) for Prentice's (mu, sigma, Q)
+        a, c = Q ** -2, Q / sigma
+        return stats.gengamma(a, c, scale=np.exp(mu) * a ** (-1 / c))
+
+    t = np.array([0.5, 2.0, 5.0, 12.0])
+    for Q in (0.5, -0.8):
+        print(GenGammaPrentice.sf(t, 1.0, 0.7, Q), stacy(1.0, 0.7, Q).sf(t))
+    print(GenGammaPrentice.sf(t, 1.0, 0.7, 1e-4),
+          stats.lognorm(0.7, scale=np.e).sf(t))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _Q in (0.5, -0.8, 2.0):
+        _ref = stacy(1.0, 0.7, _Q)
+        assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, _Q), _ref.sf(t),
+                           rtol=1e-12)
+        assert np.allclose(GenGammaPrentice.df(t, 1.0, 0.7, _Q), _ref.pdf(t),
+                           rtol=1e-6)
+    _ln = stats.lognorm(0.7, scale=np.e)
+    assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, 1e-4), _ln.sf(t),
+                       rtol=1e-3)
+    assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, 0.0), _ln.sf(t),
+                       rtol=1e-12)
+
+On ``lung`` (survival in days of 228 patients with advanced lung cancer,
+63 of them censored), the generalised gamma fits as any distribution does,
+with standard errors, an AIC and every bound:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    x_l = lung['time'].to_numpy(float)
+    c_l = 1 - lung['status'].to_numpy()  # status 1 is a death
+
+    ggp = GenGammaPrentice.fit(x_l, c=c_l)
+    print(ggp.params, ggp.standard_errors())
+    print(-ggp.neg_ll(), ggp.aic())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ggp.params, [6.0765, 0.7271, 1.1265], atol=5e-4)
+    assert round(-ggp.neg_ll(), 2) == -1153.69, ggp.neg_ll()
+
+``flexsurvreg(Surv(time, status) ~ 1, data = lung, dist = "gengamma")``
+gives the same: :math:`\mu = 6.077`, :math:`\sigma = 0.727`,
+:math:`Q = 1.127` and a log-likelihood of :math:`-1153.69`.
+
+Fixing :math:`Q = 1` gives exactly the Weibull fit and :math:`Q = 0`
+exactly the lognormal fit:
+
+.. jupyter-execute::
+
+    weibull_l = surv.Weibull.fit(x_l, c=c_l)
+    lognormal_l = surv.LogNormal.fit(x_l, c=c_l)
+    gamma_l = surv.Gamma.fit(x_l, c=c_l)
+
+    q1 = GenGammaPrentice.fit(x_l, c=c_l, fixed={'Q': 1})
+    q0 = GenGammaPrentice.fit(x_l, c=c_l, fixed={'Q': 0})
+    print(np.exp(q1.mu), 1 / q1.sigma, weibull_l.params)
+    print(q0.params[:2], lognormal_l.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose([np.exp(q1.mu), 1 / q1.sigma], weibull_l.params,
+                       rtol=1e-5)
+    assert np.isclose(q1.neg_ll(), weibull_l.neg_ll(), rtol=1e-9)
+    assert np.allclose(q0.params[:2], lognormal_l.params, rtol=1e-5)
+    assert np.isclose(q0.neg_ll(), lognormal_l.neg_ll(), rtol=1e-9)
+
+Each of the three is the generalised gamma with one restriction
+(:math:`Q = 1`, :math:`Q = 0`, :math:`Q = \sigma`), each inside the range
+of :math:`Q`, so twice the difference in log-likelihood is a
+likelihood-ratio statistic with one degree of freedom:
+
+.. jupyter-execute::
+
+    lr_l = {}
+    for name, nested in [('Weibull', weibull_l), ('LogNormal', lognormal_l),
+                         ('Gamma', gamma_l)]:
+        lr_l[name] = 2 * (nested.neg_ll() - ggp.neg_ll())
+        print(f"{name}: LR = {lr_l[name]:.2f}, "
+              f"p = {stats.chi2(1).sf(lr_l[name]):.3g}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = {k: stats.chi2(1).sf(v) for k, v in lr_l.items()}
+    assert _p['Weibull'] > 0.5 and 0.1 < _p['Gamma'] < 0.2, _p
+    assert _p['LogNormal'] < 1e-6, _p
+
+The ``lung`` data reject the lognormal firmly (p below one in a million).
+They reject neither the Weibull (p above 0.5) nor the gamma (p about 0.15),
+but the Weibull sits much closer to the best generalised gamma: one fit has
+narrowed three candidates to the Weibull.
+
+The recipe handles every kind of censoring and truncation. Here half of 400
+units are inspected (first at 3, then every 2), so a failure among them is
+known only to have happened before the first inspection (left censored) or
+between two (interval censored); the other half are watched continuously;
+the study stops at 15; and only units that survived to 1 were enrolled:
+
+.. jupyter-execute::
+
+    rng_gg = np.random.default_rng(3)
+    t_true = stacy(2.0, 0.5, 0.5).rvs(400, random_state=rng_gg)
+    inspected = rng_gg.uniform(size=400) < 0.5
+    enrolled = t_true > 1
+    t_true, inspected = t_true[enrolled], inspected[enrolled]
+
+    x_ic = np.c_[t_true, t_true]          # failures seen when they happen
+    c_ic = np.zeros(t_true.size, dtype=int)
+    early = inspected & (t_true < 3)      # failed before the first look
+    x_ic[early], c_ic[early] = 3.0, -1
+    later = inspected & (t_true >= 3)     # failed between two looks
+    lo = 3 + 2 * np.floor((t_true[later] - 3) / 2)
+    x_ic[later], c_ic[later] = np.c_[lo, np.minimum(lo + 2, 15)], 2
+    stopped = t_true > 15                 # still running at the end
+    x_ic[stopped], c_ic[stopped] = 15.0, 1
+    print({int(k): int(n) for k, n in zip(*np.unique(c_ic, return_counts=True))})
+
+    gg_ic = GenGammaPrentice.fit(x_ic, c=c_ic, tl=1.0)
+    print(gg_ic.params, gg_ic.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(np.unique(c_ic)) == {-1, 0, 1, 2}, np.unique(c_ic)
+    assert np.all(np.abs(gg_ic.params - [2.0, 0.5, 0.5])
+                  < 2 * gg_ic.standard_errors()), gg_ic.params
+
+The estimates are within two standard errors of the :math:`\mu = 2`,
+:math:`\sigma = 0.5` and :math:`Q = 0.5` simulated.
+
+**The generalised F, (mu, sigma, Q, P).** The generalised F adds a fourth
+parameter, :math:`P`, that thickens the tail: :math:`P = 0` is the
+generalised gamma (a limit), and :math:`Q = 0`, :math:`P = 1` the
+log-logistic. Reach for it only with plenty of data, to check whether the
+generalised gamma's tail is too thin. With
+:math:`\delta = \sqrt{Q^2 + 2P}`,
+:math:`s_1 = 2/(Q^2 + 2P + Q\delta)` and
+:math:`s_2 = 2/(Q^2 + 2P - Q\delta)`,
+
+.. math::
+
+    R(t) = 1 - I_{u}(s_1, s_2), \qquad
+    u = \frac{1}{1 + (s_2/s_1)\, e^{-\delta w}},
+    \quad w = \frac{\ln t - \mu}{\sigma},
+
+where :math:`I` is the regularised incomplete beta function. SurPyval's
+``betainccln`` differentiates it in all three arguments, so the recipe
+is complete: fitting, standard errors and bounds all work.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from autograd import numpy as np
+    from surpyval.utils.autograd_gamma_compat import betainccln
+
+    def gfp_Hf(x, mu, sigma, Q, P):
+        d = np.sqrt(Q ** 2 + 2 * P)
+        s1 = 2 / (Q ** 2 + 2 * P + Q * d)
+        s2 = 2 / (Q ** 2 + 2 * P - Q * d)
+        w = (np.log(x) - mu) / sigma
+        return -betainccln(s1, s2, 1 / (1 + s2 / s1 * np.exp(-d * w)))
+
+    GenFPrentice = surv.CustomDistribution(
+        'GenFPrentice', gfp_Hf, ['mu', 'sigma', 'Q', 'P'],
+        ((None, None), (0, None), (None, None), (0, None)), (0, np.inf))
+
+    gfp = GenFPrentice.fit(x_l, c=c_l)
+    print(gfp.params, gfp.standard_errors())
+    lr_gf = 2 * (ggp.neg_ll() - gfp.neg_ll())
+    print(f"LR against the generalised gamma = {lr_gf:.2f}, "
+          f"p = {0.5 * stats.chi2(1).sf(lr_gf):.2f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(-gfp.neg_ll(), 2) == -1153.58, gfp.neg_ll()
+    assert gfp.standard_errors()[3] > gfp.params[3], gfp.standard_errors()
+    assert 0.5 * stats.chi2(1).sf(lr_gf) > 0.2, lr_gf
+    assert np.allclose(GenFPrentice.sf(t, 0.0, 0.7, 0.0, 1.0),
+                       surv.LogLogistic.sf(t, 1.0, np.sqrt(2) / 0.7),
+                       rtol=1e-12)
+    assert np.allclose(GenFPrentice.sf(t, 1.0, 0.7, 0.5, 1e-6),
+                       GenGammaPrentice.sf(t, 1.0, 0.7, 0.5), rtol=1e-4)
+
+``flexsurv``'s ``dist = "genf"`` agrees (log-likelihood :math:`-1153.58`,
+:math:`P = 0.549` with a standard error of 1.19). The standard error of
+:math:`P` is larger than :math:`P` itself, and the likelihood ratio
+against the generalised gamma is small: since :math:`P = 0` is on the edge
+of its range, the p-value is half the :math:`\chi^2_1` tail, and it is far
+above 0.05. The generalised F adds nothing here. Four parameters ask a lot
+of the data (and the fit takes some seconds, since every step
+differentiates the incomplete beta function); on smaller samples the
+search can run off towards :math:`P \to 0` or a large :math:`P`, and
+SurPyval warns that the likelihood has no finite maximum. Then fit the
+generalised gamma, or fix :math:`P` with ``fixed``.
+
+**Regression.** Each recipe takes covariates as any distribution does:
+``surv.AFT``, ``surv.PH``, ``surv.PO`` and ``surv.AH`` (see
+:doc:`Regression Modelling with SurPyval`). ``flexsurv``'s covariates on
+:math:`\mu` are the accelerated failure time model,
+:math:`R(t \mid Z) = R_0(e^{\beta' Z} t)`, which shifts :math:`\mu` by
+:math:`-\beta' Z`; so SurPyval's coefficient, which is positive for a
+shorter life, is ``flexsurv``'s with the sign flipped. On ``lung``, with
+``sex`` (1 male, 2 female):
+
+.. jupyter-execute::
+
+    sex = lung['sex'].to_numpy(float)
+    ggp_aft = surv.AFT(GenGammaPrentice).fit(x_l, sex, c=c_l)
+    print(ggp_aft.params, ggp_aft.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ggp_aft.params, [5.4972, 0.7513, 1.0156, -0.3931],
+                       atol=5e-4), ggp_aft.params
+    assert round(-ggp_aft.neg_ll(), 2) == -1148.65, ggp_aft.neg_ll()
+
+``flexsurvreg(Surv(time, status) ~ sex, dist = "gengamma")`` gives
+:math:`\mu = 5.497`, :math:`\sigma = 0.751`, :math:`Q = 1.016` and a
+``sex`` coefficient of :math:`+0.393` (standard error 0.132), the same
+fit with the opposite sign: women in ``lung`` live longer.
+``surv.AFT(GenFPrentice)`` matches ``dist = "genf"`` in the same way. A
+proportional hazards, proportional odds or additive hazards model on the
+same baseline is one word different, and the AIC compares them:
+
+.. jupyter-execute::
+
+    forms = {'AFT': ggp_aft}
+    for name, family in [('PH', surv.PH), ('PO', surv.PO), ('AH', surv.AH)]:
+        forms[name] = family(GenGammaPrentice).fit(x_l, sex, c=c_l)
+    for name, m in forms.items():
+        print(f"{name}: sex coefficient {m.params[-1]:+.4f}, "
+              f"AIC {m.aic():.1f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {k: m.aic() for k, m in forms.items()}
+    assert max(_aic.values()) - min(_aic.values()) < 4, _aic
+    assert forms['PH'].params[-1] < 0 < forms['PO'].params[-1], _aic
+
+The four AICs are within a few units of one another, so these data cannot
+tell the forms apart. Read each coefficient by its own model's rule: a
+negative PH coefficient is a lower hazard for women, and a positive PO
+coefficient (which multiplies the odds of *surviving*) says the same.
+
+The inverse Gaussian takes covariates in the same way. Under the AFT model
+a covariate scales time, and a scaled inverse Gaussian is again inverse
+Gaussian (both :math:`\mu` and :math:`\lambda` scale), so the fit can be
+checked against a likelihood written with ``scipy.stats.invgauss`` and
+maximised by ``scipy.optimize``:
+
+.. jupyter-execute::
+
+    from scipy import optimize
+
+    rng_ig = np.random.default_rng(11)
+    Z_ig = rng_ig.binomial(1, 0.5, 300).astype(float)
+    # AFT: time is scaled by exp(-0.6 Z)
+    t_ig2 = stats.invgauss(2 / 3, scale=3.0 * np.exp(-0.6 * Z_ig)).rvs(
+        random_state=rng_ig)
+    c_ig2 = (t_ig2 > 5).astype(int)
+    t_ig2 = np.minimum(t_ig2, 5.0)
+
+    ig_aft = surv.AFT(InvGauss).fit(t_ig2, Z_ig, c=c_ig2)
+    print(ig_aft.params, ig_aft.standard_errors())
+
+    def ig_aft_neg_ll(p):
+        mu, lam, beta = p
+        scale = np.exp(-beta * Z_ig)
+        d = stats.invgauss(mu / lam, scale=lam * scale)
+        return -np.sum(np.where(c_ig2 == 0, d.logpdf(t_ig2), d.logsf(t_ig2)))
+
+    by_scipy = optimize.minimize(ig_aft_neg_ll, [1.5, 2.5, 0.3],
+                                 method='Nelder-Mead',
+                                 options=dict(xatol=1e-10, fatol=1e-12,
+                                              maxiter=20000))
+    print(by_scipy.x)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ig_aft.params, by_scipy.x, rtol=1e-5), by_scipy.x
+    assert np.isclose(ig_aft.neg_ll(), by_scipy.fun, rtol=1e-10)
+    assert abs(ig_aft.params[-1] - 0.6) < 2 * ig_aft.standard_errors()[-1]
+
+The two agree, and the coefficient is within two standard errors of the
+0.6 simulated. ``surv.PH(InvGauss)``, ``surv.PO(InvGauss)`` and
+``surv.AH(InvGauss)`` fit in the same way.
+
+All these regression families put the covariates on the scale (AFT) or on
+the hazard, odds or cumulative hazard as a whole (PH, PO, AH). Covariates
+on a shape parameter, such as ``flexsurv``'s ``anc = list(sigma = ~ sex)``,
+are not available through them.

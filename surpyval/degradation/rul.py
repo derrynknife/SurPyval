@@ -101,9 +101,9 @@ class RULPrediction:
     """
 
     failure_time: float
-    failure_time_interval: "tuple[float, float]"
+    failure_time_interval: tuple[float, float]
     rul: float
-    rul_interval: "tuple[float, float]"
+    rul_interval: tuple[float, float]
     prob_failed: float
     prob_never_fails: float
     posterior_mean: npt.NDArray
@@ -209,7 +209,7 @@ class InducedFailureDistribution(SerialisableMixin):
         samples: npt.NDArray,
         threshold: float,
         path_name: str,
-        stress: "list[float] | None" = None,
+        stress: list[float] | None = None,
     ) -> None:
         self.samples = np.asarray(samples, dtype=float)
         self.threshold = float(threshold)
@@ -239,7 +239,7 @@ class InducedFailureDistribution(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "InducedFailureDistribution":
+    def from_dict(cls, model_dict: dict) -> InducedFailureDistribution:
         """Rebuild an induced failure-time distribution from a dict."""
         require_model_tag(
             model_dict,
@@ -291,14 +291,14 @@ class InducedFailureDistribution(SerialisableMixin):
         return float(self.qf(0.5))
 
     def random(
-        self, size: int, random_state: "int | None" = None
+        self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
         """Draw failure times by resampling the Monte-Carlo population."""
         rng = as_generator(random_state)
         return rng.choice(self.samples, size=size)
 
     def __repr__(self) -> str:
-        at = "" if self.stress is None else ", Z={}".format(self.stress)
+        at = "" if self.stress is None else f", Z={self.stress}"
         return (
             "InducedFailureDistribution({} path{}, threshold={:.6g}, "
             "median={:.6g}, prob_never_fails={:.4g})".format(

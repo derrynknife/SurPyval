@@ -4,7 +4,7 @@
 #     scripts/mutation/run.sh <module>
 #
 # <module> is one of: nonparametric, turnbull, cox_ph, parametric_fitter,
-# competing_risks (see modules() below). The run happens in a copy of the
+# competing_risks, release_026 (see modules() below). The run happens in a copy of the
 # working tree, never in the checkout itself -- mutmut rewrites the source
 # it mutates -- and leaves its results in $MUTATION_WORKDIR/<module>:
 #
@@ -32,7 +32,7 @@ set -euo pipefail
 MUTMUT_VERSION=3.8.0
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-module=${1:?"usage: run.sh <module> (nonparametric, turnbull, cox_ph, parametric_fitter, competing_risks)"}
+module=${1:?"usage: run.sh <module> (nonparametric, turnbull, cox_ph, parametric_fitter, competing_risks, release_026)"}
 workdir=${MUTATION_WORKDIR:-/tmp/surpyval-mutation}
 jobs=${MUTATION_JOBS:-2}
 python=${PYTHON:-python3.11}
@@ -86,6 +86,17 @@ modules() {
                surpyval/tests/reference/test_competing_risks.py
                $conformance"
         cases="CompetingRisks[Nelson-Aalen],CompetingRisks[Kaplan-Meier]" ;;
+    release_026)
+        # The modules new in 0.26, against the whole suite: their code is
+        # reached from many models (weights, the regression likelihood),
+        # so no narrower selection holds every test that can kill them.
+        mutate="surpyval/bayes/engines/grid.py surpyval/bayes/likelihood.py
+                surpyval/univariate/regression/proportional_hazards/_weighted_cox.py
+                $np/logrank.py $np/life_table.py
+                surpyval/univariate/regression/_global_test.py
+                surpyval/univariate/regression/_likelihood.py
+                surpyval/utils/weights.py"
+        tests="surpyval/tests" ;;
     *)
         echo "unknown module: $1" >&2
         exit 2 ;;
@@ -112,9 +123,10 @@ fi
 cp "$here/mutmut_plugin.py" "$copy/"
 
 if [ ! -x "$venv/bin/mutmut" ]; then
+    # pytest 9 breaks mutmut 3.8's clean (stats) run (``item._nodeid``)
     uv venv -q -p "$python" "$venv"
     VIRTUAL_ENV="$venv" uv pip install -q -e "$copy[tests]" \
-        "mutmut==$MUTMUT_VERSION"
+        "mutmut==$MUTMUT_VERSION" "pytest<9"
 fi
 # mutmut puts mutants/ first on sys.path, so the editable install may
 # point anywhere; point it at this copy all the same.

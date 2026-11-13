@@ -22,16 +22,16 @@ The five functions, their names in SurPyval, and their meanings:
      - Meaning
    * - :math:`f(t)`
      - ``df``
-     - the density: the probability of failing in a small interval around :math:`t`, per unit time
+     - the density: the probability of the event (a failure, a death) in a small interval around :math:`t`, per unit time
    * - :math:`F(t)`
      - ``ff``
-     - the CDF, or unreliability: the probability of having failed by :math:`t`
+     - the CDF, or unreliability: the probability that the event has happened (the item has failed) by :math:`t`
    * - :math:`R(t)`
      - ``sf``
      - the survival, or reliability, function: the probability of surviving past :math:`t`; :math:`R = 1 - F`
    * - :math:`h(t)`
      - ``hf``
-     - the hazard: the rate of failure at :math:`t` *among the items that have survived to* :math:`t`
+     - the hazard, or failure rate: the rate of events at :math:`t` *among the units that have survived to* :math:`t`
    * - :math:`H(t)`
      - ``Hf``
      - the cumulative hazard: the hazard accumulated up to :math:`t`
@@ -52,7 +52,7 @@ The identities in the table, written out:
 
 The hazard is the one that most often causes confusion. It is not a probability: it is a *conditional rate*, and it can be greater than one. Its shape is what distinguishes infant mortality (decreasing hazard), random failures (constant hazard) and wear-out (increasing hazard); it is also the quantity that proportional hazards models act on.
 
-Every fitted univariate distribution and non-parametric estimate in SurPyval has all five methods, so the identities can be checked directly; the one exception is a ``MixtureModel``, which has no ``hf`` (divide its ``df`` by its ``sf``). A non-parametric estimate is a step function, so its ``hf`` and ``df`` are the sizes of the jumps between the points you ask for, not rates; ``smoothed_hf`` gives a smoothed hazard rate (see :doc:`Non-Parametric SurPyval Modelling`).
+Every fitted univariate distribution and non-parametric estimate in SurPyval has all five methods, a ``MixtureModel`` included, so the identities can be checked directly. A non-parametric estimate is a step function, so its ``hf`` and ``df`` are the sizes of the jumps between the points you ask for, not rates; ``smoothed_hf`` gives a smoothed hazard rate (see :doc:`Non-Parametric SurPyval Modelling`).
 
 .. jupyter-execute::
 

@@ -12,10 +12,14 @@ import surpyval
 from surpyval import life_models
 from surpyval.serialisation import decode_non_finite
 from surpyval.test_planning import (
+    GroupSequentialDesign,
+    LogrankGroupSequentialDesign,
     accelerated_test_plan,
     accelerated_test_precision,
     demonstration_plan,
+    group_sequential_design,
     life_test_precision,
+    logrank_group_sequential,
     mtbf_demonstration_plan,
     sequential_demonstration_test,
     sequential_mtbf_test,
@@ -157,6 +161,30 @@ def test_sequential_demonstration_test():
     ]
     with pytest.raises(ValueError, match="units"):
         test.to_dict(units=-1)
+
+
+def test_group_sequential_designs():
+    design = group_sequential_design(
+        3,
+        alternative="one-sided",
+        alpha_ci=0.025,
+        futility="hwang-shih-decani",
+        futility_parameter=-2,
+    )
+    d = _strict(design.to_dict())
+    assert d["result"] == "GroupSequentialDesign"
+    np.testing.assert_allclose(d["efficacy_z"], design.efficacy_z)
+    np.testing.assert_allclose(d["futility_z"], design.futility_z)
+    assert d["stop_null"]["efficacy"] == design.stop_null["efficacy"].tolist()
+    back = GroupSequentialDesign.from_dict(d)
+    np.testing.assert_array_equal(back.alpha_spent, design.alpha_spent)
+    logrank = logrank_group_sequential(0.7, event_probability=(0.25, 0.35))
+    d = _strict(logrank.to_dict())
+    assert d["result"] == "LogrankGroupSequentialDesign"
+    assert type(d["max_events"]) is int and d["n"] == list(logrank.n)
+    assert all(type(e) is int for e in d["events"])
+    back = LogrankGroupSequentialDesign.from_dict(d)
+    assert back.events.tolist() == logrank.events.tolist()
 
 
 def test_non_finite_values_are_none_and_recorded():

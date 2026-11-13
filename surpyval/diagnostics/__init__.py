@@ -38,11 +38,13 @@ PH and AFT (:mod:`.ph_aft`, #869), proportional odds and additive hazards
 (:mod:`.odds_additive`, #870), accelerated life (:mod:`.accelerated_life`,
 #871), shared frailty (:mod:`.frailty`, #872), recurrent events
 (:mod:`.recurrent`, #873), competing risks (:mod:`.competing_risks`,
-#874) and univariate distributions (:mod:`.univariate`, #875), with the
+#874), univariate distributions (:mod:`.univariate`, #875), distributional
+regressions (:mod:`.distributional`) and Aalen's additive hazards model
+(:mod:`.aalen_additive`), with the
 calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
-families. A model with none (parametric competing risks, Buckley-James)
-refuses with ``NotImplementedError``, naming the issue that tracks it
-(:data:`.registry.PENDING`).
+families. A model with none (Buckley-James, for one)
+refuses with ``NotImplementedError``, saying what to check it with
+meanwhile (:data:`.registry.PENDING`); so does a model with neither.
 
 Adding a family
 ---------------
@@ -92,7 +94,8 @@ to copy. The steps:
    - ``validate(model)``: raise, with a message that names the fix, for
      a model of the family the checks cannot handle (restored without
      its data, no finite maximum, an option not supported yet --
-     ``NotImplementedError`` naming the issue for the last).
+     ``NotImplementedError`` saying what to do instead for the last; a
+     message names no issue number).
    - ``notes(ctx)``: the notes every report of the family carries (what
      the tests are, what is not checked and why).
    - Register it at the bottom: ``register(Family(name=..., issue=...,
@@ -143,5 +146,5 @@ def __getattr__(name: str) -> Any:
 
         return diagnose
     raise AttributeError(
-        "module 'surpyval.diagnostics' has no attribute {!r}".format(name)
+        f"module 'surpyval.diagnostics' has no attribute {name!r}"
     )

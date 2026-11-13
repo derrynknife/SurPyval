@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -413,6 +414,17 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     >>> model.sf([50, 100, 150]).round(4)
     array([0.5297, 0.2049, 0.0542])
     """
+
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        alpha : numpy array or scalar
+            scale parameter for the ExpoWeibull distribution
+        beta : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+        mu : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+        """
 
     def __init__(self, name: str) -> None:
         super().__init__(

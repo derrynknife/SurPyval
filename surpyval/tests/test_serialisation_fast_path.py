@@ -403,7 +403,30 @@ def _old_required_schema(model_dict):
     def support(d):
         return any(d.get(k) is not None for k in ("support", "band_n"))
 
+    def stratified(d):
+        # Schema 4 (a stratified Cox model's per-stratum baselines) came
+        # after the walk was rewritten; the old walks had no such rule.
+        # A stratified Fine-Gray model's per-stratum baselines too.
+        return (
+            d.get("model")
+            in ("SemiParametricRegressionModel", "FineGrayModel")
+            and d.get("strata") is not None
+        )
+
+    if walk(model_dict, stratified):
+        return 4
     tests = (lambda d: NON_FINITE_KEY in d, formula, support, center)
+    # Schema 4 (v0.27): a distributional model with its coefficient signs
+    if walk(model_dict, lambda d: "coefficient_signs" in d):
+        return 4
+    # Schema 4 (v0.27): parametric competing risks fitted jointly (the
+    # covariance between causes, under "joint")
+    if walk(
+        model_dict,
+        lambda d: d.get("model") == "ParametricCompetingRisks"
+        and d.get("joint") is not None,
+    ):
+        return 4
     return 2 if any(walk(model_dict, t) for t in tests) else 1
 
 

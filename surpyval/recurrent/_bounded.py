@@ -5,7 +5,7 @@ Optimising on the natural scale lets a search land exactly on a bound
 parameter is 0 and a likelihood or cumulative intensity divides by it.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 import autograd.numpy as anp
 import numpy as np

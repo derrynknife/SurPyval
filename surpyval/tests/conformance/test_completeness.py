@@ -33,11 +33,14 @@ NAMESPACES = (
     "surpyval.univariate.nonparametric",
     "surpyval.univariate.regression",
     "surpyval.univariate.competing_risks",
+    "surpyval.multistate",
     "surpyval.recurrent",
     "surpyval.degradation",
     "surpyval.multivariate",
+    "surpyval.ml",
+    # The empty beta tier; surpyval.beta.ml (the old name of surpyval.ml)
+    # is not walked, since importing it warns.
     "surpyval.beta",
-    "surpyval.beta.ml",
     "surpyval.test_planning",
     "surpyval.bayes",
     "surpyval.bayes.prior",

@@ -1,6 +1,7 @@
-import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Any
+
+from surpyval.utils.warnings import ignoring_warnings
 
 if TYPE_CHECKING:
     from ..parametric import Parametric
@@ -201,15 +202,14 @@ def mpp(model: "Parametric") -> dict[str, Any]:
             from scipy.stats import pearsonr
 
             g = x_min - step * np.exp(-u[0])
-            with warnings.catch_warnings():
-                # Far below the data the transformed times are constant
-                # to rounding, and scipy says so of every correlation
-                # the search takes there: the fit's own words are enough
-                # (principle 22). A smallest extreme value sample sent an
-                # offset Weibull's search there (#616).
-                warnings.filterwarnings(
-                    "ignore", "An input array is (nearly )?constant"
-                )
+            # Far below the data the transformed times are constant to
+            # rounding, and scipy says so of every correlation the search
+            # takes there: the fit's own words are enough (principle 22).
+            # A smallest extreme value sample sent an offset Weibull's
+            # search there (#616).
+            with ignoring_warnings(
+                message="An input array is (nearly )?constant"
+            ):
                 out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out
 

@@ -7,7 +7,8 @@ table, else the closest accepted name.
 from __future__ import annotations
 
 import difflib
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 __all__ = ["refuse_unknown_keywords"]
 

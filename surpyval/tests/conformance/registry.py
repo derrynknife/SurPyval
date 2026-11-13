@@ -81,6 +81,7 @@ from surpyval.tests.conformance.registry_cases import (  # noqa: F401
     _START_IS_MAXIMUM,
     _U_LARGE,
     CASES,
+    CURE_LATENCIES,
     DISTRIBUTIONAL_BASELINES,
     FAR,
     GOMPERTZ,
@@ -152,6 +153,9 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     Q_PROBS,
     REFIT_PROPERTIES,
     REGRESSION,
+    ROBUST_COVARIANCE,
+    STATES,
+    STATES_REGRESSION,
     UNI_FUNCTIONS,
     UNIVARIATE,
     WITH_COVARIATES,
@@ -206,6 +210,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     binary_data,
     copula_data,
     cr_data,
+    cure_data,
     destructive_data,
     discrete_data,
     exact_event_data,
@@ -323,6 +328,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
     "surpyval.CoxFrailtyFitter": _BASE,
+    "surpyval.CoxMixedEffectsFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
@@ -339,12 +345,30 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
+    "surpyval.Measurements": _DATA,
+    "surpyval.TransitionMatrix": _DATA
+    + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
+    "surpyval.landmark": _FUNCTION + ": derives landmark data from data",
+    "surpyval.landmark_kaplan_meier": _FUNCTION
+    + " (Kaplan-Meier fits, registered, of landmark data)",
     "surpyval.CovariatePath": _DATA,
+    "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
+    "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
+    "surpyval.MaxComboResult": _RESULT,
+    "surpyval.TrendLogRankResult": _RESULT,
+    "surpyval.PermutationLogRankResult": _RESULT,
+    "surpyval.MaxStatResult": _RESULT,
+    "surpyval.PredictionScores": _RESULT,
+    "surpyval.PersonYears": (
+        "what person_years tabulated (an exposure table), not a model"
+    ),
+    "surpyval.PseudoRegressionResult": _RESULT,
+    "surpyval.AdjustedCurves": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
@@ -354,12 +378,31 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.univariate.regression.CoefficientPlot": (
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
+    "surpyval.univariate.regression.LifeAtCovariates": _RESULT,
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
+    "surpyval.univariate.regression.penalty_path": _FUNCTION,
+    "surpyval.penalty_path": _FUNCTION,
+    "surpyval.PenaltyPath": (
+        "what penalty_path fitted (one penalised model per penalty), not a "
+        "model"
+    ),
+    "surpyval.univariate.regression.PenaltyPath": (
+        "what penalty_path fitted (one penalised model per penalty), not a "
+        "model"
+    ),
+    "surpyval.LikelihoodContour": _RESULT,
+    "surpyval.univariate.parametric.ParametricBootstrap": _RESULT,
+    "surpyval.LikelihoodContourPlot": (
+        "what plot_likelihood_contour drew (a figure and its contours), "
+        "not a model"
+    ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
+    "surpyval.recurrent.MCFDiffResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
+    "surpyval.degradation.ProcessLevel": _RESULT,
     # degradation building blocks
     "surpyval.degradation.LinkedPathModel": _COMPONENT
     + " (the stress link of an accelerated degradation fit, covered by "
@@ -394,24 +437,50 @@ for _fn in (
     "from_dict",
     "from_json",
     "logrank",
+    "interval_logrank",
     "pairwise_logrank",
+    "maxcombo_logrank",
+    "trend_logrank",
+    "permutation_logrank",
+    "maxstat_logrank",
     "plot_nonparametric",
     "at_risk_table",
     "plot_coefficients",
+    "plot_likelihood_contour",
     "life_table",
+    "person_years",
+    "poisson_rate_bounds",
     "rmst_diff",
+    "rmtl_diff",
     "sf_diff",
     "success_run",
     "weibayes",
     "gray_test",
     "auc_td",
     "brier_score",
+    "compare_concordance",
+    "concordance_estimate",
     "concordance_index",
     "integrated_brier_score",
+    "score_predictions",
     "survival_probability",
+    "pseudo_survival",
+    "pseudo_rmst",
+    "pseudo_cif",
+    "pseudo_regression",
+    "pseudo_regression_from_df",
+    "direct_adjustment",
+    "weight_diagnostics",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test"):
+OUT_OF_SCOPE["surpyval.univariate.competing_risks.rmtl_diff"] = (
+    _FUNCTION + ": compares two fitted competing-risks models"
+)
+for _fn in ("to_stacked", "from_stacked"):
+    OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
+        _FUNCTION + ": converts multi-state data between its forms"
+    )
+for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (
     "filliben",
@@ -434,7 +503,9 @@ for _fn in (
 for _result in (
     "AcceleratedTestPlan",
     "DemonstrationPlan",
+    "GroupSequentialDesign",
     "LifeTestPlan",
+    "LogrankGroupSequentialDesign",
     "SequentialDemonstrationTest",
     "SequentialMTBFTest",
     "SimulatedPrecision",
@@ -443,16 +514,19 @@ for _result in (
 for _fn in (
     "accelerated_test_plan",
     "accelerated_test_precision",
+    "boundary_crossing",
     "demonstrated_mtbf",
     "demonstrated_reliability",
     "demonstration_pass_probability",
     "demonstration_plan",
     "demonstration_sample_size",
     "demonstration_test_multiple",
+    "group_sequential_design",
     "life_test_length",
     "life_test_precision",
     "life_test_sample_size",
     "logrank_events",
+    "logrank_group_sequential",
     "logrank_power",
     "logrank_sample_size",
     "mtbf_demonstration_plan",
@@ -463,6 +537,21 @@ for _fn in (
     "rate_ratio_power",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
+    "cox_detectable",
+    "cox_events",
+    "cox_power",
+    "cox_sample_size",
+    "cure_logrank_events",
+    "cure_logrank_power",
+    "cure_logrank_sample_size",
+    "equivalence_events",
+    "equivalence_power",
+    "equivalence_sample_size",
+    "noninferiority_events",
+    "noninferiority_power",
+    "noninferiority_sample_size",
+    "rmst_power",
+    "rmst_sample_size",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (

@@ -42,15 +42,20 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
+)
+from surpyval.utils.recurrent_data import (
+    accepts_recurrent_surpyval_data,
+    notes_text,
+    takes_terminal_column,
 )
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
@@ -107,19 +112,27 @@ class CauseSpecificMCF(SerialisableMixin):
     array([1.5, 2. ])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fit classmethods; declared for the type checker.
     df: Any
     data: Any
     event_types: list
     models: dict
-    x: "np.ndarray"
-    r: "np.ndarray"
+    x: np.ndarray
+    r: np.ndarray
     #: The ``(lower, upper)`` interval the MCFs are defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
 
     def __repr__(self) -> str:
-        return "Cause-specific MCF with causes: {}".format(self.event_types)
+        return (
+            f"Cause-specific MCF with causes: {self.event_types}"
+            + notes_text(self)
+        )
 
     # -- serialisation -----------------------------------------------------
 
@@ -145,7 +158,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CauseSpecificMCF":
+    def from_dict(cls, model_dict: dict) -> CauseSpecificMCF:
         """
         Rebuild a cause-specific MCF from a :meth:`to_dict` dictionary.
 
@@ -170,7 +183,7 @@ class CauseSpecificMCF(SerialisableMixin):
             out.set_support(*support)
         return out
 
-    def set_support(self, lower: float, upper: float) -> "CauseSpecificMCF":
+    def set_support(self, lower: float, upper: float) -> CauseSpecificMCF:
         """
         Give every cause's MCF the explicit support ``[lower, upper]``.
 
@@ -306,7 +319,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(cls, data: Any) -> "CauseSpecificMCF":
+    def fit_from_recurrent_data(cls, data: Any) -> CauseSpecificMCF:
         if data.e is None:
             raise ValueError(
                 "EventHistoryData has no event-type marks; pass `e` to "
@@ -323,18 +336,20 @@ class CauseSpecificMCF(SerialisableMixin):
         return out
 
     @classmethod
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         cls,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        e: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
-    ) -> "CauseSpecificMCF":
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        e: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+    ) -> CauseSpecificMCF:
         """
         Fit a cause-specific MCF.
 
@@ -342,6 +357,13 @@ class CauseSpecificMCF(SerialisableMixin):
         ----------
         x : array like
             Event (and censoring) times.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array like, optional
             Item / subject id for each row. Defaults to a single item.
         c : array like, optional
@@ -384,19 +406,22 @@ class CauseSpecificMCF(SerialisableMixin):
         return cls.fit_from_recurrent_data(data)
 
     @classmethod
-    @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @ambiguous_item_ids(
+        "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
+    )
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         cls,
         df: Any,
         x_col: str,
         e_col: str,
-        i_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
-    ) -> "CauseSpecificMCF":
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+    ) -> CauseSpecificMCF:
         """
         Fit a cause-specific MCF from a :class:`pandas.DataFrame`, naming the
         columns to read.

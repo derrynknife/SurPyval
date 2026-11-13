@@ -37,6 +37,15 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
     array([0.75, 0.5 , 0.25])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        a : numpy array or scalar
+            The lower parameter for the Uniform distribution
+        b : numpy array or scalar
+            The upper parameter for the Uniform distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

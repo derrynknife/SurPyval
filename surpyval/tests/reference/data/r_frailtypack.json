@@ -1,0 +1,81 @@
+{
+  "generator": "scripts/reference/reference_r_joint_frailty.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "frailtypack_calendar_gamma": {
+      "fixture": "joint_frailty",
+      "software": "R frailtypack",
+      "version": "3.8.2",
+      "call": "Surv(start, x, event) ~ cluster(id) + z1 + z2 + terminal(terminal)",
+      "settings": {
+        "recurrentAG": true,
+        "hazard": "Weibull",
+        "RandDist": "Gamma",
+        "formula.terminalEvent": "~ z1 + z2",
+        "quadrature": "nb.gl = 32"
+      },
+      "values": {
+        "recurrent_coef": [0.758933234911751, -0.198282236978358],
+        "terminal_coef": [0.765535233612916, 0.0917573080059485],
+        "theta": 0.377267332390016,
+        "alpha": 1.32917483643528,
+        "recurrent_shape": 1.35613701375875,
+        "recurrent_scale": 7.20092792931717,
+        "terminal_shape": 1.6242772742981,
+        "terminal_scale": 17.0828312000044,
+        "loglik": -1152.07734106823,
+        "istop": 1
+      }
+    },
+    "frailtypack_calendar_lognormal": {
+      "fixture": "joint_frailty",
+      "software": "R frailtypack",
+      "version": "3.8.2",
+      "call": "Surv(start, x, event) ~ cluster(id) + z1 + z2 + terminal(terminal)",
+      "settings": {
+        "recurrentAG": true,
+        "hazard": "Weibull",
+        "RandDist": "LogN",
+        "formula.terminalEvent": "~ z1 + z2",
+        "quadrature": "nb.gh = 32"
+      },
+      "values": {
+        "recurrent_coef": [0.765526364364259, -0.202886846391101],
+        "terminal_coef": [0.780003180857701, 0.0879482877711412],
+        "theta": 0.373530182304194,
+        "alpha": 1.33748278750073,
+        "recurrent_shape": 1.35845877126056,
+        "recurrent_scale": 8.22935967724065,
+        "terminal_shape": 1.63384540395483,
+        "terminal_scale": 19.7272418259382,
+        "loglik": -1152.90963210417,
+        "istop": 1
+      }
+    },
+    "frailtypack_gap_lognormal": {
+      "fixture": "joint_frailty",
+      "software": "R frailtypack",
+      "version": "3.8.2",
+      "call": "Surv(gap, event) ~ cluster(id) + z1 + z2 + terminal(terminal)",
+      "settings": {
+        "recurrentAG": false,
+        "hazard": "Weibull",
+        "RandDist": "LogN",
+        "formula.terminalEvent": "~ z1 + z2",
+        "quadrature": "nb.gh = 32"
+      },
+      "values": {
+        "recurrent_coef": [0.737633306283514, -0.212343303873399],
+        "terminal_coef": [0.702242632119587, 0.0803377084874424],
+        "theta": 0.395629608337819,
+        "alpha": 0.769244731151099,
+        "recurrent_shape": 1.08683450047864,
+        "recurrent_scale": 8.34703449092426,
+        "terminal_shape": 1.52861404540867,
+        "terminal_scale": 19.3352983407037,
+        "loglik": -1167.26804032632,
+        "istop": 1
+      }
+    }
+  }
+}

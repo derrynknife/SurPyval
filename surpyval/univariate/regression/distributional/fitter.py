@@ -4,10 +4,18 @@
 own linear predictor and link,
 
 .. math::
-    g_k\\bigl(\\theta_k(z)\\bigr) = \\eta_k(z) = b_{k0} + x_k(z)' b_k,
+    g_k\\bigl(\\theta_k(z)\\bigr) = \\eta_k(z) = b_{k0} + s_k\\, x_k(z)' b_k,
 
 so the covariates can move the scale *and* the shape (or the location and
-the spread) of the life distribution. The likelihood is the regressions'
+the spread) of the life distribution. The sign ``s_k`` is SurPyval's
+convention, that of its AFT models: a positive coefficient makes lives
+shorter. It is -1 for a parameter whose increase makes every quantile
+later (a scale, a location; the AFT model is the case with covariates on
+the scale only, coefficient for coefficient) and +1 for one whose
+increase makes every quantile earlier (a rate); a shape or spread that
+moves some quantiles each way (a Weibull's shape, a ``sigma``) has no
+direction of its own and keeps the link's sign, +1, so a positive
+coefficient raises it. The likelihood is the regressions'
 own (``regression_neg_ll``): every censoring, truncation and count of
 SurPyval's data model, each row with its own parameters.
 
@@ -21,11 +29,11 @@ parameter's intercept.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from typing import Any, cast
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import jacobian
 
@@ -33,10 +41,13 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.weights import few_effective_said_later
 
 from .._aliasing import (
     aliased_columns,
@@ -57,6 +68,7 @@ from .._fit_skeleton import (
     drop_nonfinite_covariates,
     finite_start,
     judge_search,
+    mark_weighted,
     mirror_distribution,
     natural_information,
     optimise_ph,
@@ -64,8 +76,9 @@ from .._fit_skeleton import (
     say_verdict,
     uniform_draws,
 )
-from .._kinds import DISTRIBUTIONAL
 from .._likelihood import regression_neg_ll
+from .._robust import note_source_rows
+from ..kinds import DISTRIBUTIONAL
 from ..regression_data import (
     DataFrameRegressionMixin,
     design_matrix_from_df,
@@ -123,7 +136,7 @@ def _check_distribution(distribution: Any) -> None:
             "LogNormal, Gamma, ...); got {!r}. For a fitted model, pass its "
             "distribution (model.dist).".format(distribution)
         )
-    if name not in SUPPORTED:
+    if canonical_name(distribution) not in SUPPORTED:
         raise ValueError(
             "Distributional regression is not available for the {} "
             "distribution: it takes a continuous distribution whose support "
@@ -149,7 +162,9 @@ class DistributionalFitter(
     The parameters are the distribution's at the reference row (``Z =
     0``, or the covariate means with ``center=True``), on their natural
     scale, then each parameter's coefficients on its link scale, named
-    ``<parameter>_<column>``.
+    ``<parameter>_<column>``, with SurPyval's sign (:attr:`signs`): a
+    positive coefficient on a scale or location means a shorter life,
+    as in the AFT models.
     """
 
     fitter_kind = "distributional regression fitter"
@@ -174,15 +189,33 @@ class DistributionalFitter(
         covariates: Mapping[str, Any] | None = None,
         links: Mapping[str, str] | None = None,
     ) -> None:
-        _check_distribution(distribution)
+        self._check_distribution(distribution)
         mirror_distribution(self, distribution)
         self.name = distribution.name + self.name_suffix
         self._covariates = covariates
         self._links_given = links
         self.links = self._resolve_links(links)
 
+    #: The check a distribution passes to be taken; a subclass with its
+    #: own distributions replaces it.
+    _check_distribution = staticmethod(_check_distribution)
+
+    def _say_verdict(self, verdict: Any, values: dict) -> None:
+        """The one warning of a search that did not end at a verified
+        maximum."""
+        say_verdict(verdict, dist=self.dist.name, values=values)
+
+    def _model_class(self) -> Any:
+        """The class of the model a fit returns."""
+        from .model import DistributionalRegressionModel
+
+        return DistributionalRegressionModel
+
     def __reduce__(self) -> Any:
-        return (_rebuild_fitter, (self.dist, self.__getstate__()))
+        return (
+            _rebuild_fitter,
+            (self.dist, self.__getstate__(), type(self)),
+        )
 
     def __getstate__(self) -> dict:
         return {
@@ -194,6 +227,19 @@ class DistributionalFitter(
         }
 
     # -- the specification ------------------------------------------------
+
+    @property
+    def signs(self) -> tuple[float, ...]:
+        """The sign ``s_k`` of each parameter's coefficients,
+        ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``: -1 for a
+        parameter whose increase makes lives longer (a scale, a location),
+        so that a positive coefficient always means a shorter life, as in
+        SurPyval's AFT models; +1 otherwise (a rate, or a shape or spread
+        with no direction of its own). See :func:`._links.sign`."""
+        return tuple(
+            _links.sign(canonical_name(self.dist), name)
+            for name in self.parameter_names
+        )
 
     def _resolve_links(
         self, links: Mapping[str, str] | None
@@ -321,7 +367,7 @@ class DistributionalFitter(
         """A copy of this fitter for the model fitted with ``positions``
         (its ``fit`` refits with the same columns, as the bootstrap
         does)."""
-        out = DistributionalFitter.__new__(DistributionalFitter)
+        out = type(self).__new__(type(self))
         mirror_distribution(out, self.dist)
         out.name = self.name
         out.links = links
@@ -344,6 +390,7 @@ class DistributionalFitter(
         k = self.k_dist
         out = []
         start = k
+        signs = self.signs
         for i, (cols, name) in enumerate(zip(positions, self.links)):
             base = params[i]
             m = cols.size
@@ -356,7 +403,7 @@ class DistributionalFitter(
             # that permuting the rows permutes the result exactly: a BLAS
             # product sums a row by where it sits (on Linux x86-64).
             shift = fixed_order_dot(Z_arr[:, cols], coefs)
-            out.append(_links.move(name, base, shift))
+            out.append(_links.move(name, base, signs[i] * shift))
         return out
 
     def _call(self, fn: str, x: Numeric, Z: Numeric, params: tuple) -> Any:
@@ -457,10 +504,12 @@ class DistributionalFitter(
         tr: npt.ArrayLike | None = None,
         covariates: Mapping[str, Any] | None = None,
         links: Mapping[str, str] | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> Any:
         """
         Fit by maximum likelihood, with every censoring, truncation and
-        count of SurPyval's data model.
+        count of SurPyval's data model, and optionally sampling,
+        propensity or censoring weights ``w``.
 
         Parameters
         ----------
@@ -493,6 +542,16 @@ class DistributionalFitter(
             defaults are identity for a parameter on the whole line and
             log for a positive one; an identity link on a positive
             parameter is refused.
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive
+            finite weight per row (or one for every row), beside the
+            counts ``n``. The estimates maximise the weighted
+            log-likelihood (each row's term multiplied by ``n * w``) and
+            the covariance is always the robust (sandwich) one; the
+            likelihood-ratio bounds and test, the information criteria and
+            the parametric bootstrap are refused (the bootstrap of a
+            weighted fit is the case bootstrap). See "Weighted Data" in
+            the user guide.
 
         Returns
         -------
@@ -514,15 +573,18 @@ class DistributionalFitter(
         fitter_links = self._links_given if links is None else links
         link_names = self._resolve_links(fitter_links)
         t = truncation_window(x, t, tl, tr)
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
+        data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
         Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
         if getattr(Z_in, "ndim", 2) == 1:
             Z = np.asarray(Z_in).reshape(-1, 1)
+        rows_given, Z_given = len(data), Z
         data, Z = drop_nonfinite_covariates(data, Z)
         order = canonical_order(data, Z)
         if np.any(order != np.arange(order.size)):
             data, Z = data[order], Z[order]
         data.add_covariates(Z)
+        # So robust_covariance(cluster=...) matches each label to its row
+        note_source_rows(data, rows_given, Z_given, order)
         check_baseline_support(self, data)
 
         Z_data = np.asarray(data.Z, dtype=float)
@@ -558,7 +620,7 @@ class DistributionalFitter(
         data_c = centred_copy(data, center_vec) if moves else data
 
         space = _SearchSpace(
-            all_names, held, K, link_names, positions, center_vec
+            all_names, held, K, link_names, positions, center_vec, bound.signs
         )
         free, positions_free = space.free, space.positions_free
 
@@ -566,7 +628,9 @@ class DistributionalFitter(
             return bound.neg_ll(data_c, *space.to_natural(tv))
 
         def default_init() -> npt.NDArray:
-            base = self.dist.fit_from_surpyval_data(data).params
+            # The model warns of few effective units itself, once.
+            with few_effective_said_later():
+                base = self.dist.fit_from_surpyval_data(data).params
             return space.start(base)
 
         user_init = init is not None and len(np.atleast_1d(init)) > 0
@@ -590,6 +654,7 @@ class DistributionalFitter(
             [(pos, int(column_of[j])) for pos, j in coef_free],
             Z_data,
         )
+        floor = _in_own_units(floor, space, init_t, coef_free, positions)
         baseline = [
             (positions_free[i], all_names[i])
             for i in range(K)
@@ -653,10 +718,9 @@ class DistributionalFitter(
             model_center,
             fit_centring,
         )
-        say_verdict(
-            verdict,
-            dist=self.dist.name,
-            values=dict(zip(self.parameter_names, model.params)),
+        mark_weighted(model, data)
+        self._say_verdict(
+            verdict, dict(zip(self.parameter_names, model.params))
         )
         model.maximum = verdict.maximum
 
@@ -673,6 +737,200 @@ class DistributionalFitter(
                     model._covariance_point(at, point_center),
                     H_p,
                 )
+        return model
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        penalizer: Any = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+        covariates: Mapping[str, Any] | None = None,
+        links: Mapping[str, str] | None = None,
+    ) -> Any:
+        """
+        Fit with a ridge, lasso or elastic-net penalty on the covariate
+        coefficients of every parameter (the intercepts, the
+        distribution's parameters at ``Z = 0``, are not penalised).
+
+        The objective is ``WeibullPH.fit_penalised``'s: the negative
+        log-likelihood over ``N`` (the sum of ``n``) plus
+        :math:`\\sum_j \\lambda_j ((1 - a) b_j^2 / 2 + a |b_j|)` over the
+        coefficients of the covariates divided by their standard
+        deviations (``standardise=True``). With covariates on the scale
+        alone and its log link, a Weibull's fit is ``WeibullAFT``'s
+        penalised fit, coefficient for coefficient (the scale's
+        coefficients take the AFT sign, ``model.coefficient_signs``). The
+        model has no covariance, standard errors, bounds or tests (they
+        raise an error that says why).
+
+        Parameters
+        ----------
+        x, Z, c, n, t, tl, tr, covariates, links
+            As for :meth:`fit`.
+        penalizer : float, array_like or dict, optional
+            One value for every coefficient; one per column of ``Z`` (that
+            column's coefficient on every parameter); or one per
+            parameter, a dict ``{"beta": 0.5}`` whose values are one value
+            or one per column that parameter takes. A parameter the dict
+            does not name is not penalised. Default 0.1.
+        l1_ratio : float, optional
+            From 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            Penalise the coefficients of the standardised covariates
+            (default ``True``).
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : array_like, optional
+            Not taken yet: weights are refused.
+
+        Returns
+        -------
+        DistributionalRegressionModel
+            The fitted model, with ``penalty`` holding one entry per
+            coefficient, in the order of the coefficients in ``params``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.normal(size=(300, 3))
+        >>> x = 10 * np.exp(-0.5 * Z[:, 0]) * rng.weibull(1.5, 300)
+        >>> model = WeibullDistributional.fit_penalised(
+        ...     x, Z, penalizer={"alpha": 0.02, "beta": 0.2}, l1_ratio=1
+        ... )
+        >>> model.params[2:].round(3)
+        array([ 0.496, -0.014,  0.009,  0.   ,  0.   ,  0.   ])
+        """
+        from .._penalised import (
+            PenalisedObjective,
+            penalised_fit,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        if covariates is None:
+            covariates = self._covariates
+        fitter_links = self._links_given if links is None else links
+        link_names = self._resolve_links(fitter_links)
+        t = truncation_window(x, t, tl, tr)
+        data = SurpyvalData(x, c, n, t, group_and_sort=False)
+        Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
+        if getattr(Z_in, "ndim", 2) == 1:
+            Z = np.asarray(Z_in).reshape(-1, 1)
+        data, Z = drop_nonfinite_covariates(data, Z)
+        order = canonical_order(data, Z)
+        if np.any(order != np.arange(order.size)):
+            data, Z = data[order], Z[order]
+        data.add_covariates(Z)
+        check_baseline_support(self, data)
+
+        Z_data = np.asarray(data.Z, dtype=float)
+        p = Z_data.shape[1]
+        names = fit_columns()
+        positions = self._resolve_covariates(covariates, p, names)
+        bound = self._bound(positions, p, link_names)
+        coef_names = bound._coefficient_names(names)
+        K = self.k_dist
+        all_names = [*self.parameter_names, *coef_names]
+        column_of = np.concatenate(
+            [np.zeros(0, int), *[np.asarray(c, int) for c in positions]]
+        )
+        if column_of.size == 0:
+            raise ValueError(
+                "fit_penalised needs at least one coefficient: no "
+                "parameter takes a covariate (`covariates`). Fit the "
+                "distribution alone, or give a parameter its columns."
+            )
+        pen = _coefficient_penalizer(
+            penalizer, positions, self.parameter_names, p
+        )
+        # One column per coefficient (its covariate), so each coefficient
+        # is standardised by its own column's spread.
+        Z_coef = Z_data[:, column_of]
+        space = _SearchSpace(
+            all_names, {}, K, link_names, positions, np.zeros(p), bound.signs
+        )
+        w_rows = np.asarray(data.n, dtype=float)
+
+        def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+            col_scale = np.ones(p)
+            col_scale[column_of] = scale
+            from .._penalised_fit import intervals_from_the_support
+
+            scaled = intervals_from_the_support(self, data)
+            scaled.add_covariates(Z_data / col_scale)
+
+            def objective(tv: Any) -> Any:
+                return bound.neg_ll(scaled, *space.to_natural(tv)) / N
+
+            from autograd import grad as ag_grad
+            from autograd import hessian as ag_hessian
+
+            gradient = ag_grad(objective)
+            curvature = ag_hessian(objective)
+            with np.errstate(all="ignore"):
+                base = self.dist.fit_from_surpyval_data(data).params
+            return PenalisedObjective(
+                lambda tv: float(objective(np.asarray(tv))),
+                lambda tv: onp.asarray(gradient(np.asarray(tv)), dtype=float),
+                lambda tv: onp.asarray(curvature(np.asarray(tv)), dtype=float),
+                onp.asarray(space.start(base), dtype=float),
+            )
+
+        fit = penalised_fit(
+            build,
+            Z_coef,
+            w_rows,
+            onp.arange(K, K + column_of.size),
+            pen,
+            l1_ratio,
+            standardise,
+            tol,
+        )
+        res = fit.result
+        with np.errstate(all="ignore"):
+            params = onp.asarray(space.to_natural(res.x), dtype=float)
+        params[K:] = fit.coefficients
+        with np.errstate(all="ignore"):
+            neg_ll = float(bound.neg_ll(data, *params))
+        if not onp.isfinite(neg_ll):
+            raise ValueError(
+                "The penalised fit did not reach a finite likelihood; check "
+                "the data, or use a larger `penalizer`."
+            )
+        from scipy.optimize import OptimizeResult
+
+        model = _assemble(
+            bound,
+            params,
+            OptimizeResult(x=res.x, fun=neg_ll, success=res.verified),
+            {},
+            {},
+            coef_names,
+            [],
+            data,
+            np.zeros(p),
+            None,
+        )
+        model.penalty = fit.penalty
+        model.maximum = "verified" if res.verified else "unverified"
+        if not res.verified:
+            from surpyval.utils.no_maximum import warn_unverified
+
+            warn_unverified("The penalised fit")
         return model
 
     def fit_from_df(
@@ -746,7 +1004,7 @@ class DistributionalFitter(
             )
         target = self
         if covariates is not None or links is not None:
-            target = DistributionalFitter(
+            target = type(self)(
                 self.dist,
                 covariates if covariates is not None else self._covariates,
                 links if links is not None else self._links_given,
@@ -795,8 +1053,7 @@ class DistributionalFitter(
                 covariates[name] = []
                 continue
             sides.append(rhs)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 _, cols, _ = design_matrix_from_df(df, None, rhs)
             covariates[name] = list(cols)
         if not sides:
@@ -806,8 +1063,7 @@ class DistributionalFitter(
                 "({}.fit).".format(self.dist.name)
             )
         union = " + ".join(f"({s})" for s in sides)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             _, union_cols, _ = design_matrix_from_df(df, None, union)
         union_cols = list(union_cols)
         for name, cols in covariates.items():
@@ -837,8 +1093,10 @@ class _SearchSpace:
         links: tuple[str, ...],
         positions: tuple[npt.NDArray, ...],
         center: npt.NDArray,
+        signs: tuple[float, ...],
     ) -> None:
         self.n = len(names)
+        self.signs = signs
         self.k_dist = k_dist
         self.links = links
         self.positions = positions
@@ -892,10 +1150,41 @@ class _SearchSpace:
             cols = self.positions[k]
             if cols.size:
                 coefs = nat[start : start + cols.size]
-                s = np.dot(coefs, self.center[cols])
+                s = self.signs[k] * np.dot(coefs, self.center[cols])
                 entries[k] = _links.move(self.links[k], nat[k], sign * s)
                 start += cols.size
         return np.array(entries)
+
+
+def _in_own_units(
+    floor: npt.NDArray,
+    space: _SearchSpace,
+    init_t: npt.NDArray,
+    coef_free: list,
+    positions: tuple,
+) -> npt.NDArray:
+    """``floor`` with each parameter on the identity link -- a location,
+    in the unit of time -- and its coefficients measured in that
+    parameter's starting size (its coefficients' floors multiplied by
+    it), so the search is the same whatever the unit of time; a
+    parameter on another link is dimensionless on it and keeps its
+    floor."""
+    floor = np.array(floor, dtype=float)
+    with np.errstate(all="ignore"):
+        nat = np.asarray(space.to_natural(init_t), dtype=float)
+    owner = np.concatenate(
+        [np.full(np.asarray(cols).size, k) for k, cols in enumerate(positions)]
+    ).astype(int)
+    for k in range(space.k_dist):
+        size = abs(float(nat[k]))
+        if space.links[k] != "identity" or not (np.isfinite(size) and size):
+            continue
+        if k in space.positions_free:
+            floor[space.positions_free[k]] = size
+        for pos, j in coef_free:
+            if owner[j] == k:
+                floor[pos] = floor[pos] * size
+    return floor
 
 
 def _assemble(
@@ -911,10 +1200,8 @@ def _assemble(
     fit_centring: tuple | None,
 ) -> Any:
     """The fitted model."""
-    from .model import DistributionalRegressionModel
-
     K = bound.k_dist
-    model = DistributionalRegressionModel()
+    model = bound._model_class()()
     model.center = center
     model._fit_centring = fit_centring
     model.distribution_param_map = dict(bound.param_map)
@@ -937,16 +1224,68 @@ def _assemble(
     model.k = K + len(coef_names) - len(held)
     model.data = data
     model.links = bound.links
+    model._coefficient_signs = bound.signs
     model.covariate_positions = bound._require_positions()
     model._aliased_coefficients = np.array(sorted(aliased), dtype=int)
     model._width = int(np.shape(data.Z)[1])
     return model
 
 
-def _rebuild_fitter(dist: Any, state: dict) -> DistributionalFitter:
-    out = DistributionalFitter.__new__(DistributionalFitter)
+def _coefficient_penalizer(
+    penalizer: Any,
+    positions: tuple[npt.NDArray, ...],
+    parameter_names: list[str],
+    p: int,
+) -> npt.NDArray:
+    """The ``penalizer`` of a distributional ``fit_penalised`` as one
+    value per coefficient, in the order of the coefficients: a single
+    value, one per column of ``Z`` (that column on every parameter), or
+    a dict of one value (or one per its columns) per parameter."""
+    if isinstance(penalizer, Mapping):
+        unknown = sorted(set(penalizer) - set(parameter_names))
+        if unknown:
+            raise ValueError(
+                "`penalizer` names {}, which {} not among the "
+                "distribution's parameters {}.".format(
+                    unknown,
+                    "is" if len(unknown) == 1 else "are",
+                    list(parameter_names),
+                )
+            )
+        parts = []
+        for name, cols in zip(parameter_names, positions):
+            value = onp.asarray(penalizer.get(name, 0.0), dtype=float)
+            if value.ndim == 0:
+                value = onp.full(cols.size, float(value))
+            if value.shape != (cols.size,):
+                raise ValueError(
+                    "`penalizer[{!r}]` must be one value or one per column "
+                    "{} takes ({}); got shape {}.".format(
+                        name, name, cols.size, value.shape
+                    )
+                )
+            parts.append(value)
+        return onp.concatenate(parts)
+    value = onp.asarray(penalizer, dtype=float)
+    if value.ndim == 0:
+        return onp.full(sum(c.size for c in positions), float(value))
+    if value.shape != (p,):
+        raise ValueError(
+            "`penalizer` must be one value, one per covariate column "
+            "({}), or a dict of one per parameter; got shape {}.".format(
+                p, value.shape
+            )
+        )
+    return onp.concatenate([value[onp.asarray(c, int)] for c in positions])
+
+
+def _rebuild_fitter(
+    dist: Any, state: dict, cls: Any = None
+) -> DistributionalFitter:
+    cls = DistributionalFitter if cls is None else cls
+    out: DistributionalFitter = cls.__new__(cls)
     mirror_distribution(out, dist)
-    out.name = dist.name + DistributionalFitter.name_suffix
+    out.name = dist.name + cls.name_suffix
     for key, value in state.items():
         setattr(out, key, value)
     return out
@@ -1028,8 +1367,7 @@ def _profile_walk(
         def g(v: Any, base: Any = base) -> Any:
             return fun(base + np.dot(other, v))
 
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             res = minimize(
                 g, y, jac=_grad(g), method="BFGS", options={"maxiter": 200}
             )

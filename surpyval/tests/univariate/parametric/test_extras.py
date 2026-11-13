@@ -101,8 +101,10 @@ def test_with_params_uses_p_for_a_distribution_with_its_own_p():
 
 def test_with_params_validates_like_from_params():
     m = Weibull.from_params([100, 2], lfp_p=0.9)
-    with pytest.raises(ValueError, match="Must have 2 params"):
-        m.with_params([1, 2, 3])
+    # Two entries (the distribution's) or three (with lfp_p, in the order
+    # of covariance_names); four is neither
+    with pytest.raises(ValueError, match="2 entries .* or 3"):
+        m.with_params([1, 2, 3, 4])
     with pytest.raises(ValueError, match="must be in bounds"):
         m.with_params([-1, 2])
 

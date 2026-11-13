@@ -25,7 +25,7 @@ PACKAGE = Path(surpyval.__file__).resolve().parent
 ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
     {
         (
-            "surpyval.beta.ml.forest.log_rank_split",
+            "surpyval.ml.forest.log_rank_split",
             "surpyval.utils.data_formats",
             "_entered_before",
         ),
@@ -171,4 +171,4 @@ def test_the_allowlist_only_shrinks() -> None:
     stale = sorted(ALLOWED - _private_imports())
     assert (
         not stale
-    ), "These imports are gone; remove them from ALLOWED: {}".format(stale)
+    ), f"These imports are gone; remove them from ALLOWED: {stale}"

@@ -425,7 +425,7 @@ def test_from_df_with_interval_columns_and_a_scalar_truncation():
         xl=df.lo, xr=df.hi, c=df.c, tl=0.5, priors=SHAPE
     )
     np.testing.assert_array_equal(by_df.params, direct.params)
-    with pytest.raises(ValueError, match="x_col"):
+    with pytest.raises(ValueError, match="x_col|both an exact time"):
         sp.Weibull.fit_bayes_from_df(
             df, x_col="lo", xl_col="lo", xr_col="hi", priors=SHAPE
         )
@@ -444,9 +444,9 @@ def test_deterministic(seals):
 
 def test_unit():
     model = sp.Weibull.fit_bayes(X, C, priors=SHAPE, unit="hours")
-    assert model.unit == "hour"
+    assert model.unit == "hours"
     assert "Unit : hour" in repr(model)
-    assert sp.from_dict(model.to_dict()).unit == "hour"
+    assert sp.from_dict(model.to_dict()).unit == "hours"
 
 
 # ---------------------------------------------------------------------------
@@ -978,3 +978,27 @@ def test_a_draws_model_says_it_is_from_draws_not_the_prior_alone():
     assert "prior alone" not in text
     assert "data alone identify" not in text
     assert "alpha: from the draws given (no prior recorded)" in text
+
+
+def test_fit_bayes_refuses_weights_naming_w_and_what_to_use():
+    x, c = [1.0, 2, 3, 4, 5], [0, 0, 0, 1, 1]
+    with pytest.raises(ValueError, match=r"Weibull\.fit_bayes .*\(w\)") as e:
+        sp.Weibull.fit_bayes(x, c, w=[1, 2, 1, 1, 1])
+    assert "Weibull.fit(x, c, w=w)" in str(e.value)
+    assert "counts, n" in str(e.value)
+
+
+def test_fit_bayes_from_df_refuses_w_col():
+    df = pd.DataFrame({"t": [1.0, 2, 3, 4], "wt": [1.0, 2, 1, 1]})
+    with pytest.raises(
+        ValueError, match=r"Weibull\.fit_bayes_from_df .*\(w_col\)"
+    ):
+        sp.Weibull.fit_bayes_from_df(df, x_col="t", w_col="wt")
+
+
+def test_fit_bayes_weights_refusal_for_a_fitter_without_weights():
+    # Bernoulli.fit takes no weights either: the message does not send
+    # the user to it.
+    with pytest.raises(ValueError, match="takes no weights either") as e:
+        sp.Bernoulli.fit_bayes([0, 1, 1], w=[1, 1, 2])
+    assert "w=w" not in str(e.value)

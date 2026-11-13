@@ -4,10 +4,11 @@ SurPyval: survival and reliability analysis in Python.
 Fit parametric distributions (``Weibull``, ``LogNormal``, ``Exponential``,
 ...), non-parametric estimates (``KaplanMeier``, ``NelsonAalen``,
 ``Turnbull``), regression models (``CoxPH``, ``WeibullPH``, the AFT, PO
-and AH families, ...), competing risks, recurrent-event, degradation and
-multivariate models to data that may be censored (left, right or
-interval) and truncated, in one data format: ``x`` the times, ``c`` the
-censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
+and AH families, ...), competing risks, multi-state, recurrent-event,
+degradation and multivariate models to data that may be censored (left,
+right or interval) and truncated, in one data format: ``x`` the times,
+``c`` the censoring flag, ``n`` the counts and ``t`` the truncation
+(``xcnt``).
 
 >>> import surpyval
 >>> x, c = [10.0, 12.0, 15.0, 21.0, 30.0], [0, 0, 1, 0, 1]
@@ -15,15 +16,16 @@ censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
 >>> model.dist.name
 'Weibull'
 
-The regression, competing-risks, recurrent-event and degradation models
-and the metrics load on first use; ``surpyval.recurrent``,
-``surpyval.degradation``, ``surpyval.multivariate``,
+The regression, competing-risks, multi-state, recurrent-event and
+degradation models and the metrics load on first use;
+``surpyval.recurrent``, ``surpyval.degradation``,
+``surpyval.multivariate``, ``surpyval.multistate``, ``surpyval.ml``,
 ``surpyval.life_models``, ``surpyval.metrics`` and ``surpyval.datasets``
 hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.26"
+__version__ = "0.27"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -37,21 +39,34 @@ from surpyval.distribution import (
 )
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
+    IntervalLogRankResult,
     KaplanMeier,
     LogRankResult,
+    MaxComboResult,
+    MaxStatResult,
     NelsonAalen,
     NonParametric,
     NonParametricPlot,
     PairwiseLogRankResult,
+    PermutationLogRankResult,
+    PersonYears,
+    TrendLogRankResult,
     Turnbull,
     at_risk_table,
+    interval_logrank,
     life_table,
     logrank,
+    maxcombo_logrank,
+    maxstat_logrank,
     pairwise_logrank,
+    permutation_logrank,
+    person_years,
     plot_nonparametric,
+    poisson_rate_bounds,
     rmst_diff,
     sf_diff,
     success_run,
+    trend_logrank,
 )
 from surpyval.univariate.parametric import (
     Bernoulli,
@@ -75,6 +90,8 @@ from surpyval.univariate.parametric import (
     GumbelLEV,
     Hypoexponential,
     InstantlyOccurs,
+    LikelihoodContour,
+    LikelihoodContourPlot,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -89,6 +106,7 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
+    plot_likelihood_contour,
 )
 from surpyval.univariate.parametric.weibayes import weibayes
 
@@ -105,6 +123,7 @@ from surpyval.utils.event_history_data import (  # isort: skip
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
+from surpyval.utils.measurements import Measurements  # isort: skip
 from surpyval.utils.item_history import ItemHistory  # isort: skip
 from surpyval.utils.item_lifetime import ItemLifetime  # isort: skip
 from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
@@ -131,9 +150,11 @@ from surpyval.utils.removed_names import (  # isort: skip
 # generically named copulas (`surpyval.multivariate.Gaussian`, `Frank`,
 # ...). Competing risks lives under each paradigm it applies to:
 # `surpyval.univariate.competing_risks` and
-# `surpyval.recurrent.competing_risks`. Pre-stable models live in
-# `surpyval.beta` (functionally complete, interface not yet stable --
-# the survival tree and random survival forest in `surpyval.beta.ml`).
+# `surpyval.recurrent.competing_risks`. The survival tree and random
+# survival forest live in `surpyval.ml` (promoted from the beta tier,
+# `surpyval.beta.ml`, in v0.27; the old name still imports them, with a
+# warning, until the first release on or after 12 April 2027). The beta
+# tier, `surpyval.beta`, is empty.
 _LAZY = {
     **dict.fromkeys(
         (
@@ -149,10 +170,14 @@ _LAZY = {
             "BuckleyJames",
             "BuckleyJamesModel",
             "CoefficientPlot",
+            "PenaltyPath",
             "CovariatePath",
             "CoxFrailty",
             "CoxFrailtyFitter",
             "CoxFrailtyModel",
+            "CoxMixedEffects",
+            "CoxMixedEffectsFitter",
+            "CoxMixedEffectsModel",
             "CoxPH",
             "ExponentialAFT",
             "ExponentialAH",
@@ -171,6 +196,7 @@ _LAZY = {
             "GumbelAH",
             "GumbelPH",
             "GumbelPO",
+            "LifeAtCovariates",
             "LogNormalAFT",
             "LogNormalAH",
             "LogNormalFrailty",
@@ -188,10 +214,13 @@ _LAZY = {
             "PO",
             "ParameterSubstitutionFitter",
             "ParametricRegressionModel",
+            "IntervalCoxPH",
+            "IntervalCoxPHModel",
             "ProportionalHazardsFitter",
             "ProportionalOdds",
             "ProportionalOddsFitter",
             "ProportionalOddsModel",
+            "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",
             "RoystonParmarRegression",
@@ -204,6 +233,7 @@ _LAZY = {
             "WeibullPH",
             "WeibullPO",
             "plot_coefficients",
+            "penalty_path",
         ),
         "surpyval.univariate.regression",
     ),
@@ -220,12 +250,47 @@ _LAZY = {
             "LogisticDistributional",
             "NormalDistributional",
             "WeibullDistributional",
+            "ExponentialMixtureCure",
+            "GammaMixtureCure",
+            "LogLogisticMixtureCure",
+            "LogNormalMixtureCure",
+            "MixtureCure",
+            "MixtureCureFitter",
+            "MixtureCureModel",
+            "WeibullMixtureCure",
+            "ExponentialZeroInflated",
+            "GammaZeroInflated",
+            "LogLogisticZeroInflated",
+            "LogNormalZeroInflated",
+            "WeibullZeroInflated",
+            "ZeroInflated",
+            "ZeroInflatedFitter",
+            "ZeroInflatedModel",
         ),
         "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
+    ),
+    # Landmark analysis and dynamic prediction
+    **dict.fromkeys(
+        ("LandmarkCox", "landmark", "landmark_kaplan_meier"),
+        "surpyval.univariate.landmark",
+    ),
+    # Equivalent time scales: one life on two clocks (x1 + k x2)
+    **dict.fromkeys(
+        (
+            "Equivalence",
+            "EquivalenceFitter",
+            "EquivalenceModel",
+            "ExponentialEquivalence",
+            "GammaEquivalence",
+            "LogLogisticEquivalence",
+            "LogNormalEquivalence",
+            "WeibullEquivalence",
+        ),
+        "surpyval.univariate.equivalence",
     ),
     # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
     # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
@@ -236,25 +301,46 @@ _LAZY = {
             "CompetingRisksProportionalHazards",
             "FineGray",
             "ParametricCompetingRisks",
+            "ParametricCompetingRisksRegression",
             "gray_test",
+            "rmtl_diff",
         ),
         "surpyval.univariate.competing_risks",
     ),
     **dict.fromkeys(
         (
+            "MultiState",
+            "MultiStateProportionalHazards",
+            "PanelMultiState",
+            "PanelMultiStateRegression",
+            "ParametricMultiState",
+            "ParametricMultiStateRegression",
+            "TransitionMatrix",
+        ),
+        "surpyval.multistate",
+    ),
+    **dict.fromkeys(
+        (
             "ARA",
             "ARI",
+            "AndersenGill",
             "CauseSpecificMCF",
             "CauseSpecificNHPP",
+            "CauseSpecificProportionalIntensity",
             "CoxLewis",
             "CrowAMSAA",
             "Duane",
             "GeneralizedOneRenewal",
             "GeneralizedRenewal",
             "HPP",
+            "JointFrailty",
             "NonParametricCounting",
+            "PanelCountMCF",
+            "PanelCountRegression",
+            "PrenticeWilliamsPeterson",
             "ProportionalIntensityHPP",
             "ProportionalIntensityNHPP",
+            "WeiLinWeissfeld",
         ),
         "surpyval.recurrent",
     ),
@@ -268,11 +354,30 @@ _LAZY = {
         "surpyval.degradation",
     ),
     **dict.fromkeys(
+        ("AdjustedCurves", "direct_adjustment", "weight_diagnostics"),
+        "surpyval.univariate.adjusted",
+    ),
+    **dict.fromkeys(
+        (
+            "PseudoRegressionResult",
+            "pseudo_cif",
+            "pseudo_regression",
+            "pseudo_regression_from_df",
+            "pseudo_rmst",
+            "pseudo_survival",
+        ),
+        "surpyval.univariate.pseudo",
+    ),
+    **dict.fromkeys(
         (
             "auc_td",
             "brier_score",
+            "compare_concordance",
+            "concordance_estimate",
             "concordance_index",
             "integrated_brier_score",
+            "PredictionScores",
+            "score_predictions",
             "survival_probability",
         ),
         "surpyval.metrics",
@@ -299,10 +404,23 @@ __all__ = [
     "PairwiseLogRankResult",
     "Turnbull",
     "logrank",
+    "interval_logrank",
+    "IntervalLogRankResult",
     "pairwise_logrank",
+    "maxcombo_logrank",
+    "MaxComboResult",
+    "trend_logrank",
+    "TrendLogRankResult",
+    "permutation_logrank",
+    "PermutationLogRankResult",
+    "maxstat_logrank",
+    "MaxStatResult",
     "plot_nonparametric",
     "at_risk_table",
     "life_table",
+    "person_years",
+    "PersonYears",
+    "poisson_rate_bounds",
     "rmst_diff",
     "sf_diff",
     "success_run",
@@ -343,6 +461,9 @@ __all__ = [
     "Uniform",
     "Weibull",
     "weibayes",
+    "LikelihoodContour",
+    "LikelihoodContourPlot",
+    "plot_likelihood_contour",
     # Data
     "round_sig",
     # Deprecated (dated): reached through __getattr__ with a FutureWarning,
@@ -361,6 +482,7 @@ __all__ = [
     "EventHistoryData",
     "ItemHistory",
     "ItemLifetime",
+    "Measurements",
     "SurpyvalData",
     "handle_xicn",
     # Model selection, forecasting and serialisation
@@ -377,6 +499,8 @@ if TYPE_CHECKING:
         degradation,
         life_models,
         metrics,
+        ml,
+        multistate,
         plotting,
         recurrent,
         test_planning,
@@ -389,38 +513,88 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        PredictionScores,
         auc_td,
         brier_score,
+        compare_concordance,
+        concordance_estimate,
         concordance_index,
         integrated_brier_score,
+        score_predictions,
         survival_probability,
+    )
+    from surpyval.multistate import (
+        MultiState,
+        MultiStateProportionalHazards,
+        PanelMultiState,
+        PanelMultiStateRegression,
+        ParametricMultiState,
+        ParametricMultiStateRegression,
+        TransitionMatrix,
     )
     from surpyval.recurrent import (
         ARA,
         ARI,
         HPP,
+        AndersenGill,
         CauseSpecificMCF,
         CauseSpecificNHPP,
+        CauseSpecificProportionalIntensity,
         CoxLewis,
         CrowAMSAA,
         Duane,
         GeneralizedOneRenewal,
         GeneralizedRenewal,
+        JointFrailty,
         NonParametricCounting,
+        PanelCountMCF,
+        PanelCountRegression,
+        PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
+        WeiLinWeissfeld,
+    )
+    from surpyval.univariate.adjusted import (
+        AdjustedCurves,
+        direct_adjustment,
+        weight_diagnostics,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
         CompetingRisksProportionalHazards,
         FineGray,
         ParametricCompetingRisks,
+        ParametricCompetingRisksRegression,
         gray_test,
+        rmtl_diff,
+    )
+    from surpyval.univariate.equivalence import (
+        Equivalence,
+        EquivalenceFitter,
+        EquivalenceModel,
+        ExponentialEquivalence,
+        GammaEquivalence,
+        LogLogisticEquivalence,
+        LogNormalEquivalence,
+        WeibullEquivalence,
     )
     from surpyval.univariate.joint import (
         JointModel,
         JointPH,
         WeibullJointPH,
+    )
+    from surpyval.univariate.landmark import (
+        LandmarkCox,
+        landmark,
+        landmark_kaplan_meier,
+    )
+    from surpyval.univariate.pseudo import (
+        PseudoRegressionResult,
+        pseudo_cif,
+        pseudo_regression,
+        pseudo_regression_from_df,
+        pseudo_rmst,
+        pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
     from surpyval.univariate.regression.distributional import (
@@ -428,40 +602,52 @@ if TYPE_CHECKING:
         DistributionalFitter,
         DistributionalRegressionModel,
         ExponentialDistributional,
+        ExponentialMixtureCure,
+        ExponentialZeroInflated,
         GammaDistributional,
+        GammaMixtureCure,
+        GammaZeroInflated,
         GumbelDistributional,
         LogisticDistributional,
         LogLogisticDistributional,
+        LogLogisticMixtureCure,
+        LogLogisticZeroInflated,
         LogNormalDistributional,
+        LogNormalMixtureCure,
+        LogNormalZeroInflated,
+        MixtureCure,
+        MixtureCureFitter,
+        MixtureCureModel,
         NormalDistributional,
         WeibullDistributional,
+        WeibullMixtureCure,
+        WeibullZeroInflated,
+        ZeroInflated,
+        ZeroInflatedFitter,
+        ZeroInflatedModel,
     )
 
 # The subpackages ``import surpyval`` used to import, so that
 # ``surpyval.recurrent.laplace`` works without an import of its own, and
-# ``surpyval.life_models``; and ``surpyval.datasets``, whose loaders the
-# docs call as ``surpyval.datasets.load_...()`` (#653). Each is imported on
-# first use.
+# ``surpyval.life_models``; ``surpyval.datasets``, whose loaders the
+# docs call as ``surpyval.datasets.load_...()`` (#653); and
+# ``surpyval.ml``. Each is imported on first use.
 _SUBPACKAGES = (
     "bayes",
     "datasets",
     "degradation",
     "life_models",
     "metrics",
+    "ml",
+    "multistate",
     "plotting",
     "recurrent",
     "test_planning",
 )
 
-# The package's removed names (the life models' top-level names, removed
-# in v0.23, the numeric constants, removed in v0.24, and
-# RecurrentEventData, removed in v0.26) say what replaced
-# them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL`` (#653).
-_MOVED_TO_LIFE_MODELS = tuple(
-    name
-    for name, (instead, _) in _REMOVED_TOP_LEVEL.items()
-    if instead.startswith("it is surpyval.life_models.")
-)
+# The package's removed names (RecurrentEventData, removed in v0.26) say
+# what replaced them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL``
+# (#653).
 
 # Names that live only in a subpackage: asking for one here
 # (``surpyval.laplace``) says where it is, rather than only that
@@ -470,6 +656,7 @@ _ELSEWHERE = {
     **dict.fromkeys(
         ["TrendTestResult", "laplace", "mil_hdbk_189c"], "surpyval.recurrent"
     ),
+    **dict.fromkeys(["RandomSurvivalForest", "SurvivalTree"], "surpyval.ml"),
     **dict.fromkeys(
         [
             "AMH",

@@ -375,10 +375,17 @@ of known cause the unit's contribution to :math:`F_k` would have to be spread
 across the interval using all of the cause-specific hazards, which these
 estimators do not do.
 
-Left truncation (delayed entry) is not an argument of the non-parametric or
-regression competing-risks classes. For parametric models it can be handled
-exactly by fitting each cause separately and assembling the result, as the
-next section explains.
+Left truncation (delayed entry) enters the same way. A unit that comes under
+observation at :math:`\tau_i` counts as at risk only for
+:math:`\tau_i < t \le x_i`, so :math:`r_j` is the number that have entered
+before :math:`t_j` and not yet left (Andersen, Borgan, Gill and Keiding,
+1993, IV.4). The non-parametric ``CompetingRisks`` takes the entry times as
+``tl``; its estimates are then conditional on surviving to the earliest entry,
+and Aalen's variance above, a function of :math:`r_j` and the failures only,
+carries over unchanged. ``ParametricCompetingRisks`` takes ``tl`` too, as the
+next section explains, and so does the cause-specific Cox model
+(`Delayed entry in the regressions`_); the Fine-Gray model and Gray's test
+refuse it.
 
 Parametric Competing Risks
 ---------------------------
@@ -463,12 +470,13 @@ The same factorisation extends to **left truncation**. A unit that enters
 observation at age :math:`\tau_i` contributes
 :math:`\prod_k h_k(x_i)^{\delta_{ik}}\, S(x_i)/S(\tau_i)`, and because
 :math:`S(x)/S(\tau) = \prod_k S_k(x)/S_k(\tau)` this also splits into one
-left-truncated, right-censored likelihood per cause. Delayed-entry data can
-therefore be handled by fitting each cause's distribution with its truncation
-bounds and combining the fits with ``ParametricCompetingRisks.from_fitted``;
-the how-to page shows this. (Interval censoring does *not* factorise in this
-way, because the probability of a cause-:math:`k` failure inside an interval
-involves every cause's survival across the interval.)
+left-truncated, right-censored likelihood per cause. That is why
+``ParametricCompetingRisks.fit`` takes the entry ages as ``tl``: its fit is
+the same as fitting each cause's distribution with them and combining the
+fits with ``ParametricCompetingRisks.from_fitted``, and the how-to page shows
+it. (Interval censoring does *not* factorise in this way, because the
+probability of a cause-:math:`k` failure inside an interval involves every
+cause's survival across the interval.)
 
 Computing the model's quantities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -539,8 +547,10 @@ probability of a cause occurring in the presence of competing risks (e.g.
 clinical risk scores).
 
 SurPyval provides the ``FineGray`` and
-``CompetingRisksProportionalHazards`` classes. The subsections below explain
-each model, how it is estimated and how to read its coefficients.
+``CompetingRisksProportionalHazards`` classes, and
+``ParametricCompetingRisksRegression`` for a parametric regression of each
+cause's hazard. The subsections below explain each model, how it is estimated
+and how to read its coefficients.
 
 Cause-specific proportional hazards in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -593,6 +603,32 @@ one, even at a covariate value far from the data, where a step's total hazard
 increment can exceed one (a small risk set times a large multiplier). The
 plain product limit :math:`\prod (1 - \Delta\hat{\Lambda})` would need a
 clip there, and would not be the survival ``sf`` reports.
+
+Delayed entry in the regressions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When units come under observation late (a patient enrolled at diagnosis, a
+machine entered when the records began), the cause-specific Cox model only
+needs the risk sets right: a unit counts as at risk at time :math:`t` once
+it has entered, :math:`\tau_i < t \leq x_i`, exactly as in ``CoxPH``. Each
+cause's partial likelihood and its Breslow (or Efron) baseline are built on
+those risk sets, so ``CompetingRisksProportionalHazards.fit(x, Z, e,
+tl=entry)`` is R's ``coxph(Surv(entry, x, cause == k) ~ Z)`` for every
+cause, and the CIF formula above, fed with those baselines, is the
+multi-state ``survfit`` with the same entry times. The estimates are then
+conditional on being event-free at the earliest entry.
+
+The Fine-Gray model does not extend so simply. Its subdistribution risk set
+keeps the units that have already failed from a competing cause, weighted by
+the censoring distribution :math:`G(t)/G(x_i)`. With delayed entry the units
+that failed from a competing cause before they would have entered are not
+in the data at all, so the weights must also undo the truncation, with an
+estimate of the entry-time distribution [Geskus2011cr]_. SurPyval does not
+build those weights, so ``FineGray``, ``model="Fine-Gray"`` and Gray's test
+(whose risk set is the same) refuse ``tl`` where an entry is after the first
+time, and the message names what to use instead: the cause-specific Cox
+model for covariate effects, or the Aalen-Johansen estimate with ``tl`` for
+the cumulative incidence.
 
 The Fine-Gray model in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -675,21 +711,133 @@ coefficients maximise the weighted partial log-likelihood
 
 with :math:`n_i` the count of each row. (Tied event times are handled by
 this Breslow form: each tied event sees the same weighted risk set.) SurPyval's
-``FineGray`` maximises this with BFGS (exact gradients by automatic
-differentiation), reports standard errors from the inverse of the Hessian of
-:math:`\ell` at the optimum, and estimates the baseline by the Breslow-type
-increments :math:`\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
+``FineGray`` maximises this by Newton-Raphson and estimates the baseline by
+the Breslow-type increments :math:`\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
 n_j\, e^{Z_j\hat{\gamma}}`. The fitted CIF is a step function, flat before
 the first and after the last cause-:math:`k` event time. In time order the
 weighted risk set at :math:`t` is a suffix of the rows (:math:`x_j \geq t`)
 plus :math:`\hat{G}(t^-)` times a prefix of the competing failures, each
 weighted :math:`1/\hat{G}(x_j^-)`, so every sum is a cumulative sum and a fit
 takes time and memory linear in the number of rows (after a sort): about a
-second at :math:`10^5` rows and three covariates. Those standard errors
-are the model-based (inverse information) ones; the robust sandwich variance
-that Fine and Gray derived to account for the estimated weights is not
-implemented, so treat the reported ``standard_errors()`` and ``p_values``
-as approximate.
+second at :math:`10^5` rows and three covariates.
+
+**Standard errors.** The weights :math:`w_i(t)` are not known: they are
+built from :math:`\hat{G}`, itself estimated from the same data. The
+curvature of :math:`\ell` alone treats them as known, and treats the rows
+of the weighted risk sets as independent, which they are not (a unit that
+failed from a competing cause appears in every later risk set). Fine and
+Gray therefore derived a *robust*, or sandwich, variance, which adds up each
+unit's whole influence on the estimate: its own events and time at risk,
+and what it contributes to :math:`\hat{G}`. This is the variance SurPyval
+reports by default, and the one R's ``cmprsk::crr`` reports (its ``var``):
+``covariance()``, ``standard_errors()``, ``p_values`` and ``summary()`` all
+use it. The *model-based* variance, the inverse of the curvature of
+:math:`\ell` (``crr``'s ``invinf``), is ``covariance(robust=False)``,
+``standard_errors(robust=False)`` and ``summary(robust=False)``; it was the
+only one before version 0.27. The robust standard errors are mostly the
+smaller, but not always: on the reference data sets 17 of 22 are smaller,
+and they range from 25% smaller to 17% larger than the model-based ones.
+
+In symbols, with :math:`\hat{A} = -\partial^2 \ell / \partial\gamma\,
+\partial\gamma'` the information at :math:`\hat\gamma`, the model-based
+covariance is :math:`\hat{A}^{-1}` and the robust one
+
+.. math::
+
+    \widehat{\operatorname{var}}(\hat\gamma) = \hat{A}^{-1}
+        \Big[ \sum_i n_i\, (\hat\eta_i + \hat\psi_i)
+        (\hat\eta_i + \hat\psi_i)' \Big] \hat{A}^{-1} .
+
+:math:`\hat\eta_i` is unit :math:`i`'s score residual over its time in the
+weighted risk sets, with :math:`\bar{Z}(t)` the weighted mean covariate of
+the risk set at :math:`t` and :math:`\delta_i = 1` for a failure from
+cause :math:`k`:
+
+.. math::
+
+    \hat\eta_i = \delta_i \{Z_i - \bar{Z}(x_i)\}
+        - \sum_{t} w_i(t)\, e^{Z_i\hat\gamma}\,
+        \{Z_i - \bar{Z}(t)\}\, \Delta\hat{\Lambda}_{k,0}^*(t) .
+
+:math:`\hat\psi_i` is the unit's part through :math:`\hat{G}`. Let
+:math:`Y(u)` be the number of units with :math:`x_j \geq u`,
+:math:`d^c(u)` the number censored at :math:`u`, and
+
+.. math::
+
+    \hat{q}(u) = \sum_{t \geq u} \Delta\hat{\Lambda}_{k,0}^*(t)
+        \sum_{j:\, x_j < u,\ \text{competing}} w_j(t)\, n_j\,
+        e^{Z_j\hat\gamma}\, \{Z_j - \bar{Z}(t)\},
+
+how much of the score at the later events is carried by the units that
+failed from a competing cause before :math:`u`, whose weights the censoring
+at :math:`u` scales. Then
+
+.. math::
+
+    \hat\psi_i = \frac{\hat{q}(x_i)}{Y(x_i)}\, 1\{i \text{ censored}\}
+        - \sum_{u \leq x_i} \frac{\hat{q}(u)\, d^c(u)}{Y(u)^2},
+
+the sum over the censoring times. With no censoring :math:`\hat\psi_i = 0`
+and the robust covariance is the usual sandwich of the score residuals
+(Lin and Wei's, for the Cox model). SurPyval computes every term with
+cumulative sums, in time linear in the rows, and reproduces ``crr``'s
+``var`` to about :math:`10^{-7}` (relative) on tied, counted and uncensored
+reference data. For a fit with weights ``w`` the robust covariance leaves
+:math:`\hat\psi` out (see :doc:`Weighted Data`), and there is no
+model-based one.
+
+Parametric regression of each cause
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The cause-specific Cox model leaves each cause's baseline hazard
+unspecified. That is its strength inside the data, and its limit outside:
+the baseline is estimated only at the observed event times, so the
+cumulative incidence is a step function that is not defined after the
+last one. Giving every cause a *parametric* regression model instead --
+a hazard :math:`h_k(t \mid Z; \theta_k)` that is a formula of time and
+covariates, such as the Weibull proportional hazards model
+:math:`(\beta_k/\alpha_k)(t/\alpha_k)^{\beta_k - 1} e^{Z\gamma_k}` --
+makes every quantity of the model a smooth function defined at all times.
+
+The argument of "Why the fit separates by cause" carries over with the
+covariates in place: the likelihood of a unit that failed from cause
+:math:`k` at :math:`x` with covariates :math:`Z` is
+
+.. math::
+
+    h_k(x \mid Z; \theta_k) \prod_j \exp\{-H_j(x \mid Z; \theta_j)\},
+
+and of a censored unit the product alone. Each :math:`\theta_k` appears
+in its own factor only, so the maximum-likelihood estimate of cause
+:math:`k`'s parameters is the ordinary fit of its regression with every
+other cause's failures treated as censored, the estimates of different
+causes are asymptotically independent (their covariance is
+block-diagonal), and delayed entry at :math:`t_l` divides each cause's
+factor by its own :math:`\exp\{-H_k(t_l \mid Z)\}`. The cumulative
+incidence at covariates :math:`Z` is then
+
+.. math::
+
+    \mathrm{CIF}_k(t \mid Z) = \int_0^t h_k(u \mid Z)\,
+        \exp\Big\{-\sum_j H_j(u \mid Z)\Big\}\,du ,
+
+computed as for the model without covariates, and its confidence bounds
+come from the delta method over every cause's parameters, on the logit
+scale.
+
+When is it the right choice? When a prediction is needed beyond the
+follow-up, or a smooth curve, a quantile or a mean life at given
+covariates, and there is reason to believe a parametric shape for each
+cause (wear-out as a Weibull, say). The price is that shape: inside the
+data it can be checked against the cause-specific Cox model and each
+cause's diagnostics; beyond the data it cannot, and the extrapolation is
+only as good as the assumed hazards. As with every cause-specific model,
+a covariate's effect on a cause's *hazard* is not its effect on that
+cause's *incidence*, which also depends on what the covariate does to the
+other causes; read incidence effects from ``cif`` at the covariate values
+of interest. A parametric model of the incidence itself (a parametric
+counterpart of Fine-Gray) is a different model, and is not built.
 
 Choosing between them
 ~~~~~~~~~~~~~~~~~~~~~
@@ -860,6 +1008,10 @@ Further Reading
 .. [FineGray1999cr] Fine, J. P., & Gray, R. J. (1999). A proportional hazards
    model for the subdistribution of a competing risk. *Journal of the American
    Statistical Association*, 94(446), 496–509.
+
+.. [Geskus2011cr] Geskus, R. B. (2011). Cause-specific cumulative incidence
+   estimation and the Fine and Gray model under both left truncation and
+   right censoring. *Biometrics*, 67(1), 39–49.
 
 .. [Gray1988cr] Gray, R. J. (1988). A class of K-sample tests for comparing the
    cumulative incidence of a competing risk. *The Annals of Statistics*,

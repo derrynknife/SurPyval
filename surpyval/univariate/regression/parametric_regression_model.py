@@ -29,20 +29,27 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
 from ._inference import InferenceMixin
-from ._kinds import (
+from ._partial_effects import PartialEffectsMixin
+from ._penalised import PenalisedModelMixin
+from ._prediction import (
+    ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
+    times_at_probability,
+)
+from ._tvc_evaluation import TVCEvaluationMixin
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     ACCELERATED_LIFE,
     ADDITIVE_HAZARD,
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
-from ._partial_effects import PartialEffectsMixin
-from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
-from ._tvc_evaluation import TVCEvaluationMixin
+from .life_at import AtCovariatesMixin, checked_params, rebuilt
 from .regression_data import (
     check_covariate_width,
     prepare_Z,
@@ -86,7 +93,10 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    AtCovariatesMixin,
+    PenalisedModelMixin,
     ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
     PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,
@@ -152,9 +162,11 @@ class ParametricRegressionModel(
     k: int
     #: The number of baseline distribution parameters.
     k_dist: int
-    #: The family, one of the names in ``_kinds``: ``"Proportional
+    #: The family, one of the names in
+    #: ``surpyval.univariate.regression.kinds``: ``"Proportional
     #: Hazard"``, ``"Accelerated Failure Time"``, ``"Proportional Odds"``,
-    #: ``"Additive Hazard"`` or ``"Accelerated Life"``.
+    #: ``"Additive Hazard"``, ``"Accelerated Life"`` or
+    #: ``"Distributional"``.
     kind: str
     #: ``{name: value}`` of the parameters held fixed in the fit (an
     #: accelerated life model's placeholder for its life parameter
@@ -222,6 +234,12 @@ class ParametricRegressionModel(
     is_tvc: bool = False
     #: The number of subjects of a time-varying-covariate fit.
     n_subjects: int | None = None
+    #: The subject of each row given to a time-varying-covariate fit, and
+    #: the rows themselves (``i``, ``xl``, ``xr``, ``c``, ``Z``, ``n``),
+    #: which ``diagnose()`` sums its residuals over and refits to; not
+    #: saved by ``to_dict``.
+    tvc_subject_ids: npt.NDArray | None = None
+    _tvc_fit_rows: dict | None = None
     #: The weighted number of subjects of a time-varying-covariate fit,
     #: the sample size of ``bic`` / ``aic_c`` when none failed.
     _ic_n_total: float | None = None
@@ -236,10 +254,6 @@ class ParametricRegressionModel(
     _restored_inference: tuple | None = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
-    #: What a penalised fit (``fit_penalised``) penalised; ``None`` for a
-    #: maximum likelihood fit. A penalised model has no covariance,
-    #: standard errors, confidence bounds or tests.
-    penalty: Any = None
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
     #: (#508).
     _data_summary: str | None = None
@@ -423,8 +437,7 @@ class ParametricRegressionModel(
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
-        if self.penalty is not None:
-            out["penalty"] = self.penalty.to_dict()
+        out.update(self._penalty_entry())
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()
@@ -435,7 +448,7 @@ class ParametricRegressionModel(
         if self._data_repr():
             out["data_summary"] = self._data_repr()
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
+            # Schema 4: a reader without weights would offer the
             # likelihood-ratio bounds and the information criteria.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
@@ -450,8 +463,7 @@ class ParametricRegressionModel(
         state = self._restored_inference
         if state is None and self._fit_centring is not None:
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     state = self._inference_state()
             except Exception:
                 return None
@@ -691,10 +703,7 @@ class ParametricRegressionModel(
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)
-        if "penalty" in model_dict:
-            from ._penalised import Penalty
-
-            out.penalty = Penalty.from_dict(model_dict["penalty"])
+        out._restore_penalty(model_dict)
         # Dicts written before "ic_n" existed carry no sample size, and
         # bic() / aic_c() then say they need the data.
         out._ic_n = cls._restored_ic_n(model_dict)
@@ -868,8 +877,7 @@ class ParametricRegressionModel(
         cannot be inverted), and for a parameter held fixed."""
         n = len(self.params)
         try:
-            with warnings.catch_warnings(), np.errstate(all="ignore"):
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), np.errstate(all="ignore"):
                 se = np.array(self.standard_errors(), dtype=float)
         except (ValueError, ArithmeticError, np.linalg.LinAlgError):
             se = np.full(n, np.nan)
@@ -921,9 +929,11 @@ class ParametricRegressionModel(
         robust : bool, optional
             ``True`` gives the table on the robust (sandwich) standard
             errors of :meth:`robust_standard_errors` instead of the
-            model-based ones: ``se(coef)``, the Wald intervals (on the
-            same scales as :meth:`param_cb`'s), ``z`` and ``p``. The
-            estimates are the same. Default ``False``.
+            model-based ones: ``se(coef)``, the Wald intervals (those of
+            ``param_cb(..., robust=True)``), ``z`` and ``p`` (those of
+            :meth:`robust_p_values`). The estimates are the same. Pass
+            ``robust=True`` to ``cb``, ``quantile_cb`` and ``param_cb`` too
+            for bounds on the same covariance. Default ``False``.
         cluster : array_like, optional
             With ``robust=True``, a cluster label for each row given to
             the fit (as for :meth:`robust_covariance`).
@@ -1000,8 +1010,7 @@ class ParametricRegressionModel(
             bounds = np.full(2, np.nan)
             if np.isfinite(se[i]):
                 try:
-                    with warnings.catch_warnings(), np.errstate(all="ignore"):
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings(), np.errstate(all="ignore"):
                         bounds = self._summary_bounds(
                             i, se[i], alpha_ci, robust
                         )
@@ -1098,19 +1107,27 @@ class ParametricRegressionModel(
             + "\nKind                : {kind}"
             + "\nDistribution        : {dist}"
             + "\nRegression Model    : {reg_model}"
-            + "\nFitted by           : MLE"
+            + "\nFitted by           : {method}"
         ).format(
             kind=self.kind,
             dist=self.distribution.name,
             reg_model=self.reg_model.name,
+            # A model built by with_params was not fitted
+            method=(
+                "given parameters"
+                if self.maximum == "not applicable"
+                else "MLE"
+            ),
         )
         data_line = self._data_repr()
         if data_line:
             out += "\nData                : " + data_line
         if self.weighted:
+            # A penalised fit has no covariance, robust or not
             out += (
                 "\nWeights             : effective sample size "
-                f"{self.effective_n:.4g}; robust covariance"
+                f"{self.effective_n:.4g}"
+                + ("; robust covariance" if self.penalty is None else "")
             )
         if self._has_center():
             # A fit with center=True (#463): say where the baseline
@@ -1134,10 +1151,7 @@ class ParametricRegressionModel(
             out += "\nFixed               : {}".format(
                 ", ".join(f"{k} = {v:.6g}" for k, v in fixed.items())
             )
-        if self.penalty is not None:
-            from ._penalised import penalty_line
-
-            out += "\nPenalty             : " + penalty_line(self.penalty)
+        out += self._penalty_printout()
         table = self.summary()
         estimates = {
             "coef": "estimate",
@@ -1618,10 +1632,19 @@ class ParametricRegressionModel(
 
         Notes
         -----
-        Every family is inverted the same way, from the model's own
-        cumulative hazard: the time at which :math:`H(t \mid Z)` reaches
-        :math:`-\log(1 - p)`, solved to a relative ``1e-12`` for every
-        probability at once. ``qf(0, Z)`` is the start of the
+        The quantile is the time at which :math:`H(t \mid Z)` reaches
+        :math:`-\log(1 - p)`. With the log-linear link it is in closed
+        form, from the baseline's own inverse: proportional hazards
+        :math:`H_0^{-1}(-\log(1 - p)\, e^{-\beta' Z})`, accelerated
+        failure time :math:`Q_0(p)\, e^{-\beta' Z}`, proportional odds
+        the baseline's quantile at the odds :math:`e^{\beta' Z}
+        p / (1 - p)`, and additive hazards on an Exponential baseline
+        :math:`-\log(1 - p) / (\lambda + \beta' Z)`, for a Weibull,
+        Exponential, Gumbel, Logistic, LogLogistic, Normal, LogNormal or
+        Gamma baseline. Any other model (a custom link, an accelerated
+        life or distributional model, another baseline) is inverted from
+        its own cumulative hazard, solved to a relative ``1e-12`` for
+        every probability at once. ``qf(0, Z)`` is the start of the
         distribution's support and ``qf(1, Z)`` its end; a probability
         outside [0, 1] gives NaN with a warning, as for the univariate
         models, and NaN gives NaN. Where the hazard of an additive model
@@ -1660,20 +1683,7 @@ class ParametricRegressionModel(
         outside = warn_outside_unit_interval(u)
         u = np.where(outside, np.nan, u)
         params = self._eval_params()
-        dist_params = params[: self.k_dist]
-        with np.errstate(all="ignore"):
-            # The baseline's quantile, a start for each search.
-            start = np.asarray(
-                self.distribution.qf(np.clip(u, 0.0, 1.0), *dist_params),
-                dtype=float,
-            ) * np.ones(u.shape)
-        out = quantiles_by_inversion(
-            lambda t, k: self.model.Hf(t, rows[k], *params),
-            u,
-            self.distribution.support,
-            start,
-            lambda t, k: self.model.hf(t, rows[k], *params),
-        )
+        out = times_at_probability(self, params, rows, u)
         if self._is_additive():
             finite = np.isfinite(out)
             beyond = self._outside_support(
@@ -1834,6 +1844,36 @@ class ParametricRegressionModel(
         """
         return self._p_values_from(self._summary_se())
 
+    def robust_p_values(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        r"""
+        Wald p-values on the robust (sandwich) standard errors,
+        :meth:`robust_standard_errors`: :attr:`p_values` with them in place
+        of the model-based ones, the ``p`` column of
+        ``summary(robust=True, cluster=cluster)``. Use it with ``cb``,
+        ``quantile_cb`` and ``param_cb`` given ``robust=True``, so that
+        every number about a coefficient rests on one covariance.
+
+        Parameters
+        ----------
+        cluster : array_like, optional
+            A cluster label for each row given to the fit (as for
+            :meth:`robust_covariance`).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> bool(np.isnan(model.robust_p_values()[:2]).all())
+        True
+        """
+        return self._p_values_from(self._robust_summary_se(cluster))
+
     def _p_values_from(self, se: npt.NDArray) -> npt.NDArray:
         """:attr:`p_values` on the standard errors ``se``."""
         params = np.asarray(self.params, dtype=float)
@@ -1937,8 +1977,9 @@ class ParametricRegressionModel(
         if getattr(self, "data", None) is None:
             raise ValueError(
                 "{} needs the data the model was fitted to, which a model "
-                "restored with from_dict / from_json does not carry. Call it "
-                "on the fitted model, or refit.".format(what)
+                "restored with from_dict / from_json, or built with "
+                "with_params, does not carry. Call it on the fitted model, "
+                "or refit.".format(what)
             )
 
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
@@ -1989,6 +2030,171 @@ class ParametricRegressionModel(
         ]
         return dist_names + phi_names
 
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order: :attr:`parameter_names`, the distribution's parameters then
+        the covariate coefficients (or life-model parameters), fixed
+        parameters included (with zero rows) and an accelerated life
+        model's placeholder for its life parameter too. A draw from
+        :meth:`covariance` in this order is what :meth:`with_params`
+        takes.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullPH
+        >>> x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+        >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
+        >>> WeibullPH.fit(x=x, Z=Z).covariance_names
+        ['alpha', 'beta', 'coef_0']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted parameters in the order of
+        :attr:`covariance_names` (``params``; an aliased coefficient is
+        ``nan``)."""
+        return np.array(self.params, dtype=float)
+
+    #: What a model built by :meth:`with_params` does not keep: the data,
+    #: the fit and everything computed from them.
+    _FIT_STATE = (
+        "data",
+        "res",
+        "fun",
+        "_neg_ll",
+        "_aic",
+        "_bic",
+        "_aic_c",
+        "_ic_n",
+        "_ic_n_total",
+        "n_subjects",
+        "_data_summary",
+        "_restored_covariance",
+        "_restored_inference",
+        "_fit_centring",
+        "_information",
+        "_covariance_cache",
+        "_lr_searches",
+        "_bootstrap_refits",
+        "penalty",
+        "weighted",
+        "effective_n",
+        "_restored",
+    )
+
+    def _check_with_params(self, values: npt.NDArray, held: set) -> None:
+        """Refuse parameters that are not finite or are outside their
+        support (a draw from the covariance can put a positive one below
+        0): the model would predict ``nan`` there without a word."""
+        names = self.covariance_names
+        bounds = self._parameter_bounds()
+        bad = []
+        for i, (lower, upper) in enumerate(bounds):
+            if i in held:
+                continue
+            v = values[i]
+            if not np.isfinite(v):
+                bad.append(f"{names[i]} = {v} (not finite)")
+            elif (lower is not None and v <= lower) or (
+                upper is not None and v >= upper
+            ):
+                bad.append(
+                    "{} = {:.6g} (outside ({}, {}))".format(
+                        names[i], v, lower, upper
+                    )
+                )
+        if bad:
+            raise ValueError(
+                "with_params got parameters the model is not defined at: "
+                "{}. A draw from covariance() can fall outside a "
+                "parameter's support where its standard error is large; "
+                "draw on a scale that keeps it inside (the log of a "
+                "positive parameter), or fit with center=True, whose "
+                "baseline parameters are better determined.".format(
+                    "; ".join(bad)
+                )
+            )
+
+    def with_params(self, params: npt.ArrayLike) -> ParametricRegressionModel:
+        """
+        The same regression with other parameters.
+
+        The structure is kept: the distribution (a spline baseline's
+        knots), the family and covariate link (or life model), the
+        covariate names, formula and its encoding of a DataFrame, the
+        centre a baseline is at, the parameters held fixed and the
+        unit. So ``sf(x, Z)`` on the result takes the same raw
+        covariates as the fitted model. Use it to turn a draw from
+        :meth:`covariance` into a model, and so carry the fit's
+        parameter uncertainty into anything computed from it.
+
+        Parameters
+        ----------
+        params : array like
+            Every parameter, in the order of :attr:`covariance_names`
+            (that of ``params``): a draw from :meth:`covariance`, or
+            :meth:`_estimates` to rebuild the fitted model. The entries of
+            a parameter held fixed in the fit (and of an accelerated life
+            model's placeholder for its life parameter) are ignored, the
+            fixed value kept; an aliased coefficient stays ``nan`` (its
+            effect taken as 0), as the fit had it.
+
+        Returns
+        -------
+        ParametricRegressionModel
+            A model built from parameters, of the same class: it has no
+            data, covariance or fitted likelihood, since those belong to
+            the fit of the original parameters, so the methods that need
+            them (``cb``, ``param_cb``, ``plot``, ``aic``, ...) refuse,
+            saying so. A fit with weights ``w`` gives a model without
+            them: just the distribution at those parameters.
+
+        Raises
+        ------
+        ValueError
+            For a vector of the wrong length, naming the parameters; or a
+            parameter that is not finite or is outside its support (a
+            negative Weibull scale, say).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> same = model.with_params(model._estimates())
+        >>> bool(same.sf(5, [1]) == model.sf(5, [1]))
+        True
+        >>> draw = np.random.default_rng(1).multivariate_normal(
+        ...     model._estimates(), model.covariance()
+        ... )
+        >>> other = model.with_params(draw)
+        >>> other.params.round(3)
+        array([9.375, 1.629, 0.702])
+        """
+        names = self.covariance_names
+        values = checked_params(params, names)
+        fitted = np.array(self.params, dtype=float)
+        held = [
+            i
+            for i, name in enumerate(names)
+            if name in self.fixed or np.isnan(fitted[i])
+        ]
+        values[held] = fitted[held]
+        self._check_with_params(values, set(held))
+        out = rebuilt(self, self._FIT_STATE)
+        out.params = values
+        out.dist_params = values[: self.k_dist]
+        out.phi_params = values[self.k_dist :]
+        out.fixed = dict(self.fixed)
+        out.maximum = "not applicable"
+        return out
+
     # -- plot_partial_effects (PartialEffectsMixin) ------------------------
 
     def _partial_effects_width(self) -> int:
@@ -2004,8 +2210,9 @@ class ParametricRegressionModel(
 
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
-        if self.penalty is not None:
-            return float(self.penalty.effective_df)
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         return self.k
 
     def _partial_effects_times(self) -> npt.NDArray | None:

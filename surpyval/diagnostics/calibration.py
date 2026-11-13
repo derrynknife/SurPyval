@@ -114,7 +114,6 @@ for a family that chooses its times otherwise.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -122,6 +121,10 @@ from typing import Any
 import numpy as np
 from scipy.stats import norm
 
+from surpyval.utils.aliases import canonical_name
+from surpyval.utils.warnings import ignoring_warnings
+
+from ._shared import _fmt, _is_cox, _note
 from .registry import AdviceRule, Check, Context, Panel
 
 #: The quantiles of the failure times the check is made at.
@@ -497,8 +500,7 @@ def calibration_curve(
         knots = weighted_quantile(cll, n, [0.5])
     B = cll[:, None] if linear else rcs_basis(cll, knots)
     entry = {"tl": tl} if np.isfinite(tl).any() else {}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         cal = CoxPH.fit(x, B, c=c, n=n, center=True, **entry)
         if not linear and np.isnan(np.asarray(cal.beta, float)).any():
             # the spline's term is aliased with the predictions'
@@ -562,12 +564,27 @@ class _Outcome:
     sf: Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
-def _is_cox(model: Any) -> bool:
-    from surpyval.univariate.regression.semi_parametric_regression_model import (  # noqa: E501
-        SemiParametricRegressionModel,
-    )
+def _cox_sf(
+    model: Any, data: dict
+) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+    """A Cox model's ``sf(t, Z)`` at its fitted rows: for a stratified fit
+    each row's from its own stratum's baseline (``data["strata"]``, the
+    rows in the order they are given here)."""
+    codes = data.get("strata")
+    if not getattr(model, "is_stratified", False) or codes is None:
+        return lambda t, Z: model.sf(t, Z)
+    codes = np.asarray(codes)
 
-    return isinstance(model, SemiParametricRegressionModel)
+    def sf(t: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        t = np.asarray(t, dtype=float)
+        out = np.empty(t.shape)
+        for k, label in enumerate(model.strata_labels):
+            rows = codes == k
+            if rows.any():
+                out[rows] = model.sf(t[rows], Z[rows], label)
+        return out
+
+    return sf
 
 
 def _outcome(ctx: Context) -> _Outcome | str:
@@ -576,13 +593,14 @@ def _outcome(ctx: Context) -> _Outcome | str:
 
     def compute() -> _Outcome | str:
         m = ctx.model
+        if getattr(m, "is_tvc", False):
+            # Cox's and the parametric families' alike.
+            return (
+                "the model was fitted to time-varying covariates "
+                "(fit_tvc), so a unit's predicted survival depends on "
+                "its covariate path, not on one row"
+            )
         if _is_cox(m):
-            if getattr(m, "is_tvc", False):
-                return (
-                    "the model was fitted to time-varying covariates "
-                    "(fit_tvc), so a unit's predicted survival depends on "
-                    "its covariate path, not on one row"
-                )
             data = m._fit_data
             x = np.asarray(data["x"], dtype=float)
             tl = data.get("tl")
@@ -596,7 +614,7 @@ def _outcome(ctx: Context) -> _Outcome | str:
                     else np.asarray(tl, dtype=float)
                 ),
                 Z=np.asarray(data["Z"], dtype=float),
-                sf=lambda t, Z: m.sf(t, Z),
+                sf=_cox_sf(m, data),
             )
         data = m.data
         c = np.asarray(data.c)
@@ -693,11 +711,6 @@ def option_times(ctx: Context) -> Sequence[tuple[str | None, float]]:
     return [(None, float(v)) for v in values]
 
 
-def _note(ctx: Context, text: str) -> None:
-    if text not in ctx.notes:
-        ctx.notes.append(text)
-
-
 def _curves(
     ctx: Context,
     times: Callable[[Context], Sequence[tuple[str | None, float]]],
@@ -754,10 +767,6 @@ def _curves(
         return out
 
     return ctx.cached("calibration_curves", compute)
-
-
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
 
 
 def _direction(curve: CalibrationCurve) -> str:
@@ -1028,7 +1037,7 @@ def _baseline_is(
     one not among ``baselines``)."""
 
     def test(ctx: Context) -> bool:
-        own = ctx.model.distribution.name
+        own = canonical_name(ctx.model.distribution)
         return own == name if name is not None else own not in baselines
 
     return test

@@ -172,7 +172,7 @@ def test_mean_tvc_is_infinite_when_survival_levels_off():
     assert len(caught) == 1, [str(w.message) for w in caught]
     assert caught[0].filename == __file__
     sf_end = model.sf_tvc(1e6, down)
-    assert "still {:.4g}".format(sf_end) in str(caught[0].message)
+    assert f"still {sf_end:.4g}" in str(caught[0].message)
     assert "never fails" in str(caught[0].message)
 
 

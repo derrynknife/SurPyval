@@ -168,6 +168,13 @@ class Hypoexponential_(ParametricFitter):
     2.6667
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        rates : numpy array or scalars
+            The stage rates ``lambda_1, ..., lambda_m``
+        """
+
     def __init__(self, name: str, m: int = 0) -> None:
         # ``m == 0`` is the exported singleton, whose arity is only fixed
         # when ``from_params`` is called; that call (and deserialisation)
@@ -178,15 +185,15 @@ class Hypoexponential_(ParametricFitter):
             k=m,
             bounds=((0, None),) * m,
             support=(0, np.inf),
-            parameter_names=["lambda_{}".format(j + 1) for j in range(m)],
-            param_map={"lambda_{}".format(j + 1): j for j in range(m)},
+            parameter_names=[f"lambda_{j + 1}" for j in range(m)],
+            param_map={f"lambda_{j + 1}": j for j in range(m)},
             plot_x_scale="linear",
         )
         # No probability-plotting transform: the survival function is
         # a sum of exponentials with no single linearising scale.
         self.supports_mpp = False
 
-    def _for_params(self, params: Any) -> "Hypoexponential_":
+    def _for_params(self, params: Any) -> Hypoexponential_:
         """The ``m``-stage fitter that models ``params``."""
         m = len(np.atleast_1d(np.asarray(params, dtype=float)))
         if m == self.k:

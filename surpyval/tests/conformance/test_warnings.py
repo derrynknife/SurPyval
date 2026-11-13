@@ -320,7 +320,7 @@ def test_each_deliberate_warning_once_per_call(case):
 
 def test_the_once_check_sees_the_dropped_rows_warning():
     # The recorder behind warn_once does see the package's warnings.
-    (case,) = [p.values[0] for p in cases_for("warn_once") if p.id == "CoxPH"]
+    (case,) = (p.values[0] for p in cases_for("warn_once") if p.id == "CoxPH")
     with leaks.deliberate() as found:
         case.fit(_missing_covariate(case, case.data()))
     assert [m for _, m in found if m.startswith("Dropped")], found

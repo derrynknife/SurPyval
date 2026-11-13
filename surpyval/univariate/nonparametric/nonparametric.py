@@ -41,6 +41,81 @@ _QF_TOL = 1e-9
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 
+# The pointwise interval types of ``cb``: the scale the normal interval is
+# formed on ('exp' is log(-log), 'normal' the survival itself, 'log' its
+# logarithm, 'logit' its log-odds, 'arcsine' the arcsine of its square
+# root), or a different variance ('peto', Peto's) or interval ('rothman',
+# Rothman's Wilson-type). See ``cb``.
+POINTWISE_BOUND_TYPES = (
+    "exp",
+    "normal",
+    "log",
+    "logit",
+    "arcsine",
+    "peto",
+    "rothman",
+)
+# The types whose bounds are always within [0, 1].
+_UNIT_BOUND_TYPES = ("exp", "log", "logit", "arcsine", "rothman")
+
+
+def pointwise_survival_bounds(
+    R: npt.NDArray,
+    var_log: npt.NDArray,
+    r: Any,
+    stat: npt.NDArray,
+    bound_type: str,
+) -> npt.NDArray:
+    """The pointwise bounds of the survival estimate ``R`` whose log has
+    the variance ``var_log`` (Greenwood's, for the Kaplan-Meier), with
+    ``r`` at risk, at the normal deviate(s) ``stat``: a positive ``stat``
+    gives the upper bound, a negative one the lower. Where the variance is
+    zero the bounds are the estimate; where it is undefined (from the time
+    the estimate reaches 0) they are NaN, for the caller to fill.
+
+    The forms are those of R's ``survival::survfit(conf.type=...)`` ('log',
+    'log-log' (``exp``), 'plain' (``normal``, unclipped), 'logit',
+    'arcsin') and of ``km.ci::km.ci(method=...)`` ('peto', 'rothman')."""
+    sd = np.sqrt(var_log)
+    if bound_type == "exp":
+        out = np.log(-np.log(R)) - stat * sd / np.abs(np.log(R))
+        out = np.exp(-np.exp(out))
+    elif bound_type == "normal":
+        out = R + R * sd * stat
+    elif bound_type == "log":
+        out = np.minimum(R * np.exp(stat * sd), 1.0)
+    elif bound_type == "logit":
+        out = np.log(R / (1.0 - R)) + stat * sd / (1.0 - R)
+        out = 1.0 / (1.0 + np.exp(-out))
+    elif bound_type == "arcsine":
+        out = np.arcsin(np.sqrt(R)) + stat * 0.5 * sd * np.sqrt(R / (1 - R))
+        out = np.sin(np.clip(out, 0.0, np.pi / 2)) ** 2
+    elif bound_type == "peto":
+        out = R + stat * R * np.sqrt((1.0 - R) / r)
+    else:
+        # Rothman's Wilson-type interval, with the effective sample size
+        # n' = R (1 - R) / Var(R) and Var(R) = R^2 var_log.
+        var_R = R**2 * var_log
+        n_eff = R * (1.0 - R) / var_R
+        z2 = stat**2
+        out = (
+            n_eff
+            / (n_eff + z2)
+            * (
+                R
+                + z2 / (2.0 * n_eff)
+                + stat * np.sqrt(var_R + z2 / (4.0 * n_eff**2))
+            )
+        )
+    # No variance, no interval: the bounds collapse onto the estimate.
+    # (That is 1 before the first event; it is the estimate itself, not
+    # 1, where float-noise counts in a Turnbull ladder were snapped to
+    # zero events.) Peto's variance is zero where the estimate is 1.
+    none = var_log == 0
+    if bound_type == "peto":
+        none = none | (R == 1)
+    return np.where(none, R, out)
+
 
 # ``cb`` took ``(x, on, bound, interp, alpha_ci, ...)`` where every other
 # model's takes ``(x, on, alpha_ci, bound, ...)`` (#666). It takes the
@@ -180,12 +255,38 @@ class NonParametric(
         if data_line:
             out += "\nData             : " + data_line
         if self.weighted:
+            bounds = (
+                "bounds by bootstrap_cb"
+                if self._weighted_without_variance()
+                else "robust variance"
+            )
             out += (
                 "\nWeights          : effective sample size "
-                f"{self.effective_n:.4g}; robust variance"
+                f"{self.effective_n:.4g}; {bounds}"
             )
 
         return out
+
+    def _weighted_without_variance(self) -> bool:
+        """Whether this is a weighted estimate with no variance formula (a
+        weighted Turnbull estimate), whose bounds are the case
+        bootstrap's."""
+        return bool(self.weighted) and getattr(self, "greenwood", None) is None
+
+    def _refuse_weighted_without_variance(self, what: str) -> None:
+        """Refuse ``what``, a bound or test built on the variance, for a
+        weighted estimate that has none, naming ``bootstrap_cb``."""
+        if self._weighted_without_variance():
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                what,
+                "a weighted Turnbull estimate has no variance formula "
+                "(Greenwood's would read the weights as units seen, and "
+                "no robust variance of the weighted EM is built)",
+                "Use bootstrap_cb(x, random_state=seed), the weighted "
+                "case bootstrap, for its confidence bounds.",
+            )
 
     def _data_repr(self) -> str:
         """The data the estimate was fitted to, in one line, for the
@@ -755,14 +856,43 @@ class NonParametric(
             statistics traditionally uses step functions, but can use
             interpolated values if desired. Defaults to step. Takes the
             values of ``sf``'s ``interp``.
-        bound_type : ('exp', 'normal'), str, optional
-            The method with which the bounds will be calculated. Using
-            'normal' (i.e. the plain Greenwood-style interval,
-            :math:`\hat{R} \pm z \hat{R}\hat{\sigma}`) will allow
-            for the bounds to exceed 1 or be less than 0 and tends to
-            undercover in small samples. Defaults to 'exp' (the
-            log(-log) transformed interval) as this ensures the bounds
-            are within 0 and 1 and has better coverage.
+        bound_type : str, optional
+            How the interval is formed. Each is a normal (Wald) interval
+            built on some scale and mapped back, with :math:`\hat\sigma^2`
+            the variance of :math:`\log \hat R` (Greenwood's for the
+            Kaplan-Meier) and :math:`z` the normal quantile:
+
+            - 'exp' (the default): on the log(-log) scale,
+              :math:`\hat R^{\exp(\pm z \hat\sigma / \log \hat R)}`;
+              R's ``conf.type="log-log"``. Within [0, 1].
+            - 'normal': on the survival itself,
+              :math:`\hat R \pm z \hat R \hat\sigma`; R's ``"plain"``,
+              but not cut to [0, 1], so it can leave it, and it tends to
+              undercover in small samples.
+            - 'log': on the log scale, :math:`\hat R e^{\pm z
+              \hat\sigma}`, the upper bound cut at 1; R's ``"log"``, the
+              default of ``survival::survfit``.
+            - 'logit': on the log-odds scale, :math:`\operatorname{logit}
+              \hat R \pm z \hat\sigma / (1 - \hat R)`; R's ``"logit"``.
+            - 'arcsine': on the arcsine-square-root scale,
+              :math:`\arcsin\sqrt{\hat R} \pm \tfrac{z}{2} \hat\sigma
+              \sqrt{\hat R / (1 - \hat R)}`, kept within
+              :math:`[0, \pi/2]`; R's ``"arcsin"``, and the scale of
+              ``band``'s default.
+            - 'peto': the plain interval with Peto's variance,
+              :math:`\hat R \pm z \hat R \sqrt{(1 - \hat R) / Y}`, with
+              :math:`Y` the number at risk at the step's time, as R's
+              ``km.ci(method="peto")``. Not cut to [0, 1]; not available
+              for a weighted fit (Peto's variance counts units).
+            - 'rothman': Rothman's (1978) Wilson-type (score) interval for
+              a binomial proportion, with the effective sample size
+              :math:`n' = \hat R (1 - \hat R) / \widehat{Var}(\hat R)`;
+              R's ``km.ci(method="rothman")``. Within [0, 1].
+
+            The transformed intervals ('exp', 'log', 'logit', 'arcsine')
+            and 'rothman' cover better than 'normal' and 'peto' where the
+            estimate is near 0 or 1 (see Klein and Moeschberger, Section
+            4.3, and Borgan and Liestøl, 1990).
         dist : ('z',), str, optional
             The statistic used for the bounds. Only the normal ('z') is
             supported, which is what the asymptotic theory of the estimator
@@ -827,6 +957,19 @@ class NonParametric(
 
         Klein, J. P. and Moeschberger, M. L. (2003), "Survival
         Analysis", 2nd ed., Sections 4.2 and 4.3.
+
+        Borgan, Ø. and Liestøl, K. (1990), "A note on confidence intervals
+        and bands for the survival function based on transformations",
+        *Scandinavian Journal of Statistics*, 17(1), 35-41.
+
+        Peto, R., Pike, M. C., Armitage, P., et al. (1977), "Design and
+        analysis of randomized clinical trials requiring prolonged
+        observation of each patient. II. Analysis and examples", *British
+        Journal of Cancer*, 35(1), 1-39.
+
+        Rothman, K. J. (1978), "Estimation of confidence limits for the
+        cumulative probability of survival in life table analysis",
+        *Journal of Chronic Diseases*, 31(8), 557-560.
 
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
@@ -943,7 +1086,16 @@ class NonParametric(
         # ``R_cb`` without the bounds (see ``set_support``).
         from scipy.stats import norm
 
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        self._refuse_weighted_without_variance("cb")
+
+        check_option("bound_type", bound_type, POINTWISE_BOUND_TYPES)
+        if bound_type == "peto" and self.weighted:
+            raise ValueError(
+                "bound_type='peto' is not available for a weighted fit: "
+                "Peto's variance, S^2 (1 - S) / Y, counts the units at "
+                "risk, Y, and has no weighted form. Use bound_type='exp' "
+                "(or another type), whose variance is the robust one."
+            )
         _check_bound(bound)
         check_option(
             "dist",
@@ -977,19 +1129,13 @@ class NonParametric(
                 stat = norm.ppf((1 - confidence) / 2, 0, 1)
                 stat = np.array([-1, 1]).reshape(2, 1) * stat
 
-            if bound_type == "exp":
-                # Exponential Greenwood confidence
-                R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
-                R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
-                R_out = np.exp(-np.exp(R_out))
-                # No variance, no interval: the bounds collapse onto the
-                # estimate. (That is 1 before the first event; it is the
-                # estimate itself, not 1, where float-noise counts in a
-                # Turnbull ladder were snapped to zero events.)
-                R_out = np.where(self.greenwood == 0, self.R, R_out)
-            else:
-                # Normal Greenwood confidence
-                R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
+            R_out = pointwise_survival_bounds(
+                self.R,
+                self.greenwood,
+                getattr(self, "r", None),
+                stat,
+                bound_type,
+            )
 
             # Allows for confidence bound to be estimated up to the last value.
             # only used in event that there is no right censoring. When *no*
@@ -1024,7 +1170,7 @@ class NonParametric(
                     R_out = np.where(idx < 0, 1, R_out)
 
             else:
-                unit = bound_type == "exp"
+                unit = bound_type in _UNIT_BOUND_TYPES
                 if bound == "two-sided":
                     R_out = np.vstack(
                         [
@@ -1210,8 +1356,9 @@ class NonParametric(
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
-        bound_type : ('exp', 'normal'), str, optional
-            The method for the underlying survival function bounds.
+        bound_type : str, optional
+            The type of the underlying pointwise survival bounds; any of
+            ``cb``'s (default 'exp').
         dist : ('z',), str, optional
             The statistic used in the underlying survival function
             bounds. Only the normal ('z') is supported.
@@ -1406,6 +1553,7 @@ class NonParametric(
         :math:`x_i` to :math:`\tau` and :math:`v_i` the variance increment
         of the cumulative hazard (the Greenwood increment for Kaplan-Meier).
         """
+        self._refuse_weighted_without_variance("The bounds of rmst and mean")
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -1551,6 +1699,19 @@ class NonParametric(
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8])
         >>> model.cs([0, 1, 2], 4)
         array([1.  , 0.75, 0.5 ])
+
+        Past the last observation the step estimate holds its last value
+        (here the last two units are censored, at 7 and 8), so surviving a
+        further 20 is as likely as surviving a further 1; the interpolated
+        forms give ``nan`` there:
+
+        >>> censored = KaplanMeier.fit(
+        ...     [1, 2, 3, 4, 5, 6, 7, 8], c=[0, 0, 0, 0, 0, 0, 1, 1]
+        ... )
+        >>> censored.cs([1, 20], 5)
+        array([0.66666667, 0.66666667])
+        >>> float(censored.cs(20, 5, interp="linear"))
+        nan
 
         The median remaining life of a unit aged 4, the further time by
         which half the units still running at 4 have failed:
@@ -1759,6 +1920,10 @@ class NonParametric(
 
         # Only computed when wanted: a ``fit_from_ecdf`` model has no
         # variance, and ``plot(plot_bounds=False)`` used to raise on it.
+        # A weighted Turnbull estimate has none either: its curve is drawn
+        # without bounds (they are ``bootstrap_cb``'s, which needs a seed).
+        if self._weighted_without_variance():
+            plot_bounds = False
         cbs = self.R_cb(self.x, **kwargs) if plot_bounds else None
 
         d = getattr(self, "d", None)
@@ -1842,6 +2007,9 @@ class NonParametric(
             ax = plt.gcf().gca()
 
         plot_bounds = kwargs.pop("plot_bounds", True)
+        if self._weighted_without_variance():
+            # (see ``get_plot_data``)
+            plot_bounds = False
         show_censors = kwargs.pop("show_censors", None)
         interp = kwargs.pop("interp", "step")
         bound = kwargs.pop("bound", "two-sided")
@@ -2105,7 +2273,7 @@ class NonParametric(
                 data_dict["w"] = np.asarray(self.data["w"]).tolist()
             out["data"] = data_dict
         if self.weighted:
-            # Schema 3: a reader without weights would take the robust
+            # Schema 4: a reader without weights would take the robust
             # variance for Greenwood's and offer the bands.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
@@ -2197,8 +2365,8 @@ class NonParametric(
 
 
 def rmst_diff(
-    model_a: NonParametric,
-    model_b: NonParametric,
+    model_a: Any,
+    model_b: Any,
     tau: float | None = None,
     alpha_ci: float = 0.05,
 ) -> dict:
@@ -2212,9 +2380,13 @@ def rmst_diff(
 
     Parameters
     ----------
-    model_a, model_b : NonParametric
-        Two fitted non-parametric estimators (e.g. ``KaplanMeier.fit`` per
-        group). They must carry a variance estimate (Greenwood).
+    model_a, model_b : NonParametric or Parametric
+        Two fitted models, one per group: non-parametric estimators (e.g.
+        ``KaplanMeier.fit`` per group), which must carry a variance
+        estimate (Greenwood), or parametric fits (e.g. ``Weibull.fit``
+        per group), whose RMST and standard error are those of their
+        :meth:`~surpyval.univariate.parametric.parametric.Parametric.rmst`
+        (the delta method). The two may be one of each.
     tau : scalar, optional
         Common horizon. Defaults to the smaller of the two groups' largest
         observed times, so both survival curves are supported by data up to
@@ -2223,7 +2395,8 @@ def rmst_diff(
         there: the curve beyond it is not estimated, and holding it at its
         last value made the RMST, and the difference, what the horizon
         made them. (A curve that has reached zero is zero beyond, and
-        needs no extrapolation.)
+        needs no extrapolation.) A parametric fit extrapolates, so it
+        allows any ``tau``; its default is its own largest observed time.
     alpha_ci : scalar, optional
         Significance level for the interval and test (default 0.05).
 
@@ -2254,13 +2427,29 @@ def rmst_diff(
     5.0 1.1667 0.7233
     >>> print(round(res["p_value"], 4))
     0.1067
+
+    Parametric fits compare in the same way, with the delta method's
+    standard errors:
+
+    >>> wa = sp.Weibull.fit([2, 3, 4, 5, 6, 7])
+    >>> wb = sp.Weibull.fit([1, 2, 2, 3, 4, 5])
+    >>> res = sp.rmst_diff(wa, wb)
+    >>> print(res["tau"], round(res["difference"], 4), round(res["se"], 4))
+    5.0 1.2537 0.6694
     """
     check_alpha_ci(alpha_ci)
     from scipy.stats import norm
 
+    def largest(model: Any) -> float:
+        if isinstance(model, NonParametric):
+            return float(np.max(model.x))
+        return model._rmst_default_tau("rmst_diff")
+
     if tau is None:
-        tau = float(min(np.max(model_a.x), np.max(model_b.x)))
+        tau = float(min(largest(model_a), largest(model_b)))
     for name, model in (("model_a", model_a), ("model_b", model_b)):
+        if not isinstance(model, NonParametric):
+            continue
         s_last = model._survival_past_data(tau)
         if s_last is not None:
             raise ValueError(
@@ -2273,14 +2462,18 @@ def rmst_diff(
                     name,
                     float(np.max(model.x)),
                     s_last,
-                    float(min(np.max(model_a.x), np.max(model_b.x))),
+                    float(min(largest(model_a), largest(model_b))),
                 )
             )
 
-    mu_a = model_a.mean(tau=tau)
-    mu_b = model_b.mean(tau=tau)
-    var_a = model_a._rmst_variance(tau)
-    var_b = model_b._rmst_variance(tau)
+    def mean_and_variance(model: Any) -> tuple[float, float]:
+        if isinstance(model, NonParametric):
+            return model.mean(tau=tau), model._rmst_variance(tau)
+        res = model.rmst(tau, alpha_ci)
+        return res["rmst"], res["se"] ** 2
+
+    mu_a, var_a = mean_and_variance(model_a)
+    mu_b, var_b = mean_and_variance(model_b)
 
     diff = mu_a - mu_b
     se = float(np.sqrt(var_a + var_b))  # groups are independent

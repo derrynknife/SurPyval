@@ -108,11 +108,11 @@ COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 
 
 def validate_coxph(
-    x: "npt.ArrayLike | None",
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-    Z: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | None",
+    x: npt.ArrayLike | None,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    Z: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
     method: str,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     check_option("tie_method", method, COX_PH_METHODS)
@@ -146,9 +146,11 @@ def validate_coxph(
             "CoxPH supports only observed (c=0) and right-censored (c=1) "
             "observations (with optional left-truncation `tl`); the Cox "
             "partial likelihood has no term for left-censored (c=-1) or "
-            "interval-censored (c=2) data. Use a parametric regression "
-            "model instead, e.g. WeibullPH.fit(x, Z, c=c) or "
-            "WeibullAFT.fit(x, Z, c=c), which handle every censoring type."
+            "interval-censored (c=2) data. Use IntervalCoxPH.fit(x, Z, "
+            "c=c), the Cox model with a non-parametric baseline for such "
+            "data, or a parametric regression model, e.g. WeibullPH.fit(x, "
+            "Z, c=c) or WeibullAFT.fit(x, Z, c=c), which handle every "
+            "censoring type."
         ),
         truncation=(
             "CoxPH supports left-truncation (delayed entry) only, supplied "
@@ -165,9 +167,21 @@ def validate_fine_gray_inputs(
     x: npt.ArrayLike,
     Z: npt.ArrayLike,
     e: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    w: npt.ArrayLike | float | None = None,
+    tl: npt.ArrayLike | float | None = None,
+    labels: tuple = (),
+) -> tuple:
+    """``(x, Z, e, c, n)`` of a competing-risks regression, checked, with
+    the rows that have a missing covariate dropped; and the weights ``w``
+    of the rows kept as a sixth entry where ``w`` is given (checked by
+    ``check_weights``, one per row or one for every row), and the entry
+    times ``tl`` of the rows kept as the next entry where ``tl`` is given
+    (checked as ``CoxPH``'s are: one-dimensional, each before its row's
+    time). ``labels``, per-row arrays (a Fine-Gray fit's stratum and
+    cluster codes), travel with the rows and come last, those of the rows
+    kept."""
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)
@@ -175,11 +189,31 @@ def validate_fine_gray_inputs(
         semi_parametric_inputs,
     )
 
+    rows: tuple = (np.array(e),)
+    if w is not None:
+        from surpyval.utils.weights import check_weights
+
+        # The weights travel with the rows, so a row dropped for a
+        # missing covariate takes its weight with it.
+        rows += (check_weights(w, rows[0].shape[0]),)
+    rows += tuple(np.asarray(a) for a in labels)
     # Rows with a NaN / infinite covariate are dropped with a warning, as
     # every regression fitter does (they used to be dropped silently here);
     # left- and interval-censored rows are refused below, after the drop.
-    x_a, c_a, n_a, _, Z_arr, e_arr = semi_parametric_inputs(
-        x, Z, c, n, censoring=None, rows=(np.array(e),)
+    x_a, c_a, n_a, tl_a, Z_arr, e_arr, *carried = semi_parametric_inputs(
+        x,
+        Z,
+        c,
+        n,
+        tl,
+        censoring=None,
+        truncation=(
+            "The cause-specific Cox model takes left truncation (delayed "
+            "entry) only, as a one-dimensional `tl` of entry times, one "
+            "per row: the Cox partial likelihood has no term for right or "
+            "interval truncation. Pass the entry times alone, tl=entry."
+        ),
+        rows=rows,
     )
 
     check_e_and_x(e_arr, x_a)
@@ -187,4 +221,11 @@ def validate_fine_gray_inputs(
     e_arr = check_c_and_e(c_a, e_arr)
     check_left_or_int_cens(c_a)
 
-    return x_a, Z_arr, e_arr, c_a, n_a
+    w_kept = carried[: 0 if w is None else 1]
+    label_kept = carried[len(w_kept) :]
+    out: tuple = (x_a, Z_arr, e_arr, c_a, n_a)
+    if w is not None:
+        out += (np.asarray(w_kept[0], float),)
+    if tl is not None:
+        out += (tl_a,)
+    return out + tuple(np.asarray(a) for a in label_kept)

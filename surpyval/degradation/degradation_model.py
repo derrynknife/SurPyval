@@ -59,12 +59,12 @@ from .rul import InducedFailureDistribution, RULPrediction
 from .stress import LinkedPathModel, stress_design
 
 
-def _optional_list(arr: "npt.NDArray | None") -> "list | None":
+def _optional_list(arr: npt.NDArray | None) -> list | None:
     """``to_dict`` helper: an optional array as a nested list."""
     return None if arr is None else np.asarray(arr, dtype=float).tolist()
 
 
-def _optional_array(value: "list | None") -> "npt.NDArray | None":
+def _optional_array(value: list | None) -> npt.NDArray | None:
     """``from_dict`` helper: the inverse of :func:`_optional_list`."""
     return None if value is None else np.array(value, dtype=float)
 
@@ -146,7 +146,7 @@ def _failure_side(
     return 1.0 if threshold >= float(np.median(y)) else -1.0
 
 
-def _quantiles(samples: npt.NDArray, q: "list[float]") -> npt.NDArray:
+def _quantiles(samples: npt.NDArray, q: list[float]) -> npt.NDArray:
     """
     ``np.quantile`` of samples that may hold ``inf`` (paths that never
     reach the threshold): a quantile reaching into the ``inf`` mass is
@@ -324,18 +324,18 @@ class DegradationModel(SerialisableMixin):
     path_param_cov: npt.NDArray
     path_param_sample_cov: npt.NDArray
     population_method: str
-    path_selection: "dict[str, float] | None"
+    path_selection: dict[str, float] | None
     #: Per-unit covariates when fitted as an accelerated-degradation model
     #: (``Z`` given to :meth:`DegradationAnalysis.fit`); ``None`` otherwise.
-    Z: "npt.NDArray | None"
-    links: "dict[str, str] | None"
-    path_param_fixed: "npt.NDArray | None"
-    path_param_fixed_names: "list[str] | None"
-    path_param_link_cov: "npt.NDArray | None"
-    acceleration: "str | None"
-    gamma: "npt.NDArray | None"
-    stress_ref: "npt.NDArray | None"
-    Z_cols: "list[str] | None"
+    Z: npt.NDArray | None
+    links: dict[str, str] | None
+    path_param_fixed: npt.NDArray | None
+    path_param_fixed_names: list[str] | None
+    path_param_link_cov: npt.NDArray | None
+    acceleration: str | None
+    gamma: npt.NDArray | None
+    stress_ref: npt.NDArray | None
+    Z_cols: list[str] | None
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -357,16 +357,16 @@ class DegradationModel(SerialisableMixin):
         path_param_cov: npt.NDArray,
         path_param_sample_cov: npt.NDArray,
         population_method: str,
-        path_selection: "dict | None" = None,
-        Z: "npt.NDArray | None" = None,
-        links: "dict[str, str] | None" = None,
-        path_param_fixed: "npt.NDArray | None" = None,
-        path_param_fixed_names: "list[str] | None" = None,
-        path_param_link_cov: "npt.NDArray | None" = None,
-        acceleration: "str | None" = None,
-        gamma: "npt.ArrayLike | None" = None,
-        stress_ref: "npt.ArrayLike | None" = None,
-        Z_cols: "list[str] | None" = None,
+        path_selection: dict | None = None,
+        Z: npt.NDArray | None = None,
+        links: dict[str, str] | None = None,
+        path_param_fixed: npt.NDArray | None = None,
+        path_param_fixed_names: list[str] | None = None,
+        path_param_link_cov: npt.NDArray | None = None,
+        acceleration: str | None = None,
+        gamma: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
+        Z_cols: list[str] | None = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -498,7 +498,7 @@ class DegradationModel(SerialisableMixin):
         }
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "DegradationModel":
+    def from_dict(cls, model_dict: dict) -> DegradationModel:
         """
         Rebuild a degradation model from a :meth:`to_dict` dictionary.
 
@@ -696,7 +696,7 @@ class DegradationModel(SerialisableMixin):
 
     def _history_clock(
         self, x: npt.NDArray, Z: Any, Z_future: Any
-    ) -> "HistoryClock | None":
+    ) -> HistoryClock | None:
         """
         A new unit's clock for the trajectory methods: from its measured
         stress history ``Z`` and, after its last measurement, ``Z_future``.
@@ -1003,7 +1003,7 @@ class DegradationModel(SerialisableMixin):
         Z_future: Any = None,
         alpha_ci: float = 0.05,
         n_samples: int = 10_000,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> RULPrediction:
         """
         Bayesian remaining-useful-life prediction for a new unit.
@@ -1119,7 +1119,7 @@ class DegradationModel(SerialisableMixin):
         path_x = x_arr if clock is None else clock.tau
         self.path_model.check_data(path_x, y_arr)
 
-        linked: "LinkedPathModel | None" = None
+        linked: LinkedPathModel | None = None
         if clock is not None or (Z is None and self.links is None):
             posterior_mean, posterior_cov = self._path_posterior(
                 path_x,
@@ -1395,7 +1395,7 @@ class DegradationModel(SerialisableMixin):
         self,
         size: int,
         Z: Any = None,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> npt.NDArray:
         """
         Random pseudo failure times from the fitted life model.
@@ -1441,7 +1441,7 @@ class DegradationModel(SerialisableMixin):
         n_samples: int = 10_000,
         *,
         Z: Any = None,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> InducedFailureDistribution:
         """
         The population failure-time distribution induced by the path model
@@ -1503,8 +1503,8 @@ class DegradationModel(SerialisableMixin):
         """
         if self._is_clock:
             return self._clock_induced_life(n_samples, random_state, Z)
-        linked: "LinkedPathModel | None" = None
-        stress: "list[float] | None" = None
+        linked: LinkedPathModel | None = None
+        stress: list[float] | None = None
         if Z is not None or self.links is not None:
             linked, mean, cov = self._stress_prior(Z)
             stress = self._stress_row(Z).tolist()
@@ -1726,7 +1726,7 @@ class DegradationModel(SerialisableMixin):
         bound: str = "two-sided",
         method: str = "analytic",
         n_boot: int = 200,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the reliability of the fitted life model that
@@ -1912,7 +1912,7 @@ class DegradationModel(SerialisableMixin):
             return ""
         assert self.path_param_fixed_names is not None
         link_string = ", ".join(
-            "{}: {}".format(name, link) for name, link in self.links.items()
+            f"{name}: {link}" for name, link in self.links.items()
         )
         effects = "\n".join(
             f"{name:>14}: {value}"
@@ -1923,6 +1923,19 @@ class DegradationModel(SerialisableMixin):
         return (
             f"\nPath Stress Links   : {link_string}"
             "\nPath Fixed Effects  :\n" + effects
+        )
+
+    def _repr_head(self) -> str:
+        """The first lines of the ``repr``, the same for every kind of
+        life model: the path model, threshold and unit counts."""
+        return (
+            "Degradation Analysis SurPyval Model"
+            "\n==================================="
+            f"\nPath Model          : {self.path_model.name}"
+            f"\nThreshold           : {self.threshold}"
+            f"\nNumber of Units     : {len(self.units)}"
+            f"\nCensored Units      : {int((self.c == 1).sum())}"
+            f"{self._left_censored_repr()}"
         )
 
     def __repr__(self) -> str:
@@ -1936,14 +1949,8 @@ class DegradationModel(SerialisableMixin):
                 )
             )
             return (
-                "Degradation Analysis SurPyval Model"
-                "\n==================================="
-                f"\nPath Model          : {self.path_model.name}"
-                f"\nThreshold           : {self.threshold}"
-                f"\nNumber of Units     : {len(self.units)}"
-                f"\nCensored Units      : {int((self.c == 1).sum())}"
-                f"{self._left_censored_repr()}"
-                "\nAcceleration        : clock (step-stress)"
+                self._repr_head()
+                + "\nAcceleration        : clock (step-stress)"
                 "\nStress coefficients : "
                 + np.array2string(self.gamma, precision=6)
                 + "\nReference stress    : "
@@ -1961,14 +1968,8 @@ class DegradationModel(SerialisableMixin):
                 for name, p in zip(names, self.life_model.params)
             )
             return (
-                "Degradation Analysis SurPyval Model"
-                "\n==================================="
-                f"\nPath Model          : {self.path_model.name}"
-                f"\nThreshold           : {self.threshold}"
-                f"\nNumber of Units     : {len(self.units)}"
-                f"\nCensored Units      : {int((self.c == 1).sum())}"
-                f"{self._left_censored_repr()}"
-                f"\nLife Distribution   : {dist_name} ({reg_name} covariates)"
+                self._repr_head() + f"\nLife Distribution   : {dist_name}"
+                f" ({reg_name} covariates)"
                 "\nParameters          :\n"
                 + param_string
                 + self._stress_repr()
@@ -1983,13 +1984,7 @@ class DegradationModel(SerialisableMixin):
             ]
         )
         return (
-            "Degradation Analysis SurPyval Model"
-            "\n==================================="
-            f"\nPath Model          : {self.path_model.name}"
-            f"\nThreshold           : {self.threshold}"
-            f"\nNumber of Units     : {len(self.units)}"
-            f"\nCensored Units      : {int((self.c == 1).sum())}"
-            f"{self._left_censored_repr()}"
-            f"\nLife Distribution   : {self.life_model.dist.name}"
+            self._repr_head()
+            + f"\nLife Distribution   : {self.life_model.dist.name}"
             "\nParameters          :\n" + param_string
         )

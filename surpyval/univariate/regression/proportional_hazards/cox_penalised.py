@@ -18,11 +18,10 @@ from surpyval.utils.pickling import Rebuilt
 
 from .._fit_skeleton import covariate_center
 from .._penalised import (
+    PenalisedObjective,
     Penalty,
-    check_penalty,
-    covariate_scale,
-    refuse_weights,
-    solve_penalised,
+    penalised_fit,
+    scaled_weights,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .cox_likelihood import baseline_at_origin, combined_generators
@@ -95,10 +94,33 @@ def fit_cox_penalised(
     w: Any = None,
     tr: npt.ArrayLike | None = None,
     t: npt.ArrayLike | None = None,
+    units: tuple[npt.NDArray, npt.NDArray] | None = None,
 ) -> SemiParametricRegressionModel:
-    """:meth:`CoxPH_.fit_penalised`."""
-    refuse_weights(w)
+    """:meth:`CoxPH_.fit_penalised`. ``units``, ``(Z, n)`` with one row
+    per unit (subject), gives the penalty's ``N`` and the covariates'
+    standardisation where the rows are not the units (start-stop rows of
+    :meth:`CoxPH_.fit_tvc_penalised`; with weights ``w``, each unit's
+    ``n`` times its weight as given); ``None`` takes them over the
+    rows."""
     tl = _left_truncation(x, tl, tr, t)
+    if w is not None:
+        return _fit_weighted_penalised(
+            fitter,
+            x,
+            Z,
+            c,
+            n,
+            tl,
+            w,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
+            strata,
+            units,
+        )
     func_generator = fitter._resolve_func_generator(tie_method)
     if strata is not None:
         return _fit_stratified_penalised(
@@ -116,20 +138,23 @@ def fit_cox_penalised(
             tie_method,
             center,
             tol,
+            units,
         )
     x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
     from .cox_ph import _require_an_event
 
     _require_an_event(c, n)
-    p = Z.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     mean = covariate_center(Z, n)
-    scale = covariate_scale(Z, n, standardise)
     Zc = Z - mean
-    N = float(np.sum(n))
-    neg_ll_s, jac_s = func_generator(x, Zc / scale, c, n, tl)
+    Z_units, n_units = (Z, n) if units is None else units
     res, beta, penalty = _solve(
-        neg_ll_s, jac_s, N, pen, a, standardise, scale, tol
+        lambda scale: func_generator(x, Zc / scale, c, n, tl),
+        Z_units,
+        n_units,
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
     )
 
     likelihood_args = (x, Zc, c, n, tl)
@@ -165,38 +190,158 @@ def fit_cox_penalised(
 
 
 def _solve(
-    neg_ll_s: Callable,
-    jac_s: Callable,
-    N: float,
-    pen: npt.NDArray,
-    a: float,
-    standardise: bool,
-    scale: npt.NDArray,
+    generators: Callable[[npt.NDArray], tuple[Callable, Callable]],
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    penalizer: Any,
+    l1_ratio: Any,
+    standardise: Any,
     tol: float,
 ) -> tuple[Any, npt.NDArray, Penalty]:
-    """Minimise the penalised objective of the partial likelihood of the
-    standardised covariates, ``neg_ll_s`` (with ``jac_s``), over ``N``
-    units: the solver's result, the coefficients on the covariates' own
-    scale and the :class:`Penalty`."""
-    p = pen.size
-    cached = _Cached(jac_s)
-    l1, l2 = Penalty(pen, a, bool(standardise), scale).weights()
-    with np.errstate(all="ignore"):
-        res = solve_penalised(
+    """Minimise the penalised objective of the partial likelihood
+    ``generators(scale)`` (the negative log-likelihood and its ``jac``)
+    of the covariates ``Z`` (counts ``n``) divided by ``scale``, through
+    the shared :func:`penalised_fit`: the solver's result, the
+    coefficients on the covariates' own scale and the :class:`Penalty`."""
+
+    def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+        neg_ll_s, jac_s = generators(scale)
+        cached = _Cached(jac_s)
+        return PenalisedObjective(
             lambda b: float(neg_ll_s(b)) / N,
             lambda b: np.atleast_1d(cached(b)[0]) / N,
             lambda b: np.atleast_2d(cached(b)[1]) / N,
-            np.zeros(p),
-            np.arange(p),
-            l1,
-            l2,
-            tol=tol,
+            np.zeros(Z.shape[1]),
         )
-    beta = res.x / scale
-    if not res.verified:
+
+    p = Z.shape[1]
+    fit = penalised_fit(
+        build, Z, n, np.arange(p), penalizer, l1_ratio, standardise, tol
+    )
+    if not fit.result.verified:
         warn_unverified("The penalised Cox fit")
-    penalty = Penalty(pen, a, bool(standardise), scale, res.effective_df)
-    return res, beta, penalty
+    return fit.result, fit.coefficients, fit.penalty
+
+
+def _fit_weighted_penalised(
+    fitter: CoxPH_,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
+    w: Any,
+    penalizer: Any,
+    l1_ratio: float,
+    standardise: bool,
+    tie_method: str,
+    center: bool,
+    tol: float,
+    strata: npt.ArrayLike | None,
+    units: tuple[npt.NDArray, npt.NDArray] | None,
+) -> SemiParametricRegressionModel:
+    """The penalised Cox fit with weights ``w``: the weighted partial
+    likelihood of :meth:`CoxPH_.fit` with ``w`` (R's tie rules with
+    weights, :class:`WeightedCox`), over ``N_w`` the sum of ``n w``, with
+    the covariates centred and standardised weighted by ``n w``.
+
+    The search is on the weights scaled to sum to the units
+    (:func:`scaled_weights`): the partial likelihood and ``N_w`` are both
+    linear in the weights, so the objective is the same, and it is then
+    the same function for ``w`` and ``c * w``."""
+    from surpyval.utils.weights import (
+        effective_sample_size,
+        refuse_weighted,
+        warn_if_few_effective,
+    )
+
+    from ._weighted_cox import WeightedCox, weighted_rows
+    from .cox_likelihood import baselines_at_origin
+    from .cox_ph import _require_an_event
+
+    if strata is not None:
+        raise refuse_weighted(
+            "A stratified penalised Cox fit",
+            "its weighted form is not built yet (as for CoxPH.fit)",
+            "Fit each stratum with w, or put the stratum in Z.",
+        )
+    w_arr, Z_rows = weighted_rows(x, Z, w, tie_method)
+    # The weights travel as a last column of Z, so that the rows the
+    # validation drops or reorders take their weights with them (as
+    # CoxPH.fit with w).
+    x, c, n, tl, Z_aug = validate_coxph(
+        x, c, n, np.column_stack([Z_rows, w_arr]), tl, tie_method
+    )
+    Z, w_arr = np.asarray(Z_aug[:, :-1], dtype=float), Z_aug[:, -1]
+    _require_an_event(c, n)
+    n = np.asarray(n, dtype=float)
+    warn_if_few_effective(n, w_arr)
+    w_s = scaled_weights(n, w_arr)
+    omega = n * w_s
+    mean = (omega[:, None] * Z).sum(axis=0) / omega.sum()
+    Zc = Z - mean
+    if units is None:
+        Z_units, n_units = Z, omega
+    else:
+        # The units' n w as given, on the rows' scale of the weights
+        Z_units = units[0]
+        n_units = np.asarray(units[1], dtype=float) * (
+            n.sum() / np.sum(n * w_arr)
+        )
+
+    def generators(scale: npt.NDArray) -> tuple[Callable, Callable]:
+        lik = WeightedCox(x, c, n, w_s, tl, Zc / scale, tie_method)
+        cached = _Cached(lik.derivatives)
+
+        def neg_ll(b: npt.NDArray) -> float:
+            return -cached(np.asarray(b, dtype=float))[0]
+
+        def jac(b: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+            _, score, info = cached(np.asarray(b, dtype=float))
+            return -score, info
+
+        return neg_ll, jac
+
+    res, beta, penalty = _solve(
+        generators,
+        Z_units,
+        n_units,
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
+    )
+    # The value with the weights as given, as CoxPH.fit with w reports it
+    full = WeightedCox(x, c, n, w_arr, tl, Zc, tie_method)
+    model = _penalised_model(fitter, res, beta, penalty, tie_method)
+    model._neg_ll = float(full.neg_ll(beta))
+    model.neg_ll_of = full.neg_ll
+    model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
+    model._fit_data = {
+        "x": np.asarray(x, dtype=float),
+        "c": np.asarray(c, dtype=int),
+        "n": n,
+        "Z": Z,
+        "tl": np.asarray(tl, dtype=float),
+        "w": w_arr,
+    }
+    times, r, d, h0 = full.baseline(beta)
+    moved = False
+    if not center:
+        [(r, h0)], moved = baselines_at_origin(
+            beta, mean, Z, [(r, h0)], model.maximum
+        )
+    model.center = np.zeros_like(mean) if moved else mean
+    model._fit_center = mean
+    model.x = times
+    model.r = r
+    model.d = d
+    model.tl = np.asarray(tl, dtype=float)
+    model.h0 = h0
+    model.H0 = np.cumsum(h0)
+    model.weighted = True
+    model.effective_n = effective_sample_size(n, w_arr)
+    return model
 
 
 def _penalised_model(
@@ -240,6 +385,7 @@ def _fit_stratified_penalised(
     tie_method: str,
     center: bool,
     tol: float,
+    units: tuple[npt.NDArray, npt.NDArray] | None = None,
 ) -> SemiParametricRegressionModel:
     """The penalised stratified Cox fit: the partial likelihood summed
     over the strata, one set of coefficients, a baseline per stratum
@@ -250,18 +396,18 @@ def _fit_stratified_penalised(
     labels, validated = _stratified_rows(x, Z, c, n, tl, tie_method, strata)
     Z_all = np.vstack([v[5] for v in validated])
     n_all = np.concatenate([v[3] for v in validated])
-    p = Z_all.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     mean = covariate_center(Z_all, n_all)
-    scale = covariate_scale(Z_all, n_all, standardise)
-    N = float(np.sum(n_all))
-    scaled = [
-        (xs, (Zs - mean) / scale, cs, ns_, tls)
-        for _, xs, cs, ns_, tls, Zs in validated
-    ]
-    neg_ll_s, jac_s = combined_generators(func_generator, scaled)
+
+    def generators(scale: npt.NDArray) -> tuple[Callable, Callable]:
+        scaled = [
+            (xs, (Zs - mean) / scale, cs, ns_, tls)
+            for _, xs, cs, ns_, tls, Zs in validated
+        ]
+        return combined_generators(func_generator, scaled)
+
+    Z_units, n_units = (Z_all, n_all) if units is None else units
     res, beta, penalty = _solve(
-        neg_ll_s, jac_s, N, pen, a, standardise, scale, tol
+        generators, Z_units, n_units, penalizer, l1_ratio, standardise, tol
     )
 
     per_stratum = []

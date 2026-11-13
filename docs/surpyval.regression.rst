@@ -9,7 +9,7 @@ The univariate regression models are importable directly from
 ``surpyval``. For the theory see :doc:`regression analysis`; for a
 narrative introduction with worked examples, see
 :doc:`Regression Modelling with SurPyval`. Tree-based models are under
-:doc:`surpyval.beta`, and regression for recurrent events under
+:doc:`surpyval.ml`, and regression for recurrent events under
 :doc:`surpyval.counting`.
 
 Semi-Parametric Models
@@ -22,6 +22,7 @@ the data, and only the covariate effect is parameterised.
     :maxdepth: 1
 
     regression/cox_ph
+    regression/interval_cox
     regression/additive_hazards
     regression/aalen_additive
     regression/proportional_odds
@@ -42,6 +43,17 @@ AFT, AH and PO families can be evaluated along.
 
     regression/parametric
 
+Which Family a Model Is
+-----------------------
+
+A fitted parametric regression model names its family in ``model.kind``.
+Compare it with the constants in ``surpyval.univariate.regression.kinds``
+rather than with a string:
+
+.. automodule:: surpyval.univariate.regression.kinds
+    :members:
+    :no-index:
+
 Covariates on Every Parameter
 -----------------------------
 
@@ -53,6 +65,8 @@ and the shape, say) has its own linear predictor and link. See
     :maxdepth: 1
 
     regression/distributional
+    regression/mixture_cure
+    regression/zero_inflated
 
 Correlated Observations
 -----------------------
@@ -63,6 +77,19 @@ For data arriving in groups that share an unobserved effect.
     :maxdepth: 1
 
     regression/frailty
+
+Regression on a Probability or a Mean
+-------------------------------------
+
+Pseudo-observations: regression directly on the survival probability at
+chosen times, the restricted mean survival time, or a cause's cumulative
+incidence, with robust standard errors. See :doc:`Pseudo-Observations`
+for the guide.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/pseudo
 
 Plotting
 --------

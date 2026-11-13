@@ -13,12 +13,11 @@ arrays.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 
-from surpyval.utils.warnings import MaskedCauseWarning
+from surpyval.utils.warnings import MaskedCauseWarning, ignoring_warnings
 
 
 def _columns(data: Any) -> np.ndarray:
@@ -29,19 +28,20 @@ def _columns(data: Any) -> np.ndarray:
 
 def rebuilt(
     data: Any,
-    keep: "np.ndarray | None" = None,
+    keep: np.ndarray | None = None,
     *,
-    x: "np.ndarray | None" = None,
-    c: "np.ndarray | None" = None,
-    tl: "np.ndarray | None" = None,
-    tr: "np.ndarray | None" = None,
+    x: np.ndarray | None = None,
+    c: np.ndarray | None = None,
+    tl: np.ndarray | None = None,
+    tr: np.ndarray | None = None,
     Z: Any = "same",
     e: Any = "same",
     names: Any = "same",
     time_varying: Any = "same",
+    s: Any = "same",
 ) -> Any:
     """A dataset like ``data`` with the rows ``keep`` (all, where None)
-    and the arrays given replaced: the item ids and time-varying
+    and the arrays given replaced: the item ids, states and time-varying
     covariates follow the rows kept."""
     from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -59,6 +59,9 @@ def rebuilt(
         else time_varying
     )
     ids = data.ids
+    s = getattr(data, "s", None) if isinstance(s, str) else s
+    a = getattr(data, "a", None)
+    a_inferred = getattr(data, "a_inferred", None)
     attributes = getattr(data, "attributes", None)
     if keep is not None:
         keep = np.asarray(keep, dtype=bool)
@@ -69,6 +72,9 @@ def rebuilt(
         Z = None if Z is None else np.asarray(Z)[rows]
         e = None if e is None else e[rows]
         ids = None if ids is None else [ids[r] for r in rows]
+        s = None if s is None else s[rows]
+        a = None if a is None else a[rows]
+        a_inferred = None if a_inferred is None else a_inferred[rows]
         if attributes is not None:
             attributes = [attributes[r] for r in rows]
     if not (c == 2).any():
@@ -77,9 +83,8 @@ def rebuilt(
         # No typed failure is left: no event types, as from_items gives
         e = None
     truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
-    with warnings.catch_warnings():
+    with ignoring_warnings(MaskedCauseWarning):
         # Warned of when the data was built
-        warnings.simplefilter("ignore", MaskedCauseWarning)
         out = SurpyvalData(
             x,
             c,
@@ -93,14 +98,30 @@ def rebuilt(
             unit=data.unit,
         )
     out.ids = ids
+    # Set as they are: a reshape changes only flags it keeps in step with
+    # e (a row censored loses its e), or drops e (the moves are then the
+    # event, as in survival data)
+    out.s = s
+    if a is not None:
+        # A row a reshape censored has no terminal event
+        out.a = np.where(np.asarray(out.c) == 1, 0, a)
+        out.a_inferred = (
+            None
+            if a_inferred is None
+            else a_inferred & (np.asarray(out.c) != 1)
+        )
     out.attributes = attributes
-    markers = getattr(data, "markers", None)
+    m = getattr(data, "m", None)
+    markers = None if m is None or not m._plain else data.markers
+    if m is not None and markers is None:
+        # Named measurements: the readings of the units kept
+        out._m = m._for_units(ids or [])
     if markers is not None:
         # Keyed by id, else by row (numbered afresh); a reshape that
         # moves an item's window goes through the records, which trim
         # the readings to it
         if ids is not None:
-            out.markers = {i: markers[i] for i in ids}
+            out.markers = {i: markers.get(i, {}) for i in ids}
         else:
             old_rows = (
                 np.flatnonzero(keep) if keep is not None else np.arange(len(x))
@@ -135,6 +156,8 @@ def without(data: Any, parts: tuple) -> Any:
     if "truncation" in parts:
         changes["tl"] = np.full(len(data.c), -np.inf)
         changes["tr"] = np.full(len(data.c), np.inf)
+    if "states" in parts:
+        changes["s"] = None
     out = rebuilt(data, **changes)
     if "attributes" in parts:
         out.attributes = None
@@ -187,13 +210,20 @@ def with_covariates(data: Any, columns: list) -> Any:
 
 def relabel(data: Any, mapping: dict) -> Any:
     """``data`` with its failures' event types renamed by ``mapping``
-    (:func:`data_reshape.relabel`): a suspension keeps none."""
+    (:func:`data_reshape.relabel`): a suspension keeps none. With states
+    ``s``, an event type is a state, so ``s`` is renamed with it."""
     e = np.empty(len(data.e), dtype=object)
     e[:] = [
         (v if flag == 1 else mapping.get(v, v))
         for v, flag in zip(data.e, np.asarray(data.c))
     ]
-    return rebuilt(data, e=e)
+    s = getattr(data, "s", None)
+    if s is not None:
+        renamed = np.empty(len(s), dtype=object)
+        for k, v in enumerate(s):
+            renamed[k] = mapping.get(v, v)
+        s = renamed
+    return rebuilt(data, e=e, s="same" if s is None else s)
 
 
 def for_event_type(data: Any, types: set, masked: str) -> Any:

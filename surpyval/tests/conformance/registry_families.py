@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
-from surpyval.beta import ml
+from surpyval import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry_fixtures import (
     X_DISC,
@@ -31,12 +31,13 @@ from surpyval.tests.conformance.registry_fixtures import (
     ah_data,
     discrete_data,
     grouped_reg_data,
+    ic_reg_data,
     reg_data,
     stratified_reg_data,
     stress_data,
     uni_data,
 )
-from surpyval.univariate.regression import _kinds
+from surpyval.univariate.regression import kinds
 from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
 # ---------------------------------------------------------------------------
@@ -50,8 +51,15 @@ COUNTING = "counting"  # recurrent events: cif / iif / mcf (x)
 COUNTING_REGRESSION = "counting-regression"  # cif(x, Z)
 COUNTING_CAUSES = "counting-causes"  # mcf / cif (x, cause)
 BIVARIATE = "bivariate"  # copulas: f(X), X of shape (m, 2)
+STATES = "states"  # multi-state: per-state occupancy(x, state)
+STATES_REGRESSION = "states-regression"  # occupancy(x, Z, state)
 
-WITH_COVARIATES = (REGRESSION, CAUSES_REGRESSION, COUNTING_REGRESSION)
+WITH_COVARIATES = (
+    REGRESSION,
+    CAUSES_REGRESSION,
+    COUNTING_REGRESSION,
+    STATES_REGRESSION,
+)
 
 # ---------------------------------------------------------------------------
 # Properties. The name is what ``exclude`` / ``KNOWN_FAILURES`` refer to.
@@ -64,6 +72,7 @@ PROPERTIES: dict[str, str] = {
     ),
     "qf_ff": "qf(ff(x)) == x inside the support",
     "cif_sum": "the causes' cumulative incidences sum to 1 - sf",
+    "occupancy_sum": "the states' occupation probabilities sum to 1",
     "scalar": (
         "a scalar query gives a scalar that agrees with the same query as "
         "a 1-D array"
@@ -86,6 +95,11 @@ PROPERTIES: dict[str, str] = {
     ),
     "missing_covariate": "a NaN covariate gives NaN for its row only",
     "missing_fit": "a missing time raises; a missing covariate is dropped",
+    "random_sf": (
+        "random(size, Z) draws from the model: the empirical survival of "
+        "20,000 draws at one covariate row is within the 0.1% "
+        "Kolmogorov-Smirnov band of sf at that row"
+    ),
     "seed_global": "np.random.seed reproduces a draw",
     "seed_explicit": (
         "an explicit seed reproduces a draw, is default_rng(seed), and "
@@ -150,6 +164,11 @@ PROPERTIES: dict[str, str] = {
     ),
     "interp_refused": "an unknown interp value raises ValueError",
     "estimators": "each estimation option gives a valid model",
+    "covariance_robust": (
+        "robust= on covariance() gives a symmetric, positive semi-definite "
+        "covariance either way, which standard_errors() and summary() "
+        "follow"
+    ),
     "estimators_agree": (
         "the estimation options agree on a large sample from the model"
     ),
@@ -211,6 +230,19 @@ DECLARED_ATTRIBUTES = frozenset(
     }
 )
 
+# The model classes whose covariance() takes robust= (the robust or the
+# model-based covariance), swept by test_options; test_options checks
+# that every registered model class whose covariance() takes it is here.
+ROBUST_COVARIANCE = frozenset(
+    {
+        "surpyval.univariate.competing_risks.regression.fine_gray"
+        ".FineGrayModel",
+        # (robust by default: a unit's rows at different landmarks are
+        # dependent)
+        "surpyval.LandmarkCox",
+    }
+)
+
 # The model classes whose fit or inference differentiates its likelihood
 # (or, for a copula, its cdf; for a degradation path, the path), which the
 # "derivatives" property checks against finite differences; and the cases
@@ -234,6 +266,8 @@ DIFFERENTIATED = frozenset(
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
         "surpyval.univariate.competing_risks.ParametricCompetingRisks",
+        "surpyval.univariate.competing_risks"
+        ".ParametricCompetingRisksRegression",
         "surpyval.recurrent.parametric.parametric_recurrence"
         ".ParametricRecurrenceModel",
         "surpyval.recurrent.regression.proportional_intensity"
@@ -274,9 +308,12 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
     ),
-    "surpyval.beta.ml.SurvivalTree": "a tree of greedy splits",
-    "surpyval.beta.ml.RandomSurvivalForest": "an ensemble of trees",
+    "surpyval.ml.SurvivalTree": "a tree of greedy splits",
+    "surpyval.ml.RandomSurvivalForest": "an ensemble of trees",
     "surpyval.univariate.competing_risks.CompetingRisks": (
+        "a non-parametric (Aalen-Johansen) estimate"
+    ),
+    "surpyval.multistate.MultiState": (
         "a non-parametric (Aalen-Johansen) estimate"
     ),
     "surpyval.recurrent.NonParametricCounting": (
@@ -284,6 +321,16 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     ),
     "surpyval.recurrent.CauseSpecificMCF": (
         "the non-parametric mean cumulative function of each cause"
+    ),
+    "surpyval.recurrent.PanelCountMCF": (
+        "a maximum of a working likelihood (Poisson, or the "
+        "pseudo-likelihood) over step functions, with no AIC; its "
+        "convergence is a Karush-Kuhn-Tucker check"
+    ),
+    "surpyval.recurrent.PanelCountRegression": (
+        "a maximum of a working likelihood (Poisson, or the "
+        "pseudo-likelihood) with a step-function baseline, with no AIC; "
+        "its convergence is a check of the gradient"
     ),
     "surpyval.degradation.DegradationModel": (
         "two stages: each unit's path by least squares (or a mixed model), "
@@ -331,21 +378,28 @@ _EVERY = frozenset(
         COUNTING_REGRESSION,
         COUNTING_CAUSES,
         BIVARIATE,
+        STATES,
+        STATES_REGRESSION,
     }
 )
 _SURVIVAL = frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION})
 _APPLICABLE: dict[str, frozenset[str]] = {
     "sf_ff": _SURVIVAL,
     "Hf_sf": _SURVIVAL,
-    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION}),
-    "qf_ff": frozenset({UNIVARIATE}),
+    # CAUSES: the all-cause functions (only ParametricCompetingRisks has
+    # df and qf; the property also needs them). CAUSES_REGRESSION: those
+    # of ParametricCompetingRisksRegression.
+    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION}),
+    "qf_ff": frozenset({UNIVARIATE, CAUSES}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
+    "occupancy_sum": frozenset({STATES, STATES_REGRESSION}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
     "outside_data": _EVERY - {BIVARIATE},
     "aliasing": frozenset(WITH_COVARIATES),
     "aliasing_constant": frozenset(WITH_COVARIATES),
     "covariate_scale": frozenset(WITH_COVARIATES),
+    "random_sf": frozenset({REGRESSION}),
 }
 for _prop in PROPERTIES:
     _APPLICABLE.setdefault(_prop, _EVERY)
@@ -459,6 +513,10 @@ class Case:
             return False
         if prop == "aliasing_constant" and not self.intercept:
             return False
+        if prop == "covariance_robust" and (
+            self.model_class not in ROBUST_COVARIANCE
+        ):
+            return False
         if prop == "attributes" and (
             self.model_class not in DECLARED_ATTRIBUTES
         ):
@@ -569,7 +627,12 @@ def _fitted(name):
 
 def tvc_path(case):
     """The case's fit by ``fit_tvc`` where its fitter has one: one
-    ``(0, x]`` interval per subject, the time-fixed data; else ``None``."""
+    ``(0, x]`` interval per subject, the time-fixed data (or the case's
+    own ``fit_tvc`` path); else ``None``."""
+    if case.interface == COUNTING_REGRESSION:
+        # A repairable item's rows are not one interval per subject: the
+        # case's own fit_tvc path (the proportional-intensity models)
+        return case.paths.get("fit_tvc")
     fitter = getattr(sp, case.name, None)
     if not hasattr(fitter, "fit_tvc"):
         return None
@@ -750,6 +813,14 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         "fit_from_df": from_df,
         "formula": functools.partial(from_df, formula=True),
     }
+    if "draw" not in kw:
+        # random(size, Z) at the first two query rows (#285).
+        kw["draw"] = functools.partial(
+            _regression_draw,
+            Z=np.asarray(Z)[:2],
+            call_kwargs=dict(kw.get("call_kwargs", {})),
+        )
+        kw.setdefault("explicit_seed", True)
     return Case(
         name=name,
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
@@ -768,6 +839,20 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         coefficients=kw.pop("coefficients", _phi),
         **kw,
     )
+
+
+def _regression_draw(model, seed, Z, call_kwargs):
+    """A regression's draw for the seed properties: 15 lifetimes at each
+    of two covariate rows."""
+    return model.random(15, Z, random_state=seed, **call_kwargs)[0]
+
+
+# The regressions with no ``random`` yet: their seed properties do not
+# apply, and ``random_sf`` is excluded with this reason.
+NO_RANDOM = (
+    "no random() yet; draw from a parametric regression of the same kind "
+    "(WeibullPH, ...) or the Cox model instead"
+)
 
 
 def _phi(model):
@@ -795,10 +880,10 @@ FAST_REGRESSIONS += ("WeibullAH", "LogNormalAFT")
 # constant in the linear predictor moves the baseline's parameters and
 # nothing else (ORIGIN_MAPS, as the fit decides it).
 _KINDS = {
-    "PH": _kinds.PROPORTIONAL_HAZARD,
-    "AFT": _kinds.ACCELERATED_FAILURE_TIME,
-    "PO": _kinds.PROPORTIONAL_ODDS,
-    "AH": _kinds.ADDITIVE_HAZARD,
+    "PH": kinds.PROPORTIONAL_HAZARD,
+    "AFT": kinds.ACCELERATED_FAILURE_TIME,
+    "PO": kinds.PROPORTIONAL_ODDS,
+    "AH": kinds.ADDITIVE_HAZARD,
 }
 
 
@@ -887,6 +972,22 @@ def _accelerated_life_family():
             },
         )
     )
+    # Its linear twin, mu = a + b'Z, on a location parameter: the
+    # ordinary regression data serve, as for GeneralLogLinear.
+    out.append(
+        regression(
+            "NormalAL[GeneralLinear]",
+            sp.AcceleratedLife(sp.Normal, sp.life_models.GeneralLinear),
+            fitters=("surpyval.life_models.GeneralLinear",),
+            slow=REFIT_PROPERTIES,
+            coefficients=None,
+            exclude={
+                "aliasing": "model.aliased are positions in phi_params, "
+                "after the constant a, not columns of Z; the aliasing is "
+                "tests/univariate/regression/test_general_linear.py's"
+            },
+        )
+    )
     return out
 
 
@@ -922,6 +1023,8 @@ def _frailty_family():
                 slow=frozenset() if base == "Weibull" else REFIT_PROPERTIES,
                 coefficients=_beta,
                 intercept=("Proportional Hazard", base) in ORIGIN_MAPS,
+                draw=None,
+                exclude={"random_sf": NO_RANDOM},
             )
         )
     # The log-normal frailty (#343), whose group integral is by quadrature.
@@ -997,11 +1100,7 @@ def _semi_parametric():
         rows=("x", "Z", "c", "n", "strata"),
         labels=("strata",),
         paths={},
-        exclude={
-            "df_hf_sf": step,
-            "serialise": "a stratified Cox model cannot be saved (documented"
-            " in Conventions, 'Saving and Loading Models')",
-        },
+        exclude={"df_hf_sf": step},
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,
@@ -1026,7 +1125,43 @@ def _semi_parametric():
             )
         },
         jump_functions=("hf", "df"),
-        exclude={"df_hf_sf": step},
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
+        coefficients=_beta,
+        intercept=True,
+    )
+    cox_me = regression(
+        "CoxMixedEffects",
+        sp.CoxMixedEffects,
+        data=grouped_reg_data,
+        model_class="surpyval.CoxMixedEffectsModel",
+        rows=("x", "Z", "c", "n", "groups"),
+        labels=("groups",),
+        paths={
+            "fit_from_df": lambda d: sp.CoxMixedEffects.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                group_col="g",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+            ),
+            "random": lambda d: sp.CoxMixedEffects.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                random_effects="(1 | g)",
+                formula="z0 + z1",
+                c_col="c",
+                n_col="n",
+            ),
+        },
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
         coefficients=_beta,
         intercept=True,
     )
@@ -1048,7 +1183,9 @@ def _semi_parametric():
         },
         exclude={
             "df_hf_sf": step,
+            "random_sf": NO_RANDOM,
         },
+        draw=None,
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,
@@ -1076,7 +1213,9 @@ def _semi_parametric():
             "df_hf_sf": "BuckleyJamesModel has no hf or df",
             "row_independence": "documented to take one covariate vector "
             "per call, so there are no rows to mix up",
+            "random_sf": NO_RANDOM,
         },
+        draw=None,
         coefficients=_beta,
         intercept=True,
     )
@@ -1085,7 +1224,8 @@ def _semi_parametric():
         sp.ProportionalOdds,
         model_class="surpyval.ProportionalOddsModel",
         jump_functions=("hf", "df"),
-        exclude={"df_hf_sf": step},
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,
@@ -1122,7 +1262,33 @@ def _semi_parametric():
         coefficients=lambda m: m.B[:, 1:],
         intercept=True,
     )
-    return [cox, strat, cox_frailty, ah, bj, po, aalen]
+
+    def ic_from_df(d):
+        x = np.asarray(d["x"], dtype=float)
+        df = pd.DataFrame(d["Z"], columns=["z0", "z1"])
+        df["xl"], df["xr"], df["c"], df["n"] = x[:, 0], x[:, 1], d["c"], d["n"]
+        return sp.IntervalCoxPH.fit_from_df(
+            df,
+            xl_col="xl",
+            xr_col="xr",
+            Z_cols=["z0", "z1"],
+            c_col="c",
+            n_col="n",
+        )
+
+    interval_cox = regression(
+        "IntervalCoxPH",
+        sp.IntervalCoxPH,
+        data=ic_reg_data,
+        model_class="surpyval.IntervalCoxPHModel",
+        paths={"fit_from_df": ic_from_df},
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    return [cox, strat, cox_frailty, cox_me, ah, bj, po, aalen, interval_cox]
 
 
 _NO_COEFFICIENTS = (
@@ -1131,14 +1297,20 @@ _NO_COEFFICIENTS = (
 )
 
 
+_TREE_NO_RANDOM = (
+    "a tree or forest has no random(); its seed properties check that a "
+    "seeded fit is reproduced"
+)
+
+
 def _trees():
     def tree(kind):
         return Case(
             name=f"SurvivalTree[{kind}]",
             fitters=(
-                ("surpyval.beta.ml.SurvivalTree",) if kind == "weibull" else ()
+                ("surpyval.ml.SurvivalTree",) if kind == "weibull" else ()
             ),
-            model_class="surpyval.beta.ml.SurvivalTree",
+            model_class="surpyval.ml.SurvivalTree",
             interface=REGRESSION,
             data=reg_data,
             # A tree draws the features it considers at each split
@@ -1159,6 +1331,7 @@ def _trees():
             explicit_seed=True,
             exclude={
                 "aliasing": _NO_COEFFICIENTS,
+                "random_sf": _TREE_NO_RANDOM,
                 **(
                     {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
                     if kind == "non-parametric"
@@ -1169,8 +1342,8 @@ def _trees():
 
     forest = Case(
         name="RandomSurvivalForest",
-        fitters=("surpyval.beta.ml.RandomSurvivalForest",),
-        model_class="surpyval.beta.ml.RandomSurvivalForest",
+        fitters=("surpyval.ml.RandomSurvivalForest",),
+        model_class="surpyval.ml.RandomSurvivalForest",
         interface=REGRESSION,
         data=reg_data,
         # With random_state=None the forest bootstraps from the global
@@ -1189,6 +1362,7 @@ def _trees():
         ).sf(X_REG, Z_REG),
         explicit_seed=True,
         exclude={
+            "random_sf": _TREE_NO_RANDOM,
             "row_order": "the bootstrap draws rows by position, so a "
             "permutation changes which rows each tree sees",
             "counts": "the bootstrap draws rows, so a count of 2 and two "

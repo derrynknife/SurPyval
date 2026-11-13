@@ -28,6 +28,7 @@ from surpyval.serialisation import (
 # The ``"class"`` tags of the data dictionaries, and their readers.
 DATA_CLASSES = {
     "SurpyvalData": "surpyval.utils.surpyval_data",
+    "Measurements": "surpyval.utils.measurements",
     "EventHistoryData": "surpyval.utils.event_history_data",
     "ItemLifetime": "surpyval.utils.item_lifetime",
     "ItemHistory": "surpyval.utils.item_history",
@@ -171,7 +172,7 @@ def record_from_dict(cls: Any, record_dict_: dict) -> Any:
     return cls(item, **kwargs)
 
 
-def dump(data_dict: dict, filepath: "str | os.PathLike | None") -> Any:
+def dump(data_dict: dict, filepath: str | os.PathLike | None) -> Any:
     """``data_dict`` as strict JSON text, or written to ``filepath``."""
     if filepath:
         Path(filepath).write_text(

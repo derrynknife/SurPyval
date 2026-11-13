@@ -12,9 +12,9 @@ SurPyval - Survival Analysis in Python
 long things last. The "thing" can be a bearing, a patient, a loan, a
 recession or a marathon runner, and the "time" can be hours, cycles,
 kilometres or dollars. What makes these problems different from ordinary
-statistics is that the data is almost never complete. Some units have not
-failed yet when the study ends (*censoring*), some were only inspected now
-and then, and some never reached your data set at all because of how it was
+statistics is that the data is almost never complete. Some units (items,
+subjects) have not had the event (have not failed, died or relapsed) when
+the study ends (*censoring*), some were only inspected now and then, and some never reached your data set at all because of how it was
 collected (*truncation*). SurPyval is built around handling every one of
 those situations correctly, in any combination, with one consistent
 interface.
@@ -43,16 +43,27 @@ models to censored data without writing code.
 Where to start
 --------------
 
+- New to survival analysis? Start with :doc:`Survival Analysis from Scratch`.
+  It assumes no background and explains censoring, the survival and hazard
+  functions, the Kaplan-Meier estimate by hand, a Weibull fit, comparing
+  groups and regression, with one engineering and one medical example.
 - New to SurPyval? Read the :doc:`Quickstart`. In ten minutes it fits a
   first model, shows why censoring matters, and gives a small example of
   every area of the package.
 - New to survival data, or not sure whether your data is censored or
   truncated? Read :doc:`Types of Data`. Getting this right matters more than
-  any choice of model.
+  any choice of model. :doc:`Data Model` then lists every letter a row of
+  data can carry (time, censoring, counts, entry, unit, event type, state,
+  terminal flag, measurements, covariates, weights) and which models take
+  which.
 - Have data in a spreadsheet, a list of failures and survivors, or a
   maintenance log? :doc:`Data Wrangler Examples` shows how to turn it into
   the ``x``, ``c``, ``n``, ``t`` arrays every fitter takes, and
   :doc:`Conventions` defines those arrays exactly.
+- Used to other words for these ideas (event or failure, subject or unit,
+  survival or reliability, right censored or suspended)? The
+  :doc:`Glossary` maps the engineering, medical and statistical
+  vocabularies to each other and to SurPyval's names.
 
 How the documentation is organised
 ----------------------------------
@@ -72,7 +83,8 @@ The pages are in five groups, in the menu on the left:
   also includes :doc:`applications`, complete examples from several fields.
   Each theory page links to its how-to page and the other way round.
 - **SurPyval**: the API reference (:doc:`surpyval`), with every class,
-  function and argument, and the :doc:`changelog`.
+  function and argument, the :doc:`changelog` and the
+  :doc:`Deprecation Policy`.
 - **Community Guidelines**: where to get help, how to report a problem and
   how to contribute.
 
@@ -120,17 +132,28 @@ so on.
      - :doc:`regression analysis` /
        :doc:`Regression Modelling with SurPyval`
    * - Competing risks
-     - Items that can fail from one of several causes: cumulative
+     - Units that can fail, or subjects that can have an event, from one
+       of several causes (failure modes, causes of death): cumulative
        incidence (Aalen-Johansen), parametric cause-specific models,
        cause-specific Cox regression, Fine-Gray subdistribution regression
        and Gray's test.
      - :doc:`Competing Risks Analysis` /
        :doc:`Competing Risks SurPyval Modelling`
+   * - Multi-state models
+     - Units that move between several states (healthy, ill, dead;
+       working, degraded, failed): Aalen-Johansen transition and state
+       occupation probabilities with delayed entry, and a Cox model of
+       each transition with the probabilities it predicts.
+     - :doc:`Multi-State Models`
    * - Recurrent events
-     - Repairable items that fail again and again: the mean cumulative
+     - Events that happen again and again to the same unit (a repairable
+       item that keeps failing, a patient with repeated admissions): the
+       mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
        (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
-       ARI), trend tests, proportional-intensity regression, and whether
+       ARI), trend tests, proportional-intensity regression (parametric,
+       and the Andersen-Gill, Prentice-Williams-Peterson and
+       Wei-Lin-Weissfeld models with robust standard errors), and whether
        a corrective action changed the failure rate.
      - :doc:`Recurrent Event Analysis` /
        :doc:`Recurrent Event Modelling with SurPyval`;
@@ -161,8 +184,8 @@ so on.
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
 for what a restored model keeps, and the few models that cannot be saved). A
-survival tree and a random survival forest are available as beta-stage
-models in ``surpyval.beta.ml`` (see :doc:`surpyval.beta`).
+survival tree and a random survival forest are in ``surpyval.ml`` (see
+:doc:`surpyval.ml`).
 
 Estimating a single distribution
 --------------------------------
@@ -246,6 +269,20 @@ silently ignoring part of it. The methods are explained in
 :doc:`Types of Data` has the same table split by type of censoring and
 truncation.
 
+Stability and deprecation
+-------------------------
+
+A public name is never removed without warning. When one is renamed or
+removed, the old name keeps working for at least one release with a
+warning that names its replacement and the release that removes it; after
+that, using it raises an error that still names the replacement. Names
+starting with an underscore and the ``surpyval.beta`` tier may change
+without notice, and every deprecation and removal is listed in the
+:doc:`changelog`. SurPyval is not yet at 1.0, so releases come often and a
+result can change in any release when it is corrected (always under
+**Changed** or **Fixed** in the changelog). The details are in the
+:doc:`Deprecation Policy`.
+
 A word of encouragement
 -----------------------
 
@@ -269,8 +306,11 @@ Contents:
    :caption: Quickstart & Intro
 
    Quickstart
+   Survival Analysis from Scratch
    Types of Data
+   Data Model
    Conventions
+   Glossary
    Design Principles
    Handy References - Aide-mémoire
    Data Wrangler Examples
@@ -288,6 +328,7 @@ Contents:
    Recurrent Event Regression Analysis
    Degradation Analysis
    Joint Models
+   Landmark Analysis
    Multivariate Analysis
 
 .. toctree::
@@ -299,9 +340,16 @@ Contents:
    Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
    Distributional Regression
+   Mixture-Cure Regression
+   Equivalent Time Scales
+   Zero-Inflated Regression
+   Interval-Censored Cox Regression
+   Pseudo-Observations
+   Adjusted Survival Curves
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
+   Multi-State Models
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Intervention Analysis with SurPyval
@@ -316,6 +364,7 @@ Contents:
 
    surpyval
    changelog
+   Deprecation Policy
 
 .. toctree::
    :maxdepth: 2

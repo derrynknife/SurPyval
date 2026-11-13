@@ -20,7 +20,11 @@ from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
 from ._discrete_tails import refine_quantile
-from ._single_probability import event_counts, probability_bounds
+from ._single_probability import (
+    attach_probability_covariance,
+    event_counts,
+    probability_bounds,
+)
 
 _NO_SINGLE_N = (
     "This Binomial model was fitted to rows with different numbers of "
@@ -94,6 +98,15 @@ class Binomial_(DiscreteParametricFitter):
     >>> Bernoulli.sf([0, 1], 0.3)
     array([0.3, 0. ])
     """
+
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        n : integer
+            The number of trials
+        p : float
+            The per-trial probability of an event
+        """
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -512,8 +525,10 @@ class Binomial_(DiscreteParametricFitter):
             ``sum(n_trials)``, exactly (Clopper-Pearson) by default, as
             ``Bernoulli`` does: the events in all the trials are binomial
             in their total whatever the rows' sizes, so the exact interval
-            holds for unequal trials too. ``param_cb("n")`` is the known
-            number of trials.
+            holds for unequal trials too; ``method="jeffreys"`` gives the
+            Jeffreys interval. ``param_cb("n")`` is the known number of
+            trials. ``covariance()`` holds the variance of ``p`` from the
+            same totals, and zeros for the known ``n``.
 
         Notes
         -----
@@ -532,6 +547,17 @@ class Binomial_(DiscreteParametricFitter):
         array([5. , 0.5])
         >>> model.param_cb("p").round(4)
         array([0.272, 0.728])
+        >>> model.param_cb("p", method="jeffreys").round(4)
+        array([0.2934, 0.7066])
+
+        ``covariance()`` is that of ``[n, p]``: the known ``n`` has a zero
+        row and column, and ``p`` the variance
+        :math:`\hat p (1 - \hat p) / N` over all ``N`` trials (``nan``
+        with no events, or only events).
+
+        >>> model.covariance()
+        array([[0.    , 0.    ],
+               [0.    , 0.0125]])
 
         Batches of different sizes:
 
@@ -697,6 +723,9 @@ class Binomial_(DiscreteParametricFitter):
         if np.isnan(n):
             n = float(np.max(np.asarray(model._n_trials, dtype=float)))
         model.support = np.array([-1, n + 1])
+        # The covariance of [n, p] from the counts, fitted or restored:
+        # the known n has a zero row and column.
+        attach_probability_covariance(model, 1)
 
     @takes_unit
     def from_params(

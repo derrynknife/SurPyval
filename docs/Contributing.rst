@@ -42,14 +42,28 @@ The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
 skipped by default). The second executes the ``>>>`` examples in the
 docstrings and checks their printed output, so a docstring example is a
-tested promise like any other. ``--run-invariants`` opts in to a slower
+tested promise like any other.
+
+A distribution's methods repeat their parameter entries, literally, in
+every docstring, so the source reads the same as ``help()``. The class
+states them once more in ``_param_docs``, and that is the copy to edit:
+``python scripts/sync_docstrings.py --write`` rewrites the methods' copies
+from it, and ``surpyval/tests/utils/test_shared_docstrings.py`` fails,
+naming the class, method and difference, when a copy has drifted.
+``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which the release pull request's full run also runs, on
-3.12. They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
+3.12. Each coverage check prints one line per cell (``-rP`` shows them for
+passing tests), and the run ends with a "pooled calibration coverage"
+section: for every study and level, the mean coverage over its cells, the
+gap from nominal in points and how many cells fall below. A shortfall of a
+point or two in every cell passes each cell's check at a few hundred
+replicates, and shows only there. It is a report; nothing fails on it.
+They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
@@ -353,6 +367,62 @@ the version reaches it while the old names are still accepted. A
 deprecation the maintainer gives longer is listed with its release in
 ``SCHEDULED_REMOVALS`` (``check_ph``, removed in v0.28) and warns through
 ``scheduled_removal``; its own test fails once that release is reached.
+The rules users rely on are in the :doc:`Deprecation Policy`; the steps
+are below.
+
+Deprecating and removing a name
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A public name (see the :doc:`Deprecation Policy` for what is public) is
+never removed or renamed in one step:
+
+1. **Deprecate it.** Keep the old name working with a warning that names
+   the new one, using the helpers in ``surpyval/utils/deprecation.py``:
+   ``renamed_arguments`` for an argument, ``RenamedAttribute`` for an
+   attribute, and ``renamed_name`` from a module's ``__getattr__`` for a
+   class or function. A name deprecated in the release being prepared is
+   removed in the release after it: pass ``removed_in=REMOVED_IN_NEXT``
+   (``REMOVED_IN`` holds the release that removes the names the last
+   release deprecated). A longer window, chosen by the maintainer, goes in
+   ``SCHEDULED_REMOVALS`` with ``scheduled_removal``. Add a line under
+   **Deprecated** in ``docs/changelog.rst`` naming the replacement and
+   the release that removes the old name.
+2. **Remove it** in that release. ``test_removed_arguments.py`` fails once
+   the version reaches ``REMOVED_IN`` (or a ``SCHEDULED_REMOVALS``
+   release) while a shim is left. Delete the shim, its tests and its
+   documentation, and add a line under **Removed**.
+3. **Leave a hint.** Register the old name in
+   ``surpyval/utils/removed_names.py`` so that using it raises the error
+   Python would, naming the release and the replacement: a
+   ``RemovedName`` class attribute for a model attribute,
+   ``REMOVED_TOP_LEVEL`` for a name in ``surpyval``, ``removed_arguments``
+   for an argument, or a subpackage ``__getattr__`` that raises with
+   ``removed_message``. An entry is dropped once the old name has been
+   gone for a release or two (with ``--update --force`` for the public
+   surface list, below, if the name is listed there).
+
+``surpyval/tests/test_public_surface.py`` holds this in place for the
+public namespaces. ``surpyval/tests/public_surface.txt`` lists every
+public name, and the test fails when a listed name has gone without a
+deprecation warning or a removal hint, and when a public name is not in
+the list. After adding a public name (with a line under **Added**), or to
+drop a name whose removal hint has been retired, regenerate the list and
+commit it with the change:
+
+.. code-block:: bash
+
+    python -m surpyval.tests.test_public_surface --update
+
+It prints each name it adds and drops, and refuses to drop a name with no
+deprecation or hint unless given ``--force``. A helper that should not be
+public gets a leading underscore instead (or, in a namespace with an
+``__all__``, is left out of it).
+
+A change of behaviour that cannot carry a warning (a corrected result, a
+new default, a convention made consistent) is listed under **Changed** or
+**Fixed** with how much the numbers move; where it changes what a saved
+model means, the model is converted as it loads (as 0.27 does for the
+distributional regression's coefficient signs).
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs
 once, on the **pull request from dev into main** (the release), and on
@@ -373,9 +443,9 @@ in that release run (or locally when the maintainer asks for it).
      - none
    * - Pull request into ``main`` (the release)
      - lint, the conformance suite, the test suite across three
-       interpreters (each split into four parts that run at once, with
+       interpreters (each split into six parts that run at once, with
        the docstring examples; 3.12 measures coverage), the calibration
-       studies and scenario cards (on 3.12, in seven groups that run at
+       studies and scenario cards (on 3.12, in groups that run at
        once, chosen by the studies' measured times), the wheel check and
        the documentation build
    * - Merge into ``main``
@@ -398,6 +468,24 @@ release pull request. That run tests the pull request's merge result, so a
 failure is found before ``main`` changes: fix it on ``dev`` (the
 pull request picks the fix up) and merge the release when the run is green.
 Waiting on the full suite at every step made a release take hours.
+
+Every job in both workflows has a time limit (``timeout-minutes``, about
+twice its usual time), and the test suite, the conformance suite and the
+calibration studies have a per-test limit too (pytest-timeout), so a test
+that hangs fails with its name and stack instead of holding the release.
+The suite's six parts per interpreter are balanced by recorded test times
+when ``.github/test_durations.json`` exists, and split by a hash of the
+test id otherwise. Each release run records the times: download its
+``test-durations`` artifact (from the ``coverage`` job) and commit it as
+``.github/test_durations.json`` to refresh the balance. A test added since
+counts as the median time, so the file only needs refreshing when the
+parts drift apart. Locally:
+
+.. code-block:: bash
+
+    python -m pytest -n auto --shard=2/4 \
+        --shard-durations=.github/test_durations.json \
+        --store-durations=times.json
 
 Every change is tested locally by the tests for what it changed, before it is
 pushed:

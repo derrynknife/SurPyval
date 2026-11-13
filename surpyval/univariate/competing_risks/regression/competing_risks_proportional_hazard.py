@@ -23,6 +23,9 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks._assembly import (
+    aalen_johansen_steps,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -35,28 +38,23 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
-    covariate_columns,
     dataframe_covariates,
     warn_collected,
 )
 from surpyval.univariate.regression._partial_effects import (
     CompetingRisksPartialEffectsMixin,
 )
+from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_repr,
     coefficient_table,
 )
 from surpyval.univariate.regression.regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
-    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
-)
-from surpyval.utils import (
-    finite_covariate_mask,
-    is_missing_event,
-    validate_fine_gray_inputs,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
@@ -65,7 +63,7 @@ from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
 )
-from surpyval.utils.removed_names import RemovedName, column_arguments
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
@@ -74,18 +72,34 @@ from surpyval.utils.validation import (
     check_option,
     missing_cause_error,
     no_covariance_error,
+    refuse_subdistribution_entry,
     unknown_cause_error,
+)
+from surpyval.utils.weights import (
+    effective_sample_size,
+    few_effective_said_later,
 )
 
 from .fine_gray import (
+    ENTRY_INSTEAD,
     FineGrayModel,
     _fit_cause,
+    _validated,
     _warn_if_monotone,
     paired_covariate_rows,
 )
 
 if TYPE_CHECKING:
     import pandas as pd
+
+
+def _entry_or_none(tl: Any) -> Any:
+    """``tl`` as given, or ``None`` where no row has a finite entry time:
+    a ``SurpyvalData`` without truncation passes ``tl`` of ``-inf``, and
+    the fit is then the one without ``tl``, to the last bit."""
+    if tl is None or np.isfinite(np.asarray(tl, dtype=float)).any():
+        return tl
+    return None
 
 
 def _check_interp(interp: str) -> None:
@@ -96,6 +110,7 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
+    PenalisedModelMixin,
     CompetingRisksPartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
@@ -181,6 +196,12 @@ class CompetingRisksProportionalHazards(
     feature_names: list | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Whether the model was fitted with weights ``w``: each cause's
+    #: covariance is then the robust one, and the information criteria
+    #: refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights (``None`` unweighted).
+    effective_n: float | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -249,6 +270,13 @@ class CompetingRisksProportionalHazards(
                 self._fg_models[event].to_dict()
                 for event in self.event_idx_map
             ]
+        out.update(self._penalty_entry())
+        if self.weighted:
+            # Schema 4: a reader without weights would offer the
+            # information criteria.
+            out["weighted"] = True
+            assert self.effective_n is not None
+            out["effective_n"] = float(self.effective_n)
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -278,9 +306,12 @@ class CompetingRisksProportionalHazards(
             }
         model.results = None
         if model.model == "Fine-Gray":
-            model._covariances = [
-                fg.covariance() for fg in model._fg_models.values()
-            ]
+            # (None where a cause's model was saved before v0.27, with
+            # only its model-based covariance: covariance() then refuses)
+            robust = [fg._covariance for fg in model._fg_models.values()]
+            model._covariances = (
+                None if any(cov is None for cov in robust) else robust
+            )
         elif "covariances" in model_dict:
             model._covariances = [
                 np.array(cov, dtype=float) for cov in model_dict["covariances"]
@@ -300,6 +331,10 @@ class CompetingRisksProportionalHazards(
         if "_neg_ll" in model_dict:
             model._neg_ll = float(model_dict["_neg_ll"])
         model._ic_n = cls._restored_ic_n(model_dict)
+        model._restore_penalty(model_dict)
+        if model_dict.get("weighted") is True:
+            model.weighted = True
+            model.effective_n = model_dict.get("effective_n")
         restore_covariate_meta(model, model_dict)
         return model
 
@@ -376,18 +411,31 @@ class CompetingRisksProportionalHazards(
     def covariance(self) -> npt.NDArray:
         """
         The covariance of ``params``: block-diagonal across the causes,
-        each block the inverse information of that cause's fit (its Cox
-        partial likelihood, or its Fine-Gray weighted partial likelihood),
-        as the causes' fits are separate. An aliased coefficient's row and
-        column are ``nan``.
+        each block that cause's fit's, as the causes' fits are separate.
+        For ``model="Cox"`` a block is the inverse information of the
+        cause's Cox partial likelihood; for ``model="Fine-Gray"`` it is
+        the cause's robust (sandwich) covariance, Fine and Gray's, as
+        ``FineGray``'s ``covariance()`` (the model-based one is
+        ``models[cause].covariance(robust=False)``). An aliased
+        coefficient's row and column are ``nan``. For a fit with weights
+        ``w`` each block is the cause's robust (sandwich) covariance (see
+        :meth:`fit`).
 
         Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
-        dict saved before the covariances were stored.
+        dict saved before the covariances were stored, for a
+        ``model="Fine-Gray"`` model restored from a dict saved before
+        v0.27 (which stored only the model-based covariances, and the
+        robust ones need the data), and for a penalised
+        fit (:meth:`fit_penalised`), which has none.
         """
+        self._refuse_if_penalised()
         if self._covariances is None:
             raise no_covariance_error(
                 "it was saved before the causes' covariances were stored; "
                 "refit it"
+                if self.model == "Cox"
+                else "the robust one: it was saved before v0.27, which "
+                "stored only each cause's model-based covariance; refit it"
             )
         return block_diag(*[np.atleast_2d(c) for c in self._covariances])
 
@@ -432,11 +480,14 @@ class CompetingRisksProportionalHazards(
         b: coef_0  0.1377    0.2811  0.6242
         """
         check_alpha_ci(alpha_ci)
+        # A penalised fit has estimates and no inference: nan columns.
+        se = (
+            np.full(self.params.size, np.nan)
+            if self.penalty is not None
+            else self.standard_errors()
+        )
         return coefficient_table(
-            self.parameter_names,
-            self.params,
-            self.standard_errors(),
-            alpha_ci,
+            self.parameter_names, self.params, se, alpha_ci
         )
 
     def __repr__(self) -> str:
@@ -458,18 +509,34 @@ class CompetingRisksProportionalHazards(
                     np.array2string(np.asarray(self.center), separator=", ")
                 )
             )
+        out += self._penalty_printout()
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         try:
             table = self.summary()
         except ValueError:
             return out
         ratio = "hazard" if self.model == "Cox" else "subdistribution hazard"
-        out += (
-            f"\nCoefficients        : exp(coef) is the {ratio} ratio; Wald "
-            "95% intervals\n"
+        out += f"\nCoefficients        : exp(coef) is the {ratio} ratio; " + (
+            "no intervals\n"
+            if self.penalty is not None
+            else "Wald 95% intervals\n"
         )
         return out + coefficient_repr(table) + "\n"
 
-    def _ic_k(self) -> int:
+    def _penalised_coefficients(self) -> tuple[list, npt.NDArray]:
+        # Every cause's coefficients (the penalty is per column, shared).
+        return list(self.parameter_names), np.asarray(self.params, float)
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters, the
+        # sum over the causes.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         # Every cause's estimated coefficients (an aliased one, nan, is
         # not).
         return int(np.isfinite(np.asarray(self.betas, dtype=float)).sum())
@@ -817,17 +884,9 @@ class CompetingRisksProportionalHazards(
             ],
             dtype=float,
         )
-        total = increments.sum(axis=0)
-        # exp(-H(t-)): the survival just before each step.
-        before = np.exp(-np.concatenate([[0.0], np.cumsum(total)[:-1]]))
-        positive = total > 0
-        share = np.where(
-            positive, increments / np.where(positive, total, 1.0), 0.0
-        )
-        return before * -np.expm1(-total) * share
+        return aalen_johansen_steps(increments)
 
     @classmethod
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         cls,
@@ -841,6 +900,8 @@ class CompetingRisksProportionalHazards(
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
+        w_col: str | None = None,
+        tl_col: str | None = None,
     ) -> CompetingRisksProportionalHazards:
         """
         Fit a competing-risks proportional-hazards model from a pandas
@@ -874,6 +935,12 @@ class CompetingRisksProportionalHazards(
         center : bool, optional
             Report the baselines at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
+        w_col : str, optional
+            Column of weights per row (``w`` of :meth:`fit`). A row dropped
+            for a missing covariate drops its weight with it.
+        tl_col : str, optional
+            Column of entry times (delayed entry, ``tl`` of :meth:`fit`);
+            ``model='Cox'`` only.
 
         Returns
         -------
@@ -916,34 +983,164 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            model=model,
+            tie_method=tie_method,
+            center=center,
+            w=design.column(w_col),
+            tl=design.column(tl_col),
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        # A censored row's cause is ``None``; accept a blank/NaN cell for it.
-        e = sub[e_col].to_numpy(dtype=object).copy()
-        e[[is_missing_event(v) for v in e]] = None
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
 
-        with covariate_columns(feature_names, Z, model_spec):
-            fitted = cls.fit(
+    @classmethod
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        cls,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        center: bool = False,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
+    ) -> CompetingRisksProportionalHazards:
+        """
+        Fit the cause-specific proportional-hazards model (``model="Cox"``
+        of :meth:`fit`) with a ridge, lasso or elastic-net penalty: each
+        cause's Cox model, the other causes censored, is fitted by
+        ``CoxPH.fit_penalised`` with the same ``penalizer`` and
+        ``l1_ratio``, as glmnet's ``family = "cox"`` fitted cause by cause.
+
+        Each cause's objective is its negative partial log-likelihood over
+        ``N`` (every row's count, as each cause's fit takes every row)
+        plus the penalty on the coefficients of the covariates divided by
+        their standard deviations (``standardise=True``). The model has
+        no covariance, standard errors, bounds or p-values (they raise an
+        error that says why; ``summary()`` shows them as ``nan``), and its
+        ``aic`` and ``bic`` count the causes' effective degrees of freedom.
+        The Fine-Gray model has no penalised fit.
+
+        Parameters
+        ----------
+        x, Z, e, c, n : array_like
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            One value, or one per column of ``Z``, for every cause.
+            Default 0.1.
+        l1_ratio, standardise, tol, w
+            As for ``CoxPH.fit_penalised`` (weights ``w`` are refused).
+        tie_method, center, tl
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        CompetingRisksProportionalHazards
+            The fitted model, with ``penalty`` (its ``effective_df`` the
+            sum over the causes); ``models`` holds each cause's penalised
+            ``CoxPH`` model.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.normal(size=(300, 4))
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 300)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = CompetingRisksProportionalHazards.fit_penalised(
+        ...     x, Z, e, penalizer=0.05, l1_ratio=1
+        ... )
+        >>> model.betas.round(3)
+        array([[0.646, 0.   , 0.   , 0.   ],
+               [0.   , 0.   , 0.   , 0.   ]])
+        """
+        from surpyval.univariate.regression._penalised import (
+            Penalty,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        x, Z, e, c, n, _, tl = _validated(
+            x, Z, e, c, n, None, _entry_or_none(tl)
+        )
+        causes = ordered_labels(e)
+        if not causes:
+            raise ValueError("No observed events: every row is censored.")
+        unique_x = np.unique(x)
+        betas = np.zeros((len(causes), Z.shape[1]))
+        baselines = np.zeros((len(causes), len(unique_x)))
+        at = np.zeros(Z.shape[1])
+        out = cls()
+        out.n_event_types = len(causes)
+        out.event_idx_map = {state: i for i, state in enumerate(causes)}
+        out.model = "Cox"
+        neg_ll = 0.0
+        results, states, cox_models, dfs = [], [], {}, []
+        penalty = None
+        for i, event in enumerate(causes):
+            c_e = np.where(label_mask(e, event), 0, 1)
+            cox_model = CoxPH.fit_penalised(
                 x,
                 Z,
-                e,
-                c=c,
+                c=c_e,
                 n=n,
-                model=model,
+                tl=tl,
+                penalizer=penalizer,
+                l1_ratio=l1_ratio,
+                standardise=standardise,
                 tie_method=tie_method,
                 center=center,
+                tol=tol,
             )
-        fitted.formula = formula
-        fitted.feature_names = feature_names
-        fitted._model_spec = model_spec
-        return fitted
+            cox_models[event] = cox_model
+            results.append(cox_model.res)
+            states.append(cox_model.maximum)
+            neg_ll += cox_model.neg_ll()
+            betas[i, :] = cox_model.beta
+            at = np.asarray(cox_model.center, dtype=float)
+            H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
+            baselines[i, :] = np.diff(H_grid, prepend=0.0)
+            cause_penalty = cox_model.penalty
+            assert cause_penalty is not None
+            penalty = cause_penalty
+            dfs.append(float(cause_penalty.effective_df))
+        assert penalty is not None
+        # Every cause penalises the same columns of the same rows, so they
+        # share the penalty and the scale; the effective df is summed.
+        out.penalty = Penalty(
+            penalty.penalizer,
+            penalty.l1_ratio,
+            penalty.standardise,
+            penalty.scale,
+            float(np.sum(dfs)),
+        )
+        out.models = cox_models
+        out._neg_ll = neg_ll
+        out._ic_n = ic_sample_size(c, n)
+        out.maximum = combined_maximum(states)
+        out.results = results
+        out._covariances = None
+        out._finish(betas, baselines, at)
+        out.x = unique_x
+        return out
 
     @classmethod
     @dataframe_covariates
@@ -959,6 +1156,8 @@ class CompetingRisksProportionalHazards(
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
+        w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
     ) -> CompetingRisksProportionalHazards:
         r"""
         Fit the competing-risks proportional-hazards model.
@@ -1004,6 +1203,31 @@ class CompetingRisksProportionalHazards(
             which centres either way; the default refuses covariates so far
             from 0 that the baseline there over- or underflows.
 
+        w : array like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``), or one for every row. For
+            ``model="Cox"`` each cause's Cox model is fitted with them
+            (:meth:`CoxPH.fit` with ``w``: R's ``coxph(Surv(x, e == k) ~
+            Z, weights = w, robust = TRUE)``, ties ``'efron'`` or
+            ``'breslow'``); for ``model="Fine-Gray"`` each cause's
+            ``FineGray`` fit (the weights multiply its censoring weights,
+            and its censoring distribution is the weighted Kaplan-Meier).
+            Each cause's covariance is then the robust (sandwich) one, and
+            ``aic``, ``bic``, ``aic_c`` and the diagnostics refuse the
+            model. See :doc:`/Weighted Data`.
+
+        tl : array like or float, optional
+            Entry times (delayed entry, left truncation): an item is at
+            risk at time ``t`` only once it has entered, ``tl < t <= x``,
+            as for :meth:`CoxPH.fit`. Each cause's Cox model is fitted
+            with them, as R's ``coxph(Surv(tl, x, e == k) ~ Z)``, so its
+            coefficients and its baseline (and so ``cif``, ``sf`` and the
+            other predictions) use the entry-adjusted risk sets. The
+            predictions are then conditional on being event-free at the
+            earliest entry. ``model='Fine-Gray'`` refuses entry times that
+            are after the first time: its subdistribution risk set needs
+            truncation weights, which are not built.
+
         Returns
         -------
 
@@ -1047,7 +1271,17 @@ class CompetingRisksProportionalHazards(
         array([0.59  , 0.7369])
         """
         check_option("model", model, ("Cox", "Fine-Gray"))
-        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        if model == "Fine-Gray":
+            refuse_subdistribution_entry(
+                x,
+                tl,
+                "The Fine-Gray model (model='Fine-Gray')",
+                ENTRY_INSTEAD,
+            )
+            tl = None
+        x, Z, e, c, n, w_kept, tl = _validated(
+            x, Z, e, c, n, w, _entry_or_none(tl)
+        )
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.
@@ -1086,9 +1320,16 @@ class CompetingRisksProportionalHazards(
             cox_models = {}
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                with collect_aliased() as aliased:
+                with collect_aliased() as aliased, few_effective_said_later():
                     cox_model = CoxPH.fit(
-                        x, Z, c_e, n, tie_method=tie_method, center=center
+                        x,
+                        Z,
+                        c_e,
+                        n,
+                        tl=tl,
+                        tie_method=tie_method,
+                        center=center,
+                        w=w_kept,
                     )
                 found += aliased
                 # Kept whole (#874): its residuals and proportional-hazards
@@ -1124,7 +1365,9 @@ class CompetingRisksProportionalHazards(
             covariances = []
             for i, event in enumerate(causes):
                 with collect_aliased() as aliased:
-                    fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                    fits.append(
+                        _fit_cause(x, Z, e, c, n, event, center, w_kept)
+                    )
                 found += aliased
                 fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
@@ -1153,4 +1396,7 @@ class CompetingRisksProportionalHazards(
         out._covariances = covariances
         out._finish(betas, baselines, at)
         out.x = unique_x
+        if w_kept is not None:
+            out.weighted = True
+            out.effective_n = effective_sample_size(n, w_kept)
         return out

@@ -72,11 +72,11 @@ class MultivariateSurpyvalData:
     def __init__(
         self,
         x: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
-        t: "npt.ArrayLike | None" = None,
-        xl: "npt.ArrayLike | None" = None,
-        xr: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
     ) -> None:
         x = self._as_2d(x)
         N, D = x.shape

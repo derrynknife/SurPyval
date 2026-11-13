@@ -33,6 +33,18 @@ returns.
    univariate/parametric_class
 
 
+Joint Likelihood Contours
+-------------------------
+
+The joint likelihood-ratio confidence region of a fit's two parameters,
+and a plot of one or more of them.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/likelihood_contour
+
+
 Distribution Classes
 --------------------
 
@@ -130,3 +142,15 @@ distribution of the same family.
    :maxdepth: 1
 
    univariate/mixture
+
+Equivalent Time Scales
+----------------------
+
+One life measured on two clocks (hours and starts, say), combined into
+one age ``x1 + k x2`` with ``k`` learned from the data. See
+:doc:`Equivalent Time Scales` for the guide.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/equivalence

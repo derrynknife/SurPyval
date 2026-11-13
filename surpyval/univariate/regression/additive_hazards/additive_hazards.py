@@ -59,7 +59,6 @@ from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -67,14 +66,9 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.validation import no_covariance_error
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._prediction import (
     STEP_QF_TOL,
@@ -83,10 +77,16 @@ from .._prediction import (
     quantiles_by_inversion,
 )
 from .._summary import coefficient_names, coefficient_table
+from ..life_at import (
+    AtCovariatesMixin,
+    checked_params,
+    draws_by_quantile,
+    rebuilt,
+)
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     NoLikelihoodMixin,
-    design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -155,6 +155,7 @@ def _aliased(
 
 
 class AdditiveHazardsModel(
+    AtCovariatesMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
     LinearPredictorMixin,
@@ -208,7 +209,7 @@ class AdditiveHazardsModel(
     beta: npt.NDArray
     params: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
-    _covariance: npt.NDArray
+    _covariance: npt.NDArray | None
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
     p_values: npt.NDArray
@@ -218,11 +219,11 @@ class AdditiveHazardsModel(
     #: ``beta'Zbar(t)`` on each interval ``(x[j-1], x[j]]`` of the grid (the
     #: last value is held beyond it). ``None`` on a model restored from a
     #: dict written before it was stored; ``Hf`` then reads ``H0`` as a step.
-    drift: "npt.NDArray | None" = None
+    drift: npt.NDArray | None = None
     _A: npt.NDArray
     _b: npt.NDArray
     #: The rows fitted ``(x, c, n, Z)``, for ``concordance``; not saved.
-    _fit_data: "tuple | None" = None
+    _fit_data: tuple | None = None
     #: Lin and Ying's estimator solves its estimating equations, a linear
     #: system, rather than maximising a likelihood: ``"not applicable"``
     #: (one of ``MAXIMUM_STATES``, ``surpyval.utils.no_maximum``).
@@ -240,7 +241,7 @@ class AdditiveHazardsModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return Z_arr.reshape(x.size, -1) @ self._coef()
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         return getattr(self, "_fit_data", None)
 
     _ALIASED_WHY = (
@@ -253,7 +254,7 @@ class AdditiveHazardsModel(
         "there is no likelihood to maximise"
     )
 
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def _prepare_Z(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         # One row per prediction, as the model's functions index it: a
         # 1-D Z of a one-covariate model is one value per row (#657), as
         # for the other models (it was read as one row of that width).
@@ -271,7 +272,7 @@ class AdditiveHazardsModel(
             + "\nParameters          :\n"
         )
         for name, p in zip(self.parameter_names, self.beta):
-            out += "   {}  :  {}\n".format(name, p)
+            out += f"   {name}  :  {p}\n"
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -301,7 +302,7 @@ class AdditiveHazardsModel(
             "h0": np.asarray(self.h0, dtype=float).tolist(),
             "H0": np.asarray(self.H0, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
-            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
+            "covariance": self._stored_covariance().tolist(),
             "se": np.asarray(self._se, dtype=float).tolist(),
         }
         if getattr(self, "p_values", None) is not None:
@@ -311,8 +312,16 @@ class AdditiveHazardsModel(
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
+    def _stored_covariance(self) -> npt.NDArray:
+        """The covariance :meth:`to_dict` stores: ``nan`` for a model
+        built with :meth:`with_params`, which has none."""
+        if self._covariance is None:
+            p = np.asarray(self.beta).shape[0]
+            return np.full((p, p), np.nan)
+        return np.asarray(self._covariance, dtype=float)
+
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "AdditiveHazardsModel":
+    def from_dict(cls, model_dict: dict) -> AdditiveHazardsModel:
         """
         Rebuild a Lin-Ying additive-hazards model from a :meth:`to_dict`
         dictionary.
@@ -349,7 +358,7 @@ class AdditiveHazardsModel(
         return idx
 
     def _h0_rate(
-        self, x: npt.NDArray, bandwidth: "float | None" = None
+        self, x: npt.NDArray, bandwidth: float | None = None
     ) -> npt.NDArray:
         # Kernel-smoothed (Ramlau-Hansen) baseline hazard *rate* from the
         # increments of the corrected baseline cumulative hazard H0 (the
@@ -390,7 +399,7 @@ class AdditiveHazardsModel(
         return H0
 
     def _cumulative_hazard(
-        self, x: npt.NDArray, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.NDArray, Z: npt.ArrayLike | pd.DataFrame
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """``(H*, H)`` at the times ``x``: the Lin-Ying estimate
         ``H(x | Z) = H0(x) + x beta'Z`` and its running maximum from time
@@ -434,8 +443,8 @@ class AdditiveHazardsModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
-        bandwidth: "float | None" = None,
+        Z: npt.ArrayLike | pd.DataFrame,
+        bandwidth: float | None = None,
     ) -> npt.NDArray:
         """
         Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline,
@@ -463,7 +472,7 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """
         Cumulative hazard at ``x`` for covariates ``Z`` (one row, or one
@@ -497,7 +506,7 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Survival ``exp(-Hf(x, Z))``, in ``[0, 1]`` and non-increasing
         (see :meth:`Hf`)."""
@@ -505,21 +514,21 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)``."""
         return -np.expm1(-self.Hf(x, Z))
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Density ``hf(x, Z) * sf(x, Z)``, with the smoothed hazard."""
         return self.hf(x, Z) * self.sf(x, Z)
 
     @keeps_query_shape
     def qf(
-        self, p: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, p: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """
         The quantile function: the first time at which the predicted
@@ -573,7 +582,7 @@ class AdditiveHazardsModel(
             out = np.where(near, self.x[idx], out)
         return out
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table (#662), in the layout of ``CoxPH``'s
         :meth:`summary`: each coefficient (an excess hazard per unit of
@@ -623,11 +632,166 @@ class AdditiveHazardsModel(
         """Standard errors of the coefficients (Lin-Ying sandwich), the
         square roots of the diagonal of :meth:`covariance`. They were the
         attribute ``se`` before v0.23."""
+        self._require_covariance()
         return self._se
 
     def covariance(self) -> npt.NDArray:
         """Covariance matrix of the coefficients (Lin-Ying sandwich)."""
+        return self._require_covariance()
+
+    def _require_covariance(self) -> npt.NDArray:
+        """The covariance, refused for a model built by with_params."""
+        if self._covariance is None:
+            raise no_covariance_error(
+                "it was built from coefficients with with_params; use the "
+                "fitted model's"
+            )
         return self._covariance
+
+    # -- with_params, random -----------------------------------------------
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`: the
+        coefficients, :attr:`parameter_names`."""
+        return list(self.parameter_names)
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted coefficients, in the order of
+        :attr:`covariance_names` (an aliased one is ``nan``)."""
+        return np.array(self.params, dtype=float)
+
+    #: ``(kept, G, Zbar)``: the columns with a coefficient, and, on the
+    #: grid ``x``, the integral of the risk-set covariate means from 0
+    #: and the means themselves, in those columns. The baseline at other
+    #: coefficients is ``H0 = Lambda - G @ beta`` (the drift ``Zbar @
+    #: beta``), linear in them; computed from the fitted rows once, and
+    #: kept by :meth:`with_params`.
+    _baseline_parts: tuple | None = None
+
+    def _beta_baseline(self) -> tuple:
+        parts = self._baseline_parts
+        if parts is not None:
+            return parts
+        if self._fit_data is None or self.drift is None:
+            raise ValueError(
+                "with_params re-estimates the baseline at the new "
+                "coefficients from the risk sets of the data fitted to, "
+                "which a model restored from a dict does not keep. Call it "
+                "on the fitted model, or refit."
+            )
+        x, _, n, Z = self._fit_data
+        # As the fit computes them (AdditiveHazards_.fit).
+        unique_x = np.unique(x)
+        m, p = unique_x.size, Z.shape[1]
+        bucket = np.searchsorted(unique_x, x)
+        S0_at = np.bincount(bucket, weights=n, minlength=m)
+        S1_at = np.zeros((m, p))
+        np.add.at(S1_at, bucket, n[:, None] * Z)
+        S0 = np.cumsum(S0_at[::-1])[::-1]
+        S1 = np.cumsum(S1_at[::-1], axis=0)[::-1]
+        Zbar = S1 / S0[:, None]
+        widths = np.diff(np.concatenate([[0.0], unique_x]))
+        kept = np.flatnonzero(~np.isnan(np.asarray(self.beta, dtype=float)))
+        G = np.cumsum(Zbar[:, kept] * widths[:, None], axis=0)
+        parts = (kept, G, Zbar[:, kept])
+        self._baseline_parts = parts
+        return parts
+
+    def with_params(self, params: npt.ArrayLike) -> AdditiveHazardsModel:
+        """
+        The same model with other coefficients, and the baseline Lin and
+        Ying's estimator gives at them.
+
+        The baseline cumulative hazard is the Breslow-type sum less the
+        covariate-mean drift, ``H0(t) = Lambda(t) - beta' G(t)``, linear
+        in the coefficients; the rebuilt model has that baseline at the
+        new ``beta``, so ``with_params(beta)`` is what the fit would
+        predict had it estimated ``beta``. The covariate names, formula
+        and its encoding of a DataFrame are kept.
+
+        Parameters
+        ----------
+        params : array like
+            The coefficients, in the order of :attr:`covariance_names`:
+            a draw from :meth:`covariance`, say. An aliased coefficient
+            stays ``nan`` (taken as 0).
+
+        Returns
+        -------
+        AdditiveHazardsModel
+            A model without the data or the covariance: ``covariance``,
+            ``standard_errors`` and ``concordance`` refuse; its
+            ``with_params`` works (it keeps what the baseline needs).
+
+        Raises
+        ------
+        ValueError
+            For a vector of the wrong length; or on a model restored from
+            a dict, which does not keep the risk sets the baseline is
+            re-estimated from.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = AdditiveHazards.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> same = model.with_params(model._estimates())
+        >>> bool(same.sf(52, [1, 2]) == model.sf(52, [1, 2]))
+        True
+        >>> model.with_params([0.0, 0.0]).sf(52, [1, 2]).round(4)
+        np.float64(0.737)
+        """
+        values = checked_params(params, self.covariance_names)
+        kept, G, Zbar = self._beta_baseline()
+        fitted = np.asarray(self.beta, dtype=float)
+        values[np.isnan(fitted)] = np.nan
+        out = rebuilt(
+            self, ("_covariance", "_se", "p_values", "_A", "_b", "_fit_data")
+        )
+        out.beta = values
+        out.params = values.copy()
+        out.H0 = self.H0 + G @ (fitted[kept] - values[kept])
+        out.drift = Zbar @ values[kept]
+        out._covariance = None
+        out._se = np.full(values.shape, np.nan)
+        out.p_values = np.full(values.shape, np.nan)
+        return out
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike | pd.DataFrame,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z``, by
+        inverting :meth:`qf`: a uniform ``U``, the survival the draw is to
+        have, gives ``qf(1 - U, Z)``, as every regression's ``random``
+        draws. The curve is held after the last observed time; a draw it
+        never reaches is ``inf`` (the unit outlives the data), as often as
+        ``sf`` at the last time says. ``random_state`` seeds the draw:
+        ``None`` (the default) draws from numpy's global generator; an int
+        or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row.
+
+        Examples
+        --------
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = AdditiveHazards.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> draws, rows = model.random(4, [[0, 10]], random_state=1)
+        >>> draws.round(2)
+        array([inf,  6., inf,  6.])
+        """
+        return draws_by_quantile(self, size, self._prepare_Z(Z), random_state)
 
 
 class AdditiveHazards_(FitterRepr):
@@ -808,11 +972,10 @@ class AdditiveHazards_(FitterRepr):
         model._fit_data = (x, c, n, Z)
         return model
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         x_col: str,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
@@ -824,20 +987,14 @@ class AdditiveHazards_(FitterRepr):
         covariate names for prediction (see :meth:`fit` for the model).
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-
-        # The aliasing warning (#476) names the columns.
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
 
 
 AdditiveHazards = AdditiveHazards_()

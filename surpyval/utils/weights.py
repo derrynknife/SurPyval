@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 #: Below this effective sample size a weighted fit warns that its robust
 #: variance may be poor.
@@ -111,10 +111,7 @@ def few_effective_said_later() -> Iterator[None]:
     """Silence :func:`warn_if_few_effective` inside a step whose fit
     warns of it itself afterwards (a regression's start from the
     baseline's weighted fit), so that it is said once (principle 22)."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message=FEW_EFFECTIVE, category=UserWarning
-        )
+    with ignoring_warnings(UserWarning, FEW_EFFECTIVE):
         yield
 
 
@@ -148,7 +145,9 @@ LR_WHY = (
 )
 BOOT_WHY = (
     "the parametric bootstrap simulates data from the model without the "
-    "sampling design the weights describe"
+    "sampling design the weights describe, and the case bootstrap (which "
+    "resamples the units with their weights) is built only for cb, "
+    "param_cb, quantile_cb and mrl_cb"
 )
 
 
@@ -169,9 +168,13 @@ def refuse_weighted_data(data: Any, what: str, why: str, instead: str) -> None:
 
 #: The fitters that take weights ``w``, for the refusals that name them.
 TAKES_WEIGHTS = (
-    "KaplanMeier, NelsonAalen, FlemingHarrington, the parametric "
+    "KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull, the parametric "
     "distributions (Weibull.fit and the others, by maximum likelihood), "
-    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH"
+    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH, "
+    "with their penalised fits (fit_penalised), distributional regression "
+    "(WeibullDistributional, ...), RoystonParmarPH and RoystonParmarPO, "
+    "AalenAdditive, CompetingRisks (the Aalen-Johansen cumulative "
+    "incidence), FineGray and CompetingRisksProportionalHazards"
 )
 
 
@@ -188,12 +191,12 @@ def refuse_unsupported_weights(
 
     Examples
     --------
-    >>> from surpyval import AalenAdditive
+    >>> from surpyval import BuckleyJames
     >>> try:
-    ...     AalenAdditive.fit([1, 2, 3], [[0], [1], [0]], w=[1, 2, 1])
+    ...     BuckleyJames.fit([1, 2, 3], [[0], [1], [0]], w=[1, 2, 1])
     ... except ValueError as error:
-    ...     print(str(error)[:51])
-    AalenAdditive.fit does not take weights (w) yet: we
+    ...     print(str(error)[:47])
+    BuckleyJames.fit does not take weights (w) yet:
     """
     if hasattr(owner, "fit"):
         cls = owner if isinstance(owner, type) else type(owner)

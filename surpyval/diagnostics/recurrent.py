@@ -72,12 +72,14 @@ The checks
 from __future__ import annotations
 
 import math
-import warnings
 from typing import Any
 
 import numpy as np
 from scipy.stats import chi2, norm
 
+from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
+
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The bootstrap resamples behind the Cramer-von Mises p-value when
@@ -109,10 +111,6 @@ _RENEWAL_FITTERS = {
 # ---------------------------------------------------------------------------
 # What the checks share
 # ---------------------------------------------------------------------------
-def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
-
-
 def _is_poisson(model: Any) -> bool:
     from surpyval.recurrent.parametric.parametric_recurrence import (
         ParametricRecurrenceModel,
@@ -171,7 +169,7 @@ def _process(model: Any) -> str:
             model.dist.name, fitter
         )
     name = model.dist.name
-    return "{} ({}.fit)".format(name, _INTENSITY_FITTERS.get(name, name))
+    return f"{name} ({_INTENSITY_FITTERS.get(name, name)}.fit)"
 
 
 def _windows(ctx: Context) -> list:
@@ -192,8 +190,7 @@ def _item_cif(ctx: Context) -> Any:
 def _quiet(compute: Any) -> Any:
     """``compute()`` with the warnings of its refits and searches kept
     out of the user's console: the report says what they found."""
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         return compute()
 
 
@@ -319,7 +316,7 @@ def _trend_results(ctx: Context) -> dict:
     return ctx.cached("trend", compute)
 
 
-def _rejects(ctx: Context, test: str) -> "bool | None":
+def _rejects(ctx: Context, test: str) -> bool | None:
     """Whether ``test`` rejects its null at ``ctx.alpha``; ``None`` when it
     could not be computed."""
     res = _trend_results(ctx)[test]
@@ -337,7 +334,7 @@ def _trend_rows(ctx: Context) -> list[dict]:
         _LR: "a renewal process",
     }
     for test, res in _trend_results(ctx).items():
-        row: dict = {"test": "{} trend test".format(test), "_test": test}
+        row: dict = {"test": f"{test} trend test", "_test": test}
         if isinstance(res, str):
             row.update(
                 {
@@ -376,7 +373,7 @@ def _trend_rows(ctx: Context) -> list[dict]:
         if not constant:
             row["verdict"] = "warn" if p >= ctx.alpha else "ok"
             if p >= ctx.alpha:
-                row["detail"] += "; consistent with {}".format(nulls[test])
+                row["detail"] += f"; consistent with {nulls[test]}"
         rows.append(row)
     return rows
 
@@ -442,8 +439,7 @@ def _cvm(ctx: Context) -> Any:
     that failed (and were resampled)."""
 
     def compute() -> tuple:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught:
             with np.errstate(all="ignore"):
                 try:
                     res = ctx.model.cramer_von_mises(
@@ -489,7 +485,7 @@ def _fit_rows(ctx: Context) -> list[dict]:
             "covariates": covariates,
             "statistic": res.statistic,
             "p": p,
-            "detail": "{} ({} resamples)".format(detail, res.n_boot),
+            "detail": f"{detail} ({res.n_boot} resamples)",
         }
     ]
 
@@ -700,14 +696,14 @@ def _repair_rows(ctx: Context) -> list[dict]:
                 "perfect repair is tested."
             )
             continue
-        name = "{} = {:g}".format(test.parameter, test.value)
+        name = f"{test.parameter} = {test.value:g}"
         row: dict = {
             "test": "likelihood-ratio test of {} ({})".format(
                 test.hypothesis, name
             ),
             "_which": which,
         }
-        estimate = "{} = {}".format(result.parameter, _fmt(result.estimate))
+        estimate = f"{result.parameter} = {_fmt(result.estimate)}"
         if not test.available:
             row.update(
                 {
@@ -777,7 +773,7 @@ def _repair_panels(ctx: Context) -> list[Panel]:
             color=INK["secondary"],
             ls="--",
             lw=0.8,
-            label="{:g}% limit".format(100 * (1 - options.alpha)),
+            label=f"{100 * (1 - options.alpha):g}% limit",
         )
         ax.axvline(
             estimate, color=PALETTE[0], ls=":", lw=1.0, label="estimate"
@@ -788,13 +784,13 @@ def _repair_panels(ctx: Context) -> list[Panel]:
                     value,
                     color=PALETTE[1 + k],
                     lw=1.2,
-                    label="{} repair".format(label),
+                    label=f"{label} repair",
                 )
         ax.set_xlabel(name)
         ax.set_ylabel("profile log-likelihood (relative)")
         ax.legend(loc="lower right", fontsize="small", frameon=False)
 
-    return [Panel("repair: profile of {}".format(name), draw)]
+    return [Panel(f"repair: profile of {name}", draw)]
 
 
 # ---------------------------------------------------------------------------
@@ -1000,7 +996,7 @@ _OTHER_INTENSITIES = (
 def _poisson_misfit(row: Any, ctx: Context) -> str:
     own = _INTENSITY_FITTERS.get(ctx.model.dist.name)
     others = ", ".join(
-        "{}.fit ({})".format(name, what)
+        f"{name}.fit ({what})"
         for name, what in _OTHER_INTENSITIES
         if name != own
         and not (own == "CrowAMSAA" and name == "Duane")
@@ -1286,7 +1282,7 @@ IMPERFECT_REPAIR = register(
                 AdviceRule(
                     "repair",
                     _ari_minimal,
-                    ("{}.fit".format(fitter),),
+                    (f"{fitter}.fit",),
                     when=_ari_baseline(fitter),
                     on=("warn",),
                 )

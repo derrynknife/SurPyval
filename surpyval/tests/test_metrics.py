@@ -145,10 +145,10 @@ def test_survival_probability_shape_and_values():
         np.testing.assert_allclose(s[:, k], expected)
 
 
-def test_metrics_work_with_beta_ml_forest():
-    # The metrics are model-agnostic: they must also accept the beta.ml forest,
-    # whose sf pairs rows with times as the regression models' does.
-    from surpyval.beta.ml import RandomSurvivalForest
+def test_metrics_work_with_ml_forest():
+    # The metrics are model-agnostic: they must also accept the surpyval.ml
+    # forest, whose sf pairs rows with times as the regression models' does.
+    from surpyval.ml import RandomSurvivalForest
 
     rng = np.random.default_rng(11)
     n = 150

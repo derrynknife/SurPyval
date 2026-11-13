@@ -216,3 +216,39 @@ def test_baseline_method_matches_the_unweighted_fit(data, ties):
     restored = type(weighted).from_dict(weighted.to_dict())
     assert restored.baseline_method == ties
     assert_array_equal(restored.h0, weighted.h0)
+
+
+# -- No finite maximum: the fit says so, and numpy does not -------------------
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+def test_no_finite_maximum_warns_once_without_numpy_warnings(ties):
+    # Every failure before every survivor and ordered by z: the partial
+    # likelihood grows without bound as beta runs off. exp(beta'Z)
+    # overflowed on the way (on these weights; whether it did depended on
+    # where Newton's steps landed), and some 70 numpy overflow and
+    # invalid-value warnings reached the caller beside the fit's own one.
+    x = np.arange(1.0, 21.0)
+    c = (x > 15).astype(int)
+    Z = -3.0 * x[:, None]
+    w = np.linspace(0.5, 2.0, 20)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = sp.CoxPH.fit(x, Z, c=c, w=w, tie_method=ties)
+        model.summary()
+        model.summary(robust=True)
+        model.sf(np.array([5.0, 10.0]), [[-15.0]])
+    numpy_warnings = [
+        str(w.message) for w in caught if w.category is RuntimeWarning
+    ]
+    assert numpy_warnings == []
+    told = [w for w in caught if str(w.message).startswith("No finite max")]
+    assert len(told) == 1
+    assert told[0].filename == __file__
+    assert model.maximum == "no finite maximum"
+    assert np.isfinite(model.params).all()
+    # And with numpy's warnings as errors the fit runs as before
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        warnings.simplefilter("error", RuntimeWarning)
+        sp.CoxPH.fit(x, Z, c=c, w=w, tie_method=ties)

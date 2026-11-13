@@ -15,6 +15,7 @@ from .accelerated_life import (
     DualPower,
     ExponentialLifeModel,
     Eyring,
+    GeneralLinear,
     GeneralLogLinear,
     InverseExponential,
     InverseEyring,
@@ -45,15 +46,21 @@ from .frailty import (
     CoxFrailty,
     CoxFrailtyFitter,
     CoxFrailtyModel,
+    CoxMixedEffects,
+    CoxMixedEffectsFitter,
+    CoxMixedEffectsModel,
     ExponentialFrailty,
     Frailty,
     FrailtyFitter,
     FrailtyModel,
     GammaFrailty,
     LogNormalFrailty,
+    RandomEffect,
     WeibullFrailty,
 )
+from .life_at import LifeAtCovariates
 from .parametric_regression_model import ParametricRegressionModel
+from .penalty_path import PenaltyPath, penalty_path
 from .plot_coefficients import CoefficientPlot, plot_coefficients
 from .proportional_hazards import (
     PH,
@@ -61,6 +68,8 @@ from .proportional_hazards import (
     ExponentialPH,
     GammaPH,
     GumbelPH,
+    IntervalCoxPH,
+    IntervalCoxPHModel,
     LogisticPH,
     LogNormalPH,
     NormalPH,
@@ -93,14 +102,23 @@ __all__ = [
     # The forest (coefficient) plot of any regression model
     "plot_coefficients",
     "CoefficientPlot",
+    # The coefficient path of a penalised fit, and the penalty by AIC/BIC
+    "penalty_path",
+    "PenaltyPath",
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
+    "IntervalCoxPHModel",
     "FrailtyModel",
+    # A regression's life at fixed covariates, model.at(Z)
+    "LifeAtCovariates",
     "CoxFrailty",
     "CoxFrailtyFitter",
     "CoxFrailtyModel",
+    "CoxMixedEffects",
+    "CoxMixedEffectsFitter",
+    "CoxMixedEffectsModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
     "FrailtyFitter",
@@ -108,6 +126,7 @@ __all__ = [
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty",
+    "RandomEffect",
     # Time-varying-covariate paths for sf_tvc evaluation: steps, continuous
     "StepSchedule",
     "CovariatePath",
@@ -136,6 +155,7 @@ __all__ = [
     "DualPower",
     "ExponentialLifeModel",
     "Eyring",
+    "GeneralLinear",
     "GeneralLogLinear",
     "InverseExponential",
     "InverseEyring",
@@ -181,4 +201,6 @@ __all__ = [
     "ProportionalOdds",
     "ProportionalOddsFitter",
     "WeibullPO",
+    # Cox for interval-censored data (NPMLE baseline)
+    "IntervalCoxPH",
 ]

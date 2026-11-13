@@ -272,7 +272,7 @@ class Continuous:
             step *= 2
             b = y0 + direction * step
         else:
-            raise RuntimeError("no bracket for {} {}".format(self.name, p))
+            raise RuntimeError(f"no bracket for {self.name} {p}")
         lo, hi = (a, b) if a < b else (b, a)
         for _ in range(400):
             mid = (lo + hi) / 2
@@ -496,9 +496,7 @@ def _betainc_pair(a, b, x, xc):
         # complement keeps nearly all the extra digits; never quietly
         # fewer than the working precision.
         if complement < mpf(10) ** -25:
-            raise RuntimeError(
-                "incomplete beta complement lost: {} {} {}".format(a, b, x)
-            )
+            raise RuntimeError(f"incomplete beta complement lost: {a} {b} {x}")
     return +lower, +upper
 
 

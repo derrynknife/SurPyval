@@ -140,9 +140,9 @@ def enc(value: Any, depth: int = 0) -> Any:
     if isinstance(value, (int, np.integer)):
         return int(value)
     if isinstance(value, (float, np.floating)):
-        return {"f": _fhex(value)}
+        return {"f": _fhex(float(value))}
     if isinstance(value, (complex, np.complexfloating)):
-        return {"c": [_fhex(value.real), _fhex(value.imag)]}
+        return {"c": [_fhex(float(value.real)), _fhex(float(value.imag))]}
     if isinstance(value, np.ndarray) or type(value).__name__ == "ArrayBox":
         arr = np.asarray(getattr(value, "_value", value))
         kind = arr.dtype.kind
@@ -908,8 +908,8 @@ def _foreign_modules() -> list[str]:
         name
         for name, module in list(sys.modules.items())
         if name.split(".")[0] == "surpyval"
-        and getattr(module, "__file__", None)
-        and not os.path.abspath(module.__file__).startswith(root)
+        and (module_file := getattr(module, "__file__", None))
+        and not os.path.abspath(module_file).startswith(root)
     )
 
 

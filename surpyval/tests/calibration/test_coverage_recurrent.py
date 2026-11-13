@@ -1,12 +1,14 @@
 """Coverage of the parametric recurrent-event bounds (``cif_cb``,
 ``iif_cb``, ``param_cb``, and Crow's demonstrated-MTBF bounds,
-``mtbf_cb(method="crow")``, #578).
+``mtbf_cb(method="crow")``, #578), and of the cause-specific model's
+bounds on the total over its causes (``total_cif_cb``, ``total_iif_cb``).
 
 Data: 10 systems observed to T = 50 from a power-law (Crow-AMSAA) process
 with alpha = 10 and beta = 1.5 (about 11 events a system), simulated
 from the definition (``_montecarlo.simulate_nhpp``) rather than through the
 package's own simulator, so a fault there cannot cancel one in the fit.
-The log-linear (Cox-Lewis) process is checked the same way. The
+The log-linear (Cox-Lewis) process is checked the same way, and
+Duane's ``param_cb`` with times in hours, where its scale is about 3e-6. The
 intervention test's interval of the rate ratio is checked at the end.
 
 Slack 0.01.
@@ -18,7 +20,13 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from surpyval.recurrent import CoxLewis, CrowAMSAA, intervention_test
+from surpyval.recurrent import (
+    CauseSpecificNHPP,
+    CoxLewis,
+    CrowAMSAA,
+    Duane,
+    intervention_test,
+)
 from surpyval.recurrent.intervention import _exact_bound, _Strata
 from surpyval.tests.calibration._montecarlo import (
     check_coverage,
@@ -79,6 +87,85 @@ def test_nhpp_cif_cb_and_param_cb(name):
     check_coverage(plo, phi, np.asarray(params), 0.95, name + " param_cb")
 
 
+def test_duane_param_cb_in_hours():
+    # Duane's interval on its shape where its scale is tiny: 12 systems
+    # observed to 15,000 hours from a power law with eta = 3000 h and shape
+    # 1.6 (about 13 events a system), so b = 3000 ** -1.6, about 2.8e-6.
+    # A finite-difference step that ignores the size of b gave the shape a
+    # standard error about five times too small here, or none at all.
+    eta, beta, t_end = 3000.0, 1.6, 15_000.0
+    rng = np.random.default_rng(403)
+    reps = 1000
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        x, i, c = simulate_nhpp(
+            rng,
+            lambda t: (t / eta) ** beta,
+            lambda n: eta * n ** (1 / beta),
+            12,
+            t_end,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = Duane.fit(x, i, c=c)
+            for j, p in enumerate(model.parameter_names):
+                lo[r, j], hi[r, j] = model.param_cb(p)
+    check_coverage(
+        lo, hi, np.array([beta, eta**-beta]), 0.95, "Duane param_cb (hours)"
+    )
+
+
+def test_cause_specific_total_bounds():
+    # Two independent power-law modes on each of the 10 systems: a rising
+    # one (alpha = 10, beta = 1.5, about 11 events a system) and a falling
+    # one (alpha = 8, beta = 0.7, about 3.6). The total's bounds add the
+    # modes' delta-method variances (``total_cif_cb``, ``total_iif_cb``;
+    # ``total_mtbf_cb`` is the reciprocal of the latter, so it covers
+    # exactly when that does). Seed, sizes and level fixed before the run.
+    modes = {
+        "rising": (
+            lambda t: (t / 10.0) ** 1.5,
+            lambda n: 10.0 * n ** (1 / 1.5),
+        ),
+        "falling": (
+            lambda t: (t / 8.0) ** 0.7,
+            lambda n: 8.0 * n ** (1 / 0.7),
+        ),
+    }
+    true_params = {"rising": [10.0, 1.5], "falling": [8.0, 0.7]}
+    rng = np.random.default_rng(403)
+    t_eval = np.array([10.0, 25.0, 50.0])
+    truth = sum(cif(t_eval) for cif, _ in modes.values())
+    true_iif = sum(
+        CrowAMSAA.from_params(p).iif(t_eval) for p in true_params.values()
+    )
+    reps = 1000
+    lo, hi = np.empty((reps, 3)), np.empty((reps, 3))
+    ilo, ihi = np.empty((reps, 3)), np.empty((reps, 3))
+    for r in range(reps):
+        xs, ids, cs, es = [], [], [], []
+        for name, (cif, inv_cif) in modes.items():
+            x, i, c = simulate_nhpp(rng, cif, inv_cif, SYSTEMS, T_END)
+            seen = c == 0
+            xs.extend(x[seen])
+            ids.extend(i[seen])
+            cs.extend([0] * int(seen.sum()))
+            es.extend([name] * int(seen.sum()))
+        xs.extend([T_END] * SYSTEMS)
+        ids.extend(range(SYSTEMS))
+        cs.extend([1] * SYSTEMS)
+        es.extend([None] * SYSTEMS)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = CauseSpecificNHPP.fit(xs, ids, cs, e=es)
+            b = model.total_cif_cb(t_eval)
+            lo[r], hi[r] = b[:, 0], b[:, 1]
+            b = model.total_iif_cb(t_eval)
+            ilo[r], ihi[r] = b[:, 0], b[:, 1]
+    check_coverage(lo, hi, truth, 0.95, "CauseSpecificNHPP total_cif_cb")
+    check_coverage(ilo, ihi, true_iif, 0.95, "CauseSpecificNHPP total_iif_cb")
+
+
 @pytest.mark.parametrize("design", ["time", "failure"])
 def test_578_crow_demonstrated_mtbf_bounds(design):
     # A reliability growth test (beta = 0.6, a falling intensity), the
@@ -125,7 +212,7 @@ def test_578_crow_demonstrated_mtbf_bounds(design):
             hits,
             reps,
             0.9,
-            "Crow {}-terminated {} bound".format(design, label),
+            f"Crow {design}-terminated {label} bound",
             side=side,
         )
 
@@ -176,7 +263,7 @@ def test_intervention_hpp_interval(method):
         ).ratio_cb
         hits += lo <= 0.5 <= hi
     coverage = _exact_interval_coverage(method, 0.5, 0.2, 50.0, 50.0)
-    print("{} analytic coverage {:.4f}".format(method, coverage))
+    print(f"{method} analytic coverage {coverage:.4f}")
     if method == "exact":
         assert coverage >= 0.95
     else:

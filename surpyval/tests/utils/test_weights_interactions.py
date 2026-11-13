@@ -12,6 +12,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import surpyval as sp
+from surpyval.serialisation import SCHEMA_VERSION
 from surpyval.tests._helpers import weighted_reference_data
 from surpyval.utils.weights import WeightedRefusal
 
@@ -137,9 +138,12 @@ def test_weighted_data_dict_is_schema_3_and_round_trips(data):
         data["x"], data["c"], tl=data["tl"], Z=data["Z"], w=data["w"]
     )
     d = json.loads(json.dumps(given.to_dict(), allow_nan=False))
-    # A weighted model's dict is schema 3 too
+    assert d["schema"] == 3
+    # A weighted model's dict is schema 4, which a 0.26 reader refuses:
+    # its "hess_inv" is the inverse Hessian, which 0.26 would read as the
+    # robust covariance
     model = sp.Weibull.fit(data["x"], data["c"], w=data["w"])
-    assert d["schema"] == model.to_dict()["schema"] == 3
+    assert model.to_dict()["schema"] == 4
     for again in (sp.SurpyvalData.from_dict(d), sp.from_dict(d)):
         assert_array_equal(again.w, given.w)
         assert_array_equal(again.x, given.x)
@@ -170,4 +174,19 @@ def test_data_dict_readers_by_schema(data):
     # A newer layout asks for an upgrade, rather than being guessed at
     for read in (sp.SurpyvalData.from_dict, sp.from_dict):
         with pytest.raises(ValueError, match="Upgrade surpyval"):
-            read({**d, "schema": 4})
+            read({**d, "schema": SCHEMA_VERSION + 1})
+
+
+def test_a_reader_of_schema_3_refuses_a_weighted_model(data, monkeypatch):
+    # 0.26 reads up to schema 3: it refuses a weighted model saved now,
+    # asking for an upgrade, rather than bound it with the inverse Hessian
+    # (now its "hess_inv")
+    from surpyval import serialisation
+
+    d = sp.Weibull.fit(data["x"], data["c"], w=data["w"]).to_dict()
+    monkeypatch.setattr(serialisation, "SCHEMA_VERSION", 3)
+    with pytest.raises(ValueError, match="reads schema versions up to 3"):
+        sp.from_dict(d)
+    # Weighted data, unchanged, is still schema 3, and read there
+    given = sp.SurpyvalData(data["x"], data["c"], w=data["w"])
+    assert_array_equal(sp.from_dict(given.to_dict()).w, given.w)

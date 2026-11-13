@@ -10,6 +10,12 @@ covariate ``z1`` and whose scale also depends on a normal covariate
 censored), fitted with ``alpha ~ z1 + z2`` and ``beta ~ z1``. And a
 log-normal with ``mu = 2 - 0.4 z1`` and ``log sigma = log 0.6 + 0.5 z1``.
 
+The model's coefficients have SurPyval's sign (v0.27): a scale or a
+location enters as ``alpha e^{-b'z}`` and ``mu - b'z``, so the true
+coefficients of ``alpha`` and ``mu`` are those above negated (``alpha_z1 =
+0.5``, ``alpha_z2 = -0.3``, ``mu_z1 = 0.4``); the shape's and the spread's
+keep their sign. The simulated data are as they were.
+
 - Wald ``param_cb`` of every parameter and Wald ``cb`` of the survival at
   ``t = 8`` for a unit with ``z = (1, 0)``: 1000 replications each.
 - Likelihood-ratio ``param_cb`` of the shape coefficient ``beta_z1`` and
@@ -36,8 +42,9 @@ N = 200
 ALPHA = (10.0, -0.5, 0.3)
 BETA = (1.5, 0.4)
 # In the model's order: alpha, beta, then alpha_z1, alpha_z2 and beta_z1
-# (named alpha_coef_0, alpha_coef_1 and beta_coef_0)
-TRUTH_WEIBULL = np.array([ALPHA[0], BETA[0], ALPHA[1], ALPHA[2], BETA[1]])
+# (named alpha_coef_0, alpha_coef_1 and beta_coef_0), with the model's
+# sign: the scale's coefficients are the exponents above negated
+TRUTH_WEIBULL = np.array([ALPHA[0], BETA[0], -ALPHA[1], -ALPHA[2], BETA[1]])
 COVARIATES = {"alpha": [0, 1], "beta": [0]}
 QUERY = (8.0, np.array([[1.0, 0.0]]))
 SEED_WALD, SEED_LR, SEED_BOOT, SEED_LOGNORMAL = 2810, 2811, 2812, 2813
@@ -126,7 +133,7 @@ def test_likelihood_ratio_coverage_of_the_coefficients():
     check_coverage(
         out[:, :, 0],
         out[:, :, 1],
-        np.array([BETA[1], ALPHA[1]]),
+        np.array([BETA[1], -ALPHA[1]]),
         0.95,
         "WeibullDistributional LR (beta_z1, alpha_z1)",
     )
@@ -163,7 +170,8 @@ def test_wald_coverage_lognormal_location_and_spread():
     check_coverage(
         np.array([o[0] for o in out]),
         np.array([o[1] for o in out]),
-        np.array([2.0, 0.6, -0.4, 0.5]),
+        # mu = 2 - 0.4 z1: the model's mu_z1 (mu - b z) is 0.4
+        np.array([2.0, 0.6, 0.4, 0.5]),
         0.95,
         "LogNormalDistributional Wald",
     )

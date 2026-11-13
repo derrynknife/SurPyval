@@ -22,12 +22,7 @@ from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from ._covariate_link import CovariateLink
-from ._penalised import (
-    Penalty,
-    check_penalty,
-    covariate_scale,
-    solve_penalised,
-)
+from ._penalised import PenalisedObjective, penalised_fit
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -44,10 +39,16 @@ def fit_parametric_penalised(
     l1_ratio: float,
     standardise: bool,
     tol: float,
+    w: npt.ArrayLike | float | None = None,
 ) -> ParametricRegressionModel:
     """The penalised fit of a parametric regression ``fitter`` of family
     ``kind``, whose covariates enter through ``link`` (its
-    ``phi_param_map`` filled in here)."""
+    ``phi_param_map`` filled in here). With weights ``w`` the likelihood
+    is the weighted one (each row's term times ``n w``, the weights
+    scaled to sum to the units, ``SurpyvalData.likelihood_weights``),
+    ``N`` the number of units and the standardisation weighted by ``n
+    w`` the same way: the objective is ``-l_w / N_w`` plus the penalty,
+    whatever the scale of ``w``."""
     from ._fit_skeleton import (
         assemble_regression_model,
         canonical_order,
@@ -56,7 +57,7 @@ def fit_parametric_penalised(
         drop_nonfinite_covariates,
     )
 
-    data = SurpyvalData(x, c, n, t, group_and_sort=False)
+    data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
     Z_arr = np.asarray(Z, dtype=float)
     if Z_arr.ndim == 1:
         Z_arr = Z_arr.reshape(-1, 1)
@@ -68,42 +69,60 @@ def fit_parametric_penalised(
     check_baseline_support(fitter, data)
 
     p = Z_arr.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
-    w = np.asarray(data.n, dtype=float)
-    scale = covariate_scale(Z_arr, w, standardise)
-    scaled = _intervals_from_the_support(fitter, data)
-    scaled.add_covariates(Z_arr / scale)
-    N = float(w.sum())
-
-    pmap = coefficient_map(Z_arr, fitter.param_map)
+    # The rows' weights in N and the standardisation: their counts, times
+    # their sampling weights scaled to sum to the units where weighted
+    row_weights = np.asarray(data.n, dtype=float)
+    if data.w is not None:
+        row_weights = row_weights * data.likelihood_weights
     k = fitter.k_dist
     bounds = (*fitter.bounds, *(((None, None),) * p))
-    param_map = {**fitter.param_map, **{nm: j + k for nm, j in pmap.items()}}
-    transform, inv_trans, const, _, _ = bounds_convert(
-        data.x, bounds, None, param_map
-    )
-    with np.errstate(all="ignore"):
-        baseline = fitter.dist.fit_from_surpyval_data(data).params
-    init = np.array([*baseline, *np.zeros(p)], dtype=float)
-    init_t = np.asarray(transform(init), dtype=float)
+    built: dict[str, Any] = {}
 
-    def objective(theta: Any) -> Any:
-        return fitter.neg_ll(scaled, *inv_trans(const(theta))) / N
+    def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+        # The likelihood of the covariates divided by their scale, over N.
+        scaled = intervals_from_the_support(fitter, data)
+        scaled.add_covariates(Z_arr / scale)
+        pmap = built["pmap"] = coefficient_map(Z_arr, fitter.param_map)
+        param_map = {
+            **fitter.param_map,
+            **{nm: j + k for nm, j in pmap.items()},
+        }
+        transform, inv_trans, const, _, _ = bounds_convert(
+            data.x, bounds, None, param_map
+        )
+        built["inv_trans"], built["const"] = inv_trans, const
+        from surpyval.utils.weights import few_effective_said_later
 
-    gradient = ag_grad(objective)
-    curvature = ag_hessian(objective)
-    l1, l2 = Penalty(pen, a, bool(standardise), scale).weights()
-    with np.errstate(all="ignore"):
-        res = solve_penalised(
+        with np.errstate(all="ignore"), few_effective_said_later():
+            baseline = fitter.dist.fit_from_surpyval_data(data).params
+        init = np.array([*baseline, *np.zeros(p)], dtype=float)
+        init_t = np.asarray(transform(init), dtype=float)
+
+        def objective(theta: Any) -> Any:
+            return fitter.neg_ll(scaled, *inv_trans(const(theta))) / N
+
+        gradient = ag_grad(objective)
+        curvature = ag_hessian(objective)
+        return PenalisedObjective(
             lambda th: float(objective(anp.asarray(th))),
             lambda th: np.asarray(gradient(anp.asarray(th)), dtype=float),
             lambda th: np.asarray(curvature(anp.asarray(th)), dtype=float),
             init_t,
-            np.arange(k, k + p),
-            l1,
-            l2,
-            tol=tol,
         )
+
+    fit = penalised_fit(
+        build,
+        Z_arr,
+        row_weights,
+        np.arange(k, k + p),
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
+    )
+    res, scale = fit.result, fit.penalty.scale
+    inv_trans, const = built["inv_trans"], built["const"]
+    pmap = built["pmap"]
     params = np.array(inv_trans(const(res.x)), dtype=float)
     params[k:] = params[k:] / scale
     with np.errstate(all="ignore"):
@@ -126,32 +145,43 @@ def fit_parametric_penalised(
         {},
         neg_ll=neg_ll,
     )
-    model.penalty = Penalty(pen, a, bool(standardise), scale, res.effective_df)
+    model.penalty = fit.penalty
     model.maximum = "verified" if res.verified else "unverified"
     if not res.verified:
         warn_unverified("The penalised fit")
     return model
 
 
-def _intervals_from_the_support(fitter: Any, data: SurpyvalData) -> Any:
+def intervals_from_the_support(fitter: Any, data: SurpyvalData) -> Any:
     """A copy of ``data`` for the penalised objective, with each interval
     that starts at (or below) the lower end of the baseline's support
     written as the left-censored row it is: ``F(xr) - F(lower)`` is
-    ``F(xr)``. The likelihood is the same, but its second derivatives at
-    ``F(0)`` of a Weibull are ``0 * log(0)**2``, nan, and the solver's
-    Newton steps and its check of the maximum need the Hessian."""
+    ``F(xr)``, and each left truncation at (or below) that end written as
+    none: ``1 - F(lower)`` is 1. The likelihood is the same, but its
+    second derivatives at ``F(0)`` of a Weibull are ``0 * log(0)**2``,
+    nan, and the solver's Newton steps and its check of the maximum need
+    the Hessian (a delayed entry ``tl = 0`` left every such fit
+    "unverified")."""
     lower = float(fitter.dist.support[0])
     c = np.asarray(data.c)
     x = np.asarray(data.x, dtype=float)
+    t = np.asarray(data.t, dtype=float)
     from_lower = np.zeros(c.shape, dtype=bool)
-    if np.isfinite(lower) and x.ndim == 2:
-        from_lower = (c == 2) & (x[:, 0] <= lower)
-    if not from_lower.any():
+    entry_at_lower = np.zeros(c.shape, dtype=bool)
+    if np.isfinite(lower):
+        if x.ndim == 2:
+            from_lower = (c == 2) & (x[:, 0] <= lower)
+        entry_at_lower = np.isfinite(t[:, 0]) & (t[:, 0] <= lower)
+    if not (from_lower.any() or entry_at_lower.any()):
         return copy.copy(data)
-    x = x.copy()
-    x[from_lower, 0] = x[from_lower, 1]
-    c = np.where(from_lower, -1, c)
-    return SurpyvalData(x, c, data.n, data.t, group_and_sort=False)
+    if from_lower.any():
+        x = x.copy()
+        x[from_lower, 0] = x[from_lower, 1]
+        c = np.where(from_lower, -1, c)
+    if entry_at_lower.any():
+        t = t.copy()
+        t[entry_at_lower, 0] = -np.inf
+    return SurpyvalData(x, c, data.n, t, group_and_sort=False, w=data.w)
 
 
 class PenalisedFitMixin:
@@ -207,7 +237,8 @@ class PenalisedFitMixin:
 
         Every kind of censoring and truncation of :meth:`fit` is taken:
         left, right and interval censoring, and truncation on the left,
-        the right or both. ``N`` counts the rows, weighted by ``n``.
+        the right or both. ``N`` counts the rows, weighted by ``n`` (and
+        by the weights ``w``, if given).
         The model predicts as any fitted model does, but has no
         covariance, standard errors, confidence bounds or p-values:
         penalised estimates are biased towards 0 by design, and
@@ -229,12 +260,27 @@ class PenalisedFitMixin:
             covariates divided by their standard deviations
             (count-weighted, divisor ``N``, as glmnet), so the penalty
             does not depend on their units; the coefficients are reported
-            on the covariates' own scale either way.
+            on the covariates' own scale either way. The divisor is
+            ``N``, not ``N - 1`` (lifelines'), because the objective is
+            glmnet's, the mean negative log-likelihood plus the penalty;
+            lifelines' standard deviations are larger by
+            :math:`\\sqrt{N / (N - 1)}` (0.5% at ``N = 100``, 5% at ``N =
+            10``), so its penalty is that much stronger. To reproduce a
+            lifelines fit, divide the covariates by their ``ddof=1``
+            standard deviations yourself and pass ``standardise=False``.
         tol : float, optional
             The optimality tolerance on the gradient of the objective.
         w : array_like, optional
-            Not taken yet: weights are refused, with a ``ValueError``. Fit
-            the unpenalised model with ``w`` (:meth:`fit`).
+            Sampling, propensity or censoring weights, one positive
+            number per row (or one for every row). Each row's term in
+            the log-likelihood is multiplied by ``n * w``, ``N`` is
+            :math:`N_w = \\sum n w` and the standardisation weights the
+            rows by ``n * w`` (divisor :math:`N_w`, glmnet's
+            ``weights``), so ``w`` and ``c * w`` give the same fit.
+            Whole-number weights give the fit of the rows repeated
+            (counts ``n``). As every penalised fit, a weighted one has no
+            standard errors or bounds, and its ``aic`` and ``bic`` are
+            refused, as for every weighted fit.
 
         Returns
         -------
@@ -254,10 +300,8 @@ class PenalisedFitMixin:
         >>> model.params[2:].round(3)
         array([ 0.446, -0.035, -0.007,  0.   ,  0.   ])
         """
-        from ._penalised import refuse_weights
         from .regression_data import truncation_window
 
-        refuse_weights(w)
         t = truncation_window(x, t, tl, tr)
         return fit_parametric_penalised(
             self,
@@ -272,4 +316,5 @@ class PenalisedFitMixin:
             l1_ratio,
             standardise,
             tol,
+            w,
         )

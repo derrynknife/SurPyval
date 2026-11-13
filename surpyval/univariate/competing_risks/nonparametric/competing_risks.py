@@ -25,10 +25,15 @@ from surpyval.serialisation import (
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
     aalen_johansen_variance,
+    weighted_aalen_johansen,
 )
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     ordered_labels,
+)
+from surpyval.univariate.competing_risks.rmtl import (
+    aalen_johansen_rmtl,
+    rmtl_result,
 )
 from surpyval.univariate.nonparametric._support import (
     check_support,
@@ -38,6 +43,7 @@ from surpyval.univariate.nonparametric._support import (
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
 from surpyval.univariate.nonparametric.nonparametric import (
+    POINTWISE_BOUND_TYPES,
     warn_bounds_past_data,
 )
 from surpyval.univariate.regression.regression_data import (
@@ -49,8 +55,9 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.data_formats import _get_idx, xcnt_to_xrd
-from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.data_formats import _get_idx, xcnt_handler, xcnt_to_xrd
+from surpyval.utils.dataframe import frame_column
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import axis_label, takes_unit
@@ -80,6 +87,12 @@ class CompetingRisks(SerialisableMixin):
     at risk. The CIFs of all causes add up to the all-cause failure
     probability.
 
+    With delayed entry (left truncation, ``tl``) a unit is at risk only
+    between its entry and its exit, :math:`tl < t \\le x`, so :math:`r_i`
+    counts the units that have entered before :math:`t_i` and not yet
+    left. The estimates are then conditional on surviving to the earliest
+    entry, as those of ``KaplanMeier`` with ``tl`` are.
+
     Call the class method ``CompetingRisks.fit`` (or ``fit_from_df``); it
     returns a fitted instance.
     """
@@ -107,7 +120,21 @@ class CompetingRisks(SerialisableMixin):
     how: str = "Nelson-Aalen"
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
+    #: Whether the model was fitted with weights ``w``: its variances are
+    #: then the robust (infinitesimal jackknife) ones.
+    weighted: bool = False
+    #: The effective sample size of the weights, ``(sum n w)^2 / sum n
+    #: w^2``, of a weighted fit; None otherwise.
+    effective_n: float | None = None
+    #: A weighted fit's robust variances: of each cause's cumulative
+    #: incidence (``cif_var``, one row per cause), of the log of the
+    #: survival by the fitted ``how`` (``log_sf_var``: all causes, then each
+    #: cause's net survival) and of the log of the all-cause Kaplan-Meier
+    #: survival (``log_sf_var_km``, for the stacked plot's bounds).
+    cif_var: np.ndarray
+    log_sf_var: np.ndarray
+    log_sf_var_km: np.ndarray
 
     # -- serialisation -----------------------------------------------------
 
@@ -125,13 +152,16 @@ class CompetingRisks(SerialisableMixin):
         "CIF",
     )
 
+    _WEIGHTED_ARRAYS = ("cif_var", "log_sf_var", "log_sf_var_km")
+
     def to_dict(self) -> dict:
         """
         Serialise this fitted nonparametric competing-risks model to a plain,
         JSON-serialisable dict: the event index map and the fitted step arrays
         (the shared baseline plus the per-event incidence and cumulative-
         incidence functions). The reloaded model reproduces every prediction
-        exactly.
+        exactly. A model fitted with weights ``w`` also keeps its robust
+        variances and is stamped schema 4, which older readers refuse.
         """
         out: dict = {
             "model": "CompetingRisks",
@@ -149,10 +179,19 @@ class CompetingRisks(SerialisableMixin):
         # Only when set: without it the dictionary is readable by v0.20.
         if self.support is not None:
             out["support"] = [float(v) for v in self.support]
+        if self.weighted:
+            # Schema 4: a reader without weights would bound the estimate
+            # with the classical variances.
+            out["weighted"] = True
+            out["effective_n"] = float(self.effective_n)  # type: ignore
+            for name in self._WEIGHTED_ARRAYS:
+                out[name] = np.asarray(
+                    getattr(self, name), dtype=float
+                ).tolist()
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CompetingRisks":
+    def from_dict(cls, model_dict: dict) -> CompetingRisks:
         """Rebuild a nonparametric competing-risks model from a dict."""
         require_model_tag(
             model_dict, "CompetingRisks", "a competing-risks model"
@@ -167,6 +206,11 @@ class CompetingRisks(SerialisableMixin):
         out.how = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = float(model_dict["effective_n"])
+            for name in cls._WEIGHTED_ARRAYS:
+                setattr(out, name, np.array(model_dict[name], dtype=float))
         support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
@@ -177,9 +221,15 @@ class CompetingRisks(SerialisableMixin):
         Competing Risk model with events:
         {events}
         """.format(events=list(self.event_idx_map.keys()))
-        return textwrap.dedent(out)
+        out = textwrap.dedent(out)
+        if self.weighted:
+            out += (
+                f"Weights: effective sample size {self.effective_n:.4g}; "
+                "robust variance\n"
+            )
+        return out
 
-    def set_support(self, lower: float, upper: float) -> "CompetingRisks":
+    def set_support(self, lower: float, upper: float) -> CompetingRisks:
         """
         Give the estimate an explicit support, ``[lower, upper]``.
 
@@ -340,6 +390,25 @@ class CompetingRisks(SerialisableMixin):
         cause with the others removed (treated as censoring). For the
         probability of failing *from* a cause while the others still act,
         use :meth:`cif`.
+
+        The all-cause ``ff`` is by the estimator the model was fitted with
+        (``how``). The cumulative incidences always use the Kaplan-Meier
+        survival, so they add up to ``ff`` only for a model fitted with
+        ``how="Kaplan-Meier"``; with the default, Nelson-Aalen,
+        ``ff = 1 - exp(-H)`` is below their sum from the first event on.
+
+        Examples
+        --------
+        >>> from surpyval import CompetingRisks
+        >>> x, e = [5, 5, 8], ["A", "B", None]
+        >>> model = CompetingRisks.fit(x, e)
+        >>> float(model.ff(5).round(4))
+        0.4866
+        >>> float((model.cif(5, "A") + model.cif(5, "B")).round(4))
+        0.6667
+        >>> km = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+        >>> float(km.ff(5).round(4))
+        0.6667
         """
         return 1 - self.sf(x, event=event)
 
@@ -397,6 +466,14 @@ class CompetingRisks(SerialisableMixin):
         censored), by the fitted ``how``: ``KaplanMeier``'s ``cb``
         (Greenwood's variance) or ``NelsonAalen``'s (Aalen's).
 
+        For a model fitted with weights ``w`` every variance is the robust
+        (infinitesimal jackknife) one instead: the cumulative incidence's
+        is that of R's ``survfit(Surv(x, factor(e)) ~ 1, weights =
+        w)$std.err`` (see
+        :func:`~surpyval.univariate.competing_risks.aalen_johansen.weighted_aalen_johansen`),
+        and the bounds on ``sf``, ``ff`` and ``Hf`` are those of the
+        weighted ``KaplanMeier`` or ``NelsonAalen`` fit of the same data.
+
         The bounds hold at each ``x`` separately.
 
         Parameters
@@ -425,7 +502,8 @@ class CompetingRisks(SerialisableMixin):
             which keeps it within [0, 1]; 'normal' is
             :math:`\hat{F} \pm z\,\hat{\sigma}`, which can leave it. For
             ``sf``, ``ff`` and ``Hf`` it is the single-event ``cb``'s
-            ``bound_type``.
+            ``bound_type``, which also takes 'log', 'logit', 'arcsine',
+            'peto' and 'rothman' (see ``KaplanMeier.cb``).
 
         Returns
         -------
@@ -503,7 +581,17 @@ class CompetingRisks(SerialisableMixin):
             "('cif', 'sf', 'ff', 'Hf') instead.",
         )
         check_option("bound", bound, BOUNDS)
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        if on == "cif":
+            check_option(
+                "bound_type",
+                bound_type,
+                ("exp", "normal"),
+                "The cumulative incidence is bounded on the log(-log) "
+                "scale ('exp') or plainly ('normal'); the other types are "
+                "for the survival ('sf', 'ff', 'Hf').",
+            )
+        else:
+            check_option("bound_type", bound_type, POINTWISE_BOUND_TYPES)
         validate_event(self.event_idx_map, event)
         if on != "cif":
             return self._single_event(event).cb(
@@ -546,7 +634,10 @@ class CompetingRisks(SerialisableMixin):
         from scipy.stats import norm
 
         F = self.CIF[k]
-        var = aalen_johansen_variance(self.r, self.d, self.d_e[k])
+        if self.weighted:
+            var = self.cif_var[k]
+        else:
+            var = aalen_johansen_variance(self.r, self.d, self.d_e[k])
         z = norm.ppf(1.0 - alpha_ci / (2.0 if bound == "two-sided" else 1.0))
         se = np.sqrt(var)
         if bound_type == "normal":
@@ -573,6 +664,131 @@ class CompetingRisks(SerialisableMixin):
             return [upper]
         return [lower, upper]
 
+    def _rmtl_default_tau(self, what: str) -> float:
+        """The default horizon of the time lost: the largest time."""
+        return float(self.x[-1])
+
+    def _rmtl_estimate(
+        self, event: Any, tau: float, who: str = "the model"
+    ) -> tuple[float, float]:
+        """The restricted mean time lost to ``event`` up to ``tau`` and
+        its variance, or the refusal (naming the model as ``who``)."""
+        validate_event(self.event_idx_map, event)
+        validate_cif_event(event)
+        tau = float(tau)
+        if not np.isfinite(tau) or tau < 0:
+            raise ValueError(
+                f"tau must be a finite number at least 0; got {tau!r}."
+            )
+        if self.weighted:
+            raise ValueError(
+                "The restricted mean time lost of a model fitted with "
+                "weights w has no standard error here: its variance would "
+                "be the robust (infinitesimal jackknife) one, which needs "
+                "each unit's influence and is not built. Fit without "
+                "weights, or use pseudo-observations (surpyval's "
+                "pseudo_cif) for weighted inference."
+            )
+        last = float(self.x[-1])
+        s_last = float(np.prod(1.0 - self.d / self.r))
+        if tau > last and s_last > 1e-12:
+            raise ValueError(
+                "tau = {:g} is past {}'s largest observed time, {:g}, "
+                "where {:.3g} of the units are still event-free: the "
+                "cumulative incidence beyond it is not estimated, so the "
+                "time lost would be whatever tau made it. Use a tau at or "
+                "below {:g}, or leave tau out for it.".format(
+                    tau, who, last, s_last, last
+                )
+            )
+        return aalen_johansen_rmtl(
+            self.x, self.r, self.d, self.d_e[self.event_idx_map[event]], tau
+        )
+
+    def rmtl(
+        self, event: Any, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        r"""
+        Restricted mean time lost to cause ``event`` up to ``tau``, with
+        inference.
+
+        It is the expected time, within the first ``tau``, that a unit
+        loses to the cause: the area under the cause's cumulative
+        incidence,
+
+        .. math::
+            \text{RMTL}_k(\tau) = \int_0^\tau F_k(t)\,dt
+                = E[\tau - \min(T, \tau);\ \text{cause } k],
+
+        exact for the step estimate (Andersen, 2013). The times lost to
+        all the causes add up to ``tau`` less the restricted mean survival
+        time; with one cause the time lost is ``tau - rmst``.
+
+        The standard error is the delta method's on the hazard increments
+        (see
+        :func:`~surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl`):
+        with one cause it is the Greenwood-based standard error of the
+        restricted mean survival time, as ``KaplanMeier.rmst`` gives it.
+        The interval is the normal one, ``rmtl +- z se``, as for
+        ``rmst``.
+
+        Parameters
+        ----------
+        event : hashable
+            The cause.
+        tau : scalar, optional
+            The horizon; defaults to the largest observed time. A ``tau``
+            beyond it is refused while some units are still event-free
+            there (the incidence beyond it is not estimated), as ``rmst``
+            refuses it.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmtl", "se", "lower", "upper", "tau"}``.
+
+        Raises
+        ------
+        ValueError
+            If ``event`` is not a cause of the model, ``tau`` is negative
+            or past the data (above), or the model was fitted with
+            weights (no standard error is built for those).
+
+        References
+        ----------
+        Andersen, P. K. (2013), "Decomposition of number of life years
+        lost according to causes of death", *Statistics in Medicine*,
+        32(30), 5278-5285.
+
+        Zhao, L., Tian, L., Claggett, B., Pfeffer, M., Kim, D. H., Solomon,
+        S. and Wei, L. J. (2018), "Estimating treatment effect with
+        clinical interpretation from a comparative clinical trial with an
+        end point subject to competing risks", *JAMA Cardiology*, 3(4),
+        357-358.
+
+        Examples
+        --------
+        >>> from surpyval import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = CompetingRisks.fit(x, e)
+        >>> res = model.rmtl('a', tau=8)
+        >>> print(round(res["rmtl"], 4), round(res["se"], 4))
+        1.6667 0.7702
+
+        See Also
+        --------
+        surpyval.rmtl_diff : compare the time lost to a cause between two
+            groups.
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmtl_default_tau("rmtl")
+        mu, var = self._rmtl_estimate(event, float(tau))
+        return rmtl_result(mu, var, float(tau), alpha_ci, "plain")
+
     def _single_event(self, event: Any) -> Any:
         """The single-event estimate of the all-cause failures
         (``event=None``) or of one cause's (the other causes censored), by
@@ -580,12 +796,49 @@ class CompetingRisks(SerialisableMixin):
         from surpyval import KaplanMeier, NelsonAalen
 
         fitter = KaplanMeier if self.how == "Kaplan-Meier" else NelsonAalen
-        d = self.d if event is None else self.d_e[self.event_idx_map[event]]
-        model = fitter.from_xrd(self.x, self.r, d)
+        if event is None:
+            d, row = self.d, 0
+        else:
+            d, row = (
+                self.d_e[self.event_idx_map[event]],
+                1 + self.event_idx_map[event],
+            )
+        if self.weighted:
+            model = self._robust_single_event(
+                d, self.how, self.log_sf_var[row]
+            )
+        else:
+            model = fitter.from_xrd(self.x, self.r, d)
         if self.support is not None:
             model.set_support(*self.support)
         return model
 
+    def _robust_single_event(self, d: npt.NDArray, how: str, var: Any) -> Any:
+        """The weighted single-event estimate of the weighted events
+        ``d`` (on the model's times and numbers at risk), by ``how``, with
+        the robust variance of its log survival ``var``: what
+        ``KaplanMeier.fit`` or ``NelsonAalen.fit`` with ``w`` gives for the
+        same data."""
+        from surpyval.univariate import nonparametric as nonp
+
+        model = nonp.NonParametric()
+        model.x, model.r, model.d = self.x, self.r, d
+        model.R = nonp.FIT_FUNCS[how](self.r, d)
+        model.model = how
+        model.F = 1 - model.R
+        with np.errstate(all="ignore"):
+            model.H = 0.0 - np.log(model.R)
+        model.greenwood = np.asarray(var, dtype=float)
+        model.weighted = True
+        model.effective_n = self.effective_n
+        return model
+
+    @positional_option(
+        "stacked",
+        "whether to stack the curves of the causes",
+        "the axes 'ax' of a non-parametric model's plot(ax)",
+        "stacked=..., or ax=... for the axes",
+    )
     def plot(
         self,
         stacked: bool = False,
@@ -608,7 +861,8 @@ class CompetingRisks(SerialisableMixin):
         the stack is the all-cause failure probability :math:`1 - S`. A
         cause's bounds do not bound its layer (which sits on the causes
         below it), so stacked, the bounds drawn are the top's: the
-        Kaplan-Meier (Greenwood) bounds of the all-cause failures, as
+        Kaplan-Meier (Greenwood, or robust with weights) bounds of the
+        all-cause failures, as
         ``KaplanMeier``'s plot of the same data draws them (``cb(x,
         on="ff")`` of a model fitted with ``how="Kaplan-Meier"``), as two
         thin grey step lines.
@@ -701,7 +955,13 @@ class CompetingRisks(SerialisableMixin):
                 linewidth=0.8 if themed else None,
             )
             if plot_bounds:
-                all_cause = KaplanMeier.from_xrd(self.x, self.r, self.d)
+                all_cause = (
+                    self._robust_single_event(
+                        self.d, "Kaplan-Meier", self.log_sf_var_km
+                    )
+                    if self.weighted
+                    else KaplanMeier.from_xrd(self.x, self.r, self.d)
+                )
                 cb = all_cause.cb(
                     self.x,
                     on="ff",
@@ -757,17 +1017,18 @@ class CompetingRisks(SerialisableMixin):
         return ax
 
     @classmethod
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         cls,
         df: Any,
         x_col: str,
         e_col: str,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
         how: str = "Nelson-Aalen",
-    ) -> "CompetingRisks":
+        w_col: str | None = None,
+        tl_col: str | float | None = None,
+    ) -> CompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`.
 
@@ -786,14 +1047,41 @@ class CompetingRisks(SerialisableMixin):
             The column of counts.
         how : str, optional
             As for :meth:`fit`.
+        w_col : str, optional
+            The column of weights ``w`` (sampling or inverse-probability
+            weights); see :meth:`fit`.
+        tl_col : str or scalar, optional
+            The column of each unit's entry (left truncation) time, or one
+            number for every unit; the ``tl`` of :meth:`fit`.
 
         Returns
         -------
         CompetingRisks
             The fitted model; the frame is kept as ``source_df``.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import CompetingRisks
+        >>> df = pd.DataFrame({
+        ...     "age_out": [62, 65, 70, 71, 74, 78],
+        ...     "age_in": [50, 60, 55, 68, 66, 70],
+        ...     "cause": ["a", "b", "a", None, "a", "b"],
+        ... })
+        >>> model = CompetingRisks.fit_from_df(
+        ...     df, x_col="age_out", e_col="cause", tl_col="age_in"
+        ... )
+        >>> model.r
+        array([3, 2, 3, 3, 2, 1])
         """
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
-        model = cls.fit(x, e, c, n, how)
+        w = None if w_col is None else df[w_col].values
+        tl = (
+            frame_column(df, tl_col, "tl_col", time=True)
+            if isinstance(tl_col, str)
+            else tl_col
+        )
+        model = cls.fit(x, e, c, n, how, w=w, tl=tl)
         # Keep the source frame without shadowing the ``df`` (density)
         # method (#253).
         model.source_df = df
@@ -806,10 +1094,12 @@ class CompetingRisks(SerialisableMixin):
         cls,
         x: npt.ArrayLike,
         e: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         how: str = "Nelson-Aalen",
-    ) -> "CompetingRisks":
+        w: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | float | None = None,
+    ) -> CompetingRisks:
         """
         Fit the non-parametric competing-risks model.
 
@@ -826,7 +1116,8 @@ class CompetingRisks(SerialisableMixin):
         c : array_like, optional
             Censoring flags: 0 a failure (with a cause in ``e``), 1
             right-censored (with ``e`` missing). Derived from ``e`` if not
-            given. Left and interval censoring are not supported.
+            given. Left and interval censoring are not supported here;
+            ``ParametricCompetingRisks`` takes them.
         n : array_like, optional
             Counts. Defaults to 1.
         how : str, optional
@@ -834,7 +1125,26 @@ class CompetingRisks(SerialisableMixin):
             report: ``"Nelson-Aalen"`` (the default, ``exp(-H)``) or
             ``"Kaplan-Meier"``. The cumulative incidence always uses the
             Kaplan-Meier survival, so the CIFs add up to the Kaplan-Meier
-            failure probability either way.
+            failure probability either way: to the model's ``ff`` with
+            ``"Kaplan-Meier"``, but not with the default (see :meth:`ff`).
+        w : array_like, optional
+            Sampling or inverse-probability weights, one positive number
+            per row (or one for every row): each unit stands for ``w``
+            units of the population. The numbers at risk and of events
+            count ``n * w``, and every variance is the robust
+            (infinitesimal jackknife) one, as R's ``survfit(Surv(x,
+            factor(e)) ~ 1, weights = w)`` computes it; ``w = 1`` gives the
+            unweighted estimates with that robust variance, not Aalen's.
+            See :doc:`Weighted Data </Weighted Data>`.
+        tl : array_like or scalar, optional
+            Delayed entry (left truncation): each unit's entry time, or one
+            number for every unit. A unit is at risk only in ``(tl, x]``,
+            so each ``tl`` must be below its ``x``; a unit that failed
+            before it would have entered is never seen. As R's
+            ``survfit(Surv(tl, x, factor(e)) ~ 1)`` the estimates are then
+            conditional on surviving to the earliest entry. Right
+            truncation is not supported (``fit(data)`` refuses data that
+            has it).
 
         Returns
         -------
@@ -851,9 +1161,54 @@ class CompetingRisks(SerialisableMixin):
         array([0.3167, 0.6083])
         >>> model.cif([5, 10], 'b').round(4)
         array([0.1   , 0.3917])
+
+        With weights, the weighted estimate and its robust bounds (ten
+        units are too few for a robust variance, and the fit warns so):
+
+        >>> import warnings
+        >>> w = [1.5, 0.5, 1, 2, 1, 1, 0.5, 1.5, 1, 1]
+        >>> with warnings.catch_warnings():
+        ...     warnings.simplefilter("ignore")
+        ...     weighted = CompetingRisks.fit(x, e, w=w)
+        >>> weighted.cif([5, 10], 'a').round(4)
+        array([0.3485, 0.6212])
+        >>> weighted.cb(5, 'a').round(4)
+        array([0.0784, 0.6463])
+
+        With delayed entry, a unit counts in the risk set only from its
+        entry time on:
+
+        >>> tl = [0, 0, 0, 0, 2, 2, 4, 4, 6, 6]
+        >>> late = CompetingRisks.fit(x, e, tl=tl)
+        >>> late.r
+        array([4, 3, 4, 3, 4, 3, 4, 3, 2, 1])
+        >>> late.cif([5, 10], 'a').round(4)
+        array([0.4688, 0.5859])
         """
+        if (
+            c is not None
+            and np.isin(np.asarray(c, dtype=object), (-1, 2)).any()
+        ):
+            raise ValueError(
+                "Left- and interval-censored rows (c = -1 or 2) are not "
+                "supported by the non-parametric CompetingRisks, whose "
+                "Aalen-Johansen estimate needs each failure's time. Fit "
+                "ParametricCompetingRisks to such data: it takes them, "
+                "with a distribution for each cause."
+            )
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
         check_finite_event_times(x, c)
+        # Delayed entry: the (N, 2) truncation bounds, checked as every
+        # fitter checks them (each time above its entry), in row order.
+        t = (
+            None
+            if tl is None
+            else xcnt_handler(x, c, n, tl=tl, group_and_sort=False)[3]
+        )
+        if w is not None:
+            from surpyval.utils.weights import check_weights
+
+            w = check_weights(w, len(x))
 
         # The causes in a fixed order (censored rows have no cause), the
         # same for every competing-risks class; labels of different types
@@ -862,8 +1217,12 @@ class CompetingRisks(SerialisableMixin):
         n_event_types = len(causes)
         event_idx_map = {state: i for i, state in enumerate(causes)}
 
-        # Get the x, r, d format agnostic of event.
-        unique_x, r, d = xcnt_to_xrd(x, c, n)
+        if w is not None:
+            return cls._fit_weighted(x, c, n, e, w, how, event_idx_map, t)
+
+        # Get the x, r, d format agnostic of event: with entry times, r
+        # counts only the units that have entered before each time.
+        unique_x, r, d = xcnt_to_xrd(x, c, n, t)
 
         # The count of events (d) of each cause (e) at each time (x). Every
         # x is one of unique_x, so its column is found with searchsorted;
@@ -909,4 +1268,81 @@ class CompetingRisks(SerialisableMixin):
         S_km = S if how == "Kaplan-Meier" else km(r, d)
         model.IIF = aalen_johansen_iif(S_km, model.h0_e)
         model.CIF = model.IIF.cumsum(axis=1)
+        return model
+
+    @classmethod
+    def _fit_weighted(
+        cls,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        e: npt.NDArray,
+        w: npt.NDArray,
+        how: str,
+        event_idx_map: dict,
+        t: npt.NDArray | None = None,
+    ) -> CompetingRisks:
+        """``fit`` with weights ``w``: the Aalen-Johansen estimate on the
+        weighted numbers at risk and of events, with the robust
+        (infinitesimal jackknife) variances of the cumulative incidences
+        and of the survival estimates."""
+        from surpyval.univariate.nonparametric._weighted import (
+            WeightedLadder,
+        )
+        from surpyval.utils.weights import (
+            effective_sample_size,
+            warn_if_few_effective,
+        )
+
+        warn_if_few_effective(n, w)
+        n_event_types = len(event_idx_map)
+        events = c != 1
+        cause = np.zeros(len(x), dtype=np.intp)
+        cause[events] = [event_idx_map[label] for label in e[events]]
+        if t is None:
+            t = np.column_stack(
+                [np.full(len(x), -np.inf), np.full(len(x), np.inf)]
+            )
+        unique_x, r, d, d_e, cif_var = weighted_aalen_johansen(
+            x, c, n, w, cause, n_event_types, t
+        )
+        S = na(r, d) if how == "Nelson-Aalen" else km(r, d)
+
+        model = cls()
+        model.how = how
+        model.n_event_types = n_event_types
+        model.event_idx_map = event_idx_map
+        model.x = unique_x
+        model.d = d
+        model.r = r
+        model.h0 = d / r
+        model.H0 = model.h0.cumsum()
+        model.S = S
+        model.d_e = d_e
+        model.h0_e = d_e / r
+        model.H0_e = model.h0_e.cumsum(axis=1)
+        S_km = S if how == "Kaplan-Meier" else km(r, d)
+        model.IIF = aalen_johansen_iif(S_km, model.h0_e)
+        model.CIF = model.IIF.cumsum(axis=1)
+
+        # The robust variances of the log survival: all causes, then each
+        # cause's net survival (the other causes censored), as the weighted
+        # single-event fit of the same rows gives them.
+        flags = [c] + [
+            np.where(events & (cause == k), 0, 1) for k in range(n_event_types)
+        ]
+        model.log_sf_var = np.vstack(
+            [
+                WeightedLadder(x, flag, n, t, w).log_sf_variance(how)
+                for flag in flags
+            ]
+        )
+        model.log_sf_var_km = (
+            model.log_sf_var[0]
+            if how == "Kaplan-Meier"
+            else WeightedLadder(x, c, n, t, w).log_sf_variance("Kaplan-Meier")
+        )
+        model.cif_var = cif_var
+        model.weighted = True
+        model.effective_n = effective_sample_size(n, w)
         return model

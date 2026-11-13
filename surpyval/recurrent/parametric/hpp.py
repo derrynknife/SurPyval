@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from autograd import hessian, jacobian
@@ -19,6 +20,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -27,6 +29,7 @@ from surpyval.utils.event_history_data import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -236,12 +239,36 @@ class HPP(CountingProcess):
 
         return negll_func
 
+    @staticmethod
+    def _log_rate_start(data: EventHistoryData) -> float:
+        """The log of the events counted over the time watched, where
+        the search for the rate starts: the maximum itself for data with
+        no truncation, and in any case a rate in the data's unit of time.
+
+        The search started at a rate of 1 in whatever unit the times
+        were in. Its steps on the log of the rate are about -1 each from
+        far above the maximum and overflow from far below it, so for
+        times in millionths or millions of the unit (a rate of 7e4 or
+        7e-8) the search stopped at its start, unverified, with a rate
+        of 1."""
+        s = data.split_for_nhpp_likelihood()
+        events = len(s["x_o"]) + np.sum(s["n_left"]) + np.sum(s["n_i"])
+        watched = (
+            np.sum(s["x_o"] - s["x_o_prev"])
+            + np.sum(s["x_right"] - s["x_right_prev"])
+            + np.sum(s["x_left"] - s["x_left_prev"])
+            + np.sum(s["x_i_r"] - s["x_i_l"])
+        )
+        with np.errstate(all="ignore"):
+            start = float(np.log(events / watched))
+        return start if np.isfinite(start) else 0.0
+
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: EventHistoryData,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fits the HPP model to recurrent data and returns the fitted model.
@@ -283,7 +310,7 @@ class HPP(CountingProcess):
         hess = hessian(neg_ll)
 
         if init is None:
-            init = [0.0]
+            init = [self._log_rate_start(data)]
         else:
             init = np.atleast_1d(np.asarray(init, dtype=float))
             # The search runs on log(rate), so a start of 0 (or below) was
@@ -326,19 +353,21 @@ class HPP(CountingProcess):
 
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        t: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
-        init: "ArrayLike | None" = None,
-        windows: "dict | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        init: ArrayLike | None = None,
+        windows: dict | None = None,
     ) -> Any:
         """
         Fits the HPP model to the provided data and returns the fitted model.
@@ -348,6 +377,13 @@ class HPP(CountingProcess):
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``), measured from the start of each item's life.
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.

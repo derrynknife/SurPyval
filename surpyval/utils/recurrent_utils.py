@@ -54,7 +54,7 @@ def _warn_negative_entry(
 
     first, _ = data.item_rows()
     negative = [
-        "{} (tl={})".format(item_label(data.i[k]), number_text(entry[k]))
+        f"{item_label(data.i[k])} (tl={number_text(entry[k])})"
         for k in first
         if entry[k] < 0
     ]
@@ -181,14 +181,14 @@ def validate_memory(m: object) -> None:
         return
     if not (isinstance(m, (int, np.integer)) and m >= 1):
         raise ValueError(
-            "m must be a positive integer or numpy.inf; got {!r}".format(m)
+            f"m must be a positive integer or numpy.inf; got {m!r}"
         )
 
 
 def validate_restoration(
     value: object,
     name: str,
-    bounds: "tuple[float | None, float | None]",
+    bounds: tuple[float | None, float | None],
     open_lower: bool = False,
 ) -> None:
     """
@@ -202,9 +202,7 @@ def validate_restoration(
     try:
         v = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        raise ValueError(
-            "{} must be a number; got {!r}".format(name, value)
-        ) from None
+        raise ValueError(f"{name} must be a number; got {value!r}") from None
     lower, upper = bounds
     low_ok = lower is None or (v > lower if open_lower else v >= lower)
     high_ok = upper is None or v <= upper
@@ -260,10 +258,11 @@ def validate_nhpp_data(data: EventHistoryData, dist: object) -> None:
     """
     c = np.asarray(data.c)
     name = getattr(dist, "name", type(dist).__name__)
-    if not np.any(c != 1):
+    if not np.any((c != 1) & (np.asarray(data.n) > 0)):
         raise ValueError(
             "The data has no events (every row is an end-of-observation "
-            "c=1 row), so the {} intensity cannot be estimated.".format(name)
+            "c=1 row or a count of 0), so the {} intensity cannot be "
+            "estimated.".format(name)
         )
 
     lower, upper = getattr(dist, "support", (-np.inf, np.inf))
@@ -542,7 +541,7 @@ def _expand_windows(
         wins = [tuple(w) for w in windows[ii]]
         if len(wins) == 0:
             raise ValueError(
-                "item {} has no observation windows".format(item_label(ii))
+                f"item {item_label(ii)} has no observation windows"
             )
         for w in wins:
             if len(w) != 2:
@@ -763,9 +762,7 @@ def _xicn_covariates(
     if isinstance(Z, dict):
         missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
         if missing:
-            raise ValueError(
-                "Z has no covariates for item(s) {}".format(missing)
-            )
+            raise ValueError(f"Z has no covariates for item(s) {missing}")
         # a scalar value is a single covariate, held as a 1-element row
         return np.array(
             [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
@@ -844,8 +841,17 @@ def _check_xicn_values(
 
     if not np.isfinite(n).all():
         raise ValueError("Counts 'n' must be finite")
-    if np.any(n <= 0):
-        raise ValueError("Counts 'n' must be strictly positive")
+    # A count of 0 is information on a counted row: an inspection (c=2,
+    # or c=-1 from the entry) that found no events. On an exact-event or
+    # end-of-observation row it means nothing.
+    counted = (c == 2) | (c == -1)
+    if np.any(n < 0) or np.any((n == 0) & ~counted):
+        raise ValueError(
+            "Counts 'n' must be strictly positive on exact-event and "
+            "end-of-observation rows (c=0 or c=1), and not negative on "
+            "counted rows (c=2 or c=-1), where 0 is an inspection that "
+            "found no events"
+        )
 
     # Truncation bounds may be +/-inf (the default open window) but a NaN
     # bound is meaningless.
@@ -877,7 +883,7 @@ def _first_row_text(
     """'item <label> has <x>' for the first row in ``mask``."""
     k = int(np.flatnonzero(mask)[0])
     xk = (
-        "[{}, {}]".format(number_text(x[k, 0]), number_text(x[k, 1]))
+        f"[{number_text(x[k, 0])}, {number_text(x[k, 1])}]"
         if x.ndim == 2
         else number_text(x[k])
     )
@@ -957,7 +963,35 @@ def _rows_in_order(
     return [column[order] for column in columns]
 
 
+def _item_bounds(idx: npt.NDArray, n_rows: int) -> tuple:
+    """For rows grouped by item (as ``handle_xicn`` sorts them) whose items
+    start at rows ``idx``: each item's last row, and each row's item's
+    first row."""
+    ends = np.append(idx[1:], n_rows)
+    return ends - 1, np.repeat(idx, ends - idx)
+
+
 def _check_censoring_positions(
+    c: npt.NDArray, idx: npt.NDArray, unique_i: npt.NDArray, items_given: bool
+) -> None:
+    """At most one c=1 row, last, and one c=-1 row, first, per item.
+
+    The checks of every item at once (rows grouped by item); only when one
+    fails are the items gone through one by one, for the message of the
+    first that does (:func:`_check_censoring_positions_by_item`).
+    """
+    last, _ = _item_bounds(idx, len(c))
+    n_end = np.add.reduceat((c == 1).astype(np.int64), idx)
+    n_left = np.add.reduceat((c == -1).astype(np.int64), idx)
+    bad = (n_end > 1) | ((n_end > 0) & (c[last] != 1))
+    bad |= (n_left > 1) | ((n_left > 0) & (c[idx] != -1))
+    if bad.any():
+        _check_censoring_positions_by_item(
+            unique_i, np.split(c, idx)[1:], items_given
+        )
+
+
+def _check_censoring_positions_by_item(
     unique_i: npt.NDArray, censoring_by_i: list, items_given: bool = True
 ) -> None:
     """At most one c=1 row, last, and one c=-1 row, first, per item.
@@ -1004,8 +1038,8 @@ def _check_interval_overlaps(
     x: npt.NDArray,
     idx: npt.NDArray,
     unique_i: npt.NDArray,
-    c: "npt.NDArray | None" = None,
-    e: "npt.NDArray | None" = None,
+    c: npt.NDArray | None = None,
+    e: npt.NDArray | None = None,
 ) -> None:
     """An item's rows of one event type do not overlap (2-D ``x`` only):
     a type's counts are of its own inspections, which follow one another.
@@ -1013,6 +1047,19 @@ def _check_interval_overlaps(
     different inspections. Without types, all the rows are of one type."""
     if x.ndim != 2:
         return
+    if e is None:
+        # Without types every row of an item is in one group: sorted by
+        # item, then by (start, end), adjacent rows of one item are the
+        # pairs the item-by-item check compares. Only when one of them
+        # is a repeat or an overlap is it run, for its message.
+        ends = np.append(idx[1:], len(x))
+        row_item = np.repeat(np.arange(len(idx)), ends - idx)
+        order = np.lexsort((x[:, 1], x[:, 0], row_item))
+        arr = x[order]
+        one_item = row_item[order][1:] == row_item[order][:-1]
+        same = (arr[1:] == arr[:-1]).all(axis=1) & (arr[1:, 0] != arr[1:, 1])
+        if not (one_item & (same | (arr[:-1, 1] > arr[1:, 0]))).any():
+            return
     kinds = (
         np.zeros(len(x), dtype=object)
         if e is None
@@ -1136,15 +1183,49 @@ def _check_observation_windows(
     x: npt.NDArray,
     tl_arr: npt.NDArray,
     tr_arr: npt.NDArray,
+    c: npt.NDArray,
     idx: npt.NDArray,
     unique_i: npt.NDArray,
-    censoring_by_i: list,
 ) -> None:
     """Truncation defines a single observation window [tl, tr] per item.
 
     The bounds must be constant within an item and contain all of its
-    events.
+    events. Every item is checked at once (rows grouped by item); only
+    when an item may fail are they gone through one by one
+    (:func:`_check_item_window`), for the message of the first that does.
     """
+    x_lower = x if x.ndim == 1 else x[:, 0]
+    x_upper = x if x.ndim == 1 else x[:, 1]
+    last, row_first = _item_bounds(idx, len(c))
+    tl0, tr0 = tl_arr[idx], tr_arr[idx]
+    tl_row, tr_row = tl_arr[row_first], tr_arr[row_first]
+    # A failure known at or before a finite tr reached by the item.
+    known = np.logical_or.reduceat((c != 1) & (x_upper <= tr_row), idx)
+    lower = np.where(np.isfinite(tl_row), tl_row, 0.0)
+    at_entry = np.isfinite(tl_row) & (c != 1) & (x_upper <= tl_row)
+    if not (
+        (~(tl_arr == tl_row)).any()
+        or (~(tr_arr == tr_row)).any()
+        or (tl0 >= tr0).any()
+        or (np.isfinite(tr0) & (x_upper[last] >= tr0) & ~known).any()
+        or (x_lower < lower).any()
+        or at_entry.any()
+    ):
+        return
+    _check_observation_windows_by_item(
+        x, tl_arr, tr_arr, idx, unique_i, np.split(c, idx)[1:]
+    )
+
+
+def _check_observation_windows_by_item(
+    x: npt.NDArray,
+    tl_arr: npt.NDArray,
+    tr_arr: npt.NDArray,
+    idx: npt.NDArray,
+    unique_i: npt.NDArray,
+    censoring_by_i: list,
+) -> None:
+    """:func:`_check_observation_windows` an item at a time."""
     tl_by_i = np.split(tl_arr, idx)[1:]
     tr_by_i = np.split(tr_arr, idx)[1:]
     x_lower = x if x.ndim == 1 else x[:, 0]
@@ -1169,13 +1250,20 @@ def _check_static_covariates(
     """
     if Z_arr is None:
         return
+    # Each row against its item's first row, every item at once; one by
+    # one only for the message of the first item whose values change.
+    _, row_first = _item_bounds(idx, len(Z_arr))
+    if np.all(Z_arr == Z_arr[row_first]):
+        return
     for ii, Z_i in zip(unique_i, np.split(Z_arr, idx)[1:]):
         if not np.all(Z_i == Z_i[0]):
             raise ValueError(
                 f"Item {item_label(ii)} has covariates Z that change "
                 "between its "
                 "rows; covariates are per item (static) and must be "
-                "the same on every row of an item."
+                "the same on every row of an item. For covariates that "
+                "change over time, give the item's history as start-stop "
+                "rows to fit_tvc (or as a timeline to fit_tvc_timeline)."
             )
 
 
@@ -1369,13 +1457,10 @@ def handle_xicn(
         e_arr = e_arr[sort_order]
 
     unique_i, idx = np.unique(i, return_index=True)
-    censoring_by_i = np.split(c, idx)[1:]
 
-    _check_censoring_positions(unique_i, censoring_by_i, items_given)
+    _check_censoring_positions(c, idx, unique_i, items_given)
     _check_interval_overlaps(x, idx, unique_i, c, e_arr)
-    _check_observation_windows(
-        x, tl_arr, tr_arr, idx, unique_i, censoring_by_i
-    )
+    _check_observation_windows(x, tl_arr, tr_arr, c, idx, unique_i)
     _check_static_covariates(Z_arr, idx, unique_i)
 
     if as_recurrent_data:

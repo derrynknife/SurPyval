@@ -70,6 +70,7 @@ from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
     bounds_convert,
     is_local_minimum,
+    numerical_derivatives,
     search_floor,
 )
 from surpyval.utils.covariates import coefficient_floor
@@ -372,9 +373,9 @@ class Search(NamedTuple):
         x = np.asarray(self.x, dtype=float)
         keep = [i for i in range(x.size) if i not in self.held]
         jac, hess = self.jac, self.hess
-        if jac is None or hess is None:
-            jac, hess = _derivatives(self.fun, x)
         floor = np.broadcast_to(np.asarray(self.floor, float), x.shape)
+        if jac is None or hess is None:
+            jac, hess = _derivatives(self.fun, x, floor)
         return x, keep, jac, hess, floor
 
     def verified(self) -> bool:
@@ -411,13 +412,18 @@ class Search(NamedTuple):
         )
 
 
-def _derivatives(fun, x):
-    """``(jac, hess)`` of ``fun``: autograd's, or central differences
-    (``numerical_gradient``, ``numerical_hessian``, in steps relative to
-    each component) for a likelihood autograd cannot differentiate, or
-    whose autograd derivatives are not finite at ``x``."""
-    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+def _derivatives(fun, x, floor=1.0):
+    """``(jac, hess)`` of ``fun``: autograd's, or central differences for
+    a likelihood autograd cannot differentiate, or whose autograd
+    derivatives are not finite at ``x``.
 
+    The differences are the fits' own (``numerical_derivatives``): in
+    steps of each component's unit, ``floor``. A step from a unit of 1 is
+    below the likelihood's rounding for a coefficient near 0 whose
+    covariate is in millionths (a unit of 1e6): the differences are then
+    rounding noise times 1e12, and a verified maximum was "refused" or
+    not by the last bit of ``x`` (scaled gradient 0 or +/-0.0036, scaled
+    Hessian eigenvalue 1.8e6, 7.1e6 or -3.3 at the same point)."""
     jac, hess = jacobian(fun), hessian(fun)
     try:
         with np.errstate(all="ignore"), warnings.catch_warnings():
@@ -429,11 +435,7 @@ def _derivatives(fun, x):
         ok = False
     if ok:
         return jac, hess
-    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, float)), 1.0)
-    return (
-        lambda v: numerical_gradient(fun, v, 1e-2 * steps),
-        lambda v: numerical_hessian(fun, v, steps),
-    )
+    return numerical_derivatives(fun, x, floor)
 
 
 def _canonical(neg_ll, params, bounds, n_obs, held=(), name=""):
@@ -757,6 +759,89 @@ def _search_cox(model, data):
     return [search.in_covariate_units(_columns(kept), Z[:, kept])]
 
 
+def _search_recurrent_cox(model, data):
+    """The Cox fit of the layout's rows (which are not the fixture's rows,
+    so the search stays in the fit's own covariate units). A fit whose
+    every coefficient is aliased searched nothing."""
+    if np.isnan(np.asarray(model.params, dtype=float)).all():
+        return None
+    return _search_cox(model.cox, None)
+
+
+def _search_multistate_cox(model, data):
+    """The stratified Cox fit of the stacked data (one stratum per
+    transition), whose rows and expanded covariates are not the fixture's,
+    so the search stays in the fit's own covariate units."""
+    if np.isnan(np.asarray(model.params, dtype=float)).all():
+        return None
+    return _search_cox(model.cox, None)
+
+
+def _search_parametric_multistate(model, data):
+    """Each transition's own fit (it keeps its data: the spells in its
+    'from' state, the others censored, each left truncated at its
+    start)."""
+    out = []
+    for pair, m in model.models.items():
+        out += _search_parametric(m, None, name=f"transition {pair!r}")
+    return out
+
+
+def _search_parametric_multistate_regression(model, data):
+    """Each transition's own regression search (its fit keeps its
+    data)."""
+    out = []
+    for m in model.models.values():
+        out += _search_regression(m, None)
+    return out
+
+
+def _search_joint_frailty(model, data):
+    """The joint frailty model's marginal likelihood (it keeps it) at the
+    reported parameters, in the logs of the positive ones (the Weibull
+    scales and shapes and theta); the coefficients in their covariates'
+    units. A fit with theta on its boundary 0 reports the model without
+    frailty, whose own fits are those of the two parts."""
+    lik = model._lik
+    free = np.flatnonzero(model._estimated())
+    p_hat = model._p()
+    if not free.size or not model._estimated()[4]:
+        return None
+
+    def natural(u):
+        parts = list(p_hat)
+        for k, j in enumerate(free):
+            parts[j] = anp.exp(u[k]) if j < 5 else u[k]
+        return anp.array(parts)
+
+    def fun(u):
+        return lik(natural(u))
+
+    u = np.array([np.log(p_hat[j]) if j < 5 else p_hat[j] for j in free])
+    search = Search(fun, u, model._n_obs)
+    p = model.n_covariates
+    coefs = [(k, (j - 6) % p) for k, j in enumerate(free) if j >= 6]
+    return [search.in_covariate_units(coefs, lik.Z)]
+
+
+def _search_panel_multistate(model, data):
+    """The panel likelihood (the forward recursion over each unit's
+    visits) in the space the fit searches: log intensities in units of
+    the mean gap between visits, coefficients of standardised covariates
+    and period log ratios, with its exact gradient and the Hessian by
+    central differences of it."""
+    lik = model._likelihood()
+    return [
+        Search(
+            lik.fun,
+            np.asarray(model._theta, dtype=float),
+            float(lik.n_obs),
+            jac=lik.jac,
+            hess=lik.hess,
+        )
+    ]
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -811,6 +896,55 @@ def _search_cox_frailty(model, data):
     return [Search(profile, np.array([u]), n_obs, jac=jac, hess=hess)]
 
 
+def _search_cox_mixed_effects(model, data):
+    """The profile (integrated) likelihood in the log of the random
+    intercept's variance, from refits at a fixed variance; at variance 0
+    (the Cox model) the Cox fit's partial likelihood, and the profile not
+    rising off 0."""
+    if data is None:
+        return None
+    fit = {k: data[k] for k in ("x", "Z", "c", "n", "groups")}
+    n_obs = float(np.sum(data["n"]))
+    tie_method = model.tie_method
+    variance = float(model.variance_components()["variance"].iloc[0])
+    if variance == 0:
+        cox = sp.CoxPH.fit(
+            data["x"], data["Z"], data["c"], data["n"], tie_method=tie_method
+        )
+        off = sp.CoxMixedEffects.fit(
+            **fit, variance=[1e-6], tie_method=tie_method
+        )
+        rise = (off.log_likelihood - model.log_likelihood) / 1e-6 / n_obs
+        assert rise < OPTIMUM_GTOL, (
+            "the variance is 0, but the profile likelihood rises as it "
+            f"moves off it (by {rise:.3g} per observation per unit)"
+        )
+        return _search_cox(cox, data)
+
+    def profile(log_variance):
+        refit = sp.CoxMixedEffects.fit(
+            **fit,
+            variance=[float(np.exp(log_variance))],
+            tie_method=tie_method,
+        )
+        return -refit.log_likelihood
+
+    u = float(np.log(variance))
+    h = 1e-3
+
+    def jac(v):
+        v = float(np.ravel(v)[0])
+        return np.array([(profile(v + h) - profile(v - h)) / (2 * h)])
+
+    def hess(v):
+        v = float(np.ravel(v)[0])
+        return np.array(
+            [[(profile(v + h) - 2 * profile(v) + profile(v - h)) / h**2]]
+        )
+
+    return [Search(profile, np.array([u]), n_obs, jac=jac, hess=hess)]
+
+
 def _search_proportional_odds(model, data):
     """The profile likelihood in ``gamma = -beta``, the baseline solved at
     each point (the fit's inner problem), by central differences."""
@@ -832,6 +966,32 @@ def _search_proportional_odds(model, data):
     n_events = float(n[c == 0].sum())
     search = _numerical(fun, gamma, n_events)
     return [search.in_covariate_units(_columns(gamma), Z)]
+
+
+def _search_interval_cox(model, data):
+    """The profile likelihood of the interval-censored Cox model, the
+    baseline's increments maximised at each ``beta`` (the fit's own
+    projected Newton, from the fitted baseline), by central differences."""
+    from surpyval.univariate.regression.proportional_hazards import (
+        _interval_npmle as engine,
+    )
+    from surpyval.univariate.regression.proportional_hazards import (
+        interval_cox,
+    )
+
+    fd = model._fit_data
+    kept = np.flatnonzero(~np.isnan(np.asarray(model.beta, dtype=float)))
+    fit = interval_cox._Fit(fd, kept, 1e-12)
+    d_hat = fit.solution.d
+
+    def fun(beta):
+        sol = engine.profile(fit.lik, np.asarray(beta, float), d_hat)
+        return -float(sol.value)
+
+    beta = np.asarray(model.beta, dtype=float)[kept]
+    events = float(np.sum(fd.n[fd.c != 1]))
+    search = _numerical(fun, beta, events)
+    return [search.in_covariate_units(_columns(beta), fd.Z[:, kept])]
 
 
 def _numerical(fun, x, n_obs):
@@ -883,7 +1043,12 @@ def _search_crph(model, data):
     for event, i in model.event_idx_map.items():
         c_e = np.where(label_mask(np.asarray(data["e"]), event), 0, 1)
         cox = sp.CoxPH.fit(
-            data["x"], data["Z"], c_e, data.get("n"), tie_method="efron"
+            data["x"],
+            data["Z"],
+            c_e,
+            data.get("n"),
+            tl=data.get("tl"),
+            tie_method="efron",
         )
         cox.res.x = np.where(
             np.isnan(model.betas[i]), 0.0, np.asarray(model.betas[i], float)
@@ -907,6 +1072,17 @@ def _search_parametric_competing_risks(model, data):
         out += _search_parametric(
             model.models[k], {**data, "c": c_k}, name=f"cause {k!r}"
         )
+    return out
+
+
+def _search_parametric_competing_regression(model, data):
+    """Each cause's own regression search (its fit keeps its data, the
+    other causes censored)."""
+    if data is None:
+        return None
+    out = []
+    for k in model.causes:
+        out += _search_regression(model.models[k], data)
     return out
 
 
@@ -1151,24 +1327,81 @@ def _search_joint(model, data):
     return [Search(f, u, n).in_covariate_units(shifts + hazard, Z)]
 
 
+def _search_equivalence(model, data):
+    """The equivalent-scale likelihood (with the clock-rate Jacobian) at
+    the model's parameters, in the logs of the positive ones and of k; a
+    k fitted at 0 is held out, and the likelihood must fall as k moves
+    off it."""
+    if data is None:
+        return None
+    from surpyval.univariate.equivalence import _Data, _log_lik
+
+    d = _Data(data["x"], data["x2"], data.get("c"), data.get("n"))
+    dist = model.dist
+    positive = [b[0] == 0 for b in dist.bounds]
+    theta0 = np.asarray(model.params[:-1], dtype=float)
+    k0 = float(model.params[-1])
+
+    def natural(u):
+        theta = [
+            anp.exp(u[j]) if pos else u[j] for j, pos in enumerate(positive)
+        ]
+        k = u[-1] if k0 == 0 else anp.exp(u[-1])
+        return theta, k
+
+    def fun(u):
+        theta, k = natural(u)
+        return -_log_lik(dist, d, theta, k)
+
+    u = np.r_[
+        [np.log(t) if pos else t for t, pos in zip(theta0, positive)],
+        0.0 if k0 == 0 else np.log(k0),
+    ]
+    held = ()
+    if k0 == 0:
+        held = (u.size - 1,)
+        step = 1e-6 * np.median(d.h[d.h > 0]) / np.median(d.s[d.s > 0])
+        assert fun(u + np.r_[np.zeros(u.size - 1), step]) >= fun(u)
+    return [Search(fun, u, d.size, held=held)]
+
+
 SEARCHES: dict[str, Callable] = {
+    "EquivalenceModel": _search_equivalence,
     "JointModel": _search_joint,
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,
     "RoystonParmarModel": _search_royston_parmar,
     "ParametricRegressionModel": _search_regression,
     "DistributionalRegressionModel": _search_regression,
+    "MixtureCureModel": _search_regression,
+    "ZeroInflatedModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,
+    "CoxMixedEffectsModel": _search_cox_mixed_effects,
     "SemiParametricRegressionModel": _search_cox,
     "ProportionalOddsModel": _search_proportional_odds,
+    "IntervalCoxPHModel": _search_interval_cox,
     "FineGrayModel": _search_fine_gray,
     "CompetingRisksProportionalHazards": _search_crph,
+    "MultiStateProportionalHazards": _search_multistate_cox,
+    "ParametricMultiState": _search_parametric_multistate,
+    "JointFrailtyModel": _search_joint_frailty,
+    "ParametricMultiStateRegression": (
+        _search_parametric_multistate_regression
+    ),
+    "PanelMultiState": _search_panel_multistate,
+    "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
+    "ParametricCompetingRisksRegression": (
+        _search_parametric_competing_regression
+    ),
     "ParametricRecurrenceModel": _search_recurrence,
     "ProportionalIntensityModel": _search_recurrence,
+    "RecurrentCoxModel": _search_recurrent_cox,
     "RenewalModel": _search_recurrence,
     "CauseSpecificNHPP": _search_cause_specific_nhpp,
+    # (each cause's own proportional-intensity model, as above)
+    "CauseSpecificProportionalIntensity": _search_cause_specific_nhpp,
     "CopulaModel": _search_copula,
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,
@@ -1188,4 +1421,72 @@ def test_every_family_has_its_check():
     )
     assert not missing, (
         "give these model classes their likelihood in SEARCHES: " f"{missing}"
+    )
+
+
+# -- the check itself, and the differences this module takes ----------------
+
+
+def test_a_saddle_with_a_gradient_is_not_a_verified_maximum():
+    """``is_local_minimum`` refuses a point by its numbers, whatever
+    search reached it: a scaled gradient of (-4e-08, -3e-08, -0.0036) and
+    scaled Hessian eigenvalues of (-1.12, 0.91, 24.05) (per observation,
+    as a failing run reported them) are not a maximum of a likelihood;
+    nor is either fault alone."""
+    n_obs = 5.0
+    g = n_obs * np.array([-4e-08, -3e-08, -0.0036])
+    saddle = n_obs * np.diag([-1.12, 0.91, 24.05])
+    bowl = n_obs * np.diag([1.12, 0.91, 24.05])
+    x = np.zeros(3)
+
+    def refused(grad, H):
+        def fun(v):
+            return float(grad @ v + 0.5 * v @ H @ v)
+
+        return not is_local_minimum(
+            fun, lambda v: grad + H @ v, lambda v: H, x, obj_scale=n_obs
+        )
+
+    assert refused(g, saddle)
+    assert refused(np.zeros(3), saddle)
+    assert refused(g, bowl)
+    assert not refused(np.zeros(3), bowl)
+
+
+def test_577_differences_are_taken_in_each_components_unit():
+    """The check of a coefficient near 0 whose covariate is in millionths
+    does not turn on the last bit of the estimate. The proportional
+    intensity of the cause with no covariate effect is such a fit: its
+    likelihood is in plain numpy, so this module differences it, and in
+    steps from a unit of 1 the coefficient's differences were rounding
+    noise (see :func:`_derivatives`): the same verified maximum passed or
+    failed by the build. In the covariate's unit every nearby point gives
+    the same curvature."""
+    case = next(
+        c for c in CASES if c.name == "CauseSpecificProportionalIntensity"
+    )
+    data = _small_scale(case)
+    model, _ = _said(lambda: case.fit(data))
+    assert model.models["b"].maximum == "verified"
+    (search,) = (
+        s for s in _search_cause_specific_nhpp(model, data) if s.name == "'b'"
+    )
+    x = np.asarray(search.x, dtype=float)
+    floor = np.asarray(search.floor, dtype=float)
+    # the coefficient is near 0 in a unit of a million
+    assert floor[-1] == 1e6 and abs(x[-1]) < 1.0
+    scale = np.maximum(np.abs(x), floor)
+    eigenvalues = []
+    for k in range(6):
+        at = search._replace(x=x * (1 + k * 1e-12))
+        assert at.verified(), at.why()
+        _, _, _, hess, _ = at._parts()
+        H = np.asarray(hess(np.asarray(at.x, dtype=float)), dtype=float)
+        eigenvalues.append(
+            np.linalg.eigvalsh(0.5 * (H + H.T) * np.outer(scale, scale))
+        )
+    eigenvalues = np.array(eigenvalues) / search.n_obs
+    assert (eigenvalues > 0).all()
+    np.testing.assert_allclose(
+        eigenvalues, np.tile(eigenvalues[0], (6, 1)), rtol=1e-3
     )

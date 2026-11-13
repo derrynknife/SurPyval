@@ -30,18 +30,29 @@ DECISIONS.md, 2026-10-29):
   conservative: the check is one-sided (coverage at least nominal less
   the tolerance) and the coverage is reported.
 
+- **The case bootstrap** (DECISIONS.md, 2026-11-03). The informative
+  sampling design (seed 26104, 200 replicates of 200 refits each): the
+  coverage of the 90% case-bootstrap intervals (``method="bootstrap"``)
+  of the Weibull ``alpha`` and ``beta`` and of its ``sf`` at the
+  population quartiles.
+
 Tolerance: ``Z_TOL`` Monte Carlo standard errors plus a slack of 0.02 (the
 weighted fits' intervals are asymptotic in the effective sample size,
 about 350 here).
 """
 
+import os
 import warnings
 
 import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.tests.calibration._montecarlo import check_coverage, check_rate
+from surpyval.tests.calibration._montecarlo import (
+    check_coverage,
+    check_rate,
+    process_pool,
+)
 
 TRUE = sp.Weibull.from_params([10.0, 1.5])
 N_POP = 1000
@@ -263,3 +274,64 @@ def test_iptw_coverage():
             slack=SLACK,
             side="lower",
         )
+
+
+#: The case-bootstrap study: replicates and refits, fixed before its first
+#: run.
+BOOT_REPS = 200
+N_BOOT = 200
+PARAMS = ("alpha", "beta")
+
+
+def _case_bootstrap_bounds(job):
+    """One replicate of the case-bootstrap study: its ``sf`` bounds at the
+    quartiles and its ``(alpha, beta)`` bounds."""
+    x, c, w, random_state = job
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = sp.Weibull.fit(x, c, w=w)
+        boot = dict(
+            method="bootstrap",
+            n_boot=N_BOOT,
+            random_state=random_state,
+            alpha_ci=0.10,
+        )
+        sf = wb.cb(QUARTILES, **boot)
+        params = np.array([wb.param_cb(name, **boot) for name in PARAMS])
+    return sf, params
+
+
+def test_case_bootstrap_coverage():
+    # 40,000 weighted refits: 1,586 to over 2,700 s on one core of a CI
+    # runner (it ran into the 45-minute per-test limit on 11 November
+    # 2026). The data sets and each replicate's bootstrap seed are drawn
+    # in order from the one stream, as they were one after another, so
+    # the replicates run in parallel, on every core, with the same
+    # numbers.
+    rng = np.random.default_rng(26104)
+    jobs = []
+    for _ in range(BOOT_REPS):
+        x, c, w = _informative_sample(rng)
+        jobs.append((x, c, w, int(rng.integers(2**31))))
+    with process_pool(max_workers=os.cpu_count()) as pool:
+        out = list(pool.map(_case_bootstrap_bounds, jobs))
+    sf_lo = np.array([o[0][:, 0] for o in out])
+    sf_hi = np.array([o[0][:, 1] for o in out])
+    params = np.array([o[1] for o in out])
+    for k, name in enumerate(PARAMS):
+        check_coverage(
+            params[:, k, 0],
+            params[:, k, 1],
+            TRUE.params[k],
+            0.90,
+            f"weighted Weibull param_cb({name!r}, bootstrap) 90%",
+            slack=SLACK,
+        )
+    check_coverage(
+        sf_lo,
+        sf_hi,
+        TRUE.sf(QUARTILES),
+        0.90,
+        "weighted Weibull cb(sf, bootstrap) 90%",
+        slack=SLACK,
+    )

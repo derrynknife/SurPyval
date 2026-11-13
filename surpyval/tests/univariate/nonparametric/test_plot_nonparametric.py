@@ -459,7 +459,7 @@ def test_theme_off():
 def test_unit_labels_the_time_axis():
     km = sp.KaplanMeier.fit(X, c=C, unit="hour")
     out = sp.plot_nonparametric(km, at_risk=False)
-    assert out.ax.get_xlabel() == "Time (h)"
+    assert out.ax.get_xlabel() == "Time (hour)"
 
 
 # -- refusals -------------------------------------------------------------

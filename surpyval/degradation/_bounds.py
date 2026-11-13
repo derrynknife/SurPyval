@@ -36,24 +36,53 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.linalg import cb_link
+from surpyval.utils.linalg import (
+    cb_link,
+)
 from surpyval.utils.linalg import delta_method_se as _delta_se
-from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import percentile_bounds, safe_inv, sf_link_bound
+from surpyval.utils.linalg import (
+    percentile_bounds,
+    safe_inv,
+    scale_free_hessian,
+    sf_link_bound,
+)
 from surpyval.utils.rng import as_generator
+from surpyval.utils.warnings import ignoring_warnings
 
 # -- first stage: per-unit pseudo-failure-time variances ------------------
 
 
+def _sd_steps(
+    values: npt.NDArray, cov: npt.NDArray, power: float
+) -> npt.NDArray:
+    """Finite-difference steps ``eps**power`` of each value's standard
+    error (``sqrt(cov[j, j])``), which move with the value's unit, so the
+    derivatives do not depend on it; ``eps**power * max(|value|, 1e-2)``
+    where there is no usable standard error. A step of a fraction of the
+    value with a fixed floor is far too long for a value that is small in
+    the unit it is written in (a path slope per second)."""
+    h = np.finfo(float).eps ** power
+    with np.errstate(invalid="ignore"):
+        sd = np.sqrt(np.diag(np.asarray(cov, dtype=float)))
+    usable = np.isfinite(sd) & (sd > 0)
+    plain = h * np.maximum(np.abs(values), 1e-2)
+    return np.where(usable, h * np.where(usable, sd, 1.0), plain)
+
+
 def _inv_path_grad(
-    path_model: Any, threshold: float, theta: npt.NDArray
+    path_model: Any,
+    threshold: float,
+    theta: npt.NDArray,
+    cov_theta: npt.NDArray,
 ) -> npt.NDArray:
     """Gradient of ``inv_path(threshold; theta)`` w.r.t. the path parameters,
-    by central differences."""
+    by central differences in steps of their standard errors (from
+    ``cov_theta``, see :func:`_sd_steps`)."""
     theta = np.asarray(theta, dtype=float)
+    steps = _sd_steps(theta, cov_theta, 1.0 / 3.0)
     g = np.zeros(theta.size)
     for j in range(theta.size):
-        h = 1e-6 * max(abs(theta[j]), 1.0)
+        h = steps[j]
         up, dn = theta.copy(), theta.copy()
         up[j] += h
         dn[j] -= h
@@ -87,7 +116,7 @@ def pseudo_time_variances(model: Any) -> npt.NDArray:
         x_unit = model.x[model.i == unit]
         J = np.atleast_2d(model.path_model.jacobian(x_unit, *theta))
         cov_theta = sigma2 * safe_inv(J.T @ J)
-        g = _inv_path_grad(model.path_model, model.threshold, theta)
+        g = _inv_path_grad(model.path_model, model.threshold, theta, cov_theta)
         v[idx] = float(g @ cov_theta @ g)
     return v
 
@@ -136,7 +165,10 @@ def life_parameter_covariance(
     phi = np.asarray(lm.params, dtype=float)
     t = np.asarray(model.pseudo_failure_times, dtype=float)
 
-    H = -_num_hessian(lambda p: _life_loglik(model, p, t), phi)
+    # In steps found from the likelihood's curvature (and the mixed
+    # partials below in steps of the standard errors and of each time),
+    # so the covariance does not depend on the unit of time.
+    H = scale_free_hessian(lambda p: -_life_loglik(model, p, t), phi)
     Hinv = safe_inv(H)
 
     v = pseudo_time_variances(model)
@@ -144,13 +176,13 @@ def life_parameter_covariance(
     cov = Hinv.copy()
     if events.size:
         k = phi.size
-        hphi = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(
-            np.abs(phi), 1e-2
-        )
+        hphi = _sd_steps(phi, Hinv, 1.0 / 4.0)
         # Mixed partials d2 loglik / d phi_a d t_i for each event unit.
         S = np.zeros((k, events.size))
         for col, i in enumerate(events):
-            ht = (np.finfo(float).eps ** (1.0 / 3.0)) * max(abs(t[i]), 1e-2)
+            ht = (np.finfo(float).eps ** (1.0 / 4.0)) * (
+                abs(t[i]) if t[i] != 0 else 1e-2
+            )
             for a in range(k):
                 pp, pm = phi.copy(), phi.copy()
                 pp[a] += hphi[a]
@@ -197,7 +229,7 @@ def analytic_cb(
     link = cb_link(model.life_model.dist)
     x, sf_of = _target(model, x, on)
     sf_hat = np.asarray(sf_of(phi), dtype=float)
-    se = _delta_se(sf_of, phi, cov)
+    se = _delta_se(sf_of, phi, cov, scale_free=True)
 
     if bound == "two-sided":
         # Each side is a one-sided bound, so it takes half the total tail
@@ -249,8 +281,13 @@ def bootstrap_cb(
     model), so the bound reflects life-fit and extrapolation
     variability, not path re-selection. Refits whose curve is not
     finite everywhere are dropped rather than poisoning the quantiles.
+    Refits whose life fit has no finite maximum are kept at the estimate
+    they reached and counted, and resamples whose life fit has no
+    maximum at all are left out and counted, in one warning
+    (``warn_bootstrap_refits``), as the parametric bootstrap does.
     """
     from surpyval.univariate.parametric.parametric import Parametric
+    from surpyval.utils.no_maximum import warn_bootstrap_refits
     from surpyval.utils.refits import DEGRADATION_REFIT
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -292,9 +329,18 @@ def bootstrap_cb(
         ),
     }
     token = DEGRADATION_REFIT.set(refit)
+    counts = {"no finite maximum": 0, "unverified": 0, "no estimate": 0}
     try:
         curves = _bootstrap_curves(
-            model, x, Z, method_name, missing, n_boot, rng, clock_kwargs
+            model,
+            x,
+            Z,
+            method_name,
+            missing,
+            n_boot,
+            rng,
+            clock_kwargs,
+            counts,
         )
     finally:
         DEGRADATION_REFIT.reset(token)
@@ -314,6 +360,15 @@ def bootstrap_cb(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
         )
+    warn_bootstrap_refits(
+        n_boot,
+        no_maximum=counts["no finite maximum"],
+        no_estimate=counts["no estimate"],
+        unverified=counts["unverified"],
+        failed=n_boot - len(curves) - counts["no estimate"],
+        advice="treat the bounds as rough; more units, or units followed "
+        "closer to the threshold, would settle them",
+    )
     return percentile_bounds(curves, alpha_ci, bound)
 
 
@@ -326,11 +381,15 @@ def _bootstrap_curves(
     n_boot: int,
     rng: Any,
     clock_kwargs: dict,
+    counts: "dict | None" = None,
 ) -> list:
     """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
     ``model``'s units, each refitted and its ``method_name`` curve taken at
-    ``x`` (and ``Z``), those not finite where the model's own is dropped."""
-    import warnings
+    ``x`` (and ``Z``), those not finite where the model's own is dropped.
+    ``counts`` (updated in place) counts the kept refits whose life fit
+    has no finite or an unverified maximum, and the resamples whose life
+    fit has no maximum at all (left out)."""
+    from surpyval.utils.no_maximum import NoFiniteMaximumError
 
     from .degradation_analysis import DegradationAnalysis
 
@@ -340,8 +399,7 @@ def _bootstrap_curves(
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         for _ in range(n_boot):
             picks = rng.choice(n_units, size=n_units)
             xs, ys, ids, Zs = [], [], [], []
@@ -373,6 +431,13 @@ def _bootstrap_curves(
                 )
                 if np.isfinite(curve[~missing]).all():
                     curves.append(np.where(missing, np.nan, curve))
+                    reached = getattr(m.life_model, "maximum", None)
+                    if counts is not None and reached in counts:
+                        counts[reached] += 1
+            except NoFiniteMaximumError:
+                if counts is not None:
+                    counts["no estimate"] += 1
+                continue
             except Exception:
                 continue
     return curves

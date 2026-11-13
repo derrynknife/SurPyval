@@ -42,6 +42,14 @@ test-fix-find-test, 56 failures to T = 400): it demonstrates
 0.12744 = 0.9103 * 56 / 400, where the MLE of the shape is 0.9268, and
 projects an MTBF of 11.29 (#730).
 
+MIL-HDBK-189C prints the same example (section 6.3.3.8) with the plain
+maximum-likelihood shapes in both places, 0.9268 and 0.7970: it
+demonstrates 7.71 and projects 10.82 (10.83 from the unrounded terms).
+The two conventions differ only in those shapes, and
+``bias_corrected=False`` gives the second (the handbook's own
+test-find-test example, section 6.3.2.8, gives both: 14.81 plain and 15.13
+corrected, and recommends the corrected one).
+
 The growth potential is the intensity once every BD mode has been found and
 fixed with these FEFs, :math:`r_{GP} = \\lambda_{CA} - N_{BD}/(kT) +
 \\sum (1 - d_i) N_i/(kT)`.
@@ -81,21 +89,24 @@ class GrowthProjection:
         and its intensity before and after its fix (``intensity`` and
         ``projected``, ``N_i / (kT)`` and ``(1 - d_i) N_i / (kT)``).
     beta : float
-        The unbiased shape of the BD modes' first occurrences,
-        ``(K - 1) / K`` times its maximum-likelihood estimate (``nan``
+        The shape of the BD modes' first occurrences: unbiased,
+        ``(K - 1) / K`` times its maximum-likelihood estimate, unless
+        ``bias_corrected`` is false, when the estimate itself (``nan``
         without a BD mode).
     mean_fef : float
         The mean fix-effectiveness factor of the BD modes seen (``nan``
         without one).
     new_mode_intensity : float
         ``h(T)``, the rate at which new BD modes were being found at the
-        end of the test (0 with fewer than two BD modes).
+        end of the test (0 with fewer than two BD modes, or with none if
+        ``bias_corrected`` is false: the correction needs a second mode).
     demonstrated_intensity : float
         The intensity the test demonstrates at ``T``, before the delayed
         fixes: ``N / (kT)`` without BC modes, the Crow-AMSAA intensity at
         ``T`` with them, from the bias-corrected shape
         ``(N - 1) / N * beta_hat`` (so ``(N - 1) beta_hat / (kT)``; ``model``
-        holds the MLE).
+        holds the MLE), or from ``beta_hat`` itself if ``bias_corrected`` is
+        false.
     projected_intensity : float
         The intensity once the delayed fixes are in.
     growth_potential_intensity : float
@@ -103,6 +114,10 @@ class GrowthProjection:
         these effectiveness factors.
     model : ParametricRecurrenceModel
         The Crow-AMSAA fit to every failure.
+    bias_corrected : bool
+        Whether the shapes are bias-corrected (MIL-HDBK-00189A) or the
+        plain maximum-likelihood estimates (the worked example of
+        MIL-HDBK-189C, section 6.3.3.8).
     """
 
     T: float
@@ -116,6 +131,7 @@ class GrowthProjection:
     projected_intensity: float
     growth_potential_intensity: float
     model: Any
+    bias_corrected: bool = True
 
     @property
     def demonstrated_mtbf(self) -> float:
@@ -150,7 +166,7 @@ class GrowthProjection:
                 len(self.modes),
                 "" if len(self.modes) == 1 else "s",
             ),
-            "Mean FEF            : {:.4g}".format(self.mean_fef),
+            f"Mean FEF            : {self.mean_fef:.4g}",
             "New BD modes        : beta = {:.4g}, h(T) = {:.4g}".format(
                 self.beta, self.new_mode_intensity
             ),
@@ -169,8 +185,10 @@ class GrowthProjection:
                 self.growth_potential_mtbf,
             ),
         ):
+            lines.append(f"{label:<20}: {rate:>12.4g} {mtbf:>12.4g}")
+        if not self.bias_corrected:
             lines.append(
-                "{:<20}: {:>12.4g} {:>12.4g}".format(label, rate, mtbf)
+                "Shapes              : maximum likelihood (uncorrected)"
             )
         return "\n".join(lines)
 
@@ -203,6 +221,7 @@ def growth_projection(
     i: npt.ArrayLike | None = None,
     c: npt.ArrayLike | None = None,
     bc: Any = None,
+    bias_corrected: bool = True,
 ) -> GrowthProjection:
     """See :meth:`CrowAMSAA.projection`."""
     x_arr = np.atleast_1d(np.asarray(x, dtype=float))
@@ -315,10 +334,12 @@ def growth_projection(
     else:
         mean_fef = float(d_i.mean())
         log_sum = float(np.sum(np.log(T / first)))
-        # (K - 1) / K * K / log_sum; 0 for K = 1, and a first occurrence
-        # at T itself (log_sum 0) has no information on the shape.
-        beta = (K - 1) / log_sum if log_sum > 0 else float("nan")
-        h = K * beta / total_time if K > 1 and log_sum > 0 else 0.0
+        # The unbiased shape is (K - 1) / K * K / log_sum, 0 for K = 1; the
+        # plain MLE is K / log_sum. A first occurrence at T itself (log_sum
+        # 0) has no information on the shape.
+        kept = K - 1 if bias_corrected else K
+        beta = kept / log_sum if log_sum > 0 else float("nan")
+        h = K * beta / total_time if kept > 0 and log_sum > 0 else 0.0
 
     if counts["BC"] == 0:
         demonstrated = n_events / total_time
@@ -334,7 +355,8 @@ def growth_projection(
         # handbook's worked example (MIL-HDBK-00189A, test-fix-find-test)
         # demonstrates 0.12744 = 0.9103 * 56 / 400, where the MLE is
         # 0.9268 (#730).
-        demonstrated = (n_events - 1) * float(model.params[1]) / total_time
+        kept_events = n_events - 1 if bias_corrected else n_events
+        demonstrated = kept_events * float(model.params[1]) / total_time
     remaining = demonstrated - n_i.sum() / total_time
     potential = remaining + float(table["projected"].sum())
     projected = potential + (mean_fef * h if K else 0.0)
@@ -350,4 +372,5 @@ def growth_projection(
         projected_intensity=float(projected),
         growth_potential_intensity=float(potential),
         model=model,
+        bias_corrected=bias_corrected,
     )

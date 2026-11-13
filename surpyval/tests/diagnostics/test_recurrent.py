@@ -186,7 +186,7 @@ R_REFERENCE = {
 
 def _trend_row(d, test):
     t = _rows(d, "trend")
-    return t[t["test"] == "{} trend test".format(test)].iloc[0]
+    return t[t["test"] == f"{test} trend test"].iloc[0]
 
 
 def test_trend_statistics_match_r_on_the_handbook_example():
@@ -493,7 +493,7 @@ def test_minimal_repair_is_advised_an_nhpp(fitter, name, no_fit_test):
     assert list(rows["verdict"]) == ["ok", "warn"]
     (advice,) = _advice(d, "repair", "minimal repair")
     value = 1 if name == "q" else 0
-    assert "({} = {}, as bad as old)".format(name, value) in advice
+    assert f"({name} = {value}, as bad as old)" in advice
     assert advice.features == ("CrowAMSAA.fit",)
 
 
@@ -512,8 +512,8 @@ def test_ari_minimal_repair_names_its_baseline(baseline, no_fit_test):
     name = {CrowAMSAA: "CrowAMSAA", CoxLewis: "CoxLewis"}[baseline]
     if rows["verdict"].iloc[1] == "warn":
         (advice,) = advice
-        assert advice.features == ("{}.fit".format(name),)
-        assert "{}.fit".format(name) in advice
+        assert advice.features == (f"{name}.fit",)
+        assert f"{name}.fit" in advice
     # Maximal repair is not a renewal process: never advised as one
     assert not _advice(d, "repair", "perfect repair")
 

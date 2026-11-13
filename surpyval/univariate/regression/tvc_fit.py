@@ -45,11 +45,11 @@ if TYPE_CHECKING:
 
 def fit_tvc_df(
     fit: Any,
-    df: "pd.DataFrame",
+    df: pd.DataFrame,
     columns: dict[str, str],
-    Z_cols: "str | list[str] | None",
-    formula: "str | None",
-    n_col: "str | None",
+    Z_cols: str | list[str] | None,
+    formula: str | None,
+    n_col: str | None,
     **kwargs: Any,
 ) -> Any:
     """The body of every time-varying ``*_from_df`` fit (PH, AH, PO, AFT
@@ -111,7 +111,7 @@ class TVCFitMixin:
         Z: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """
         Fit the model to time-varying covariates in start-stop format.
 
@@ -210,6 +210,8 @@ class TVCFitMixin:
         # (Normal, Gumbel, Logistic) an entry at 0 conditions on surviving
         # to 0; followed since -inf, the subject's first covariate holds
         # since then.
+        given = {"i": ident, "xl": tl, "xr": x, "c": c_arr, "Z": Z_arr}
+        given["n"] = n_arr
         support_lo = float(self.support[0])  # type: ignore[attr-defined]
         if support_lo > -np.inf:
             tl = np.where(tl <= support_lo, -np.inf, tl)
@@ -220,6 +222,12 @@ class TVCFitMixin:
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
         )
         model.is_tvc = True
+        # Each row's subject, and the rows as given (in the order of
+        # handle_tvc; model.data._source_rows maps the fitted rows to
+        # them), which diagnose() sums its residuals over and refits the
+        # other baselines to.
+        model.tvc_subject_ids = ident
+        model._tvc_fit_rows = given
         # bic and aic_c count observed failures, and fall back (with none)
         # to subjects, each weighted by its last interval's count (as the
         # AFT time-varying fit does), not interval rows: splitting a
@@ -237,7 +245,7 @@ class TVCFitMixin:
         c: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """
         Fit the model from a covariate *timeline* (the ``xicnt``-style input).
 
@@ -279,7 +287,7 @@ class TVCFitMixin:
 
     def fit_tvc_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         xl_col: str,
         xr_col: str,
@@ -288,7 +296,7 @@ class TVCFitMixin:
         n_col: str | None = None,
         formula: str | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """Fit start-stop time-varying-covariate data from a DataFrame.
 
         ``i_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
@@ -332,7 +340,7 @@ class TVCFitMixin:
 
     def fit_tvc_timeline_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         x_col: str,
         Z_cols: str | list[str] | None,
@@ -340,7 +348,7 @@ class TVCFitMixin:
         n_col: str | None = None,
         formula: str | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """Fit a covariate timeline from a DataFrame.
 
         ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns

@@ -22,13 +22,16 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
+from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
-from surpyval.utils.validation import option_error
+
+from ._tvc_evaluation import TVCEvaluationMixin, refuse_schedule
 
 
 def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
@@ -71,6 +74,8 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
+    TVCEvaluationMixin,
+    PenalisedModelMixin,
     DiagnoseMixin,
     SerialisableMixin,
     RecurrenceSimulationMixin,
@@ -94,6 +99,14 @@ class ProportionalIntensityModel(
     ``parameter_names[:len(params)]`` names ``params``. A coefficient the
     data cannot determine is ``nan`` and listed in :attr:`aliased`.
 
+    A model fitted to covariates that change over time (``fit_tvc``) has
+    ``is_tvc`` set. ``cif_tvc``, ``iif_tvc`` and ``cb_tvc`` predict along a
+    covariate schedule (for any model, however fitted), while ``cif``,
+    ``iif`` and the simulation methods answer for an item held at one
+    covariate vector. The methods that read one covariate row per fitted
+    item (``residuals``, ``cramer_von_mises``, ``trend_test``,
+    ``diagnose``, ``plot``) refuse for such a fit, saying so.
+
     Examples
     --------
     >>> from surpyval.datasets import load_rossi_static
@@ -116,6 +129,11 @@ class ProportionalIntensityModel(
     array([0.00107511, 0.00284451, 0.00502557])
     """
 
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
+
     # Populated by the fitters; declared for the type checker.
     kind: str
     parameterization: str
@@ -130,6 +148,12 @@ class ProportionalIntensityModel(
     data: Any
     how: str
     res: Any
+    #: Whether the model was fitted to covariates that change over time
+    #: (``fit_tvc``), whose start-stop rows are then ``_tvc_fit_rows``
+    #: and whose number of items is ``n_items``; it has no ``data``.
+    is_tvc: bool = False
+    _tvc_fit_rows: dict
+    n_items: int
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
     #: applicable"`` for a model built from its parameters, ``"unknown"``
@@ -153,12 +177,14 @@ class ProportionalIntensityModel(
 
         out = out + "Base Rate Parameters:\n"
         for i, p in zip(self._rate_names, self.params):
-            out += "    {i}  :  {p}\n".format(i=i, p=p)
+            out += f"    {i}  :  {p}\n"
 
         out = out + "\nCovariate Coefficients:\n"
         for name, p in zip(self._coefficient_names(), self.coeffs):
-            out += "   {}  :  {}\n".format(name, p)
-        return out
+            out += f"   {name}  :  {p}\n"
+        if self.penalty is not None:
+            out += self._penalty_printout().lstrip("\n") + "\n"
+        return out + notes_text(self).lstrip("\n")
 
     # -- serialisation -----------------------------------------------------
 
@@ -170,8 +196,12 @@ class ProportionalIntensityModel(
         Stores the base-rate intensity model's name, the base-rate ``params``
         and the covariate ``coeffs``; the reloaded model reproduces
         ``cif``/``iif`` (``Lambda_0(t; params) * exp(Z . coeffs)``) exactly.
-        The likelihood-inference state (data, ``neg_ll`` closure) is not
-        stored.
+        A fit's parameter covariance is stored too (``"covariance"``), so
+        the reloaded model gives the same ``covariance()``,
+        ``standard_errors()``, ``summary()``, ``param_cb`` and Wald bounds
+        (``cif_cb``, ``iif_cb``, ``cb_tvc``). The data and the likelihood
+        are not stored: the likelihood, the information criteria and the
+        diagnostics need a refit, and say so.
 
         See Also
         --------
@@ -185,11 +215,18 @@ class ProportionalIntensityModel(
             "param_names": list(self._rate_names),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            # What the Wald bounds need (null for a model with no
+            # likelihood, and for a penalised fit, which has no
+            # covariance); optional on reading.
+            "covariance": (
+                None if self.penalty is not None else self._covariance_entry()
+            ),
             **maximum_entry(self.maximum),
         }
         if self.feature_names is not None:
             # The coefficients' names (#614)
             out["feature_names"] = list(self.feature_names)
+        out.update(self._penalty_entry())
         return stamp_schema(out)
 
     @classmethod
@@ -225,7 +262,47 @@ class ProportionalIntensityModel(
         names = model_dict.get("feature_names")
         out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
+        out._restore_penalty(model_dict)
+        out._restore_covariance(model_dict, np.r_[out.params, out.coeffs])
         return out
+
+    def _penalised_coefficients(self) -> tuple[list, np.ndarray]:
+        # The covariate coefficients (the base rate is not penalised).
+        return list(self._coefficient_names()), np.asarray(self.coeffs, float)
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
+        return super()._ic_k()
+
+    def covariance(self) -> np.ndarray:
+        """The parameters' covariance (see the likelihood-inference
+        mixin); a penalised fit (``fit_penalised``) has none, and raises
+        an error that says why."""
+        self._refuse_if_penalised()
+        return super().covariance()
+
+    def summary(self, alpha_ci: float = 0.05) -> Any:
+        """The fitted parameters with their standard errors and Wald
+        intervals (see the likelihood-inference mixin); for a penalised
+        fit the estimates with ``nan`` for the rest."""
+        if self.penalty is None:
+            return super().summary(alpha_ci)
+        import pandas as pd
+
+        check_alpha_ci(alpha_ci)
+        level = f"{100 * (1 - alpha_ci):g}%"
+        return pd.DataFrame(
+            {
+                "estimate": np.asarray(self._mle, dtype=float),
+                "se": np.nan,
+                f"lower {level}": np.nan,
+                f"upper {level}": np.nan,
+            },
+            index=self.parameter_names,
+        )
 
     @property
     def aliased(self) -> np.ndarray:
@@ -287,9 +364,30 @@ class ProportionalIntensityModel(
                 x / np.exp(self._coef() @ Z), *self.params
             )
         else:
+            raise ValueError(f"Inverse cif undefined for {self.dist.name}")
+
+    def _refuse_tvc(self, what: str, instead: str) -> None:
+        """Refuse ``what`` for a model fitted to time-varying covariates
+        (``fit_tvc``), saying what to do ``instead``; anything else
+        passes."""
+        if self.is_tvc:
             raise ValueError(
-                "Inverse cif undefined for {}".format(self.dist.name)
+                f"{what} is not available for a model fitted to "
+                "time-varying covariates (fit_tvc, fit_tvc_timeline): it "
+                "reads one covariate row per item, and these items' "
+                f"covariates change over time. {instead}"
             )
+
+    def diagnose(self, *args: Any, **kwargs: Any) -> Any:
+        self._refuse_tvc(
+            "diagnose()",
+            "Compare candidate baselines and covariates with aic() and "
+            "bic(), and observed with expected failures over a period "
+            "with cif_tvc along an item's own schedule.",
+        )
+        return super().diagnose(*args, **kwargs)
+
+    diagnose.__doc__ = DiagnoseMixin.diagnose.__doc__
 
     def _item_cif_map(self) -> dict:
         # Each item's cumulative intensity is the baseline scaled by its own
@@ -341,18 +439,15 @@ class ProportionalIntensityModel(
         numpy array
             The residuals.
         """
+        self._refuse_tvc(
+            "residuals()",
+            "Compare an item's observed failures over a period with the "
+            "expected number, cif_tvc(end, schedule, given=start) along "
+            "its own schedule.",
+        )
         self._check_has_data("residuals")
         cif_map = self._item_cif_map()
-        if kind in ("cumulative_hazard", "pit"):
-            e = diagnostics.cumulative_hazard_residuals(self.data, cif_map)
-            if kind == "pit":
-                return 1.0 - np.exp(-e)
-            return e
-        elif kind == "martingale":
-            return diagnostics.martingale_residuals(self.data, cif_map)
-        raise option_error(
-            "kind", kind, ("cumulative_hazard", "pit", "martingale")
-        )
+        return diagnostics.intensity_residuals(self.data, cif_map, kind)
 
     def trend_test(
         self,
@@ -390,6 +485,13 @@ class ProportionalIntensityModel(
             direction of the statistic and the trend concluded at
             ``alpha_ci``.
         """
+        self._refuse_tvc(
+            "trend_test()",
+            "Test the failure times themselves for a trend with "
+            "surpyval.recurrent.laplace or mil_hdbk_189c (which take no "
+            "covariates), or compare this fit with the constant-baseline "
+            "one (ProportionalIntensityHPP.fit_tvc) by aic().",
+        )
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
             self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
@@ -426,7 +528,21 @@ class ProportionalIntensityModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
+        self._refuse_tvc(
+            "cramer_von_mises()",
+            "Its bootstrap would need to simulate each item along its own "
+            "covariate history, which is not available yet; compare "
+            "candidate baselines and covariates with aic() and bic().",
+        )
         self._check_has_data("cramer_von_mises")
+        if self.penalty is not None:
+            raise ValueError(
+                "cramer_von_mises is not available for a penalised fit: "
+                "its bootstrap refits the model to each simulated data "
+                "set, and the penalised estimates' bias would be counted "
+                "as lack of fit. Check the fit of the unpenalised model "
+                "(fit) on the covariates you keep."
+            )
         return diagnostics.cramer_von_mises_regression(
             self, n_boot=n_boot, random_state=random_state
         )
@@ -530,7 +646,7 @@ class ProportionalIntensityModel(
         """Delta-method bounds, on the log scale, on the ``cif`` or the
         ``iif`` (``function``) at ``x`` for covariates ``Z``."""
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(named_covariates(Z, self.feature_names), dtype=float)
         n_dist_params = len(self.params)
@@ -546,7 +662,9 @@ class ProportionalIntensityModel(
         cov = self.covariance()
         cov[held, :] = 0.0
         cov[:, held] = 0.0
-        se = delta_method_se(function_at, self._mle_values(), cov)
+        se = delta_method_se(
+            function_at, self._mle_values(), cov, scale_free=True
+        )
         estimate = getattr(self, function)(x, Z)
         return log_transformed_cb(estimate, se, alpha_ci, bound)
 
@@ -588,6 +706,11 @@ class ProportionalIntensityModel(
             The axes the data was plotted on.
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_tvc(
+            "plot()",
+            "Plot cif_tvc (with cb_tvc) along a schedule of interest "
+            "against time instead.",
+        )
         self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
@@ -642,8 +765,10 @@ class ProportionalIntensityModel(
         ``Z`` describes one unit's covariate history, so a missing value
         raises (the package's missing-value rule, in the Conventions page)
         rather than being simulated: a NaN intensity ran every sequence to
-        ``max_events`` and then failed on the NaN event times.
+        ``max_events`` and then failed on the NaN event times. A covariate
+        schedule is refused: simulation is at one fixed covariate vector.
         """
+        refuse_schedule(Z, "this method")
         try:
             Z_arr = np.atleast_1d(
                 np.asarray(

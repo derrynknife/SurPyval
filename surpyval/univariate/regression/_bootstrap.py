@@ -24,30 +24,44 @@ estimate of the censoring distribution given that it exceeds ``x``
 (beyond the last censoring time, never). A test stopped at a common
 time (Type I) therefore censors every unit at that time, and data with
 no censoring stay uncensored.
+
+A fit with sampling weights ``w`` is resampled by cases instead: the
+model knows nothing of the sampling design the weights describe, so
+simulating from it would not reproduce the variability of the estimate.
+Each resample draws the units i.i.d. with replacement, each with its own
+covariates, time, censoring, truncation and weight, and refits the
+weighted model. The BCa acceleration is then that of the weighted
+estimating equations: the skewness of ``g' A^-1 S*``, ``S*`` each
+resample's weighted score at the estimate and ``A^-1`` the inverse of
+the weighted information (the bread of the sandwich), not the robust
+covariance. Nothing is simulated, so left- and interval-censored data
+are resampled as they are, and the resamples are drawn by position
+alone, so a seed gives the same bounds at any scale of the weights.
 """
 
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import ndtr, ndtri
 
-from surpyval.utils.no_maximum import quiet_maximum_warnings
+from surpyval.utils.linalg import bootstrap_position
+from surpyval.utils.no_maximum import (
+    NoFiniteMaximumError,
+    quiet_maximum_warnings,
+    warn_bootstrap_refits,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import LR_NAMES
-from ._prediction import quantiles_by_inversion
-
-#: The share of refits that may fail to reach a verified maximum before
-#: the bounds warn: a few in a thousand are expected of small samples, as
-#: a resample with no failures at a stress leaves its effect unbounded.
-FAILED_SHARE = 0.02
+from ._prediction import times_at_hazard
 
 #: What a refit that raises is counted as failing with.
 REFIT_ERRORS = (
@@ -58,7 +72,7 @@ REFIT_ERRORS = (
 )
 
 
-def bound_method(method: "str | None") -> str:
+def bound_method(method: str | None) -> str:
     """The bound ``method`` asks for: ``"wald"``, ``"lr"`` (or one of
     its aliases) or ``"bootstrap"``; anything else is refused. Case does
     not matter, and ``None`` is the default, ``"wald"``, as for the
@@ -120,16 +134,18 @@ class Refits:
     #: maximum was not verified (the values they reached are kept).
     no_maximum: int
     unverified: int
-    #: Refits that raised (left out).
+    #: Refits that raised (left out), ``no_estimate`` of them because
+    #: the resample's likelihood has no maximum at all (no failures).
     failed: int
     #: What the model's own fit reached (its ``maximum``).
     model_maximum: str = "verified"
+    no_estimate: int = 0
 
     def warn(self) -> None:
         """One warning: that the model itself has no finite maximum, or
-        that more than ``FAILED_SHARE`` of the refits did not reach a
-        verified maximum or failed."""
-        bad = self.no_maximum + self.unverified + self.failed
+        that some refits had no finite maximum, or that more than
+        ``FAILED_SHARE`` of them did not reach a verified maximum or
+        failed (``warn_bootstrap_refits``)."""
         if self.model_maximum == "no finite maximum":
             # On #583's test with 11 failures, the bootstrap bound from
             # such a fit covered 0.004 (the Wald bound, [0, 1] or nan
@@ -145,26 +161,15 @@ class Refits:
                 stacklevel=caller_stacklevel(),
             )
             return
-        if bad <= FAILED_SHARE * self.n_boot:
-            return
-        parts = []
-        if self.no_maximum:
-            parts.append(f"{self.no_maximum} with no finite maximum")
-        if self.unverified:
-            parts.append(f"{self.unverified} at an unverified maximum")
-        if self.failed:
-            parts.append(f"{self.failed} failed and left out")
-        warnings.warn(
-            f"{bad} of the {self.n_boot} bootstrap refits did not reach a "
-            f"verified maximum of the likelihood ({', '.join(parts)}). "
-            "A refit with no finite maximum is kept at the estimate it "
-            "reached, where its parameters run off to their limit, so that "
-            "it counts at its end of the bounds; with this many, the data "
-            "barely identify the model (too few failures at some covariate "
-            "values), and the bounds are rough. Compare them with "
-            "method='lr'.",
-            UserWarning,
-            stacklevel=caller_stacklevel(),
+        warn_bootstrap_refits(
+            self.n_boot,
+            no_maximum=self.no_maximum,
+            no_estimate=self.no_estimate,
+            unverified=self.unverified,
+            failed=self.failed - self.no_estimate,
+            advice="there are too few failures at some covariate values; "
+            "treat the bounds as rough, and compare them with "
+            "method='lr', which needs no refits",
         )
 
 
@@ -176,7 +181,11 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     from ._inference import _same_point
 
     n_boot = check_n_boot(n_boot)
-    design = ResampleDesign(model)
+    design: Any = (
+        CaseDesign(model)
+        if getattr(model, "weighted", False)
+        else ResampleDesign(model)
+    )
     point = model._covariance_point(model._eval_params(), model.center)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -195,25 +204,58 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     return out
 
 
+def _refuse_unresamplable(model: Any) -> None:
+    """Refuse a model whose data a resample cannot be drawn from."""
+    if getattr(model, "data", None) is None or model._restored:
+        raise ValueError(
+            "Bootstrap bounds need the data the model was fitted to, "
+            "which a model restored from a dict does not keep; use "
+            "method='wald'."
+        )
+    if model.is_tvc:
+        raise ValueError(
+            "Bootstrap bounds are not available for a model fitted to "
+            "time-varying covariates: a resample would need each "
+            "subject's covariate path, which the fit does not keep. "
+            "Use method='wald' or method='lr'."
+        )
+
+
+class CaseDesign:
+    """What a case resample of a weighted model's data draws from: every
+    unit (a row with ``n = k`` is ``k`` units) with its covariates, time,
+    censoring, truncation and weight."""
+
+    def __init__(self, model: Any) -> None:
+        _refuse_unresamplable(model)
+        data = model.data
+        n = np.asarray(data.n, dtype=int)
+        units = np.repeat(np.arange(n.size), n)
+        self.x = np.asarray(data.x, dtype=float)[units]
+        self.c = np.asarray(data.c)[units]
+        self.Z = np.asarray(data.Z, dtype=float)[units]
+        self.t = np.asarray(data.t, dtype=float)[units]
+        self.truncated = bool(np.any(np.isfinite(self.t)))
+        # The weights scaled to sum to the units, as the fit uses them, so
+        # that the refits do not depend on the scale of ``w``.
+        w = np.asarray(data.w, dtype=float)
+        self.w = (w * (n.sum() / np.sum(n * w)))[units]
+
+    def resample(self, rng: np.random.Generator) -> tuple:
+        """One resample, ``(x, Z, c, t, w)``: the units drawn with
+        replacement."""
+        k = rng.integers(0, self.c.size, size=self.c.size)
+        t = self.t[k] if self.truncated else None
+        return self.x[k], self.Z[k], self.c[k], t, self.w[k]
+
+
 class ResampleDesign:
     """What a resample of ``model``'s data keeps: each unit's covariates,
     truncation window and censoring (a row with ``n = k`` is ``k``
     units)."""
 
     def __init__(self, model: Any) -> None:
-        if getattr(model, "data", None) is None or model._restored:
-            raise ValueError(
-                "Bootstrap bounds need the data the model was fitted to, "
-                "which a model restored from a dict does not keep; use "
-                "method='wald'."
-            )
-        if model.is_tvc:
-            raise ValueError(
-                "Bootstrap bounds are not available for a model fitted to "
-                "time-varying covariates: a resample would need each "
-                "subject's covariate path, which the fit does not keep. "
-                "Use method='wald' or method='lr'."
-            )
+        _refuse_unresamplable(model)
         data = model.data
         c = np.asarray(data.c)
         if np.any((c != 0) & (c != 1)):
@@ -278,17 +320,22 @@ class ResampleDesign:
 
 def _draw(
     model: Any,
-    design: ResampleDesign,
+    design: Any,
     point: tuple,
     n_boot: int,
     rng: np.random.Generator,
 ) -> Refits:
-    """``n_boot`` resamples simulated from ``model`` with ``design`` and
-    refitted (see the module docstring)."""
+    """``n_boot`` resamples simulated from ``model`` with ``design`` (or,
+    for a weighted fit, drawn from its units) and refitted (see the
+    module docstring)."""
     p_hat = np.asarray(model._eval_params(), dtype=float)
-    H = _cumulative_hazard(model, p_hat, model.center)
-    H_lo = H(np.where(np.isfinite(design.tl), design.tl, -np.inf), design.Z)
-    H_hi = H(np.where(np.isfinite(design.tr), design.tr, np.inf), design.Z)
+    cases = isinstance(design, CaseDesign)
+    if not cases:
+        H = _cumulative_hazard(model, p_hat, model.center)
+        H_lo = H(
+            np.where(np.isfinite(design.tl), design.tl, -np.inf), design.Z
+        )
+        H_hi = H(np.where(np.isfinite(design.tr), design.tr, np.inf), design.Z)
     kwargs: dict[str, Any] = {
         "fixed": {
             k: v for k, v in model.fixed.items() if k != model.life_parameter
@@ -303,19 +350,33 @@ def _draw(
         kwargs["center"] = model._has_center()
     score = _score(model, p_hat)
     params, centers, scores = [], [], []
-    counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
+    counts = {
+        "no finite maximum": 0,
+        "unverified": 0,
+        "failed": 0,
+        "no estimate": 0,
+    }
     for _ in range(n_boot):
-        x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
+        if cases:
+            x, Z, c, t, w = design.resample(rng)
+            weights: dict[str, Any] = {"w": w}
+        else:
+            x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
+            Z, weights = design.Z, {}
+            t = t if design.truncated else None
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.model.fit(
                     x,
-                    design.Z,
+                    Z,
                     c=c,
-                    t=t if design.truncated else None,
+                    t=t,
+                    **weights,
                     **kwargs,
                 )
+        except NoFiniteMaximumError:
+            counts["no estimate"] += 1
+            continue
         except REFIT_ERRORS:
             counts["failed"] += 1
             continue
@@ -332,8 +393,9 @@ def _draw(
         scores=np.array(scores).reshape(len(scores), p_hat.size),
         no_maximum=counts["no finite maximum"],
         unverified=counts["unverified"],
-        failed=counts["failed"],
+        failed=counts["failed"] + counts["no estimate"],
         model_maximum=model.maximum,
+        no_estimate=counts["no estimate"],
     )
 
 
@@ -390,36 +452,45 @@ def _times_at(
     Z: npt.NDArray,
 ) -> npt.NDArray:
     """The times at which ``model``'s cumulative hazard at ``params``
-    reaches ``H_target``, row by row of ``Z``."""
+    reaches ``H_target``, row by row of ``Z``. A model whose cumulative
+    hazard levels off (a cure fraction) inverts it itself
+    (``_times_at_hazard``): a target it never reaches is an infinite
+    time."""
+    own = getattr(model, "_times_at_hazard", None)
+    if own is not None:
+        return np.asarray(own(params, center, H_target, Z), dtype=float)
     rows = np.asarray(model._centred(Z, center), dtype=float)
-    with np.errstate(all="ignore"):
-        p = -np.expm1(-np.asarray(H_target, dtype=float))
-        start = np.asarray(
-            model.distribution.qf(p, *params[: model.k_dist]), dtype=float
-        ) * np.ones(p.shape)
-    return quantiles_by_inversion(
-        lambda t, k: model.model.Hf(t, rows[k], *params),
-        p,
-        model.distribution.support,
-        start,
-        lambda t, k: model.model.hf(t, rows[k], *params),
-    )
+    return times_at_hazard(model, params, rows, H_target)
 
 
 # -- the scores of the resamples ---------------------------------------------
+
+
+def _covariance_or_none(model: Any) -> npt.NDArray | None:
+    """The model's covariance (its sandwich's bread, for a fit with
+    weights), in the parameterisation of ``_eval_params``, or ``None``
+    where it has none: the scale of the derivatives' steps."""
+    try:
+        with ignoring_warnings():
+            if getattr(model, "weighted", False):
+                return np.asarray(_bread(model), dtype=float)
+            return np.asarray(model.covariance(), dtype=float)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
 
 
 def _score(model: Any, p_hat: npt.NDArray) -> Callable[[Any], npt.NDArray]:
     """``score(data)``: the gradient of the log-likelihood of ``data`` at
     the model's own parameters ``p_hat`` (its baseline at its
     ``center``), by central differences in the steps of its covariance
-    (``_hessian_step``); zero for a held parameter."""
+    (``_gradient_step``: of its standard errors); zero for a held
+    parameter."""
     from ._fit_skeleton import centred_copy
 
     names = model.parameter_names
     held = model._held()
     free = [i for i, nm in enumerate(names) if nm not in held]
-    step = model._hessian_step(p_hat)
+    step = model._gradient_step(p_hat, _covariance_or_none(model))
     center = model.center
     shift = center is not None and bool(np.any(center))
 
@@ -556,7 +627,7 @@ def function_bounds(
     model: Any,
     fits: Refits,
     value: Callable[..., npt.NDArray],
-    on: "str | None",
+    on: str | None,
     alpha_ci: float,
     bound: str,
 ) -> npt.NDArray:
@@ -600,10 +671,11 @@ def _jacobian(
 ) -> npt.NDArray:
     """``(n_points, len(p_hat))``: the central-difference gradient of
     ``value`` at ``p_hat`` at each query point, in the steps of the
-    covariance; zero in a held parameter."""
+    covariance (``_gradient_step``: of its standard errors); zero in a
+    held parameter."""
     names = model.parameter_names
     held = model._held()
-    step = model._hessian_step(p_hat)
+    step = model._gradient_step(p_hat, _covariance_or_none(model))
     size = np.size(value(p_hat))
     cols = []
     with np.errstate(all="ignore"):
@@ -627,9 +699,11 @@ def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
     ``S`` at the estimate (``I^-1`` the model's covariance). Taken as 0
     (the bias-corrected percentile interval) where the covariance or the
     skewness is not finite."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        cov = np.array(model.covariance(), dtype=float)
+    with ignoring_warnings():
+        if getattr(model, "weighted", False):
+            cov = _bread(model)
+        else:
+            cov = np.array(model.covariance(), dtype=float)
     held = model._held()
     out = [i for i, nm in enumerate(model.parameter_names) if nm in held]
     cov[out, :] = 0.0
@@ -643,6 +717,30 @@ def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
         m2 = np.mean(L**2, axis=0)
         a = np.mean(L**3, axis=0) / (6.0 * m2**1.5)
     return np.where(np.isfinite(a), a, 0.0)
+
+
+def _bread(model: Any) -> npt.NDArray:
+    """The inverse of the weighted information of a weighted ``model``
+    (the bread of its sandwich), in the parameterisation of
+    ``covariance()``; ``nan`` where it is not finite."""
+    p_hat, center, _ = model._inference_state()
+    names = model.parameter_names
+    held = model._held()
+    free = [i for i, nm in enumerate(names) if nm not in held]
+    out = np.zeros((len(names), len(names)))
+    if not free:
+        return out
+    inv = model._inverse_information(np.asarray(p_hat), center, free)
+    if inv is None:
+        return np.full(out.shape, np.nan)
+    out[np.ix_(free, free)] = inv
+    if model._fit_centring is not None:
+        J = model._fit_centring[2]
+        out = J @ out @ J.T
+    if model.aliased.size:
+        out[model.k_dist + model.aliased, :] = np.nan
+        out[:, model.k_dist + model.aliased] = np.nan
+    return out
 
 
 def bca_bounds(
@@ -659,7 +757,9 @@ def bca_bounds(
     quantile of the share of draws below the estimate (ties counted
     half, and the share kept within half a draw of 0 and 1). Where ``1 -
     a w`` is not positive the level is the end of the draws on that
-    side. The quantiles interpolate linearly, as ``np.quantile``'s.
+    side. The quantile at level ``p`` is the ``(n + 1) p``-th smallest
+    draw, interpolated linearly between draws (``np.quantile``'s
+    ``method="weibull"``), and the end draw beyond the first and last.
     Infinite draws (a function that runs off to a limit) count at their
     end; fewer than two draws give ``nan``."""
     n, m = draws.shape
@@ -685,7 +785,9 @@ def bca_bounds(
         denom = 1.0 - a * w
         with np.errstate(divide="ignore", invalid="ignore"):
             adjusted = np.where(denom > 0, z0 + w / denom, np.sign(w) * np.inf)
-        pos = ndtr(adjusted) * (n - 1)
+        # The ``(n + 1) p``-th smallest draw, the rule every bootstrap
+        # bound shares (``utils.linalg.BOOTSTRAP_QUANTILE_METHOD``).
+        pos = bootstrap_position(ndtr(adjusted), n)
         lo = np.clip(np.floor(pos).astype(int), 0, n - 1)
         hi = np.minimum(lo + 1, n - 1)
         frac = pos - lo

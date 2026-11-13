@@ -33,7 +33,7 @@ def refuse_weighted_test(model: Any) -> None:
     )
 
 
-def _result(ll: float, ll_null: float, df: int) -> dict:
+def lr_test_result(ll: float, ll_null: float, df: int) -> dict:
     from scipy.stats import chi2
 
     if df < 1:
@@ -73,6 +73,11 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
 
     refuse_lr_test(model)
     refuse_weighted_test(model)
+    firth = getattr(model, "firth", None)
+    if firth is not None:
+        # Firth's fit: the penalised test, which is what its estimate
+        # maximises (coxphf's "Likelihood ratio test").
+        return firth.likelihood_ratio_test()
     neg_ll_of = getattr(model, "neg_ll_of", None)
     if neg_ll_of is None or getattr(model, "_neg_ll", None) is None:
         raise ValueError(
@@ -83,7 +88,7 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
         )
     beta = np.asarray(model.params, dtype=float)
     ll_null = -float(neg_ll_of(np.zeros(beta.shape)))
-    return _result(-float(model.neg_ll()), ll_null, int(model._ic_k()))
+    return lr_test_result(-float(model.neg_ll()), ll_null, int(model._ic_k()))
 
 
 def parametric_likelihood_ratio_test(
@@ -101,7 +106,7 @@ def parametric_likelihood_ratio_test(
     if not model._is_linear_predictor() or (
         model.reg_model.name not in _SERIALISABLE_REG_NAMES
     ):
-        from ._kinds import DISTRIBUTIONAL
+        from .kinds import DISTRIBUTIONAL
 
         if model._is_accelerated_life():
             what = (
@@ -166,6 +171,6 @@ def parametric_likelihood_ratio_test(
             x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
         )
     k_null = len(model.distribution_param_map) - len(fixed)
-    return _result(
+    return lr_test_result(
         -float(model.neg_ll()), -float(null.neg_ll()), model.k - k_null
     )

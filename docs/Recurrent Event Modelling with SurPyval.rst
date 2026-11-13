@@ -136,6 +136,80 @@ gives on the same columns:
     same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
     assert np.allclose(from_log.params, same.params)
 
+From a SurpyvalData
+~~~~~~~~~~~~~~~~~~~
+
+Every recurrent ``fit`` also takes a ``SurpyvalData`` with each row's unit,
+``i`` (see :doc:`Conventions`): ``CrowAMSAA.fit(data)``. In plain words, a
+unit's rows are its history, in time order:
+
+- ``x`` is the unit's age at each row: an event, or the last time it was seen;
+- ``c = 1`` closes the record (the unit was still running when we stopped
+  watching), and ``c = 0`` is an event;
+- ``a = 1`` marks an event that ended the unit for good (scrapped, written
+  off), and ``a = 0`` an event the unit carried on from;
+- ``e`` is the event's type (its failure mode), for the cause-specific
+  models, and ``Z`` the covariates, for the regressions;
+- ``n`` and ``tl`` / ``tr`` are the counts and the observation window, as
+  above. A row whose ``tl`` is after the previous row's ``x`` starts a new
+  period of observation after a gap, which is given to the fit as
+  ``windows``.
+
+The fit is exactly that of the arrays the rows stand for. Here pump P1 was
+watched to 500 hours, not watched until 800, then watched to 1,400; pump P2
+was scrapped at its fourth failure, at 650 hours:
+
+.. jupyter-execute::
+
+    from surpyval import SurpyvalData
+
+    inf = np.inf
+    pumps = SurpyvalData(
+        x=[120, 380, 500, 900, 1150, 1400, 90, 400, 520, 650],
+        c=[0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        tl=[-inf, -inf, -inf, 800, -inf, -inf, -inf, -inf, -inf, -inf],
+        a=[0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        i=["P1"] * 6 + ["P2"] * 4,
+        unit="hours",
+    )
+    pump_model = CrowAMSAA.fit(pumps)
+    print(pump_model)
+
+Apart from the joint frailty model, none of the recurrent models models a
+terminal event, so a unit that ended for good (``a = 1``) is fitted as an
+event followed by the end of its observation: what the arrays give for a unit with no ``c = 1`` row. The
+model's ``notes`` say so, and say where ``a`` was read rather than given
+(an event on a unit's last row with no ``a`` is read as ``a = 1``). A unit
+whose last row is an event with ``a = 0`` and no ``c = 1`` row is also taken
+to be watched until that event, with a note. Covariates that change within a
+unit (rows with different ``Z``) are fitted by the model's ``fit_tvc``, for
+the models that have one; ``fit_from_df(..., a_col=...)`` reads ``a`` from a
+table and adds the same notes. Data without ``i``, in more than one state
+(``s``), or with what the model has no argument for is refused, saying what
+to use.
+
+The joint frailty model (``JointFrailty``, see :doc:`counting/joint_frailty`)
+does model the terminal event, so ``JointFrailty.fit(data)`` reads the event
+with ``a = 1`` as the unit's terminal event and a ``c = 1`` row as the end of
+its record without one; where ``a`` was read rather than given, its notes say
+that the last event was taken as the terminal event, and to give ``a = 0`` on
+a last event that was an ordinary one. The panel-count models
+(``PanelCountMCF``, ``PanelCountRegression``) take counts found at
+inspections, which have no rows in a ``SurpyvalData``: they take arrays (or
+``fit_from_df``) and refuse a ``SurpyvalData`` in words.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _same = CrowAMSAA.fit(
+        [120, 380, 900, 1150, 90, 400, 520, 650],
+        i=["P1"] * 4 + ["P2"] * 4,
+        windows={"P1": [(0, 500), (800, 1400)], "P2": [(0, 650)]},
+    )
+    assert np.array_equal(pump_model.params, _same.params)
+    assert "terminal event" in pump_model.notes[0]
+
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -366,6 +440,86 @@ Counts of events (``c=2`` or ``c=-1`` rows) are not yet supported by the
 non-parametric risk-set construction; SurPyval raises an error for these
 rather than return a wrong MCF. For such data use a parametric intensity
 model.
+
+Comparing two groups' MCFs
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Do the pumps on site A fail more often than those on site B? Do patients
+on a new treatment have fewer repeat admissions? Fit one MCF per group and
+pass both to :func:`~surpyval.recurrent.mcf_diff`. It gives two answers:
+
+- **how far apart the curves are at each time**: the MCF of group a minus
+  the MCF of group b, the extra events per item group a has had by then,
+  with a confidence interval at each time;
+- **whether the groups' event rates differ over the whole follow-up**: a
+  test that adds up, time by time, how much faster one group's MCF
+  climbs than the other's, giving more say to the times when both groups
+  have many items under observation.
+
+(:func:`~surpyval.recurrent.intervention_test` asks a different question:
+whether the same systems changed at an intervention.)
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting, mcf_diff
+
+    # Site A: three pumps watched for 12 months; site B: three for 10.
+    a = NonParametricCounting.fit(
+        [2, 5, 9, 12, 4, 8, 11, 12, 6, 12],
+        i=[1, 1, 1, 1, 2, 2, 2, 2, 3, 3],
+        c=[0, 0, 0, 1, 0, 0, 0, 1, 0, 1],
+    )
+    b = NonParametricCounting.fit(
+        [7, 10, 3, 10, 5, 9, 10],
+        i=[1, 1, 2, 2, 3, 3, 3],
+        c=[0, 1, 0, 1, 0, 0, 1],
+    )
+    result = mcf_diff(a, b)
+    print("difference at 6 and 10 :", result.diff([6, 10]).round(3))
+    print("95% interval at 10     :", result.diff_cb(10).round(3))
+    print(result)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(result.diff(10) - 2 / 3) < 1e-12
+    assert result.p_value > 0.05 and result.tests["linear"]["p_value"] > 0.05
+
+Here site A has had two-thirds of a failure more per pump than site B by
+month 10, but with three pumps per site the interval runs from below zero
+and neither test finds a clear difference (p-values 0.22 and 0.19). ``result.plot()`` draws the difference with its interval and a
+line at zero. The difference stops at the end of the shorter follow-up
+(month 10 here): past it one group's MCF is not estimated, so ``diff``
+returns NaN.
+
+The formulas. With :math:`\hat M_a` and :math:`\hat M_b` the groups'
+Nelson-Aalen MCFs, the difference :math:`\hat M_a(t) - \hat M_b(t)` has
+variance :math:`\hat V_a(t) + \hat V_b(t)`, the sum of the groups'
+Lawless-Nadeau robust variances (the groups are independent), and the
+interval is the difference :math:`\pm z` standard errors. The tests are
+the pseudo-score tests of Cook, Lawless and Nadeau (1996). With
+:math:`r_a(t), r_b(t)` the items under observation and
+:math:`d\hat M(t) = d(t) / r(t)` each MCF's step at :math:`t`,
+
+.. math::
+    U = \sum_j w(t_j) \big(d\hat M_a(t_j) - d\hat M_b(t_j)\big),
+    \qquad
+    w(t) = \frac{r_a(t)\, r_b(t)}{r_a(t) + r_b(t)},
+
+over the times both groups are observed, up to the last such time
+:math:`\tau`. ``tests["constant"]`` uses :math:`w` as it is;
+``tests["linear"]`` multiplies it by :math:`(\tau - t)/\tau`, giving early
+times more weight, which compares the average gap between the curves
+rather than the gap at the end. :math:`U^2 / \widehat{Var}(U)` is
+chi-squared with one degree of freedom when the groups' rates are the
+same. The robust variance of :math:`U` (the default) sums the square of
+each item's weighted deviations from its group's steps, so it allows for
+items differing in their rates; ``test_variance="poisson"`` assumes every
+item follows one Poisson process and is too small when they do not. The
+numbers match R's ``reda::mcfDiff`` and ``reda::mcfDiff.test``. With
+few items per group (about 20) the robust tests reject a true null a
+little more often than the nominal level.
 
 Trend tests before fitting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -725,7 +879,7 @@ Interval-counted (grouped) data
 Sometimes the exact event times are unknown and only the number of events
 between inspections is recorded. Give each inspection interval as an
 ``[start, end]`` pair in ``x`` with ``c=2``, and the number of events found
-in ``n``. A count of events since new up to a time can be given as a
+in ``n`` (0 for an inspection that found none). A count of events since new up to a time can be given as a
 left-censored row (``c=-1``). The HPP and NHPP models accept these rows,
 alone or mixed with exact events (when mixing, write an exact event at
 :math:`t` as the pair ``[t, t]`` with ``c=0``, and the end of observation as
@@ -755,6 +909,152 @@ event times, so they are not available for grouped data.
 
     assert sum(n) == 32
     assert np.isclose(HPP.fit(x, i=i, c=c, n=n).params[0], 32 / 80)
+
+Counts at inspections (panel counts)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When each unit is inspected at its own times and only the number of events
+since the previous inspection is recorded -- pumps checked every few hundred
+hours, with the failures found at each check counted; patients seen at
+clinic visits, with the new tumours counted -- the data are *panel counts*.
+Many inspections find nothing, and those zeros matter: they say no events
+happened in the interval. ``PanelCountMCF`` estimates the mean cumulative
+function (the expected number of events per unit by each time) from such
+data without assuming a process or a shape; the theory is in
+:doc:`Recurrent Event Analysis` (Panel Counts). The data are one row per
+inspection: the unit, the inspection time (from the start of the unit's
+observation) and the count since the previous inspection.
+
+Here, 40 pumps are inspected every 300 to 900 hours over their first 5000
+hours of service:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    from surpyval.recurrent import PanelCountMCF
+
+    # Failures of each pump follow a power law (mean (t / 1000)^1.4), faster
+    # on some pumps than others; only the counts found at inspections are kept
+    pump_rng = np.random.default_rng(7)
+    pump_rows = []
+    for pump in range(40):
+        pump_rate = pump_rng.gamma(2.0, 0.5)
+        failures = np.cumsum(pump_rng.exponential(size=50)) / pump_rate
+        failures = 1000 * failures ** (1 / 1.4)
+        hours, seen = 0.0, 0
+        while True:
+            hours += pump_rng.uniform(300, 900)
+            if hours > 5000:
+                break
+            found = int(np.sum(failures <= hours)) - seen
+            seen += found
+            pump_rows.append((pump, round(hours), found))
+    pump_log = pd.DataFrame(pump_rows, columns=["pump", "hours", "found"])
+    print(pump_log.head(5))
+
+    pump_mcf = PanelCountMCF.fit_from_df(
+        pump_log, "hours", "found", i_col="pump", unit="hours"
+    )
+    pump_mcf
+
+The estimate is a non-decreasing step function with a step only where the
+data say the mean can change. Its bounds resample whole pumps and refit
+(the bootstrap), so they do not assume the pumps share one rate:
+
+.. jupyter-execute::
+
+    t_query = [1000, 2500, 4500]
+    print("MCF   :", pump_mcf.mcf(t_query).round(2))
+    print("bounds:", pump_mcf.mcf_cb(t_query, n_boot=200, random_state=1).round(2).tolist())
+
+The default estimator is the maximum likelihood one (Wellner and Zhang);
+``how="pseudo"`` gives the isotonic regression of the cumulative counts
+(Sun and Kalbfleisch), which is exact and fast but uses the data less
+fully when units are inspected at different times. The same counts fit a
+parametric model through the grouped-count likelihood: each inspection
+interval is a ``[previous, this]`` pair with ``c=2``, and a count of 0 is
+allowed there:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA
+
+    pump_pseudo = PanelCountMCF.fit_from_df(pump_log, "hours", "found", i_col="pump", how="pseudo")
+    pump_log = pump_log.sort_values(["pump", "hours"])
+    pump_start = pump_log.groupby("pump")["hours"].shift(fill_value=0)
+    pump_ca = CrowAMSAA.fit(
+        np.c_[pump_start, pump_log["hours"]], i=pump_log["pump"], c=np.full(len(pump_log), 2), n=pump_log["found"]
+    )
+    print("pseudo-likelihood MCF:", pump_pseudo.mcf(t_query).round(2))
+    print("Crow-AMSAA            :", pump_ca.cif(t_query).round(2), "shape", pump_ca.params[1].round(2))
+
+The parametric fit assumes the counts are Poisson; here the pumps differ
+in their rates, so its bounds would be too narrow, while the shape of the
+curve agrees with the non-parametric estimate.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (pump_log["found"] == 0).any()
+    assert np.all(np.diff(pump_mcf.mcf_hat) >= 0)
+    assert abs(pump_ca.params[1] - 1.4) < 0.3
+
+**Covariates: the proportional means model.** ``PanelCountRegression``
+fits :math:`E[N(t) \mid Z] = \Lambda_0(t) e^{\beta' Z}`, with the
+baseline left unspecified, by the pseudo-likelihood (the default, R
+``spef``'s ``"MPL"``) or the likelihood. :math:`e^{\beta}` is the ratio of
+the expected counts at every time. Here a simulated clinic-visit study:
+120 patients, about half on a treatment that truly halves the expected
+number of new lesions (:math:`\beta = \ln 0.5 \approx -0.69`), each seen
+at visits one to six months apart for three years, with the new lesions
+counted at each visit, and patients differing in their underlying rates:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import PanelCountRegression
+
+    clinic_rng = np.random.default_rng(11)
+    clinic_rows = []
+    for patient in range(120):
+        treated = int(clinic_rng.random() < 0.5)
+        rate = 0.15 * clinic_rng.gamma(2.0, 0.5) * 0.5**treated  # per month
+        month = 0
+        while True:
+            gap = int(clinic_rng.integers(1, 7))
+            if month + gap > 36:
+                break
+            month += gap
+            clinic_rows.append(
+                (patient, month, clinic_rng.poisson(rate * gap), treated)
+            )
+    clinic = pd.DataFrame(
+        clinic_rows, columns=["patient", "month", "new_lesions", "treated"]
+    )
+
+    clinic_model = PanelCountRegression.fit_from_df(
+        clinic, "month", "treated", "new_lesions", i_col="patient"
+    )
+    print(clinic_model)
+    print("ratio of expected lesions, treated / untreated:",
+          np.exp(clinic_model.params[0]).round(3))
+    print("95% bootstrap interval for beta:",
+          clinic_model.param_cb("treated", n_boot=200, random_state=1).round(3))
+
+The estimated ratio is close to the true 0.5, and its interval comes from
+resampling whole patients, so it allows for patients differing in their
+rates. ``how="MLE"`` uses the counts in each interval rather than
+their running totals; the two estimators agree when the model holds and
+the visit times carry no information about the counts, and differ in how
+they weight the visits. Standard errors and intervals for either come
+from the same bootstrap (``standard_errors``, ``param_cb``, ``mcf_cb``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(clinic_model.params[0] - np.log(0.5)) < 0.35
 
 Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1058,7 +1358,12 @@ its times count from its entry, and the fitted model's ``data`` hold them so.
 They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
-from the fitted model.
+from the fitted model. Each simulated failure adds an exponential amount to
+the lifetime's cumulative hazard at the item's virtual age and solves for
+the age that reaches it, so the draws stay exact at long horizons, where an
+old item's survival is far too small to hold in a double; past a cumulative
+hazard of 20 the age is found by Newton's method with the hazard rate,
+in two or three steps.
 
 Reliability growth: the demonstrated MTBF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1152,9 +1457,24 @@ would reach if every BD mode were found and fixed. With modes fixed during
 the test (``bc=``) the system grew while it was tested, and the
 demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
 extended model), from the bias-corrected shape :math:`(N - 1)/N \cdot
-\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be time-terminated (every system run to the
-same ``T``, given as its ``c=1`` row); several systems are taken to have run
-side by side, and the intensities and MTBFs are those of one system.
+\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be
+time-terminated (every system run to the same ``T``, given as its ``c=1``
+row); several systems are taken to have run side by side, and the
+intensities and MTBFs are those of one system.
+
+The handbooks do not agree on one detail. MIL-HDBK-00189A bias-corrects
+both shapes it uses, the Crow-AMSAA shape of the whole test (by
+:math:`(N - 1)/N`) and the shape of the BD modes' first occurrences (by
+:math:`(K - 1)/K`); that is the default here, and it demonstrates an MTBF of
+7.85 and projects 11.29 on the handbook's 56-failure example. MIL-HDBK-189C
+prints the same example with the plain maximum-likelihood shapes (0.9268 and
+0.7970), which demonstrates 7.71 and projects 10.82 (10.83 before the
+handbook rounds its terms). Pass ``bias_corrected=False`` to reproduce it.
+Nothing else changes, and the result records which was used
+(``projection.bias_corrected``). The handbook's own test-find-test example
+gives both, 14.81 plain and 15.13 corrected, and recommends the corrected
+one. Only exact failure times are taken, so the rule 189C gives for grouped
+data (always the plain shape) does not arise.
 
 .. jupyter-execute::
     :hide-code:
@@ -1678,6 +1998,53 @@ count from there.
     assert np.all(ahead.lower <= ahead.expected)
     assert np.all(ahead.expected <= ahead.upper)
 
+When the items are part of a larger simulation of your own -- repairs that
+take time, shared crews, planned maintenance, other components -- step them
+forward one failure at a time with the fitted model itself rather than
+re-deriving its repair rule. ``next_failure_random`` draws each unit's time to
+its next failure from its state (``next_failure_qf`` is the same time at a
+given probability, the inverse of ``next_failure_sf``), and ``advance`` gives
+the state after that failure and its repair (``failed=False`` for a unit that
+has only run on). ``states`` gives the states to start from: the fitted
+items, units of a given ``age``, or units with known ``failures``. Time out of
+service is simply not added to a unit's clock.
+
+.. jupyter-execute::
+
+    states = ara.states()
+    rng = np.random.default_rng(4)
+    for _ in range(3):
+        gap = ara.next_failure_random(1, states=states, random_state=rng)[:, 0]
+        # ... your own events between failures go here ...
+        states = ara.advance(states, gap)
+    print("failures so far:", states.failure_count)
+    print("virtual age now:", states.age.round(2))
+
+The intensity models (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) have
+the same ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+``next_failure_random``. Each of their events is a minimal repair, so a
+unit's state is its age alone, and the next age is the age plus the draw.
+
+To carry a fit's parameter uncertainty into such a simulation, draw the
+parameters from ``covariance()`` (in the order of ``covariance_names``) and
+rebuild the model at each draw with ``with_params``:
+
+.. jupyter-execute::
+
+    draws = rng.multivariate_normal(ara.params, ara.covariance(), size=200)
+    draws = draws[(draws[:, 0] >= 0) & (draws[:, 0] <= 1)]
+    sf = [ara.with_params(d).next_failure_sf(5.0, age=[0.0])[0] for d in draws]
+    print(ara.covariance_names, "P(new unit runs 5):", np.percentile(sf, [5, 50, 95]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ara.next_failure_qf([0.1, 0.9])
+    assert np.allclose(np.diag(ara.next_failure_sf(_x[:, 0])), 0.9)
+    assert np.allclose(ara.with_params(ara._estimates()).next_failure_sf(
+        5.0, age=[0.0]), ara.next_failure_sf(5.0, age=[0.0]))
+
 Gapped (multi-window) observation
 ---------------------------------
 
@@ -1795,6 +2162,13 @@ an event row whose mark is missing counts towards no cause:
     assert np.allclose(model.mcf(4.5, "A") + model.mcf(4.5, "B"),
                        NonParametricCounting.fit(x, i, c).mcf(4.5))
 
+(When the items also differ in covariates -- an environment, a duty, an
+overhaul state -- and a covariate may drive one failure mode and not
+another, see "Several failure modes, each with its own covariate effects" in
+:doc:`Recurrent Event Regression Modelling with SurPyval`:
+``CauseSpecificProportionalIntensity`` gives every mode its own baseline and
+its own coefficients.)
+
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
 cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be
 passed as ``dist``; ``how`` and ``init`` are passed on to every cause's fit).
@@ -1884,6 +2258,229 @@ fluke of this sample.
 
     assert bearing_fit.param_cb("beta")[0] > 1.5
 
+Each failure mode's intensity, with bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A failure mode's **intensity** is how often that kind of failure is
+happening on one item at a given age: failures per month, say. Its
+reciprocal is the mode's **MTBF** at that age, the average time between
+failures of that kind if the item stayed as it is then. The **cumulative
+intensity** is the running total: how many failures of that kind one item is
+expected to have had by that age. All three are estimates from a finite
+record, so each comes with **confidence bounds**: the range of values the
+data cannot rule out.
+
+``cif_cb``, ``iif_cb``, ``mtbf`` and ``mtbf_cb`` are the single-process
+methods of the same names, with the mode as ``event`` (they are the mode's
+own model's bounds, ``pumps.models[event].cif_cb`` and so on, and take the
+same ``alpha_ci``, ``bound`` and, for the last two, ``method``). Where is
+each mode at the end of the 40 months?
+
+.. jupyter-execute::
+
+    for mode in pumps.event_types:
+        rate = float(pumps.iif(T, mode))
+        lo, hi = pumps.iif_cb(T, mode)
+        m_lo, m_hi = pumps.mtbf_cb(T, mode)
+        print(f"{mode:8s} {rate:.3f} failures a month (95%: {lo:.3f} to {hi:.3f});"
+              f" MTBF {float(pumps.mtbf(T, mode)):.1f} months ({m_lo:.1f} to {m_hi:.1f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(pumps.iif_cb(T, "seal"), pumps.models["seal"].iif_cb(T))
+    assert np.allclose(pumps.mtbf_cb(T, "bearing"),
+                       pumps.models["bearing"].mtbf_cb(T))
+
+All modes together
+~~~~~~~~~~~~~~~~~~
+
+The owner of a pump mostly cares how often it stops, whatever the reason.
+Because the modes are independent, their intensities simply add:
+``total_cif``, ``total_iif`` and ``total_mtbf`` are the expected number of
+failures of any kind, the rate of failures of any kind and the MTBF of the
+pump as a whole. Their bounds, ``total_cif_cb``, ``total_iif_cb`` and
+``total_mtbf_cb``, add the modes' uncertainties in the same way (the
+variance of a sum of independent estimates is the sum of their variances)
+and are then formed on the log scale, as the single-process bounds are, so
+they cannot go below zero:
+
+.. jupyter-execute::
+
+    print("failures of any kind per pump by 40 months:",
+          round(float(pumps.total_cif(T)), 2), pumps.total_cif_cb(T).round(2))
+    print("failures of any kind per pump-month at 40 :",
+          round(float(pumps.total_iif(T)), 3), pumps.total_iif_cb(T).round(3))
+    print("MTBF of a pump at 40 months               :",
+          round(float(pumps.total_mtbf(T)), 2), pumps.total_mtbf_cb(T).round(2))
+
+In symbols, with :math:`\hat\Lambda_k(t)` the fitted cumulative intensity of
+mode :math:`k` and :math:`\mathrm{se}_k(t)` its standard error (the delta
+method, from that mode's parameter covariance), the total is
+:math:`\hat\Lambda(t) = \sum_k \hat\Lambda_k(t)`, its standard error is
+:math:`\mathrm{se}(t) = \sqrt{\sum_k \mathrm{se}_k(t)^2}`, and the bounds are
+:math:`\hat\Lambda(t) \exp(\pm z \, \mathrm{se}(t) / \hat\Lambda(t))`. The
+intensity is treated the same way, and the bounds on the MTBF are the
+reciprocals of the bounds on the intensity. A model with a single mode has
+the total's bounds equal to that mode's.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(pumps.total_iif(T),
+                      sum(pumps.iif(T, k) for k in pumps.event_types))
+    _lo, _hi = pumps.total_cif_cb(T)
+    assert _lo < pumps.total_cif(T) < _hi
+
+Growth per mode: better, level or worse
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+"Reliability growth" asks whether failures are becoming rarer (the item is
+getting better), arriving at a steady rate (staying level) or becoming more
+frequent (getting worse). Asked of all failures together, the answer can
+hide what matters: one mode wearing out behind another that is steady.
+``growth()`` asks it of each mode, in one table with a row per mode, so the
+owner can see which modes need attention and which are under control:
+
+.. jupyter-execute::
+
+    table = pumps.growth()
+    print(table.T.to_string(float_format=lambda v: f"{v:.3g}"))
+
+Reading down a column:
+
+- ``parameter`` is the parameter of the intensity model that carries the
+  trend, ``estimate`` its fitted value and ``lower 95%`` / ``upper 95%`` its
+  confidence interval (``param_cb``). For Crow-AMSAA it is ``beta``: below 1
+  the intensity is falling, at 1 it is constant, above 1 it is rising.
+  (``alpha`` plays that part for ``Duane``, with the same reading, and
+  ``beta`` for ``CoxLewis``, where the dividing value is 0.)
+- ``no trend`` is that dividing value, and ``p_value`` tests whether the data
+  are consistent with it. A small p-value says the trend is real; a large
+  one says only that these data cannot tell the mode's intensity from a
+  constant one, which with few failures is not proof that it is constant.
+- ``trend`` is the conclusion at the level ``alpha_ci``: ``"increasing"``
+  (failures becoming more frequent: getting worse), ``"decreasing"`` (getting
+  better) or ``"none"`` (no trend shown), the words of the trend tests.
+- ``iif`` and ``mtbf`` are the mode's intensity and MTBF at the end of
+  observation, with their bounds, and ``share`` is the mode's share of the
+  total intensity then: the fraction of the failures happening now that are
+  of this kind.
+
+Here the seal failures show no trend and the bearing failures an increasing
+one, and by 40 months the bearings cause most of the failures: the fix to
+look for is in the bearings. ``growth(x=...)`` reads the intensities, MTBFs
+and shares at another time, and ``alpha_ci`` sets the level of the bounds
+and of ``trend``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert table.loc["seal", "trend"] == "none"
+    assert table.loc["bearing", "trend"] == "increasing"
+    assert table.loc["bearing", "share"] > 0.5
+    assert np.isclose(table["share"].sum(), 1.0)
+
+The test is a Wald test on the scale of the parameter's interval (the log
+of a positive parameter): :math:`z = \log(\hat\beta / 1) /
+\mathrm{se}(\log\hat\beta)` for Crow-AMSAA, with a two-sided p-value from
+the normal distribution, so ``trend`` is ``"none"`` exactly when the
+interval contains the ``no trend`` value. A homogeneous Poisson process
+(``dist=HPP``) has a constant intensity by construction and no parameter to
+test, so ``growth()`` refuses it and says to refit with ``CrowAMSAA``,
+``Duane`` or ``CoxLewis``.
+
+Forecasts: how many failures to expect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A forecast answers a planning question: how many failures of each kind will
+the pumps have over the next year, and how many spares and call-outs is it
+sensible to plan for? The **expected** number is the model's average: the
+cumulative intensity gained over the window by each pump, added over the
+pumps. The number that actually happens is a whole number that varies by
+chance around that average even if the model is exactly right, so the
+forecast also gives a **prediction interval**: a range that the actual count
+falls in with the stated probability.
+
+That is a different thing from a confidence bound. A confidence bound is
+about the *average* (how well the data pin down the expected number); a
+prediction interval is about the *outcome* (what will be seen). More data
+narrow a confidence bound towards nothing, but never a prediction interval:
+chance remains.
+
+``forecast`` is :func:`surpyval.forecast` for this model, with the same
+arguments and the same ``Forecast`` result (see "Expected counts and
+prediction intervals" above): ``event`` picks a mode, and without it the
+forecast is of failures of any kind. With ``age`` left out the units are the
+fitted pumps, each from the end of its own observation. The next 6 and 12
+months:
+
+.. jupyter-execute::
+
+    print(pumps.forecast(horizon=[6, 12], alpha_ci=0.1))
+    for mode in pumps.event_types:
+        f = pumps.forecast(horizon=[6, 12], alpha_ci=0.1, event=mode)
+        print(f"{mode:8s} next 12 months: expect {f.expected[-1]:.1f},"
+              f" 90% prediction interval {f.lower[-1]:.0f} to {f.upper[-1]:.0f}")
+
+The modes' expected counts add up to the total's. The count of each mode is
+Poisson, and because the modes are independent so is the total, with the
+sum of their means; the interval is the Poisson one. As for a single
+process, the forecast treats the fitted parameters as exact, so with little
+data the interval is somewhat too narrow; ``total_cif_cb`` shows how
+uncertain the expected number itself is. ``surpyval.forecast(pumps, ...)``
+is the same forecast of all modes, and ``age``, ``n`` and ``limit`` describe
+other units (a new pump is ``age=0``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import surpyval as surv
+
+    _all = pumps.forecast(horizon=[6, 12], alpha_ci=0.1)
+    _each = [pumps.forecast(horizon=[6, 12], event=k) for k in pumps.event_types]
+    assert np.allclose(_all.expected, sum(f.expected for f in _each))
+    assert np.allclose(surv.forecast(pumps, horizon=[6, 12]).expected,
+                       _all.expected)
+    assert np.allclose(
+        _all.expected, 5 * (pumps.total_cif(T + np.array([6, 12])) - pumps.total_cif(T))
+    )
+
+The fitted parameters, and a saved model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``summary()`` is the single-process table (estimate, standard error and
+Wald interval of each parameter), stacked over the modes:
+
+.. jupyter-execute::
+
+    print(pumps.summary().round(3))
+
+A model saved with ``to_dict`` or ``to_json`` keeps each mode's parameters
+and their covariance and the end of observation, so the restored model gives
+the same bounds, the same ``growth()`` table and ``summary()``, and the same
+forecasts for the ages it is given. It keeps no data, so what needs the data
+is refused, as on a restored single-process model: a forecast with ``age``
+left out, Crow's exact bounds (``method="crow"``), ``plot`` and the
+likelihood (``aic()``).
+
+.. jupyter-execute::
+
+    restored = CauseSpecificNHPP.from_dict(pumps.to_dict())
+    print(restored.total_iif_cb(T).round(3))
+    print(restored.forecast(age=[40.0] * 5, horizon=12, alpha_ci=0.1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored.total_iif_cb(T), pumps.total_iif_cb(T))
+    assert restored.growth().equals(pumps.growth())
+
 Both classes also have a ``fit_from_df`` method that reads the columns of a
 ``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
 ``c_col``, ``n_col``, ``tl_col``, ``tr_col``), as every recurrent fitter
@@ -1918,6 +2515,24 @@ without you needing to know which class wrote it:
     t = np.array([100.0, 500.0, 900.0])
     print("match:", np.allclose(fitted.cif(t), restored.cif(t)))
 
+A saved Poisson-process fit keeps its parameter covariance as well, so the
+restored model gives the same standard errors, ``summary()`` and Wald bounds
+as the fit, as the cause-specific models do. It keeps no data: the
+likelihood (``aic()``), the diagnostics, ``plot`` and Crow's exact bounds
+(``method="crow"``) need a refit, and say so.
+
+.. jupyter-execute::
+
+    print(fitted.cif_cb(t).round(2))
+    print(restored.cif_cb(t).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(fitted.cif_cb(t), restored.cif_cb(t))
+    assert np.allclose(fitted.standard_errors(), restored.standard_errors())
+
 The renewal models store their family, lifetime distribution, repair parameter
 and memory or Kijima type, and rebuild their simulator on loading, so the same
 seed gives the same simulated MCF:
@@ -1934,11 +2549,31 @@ seed gives the same simulated MCF:
     assert np.allclose(restored_ara.mcf([20, 40], random_state=1),
                        ara.mcf([20, 40], random_state=1))
 
-Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
-state (the fitted data and the log-likelihood) is not serialised, so a reloaded
-model behaves like a ``from_params`` one: it predicts and simulates, but
-confidence bounds, diagnostics and ``plot`` need a re-fit. (A reloaded
-non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
+They keep the fit's parameter covariance too, so the restored model gives the
+same ``covariance()``, ``standard_errors()`` and Wald ``param_cb``, and the
+same ``summary()`` where the repair parameter is inside its range. Where it is
+on the edge of its range (perfect or minimal repair), its
+interval is a profile-likelihood one, which needs the data: the restored model
+refuses it, and ``summary()``, and says so.
+
+.. jupyter-execute::
+
+    print(restored_ara.param_cb("alpha").round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored_ara.param_cb("alpha"), ara.param_cb("alpha"))
+
+Use ``to_json`` / ``from_json`` for a file directly. The data and the
+log-likelihood are not serialised, so what needs them -- the likelihood and
+the information criteria, profile-likelihood intervals, diagnostics, the
+repair test and ``plot`` -- needs a re-fit. What needs only the estimates and
+their covariance works on a reloaded model: the Wald bounds of the
+Poisson-process, renewal and proportional-intensity models, a non-parametric
+MCF's ``mcf_cb`` (it keeps its variance), and a ``CauseSpecificNHPP``'s Wald
+bounds, ``growth()`` and ``summary()``.
 
 References
 ----------

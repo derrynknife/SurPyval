@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import (
+    caller_stacklevel,
+    ignoring_warnings,
+    raising_warnings,
+)
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -19,7 +23,7 @@ if TYPE_CHECKING:
 # (#470).
 
 
-def optional_column(df: DataFrame, name: "str | None") -> "npt.NDArray | None":
+def optional_column(df: DataFrame, name: str | None) -> npt.NDArray | None:
     """The named DataFrame column as an array, or ``None`` when no
     column is named -- for ``fit_from_df`` methods whose optional
     arguments (censoring, counts, truncation, ...) may not be given."""
@@ -97,6 +101,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     from surpyval.univariate.regression.regression_data import (
         record_empty_levels,
         refuse_empty_levels,
+        refuse_unknown_levels,
         unseen_levels_error,
     )
 
@@ -107,22 +112,38 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
             return Formula(source).get_model_matrix(positional, **kwargs)
         return source.get_model_matrix(positional, **kwargs)
 
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", DataMismatchWarning)
-            model_matrix = materialise()
-    except DataMismatchWarning as mismatch:
-        spec = None if isinstance(source, str) else source
-        if spec is None:
-            # A formula's levels (``C(g, levels=[...])``) are known only
-            # once it is materialised: do so again, allowing the mismatch.
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    spec = materialise().model_spec
-            except Exception:
-                pass
-        raise unseen_levels_error(spec, positional, str(mismatch)) from None
+    # The levels are checked here, before ``formulaic`` sees the data,
+    # wherever they can be: for a fitted spec, each term that codes a
+    # column as is; for a formula, every term takes its levels from the
+    # data unless the formula names them (``levels=``). Only otherwise is
+    # ``formulaic``'s warning caught. Turning a warning into an error
+    # changes the process-wide filters, so while one thread materialised
+    # a formula, any other thread's ``DataMismatchWarning`` became an
+    # error there; these checks touch no global state.
+    if isinstance(source, str):
+        checked = "levels" not in source
+    else:
+        checked = refuse_unknown_levels(source, positional)
+    if checked:
+        model_matrix = materialise()
+    else:
+        try:
+            with raising_warnings(DataMismatchWarning):
+                model_matrix = materialise()
+        except DataMismatchWarning as mismatch:
+            spec = None if isinstance(source, str) else source
+            if spec is None:
+                # A formula's levels (``C(g, levels=[...])``) are known
+                # only once it is materialised: do so again, allowing the
+                # mismatch.
+                try:
+                    with ignoring_warnings():
+                        spec = materialise().model_spec
+                except Exception:
+                    pass
+            raise unseen_levels_error(
+                spec, positional, str(mismatch)
+            ) from None
     spec = model_matrix.model_spec
     if isinstance(source, str):
         # The rows kept (no missing value) are those the model is fitted to.
@@ -134,7 +155,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     return model_matrix, spec
 
 
-def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
+def numeric_columns(df: Any, cols: list[str]) -> npt.NDArray:
     """``df[cols]`` as a float array. A column that is not numeric (a
     ``"yes"`` / ``"no"`` column, say) raises a ``ValueError`` that names
     it and points to ``formula=``, which codes categorical columns; it
@@ -164,8 +185,8 @@ LARGE_RANGE = 100.0
 
 def coefficient_floor(
     n_search: int,
-    coefs: "list[tuple[int, int]]",
-    Z: "npt.ArrayLike | None",
+    coefs: list[tuple[int, int]],
+    Z: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """Per-component ``floor`` of a regression search vector of
     ``n_search`` components, for ``preconditioned_bfgs`` and
@@ -232,9 +253,9 @@ def coefficient_floor(
 
 def coefficient_names(
     n: int,
-    columns: "Sequence[Any] | None" = None,
-    taken: "Iterable[str]" = (),
-) -> "list[str]":
+    columns: Sequence[Any] | None = None,
+    taken: Iterable[str] = (),
+) -> list[str]:
     """The names of a regression model's ``n`` covariate coefficients
     (#614): each covariate's column name where the fit has them (a
     formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_0``,
@@ -259,7 +280,7 @@ def coefficient_names(
     ['age', 'alpha.1', 'age.1']
     """
     if columns is None or len(columns) != n:
-        base = ["coef_{}".format(j) for j in range(n)]
+        base = [f"coef_{j}" for j in range(n)]
     else:
         base = [str(column) for column in columns]
     used = set(taken)
@@ -268,18 +289,18 @@ def coefficient_names(
         unique, k = name, 0
         while unique in used:
             k += 1
-            unique = "{}.{}".format(name, k)
+            unique = f"{name}.{k}"
         used.add(unique)
         out.append(unique)
     return out
 
 
 def loaded_coefficient_names(
-    names: "Sequence[str]",
+    names: Sequence[str],
     first: int,
     count: int,
-    columns: "Sequence[Any] | None",
-) -> "list[str]":
+    columns: Sequence[Any] | None,
+) -> list[str]:
     """``names``, a saved model's parameter names, whose ``count``
     coefficients start at ``first``, with the coefficients renamed as
     :func:`coefficient_names` names them (``columns``, the model's
@@ -297,7 +318,7 @@ def loaded_coefficient_names(
     """
     names = list(names)
     coefs = names[first : first + count]
-    if coefs != ["beta_{}".format(j) for j in range(count)] or not count:
+    if coefs != [f"beta_{j}" for j in range(count)] or not count:
         return names
     others = names[:first] + names[first + count :]
     new = coefficient_names(count, columns, others)

@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad, jacobian
 from autograd.differential_operators import make_vjp
@@ -41,15 +42,17 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
 )
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
-from surpyval.utils.removed_names import removed_parameter_note
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._aliasing import (
     aliased_columns,
@@ -59,12 +62,12 @@ from ._aliasing import (
 )
 from ._baseline_profile import filled_derivatives, to_log, walk_profile
 from ._covariate_link import CovariateLink
-from ._kinds import (
+from ._robust import note_source_rows
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
-from ._robust import note_source_rows
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -165,6 +168,88 @@ def _objective(
 ) -> Boxable:
     """``make_objective``'s objective at ``params``."""
     return fitter.neg_ll(data, *inv_trans(const(params)))
+
+
+class BaselineInversionMixin:
+    """The time at which a fitter's parametric baseline (``self.dist``)
+    reaches a cumulative hazard: the step every inverse-transform sampler
+    of the log-linear families (PH, AFT, PO) ends with."""
+
+    dist: Any
+
+    def _invert_cumulative_hazard(
+        self, h: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """
+        The times at which the baseline cumulative hazard reaches ``h``.
+
+        ``S(x|Z) = S0(x)^phi``, so a draw ``U`` of the survival is reached
+        where ``H0(x) = -log(U) / phi``. Through the quantile function that
+        is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
+        so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
+        ``inf``, although the time is finite. Those draws are solved on
+        ``log H0(x) = log h`` directly, all at once (#585: a ``brentq``
+        per draw took 2.4 s for 2000 draws), to ``rtol=1e-12``. A draw
+        whose time is beyond the largest float (the bracket doubles to
+        ``inf``) is ``inf``, as ``qf`` gives; the search raised there.
+        """
+        h = np.asarray(h, dtype=float)
+        with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = np.asarray(
+                self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
+            )
+        lost = np.flatnonzero(~np.isfinite(out) & np.isfinite(h))
+        if lost.size:
+            out = out.copy()
+            out[lost] = self._solve_log_cumulative_hazard(
+                onp.log(h[lost]), dist_params
+            )
+        return out
+
+    def _solve_log_cumulative_hazard(
+        self, target: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """The times at which ``log H0(x)`` reaches each ``target``: each
+        upper bracket doubles from the baseline median (or 1) until it is
+        reached, the lower end half of it; then all are solved together."""
+
+        def gap(t: npt.NDArray, sel: Any) -> npt.NDArray:
+            with onp.errstate(all="ignore"):
+                H = onp.asarray(self.dist.Hf(t, *dist_params), dtype=float)
+                return onp.log(H) - target[sel]
+
+        start = float(self.dist.qf(0.5, *dist_params))
+        upper = onp.full(target.shape, max(start, 1.0))
+        reached = onp.zeros(target.shape, dtype=bool)
+        active = onp.arange(target.size)
+        for _ in range(2000):
+            if not active.size:
+                break
+            hit = gap(upper[active], active) >= 0
+            reached[active[hit]] = True
+            active = active[~hit]
+            with onp.errstate(over="ignore"):
+                upper[active] *= 2.0
+            active = active[onp.isfinite(upper[active])]
+        out = onp.full(target.shape, onp.inf)
+        k = onp.flatnonzero(reached)
+        hi = upper[k]
+        lo = onp.where(hi > start, hi / 2.0, 0.0)
+        g_lo, g_hi = gap(lo, k), gap(hi, k)
+        out[k] = onp.where(g_lo == 0, lo, hi)
+        open_ = (g_lo < 0) & (g_hi > 0)
+        if open_.any():
+            sel = k[open_]
+            out[sel] = solve_bracketed(
+                lambda t, s: gap(t, sel[s]),
+                lo[open_],
+                hi[open_],
+                g_lo[open_],
+                g_hi[open_],
+                xtol=1e-300,
+                rtol=1e-12,
+            )
+        return out
 
 
 class MirroredDistributionAttrs(FitterRepr):
@@ -601,7 +686,9 @@ class Centring:
             return None
         if center:
             return cls(covariate_center(Z, n), fitter.k_dist)
-        entry = ORIGIN_MAPS.get((kind or "", getattr(fitter.dist, "name", "")))
+        entry = ORIGIN_MAPS.get(
+            (kind or "", canonical_name(fitter.dist) or "")
+        )
         if entry is None:
             return None
         moved, move = entry
@@ -761,6 +848,30 @@ def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
     return as_generator(random_state).uniform(0, 1, size)
 
 
+def draws_by_row(
+    size: int,
+    Z: npt.ArrayLike,
+    random_state: Any,
+    invert: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
+) -> "tuple[npt.NDArray, npt.NDArray]":
+    """``size`` inverse-transform draws at each covariate row of ``Z``:
+    ``invert(U, row)`` turns uniform draws ``U`` (each the survival
+    probability the draw is to have) into times. Returns the draws and the
+    row each was drawn at, row by row, as every regression ``random``
+    does. One stream serves every row, so an int seed does not restart
+    and give each row the same uniforms."""
+    Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+    rng = None if random_state is None else as_generator(random_state)
+    x = []
+    Z_out = []
+    for row in Z_arr:
+        x.append(np.asarray(invert(uniform_draws(size, rng), row), float))
+        Z_out.append(np.tile(row, (size, 1)))
+    if not x:
+        return np.zeros(0), np.zeros((0, Z_arr.shape[1]))
+    return np.concatenate(x), np.vstack(Z_out)
+
+
 class FixedWithAliased(dict):
     """The ``fixed`` of a fit, with the aliased coefficients (#476) held
     at 0 among them; ``aliased`` names those, which the fitted model
@@ -802,7 +913,7 @@ def alias_coefficients(
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
     Zf = Z[:, free]
-    intercept = (kind or "", getattr(fitter.dist, "name", "")) in ORIGIN_MAPS
+    intercept = (kind or "", canonical_name(fitter.dist) or "") in ORIGIN_MAPS
     if intercept:
         Zf = Zf - covariate_center(Zf, n)
         constant = constant_columns(Z[:, free])
@@ -1047,11 +1158,7 @@ def check_fixed_and_init(
     if unknown:
         raise ValueError(
             "Unknown parameter(s) {} in `fixed`; this model's parameters "
-            "are {}{}.".format(
-                unknown,
-                names,
-                "".join(removed_parameter_note(k, names) for k in unknown),
-            )
+            "are {}.".format(unknown, names)
         )
     if len({**(always_fixed or {}), **fixed}) >= len(param_map):
         raise ValueError(
@@ -1197,23 +1304,30 @@ def assemble_regression_model(
     # costs the model nothing in AIC/BIC.
     model.k = len(bounds) - len(fixed)
     model.data = data
-    if data.w is not None:
-        from surpyval.utils.weights import (
-            effective_sample_size,
-            warn_if_few_effective,
-        )
-
-        model.weighted = True
-        model.effective_n = effective_sample_size(data.n, data.w)
-        warn_if_few_effective(data.n, data.w)
-        # The search used the weights scaled to sum to the units
-        # (``likelihood_weights``); the value is reported with the weights
-        # as given, as R's ``survreg`` reports it.
-        n_arr = np.asarray(data.n, dtype=float)
-        model._neg_ll = model._neg_ll * float(
-            np.sum(n_arr * data.w) / n_arr.sum()
-        )
+    mark_weighted(model, data)
     return model
+
+
+def mark_weighted(model: Any, data: SurpyvalData) -> None:
+    """Mark ``model``, fitted to ``data``, as weighted where ``data``
+    carries weights ``w``: its effective sample size (with the warning
+    below 20) and its log-likelihood reported with the weights as given.
+    Nothing where ``data`` is unweighted."""
+    if data.w is None:
+        return
+    from surpyval.utils.weights import (
+        effective_sample_size,
+        warn_if_few_effective,
+    )
+
+    model.weighted = True
+    model.effective_n = effective_sample_size(data.n, data.w)
+    warn_if_few_effective(data.n, data.w)
+    # The search used the weights scaled to sum to the units
+    # (``likelihood_weights``); the value is reported with the weights
+    # as given, as R's ``survreg`` reports it.
+    n_arr = np.asarray(data.n, dtype=float)
+    model._neg_ll = model._neg_ll * float(np.sum(n_arr * data.w) / n_arr.sum())
 
 
 def optimise_ph(
@@ -1704,8 +1818,10 @@ def _far_run_off(
             continue
         if abs(to_log(float(res.x[pos]))) <= FAR_EFOLDS:
             continue
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             found = walk_profile(fun, res.x, pos, one_sided, floor)
         if found is not None and found.kind == "run-off":
             return SearchVerdict(
@@ -1743,8 +1859,10 @@ def _walk_baseline(
     for pos, _ in baseline:
         if pos not in one_sided:
             continue
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             found = walk_profile(fun, res.x, pos, one_sided, floor)
         if found is None:
             continue
@@ -1807,8 +1925,10 @@ def _polish(
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
     """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
     kept where it is no worse (see :func:`judge_search`)."""
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         try:
             polish = preconditioned_bfgs(
                 fun, res.x, (), Gradient(fun), floor=floor, obj_scale=n_obs
@@ -1876,8 +1996,10 @@ def newton_finish(
     steps = 0
     eps = float(np.finfo(float).eps)
     tol = max(FINE_GAIN, FINE_GAIN_PER_OBS * n_obs) if fine is None else fine
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         for _ in range(FINISH_STEPS):
             step = _newton_step(x, at, keep, one_sided)
             if step is None:
@@ -2101,8 +2223,10 @@ def baseline_at_origin(
     if not names:
         return verdict
     positions = [pos for pos, _ in coefs] + [pos for pos, _ in baseline]
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         try:
             still = _still_at_origin(
                 verdict, centring, names, free, maps, floor, one_sided
@@ -2173,8 +2297,10 @@ def natural_information(
         # The search-space Hessian first: where it is not positive
         # definite the covariance stays as it was.
         np.linalg.cholesky(H_t)
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             # phi' and, from the same trace, phi'' (each coordinate's map
             # depends on that coordinate alone).
             vjp, d1 = make_vjp(elementwise_grad(to_natural))(t)

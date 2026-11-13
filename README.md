@@ -8,9 +8,9 @@
 [![Documentation Status](https://readthedocs.org/projects/surpyval/badge/?version=latest)](https://surpyval.readthedocs.io/en/latest/?badge=latest)
 [![DOI](https://joss.theoj.org/papers/10.21105/joss.03484/status.svg)](https://doi.org/10.21105/joss.03484)
 
-Yet another Python survival analysis tool. 
+SurPyval is a Python package for survival analysis: the statistics of how long it takes for an event to happen. The event can be the failure of a bearing, the relapse or death of a patient, the default of a loan or the end of a customer's subscription, and the "time" can be hours, cycles, kilometres or weeks. It is for anyone with time-to-event data: engineers, clinicians and medical statisticians, economists and data scientists alike.
 
-This is another pure python survival analysis tool so why was it needed? The intent of this package was to closely mimic the scipy API as close as possible with a simple `.fit()` method for any type of distribution (parametric or non-parametric); other survival analysis packages don't completely mimic that API. Further, there is currently (at the time of writing) no pacakage that can take an arbitrary comination of observed, censored, and truncated data. Finally, surpyval is unique in that it can be used with multiple parametric estimation methods. This allows for an analyst to determine a distribution for the parameters if another method fails. The parametric methods available are Maximum Likelihood Estimation (MLE), Probability Plotting (MPP), Mean Square Error (MSE), Method of Moments (MOM), and Maximum Product of Spacing (MPS). Surpyval can, for each type of estimator, take the following types of input data:
+So why another survival analysis package? The intent was to mimic the scipy API as closely as possible, with a simple `.fit()` method for any type of distribution (parametric or non-parametric). SurPyval takes an arbitrary combination of observed, censored and truncated data. And it offers several parametric estimation methods, so an analyst has another way to estimate the parameters when one method fails. The parametric methods available are Maximum Likelihood Estimation (MLE), Probability Plotting (MPP), Mean Square Error (MSE), Method of Moments (MOM), and Maximum Product of Spacing (MPS). SurPyval can, for each type of estimator, take the following types of input data:
 
 | Method | Para/Non-Para | Observed | Censored | Truncated |
 | ------ | ---- |-----|------|------|
@@ -49,7 +49,9 @@ continuous distribution can be discretised with `Discretize`. Any of them can
 be combined in a `MixtureModel` (with standard errors and Wald bounds),
 and custom distributions are supported.
 
-This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
+This project grew out of a reliability engineering project, where parameters have long been estimated from a probability plot. SurPyval continues that tradition: any parametric distribution can have its estimate plotted on a probability plot, which gives an analyst in any field a sense of how well the parametric distribution fits against the non-parametric estimate. Alongside the tools an engineer expects (probability plots, offsets, B-lives, accelerated life tests, repairable systems, degradation) are those of biostatistics and econometrics (Kaplan-Meier, Cox regression, competing risks, frailty, predictive metrics).
+
+Different fields name the same ideas differently: a *failure* is an *event*, a *unit* is a *subject*, *reliability* is *survival* and a *suspension* is a *right censored* observation. The API has one name for each (`c` for the censoring flag, `sf` for the survival function), and the documentation's [glossary](https://surpyval.readthedocs.io/en/latest/Glossary.html) maps the vocabularies to each other.
 
 # The Model Landscape
 
@@ -67,13 +69,13 @@ not yet built.
 | Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.beta.ml`) |
+| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`, `CoxMixedEffects`; survival trees and forests (`surpyval.ml`) |
 | Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF, with confidence bounds) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
+| Continuous time | Single event | Competing | With | `ParametricCompetingRisksRegression` (a parametric regression per cause) | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
-| Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
-| Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
+| Continuous time | Recurrent | Competing | Without | `CauseSpecificNHPP` | `CauseSpecificMCF` |
+| Continuous time | Recurrent | Competing | With | `CauseSpecificProportionalIntensity` (each failure mode its own baseline and coefficients) | &mdash; |
 | Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials, or a number per row) | &mdash; |
 | Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
 
@@ -88,7 +90,11 @@ univariate, regression or repairable-system model. The parametric regression
 models have `qf`, `cs` and `quantile_cb`, with Wald, likelihood-ratio and
 bootstrap bounds, and the semi-parametric and frailty regressions have `qf`.
 An offset model's bounds can be bootstrapped (`method="bootstrap"`) to take
-in the offset's uncertainty.
+in the offset's uncertainty. Units that move between several states
+(healthy, ill, dead; working, degraded, failed) have multi-state models
+(`surpyval.multistate`): Aalen-Johansen transition and state occupation
+probabilities (`MultiState`) and a Cox model of each transition
+(`MultiStateProportionalHazards`), with standard errors and bounds.
 
 # Install and Quick Intro
 
@@ -98,7 +104,7 @@ SurPyval can be installed via pip using the PyPI [repository](https://pypi.org/p
 pip install surpyval
 ```
 
-If you're familiar with survival analysis, and Weibull plotting, the following is a quick start.
+If you're familiar with survival analysis, and Weibull plotting, the following is a quick start. If you are new to the subject, start with [Survival Analysis from Scratch](https://surpyval.readthedocs.io/en/latest/Survival%20Analysis%20from%20Scratch.html) in the documentation.
 
 ```python
 from surpyval import Weibull

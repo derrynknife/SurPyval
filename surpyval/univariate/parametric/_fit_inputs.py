@@ -16,9 +16,9 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 import surpyval
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.aliases import canonical_name
+from surpyval.utils.no_maximum import NoFiniteMaximumError, warn_no_maximum
 from surpyval.utils.numeric import unique_pairs
-from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
@@ -270,7 +270,7 @@ class FitInputsMixin:
         distinct = unique_pairs(lo[informative], hi[informative])[0].size
 
         if distinct < n_free:
-            raise ValueError(
+            raise NoFiniteMaximumError(
                 f"{self.name} has {n_free} free parameter(s) but the data "
                 f"contains only {distinct} distinct non-right-censored "
                 f"value(s). The likelihood has a flat (or unbounded) "
@@ -294,7 +294,7 @@ class FitInputsMixin:
             return
         region = self._point_mass_region(surv_data, offset, lfp)
         if region is not None:
-            raise ValueError(
+            raise NoFiniteMaximumError(
                 f"The {self.name} likelihood has no maximum on this data: "
                 f"a single failure time {region} is consistent with every "
                 f"observation, so a distribution ever more concentrated "
@@ -342,7 +342,9 @@ class FitInputsMixin:
         Weibull ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in
         silence.
         """
-        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+        if self.discrete or canonical_name(
+            self
+        ) not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
         ):
             return None
@@ -417,7 +419,7 @@ class FitInputsMixin:
         parameters, and an offset fit of these families on such data is
         refused by ``_check_has_maximum`` before it starts.
         """
-        if zi or lfp or self.name not in _ONE_SIDED_FAMILIES:
+        if zi or lfp or canonical_name(self) not in _ONE_SIDED_FAMILIES:
             return False
         lower, upper, _ = _row_sets(surv_data)
         if np.all(np.isposinf(upper)):
@@ -446,7 +448,7 @@ class FitInputsMixin:
 
     def _abutting_limit(
         self, surv_data: SurpyvalData, offset: bool
-    ) -> "tuple[float, float, float, float] | None":
+    ) -> tuple[float, float, float, float] | None:
         """``(t, below, above, log_likelihood)`` where every row's set of
         failure times (``_row_sets``) reaches the one time ``t`` without
         all of them containing it: some end at ``t``, some start there,
@@ -472,7 +474,9 @@ class FitInputsMixin:
         maximum on (1, 3] and (3, 5], a log-likelihood within 1e-8 of the
         limit's log(1/4).
         """
-        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+        if self.discrete or canonical_name(
+            self
+        ) not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
         ):
             return None
@@ -735,7 +739,7 @@ class FitInputsMixin:
         if only_right:
             # No failure: the likelihood keeps rising as the distribution
             # moves out past every suspension, with a shape fixed or not.
-            raise ValueError(
+            raise NoFiniteMaximumError(
                 "Cannot have only right censored data: with no failure the "
                 "likelihood has no maximum (it keeps rising as the "
                 "distribution moves out past every suspension). For a "
@@ -745,7 +749,7 @@ class FitInputsMixin:
             )
 
         if only_left:
-            raise ValueError("Cannot have only left censored data")
+            raise NoFiniteMaximumError("Cannot have only left censored data")
 
         if surpyval.utils.check_no_censoring(surv_data.c) and (how == "MOM"):
             raise ValueError("Method of moments doesn't support censoring")
@@ -1031,7 +1035,7 @@ class FitInputsMixin:
         return init
 
     def _offset_seed(
-        self, data: SurpyvalData, gamma: "float | None" = None
+        self, data: SurpyvalData, gamma: float | None = None
     ) -> npt.NDArray:
         """A start for an offset fit: the offset ``gamma`` (by default the
         fitter's starting offset, ``_offset_start``), then the
@@ -1064,7 +1068,7 @@ class FitInputsMixin:
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool
-    ) -> "list[npt.NDArray]":
+    ) -> list[npt.NDArray]:
         """
         Further starting points for the distribution's own parameters
         (leading with the offset when ``offset``), tried in addition to the
@@ -1079,7 +1083,7 @@ class FitInputsMixin:
         zi: bool,
         lfp: bool,
         heuristic: str,
-    ) -> "list[npt.NDArray]":
+    ) -> list[npt.NDArray]:
         """
         Complete alternative starting vectors for a maximum-likelihood fit:
         the distribution's own alternatives, with the default's ``p`` /
@@ -1103,7 +1107,7 @@ class FitInputsMixin:
 
     def _lfp_failures_start(
         self, surv_data: SurpyvalData, offset: bool
-    ) -> "npt.NDArray | None":
+    ) -> npt.NDArray | None:
         """
         A limited-failure-population starting point from the failures
         alone: the distribution's own initialiser on the observed failures
@@ -1182,15 +1186,10 @@ class FitInputsMixin:
             hint = "; ".join(hints[k] for k in unknown if k in hints)
             raise ValueError(
                 "Unknown parameter(s) {} in `fixed`{}; this model's "
-                "parameters are {}{}.".format(
+                "parameters are {}.".format(
                     unknown,
-                    " ({})".format(hint) if hint else "",
+                    f" ({hint})" if hint else "",
                     names,
-                    "".join(
-                        removed_parameter_note(k, [*names, model.lfp_name])
-                        for k in unknown
-                        if k not in hints
-                    ),
                 )
             )
         for name, value in (fixed or {}).items():

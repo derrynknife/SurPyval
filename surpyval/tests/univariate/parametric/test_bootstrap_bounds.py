@@ -116,10 +116,6 @@ def test_645_a_fixed_parameter_is_its_value(offset_model):
             lambda: W.fit(xl=[1, 2, 3, 4], xr=[2, 3, 4, 6], c=[2, 2, 2, 2]),
             "left- or interval-censored",
         ),
-        (
-            lambda: W.fit(W.random(30, 10, 2, random_state=4), lfp=True),
-            "limited-failure or zero-inflated",
-        ),
     ],
 )
 def test_645_what_cannot_be_resampled_is_refused(build, match):
@@ -139,3 +135,163 @@ def test_645_bootstrap_is_refused_where_not_offered():
 def test_645_gamma_wald_refusal_points_at_the_bootstrap(offset_model):
     with pytest.raises(ValueError, match="method='bootstrap'"):
         offset_model.param_cb("gamma")
+
+
+# ---------------------------------------------------------------------------
+# Limited-failure and zero-inflated models (#286)
+# ---------------------------------------------------------------------------
+
+
+def _lfp_data(seed, lfp_p=0.6, n=100):
+    rng = np.random.default_rng(seed)
+    t = 10 * rng.weibull(2.0, n)
+    t = np.where(rng.uniform(size=n) > lfp_p, np.inf, t)
+    cens = rng.uniform(0, 30, n)
+    return np.minimum(t, cens), (cens < t).astype(int)
+
+
+def _zi_data(seed, f0=0.1, n=100):
+    rng = np.random.default_rng(seed)
+    t = 10 * rng.weibull(2.0, n)
+    t = np.where(rng.uniform(size=n) < f0, 0.0, t)
+    cens = rng.uniform(0, 30, n)
+    return np.minimum(t, cens), (cens < t).astype(int)
+
+
+def _fit(dist, x, c, **kw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return dist.fit(x, c=c, **kw)
+
+
+@pytest.mark.parametrize(
+    "dist, data, kw, extra",
+    [
+        (W, _lfp_data, {"lfp": True}, "lfp_p"),
+        (W, _zi_data, {"zi": True}, "f0"),
+        (surv.LogNormal, _lfp_data, {"lfp": True}, "lfp_p"),
+        (W, lambda s: _lfp_data(s), {"lfp": True, "zi": True}, "lfp_p"),
+    ],
+)
+def test_286_bootstrap_bounds_of_lfp_and_zi_models(dist, data, kw, extra):
+    x, c = data(1)
+    m = _fit(dist, x, c, **kw)
+    names = list(m.dist.parameter_names) + [extra]
+    for name in names:
+        lo, hi = _boot(m.param_cb, name, random_state=1)
+        value = (
+            getattr(m, extra)
+            if name == extra
+            else m.params[m.dist.param_map[name]]
+        )
+        assert lo <= value <= hi, (name, lo, value, hi)
+    t = np.array([3.0, 8.0, 15.0])
+    s = _boot(m.cb, t, random_state=1)
+    est = m.sf(t)
+    assert np.all(s[:, 0] <= est) and np.all(est <= s[:, 1])
+    q = _boot(m.quantile_cb, [0.05, 0.2], random_state=1)
+    est = m.qf([0.05, 0.2])
+    assert np.all(q[:, 0] <= est) and np.all(est <= q[:, 1])
+    # One set of refits, so on sf and ff they are one interval.
+    ff = _boot(m.cb, t, on="ff", random_state=1)
+    np.testing.assert_allclose(ff, 1 - s[:, ::-1])
+
+
+def test_286_an_offset_lfp_model_bounds_gamma_and_lfp_p():
+    x, c = _lfp_data(2)
+    m = _fit(W, x + 5.0, c, lfp=True, offset=True)
+    g = _boot(m.param_cb, "gamma", random_state=3)
+    p = _boot(m.param_cb, "lfp_p", random_state=3)
+    assert g[0] <= m.gamma <= g[1]
+    assert p[0] <= m.lfp_p <= p[1]
+    # The refits are of the same model: offset, lfp_p and all.
+    refit = m._bootstrap_refits[(40, 3)].models[0]
+    assert refit.offset and refit.lfp and not refit.zi
+
+
+def test_286_lfp_p_bootstrap_bounds_track_the_likelihood_ratio_bounds():
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        boot = m.param_cb(
+            "lfp_p", method="bootstrap", n_boot=200, random_state=286
+        )
+        lr = m.param_cb("lfp_p", method="lr")
+    np.testing.assert_allclose(boot, lr, atol=0.05)
+
+
+def test_286_a_quantile_beyond_lfp_p_is_infinite():
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    q = _boot(m.quantile_cb, [m.lfp_p + 0.1], random_state=1)
+    assert np.isinf(q[0, 1])
+
+
+def test_286_refits_on_the_edge_are_kept_there():
+    # Every unit can fail: the estimate of lfp_p is on its edge, 1, and
+    # so are many refits; they count at 1, so the upper bound is 1.
+    rng = np.random.default_rng(5)
+    t, cens = 10 * rng.weibull(2.0, 100), rng.uniform(0, 30, 100)
+    m = _fit(W, np.minimum(t, cens), (cens < t).astype(int), lfp=True)
+    assert m.lfp_p > 1 - 1e-6
+    upper = _boot(m.param_cb, "lfp_p", bound="upper", random_state=1)
+    assert upper[0] == 1.0
+    fits = m._bootstrap_refits[(40, 1)]
+    assert len(fits.models) == 40
+    assert fits.estimate[-1] == 1.0
+    # A zero-inflated fit with no zeros: f0 on its edge, 0.
+    mz = _fit(W, np.minimum(t, cens), (cens < t).astype(int), zi=True)
+    lower = _boot(mz.param_cb, "f0", bound="lower", random_state=1)
+    assert lower[0] == 0.0
+
+
+def test_286_a_fixed_lfp_p_is_its_value_and_is_held_in_the_refits():
+    x, c = _lfp_data(4)
+    m = _fit(W, x, c, lfp=True, fixed={"lfp_p": 0.6})
+    np.testing.assert_array_equal(_boot(m.param_cb, "lfp_p"), [0.6, 0.6])
+    _boot(m.param_cb, "beta", random_state=2)
+    refits = m._bootstrap_refits[(40, 2)]
+    assert np.all(refits.values[:, -1] == 0.6)
+
+
+def test_286_unknown_parameters_name_the_extra_ones():
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    with pytest.raises(ValueError, match="'lfp_p'"):
+        m.param_cb("f0", method="bootstrap", n_boot=5)
+
+
+def test_286_lfp_and_zi_bounds_are_bca_with_the_jackknife_acceleration():
+    from surpyval.univariate.parametric import _bootstrap as boot
+    from surpyval.univariate.regression._bootstrap import bca_bounds
+
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    q = _boot(m.quantile_cb, [0.1], random_state=5)
+    fits = m._bootstrap_refits[(40, 5)]
+    jack = fits.jack
+    # One leave-one-out refit per distinct row, weighted by its count.
+    assert len(jack.models) == np.asarray(m.data["x"]).shape[0]
+    jv = np.array([[j.qf(0.1)] for j in jack.models])
+    a = boot.jackknife_acceleration(jv, jack.weights)
+    assert a[0] != 0
+    draws = np.array([[r.qf(0.1)] for r in fits.models])
+    expected = bca_bounds(draws, np.array([m.qf(0.1)]), a, 0.05, "two-sided")
+    np.testing.assert_allclose(q, expected)
+
+
+def test_286_counts_weight_the_jackknife_as_repeated_rows():
+    from surpyval.univariate.parametric import _bootstrap as boot
+
+    v = np.array([[1.0], [2.0], [6.0]])
+    np.testing.assert_allclose(
+        boot.jackknife_acceleration(v, np.array([2.0, 1.0, 1.0])),
+        boot.jackknife_acceleration(
+            np.array([[1.0], [1.0], [2.0], [6.0]]), np.ones(4)
+        ),
+    )
+
+
+def test_286_plain_and_offset_bounds_stay_percentile(offset_model):
+    from surpyval.univariate.parametric import _bootstrap as boot
+
+    _boot(offset_model.quantile_cb, [0.1], random_state=11)
+    assert offset_model._bootstrap_refits[(40, 11)].jack is None
+    assert not boot._accelerated(offset_model)

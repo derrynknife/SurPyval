@@ -74,7 +74,7 @@ def test_stratified_logrank_size():
     check_rate(strat_rej, reps, ALPHA, "stratified log-rank size")
     # Design check: the confounding is real, so ignoring the strata rejects
     # far more often than 5%.
-    print("unstratified rejection rate: {:.4f}".format(plain_rej / reps))
+    print(f"unstratified rejection rate: {plain_rej / reps:.4f}")
     assert plain_rej / reps > 0.3
 
 
@@ -92,7 +92,7 @@ def test_logrank_power():
         events += (1 - c).sum() / reps
         rejected += sp.logrank(x, group, c=c).p_value <= ALPHA
     power = norm.cdf(np.sqrt(events / 4) * np.log(hr) - Z_CRIT)
-    print("expected events {:.1f}".format(events))
+    print(f"expected events {events:.1f}")
     check_rate(rejected, reps, power, "log-rank power (Schoenfeld)", 0.03)
 
 
@@ -148,7 +148,7 @@ def test_gray_power():
         events += (e == "a").sum() / reps
         rejected += sp.gray_test(x, e, group, "a").p_value <= ALPHA
     power = norm.cdf(np.sqrt(events / 4) * b - Z_CRIT)
-    print("expected cause-a events {:.1f}".format(events))
+    print(f"expected cause-a events {events:.1f}")
     check_rate(rejected, reps, power, "Gray's test power (Latouche)", 0.03)
 
 
@@ -197,7 +197,7 @@ def test_trend_test_size(test, slack, truncation):
         rejected,
         reps,
         ALPHA,
-        "{} size ({}-truncated)".format(test.__name__, truncation),
+        f"{test.__name__} size ({truncation}-truncated)",
         slack=slack,
     )
 
@@ -306,7 +306,7 @@ def test_intervention_hpp_size(method):
         result = intervention_test(x, T=100, intervention=50, method=method)
         rejected += result.p_value < ALPHA
     size = sum(_hpp_size_and_power(1.0, method))
-    print("{} analytic size {:.4f}".format(method, size))
+    print(f"{method} analytic size {size:.4f}")
     if method == "exact":
         assert size <= ALPHA
     else:
@@ -356,7 +356,7 @@ def test_intervention_per_system_size_fleet():
         )
         pooled += result.p_value < ALPHA
     check_rate(per, reps, ALPHA, "per-system size, fleet", 0.0, side="upper")
-    print("pooled size, fleet: {:.4f}".format(pooled / reps))
+    print(f"pooled size, fleet: {pooled / reps:.4f}")
     assert pooled / reps > 0.3
 
 
@@ -379,5 +379,5 @@ def test_intervention_power_law_size():
         power_law += result.p_value < ALPHA
         hpp += intervention_test(x, i, T=T, intervention=tau).p_value < ALPHA
     check_rate(power_law, reps, ALPHA, "power-law LR size", 0.015)
-    print("HPP size under wear-out: {:.4f}".format(hpp / reps))
+    print(f"HPP size under wear-out: {hpp / reps:.4f}")
     assert hpp / reps > 0.15

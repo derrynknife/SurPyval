@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from surpyval.pymc._optional import pymc, pytensor_tensor
+from surpyval.utils.aliases import canonical_name
 
 
 def _unconstrained(bounds: tuple, name: str, what: str) -> str:
@@ -199,6 +200,9 @@ def _read_spec(entry: Any, param: str, what: str) -> tuple[str, list]:
             f"got {entry!r}."
         )
     known = {f.lower(): f for f in PRIOR_FAMILIES}
+    if isinstance(family, str):
+        # An alias (Gauss, Galton) is its distribution's family
+        family = canonical_name(family)
     if not isinstance(family, str) or family.lower() not in known:
         raise ValueError(
             f"{what}: no PyMC prior for {family!r} on {param}. Use one of "

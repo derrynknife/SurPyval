@@ -132,14 +132,12 @@ def test_an_unknown_transform_is_refused():
         model.diagnose(transform="bogus")
 
 
-def test_stratified_both_refuse():
+def test_stratified_table_is_check_ph():
     x, Z, c = _tied_data()
     strata = np.arange(x.size) % 2
     model = _quiet(sp.CoxPH.fit, x, Z, c=c, strata=strata)
-    with pytest.raises(NotImplementedError, match="stratified"):
-        model.diagnose()
-    with pytest.raises(NotImplementedError, match="stratified"):
-        _old_table(model, "km")
+    table = _quiet(model.diagnose).tables["proportional_hazards"]
+    pd.testing.assert_frame_equal(table, _old_table(model, "km"))
 
 
 # -- the competing-risks (cause-specific Cox) model --------------------------

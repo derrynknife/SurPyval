@@ -93,6 +93,6 @@ def test_brier_and_auc_unbiased_with_ties():
         surv = np.exp(-np.outer(RATE[z], HORIZONS))
         bs[r] = brier_score(x, c, surv, HORIZONS)[1]
         auc[r] = auc_td(x, c, 1 - surv, HORIZONS)[1]
-    print("events tied with a censoring: {:.0%}".format(ties))
+    print(f"events tied with a censoring: {ties:.0%}")
     _check_mean(bs, bs_true, "Brier score", 0.002)
     _check_mean(auc, auc_true, "AUC", 0.003)

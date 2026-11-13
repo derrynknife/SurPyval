@@ -49,7 +49,7 @@ def _fit(fit):
 
 
 def _aliased(columns):
-    return "Covariate column(s) {} of Z cannot be estimated".format(columns)
+    return f"Covariate column(s) {columns} of Z cannot be estimated"
 
 
 def _extra(Z, kind):

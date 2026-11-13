@@ -1,10 +1,12 @@
 import warnings
-from typing import Any, Callable, Sequence
+from typing import Any
+from collections.abc import Callable, Sequence
 
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, value_and_grad
 from scipy.optimize import OptimizeResult, minimize
+from surpyval.utils.warnings import ignoring_warnings
 
 
 class Gradient:
@@ -287,10 +289,12 @@ def verify_or_polish(
         objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
     ):
         return res, True
-    with np.errstate(all="ignore"), warnings.catch_warnings():
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         # A penalised objective is constant where the model is invalid,
         # and autograd says so for every gradient taken there
-        warnings.filterwarnings("ignore", "Output seems independent")
         polish = preconditioned_bfgs(
             fun, res.x, (), polish_jac, floor=floor, obj_scale=n_obs
         )

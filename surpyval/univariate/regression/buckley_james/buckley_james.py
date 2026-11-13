@@ -51,25 +51,17 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils import finite_covariate_mask
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_alpha_ci
 
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
-)
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._prediction import (
     ConditionalSurvivalMixin,
@@ -78,10 +70,10 @@ from .._prediction import (
 )
 from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     NoLikelihoodMixin,
     canonical_rows,
-    design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -256,8 +248,8 @@ class BuckleyJamesModel(
     array([0.9444, 0.8113])
     """
 
-    feature_names: "list[str] | None" = None
-    formula: "str | None" = None
+    feature_names: list[str] | None = None
+    formula: str | None = None
     _model_spec: Any = None
     #: Covariates of the wrong width are refused by name (#657).
     _CHECKS_WIDTH = True
@@ -281,7 +273,7 @@ class BuckleyJamesModel(
     maximum: str = "not applicable"
     #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
     #: ``concordance``; ``None`` when not kept.
-    _data: "tuple | None"
+    _data: tuple | None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -298,7 +290,7 @@ class BuckleyJamesModel(
         resid_surv: npt.NDArray,
         n_iter: int,
         converged: bool,
-        data: "tuple | None",
+        data: tuple | None,
     ) -> None:
         self.beta = np.asarray(beta, dtype=float)
         self.params = self.beta
@@ -323,7 +315,7 @@ class BuckleyJamesModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return -(Z_arr.reshape(x.size, -1) @ self._coef())
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         if self._data is None:
             return None
         Y, delta, Z, w = self._data
@@ -384,7 +376,7 @@ class BuckleyJamesModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "BuckleyJamesModel":
+    def from_dict(cls, model_dict: dict) -> BuckleyJamesModel:
         """
         Rebuild a Buckley-James model from a :meth:`to_dict` dictionary.
 
@@ -521,9 +513,9 @@ class BuckleyJamesModel(
     def summary(
         self,
         alpha_ci: float = 0.05,
-        n_boot: "int | None" = None,
+        n_boot: int | None = None,
         random_state: Any = None,
-    ) -> "pd.DataFrame":
+    ) -> pd.DataFrame:
         """
         The coefficient table (#662), in the layout of ``CoxPH``'s
         :meth:`summary`: each coefficient (in the accelerated-failure
@@ -570,7 +562,7 @@ class BuckleyJamesModel(
         )
         if n_boot is not None:
             bounds = self.bootstrap_ci(alpha_ci, n_boot, random_state)
-            level = "{:g}%".format(100 * (1 - alpha_ci))
+            level = f"{100 * (1 - alpha_ci):g}%"
             lower, upper = bounds[:, 0], bounds[:, 1]
             table["coef lower " + level] = lower
             table["coef upper " + level] = upper
@@ -698,8 +690,8 @@ class BuckleyJames_(FitterRepr):
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         tol: float = 1e-5,
         max_iter: int = 100,
     ) -> BuckleyJamesModel:
@@ -755,7 +747,7 @@ class BuckleyJames_(FitterRepr):
         >>> model.beta.round(3)
         array([0.435])
         >>> model.bootstrap_ci(random_state=1).round(3)
-        array([[0.343, 0.528]])
+        array([[0.342, 0.532]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
@@ -828,16 +820,15 @@ class BuckleyJames_(FitterRepr):
             (Y, delta, Z_a, n_a),
         )
 
-    @column_arguments("x", "c", "n")
     @takes_unit
     def fit_from_df(
         self,
         df: Any,
         x_col: str,
-        Z_cols: "str | list[str] | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        formula: "str | None" = None,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        formula: str | None = None,
         tol: float = 1e-5,
         max_iter: int = 100,
     ) -> BuckleyJamesModel:
@@ -867,23 +858,16 @@ class BuckleyJames_(FitterRepr):
             so it predicts from DataFrame rows.
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tol=tol,
+            max_iter=max_iter,
         )
-        mask = finite_covariate_mask(Z)
-        Z = Z[mask]
-        sub = df.loc[mask]
-        x = sub[x_col].values
-        c = sub[c_col].values if c_col is not None else None
-        n = sub[n_col].values if n_col is not None else None
-
-        # The aliasing warning (#476) names the columns.
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
-        model.formula = formula
-        model.feature_names = feature_names
-        model._model_spec = model_spec
-        return model
 
 
 BuckleyJames = BuckleyJames_()

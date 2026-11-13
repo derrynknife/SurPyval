@@ -227,20 +227,21 @@ def _weighted_robust_covariance(
     return model._robust_covariance(p_hat, center, free, bread, group)
 
 
-def robust_covariance(
+def robust_inference_state(
     model: ParametricRegressionModel,
     cluster: npt.ArrayLike | None = None,
-) -> npt.NDArray:
-    """The sandwich covariance of ``model.params`` (see the module), in
-    the order of :attr:`parameter_names`, with the model-based
-    covariance's conventions: a fixed parameter's row and column 0, an
-    aliased coefficient's ``nan``."""
+) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]:
+    """``(params, center, covariance)`` as ``model._inference_state()``
+    gives them, the parameterisation every Wald bound is computed in (the
+    centred fit's, behind a baseline reported at 0), with the sandwich in
+    place of the model-based covariance: what ``cb``, ``quantile_cb`` and
+    ``param_cb`` use with ``robust=True``. A model-based covariance that
+    is not finite is returned as it is (its bounds are ``nan`` either
+    way)."""
     refuse_robust(model)
-    # The parameterisation the model-based covariance is computed in (the
-    # centred fit's, behind a baseline reported at 0), and that covariance.
     p_hat, center, cov = model._inference_state()
     if not np.all(np.isfinite(cov)):
-        return model.covariance()
+        return p_hat, center, cov
     data = model.data
     if center is not None and np.any(center):
         from ._fit_skeleton import centred_copy
@@ -254,7 +255,7 @@ def robust_covariance(
             model, p_hat, center, free, cov, cluster
         )
     else:
-        step = model._hessian_step(p_hat)[free]
+        step = model._gradient_step(p_hat, cov)[free]
         scores = row_scores(model, data, p_hat, free, step)
         n = np.asarray(data.n, dtype=float)
         if cluster is None:
@@ -266,6 +267,22 @@ def robust_covariance(
             np.add.at(sums, group, n[:, None] * scores)
             meat = sums.T @ sums
         out = cov @ meat @ cov
+    return p_hat, center, out
+
+
+def robust_covariance(
+    model: ParametricRegressionModel,
+    cluster: npt.ArrayLike | None = None,
+) -> npt.NDArray:
+    """The sandwich covariance of ``model.params`` (see the module), in
+    the order of :attr:`parameter_names`, with the model-based
+    covariance's conventions: a fixed parameter's row and column 0, an
+    aliased coefficient's ``nan``."""
+    refuse_robust(model)
+    _, _, cov = model._inference_state()
+    if not np.all(np.isfinite(cov)):
+        return model.covariance()
+    _, _, out = robust_inference_state(model, cluster)
     if model._fit_centring is not None:
         J = model._fit_centring[2]
         out = J @ out @ J.T

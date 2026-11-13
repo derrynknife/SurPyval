@@ -20,6 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -28,6 +29,7 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.units import takes_unit
@@ -36,10 +38,23 @@ from .proportional_intensity import (
     ProportionalIntensityModel,
     alias_covariates,
 )
+from .tvc import (
+    ProportionalIntensityTVCFitMixin,
+    check_tvc_rows,
+    count_events,
+    handle_recurrent_tvc,
+    mark_tvc,
+    nhpp_tvc_neg_ll,
+    rows_as_event_times,
+)
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityNHPP(
+    FitterRepr,
+    RecurrentRegressionDataFrameMixin,
+    ProportionalIntensityTVCFitMixin,
+):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -154,13 +169,25 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         5-40 worse than the same model fitted as Crow-AMSAA). The fit that
         ignores the covariates is the natural start, with coefficients 0;
         if it fails, the old unit start is used.
+
+        Data the items' records refuse but this fit takes (a blank id, an
+        end of observation at entry, a failure at the top of an
+        inspection window, observation windows) is read without its
+        covariates as it is; it used to get the unit start, on which a
+        Cox-Lewis baseline on ages in the thousands did not converge.
         """
+        from surpyval.utils.history_reshape import covariates_dropped
+
         fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
                 # Without the covariates, which the baseline's own fit
                 # refuses (#959).
-                base = dist.fit_from_recurrent_data(data.without("covariates"))
+                try:
+                    free = data.without("covariates")
+                except Exception:
+                    free = covariates_dropped(data)
+                base = dist.fit_from_recurrent_data(free)
             start = np.asarray(base.params, dtype=float)
         except Exception:
             return fallback
@@ -216,14 +243,38 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         out.data = data
         # The covariates' columns name the coefficients (#614)
         out.feature_names = fit_columns()
+        return self._maximise(
+            out,
+            dist,
+            self.create_negll_func,
+            (data, dist),
+            data.Z,
+            bic_sample_size(data),
+            lambda: self._baseline_start(data, dist),
+            init,
+        )
 
-        num_covariates = data.Z.shape[1]
+    def _maximise(
+        self,
+        out: Any,
+        dist: Any,
+        build: Callable,
+        args: tuple,
+        Z: np.ndarray,
+        n_obs: float,
+        baseline_start: Callable,
+        init: ArrayLike | None,
+    ) -> Any:
+        """Maximise the likelihood ``build(*args)`` (a function of
+        ``[*baseline parameters, *coefficients]``) of a fit to covariate
+        rows ``Z`` holding ``n_obs`` events, from ``init`` or the baseline
+        at ``baseline_start()`` with no effects, and finish the model
+        ``out``: the search of :meth:`fit` and of :meth:`fit_tvc`."""
+        num_covariates = Z.shape[1]
         expected = len(dist.parameter_names) + num_covariates
 
         def default_init() -> np.ndarray:
-            return np.append(
-                self._baseline_start(data, dist), np.zeros(num_covariates)
-            )
+            return np.append(baseline_start(), np.zeros(num_covariates))
 
         user_init = init is not None
         if init is None:
@@ -239,14 +290,14 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                     f"{num_covariates} coefficients); got {init.size}."
                 )
 
-        neg_ll = self.create_negll_func(data, dist)
+        neg_ll = build(*args)
 
         # A coefficient the data cannot determine is held at 0 and reported
         # as nan (#502). A constant column is one only where the baseline
         # has a scale, which is then the intercept.
         n_dist = len(dist.parameter_names)
         aliased = alias_covariates(
-            data.Z, intercept=getattr(dist, "has_scale", False)
+            Z, intercept=getattr(dist, "has_scale", False)
         )
         free = np.ones(expected, dtype=bool)
         free[n_dist + aliased] = False
@@ -304,12 +355,12 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                     for j in range(n_dist, expected)
                     if free[j]
                 ],
-                data.Z,
+                Z,
             )
             res, verified = verify_or_polish(
                 objective,
                 res,
-                bic_sample_size(data),
+                n_obs,
                 numerical=True,
                 floor=floor,
             )
@@ -333,17 +384,17 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
         # Kept as what it is built from, so the model pickles (#573)
-        out._neg_ll = Rebuilt(
-            self.create_negll_func, (data, dist), built=neg_ll
-        )
+        out._neg_ll = Rebuilt(build, args, built=neg_ll)
         out._mle = fitted
-        out._n_obs = bic_sample_size(data)
+        out._n_obs = n_obs
 
         return out
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @removed_arguments("0.25", dist="'baseline'")
     @dataframe_covariates
     @takes_unit
+    @accepts_recurrent_surpyval_data
     @accepts_event_history_data
     def fit(
         self,
@@ -367,6 +418,13 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``).
+            Or a ``SurpyvalData`` with each row's unit ``i``, which
+            holds the data: ``fit(data)``, with the other data
+            arguments left out. Its rows are read as each unit's
+            history (gaps as ``windows``, covariates that change
+            within a unit by ``fit_tvc`` where the model has one),
+            and the model's ``notes`` say what was made of the
+            terminal flags ``a``.
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D array
             is a single covariate), or a ``{item: covariates}`` dict. They
@@ -419,3 +477,144 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         """
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, baseline, init)
+
+    @dataframe_covariates
+    @takes_unit
+    def fit_tvc(
+        self,
+        i: ArrayLike,
+        xl: ArrayLike,
+        xr: ArrayLike,
+        c: ArrayLike,
+        Z: ArrayLike,
+        n: ArrayLike | None = None,
+        baseline: Any = Duane,
+        init: ArrayLike | None = None,
+    ) -> Any:
+        """
+        Fit the model to covariates that change over time, in start-stop
+        format.
+
+        Each row is one interval ``(xl, xr]`` of item ``i``'s history
+        over which its covariate row ``Z`` is constant. The item's
+        intensity at time ``t`` is the baseline's at ``t`` times
+        :math:`e^{\\beta' Z}` for the covariates in force at ``t``: the
+        value a covariate has now multiplies the intensity now, with no
+        memory of its earlier values. So the expected number of failures
+        over a row is the baseline's expected number over ``(xl, xr]``
+        times that factor. The arguments are those of the life
+        regressions' ``fit_tvc``; an item here may fail many times, so
+        any of its rows may end in a failure. With one covariate value
+        per item the fit is that of :meth:`fit`.
+
+        An item's rows must not overlap. They may leave gaps (the item
+        is not at risk in a gap), and a first ``xl`` above 0 is delayed
+        entry. Cutting a row in two with the same covariates changes
+        nothing. Left-censored counts (``c = -1``) and right truncation
+        (``tr``) are not taken: give a count as a ``c = 2`` row.
+
+        Parameters
+        ----------
+        i : array_like
+            The item of each interval row.
+        xl, xr : array_like
+            The open-closed interval ``(xl, xr]`` of each row, in the
+            item's own time (its age), which the baseline's trend is
+            measured in.
+        c : array_like
+            What ends the row at ``xr``: ``0`` a failure, ``1`` no
+            failure (a covariate change or the end of the item's
+            record), ``2`` a count ``n`` of failures somewhere within
+            the row (failures counted between inspections).
+        Z : array_like
+            The covariate row in force on each interval (a 1-D array is
+            a single covariate). A missing value raises a
+            ``ValueError``: the row is part of an item's history.
+        n : array_like, optional
+            The number of failures on a ``c = 2`` row; 1 (the default)
+            on the others.
+        baseline : CountingProcess, optional
+            The baseline intensity model, as for :meth:`fit`: ``Duane``
+            (the default), ``CrowAMSAA`` or ``CoxLewis``.
+        init : array_like, optional
+            Initial parameter estimates: the baseline parameters
+            followed by the covariate coefficients.
+
+        Returns
+        -------
+        ProportionalIntensityModel
+            The fitted model, with ``is_tvc`` set. ``cif_tvc``,
+            ``iif_tvc`` and ``cb_tvc`` predict along a covariate
+            schedule; the methods that read one covariate row per item
+            (``residuals``, ``cramer_von_mises``, ``trend_test``,
+            ``diagnose``, ``plot``) refuse, saying so.
+
+        Examples
+        --------
+        Three machines watched to 30 months, each overhauled part of the
+        way through (``overhauled`` steps from 0 to 1). Each row is the
+        time from one event to the next:
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> from surpyval.recurrent import ProportionalIntensityNHPP
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3]
+        >>> xl = [0, 8, 13, 15, 18, 26, 0, 6, 11, 16, 19, 20, 27, 0, 9, 10,
+        ...       17, 22]
+        >>> xr = [8, 13, 15, 18, 26, 30, 6, 11, 16, 19, 20, 27, 30, 9, 10,
+        ...       17, 22, 30]
+        >>> c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1]
+        >>> overhauled = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1,
+        ...               1]
+        >>> model = ProportionalIntensityNHPP.fit_tvc(
+        ...     i, xl, xr, c, overhauled, baseline=CrowAMSAA
+        ... )
+        >>> model.is_tvc
+        True
+        >>> bool(model.coeffs[0] < 0)  # fewer failures after an overhaul
+        True
+
+        The expected number of failures by months 12 and 24 of a machine
+        overhauled at month 12, and of one never overhauled:
+
+        >>> plan = [[0], [1]]
+        >>> with_overhaul = model.cif_tvc([12, 24], plan, xl=[0, 12])
+        >>> without = model.cif([12, 24], [0])
+        >>> bool(with_overhaul[0] == without[0])
+        True
+        >>> bool(with_overhaul[1] < without[1])
+        True
+        """
+        dist = baseline
+        if not isinstance(dist, CountingProcess):
+            raise TypeError(
+                "`baseline` must be a CountingProcess instance "
+                "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
+            )
+        rows = handle_recurrent_tvc(i, xl, xr, c, Z, n)
+        check_tvc_rows(rows, dist)
+        out = ProportionalIntensityModel()
+        out.dist = dist
+        out.feature_names = fit_columns()
+
+        def baseline_start() -> np.ndarray:
+            # The covariate-free fit of the baseline to the failure
+            # times, as for fit (gaps in an item's record ignored).
+            x, item, flags, tl = rows_as_event_times(rows)
+            try:
+                with np.errstate(all="ignore"):
+                    data = handle_xicn(x, item, flags, tl=tl)
+            except ValueError:
+                return np.ones(len(dist.parameter_names))
+            return self._baseline_start(data, dist)
+
+        self._maximise(
+            out,
+            dist,
+            nhpp_tvc_neg_ll,
+            (rows, dist),
+            rows["Z"],
+            count_events(rows),
+            baseline_start,
+            init,
+        )
+        return mark_tvc(out, rows)

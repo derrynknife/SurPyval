@@ -23,16 +23,30 @@ or **judgement** (a matter of review that no test can fully decide).
 Inputs
 ------
 
-1. **One data model.** Every fitter takes ``x``, ``c``, ``n``, ``t``,
-   ``tl`` and ``tr`` with the same meanings: censoring flag 0 observed,
-   1 right, -1 left, 2 interval; intervals are :math:`(l, r]` and truncation
-   windows :math:`(t_l, t_r]`.
+1. **One data model.** Every fitter reads data through the same letters
+   with the same meanings (:doc:`Data Model`): the time ``x`` (or a range
+   ``xl``, ``xr``), the censoring flag ``c`` (0 observed, 1 right, -1 left,
+   2 interval), the count ``n``, the truncation window ``t`` (``tl``,
+   ``tr``), the unit ``i``, the event type or state entered ``e``, the state
+   ``s``, the terminal flag ``a``, the measurements ``m``, the covariates
+   ``Z`` and the weights ``w``. Intervals are :math:`(l, r]` and truncation
+   windows :math:`(t_l, t_r]`. Every fitter's ``fit`` takes a
+   ``SurpyvalData`` holding them, and the data is checked once, when it is
+   built: a row giving both ``x`` and a range is left out with a warning
+   naming it, and a row with no time, a unit's rows out of order or
+   overlapping, and a row after the unit's terminal event are refused. A
+   model takes the letters it can use and refuses the rest, naming the
+   model that takes them; it never drops part of the data silently.
 
    *Partly checked.* The property tests generate data in every form (mixed
    censoring, ties, counts, truncation, tiny samples) for the univariate,
    regression and recurrent fitters, and the reference tests check the
    conventions against R; the other families are checked through their
-   conformance fixtures only.
+   conformance fixtures only. ``conformance/test_fit_paths.py`` checks that
+   every registered model's ``fit(data)`` gives the fit of its arrays, and
+   ``utils/test_exact_or_range.py``, ``utils/test_terminal_flag.py``,
+   ``utils/test_surpyval_data_states.py`` and ``utils/test_measurements.py``
+   check the data's own rules.
 
 2. **Invalid input raises a** ``ValueError`` **that names the argument and
    says how to fix it** -- never a ``TypeError``, an ``IndexError`` or a
@@ -51,7 +65,9 @@ Inputs
    ``qf``, #611).
 
 4. **Order doesn't matter.** The order of the data rows never changes a fit,
-   and permuting a query permutes the result.
+   and permuting a query permutes the result. The one order the data keeps
+   is within a unit: a unit's own rows are a history, given in time order,
+   and rows out of order are refused, never reordered.
 
    *Checked* by ``conformance/test_metamorphic.py`` and
    ``conformance/test_vectorisation.py``, and on generated data by the

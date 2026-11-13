@@ -388,14 +388,14 @@ def test_conditional_survival_is_one_up_to_given(case):
 # the last event.)
 
 
-def _has(model, name):
-    return hasattr(model, name) and _evaluable(None, model)
+def _has(case, model, name):
+    return hasattr(model, name) and _evaluable(case, model)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
 def test_constant_path_bounds_are_cb(case):
     model = fitted(case)
-    if not _has(model, "cb_tvc"):
+    if not _has(case, model, "cb_tvc"):
         return
     z = _rows(case)[1]
     for Z in (_constant_path(z), StepSchedule.constant(z)):
@@ -422,7 +422,7 @@ def test_constant_path_bounds_are_cb(case):
 @pytest.mark.parametrize("case", TVC_CASES)
 def test_bounds_keep_the_query_shape(case):
     model = fitted(case)
-    if not _has(model, "cb_tvc"):
+    if not _has(case, model, "cb_tvc"):
         return
     z = _rows(case)[1]
     x = np.asarray(case.x, dtype=float)
@@ -453,7 +453,7 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
     from scipy.integrate import quad
 
     model = fitted(case)
-    if not _has(model, "mean_tvc"):
+    if not _has(case, model, "mean_tvc"):
         return
     kw = case.call_kwargs
     z = _rows(case)[1]
@@ -502,3 +502,85 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
     else:
         assert mrl == ref_mrl, (mrl, ref_mrl)
     assert np.isnan(model.mean_tvc(_constant_path(z), given=np.nan, **kw))
+
+
+# -- fitting on a continuous path ---------------------------------------------
+#
+# A fitter with ``fit_tvc`` fits item records whose time-varying covariates
+# are a ``CovariatePath`` by cutting the path into steps. A path made of
+# steps is cut into exactly those steps, so its fit is the fit of the same
+# ``StepSchedule``, and it reports that nothing had to be refined.
+
+
+def _path_fitters():
+    params = []
+    for case in CASES:
+        if case.interface != REGRESSION or not case.fitters:
+            continue
+        fitter = sp
+        for part in case.fitters[0].split(".")[1:]:
+            fitter = getattr(fitter, part, None)
+        if not callable(getattr(fitter, "fit_tvc", None)):
+            continue
+        if not getattr(fitter.fit, "_accepts_surpyval_data", False):
+            continue
+        params.append(pytest.param(case, fitter, id=case.name))
+    return params
+
+
+def _stepped_items(case, fitter, schedule):
+    """The case's failures and right censorings as item records, each
+    covariate row held to age 1 and negated after it (given by
+    ``schedule(times, values)``); entering at 0 on a baseline defined
+    below 0, where a continuous path needs the entry age."""
+    data = case.data()
+    x = np.asarray(data["x"], dtype=float)
+    if x.ndim != 1:
+        return None
+    c = np.asarray(data.get("c", np.zeros(x.size)))
+    Z = np.asarray(data["Z"], dtype=float).reshape(x.size, -1)
+    keep = np.isin(c, (0, 1)) & (x > 0)
+    real_line = float(getattr(fitter, "support", (0.0,))[0]) < 0
+    cut = float(np.median(x[keep]))
+    return sp.SurpyvalData.from_items(
+        [
+            sp.ItemLifetime(
+                int(k),
+                **{"observed" if c[k] == 0 else "right_censored": x[k]},
+                left_truncation=0.0 if real_line else None,
+                time_varying_covariates=schedule(cut, Z[k]),
+            )
+            for k in np.flatnonzero(keep)
+        ]
+    )
+
+
+@pytest.mark.parametrize("case, fitter", _path_fitters())
+def test_a_path_made_of_steps_is_fitted_as_those_steps(case, fitter):
+    on_paths = _stepped_items(
+        case,
+        fitter,
+        lambda cut, z: CovariatePath.from_points(
+            [0.0, cut, cut], [z, z, 0.5 * z]
+        ),
+    )
+    if on_paths is None:
+        pytest.skip("the case's data are not single ages")
+    on_steps = _stepped_items(
+        case,
+        fitter,
+        lambda cut, z: StepSchedule.from_changepoints(
+            [0.0, cut], [z, 0.5 * z]
+        ),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        path_fit = fitter.fit(on_paths)
+        step_fit = fitter.fit(on_steps)
+    np.testing.assert_array_equal(
+        np.asarray(path_fit.params, dtype=float),
+        np.asarray(step_fit.params, dtype=float),
+    )
+    report = path_fit.path_steps
+    assert report["converged"] and report["change"] == 0.0
+    assert not hasattr(step_fit, "path_steps")

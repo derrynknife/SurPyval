@@ -20,7 +20,9 @@ import surpyval as surv
 from surpyval import ParametricDistribution
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
+    WEIGHTED_MODEL_SCHEMA,
     SerialisableMixin,
+    check_schema,
     dict_numbers,
     stamp_schema,
     to_native,
@@ -30,7 +32,9 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import (
     bound_signs,
     cb_link,
@@ -45,10 +49,6 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     restored_maximum,
 )
 from surpyval.utils.record_predict import PredictsRecordsMixin
-from surpyval.utils.removed_names import (
-    removed_arguments,
-    removed_parameter_note,
-)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -64,7 +64,7 @@ from surpyval.utils.validation import (
     unit_interval_range,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import (
     _LN_MAX,
@@ -262,6 +262,94 @@ _OFFSET_WALD_WARNING = (
 )
 
 
+def _rmst_weibull(y: float, alpha: float, beta: float) -> float:
+    """``int_0^y exp(-(u / alpha)^beta) du``, by the lower incomplete
+    gamma function."""
+    from scipy.special import gamma as gamma_fn
+    from scipy.special import gammainc
+
+    a = 1.0 / beta
+    with onp.errstate(all="ignore"):
+        u = onp.power(onp.float64(y) / alpha, beta)
+        return float(alpha * gamma_fn(1.0 + a) * gammainc(a, u))
+
+
+def _rmst_exponential(y: float, rate: float) -> float:
+    """``int_0^y exp(-rate u) du``."""
+    return float(-onp.expm1(-rate * y) / rate)
+
+
+def _rmst_gamma(y: float, shape: float, rate: float) -> float:
+    """``E[min(T, y)]`` of a Gamma with that shape and rate:
+    ``(shape / rate) P(shape + 1, rate y) + y Q(shape, rate y)``."""
+    from scipy.special import gammainc, gammaincc
+
+    u = rate * y
+    return float(
+        shape / rate * gammainc(shape + 1.0, u) + y * gammaincc(shape, u)
+    )
+
+
+def _rmst_lognormal(y: float, mu: float, sigma: float) -> float:
+    """``E[min(T, y)]`` of a LogNormal: ``exp(mu + sigma^2 / 2)
+    Phi((log y - mu - sigma^2) / sigma) + y Phi(-(log y - mu) / sigma)``."""
+    from scipy.special import ndtr
+
+    if y <= 0:
+        return 0.0
+    w = (onp.log(y) - mu) / sigma
+    with onp.errstate(all="ignore"):
+        return float(
+            onp.exp(mu + sigma**2 / 2.0) * ndtr(w - sigma) + y * ndtr(-w)
+        )
+
+
+#: The restricted means ``int_0^y S(u) du`` in closed form, by
+#: distribution name; every other distribution's is a quadrature of ``sf``.
+_RMST_CLOSED_FORM: dict[str, Callable[..., float]] = {
+    "Exponential": _rmst_exponential,
+    "Weibull": _rmst_weibull,
+    "Gamma": _rmst_gamma,
+    "LogNormal": _rmst_lognormal,
+}
+
+
+def _sf_area(
+    dist: Any,
+    a: float,
+    b: float,
+    core: Any,
+    closed: Callable[..., float] | None,
+) -> float:
+    """``int_a^b S(u) du`` of the distribution ``dist`` at the parameters
+    ``core``, with ``S = 1`` below its support and 0 above it: by the
+    closed form ``closed`` (``int_0^y S``) for a distribution whose
+    support starts at 0, otherwise by adaptive quadrature."""
+    from scipy.integrate import quad
+
+    if not b > a:
+        return 0.0
+    s0, s1 = (float(v) for v in getattr(dist, "support", (-onp.inf, onp.inf)))
+    area = 0.0
+    if a < s0:
+        # Nothing has failed before the support starts: S = 1 there.
+        area += min(b, s0) - a
+        a = s0
+    b = min(b, s1)
+    if not b > a:
+        return area
+    core = [float(v) for v in core]
+    if closed is not None and s0 == 0.0:
+        return area + closed(b, *core) - closed(a, *core)
+
+    def sf(u: float) -> float:
+        return float(onp.ravel(dist.sf(onp.array([u]), *core))[0])
+
+    with ignoring_warnings():
+        value, _ = quad(sf, a, b, epsabs=0.0, epsrel=1e-11, limit=200)
+    return area + float(value)
+
+
 def _query_array(x: Any) -> Any:
     """A model function's query ``x`` as an array (a plain numpy one: the
     query is not traced, and autograd's wrapper was a fixed cost on every
@@ -453,6 +541,45 @@ _MAXIMUM_NOTES = {
     ),
 }
 
+# A fitted limited-failure proportion this close to 1 is at its bound: the
+# printout says so, and what to do (principle 22).
+_LFP_BOUND_TOL = 1e-5
+_LFP_AT_BOUND_NOTE = (
+    "lfp_p is at its bound of 1: the data show no sign of units that "
+    "never fail; fit without lfp=True"
+)
+
+
+def _check_drawn_extras(extras: dict) -> None:
+    """Refuse, saying what to do, an ``lfp_p`` or ``f0`` that
+    ``with_params`` was given outside its range: a draw from the
+    covariance near an edge can fall there."""
+    fix = (
+        "A draw from covariance() can fall outside its range where the "
+        "estimate is near an edge: leave such draws out, draw that "
+        "parameter on the logit scale, or use bootstrap(), whose refits "
+        "stay inside."
+    )
+    lfp_p = extras.get("lfp_p")
+    f0 = extras.get("f0")
+    if lfp_p is not None and not 0 < lfp_p <= 1:
+        raise ValueError(
+            "lfp_p, the proportion that ever fails, must be in (0, 1]; "
+            f"got {lfp_p}. {fix}"
+        )
+    if f0 is not None:
+        if not 0 <= f0 < 1:
+            raise ValueError(
+                "f0, the proportion failing at time 0, must be in [0, 1); "
+                f"got {f0}. {fix}"
+            )
+        if f0 >= (1.0 if lfp_p is None else lfp_p):
+            raise ValueError(
+                f"f0 ({f0}) must be less than lfp_p ({lfp_p}): the "
+                f"proportion failing at time 0 is part of the proportion "
+                f"that ever fails. {fix}"
+            )
+
 
 class Parametric(
     LikelihoodRatioMixin,
@@ -496,6 +623,21 @@ class Parametric(
 
         :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
         only when this is ``"verified"``, unless nothing else fitted.
+    hess_inv : ndarray
+        The inverse Hessian of the negative log-likelihood at the fitted
+        parameters, the distribution's parameters' block (the curvature
+        of the likelihood, not a variance in general). For a fit with
+        weights ``w`` it is that of the weighted log-likelihood with the
+        weights as given (R's ``naive.var``), which is not the variance
+        of the estimate: the bounds use the robust covariance,
+        :meth:`covariance`. Without weights the two are the same matrix.
+        Use :meth:`covariance` (or :meth:`standard_errors`) for a
+        variance. Not set on a model built with ``from_params``, or on a
+        weighted model saved by v0.26, which stored the robust covariance
+        in its place. It covers the distribution's parameters only
+        (``parameter_names``), never ``lfp_p`` or ``f0``; the covariance
+        of every estimated parameter, named row by row, is
+        :meth:`covariance` with :attr:`covariance_names`.
 
     Examples
     --------
@@ -532,12 +674,16 @@ class Parametric(
     lfp_p: float
     f0: float
     support: tuple[float, float]
+    # The inverse Hessian of the (weighted) negative log-likelihood, the
+    # distribution's block (documented under Attributes above). Never the
+    # robust covariance: bounds use ``covariance()``.
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
     #: Whether the model was fitted with weights ``w``: its covariance is
-    #: then the robust (sandwich) one, and the likelihood-ratio and
-    #: bootstrap bounds and the information criteria refuse.
+    #: then the robust (sandwich) one, its bootstrap bounds the case
+    #: bootstrap, and the likelihood-ratio bounds and the information
+    #: criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights of a weighted fit.
     effective_n: float | None = None
@@ -691,7 +837,19 @@ class Parametric(
 
         # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
         # rows are named here, not in a numpy error later (#663).
-        if "hess_inv" in model_dict:
+        # "hess_inv" is the inverse Hessian, except in a weighted model
+        # saved before schema 4: v0.26 stored the robust covariance there
+        # and not the inverse Hessian, which cannot be rebuilt without the
+        # data, so such a model has no hess_inv; its bounds use its
+        # "covariance", as they did. A weighted dict written by the v0.27
+        # development versions before schema 4 kept the inverse Hessian
+        # under "inverse_hessian".
+        if "inverse_hessian" in model_dict:
+            out.hess_inv = dict_numbers(model_dict, "inverse_hessian", True)
+        elif "hess_inv" in model_dict and (
+            model_dict.get("weighted") is not True
+            or check_schema(model_dict) >= WEIGHTED_MODEL_SCHEMA
+        ):
             out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
 
         # "cov_matrix" is the key of a dict written before v0.23.
@@ -722,6 +880,18 @@ class Parametric(
                     out.param_map[_lfp_key(dist, name)] for name in fixed_names
                 ]
             }
+
+        mpp_options = model_dict.get("mpp_options")
+        if mpp_options:
+            info = dict(getattr(out, "fitting_info", None) or {})
+            info.update(
+                heuristic=str(mpp_options["heuristic"]),
+                rr=str(mpp_options["rr"]),
+                on_d_is_0=bool(mpp_options["on_d_is_0"]),
+            )
+            out.fitting_info = info
+        if model_dict.get("bias_adjustment") is not None:
+            out.bias_adjustment = str(model_dict["bias_adjustment"])
 
         out.params = dict_numbers(model_dict, "params")
 
@@ -825,20 +995,35 @@ class Parametric(
             out["gamma"] = 0.0
 
         if getattr(self, "hess_inv", None) is not None:
-            out["hess_inv"] = self.hess_inv.tolist()
+            # The inverse Hessian, as the attribute; with weights it is not
+            # the covariance, which is under its own key (schema 4).
+            out["hess_inv"] = np.asarray(self.hess_inv).tolist()
         if self._covariance is not None:
-            # The key every model's dict stores it under (#605).
+            # The key every model's dict stores it under (#605): with
+            # weights, the robust covariance.
             out["covariance"] = np.asarray(self._covariance).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
-            # likelihood-ratio bounds and the information criteria.
+            # Schema 4: a reader without weights would offer the
+            # likelihood-ratio bounds and the information criteria, and
+            # v0.26 would read "hess_inv" as the robust covariance.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
         # Informational: a reader that predates it ignores it and restores
         # the same model, so it needs no newer schema.
         out["maximum"] = self.maximum
+        # The plotting options of a probability-plotting fit, which its
+        # pivotal bounds refit simulated samples with (with the data).
+        info = getattr(self, "fitting_info", None) or {}
+        if self.method == "MPP" and "rr" in info:
+            out["mpp_options"] = {
+                "heuristic": str(info["heuristic"]),
+                "rr": str(info["rr"]),
+                "on_d_is_0": bool(info["on_d_is_0"]),
+            }
+        if self.bias_adjustment is not None:
+            out["bias_adjustment"] = self.bias_adjustment
         # The printout's "Data" line (#508), informational like "maximum",
         # so a model restored without its data prints the same.
         if self._data_repr():
@@ -877,7 +1062,9 @@ class Parametric(
         The names of ``params``, entry by entry: the distribution's
         ``parameter_names``. An offset ``gamma``, limited-failure
         proportion ``lfp_p`` and zero-inflation fraction ``f0`` are not in
-        ``params`` and not named here (see :attr:`extras`).
+        ``params`` and not named here (see :attr:`extras`). The rows of
+        :meth:`covariance` are named by :attr:`covariance_names`, which
+        starts with these.
 
         Examples
         --------
@@ -886,6 +1073,42 @@ class Parametric(
         ['alpha', 'beta']
         """
         return list(self.dist.parameter_names)
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order: the distribution's parameters (``parameter_names``), then
+        the limited-failure proportion ``lfp_p`` for a model fitted with
+        ``lfp=True``, then the zero-inflation fraction ``f0`` for one
+        fitted with ``zi=True``.
+
+        A parameter fixed at fit time keeps its row, a row and column of
+        zeros, since it is known. The offset ``gamma`` of a model fitted
+        with ``offset=True`` is never a row: it is a threshold parameter,
+        whose likelihood is not regular, so the covariance holds it at its
+        estimate (the other parameters' variances are conditional on it)
+        and ``param_cb("gamma", method="lr")`` or ``method="bootstrap"``
+        bounds it instead. Every model has the names, including one whose
+        :meth:`covariance` raises (a fit by ``how="MPS"``, ``"MSE"`` or
+        ``"MPP"``, or one built with ``from_params``).
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [10, 12, 15, 17, 20, 25, 31, 40, 52, 60]
+        >>> model = Weibull.fit(x, c=[0] * 8 + [1, 1], lfp=True)
+        >>> model.covariance_names
+        ['alpha', 'beta', 'lfp_p']
+        >>> model.covariance().shape
+        (3, 3)
+        """
+        names = list(self.dist.parameter_names)
+        if self.lfp:
+            names.append("lfp_p")
+        if self.zi:
+            names.append("f0")
+        return names
 
     @property
     def extras(self) -> dict[str, float]:
@@ -965,11 +1188,20 @@ class Parametric(
     #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
     _bootstrap_refits: dict | None = None
 
+    #: The simulated fits drawn for ``method="pivotal"``
+    #: (``_pivotal.pivots``), by ``(n_sim, random_state)``; not pickled.
+    _pivotal_draws: dict | None = None
+
+    #: The small-sample adjustment applied by :meth:`rba` (``None`` for
+    #: any other model).
+    bias_adjustment: str | None = None
+
     def __getstate__(self) -> dict:
         # The bootstrap refits are a cache, rebuilt on demand (#645), as
         # are the likelihood-ratio bounds' (the mixin's own)
         state = super().__getstate__()
         state.pop("_bootstrap_refits", None)
+        state.pop("_pivotal_draws", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
@@ -978,23 +1210,60 @@ class Parametric(
             state["lfp_p"] = state.pop("p")
         self.__dict__.update(state)
 
-    def with_params(self, params: npt.ArrayLike) -> Parametric:
-        """
-        The same model with other distribution parameters.
+    def _estimates(self) -> npt.NDArray:
+        """The model's parameters in the order of :attr:`covariance_names`:
+        the distribution's, then ``lfp_p`` and ``f0`` where the model has
+        them (fixed ones included); the offset ``gamma`` is not among
+        them. ``with_params(model._estimates())`` is the model."""
+        values = [float(v) for v in onp.asarray(self.params).ravel()]
+        if self.lfp:
+            values.append(float(self.lfp_p))
+        if self.zi:
+            values.append(float(self.f0))
+        return onp.asarray(values, dtype=float)
 
-        The distribution, offset ``gamma``, limited-failure proportion
-        ``lfp_p`` and zero-inflation fraction ``f0`` are kept (see
-        :attr:`extras`); only the distribution's own parameters change. Use
-        it to perturb or redraw a fitted model's parameters (sensitivity
-        or uncertainty analyses): ``from_params(model.params)`` alone
+    def with_params(
+        self,
+        params: npt.ArrayLike,
+        gamma: float | None = None,
+        *,
+        lfp_p: float | None = None,
+        f0: float | None = None,
+    ) -> Parametric:
+        """
+        The same model with other parameters.
+
+        The distribution, its unit, and which of the offset ``gamma``,
+        limited-failure proportion ``lfp_p`` and zero-inflation fraction
+        ``f0`` it has are kept; their values are kept too (see
+        :attr:`extras`) unless given. Use it to perturb or redraw a fitted
+        model's parameters: a parameter vector drawn from
+        :meth:`covariance` (in the order of :attr:`covariance_names`) maps
+        straight back to a model, so the fit's uncertainty can be carried
+        into anything built from it. ``from_params(model.params)`` alone
         silently drops the offset, ``lfp_p`` and ``f0``.
 
         Parameters
         ----------
         params : array like
-            The distribution's parameters, in the order of
-            ``model.dist.parameter_names``. They are checked as
-            ``from_params`` checks them.
+            Either the distribution's parameters (in the order of
+            ``model.dist.parameter_names``), or every parameter of
+            :meth:`covariance` in the order of :attr:`covariance_names`:
+            the distribution's, then ``lfp_p`` and ``f0`` where the model
+            has them, fixed ones included -- the vector a draw from the
+            covariance gives (``model._estimates()`` is the fit's). They
+            are checked as ``from_params`` checks them.
+        gamma : float, optional
+            The offset, for a model with one (it is not in the
+            covariance, so not in ``params``). Without it the model's own
+            is kept. A model without an offset refuses it: build one with
+            ``model.dist.from_params(params, gamma=...)``.
+        lfp_p : float, optional
+            The limited-failure proportion, with the distribution's
+            parameters alone (as ``MixtureModel.with_params`` takes
+            ``w``); with the full vector it is the vector's.
+        f0 : float, optional
+            The zero-inflation fraction, likewise.
 
         Returns
         -------
@@ -1003,7 +1272,18 @@ class Parametric(
             it has no data, covariance or fitted likelihood, since those
             belong to the fit of the original parameters, so data-based
             methods (``plot``, confidence bounds, ``aic``) are not
-            available on it.
+            available on it. A model fitted with weights ``w`` gives just
+            the distribution at the new parameters (no data, so no
+            weights).
+
+        Raises
+        ------
+        ValueError
+            Where ``params`` has neither length, where a keyword names a
+            parameter the model does not have or one ``params`` already
+            holds, or where a value is outside its range (an ``lfp_p``
+            above 1 or an ``f0`` below 0, as a draw near an edge can be):
+            the message says what to do.
 
         Examples
         --------
@@ -1012,9 +1292,208 @@ class Parametric(
         >>> other = model.with_params([120, 2])
         >>> other.params, other.gamma, other.lfp_p, other.f0
         (array([120,   2]), 5.0, 0.9, 0.1)
+
+        The full vector, in the order of ``covariance_names``, and a new
+        offset:
+
+        >>> model.covariance_names
+        ['alpha', 'beta', 'lfp_p', 'f0']
+        >>> other = model.with_params([120, 2, 0.8, 0.05], gamma=4.0)
+        >>> other.gamma, other.lfp_p, other.f0
+        (4.0, 0.8, 0.05)
+
+        A fit's uncertainty carried forward, by draws from its covariance:
+
+        >>> import numpy as np
+        >>> x = [10, 12, 15, 17, 20, 25, 31, 40, 52, 60]
+        >>> fit = Weibull.fit(x)
+        >>> rng = np.random.default_rng(1)
+        >>> draws = rng.multivariate_normal(fit.params, fit.covariance(), 500)
+        >>> sf20 = [fit.with_params(d).sf(20.0) for d in draws]
+        >>> round(float(np.std(sf20)), 2)
+        0.12
         """
+        names = self.covariance_names
+        n_core = len(self.dist.parameter_names)
+        n_full = len(names)
+        size = onp.size(params)
+        if onp.ndim(params) != 1 or size not in (n_core, n_full):
+            if n_full == n_core:
+                expected = f"{n_core} entries, {names}"
+            else:
+                expected = (
+                    f"{n_core} entries (the distribution's parameters, "
+                    f"{names[:n_core]}) or {n_full} (every row of "
+                    f"covariance(), in the order of covariance_names: "
+                    f"{names})"
+                )
+            raise ValueError(
+                f"'params' must be a flat vector of {expected}; got shape "
+                f"{onp.shape(params)}"
+            )
+        extras = self.extras
+        given = {"gamma": gamma, "lfp_p": lfp_p, "f0": f0}
+        full = n_full > n_core and size == n_full
+        for key, value in given.items():
+            if value is None:
+                continue
+            if key not in extras:
+                raise ValueError(
+                    f"'{key}' is given, but this model has no {key}: "
+                    "with_params keeps the model's structure. To build a "
+                    f"model with one, use model.dist.from_params(params, "
+                    f"{key}=..., **model.extras)."
+                )
+            if full and key != "gamma":
+                raise ValueError(
+                    f"'params' has {n_full} entries, in the order of "
+                    f"covariance_names {names}, so it already holds "
+                    f"'{key}'; give '{key}' only with the {n_core} "
+                    "distribution parameters"
+                )
+            extras[key] = float(value)
+        core: Any = params
+        if full:
+            values = onp.asarray(params, dtype=float)
+            core = values[:n_core]
+            for key, value in zip(names[n_core:], values[n_core:]):
+                extras[key] = float(value)
+        _check_drawn_extras(extras)
         # The data's unit is the model's whatever its parameters (#845)
-        return self.dist.from_params(params, **self.extras, unit=self.unit)
+        return self.dist.from_params(core, **extras, unit=self.unit)
+
+    def rba(self, basis: str = "median") -> Parametric:
+        r"""
+        The fit with Abernethy's reduced bias adjustment (RBA): a
+        small-sample correction of the Weibull shape, or of the LogNormal
+        or Normal ``sigma``, of a maximum-likelihood fit. Opt-in; the fit
+        itself is never changed.
+
+        In plain words: with few failures, the maximum-likelihood Weibull
+        shape comes out too large more often than too small (with 5
+        failures, a true shape of 2 is estimated above 2 about two times
+        in three), and the (log)normal ``sigma`` comes out too small. The
+        adjustment shrinks the shape (or stretches ``sigma``) by a factor
+        that depends only on the number of failures ``r`` and tends to 1
+        as ``r`` grows, so that the estimate is as often above the truth
+        as below it (``basis="median"``, the RBA), or right on average
+        (``basis="mean"``). It moves the point estimate only; it is not a
+        bound, and it removes a bias of the estimate, not its spread.
+
+        With :math:`C_4(r) = \sqrt{2 / (r - 1)}\,\Gamma(r / 2) /
+        \Gamma((r - 1) / 2)`, the Weibull shape is multiplied by
+        :math:`C_4^{3.5}` (median basis) or :math:`C_4^{6}` (mean basis),
+        and the (log)normal ``sigma`` by :math:`\sqrt{r / (r - 1)} / C_4`
+        (which makes a complete sample's ``sigma`` the mean-unbiased
+        :math:`s / C_4`); the other parameter is kept. ``r`` counts the
+        units that were not right censored. These are R ``WeibullR``'s
+        ``rba`` factors and its ``"mle-rba"`` fit, which applies them to
+        maximum-likelihood fits only, as here (Abernethy, *The New
+        Weibull Handbook*, 5th ed., chapter 5); the factors are exact
+        for any ``r`` (``WeibullR`` returns 1 above 343 failures).
+
+        Parameters
+        ----------
+        basis : {'median', 'mean'}, optional
+            For the Weibull shape: ``"median"`` (the default, Abernethy's
+            RBA) or ``"mean"``. The (log)normal ``sigma`` has one
+            adjustment.
+
+        Returns
+        -------
+        Parametric
+            The distribution at the adjusted parameters, built as
+            :meth:`with_params` builds a model (no data or covariance,
+            so no bounds of its own: bound the fit itself), with
+            ``bias_adjustment`` saying what was applied.
+
+        Raises
+        ------
+        ValueError
+            For a fit that is not a plain two-parameter maximum-likelihood
+            fit of the Weibull, LogNormal or Normal (an offset, ``lfp``,
+            ``zi``, weights, truncation, a fixed shape), or with fewer
+            than 3 failures: the message says what to use instead.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [43, 61, 79, 92, 107, 120, 141, 163]
+        >>> model = Weibull.fit(x)
+        >>> model.params.round(4)
+        array([113.2223,   2.9674])
+        >>> adjusted = model.rba()
+        >>> adjusted.params.round(4)
+        array([113.2223,   2.6198])
+        >>> adjusted.bias_adjustment
+        'rba (median, 8 failures)'
+        """
+        from . import _rba
+
+        return _rba.rba(self, basis)
+
+    def bootstrap(self, n_boot: int = 200, random_state: Any = None) -> Any:
+        """
+        The model refitted to ``n_boot`` bootstrap resamples of its data:
+        the other way, beside draws from :meth:`covariance` through
+        :meth:`with_params`, to carry the fit's uncertainty into anything
+        built from it. It is the sound one for an offset fit (whose
+        ``gamma`` has no row in the covariance) and for small samples,
+        where the normal approximation behind the covariance is poor.
+
+        These are the refits behind the ``method="bootstrap"`` bounds
+        (``cb``, ``quantile_cb``, ``param_cb``, ``mrl_cb``, ``rmst_cb``):
+        the same ``n_boot`` and integer ``random_state`` give the same
+        refits, which are kept on the model and reused. Each resample
+        draws a failure time for every unit from the fitted model (within
+        its truncation window) and censors it as the unit was censored;
+        a fit with weights ``w`` is resampled by cases instead (the units
+        drawn with replacement, each with its weight). Each refit has the
+        model's own options: offset, ``lfp``, ``zi`` and fixed parameters.
+
+        Parameters
+        ----------
+        n_boot : int, optional
+            The number of refits. Defaults to 200, the bounds' default; a
+            thousand or more is usual for a final answer.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
+
+        Returns
+        -------
+        ParametricBootstrap
+            The kept refits (``models``), their parameters in the order of
+            :attr:`covariance_names` (``params``; ``gamma`` beside it for
+            an offset fit), and the counts of refits that failed (left
+            out), had no finite maximum or an unverified one (kept, as
+            the bounds keep them). A warning says so where more than a
+            few did not reach a verified maximum.
+
+        Raises
+        ------
+        ValueError
+            For a model without its data (built from parameters, or
+            restored without them), a discrete distribution, or left- or
+            interval-censored data, which a resample cannot reproduce; and
+            for a weighted limited-failure or zero-inflated fit. Each
+            message says to draw from the covariance instead.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> boot = model.bootstrap(100, random_state=1)
+        >>> boot.params.shape, boot.failed
+        ((100, 2), 0)
+        >>> sf = [m.sf(8.0) for m in boot.models]
+        >>> float(np.round(np.std(sf), 2))
+        0.08
+        """
+        from . import _bootstrap
+
+        return _bootstrap.bootstrap(self, n_boot, random_state)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):
@@ -1042,6 +1521,8 @@ class Parametric(
             if self.lfp:
                 label = "Max Proportion (lfp_p)"
                 out += f"\n{label:<20}: {self.lfp_p}"
+                if self._lfp_at_bound():
+                    out += f"\n{'Note':<20}: {_LFP_AT_BOUND_NOTE}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -1056,6 +1537,16 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _lfp_at_bound(self) -> bool:
+        """Whether a fitted limited-failure proportion is at its upper
+        bound of 1 (within ``_LFP_BOUND_TOL``): the plain model, with
+        every unit failing eventually, fits as well. The search stops just
+        short of the bound, so the test is not ``== 1``. False for a model
+        built from parameters."""
+        if not self.lfp or self.method == "given parameters":
+            return False
+        return bool(1 - float(self.lfp_p) < _LFP_BOUND_TOL)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -1079,9 +1570,15 @@ class Parametric(
         The covariance of the fitted parameters: the distribution's, in
         the order of ``parameter_names``, then the limited-failure
         proportion ``lfp_p`` and the zero-inflation fraction ``f0`` where
-        the model has them (a held parameter has a zero row and column). The
+        the model has them (a held parameter has a zero row and column);
+        :attr:`covariance_names` names the rows. An offset ``gamma`` is
+        held at its estimate and has no row (see
+        :attr:`covariance_names`). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
+        For a fit with weights ``w`` it is the robust (sandwich)
+        covariance, while ``hess_inv`` stays the inverse Hessian. Use
+        this, not ``hess_inv``, wherever a variance is wanted.
 
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one whose information was singular, or a
@@ -1100,13 +1597,36 @@ class Parametric(
             raise self._no_covariance_error()
         return self._covariance
 
+    def _core_covariance(self) -> npt.NDArray:
+        """The covariance of the distribution's parameters, the block of
+        :meth:`covariance` that every Wald bound, band and plot uses: the
+        robust one for a fit with weights. A model restored from a dict
+        that stored only ``hess_inv`` (no ``"covariance"``) and was not
+        weighted uses it, as it is then the same matrix. Raises the
+        error of :meth:`covariance` where there is none."""
+        cov = self._covariance
+        if cov is not None:
+            n_core = len(self.params)
+            return np.asarray(cov)[:n_core, :n_core]
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None or self.weighted:
+            raise self._no_covariance_error()
+        return hess_inv
+
+    def _has_core_covariance(self) -> bool:
+        """Whether :meth:`_core_covariance` has a covariance to give."""
+        return self._covariance is not None or (
+            getattr(self, "hess_inv", None) is not None and not self.weighted
+        )
+
     def standard_errors(self) -> npt.NDArray:
         """
         The standard errors of the fitted parameters, the square roots of
         the diagonal of :meth:`covariance`, in its order (the
         distribution's parameters, then ``lfp_p`` and ``f0`` where the
-        model has them); ``nan`` where a variance is not positive. Raises the
-        ``ValueError`` of :meth:`covariance` where the model has none.
+        model has them, as :attr:`covariance_names` names them); ``nan``
+        where a variance is not positive. Raises the ``ValueError`` of
+        :meth:`covariance` where the model has none.
 
         Examples
         --------
@@ -1127,6 +1647,7 @@ class Parametric(
         method: str | None = None,
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
@@ -1175,7 +1696,23 @@ class Parametric(
           one bound on an offset's ``gamma``, and the one on another
           parameter of an offset model that includes the offset's
           uncertainty (the Wald bound holds it at its estimate, with a
-          warning; #645).
+          warning; #645). A limited-failure or zero-inflated model's
+          refits are fitted the same way (``lfp=``, ``zi=``), so ``lfp_p``
+          and ``f0`` have bootstrap bounds too; a refit that puts either
+          on its edge (1, 0) counts there, so the interval reaches the
+          edge when enough refits do. Their intervals are BCa: the
+          bias-corrected percentiles moved by an acceleration from the
+          jackknife (the model refitted without each unit in turn).
+          The refits are by the model's own method: an MPP, MPS, MSE or
+          MOM fit is refitted the same way (they were refitted by
+          maximum likelihood before).
+        - ``"pivotal"`` -- for a probability-plotting fit
+          (``how="MPP"``) of the Weibull, LogNormal, LogLogistic,
+          Normal, Logistic, Gumbel, GumbelLEV or Exponential: the Monte
+          Carlo pivotal bound, from the fits of ``n_sim`` standard
+          samples of the same size and rank pattern by the same
+          regression. Exact for complete and type II censored samples,
+          up to Monte Carlo error; approximate with other censoring.
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
@@ -1210,14 +1747,19 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default), ``"lr"`` or ``"bootstrap"``, as
-            above; ``"exact"`` (the default), ``"wald"`` or ``"lr"`` for
-            the probability models.
+            ``"wald"`` (the default), ``"lr"``, ``"bootstrap"`` or
+            ``"pivotal"``, as above; ``"exact"`` (the default), ``"wald"``
+            or ``"lr"`` for the probability models.
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -1241,7 +1783,14 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        self._refuse_weighted_method(method)
+        if self._is_pivotal(method):
+            check_option("bound", bound, BOUNDS)
+            from . import _pivotal
+
+            return _pivotal.param_cb_pivotal(
+                self, name, alpha_ci, bound, n_sim, random_state
+            )
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -1264,10 +1813,7 @@ class Parametric(
             param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
             p_hat = self.params[idx]
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
-            var = hess_inv[idx, idx]
+            var = self._core_covariance()[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
         check_option("bound", bound, BOUNDS)
@@ -1303,6 +1849,76 @@ class Parametric(
             factor = z(alpha) * np.sqrt(var)
             bounds = -bounds * factor
             return p_hat + bounds
+
+    def likelihood_contour(
+        self, alpha_ci: float = 0.05, n_points: int = 100
+    ) -> Any:
+        r"""
+        The joint likelihood-ratio confidence region of the model's two
+        parameters: the contour around the estimate inside which every
+        pair of values is one a likelihood-ratio test at level
+        ``alpha_ci`` does not reject.
+
+        ``param_cb(name, method="lr")`` bounds one parameter at a time;
+        this region bounds the two together, and shows how they trade
+        off (a Weibull's scale and shape are correlated, so the region
+        is a tilted oval, not a rectangle). It covers the true pair with
+        probability ``1 - alpha_ci`` in large samples. The contour is
+        where the log-likelihood has fallen from its maximum by half the
+        chi-squared critical value with two degrees of freedom:
+
+        .. math::
+
+            \log L(\theta) = \log L(\hat\theta) - \chi^2_{2, 1 - \alpha}/2,
+            \qquad \chi^2_{2, 1 - \alpha} = -2 \log \alpha.
+
+        It is found by root finding along ``n_points`` rays from the
+        estimate (in each parameter's log, or logit, for a bounded one),
+        at angles evenly spaced in the Wald metric, plus the four points
+        where it is tangent to the axes, which are each parameter's
+        profile-likelihood bounds at the same critical value.
+        :func:`surpyval.plot_likelihood_contour` draws it, for one or
+        more fits.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The significance level; 0.05 (the default) gives the 95%
+            joint region.
+        n_points : int, optional
+            The number of rays from the estimate. Defaults to 100.
+
+        Returns
+        -------
+        LikelihoodContour
+            The ``points`` of the contour (one column per parameter),
+            the extremes of each parameter over the region (``bounds``),
+            the estimate and the log-likelihood there and on the contour;
+            ``to_dict()`` gives it as strict JSON.
+
+        Raises
+        ------
+        ValueError
+            For a model with other than two fitted parameters (one
+            parameter's region is its interval, ``param_cb(name,
+            method="lr")``; fix all but two at fit time for the contour
+            of those two), an offset, limited-failure or zero-inflated
+            model, a fit other than MLE, or a fit with weights ``w``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [61.9, 74.2, 82.2, 106.3, 76.2, 40.7, 83.2, 42.3, 50.4]
+        >>> model = Weibull.fit(x, c=[1, 0, 0, 0, 0, 0, 0, 1, 0])
+        >>> contour = model.likelihood_contour(alpha_ci=0.1, n_points=40)
+        >>> contour.params, contour.points.shape
+        (['alpha', 'beta'], (44, 2))
+        >>> bool(abs(contour.critical_value - 4.60517) < 1e-5)
+        True
+        """
+        from .likelihood_contour import likelihood_contour
+
+        return likelihood_contour(self, alpha_ci, n_points)
 
     def _resolve_param_name(self, name: str) -> tuple[bool, int]:
         """Locate the parameter ``name`` for a confidence bound.
@@ -1348,7 +1964,6 @@ class Parametric(
             valid.append("f0")
         raise ValueError(
             f"Unknown parameter {name!r}; expected one of {valid}"
-            + removed_parameter_note(name, valid)
         )
 
     def _ensure_surv_data(self) -> None:
@@ -1893,7 +2508,6 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1987,6 +2601,13 @@ class Parametric(
         cs = np.where(cs > 1.0, 1.0, cs)
         return cs[()]
 
+    @positional_option(
+        "a",
+        "the lower truncation bound of the draws",
+        "the seed 'random_state' of random(size, random_state) on the other "
+        "models",
+        "a=..., or random_state=... for a seed",
+    )
     def random(
         self,
         size: int | tuple[int, ...],
@@ -2144,6 +2765,13 @@ class Parametric(
             q = self.qf(F_a + (1.0 - u) * (F_b - F_a))
         return np.reshape(np.asarray(q, dtype=float), np.shape(u))
 
+    @positional_option(
+        "a",
+        "the lower truncation bound of the draws",
+        "the seed 'random_state' of random(size, random_state) on the other "
+        "models",
+        "a=..., or random_state=... for a seed",
+    )
     def random_data(
         self,
         size: int,
@@ -2196,7 +2824,7 @@ class Parametric(
         (array([0, 0, 0, 1]), array([1, 1, 1, 5]))
         """
         x = np.ravel(
-            self.random(size, a, b, random_state=random_state)
+            self.random(size, a=a, b=b, random_state=random_state)
         ).astype(float)
         finite = np.isfinite(x)
         f = x[finite]
@@ -2216,10 +2844,18 @@ class Parametric(
             return float(np.max(f)) + 1.0
         return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
-    def mean(self, defective: bool = False) -> float:
+    @positional_option(
+        "defective",
+        "whether the mean counts only the units that fail",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean(tau)",
+        "defective=..., or tau=... for a restricted mean",
+    )
+    def mean(self, defective: bool = False, tau: float | None = None) -> float:
         r"""
         The mean of the distribution using the parameters found in the
-        ``.params`` attribute.
+        ``.params`` attribute; with ``tau``, the restricted mean up to
+        ``tau`` (see :meth:`rmst`), as the non-parametric models' ``mean``.
 
         Parameters
         ----------
@@ -2232,6 +2868,11 @@ class Parametric(
             :math:`t\,dF(t)` over the units that fail, with :math:`X` the
             base distribution; that is not the mean life of the units that
             fail, which is :math:`\gamma + \mathbb{E}[X]`.
+        tau : scalar, optional
+            A horizon: the restricted mean survival time
+            :math:`\int_0^\tau S(t)\, dt`, the point estimate of
+            :meth:`rmst`, which is finite with a limited failure
+            population too (``defective`` then does not matter).
 
         Returns
         -------
@@ -2254,6 +2895,8 @@ class Parametric(
         model: for a zero-inflated model the mass ``f0`` at 0 contributes
         nothing, so it is :math:`(1 - f_0)\,\mathbb{E}[\gamma + X]`.
         """
+        if tau is not None:
+            return float(self._rmst_values(self._rmst_taus(tau, "mean"))[0])
         if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails, so E[T] is infinite (#404).
             return np.inf
@@ -2436,6 +3079,7 @@ class Parametric(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
@@ -2477,7 +3121,7 @@ class Parametric(
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
-        method : ('wald', 'lr', 'bootstrap'), str, optional
+        method : ('wald', 'lr', 'bootstrap', 'pivotal'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
             the ``on`` function by the delta method. For an offset model
             the covariance leaves the offset out (it is a threshold, whose
@@ -2516,16 +3160,35 @@ class Parametric(
             bound is the bias-corrected percentile interval of the refits'
             ``on`` function. It includes the uncertainty of every
             estimated parameter, an offset's among them, and needs the
-            original data, exact or right censored (truncated or not); it
-            is not available for limited-failure or zero-inflated models.
+            original data, exact or right censored (truncated or not).
+            A limited-failure or zero-inflated model is refitted with the
+            same options; a unit drawn as never failing is censored as the
+            units were, or at the last time in the data where its drawn
+            censoring time is beyond it.
             The refits are kept on the model for each ``n_boot`` and integer
             ``random_state``, so bounds at other ``x`` (and ``quantile_cb``
             and ``param_cb``) reuse them.
+            ``"pivotal"`` is for a probability-plotting fit (``how="MPP"``) of
+            the Weibull, LogNormal, LogLogistic, Normal, Logistic, Gumbel,
+            GumbelLEV or Exponential, and only for it: the Monte Carlo
+            pivotal bound, from the fits of ``n_sim`` simulated standard
+            samples of the same size and rank pattern by the same
+            regression; exact for complete and type II censored samples,
+            up to Monte Carlo error (see :doc:`/Parametric SurPyval
+            Modelling`, "Bounds for a probability-plotting fit").
+            It bounds ``sf``, ``ff`` and ``Hf`` (one band, the inverse of
+            ``quantile_cb``'s), not ``hf`` or ``df``.
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations; the pivotal fits are kept on the model for an
+            integer seed, as the refits are.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -2550,6 +3213,13 @@ class Parametric(
         """
         check_alpha_ci(alpha_ci)
         t = np.atleast_1d(x)
+        if self._is_pivotal(method):
+            check_option("bound", bound, BOUNDS)
+            from . import _pivotal
+
+            return _pivotal.cb_pivotal(
+                self, t, on, alpha_ci, bound, n_sim, random_state
+            )
         if self.method != "MLE":
             raise self._no_bounds_error()
         self._refuse_probability_model("cb")
@@ -2561,7 +3231,7 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2611,6 +3281,7 @@ class Parametric(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        n_sim: int = 9999,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
@@ -2631,7 +3302,7 @@ class Parametric(
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
-        method : ('wald', 'lr'), str, optional
+        method : ('wald', 'lr', 'bootstrap', 'pivotal'), str, optional
             ``"wald"`` (default) is the delta method on the log of the
             quantile above the support's start (``log t_p`` for a lifetime,
             ``log(t_p - gamma)`` with an offset; the quantile itself for a
@@ -2651,11 +3322,24 @@ class Parametric(
             For an offset model the Wald bound holds the offset at its
             estimate, with a warning; ``"bootstrap"`` (the parametric
             bootstrap, as for ``cb``) includes its uncertainty (#645).
+            ``"pivotal"`` is for a probability-plotting fit (``how="MPP"``) of
+            the Weibull, LogNormal, LogLogistic, Normal, Logistic, Gumbel,
+            GumbelLEV or Exponential, and only for it: the Monte Carlo
+            pivotal bound, from the fits of ``n_sim`` simulated standard
+            samples of the same size and rank pattern by the same
+            regression; exact for complete and type II censored samples,
+            up to Monte Carlo error (see :doc:`/Parametric SurPyval
+            Modelling`, "Bounds for a probability-plotting fit").
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
             Defaults to 200.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's or the pivotal bound's
+            simulations.
+        n_sim : int, optional
+            The number of simulated fits, with ``method="pivotal"``.
+            Defaults to 9999, for which ``(n_sim + 1) a`` is a whole number
+            at every tail probability ``a`` that is a multiple of 1e-4.
 
         Returns
         -------
@@ -2678,6 +3362,12 @@ class Parametric(
         >>> model.quantile_cb(0.1, bound="lower", method="lr").round(3)
         np.float64(2.648)
 
+        A probability-plotting fit has the pivotal bound:
+
+        >>> mpp = Weibull.fit(x, how="MPP")
+        >>> mpp.quantile_cb(0.1, method="pivotal", random_state=1).round(3)
+        array([1.465, 4.298])
+
         Notes
         -----
         The nonparametric models' ``quantile_cb`` is the same bound for a
@@ -2686,7 +3376,11 @@ class Parametric(
         """
         check_alpha_ci(alpha_ci)
         probs = np.atleast_1d(np.asarray(p, dtype=float))
-        self._check_summary_cb(alpha_ci, bound, "quantile_cb")
+        pivotal = self._is_pivotal(method)
+        if pivotal:
+            check_option("bound", bound, BOUNDS)
+        else:
+            self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
         # As qf (#611): NaN, with one warning, where p is outside (0, 1),
@@ -2701,14 +3395,26 @@ class Parametric(
             )
             if ok.any():
                 out[ok] = self.quantile_cb(
-                    probs[ok], alpha_ci, bound, method, n_boot, random_state
+                    probs[ok],
+                    alpha_ci,
+                    bound,
+                    method,
+                    n_boot,
+                    random_state,
+                    n_sim,
                 )
             return out
+        if pivotal:
+            from . import _pivotal
+
+            return _pivotal.quantile_cb_pivotal(
+                self, probs, alpha_ci, bound, n_sim, random_state
+            )
         if self.dist.discrete:
             self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2720,6 +3426,13 @@ class Parametric(
         self._warn_offset_wald("quantile_cb")
         return self._quantile_cb_wald(probs, alpha_ci, bound)
 
+    @positional_option(
+        "alpha_ci",
+        "the significance level of the bounds",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean_cb(tau, alpha_ci)",
+        "alpha_ci=...",
+    )
     def mean_cb(
         self,
         alpha_ci: float = 0.05,
@@ -2935,7 +3648,7 @@ class Parametric(
                 lambda v: 1.0 / v,
                 (_LN_TINY, _LN_MAX),
             )
-            self._refuse_weighted_method(method)
+            self._refuse_weighted_method(method, bootstrap=True)
             if self._is_lr(method, bootstrap=True):
                 found = self._lr_summary(
                     "mrl", t[ok], alpha_ci, bound, scale=log_scale
@@ -2970,6 +3683,307 @@ class Parametric(
                     value[ok], var, log_scale, alpha_ci, bound, "mrl"
                 )
             out[ok] = np.reshape(found, (int(ok.sum()), -1))
+        return out if bound == "two-sided" else out[:, 0]
+
+    def _rmst_taus(self, tau: Any, what: str = "rmst") -> npt.NDArray:
+        """The horizons ``tau`` as a flat array, refused where one is
+        negative or infinite (a missing one gives ``nan``)."""
+        t = np.atleast_1d(onp.asarray(tau, dtype=float)).reshape(-1)
+        bad = ~onp.isnan(t) & ~((t >= 0) & onp.isfinite(t))
+        if onp.any(bad):
+            raise ValueError(
+                "{}: tau = {} is not a finite time at or above 0. The "
+                "restricted mean is the area under sf from 0 to tau; for "
+                "the area to infinity use mean().".format(
+                    what, t[bad].tolist()
+                )
+            )
+        if self.dist.discrete:
+            raise ValueError(
+                "{} is not available for a discrete distribution ({}): "
+                "its restricted mean is a sum of sf over the counts below "
+                "tau, model.sf(numpy.arange(tau)).sum() for integer "
+                "tau.".format(what, self.dist.name)
+            )
+        self._refuse_probability_model(what)
+        return t
+
+    def _rmst_default_tau(self, what: str) -> float:
+        """The default horizon: the largest observed time."""
+        self._require_data(f"{what} with tau left out")
+        x = onp.asarray(self.data["x"], dtype=float)
+        x = x[onp.isfinite(x)]
+        if not x.size:
+            raise ValueError(
+                f"{what}: the data hold no finite time; pass tau."
+            )
+        return float(onp.max(x))
+
+    def _rmst_of(self, taus: Any, core: Any, p: Any, f0: Any) -> Any:
+        """The restricted means at ``taus`` of the model at the parameters
+        ``(core, p, f0)``: ``(1 - p) tau + (p - f0) int_{-gamma}^{tau -
+        gamma} S_0(u) du``, with the base survival ``S_0`` 1 below its
+        support (an offset, or a zero-inflated mass at 0)."""
+        name = canonical_name(self.dist)
+        closed = None
+        if not self._has_custom_distribution():
+            closed = _RMST_CLOSED_FORM.get(name)
+        p, f0 = float(p), float(f0)
+        out = onp.full(len(taus), onp.nan)
+        for i, tau in enumerate(onp.asarray(taus, dtype=float)):
+            if onp.isnan(tau):
+                continue
+            base = _sf_area(
+                self.dist, -self.gamma, tau - self.gamma, core, closed
+            )
+            out[i] = (1.0 - p) * tau + (p - f0) * base
+        return out
+
+    def _rmst_values(self, taus: Any) -> npt.NDArray:
+        """The restricted means at ``taus`` at the fitted parameters."""
+        return self._rmst_of(taus, self.params, self.lfp_p, self.f0)
+
+    @staticmethod
+    def _rmst_scale(tau: float) -> tuple:
+        """The scale of a bound on the restricted mean to ``tau``: the
+        logit of its fraction of ``tau``, so the bounds stay in (0, tau)."""
+        return (
+            lambda v: np.log(v) - np.log(tau - v),
+            lambda u: tau * expit(u),
+            lambda v: 1.0 / v + 1.0 / (tau - v),
+            (_LN_TINY, -_LN_TINY),
+        )
+
+    def _rmst_wald(
+        self, taus: npt.NDArray, alpha_ci: float, bound: str
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+        """The restricted means at ``taus``, their delta-method standard
+        errors and their Wald bounds (on the scale of :meth:`_rmst_scale`).
+        """
+        ctx = self._cb_context()
+
+        def rmst_of(phi: npt.NDArray) -> Any:
+            core, p, f0 = self._cb_unpack(phi, ctx)
+            return self._rmst_of(taus, core, p, f0)
+
+        value = onp.asarray(rmst_of(ctx.phi_hat), dtype=float)
+        with np.errstate(all="ignore"):
+            jac = onp.atleast_2d(central_jacobian(rmst_of, ctx.phi_hat))
+            var = onp.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        sd = self._cb_sd(var, taus, "rmst")
+        width = 2 if bound == "two-sided" else 1
+        out = onp.full((len(taus), width), onp.nan)
+        for i, tau in enumerate(taus):
+            if onp.isnan(value[i]):
+                continue
+            if tau == 0:
+                out[i] = 0.0
+                continue
+            found = self._summary_wald(
+                value[i : i + 1],
+                var[i : i + 1],
+                self._rmst_scale(float(tau)),
+                alpha_ci,
+                bound,
+                "rmst",
+            )
+            out[i] = onp.ravel(found)
+        return value, sd, out
+
+    def rmst(self, tau: float | None = None, alpha_ci: float = 0.05) -> dict:
+        r"""
+        Restricted mean survival time up to ``tau`` with inference: the
+        expected time a unit lives within the first ``tau`` of its life,
+        as the non-parametric models' ``rmst`` gives it from their curve.
+
+        It is the area under the fitted survival function from 0 to
+        ``tau``,
+
+        .. math::
+            \mu(\tau) = \int_0^\tau S(t)\, dt = E[\min(T, \tau)],
+
+        in closed form for the Exponential,
+        :math:`(1 - e^{-\lambda\tau}) / \lambda`, the Weibull,
+        :math:`\alpha\, \Gamma(1 + 1/\beta)\, P(1/\beta, (\tau/\alpha)^\beta)`
+        (:math:`P` the regularised lower incomplete gamma function), the
+        Gamma and the LogNormal, and otherwise by adaptive quadrature of
+        :meth:`sf`. An offset (``gamma``) adds the time before it, where
+        nothing fails; a limited failure population (``lfp_p < 1``) adds
+        :math:`(1 - p)\tau` for the units that never fail (so its RMST is
+        finite while its mean is not); zero inflation takes the mass at 0
+        out. For a distribution on the whole line it is still the area
+        from 0, the time lived in :math:`[0, \tau]`.
+
+        The standard error is the delta method's,
+        :math:`\sqrt{g^\top \Sigma g}` with :math:`g` the gradient of
+        :math:`\mu(\tau)` in the parameters (central differences) and
+        :math:`\Sigma` the parameters' :meth:`covariance` (the inverse
+        observed information; the robust one for a weighted fit). The
+        interval is that Wald bound on the logit of
+        :math:`\mu(\tau)/\tau`, so it stays inside :math:`(0, \tau)`:
+        :meth:`rmst_cb` with ``method="wald"``, which also has the
+        likelihood-ratio and bootstrap bounds.
+
+        Parameters
+        ----------
+        tau : scalar, optional
+            The horizon. Defaults to the largest observed time, as for
+            the non-parametric models; a model with no data needs it.
+            Unlike theirs, a ``tau`` past the data is allowed: the
+            fitted distribution extrapolates.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmst", "se", "lower", "upper", "tau"}``, as the
+            non-parametric models' ``rmst``.
+
+        Raises
+        ------
+        ValueError
+            Where the model has no bounds (not fitted by MLE, or no
+            covariance): ``mean(tau=tau)`` gives the point estimate. Also
+            for a discrete distribution, and for a negative or infinite
+            ``tau``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> res = model.rmst(tau=8)
+        >>> print(round(res["rmst"], 4), round(res["se"], 4))
+        6.6396 0.3239
+        >>> print(round(res["lower"], 4), round(res["upper"], 4))
+        5.8845 7.1635
+
+        See Also
+        --------
+        rmst_cb : bounds on it at several horizons, by other methods.
+        surpyval.rmst_diff : compare the RMST of two groups.
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmst_default_tau("rmst")
+        t = self._rmst_taus(tau)
+        if t.size != 1:
+            raise ValueError(
+                "rmst takes one tau; rmst_cb bounds several at once."
+            )
+        try:
+            self._check_summary_cb(alpha_ci, "two-sided", "rmst")
+            if not self._has_core_covariance():
+                raise self._no_covariance_error()
+        except ValueError as error:
+            raise ValueError(
+                "{}. The point estimate alone is model.mean(tau={:g}).".format(
+                    str(error).rstrip("."), float(t[0])
+                )
+            ) from None
+        self._warn_offset_wald("rmst")
+        value, sd, cb = self._rmst_wald(t, alpha_ci, "two-sided")
+        return {
+            "rmst": float(value[0]),
+            "se": float(sd[0]),
+            "lower": float(cb[0, 0]),
+            "upper": float(cb[0, 1]),
+            "tau": float(t[0]),
+        }
+
+    @keeps_query_shape
+    def rmst_cb(
+        self,
+        tau: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the restricted mean survival time,
+        :meth:`rmst`, at one horizon or several.
+
+        Parameters
+        ----------
+        tau : array like or scalar, optional
+            The horizons. Defaults to the largest observed time.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr', 'bootstrap'), str, optional
+            ``"wald"`` (default) is the delta method on the logit of
+            ``rmst / tau``, which keeps the bounds in ``(0, tau)``;
+            ``"lr"`` the likelihood-ratio bound, the extreme of the RMST
+            over the parameters' likelihood region, as for
+            :meth:`mean_cb` (with an offset, a limited failure population
+            or zero inflation, over every fitted parameter);
+            ``"bootstrap"`` the parametric bootstrap, as for
+            :meth:`quantile_cb`, which includes an offset's uncertainty
+            (the Wald bound holds it at its estimate, with a warning).
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
+
+        Returns
+        -------
+        cb : scalar or numpy array
+            The bound(s), shaped as ``tau``; a two-sided bound adds a last
+            ``[lower, upper]`` axis. At ``tau = 0`` the RMST and its
+            bounds are 0.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> model.rmst_cb([4, 8]).round(3)
+        array([[3.642, 3.946],
+               [5.885, 7.163]])
+        >>> model.rmst_cb(8, method="lr").round(3)
+        array([5.906, 7.178])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_summary_cb(alpha_ci, bound, "rmst_cb")
+        if tau is None:
+            tau = self._rmst_default_tau("rmst_cb")
+        t = self._rmst_taus(tau, "rmst_cb")
+        self._refuse_weighted_method(method, bootstrap=True)
+        if self._is_lr(method, bootstrap=True):
+            out = onp.full((t.size, 2 if bound == "two-sided" else 1), 0.0)
+            for i, tau_i in enumerate(t):
+                if onp.isnan(tau_i):
+                    out[i] = onp.nan
+                elif tau_i > 0:
+                    found = self._lr_summary(
+                        "rmst",
+                        [tau_i],
+                        alpha_ci,
+                        bound,
+                        scale=self._rmst_scale(float(tau_i)),
+                    )
+                    out[i] = onp.ravel(found)
+        elif method.lower() == "bootstrap":
+            from . import _bootstrap
+
+            out = _bootstrap.rmst_cb_bootstrap(
+                self, t, alpha_ci, bound, n_boot, random_state
+            )
+            out = onp.reshape(out, (t.size, -1))
+        else:
+            if not self._has_core_covariance():
+                raise self._no_covariance_error()
+            self._warn_offset_wald("rmst_cb")
+            out = self._rmst_wald(t, alpha_ci, bound)[2]
         return out if bound == "two-sided" else out[:, 0]
 
     def _lr_summary(
@@ -3008,6 +4022,13 @@ class Parametric(
                 ]
             elif kind == "mean":
                 fns = [lambda theta: self.dist.mean(*theta)]
+            elif kind == "rmst":
+                fns = [
+                    lambda theta, a=a: float(
+                        self._rmst_of([a], theta, 1.0, 0.0)[0]
+                    )
+                    for a in args
+                ]
             else:
                 fns = [
                     lambda theta, a=a: float(
@@ -3024,6 +4045,8 @@ class Parametric(
                     out = model.qf(a)
                 elif kind == "mean":
                     out = model.mean()
+                elif kind == "rmst":
+                    out = model._rmst_values([a])
                 else:
                     out = model.mrl(a)
             return float(onp.ravel(onp.asarray(out, dtype=float))[0])
@@ -3048,7 +4071,10 @@ class Parametric(
                 return np.inf
             return from_psi(u)
 
-        scale = (to_psi, to_value, slope, ends)
+        if kind != "rmst":
+            # (a restricted mean is at most tau: the end of its scale is
+            # tau, not an infinite value)
+            scale = (to_psi, to_value, slope, ends)
         if (
             kind in ("mean", "mrl")
             and self.lfp
@@ -3067,10 +4093,13 @@ class Parametric(
             return np.column_stack([found[:, 0], inf])
         return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
 
-    def _refuse_weighted_method(self, method: Any) -> None:
-        """Refuse, for a fit with weights ``w``, the likelihood-ratio and
-        bootstrap bounds, which weights make invalid; Wald bounds use the
-        robust covariance."""
+    def _refuse_weighted_method(
+        self, method: Any, bootstrap: bool = False
+    ) -> None:
+        """Refuse, for a fit with weights ``w``, the likelihood-ratio
+        bound, which weights make invalid, and the bootstrap where the
+        caller has no case bootstrap (``bootstrap=False``); Wald bounds use
+        the robust covariance."""
         if not self.weighted or not isinstance(method, str):
             return
         from surpyval.utils.weights import refuse_bootstrap, refuse_lr
@@ -3078,8 +4107,14 @@ class Parametric(
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             raise refuse_lr()
-        if m == "bootstrap":
+        if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
+
+    @staticmethod
+    def _is_pivotal(method: Any) -> bool:
+        """Whether ``method`` asks for the pivotal Monte Carlo bound of a
+        probability-plotting fit (``_pivotal``)."""
+        return isinstance(method, str) and method.lower() == "pivotal"
 
     @staticmethod
     def _is_lr(method: str, bootstrap: bool = False) -> bool:
@@ -3141,6 +4176,14 @@ class Parametric(
         are the bound, so asking ``cb`` for one is a misunderstanding the
         bare "Only MLE" message does not clear up."""
         message = "Only MLE has confidence bounds"
+        if self.method == "MPP":
+            message += (
+                ", except the pivotal bounds of a probability-plotting fit: "
+                "cb, quantile_cb and param_cb with method='pivotal' (for "
+                "the Weibull, LogNormal, LogLogistic, Normal, Logistic, "
+                "Gumbel, GumbelLEV and Exponential). For other bounds "
+                "refit with how='MLE'"
+            )
         if self._weibayes_alpha_ci is not None:
             message += ": " + self._weibayes_note()
         return ValueError(message)
@@ -3329,9 +4372,8 @@ class Parametric(
                 ]
             )
 
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # a warning of the band's is given once, not once per count
-            warnings.simplefilter("ignore")
             lower = np.full(len(p), np.nan)
             upper = np.full(len(p), np.nan)
             if bound in ("two-sided", "lower"):
@@ -3414,11 +4456,8 @@ class Parametric(
 
         cov = self._covariance
         if cov is None:
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = np.copy(hess_inv)
+            cov[:n_core, :n_core] = np.copy(self._core_covariance())
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
@@ -3916,19 +4955,12 @@ class Parametric(
         check_alpha_ci(alpha_ci)
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
-        if (
-            hasattr(self, "hess_inv")
-            and (self.method == "MLE")
-            and (self.hess_inv is not None)
-        ):
+        if self.method == "MLE" and self._has_core_covariance():
 
             def _cb_func(x_model: npt.NDArray) -> Any:
                 # (the plot's band is drawn as the bound is, and an offset
                 # model's caveat is the bound's to give, not the plot's)
-                with warnings.catch_warnings():
-                    warnings.filterwarnings(
-                        "ignore", message=_OFFSET_WALD_START
-                    )
+                with ignoring_warnings(message=_OFFSET_WALD_START):
                     return self.cb(
                         x_model, on="ff", alpha_ci=alpha_ci, method=method
                     )

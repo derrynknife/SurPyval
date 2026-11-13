@@ -21,7 +21,9 @@ method of the restored model with the original's.
 
 import inspect
 import json
+import re
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -35,6 +37,7 @@ from surpyval import (
     CoxPH,
     InstantlyOccurs,
     KaplanMeier,
+    LandmarkCox,
     MixtureModel,
     NelsonAalen,
     NeverOccurs,
@@ -50,6 +53,14 @@ from surpyval import (
 )
 from surpyval.bayes import prior as sp_prior
 from surpyval.life_models import Power
+from surpyval.multistate import (
+    MultiState,
+    MultiStateProportionalHazards,
+    PanelMultiState,
+    PanelMultiStateRegression,
+    ParametricMultiState,
+    ParametricMultiStateRegression,
+)
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
     _TAGGED_MODELS,
@@ -58,6 +69,7 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
+from surpyval.tests.conformance.registry_fixtures import ms_data, panel_data
 
 # -- data ---------------------------------------------------------------------
 
@@ -120,6 +132,66 @@ def _pi_data(seed=0, n_items=12):
         cc.append(1)
         ZZ.append([z])
     return np.array(xs), np.array(ii), np.array(cc), np.array(ZZ)
+
+
+def _recurrent_cox(fitter, **kw):
+    """A semi-parametric recurrent-event regression on the
+    proportional-intensity data (Andersen-Gill, Prentice-Williams-Peterson
+    or Wei-Lin-Weissfeld: one model class, RecurrentCoxModel)."""
+    x, i, c, Z = _pi_data()
+    return fitter.fit(x, Z, i=i, c=c, **kw)
+
+
+def _mixture_cure():
+    """A mixture-cure regression: 2 in 5 units at z = 0 and 3 in 5 at
+    z = 1 never fail and are still running at 60, far past the lives;
+    a covariate on both the incidence and the latency's scale."""
+    rng = np.random.default_rng(11)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    cured = rng.random(z.size) < np.where(z == 0, 0.4, 0.6)
+    x = np.where(cured, 60.0, life)
+    return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
+
+
+def _equivalence():
+    """An equivalent time scale: hours and starts at three start rates,
+    one start worth 10 hours, a third still running."""
+    rng = np.random.default_rng(13)
+    rate = rng.choice([0.02, 0.1, 0.5], 150)
+    life = 2000.0 * rng.weibull(2.0, 150) / (1.0 + 10.0 * rate)
+    end = rng.uniform(300.0, 2000.0, 150)
+    h = np.minimum(life, end)
+    return surpyval.WeibullEquivalence.fit(
+        h, rate * h, c=(life > end).astype(int)
+    )
+
+
+def _zero_inflated():
+    """A zero-inflated regression: 1 unit in 10 at z = 0 and 1 in 5 at
+    z = 1 fail at time 0; a covariate on both f0 and the latency's
+    scale."""
+    rng = np.random.default_rng(12)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    doa = rng.random(z.size) < np.where(z == 0, 0.1, 0.2)
+    return surpyval.WeibullZeroInflated.fit(np.where(doa, 0.0, life), z)
+
+
+def _interval_cox():
+    """An interval-censored Cox fit: lives seen between inspections two
+    apart, a few exactly, one right censored."""
+    rng = np.random.default_rng(13)
+    z = np.tile([0.0, 1.0], 30)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(1.5, z.size)
+    lo = 2.0 * np.floor(life / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(z.size, 2)
+    x[::5] = life[::5, None]
+    c[::5] = 0
+    x[7] = [lo[7], lo[7]]
+    c[7] = 1
+    return surpyval.IntervalCoxPH.fit(x, z, c=c)
 
 
 def _process_data(seed=2, monotone=False):
@@ -192,6 +264,22 @@ def _cox_frailty():
     )
 
 
+def _cox_mixed_effects():
+    from surpyval import CoxMixedEffects, RandomEffect
+    from surpyval.datasets import load_kidney
+
+    df = load_kidney()
+    Z = np.column_stack([df["age"], df["sex"] == 2])
+    strata = np.arange(len(df)) % 2
+    return CoxMixedEffects.fit(
+        df["time"],
+        Z=Z,
+        c=1 - df["status"],
+        strata=strata,
+        random_effects=RandomEffect(df["id"], slopes=[1]),
+    )
+
+
 def _joint():
     from surpyval import WeibullJointPH
     from surpyval.tests.univariate.joint._fleet import fleet
@@ -250,7 +338,7 @@ def _mixture():
 
 
 def _tree():
-    from surpyval.beta.ml.forest.tree import SurvivalTree
+    from surpyval.ml.forest.tree import SurvivalTree
 
     x, Z, c = _forest_data()
     np.random.seed(1)
@@ -258,7 +346,7 @@ def _tree():
 
 
 def _forest():
-    from surpyval.beta.ml.forest.forest import RandomSurvivalForest
+    from surpyval.ml.forest.forest import RandomSurvivalForest
 
     x, Z, c = _forest_data()
     np.random.seed(1)
@@ -268,20 +356,28 @@ def _forest():
 def _build(name):
     from surpyval.degradation import GammaProcess, WienerProcess
     from surpyval.recurrent import (
+        AndersenGill,
         CrowAMSAA,
         GeneralizedRenewal,
+        JointFrailty,
         NonParametricCounting,
+        PanelCountMCF,
+        PanelCountRegression,
+        PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
+        WeiLinWeissfeld,
     )
     from surpyval.recurrent.competing_risks import (
         CauseSpecificMCF,
         CauseSpecificNHPP,
+        CauseSpecificProportionalIntensity,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,
         CompetingRisksProportionalHazards,
         FineGray,
         ParametricCompetingRisks,
+        ParametricCompetingRisksRegression,
     )
 
     builders = {
@@ -311,17 +407,22 @@ def _build(name):
         "distributional_regression": lambda: (
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
+        "mixture_cure": _mixture_cure,
+        "equivalence": _equivalence,
+        "zero_inflated": _zero_inflated,
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
         "frailty": _frailty,
         "cox_frailty": _cox_frailty,
+        "cox_mixed_effects": _cox_mixed_effects,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
         "aalen_additive": lambda: AalenAdditive.fit(
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
+        "interval_cox": _interval_cox,
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -337,9 +438,46 @@ def _build(name):
         "parametric_competing_risks": lambda: ParametricCompetingRisks.fit(
             _cr_data()[0], _cr_data()[2], c=_cr_data()[3]
         ),
+        "parametric_competing_risks_regression": lambda: (
+            ParametricCompetingRisksRegression.fit(
+                *_cr_data()[:3], c=_cr_data()[3]
+            )
+        ),
         "competing_risks": lambda: CompetingRisks.fit(
             np.abs(np.random.default_rng(3).weibull(1.3, 40) * 15) + 0.2,
             np.random.default_rng(4).choice([1, 2], 40),
+        ),
+        "multistate": lambda: MultiState.fit(**ms_data()),
+        "multistate_cox": lambda: MultiStateProportionalHazards.fit(
+            **ms_data(True)
+        ),
+        "multistate_cox_shared": lambda: MultiStateProportionalHazards.fit(
+            **ms_data(True),
+            shared={0: [("healthy", "dead"), ("ill", "dead")]},
+            proportional_baselines=[("healthy", "dead"), ("ill", "dead")],
+        ),
+        "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
+        "multistate_parametric_regression": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True))
+        ),
+        "landmark_cox": lambda: LandmarkCox.fit(
+            SurpyvalData(
+                x=np.abs(np.random.default_rng(5).weibull(1.3, 40) * 6) + 0.2,
+                Z=np.random.default_rng(6).integers(0, 2, (40, 1)),
+            ),
+            at=[0, 1, 2],
+            horizon=4,
+            baseline="pooled",
+        ),
+        "multistate_parametric_reset": lambda: ParametricMultiState.fit(
+            **ms_data(), clock="reset"
+        ),
+        "multistate_parametric_regression_reset": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True), clock="reset")
+        ),
+        "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
+        "multistate_panel_regression": lambda: (
+            PanelMultiStateRegression.fit(**panel_data(True))
         ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
@@ -350,10 +488,41 @@ def _build(name):
         "cause_specific_nhpp": lambda: CauseSpecificNHPP.fit(
             *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
         ),
+        "cause_specific_proportional_intensity": lambda: (
+            CauseSpecificProportionalIntensity.fit(
+                _recurrent_marked_data()[0],
+                (np.asarray(_recurrent_marked_data()[1]) % 3).astype(float),
+                i=_recurrent_marked_data()[1],
+                c=_recurrent_marked_data()[2],
+                e=_recurrent_marked_data()[3],
+                baseline=CrowAMSAA,
+            )
+        ),
+        "joint_frailty": lambda: JointFrailty.fit(
+            **JointFrailty.from_params(
+                (10.0, 1.2), (20.0, 1.5), 0.5, 1.0, beta=[0.5], gamma=[0.3]
+            ).random(
+                80,
+                end=15.0,
+                Z=(np.arange(80) % 2)[:, None].astype(float),
+                random_state=1,
+            )
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
             np.array([0, 0, 1, 0, 0, 1]),
+        ),
+        "panel_count_mcf": lambda: PanelCountMCF.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0],
+            [1, 0, 2, 1, 2, 0, 2, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3],
+        ),
+        "panel_count_regression": lambda: PanelCountRegression.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0, 3.0, 7.0],
+            [0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+            [1, 0, 2, 1, 2, 0, 2, 1, 0, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
         ),
         "parametric_recurrence": lambda: CrowAMSAA.fit(
             np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
@@ -363,6 +532,16 @@ def _build(name):
             _pi_data()[3],
             i=_pi_data()[1],
             c=_pi_data()[2],
+        ),
+        "recurrent_cox_andersen_gill": lambda: _recurrent_cox(AndersenGill),
+        "recurrent_cox_pwp_total": lambda: _recurrent_cox(
+            PrenticeWilliamsPeterson
+        ),
+        "recurrent_cox_pwp_gap": lambda: _recurrent_cox(
+            PrenticeWilliamsPeterson, time_scale="gap"
+        ),
+        "recurrent_cox_wei_lin_weissfeld": lambda: _recurrent_cox(
+            WeiLinWeissfeld
         ),
         "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
@@ -406,26 +585,50 @@ CASES = [
     "turnbull",
     "parametric_regression",
     "distributional_regression",
+    "mixture_cure",
+    "equivalence",
+    "zero_inflated",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",
     "frailty",
     "cox_frailty",
+    "cox_mixed_effects",
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
     "proportional_odds",
+    "interval_cox",
     "mixture",
     "royston_parmar",
     "fine_gray",
     "cr_proportional_hazards",
     "parametric_competing_risks",
+    "parametric_competing_risks_regression",
     "competing_risks",
+    "multistate",
+    "multistate_cox",
+    "multistate_cox_shared",
+    "multistate_parametric",
+    "multistate_parametric_regression",
+    "landmark_cox",
+    "multistate_parametric_reset",
+    "multistate_parametric_regression_reset",
+    "multistate_panel",
+    "multistate_panel_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
+    "cause_specific_proportional_intensity",
+    "joint_frailty",
     "mcf",
+    "panel_count_mcf",
+    "panel_count_regression",
     "parametric_recurrence",
     "proportional_intensity",
+    "recurrent_cox_andersen_gill",
+    "recurrent_cox_pwp_total",
+    "recurrent_cox_pwp_gap",
+    "recurrent_cox_wei_lin_weissfeld",
     "renewal",
     "degradation",
     "induced_failure_distribution",
@@ -495,6 +698,86 @@ def test_cases_cover_every_registered_model_class(models):
     # "InstantlyOccurs"/"NeverOccurs" are classes that are the model.
     covered |= {m.__name__ for m in models.values() if isinstance(m, type)}
     assert registered <= covered, registered - covered
+
+
+# -- the documented layout of the saved-model dictionary ---------------------
+
+_SERIALISATION_PAGE = (
+    Path(surpyval.__file__).resolve().parent.parent
+    / "docs"
+    / "surpyval.serialisation.rst"
+)
+
+
+def _documented_tables():
+    """The key tables of "The saved-model dictionary" on the
+    serialisation page: the keys any model writes when they apply, and
+    each class's identifying key, keys always written and keys written
+    when they apply."""
+    if not _SERIALISATION_PAGE.exists():
+        pytest.skip("the docs are not next to the package")
+    text = _SERIALISATION_PAGE.read_text(encoding="utf-8")
+    section = text.split("The saved-model dictionary\n", 1)[1]
+    optional_table = section.split("Keys any model writes when they apply")[
+        1
+    ].split("Names shared between families")[0]
+    optional = set(re.findall(r"^   \* - ``(\w+)``", optional_table, re.M))
+    per_class = section.split("Keys of each class")[1]
+    rows = re.findall(
+        r"^   \* - ``(\w+)``\n     - (.*)\n     - (.*)\n     - (.*)$",
+        per_class,
+        re.M,
+    )
+
+    def names(cell):
+        return set(re.findall(r"``(\w+)``", cell))
+
+    classes = {
+        cls: (ident, names(always), names(when))
+        for cls, ident, always, when in rows
+    }
+    return optional, classes
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_every_dict_has_the_documented_common_keys(name, models):
+    # The keys the docs promise on every dictionary: the schema number
+    # and the key the package-level reader dispatches on.
+    model = models[name]
+    d = model.to_dict()
+    assert isinstance(d["schema"], int)
+    cls = _model_class(model).__name__
+    if d.get("model") in _TAGGED_MODELS:
+        assert d["model"] == cls
+    else:
+        assert _PARAMETERIZATIONS[d["parameterization"]][1] == cls
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_to_dict_keys_match_the_serialisation_page(name, models):
+    optional, classes = _documented_tables()
+    model = models[name]
+    cls = _model_class(model).__name__
+    assert cls in classes, f"{cls} has no row on the serialisation page"
+    ident, always, when = classes[cls]
+    d = model.to_dict()
+    if d.get("model") == cls:
+        assert ident == f'``"model": "{cls}"``'
+    else:
+        assert ident == (f'``"parameterization": "{d["parameterization"]}"``')
+    keys = set(d) - {"schema", "model", "parameterization"}
+    missing = always - keys
+    assert not missing, f"{cls}: documented as always written: {missing}"
+    undocumented = keys - always - when - optional
+    assert not undocumented, f"{cls}: not on the page: {undocumented}"
+
+
+def test_serialisation_page_lists_only_registered_classes():
+    _, classes = _documented_tables()
+    registered = set(_TAGGED_MODELS) | {
+        c for _, c in _PARAMETERIZATIONS.values()
+    }
+    assert set(classes) == registered
 
 
 # -- (a) strict JSON ----------------------------------------------------------

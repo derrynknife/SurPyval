@@ -23,10 +23,17 @@ in one of two forms, by how the model was fitted:
 
 The copula likelihood is written for numpy (its rows are split by their
 censoring codes), not for autograd, so the derivatives are central finite
-differences (``numerical_hessian``), with the step of the regression
-models' covariance: ``eps**(1/3) * max(|p|, 1e-2)``, shortened for a
-parameter within a few steps of a bound of its space. The covariance is
-inverted in step-scaled coordinates, as theirs is.
+differences. Their steps come from the likelihood itself, so they do not
+depend on the unit of time a margin's parameters are written in: each
+entry's scale is the change in it that lowers the joint log-likelihood
+by one half with the others held (about a standard error), the Hessians
+are ``scale_free_hessian``'s, and the scores and the bounds' gradients
+step ``eps**(1/3)`` of that scale, shortened for a parameter within a few
+steps of a bound of its space. A step of ``eps**(1/3) * max(|p|, 1e-2)``
+(the rule before) is far too long for a margin's scale that is small in
+its unit: with times in millionths of the fixture's unit the standard
+errors moved by up to 6e-3. The covariance is inverted in step-scaled
+coordinates, as the regression models' is.
 
 The parameters are laid out as the model reports them: the copula's (its
 ``parameter_names``), then each margin's as its own ``covariance()`` lays
@@ -42,12 +49,13 @@ and column are ``nan``, and the rest are conditional on it.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as onp
 import numpy.typing as npt
 
-from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.linalg import curvature_scales, scale_free_hessian
 
 from .copula import _ff_where_finite, _is_nonparametric
 
@@ -119,12 +127,18 @@ class ParameterLayout:
             )
         return out
 
-    def steps(self) -> npt.NDArray:
-        """The finite-difference step of each entry: ``eps**(1/3) *
-        max(|p|, 1e-2)``, or ``eps**(1/3)`` times its distance from a bound
-        closer than ten such steps (the regression models' rule), so no
-        difference leaves the parameter's space."""
+    def steps(self, scale: npt.NDArray | None = None) -> npt.NDArray:
+        """The finite-difference step of each entry: ``eps**(1/3)`` of its
+        ``scale`` (a standard error, or the likelihood's own scale from
+        :func:`likelihood_scales`) where that is positive and finite, else
+        ``eps**(1/3) * max(|p|, 1e-2)``; or ``eps**(1/3)`` times its
+        distance from a bound closer than ten such steps (the regression
+        models' rule), so no difference leaves the parameter's space."""
         step = _H * onp.maximum(onp.abs(self.values), 1e-2)
+        if scale is not None:
+            scale = onp.asarray(scale, dtype=float)
+            usable = onp.isfinite(scale) & (scale > 0)
+            step = onp.where(usable, _H * onp.where(usable, scale, 1.0), step)
         for i, (low, high) in enumerate(self.bounds):
             gap = min(
                 self.values[i] - low if low is not None else onp.inf,
@@ -134,7 +148,7 @@ class ParameterLayout:
                 step[i] = _H * gap
         return step
 
-    def build(self, vector: npt.NDArray) -> "tuple[npt.NDArray, list] | None":
+    def build(self, vector: npt.NDArray) -> tuple[npt.NDArray, list] | None:
         """``(copula parameters, margins)`` at the full parameter
         ``vector``, or ``None`` where a margin's parameters are outside
         its space."""
@@ -263,8 +277,8 @@ def joint_covariance(
     cov[:, boundary] = onp.nan
     if free.size == 0:
         return cov, True
-    step = layout.steps()
     weights = onp.asarray(data.n, dtype=float)
+    step = layout.steps(likelihood_scales(layout, data, free, weights))
     margins_estimated = layout.estimated[layout.n_cop :].any()
     if how == "IFM" and margins_estimated:
         block = _godambe(layout, data, free, step, weights)
@@ -298,17 +312,39 @@ def _inverse_hessian(
     free: npt.NDArray,
     step: npt.NDArray,
     weights: npt.NDArray,
-) -> "npt.NDArray | None":
+) -> npt.NDArray | None:
     """The inverse of the joint likelihood's Hessian in the ``free``
     entries, or ``None`` where it is not finite or not invertible."""
     f = _neg_ll_in(
         lambda v: _copula_rows(layout, data, v), layout.values, free, weights
     )
-    H = numerical_hessian(f, layout.values[free], step[free])
+    H = scale_free_hessian(f, layout.values[free], fallback_step=step[free])
     return _scaled_inverse(H, step[free])
 
 
-def _scaled_inverse(H: npt.NDArray, step: npt.NDArray) -> "npt.NDArray | None":
+def likelihood_scales(
+    layout: ParameterLayout,
+    data: Any,
+    free: npt.NDArray,
+    weights: npt.NDArray,
+) -> npt.NDArray:
+    """Each entry's scale in the joint likelihood: the change in it, the
+    others held, that lowers the log-likelihood by one half (a standard
+    error, were the likelihood quadratic and the entry alone); ``nan``
+    for an entry not in ``free`` or where there is no such change (a
+    flat or one-sided direction). It moves with the unit an entry is
+    written in, so steps in it do not depend on that unit."""
+    out = onp.full(layout.size, onp.nan)
+    if free.size == 0:
+        return out
+    f = _neg_ll_in(
+        lambda v: _copula_rows(layout, data, v), layout.values, free, weights
+    )
+    out[free] = curvature_scales(f, layout.values[free])
+    return out
+
+
+def _scaled_inverse(H: npt.NDArray, step: npt.NDArray) -> npt.NDArray | None:
     """``H^-1``, inverted in step-scaled coordinates (a parameter orders of
     magnitude from another leaves ``H`` too ill-conditioned to invert
     directly), or ``None``."""
@@ -345,7 +381,7 @@ def _godambe(
     free: npt.NDArray,
     step: npt.NDArray,
     weights: npt.NDArray,
-) -> "npt.NDArray | None":
+) -> npt.NDArray | None:
     """The Godambe covariance ``H^-1 J H^-T`` of the two-stage (IFM)
     estimate in the ``free`` entries (see the module docstring), or
     ``None`` where it cannot be formed."""
@@ -363,7 +399,7 @@ def _godambe(
     # and the margins', which carry the margins' uncertainty).
     if cop.size:
         f = _neg_ll_in(copula_rows, base, free, weights)
-        full = numerical_hessian(f, base[free], step[free])
+        full = scale_free_hessian(f, base[free], fallback_step=step[free])
         rows_c = [pos[int(k)] for k in cop]
         H[rows_c, :] = full[rows_c, :]
         scores[:, rows_c] = _row_scores(copula_rows, base, cop, step)
@@ -386,7 +422,9 @@ def _godambe(
 
         f = _neg_ll_in(rows_d, base, mine, weights)
         idx = [pos[int(k)] for k in mine]
-        H[onp.ix_(idx, idx)] = numerical_hessian(f, base[mine], step[mine])
+        H[onp.ix_(idx, idx)] = scale_free_hessian(
+            f, base[mine], fallback_step=step[mine]
+        )
         scores[:, idx] = _row_scores(rows_d, base, mine, step)
     H_inv = _scaled_inverse(H, step[free])
     if H_inv is None or not onp.all(onp.isfinite(scores)):
@@ -395,32 +433,15 @@ def _godambe(
     return H_inv @ J @ H_inv.T
 
 
-def godambe_parts(
-    layout: ParameterLayout, data: Any
-) -> "tuple[npt.NDArray, npt.NDArray]":
-    """``(naive, godambe)`` covariances of the copula's free parameters
-    under IFM: the copula stage's inverse Hessian with the margins held
-    (what treating them as known gives) and the Godambe covariance. For
-    the documentation and its tests, which compare the two."""
-    step = layout.steps()
-    weights = onp.asarray(data.n, dtype=float)
-    free = onp.flatnonzero(layout.estimated & ~layout.on_bound())
-    cop = free[free < layout.n_cop]
-    naive = _inverse_hessian(layout, data, cop, step, weights)
-    full = _godambe(layout, data, free, step, weights)
-    if naive is None or full is None:
-        nan = onp.full((cop.size, cop.size), onp.nan)
-        return nan, nan
-    return naive, full[: cop.size, : cop.size]
-
-
 def jacobian(
     func: Callable[[npt.NDArray], npt.NDArray],
     layout: ParameterLayout,
     entries: npt.NDArray,
+    scale: npt.NDArray | None = None,
 ) -> npt.NDArray:
     """The derivative of ``func`` (a vector function of the full
     parameter vector) in each of ``entries``, by central differences with
-    :meth:`ParameterLayout.steps`: one column per entry."""
-    step = layout.steps()
+    :meth:`ParameterLayout.steps` (``eps**(1/3)`` of each entry's
+    ``scale``, its standard error, where given): one column per entry."""
+    step = layout.steps(scale)
     return _row_scores(func, layout.values, entries, step)

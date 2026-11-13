@@ -58,7 +58,7 @@ class _RiskSets:
         c: npt.NDArray,
         n: npt.NDArray,
         tl: npt.NDArray,
-        strata: "npt.NDArray | None",
+        strata: npt.NDArray | None,
     ) -> None:
         rows = len(x)
         lo = np.zeros(rows, dtype=int)
@@ -124,9 +124,9 @@ def runoff_direction(
     c: npt.NDArray,
     n: npt.NDArray,
     tl: npt.NDArray,
-    strata: "npt.NDArray | None",
+    strata: npt.NDArray | None,
     tie_method: str,
-) -> "tuple[npt.NDArray, bool] | None":
+) -> tuple[npt.NDArray, bool] | None:
     """A direction of the coefficients along which the partial likelihood
     of the rows ``x, Z, c, n, tl`` (stratum labels ``strata``, or
     ``None``) keeps increasing without bound, scaled so that its largest

@@ -8,7 +8,8 @@ calendar time ``t``. Both the process models and the general-path models
 use it: the reference-stress model runs on ``tau`` rather than ``t``.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -43,7 +44,7 @@ def covariates_by_name(Z: Any, Z_cols: "list[str] | None", refit: str) -> Any:
         )
     missing = [c for c in Z_cols if c not in Z.columns]
     if missing:
-        raise ValueError("{} not in dataframe columns".format(missing))
+        raise ValueError(f"{missing} not in dataframe columns")
     return Z[list(Z_cols)].to_numpy(dtype=float)
 
 

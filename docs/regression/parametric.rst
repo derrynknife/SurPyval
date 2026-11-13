@@ -213,6 +213,11 @@ parameter names as the fitted model reports them:
        columns
      - ``c`` (> 0), then one coefficient per column (named by the
        column, or ``coef_0``, ``coef_1``, ...)
+   * - ``GeneralLinear``
+     - :math:`a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots`, any number of
+       columns
+     - ``a``, then one coefficient per column (named by the column, or
+       ``coef_0``, ``coef_1``, ...)
 
 Custom life models can be created by subclassing ``LifeModel``::
 
@@ -274,8 +279,11 @@ vectorised function of time (``from_callable``), either optionally periodic.
 ``sf_tvc`` / ``Hf_tvc`` integrate the model's hazard along it to a relative
 error of about ``1e-10`` (``cb_tvc`` and ``mean_tvc`` build on them), and Cox
 sums its baseline jumps along it exactly.
-It evaluates a fitted model along a known, external path; fitting still
-uses steps. See :ref:`tvc-continuous`.
+It is a known, external path. A fitted model is evaluated along it, and
+item records whose ``time_varying_covariates`` are paths are fitted on
+them, each path cut into steps (``to_steps``) that are halved until the
+fit stops moving. See :ref:`tvc-continuous` and
+:ref:`tvc-fit-continuous`.
 
 .. autoclass:: surpyval.univariate.regression.tvc_path.CovariatePath
     :members: from_points, from_callable, breakpoints, p

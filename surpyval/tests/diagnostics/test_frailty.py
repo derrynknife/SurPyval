@@ -505,7 +505,14 @@ def test_cox_frailty_report(cox_d):
     assert list(d.table["check"]) == ["frailty_variance"]
     assert d.ok and not d.advice
     text = " ".join(d.notes)
-    assert "does not keep" in text and "gamma frailty only" in text
+    assert "does not keep" in text and "family='lognormal'" in text
+
+
+def test_lognormal_cox_frailty_report(kidney):
+    model = _kidney_fit(sp.CoxFrailty, kidney, family="lognormal")
+    d = model.diagnose()
+    assert list(d.table["check"]) == ["frailty_variance"]
+    assert "family='gamma'" in " ".join(d.notes)
 
 
 def test_a_fixed_frailty_variance_is_not_tested(kidney):

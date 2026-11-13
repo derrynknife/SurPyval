@@ -4,27 +4,25 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.26 is removed in
-v0.27. This module holds the shapes such a rename takes (each with the
+one and points at the caller's line: a name renamed in v0.27 is removed in
+v0.28. This module holds the shapes such a rename takes (each with the
 rename it was written for):
 
 - :func:`renamed_arguments`, an argument of a function or method;
-- :func:`reordered_arguments`, the order of a method's arguments;
 - :class:`RenamedAttribute`, an attribute or property of a class;
-- :class:`CallableFloat`, a method that became a property returning a
-  number (``MixtureModel.log_likelihood``);
-- :class:`MethodFloat`, a property returning a number that became a
-  method (``CrowAMSAA.aic`` -> ``CrowAMSAA.aic()``);
-- :class:`ArrayMethod` (with :class:`MethodArray`), the same for an array
-  attribute (``FrailtyModel.covariance`` -> ``FrailtyModel.covariance()``);
-- :class:`RenamedToMethod`, an attribute whose value a method of another
-  name now gives (``Parametric.cov_matrix`` -> ``covariance()``);
-- :class:`MadePrivate`, the public name of an internal method or attribute
-  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``);
 - :func:`renamed_name`, a class or other name in a module's namespace
-  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25).
+  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25);
+- :func:`positional_option`, an argument that, given by position, is
+  silently read as something other than what that place holds in the
+  package's other methods of the name (``Parametric.mean(5)`` takes the
+  5 as ``defective``, where ``KaplanMeier`` models' ``mean(5)`` takes it
+  as ``tau``): a ``FutureWarning`` that names the keyword to use;
+- :func:`ambiguous_item_ids`, the recurrent fits' item ids ``i``, which
+  stand where the other fits take the censoring flags ``c``: a
+  ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
+  flags as ids.
 
-A name deprecated in v0.27 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.28 is accepted until :data:`REMOVED_IN_NEXT`.
 
 A few deprecations are given a longer window, chosen by the maintainer:
 they are listed, each with the release that removes it, in
@@ -36,12 +34,20 @@ The top-level data-format functions (``surpyval.fs_to_xcnt`` and the
 rest), whose work :class:`~surpyval.SurpyvalData` now does, are deprecated
 by date instead (:data:`DATED_DATA_FUNCTIONS`): accepted, with a warning,
 until the first release on or after :data:`DATA_FUNCTIONS_REMOVED_AFTER`.
+So is ``surpyval.beta.ml``, the old name of ``surpyval.ml`` (the survival
+tree and random survival forest, promoted in v0.27): it imports them, with
+a warning from :func:`beta_ml_alias`, until the first release on or after
+:data:`BETA_ML_REMOVED_AFTER`, the same day, so one removal clears both.
 """
 
 import datetime
 import functools
+import inspect
+import os
+import sys
 import warnings
 from collections.abc import Callable
+from types import FrameType
 from typing import Any, TypeVar
 
 import numpy as np
@@ -51,28 +57,28 @@ __all__ = [
     "DATA_FUNCTIONS_REMOVED_AFTER",
     "DATED_DATA_FUNCTIONS",
     "dated_data_function",
+    "BETA_ML_DEPRECATED_ON",
+    "BETA_ML_REMOVED_AFTER",
+    "beta_ml_alias",
     "REMOVED_IN",
     "REMOVED_IN_NEXT",
     "SCHEDULED_REMOVALS",
     "scheduled_removal",
-    "ArrayMethod",
-    "CallableFloat",
-    "MethodArray",
-    "MadePrivate",
-    "MethodFloat",
     "RenamedAttribute",
-    "RenamedToMethod",
     "renamed_arguments",
     "renamed_name",
-    "reordered_arguments",
+    "positional_option",
+    "ambiguous_item_ids",
 ]
 
-#: The release in which the names deprecated in v0.26 stop being
-#: accepted. (Those deprecated in v0.25 were removed in v0.26.)
-REMOVED_IN = "0.27"
+#: The release in which the names deprecated in v0.27 stop being
+#: accepted. (v0.26 deprecated only ``check_ph``, given a longer window in
+#: :data:`SCHEDULED_REMOVALS`; those deprecated in v0.25 were removed in
+#: v0.26.)
+REMOVED_IN = "0.28"
 
-#: The release in which the names deprecated in v0.27 stop being accepted.
-REMOVED_IN_NEXT = "0.28"
+#: The release in which the names deprecated in v0.28 stop being accepted.
+REMOVED_IN_NEXT = "0.29"
 
 #: The deprecations with a longer window than one release, by name, each
 #: with the release that removes it. ``test_removed_arguments`` fails once
@@ -142,6 +148,55 @@ def dated_data_function(name: str) -> Any:
     return getattr(import_module("surpyval.utils.data_formats"), name)
 
 
+#: The day the survival tree and random survival forest were promoted
+#: from ``surpyval.beta.ml`` to ``surpyval.ml`` (DECISIONS.md, 2026-11-03).
+BETA_ML_DEPRECATED_ON = datetime.date(2026, 11, 4)
+
+#: The first release on or after it drops ``surpyval.beta.ml``: the day
+#: the top-level data-format functions go, so one removal clears both.
+BETA_ML_REMOVED_AFTER = datetime.date(2027, 4, 12)
+
+_IMPORTLIB_INIT = os.path.join("importlib", "__init__.py")
+
+
+def _import_stacklevel(*files: str) -> int:
+    """The ``stacklevel`` that points a warning raised while a module is
+    imported at the ``import`` that asked for it: past this module, the
+    modules in ``files`` (the one being imported) and
+    ``importlib.import_module``. The import machinery's own frames
+    (``importlib._bootstrap``) are not counted: ``warnings.warn`` skips
+    those itself. Python 3.12's ``skip_file_prefixes`` does this; 3.11 is
+    supported."""
+    skip = (__file__,) + files
+    level = 1
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None:
+        name = frame.f_code.co_filename
+        if name in skip or name.endswith(_IMPORTLIB_INIT):
+            level += 1
+        elif not ("importlib" in name and "_bootstrap" in name):
+            break
+        frame = frame.f_back
+    return level
+
+
+def beta_ml_alias(module_file: str) -> None:
+    """Warn, from the body of ``surpyval.beta.ml`` (``module_file`` its
+    ``__file__``), that it is the old name of ``surpyval.ml``: a
+    FutureWarning, as :func:`dated_data_function`'s, pointing at the
+    import statement that loaded it rather than at the import machinery.
+    Once per interpreter, since a module body runs once."""
+    warnings.warn(
+        "surpyval.beta.ml is deprecated since "
+        f"{BETA_ML_DEPRECATED_ON.isoformat()} and will be removed in the "
+        f"first release on or after {BETA_ML_REMOVED_AFTER.isoformat()}; "
+        "it is now surpyval.ml (from surpyval.ml import SurvivalTree, "
+        "RandomSurvivalForest).",
+        FutureWarning,
+        stacklevel=_import_stacklevel(module_file),
+    )
+
+
 def scheduled_removal(name: str, advice: str, stacklevel: int = 3) -> None:
     """Warn, with a DeprecationWarning pointing at the caller's caller,
     that ``name`` (one of :data:`SCHEDULED_REMOVALS`) is deprecated and
@@ -206,8 +261,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.26,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.27.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.27,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.28.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -236,7 +291,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.27;
+    describe: 'names' is deprecated and will be removed in v0.28;
     use 'labels'.
     """
 
@@ -266,87 +321,6 @@ def renamed_arguments(
     return decorate
 
 
-def reordered_arguments(
-    old: tuple[str, ...],
-    is_old: Callable[[tuple], bool],
-    advice: str,
-    removed_in: str = REMOVED_IN,
-) -> Callable[[F], F]:
-    """
-    Decorate a method whose positional arguments changed order, so that a
-    call in the old order still works, with a warning.
-
-    Parameters
-    ----------
-    old : tuple of str
-        The method's arguments after ``self``, in their old order.
-    is_old : callable
-        Given the positional arguments after ``self``, whether they are in
-        the old order (e.g. a string where the new order has a number).
-    advice : str
-        What to do instead, appended to the warning.
-    removed_in : str, optional
-        The release in which the old order stops being accepted.
-
-    Returns
-    -------
-    callable
-        A decorator. A call in the old order warns with a
-        ``DeprecationWarning`` pointing at the caller's line and is passed
-        on by keyword; passing an argument both ways raises a
-        ``TypeError``, as Python does.
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.deprecation import reordered_arguments
-    >>> class Model:
-    ...     @reordered_arguments(
-    ...         ("x", "bound", "alpha_ci"),
-    ...         lambda args: len(args) >= 2 and isinstance(args[1], str),
-    ...         "pass bound by name.",
-    ...     )
-    ...     def cb(self, x, alpha_ci=0.05, bound="two-sided"):
-    ...         return x, alpha_ci, bound
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     Model().cb(1.0, "lower", 0.1)
-    (1.0, 0.1, 'lower')
-    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.cb: the old order of its arguments, cb(x, bound, alpha_ci), is
-    deprecated and will be removed in v0.27; pass bound by name.
-    """
-
-    def decorate(func: F) -> F:
-        where = func.__qualname__
-        call = "{}({})".format(func.__name__, ", ".join(old))
-
-        @functools.wraps(func)
-        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            if is_old(args):
-                warnings.warn(
-                    f"{where}: the old order of its arguments, {call}, is "
-                    f"deprecated and will be removed in v{removed_in}; "
-                    f"{advice}",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                named = dict(zip(old, args))
-                for name in named:
-                    if name in kwargs:
-                        raise TypeError(
-                            f"{func.__name__}() got multiple values for "
-                            f"argument {name!r}"
-                        )
-                kwargs.update(named)
-                args = ()
-            return func(self, *args, **kwargs)
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorate
-
-
 class RenamedAttribute:
     """
     A class attribute's old name: reading or setting it warns and uses the
@@ -355,7 +329,7 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.27 passes
+    attribute). A name deprecated in v0.28 passes
     ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
@@ -370,7 +344,7 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.27;
+    Model.loglik is deprecated and will be removed in v0.28;
     use 'log_likelihood'.
     """
 
@@ -407,426 +381,255 @@ class RenamedAttribute:
         setattr(obj, self.new, value)
 
 
-class CallableFloat(float):
-    """
-    A number that can still be called, for a method that became a
-    property.
+_ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth")
 
-    ``MixtureModel.log_likelihood(params)`` was one component's
-    log-likelihood at ``params``, and ``log_likelihood`` became the fitted
-    log-likelihood in v0.23, a property as on every other model. For one
-    release it returned one of these, which is a plain ``float`` in every
-    other respect, and whose call, the old spelling, warns and calls
-    ``old`` (or, with no ``old`` or no arguments, returns the number).
+
+def _owner_name(owner: Any, method: str) -> str:
+    """How a user names what ``method`` was called on: a fitter by its
+    name (``CrowAMSAA``, ``Weibull``), a model by its class."""
+    if method.startswith("fit"):
+        # The fitter's own name where it reads as one (``Weibull``), not a
+        # display name ("Crow-AMSAA"): as its ``repr`` names it.
+        repr_name = getattr(owner, "_repr_name", None)
+        if callable(repr_name) and not isinstance(owner, type):
+            return str(repr_name())
+        name = getattr(owner, "name", None)
+        if (
+            isinstance(name, str)
+            and name
+            and " " not in name
+            and "-" not in name
+        ):
+            return name
+    cls = owner if isinstance(owner, type) else type(owner)
+    return cls.__name__.rstrip("_")
+
+
+def _position(func: Callable[..., Any], name: str) -> tuple[int, bool, str]:
+    """Where ``name`` sits among ``func``'s positional arguments: its
+    index in ``args`` (``self`` or ``cls`` counted), whether ``func`` is a
+    method, and the place a caller sees ("second")."""
+    names = [
+        p.name
+        for p in inspect.signature(func).parameters.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    if name not in names:
+        raise ValueError(
+            f"{func.__qualname__} has no positional argument {name!r}"
+        )
+    index = names.index(name)
+    bound = names[0] in ("self", "cls")
+    place = index - 1 if bound else index
+    ordinal = _ORDINALS[place] if place < len(_ORDINALS) else f"{place + 1}th"
+    return index, bound, ordinal
+
+
+def positional_option(
+    name: str,
+    taken_as: str,
+    elsewhere: str,
+    advice: str,
+) -> Callable[[F], F]:
+    """
+    Decorate a method whose argument ``name`` is read, when it is given by
+    position, as something other than what the same position holds in the
+    package's other methods of that name (or in the ``x, c, n, t`` order
+    of the data), so that a value meant for one is silently taken as the
+    other. Passing ``name``, or any argument after it, by position then
+    warns with a ``FutureWarning`` (shown wherever the call is made, since
+    the risk is a wrong number, not an error) that says what the value was
+    taken as and how to pass it by name. The call and its result are
+    unchanged, and the argument stays positional: making it keyword-only
+    would be a breaking change, which waits for 2.0 (DECISIONS.md).
+
+    Parameters
+    ----------
+    name : str
+        The argument, a parameter of the decorated function that can be
+        given by position.
+    taken_as : str
+        What ``name`` is, in a few words: "the item each row belongs to".
+    elsewhere : str
+        What a user from another family would have meant at that place:
+        "the censoring flags 'c', as in fit(x, c, n, t)".
+    advice : str
+        How to pass it by name: "i=... (or c=... for censoring flags)".
+
+    Returns
+    -------
+    callable
+        A decorator. Put it outermost (above any decorator that adds a
+        frame), so that the warning points at the caller's line.
 
     Examples
     --------
     >>> import warnings
-    >>> from surpyval.utils.deprecation import CallableFloat
-    >>> ll = CallableFloat(-12.5, "Model.log_likelihood")
-    >>> ll + 1
-    -11.5
+    >>> from surpyval.utils.deprecation import positional_option
+    >>> class Model:
+    ...     @positional_option(
+    ...         "defective", "whether to include the never-failing part",
+    ...         "the time 'tau' to restrict the mean to", "defective=...",
+    ...     )
+    ...     def mean(self, defective=False, tau=None):
+    ...         return 1.0
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
-    ...     ll()
-    -12.5
+    ...     Model().mean(5)
+    1.0
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.log_likelihood is now a property: 'log_likelihood()' is
-    deprecated and will be removed in v0.27; use 'log_likelihood'.
+    Model.mean: the first positional argument was taken as 'defective'
+    (whether to include the never-failing part), not as the time 'tau' to
+    restrict the mean to. The call is ambiguous: pass it by name,
+    defective=...; the result is unchanged.
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().mean(defective=True)
+    1.0
+    >>> caught
+    []
     """
 
-    _where: str
-    _old: "Callable[..., Any] | None"
-    _note: str
+    def decorate(func: F) -> F:
+        index, bound, ordinal = _position(func, name)
 
-    def __new__(
-        cls,
-        value: float,
-        where: str = "",
-        old: "Callable[..., Any] | None" = None,
-        note: str = "",
-    ) -> "CallableFloat":
-        out = super().__new__(cls, value)
-        out._where, out._old, out._note = where, old, note
-        return out
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if len(args) > index:
+                where = (
+                    _owner_name(args[0], func.__name__) + "." if bound else ""
+                ) + func.__name__
+                warnings.warn(
+                    f"{where}: the {ordinal} positional argument was taken "
+                    f"as '{name}' ({taken_as}), not as {elsewhere}. "
+                    f"The call is ambiguous: pass it by name, {advice}; "
+                    "the result is unchanged.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+            return func(*args, **kwargs)
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        attr = self._where.rpartition(".")[2]
-        warnings.warn(
-            "{} is now a property{}: '{}()' is deprecated and will be "
-            "removed in v{}; use '{}'.".format(
-                self._where, self._note, attr, REMOVED_IN, attr
-            ),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self._old is not None and (args or kwargs):
-            return self._old(*args, **kwargs)
-        return float(self)
+        return wrapper  # type: ignore[return-value]
 
-    def __reduce__(self) -> Any:
-        # Pickled (and copied) as the plain number it is
-        return (float, (float(self),))
+    return decorate
 
 
-class MethodFloat(float):
+def ambiguous_item_ids(
+    elsewhere: str,
+    column: bool = False,
+) -> Callable[[F], F]:
     """
-    The number of a property that became a method, for the property's
-    spelling.
+    Decorate a recurrent-event ``fit`` (or, with ``column=True``, its
+    ``fit_from_df``) whose item ids ``i`` stand where the other fits take
+    the censoring flags ``c``, to catch the call that silently reads
+    censoring flags as item ids: ``CrowAMSAA.fit(x, c)``.
 
-    ``CrowAMSAA.aic`` was a property, and ``aic()`` became a method in
-    v0.23, as on every other model. For one release the property returned
-    one of these: calling it, the new spelling, returns the plain
-    ``float``; using it as a number without the call -- arithmetic,
-    comparison, ``round``, ``float``, formatting or printing -- gives that
-    number with a ``DeprecationWarning`` pointing at the caller's line.
-    (What numpy reads directly, without calling any of these, is the
-    number as it is, with no warning.)
+    The ids stay a positional data argument (``fit(x, i, c)`` is the
+    recurrent data, as ``fit(x, c, n, t)`` is the univariate). The warning,
+    a ``FutureWarning``, fires only for the call that cannot be told
+    apart: ``i`` given by position, ``c`` not given at all, and the values
+    of ``i`` (or of its column) 0s and 1s, as censoring flags are. (Ids
+    all 0 or all 1, one item, are left alone: read as flags they would
+    give the same fit, or mark every row censored.)
+    The call and its result are unchanged; refusing it would be a
+    breaking change, which waits for 2.0 (DECISIONS.md).
+
+    Parameters
+    ----------
+    elsewhere : str
+        The call whose order the user may have meant:
+        "fit(x, c, n, t)".
+    column : bool, optional
+        ``True`` for a ``fit_from_df``, whose ``i_col`` names a column of
+        its ``df``.
 
     Examples
     --------
     >>> import warnings
-    >>> from surpyval.utils.deprecation import MethodFloat
-    >>> aic = MethodFloat(10.25, "Model.aic")
-    >>> aic()
-    10.25
+    >>> from surpyval.utils.deprecation import ambiguous_item_ids
+    >>> class Fitter:
+    ...     @ambiguous_item_ids("fit(x, c, n, t)")
+    ...     def fit(self, x, i=None, c=None):
+    ...         return len(set(i or [1]))
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
-    ...     aic + 1
-    11.25
+    ...     Fitter().fit([1, 2, 3], [0, 0, 1])
+    2
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.aic is now a method: 'aic' without the call is deprecated and
-    will be removed in v0.27; use 'aic()'.
+    Fitter.fit: the second positional argument was taken as 'i', the item
+    each event belongs to, but no 'c' was given and its values are 0s and
+    1s, as censoring flags are (the 'c' of fit(x, c, n, t)). Read as item
+    ids, every row is an event and none is censored. Name it to say which
+    it is: c=... for censoring flags, or i=... for item ids. The call is
+    ambiguous; the result is unchanged.
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Fitter().fit([1, 2, 3], [1, 1, 2])  # ids, not flags
+    ...     Fitter().fit([1, 2, 3], [1, 1, 1])  # one item
+    ...     Fitter().fit([1, 2, 3], i=[0, 0, 1])  # named
+    ...     Fitter().fit([1, 2, 3], [0, 0, 1], [0, 0, 1])  # c given
+    2
+    1
+    2
+    2
+    >>> caught
+    []
     """
-
-    _where: str
-
-    def __new__(cls, value: float, where: str = "") -> "MethodFloat":
-        out = super().__new__(cls, value)
-        out._where = where
-        return out
-
-    def __call__(self) -> float:
-        return float.__float__(self)
-
-    def _warn(self) -> None:
-        attr = self._where.rpartition(".")[2]
-        warnings.warn(
-            "{} is now a method: '{}' without the call is deprecated and "
-            "will be removed in v{}; use '{}()'.".format(
-                self._where, attr, REMOVED_IN, attr
-            ),
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-    def __reduce__(self) -> Any:
-        return (float, (float.__float__(self),))
-
-
-def _warning_operator(name: str) -> Callable[..., Any]:
-    base = getattr(float, name)
-
-    def operator(self: MethodFloat, *args: Any) -> Any:
-        out = base(self, *args)
-        # An operand that is not a number (``obj in (type, object)``, as
-        # ``inspect.signature`` asks) is not a use of the number.
-        if out is not NotImplemented:
-            self._warn()
-        return out
-
-    operator.__name__ = name
-    return operator
-
-
-# Every use of the number as a number (``__hash__`` is kept, unwarned, as
-# ``__eq__`` is replaced).
-for _name in (
-    "__abs__",
-    "__add__",
-    "__bool__",
-    "__divmod__",
-    "__eq__",
-    "__float__",
-    "__floordiv__",
-    "__format__",
-    "__ge__",
-    "__gt__",
-    "__int__",
-    "__le__",
-    "__lt__",
-    "__mod__",
-    "__mul__",
-    "__ne__",
-    "__neg__",
-    "__pos__",
-    "__pow__",
-    "__radd__",
-    "__rdivmod__",
-    "__repr__",
-    "__rfloordiv__",
-    "__rmod__",
-    "__rmul__",
-    "__round__",
-    "__rpow__",
-    "__rsub__",
-    "__rtruediv__",
-    "__str__",
-    "__sub__",
-    "__truediv__",
-    "__trunc__",
-):
-    setattr(MethodFloat, _name, _warning_operator(_name))
-MethodFloat.__hash__ = float.__hash__  # type: ignore[method-assign]
-
-
-def _method_warning(where: str, stacklevel: int) -> None:
-    attr = where.rpartition(".")[2]
-    warnings.warn(
-        "{} is now a method: '{}' without the call is deprecated and will "
-        "be removed in v{}; use '{}()'.".format(where, attr, REMOVED_IN, attr),
-        DeprecationWarning,
-        stacklevel=stacklevel + 1,
+    i_name, c_name = ("i_col", "c_col") if column else ("i", "c")
+    what = (
+        "the column of item ids"
+        if column
+        else ("the item each event belongs to")
     )
 
+    def decorate(func: F) -> F:
+        index, bound, ordinal = _position(func, i_name)
+        c_index = _position(func, c_name)[0]
+        df_index = _position(func, "df")[0] if column else -1
 
-def _plain(value: Any) -> Any:
-    # A MethodArray as the plain array it is, anything else as it is.
-    if isinstance(value, MethodArray):
-        return value.view(np.ndarray)
-    if isinstance(value, (list, tuple)):
-        return type(value)(_plain(v) for v in value)
-    return value
+        def flags_like(args: tuple) -> bool:
+            value = args[index]
+            if column:
+                try:
+                    value = args[df_index][value]
+                except Exception:
+                    return False
+            if value is None or isinstance(value, str):
+                return False
+            try:
+                values = set(np.unique(np.asarray(value, dtype=float)))
+            except (TypeError, ValueError):
+                return False
+            return values == {0.0, 1.0}
 
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if (
+                index < len(args) <= c_index
+                and kwargs.get(c_name) is None
+                and flags_like(args)
+            ):
+                where = (
+                    _owner_name(args[0], func.__name__) + "." if bound else ""
+                ) + func.__name__
+                warnings.warn(
+                    f"{where}: the {ordinal} positional argument was taken "
+                    f"as '{i_name}', {what}, but no '{c_name}' was given "
+                    "and its values are 0s and 1s, as censoring flags "
+                    f"are (the '{c_name}' of {elsewhere}). Read as item "
+                    "ids, every row is an event and none is censored. Name "
+                    f"it to say which it is: {c_name}=... for censoring "
+                    f"flags, or {i_name}=... for item ids. The call is "
+                    "ambiguous; the result is unchanged.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+            return func(*args, **kwargs)
 
-class MethodArray(np.ndarray):
-    """
-    The array of an attribute that became a method of the same name.
+        return wrapper  # type: ignore[return-value]
 
-    ``FrailtyModel.covariance`` was an array, and ``covariance()`` became
-    a method in v0.23, as on every other model (#605). For one release the
-    attribute's name gave one of these (see :class:`ArrayMethod`): calling
-    it, the new spelling, returns the plain array; using it as an array
-    without the call -- indexing, arithmetic, a numpy function or printing
-    -- gives the same result with a ``DeprecationWarning`` pointing at the
-    caller's line. (What numpy reads directly, such as ``shape``, gives it
-    with no warning.)
-
-    Examples
-    --------
-    >>> import warnings
-    >>> import numpy as np
-    >>> from surpyval.utils.deprecation import MethodArray
-    >>> cov = MethodArray(np.eye(2), "Model.covariance")
-    >>> cov()
-    array([[1., 0.],
-           [0., 1.]])
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     np.diag(cov)
-    array([1., 1.])
-    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.covariance is now a method: 'covariance' without the call is
-    deprecated and will be removed in v0.27; use 'covariance()'.
-    """
-
-    _where: str
-
-    def __new__(cls, value: Any, where: str = "") -> "MethodArray":
-        out = np.asarray(value).view(cls)
-        out._where = where
-        return out
-
-    def __array_finalize__(self, obj: Any) -> None:
-        self._where = getattr(obj, "_where", "")
-
-    def __call__(self) -> np.ndarray:
-        return self.view(np.ndarray)
-
-    def __array_ufunc__(
-        self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any
-    ) -> Any:
-        _method_warning(self._where, 2)
-        if "out" in kwargs:
-            kwargs["out"] = _plain(kwargs["out"])
-        return getattr(ufunc, method)(*_plain(inputs), **kwargs)
-
-    def __array_function__(
-        self, func: Any, types: Any, args: Any, kwargs: Any
-    ) -> Any:
-        _method_warning(self._where, 2)
-        return func(*_plain(args), **{k: _plain(v) for k, v in kwargs.items()})
-
-    def __getitem__(self, key: Any) -> Any:
-        _method_warning(self._where, 2)
-        return self.view(np.ndarray)[key]
-
-    def __iter__(self) -> Any:
-        _method_warning(self._where, 2)
-        return iter(self.view(np.ndarray))
-
-    def __repr__(self) -> str:
-        _method_warning(self._where, 2)
-        return repr(self.view(np.ndarray))
-
-    def __str__(self) -> str:
-        _method_warning(self._where, 2)
-        return str(self.view(np.ndarray))
-
-    def __reduce__(self) -> Any:
-        # Pickled (and copied) as the plain array it is
-        return self.view(np.ndarray).__reduce__()
-
-
-class _Unavailable:
-    """What :class:`ArrayMethod` gives when the model holds no array: its
-    call, the new spelling, raises the model's own error."""
-
-    def __init__(self, where: str, error: Callable[[], Exception]) -> None:
-        self._where, self._error = where, error
-
-    def __call__(self) -> Any:
-        raise self._error()
-
-    def __bool__(self) -> bool:
-        return False
-
-    def __repr__(self) -> str:
-        return f"<{self._where}: not available>"
-
-
-class ArrayMethod:
-    """
-    An array attribute that became a method of the same name.
-
-    Declare it on the class under that name, with the attribute the array
-    is now stored in and the error the call raises when there is none:
-    ``covariance = ArrayMethod("_covariance", no_covariance_error)``.
-    ``model.covariance()`` gives the array; ``model.covariance`` without
-    the call, the old spelling, still works as the array (a
-    :class:`MethodArray`) with a ``DeprecationWarning`` until
-    :data:`REMOVED_IN`. Setting the old attribute sets the stored
-    array, with the warning.
-    """
-
-    def __init__(self, stored: str, error: Callable[[], Exception]) -> None:
-        self.stored = stored
-        self.error = error
-        self.name = ""
-
-    def __set_name__(self, owner: type, name: str) -> None:
-        self.name = name
-
-    def __get__(self, obj: Any, owner: "type | None" = None) -> Any:
-        if obj is None:
-            return self
-        where = f"{type(obj).__name__}.{self.name}"
-        value = getattr(obj, self.stored, None)
-        if value is None:
-            return _Unavailable(where, self.error)
-        return MethodArray(value, where)
-
-    def __set__(self, obj: Any, value: Any) -> None:
-        _method_warning(f"{type(obj).__name__}.{self.name}", 2)
-        setattr(obj, self.stored, value)
-
-
-class RenamedToMethod:
-    """
-    An attribute whose value a method of another name now gives.
-
-    ``Parametric.cov_matrix`` and ``FineGrayModel.cov`` were the
-    covariance, which ``covariance()`` gives on every model since v0.23
-    (#605).
-    Declare the old name on the class, ``cov_matrix =
-    RenamedToMethod("covariance", "_covariance")``: reading it warns and
-    returns ``covariance()`` (``None`` where that raises a ``ValueError``,
-    as a model without one had); setting it warns and sets the stored
-    attribute.
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.deprecation import RenamedToMethod
-    >>> class Model:
-    ...     _covariance = [[1.0]]
-    ...     cov = RenamedToMethod("covariance", "_covariance")
-    ...     def covariance(self):
-    ...         return self._covariance
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     Model().cov
-    [[1.0]]
-    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.cov is deprecated and will be removed in v0.27; use
-    'covariance()'.
-    """
-
-    def __init__(self, new: str, stored: str) -> None:
-        self.new = new
-        self.stored = stored
-        self.old = ""
-
-    def __set_name__(self, owner: type, name: str) -> None:
-        self.old = name
-
-    def _warn(self, owner: type) -> None:
-        warnings.warn(
-            "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}()'.".format(owner.__name__, self.old, REMOVED_IN, self.new),
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-    def __get__(self, obj: Any, owner: "type | None" = None) -> Any:
-        if obj is None:
-            return self
-        self._warn(type(obj))
-        try:
-            return getattr(obj, self.new)()
-        except ValueError:
-            return None
-
-    def __set__(self, obj: Any, value: Any) -> None:
-        self._warn(type(obj))
-        setattr(obj, self.stored, value)
-
-
-class MadePrivate(RenamedAttribute):
-    """
-    The public name of an internal method or attribute, now private.
-
-    Declare it on the class under the public name, ``EM =
-    MadePrivate("_em_iteration")``: reading it warns that it is internal
-    and will be removed in :data:`REMOVED_IN`, and gives the private
-    one. There is no public replacement to name.
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.deprecation import MadePrivate
-    >>> class Model:
-    ...     def _step(self):
-    ...         return 1
-    ...     step = MadePrivate("_step")
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     Model().step()
-    1
-    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.step is internal to the fit; its public name is deprecated and
-    will be removed in v0.27.
-    """
-
-    def __init__(self, private: str) -> None:
-        super().__init__(private)
-
-    def _warn(self, owner: type) -> None:
-        warnings.warn(
-            "{}.{} is internal to the fit; its public name is deprecated "
-            "and will be removed in v{}.".format(
-                owner.__name__, self.old, self.removed_in
-            ),
-            DeprecationWarning,
-            stacklevel=3,
-        )
+    return decorate

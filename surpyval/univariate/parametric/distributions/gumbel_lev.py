@@ -39,6 +39,15 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
     array([0.934 , 0.6321, 0.1266])
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
+        """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -291,9 +300,9 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array like or scalar
-            The location parameter(s) of the distribution
+            The location parameter of the distribution
         sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -326,9 +335,9 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         ----------
 
         mu : numpy array like or scalar
-            The location parameter(s) of the distribution
+            The location parameter of the distribution
         sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -408,10 +417,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        mu : numpy array or scalar
-            The location parameter(s) of the distribution
-        sigma : numpy array or scalar
-            The scale parameter(s) of the distribution
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------

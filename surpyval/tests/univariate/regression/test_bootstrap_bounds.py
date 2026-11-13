@@ -24,7 +24,7 @@ import surpyval as sp
 from surpyval import CovariatePath, WeibullAFT, WeibullPH
 from surpyval.tests._helpers import quietly
 from surpyval.univariate.regression import _bootstrap
-from surpyval.utils.linalg import numerical_gradient, percentile_bounds
+from surpyval.utils.linalg import numerical_gradient
 
 BOOT = {"method": "bootstrap", "n_boot": 40, "random_state": 3}
 
@@ -71,7 +71,8 @@ def test_617_bootstrap_is_an_option_and_wald_stays_the_default(ph):
 
 def _bca(draws, est, a, alpha_ci=0.05):
     """Efron's BCa interval, written out: the quantiles of the draws at
-    Phi(z0 + (z0 + z) / (1 - a (z0 + z)))."""
+    Phi(z0 + (z0 + z) / (1 - a (z0 + z))), each the (n + 1) p-th smallest
+    draw (``method="weibull"``)."""
     draws = np.asarray(draws, dtype=float)
     share = (np.sum(draws < est) + 0.5 * np.sum(draws == est)) / len(draws)
     z0 = norm.ppf(share)
@@ -79,7 +80,7 @@ def _bca(draws, est, a, alpha_ci=0.05):
         norm.cdf(z0 + (z0 + z) / (1 - a * (z0 + z)))
         for z in norm.ppf([alpha_ci / 2, 1 - alpha_ci / 2])
     ]
-    return np.quantile(draws, levels)
+    return np.quantile(draws, levels, method="weibull")
 
 
 def _least_favourable_skewness(model, fits, grad):
@@ -148,9 +149,46 @@ def test_617_with_no_skew_or_bias_bca_is_the_percentile_interval():
         _bootstrap.bca_bounds(
             draws[:, None], np.array([0.0]), 0.0, 0.1, "two-sided"
         )[0],
-        percentile_bounds(draws, 0.1),
+        np.quantile(draws, [0.05, 0.95], method="weibull"),
         rtol=1e-12,
     )
+
+
+def test_bca_bounds_read_each_level_where_the_draws_put_it():
+    # 199 draws at k / 200: the k-th smallest sits at the k / (n + 1)
+    # quantile, so the 5% and 95% bounds are the 10th and 190th draws,
+    # 0.05 and 0.95 exactly. The (n - 1) p rule read 0.0545 and 0.9455.
+    draws = np.arange(1.0, 200.0) / 200.0
+    np.testing.assert_allclose(
+        _bootstrap.bca_bounds(
+            draws[:, None], np.array([0.5]), 0.0, 0.1, "two-sided"
+        )[0],
+        [0.05, 0.95],
+        rtol=1e-12,
+    )
+    # Beyond the first and last draws, the end draws.
+    np.testing.assert_allclose(
+        _bootstrap.bca_bounds(
+            draws[:, None], np.array([0.5]), 0.0, 0.002, "two-sided"
+        )[0],
+        [draws[0], draws[-1]],
+    )
+
+
+def test_bca_bounds_are_not_pulled_inward_at_200_draws():
+    # Over many sets of 200 uniform draws, each about its own median (no
+    # bias correction) with no acceleration, the 2.5% and
+    # 97.5% bounds average 0.025 and 0.975, so an interval holds its
+    # level however few the refits. The (n - 1) p rule averaged about
+    # 0.0297 and 0.9703: about 2% narrower on a normal scale, a point of
+    # coverage lost at every sample size.
+    rng = np.random.default_rng(20261112)
+    draws = rng.uniform(size=(200, 4000))
+    cb = _bootstrap.bca_bounds(
+        draws, np.median(draws, axis=0), np.zeros(4000), 0.05, "two-sided"
+    )
+    # Monte Carlo standard error of each mean: about 0.0002
+    np.testing.assert_allclose(cb.mean(axis=0), [0.025, 0.975], atol=0.001)
 
 
 def test_617_the_acceleration_is_efrons_for_an_exponential_scale():
@@ -336,7 +374,9 @@ def test_617_refits_that_raise_are_left_out_and_counted(ph, monkeypatch):
         return fit(x, Z, **kwargs)
 
     monkeypatch.setattr(model.model, "fit", flaky)
-    with pytest.warns(UserWarning, match="5 failed and left out"):
+    with pytest.warns(
+        UserWarning, match="5 failed for another reason and left out"
+    ):
         model.cb(5.0, [1, 0.0], method="bootstrap", n_boot=20, random_state=0)
     assert model._bootstrap_refits[(20, 0)].params.shape[0] == 15
 

@@ -16,10 +16,11 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
-from ._kinds import (
+from .kinds import (
     ACCELERATED_FAILURE_TIME,
     ACCELERATED_LIFE,
     ADDITIVE_HAZARD,
@@ -51,17 +52,17 @@ class TVCEvaluationMixin:
         kind: str
         distribution: ParametricFitter
         model: Any
-        center: "npt.NDArray | None"
+        center: npt.NDArray | None
 
         @property
-        def life_parameter(self) -> "str | None": ...
+        def life_parameter(self) -> str | None: ...
         def _eval_params(self) -> npt.NDArray: ...
         def _n_covariates(self) -> int: ...
         def _is_accelerated_life(self) -> bool: ...
         def _is_additive(self) -> bool: ...
 
         def _centred(
-            self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+            self, Z: npt.ArrayLike, center: npt.NDArray | None = None
         ) -> Any: ...
 
         def _warn_negative_hazard(
@@ -72,7 +73,7 @@ class TVCEvaluationMixin:
 
         def _inference_state(
             self,
-        ) -> "tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]": ...
+        ) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]: ...
 
         def _sf_bounds(
             self,
@@ -124,7 +125,9 @@ class TVCEvaluationMixin:
                 "(this model is '{}').".format(self.kind)
             )
         name = self.distribution.name
-        if self._is_accelerated_life() and name not in (self._TVC_SCALE_LIFE):
+        if self._is_accelerated_life() and canonical_name(
+            self.distribution
+        ) not in (self._TVC_SCALE_LIFE):
             raise NotImplementedError(
                 "An Accelerated Life model is evaluated along a changing "
                 "stress by cumulative exposure, S(t) = S_1(int_0^t du / "
@@ -147,8 +150,8 @@ class TVCEvaluationMixin:
         return self.kind in (ACCELERATED_FAILURE_TIME, ACCELERATED_LIFE)
 
     def _tvc_theta(
-        self, theta: "tuple | None"
-    ) -> "tuple[npt.NDArray, npt.NDArray | None]":
+        self, theta: tuple | None
+    ) -> tuple[npt.NDArray, npt.NDArray | None]:
         """``(params, center)`` to evaluate a path at: ``theta``, or the
         model's own (``cb_tvc`` passes those of ``_inference_state``)."""
         if theta is None:
@@ -242,7 +245,7 @@ class TVCEvaluationMixin:
         return lo
 
     def _tvc_check_path(
-        self, path: Any, xq: npt.NDArray, given: "float | None"
+        self, path: Any, xq: npt.NDArray, given: float | None
     ) -> None:
         """Refuse a CovariatePath that starts after a time the answer
         depends on the covariate at (#952, #957): ``-inf`` for proportional
@@ -283,21 +286,21 @@ class TVCEvaluationMixin:
             )
 
     def _tvc_given(
-        self, Z: Any, xl: "npt.ArrayLike | None", given: "float | None"
-    ) -> "tuple[Any, npt.ArrayLike | None]":
+        self, Z: Any, xl: npt.ArrayLike | None, given: float | None
+    ) -> tuple[Any, npt.ArrayLike | None]:
         """``(Z, xl)`` for survival given the age ``given``: for a family
         whose hazard at a time depends only on the covariate then (not
         accelerated failure time or life, whose age at ``given`` depends
         on the covariate before it), the covariates need only start at or
         before ``given`` (#962), and are held back from their start."""
-        if given is None or np.isnan(given) or self._tvc_scales_time():
+        if self._tvc_scales_time():
             return Z, xl
-        from .tvc_schedule import as_covariate_path
+        from .tvc_schedule import given_covariates
 
         names = getattr(self, "feature_names", None)
-        return as_covariate_path(Z, xl, names, given=given), None
+        return given_covariates(Z, xl, names, given)
 
-    def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
+    def _to_schedule(self, Z: Any, xl: npt.ArrayLike | None) -> Any:
         """
         Coerce the ``sf_tvc`` covariate argument into a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` and
@@ -326,8 +329,8 @@ class TVCEvaluationMixin:
     def Hf_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard for a covariate following a path ``Z(t)``: a step
@@ -435,7 +438,7 @@ class TVCEvaluationMixin:
         self,
         H: npt.NDArray,
         falls: int,
-        accuracy: "tuple[int, int, float, str] | None",
+        accuracy: tuple[int, int, float, str] | None,
         stacklevel: int,
     ) -> None:
         """The warnings of ``sf_tvc`` / ``Hf_tvc``: a falling additive
@@ -455,12 +458,12 @@ class TVCEvaluationMixin:
     def _hf_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None",
-        given: "float | None" = None,
-        theta: "tuple | None" = None,
-        frozen: "dict | None" = None,
-    ) -> "tuple[npt.NDArray, int, tuple | None]":
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None,
+        given: float | None = None,
+        theta: tuple | None = None,
+        frozen: dict | None = None,
+    ) -> tuple[npt.NDArray, int, tuple | None]:
         """The cumulative hazard along the path, the number of query
         times at which an additive hazard fell (a negative ``H`` or a
         negative segment increment, #376) -- 0 for the other families --
@@ -528,10 +531,10 @@ class TVCEvaluationMixin:
         self,
         xq: npt.NDArray,
         path: Any,
-        given: "float | None",
-        theta: "tuple | None" = None,
-        frozen: "dict | None" = None,
-    ) -> "tuple[npt.NDArray, int, tuple | None]":
+        given: float | None,
+        theta: tuple | None = None,
+        frozen: dict | None = None,
+    ) -> tuple[npt.NDArray, int, tuple | None]:
         r"""
         The cumulative hazard along a continuously varying ``path`` (#172),
         less its value at ``given`` when that is supplied; the values and
@@ -711,9 +714,9 @@ class TVCEvaluationMixin:
         path: Any,
         xe: npt.NDArray,
         missing: npt.NDArray,
-        given: "float | None",
-        theta: "tuple | None",
-        frozen: "dict | None",
+        given: float | None,
+        theta: tuple | None,
+        frozen: dict | None,
     ) -> tuple:
         """
         The parts of the integral along ``path`` before 0, on a baseline
@@ -823,7 +826,7 @@ class TVCEvaluationMixin:
         return G_x, G_g, T, fell, accuracy
 
     def _aft_H0(
-        self, psi: npt.NDArray, theta: "tuple | None" = None
+        self, psi: npt.NDArray, theta: tuple | None = None
     ) -> npt.NDArray:
         """The baseline cumulative hazard at accelerated ages ``psi``: the
         AFT baseline, or an accelerated life model's distribution at unit
@@ -841,9 +844,7 @@ class TVCEvaluationMixin:
                 dtype=float,
             ).ravel()
 
-    def _path_panel_terms(
-        self, path: Any, theta: "tuple | None" = None
-    ) -> Any:
+    def _path_panel_terms(self, path: Any, theta: tuple | None = None) -> Any:
         """
         The family's ``panel_terms(a, b)`` for
         :func:`~.tvc_path.integrate_panels`: on each panel ``[a, b]`` the
@@ -907,8 +908,8 @@ class TVCEvaluationMixin:
         starts: npt.NDArray,
         ends: npt.NDArray,
         Zseg: npt.NDArray,
-        falls: "npt.NDArray | None" = None,
-        theta: "tuple | None" = None,
+        falls: npt.NDArray | None = None,
+        theta: tuple | None = None,
     ) -> npt.NDArray:
         """
         Cumulative hazard along a step path for the families whose hazard
@@ -917,8 +918,13 @@ class TVCEvaluationMixin:
         last clipped at the query time.
         """
         params, center = self._tvc_theta(theta)
-        H = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
+        linear = self._tvc_linear(params, center, Zseg)
+        if linear is not None:
+            return self._tvc_hf_additive_batched(
+                xq, starts, ends, linear, support_lo, falls
+            )
+        H = np.zeros(xq.shape[0], dtype=float)
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
             zrow = self._centred(
                 np.asarray(z, dtype=float).reshape(1, -1), center
@@ -951,6 +957,114 @@ class TVCEvaluationMixin:
             H = H + (hi - lo)
         return H
 
+    def _tvc_linear(
+        self, params: npt.NDArray, center: npt.NDArray | None, Zseg: Any
+    ) -> tuple | None:
+        """
+        ``(eta, params_1)`` to evaluate every segment of a step path in
+        one call of the model's ``Hf`` (or ``_phi``), where the model reads
+        a covariate row only through its linear predictor
+        ``eta = beta' (z - c)``: each segment's ``eta`` (an ``(n, 1)``
+        column), and the parameters with the coefficients replaced by a
+        single 1. ``Hf(x, eta, *params_1)`` is then ``Hf(x, z, *params)``
+        number for number: ``eta`` is the dot product the model takes of
+        that one row (the same call, row by row), and ``eta * 1`` is
+        exact, where a dot product of all the rows at once could round
+        differently from one row's. ``None`` for a model that reads the
+        row otherwise (a covariate function of your own, an accelerated
+        life model's life model), which is evaluated a segment at a time.
+        """
+        from ._fit_skeleton import LogLinearPhi
+        from .accelerated_failure_time.aft_fitter import AFTFitter
+        from .additive_hazards.additive_hazards_fitter import (
+            AdditiveHazardsFitter,
+        )
+        from .proportional_hazards.proportional_hazards_fitter import (
+            ProportionalHazardsFitter,
+        )
+        from .proportional_odds.proportional_odds_fitter import (
+            ProportionalOddsFitter,
+        )
+
+        model = self.model
+        kind = type(model)
+        if kind.Hf is ProportionalHazardsFitter.Hf:
+            linear = (
+                getattr(model, "phi", None) is LogLinearPhi.phi
+                and kind._scaled is ProportionalHazardsFitter._scaled
+                and kind._log_phi is ProportionalHazardsFitter._log_phi
+                and kind._phi_off is ProportionalHazardsFitter._phi_off
+            )
+        elif kind.Hf is ProportionalOddsFitter.Hf:
+            linear = (
+                kind.log_sf is ProportionalOddsFitter.log_sf
+                and kind._phi is ProportionalOddsFitter._phi
+            )
+        elif kind.Hf is AdditiveHazardsFitter.Hf:
+            linear = kind._beta_Z is AdditiveHazardsFitter._beta_Z
+        elif kind.Hf is AFTFitter.Hf:
+            linear = kind._phi is AFTFitter._phi
+        else:
+            linear = False
+        if not linear or self._is_accelerated_life():
+            return None
+        params = np.asarray(params, dtype=float)
+        rows = self._centred(
+            np.asarray(Zseg, dtype=float).reshape(len(Zseg), -1), center
+        )
+        beta = np.array(tuple(params[self.k_dist :]))
+        if rows.shape[1] != beta.shape[0]:
+            return None
+        rows = np.ascontiguousarray(rows, dtype=float)
+        eta = np.array(
+            [np.dot(rows[k : k + 1], beta)[0] for k in range(rows.shape[0])],
+            dtype=float,
+        ).reshape(-1, 1)
+        return eta, (*params[: self.k_dist], 1.0)
+
+    def _tvc_hf_additive_batched(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        linear: tuple,
+        support_lo: float,
+        falls: npt.NDArray | None,
+    ) -> npt.NDArray:
+        """:meth:`_tvc_hf_additive` with the model's ``Hf`` called once for
+        every segment (see :meth:`_tvc_linear`); the segments' increments
+        are then added in their order, as one at a time."""
+        eta, params_1 = linear
+        n_seg, n_q = len(starts), xq.shape[0]
+        starts = np.asarray(starts, dtype=float)
+        ends = np.asarray(ends, dtype=float)
+        # Query times before 0 fall in the first segment when the baseline
+        # is defined there.
+        floors = starts.copy()
+        floors[0] = min(starts[0], support_lo)
+        upper = np.clip(xq[None, :], floors[:, None], ends[:, None])
+        # One call: each segment's clipped query times, then the starts of
+        # the segments after the first (the first runs from the bottom of
+        # the support, where H = 0).
+        at = np.concatenate([upper.ravel(), starts[1:]])
+        rows = np.concatenate([np.repeat(eta, n_q, axis=0), eta[1:]], axis=0)
+        with np.errstate(divide="ignore"):
+            values = np.asarray(
+                self.model.Hf(at, rows, *params_1), dtype=float
+            ).ravel()
+        hi = values[: n_seg * n_q].reshape(n_seg, n_q)
+        lo = values[n_seg * n_q :]
+        H = np.zeros(n_q, dtype=float)
+        additive = falls is not None and self._is_additive()
+        for i in range(n_seg):
+            step = hi[i] - (np.zeros(1) if i == 0 else lo[i - 1 : i])
+            if additive:
+                # A negative increment: the additive hazard fell in this
+                # segment before the query time (#376).
+                falls |= step < 0
+            H = H + step
+        return H
+
     def _tvc_hf_from_zero(
         self,
         xq: npt.NDArray,
@@ -958,7 +1072,7 @@ class TVCEvaluationMixin:
         ends: npt.NDArray,
         Zseg: npt.NDArray,
         falls: npt.NDArray,
-        theta: "tuple | None" = None,
+        theta: tuple | None = None,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard along a step path for accelerated failure time
@@ -1008,7 +1122,7 @@ class TVCEvaluationMixin:
         starts: npt.NDArray,
         ends: npt.NDArray,
         Zseg: npt.NDArray,
-        theta: "tuple | None" = None,
+        theta: tuple | None = None,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard along a step path for accelerated failure time
@@ -1025,11 +1139,19 @@ class TVCEvaluationMixin:
         params, center = self._tvc_theta(theta)
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
+        linear = self._tvc_linear(params, center, Zseg)
+        if linear is not None:
+            # Every segment's rate in one call (see _tvc_linear).
+            eta, params_1 = linear
+            rates = self._tvc_rate(eta, np.asarray(params_1, dtype=float))
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = self._centred(
-                np.asarray(z, dtype=float).reshape(1, -1), center
-            )
-            rate = float(self._tvc_rate(zrow, params)[0])
+            if linear is not None:
+                rate = float(rates[i])
+            else:
+                zrow = self._centred(
+                    np.asarray(z, dtype=float).reshape(1, -1), center
+                )
+                rate = float(self._tvc_rate(zrow, params)[0])
             # Query times before 0 fall in the first segment when the
             # baseline is defined there (a negative age, as sf(x, Z)).
             width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a
@@ -1040,9 +1162,9 @@ class TVCEvaluationMixin:
     def sf_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-        given: "float | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
+        given: float | None = None,
     ) -> npt.NDArray:
         r"""
         Survival for a covariate that follows a path ``Z(t)``: a step
@@ -1127,6 +1249,7 @@ class TVCEvaluationMixin:
         array([1.    , 1.    , 0.7725, 0.5747])
         """
         from .tvc_path import CovariatePath
+        from .tvc_schedule import less_at_given, survival_given
 
         g = None if given is None else float(given)
         if g is not None and np.isnan(g):
@@ -1152,27 +1275,17 @@ class TVCEvaluationMixin:
             if not falls:
                 self._warn_negative_hazard(1, 1, stacklevel=4)
             return np.full(np.shape(H), np.nan)
-        if g is not None and not from_given:
-            if np.isnan(g):
-                # A missing conditioning age: nothing is known (as Cox).
-                H = np.full(np.shape(H), np.nan)
-            else:
-                # H(given) is 0 at or below 0, unless the baseline has
-                # mass below 0 (then it is -log of the survival to given).
-                H = H - self._hf_tvc(g, Z, xl)[0]
-        if g is not None and not np.isnan(g):
-            # Given survival to g, survival to any x <= g is certain: the
-            # difference H(x) - H(g) is not a cumulative hazard there, and
-            # gave a "survival" above 1 (#523).
-            xq = np.atleast_1d(np.asarray(x, dtype=float))
-            H = np.where(xq <= g, 0.0, H)
-        return np.exp(-H)
+        if not from_given:
+            # H(given) is 0 at or below 0, unless the baseline has mass
+            # below 0 (then it is -log of the survival to given).
+            H = less_at_given(H, g, lambda t: self._hf_tvc(t, Z, xl)[0])
+        return survival_given(x, H, g)
 
     def mean_tvc(
         self,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-        given: "float | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
+        given: float | None = None,
     ) -> float:
         r"""
         The mean life along a covariate path ``Z(t)`` (a step schedule or
@@ -1310,7 +1423,7 @@ class TVCEvaluationMixin:
         seen = {"falls": 0, "points": 0, "missed": 0, "total": 0}
         worst: list = []
 
-        def H_along(t: npt.NDArray, given: "float | None") -> tuple:
+        def H_along(t: npt.NDArray, given: float | None) -> tuple:
             t = np.asarray(t, dtype=float)
             if schedule is None:
                 return self._tvc_hf_path(t, path, given)
@@ -1454,9 +1567,9 @@ class TVCEvaluationMixin:
     def cb_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-        given: "float | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
+        given: float | None = None,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -1640,7 +1753,7 @@ class TVCEvaluationMixin:
         )
 
 
-def _worse(a: "tuple | None", b: "tuple | None") -> "tuple | None":
+def _worse(a: tuple | None, b: tuple | None) -> tuple | None:
     """The worse of two quadrature accuracies ``(missed, total, worst,
     limit)`` of the same query times (None where the target was met)."""
     if a is None or b is None:

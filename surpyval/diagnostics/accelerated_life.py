@@ -78,12 +78,16 @@ when it is given.
 from __future__ import annotations
 
 import math
-import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from scipy.stats import chi2
 
+from surpyval.utils.aliases import canonical_life_model_name, canonical_name
+from surpyval.utils.warnings import ignoring_warnings
+
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The fewest failures a stress level needs to enter the shape and
@@ -129,10 +133,6 @@ SHAPED = ("Weibull", "Normal", "Gumbel", "Logistic", "LogNormal", "Gamma")
 # ---------------------------------------------------------------------------
 # What the checks share
 # ---------------------------------------------------------------------------
-def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
-
-
 def _level_text(level: np.ndarray) -> str:
     level = np.atleast_1d(level)
     if level.size == 1:
@@ -144,8 +144,7 @@ def _quiet(compute: Any) -> Any:
     """``compute()``, its warnings silenced, or ``None`` if it raises or
     returns a fit with no finite maximum: a refit made for a check, whose
     warnings would be about the check's model, not the user's."""
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         try:
             out = compute()
         except Exception:  # noqa: BLE001 -- any failure skips the refit
@@ -280,7 +279,7 @@ def _common(ctx: Context, levels: np.ndarray) -> Any:
 
 
 def _refit(
-    ctx: Context, life_model: Any, rows: "np.ndarray | None" = None
+    ctx: Context, life_model: Any, rows: np.ndarray | None = None
 ) -> Any:
     """The model's distribution with ``life_model`` refitted to the
     model's data (or the rows ``rows`` of it), the distribution's fixed
@@ -338,11 +337,11 @@ def _too_few_levels(ctx: Context, kept: int) -> str:
     )
 
 
-def _use_stress(ctx: Context) -> "np.ndarray | None":
+def _use_stress(ctx: Context) -> np.ndarray | None:
     """The ``use_stress`` option as one row of ``Z``, or ``None``; a
     value the life model cannot take is refused."""
 
-    def compute() -> "np.ndarray | None":
+    def compute() -> np.ndarray | None:
         given = ctx.options.get("use_stress")
         if given is None:
             return None
@@ -466,12 +465,12 @@ def _use_rows(ctx: Context) -> list[dict]:
     return rows
 
 
-def _life_at_use(fit: Any, use: "np.ndarray | None") -> str:
+def _life_at_use(fit: Any, use: np.ndarray | None) -> str:
     if use is None:
         return ""
     with np.errstate(all="ignore"):
         life = float(np.asarray(fit.phi(use), dtype=float).ravel()[0])
-    return "; life at the use stress {}".format(_fmt(life))
+    return f"; life at the use stress {_fmt(life)}"
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +486,7 @@ def _shape_rows(ctx: Context) -> list[dict]:
                 model.distribution.name,
                 (
                     ""
-                    if model.distribution.name == "Exponential"
+                    if canonical_name(model.distribution) == "Exponential"
                     else " (its shape was held fixed)"
                 ),
             )
@@ -680,11 +679,13 @@ def _comparison(ctx: Context) -> list[dict]:
 
         model = ctx.model
         own = model.reg_model.name
+        # By the canonical name: Arrhenius is the Exponential life model
+        key = canonical_life_model_name(model.reg_model)
         n_stresses = int(np.asarray(model.data.Z).shape[1])
         names = [
             n
             for n in CANDIDATES.get(n_stresses, ("GeneralLogLinear",))
-            if n != EQUIVALENT.get(own, own)
+            if n != EQUIVALENT.get(key, key)
         ]
         out = [
             {"name": own, "model": model, "aic": float(model.aic())},
@@ -710,7 +711,7 @@ def _comparison(ctx: Context) -> list[dict]:
     return ctx.cached("comparison", compute)
 
 
-def _best_alternative(ctx: Context) -> "dict | None":
+def _best_alternative(ctx: Context) -> dict | None:
     """The candidate with the lowest AIC, if lower than the model's."""
     found = _comparison(ctx)
     if len(found) < 2 or found[1]["aic"] >= found[0]["aic"]:
@@ -844,16 +845,14 @@ def _life_panels(ctx: Context) -> list[Panel]:
             ax.xaxis.set_minor_formatter(NullFormatter())
             ax.yaxis.set_minor_formatter(NullFormatter())
             ax.set_xlabel("life at each level (common shape)")
-            ax.set_ylabel(
-                "life from the {} model".format(model.reg_model.name)
-            )
+            ax.set_ylabel(f"life from the {model.reg_model.name} model")
             return
         ax.legend(fontsize="small")
 
     p = _lof(ctx).get("p", float("nan"))
-    title = "life-stress ({})".format(model.reg_model.name)
+    title = f"life-stress ({model.reg_model.name})"
     if p is not None and np.isfinite(p):
-        title += ": p = {}".format(_fmt(p))
+        title += f": p = {_fmt(p)}"
     return [Panel(title, draw)]
 
 
@@ -897,7 +896,7 @@ def _extrapolation_rows(ctx: Context) -> list[dict]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _is_accelerated_life(model: Any) -> bool:
-    from surpyval.univariate.regression._kinds import ACCELERATED_LIFE
+    from surpyval.univariate.regression.kinds import ACCELERATED_LIFE
     from surpyval.univariate.regression.parametric_regression_model import (
         ParametricRegressionModel,
     )
@@ -938,7 +937,7 @@ def _covariates(model: Any) -> list[str]:
         return [n for n, _ in sorted(columns.items(), key=lambda kv: kv[1])]
     if p == 1:
         return ["stress"]
-    return ["stress_{}".format(j) for j in range(p)]
+    return [f"stress_{j}" for j in range(p)]
 
 
 def _notes(ctx: Context) -> list[str]:
@@ -1086,7 +1085,7 @@ def _far_message(row: dict, ctx: Context) -> str:
 
 def _for_distribution(dist: str) -> Callable[[Any, Context], bool]:
     def when(row: Any, ctx: Context) -> bool:
-        return bool(ctx.model.distribution.name == dist)
+        return bool(canonical_name(ctx.model.distribution) == dist)
 
     return when
 

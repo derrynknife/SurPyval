@@ -46,6 +46,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -53,8 +54,12 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
+from surpyval.utils.deprecation import (
+    REMOVED_IN,
+    RenamedAttribute,
+    renamed_arguments,
+)
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -64,25 +69,28 @@ from surpyval.utils.shapes import (
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
-
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    warn_aliased,
+from surpyval.utils.weights import (
+    check_weights,
+    effective_sample_size,
+    refuse_weighted,
+    warn_if_few_effective,
 )
+
+from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._concordance import ConcordanceMixin
+from .._fit_skeleton import draws_by_row
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
+    step_draws,
     step_quantiles,
     unique_rows,
 )
 from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
+    FrameDesign,
     NoLikelihoodMixin,
     check_covariate_width,
-    design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -106,13 +114,15 @@ def _validate(
     c: npt.ArrayLike | None,
     n: npt.ArrayLike | None,
     tl: npt.ArrayLike | None,
+    rows: tuple = (),
 ) -> tuple[npt.NDArray, ...]:
-    x_arr, c_arr, n_arr, tl_arr, Z_arr = semi_parametric_inputs(
+    x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra = semi_parametric_inputs(
         x,
         Z,
         c,
         n,
         tl,
+        rows=rows,
         censoring=(
             "Aalen's additive model supports only observed (c=0) and "
             "right-censored (c=1) data; for left or interval censored "
@@ -135,18 +145,19 @@ def _validate(
             "Aalen's additive model needs at least one event (c=0); with "
             "every observation censored nothing can be estimated."
         )
-    return x_arr, c_arr, n_arr, tl_arr, Z_arr
+    # (with the weights, less the rows dropped for a missing covariate)
+    return (x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra)
 
 
-def _check_penalty(coef_penalty: Any) -> float:
+def _check_penalty(penalizer: Any) -> float:
     try:
-        value = float(coef_penalty)
+        value = float(penalizer)
     except (TypeError, ValueError):
         value = np.nan
     if not (np.isfinite(value) and value >= 0):
         raise ValueError(
-            "'coef_penalty' must be a finite number at or above 0 (0, "
-            "the default, is no penalty); got {!r}.".format(coef_penalty)
+            "'penalizer' must be a finite number at or above 0 (0, "
+            "the default, is no penalty); got {!r}.".format(penalizer)
         )
     return value
 
@@ -161,12 +172,14 @@ def _risk_set_sums(
     entered before it (``tl < t``) and not yet out (``x >= t``)."""
 
     def summed(keys: npt.NDArray) -> npt.NDArray:
-        # the sum of the values over the rows with key >= each time
+        # The sum of the values over the rows with key >= each time, as
+        # sums from the last row back: a difference of running totals
+        # would leave rounding noise where few rows remain, and that
+        # noise made a singular X'YX (one unit at risk) look invertible.
         order = np.argsort(keys)
-        total = np.concatenate(
-            [np.zeros((1,) + values.shape[1:]), np.cumsum(values[order], 0)]
-        )
-        return total[-1] - total[np.searchsorted(keys[order], times, "left")]
+        tail = np.cumsum(values[order][::-1], 0)[::-1]
+        tail = np.concatenate([tail, np.zeros((1,) + values.shape[1:])])
+        return tail[np.searchsorted(keys[order], times, "left")]
 
     return summed(x) - summed(tl)
 
@@ -178,13 +191,19 @@ def _estimate(
     tl: npt.NDArray,
     X: npt.NDArray,
     penalty: npt.NDArray,
+    w: npt.NDArray | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, list]:
     """The event times, the increments ``dB`` and the increments of the
     covariance of ``B`` at them, and the inverses ``(X'YX + P)^{-1}``,
-    to the first event time at which ``X'YX + P`` is singular."""
+    to the first event time at which ``X'YX + P`` is singular. With
+    weights ``w`` each row counts ``n w`` (``Y`` and ``dN`` both), and the
+    increments of the covariance are not used (see
+    :func:`_robust_covariance`)."""
     q = X.shape[1]
     events = c == 0
     times = np.unique(x[events])
+    if w is not None:
+        n = n * w
     XX = n[:, None, None] * X[:, :, None] * X[:, None, :]
     S2 = _risk_set_sums(x, tl, XX, times)
     bucket = np.searchsorted(times, x[events])
@@ -211,6 +230,42 @@ def _estimate(
     )
 
 
+def _robust_covariance(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    w: npt.NDArray,
+    tl: npt.NDArray,
+    X: npt.NDArray,
+    times: npt.NDArray,
+    dB: npt.NDArray,
+    inverses: list,
+) -> npt.NDArray:
+    r"""The robust covariance of ``B`` at each event time of a weighted
+    fit: ``sum_i n_i psi_i(t) psi_i(t)'``, with each unit's influence
+
+    .. math::
+        \psi_i(t) = \sum_{s \le t} (X'WYX + P)^{-1} X_i w_i
+        \left(dN_i(s) - Y_i(s) X_i' dB(s)\right),
+
+    its martingale residuals mapped as the increments of ``B`` are (R's
+    ``timereg::aalen(..., weights = w, robust = 1)``, ``robvar.cum``).
+    The weights cancel between ``w_i`` and the inverse, so the covariance
+    does not depend on their scale."""
+    q = X.shape[1]
+    psi = np.zeros((x.size, q))
+    event = c == 0
+    out = np.zeros((times.size, q, q))
+    for k, t in enumerate(times):
+        rows = np.flatnonzero((tl < t) & (x >= t))
+        Xr = X[rows]
+        residual = (event[rows] & (x[rows] == t)) - Xr @ dB[k]
+        psi[rows] += (w[rows] * residual)[:, None] * (Xr @ inverses[k].T)
+        V = (n[:, None] * psi).T @ psi
+        out[k] = 0.5 * (V + V.T)
+    return out
+
+
 def _epanechnikov(u: npt.NDArray) -> npt.NDArray:
     return np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
 
@@ -227,6 +282,7 @@ def _default_bandwidth(times: npt.NDArray) -> float:
 
 
 class AalenAdditiveModel(
+    DiagnoseMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
     ConcordanceMixin,
@@ -280,13 +336,16 @@ class AalenAdditiveModel(
     #: The cumulative regression functions at ``x``, ``(len(x), 1 + p)``:
     #: the baseline's, then each covariate's (``nan`` for an aliased one).
     B: npt.NDArray
-    #: The variances of ``B`` (the optional variation), as ``B``.
+    #: The variances of ``B`` (the optional variation; the robust one for
+    #: a weighted fit), as ``B``.
     B_var: npt.NDArray
     #: The covariance matrix of each row of ``B``, ``(len(x), 1 + p, 1 +
     #: p)``, for the bounds on a unit's prediction.
     _B_cov: npt.NDArray
     #: The ridge penalty the fit took (0 for none).
-    coef_penalty: float = 0.0
+    penalizer: float = 0.0
+    #: The name of ``penalizer`` before v0.27.
+    coef_penalty = RenamedAttribute("penalizer", REMOVED_IN)
     #: The aliased covariate columns (#476).
     _aliased: npt.NDArray
     #: The rows fitted ``(x, c, n, tl, Z)``, for ``concordance`` and the
@@ -300,6 +359,12 @@ class AalenAdditiveModel(
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: object = None
+    #: Whether the fit took sampling weights ``w``; its variances are then
+    #: the robust ones.
+    weighted: bool = False
+    #: Kish's effective sample size of a weighted fit (``None`` without
+    #: weights).
+    effective_n: float | None = None
 
     _NO_LIKELIHOOD_WHY = (
         "Aalen's estimator is a least-squares fit at each event time; "
@@ -357,8 +422,13 @@ class AalenAdditiveModel(
             + "\nKind                : Aalen"
             + "\nParameterization    : Non-Parametric"
         )
-        if self.coef_penalty:
-            out += f"\nCoefficient penalty : {self.coef_penalty:g}"
+        if self.penalizer:
+            out += f"\nPenalizer (ridge)   : {self.penalizer:g}"
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         if self.x.size:
             out += f"\nCumulative effects at t = {self.x[-1]:g}:\n"
             for name, b in zip(self.term_names, self.B[-1]):
@@ -450,7 +520,9 @@ class AalenAdditiveModel(
         Pointwise Wald confidence bounds on the cumulative regression
         functions: ``B_j(t) +/- z se``, with the optional-variation
         standard error (R's ``timereg::aalen`` ``var.cum`` with ``robust
-        = 0``; lifelines' ``confidence_intervals_``).
+        = 0``; lifelines' ``confidence_intervals_``), or, for a fit with
+        weights ``w``, the robust standard error (``robvar.cum`` of
+        ``timereg::aalen(..., weights = w, robust = 1)``).
 
         Parameters
         ----------
@@ -674,6 +746,54 @@ class AalenAdditiveModel(
         F = np.vstack([self.ff(self.x, rows[k]) for k in range(rows.shape[0])])
         return step_quantiles(F, self.x, u)
 
+    def random(
+        self, size: int, Z: Any, random_state: Any = None
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z`` from the
+        fitted model, by inverse transform on its step survival curve: a
+        draw ``U`` of the survival is the first event time at which the
+        predicted cumulative hazard :meth:`Hf` (the estimate held at its
+        running maximum, so non-decreasing) reaches ``-log(U)``.
+
+        The estimate stops at the last event time, where the curve is
+        above 0 when the data end censored; a draw beyond it is ``inf``
+        (the unit outlives the data), as often as ``sf`` at the last
+        time says. A missing covariate gives ``nan`` draws.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row, as the other regressions' ``random``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AalenAdditive
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]
+        >>> model = AalenAdditive.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "prio"]
+        ... )
+        >>> draws, rows = model.random(5, [[0, 10]], random_state=1)
+        >>> draws
+        array([inf, 10., inf, 10., inf])
+        >>> model.sf(52, [0, 10]).round(3)
+        np.float64(0.526)
+        >>> draws, _ = model.random(10000, [[0, 10]], random_state=1)
+        >>> float(np.isinf(draws).mean())
+        0.523
+        """
+        rows = self._rows(Z)[:, 1:]
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            H = self.Hf(self.x, row) if self.x.size else np.zeros(0)
+            return step_draws(H, self.x, U)
+
+        return draws_by_row(size, rows, random_state, invert)
+
     def cb(
         self,
         x: npt.ArrayLike,
@@ -687,7 +807,8 @@ class AalenAdditiveModel(
         Pointwise confidence bounds on a unit's predicted ``sf``, ``ff``
         or ``Hf``. The standard error of ``H(x | Z) = B_0(x) + B(x)'Z`` is
         ``sqrt(X' C(x) X)``, ``X = [1, Z]`` and ``C`` the optional-variation
-        covariance of ``B``; the bound is a Wald bound on ``log H`` about
+        covariance of ``B`` (the robust covariance for a fit with weights
+        ``w``); the bound is a Wald bound on ``log H`` about
         the predicted ``Hf``, so that ``H`` stays positive and ``sf`` in
         ``(0, 1]``, and ``sf`` and ``ff`` are taken from it. Where the
         predicted ``Hf`` is 0 (before the first event) both bounds are 0.
@@ -771,8 +892,9 @@ class AalenAdditiveModel(
         The cumulative effects at one time, in the layout of the other
         regression models' :meth:`summary`: for each term (the baseline,
         then each covariate) ``B_j(at)``, its optional-variation standard
-        error, a two-sided ``1 - alpha_ci`` Wald interval, and the Wald
-        statistic ``z`` and its p-value, a test that the covariate has
+        error (robust for a fit with weights ``w``), a two-sided ``1 -
+        alpha_ci`` Wald interval, and the Wald statistic ``z`` and its
+        p-value, a test that the covariate has
         added nothing to the cumulative hazard by ``at``. ``exp(coef)`` is
         ``nan``: an additive effect is not a ratio. For how the effects
         change over time see :meth:`cumulative_coefficients` and
@@ -828,19 +950,25 @@ class AalenAdditiveModel(
 
         (Kolmogorov-Smirnov) and its integrated square (Cramér-von Mises,
         summed over the event times). Their null distributions are
-        simulated by multiplying each unit's martingale residual process
-        by a standard normal draw (Martinussen and Scheike 2006, section
-        5.3): ``n_sim`` draws, each a pass over the event times, so the
-        cost grows with units times event times times ``n_sim``. The
-        p-value is the share of draws at least as large as the observed
-        statistic; p-values from different seeds differ by about
-        ``sqrt(p (1 - p) / n_sim)``.
+        simulated by multiplying each event's contribution to the
+        increments of ``B`` by a standard normal draw (the multiplier
+        method of Martinussen and Scheike 2006, section 5.3, on the
+        counting processes): ``n_sim`` draws, each a pass over the event
+        times, so the cost grows with units times event times times
+        ``n_sim``. Each draw's variance is the optional variation
+        :attr:`B_var`. The p-value is the share of draws at least as large
+        as the observed statistic; p-values from different seeds differ by
+        about ``sqrt(p (1 - p) / n_sim)``.
 
-        The resampled null is a large-sample approximation, and it is too
-        narrow with a few hundred units: in simulations of 300 units the
-        test rejected a truly constant effect 8% to 16% of the time at the
-        5% level, and 5% with 1000 units. With a few hundred units, read a
-        p-value near the level as borderline, and look at :meth:`plot`.
+        The draws multiply the events (``dN``) rather than the martingale
+        residuals (``dN - Y X dB``): the residuals are those of a
+        least-squares fit, and where few units are at risk (near the last
+        event time, which anchors the statistic) they are close to 0 and
+        the null is far too narrow. In simulations with a constant effect
+        the residual draws rejected 44% of the time at the 5% level with
+        100 units, 21% with 300 and 8% with 1000. These draws reject at
+        about the level with 300 units or more, and less often than the
+        level (0.5% to 3.5%) with 100: the test is conservative there.
 
         Parameters
         ----------
@@ -854,9 +982,26 @@ class AalenAdditiveModel(
         -------
         pandas.DataFrame
             One row per term: ``KS``, ``KS p``, ``CvM`` and ``CvM p``.
+
+        Raises
+        ------
+        WeightedRefusal
+            For a fit with weights ``w``: the simulated null is that of
+            an unweighted fit.
         """
         import pandas as pd
 
+        if self.weighted:
+            raise refuse_weighted(
+                "constant_effects_test()",
+                "its null distribution is simulated from the events of an "
+                "unweighted fit, and a version for sampling weights has "
+                "not been built or checked",
+                "Use the robust bands of model.plot() or "
+                "model.cumulative_coefficients_cb() to judge whether each "
+                "B_j(t) is a straight line, or fit the model to the "
+                "data without w.",
+            )
         if self._fit_data is None:
             raise ValueError(
                 "constant_effects_test() needs the data the model was "
@@ -890,16 +1035,21 @@ class AalenAdditiveModel(
 
     def _resampled(self, n_sim: int, rng: np.random.Generator) -> npt.NDArray:
         """``n_sim`` draws of the resampled process ``W(t)`` at the event
-        times: each unit's martingale residual process, mapped as the
-        increments of ``B`` are, times a standard normal draw (a row of
-        ``n`` units carries ``sqrt(n)`` times one)."""
+        times: each unit's events, mapped as the increments of ``B`` are
+        (``(X'YX + P)^{-1} X_i dN_i``), times a standard normal draw (a
+        row of ``n`` units carries ``sqrt(n)`` times one), so that each
+        draw's variance is the optional variation ``B_var``.
+
+        Not the martingale residuals ``dN_i - Y_i X_i dB``: they are the
+        residuals of the least-squares fit at each event time, which
+        nearly vanish where the risk set is small, and the draws then
+        understate the variance there (most of all at the last event
+        time, which anchors the statistics), so that the test rejected a
+        constant effect far too often with a few hundred units."""
         x, c, n, tl, Z = self._fit_data  # type: ignore[misc]
         X = np.column_stack([np.ones(x.size), Z])
         kept = np.r_[0, 1 + np.setdiff1d(np.arange(Z.shape[1]), self.aliased)]
         X = X[:, kept]
-        dB = np.diff(
-            np.concatenate([np.zeros((1, kept.size)), self.B[:, kept]]), axis=0
-        )
         # The inverses of the fit, recomputed with its penalty.
         penalty = self._penalty_vector(Z)[kept]
         _, _, _, inverses = _estimate(x, c, n, tl, X, penalty)
@@ -908,19 +1058,17 @@ class AalenAdditiveModel(
         running = np.zeros((n_sim, kept.size))
         event = c == 0
         for k, t in enumerate(self.x):
-            at_risk = (tl < t) & (x >= t)
             dN = (event & (x == t)).astype(float)
-            r = dN - at_risk * (X @ dB[k])
-            running = running + ((G * r[None, :]) @ X) @ inverses[k].T
+            running = running + ((G * dN[None, :]) @ X) @ inverses[k].T
             W[:, k, kept] = running
         return W
 
     def _penalty_vector(self, Z: npt.NDArray) -> npt.NDArray:
-        """The ridge penalty on each term: ``coef_penalty`` times each
+        """The ridge penalty on each term: ``penalizer`` times each
         covariate's variance (so the penalty does not depend on its
         units), none on the baseline."""
         x, c, n, tl, _ = self._fit_data  # type: ignore[misc]
-        return _penalties(Z, n, self.coef_penalty)
+        return _penalties(Z, n, self.penalizer)
 
     def plot(
         self,
@@ -1046,9 +1194,14 @@ class AalenAdditiveModel(
             "B_var": np.asarray(self.B_var, dtype=float).tolist(),
             "B_cov": np.asarray(self._B_cov, dtype=float).tolist(),
             "n_terms": int(self.B.shape[1]),
-            "coef_penalty": float(self.coef_penalty),
+            "penalizer": float(self.penalizer),
             "aliased": self.aliased.tolist(),
         }
+        if self.weighted:
+            # Schema 4: a reader without weights would take the robust
+            # variances for the optional variation.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -1073,8 +1226,14 @@ class AalenAdditiveModel(
         out._B_cov = np.array(model_dict["B_cov"], dtype=float).reshape(
             k, q, q
         )
-        out.coef_penalty = float(model_dict["coef_penalty"])
+        # "coef_penalty" is the key of a dict written before v0.27.
+        out.penalizer = float(
+            model_dict.get("penalizer", model_dict.get("coef_penalty", 0.0))
+        )
         out._aliased = np.array(model_dict["aliased"], dtype=int)
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -1129,16 +1288,24 @@ def _invariance_statistics(
 
 
 def _penalties(
-    Z: npt.NDArray, n: npt.NDArray, coef_penalty: float
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    penalizer: float,
+    w: npt.NDArray | None = None,
 ) -> npt.NDArray:
-    """``coef_penalty`` times each covariate's variance (over the units,
-    with ``n - 1`` degrees of freedom), and 0 for the baseline."""
+    """``penalizer`` times each covariate's variance (over the units,
+    with ``n - 1`` degrees of freedom), and 0 for the baseline. With
+    weights ``w`` the sum of squares is weighted (``n w``) about the
+    weighted mean, over the same ``sum n - 1``: the penalty then grows
+    with the weights as ``X'WYX`` does, so that the fit does not depend
+    on their scale, and is the unweighted one at ``w = 1``."""
     total = float(n.sum())
-    if coef_penalty == 0 or Z.shape[1] == 0:
+    if penalizer == 0 or Z.shape[1] == 0:
         return np.zeros(Z.shape[1] + 1)
-    mean = (n @ Z) / total
-    var = (n @ (Z - mean) ** 2) / max(total - 1.0, 1.0)
-    return np.concatenate([[0.0], coef_penalty * var])
+    m = n if w is None else n * w
+    mean = (m @ Z) / float(m.sum())
+    var = (m @ (Z - mean) ** 2) / max(total - 1.0, 1.0)
+    return np.concatenate([[0.0], penalizer * var])
 
 
 def _aliased(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
@@ -1172,6 +1339,7 @@ class AalenAdditive_(FitterRepr):
 
     fitter_kind = "non-parametric (Aalen) additive hazards fitter"
 
+    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1182,7 +1350,8 @@ class AalenAdditive_(FitterRepr):
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
-        coef_penalty: float = 0.0,
+        penalizer: float = 0.0,
+        w: npt.ArrayLike | None = None,
     ) -> AalenAdditiveModel:
         """
         Fit Aalen's additive hazards model.
@@ -1208,7 +1377,7 @@ class AalenAdditive_(FitterRepr):
         tl : array like, optional
             Each row's entry time (left truncation): it is at risk on
             ``(tl, x]``. Defaults to 0.
-        coef_penalty : float, optional
+        penalizer : float, optional
             A ridge penalty on the covariates' increments,
             ``dB = (X'YX + P)^{-1} X'dN`` with ``P`` the penalty times
             each covariate's variance (so the penalty does not depend on
@@ -1216,7 +1385,22 @@ class AalenAdditive_(FitterRepr):
             the fit going where few units are at risk, at the price of
             shrinking the effects towards 0. Default 0, no penalty.
             lifelines' ``coef_penalizer`` is the same on standardised
-            covariates, but penalises its intercept too.
+            covariates, but penalises its intercept too. Named
+            ``coef_penalty`` before v0.27 (accepted, with a
+            ``DeprecationWarning``, until v0.28). With weights the
+            covariates' variance is the weighted one, scaled with the
+            weights (see :doc:`/Weighted Data`).
+        w : array like, optional
+            Sampling, propensity or censoring weights: how many units of
+            the population each row stands for, one positive finite
+            number per row (a scalar for every row). The increments are
+            then weighted least squares, ``dB = (X'WYX + P)^{-1}
+            X'W dN`` with ``W`` the weights times the counts, and the
+            variance of ``B`` is always the robust one (each unit's
+            martingale residuals, R's ``timereg::aalen(..., weights = w,
+            robust = 1)``), which does not depend on the weights' scale.
+            :meth:`~AalenAdditiveModel.constant_effects_test` refuses a
+            weighted fit. Defaults to no weights.
 
         Returns
         -------
@@ -1241,11 +1425,18 @@ class AalenAdditive_(FitterRepr):
 
         The truth is ``B_0(t) = 0.1 t`` and ``B_1(t) = 0.05 t``.
         """
-        x, c, n, tl, Z = _validate(x, Z, c, n, tl)
-        penalty_value = _check_penalty(coef_penalty)
+        if w is None:
+            w_arr = None
+            x, c, n, tl, Z = _validate(x, Z, c, n, tl)
+        else:
+            # Checked against the rows given, then dropped with the rows
+            # that have a missing covariate.
+            w_arr = check_weights(w, np.shape(np.atleast_1d(x))[0])
+            x, c, n, tl, Z, w_arr = _validate(x, Z, c, n, tl, (w_arr,))
+        penalty_value = _check_penalty(penalizer)
         tl = np.where(np.isfinite(tl), tl, 0.0)
         p = Z.shape[1]
-        aliased = _aliased(Z, n)
+        aliased = _aliased(Z, n if w_arr is None else n * w_arr)
         if aliased.size:
             warn_aliased(
                 aliased,
@@ -1256,24 +1447,33 @@ class AalenAdditive_(FitterRepr):
         kept_cols = np.setdiff1d(np.arange(p), aliased)
         kept = np.r_[0, 1 + kept_cols].astype(int)
         X = np.column_stack([np.ones(x.size), Z])[:, kept]
-        penalty = _penalties(Z, n, penalty_value)[kept]
-        times, dB, dC, _ = _estimate(x, c, n, tl, X, penalty)
+        penalty = _penalties(Z, n, penalty_value, w_arr)[kept]
+        times, dB, dC, inverses = _estimate(x, c, n, tl, X, penalty, w_arr)
         k = times.size
         B = np.full((k, p + 1), np.nan)
         B[:, kept] = np.cumsum(dB, axis=0)
         C = np.full((k, p + 1, p + 1), np.nan)
-        C[np.ix_(np.arange(k), kept, kept)] = np.cumsum(dC, axis=0)
+        if w_arr is None:
+            C[np.ix_(np.arange(k), kept, kept)] = np.cumsum(dC, axis=0)
+        else:
+            C[np.ix_(np.arange(k), kept, kept)] = _robust_covariance(
+                x, c, n, w_arr, tl, X, times, dB, inverses
+            )
         model = AalenAdditiveModel()
         model.x = times
         model.B = B
         model.B_var = np.diagonal(C, axis1=1, axis2=2).copy()
         model._B_cov = C
-        model.coef_penalty = penalty_value
+        model.penalizer = penalty_value
         model._aliased = aliased
         model._fit_data = (x, c, n, tl, Z)
+        if w_arr is not None:
+            model.weighted = True
+            model.effective_n = effective_sample_size(n, w_arr)
+            warn_if_few_effective(n, w_arr)
         return model
 
-    @column_arguments("x", "c", "n", "tl")
+    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
     @takes_unit
     def fit_from_df(
         self,
@@ -1284,29 +1484,36 @@ class AalenAdditive_(FitterRepr):
         n_col: str | None = None,
         formula: str | None = None,
         tl_col: str | None = None,
-        coef_penalty: float = 0.0,
+        penalizer: float = 0.0,
+        w_col: str | None = None,
     ) -> AalenAdditiveModel:
         """
         Fit Aalen's additive hazards model from a pandas DataFrame,
         keeping the covariates' names for prediction and the tables (see
         :meth:`fit` for the model). Give the covariates as ``Z_cols`` or a
-        ``formula`` (categorical columns get reference-level coding), and
-        the entry times, if any, as ``tl_col``.
+        ``formula`` (categorical columns get reference-level coding), the
+        entry times, if any, as ``tl_col``, and sampling weights, if any,
+        as ``w_col`` (the ``w`` of :meth:`fit`).
         """
-        check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col, tl_col=tl_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        check_columns(
+            df,
+            x_col=x_col,
+            c_col=c_col,
+            n_col=n_col,
+            tl_col=tl_col,
+            w_col=w_col,
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-        tl = None if tl_col is None else df[tl_col].values
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tl=tl, coef_penalty=coef_penalty)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            penalizer=penalizer,
+            w=design.column(w_col),
+        )
 
 
 AalenAdditive = AalenAdditive_()

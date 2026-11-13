@@ -185,7 +185,7 @@ def test_ridge_penalty_is_the_closed_form():
     x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
     Z = df[["fin", "age", "prio"]].to_numpy(float)
     lam = 50.0
-    model = sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=lam)
+    model = sp.AalenAdditive.fit(x, Z, c=c, penalizer=lam)
     # By hand: at each event time (X'X + P)^{-1} X'dN over the risk set,
     # P = lam * diag(0, var(Z_j)).
     X = np.c_[np.ones(x.size), Z]
@@ -197,7 +197,7 @@ def test_ridge_penalty_is_the_closed_form():
         A = X[risk].T @ X[risk] + P
         B = B + np.linalg.solve(A, X.T @ dN)
         assert_allclose(model.B[k], B, rtol=1e-10, atol=1e-14)
-    assert model.coef_penalty == lam
+    assert model.penalizer == lam
     # Shrinks every covariate's effect, not the baseline's sign.
     plain = _rossi_model()
     assert np.all(np.abs(model.B[-1, 1:]) < np.abs(plain.B[-1, 1:]))
@@ -205,14 +205,14 @@ def test_ridge_penalty_is_the_closed_form():
 
 def test_penalty_does_not_depend_on_units():
     df = _rossi()
-    a = _rossi_model(coef_penalty=10.0)
+    a = _rossi_model(penalizer=10.0)
     df["age"] = df["age"] / 10
     b = sp.AalenAdditive.fit_from_df(
         df,
         x_col="week",
         c_col="censored",
         Z_cols=["fin", "age", "prio"],
-        coef_penalty=10.0,
+        penalizer=10.0,
     )
     assert_allclose(b.B[:, 2], a.B[:, 2] * 10, rtol=1e-9)
     assert_allclose(b.sf([20, 40], [0, 2.5, 3]), a.sf([20, 40], [0, 25, 3]))
@@ -325,9 +325,13 @@ def test_cumulative_coefficient_bounds_and_summary():
     )
 
 
-def test_constant_effects_test_is_seeded_and_finds_a_changing_effect():
-    """Veteran: the Karnofsky score's effect fades over follow-up (its
-    period trend test against timereg rejects it too)."""
+def test_constant_effects_test_is_seeded():
+    """Veteran: the same seed gives the same table, and the observed
+    statistics are the distances from the straight line. (Its Karnofsky
+    score's effect fades over follow-up, and the period trend test
+    against timereg rejects it; this test's p-value for it is about 0.05:
+    with 137 units, a few of them at risk near the last event time, the
+    test has little power.)"""
     x, Z, c = _veteran()
     model = sp.AalenAdditive.fit(
         x, pd.DataFrame(Z, columns=["trt", "karno", "age", "cell"]), c=c
@@ -335,7 +339,6 @@ def test_constant_effects_test_is_seeded_and_finds_a_changing_effect():
     a = model.constant_effects_test(n_sim=500, random_state=3)
     b = model.constant_effects_test(n_sim=500, random_state=3)
     pd.testing.assert_frame_equal(a, b)
-    assert a.loc["karno", "KS p"] < 0.01
     # The observed statistics are deterministic: the distance from the
     # straight line to the last value.
     B = model.B[:, 2]
@@ -343,6 +346,65 @@ def test_constant_effects_test_is_seeded_and_finds_a_changing_effect():
     before = np.r_[0.0, B[:-1]]
     ks = max(np.abs(B - line).max(), np.abs(before - line).max())
     assert_allclose(a.loc["karno", "KS"], ks)
+
+
+def _additive_sample(rng, n, late_z2):
+    """``h(t | z) = 0.1 + 0.08 z1 + late_z2 z2`` to t = 4, then
+    ``0.1 + 0.08 z1 + 0.1 z2``; follow-up ends uniformly on (2, 14) and
+    at 12. ``late_z2 = 0.1`` is a constant effect."""
+    z1 = rng.binomial(1, 0.5, n).astype(float)
+    z2 = rng.uniform(0.0, 1.0, n)
+    early = 0.1 + 0.08 * z1 + late_z2 * z2
+    late = 0.1 + 0.08 * z1 + 0.1 * z2
+    e = rng.exponential(1.0, n)
+    t = np.where(e < 4.0 * early, e / early, 4.0 + (e - 4.0 * early) / late)
+    end = np.minimum(rng.uniform(2.0, 14.0, n), 12.0)
+    return np.minimum(t, end), (t > end).astype(int), np.c_[z1, z2]
+
+
+@pytest.mark.parametrize(
+    "n, seed, side", [(100, 5, "upper"), (300, 6, "both")]
+)
+def test_constant_effects_test_has_its_size(n, seed, side):
+    """With constant effects the test rejects no more often than its
+    level, at moderate sample sizes too: 200 data sets, 200 draws each,
+    5% level. (The draws on the martingale residuals rejected 44% of the
+    time at n = 100 and 21% at n = 300.) At n = 300 the rate is at the
+    level; at n = 100 the test is conservative (0.5% to 3% here), so only
+    the upper side is checked there: the lower side, first set for both
+    sizes, held there by one rejection, which rounding on another
+    platform could move."""
+    from surpyval.tests.calibration._montecarlo import check_rate
+
+    rng = np.random.default_rng(seed)
+    reps = 200
+    rejected = np.zeros((2, 2))
+    for r in range(reps):
+        x, c, Z = _additive_sample(rng, n, 0.1)
+        table = sp.AalenAdditive.fit(x, Z, c=c).constant_effects_test(
+            n_sim=200, random_state=r
+        )
+        rejected += table[["KS p", "CvM p"]].to_numpy()[1:] < 0.05
+    for j, term in enumerate(["z1", "z2"]):
+        for s, stat in enumerate(["KS", "CvM"]):
+            check_rate(
+                rejected[j, s],
+                reps,
+                0.05,
+                f"n={n} {term} {stat}",
+                slack=0,
+                side=side,
+            )
+
+
+def test_constant_effects_test_finds_a_changing_effect():
+    """z2's effect is 0.5 to t = 4 and 0.1 after: rejected."""
+    x, c, Z = _additive_sample(np.random.default_rng(11), 1000, 0.5)
+    table = sp.AalenAdditive.fit(x, Z, c=c).constant_effects_test(
+        n_sim=1000, random_state=12
+    )
+    assert table.loc["coef_1", "KS p"] < 0.01
+    assert table.loc["coef_1", "CvM p"] < 0.01
 
 
 def test_plot_draws_the_steps_and_bands():
@@ -380,7 +442,7 @@ def test_saved_model_keeps_predictions_and_refuses_the_test():
         ({"x": [-1, 2, 3, 4]}, "non-negative"),
         ({"tl": [0, 3, 0, 0]}, "strictly less than"),
         ({"c": [1, 1, 1, 1]}, "at least one event"),
-        ({"coef_penalty": -1}, "coef_penalty"),
+        ({"penalizer": -1}, "penalizer"),
     ],
 )
 def test_refusals_say_what_to_do(kwargs, match):
@@ -447,7 +509,7 @@ def test_round_trip_of_a_fit_with_every_option():
     x, Z, c = _small()
     Za = np.c_[Z, Z[:, 0]]
     with pytest.warns(UserWarning, match="cannot be estimated"):
-        model = sp.AalenAdditive.fit(x, Za, c=c, tl=0.1, coef_penalty=0.5)
+        model = sp.AalenAdditive.fit(x, Za, c=c, tl=0.1, penalizer=0.5)
     assert_array_equal(model.aliased, [2])
     rows = Za[:2]
     text = json.dumps(model.to_dict(), allow_nan=False)
@@ -487,3 +549,59 @@ def test_a_negative_summary_time_is_refused_by_name():
     model = sp.AalenAdditive.fit(x, Z, c=c)
     with pytest.raises(ValueError, match=r"\bat\b"):
         model.summary(at=-1.0)
+
+
+def test_coef_penalty_is_the_old_name_of_penalizer():
+    # Renamed in v0.27 so the package has one name for a penalty; the old
+    # argument and attribute warn and give the same fit until v0.28.
+    import json
+
+    df = _rossi()
+    x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
+    Z = df[["fin", "age", "prio"]].to_numpy(float)
+    new = sp.AalenAdditive.fit(x, Z, c=c, penalizer=2.0)
+    with pytest.warns(DeprecationWarning, match="'penalizer'"):
+        old = sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=2.0)
+    np.testing.assert_array_equal(old.B, new.B)
+    np.testing.assert_array_equal(old.B_var, new.B_var)
+    with pytest.warns(DeprecationWarning, match="'penalizer'"):
+        assert new.coef_penalty == 2.0
+    with pytest.raises(ValueError):
+        sp.AalenAdditive.fit(x, Z, c=c, penalizer=1.0, coef_penalty=1.0)
+    # A dict saved before the rename still loads.
+    saved = new.to_dict()
+    assert saved["penalizer"] == 2.0
+    saved["coef_penalty"] = saved.pop("penalizer")
+    restored = sp.from_dict(json.loads(json.dumps(saved)))
+    assert restored.penalizer == 2.0
+    assert "Penalizer (ridge)" in repr(new)
+
+
+@pytest.mark.parametrize("z", [[0, 25, 3], [1, 44, 0]])
+def test_285_random_follows_sf(z):
+    # The second row's raw estimate falls at times: the draws follow the
+    # running maximum the model predicts with.
+    from surpyval.tests._helpers import KS_BAND_20000, ks_distance
+
+    model = _rossi_model()
+    draws, rows = model.random(20_000, [z], random_state=285)
+    assert_array_equal(rows, np.repeat([z], 20_000, axis=0))
+    assert np.isin(draws[np.isfinite(draws)], model.x).all()
+    d = ks_distance(draws, lambda t: model.ff(t, z))
+    assert d <= KS_BAND_20000, (d, KS_BAND_20000)
+    end = float(model.sf(model.x[-1], z))
+    share = np.mean(np.isinf(draws))
+    assert abs(share - end) < 4 * np.sqrt(end * (1 - end) / 20_000)
+
+
+def test_285_random_missing_covariate_and_seeds():
+    model = _rossi_model()
+    assert np.isnan(
+        model.random(3, [[np.nan, 25, 3]], random_state=1)[0]
+    ).all()
+    a = model.random(5, [[0, 25, 3]], random_state=2)[0]
+    assert_array_equal(a, model.random(5, [[0, 25, 3]], random_state=2)[0])
+    np.random.seed(9)
+    g = model.random(5, [[0, 25, 3]])[0]
+    np.random.seed(9)
+    assert_array_equal(g, model.random(5, [[0, 25, 3]])[0])

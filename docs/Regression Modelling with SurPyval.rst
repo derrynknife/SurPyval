@@ -197,6 +197,24 @@ its :math:`\phi` multiplies the odds of *survival*, so a positive β makes
 failure *slower*. Expect a PO fit to report coefficients of the opposite sign to
 a PH fit on the same data.
 
+.. list-table:: What a positive coefficient means
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Model
+     - A positive coefficient
+   * - PH (``WeibullPH``, ``CoxPH``, ``RoystonParmarPH``, ...) and AFT
+       (``WeibullAFT``, ``BuckleyJames``, ...)
+     - a shorter life (a higher hazard, or faster ageing)
+   * - PO (``PO(dist)``, ``ProportionalOdds``, ``RoystonParmarPO``)
+     - higher survival odds: a longer life
+   * - Distributional regression (``WeibullDistributional``, ...)
+     - on a scale or a location, a shorter life, as AFT; on each
+       parameter as ``model.coefficient_signs`` says
+
+PO differs because it models the odds of *surviving*: a positive
+coefficient multiplies those odds, so it lengthens life.
+
 SurPyval supports all of these families, each available as pre-built instances
 for every standard distribution and as factory functions for custom
 combinations, together with semi-parametric versions that leave the baseline
@@ -232,9 +250,9 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
      - PH with a random multiplier shared within a group
      - ``WeibullFrailty``, …, ``Frailty(dist)``, and the semi-parametric
        ``CoxFrailty``
-   * - Survival trees and forests (beta)
+   * - Survival trees and forests
      - No link: recursive splits on the covariates
-     - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.beta.ml``
+     - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.ml``
 
 Data, covariates and predictions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -389,6 +407,34 @@ with ``method='lr'`` (see `Confidence Bounds`_ below):
     for _m in ('wald', 'lr'):
         _lo, _hi = demo.quantile_cb(0.1, Z=[1.0], method=_m)
         assert _lo < _b10 < _hi
+
+The restricted mean survival time (RMST) to a horizon ``tau`` is the
+expected time a unit lives within the first ``tau`` of its life: the area
+under its survival curve from 0 to ``tau``,
+:math:`\int_0^\tau S(t \mid Z)\, dt`. Unlike a hazard ratio it reads in
+units of time ("over the first 10 hours, units with ``Z = 1`` run 1.5 hours
+less on average"), and it needs no assumption about how the covariates act.
+``rmst(tau, Z)`` gives it with its delta-method standard error and 95%
+interval, ``rmst_cb(tau, Z)`` the bounds alone (``method='bootstrap'`` too),
+and ``rmst_diff(tau, Z_a, Z_b)`` the difference between two covariate rows,
+whose standard error accounts for both RMSTs coming from the same fitted
+parameters:
+
+.. jupyter-execute::
+
+    print('RMST to 10 at Z = 0, 1:', demo.rmst(10.0, Z=[[0.0], [1.0]])['rmst'].round(3))
+    print('95% bounds at Z = 1  :', demo.rmst_cb(10.0, Z=[1.0]).round(3))
+    _d = demo.rmst_diff(10.0, [0.0], [1.0])
+    print('difference (Z=0 - Z=1): %.3f, 95%% CI %.3f to %.3f'
+          % (_d['difference'], _d['lower'], _d['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = demo.rmst(10.0, Z=[[0.0], [1.0]])
+    assert np.all(_r['lower'] < _r['rmst']) and np.all(_r['rmst'] < _r['upper'])
+    assert abs(_d['difference'] - (_r['rmst'][0] - _r['rmst'][1])) < 1e-12
 
 A unit already in service has survived to its age. Every regression model
 (the parametric families, Cox, the proportional odds, additive hazards,
@@ -551,7 +597,9 @@ taken together, explain anything: twice the gain in log-likelihood over the mode
 covariates, compared with a chi-squared distribution with one degree of freedom per coefficient
 (the "Likelihood ratio test" line of R's ``summary(coxph)``). The parametric proportional hazards,
 AFT, proportional odds and additive hazards models have it too, against their baseline
-distribution fitted alone (the chi-squared of R's ``survreg``):
+distribution fitted alone (the chi-squared of R's ``survreg``), and so do the distributional
+regressions, with a test of each parameter's covariates as well (see
+:doc:`Distributional Regression`):
 
 .. jupyter-execute::
 
@@ -592,6 +640,68 @@ the model makes no smoothness assumptions about :math:`h_0(x)`. Keep the
 evaluation times inside the observed range: the baseline is only estimated
 there, and a Cox model's ``hf`` returns the size of the baseline *step* at the
 latest observed time, not a smooth hazard rate.
+
+Confidence bounds on a predicted curve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A predicted survival curve is an estimate, and ``model.cb(x, Z)`` gives its
+pointwise confidence bounds, as R's ``survfit(fit, newdata)`` does. The curve
+is uncertain for two reasons. The baseline is estimated from the failures in
+the data: each step is the deaths at that time over the (risk-weighted)
+number still at risk, so a step taken when few are left is shaky. And the
+coefficients that move the baseline to the covariates ``Z`` are estimates
+too: the further ``Z`` is from the typical unit in the data, the more their
+error matters. The bounds add the two. With few failures, or covariates far
+from the data's, the bounds are wide, and they should be.
+
+The standard error of the predicted cumulative hazard is the Tsiatis (1981)
+and Link (1984) form, the ``std.err`` of R's ``survfit.coxph``:
+
+.. math::
+
+    \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2\beta'(Z - c)}
+    \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2} + q(t)' V q(t) \Big],
+    \qquad q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\, d\hat H_0(s),
+
+where :math:`S_0(s)` sums :math:`e^{\beta'(Z_i - c)}` over the units at risk
+at event time :math:`s`, :math:`\bar Z(s)` is their risk-weighted mean
+covariate, :math:`dN(s)` the deaths at :math:`s` and :math:`V` the
+coefficients' covariance. After an Efron fit (the default), each time's tied
+deaths are spread over Efron's shrinking risk sets, as the baseline is; with
+case weights ``w`` every sum is weighted and :math:`V` is the robust
+covariance; for a stratified model the sums run over the stratum's units.
+
+The default is log-log, the same as Kaplan-Meier, so two curves on one chart
+get bounds by the same rule; use ``bound_type="log"`` to match R's
+``survfit`` printout. ``bound_type`` chooses the scale of the normal
+interval, with R's ``conf.type`` names: ``'log-log'`` (the default:
+:math:`H e^{\pm z\,\mathrm{se}/H}`, which keeps both bounds inside (0, 1),
+the Kaplan-Meier, Nelson-Aalen and Aalen default), ``'log'`` (R's default:
+:math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1) or ``'plain'``
+(:math:`S \pm z S\,\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and
+``on='Hf'`` bound the failure probability and the cumulative hazard. On each
+scale the bounds agree with R's to rounding (see
+``scripts/reference/reference_r_cox_curve.R``):
+
+.. jupyter-execute::
+
+    t_q = np.array([0.9, 1.0, 1.1])
+    print('sf      :', model.sf(t_q, Z_mean).round(3))
+    print('95% cb  :', model.cb(t_q, Z_mean).round(3).tolist())
+    print('log (R) :', model.cb(t_q, Z_mean, bound_type='log').round(3).tolist())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = model.cb(t_q, Z_mean)
+    _s = model.sf(t_q, Z_mean)
+    assert np.all((_b[:, 0] <= _s) & (_s <= _b[:, 1]))
+
+With 11 failures among 34 tires and four coefficients, the bounds are wide;
+the log bound's upper end reaches 1, the log-log bound's stays below it.
+``plot_partial_effects(..., plot_bounds=True)`` draws these bounds around
+each curve.
 
 Tied event times
 ~~~~~~~~~~~~~~~~
@@ -1099,7 +1209,8 @@ against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
 estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
-stratification (below), a time-varying covariate, or a different family.
+a time-varying coefficient (next), stratification (below), a time-varying
+covariate, or a different family.
 
 .. jupyter-execute::
     :hide-code:
@@ -1147,6 +1258,77 @@ the partial likelihood — a useful sanity check that the fit has converged.
         _r = model.compute_residuals(_kind)
         assert np.allclose(_r.sum(axis=0), 0, atol=1e-6), _kind
 
+
+Time-varying coefficients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the test above fails for a covariate, its effect is not one number: it
+changes over follow-up. Rather than report an average that hides that, let
+the coefficient itself depend on time. The simplest choice is a straight line
+in :math:`\log t` (or in :math:`t`): the covariate's log hazard ratio starts
+at one level and drifts steadily, and the size and direction of the drift
+are estimated from the data. Pass ``time_interaction`` to
+:meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`
+(or ``fit_from_df``), naming the covariate and the function of time:
+``"log"``, ``"t"``, or any function ``g(t)`` you write.
+
+In symbols, covariate :math:`j` gets the coefficient
+
+.. math::
+    \beta_j(t) = \beta_j + \gamma_j\, g(t),
+
+so the hazard is :math:`h_0(t)\, e^{\beta_j(t) Z_j + \dots}`. This is the same
+as adding the covariate :math:`Z_j g(t)`, which changes with time; SurPyval
+splits each unit's follow-up at the event times and fits the pieces as
+start-stop rows (as ``fit_tvc`` does), which is exactly R's
+``coxph(Surv(time, status) ~ z + tt(z), tt = function(z, t, ...) z * log(t))``.
+As everywhere, a positive coefficient means a higher hazard, so a shorter
+life: a positive :math:`\gamma_j` means the covariate becomes more harmful as
+time goes on, a negative one that its harm fades (or reverses).
+
+On the reversing effect above:
+
+.. jupyter-execute::
+
+    m_tv = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c',
+                             time_interaction={'z': 'log'})
+    m_tv.summary()[['coef', 'se(coef)', 'p']].round(4)
+
+The row ``z:log(t)`` is :math:`\gamma`: clearly negative, and its Wald test
+is itself a test of proportional hazards for ``z`` against :math:`\log t`.
+``time_varying_effect`` gives :math:`\beta(t)` at any times, with its Wald
+standard error :math:`\sqrt{a' V a}` (:math:`a = (1, g(t))`, :math:`V` the
+covariance of :math:`(\beta, \gamma)`) and bounds, and draws it:
+
+.. jupyter-execute::
+
+    effect = m_tv.time_varying_effect('z', [0.1, 0.25, 0.5, 1.0, 2.0])
+    print(effect.to_frame().round(3))
+    m_tv.time_varying_effect('z').plot()
+    plt.show()
+
+Early on exposure triples the hazard; by :math:`t = 0.5` the effect has
+crossed zero and later it protects -- what the simulation built in, which a
+single coefficient averaged away. Predictions at fixed covariates use
+:math:`\beta(t)` at every time, :math:`H(t \mid Z) = \sum_{u \le t} h_0(u)
+e^{\beta(u)' Z}`, so ``sf``, ``ff``, ``Hf``, ``qf`` and ``random`` take the
+covariates as given to the fit (``z`` alone here, not the interaction). A
+single hazard ratio ``phi(Z)`` no longer exists and is refused, as are the
+concordance, ``diagnose()``, saving to a dict, and predictions along a
+covariate path.
+
+.. jupyter-execute::
+
+    print(m_tv.sf([0.25, 1.0, 2.0], [[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = m_tv.params[1]
+    assert _g < 0 and m_tv.p_values[1] < 1e-6, m_tv.params
+    assert effect.beta[0] > 0 > effect.beta[-1]
+    assert m_tv.parameter_names == ['z', 'z:log(t)']
 
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1263,9 +1445,33 @@ as a missing covariate does:
 
     assert list(stratified.strata_labels) == [0, 1, 2]
 
-The residual diagnostics and robust errors above assume a single baseline, so
-they are not available on a stratified model; the coefficients and their
-model-based ``p``-values are. A stratified model can also not be serialised.
+The residual diagnostics, the proportional-hazards test, ``diagnose()`` and
+the robust standard errors above work on a stratified model too, each within
+its own stratum's risk sets, as R's ``residuals``, ``cox.zph`` and
+``coxph(..., robust = TRUE)`` compute them for a fit with ``strata()``; the
+scaled Schoenfeld residuals and dfbeta use the covariance and number of events
+of the whole fit. ``concordance()`` forms pairs within each stratum only and
+pools them, as R's ``concordance`` does (a risk score ranks subjects only
+within its stratum); to score new data pass ``strata=`` with ``x``, ``c`` and
+``Z``. A stratified model is saved with ``to_dict`` / ``to_json`` with one
+baseline per stratum (schema 4: an older SurPyval refuses it rather than read
+one stratum's baseline as the model's); like every restored Cox model it
+predicts but keeps no rows for the residuals:
+
+.. jupyter-execute::
+
+    print(stratified.diagnose().table[["check", "covariates", "p", "verdict"]].head(3))
+    print("concordance within strata:", round(stratified.concordance(), 3))
+    restored = surv.from_json(stratified.to_json())
+    print(restored.sf(x=1.0, Z=[[0.0]], stratum=0))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2),
+                       stratified.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2))
+
 Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
 same ``stratum`` argument.
 Start-stop (time-varying covariate) data stratify the same way:
@@ -1549,9 +1755,10 @@ resampling (it takes a seed):
     assert _c.loc["prio", "KS p"] > 0.5, _c
 
 A constant effect is rejected for ``age`` (p below 0.01) and not for
-``prio`` (p above 0.5). The resampled null is a large-sample result, and
-with a few hundred units it rejects a truly constant effect somewhat more
-often than the level says, so treat a p-value near 0.05 as borderline.
+``prio`` (p above 0.5). The resampled null is a large-sample result: with
+a few hundred units the test holds its level, and with about a hundred it
+rejects a constant effect less often than the level says (it is
+conservative).
 
 A unit's survival is :math:`\exp(-H)` with
 :math:`H(x \mid Z) = B_0(x) + B(x)'Z`, with Wald bounds:
@@ -1566,10 +1773,19 @@ Nothing keeps an additive hazard positive, so as for ``AdditiveHazards``
 the model predicts with the running maximum of :math:`H` from time 0, and
 ``sf`` never rises. The hazard rate ``hf`` uses the kernel-smoothed
 :math:`b_j(t)` (``smoothed_coefficients``, with a ``bandwidth``), and
-``coef_penalty`` adds a ridge penalty on the covariates' increments,
-which keeps the fit going where few units remain at risk at the price of
-shrinking the effects. :math:`B(t)` and its variance agree with R's
+``penalizer`` adds a ridge penalty on the covariates' increments (each
+scaled by the covariate's variance; the baseline is not penalised), which
+keeps the fit going where few units remain at risk at the price of
+shrinking the effects. It was ``coef_penalty`` before v0.27; the old name
+still works, with a ``DeprecationWarning``, until v0.28. :math:`B(t)` and its variance agree with R's
 ``timereg::aalen`` (with ``robust = 0``).
+
+Sampling or inverse-probability weights go in ``w`` (``w_col`` in
+``fit_from_df``): each increment is then a weighted least-squares fit, and
+every standard error and bound uses the robust variance, which does not
+depend on the weights' scale (R's ``timereg::aalen(..., weights = w,
+robust = 1)``). ``constant_effects_test()`` refuses a weighted fit; see
+:doc:`Weighted Data`.
 
 
 Parametric Proportional Hazards (PH)
@@ -1679,11 +1895,22 @@ recovers the same parameters as the exact times:
 it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
 draws lifetimes from the fitted model — useful for simulation studies and for
-checking a fit against its own simulated data. It exists for the PH, parametric
-AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
-returns ``size`` draws for each covariate row, in the order given, together
-with the matching covariate rows; an accelerated life model does the same for
-each *distinct* stress, in sorted order. As everywhere in SurPyval,
+checking a fit against its own simulated data. It exists for every
+parametric family (PH, AFT, PO, parametric AH, accelerated life,
+Royston-Parmar and distributional) and for the Cox and Aalen models. Each
+draw is exact inverse-transform sampling: a uniform ``U`` becomes the time at
+which the row's survival falls to ``U`` (for AFT the baseline's time divided
+by the acceleration factor; for PO the time at which the baseline's odds,
+multiplied by ``phi``, are ``U / (1 - U)``). A regression model returns
+``size`` draws for each covariate row, in the order given, together with the
+matching covariate rows; an accelerated life model does the same for each
+*distinct* stress, in sorted order. The Cox and Aalen models draw from their
+step survival curves, so every draw is one of the event times, and a draw
+beyond the last time the curve is estimated at is ``inf`` (the unit outlives
+the data), as often as ``sf`` at that time says; a stratified Cox model takes
+``stratum=``. The frailty models, the Lin-Ying additive model, Buckley-James
+and the semi-parametric proportional odds model have no ``random`` yet. As
+everywhere in SurPyval,
 ``random_state`` seeds the draw (``None``, the default, draws from numpy's
 global generator, so ``np.random.seed`` reproduces it):
 
@@ -1834,8 +2061,9 @@ rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
 matters: put it at a real origin, such as the start of service. Moving 0
 changes the fit, as it would for a Weibull. A model in which the covariates
 shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
-life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
-depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+life model, ``AcceleratedLife(Normal, life_models.Linear)`` (or
+``life_models.GeneralLinear`` for several covariates), and does not depend
+on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
 Additive hazards on these baselines likewise counts the covariate's effect
 from 0.
 
@@ -1880,11 +2108,20 @@ smooth baseline that can be extrapolated, handles every kind of censoring
 and truncation, and gives every bound. ``RoystonParmarPO`` puts the spline
 on the log odds of failure and multiplies the survival odds by
 :math:`e^{\beta' Z}`, as every proportional odds model here.
+The coefficients have the sign of the model they belong to: on the hazard
+scale that of ``PH`` (a positive coefficient raises the hazard, a shorter
+life), on the odds scale that of every SurPyval ``PO`` model (a positive
+coefficient raises the survival odds, a longer life). R's
+``flexsurvspline`` agrees on the hazard scale; on the odds scale its
+coefficients add to the log odds of failure, so they are SurPyval's with
+the sign changed.
 ``RoystonParmarRegression(df=..., scale=..., knots=...)`` sets the spline's
 degrees of freedom (``df - 1`` internal knots, at quantiles of the log
 event times; three by default) or its knots. ``df=1`` on the hazard scale
-is the Weibull proportional hazards model. The fits agree with R's
-``flexsurvspline`` to its printed digits.
+is the Weibull proportional hazards model, and on the odds scale the
+log-logistic proportional odds model, ``PO(LogLogistic)``, with the same
+coefficients. The fits agree with R's ``flexsurvspline`` to its printed
+digits.
 
 .. jupyter-execute::
 
@@ -2232,8 +2469,11 @@ baseline distribution is the wrong shape and, given a ``cluster`` label per
 row, when rows in a cluster are correlated: several units from one batch,
 repeated tests on one rig. They are the model-based covariance wrapped
 around the spread of the scores (one per unit, or one per cluster), the
-HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``; the
-estimates do not change. ``summary(robust=True, cluster=...)`` gives the
+HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``, with
+no small-sample factor (R's ``survey`` package multiplies by
+:math:`\sqrt{n/(n-1)}`: about 0.5% larger at 100 units, 5% at 10; see
+:doc:`Weighted Data`), and counts ``n`` read as frequency weights (a row
+with ``n = 3`` is three units); the estimates do not change. ``summary(robust=True, cluster=...)`` gives the
 table on them. Here twenty batches of six items share a batch effect the
 model does not have:
 
@@ -2261,11 +2501,38 @@ model does not have:
     assert _batch_se[0] > _se[0], (_se, _batch_se)
 
 The batch effect makes the scale's standard error larger once the rows of
-a batch are counted together. Only the standard errors change: ``cb``,
-``param_cb`` and ``p_values`` stay on the model-based covariance, and a
-fit with time-varying covariates (``fit_tvc``), whose likelihood is over
-each unit's history rather than over independent rows, refuses and points
-to the bootstrap and likelihood-ratio bounds.
+a batch are counted together. Robust is all or none: give
+``robust=True`` (and the same ``cluster``) to ``cb``, ``quantile_cb`` and
+``param_cb``, and read ``robust_p_values()``, and every interval and
+p-value rests on the robust covariance, the numbers
+``summary(robust=True)`` shows; without it they all stay on the
+model-based one. What has no robust form refuses rather than mixing the
+two: the likelihood-ratio and bootstrap bounds (``method='lr'`` or
+``'bootstrap'``), which use no covariance, a model restored from a dict,
+which keeps no data for the sandwich, and a fit with time-varying
+covariates (``fit_tvc``), whose likelihood is over each unit's history
+rather than over independent rows (it points to the bootstrap and
+likelihood-ratio bounds).
+
+.. jupyter-execute::
+
+    print('robust interval on coef_0:',
+          m_b.param_cb('coef_0', robust=True, cluster=batch).round(3))
+    print('robust p-value           :',
+          f"{m_b.robust_p_values(cluster=batch)[-1]:.2g}")
+    print('robust band at 10        :',
+          m_b.cb(10.0, [0.0], robust=True, cluster=batch).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = m_b.summary(robust=True, cluster=batch)
+    assert np.allclose(
+        _t.iloc[-1][['coef lower 95%', 'coef upper 95%']].astype(float),
+        m_b.param_cb('coef_0', robust=True, cluster=batch))
+    assert np.isclose(_t['p'].iloc[-1],
+                      m_b.robust_p_values(cluster=batch)[-1])
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
@@ -2273,6 +2540,72 @@ sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
 ``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
 and ``param_cb`` (Wald, or the profile-likelihood interval with
 ``method='lr'``).
+
+
+The life of one unit: ``at(Z)`` and ``with_params``
+---------------------------------------------------
+
+Most questions put to a regression are about one unit: the life of *this*
+pump at *this* load. ``model.at(Z)`` answers them as a plain life model. It
+binds one covariate row to the fitted regression, and its ``sf``, ``ff``,
+``df``, ``hf``, ``Hf`` and ``qf`` take times (or probabilities) only, as a
+``Weibull`` model's do; each is the regression's own at that row, so
+``model.at(Z).sf(x)`` is exactly ``model.sf(x, Z)``. Where the regression has
+them, ``mean()``, ``rmst(tau)`` and the confidence bounds ``cb`` and
+``quantile_cb`` are there too. ``random(n)`` draws ``qf(U)`` for uniform ``U``,
+as ``Parametric.random`` does, so the same seed gives common random numbers
+across models. Hand it to any code that expects a life model. It is a view on
+the regression, not a copy: save the regression and the row.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(1)
+    load = rng.uniform(0.5, 2.0, 200)
+    x_pump = 1000.0 * rng.weibull(1.5, 200) / load ** (1 / 1.5)
+    pumps = WeibullPH.fit(x_pump, load)
+
+    pump = pumps.at(1.2)               # a pump at a load of 1.2
+    print(pump.sf(500.0), pumps.sf(500.0, [1.2]))   # the same number
+    print(pump.qf(0.1))                # its B10 life
+    print(pump.mean())                 # its mean life
+    print(pump.cb([500.0]))            # 95% bounds on its reliability at 500
+
+It takes one row: for several units, call it once per row,
+``[pumps.at(z) for z in loads]``. A Cox model's ``at(Z, stratum=...)`` takes
+the stratum of a stratified fit; it has no ``mean`` (its baseline stops at the
+last observed time), so use ``qf(0.5)`` or ``rmst``.
+
+``with_params`` is the other half: the same regression at other parameter
+values, given as one flat vector in the order of ``covariance_names`` (the
+rows of ``covariance()``). Everything else is kept: the distribution, the
+covariate names and formula (so a DataFrame row still works), the centre of
+a ``center=True`` fit, and fixed parameters. The new model has no data,
+covariance or likelihood, so the bounds and information criteria refuse on
+it. Its use is to carry the fit's parameter uncertainty into anything
+computed from it: draw parameters from the covariance, make each draw a
+model, and compute what you need with each. Draws of a positive parameter
+can fall below 0 when its standard error is large, which ``with_params``
+refuses; a fit with ``center=True``, whose baseline is at the covariate means,
+keeps the baseline well determined.
+
+.. jupyter-execute::
+
+    pumps_c = WeibullPH.fit(x_pump, load, center=True)
+    draws = np.random.default_rng(2).multivariate_normal(
+        pumps_c._estimates(), pumps_c.covariance(), size=1000
+    )
+    b10 = [pumps_c.with_params(d).at(1.2).qf(0.1) for d in draws]
+    print(np.percentile(b10, [2.5, 97.5]))   # the B10 life's spread
+    print(pumps_c.quantile_cb(0.1, [1.2]))   # its Wald interval
+
+The semi-parametric proportional odds and Lin-Ying additive hazards models
+have ``with_params`` too. Their baseline is left to the data, so at other
+coefficients it is re-estimated as the fit would have estimated it there (the
+profile likelihood's baseline odds; Lin and Ying's baseline, which is linear
+in the coefficients), from the data the fitted model holds: call it on the
+fitted model, not on one restored from a dict.
 
 
 .. _accelerated-life:
@@ -2368,12 +2701,68 @@ letters in each formula are the parameter names the fitted model reports, and
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model
+   * - ``GeneralLinear``
+     - :math:`a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots`, one coefficient per
+       column of ``Z`` (named by the column, or ``coef_j``)
+     - ``Linear`` for any number of covariates; meant for a location
+       (``mu`` of ``Normal``, ``Gumbel``, ``Logistic``), see `A location
+       model with several covariates`_
 
 A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
 be in Kelvin (absolute temperature), not Celsius. The accelerated life fitter
 takes the same ``c``, ``n``, ``t``, ``init`` and ``fixed`` arguments as the
 other parametric families (the life-model parameters can be held with
 ``fixed`` too), and has a ``fit_from_df``.
+
+A location model with several covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some quantities live on the whole real line and have no natural zero: a
+level in decibels, a temperature in °C, a margin that can go negative. For
+them the covariates should *move* the distribution rather than stretch
+time, so that where zero sits does not matter. ``GeneralLinear`` does this
+with any number of covariates: on the ``mu`` of ``Normal``, ``Gumbel`` or
+``Logistic`` each covariate shifts the whole distribution by a fixed amount
+per unit, and adding a constant to every time moves the constant ``a``
+alone. In formulas,
+
+.. math::
+
+    \mu(Z) = a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots,
+
+with the spread :math:`\sigma` the same for every unit. A positive
+coefficient means a later (longer) life, as for every life model. This is
+the model R's ``survreg(..., dist = "gaussian")`` (or ``"logistic"``, or
+``"extreme"`` for the Gumbel) fits to the times themselves, with the same
+signs: its intercept and coefficients are ``a`` and the :math:`\beta_j`,
+and its ``scale`` is :math:`\sigma`. With one covariate it is ``Linear``.
+
+On a scale parameter (the ``alpha`` of ``Weibull``) the plane can reach
+zero or negative life outside the stresses tested, where a life is
+undefined, as ``Linear``'s can; use ``GeneralLogLinear`` there.
+
+.. jupyter-execute::
+
+    from surpyval import AcceleratedLife, Normal, life_models
+
+    rng = np.random.default_rng(3)
+    Z_loc = np.column_stack([rng.normal(size=80), rng.integers(0, 2, 80)])
+    y = -5 + 2.0 * Z_loc[:, 0] - 1.5 * Z_loc[:, 1] + rng.normal(0, 1.5, 80)
+    c_loc = (y > -3).astype(int)       # right censored at -3
+    y = np.minimum(y, -3.0)
+    loc = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y, Z=Z_loc, c=c_loc)
+    shifted = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y + 40, Z=Z_loc, c=c_loc)
+    print(loc.phi_params.round(3))
+    print(shifted.phi_params.round(3))    # a moves by 40, the rest stays
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(shifted.phi_params[0], loc.phi_params[0] + 40)
+    assert np.allclose(shifted.phi_params[1:], loc.phi_params[1:], rtol=1e-5)
 
 Using the factory
 ~~~~~~~~~~~~~~~~~
@@ -3010,8 +3399,8 @@ So put 0 at a real origin, such as the start of service, for AFT or additive
 hazards on these baselines. For a quantity whose 0 is only a reference point
 (decibels, a temperature in °C, a log-scale measurement) use PH or PO, or a
 model in which the covariate shifts the distribution's location,
-``AcceleratedLife(Normal, life_models.Linear)``, which is an accelerated life
-model and not an AFT (see `Accelerated Failure Time (AFT)`_).
+``AcceleratedLife(Normal, life_models.Linear)`` (``GeneralLinear`` for
+several covariates), which is an accelerated life model and not an AFT (see `Accelerated Failure Time (AFT)`_).
 
 **Survival given an age.** ``sf_tvc(x, Z, given=g)`` is
 :math:`S(x \mid g) = S(x) / S(g)`. The covariate before :math:`g` changes the
@@ -3310,16 +3699,150 @@ AFT does, when its life parameter scales time (below).
 
 .. note::
 
-   **A** ``CovariatePath`` **evaluates a known, external path only.** For
-   now it evaluates an already-fitted model along a path you supply: a
-   planned load, a test profile, ambient conditions. For the result to be
-   a survival probability, the path must not depend on the unit's own
-   failure process (an *external* covariate). Fitting still uses steps. A
+   **A** ``CovariatePath`` **is a known, external path.** It is a path you
+   supply: a planned load, a test profile, ambient conditions. For the
+   survival along it to be a probability, and for a fit on it to mean
+   what it says (`Fitting on a continuous path`_), the path must not
+   depend on the unit's own failure process (an *external* covariate). A
    measured covariate is known only at its sample times, so fit it in
-   start-stop form with ``fit_tvc``, as above; the step approximation's
-   error shrinks with the square of the step width. A covariate driven by
-   the unit itself, such as a degradation signal read from it, needs a
-   joint longitudinal-survival model, which SurPyval does not provide.
+   start-stop form with ``fit_tvc``, as above. A covariate driven by the
+   unit itself, such as a vibration or wear signal read from it, or a
+   patient's biomarker, is not a path to fit on: its readings are noisy
+   and stop when the unit fails, which pulls its effect towards zero. It
+   needs a joint model of the readings and the lifetime
+   (:doc:`Joint Models`).
+
+.. _tvc-fit-continuous:
+
+Fitting on a continuous path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a ramp-stress test the stress is raised steadily until each unit fails,
+so no unit ever sat at one stress level: there is no single covariate value
+to regress its life on. The same is true of units run through a thermal
+cycle, of equipment on a planned mission profile, and of patients whose
+dose is raised on a fixed schedule over the first weeks of treatment. What
+each unit has is a *path*, and the question is the usual one: how much
+does the hazard rise per unit of the covariate?
+
+Give each item its path, as the ``time_varying_covariates`` of its
+:class:`~surpyval.ItemLifetime`, and fit as usual. A model is fitted to
+steps, so the fit cuts each path into steps for you, and makes sure the
+answer does not depend on how:
+
+1. each stretch of a path between two of its breakpoints is cut into 8
+   steps of equal width, each holding the path's value at its midpoint
+   (a stretch where the path is flat stays one step, so a path made of
+   steps is fitted exactly as ``fit_tvc`` fits it);
+2. the model is fitted to those steps by its ``fit_tvc``;
+3. the steps are halved and the model fitted again, until no estimate
+   moves by more than 1% of its standard error.
+
+The fitted model says what that took in ``path_steps``: the steps in each
+stretch at the end, the rows fitted, the largest move of an estimate at
+the last halving (in standard errors), and whether the tolerance was met.
+The error of the cumulative hazard along midpoint steps falls with the
+square of their width, so each halving cuts it by about four, and what is
+left after the last one is about a third of that last move. A fit that
+still moves after eight halvings, or would need more than two million
+rows, returns its last fit with one warning that says so.
+
+Three groups of capacitors on a voltage ramp, the overstress rising by
+0.02, 0.05 and 0.1 units an hour, tested for 60 hours. The hazard is
+constant at a fixed stress and multiplied by :math:`e^{1.2}` for each unit
+of overstress:
+
+.. jupyter-execute::
+
+    from surpyval import ExponentialPH, SurpyvalData
+
+    ramp_rng = np.random.default_rng(11)
+    capacitors, rates, ages, failed = [], [], [], []
+    for k in range(300):
+        rate = [0.02, 0.05, 0.1][k % 3]          # overstress per hour
+        # H(t) = 0.02 (exp(1.2 rate t) - 1) / (1.2 rate), inverted exactly
+        life = np.log1p(1.2 * rate * ramp_rng.exponential() / 0.02) / (1.2 * rate)
+        outcome = "observed" if life <= 60 else "right_censored"
+        rates.append(rate)
+        ages.append(min(life, 60.0))
+        failed.append(life <= 60)
+        capacitors.append(
+            ItemLifetime(
+                k,
+                **{outcome: min(life, 60.0)},
+                time_varying_covariates=CovariatePath.from_points(
+                    [0.0, 60.0], [0.0, 60.0 * rate]
+                ),
+            )
+        )
+    on_ramps = ExponentialPH.fit(SurpyvalData.from_items(capacitors))
+    print(on_ramps.params.round(4))
+    print(on_ramps.path_steps)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert on_ramps.path_steps["converged"]
+    assert on_ramps.path_steps["change"] <= 0.01
+    _se = on_ramps.standard_errors()
+    assert abs(on_ramps.params[0] - 0.02) < 3 * _se[0]
+    assert abs(on_ramps.params[1] - 1.2) < 3 * _se[1]
+
+The fit recovers the rate of 0.02 an hour and the coefficient of 1.2 it was
+simulated with. For this model the answer can be checked by hand: along a
+ramp :math:`z(t) = r t` the cumulative hazard of an exponential baseline
+has the closed form
+
+.. math::
+
+    H(t) = \lambda \int_0^t e^{\beta r u}\, du
+         = \lambda\, \frac{e^{\beta r t} - 1}{\beta r},
+
+and maximising the likelihood written with it gives the same estimates:
+
+.. jupyter-execute::
+
+    from scipy.optimize import minimize
+
+    rate, life, failed = np.array(rates), np.array(ages), np.array(failed)
+
+
+    def closed_form_neg_ll(v):
+        lam, beta = np.exp(v[0]), v[1]
+        H = lam * np.expm1(beta * rate * life) / (beta * rate)
+        # each failure adds the log of its hazard, lam exp(beta r t)
+        log_h = np.log(lam) + beta * rate[failed] * life[failed]
+        return np.sum(H) - np.sum(log_h)
+
+
+    by_hand = minimize(closed_form_neg_ll, [np.log(0.05), 0.5], method="BFGS")
+    print(np.exp(by_hand.x[0]).round(4), by_hand.x[1].round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _exact = np.array([np.exp(by_hand.x[0]), by_hand.x[1]])
+    assert np.all(np.abs(on_ramps.params - _exact) < 0.01 * _se)
+
+The steps are yours to choose where you want them: ``path.to_steps(t_max,
+steps)`` is the step schedule the fit uses (a
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`), and an
+item given that schedule instead of the path is fitted on exactly those
+steps, with no refinement.
+
+Every regression that fits time-varying covariates from item records fits
+paths the same way: proportional hazards, proportional odds and additive
+hazards (the hazard at each moment is that of the covariate then), Cox,
+and accelerated failure time, where the path accumulates an accelerated
+age (the cumulative-exposure model of a step-stress or ramp-stress test).
+The same conditions apply as for steps: observed and right censored
+lifetimes only, and for accelerated failure time a path from age 0. On a
+baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) an item
+needs its ``left_truncation``, the age it came under observation, as a
+path is cut into steps over a finite stretch only.
+
 
 .. _tvc-bounds-mean:
 
@@ -4202,6 +4725,30 @@ their standard deviations before the penalty is applied, so it does not
 depend on their units; the coefficients are reported in the covariates' own
 units. A baseline distribution's parameters are never penalised.
 
+**The standard deviation's divisor.** ``standardise=True`` divides each
+covariate by its standard deviation with divisor :math:`N`, the number of
+units (weighted by ``n``), as glmnet does, not :math:`N - 1`, as lifelines
+does. The objective is glmnet's, the *mean* negative log-likelihood plus
+the penalty, and glmnet's standardisation goes with it, so the Cox fits
+agree with glmnet's to six digits. The two differ by a factor of
+:math:`\sqrt{N / (N - 1)}` in each standard deviation: lifelines'
+standardised coefficients are that much larger, so the same ``penalizer``
+shrinks a little harder there (about 0.5% at :math:`N = 100`, 5% at
+:math:`N = 10`; it does not matter for large data). To compare with
+lifelines' ``CoxPHFitter(penalizer=...)``, standardise the covariates
+yourself with ``ddof=1`` and turn the package's standardisation off:
+
+.. code-block:: python
+
+    sd = rossi[cols].std(ddof=1)  # pandas' default divisor is N - 1
+    ridge_ll = CoxPH.fit_penalised(rossi['week'], rossi[cols] / sd,
+                                   c=rossi['censored'], penalizer=0.05,
+                                   standardise=False)
+    ridge_ll.params / sd.values   # in the covariates' own units
+
+(For ``l1_ratio > 0`` lifelines smooths the absolute value, so its lasso
+is close to, but not exactly, the lasso.)
+
 .. jupyter-execute::
 
     from surpyval import CoxPH
@@ -4264,10 +4811,12 @@ log-likelihood has the distribution those calls rely on.
 ``CoxPH.fit`` does: a baseline hazard per stratum and one set of
 coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
 standardisation are over all the rows, not within each stratum. It takes
-delayed entry ``tl``, so start-stop rows ``(start, stop]`` are fitted with
-``tl=start``; then ``N`` is the number of *rows* (weighted by ``n``), not of
-subjects, as in glmnet, so a subject split into ten rows counts ten times in
-the penalty's scale. Like ``CoxPH.fit``, it refuses truncation on the right,
+delayed entry ``tl``, so start-stop rows ``(start, stop]`` can be fitted
+with ``tl=start``; with no subject ids, ``N`` is then the number of *rows*
+(weighted by ``n``), as in glmnet, so a subject split into ten rows counts
+ten times in the penalty's scale, and the same ``penalizer`` shrinks less
+the more rows the follow-up is split into. For start-stop data use
+``CoxPH.fit_tvc_penalised(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
 for which the partial likelihood has no term: the parametric penalised fits
 take every kind of censoring and truncation (left, right or both).
 
@@ -4287,11 +4836,224 @@ take every kind of censoring and truncation (left, right or both).
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
 
+**Weights.** ``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the
+parametric families' ``fit_penalised`` take sampling weights ``w``, as
+their ``fit`` does (see :doc:`Weighted Data`). In plain words: each row
+counts ``w`` times as much in the likelihood, in the number of units the
+penalty is measured against and in the covariates' standard deviations, so
+only the weights' *proportions* matter. ``w`` and ``10 * w`` give the same
+fit, and whole-number weights give the fit of repeated rows (for a Cox fit,
+under Breslow's ties; Efron's treat a weight as one unit, as R does). The
+objective is
+
+.. math::
+    -\frac{1}{N_w} \ell_w(\theta) + \sum_j \lambda_j \left(
+    \frac{1 - a}{2} b_j^2 + a |b_j| \right), \qquad N_w = \sum_i n_i w_i,
+
+with :math:`\ell_w` the weighted log-likelihood (the weighted partial
+likelihood of ``CoxPH.fit(w=)`` for Cox) and the covariates standardised
+by their :math:`n w`-weighted standard deviations with divisor
+:math:`N_w`: glmnet's ``weights``, which the Cox fit matches to 1e-6
+(ridge, lasso and elastic net, Breslow and Efron). For start-stop data
+(``fit_tvc_penalised``) :math:`N_w` sums over the subjects, each weighted
+by its rows' weights averaged over its follow-up. A weighted penalised fit
+has no standard errors, robust ones included, and its ``aic`` and ``bic``
+are refused, as for every weighted fit; a ``penalty_path`` of weighted fits
+has the coefficients but cannot choose the penalty by them.
+
+.. jupyter-execute::
+
+    w = 0.5 + (np.arange(len(rossi)) % 5) / 2   # survey weights, say
+    weighted = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    weighted.params.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    rescaled = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=10 * w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    assert np.allclose(rescaled.params, weighted.params, atol=1e-10)
+    assert weighted.weighted and weighted.maximum == 'verified'
+
+**More models.** The same objective, standardisation and refusals apply to
+
+- ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``
+  (and any ``RoystonParmarRegression``): the knots are placed as for
+  ``fit``, then the PH or PO family on the spline baseline is fitted with
+  the penalty; the spline coefficients are not penalised.
+- ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
+  start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
+  ``N`` the number of *subjects* and the covariates standardised over the
+  subjects, each subject's covariate averaged over its follow-up (each row
+  weighted by its length). Splitting a subject's follow-up into more rows
+  changes neither the partial likelihood nor these, so it does not change
+  the fit.
+- ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
+  Cox model, one penalised Cox fit per cause with the other causes
+  censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
+  fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
+  causes, and ``models`` holds each cause's penalised Cox model. The
+  Fine-Gray model has no penalised fit.
+- ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
+  with a constant baseline rate, ``N`` the number of items and the
+  covariates standardised over the items; for exact event times it is
+  glmnet's Poisson regression of each item's events with the log of its
+  follow-up as offset. The base rate is not penalised. The model has no
+  covariance, bounds (``cif_cb``, ``iif_cb``, ``param_cb``) or
+  ``cramer_von_mises`` bootstrap. The models with a non-homogeneous
+  baseline (``ProportionalIntensityNHPP``) have no penalised fit yet.
+- ``WeibullDistributional.fit_penalised`` and the other distributional
+  regressions: covariates on every parameter, with ``penalizer`` one value,
+  one per covariate column (that column on every parameter), or one per
+  parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
+  named is not penalised). The intercepts are not penalised. With
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``,
+  coefficient for coefficient: the scale's coefficients take the AFT sign
+  (``model.coefficient_signs``), a positive one a shorter life.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullDistributional
+
+    shape_too = WeibullDistributional.fit_penalised(
+        rossi['week'], rossi[['fin', 'age', 'prio']], c=rossi['censored'],
+        penalizer={'alpha': 0.01, 'beta': 0.1}, l1_ratio=1.0)
+    pd.Series(shape_too.params, index=shape_too.parameter_names).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert shape_too.maximum == 'verified', shape_too.maximum
+    assert np.all(shape_too.params[5:] == 0), shape_too.params
+
+**Choosing the penalty: the path and AIC or BIC.** ``penalty_path`` fits
+any of these over a path of penalties and records each fit's coefficients,
+effective degrees of freedom, log-likelihood, AIC and BIC. By default the
+path is glmnet's: 20 penalties evenly spaced on the log scale from the
+smallest penalty that sets every coefficient to 0 (to six digits) down to
+0.001 times it. The criteria count each fit's effective degrees of freedom,
+so they weigh the gain in fit against how far the penalty lets the
+coefficients move; ``best("bic")`` (or ``"aic"``) is the fit with the
+smallest. BIC charges more for each coefficient, so it keeps fewer.
+
+.. jupyter-execute::
+
+    from surpyval import penalty_path
+
+    path = penalty_path(CoxPH.fit_penalised, rossi['week'], rossi[cols],
+                        c=rossi['censored'], l1_ratio=1.0, n_penalties=10)
+    path.table().round(4)
+
+.. jupyter-execute::
+
+    chosen = path.best('bic')
+    print(round(path.best_penalizer('bic'), 4))
+    pd.Series(chosen.params, index=cols).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert path.best_penalizer('bic') >= path.best_penalizer('aic')
+    assert np.all(path.coefficients[0] == 0)
+
+``path.plot()`` draws each coefficient against the penalty, with the
+penalties AIC and BIC choose marked. The arguments after the fit are the
+fit's own (the data, ``tie_method``, ``strata``, ...); ``penalizers=`` gives
+the penalties instead of the default path, and ``penalty_factor=`` one
+factor per column (0 leaves a column unpenalised), as glmnet's
+``penalty.factor``. The chosen model is a penalised model like any other:
+no standard errors or bounds (choosing the penalty from the same data is
+one more reason for that). Cross-validation is not offered.
+
 The coefficients of these models are log hazard, odds or time ratios, which
 have no unit, so the penalty does not depend on the unit of time.
 ``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
 scale and the standardisation would both have to be weighted, and it
 refuses them rather than ignore them.
+
+
+Firth's penalty: Cox regression when a covariate separates the events
+---------------------------------------------------------------------
+
+Sometimes every event happens in one group: all the deaths are among the
+treated patients, or every failure is on the units from one supplier.
+Then the partial likelihood keeps rising as that group's hazard ratio
+grows, the ordinary Cox estimate is infinite, and ``CoxPH.fit`` warns "No
+finite maximum" (it names the coefficients and suggests ``fit_firth``).
+This is called *monotone likelihood*, or separation, and it is common in
+small studies with a rare event.
+
+``CoxPH.fit_firth`` fits the model with Firth's penalty (Heinze and
+Schemper 2001). In words: it adds a small term that grows very negative
+as the information about a coefficient vanishes, which is exactly what
+happens as a coefficient runs off to infinity, so the estimate stays
+finite. Where the data do pin the coefficients down, the term is tiny and
+the estimates barely move (it also removes the small-sample bias of the
+ordinary estimates). In symbols, the fit maximises
+
+.. math::
+
+    \ell^*(\beta) = \ell(\beta) + \tfrac{1}{2} \log |I(\beta)|,
+
+the partial log-likelihood :math:`\ell` plus half the log determinant of
+its information :math:`I` (Jeffreys' prior). Ties are Breslow's, as in
+R's ``coxphf``, and the fit agrees with ``coxphf`` to six digits.
+
+Unlike the ridge and lasso fits above, Firth's fit comes with inference.
+The standard errors are from the inverse of the information at the
+estimate. The intervals and p-values are by default from the *profile
+penalised likelihood*: they follow the likelihood's real, lopsided shape,
+which under separation is flat on one side, where a Wald interval
+(estimate plus or minus 1.96 standard errors) would be far too narrow on
+that side. ``model.firth`` holds them with the Wald ones beside them, and
+``likelihood_ratio_test()`` is the penalised likelihood-ratio test of
+every coefficient being 0. ``profile=False`` skips the profile searches
+and reports the Wald intervals and p-values.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import CoxPH
+
+    # Every death is in the group z1 = 1
+    x_sep = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    c_sep = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    Z_sep = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
+                      [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
+    firth = CoxPH.fit_firth(x_sep, Z_sep, c=c_sep)
+    firth
+
+.. jupyter-execute::
+
+    firth.likelihood_ratio_test()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert firth.maximum == 'verified', firth.maximum
+    assert np.all(np.isfinite(firth.firth.upper))
+
+``fit_firth`` takes delayed entry ``tl`` (so start-stop rows, as
+``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
+covariate the partial likelihood cannot estimate at all (a constant
+column, say), since the penalty has no value there, and it does not take
+weights ``w``. ``neg_ll()`` is the ordinary partial likelihood at the
+Firth estimate.
+
+A Firth fit gives no AIC or BIC: ``aic()``, ``bic()`` and ``aic_c()``
+raise an error that says why. The fit maximises the penalised
+likelihood, which is not a likelihood to compare models by, and at the
+penalised estimate the ordinary likelihood is not at its maximum, so a
+criterion from either would mislead. To compare models by AIC or BIC,
+refit them with ``CoxPH.fit``; to ask whether the covariates matter, use
+the penalised ``likelihood_ratio_test()``, as R's ``coxphf`` does.
 
 
 Model Selection
@@ -4398,7 +5160,7 @@ metrics live in :mod:`surpyval.metrics.validation` (importable from
 ``surpyval.metrics``). They take a matrix of predicted survival probabilities,
 so they work for any model; ``survival_probability`` builds that matrix from
 the parametric families, ``CoxPH``, ``AdditiveHazards`` and the
-``surpyval.beta.ml`` tree and forest (see :doc:`comparison_and_validation`).
+``surpyval.ml`` tree and forest (see :doc:`comparison_and_validation`).
 For a model
 whose ``sf`` takes one covariate vector at a time (``BuckleyJames``), stack
 ``model.sf(times, Z[i])`` row by row. A DataFrame of covariates is passed to
@@ -4482,6 +5244,67 @@ ignores the covariates entirely. The Cox model should score lower:
 
     assert ibs < ibs_km
 
+How sure are the scores, and is one model really better?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Brier score or an AUC from a few hundred subjects is itself an estimate:
+another test set would give a different number. Before saying that one model
+predicts better than another, ask whether the gap is larger than that noise.
+:func:`~surpyval.metrics.validation.score_predictions` answers both questions.
+It gives each score with a standard error and a confidence interval, and, when
+two or more models are scored on the same subjects, the difference between
+each pair with its own interval and a p-value. Because both models are scored
+on the same people, the comparison is *paired*: much of the noise is shared and
+cancels, so a difference can be clear even when the two models' intervals
+overlap.
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    result = score_predictions(
+        x_te, c_te, {"marginal KM": S_km, "Cox": S}, times
+    )
+    result.scores.round(4)
+
+.. jupyter-execute::
+
+    result.comparisons.round(4)
+
+Each row of ``comparisons`` is "model minus reference": a negative Brier or
+IBS difference and a positive AUC difference favour the model. Here the Cox
+model's integrated Brier score is clearly lower than the Kaplan-Meier curve's,
+and the AUC of the curve, which ranks nobody, is 0.5.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    ibs_row = result.comparisons.query("metric == 'ibs'").iloc[0]
+    assert ibs_row.difference < 0 and ibs_row.p_value < 0.001
+
+How the standard errors are worked out: each score is an average over the
+subjects of an IPCW term, so it moves by a known amount when one subject is
+added or removed, its *influence function* :math:`\mathrm{IF}_i`. The censoring
+weights :math:`1/\hat G` are estimated too, and the influence function
+includes how each subject moves :math:`\hat G` (the Kaplan-Meier of the
+censoring times, through its Nelson-Aalen expansion). Then
+
+.. math::
+    \mathrm{se} = \frac{\mathrm{sd}(\mathrm{IF})}{\sqrt n}, \qquad
+    \mathrm{se}(A - B) = \frac{\mathrm{sd}(\mathrm{IF}^A - \mathrm{IF}^B)}{\sqrt n},
+
+the interval is :math:`\text{estimate} \pm z_{1-\alpha/2}\,\mathrm{se}`
+(clipped to :math:`[0, 1]`), and the test of no difference is the Wald test
+:math:`2\Phi(-|A - B| / \mathrm{se}(A - B))`. For the AUC this is Blanche,
+Dartigues and Jacqmin-Gadda's (2013) influence function, as R's
+``timeROC(iid = TRUE)``; for the Brier score, Gerds and Schumacher's, as
+``riskRegression::Score(se.fit = TRUE)``; the IBS combines the Brier scores'
+with the same trapezoid weights as its estimate. The numbers agree with
+``Score`` to rounding (with and without tied times) and with ``timeROC`` on
+data without tied event times. The censoring distribution is estimated from
+the scored data, as ``Score`` does; there is no ``x_train`` here.
+
 Concordance
 ~~~~~~~~~~~
 
@@ -4528,6 +5351,24 @@ predictor for Buckley-James). The pairs are counted in
 Concordance only measures ranking; pair it with the Brier score, which also
 checks that the predicted probabilities are right.
 
+A C from a test set of a few dozen subjects is itself uncertain.
+``concordance_estimate`` gives it a standard error and a confidence interval
+(R's ``survival::concordance`` variance), and ``weighting="uno"`` with a
+horizon ``tau`` gives Uno's C, which weights each pair against the censoring
+so that the answer does not depend on how long follow-up was. To ask whether
+one model ranks better than another on the same subjects use
+``compare_concordance``, which accounts for the two C's sharing their
+subjects:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import compare_concordance
+
+    print(cox.concordance_estimate(x_te, c_te, Z_te))
+    print(cox.concordance_estimate(x_te, c_te, Z_te, weighting="uno",
+                                   tau=float(np.median(x_te))))
+    compare_concordance(x_te, c_te, Z_te @ cox.beta, Z_te[:, 0] * cox.beta[0])
+
 Survival trees and random survival forests (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4535,9 +5376,8 @@ When you do not know how the covariates act — thresholds, interactions, effect
 that only appear in combination — a tree-based predictor can find the structure
 itself. ``SurvivalTree`` recursively splits the data on one covariate at a time
 and fits a survival model in each leaf; ``RandomSurvivalForest`` averages many
-trees grown on bootstrap resamples. Both live in ``surpyval.beta.ml``: they
-are tested and usable, but their interface may still change (see
-:doc:`surpyval.beta`). The theory is in the :doc:`regression analysis` page.
+trees grown on bootstrap resamples. Both live in ``surpyval.ml`` (see
+:doc:`surpyval.ml`). The theory is in the :doc:`regression analysis` page.
 
 The simulated data below have a risk that depends on an *interaction*: units
 fail faster only when :math:`z_0 > 0.5` **and** :math:`z_1 < 0.5`; the third
@@ -4555,7 +5395,7 @@ truncation, at a much higher computational cost:
 
 .. jupyter-execute::
 
-    from surpyval.beta.ml import SurvivalTree, RandomSurvivalForest
+    from surpyval.ml import SurvivalTree, RandomSurvivalForest
 
     def make_tree_data(seed, n=300):
         r = np.random.default_rng(seed)
@@ -5060,7 +5900,7 @@ Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
 covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
 data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
-Cox model, and a stratified Cox model cannot be serialised at all. Be aware that
+Cox model (a stratified one included). Be aware that
 a serialised Buckley-James model contains its training data.
 
 The frailty model, survival trees and random survival forests serialise too —

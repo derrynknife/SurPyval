@@ -27,12 +27,14 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
-from ._concordance import ConcordanceMixin
+from ._concordance import ConcordanceMixin, ConcordanceResult
+from ._fit_skeleton import draws_by_row
 from ._partial_effects import PartialEffectsMixin
-from ._penalised import penalty_line
+from ._penalised import PenalisedModelMixin
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
+    step_draws,
     step_quantiles,
     unique_rows,
 )
@@ -40,7 +42,9 @@ from ._summary import (
     coefficient_names,
     coefficient_repr,
     coefficient_table,
+    firth_table,
 )
+from .life_at import AtCovariatesMixin, LifeAtCovariates
 from .regression_data import (
     LinearPredictorMixin,
     restore_covariate_meta,
@@ -50,10 +54,10 @@ from .regression_data import (
 if TYPE_CHECKING:
     import pandas as pd
 
-    from ._penalised import Penalty
-
 
 class SemiParametricRegressionModel(
+    AtCovariatesMixin,
+    PenalisedModelMixin,
     ConditionalSurvivalMixin,
     PartialEffectsMixin,
     InformationCriteriaMixin,
@@ -143,6 +147,10 @@ class SemiParametricRegressionModel(
     #: warnings say; ``"unknown"`` for a model restored from a dict saved
     #: without it.
     maximum: str = "unknown"
+    #: For a fit by ``CoxPH.fit_firth``, its intervals, tests and
+    #: penalised log-likelihoods (a ``FirthResult``, in
+    #: ``proportional_hazards.cox_firth``); ``None`` otherwise.
+    firth: Any = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -188,6 +196,9 @@ class SemiParametricRegressionModel(
     _weighted_cox: Any = None
     #: The columns of ``Z`` a weighted fit estimated (the others aliased).
     _weighted_kept: npt.NDArray | None = None
+    #: The cluster of each row of a weighted fit's likelihood (a weighted
+    #: time-varying fit's subjects), the default of robust_covariance().
+    _weighted_cluster: npt.NDArray | None = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -201,10 +212,9 @@ class SemiParametricRegressionModel(
     #: (#259 — used to align user-supplied cluster labels).
     tvc_subject_ids: npt.NDArray | None = None
     tvc_row_order: npt.NDArray | None = None
-    #: What a penalised fit (``CoxPH.fit_penalised``) penalised; ``None``
-    #: for a maximum partial likelihood fit. A penalised model has no
-    #: covariance, standard errors or tests.
-    penalty: Penalty | None = None
+    #: The running sums of the variance of the predicted cumulative
+    #: hazard, by stratum, kept by :meth:`cb` once computed.
+    _curve_cache: dict | None = None
 
     #: The model (``"Cox"``) and ``"Semi-Parametric"``, which the
     #: printout shows and ``to_dict`` stores.
@@ -237,6 +247,11 @@ class SemiParametricRegressionModel(
     def _partial_effects_width(self) -> int:
         return int(np.size(self.params))
 
+    def _covariate_width(self) -> int:
+        """The number of covariates a prediction takes, one per column of
+        ``Z`` (a time-varying-coefficient fit has more coefficients)."""
+        return int(np.asarray(self.beta).shape[0])
+
     def _partial_effects_rows(
         self,
     ) -> tuple[npt.NDArray, npt.NDArray] | str:
@@ -255,7 +270,7 @@ class SemiParametricRegressionModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def neg_ll(self, *beta: Any) -> float:
+    def neg_ll(self) -> float:
         """The negative partial log-likelihood at the fitted coefficients:
         a number, as every model's ``neg_ll()`` is (#604), so that
         :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
@@ -276,13 +291,6 @@ class SemiParametricRegressionModel(
         >>> round(model.log_likelihood, 3), round(model.aic(), 3)
         (-660.857, 1327.714)
         """
-        if beta:
-            # The function of the coefficients' old name says where it went
-            # (#653), rather than "takes 1 positional argument".
-            raise TypeError(
-                "neg_ll() takes no arguments: it is the fitted value; "
-                "neg_ll(beta) was removed in v0.24: use neg_ll_of(beta)."
-            )
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
@@ -333,10 +341,23 @@ class SemiParametricRegressionModel(
 
         return cox_likelihood_ratio_test(self)
 
+    def _refuse_ic(self, name: str) -> None:
+        # Firth's fit has no criteria (decided 5 Nov 2026): its estimate
+        # maximises the penalised likelihood, which does not compare
+        # models; the weighted refusal is the mixin's.
+        if self.firth is not None:
+            from .proportional_hazards.cox_firth import (
+                refuse_firth_information_criterion,
+            )
+
+            raise refuse_firth_information_criterion(name)
+        super()._refuse_ic(name)
+
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
-        if self.penalty is not None:
-            return float(self.penalty.effective_df)
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         # The estimated coefficients: an aliased one (nan) is not, as R's
         # logLik(coxph) counts sum(!is.na(coef)).
         return int(onp.isfinite(onp.asarray(self.params, float)).sum())
@@ -380,6 +401,182 @@ class SemiParametricRegressionModel(
         if data is None or self.is_tvc:
             return None
         return data["x"], data["c"], data["n"], data["Z"]
+
+    def concordance(
+        self,
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        Z: Any = None,
+        tie_tol: float = 1e-8,
+        ties: str = "therneau",
+        strata: npt.ArrayLike | None = None,
+        *,
+        weighting: str = "harrell",
+        tau: float | None = None,
+    ) -> float:
+        """Harrell's concordance index (C) of the model's risk scores,
+        the linear predictor :math:`\beta'Z`; see
+        :meth:`ConcordanceMixin.concordance
+        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance>`
+        for the arguments and the treatment of ties.
+
+        For a stratified fit the pairs are formed within each stratum
+        only, and pooled: C is the concordant pairs of every stratum over
+        their usable pairs, as R's ``concordance`` of a stratified
+        ``coxph`` gives it (each stratum has its own baseline, so a risk
+        score ranks subjects only within its stratum). With no arguments
+        it scores the data the model was fitted to; to score other data
+        pass ``strata``, a stratum label per row, with ``x``, ``c`` and
+        ``Z``. ``strata`` is for a stratified model only. Uno's weighting
+        (``weighting="uno"``) and a horizon ``tau`` are for an unstratified
+        model.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.datasets import load_lung
+        >>> lung = load_lung().dropna(subset=["ph.ecog"])
+        >>> lung["censored"] = 1 - lung["status"]
+        >>> model = sp.CoxPH.fit_from_df(
+        ...     lung, x_col="time", c_col="censored",
+        ...     Z_cols=["age", "ph.ecog"], strata_col="sex",
+        ... )
+        >>> round(model.concordance(), 4)
+        0.6058
+        """
+        if not self.is_stratified:
+            if strata is not None:
+                raise ValueError(
+                    "'strata' is for a stratified Cox model (fitted with "
+                    "strata=); this model has one baseline, so leave "
+                    "'strata' out."
+                )
+            return super().concordance(
+                x, c, Z, tie_tol, ties, weighting=weighting, tau=tau
+            )
+        if weighting != "harrell" or tau is not None:
+            raise ValueError(self._STRATIFIED_ESTIMATE)
+        return self._stratified_concordance(x, c, Z, tie_tol, ties, strata)
+
+    _STRATIFIED_ESTIMATE = (
+        "Uno's weighting, a horizon 'tau' and the standard error of the "
+        "concordance are not available for a stratified Cox model: call "
+        "concordance() with the defaults for its pooled Harrell's C, or "
+        "score each stratum's rows with "
+        "surpyval.metrics.concordance_estimate."
+    )
+
+    def concordance_estimate(
+        self,
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        Z: Any = None,
+        *,
+        weighting: str = "harrell",
+        tau: float | None = None,
+        alpha: float = 0.05,
+        tie_tol: float = 1e-8,
+        ties: str = "therneau",
+        ci_method: str = "normal",
+    ) -> ConcordanceResult:
+        """The concordance index with its standard error and confidence
+        interval; see :meth:`ConcordanceMixin.concordance_estimate
+        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance_estimate>`.
+        Not available for a stratified model (it raises ``ValueError``).
+        """
+        if self.is_stratified:
+            raise ValueError(self._STRATIFIED_ESTIMATE)
+        return super().concordance_estimate(
+            x,
+            c,
+            Z,
+            weighting=weighting,
+            tau=tau,
+            alpha=alpha,
+            tie_tol=tie_tol,
+            ties=ties,
+            ci_method=ci_method,
+        )
+
+    def _stratified_concordance(
+        self,
+        x: npt.ArrayLike | None,
+        c: npt.ArrayLike | None,
+        Z: Any,
+        tie_tol: float,
+        ties: str,
+        strata: npt.ArrayLike | None,
+    ) -> float:
+        """The pooled within-stratum concordance (see :meth:`concordance`)."""
+        from surpyval.metrics.concordance import concordance_counts
+
+        given = [v is not None for v in (x, c, Z, strata)]
+        if any(given) and not all(given):
+            raise ValueError(
+                "Pass x, c, Z and strata together to score new data with "
+                "a stratified Cox model, or none of them to score the data "
+                "it was fitted to."
+            )
+        if all(given):
+            x_arr = onp.asarray(x, dtype=float).ravel()
+            c_arr = onp.asarray(c).ravel()
+            Z_arr = onp.asarray(self._prepare_Z(Z), dtype=float).reshape(
+                x_arr.size, -1
+            )
+            labels = onp.asarray(strata, dtype=object).ravel()
+            if labels.size != x_arr.size:
+                raise ValueError(
+                    "'strata' must have a label for each row: got {} "
+                    "labels for {} rows".format(labels.size, x_arr.size)
+                )
+            unknown = [
+                s for s in set(labels) if s not in self.strata_baselines
+            ]
+            if unknown:
+                raise ValueError(
+                    "unknown stratum {!r}; known strata are {}".format(
+                        unknown[0], self.strata_labels
+                    )
+                )
+            n_arr = onp.ones(x_arr.size)
+            groups = [labels == s for s in self.strata_labels]
+        else:
+            data = getattr(self, "_fit_data", None)
+            if data is None or self.is_tvc or "strata" not in data:
+                raise ValueError(
+                    "This stratified Cox model does not keep the data it "
+                    "was fitted to (it was restored with from_dict, fitted "
+                    "with time-varying covariates or penalised); pass x, "
+                    "c, Z and strata to score data."
+                )
+            x_arr = onp.asarray(data["x"], dtype=float)
+            c_arr = onp.asarray(data["c"])
+            Z_arr = onp.asarray(data["Z"], dtype=float)
+            n_arr = onp.asarray(data["n"], dtype=float)
+            codes = onp.asarray(data["strata"])
+            groups = [codes == k for k in range(len(self.strata_labels))]
+        risk = onp.asarray(self._log_risk(Z_arr), dtype=float)
+        if onp.isnan(risk).any():
+            return float("nan")
+        concordant = usable = 0.0
+        for rows in groups:
+            if not rows.any():
+                continue
+            take = onp.repeat(onp.flatnonzero(rows), n_arr[rows].astype(int))
+            counts = concordance_counts(
+                x_arr[take], c_arr[take], risk[take], tie_tol, ties
+            )
+            if counts is None:
+                return float("nan")
+            concordant += counts[0]
+            usable += counts[1]
+        if usable == 0:
+            raise ValueError(
+                "No usable pairs within any stratum: the concordance index "
+                "needs, in some stratum, an event that is earlier than "
+                "another subject's time, or at the time of a censored one."
+            )
+        return float(concordant / usable)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -430,22 +627,34 @@ class SemiParametricRegressionModel(
         tie_method = getattr(self, "tie_method", None)
         if tie_method is not None:
             out += f"\nTie method          : {tie_method}"
-        if self.penalty is not None:
-            out += "\nPenalty             : " + penalty_line(self.penalty)
+        out += self._penalty_printout()
+        if self.firth is not None:
+            out += "\nPenalty             : " + self.firth.line()
+            out += "\nAIC and BIC         : " + self.firth.ic_line()
         if self.weighted:
+            # A penalised fit has no covariance, robust or not
             out += (
                 "\nWeights             : effective sample size "
-                f"{self.effective_n:.4g}; robust covariance"
+                f"{self.effective_n:.4g}"
+                + ("; robust covariance" if self.penalty is None else "")
             )
+        kind = "Wald"
+        alpha = 0.05
+        if self.firth is not None:
+            alpha = self.firth.alpha_ci
+            if self.firth.profile:
+                kind = "profile penalised-likelihood"
         out += (
-            "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
-            "95% intervals\n"
+            "\nCoefficients        : exp(coef) is the hazard ratio; "
+            "{} {:g}% intervals\n".format(kind, 100 * (1 - alpha))
         )
-        return out + coefficient_repr(self.summary()) + "\n"
+        return (
+            out + coefficient_repr(self.summary(alpha_ci=alpha), alpha) + "\n"
+        )
 
     def summary(
         self,
-        alpha_ci: float = 0.05,
+        alpha_ci: float | None = None,
         robust: bool = False,
         cluster: npt.ArrayLike | None = None,
     ) -> pd.DataFrame:
@@ -456,12 +665,17 @@ class SemiParametricRegressionModel(
         coefficient, the hazard ratio ``exp(coef)``, the standard error, a
         two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
         statistic ``z`` and its two-sided p-value. An aliased coefficient
-        (#476) is ``nan`` throughout.
+        (#476) is ``nan`` throughout. For a fit by ``CoxPH.fit_firth`` the
+        intervals and ``p`` are its own (``model.firth``: by the profile
+        penalised likelihood unless fitted with ``profile=False``), at the
+        level it was fitted at; ``z`` stays Wald's.
 
         Parameters
         ----------
         alpha_ci : float, optional
-            The intervals' total tail probability. Default 0.05.
+            The intervals' total tail probability. Default 0.05 (for a
+            Firth fit, the level it was fitted at; another level raises a
+            ``ValueError``: refit with that ``alpha_ci``).
         robust : bool, optional
             Use the cluster-robust (sandwich) standard errors of
             :meth:`robust_summary` instead of the model-based ones.
@@ -491,9 +705,21 @@ class SemiParametricRegressionModel(
         fin       -0.3279     0.7204    0.1899  0.0841
         age       -0.0715     0.9310    0.0209  0.0006
         """
+        firth = self.firth
+        if alpha_ci is None:
+            alpha_ci = 0.05 if firth is None else firth.alpha_ci
         check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
+        if firth is not None and not robust:
+            if not abs(alpha_ci - firth.alpha_ci) < 1e-12:
+                raise ValueError(
+                    "This Firth fit's intervals are at alpha_ci={:g}; the "
+                    "profile penalised-likelihood bounds at another level "
+                    "need a refit: CoxPH.fit_firth(..., alpha_ci={:g})."
+                    "".format(firth.alpha_ci, alpha_ci)
+                )
+            return firth_table(names, beta, self.standard_errors(), firth)
         if robust:
             se = np.asarray(self.robust_summary(cluster)["se"], dtype=float)
             return coefficient_table(names, beta, se, alpha_ci)
@@ -528,15 +754,18 @@ class SemiParametricRegressionModel(
         ``res``) are not stored; the fitted ``neg_ll()`` and the sample
         size of ``bic()`` (``"ic_n"``) are.
 
+        A stratified fit stores each stratum's baseline under
+        ``"strata"``, a list of ``{"label", "x", "r", "d", "h0", "H0"}`` in
+        the order of ``strata_labels`` (a label as JSON keeps it: a numpy
+        value as the plain value it holds). Such a dict is schema 4, which
+        an older reader refuses rather than reading the first stratum's
+        baseline as the model's. Its rows are not stored, so the restored
+        model predicts but has no residuals or ``diagnose()``.
+
         See Also
         --------
         from_dict, to_json, from_json
         """
-        if self.is_stratified:
-            raise NotImplementedError(
-                "Serialisation of stratified Cox models is not supported "
-                "(each stratum carries its own baseline hazard)."
-            )
         out: dict[str, Any] = {
             "model": "SemiParametricRegressionModel",
             "kind": self.kind,
@@ -552,6 +781,21 @@ class SemiParametricRegressionModel(
             "baseline_method": self.baseline_method,
             "is_tvc": bool(self.is_tvc),
         }
+        if self.is_stratified:
+            from surpyval.utils.data_json import label
+
+            out["strata"] = [
+                {
+                    "label": label(s),
+                    **{
+                        key: np.asarray(
+                            self.strata_baselines[s][key], dtype=float
+                        ).tolist()
+                        for key in ("x", "r", "d", "h0", "H0")
+                    },
+                }
+                for s in self.strata_labels
+            ]
         if np.any(self._center()):
             # A baseline at the covariate means (center=True, #459): stored,
             # which makes the dict schema 2, as a schema-1 reader would read
@@ -581,14 +825,16 @@ class SemiParametricRegressionModel(
         if ic_n is not None:
             out["ic_n"] = ic_n
         out.update(maximum_entry(self.maximum))
-        if self.penalty is not None:
-            out["penalty"] = self.penalty.to_dict()
+        out.update(self._penalty_entry())
+        if self.firth is not None:
+            # Read by a reader without it as the plain Cox model it is.
+            out["firth"] = self.firth.to_dict()
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
         if self._data_repr():
             out["data_summary"] = self._data_repr()
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
+            # Schema 4: a reader without weights would offer the
             # information criteria.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
@@ -623,6 +869,20 @@ class SemiParametricRegressionModel(
         out.d = onp.array(model_dict["d"], dtype=float)
         out.h0 = onp.array(model_dict["h0"], dtype=float)
         out.H0 = onp.array(model_dict["H0"], dtype=float)
+        if model_dict.get("strata") is not None:
+            from surpyval.utils.data_json import label_back
+
+            out.is_stratified = True
+            out.strata_labels = [
+                label_back(e["label"]) for e in model_dict["strata"]
+            ]
+            out.strata_baselines = {
+                label_back(e["label"]): {
+                    key: onp.array(e[key], dtype=float)
+                    for key in ("x", "r", "d", "h0", "H0")
+                }
+                for e in model_dict["strata"]
+            }
         # phi is fully determined by beta and center (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
@@ -655,10 +915,11 @@ class SemiParametricRegressionModel(
                 break
         out._ic_n = cls._restored_ic_n(model_dict)
         out.maximum = restored_maximum(model_dict)
-        if "penalty" in model_dict:
-            from ._penalised import Penalty
+        out._restore_penalty(model_dict)
+        if model_dict.get("firth") is not None:
+            from .proportional_hazards.cox_firth import FirthResult
 
-            out.penalty = Penalty.from_dict(model_dict["penalty"])
+            out.firth = FirthResult.from_dict(model_dict["firth"])
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -735,9 +996,7 @@ class SemiParametricRegressionModel(
         or on the grid of every row by every time, ``(len(Z), len(x))``."""
         base = self._baseline_step(bx, values, x)
         if grid:
-            rows = covariate_rows(
-                self._prepare_Z(Z), np.asarray(self.beta).shape[0]
-            )
+            rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
             log_risk = self._log_risk(rows)
             return self._times_risk(base[None, :], log_risk[:, None])
         log_risk = self._log_phi(Z)
@@ -918,14 +1177,342 @@ class SemiParametricRegressionModel(
         np.float64(nan)
         """
         bx, _, _ = self._baseline_arrays(stratum)
-        rows = covariate_rows(
-            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
-        )
+        rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
         u, rows, shape = paired_probabilities(p, rows, grid)
         uniq, which = unique_rows(rows)
         F = np.atleast_2d(self.ff(bx, uniq, stratum, grid=True))
         out = step_quantiles(F[which], bx, u)
         return out if shape is None else out.reshape(shape)
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike | pd.DataFrame,
+        random_state: Any = None,
+        *,
+        stratum: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z`` from the
+        fitted model, by inverse transform on its step survival curve: a
+        draw ``U`` of the survival is the first baseline event time at
+        which the row's cumulative hazard ``H0(x) exp(beta'Z)`` reaches
+        ``-log(U)``.
+
+        The estimated curve stops at the last baseline time, where it is
+        above 0 when the data end censored; a draw beyond it is ``inf``
+        (the unit outlives the data), as often as ``sf`` at the last
+        time says. Censor the draws at a time of your choosing to use
+        them as data. ``stratum=`` selects the baseline of a stratified
+        fit (a keyword, so the arguments line up with the other
+        regressions' ``random(size, Z, random_state)``); a missing
+        covariate or stratum label gives ``nan`` draws.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row, as the parametric regressions' ``random``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> draws, rows = model.random(5, [[0, 10]], random_state=1)
+        >>> draws
+        array([49.,  8., inf,  8., inf])
+
+        About half of such men are not arrested within the year (week
+        52, the last time observed), and about half of the draws are
+        beyond it:
+
+        >>> model.sf(52, [0, 10]).round(3)
+        np.float64(0.475)
+        >>> draws, _ = model.random(10000, [[0, 10]], random_state=1)
+        >>> float(np.isinf(draws).mean())
+        0.4715
+        """
+        bx, _, _ = self._baseline_arrays(stratum)
+        rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            H = np.atleast_2d(self.Hf(bx, row[None, :], stratum, grid=True))
+            return step_draws(H[0], bx, U)
+
+        return draws_by_row(size, rows, random_state, invert)
+
+    def at(self, Z: Any, stratum: Any = None) -> LifeAtCovariates:
+        """
+        The life of a unit with the covariates ``Z`` (and, for a
+        stratified fit, in ``stratum``), as a plain life model: its
+        ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``random`` and
+        ``cb`` take times (or probabilities) only, each this model's own
+        at ``Z`` (``at(Z).sf(x)`` is ``sf(x, Z)``). The baseline is a step
+        function that stops at the last observed time, so it has no
+        ``mean``; use ``qf(0.5)``.
+
+        Parameters
+        ----------
+        Z : array like or DataFrame
+            One covariate row; several are refused (call it once per
+            row).
+        stratum : object, optional
+            The stratum of a stratified fit.
+
+        Returns
+        -------
+        LifeAtCovariates
+            A view on this model at ``Z``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.at([0, 10]).sf(52).round(3)
+        np.float64(0.475)
+        """
+        return LifeAtCovariates(self, Z, stratum=stratum)
+
+    @keeps_query_shape
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike | pd.DataFrame,
+        stratum: Any = None,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        bound_type: str = "log-log",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Pointwise confidence bounds on the predicted survival ``sf``,
+        failure probability ``ff`` or cumulative hazard ``Hf`` of a unit
+        with covariates ``Z``: R's ``survfit(fit, newdata)`` bounds.
+
+        The predicted curve is uncertain for two reasons: the baseline
+        hazard is estimated from the deaths in the data, and so are the
+        coefficients that move it to ``Z``. The standard error of the
+        cumulative hazard :math:`\hat H(t \mid Z)` adds the two (Tsiatis
+        1981; Link 1984):
+
+        .. math::
+            \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2 \beta' (Z - c)}
+            \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2}
+            + q(t)' V q(t) \Big], \quad
+            q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\,
+            d\hat H_0(s),
+
+        :math:`S_0(s)` the sum of :math:`n\,w\,e^{\beta'(Z_i - c)}` over
+        the units at risk at the event time :math:`s`, :math:`\bar Z(s)`
+        the covariates' mean over them, weighted the same way,
+        :math:`dN(s)` its (weighted) deaths and :math:`V` the
+        coefficients' :meth:`covariance` (the robust one of a fit with
+        weights ``w``). After an Efron fit each time's tied deaths are
+        spread over the shrinking risk sets of Efron's approximation, as
+        the baseline is. This is the ``std.err`` of R's ``survfit.coxph``,
+        with which the bounds agree to rounding (at its ``conf.type``,
+        ``bound_type`` here).
+
+        The bound is then a normal one on a scale set by ``bound_type``,
+        R's ``conf.type``:
+
+        - ``"log-log"`` (the default): on :math:`\log H`, :math:`H
+          e^{\pm z\,\mathrm{se} / H}`, which keeps both bounds inside
+          (0, 1). It is the scale of the Kaplan-Meier, Nelson-Aalen and
+          Aalen bounds (their ``bound_type="exp"``, also accepted), so
+          curves drawn together get bounds by the same rule;
+        - ``"log"`` (R's default ``conf.type``, to match R's
+          ``survfit`` printout): on :math:`\log S = -H`,
+          :math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1;
+        - ``"plain"``: on :math:`S` itself, :math:`S \pm z S\,
+          \mathrm{se}`, cut to [0, 1] (``"normal"`` is also accepted).
+
+        The bounds on ``ff`` are one minus those on ``sf``, and those on
+        ``Hf`` are minus their logarithm. Before the first event time the
+        curve is known (1) and both bounds are the estimate.
+
+        Only Wald bounds are offered: the baseline has no likelihood of
+        its own for a likelihood-ratio bound and no bootstrap is built
+        (refit the model to resampled rows for one). The bounds need the
+        data the model was fitted to, so a model restored by
+        ``from_dict`` refuses them (refit it), as does a penalised fit,
+        which has no covariance.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times.
+        Z : array like or pandas.DataFrame
+            The covariates: one row, used at every ``x``, or one row per
+            ``x``, paired in the order given, as :meth:`sf` takes them.
+        stratum : optional
+            The stratum of a stratified fit, whose baseline the curve is
+            on, as for :meth:`sf`.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are aliases of
+            ``'sf'`` and ``'ff'``). Default ``'sf'``. The baseline is a
+            step function, so ``hf`` and ``df`` are its jumps and have no
+            bounds here.
+        alpha_ci : float, optional
+            The total tail probability. Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis. A
+            one-sided bound puts all of ``alpha_ci`` on one side.
+        bound_type : {'log-log', 'log', 'plain'}, optional
+            The scale of the normal bound, as above. Default
+            ``'log-log'``; ``'log'`` gives R's ``survfit`` bounds.
+        method : 'wald', optional
+            The only method.
+
+        Returns
+        -------
+        numpy array
+            The bounds, with the shape of ``x`` (and a last axis of 2 for
+            two-sided bounds).
+
+        Examples
+        --------
+        The chance of no arrest in the first year, with 95% bounds, for a
+        25-year-old with three prior convictions, without and with
+        financial aid (on the log-log scale, the default):
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age", "prio"]].values, c=c)
+        >>> model.cb(52, [0, 25, 3]).round(4)
+        array([0.6575, 0.7807])
+        >>> model.cb(52, [1, 25, 3]).round(4)
+        array([0.736 , 0.8444])
+
+        The log bounds, which R's ``survfit(fit, newdata)`` prints:
+
+        >>> model.cb(52, [1, 25, 3], bound_type="log").round(4)
+        array([0.7442, 0.8521])
+        """
+        from surpyval.utils.validation import check_option
+
+        from .proportional_hazards._curve_variance import (
+            cumulative_hazard_se,
+            survival_bounds,
+        )
+
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        check_option("bound", bound, ("two-sided", "lower", "upper"))
+        check_option(
+            "bound_type",
+            bound_type,
+            ("log", "log-log", "plain", "exp", "normal"),
+        )
+        bound_type = {"exp": "log-log", "normal": "plain"}.get(
+            bound_type, bound_type
+        )
+        if method != "wald":
+            raise ValueError(
+                "The Cox model's predicted curves have Wald bounds only "
+                "(method='wald'): the baseline has no likelihood for a "
+                "likelihood-ratio bound and no bootstrap is built; refit "
+                "the model to resampled rows for one. Got "
+                "method={!r}.".format(method)
+            )
+        check_alpha_ci(alpha_ci)
+        # A missing stratum label predicts nan, as sf does: the bounds of
+        # the first stratum's curve only give the output its shape.
+        missing = self._missing_stratum(stratum)
+        parts = self._curve_parts(
+            self.strata_labels[0] if missing else stratum
+        )
+        covariance = self.covariance()
+
+        t = onp.atleast_1d(onp.asarray(x, dtype=float)).ravel()
+        H = onp.atleast_1d(onp.asarray(self.Hf(t, Z, stratum), dtype=float))
+        rows = covariate_rows(self._prepare_Z(Z), onp.size(self.params))
+        log_risk = onp.atleast_1d(onp.asarray(self._log_risk(rows), float))
+        size = max(t.size, log_risk.size)
+        t = onp.broadcast_to(t, (size,))
+        rows = onp.broadcast_to(rows, (size, rows.shape[1]))
+        log_risk = onp.broadcast_to(log_risk, (size,))
+        H = onp.broadcast_to(H, (size,))
+        se = cumulative_hazard_se(
+            parts, t, rows, log_risk, self._center(), covariance
+        )
+        if missing:
+            se = onp.full(se.shape, onp.nan)
+
+        if bound == "two-sided":
+            z = norm.isf(alpha_ci / 2)
+        else:
+            z = norm.isf(alpha_ci)
+        H_lo, H_hi = survival_bounds(H, se, z, bound_type)
+        if bound != "two-sided":
+            # sf falls as H rises: its lower bound is H's upper one
+            upper_H = (bound == "upper") != (on == "sf")
+            H_lo = H_hi = H_hi if upper_H else H_lo
+        if on == "Hf":
+            lo, hi = H_lo, H_hi
+        elif on == "sf":
+            lo, hi = onp.exp(-H_hi), onp.exp(-H_lo)
+        else:
+            lo, hi = -onp.expm1(-H_lo), -onp.expm1(-H_hi)
+        if bound == "two-sided":
+            return onp.stack([lo, hi], axis=-1)
+        return lo
+
+    def _curve_parts(self, stratum: Any) -> dict:
+        """The running sums of the variance of the predicted cumulative
+        hazard in ``stratum`` (see
+        ``proportional_hazards._curve_variance``), computed from the
+        fitted data once and kept."""
+        from .proportional_hazards._curve_variance import curve_components
+
+        self._refuse_if_penalised()
+        data = getattr(self, "_fit_data", None)
+        mean = getattr(self, "_fit_center", None)
+        if not data or mean is None:
+            raise ValueError(
+                "The confidence bounds on a Cox model's predicted curve "
+                "(cb) need the data it was fitted to, which a model "
+                "restored by from_dict does not keep. Refit the model to "
+                "its data for them."
+            )
+        # Checks the stratum, as the predictions do
+        self._baseline_arrays(stratum)
+        key = stratum if self.is_stratified else None
+        cache = self.__dict__.get("_curve_cache")
+        if cache is None:
+            cache = self._curve_cache = {}
+        if key in cache:
+            return cache[key]
+        take = slice(None)
+        if self.is_stratified:
+            code = list(self.strata_labels).index(stratum)
+            take = onp.asarray(data["strata"]) == code
+        tl = data.get("tl")
+        w = data.get("w")
+        parts = curve_components(
+            onp.asarray(data["x"], float)[take],
+            onp.asarray(data["c"])[take],
+            onp.asarray(data["n"], float)[take],
+            None if w is None else onp.asarray(w, float)[take],
+            None if tl is None else onp.asarray(tl, float)[take],
+            onp.asarray(data["Z"], float)[take],
+            self._coef(),
+            onp.asarray(mean, float),
+            self._center(),
+            str(self.tie_method).lower(),
+        )
+        cache[key] = parts
+        return parts
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """
@@ -1072,6 +1659,8 @@ class SemiParametricRegressionModel(
             # An aliased coefficient (nan) is not estimated: the sandwich
             # is of the others, with nan rows and columns at it.
             sub = lik if kept.size == p else lik.columns(kept)
+            if cluster is None:
+                cluster = self._weighted_cluster
             out = onp.full((p, p), onp.nan)
             if kept.size:
                 b = beta[kept]
@@ -1091,14 +1680,6 @@ class SemiParametricRegressionModel(
         from .proportional_hazards.diagnostics import robust_covariance
 
         return robust_covariance(self, cluster)
-
-    def _refuse_if_penalised(self) -> None:
-        """Raise for a penalised model, which has no covariance, standard
-        errors or tests (:mod:`.._penalised`)."""
-        if self.penalty is not None:
-            from ._penalised import no_inference_error
-
-            raise no_inference_error(self.penalty)
 
     def robust_summary(self, cluster: npt.ArrayLike | None = None) -> dict:
         """
@@ -1459,32 +2040,26 @@ class SemiParametricRegressionModel(
         True
         """
         from .tvc_path import CovariatePath
+        from .tvc_schedule import (
+            given_covariates,
+            less_at_given,
+            survival_given,
+        )
 
         g = None if given is None else float(given)
-        if g is not None and not np.isnan(g):
-            # Given an age, the covariates need only start by then (#962).
-            from .tvc_schedule import as_covariate_path
-
-            names = getattr(self, "feature_names", None)
-            Z, xl = as_covariate_path(Z, xl, names, given=g), None
+        # Given an age, the covariates need only start by then (#962).
+        names = getattr(self, "feature_names", None)
+        Z, xl = given_covariates(Z, xl, names, g)
         if isinstance(Z, CovariatePath) and g is not None and not np.isnan(g):
             # Summed from given on.
             H = self._hf_tvc(x, Z, xl, stratum, given=g)
         else:
-            H = self._hf_tvc(x, Z, xl, stratum)
-            if g is not None:
-                if np.isnan(g):
-                    # A missing conditioning age: nothing is known.
-                    H = np.full(np.shape(H), np.nan)
-                else:
-                    H = H - self._hf_tvc(g, Z, xl, stratum)
-        if g is not None and not np.isnan(g):
-            # Given survival to g, survival to any x <= g is certain: the
-            # difference H(x) - H(g) is not a cumulative hazard there, and
-            # gave a "survival" above 1 (#523).
-            xq = np.atleast_1d(np.asarray(x, dtype=float))
-            H = np.where(xq <= g, 0.0, H)
-        return np.exp(-H)
+            H = less_at_given(
+                self._hf_tvc(x, Z, xl, stratum),
+                g,
+                lambda t: self._hf_tvc(t, Z, xl, stratum),
+            )
+        return survival_given(x, H, g)
 
 
 def _check_jumps_covered(

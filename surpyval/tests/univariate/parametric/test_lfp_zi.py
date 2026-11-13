@@ -392,7 +392,9 @@ class TestLFPTruncation:
 
 # ---------------------------------------------------------------------------
 # #548: the zero-inflation mass sits at 0, so a left truncation below 0
-# truncates nothing, and one at 0 excludes the mass.
+# truncates nothing. A window that opens at 0 holds the mass too: an
+# interval [0, t] is "failed by t", as left censoring at t, and a
+# truncation at 0 is no truncation (as in ``ZeroInflated``).
 # ---------------------------------------------------------------------------
 
 
@@ -423,15 +425,24 @@ def test_548_truncation_below_zero_is_no_truncation(structural, tl):
 
 
 def test_548_window_counts_the_mass_from_zero():
-    # The likelihood's window (lo, hi]: the mass f0 at 0 is inside
-    # (-1, 5] and outside (0, 5], as in the fitted model's ff
+    # The likelihood's window: the mass f0 at 0 is inside a window that
+    # opens at or below 0 ((-1, 5] and [0, 5]) and outside one that opens
+    # above it ((1, 5]); the fitted model's ff gives the rest
     model = Weibull.from_params([10, 1.5], f0=0.2)
     params = (10, 1.5, 0.0, 0.2, 1.0)
-    for lo, hi in [(-1.0, 5.0), (0.0, 5.0), (-1.0, np.inf), (0.0, np.inf)]:
+    for lo, hi in [
+        (-1.0, 5.0),
+        (0.0, 5.0),
+        (1.0, 5.0),
+        (-1.0, np.inf),
+        (0.0, np.inf),
+        (1.0, np.inf),
+    ]:
         log_window = Weibull.ll_interval_or_truncated(
             np.array([lo]), np.array([hi]), np.array([1]), *params
         )
-        expected = (1.0 if np.isinf(hi) else model.ff(hi)) - model.ff(lo)
+        below = model.ff(lo) if lo > 0 else 0.0
+        expected = (1.0 if np.isinf(hi) else model.ff(hi)) - below
         assert np.exp(log_window) == pytest.approx(expected, rel=1e-12)
     assert model.ff(-1.0) == 0.0
     assert model.ff(0.0) == pytest.approx(0.2)
@@ -660,3 +671,33 @@ def test_zi_quantile_cb_within_the_mass_at_zero_is_zero_without_a_warning():
     out = no_warnings(model.quantile_cb, [0.05, 0.5])
     np.testing.assert_array_equal(out[0], [0.0, 0.0])
     assert 0 < out[1, 0] < model.qf(0.5) < out[1, 1]
+
+
+_AT_BOUND = "lfp_p is at its bound of 1"
+
+
+def test_lfp_repr_notes_a_proportion_fitted_at_its_bound():
+    # Every unit fails: the plain model wins and lfp_p is fitted at 1.
+    x = Weibull.random(30, 10, 2, random_state=1)
+    model = Weibull.fit(x, lfp=True)
+    assert 1 - model.lfp_p < 1e-5
+    text = repr(model)
+    assert _AT_BOUND in text
+    assert "fit without lfp=True" in text
+
+
+def test_lfp_repr_has_no_bound_note_for_a_proportion_below_1():
+    # Many units outlast the failures: a proportion well below 1.
+    x = np.r_[Weibull.random(30, 10, 2, random_state=1), [40.0] * 20]
+    c = np.r_[np.zeros(30), np.ones(20)]
+    model = Weibull.fit(x, c=c, lfp=True)
+    assert model.lfp_p < 0.9
+    assert _AT_BOUND not in repr(model)
+
+
+def test_lfp_bound_note_only_for_fitted_models():
+    # A proportion of 1 given by hand is not a fit at the bound, and a
+    # model without lfp has no proportion to note.
+    assert _AT_BOUND not in repr(Weibull.from_params([10, 2], lfp_p=1.0))
+    plain = Weibull.fit(Weibull.random(30, 10, 2, random_state=1))
+    assert _AT_BOUND not in repr(plain)

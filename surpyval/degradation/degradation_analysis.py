@@ -39,6 +39,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
 from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
+from surpyval.utils.readings_entry import readings_column, takes_readings
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
@@ -156,19 +157,20 @@ class DegradationAnalysis_(FitterRepr):
     fitter_kind = "degradation fitter"
 
     @takes_unit
+    @takes_readings
     def fit(
         self,
-        x: npt.ArrayLike,
-        y: npt.ArrayLike,
-        i: npt.ArrayLike,
-        threshold: float,
-        path: "str | PathModel" = "linear",
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
+        path: str | PathModel = "linear",
         distribution: Any = Weibull,
         how: str = "MLE",
         population_method: str = "moments",
         Z: npt.ArrayLike | None = None,
-        links: "dict[str, str] | None" = None,
-        acceleration: "str | None" = None,
+        links: dict[str, str] | None = None,
+        acceleration: str | None = None,
         stress_ref: npt.ArrayLike | None = None,
     ) -> DegradationModel:
         """
@@ -176,16 +178,25 @@ class DegradationAnalysis_(FitterRepr):
 
         Parameters
         ----------
-        x : array like
-            Times at which the degradation measurements were taken.
+        x : array like, Measurements or SurpyvalData
+            Times at which the degradation measurements were taken; or
+            the readings themselves, as a
+            :class:`~surpyval.Measurements` (one measurement,
+            ``{i: {x: value}}``) or a :class:`~surpyval.SurpyvalData`
+            holding them as ``data.m``, with ``y``, ``i`` and ``Z`` left
+            out. A SurpyvalData's covariates ``Z`` are each unit's
+            stress, held over all its readings; its life times and
+            censoring are not used (a unit fails where its path reaches
+            ``threshold``). See "From measurements" in the degradation
+            documentation.
         y : array like
-            The degradation measurements.
+            The degradation measurements (with arrays).
         i : array like
             The unit each measurement belongs to. Must have the same
-            length as ``x`` and ``y``.
+            length as ``x`` and ``y`` (with arrays).
         threshold : float
             The degradation level at which a unit is defined to have
-            failed.
+            failed. Required.
         path : str or PathModel, optional
             The degradation path model fitted to each unit: one of
             ``"linear"`` (default), ``"quadratic"``, ``"exponential"``,
@@ -329,7 +340,7 @@ class DegradationAnalysis_(FitterRepr):
             if Z is None or acceleration == "clock"
             else self._handle_Z(Z, i_arr, units)
         )
-        linked: "LinkedPathModel | None" = None
+        linked: LinkedPathModel | None = None
         if links is not None:
             if Z_units is None:
                 raise ValueError(
@@ -462,7 +473,7 @@ class DegradationAnalysis_(FitterRepr):
         threshold: float,
         population_method: str,
         i_arr: npt.NDArray,
-        acceleration: "str | None",
+        acceleration: str | None,
         stress_ref: Any,
     ) -> float:
         """Check ``fit``'s scalar options; the threshold as a float."""
@@ -502,8 +513,8 @@ class DegradationAnalysis_(FitterRepr):
         units: npt.NDArray,
         path_model: PathModel,
         threshold: float,
-        linked: "LinkedPathModel | None",
-        kept: "dict | None",
+        linked: LinkedPathModel | None,
+        kept: dict | None,
     ) -> _UnitFits:
         """Fit the path model to each unit, and each path's crossing.
 
@@ -598,7 +609,7 @@ class DegradationAnalysis_(FitterRepr):
         population: _Population,
         path_model: PathModel,
         y_arr: npt.NDArray,
-        clock_population: "tuple | None",
+        clock_population: tuple | None,
         diagnostics: dict,
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """``(mean, cov, measurement_var)`` of the population by REML.
@@ -746,8 +757,8 @@ class DegradationAnalysis_(FitterRepr):
         how: str,
         pseudo_failure_times: npt.NDArray,
         c: npt.NDArray,
-        Z_units: "npt.NDArray | None",
-        refit: "dict | None",
+        Z_units: npt.NDArray | None,
+        refit: dict | None,
     ) -> Any:
         """The life model fitted to the pseudo failure times.
 
@@ -780,7 +791,7 @@ class DegradationAnalysis_(FitterRepr):
         events: npt.NDArray,
         threshold: float,
         y_arr: npt.NDArray,
-        x_by_unit: "list[npt.NDArray]",
+        x_by_unit: list[npt.NDArray],
         units: npt.NDArray,
     ) -> npt.NDArray:
         """
@@ -873,7 +884,7 @@ class DegradationAnalysis_(FitterRepr):
         path_model: PathModel,
         population_method: str,
     ) -> tuple[
-        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, "tuple | None"
+        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, tuple | None
     ]:
         """
         Estimate the accelerated clock of ``acceleration="clock"``.
@@ -1021,7 +1032,7 @@ class DegradationAnalysis_(FitterRepr):
         link_estimation_covs: list,
         measurement_var: float,
         population_method: str,
-        diagnostics: "dict | None" = None,
+        diagnostics: dict | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """
         Estimate the stress-conditional population of link-scale path
@@ -1096,7 +1107,7 @@ class DegradationAnalysis_(FitterRepr):
         y_arr: npt.NDArray,
         i_arr: npt.NDArray,
         units: npt.NDArray,
-    ) -> "tuple[PathModel, dict[str, float]]":
+    ) -> tuple[PathModel, dict[str, float]]:
         """
         Select the registered path model with the smallest AICc over
         all units' measurements.
@@ -1112,7 +1123,7 @@ class DegradationAnalysis_(FitterRepr):
         """
         n_total = len(x_arr)
         rss_floor = n_total * np.finfo(float).eps * float(np.mean(y_arr**2))
-        scores: "dict[str, float]" = {}
+        scores: dict[str, float] = {}
         for candidate in PATH_MODELS.values():
             n_params = len(candidate.parameter_names)
             k = n_params * len(units) + 1
@@ -1181,9 +1192,10 @@ class DegradationAnalysis_(FitterRepr):
         self,
         df: pd.DataFrame,
         x_col: str = "x",
-        y_col: str = "y",
+        y_col: str | None = None,
         i_col: str = "i",
-        Z_cols: "str | list[str] | None" = None,
+        Z_cols: str | list[str] | None = None,
+        m_col: str | None = None,
         **fit_kwargs: Any,
     ) -> DegradationModel:
         """
@@ -1198,9 +1210,11 @@ class DegradationAnalysis_(FitterRepr):
             DataFrame with the degradation data.
         x_col : str, optional
             Column of the measurement times. Defaults to ``"x"``.
-        y_col : str, optional
-            Column of the degradation measurements. Defaults to
-            ``"y"``.
+        y_col, m_col : str, optional
+            Column of the degradation measurements (the readings'
+            values): ``m_col``, or its other name ``y_col``, as in
+            ``Measurements.from_dataframe``; giving both is a TypeError.
+            Defaults to ``"y"``.
         i_col : str, optional
             Column of the unit identifiers. Defaults to ``"i"``.
         Z_cols : str or list of str, optional
@@ -1222,6 +1236,7 @@ class DegradationAnalysis_(FitterRepr):
             The fitted degradation model.
         """
         refuse_column_names(fit_kwargs, "x", "y", "i")
+        y_col = readings_column(m_col, y_col)
         cols = None
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

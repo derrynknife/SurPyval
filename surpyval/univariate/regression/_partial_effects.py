@@ -64,13 +64,13 @@ class PartialEffectsMixin:
         covariate: Any,
         values: Any,
         *,
-        reference: "Mapping | None" = None,
-        x: "npt.ArrayLike | None" = None,
+        reference: Mapping | None = None,
+        x: npt.ArrayLike | None = None,
         on: str = "sf",
         plot_bounds: bool = False,
         alpha_ci: float = 0.05,
-        ax: "Axes | None" = None,
-    ) -> "Axes":
+        ax: Axes | None = None,
+    ) -> Axes:
         r"""
         Draw the model's survival curve at each of ``values`` of one
         covariate, the other covariates held at reference values: a
@@ -122,12 +122,16 @@ class PartialEffectsMixin:
             steps.
         on : {'sf', 'ff', 'Hf'}, optional
             The function drawn: survival (the default), failure
-            probability or cumulative hazard.
+            probability or cumulative hazard. ``"R"`` and ``"F"`` are
+            accepted spellings of ``"sf"`` and ``"ff"``.
         plot_bounds : bool, optional
             Draw each curve's two-sided confidence band, from the model's
             ``cb`` (its default Wald method, from the fit's covariance),
-            as a pale wash of the curve's colour. Default False. A model
-            without ``cb`` (the Cox model) refuses it.
+            as a pale wash of the curve's colour. Default False. For
+            the Cox model these are its ``cb`` bounds, on the default
+            log-log scale (R's ``survfit(fit, newdata)`` with
+            ``conf.type = "log-log"``), drawn as steps. A model without
+            ``cb`` refuses it.
         alpha_ci : float, optional
             Total tail probability of the bands. Default 0.05.
         ax : matplotlib axes, optional
@@ -178,7 +182,7 @@ class PartialEffectsMixin:
 
     # -- hooks -------------------------------------------------------------
 
-    def _partial_effects_refusal(self) -> "str | None":
+    def _partial_effects_refusal(self) -> str | None:
         """Why the model cannot draw the plot, or None."""
         return None
 
@@ -188,12 +192,12 @@ class PartialEffectsMixin:
 
     def _partial_effects_rows(
         self,
-    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+    ) -> tuple[npt.NDArray, npt.NDArray] | str:
         """The design rows the model was fitted to and their counts, or,
         where it has none to give, why not."""
         return "it does not keep the covariates it was fitted to"
 
-    def _partial_effects_times(self) -> "npt.NDArray | None":
+    def _partial_effects_times(self) -> npt.NDArray | None:
         """The times the default grid spans: the fitted times of a smooth
         model, the jump times (and the fitted times) of a step one; None
         when the model has none."""
@@ -240,10 +244,10 @@ class CompetingRisksPartialEffectsMixin(PartialEffectsMixin):
         values: Any,
         *,
         event: Any = None,
-        reference: "Mapping | None" = None,
-        x: "npt.ArrayLike | None" = None,
-        ax: "Axes | None" = None,
-    ) -> "Axes":
+        reference: Mapping | None = None,
+        x: npt.ArrayLike | None = None,
+        ax: Axes | None = None,
+    ) -> Axes:
         r"""
         Draw the cumulative incidence of cause ``event`` at each of
         ``values`` of one covariate, the other covariates held at
@@ -318,14 +322,14 @@ def draw_partial_effects(
     covariate: Any,
     values: Any,
     *,
-    reference: "Mapping | None",
-    x: "npt.ArrayLike | None",
+    reference: Mapping | None,
+    x: npt.ArrayLike | None,
     on: str,
     event: Any,
     plot_bounds: bool,
     alpha_ci: float,
-    ax: "Axes | None",
-) -> "Axes":
+    ax: Axes | None,
+) -> Axes:
     """Draw ``model``'s partial-effects plot (see
     :meth:`PartialEffectsMixin.plot_partial_effects`). Every curve and
     band is computed before anything is drawn, so a refusal leaves the
@@ -334,6 +338,8 @@ def draw_partial_effects(
     if refusal is not None:
         raise ValueError(refusal)
     allowed = model._PARTIAL_EFFECTS_ON
+    if on in ("R", "F") and {"R": "sf", "F": "ff"}[on] in allowed:
+        on = {"R": "sf", "F": "ff"}[on]
     if on not in allowed:
         raise ValueError(
             "on={!r} is not a function plot_partial_effects draws; use one "
@@ -362,7 +368,7 @@ def draw_partial_effects(
         ax = plt.gca()
     themed = plotting.theme_enabled()
     step = bool(model._PARTIAL_EFFECTS_STEP)
-    band_label = "{:g}% confidence bands".format((1 - alpha_ci) * 100)
+    band_label = f"{(1 - alpha_ci) * 100:g}% confidence bands"
     for i, (value, (y, band)) in enumerate(zip(values, curves)):
         (line,) = ax.plot(
             times,
@@ -370,7 +376,7 @@ def draw_partial_effects(
             color=plotting.next_color(ax),
             linewidth=plotting.LINE_WIDTH if themed else None,
             drawstyle="steps-post" if step else "default",
-            label="{} = {}".format(label, _format_value(value)),
+            label=f"{label} = {_format_value(value)}",
         )
         if band is not None:
             ax.fill_between(
@@ -385,7 +391,7 @@ def draw_partial_effects(
             )
     ylabel = _YLABELS[on]
     if on == "cif" and event is not None:
-        ylabel = "{} of {}".format(ylabel, event)
+        ylabel = f"{ylabel} of {event}"
     label_axes(ax, getattr(model, "unit", None), ylabel)
     plotting.style_axes(ax)
     plotting.style_legend(ax)
@@ -448,7 +454,7 @@ def _native(value: Any) -> Any:
 def _format_value(value: Any) -> str:
     """A covariate value as a legend shows it: a number by ``:g``."""
     if isinstance(value, numbers.Real) and not isinstance(value, bool):
-        return "{:g}".format(float(value))
+        return f"{float(value):g}"
     return str(value)
 
 
@@ -528,18 +534,18 @@ class _Covariates:
                 what,
                 key,
                 self.names,
-                " (the {})".format(kind) if kind else "",
+                f" (the {kind})" if kind else "",
             )
         )
 
     def label(self, name: Any) -> str:
         """The name of a covariate in a legend."""
-        return "Z[:, {}]".format(name) if self.layout == "positional" else name
+        return f"Z[:, {name}]" if self.layout == "positional" else name
 
     # -- rows -------------------------------------------------------------
 
     def rows(
-        self, covariate: Any, values: list, reference: "Mapping | None"
+        self, covariate: Any, values: list, reference: Mapping | None
     ) -> npt.NDArray:
         """The design rows, one per value of ``covariate``, the others at
         their reference values."""
@@ -570,12 +576,9 @@ class _Covariates:
             raise ValueError(
                 "No reference value for {}: pass reference={{{}}}.".format(
                     "; ".join(
-                        "{} ({})".format(self._shown(n), why)
-                        for n, why in missing
+                        f"{self._shown(n)} ({why})" for n, why in missing
                     ),
-                    ", ".join(
-                        "{}: ...".format(self._quoted(n)) for n, _ in missing
-                    ),
+                    ", ".join(f"{self._quoted(n)}: ..." for n, _ in missing),
                 )
             )
         if self.layout == "formula":
@@ -624,7 +627,7 @@ class _Covariates:
 
     # -- reference values -------------------------------------------------
 
-    def _default_reference(self, name: Any) -> "tuple[Any, str | None]":
+    def _default_reference(self, name: Any) -> tuple[Any, str | None]:
         """A covariate's default reference value, or why there is none."""
         if self.layout == "formula":
             level = _reference_level(self.spec, name)
@@ -643,8 +646,12 @@ class _Covariates:
             j = self.names.index(name)
         return self._column_mean(j)
 
-    def _column_mean(self, j: int) -> "tuple[Any, str | None]":
-        if getattr(self.model, "is_tvc", False):
+    def _column_mean(self, j: int) -> tuple[Any, str | None]:
+        # A time-varying-coefficient fit's start-stop rows are its units'
+        # rows split, and it gives the units' rows.
+        if getattr(self.model, "is_tvc", False) and not getattr(
+            self.model, "_PARTIAL_EFFECTS_UNIT_ROWS", False
+        ):
             return None, (
                 "the rows of a time-varying-covariate fit are intervals, "
                 "not units, so their mean is not a unit's covariates"
@@ -655,6 +662,12 @@ class _Covariates:
         Z, n = fitted
         Z = np.asarray(Z, dtype=float).reshape(len(n), -1)
         return float(np.average(Z[:, j], weights=n)), None
+
+
+#: The public name of ``_Covariates``, for the modules outside this
+#: package that read a model's covariates as ``plot_partial_effects``
+#: does (``surpyval.univariate.adjusted``).
+Covariates = _Covariates
 
 
 # ---------------------------------------------------------------------------
@@ -729,7 +742,7 @@ def _as_is(spec: Any, factor: Any, name: str) -> bool:
     )
 
 
-def _reference_level(spec: Any, name: str) -> "tuple[Any, str | None] | None":
+def _reference_level(spec: Any, name: str) -> tuple[Any, str | None] | None:
     """``(level, None)`` for a categorical variable with a level coded as
     all zeros, ``(None, why)`` for a categorical one without, and None
     for a variable that is not categorical."""
@@ -765,7 +778,7 @@ def _reference_level(spec: Any, name: str) -> "tuple[Any, str | None] | None":
     return None
 
 
-def _bare_column(spec: Any, name: str, columns: list[str]) -> "str | None":
+def _bare_column(spec: Any, name: str, columns: list[str]) -> str | None:
     """The design column that is the numerical variable ``name`` itself,
     or None."""
     for factor, (kind, _state) in spec.encoder_state.items():

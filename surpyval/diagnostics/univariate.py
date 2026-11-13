@@ -94,11 +94,14 @@ class of its own, without ``diagnose()``.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 
+from surpyval.utils.aliases import canonical_name
+from surpyval.utils.warnings import ignoring_warnings
+
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The bootstrap refits of the goodness-of-fit tests when ``diagnose()``
@@ -138,10 +141,6 @@ NAMED = (
 )
 
 
-def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
-
-
 # ---------------------------------------------------------------------------
 # The statistics
 # ---------------------------------------------------------------------------
@@ -156,7 +155,7 @@ def _ad_antiderivative(u: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 
 def gof_statistics(
-    u: np.ndarray, failed: np.ndarray, counts: "np.ndarray | None" = None
+    u: np.ndarray, failed: np.ndarray, counts: np.ndarray | None = None
 ) -> dict:
     """
     The Anderson-Darling (``AD``), Kolmogorov-Smirnov (``KS``) and
@@ -320,7 +319,10 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
     Returns a dictionary: ``observed`` and ``p``, each by statistic
     (``"AD"``, ``"KS"``, ``"CvM"``); ``draws``, an array of the refits'
     statistics, one column each; ``failed``, the refits that raised and
-    were left out; and ``n_boot``.
+    were left out, ``no_estimate`` of them because the resample's
+    likelihood has no maximum at all (no failures, say); ``no_maximum``,
+    the kept refits whose likelihood had no finite maximum (their
+    statistic is taken where the search stopped); and ``n_boot``.
 
     Examples
     --------
@@ -335,7 +337,10 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
         REFIT_ERRORS,
         check_n_boot,
     )
-    from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.no_maximum import (
+        NoFiniteMaximumError,
+        quiet_maximum_warnings,
+    )
     from surpyval.utils.rng import as_generator
 
     n_boot = check_n_boot(n_boot)
@@ -349,7 +354,7 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
     options = _refit_options(model)
     keys = [key for _, key in TESTS]
     draws = []
-    failed = 0
+    failed = no_estimate = no_maximum = 0
     for _ in range(n_boot):
         q = lo + rng.uniform(size=design.x.size) * (hi - lo)
         with np.errstate(all="ignore"):
@@ -366,13 +371,17 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
             kwargs["tl"] = design.tl
             kwargs["tr"] = design.tr
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.dist.fit(x, **kwargs, **options)
                 stats = _statistics(refit, x, kwargs["c"], None, t)
+        except NoFiniteMaximumError:
+            failed += 1
+            no_estimate += 1
+            continue
         except REFIT_ERRORS:
             failed += 1
             continue
+        no_maximum += refit.maximum == "no finite maximum"
         draws.append([stats[k] for k in keys])
     values = np.array(draws, dtype=float).reshape(len(draws), len(keys))
     p = {}
@@ -387,11 +396,34 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
         "p": p,
         "draws": values,
         "failed": failed,
+        "no_estimate": no_estimate,
+        "no_maximum": no_maximum,
         "n_boot": n_boot,
     }
 
 
-def _boot(ctx: Context) -> "dict | None":
+def no_maximum_note(boot: dict) -> str | None:
+    """The report's note on a goodness-of-fit bootstrap's refits with no
+    finite maximum (``boot`` from :func:`bootstrap`), or None."""
+    kept, out = boot.get("no_maximum", 0), boot.get("no_estimate", 0)
+    if not (kept or out):
+        return None
+    parts = []
+    if kept:
+        parts.append(f"{kept} kept at the estimate they reached")
+    if out:
+        parts.append(
+            f"{out} on resamples with no maximum at all (no failures, or "
+            "too few distinct failure times), left out"
+        )
+    return (
+        f"{kept + out} of the {boot['n_boot']} bootstrap refits had no "
+        f"finite maximum ({'; '.join(parts)}): the data barely determine "
+        "the model, so read the p-values as rough."
+    )
+
+
+def _boot(ctx: Context) -> dict | None:
     """The bootstrap of the report, or None for data it cannot
     simulate."""
     if not _simulable(ctx.model):
@@ -447,6 +479,9 @@ def _gof_rows(ctx: Context) -> list[dict]:
             "{} of the {} bootstrap refits failed and were left out of the "
             "goodness-of-fit p-values.".format(boot["failed"], boot["n_boot"])
         )
+    note = no_maximum_note(boot)
+    if note:
+        ctx.notes.append(note)
     kept = boot["n_boot"] - boot["failed"]
     for test, key in TESTS:
         p = boot["p"][key]
@@ -549,11 +584,10 @@ def _probability_panels(ctx: Context) -> list[Panel]:
         return []
 
     def draw(ax: Any, options: Any) -> None:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             ctx.model.plot(ax=ax)
 
-    return [Panel("{} probability plot".format(_label(ctx.model)), draw)]
+    return [Panel(f"{_label(ctx.model)} probability plot", draw)]
 
 
 # ---------------------------------------------------------------------------
@@ -573,8 +607,7 @@ def _quiet(fit: Any) -> Any:
     from surpyval.utils.no_maximum import quiet_maximum_warnings
 
     try:
-        with warnings.catch_warnings(), quiet_maximum_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), quiet_maximum_warnings():
             out = fit()
             aic = float(out.aic())
     except Exception:  # an alternative that does not fit is not one
@@ -630,8 +663,7 @@ def _alternatives(ctx: Context) -> list[dict]:
 
     # Every other distribution, as fit_best ranks them
     def ranked() -> Any:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             return fit_best(**data, return_table=True)[1]
 
     try:
@@ -641,7 +673,7 @@ def _alternatives(ctx: Context) -> list[dict]:
     if table is not None:
         others = table[
             table["status"].isin(["chosen", "ranked"])
-            & (table["model"] != model.dist.name)
+            & (table["model"] != canonical_name(model.dist))
         ]
         if len(others):
             best = others.iloc[0]
@@ -667,7 +699,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "mixture",
                     "test": "AIC: mixture of two",
-                    "label": "MixtureModel({}, 2)".format(model.dist.name),
+                    "label": f"MixtureModel({model.dist.name}, 2)",
                     "dist": model.dist.name,
                     "aic": float(mix.aic()),
                 }
@@ -685,7 +717,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "offset",
                     "test": "AIC: offset (3-parameter)",
-                    "label": "{} offset".format(model.dist.name),
+                    "label": f"{model.dist.name} offset",
                     "dist": model.dist.name,
                     "aic": float(alt.aic()),
                 }
@@ -697,7 +729,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "lfp",
                     "test": "AIC: limited failure population",
-                    "label": "{} lfp".format(model.dist.name),
+                    "label": f"{model.dist.name} lfp",
                     "dist": model.dist.name,
                     "aic": float(alt.aic()),
                 }
@@ -719,7 +751,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "zi",
                     "test": "AIC: zero-inflated",
-                    "label": "{} zi".format(best_zi.dist.name),
+                    "label": f"{best_zi.dist.name} zi",
                     "dist": best_zi.dist.name,
                     "aic": float(best_zi.aic()),
                 }
@@ -780,14 +812,16 @@ def _validate(model: Any) -> None:
         raise NotImplementedError(
             "diagnose() is not yet available for a discrete distribution "
             "({}): the goodness-of-fit tests of a discrete model (on its "
-            "counts) are tracked in #875. Compare discrete models with "
+            "counts) are not built yet. Compare discrete models with "
             "model.aic() meanwhile.".format(name)
         )
     if not isinstance(dist, OptimisedFitMixin):
         raise NotImplementedError(
             "diagnose() is not yet available for a {} model: its "
             "bootstrap needs the refit of the shared optimiser, which the "
-            "{} fitter does not have; tracked in #875.".format(name, name)
+            "{} fitter does not have. Compare it with other "
+            "distributions fitted to the same data with model.aic(), or "
+            "plot it beside KaplanMeier fitted to them.".format(name, name)
         )
     if getattr(model, "data", None) is None:
         raise ValueError(
@@ -952,7 +986,10 @@ def _rules(
     ``fit``), and one, naming no ``fit``, for any other distribution."""
 
     def of(name: str) -> Any:
-        return lambda row, ctx: row["_kind"] == kind and row["_dist"] == name
+        return (
+            lambda row, ctx: row["_kind"] == kind
+            and canonical_name(row["_dist"]) == name
+        )
 
     rules = [
         AdviceRule(
@@ -970,7 +1007,7 @@ def _rules(
             message,
             extra,
             when=lambda row, ctx: row["_kind"] == kind
-            and row["_dist"] not in NAMED,
+            and canonical_name(row["_dist"]) not in NAMED,
             on=("warn",),
         )
     )

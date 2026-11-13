@@ -71,6 +71,8 @@ _CONVERGENCE_ISSUES = {
 }
 # (The regression, frailty and Fine-Gray fits of a covariate level with no
 # events now warn that the likelihood has no finite maximum, #392.)
+# (PanelCountRegression's fits of a covariate level with no counted events
+# warn too, from a check of the data, and are not converged.)
 _CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {}
 for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
@@ -130,4 +132,4 @@ KNOWN_INCONSISTENCIES: dict[str, str] = {}
 
 def _with_issue(prop: str, reason: str) -> str:
     issue = KNOWN_FAILURE_ISSUES.get(prop)
-    return "{}: {}".format(issue, reason) if issue else reason
+    return f"{issue}: {reason}" if issue else reason

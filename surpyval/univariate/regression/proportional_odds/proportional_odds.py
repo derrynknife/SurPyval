@@ -99,10 +99,6 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import (
-    column_arguments,
-    removed_parameter_note,
-)
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -110,22 +106,20 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
-
-from .._aliasing import (
-    aliased_columns,
-    constant_columns,
-    covariate_columns,
-    expand,
-    warn_aliased,
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_alpha_ci,
+    check_option,
+    no_covariance_error,
 )
+
+from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
 from .._fit_skeleton import (
     LOG_MAX,
     baseline_at_origin_error,
     covariate_center,
 )
-from .._kinds import PROPORTIONAL_ODDS
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -133,10 +127,17 @@ from .._prediction import (
     unique_rows,
 )
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
+from ..kinds import PROPORTIONAL_ODDS
+from ..life_at import (
+    AtCovariatesMixin,
+    checked_params,
+    draws_by_quantile,
+    rebuilt,
+)
 from ..regression_data import (
+    FrameDesign,
     LinearPredictorMixin,
     canonical_rows,
-    design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -419,9 +420,9 @@ def _safe_schur(lik: _POLikelihood, der: dict) -> npt.NDArray:
 def _validate(
     x: npt.ArrayLike,
     Z: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x_arr, c_arr, n_arr, tl_arr, Z_arr = semi_parametric_inputs(
         x,
@@ -511,6 +512,7 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
+    AtCovariatesMixin,
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
@@ -570,7 +572,7 @@ class ProportionalOddsModel(
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
-    _covariance: npt.NDArray
+    _covariance: npt.NDArray | None
     p_values: npt.NDArray
     x: npt.NDArray
     d: npt.NDArray
@@ -578,7 +580,7 @@ class ProportionalOddsModel(
     G0: npt.NDArray
     #: The covariate values the baseline is at: zeros by default, the
     #: ``n``-weighted covariate means for a fit with ``center=True``.
-    center: "npt.NDArray | None" = None
+    center: npt.NDArray | None = None
     #: Newton iterations of the profile likelihood.
     n_iter: int = 0
     #: What the fit reached, one of ``MAXIMUM_STATES``
@@ -587,9 +589,9 @@ class ProportionalOddsModel(
     maximum: str = "unknown"
     #: The rows fitted, ``{"x", "c", "n", "Z", "tl"}``, for
     #: ``concordance`` and the printout; not saved.
-    _fit_data: "dict | None" = None
+    _fit_data: dict | None = None
     #: The printout's data line of a restored model.
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
     #: The likelihood-ratio searches of ``param_cb(method="lr")`` over the
     #: profile likelihood, with what they have found, while the
     #: coefficients stay as they are; not pickled (``__getstate__``).
@@ -616,7 +618,7 @@ class ProportionalOddsModel(
         "combination of the others"
     )
 
-    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def phi(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """
         The survival odds multiplier :math:`e^{\\beta' (Z -
         \\text{center})}` of covariates ``Z`` (one row, or one per
@@ -642,7 +644,7 @@ class ProportionalOddsModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return -self._log_phi(Z_arr.reshape(x.size, -1))
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         data = self._fit_data
         if data is None:
             return None
@@ -651,7 +653,7 @@ class ProportionalOddsModel(
     # -- the baseline at the query times -------------------------------
 
     def _parts(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame", grid: bool
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame, grid: bool
     ) -> tuple:
         """``(log g, log G, log G_prev, eta)`` broadcast for the query:
         the log jump at the last baseline time at or before ``x``, the
@@ -685,7 +687,7 @@ class ProportionalOddsModel(
     def Hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -705,7 +707,7 @@ class ProportionalOddsModel(
     def sf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -733,7 +735,7 @@ class ProportionalOddsModel(
     def ff(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -747,7 +749,7 @@ class ProportionalOddsModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -766,7 +768,7 @@ class ProportionalOddsModel(
     def df(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -791,7 +793,7 @@ class ProportionalOddsModel(
     def qf(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -853,12 +855,188 @@ class ProportionalOddsModel(
         """The covariance of the coefficients: the inverse of the
         negative Hessian of the profile log-likelihood at the maximum
         (``nan`` rows and columns for an aliased coefficient)."""
-        return self._covariance
+        return self._require_covariance()
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`.
         They were the attribute ``se`` before v0.23."""
+        self._require_covariance()
         return self._se
+
+    def _require_covariance(self) -> npt.NDArray:
+        """The covariance, refused for a model built by with_params."""
+        if self._covariance is None:
+            raise no_covariance_error(
+                "it was built from coefficients with with_params; use the "
+                "fitted model's"
+            )
+        return self._covariance
+
+    # -- with_params, random -----------------------------------------------
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`: the
+        coefficients, :attr:`parameter_names`."""
+        return list(self.parameter_names)
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted coefficients, in the order of
+        :attr:`covariance_names` (an aliased one is ``nan``)."""
+        return np.array(self.params, dtype=float)
+
+    def _profile_baseline(self, beta: npt.NDArray) -> npt.NDArray:
+        """The baseline odds jumps ``g0`` (on the grid ``x``) that
+        maximise the likelihood at the coefficients ``beta``: the profile
+        likelihood's baseline, found as the fit finds it (:func:`_inner`
+        on the centred covariates), and moved to the model's centre."""
+        data = self._fit_data
+        if data is None:
+            raise ValueError(
+                "with_params re-estimates the baseline odds at the new "
+                "coefficients from the data fitted to (the profile "
+                "likelihood's baseline), which a model restored from a "
+                "dict, or built with with_params, does not keep. Call it "
+                "on the fitted model, or refit."
+            )
+        x, c, n, tl, Z = (data[k] for k in ("x", "c", "n", "tl", "Z"))
+        mean = covariate_center(Z, n)
+        kept = np.flatnonzero(~np.isnan(np.asarray(self.beta, dtype=float)))
+        lik = _POLikelihood(x, c, n, tl, (Z - mean)[:, kept])
+        gamma = np.zeros(Z.shape[1])
+        gamma[kept] = -beta[kept]
+        with np.errstate(all="ignore"):
+            u, _ = _inner(lik, gamma[kept], lik.start(x, n, tl), 1e-12)
+        if np.any(self._center()):
+            log_g = u
+        else:
+            log_g = _baseline_at_origin(
+                u, -float(gamma @ mean), Z @ gamma, mean
+            )
+        g0 = np.zeros(self.x.size)
+        g0[np.searchsorted(self.x, lik.t)] = np.exp(log_g)
+        return g0
+
+    #: What a model built by :meth:`with_params` does not keep.
+    _FIT_STATE = (
+        "_covariance",
+        "_se",
+        "p_values",
+        "_fit_data",
+        "_lr_search",
+        "_neg_ll",
+        "_aic",
+        "_bic",
+        "_aic_c",
+        "_ic_n",
+        "_data_summary",
+        "n_iter",
+        "maximum",
+    )
+
+    def with_params(self, params: npt.ArrayLike) -> ProportionalOddsModel:
+        """
+        The same model with other coefficients, and the baseline odds the
+        profile likelihood gives at them.
+
+        The baseline is left to the data, so at other coefficients it is
+        the one that maximises the likelihood there (the profile
+        likelihood's, as the fit's is at its estimate), found from the
+        data the model was fitted to; at the fitted coefficients it is
+        the fitted baseline itself. The covariate names, formula and its
+        encoding of a DataFrame and the centre are kept.
+
+        Parameters
+        ----------
+        params : array like
+            The coefficients, in the order of :attr:`covariance_names`:
+            a draw from :meth:`covariance`, say. An aliased coefficient
+            stays ``nan`` (taken as 0).
+
+        Returns
+        -------
+        ProportionalOddsModel
+            A model without the data, covariance or likelihood:
+            ``covariance``, ``standard_errors``, ``param_cb``, ``aic`` and
+            the others that need them refuse, as does its own
+            ``with_params`` (call it on the fitted model).
+
+        Raises
+        ------
+        ValueError
+            For a vector of the wrong length; or on a model without its
+            data (restored from a dict, or built with ``with_params``).
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> same = model.with_params(model._estimates())
+        >>> bool(same.sf(52, [1, 2]) == model.sf(52, [1, 2]))
+        True
+        >>> model.with_params([0.5, -0.1]).sf(52, [1, 2]).round(4)
+        np.float64(0.8045)
+        """
+        values = checked_params(params, self.covariance_names)
+        fitted = np.asarray(self.beta, dtype=float)
+        values[np.isnan(fitted)] = np.nan
+        if np.array_equal(values, fitted, equal_nan=True):
+            # The profile baseline at the estimate is the fitted one; a
+            # model without its data still refuses, as at any other.
+            if self._fit_data is None:
+                self._profile_baseline(values)
+            g0 = np.array(self.g0, dtype=float)
+        else:
+            g0 = self._profile_baseline(values)
+        out = rebuilt(self, self._FIT_STATE)
+        out.beta = values
+        out.params = values.copy()
+        out.g0 = g0
+        out.G0 = np.cumsum(g0)
+        out._covariance = None
+        out._se = np.full(values.shape, np.nan)
+        out.p_values = np.full(values.shape, np.nan)
+        out.maximum = "not applicable"
+        return out
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike | pd.DataFrame,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z``, by
+        inverting :meth:`qf` on the step survival curve: a uniform ``U``,
+        the survival the draw is to have, gives ``qf(1 - U, Z)``, as every
+        regression's ``random`` draws. The curve stops at the last
+        observed time; a draw it never reaches is ``inf`` (the unit
+        outlives the data), as often as ``sf`` at the last time says.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator; an int or a ``numpy.random.Generator``
+        gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> draws, rows = model.random(4, [[0, 10]], random_state=1)
+        >>> draws
+        array([52.,  8., inf,  8.])
+        """
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
+        return draws_by_quantile(self, size, rows, random_state)
 
     def param_cb(
         self,
@@ -919,8 +1097,8 @@ class ProportionalOddsModel(
         names = self.parameter_names
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}{}".format(
-                    name, names, removed_parameter_note(name, names)
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
                 )
             )
         if lr:
@@ -930,7 +1108,7 @@ class ProportionalOddsModel(
         lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             float(self.params[idx]),
-            float(self._covariance[idx, idx]),
+            float(self.covariance()[idx, idx]),
             lower,
             upper,
             alpha_ci,
@@ -950,8 +1128,9 @@ class ProportionalOddsModel(
         if data is None:
             raise ValueError(
                 "Likelihood-ratio bounds need the data the model was fitted "
-                "to, which a model restored from a dict does not keep; use "
-                "method='wald'."
+                "to, which a model restored from a dict, or built with "
+                "with_params, does not keep; use method='wald' (on a model "
+                "with a covariance)."
             )
         # (an aliased coefficient, nan, is held at 0)
         params = np.nan_to_num(np.asarray(self.params, dtype=float), nan=0.0)
@@ -993,12 +1172,12 @@ class ProportionalOddsModel(
         state.pop("_lr_search", None)
         return state
 
-    def _parameter_bounds(self) -> "list[tuple[None, None]]":
+    def _parameter_bounds(self) -> list[tuple[None, None]]:
         """The support of each parameter: the coefficients are
         unbounded, so their bounds are on the natural scale."""
         return [(None, None)] * len(self.params)
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table: one row per covariate (named by
         ``feature_names`` for a model fitted with ``fit_from_df``), with
@@ -1090,14 +1269,18 @@ class ProportionalOddsModel(
             "params": np.asarray(self.params, dtype=float).tolist(),
             "se": np.asarray(self._se, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
-            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
+            "covariance": (
+                np.full((self.beta.size, self.beta.size), np.nan)
+                if self._covariance is None
+                else np.asarray(self._covariance, dtype=float)
+            ).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
             "x": np.asarray(self.x, dtype=float).tolist(),
             "d": np.asarray(self.d, dtype=float).tolist(),
             "g0": np.asarray(self.g0, dtype=float).tolist(),
             "G0": np.asarray(self.G0, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
-            "_neg_ll": float(self._neg_ll),
+            "_neg_ll": float(getattr(self, "_neg_ll", np.nan)),
             "ic_n": float(self._ic_sample_size()),
             "n_iter": int(self.n_iter),
             **maximum_entry(self.maximum),
@@ -1110,7 +1293,7 @@ class ProportionalOddsModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "ProportionalOddsModel":
+    def from_dict(cls, model_dict: dict) -> ProportionalOddsModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 
@@ -1337,11 +1520,10 @@ class ProportionalOdds_(FitterRepr):
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
-    @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         x_col: str,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
@@ -1385,19 +1567,17 @@ class ProportionalOdds_(FitterRepr):
         array([ 0.4275, -0.1206])
         """
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col, tl_col=tl_col)
-        Z, feature_names, model_spec = design_matrix_from_df(
-            df, Z_cols, formula
+        design = FrameDesign(df, Z_cols, formula)
+        return design.fit(
+            self.fit,
+            design.column(x_col),
+            design.Z,
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            tol=tol,
+            center=center,
         )
-        x = df[x_col].values
-        c = None if c_col is None else df[c_col].values
-        n = None if n_col is None else df[n_col].values
-        tl = None if tl_col is None else df[tl_col].values
-        with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tl=tl, tol=tol, center=center)
-        model.feature_names = feature_names
-        model.formula = formula
-        model._model_spec = model_spec
-        return model
 
 
 def _inverse_information(S: npt.NDArray) -> npt.NDArray:

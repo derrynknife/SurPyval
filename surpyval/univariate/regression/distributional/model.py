@@ -16,9 +16,10 @@ from surpyval.utils.shapes import (
     keeps_query_shape,
 )
 from surpyval.utils.validation import warn_outside_unit_interval
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._covariate_link import CovariateLink
-from .._kinds import DISTRIBUTIONAL
+from ..kinds import DISTRIBUTIONAL
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import (
     check_covariate_width,
@@ -36,17 +37,35 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     parameter of the distribution has its own linear predictor and link,
 
     .. math::
-        g_k\\bigl(\\theta_k(z)\\bigr) = g_k(\\theta_k) + x_k(z)' b_k,
+        g_k\\bigl(\\theta_k(z)\\bigr) = g_k(\\theta_k) + s_k\\, x_k(z)' b_k,
 
     so each row of covariates has its own distribution, here the
     distribution's functions at that row's parameters.
 
     ``params`` are the distribution's parameters at ``Z = 0`` (at
     ``center`` for a fit with ``center=True``), then each parameter's
-    coefficients on its link scale, named ``<parameter>_<column>``:
-    ``beta_load = 0.2`` with a log link multiplies the shape by
-    ``e^0.2`` per unit of load. ``covariate_positions`` holds each
-    parameter's columns of ``Z`` and ``links`` its link.
+    coefficients on its link scale, named ``<parameter>_<column>``, with
+    SurPyval's sign ``s_k`` (``coefficient_signs``), that of the AFT
+    models: a positive coefficient means a shorter life.
+
+    * A scale (a Weibull's ``alpha``): ``alpha(z) = alpha e^{-b'z}``, the
+      AFT model's coefficient; ``alpha_load = 0.5`` divides the scale by
+      ``e^0.5`` per unit of load.
+    * A rate (an Exponential's ``failure_rate``, a Gamma's ``beta``):
+      ``lambda(z) = lambda e^{b'z}``, again the AFT model's.
+    * A location (``mu`` of a LogNormal, Normal, Gumbel or Logistic):
+      ``mu(z) = mu - b'z`` (``mu e^{-b'z}`` with a log link).
+    * A shape that orders lives (a Gamma's ``alpha``, an ExpoWeibull's
+      ``mu``, a Beta's ``alpha``): ``e^{-b'z}``, a positive coefficient
+      lowering it and so shortening lives (a Beta's ``beta``, which
+      shortens lives as it rises, takes ``e^{b'z}``).
+    * A shape or spread that moves some quantiles earlier and others later
+      (a Weibull's ``beta``, ``sigma``): the link's own sign,
+      ``beta(z) = beta e^{b'z}``; ``beta_load = 0.2`` multiplies the shape
+      by ``e^0.2`` per unit of load.
+
+    ``covariate_positions`` holds each parameter's columns of ``Z`` and
+    ``links`` its link.
 
     Examples
     --------
@@ -67,31 +86,65 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     #: Each parameter's columns of ``Z``, one integer array per
     #: parameter.
     covariate_positions: tuple
+    #: The sign of each parameter's coefficients (``-1`` or ``+1``, in
+    #: the distribution's parameter order), as the model was fitted:
+    #: ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``. A model saved by
+    #: v0.26, which had no sign (every ``s_k`` +1), is converted to these
+    #: on loading.
+    _coefficient_signs: tuple[float, ...] = ()
     #: The numbers of the coefficients the data could not determine.
     _aliased_coefficients: npt.NDArray
     #: The number of columns of ``Z``.
     _width: int
+
+    #: The ``model`` entry of the model's dict.
+    _dict_model = "DistributionalRegressionModel"
+    #: The title of its printout.
+    _repr_title = "Distributional Regression SurPyval Model"
+
+    @classmethod
+    def _fitter_from_dict(cls, model_dict: dict, links: tuple) -> Any:
+        """The (unbound) fitter of a model's dict."""
+        import surpyval
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
+
+        from .fitter import DistributionalFitter
+
+        dist = getattr(surpyval, str(model_dict["distribution"]), None)
+        if not isinstance(dist, ParametricFitter):
+            raise ValueError(
+                "Unknown distribution {!r}".format(model_dict["distribution"])
+            )
+        return DistributionalFitter(
+            dist, links=dict(zip(dist.parameter_names, links))
+        )
 
     def __repr__(self) -> str:
         out = super().__repr__()
         if not hasattr(self, "params"):
             return out
         lines = out.split("\n")
-        title = "Distributional Regression SurPyval Model"
+        title = self._repr_title
         lines[0], lines[1] = title, "=" * len(title)
         names = self.feature_names
         terms = []
-        for name, link, cols in zip(
+        signs = self._coefficient_signs or (1.0,) * len(self.links)
+        for name, link, cols, sign in zip(
             self.distribution.parameter_names,
             self.links,
             self.covariate_positions,
+            signs,
         ):
             shown = [
                 names[j] if names is not None and j < len(names) else f"Z{j}"
                 for j in np.asarray(cols, dtype=int).tolist()
             ]
             g = name if link == "identity" else f"{link}({name})"
-            terms.append("{} ~ {}".format(g, " + ".join(["1", *shown])))
+            # SurPyval's sign: a scale's coefficients enter negated
+            op = " - " if sign < 0 else " + "
+            terms.append("{} ~ {}".format(g, op.join(["1", *shown])))
         at = next(
             (i for i, line in enumerate(lines) if line.startswith("Fitted")),
             len(lines) - 1,
@@ -101,7 +154,94 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             line for line in lines if not line.startswith("Regression Model")
         )
 
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        if "_coefficient_signs" not in state:
+            # Pickled by v0.26, before the sign convention: every
+            # coefficient had the link's sign.
+            self._convert_signs((1.0,) * int(self.k_dist))
+
     # -- the coefficients ------------------------------------------------
+
+    @property
+    def coefficient_signs(self) -> dict[str, float]:
+        """The sign ``s_k`` of each parameter's coefficients, by
+        parameter: ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``. It is
+        -1 for a parameter whose increase makes lives longer (a scale, a
+        location), so that a positive coefficient means a shorter life,
+        as in SurPyval's AFT models, and +1 otherwise.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> WeibullDistributional.fit(x, load).coefficient_signs
+        {'alpha': -1.0, 'beta': 1.0}
+        """
+        names = list(self.distribution.parameter_names)
+        return {
+            name: float(s) for name, s in zip(names, self._coefficient_signs)
+        }
+
+    def _convert_signs(self, old: Any) -> None:
+        """Rewrite a model whose coefficients were saved with the signs
+        ``old`` (one per parameter; v0.26 saved every one +1) in the
+        current convention, ``self.model.signs``: each coefficient,
+        its fixed value, and the rows and columns of every stored
+        covariance and Hessian are multiplied by ``old_k * new_k``. The
+        predictions are unchanged."""
+        new = tuple(float(v) for v in self.model.signs)
+        old = tuple(float(v) for v in old)
+        K = int(self.k_dist)
+        if len(old) != K or any(v not in (-1.0, 1.0) for v in old):
+            raise ValueError(
+                "The model dict's 'coefficient_signs' must hold -1 or 1 for "
+                "each of the distribution's {} parameters; got {}.".format(
+                    K, list(old)
+                )
+            )
+        self._coefficient_signs = new
+        m = np.ones(len(self.params))
+        j = K
+        for k, cols in enumerate(self.covariate_positions):
+            size = np.asarray(cols).size
+            m[j : j + size] = old[k] * new[k]
+            j += size
+        if np.all(m == 1.0):
+            return
+        D = np.outer(m, m)
+        self.params = np.asarray(self.params, dtype=float) * m
+        self.dist_params = np.array(self.params[:K])
+        self.phi_params = np.array(self.params[K:])
+        names = self.parameter_names
+        self.fixed = {
+            key: float(v) * m[names.index(key)]
+            for key, v in self.fixed.items()
+        }
+        if self._restored_covariance is not None:
+            self._restored_covariance = self._restored_covariance * D
+        if self._restored_inference is not None:
+            p, at, cov = self._restored_inference
+            self._restored_inference = (p * m, at, cov * D)
+        if self._fit_centring is not None:
+            p, at, J = self._fit_centring
+            self._fit_centring = (np.asarray(p) * m, at, np.asarray(J) * D)
+        held = self._held()
+        free = np.array(
+            [i for i, nm in enumerate(names) if nm not in held], dtype=int
+        )
+        if self._information is not None:
+            point, H = self._information
+            point = (np.asarray(point[0]) * m, *point[1:])
+            mf = m[free]
+            self._information = (point, np.asarray(H) * np.outer(mf, mf))
+        if self._covariance_cache is not None:
+            point, cov = self._covariance_cache
+            point = (np.asarray(point[0]) * m, *point[1:])
+            self._covariance_cache = (point, np.asarray(cov) * D)
 
     @property
     def aliased(self) -> npt.NDArray:
@@ -192,6 +332,177 @@ class DistributionalRegressionModel(ParametricRegressionModel):
 
     def _wald_tested(self) -> list[int]:
         return list(range(self.k_dist, len(self.params)))
+
+    # -- the likelihood-ratio tests ----------------------------------------
+
+    def likelihood_ratio_test(self, parameter: str | None = None) -> dict:
+        """
+        The likelihood-ratio test of the covariates' effect: twice the gain
+        in log-likelihood over a null model, chi-squared on the number of
+        coefficients the null model holds at 0.
+
+        With no ``parameter``, the global test: do the covariates, on all
+        the parameters together, explain anything? The null model is the
+        distribution fitted alone to the same data (every coefficient on
+        every parameter 0), on one degree of freedom per estimated
+        coefficient.
+
+        With ``parameter`` (one of the distribution's parameter names,
+        ``"beta"`` for a Weibull's shape), the test of that parameter's
+        covariates alone: does the shape depend on the load? The null model
+        holds that parameter's coefficients at 0 and refits everything else
+        as in the fitted model (the other parameters keep their
+        covariates), on one degree of freedom per estimated coefficient of
+        that parameter.
+
+        Aliased coefficients (:attr:`aliased`) and coefficients held at 0
+        with ``fixed`` are not counted.
+
+        Parameters
+        ----------
+        parameter : str, optional
+            The parameter whose covariates to test; ``None`` (the default)
+            tests every parameter's together.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For an unknown ``parameter`` or one with no estimated
+            coefficient; a tested coefficient held at a value other than 0
+            with ``fixed`` (the null model is then not inside the fitted
+            one); or a model restored with ``from_dict`` (it does not carry
+            the data). For a fit with weights ``w`` or a penalised fit, as
+            for every regression.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> model = WeibullDistributional.fit(x, load)
+        >>> res = model.likelihood_ratio_test()
+        >>> res["df"], bool(res["p_value"] < 0.001)
+        (2, True)
+        >>> model.likelihood_ratio_test(parameter="beta")["df"]
+        1
+        """
+        from .._global_test import lr_test_result, refuse_weighted_test
+        from .._penalised import refuse_lr_test
+
+        refuse_lr_test(self)
+        refuse_weighted_test(self)
+        names = list(self.distribution.parameter_names)
+        if parameter is not None and parameter not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; the {} distribution's parameters "
+                "are {}. Give one of them, or parameter=None for the test "
+                "of every parameter's covariates together.".format(
+                    parameter, self.distribution.name, names
+                )
+            )
+        self._require_data("likelihood_ratio_test")
+        coef_names = self._coefficient_names()
+        # Each coefficient's parameter, in the order of coef_names
+        owner = [
+            name
+            for name, cols in zip(names, self.covariate_positions)
+            for _ in range(np.asarray(cols).size)
+        ]
+        tested = [
+            j
+            for j in range(len(coef_names))
+            if parameter is None or owner[j] == parameter
+        ]
+        nonzero = sorted(
+            coef_names[j]
+            for j in tested
+            if coef_names[j] in self.fixed and self.fixed[coef_names[j]] != 0
+        )
+        if nonzero:
+            raise ValueError(
+                "likelihood_ratio_test: the coefficient(s) {} are held at a "
+                "value other than 0 (fixed=), so the null model, with them "
+                "at 0, is not inside the fitted model and the test does not "
+                "hold. Refit with them free (or held at 0), or compare "
+                "log_likelihood with a fit of your own null model: twice "
+                "the difference is chi-squared on the difference in the "
+                "number of parameters.".format(nonzero)
+            )
+        aliased = set(self._aliased_coefficients.tolist())
+        free = [
+            j
+            for j in tested
+            if j not in aliased and coef_names[j] not in self.fixed
+        ]
+        if parameter is not None and not free:
+            raise ValueError(
+                "likelihood_ratio_test: the parameter {!r} has no estimated "
+                "covariate coefficient (none, or each fixed or aliased), so "
+                "there is nothing to test. Name a parameter with covariates "
+                "(the model's coefficients are {}), or parameter=None for "
+                "the global test.".format(parameter, coef_names)
+            )
+        ll = -float(self.neg_ll())
+        data = self.data
+        if parameter is None:
+            fixed = {k: v for k, v in self.fixed.items() if k in names}
+            kwargs: dict[str, Any] = {} if not fixed else {"fixed": fixed}
+            with ignoring_warnings():
+                null = self.distribution.fit(  # type: ignore[attr-defined]
+                    x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
+                )
+            return lr_test_result(ll, -float(null.neg_ll()), len(free))
+        return lr_test_result(ll, self._null_ll(parameter, tested), len(free))
+
+    def _null_ll(self, parameter: str, tested: list[int]) -> float:
+        """The log-likelihood of the fit to the same data with the
+        coefficients ``tested`` (those of ``parameter``) held at 0 and
+        the rest as the model has them, started from the model's own
+        estimates."""
+        coef_names = self._coefficient_names()
+        fixed = dict(self.fixed)
+        fixed.update({coef_names[j]: 0.0 for j in tested})
+        init = np.array(self._eval_params(), dtype=float)
+        init[[self.k_dist + j for j in tested]] = 0.0
+        names = list(self.distribution.parameter_names)
+        covariates = {
+            name: np.asarray(cols, dtype=int).tolist()
+            for name, cols in zip(names, self.covariate_positions)
+        }
+        data = self.data
+        with ignoring_warnings():
+            # The fit's own warnings (aliased columns, say) were given
+            # when the model was fitted.
+            null = self.model.fit(
+                data.x,
+                np.asarray(data.Z, dtype=float),
+                c=data.c,
+                n=data.n,
+                t=data.t,
+                init=init,
+                fixed=fixed,
+                center=self._has_center(),
+                covariates=covariates,
+                links=dict(zip(names, self.links)),
+            )
+        if null.maximum not in ("verified", "unknown"):
+            raise ValueError(
+                "likelihood_ratio_test: the fit without the covariates on "
+                "{!r} did not reach a verified maximum ({}), so the test "
+                "would not hold. Compare log_likelihood with a fit of that "
+                "model of your own, checking its convergence.".format(
+                    parameter, null.maximum
+                )
+            )
+        return -float(null.neg_ll())
 
     def phi(self, Z: Any) -> npt.NDArray:
         """Not defined: a distributional regression has no single
@@ -299,7 +610,10 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         the likelihood-ratio region, ``2 [l_hat - l] <= chi2_1``, as
         :meth:`cb` with ``method="lr"`` takes them; ``"bootstrap"`` the
         BCa interval from ``n_boot`` parametric bootstrap refits
-        (``random_state`` seeds them).
+        (``random_state`` seeds them). For a fit with weights ``w`` the
+        Wald bound uses the robust covariance, the bootstrap is the case
+        bootstrap (the units resampled with their weights) and ``"lr"`` is
+        refused.
 
         Examples
         --------
@@ -327,6 +641,8 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 "are {}.".format(name, self.distribution.name, names)
             )
         link = self.links[names.index(name)]
+        self._refuse_if_penalised()
+        self._refuse_weighted_method(method)
         if method == "wald":
             eta = self._parameter_wald(name, Z, alpha_ci, bound)
         elif method == "lr":
@@ -593,8 +909,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         out = np.full(rows.shape[0], np.nan)
         known = np.all(np.isfinite(rows), axis=1)
         dist: Any = self.distribution
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             values = self.model._dist_params_at(rows, self._eval_params())
             values = [
                 np.asarray(v, float) * np.ones(rows.shape[0]) for v in values
@@ -637,10 +952,11 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         True
         """
         out: dict[str, Any] = {
-            "model": "DistributionalRegressionModel",
+            "model": self._dict_model,
             "kind": self.kind,
             "distribution": self.distribution.name,
             "links": list(self.links),
+            "coefficient_signs": [float(v) for v in self._coefficient_signs],
             "covariate_positions": [
                 np.asarray(c, dtype=int).tolist()
                 for c in self.covariate_positions
@@ -660,10 +976,12 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if self._has_center():
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         serialise_covariate_meta(self, out)
-        if hasattr(self, "data") and getattr(self, "res", None) is not None:
+        if self.penalty is not None:
+            # A penalised fit has no covariance.
+            cov = None
+        elif hasattr(self, "data") and getattr(self, "res", None) is not None:
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     cov = self.covariance()
             except Exception:
                 cov = None
@@ -679,12 +997,25 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
+        out.update(self._penalty_entry())
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # A reader without weights would offer the likelihood-ratio
+            # bounds and the information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
+        out.update(self._subclass_dict_entries())
         return stamp_schema(out)
+
+    def _subclass_dict_entries(self) -> dict:
+        """Entries a subclass adds to :meth:`to_dict`, before the
+        document is finished (made strict JSON and stamped with its
+        schema), so that they are encoded with the rest."""
+        return {}
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> DistributionalRegressionModel:
@@ -705,31 +1036,23 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         >>> DistributionalRegressionModel.from_dict(d).links
         ('log', 'log')
         """
-        import surpyval
-        from surpyval.univariate.parametric.parametric_fitter import (
-            ParametricFitter,
-        )
+        from .fitter import _link_name
 
-        from .fitter import DistributionalFitter, _link_name
-
-        if model_dict.get("model") != "DistributionalRegressionModel":
+        if model_dict.get("model") != cls._dict_model:
             raise ValueError(
-                "Not a distributional regression model's dict (its 'model' "
-                "is {!r}).".format(model_dict.get("model"))
-            )
-        dist = getattr(surpyval, str(model_dict["distribution"]), None)
-        if not isinstance(dist, ParametricFitter):
-            raise ValueError(
-                "Unknown distribution {!r}".format(model_dict["distribution"])
+                "Not a {}'s dict (its 'model' is {!r}).".format(
+                    cls._dict_model, model_dict.get("model")
+                )
             )
         links = tuple(str(v) for v in model_dict["links"])
         positions = tuple(
             np.asarray(c, dtype=int) for c in model_dict["covariate_positions"]
         )
         width = int(model_dict["width"])
-        fitter = DistributionalFitter(
-            dist, links=dict(zip(dist.parameter_names, links))
-        )._bound(positions, width, links)
+        fitter = cls._fitter_from_dict(model_dict, links)._bound(
+            positions, width, links
+        )
+        dist = fitter.dist
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
         pmap = {str(k): int(v) for k, v in model_dict["phi_param_map"].items()}
@@ -798,5 +1121,14 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)
+        out._restore_penalty(model_dict)
         out._ic_n = cls._restored_ic_n(model_dict)
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
+        # A dict without signs was written by v0.26, whose coefficients
+        # all had the link's sign: converted, it predicts as it did.
+        out._convert_signs(
+            model_dict.get("coefficient_signs", (1.0,) * k_dist)
+        )
         return out

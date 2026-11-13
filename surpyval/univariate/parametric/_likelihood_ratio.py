@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -29,7 +30,7 @@ from scipy.special import expit
 from scipy.special import ndtri as z
 
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -44,6 +45,16 @@ _FLOAT_MAX = float(np.finfo(float).max)
 # The profile deviance is solved to about 1e-8 (the searches' tolerances);
 # this is the slack the likelihood-ratio walk allows it (``_lr_walk``).
 _LR_NOISE = 1e-6
+# The largest factor by which the profile deviance's rise from one step of
+# the likelihood-ratio walk to the next may shrink for a walk that has run
+# into noise to read it as having converged to a limit (``_lr_walk``).
+_LR_CONVERGING = 0.5
+# The relative distance either side of a likelihood-ratio walk's root at
+# which its deviance is solved again, and how far from the critical value
+# (beyond its slope) it may be there for the root to count as resolved
+# (``_lr_walk``).
+_LR_HAIR = 1e-6
+_LR_RESOLVED = 1e-3
 # The scale of the deviance constraint in the scaled search for a
 # function's extreme (``_PsiBoundSearch.extreme``): SLSQP holds it to its
 # ftol of 1e-10, which is 1e-8 of deviance.
@@ -206,6 +217,53 @@ class _LRPath:
         return out
 
 
+def _lr_converged(ws: list[float], ds: list[float], crit: float) -> bool:
+    """Whether four successive points of a likelihood-ratio walk (before
+    the noise it ran into) rise by less and less, each step's rise at
+    most ``_LR_CONVERGING`` of the one before as the steps grow by 1.6,
+    with the rest of the rise (at most the geometric series of the steps
+    to come) short of ``crit``: a profile converging to a limit below it
+    (``_lr_walk``'s *Resolution*)."""
+    for i in range(3, len(ds)):
+        with np.errstate(all="ignore"):
+            h = np.abs(np.diff(ws[i - 3 : i + 1]))
+            rise = np.diff(ds[i - 3 : i + 1])
+            if not (rise > 0).all():
+                continue
+            rate = rise / h
+            q = 1.6 * float(np.max(rate[1:] / rate[:-1]))
+        if q <= _LR_CONVERGING and (
+            ds[i] + rise[-1] * q / (1.0 - q) + _LR_NOISE < crit
+        ):
+            return True
+    return False
+
+
+def _lr_in_noise(
+    ws: list[float], ds: list[float], crit: float, end: float, back: float
+) -> tuple[str, float]:
+    """A walk that has run into noise: ``("edge", end)`` where its points
+    before it show the profile converging below ``crit``
+    (``_lr_converged``), else ``("unresolved", back)``."""
+    if _lr_converged(ws, ds, crit):
+        return "edge", float(end)
+    return "unresolved", float(back)
+
+
+def _lr_steady(
+    g: Callable[[float], float], v: float, at: float, slope: float
+) -> bool:
+    """Whether ``g`` a hair either side of ``v`` (``_LR_HAIR``) is within
+    ``_LR_RESOLVED`` of its value ``at`` there, beyond what ``slope``
+    moves it, as a profile deviance the searches can solve is. Where they
+    cannot (a flat profile far out, where the likelihood's valley is too
+    narrow for them) the deviance at neighbouring points differs by far
+    more (``_lr_walk``'s *Resolution*)."""
+    hair = _LR_HAIR * max(1.0, abs(v))
+    tol = _LR_RESOLVED + 10.0 * slope * hair
+    return all(abs(g(v + s * hair) - at) <= tol for s in (-1.0, 1.0))
+
+
 def _lr_walk(
     deviance: Callable[[float], float],
     w_hat: float,
@@ -229,7 +287,9 @@ def _lr_walk(
     ``crit`` to ``end`` (the end of the coordinate) or levels off below
     it; and ``("fail", nan)`` where the deviance is not finite, or the
     walk runs out of steps. ``d_hat`` is the deviance at ``w_hat``: 0 at
-    the estimate.
+    the estimate. ``("unresolved", w)`` is a crossing or a levelling off
+    in noise (see *Resolution*), ``w`` the farthest point walked before
+    it.
 
     *Levelling off.* The deviance of a parameter that tends to a limiting
     model at the edge of its space (a NegativeBinomial ``r`` to infinity,
@@ -251,6 +311,27 @@ def _lr_walk(
     that falls for three steps and later climbs back above ``crit`` (a
     second, lower mode of the likelihood further out); the bound is then
     the edge, wider than it need be, never narrower.
+
+    *Resolution.* A root is checked: the deviance a hair either side of
+    it (``_LR_HAIR``) must be within ``_LR_RESOLVED`` of ``crit``, beyond
+    what its slope over the bracket moves it; and the last points of a
+    walk read as levelling off must be as steady. Far out along a flat
+    profile the searches can no longer solve the deviance (the
+    likelihood's valley grows too narrow for them: a Gamma with an offset,
+    whose deviance tends to the Normal's as ``alpha`` grows, at an
+    ``alpha`` of 1e11 and an offset of -1e6), and returned values a few
+    tenths apart at points 1e-9 apart; the crossing found there was noise,
+    wherever the platform's last bits put it (an 80% bound of 2e11, 7e11,
+    1.6e12 or infinity). Such a walk is read once more from the points
+    before the noise: where four successive points rise by less and less,
+    each step's rise at most ``_LR_CONVERGING`` (0.5) of the one before
+    (the steps growing by 1.6), and the rise still to come (at most the
+    geometric series of the steps to come) leaves the deviance below
+    ``crit``, the profile has converged to a limit below it, and the bound
+    is the edge. A deviance converging as a power of the parameter passes;
+    one rising as ``log(w)``, without a limit, has rises that shrink by a
+    factor near 1 and does not. Otherwise the walk returns
+    ``"unresolved"``, and the bound is reported as not found.
     """
     ws, ds = [w_hat], [d_hat]
     # brentq starts from the bracket's ends, which the walk has solved.
@@ -276,6 +357,14 @@ def _lr_walk(
             reach = ds[-1] + rate[-1] * abs(end - ws[-1]) + _LR_NOISE
         return bool(slowing and reach < crit)
 
+    def edge_or_unresolved() -> tuple[str, float]:
+        # Levelling off is read from the last points: they must be ones
+        # the searches solved, not noise that happens to level off.
+        slope = abs(ds[-1] - ds[-2]) / abs(ws[-1] - ws[-2])
+        if _lr_steady(dev_at, ws[-1], ds[-1], slope):
+            return "edge", float(end)
+        return _lr_in_noise(ws, ds, crit, end, ws[-2])
+
     for _ in range(80):
         w = ws[-1] + direction * step
         step *= 1.6
@@ -300,6 +389,10 @@ def _lr_walk(
                         root = brentq(f, a, b, xtol=1e-9, rtol=1e-9)
                     except ValueError:
                         return "fail", np.nan
+                    # (f is the deviance less crit: 0 at the root)
+                    slope = abs(f(b) - f(a)) / (b - a)
+                    if not _lr_steady(f, float(root), 0.0, slope):
+                        return _lr_in_noise(ws, ds, crit, end, ws[-1])
                     return "root", float(root)
                 if not np.isfinite(dev):
                     return "fail", np.nan
@@ -307,7 +400,7 @@ def _lr_walk(
                     ws.append(float(v))
                     ds.append(dev)
                     if levels_off():
-                        return "edge", float(end)
+                        return edge_or_unresolved()
             # The far end, solved again from the steps before it, is
             # below crit after all: the walk goes on from it.
         if not np.isfinite(dev):
@@ -319,7 +412,7 @@ def _lr_walk(
         ws.append(w)
         ds.append(dev)
         if levels_off():
-            return "edge", float(end)
+            return edge_or_unresolved()
     return "fail", np.nan
 
 
@@ -1520,7 +1613,7 @@ class LikelihoodRatioMixin:
         lfp: bool
         zi: bool
         param_map: dict[str, int]
-        surv_data: "SurpyvalData"
+        surv_data: SurpyvalData
 
         def _resolve_param_name(self, name: str) -> tuple[bool, int]: ...
         def _ensure_surv_data(self) -> None: ...
@@ -1539,7 +1632,7 @@ class LikelihoodRatioMixin:
             k: v for k, v in self.__dict__.items() if not k.startswith("_lr_")
         }
 
-    def _lr_support(self) -> "Callable[[npt.NDArray], npt.NDArray] | None":
+    def _lr_support(self) -> Callable[[npt.NDArray], npt.NDArray] | None:
         """A vector function of the core parameters that is ``>= 0`` where
         the likelihood is defined, for a likelihood with a limit inside
         the parameters' box (``_PsiBoundSearch.support``); ``None`` for
@@ -1966,6 +2059,22 @@ class LikelihoodRatioMixin:
                 # Never fall back on the last candidate or the estimate:
                 # an unfound bound is reported as such.
                 side = "upper" if direction > 0 else "lower"
+                key = searches._lr_key(idx, crit, direction)
+                beyond = searches.__dict__.get("_lr_unresolved", {}).get(key)
+                if beyond is not None:
+                    warnings.warn(
+                        f"The likelihood-ratio {side} bound on '{name}' "
+                        "could not be found: the profile likelihood is so "
+                        "flat that its deviance could not be solved "
+                        f"precisely beyond {name} = {beyond:.6g}, where it "
+                        "is still below the critical value. The bound is "
+                        "beyond that value (it may be the edge of the "
+                        "parameter's space); nan is returned for it. "
+                        "method='wald' gives a bound in its place.",
+                        RuntimeWarning,
+                        stacklevel=4,
+                    )
+                    return value
                 warnings.warn(
                     f"The likelihood-ratio {side} bound on '{name}' could "
                     "not be found (the profile deviance never crossed the "
@@ -2055,6 +2164,11 @@ class LikelihoodRatioMixin:
             value = float(coord.edge(direction))
         else:
             value = np.nan
+            if status == "unresolved":
+                # Where the walk got to, for the warning (``_param_cb_lr``)
+                self.__dict__.setdefault("_lr_unresolved", {})[key] = float(
+                    coord.from_u(w)
+                )
         cache[key] = value
         self._lr_keep_points(idx, key, coord, path, crit, nll_hat)
         return value
@@ -2880,8 +2994,7 @@ class LikelihoodRatioMixin:
         if not 0 < level < 1:
             return None
         crit = z(1.0 - level / 2.0) ** 2
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             ends = np.array(
                 [self._lr_param_side(j, crit, d) for d in (-1.0, 1.0)]
             )

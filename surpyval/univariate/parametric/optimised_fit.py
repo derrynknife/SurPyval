@@ -102,6 +102,10 @@ def _optimizer_label(how: str, res: Any) -> str:
 
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
+#: How far an ECDF given to ``fit_from_ecdf`` may fall between neighbouring
+#: points (floating-point rounding) before it is refused as not a CDF.
+_ECDF_FALL_TOLERANCE = 1e-12
+
 
 class OptimisedFitMixin(FitInputsMixin):
     """The estimation machinery: ``fit`` and everything it needs.
@@ -287,9 +291,12 @@ class OptimisedFitMixin(FitInputsMixin):
             Array of observations of the random variables. If x is
             :code:`None`, xl and xr must be provided.
         c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. If not provided
-            will assume all values are observed.
+            Array of censoring flags. 0 is observed (the event, such as a
+            failure, a death or a relapse, happened at ``x``), 1 is right
+            censored (no event by ``x``), -1 is left censored (the event was
+            before ``x``) and 2 is interval censored. A status column in which
+            1 marks the event is the reverse: pass ``1 - status``. If not
+            provided will assume all values are observed.
         n : array like, optional
             Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
@@ -505,8 +512,9 @@ class OptimisedFitMixin(FitInputsMixin):
         Raises
         ------
         ValueError
-            If ``x`` and ``F`` differ in length, or an ``F`` is NaN or
-            outside [0, 1].
+            If ``x`` and ``F`` differ in length, an ``F`` is NaN or
+            outside [0, 1], or ``F`` falls as ``x`` rises (a survival
+            curve ``R`` passed in its place: pass ``1 - R``).
 
         Examples
         --------
@@ -540,6 +548,30 @@ class OptimisedFitMixin(FitInputsMixin):
             raise ValueError(
                 "F must lie in [0, 1]: got "
                 f"{F_arr[bad].tolist()} at x = {x_arr[bad].tolist()}."
+            )
+        # A CDF cannot fall. A survival curve passed in its place (R
+        # where F belongs, as NonParametric.fit_from_ecdf takes) fitted
+        # silently, to a negative shape (Weibull beta -2.05 on
+        # R = [0.9, 0.7, 0.4, 0.1]). The points are taken in order of x
+        # (they may come in any order); a fall larger than floating-point
+        # rounding is refused. 1 - R of every non-parametric estimate
+        # rises exactly, so the tolerance only absorbs arithmetic.
+        order = np.lexsort((F_arr, x_arr))
+        steps = np.diff(F_arr[order])
+        falls = np.flatnonzero(steps < -_ECDF_FALL_TOLERANCE)
+        if falls.size:
+            at = falls[0]
+            x_from, x_to = x_arr[order][at], x_arr[order][at + 1]
+            F_from, F_to = F_arr[order][at], F_arr[order][at + 1]
+            raise ValueError(
+                "F must rise with x; if you have a survival curve R, pass "
+                f"F = 1 - R. F falls from {F_from:g} at x = {x_from:g} to "
+                f"{F_to:g} at x = {x_to:g}"
+                + (
+                    ", and falls overall, as a survival curve does."
+                    if F_arr[order][-1] < F_arr[order][0]
+                    else f" ({falls.size} fall(s) in all)."
+                )
             )
         model = Parametric(self, "given ecdf", None, False, False, False)
         res = mpp_from_ecfd(self, x_arr, F_arr)

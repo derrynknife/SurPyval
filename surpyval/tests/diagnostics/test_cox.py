@@ -122,7 +122,11 @@ def test_a_continuous_violation_is_advised_a_time_varying_effect():
     assert "CoxPH.fit_tvc" in advice and "pandas.cut" in advice
     assert "WeibullAFT.fit" in advice and "LogNormalAFT.fit" in advice
     assert "Stratify on" not in advice
-    assert advice.features[0] == "CoxPH.fit_tvc"
+    assert "time_interaction={'w': \"log\"}" in advice
+    assert advice.features[:2] == (
+        "CoxPH.fit(time_interaction=)",
+        "CoxPH.fit_tvc",
+    )
 
 
 def test_a_few_levelled_covariate_is_stratified():
@@ -322,7 +326,7 @@ def test_covariate_names_come_from_a_dataframe_Z(meets_assumptions):
     assert d.columns == ["coef_0", "coef_1"]
 
 
-def test_a_stratified_fit_refuses_naming_the_fix():
+def test_a_stratified_fit_is_diagnosed_within_its_strata():
     rng = np.random.default_rng(1)
     t, z, s = (
         rng.exponential(size=50),
@@ -330,10 +334,8 @@ def test_a_stratified_fit_refuses_naming_the_fix():
         rng.integers(0, 2, 50),
     )
     model = sp.CoxPH.fit(t, z[:, None], strata=s)
-    with pytest.raises(
-        NotImplementedError, match="stratified.*without strata="
-    ):
-        model.diagnose()
+    d = model.diagnose()
+    assert any("stratified" in note for note in d.notes)
 
 
 def test_a_restored_model_refuses(meets_assumptions):

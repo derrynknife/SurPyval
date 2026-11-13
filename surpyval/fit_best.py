@@ -29,9 +29,11 @@ from surpyval.univariate.parametric import (
 from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import collecting_warnings
 
 if TYPE_CHECKING:
     # Imported where it is used: ``import surpyval`` does not load pandas
@@ -137,7 +139,8 @@ def _candidate_names(names: Iterable[Any] | None, argument: str) -> set[str]:
             f"`{argument}` takes distribution names only; a mixture is a "
             "candidate only when named in `include`."
         )
-    wanted = {str(name).lower() for name in names}
+    # An alias (Gauss, Galton) names its distribution's candidate
+    wanted = {str(canonical_name(str(name))).lower() for name in names}
     known = {dist.name.lower() for dist in distributions}
     unknown = sorted(wanted - known)
     if unknown:
@@ -284,7 +287,9 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         The observed event times (or intervals), in any of the formats
         ``fit`` accepts. If not given, ``xl`` and ``xr`` must be.
     c : array_like, optional
-        The censoring indicators.
+        The censoring indicators (0 an observed event, such as a failure
+        or a death, 1 right censored, -1 left censored, 2 interval
+        censored).
     n : array_like, optional
         The counts for each observation.
     t : array_like, optional
@@ -467,11 +472,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         # A candidate's own warning that its fit is not a verified maximum
         # is held back: the fitted model records it (``maximum``), and the
         # one warning below says it for every candidate set aside.
-        with (
-            warnings.catch_warnings(record=True) as caught,
-            quiet_maximum_warnings(),
-        ):
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught, quiet_maximum_warnings():
             try:
                 temp_model = fit()
                 tmp_measure = getattr(temp_model, metric)()

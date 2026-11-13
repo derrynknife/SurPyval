@@ -93,13 +93,46 @@ class WeightedCox:
             return np.zeros(max(m, 1))
         return np.arange(m) / m
 
+    def _shifted_risks(
+        self, beta: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray, float]:
+        """``(eta, exp(eta - shift), shift)`` at ``beta``, ``shift`` the
+        largest finite ``eta`` (0 without one).
+
+        Every sum over a risk set or its deaths is taken of ``exp(eta -
+        shift)``, which cannot overflow: the score and information are
+        ratios of such sums, in which the shift cancels, and the
+        log-likelihood adds it back. ``exp(eta)`` itself overflowed where
+        the coefficients run off to infinity (a covariate that separates
+        the events from the survivors), and numpy's overflow and invalid
+        value warnings reached the caller beside the fit's own "No finite
+        maximum" warning."""
+        with np.errstate(invalid="ignore", over="ignore"):
+            eta = self.Z @ beta
+        finite = eta[np.isfinite(eta)]
+        shift = float(finite.max()) if finite.size else 0.0
+        with np.errstate(invalid="ignore", over="ignore", under="ignore"):
+            risk = np.exp(eta - shift)
+        return eta, risk, shift
+
     def derivatives(
         self, beta: npt.NDArray
     ) -> tuple[float, npt.NDArray, npt.NDArray]:
-        """``(log-likelihood, score, information)`` at ``beta``."""
+        """``(log-likelihood, score, information)`` at ``beta``.
+
+        A risk set whose ``exp(eta - shift)`` all underflow (the
+        coefficients far out, along a direction with no finite maximum)
+        has a log-likelihood of ``-inf`` here, which the search's step
+        halving refuses, rather than a numpy warning."""
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return self._derivatives(beta)
+
+    def _derivatives(
+        self, beta: npt.NDArray
+    ) -> tuple[float, npt.NDArray, npt.NDArray]:
         Z = self.Z
-        eta = Z @ beta
-        r = self.omega * np.exp(eta)
+        eta, risk, shift = self._shifted_risks(beta)
+        r = self.omega * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
         S2 = self._risk_sums(r[:, None, None] * Z[:, :, None] * Z[:, None, :])
@@ -117,7 +150,7 @@ class WeightedCox:
             num = S1[j][None, :] - f[:, None] * D1[j][None, :]
             sq = S2[j][None] - f[:, None, None] * D2[j][None]
             wbar = self.wbar[j]
-            ll -= wbar * float(np.sum(np.log(den)))
+            ll -= wbar * (float(np.sum(np.log(den))) + f.size * shift)
             score -= wbar * (num / den[:, None]).sum(axis=0)
             mean = num / den[:, None]
             info += wbar * (
@@ -133,10 +166,15 @@ class WeightedCox:
     def score_residuals(self, beta: npt.NDArray) -> npt.NDArray:
         """Each row's score residual for one unit of it, ``L_i``: its
         derivative of the partial likelihood's score in its weight (R's
-        ``residuals(fit, type = "score")``)."""
+        ``residuals(fit, type = "score")``). Taken with ``exp(eta -
+        shift)`` (``_shifted_risks``): each term is a risk times a sum of
+        hazard increments, in which the shift cancels."""
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return self._score_residuals(beta)
+
+    def _score_residuals(self, beta: npt.NDArray) -> npt.NDArray:
         Z = self.Z
-        eta = Z @ beta
-        risk = np.exp(eta)
+        _, risk, _ = self._shifted_risks(beta)
         r = self.omega * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
@@ -204,14 +242,19 @@ class WeightedCox:
         (k/m) D0)``, with the weighted deaths ``d`` and the risk weights
         ``S0``, the sums of ``n w exp(beta'Z)`` over the risk sets (the
         ``r`` of the unweighted fit, which is ``n exp(beta'Z)``)."""
-        r = self.omega * np.exp(self.Z @ beta)
+        _, risk, shift = self._shifted_risks(beta)
+        r = self.omega * risk
         S0 = self._risk_sums(r)
         D0 = self._death_sums(r)
         h0 = np.zeros(self.times.size)
-        for j in range(self.times.size):
-            f = self._ladders(j)
-            h0[j] = np.sum(self.wbar[j] / (S0[j] - f * D0[j]))
-        return self.times, S0, self.d_w, h0
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            for j in range(self.times.size):
+                f = self._ladders(j)
+                h0[j] = np.sum(self.wbar[j] / (S0[j] - f * D0[j]))
+            # Back on the scale of exp(eta): where the coefficients run
+            # off these are 0 or inf, as they are.
+            scale = np.exp(shift)
+            return self.times, S0 * scale, self.d_w, h0 / scale
 
 
 def newton(
@@ -266,6 +309,33 @@ def robust_covariance(
     return summed.T @ summed
 
 
+def weighted_rows(
+    x: Any, Z: Any, w: Any, tie_method: str
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The checked weights ``w`` (one per value of ``x``) and ``Z`` as
+    rows, for a weighted Cox fit (plain or penalised) with ``tie_method``:
+    refuses the exact tie methods, which have no weighted form here, and a
+    ``Z`` with a different number of rows."""
+    from surpyval.utils.weights import check_weights, refuse_weighted
+
+    if tie_method not in ("efron", "breslow"):
+        raise refuse_weighted(
+            f"tie_method={tie_method!r}",
+            "the exact partial likelihoods have no weighted form here",
+            "Use tie_method='efron' (the default) or 'breslow'.",
+        )
+    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+    w_arr = check_weights(w, x_arr.shape[0])
+    Z_in = np.asarray(Z, dtype=float)
+    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
+    if Z_rows.shape[0] != w_arr.shape[0]:
+        raise ValueError(
+            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
+            "x: give one row of covariates per value."
+        )
+    return w_arr, Z_rows
+
+
 def fit_weighted_cox(
     x: Any,
     Z: Any,
@@ -276,11 +346,14 @@ def fit_weighted_cox(
     tie_method: str,
     tol: float,
     center: bool,
+    cluster: Any = None,
 ) -> Any:
-    """``CoxPH.fit(..., w=w)``: the weighted fit and its model."""
+    """``CoxPH.fit(..., w=w)``: the weighted fit and its model. With
+    ``cluster``, one label per row as given (a time-varying fit's
+    subjects), the covariance sums the weighted dfbetas within each
+    cluster, and ``robust_covariance()`` does so by default."""
     from surpyval.utils.weights import (
         effective_sample_size,
-        refuse_weighted,
         warn_if_few_effective,
     )
 
@@ -291,6 +364,7 @@ def fit_weighted_cox(
     from .cox_likelihood import baselines_at_origin
     from .cox_ph import (
         ALIASED_HOW,
+        PENALISED_ADVICE,
         _baseline_method,
         _cox_aliased,
         _diverged_columns,
@@ -304,30 +378,19 @@ def fit_weighted_cox(
         runoff_direction,
     )
 
-    if tie_method not in ("efron", "breslow"):
-        raise refuse_weighted(
-            f"tie_method={tie_method!r}",
-            "the exact partial likelihoods have no weighted form here",
-            "Use tie_method='efron' (the default) or 'breslow'.",
-        )
-    from surpyval.utils.weights import check_weights
-
-    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-    w_arr = check_weights(w, x_arr.shape[0])
-    Z_in = np.asarray(Z, dtype=float)
-    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
-    if Z_rows.shape[0] != w_arr.shape[0]:
-        raise ValueError(
-            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
-            "x: give one row of covariates per value."
-        )
-    # The weights travel as a last column of Z, so that the rows the
-    # validation drops (a missing covariate, with its warning) or
-    # reorders take their weights with them.
+    w_arr, Z_rows = weighted_rows(x, Z, w, tie_method)
+    # The weights travel as a last column of Z, and the rows' places
+    # before it, so that the rows the validation drops (a missing
+    # covariate, with its warning) or reorders take their weights (and
+    # their cluster labels) with them.
+    places = np.arange(w_arr.shape[0], dtype=float)
     x, c, n, tl, Z_aug = validate_coxph(
-        x, c, n, np.column_stack([Z_rows, w_arr]), tl, tie_method
+        x, c, n, np.column_stack([Z_rows, places, w_arr]), tl, tie_method
     )
-    Z, w_arr = Z_aug[:, :-1], Z_aug[:, -1]
+    Z, w_arr = Z_aug[:, :-2], Z_aug[:, -1]
+    labels = None
+    if cluster is not None:
+        labels = np.asarray(cluster)[Z_aug[:, -2].astype(int)]
     _require_an_event(c, n)
     n = np.asarray(n, dtype=float)
     warn_if_few_effective(n, w_arr)
@@ -377,9 +440,11 @@ def fit_weighted_cox(
                 off = np.flatnonzero(direction)
                 which = str(kept[off].tolist())
                 if alone:
-                    warn_monotone(which)
+                    warn_monotone(which, advice=PENALISED_ADVICE)
                 else:
-                    warn_monotone(which, direction[off])
+                    warn_monotone(
+                        which, direction[off], advice=PENALISED_ADVICE
+                    )
         try:
             bread = np.linalg.inv(info)
         except np.linalg.LinAlgError:
@@ -410,7 +475,7 @@ def fit_weighted_cox(
             UserWarning,
             stacklevel=3,
         )
-    cov_k = robust_covariance(lik, beta_k, bread)
+    cov_k = robust_covariance(lik, beta_k, bread, labels)
     if off.size:
         cov_k[off, :] = np.nan
         cov_k[:, off] = np.nan
@@ -454,6 +519,7 @@ def fit_weighted_cox(
     # coefficients) and the columns estimated, for robust_covariance().
     model._weighted_cox = full
     model._weighted_kept = kept
+    model._weighted_cluster = labels
     model.neg_ll_of = full.neg_ll
     model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
     times, r, d, h0 = lik.baseline(beta_k)

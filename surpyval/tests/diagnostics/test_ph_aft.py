@@ -115,7 +115,7 @@ def test_a_shape_per_level_matches_survreg_strata(
         # The shapes of the larger model are R's per-stratum scales
         # (the Weibull's shape is 1 / scale)
         ctx = d._context
-        (factor,) = [f for f in ph_aft._factors(ctx) if f["name"] == "sex"]
+        (factor,) = (f for f in ph_aft._factors(ctx) if f["name"] == "sex")
         res = ph_aft._shape_test(ctx, factor)
         s = ctx.model.distribution_param_map["beta" if invert else "sigma"]
         theta = res["fit"].theta
@@ -381,11 +381,11 @@ def test_a_binary_ph_violation_is_advised_a_step_an_aft_or_strata():
     assert ("w",) not in set(failed["covariates"])
     detail = failed.loc[failed["covariates"] == ("z",), "detail"].item()
     assert detail.startswith("its coefficient falls after t = ")
-    (advice,) = [
+    (advice,) = (
         a
         for a in d.advice
         if a.check == "proportional_hazards" and "of z" in a
-    ]
+    )
     assert "WeibullPH.fit_tvc" in advice and "LogNormalAFT.fit" in advice
     assert "CoxPH.fit(..., strata=<the z column>)" in advice
     assert advice.features == (
@@ -407,8 +407,8 @@ def test_a_baseline_with_no_fitter_of_its_own_is_named_by_the_factory(
     z, t = _crossing(rng, 400)
     df = _frame(t, np.full(400, 3.0), z=z)
     d = _fit(sp.PH(dist), df, ["z"]).diagnose()
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
-    own = "PH({})".format(dist.name)
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
+    own = f"PH({dist.name})"
     assert own + ".fit_tvc" in advice and aft + ".fit" in advice
     feature = "LogNormalAFT.fit" if aft == "LogNormalAFT" else "AFT"
     assert advice.features == ("PH", feature, "CoxPH.fit(strata=)")
@@ -437,7 +437,7 @@ def test_a_continuous_ph_violation_is_not_advised_strata():
     t = np.where(e < 0.5 * early, e / early, 0.5 + (e - 0.5 * early) / late)
     d = _fit(sp.LogNormalPH, _frame(t, np.full(n, 4.0), w=w), ["w"]).diagnose()
     assert _rows(d, "proportional_hazards").iloc[0]["verdict"] == "fail"
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
     # The AFT model named is the LogNormal's own
     assert advice.features == ("LogNormalPH.fit_tvc", "LogNormalAFT.fit")
     assert "strata" not in advice
@@ -456,7 +456,7 @@ def test_a_joint_failure_alone_has_its_own_advice(monkeypatch, meets_ph):
 
     monkeypatch.setattr(ph_aft, "_step_test", fake)
     d = meets_ph.diagnose()
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
     assert "GLOBAL" in advice and "no single covariate" in advice
     assert advice.covariates == ("z", "w")
     assert advice.features == ("WeibullPH.fit_tvc", "LogNormalAFT.fit")
@@ -481,9 +481,9 @@ def test_a_non_linear_effect_fails_functional_form(fitter, scale, feature):
     assert form["detail"].item() == "its effect on {} is not linear".format(
         scale
     )
-    (advice,) = [a for a in d.advice if a.check == "functional_form"]
+    (advice,) = (a for a in d.advice if a.check == "functional_form")
     assert 'formula="np.log(u) + ..."' in advice
-    assert "linearly on {}".format(scale) in advice
+    assert f"linearly on {scale}" in advice
     assert advice.features == (feature,)
     # ... and the fix it names is a formula the fit takes
     _fit(fitter, df, formula="np.square(u) + u")
@@ -499,7 +499,7 @@ def test_an_influential_row_warns():
     row = _rows(d, "influence").iloc[0]
     assert row["verdict"] == "warn" and row["statistic"] > 1
     assert pd.isna(row["p"])
-    (advice,) = [a for a in d.advice if a.check == "influence"]
+    (advice,) = (a for a in d.advice if a.check == "influence")
     assert advice.startswith("Row ") and "WeibullPH.fit" in advice
     # The row is model.data's (the fitted rows, sorted): the unit put out
     assert row["detail"].split()[2:4] == ["of", "model.data"]
@@ -520,8 +520,8 @@ def test_an_outlier_warns_with_the_bonferroni_cutoff():
     row = _rows(d, "outliers").iloc[0]
     cutoff = norm.isf(0.05 / (2 * n))
     assert row["verdict"] == "warn" and row["statistic"] > cutoff
-    assert "{:.3g}".format(cutoff) in row["detail"]
-    (advice,) = [a for a in d.advice if a.check == "outliers"]
+    assert f"{cutoff:.3g}" in row["detail"]
+    (advice,) = (a for a in d.advice if a.check == "outliers")
     assert "recording errors" in advice and advice.features == ()
 
 
@@ -534,7 +534,7 @@ def test_a_better_baseline_is_advised():
     row = _rows(d, "baseline_distribution").iloc[0]
     assert row["verdict"] == "warn" and row["statistic"] > ph_aft.AIC_MARGIN
     assert row["detail"].startswith("LogNormalPH fits better")
-    (advice,) = [a for a in d.advice if a.check == "baseline_distribution"]
+    (advice,) = (a for a in d.advice if a.check == "baseline_distribution")
     assert "Refit with LogNormalPH.fit" in advice
     assert advice.features == ("LogNormalPH.fit",)
 
@@ -557,7 +557,7 @@ def test_ph_against_aft_is_advised_both_ways():
     row = _rows(d, "baseline_distribution")
     row = row[row["test"].str.contains("AFT")].iloc[0]
     assert row["verdict"] == "warn"
-    (advice,) = [a for a in d.advice if a.features == ("LogNormalAFT.fit",)]
+    (advice,) = (a for a in d.advice if a.features == ("LogNormalAFT.fit",))
     assert advice.check == "baseline_distribution"
     assert "The accelerated failure time model" in advice
     assert "rescale time rather than multiply the hazard" in advice
@@ -569,7 +569,7 @@ def test_ph_against_aft_is_advised_both_ways():
     row = _rows(d, "error_distribution")
     row = row[row["test"].str.contains("PH")].iloc[0]
     assert row["verdict"] == "warn"
-    (advice,) = [a for a in d.advice if a.features == ("LogNormalPH.fit",)]
+    (advice,) = (a for a in d.advice if a.features == ("LogNormalPH.fit",))
     assert advice.check == "error_distribution"
     assert "The proportional hazards model" in advice
     assert "multiply the hazard rather than rescale time" in advice
@@ -599,7 +599,7 @@ def test_a_shape_that_varies_by_group_fails_common_shape(shape_violation):
     assert row["covariates"] == ("g",) and row["verdict"] == "fail"
     assert row["detail"].startswith("the shape (beta) differs by level")
     assert any("w have more" in n or "w has more" in n for n in d.notes)
-    (advice,) = [a for a in d.advice if a.check == "common_shape"]
+    (advice,) = (a for a in d.advice if a.check == "common_shape")
     assert "WeibullAFT.fit on that level's rows" in advice
     assert 'strata_col="g"' in advice
     assert advice.features == (
@@ -767,18 +767,7 @@ def test_a_restored_model_refuses(meets_ph):
         restored.diagnose()
 
 
-def test_a_time_varying_fit_refuses_naming_the_issue():
-    i = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 9]
-    xl = [0, 2, 0, 0, 1, 0, 0, 3, 0, 0, 0, 2, 0, 0, 4]
-    xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8, 2, 5, 4, 4, 9]
-    c = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1]
-    Z = np.array([0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1.0])[:, None]
-    model = _quiet(sp.WeibullPH.fit_tvc, i, xl, xr, c, Z)
-    with pytest.raises(NotImplementedError, match="time-varying.*#869"):
-        model.diagnose()
-
-
-def test_a_custom_link_refuses_naming_the_issue():
+def test_a_custom_link_refuses_saying_what_to_do():
     import autograd.numpy as anp
 
     def linear_rr(Z, *params):
@@ -796,7 +785,9 @@ def test_a_custom_link_refuses_naming_the_issue():
     rng = np.random.default_rng(0)
     dose = rng.uniform(0, 4, 200)
     x = 10 * (-np.log(rng.uniform(size=200)) / (1 + 0.5 * dose)) ** 0.5
-    with pytest.raises(NotImplementedError, match="link.*#869"):
+    with pytest.raises(
+        NotImplementedError, match="link.*Refit with one of those"
+    ):
         fitter.fit(x=x, Z=dose).diagnose()
 
 

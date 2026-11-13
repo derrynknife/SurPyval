@@ -94,10 +94,13 @@ class SingleProbabilityMixin:
             The fitted model, with ``params`` holding ``p``. Its
             ``param_cb("p")`` bounds ``p`` from the number of ones and of
             outcomes: ``method="exact"`` (the default, Clopper-Pearson),
-            ``"wald"`` (logit scale) or ``"lr"`` (likelihood ratio); see
-            :func:`probability_bounds`. ``cb``, ``quantile_cb`` and
-            ``mean_cb`` are not available: the model's uncertainty is that
-            of ``p``.
+            ``"wald"`` (logit scale), ``"lr"`` (likelihood ratio) or
+            ``"jeffreys"``; see :func:`probability_bounds`. Its
+            ``covariance()`` is the 1 x 1 matrix
+            :math:`\\hat p (1 - \\hat p) / N`, ``nan`` when no outcome or
+            every outcome is a one (see :func:`probability_covariance`).
+            ``cb``, ``quantile_cb`` and ``mean_cb`` are not available: the
+            model's uncertainty is that of ``p``.
         """
         x_arr = np.atleast_1d(x)
         # Each observation must be a 0 or a 1 — elementwise, for any length
@@ -120,8 +123,16 @@ class SingleProbabilityMixin:
             float(n_arr.sum()),
         )
         # As from_dict sets it, so a fitted and a restored model agree.
-        self._set_support(model, False)  # type: ignore[attr-defined]
+        self._set_support(model, False)
         return model
+
+    def _set_support(self, model: Parametric, offset: bool) -> None:
+        """The support, as the host class sets it, and the covariance of
+        ``p`` from the counts: ``fit`` and ``from_dict`` both come through
+        here, so a model restored from a dict saved before the covariance
+        was stored has it too."""
+        super()._set_support(model, offset)  # type: ignore[misc]
+        attach_probability_covariance(model, 0)
 
     def _probability_cb(
         self,
@@ -135,7 +146,7 @@ class SingleProbabilityMixin:
         :func:`probability_bounds`."""
         if name != "p":
             raise ValueError(
-                "Unknown parameter {!r}; expected one of ['p']".format(name)
+                f"Unknown parameter {name!r}; expected one of ['p']"
             )
         return probability_bounds(
             *event_counts(model), alpha_ci, bound, method, name
@@ -172,7 +183,7 @@ class SingleProbabilityMixin:
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.atleast_1d(prob)
-        self._set_support(model, False)  # type: ignore[attr-defined]
+        self._set_support(model, False)
         return model
 
 
@@ -194,9 +205,70 @@ def event_counts(model: Parametric) -> tuple[float, float]:
     return counts
 
 
+def probability_covariance(events: float, trials: float) -> float:
+    r"""
+    The variance of the estimated probability :math:`\hat p = k / N`, the
+    inverse of the observed information at the estimate,
+
+    .. math::
+        \widehat{\mathrm{var}}(\hat p) = \frac{\hat p (1 - \hat p)}{N},
+
+    the entry of ``covariance()`` for ``p`` of a fitted ``Bernoulli``,
+    ``FixedEventProbability`` or ``Binomial``.
+
+    ``nan`` when ``k = 0`` or ``k = N``: the formula gives 0 there, which
+    would say the probability is known exactly after, say, no failures in
+    20 demands. It is not, and no normal approximation describes its
+    uncertainty at the edge, so the variance is undefined (as a Wald bound
+    there is); ``param_cb("p")`` has the exact bounds.
+
+    Parameters
+    ----------
+    events : float
+        The number of events ``k`` (ones).
+    trials : float
+        The number of trials ``N``.
+
+    Returns
+    -------
+    float
+        The variance, or ``nan`` at :math:`\hat p = 0` or 1.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.parametric.distributions._single_probability import (
+    ...     probability_covariance,
+    ... )
+    >>> probability_covariance(8, 10)
+    0.016
+    >>> probability_covariance(0, 20)
+    nan
+    """  # noqa: E501
+    k, n = float(events), float(trials)
+    if not 0 < k < n:
+        return float("nan")
+    p_hat = k / n
+    return p_hat * (1.0 - p_hat) / n
+
+
+def attach_probability_covariance(model: Parametric, index: int) -> None:
+    """Set ``model``'s covariance from its event counts: the variance of
+    ``p`` (:func:`probability_covariance`) at ``index``, and zeros for any
+    other parameter (a Binomial's known number of trials), as a held
+    parameter has. A model without counts (built from its parameters) is
+    left without one, so ``covariance()`` refuses as it did."""
+    counts = getattr(model, "_event_counts", None)
+    if counts is None:
+        return
+    size = len(model.params)
+    cov = np.zeros((size, size))
+    cov[index, index] = probability_covariance(*counts)
+    model._covariance = cov
+
+
 #: The ways ``param_cb`` bounds a probability from its counts; the first
 #: is the default.
-PROBABILITY_CB_METHODS = ("exact", "wald", "lr")
+PROBABILITY_CB_METHODS = ("exact", "wald", "lr", "jeffreys")
 
 
 def probability_bounds(
@@ -226,6 +298,13 @@ def probability_bounds(
       :math:`2[\ell(\hat p) - \ell(p)]` stays below the :math:`\chi^2_1`
       critical value; at :math:`\hat p = 0` the lower bound is 0 and the
       upper :math:`1 - e^{-c / (2N)}`.
+    - ``"jeffreys"``: the equal-tailed interval of the posterior from
+      Jeffreys' prior, the ``Beta(k + 1/2, N - k + 1/2)`` quantiles at the
+      tail probability either side; 0 below when ``k = 0`` and 1 above when
+      ``k = N`` (Brown, Cai and DasGupta, 2001). Narrower than the exact
+      interval, with coverage close to its level on average over ``p``
+      rather than at least its level at every ``p``. As R's
+      ``binom::binom.confint(k, N, methods = "bayes", type = "central")``.
     """
     from scipy.optimize import brentq
     from scipy.special import xlog1py, xlogy
@@ -260,6 +339,10 @@ def probability_bounds(
     if method == "exact":
         lower = 0.0 if k == 0 else float(beta.ppf(alpha, k, n - k + 1))
         upper = 1.0 if k == n else float(beta.ppf(1 - alpha, k + 1, n - k))
+    elif method == "jeffreys":
+        a, b = k + 0.5, n - k + 0.5
+        lower = 0.0 if k == 0 else float(beta.ppf(alpha, a, b))
+        upper = 1.0 if k == n else float(beta.isf(alpha, a, b))
     else:
         # The signed root of the deviance, decreasing in p, set to the
         # normal quantile: a one-sided bound at alpha is the two-sided one

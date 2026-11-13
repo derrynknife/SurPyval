@@ -31,6 +31,7 @@ from scipy.stats import chi2
 
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 from surpyval.utils.validation import check_option, option_error
+from surpyval.utils.weights import refuse_weighted
 
 from .fine_gray import _risk_set_sums, _risk_set_weights, _risk_sets
 
@@ -78,6 +79,30 @@ def fine_gray_data(model: Any) -> FineGrayData:
     """
     if isinstance(model, FineGrayData):
         return model
+    if getattr(model, "weighted", False):
+        raise refuse_weighted(
+            "Diagnosing a Fine-Gray model (the proportional "
+            "subdistribution hazards test, the added-covariate test and "
+            "the martingale residuals)",
+            "their tests use the model-based information, which treats "
+            "the weights as units seen, and their weighted (robust) forms "
+            "are not built yet",
+            "Use the robust Wald tests of summary() on the weighted fit, "
+            "or run the diagnostics on the fit without its weights.",
+        )
+    if getattr(model, "is_stratified", False) or (
+        getattr(model, "n_clusters", None) is not None
+    ):
+        raise ValueError(
+            "The diagnostics of a Fine-Gray model (the proportional "
+            "subdistribution hazards test, the added-covariate test and "
+            "the martingale residuals) are not built for a fit with "
+            "strata or clusters: their tests take one baseline and "
+            "independent units. Check proportionality on the fit without "
+            "them, or within each stratum (FineGray.fit on the stratum's "
+            "rows), and use the robust Wald tests of summary() on this "
+            "fit."
+        )
     data = getattr(model, "_fit_data", None)
     if data is None:
         raise _restored()
@@ -87,9 +112,7 @@ def fine_gray_data(model: Any) -> FineGrayData:
         raise ValueError(
             "The diagnostics are not available for a Fine-Gray model with "
             "aliased coefficients (column(s) {} of Z, whose coefficients "
-            "are nan, #476). Refit without those columns.".format(
-                aliased.tolist()
-            )
+            "are nan). Refit without those columns.".format(aliased.tolist())
         )
     x = np.asarray(data["x"], dtype=float)
     n = np.asarray(data["n"], dtype=float)

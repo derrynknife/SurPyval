@@ -27,6 +27,16 @@ the tolerances here (the study's 300 replicates: 98.7% and 98.3%).
 
 Each study's replicates run on every core (the searches take about two
 seconds a replicate); the studies run in a group of their own in CI.
+
+The bootstrap bounds (``method="bootstrap"``, ``n_boot = 200``) of the
+limited-failure and zero-inflated fits are checked the same way, at 90%
+and 95%, on 200 replicates of their own data (seeds 311-314, fixed before
+the first run): the Weibull ``lfp``, ``lfp_edge`` and ``zi`` designs above
+and a LogNormal (``mu`` 2, ``sigma`` 0.5) with ``lfp_p`` = 0.6, with
+bounds on every parameter and on ``sf`` and ``qf`` at three true
+quantiles. On the edge the refits of the many samples whose estimate is
+on the edge are on it too, so the upper bound on ``lfp_p`` is 1 and the
+target there is ``1 - alpha_ci / 2``, as for the likelihood-ratio bound.
 """
 
 import os
@@ -130,9 +140,140 @@ def test_likelihood_ratio_coverage_on_the_edge():
         params[:, :2, 0], params[:, :2, 1], values, 0.95, "edge param_cb"
     )
     check_coverage(
-        params[:, 2, 0], params[:, 2, 1], 1.0, 0.975, "edge lfp_p two-sided"
+        params[:, 2, 0],
+        params[:, 2, 1],
+        1.0,
+        0.975,
+        "edge lfp_p two-sided",
+        pooled=False,
     )
     check_coverage(
-        np.full_like(one_sided, -np.inf), one_sided, 1.0, 0.95, "edge upper"
+        np.full_like(one_sided, -np.inf),
+        one_sided,
+        1.0,
+        0.95,
+        "edge upper",
+        pooled=False,
     )
     check_coverage(band[:, :, 0], band[:, :, 1], sf_true, 0.95, "edge cb")
+
+
+# The bootstrap studies (#286): (seed, distribution, truth, quantiles).
+BOOT_REPS = 200
+N_BOOT = 200
+BOOT_STUDIES = {
+    "lfp": (311, "Weibull", STUDIES["lfp"][1], STUDIES["lfp"][2]),
+    "lfp_edge": (
+        312,
+        "Weibull",
+        STUDIES["lfp_edge"][1],
+        STUDIES["lfp_edge"][2],
+    ),
+    "zi": (313, "Weibull", STUDIES["zi"][1], STUDIES["zi"][2]),
+    "lognormal_lfp": (
+        314,
+        "LogNormal",
+        {"mu": 2.0, "sigma": 0.5, "lfp_p": 0.6},
+        (0.1, 0.3, 0.5),
+    ),
+}
+LEVELS = (0.05, 0.10)
+
+
+def _boot_truth(name):
+    _, dist, truth, _ = BOOT_STUDIES[name]
+    names = getattr(sp, dist).parameter_names
+    extras = {k: v for k, v in truth.items() if k in ("lfp_p", "f0")}
+    return getattr(sp, dist).from_params([truth[k] for k in names], **extras)
+
+
+def _boot_sample(name, rng):
+    _, dist, truth, _ = BOOT_STUDIES[name]
+    if dist == "Weibull":
+        t = truth["alpha"] * rng.weibull(truth["beta"], N)
+    else:
+        t = np.exp(rng.normal(truth["mu"], truth["sigma"], N))
+    if "lfp_p" in truth:
+        t = np.where(rng.uniform(size=N) > truth["lfp_p"], np.inf, t)
+    else:
+        t = np.where(rng.uniform(size=N) < truth["f0"], 0.0, t)
+    cens = rng.uniform(0, 30, N)
+    return np.minimum(t, cens), (cens < t).astype(int)
+
+
+def _boot_replicate(job):
+    name, r, x, c = job
+    seed, dist, truth, probs = BOOT_STUDIES[name]
+    kind = "zi" if "f0" in truth else "lfp"
+    true = _boot_truth(name)
+    p = np.array(probs)
+    boot = {
+        "method": "bootstrap",
+        "n_boot": N_BOOT,
+        "random_state": 1000 * seed + r,
+    }
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        model = getattr(sp, dist).fit(x, c=c, **{kind: True})
+        out = []
+        for a in LEVELS:
+            params = [model.param_cb(k, alpha_ci=a, **boot) for k in truth]
+            band = model.cb(true.qf(p), alpha_ci=a, **boot)
+            q = model.quantile_cb(p, alpha_ci=a, **boot)
+            out.append((np.array(params), band, q))
+    return out
+
+
+def _boot_study(name):
+    seed, _, _, _ = BOOT_STUDIES[name]
+    rng = np.random.default_rng(seed)
+    jobs = [(name, r, *_boot_sample(name, rng)) for r in range(BOOT_REPS)]
+    with process_pool(max_workers=os.cpu_count()) as pool:
+        return list(pool.map(_boot_replicate, jobs))
+
+
+@pytest.mark.parametrize("name", list(BOOT_STUDIES))
+def test_bootstrap_coverage(name):
+    _, _, truth, probs = BOOT_STUDIES[name]
+    out = _boot_study(name)
+    true = _boot_truth(name)
+    p = np.array(probs)
+    sf_true = true.sf(true.qf(p))
+    names = list(truth)
+    values = np.array([truth[k] for k in names])
+    for level, a in enumerate(LEVELS):
+        params = np.array([o[level][0] for o in out])
+        band = np.array([o[level][1] for o in out])
+        q = np.array([o[level][2] for o in out])
+        label = f"{name} bootstrap {1 - a:.0%}"
+        if name == "lfp_edge":
+            # A truth on the edge: lfp_p's target is 1 - alpha / 2.
+            check_coverage(
+                params[:, :2, 0],
+                params[:, :2, 1],
+                values[:2],
+                1 - a,
+                f"{label} param_cb",
+            )
+            check_coverage(
+                params[:, 2, 0],
+                params[:, 2, 1],
+                1.0,
+                1 - a / 2,
+                f"{label} lfp_p on the edge",
+                pooled=False,
+            )
+        else:
+            check_coverage(
+                params[:, :, 0],
+                params[:, :, 1],
+                values,
+                1 - a,
+                f"{label} param_cb",
+            )
+        check_coverage(
+            band[:, :, 0], band[:, :, 1], sf_true, 1 - a, f"{label} cb"
+        )
+        check_coverage(
+            q[:, :, 0], q[:, :, 1], true.qf(p), 1 - a, f"{label} quantile_cb"
+        )

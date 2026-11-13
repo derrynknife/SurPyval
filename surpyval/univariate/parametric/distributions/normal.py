@@ -31,10 +31,25 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
 
     """
 
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
+    _param_docs = """
+        mu : numpy array or scalar
+            The location parameter for the Normal distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Normal distribution
+        """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the normal quantile of ff, on which this family is a straight line in
     # time (#477).
     _cb_link = "probit"
+
+    @property
+    def canonical_name(self) -> str:
+        # The same for both names of the distribution (``Gauss``
+        # is another name for ``Normal``).
+        return "Normal"
 
     def __init__(self, name: str) -> None:
         super().__init__(

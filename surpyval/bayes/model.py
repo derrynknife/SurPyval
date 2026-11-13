@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy import integrate, optimize, stats
+from scipy import integrate, optimize, special, stats
 
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.posterior import Posterior
@@ -34,6 +34,7 @@ from surpyval.bayes.prior import (
     shifted,
 )
 from surpyval.bayes.transforms import Transform
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -45,6 +46,7 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 _SIDES = ("two-sided", "lower", "upper")
 #: The most times qf's root bracket is widened before it gives up (each
@@ -90,7 +92,7 @@ def _bound_text(lo: float | None, hi: float | None) -> str:
     )
 
 
-class BayesianParametric(SerialisableMixin):
+class BayesianParametric(DiagnoseMixin, SerialisableMixin):
     """
     A Bayesian fit of a parametric distribution: the posterior of its
     parameters, and the posterior predictive distribution of a new unit's
@@ -616,7 +618,12 @@ class BayesianParametric(SerialisableMixin):
 
     def _components(self, fname: str, x: npt.NDArray) -> npt.NDArray:
         """``fname`` of every posterior point at the 1-D ``x``, shape
-        ``(N, len(x))``."""
+        ``(N, len(x))``.
+
+        ``ff`` is each point's own failure function, never ``1 - sf``,
+        and ``Hf`` is ``-log1p(-ff)`` where ``ff`` is below one half and
+        ``-log(sf)`` above, so each keeps its digits in both tails.
+        """
         th = self._theta()
         N = len(self.posterior.weights)
         dp = [th[n][:, None] for n in self.dist.parameter_names]
@@ -626,36 +633,49 @@ class BayesianParametric(SerialisableMixin):
         xg = x[None, :] - gamma
         d = self.dist
         plain = not (self.offset or self.lfp or self.zi)
+        before = x[None, :] < 0
+
+        def sf() -> Any:
+            if plain:
+                return d.sf(xg, *dp)
+            # (each point's sf is 1 below its own offset)
+            s = 1 - p + (p - f0) * shifted(d, "sf", xg, dp)
+            return np.where(before, 1.0, s) if self.zi else s
+
+        def ff() -> Any:
+            if plain:
+                return d.ff(xg, *dp)
+            f = f0 + (p - f0) * shifted(d, "ff", xg, dp)
+            return np.where(before, 0.0, f) if self.zi else f
+
+        def log_sf() -> Any:
+            if plain:
+                return d.log_sf(xg, *dp)
+            ls = np.logaddexp(
+                np.log1p(-p), np.log(p - f0) + shifted(d, "log_sf", xg, dp)
+            )
+            return np.where(before, 0.0, ls) if self.zi else ls
+
         with np.errstate(all="ignore"):
-            if fname in ("sf", "ff", "Hf"):
-                if plain:
-                    s = d.sf(xg, *dp)
-                else:
-                    # (each point's sf is 1 below its own offset)
-                    s = 1 - p + (p - f0) * shifted(d, "sf", xg, dp)
-                    if self.zi:
-                        s = np.where(x[None, :] < 0, 1.0, s)
-                if fname == "sf":
-                    return s
-                if fname == "ff":
-                    return 1 - s
-                return -np.log(s)
+            if fname == "sf":
+                return sf()
+            if fname == "ff":
+                return ff()
+            if fname == "log_sf":
+                return log_sf()
+            if fname == "Hf":
+                f = ff()
+                return np.where(f < 0.5, -np.log1p(-f), -np.log(sf())) + 0.0
             if fname in ("df", "hf"):
                 if plain:
-                    f = d.df(xg, *dp)
+                    dens = d.df(xg, *dp)
                 else:
-                    f = (p - f0) * shifted(d, "df", xg, dp)
+                    dens = (p - f0) * shifted(d, "df", xg, dp)
                     if self.zi:
-                        f = np.where(x[None, :] < 0, 0.0, f)
+                        dens = np.where(before, 0.0, dens)
                 if fname == "df":
-                    return f
-                if plain:
-                    s = d.sf(xg, *dp)
-                else:
-                    s = 1 - p + (p - f0) * shifted(d, "sf", xg, dp)
-                    if self.zi:
-                        s = np.where(x[None, :] < 0, 1.0, s)
-                return f / s
+                    return dens
+                return dens / sf()
         raise ValueError(fname)
 
     def _chunks(self, fname: str, x: npt.NDArray, fn: Any) -> npt.NDArray:
@@ -693,6 +713,28 @@ class BayesianParametric(SerialisableMixin):
             return float(a), float(b)
         return None
 
+    @staticmethod
+    def _lomax_predict(
+        fname: str, xs: npt.NDArray, a: float, b: float
+    ) -> npt.NDArray:
+        """The Exponential-Gamma predictive (a Lomax of shape ``a`` and
+        scale ``b``) on the log scale: ``H(x) = a log(1 + x / b)``. The
+        plain form, ``a b^a / (b + x)^(a + 1)``, overflows once ``b^a``
+        passes 1e308, which a prior on a rate per hour (``b`` near 1e9
+        hours) does at ``a`` of about 34."""
+        xp = np.maximum(xs, 0.0)
+        with np.errstate(all="ignore"):
+            H = a * np.log1p(xp / b)
+            h = np.where(xs >= 0, a / (b + xp), 0.0)
+            out = {
+                "sf": lambda: np.exp(-H),
+                "ff": lambda: -np.expm1(-H),
+                "Hf": lambda: H,
+                "df": lambda: h * np.exp(-H),
+                "hf": lambda: h,
+            }[fname]()
+        return np.asarray(out, dtype=float)
+
     def _expect(self, fname: str, x: npt.NDArray) -> npt.NDArray:
         # (not ``weights @ v``: a matrix product's summation order depends
         # on a query point's place in x, Posterior.expectation's does not)
@@ -700,6 +742,51 @@ class BayesianParametric(SerialisableMixin):
         return self._chunks(
             fname, x, lambda v: post.expectation(np.nan_to_num(v, nan=0))
         )
+
+    def _probabilities(
+        self, x: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The predictive ``(ff, sf)``: the posterior averages of the
+        points' own ``ff`` and ``sf``, each a sum of positive terms and so
+        accurate to a rounding however small it is. The smaller of the
+        two is kept and the other is one minus it (a double next to 1
+        loses nothing that way), so the pair sums to 1 and is exactly
+        ``(0, 1)`` below the support: the weights sum to 1 only to a
+        rounding, which would otherwise be what ``sf`` reads there."""
+        F = np.clip(self._expect("ff", x), 0.0, 1.0)
+        S = np.clip(self._expect("sf", x), 0.0, 1.0)
+        small = F <= S
+        return np.where(small, F, 1.0 - S), np.where(small, 1.0 - F, S)
+
+    def _probability(self, fname: str, x: npt.NDArray) -> npt.NDArray:
+        """The predictive ``ff`` or ``sf`` (see ``_probabilities``)."""
+        F, S = self._probabilities(x)
+        return F if fname == "ff" else S
+
+    def _log_sf(self, x: npt.NDArray) -> npt.NDArray:
+        """``log sf`` of the predictive distribution from the points'
+        ``log_sf``, for times so late that ``sf`` itself underflows."""
+        with np.errstate(all="ignore"):
+            log_w = np.log(self.posterior.weights)[:, None]
+
+            def fold(v: npt.NDArray) -> npt.NDArray:
+                v = np.where(np.isnan(v), -np.inf, v)
+                return np.asarray(special.logsumexp(v + log_w, axis=0))
+
+            return self._chunks("log_sf", x, fold)
+
+    def _cumulative_hazard(self, x: npt.NDArray) -> npt.NDArray:
+        """``-log sf`` with its digits in both tails: ``-log1p(-ff)``
+        where ``ff`` is below one half (``sf`` is then a rounding from 1,
+        and its log has no digits), ``-log(sf)`` above, and the points'
+        ``log_sf`` where ``sf`` underflows."""
+        f, s = self._probabilities(x)
+        with np.errstate(divide="ignore"):
+            out = np.where(f < 0.5, -np.log1p(-f), -np.log(s))
+        gone = ~(f < 0.5) & (s < 1e-290)
+        if np.any(gone):
+            out[gone] = -self._log_sf(x[gone])
+        return out + 0.0
 
     def _predict(self, fname: str, x: Any) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
@@ -709,25 +796,20 @@ class BayesianParametric(SerialisableMixin):
         nan = np.isnan(x)
         xs = np.where(nan, 0.0, x)
         lomax = self._lomax()
+        if lomax is not None:
+            out = self._lomax_predict(fname, xs, *lomax)
+            return np.where(nan, np.nan, out)
+        flat = xs.ravel()
         with np.errstate(all="ignore"):
-            if lomax is not None:
-                a, b = lomax
-                xp = np.maximum(xs, 0.0)
-                s = (b / (b + xp)) ** a
-                f = np.where(xs >= 0, a * b**a / (b + xp) ** (a + 1), 0.0)
+            if fname in ("sf", "ff"):
+                out = self._probability(fname, flat)
+            elif fname == "Hf":
+                out = self._cumulative_hazard(flat)
+            elif fname == "df":
+                out = self._expect("df", flat)
             else:
-                need_s = fname in ("sf", "ff", "Hf", "hf")
-                need_f = fname in ("df", "hf")
-                s = self._expect("sf", xs) if need_s else np.ones_like(xs)
-                f = self._expect("df", xs) if need_f else np.zeros_like(xs)
-            out = {
-                "sf": lambda: s,
-                "ff": lambda: 1 - s,
-                "Hf": lambda: -np.log(s),
-                "df": lambda: f,
-                "hf": lambda: f / s,
-            }[fname]()
-        out = np.asarray(out, dtype=float)
+                out = self._expect("df", flat) / self._probability("sf", flat)
+        out = np.asarray(out, dtype=float).reshape(xs.shape)
         return np.where(nan, np.nan, out)
 
     # ------------------------------------------------------------------
@@ -752,7 +834,10 @@ class BayesianParametric(SerialisableMixin):
 
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
-        """The failure function of a new unit, ``1 - sf``.
+        """The failure function of a new unit: the posterior mean of the
+        failure function, :math:`F(x) = E[F(x \\mid \\theta)]`. It is
+        computed as that, not as ``1 - sf``, so a failure probability of
+        1e-12 has as many correct digits as one of 0.5.
 
         Examples
         --------
@@ -799,7 +884,10 @@ class BayesianParametric(SerialisableMixin):
 
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """The cumulative hazard of a new unit, ``-log sf``.
+        """The cumulative hazard of a new unit, ``-log sf``, computed as
+        ``-log1p(-ff)`` where ``ff`` is below one half, so it keeps its
+        digits where nearly nothing has failed as well as where nearly
+        everything has.
 
         Examples
         --------
@@ -828,6 +916,12 @@ class BayesianParametric(SerialisableMixin):
         ...         sp.Gamma.from_params([2.0, 500.0])})
         >>> float(model.qf(0.5).round(1))
         185.8
+
+        It is found on the log of ``ff`` for ``p`` up to one half and on
+        the log of ``sf`` above, so it inverts both tails
+        (``p = 1e-12`` and ``p = 1 - 1e-12`` alike). A limited failure
+        population's quantile is ``inf`` for ``p`` above the proportion
+        that ever fails.
         """
         u = np.asarray(p, dtype=float)
         closed = self._closed_predictive()
@@ -842,13 +936,16 @@ class BayesianParametric(SerialisableMixin):
             if lomax is not None:
                 a, b = lomax
                 with np.errstate(divide="ignore"):
-                    out[i] = b * ((1 - ui) ** (-1 / a) - 1)
+                    out[i] = b * np.expm1(-np.log1p(-ui) / a)
                 continue
             out[i] = self._qf_one(float(ui))
         return out
 
     def _qf_one(self, u: float) -> float:
-        top = float(self._predict("ff", np.array([np.inf]))[0])
+        # Only a limited failure population's ff stops short of 1
+        top = 1.0
+        if self.lfp:
+            top = float(self._predict("ff", np.array([np.inf]))[0])
         if u >= top - 1e-15 and top < 1:
             return float("inf")
         lo_edge = float(self.dist.support[0])
@@ -865,7 +962,25 @@ class BayesianParametric(SerialisableMixin):
         if comp.size == 0:
             return float("nan")
         a, b = float(comp.min()), float(comp.max())
-        f = lambda t: float(self._predict("ff", np.array([t]))[0]) - u  # noqa
+        # The root is sought on a scale where the function has digits:
+        # log ff - log u up to one half, log(1 - u) - log sf above (1 - u
+        # is exact there). ff - u itself is flat to a rounding wherever
+        # ff is near 1, and a root-finder cannot leave such a stretch.
+        # (A log is held to -1000, below that of any double, so the ends
+        # of a bracket where nothing has failed, or nothing is left, are
+        # finite numbers of the right sign.)
+        lower = u <= 0.5
+        target = float(np.log(u) if lower else np.log1p(-u))
+
+        def f(t: float) -> float:
+            fname = "ff" if lower else "sf"
+            v = float(self._predict(fname, np.array([t]))[0])
+            if np.isnan(v):
+                return float("nan")
+            with np.errstate(divide="ignore"):
+                lv = max(float(np.log(v)), -1000.0)
+            return lv - target if lower else target - lv
+
         # Below the predictive support's lower edge nothing has failed, so
         # the bracket stops there: the edge is every point's support edge
         # plus its offset, or 0 for the zero-inflation mass.
@@ -875,6 +990,9 @@ class BayesianParametric(SerialisableMixin):
         if self.zi:
             edge = min(edge, 0.0)
         a = max(a, edge)
+        # (a time typical of the points' own quantiles: the tolerance
+        # below is in its units, so it does not depend on the time unit)
+        scale = float(np.median(np.abs(comp)))
         span = max(b - a, abs(b), 1e-12)
         fa = f(a)
         for _ in range(_BRACKET_STEPS):
@@ -903,9 +1021,22 @@ class BayesianParametric(SerialisableMixin):
             return self._qf_failed(u, "nan")
         if fb < 0 or not np.isfinite(b):
             return self._qf_failed(u, "above")
-        if a == b:
+        if a == b or fa == 0:
             return a
-        return float(optimize.brentq(f, a, b, xtol=1e-14, rtol=1e-13))
+        if fb == 0:
+            return b
+        if a >= 0:
+            return _solve_on_log_time(f, a, b, fb)
+        return float(
+            optimize.brentq(
+                f,
+                a,
+                b,
+                xtol=max(1e-15 * scale, 5e-324),
+                rtol=1e-14,
+                maxiter=1000,
+            )
+        )
 
     def _qf_failed(self, u: float, why: str) -> float:
         """NaN, with a warning that says why, where the predictive quantile
@@ -945,9 +1076,16 @@ class BayesianParametric(SerialisableMixin):
 
     def random(self, size: Any, random_state: Any = None) -> npt.NDArray:
         """
-        Draws of a new unit's life from the predictive distribution: a
-        parameter point from the posterior, then a life from it, for each
-        draw.
+        Draws of a new unit's life from the predictive distribution.
+
+        Each life takes one uniform number. Where the predictive
+        distribution has a closed form (a conjugate fit) the life is its
+        quantile at that number. Otherwise the number first picks a
+        posterior point, by where it falls among the points' cumulative
+        weights, and its place within that point's share, rescaled to
+        (0, 1), is the probability at which that point's own quantile is
+        the life. The draws therefore follow exactly the distribution
+        ``sf``, ``ff`` and ``qf`` describe.
 
         Examples
         --------
@@ -966,22 +1104,42 @@ class BayesianParametric(SerialisableMixin):
             rng = np.random.mtrand._rand
         shape = (size,) if np.isscalar(size) else tuple(size)
         total = int(np.prod(shape))
-        D = self.posterior.draws(total, rng)
-        names = self.posterior.parameter_names
-        v = {n: D[:, i] for i, n in enumerate(names)}
         u = rng.uniform(size=total)
-        if self.dist.discrete:
-            return self.dist.qf(u, v["p"]).reshape(shape)
-        gamma = v.get("gamma", 0.0)
-        p = v.get("lfp_p", 1.0)
-        f0 = v.get("f0", 0.0)
+        closed = self._closed_predictive()
+        lomax = self._lomax()
+        if closed is not None:
+            x = self.dist.qf(u, *closed.params)
+            return np.asarray(x, dtype=float).reshape(shape)
+        if lomax is not None:
+            a, b = lomax
+            x = b * np.expm1(-np.log1p(-u) / a)
+            return np.asarray(x, dtype=float).reshape(shape)
+        post = self.posterior
+        N = len(post.weights)
+        edges = np.concatenate([[0.0], np.cumsum(post.weights)])
+        edges /= edges[-1]
+        # (a point of no weight has an empty share, and is never picked)
+        idx = np.clip(np.searchsorted(edges, u, side="right") - 1, 0, N - 1)
         with np.errstate(all="ignore"):
-            base = np.clip((u - f0) / (p - f0), 0, 1)
+            v = (u - edges[idx]) / (edges[idx + 1] - edges[idx])
+        # Held inside (0, 1): the uniform number can fall on the edge of a
+        # share, and a quantile at 0 is the support's lower edge (minus
+        # infinity for a Normal)
+        v = np.clip(v, 2.0**-54, 1 - 2.0**-53)
+        P = post.points[idx]
+        th = {n: P[:, i] for i, n in enumerate(post.parameter_names)}
+        if self.dist.discrete:
+            return self.dist.qf(v, th["p"]).reshape(shape)
+        gamma = th.get("gamma", 0.0)
+        p = th.get("lfp_p", 1.0)
+        f0 = th.get("f0", 0.0)
+        with np.errstate(all="ignore"):
+            base = np.clip((v - f0) / (p - f0), 0, 1)
             x = gamma + self.dist.qf(
-                base, *[v[n] for n in self.dist.parameter_names]
+                base, *[th[n] for n in self.dist.parameter_names]
             )
-            x = np.where(u < f0, 0.0, x)
-            x = np.where(u > p, np.inf, x)
+            x = np.where(v < f0, 0.0, x)
+            x = np.where(v > p, np.inf, x)
         return np.asarray(x, dtype=float).reshape(shape)
 
     def _component_means(self) -> npt.NDArray:
@@ -1112,8 +1270,17 @@ class BayesianParametric(SerialisableMixin):
         predictive survival function."""
         xs = np.atleast_1d(np.asarray(x, dtype=float))
         out = np.empty(xs.shape)
+        lomax = self._lomax()
         for i, xi in enumerate(xs):
             s = float(self.sf(xi))
+            if lomax is not None and s > 0:
+                # The Lomax's is linear in x, (b + x) / (a - 1) (infinite
+                # with its mean, for a <= 1); before 0 the unit has all
+                # of its life to come, and the wait to 0
+                a, b = lomax
+                rest = (b + max(xi, 0.0)) / (a - 1) if a > 1 else np.inf
+                out[i] = rest + max(-xi, 0.0)
+                continue
             if s <= 0 or np.isnan(s):
                 out[i] = np.nan
                 continue
@@ -1209,15 +1376,56 @@ class BayesianParametric(SerialisableMixin):
         levels = [0.5] if point else _levels(alpha_ci, bound)
         x = np.asarray(x, dtype=float)
         if fname in ("ff", "Hf"):
-            # from the bounds on sf, so the three always agree
-            flipped = [1 - q for q in levels]
-            s = self._function_quantiles("sf", x, flipped)
-            out = 1 - s if fname == "ff" else -np.log(s)
+            # From the bounds on sf, so the three always agree; the bound
+            # on ff comes with it from the points' own ff (a bound on sf
+            # within a rounding of 1 has no digits of ff or Hf left).
+            s, f = self._probability_quantiles(x, levels)
+            if fname == "ff":
+                out = f + 0.0
+            else:
+                with np.errstate(all="ignore"):
+                    out = np.where(f < 0.5, -np.log1p(-f), -np.log(s)) + 0.0
         else:
             out = self._function_quantiles(fname, x, levels)
         if point:
             return out[..., 0]
         return _shape_bound(out, bound)
+
+    def _probability_quantiles(
+        self, x: npt.NDArray, levels: list[float]
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The posterior quantiles of ``ff`` at ``levels`` and, with
+        them, of ``sf`` at ``1 - levels``: ``(sf, ff)``, each
+        ``(len(x), len(levels))``, the two summing to 1 and each with
+        its digits where it is small."""
+        flipped = [1 - q for q in levels]
+        if self._exact is not None:
+            return (
+                self._function_quantiles("sf", x, flipped),
+                self._function_quantiles("ff", x, levels),
+            )
+        nan = np.isnan(x)
+        xs = np.where(nan, 0.0, x)
+        post = self.posterior
+        N = max(len(post.weights), 1)
+        step = max(1, 2_000_000 // N)
+        parts_s, parts_f = [], []
+        with np.errstate(all="ignore"):
+            for i in range(0, max(len(xs), 1), step):
+                chunk = xs[i : i + step]
+                s, f = post.wquantile(
+                    self._components("sf", chunk),
+                    flipped,
+                    complement=self._components("ff", chunk),
+                )
+                parts_s.append(np.asarray(s, dtype=float))
+                parts_f.append(np.asarray(f, dtype=float))
+        shape = (len(x), len(levels))
+        out_s = np.concatenate(parts_s, axis=0).reshape(shape)
+        out_f = np.concatenate(parts_f, axis=0).reshape(shape)
+        out_s[nan] = np.nan
+        out_f[nan] = np.nan
+        return out_s, out_f
 
     def _function_quantiles(
         self, fname: str, x: npt.NDArray, levels: list[float]
@@ -1600,8 +1808,7 @@ class BayesianParametric(SerialisableMixin):
                         )
                     else:
                         mle_val = float(getattr(mle, name))
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings():
                         iv = np.asarray(
                             mle.param_cb(name, alpha_ci=alpha_ci), float
                         )
@@ -1634,9 +1841,7 @@ class BayesianParametric(SerialisableMixin):
             label = f"{p:.0%} quantile (B{100 * p:g} life)"
         elif on in ("sf", "ff"):
             assert x is not None
-            v = quantity_at(self.dist, ("R", x), th)
-            if on == "ff":
-                v = 1 - v
+            v = quantity_at(self.dist, ("R" if on == "sf" else "F", x), th)
             label = f"{'reliability' if on == 'sf' else 'failure probability'}"
             label += f" at {_fmt(x)}"
         elif on == "mean":
@@ -1680,7 +1885,9 @@ class BayesianParametric(SerialisableMixin):
         on : str, optional
             ``"sf"`` (the default) or ``"ff"`` at ``x``; ``"qf"``, a
             quantile, with ``p`` (``on="qf", p=0.10`` for the B10 life);
-            ``"mean"``; or a parameter name.
+            ``"mean"``; or a parameter name. ``"R"`` and ``"F"`` are
+            accepted spellings of ``"sf"`` and ``"ff"`` (unless the
+            distribution has a parameter of that name).
         p : float, optional
             The quantile's probability. Defaults to 0.10.
         x : float, optional
@@ -1700,6 +1907,8 @@ class BayesianParametric(SerialisableMixin):
         >>> round(new.compare_to(old, on="qf", p=0.10).probability, 2)
         0.78
         """
+        if on in ("R", "F") and on not in self.posterior.parameter_names:
+            on = {"R": "sf", "F": "ff"}[on]
         if on in ("sf", "ff") and x is None:
             raise ValueError(
                 f"on={on!r} needs the time x=; for a B-life use on='qf' "
@@ -1989,7 +2198,9 @@ def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
     for d in (a, b):
         bayes_data("Combining data for a Bayesian fit", d)
     ua, ub = getattr(a, "unit", None), getattr(b, "unit", None)
-    if ua is not None and ub is not None and ua != ub:
+    from surpyval.utils.units import same_unit
+
+    if ua is not None and ub is not None and not same_unit(ua, ub):
         raise ValueError(
             f"The old data's ages are in {ua!r} and the new data's in "
             f"{ub!r}: convert one so both are in the same unit."
@@ -2068,8 +2279,8 @@ def _mle_quantity(
         if on == "qf":
             return float(np.ravel(quantity_at(other.dist, ("q", p), th))[0])
         if on in ("sf", "ff"):
-            r = float(np.ravel(quantity_at(other.dist, ("R", x), th))[0])
-            return r if on == "sf" else 1 - r
+            kind = "R" if on == "sf" else "F"
+            return float(np.ravel(quantity_at(other.dist, (kind, x), th))[0])
         if on == "mean":
             return float(np.ravel(quantity_at(other.dist, ("mean",), th))[0])
         if on in names:
@@ -2291,8 +2502,7 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
         lines.append(f"  {name:<10}{_fmt(med):>10}   {_fmt(lo)} - {_fmt(hi)}")
     life = float(model.dist.support[0]) == 0
     lab = "B10 life" if life else "10% point"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         try:
             b10 = float(model.quantile_cri(0.1, point=True))
             b_lo, b_hi = model.quantile_cri(0.1, alpha_ci=alpha_ci)
@@ -2340,8 +2550,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
                 v = float(mle.params[model.dist.parameter_names.index(name)])
             else:
                 v = float(getattr(mle, name))
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 iv = np.asarray(mle.param_cb(name, alpha_ci=alpha_ci), float)
         except (ValueError, AttributeError, KeyError):
             continue
@@ -2398,3 +2607,31 @@ def _how_computed(model: BayesianParametric) -> str:
             "with few failures this can be poor: check it with the grid."
         )
     return f"From {d.get('draws', len(model.posterior.weights))} draws."
+
+
+def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
+    """The root of ``f`` (negative at ``a >= 0``, positive at ``b``)
+    sought on the log of time, so it is found to a relative tolerance
+    however close to 0 it is (a posterior point of a small shape puts
+    the quantile at 1e-12 decades below the points' own quantiles). From
+    a bracket starting at 0, a positive lower end is found first."""
+    lo = a
+    if lo == 0:
+        lo = b
+        flo = fb
+        while flo >= 0 and lo > 5e-324:
+            lo = lo * 1e-8 if lo > 1e-300 else 5e-324
+            flo = f(lo)
+        if flo >= 0:
+            return lo
+    if lo == b:
+        return b
+    root = optimize.brentq(
+        lambda v: f(float(np.exp(v))),
+        float(np.log(lo)),
+        float(np.log(b)),
+        xtol=1e-15,
+        rtol=1e-15,
+        maxiter=1000,
+    )
+    return float(np.exp(root))

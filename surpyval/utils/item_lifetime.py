@@ -14,17 +14,14 @@ from surpyval.utils.item_history import (
     _attributes,
     _covariate_field,
     _covariates,
+    _ItemRecord,
     _schedule_field,
     _time_varying,
     _unit,
     _with_step,
     checked_id,
-    comparable,
     covariate_value,
     freeze,
-    frozen_setattr,
-    frozen_setstate,
-    hashable,
     item_id,
     late_covariates,
     missing_type,
@@ -45,7 +42,7 @@ _OUTCOMES = (
 )
 
 
-class ItemLifetime:
+class ItemLifetime(_ItemRecord):
     """
     One item's lifetime: how it ended (or what is known of its failure),
     the window in which it could have been seen, what failed, and its
@@ -87,10 +84,11 @@ class ItemLifetime:
         value holding from its age on), a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
         or a continuously varying
-        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
-        Each must start at or before the start of observation
-        (``left_truncation``, else 0): nothing says what they were before
-        their first age.
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+        (a ramp, a cycle: fitted cut into steps fine enough that the fit
+        no longer depends on them). Each must start at or before the
+        start of observation (``left_truncation``, else 0): nothing says
+        what they were before their first age.
     markers : dict, optional
         Repeated measurements of one marker (a vibration level, a wear or
         oil-debris reading, a biomarker), ``{age: value}``: one reading
@@ -106,9 +104,9 @@ class ItemLifetime:
         ``data.groupby(name)`` and ``data.select(where={name: value})``.
     unit : str, optional
         The unit its ages are in (``"hours"``, ``"km"``, ``"cycles"``), a
-        label kept with the record (pint's canonical name for a unit it
-        knows): a dataset takes it from its records, which must agree,
-        and ``fit(data)`` gives it to the model.
+        label kept with the record as typed: a dataset takes it from its
+        records, which must agree, and ``fit(data)`` gives it to the
+        model.
 
     Examples
     --------
@@ -207,12 +205,6 @@ class ItemLifetime:
         self._marker_ages, self._marker_values = self._checked_markers(markers)
         freeze(self)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        frozen_setattr(self, name, value)
-
-    def __setstate__(self, state: dict) -> None:
-        frozen_setstate(self, state)
-
     def attribute(self, name: str) -> Any:
         """The value of the attribute ``name`` (``attributes={name:
         value}``, what describes the item without being fitted: a site, a
@@ -238,27 +230,27 @@ class ItemLifetime:
 
     # The outcome by name, as ItemHistory reads: its value, or None.
     @property
-    def observed(self) -> "float | None":
+    def observed(self) -> float | None:
         """The age at failure, if it failed at a known age."""
         return self.value if self.outcome == "observed" else None
 
     @property
-    def right_censored(self) -> "float | None":
+    def right_censored(self) -> float | None:
         """The age it was last seen working, if still running."""
         return self.value if self.outcome == "right_censored" else None
 
     @property
-    def left_censored(self) -> "float | None":
+    def left_censored(self) -> float | None:
         """The age by which it had failed, if that is all that is known."""
         return self.value if self.outcome == "left_censored" else None
 
     @property
-    def interval_censored(self) -> "np.ndarray | None":
+    def interval_censored(self) -> np.ndarray | None:
         """``[lower, upper]``, if it failed between two ages."""
         return self.value if self.outcome == "interval_censored" else None
 
     @property
-    def markers(self) -> "dict | None":
+    def markers(self) -> dict | None:
         """The marker readings, ``{age: value}`` in order of age, or None
         where it has none."""
         ages = getattr(self, "_marker_ages", None)
@@ -266,7 +258,7 @@ class ItemLifetime:
             return None
         return dict(zip(ages.tolist(), self._marker_values.tolist()))
 
-    def _window(self) -> "tuple[float, float]":
+    def _window(self) -> tuple[float, float]:
         """The ages over which it was observed: from the start of
         observation (``left_truncation``, else 0) to its outcome's age
         (the upper end of an interval)."""
@@ -278,7 +270,7 @@ class ItemLifetime:
         )
         return start, end
 
-    def _checked_markers(self, value: Any) -> "tuple[np.ndarray, np.ndarray]":
+    def _checked_markers(self, value: Any) -> tuple[np.ndarray, np.ndarray]:
         """The readings ``{age: value}`` as arrays of ages and values in
         order of age (empty where none), each a finite number read inside
         the item's observation."""
@@ -341,7 +333,7 @@ class ItemLifetime:
         order = np.argsort(ages_arr, kind="stable")
         return ages_arr[order], values_arr[order]
 
-    def _check(self, first_change: "float | None") -> None:
+    def _check(self, first_change: float | None) -> None:
         item, tl, tr = self.id, self.left_truncation, self.right_truncation
         if tl is not None and tr is not None and not tl < tr:
             raise ValueError(
@@ -396,7 +388,7 @@ class ItemLifetime:
 
     # -- updates (each returns a new, checked ItemLifetime) ---------------
 
-    def clone(self, id: Any = None, **changes: Any) -> "ItemLifetime":
+    def clone(self, id: Any = None, **changes: Any) -> ItemLifetime:
         """
         A copy of this lifetime, under the id ``id`` (else the same id),
         with any of its arguments replaced by ``changes`` (an outcome
@@ -424,7 +416,7 @@ class ItemLifetime:
             )
         return self.value
 
-    def extend(self, age: Any) -> "ItemLifetime":
+    def extend(self, age: Any) -> ItemLifetime:
         """This lifetime, still running and seen working up to a later
         ``age``.
 
@@ -441,7 +433,7 @@ class ItemLifetime:
             )
         return self.clone(right_censored=age)
 
-    def fail(self, age: Any, event_type: Any = None) -> "ItemLifetime":
+    def fail(self, age: Any, event_type: Any = None) -> ItemLifetime:
         """This lifetime, still running, failed at ``age``.
 
         >>> from surpyval import ItemLifetime
@@ -457,7 +449,7 @@ class ItemLifetime:
             )
         return self.clone(observed=age, event_type=event_type)
 
-    def found_failed(self, age: Any, event_type: Any = None) -> "ItemLifetime":
+    def found_failed(self, age: Any, event_type: Any = None) -> ItemLifetime:
         """This lifetime, still running, found failed at an inspection at
         ``age``: it failed between when it was last seen working and then.
 
@@ -480,7 +472,7 @@ class ItemLifetime:
             )
         return self.clone(interval_censored=[last, age], event_type=event_type)
 
-    def update_covariates(self, age: Any, values: Any) -> "ItemLifetime":
+    def update_covariates(self, age: Any, values: Any) -> ItemLifetime:
         """This lifetime with its time-varying covariates taking ``values``
         from ``age`` on (a step added to its schedule)."""
         steps = _with_step(
@@ -492,7 +484,7 @@ class ItemLifetime:
         )
         return self.clone(time_varying_covariates=steps)
 
-    def update_markers(self, age: Any, value: Any) -> "ItemLifetime":
+    def update_markers(self, age: Any, value: Any) -> ItemLifetime:
         """This lifetime with a marker reading ``value`` at ``age`` (in
         place of one already at that age). The reading must be inside its
         observation: for a new reading of an item still running, extend it
@@ -553,7 +545,7 @@ class ItemLifetime:
         return record_dict(self)
 
     @classmethod
-    def from_dict(cls, record_dict: dict) -> "ItemLifetime":
+    def from_dict(cls, record_dict: dict) -> ItemLifetime:
         """The record back from its :meth:`to_dict` dictionary, checked
         as one built from its arguments.
 
@@ -566,15 +558,8 @@ class ItemLifetime:
 
         return record_from_dict(cls, record_dict)
 
-    def to_json(self, filepath: Any = None) -> "str | None":
-        """The record as strict JSON text (:meth:`to_dict` dumped), or
-        written to the file ``filepath``."""
-        from surpyval.utils.data_json import dump
-
-        return dump(self.to_dict(), filepath)
-
     @classmethod
-    def from_json(cls, source: Any) -> "ItemLifetime":
+    def from_json(cls, source: Any) -> ItemLifetime:
         """The record back from JSON text (a string starting with ``{``)
         or the file holding it.
 
@@ -586,22 +571,6 @@ class ItemLifetime:
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ItemLifetime):
-            return NotImplemented
-        return self.id == other.id and self._compared() == other._compared()
-
-    def __hash__(self) -> int:
-        return hash((self.id, hashable(self._compared())))
-
-    def _compared(self) -> dict:
-        return comparable(self._fields(), self.time_varying_covariates)
-
-    def _as_dict(self) -> bool:
-        # A record pickled before #930 has no _tvc_dict: its schedule
-        # showed as a dict.
-        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         fields = "".join(
