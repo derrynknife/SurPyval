@@ -968,14 +968,23 @@ def _is_maximum(search: _Search, u: npt.NDArray, n_obs: float) -> bool:
 
 
 def _boundary_p(statistic: float) -> float:
-    """The p-value of a likelihood-ratio statistic of a parameter on the
-    edge of its space: a 50:50 mixture of a point mass at 0 and a
-    chi-square on one degree of freedom (Self and Liang 1987)."""
+    """The p-value of the likelihood-ratio statistic of no frailty: a
+    50:50 mixture of chi-square on one and on two degrees of freedom.
+
+    Near ``theta = 0`` the frailty enters the likelihood through the
+    variance of the recurrent part's random effect, ``theta``, and that of
+    the terminal part's, ``alpha^2 theta``, which the free ``alpha`` lets
+    differ: two variances on the edge of their space, not one. The 50:50
+    mixture of a point mass at 0 and chi-square(1) (Self and Liang 1987),
+    the reference of a single variance, rejected a true null 18% of the
+    time at the 5% level in the calibration study; this mixture is that
+    of a variance on its edge tested together with a second parameter
+    (Self and Liang 1987, case 7; Stram and Lee 1994)."""
     if not np.isfinite(statistic):
         return float("nan")
     if statistic <= 1e-9:
         return 1.0
-    return float(0.5 * chi2.sf(statistic, 1))
+    return float(0.5 * chi2.sf(statistic, 1) + 0.5 * chi2.sf(statistic, 2))
 
 
 @singleton_fitter
@@ -1031,7 +1040,7 @@ class JointFrailty(FitterRepr):
     >>> model.parameter_names[4:6]
     ['theta', 'alpha']
     >>> round(model.theta, 2), round(model.alpha, 2)
-    (0.51, 1.08)
+    (0.54, 1.68)
     """
 
     fitter_kind = "joint frailty fitter (recurrent and terminal events)"
@@ -1451,7 +1460,7 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
     >>> s_all = float(model.sf(10.0))
     >>> s_frail = float(model.sf(10.0, frailty=2.0))
     >>> round(s_all, 4), round(s_frail, 4)
-    (0.7234, 0.4931)
+    (0.7221, 0.4931)
     """
 
     params: npt.NDArray
@@ -2139,9 +2148,9 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         >>> rows = truth.random(150, end=15.0, random_state=3)
         >>> model = JointFrailty.fit(**rows)
         >>> model.param_cb("alpha").round(2)
-        array([0.51, 1.54])
+        array([-0.15,  1.82])
         >>> model.param_cb("alpha", method="lr").round(2)
-        array([0.53, 1.59])
+        array([0.06, 2.57])
         """
         from surpyval.univariate.regression._likelihood_ratio import (
             LikelihoodRegion,
@@ -2204,13 +2213,15 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
 
         - ``theta = 0``: no frailty, so the units differ only through
           their covariates and the two parts are independent. The model
-          without frailty is the two parts fitted separately. ``theta = 0``
-          is on the edge of its space, so the p-value is that of a 50:50
-          mixture of a point mass at 0 and :math:`\\chi^2_1` (Self and
-          Liang 1987), as for the shared-frailty models. ``alpha`` is not
-          identified under this null, which makes the mixture an
-          approximation (Davies 1987); its size is checked in the
-          calibration study.
+          without frailty is the two parts fitted separately. Near the
+          null the frailty acts through two variances on the edge of their
+          space, ``theta`` in the recurrent part and ``alpha^2 theta`` in
+          the terminal part (``alpha`` is not identified under the null),
+          so the p-value is that of a 50:50 mixture of
+          :math:`\\chi^2_1` and :math:`\\chi^2_2` (Self and Liang 1987;
+          Stram and Lee 1994), an approximation whose size is checked in
+          the calibration study. (The single-variance reference, half a
+          :math:`\\chi^2_1`, rejected a true null 18% of the time at 5%.)
         - ``alpha = 0``: the frailty acts on the recurrent events only, so
           the terminal event does not depend on how often a unit has
           recurrences. The model is refitted with ``alpha`` held at 0
@@ -2233,7 +2244,7 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         >>> rows = truth.random(150, end=15.0, random_state=3)
         >>> model = JointFrailty.fit(**rows)
         >>> model.frailty_tests()["p"].round(5).tolist()
-        [0.0, 0.00011]
+        [0.00012, 0.03289]
         """
         import pandas as pd
 
@@ -2253,7 +2264,7 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         return pd.DataFrame(
             {
                 "statistic": [t_theta, t_alpha],
-                "df": [1, 1],
+                "df": [2, 1],
                 "p": [
                     _boundary_p(t_theta),
                     (
@@ -2263,7 +2274,7 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
                     ),
                 ],
                 "reference": [
-                    "50:50 mixture of chi2(0) and chi2(1)",
+                    "50:50 mixture of chi2(1) and chi2(2)",
                     "chi2(1)",
                 ],
             },

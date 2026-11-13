@@ -18,10 +18,14 @@ of ``theta`` and ``alpha``, and of the delta-method bands ``sf_cb`` and
 
 The size of the test of ``theta = 0``: 300 replicates of the same design
 with no frailty (``theta = 0``, so ``alpha`` has no meaning), at the 5%
-level. ``alpha`` is not identified under this null, so the 50:50
-chi-square mixture is an approximation (Davies 1987); the check is one
-sided -- the test must not reject more often than 5% beyond the
-tolerance -- and the rate is printed.
+level. ``alpha`` is not identified under this null, so the reference
+distribution is an approximation (Davies 1987); the check is one sided
+-- the test must not reject more often than 5% beyond the tolerance --
+and the rate is printed. With the shared-frailty models' reference (a
+50:50 mixture of chi-square(0) and chi-square(1)) this study rejected
+18.0% of the time and failed; the test now uses the 50:50 mixture of
+chi-square(1) and chi-square(2) (see ``frailty_tests``), with which the
+same study, unchanged, gives 5.0%.
 
 The seeds, replicates, sizes and tolerances (the suite's: 3 Monte Carlo
 standard errors plus a slack of 0.01 for the rates and coverages, 0.2 of

@@ -608,10 +608,13 @@ What the model gives:
 
 - ``frailty_tests()``: the likelihood-ratio test of :math:`\theta = 0`
   (no frailty: the two parts fitted separately), whose p-value is that of
-  an even mixture of a point mass at 0 and :math:`\chi^2_1`, since 0 is
-  the edge of :math:`\theta`'s range; and of :math:`\alpha = 0` (the
-  terminal event independent of the recurrences), against
-  :math:`\chi^2_1`.
+  an even mixture of :math:`\chi^2_1` and :math:`\chi^2_2`: near the
+  null the frailty acts through two variances on the edge of their range,
+  :math:`\theta` in the recurrent part and :math:`\alpha^2 \theta` in the
+  terminal part (the reference for one such variance, half a
+  :math:`\chi^2_1`, rejects a true null far too often); and of
+  :math:`\alpha = 0` (the terminal event independent of the
+  recurrences), against :math:`\chi^2_1`.
 - ``frailties``: each item's predicted frailty, its mean given its own
   history.
 - ``cif`` and ``iif``: the recurrent events' cumulative intensity and

@@ -20,7 +20,8 @@ Unreleased
   likelihood, the frailty integrated out by a trapezoid rule over each
   item's integrand, accurate to rounding; ``theta``, ``alpha``, ``beta``,
   ``gamma``, ``summary()``, Wald and profile-likelihood ``param_cb``,
-  ``frailty_tests()`` (no frailty, on its boundary; and ``alpha = 0``),
+  ``frailty_tests()`` (no frailty, against an even mixture of chi-square
+  on one and two degrees of freedom; and ``alpha = 0``),
   each item's predicted frailty (``frailties``), ``cif``, ``iif``,
   ``mcf`` (the expected count, the terminal event stopping it) and the
   terminal event's ``sf``, ``ff``, ``hf``, ``Hf`` and ``df``, for the
