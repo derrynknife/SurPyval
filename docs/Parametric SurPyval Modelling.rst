@@ -2399,7 +2399,7 @@ explained in :doc:`Parametric Estimation`.
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
 Bounds for a probability-plotting fit
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A probability-plotting fit (``how='MPP'``, also called rank or median-rank
 regression) draws a straight line through the plotted points. It has no
@@ -2494,7 +2494,7 @@ so the two are not expected to coincide.
     assert np.allclose(_a, _b, rtol=0.015), (_a, _b)
 
 Reduced bias adjustment
-~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^
 
 With few failures the maximum-likelihood Weibull shape is too large more often
 than it is too small, and a LogNormal or Normal ``sigma`` too small.
