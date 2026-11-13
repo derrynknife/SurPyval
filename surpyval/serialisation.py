@@ -119,6 +119,9 @@ _TAGGED_MODELS: dict[str, str] = {
         ".cause_specific_proportional_intensity"
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "PanelCountMCF": "surpyval.recurrent.panel_count",
+    "PanelCountRegression": "surpyval.recurrent.panel_count",
     "ParametricRecurrenceModel": (
         "surpyval.recurrent.parametric.parametric_recurrence"
     ),

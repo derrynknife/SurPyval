@@ -1494,6 +1494,15 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        ("PanelCountMCF", "PanelCountRegression"),
+        "no simulation from the model: the mean function is a step "
+        "function with no shape beyond the inspection times and the model "
+        "does not say how counts vary about the mean. Recovery from "
+        "simulated (mixed Poisson) panel counts is tested in "
+        "tests/recurrent/test_panel_count.py and the bounds' coverage in "
+        "calibration/test_coverage_panel_count.py",
+    ),
     "IntervalCoxPH": "its fixture is interval censored, and the "
     "regression plans draw exact and right-censored times, which would "
     "check the grouped-data likelihood rather than the interval one; its "
@@ -1563,6 +1572,18 @@ EXCLUDED: dict[str, str] = {
         "Markov paths is tested in tests/multistate/test_parametric.py",
     ),
     **dict.fromkeys(
+        (
+            "ParametricMultiState[reset]",
+            "ParametricMultiStateRegression[reset]",
+        ),
+        "a history of moves between states, which a model draw does not "
+        "give (no simulator of paths): recovery of each transition's "
+        "parameters from simulated semi-Markov paths is tested in "
+        "tests/multistate/test_semimarkov.py, and the coverage of the "
+        "occupancy and length-of-stay bounds in "
+        "calibration/test_coverage_semimarkov.py",
+    ),
+    **dict.fromkeys(
         ("PanelMultiState", "PanelMultiStateRegression"),
         "states seen only at visits, a history which a model draw does not "
         "give (no simulator of visit schedules or paths): recovery of the "
@@ -1570,6 +1591,11 @@ EXCLUDED: dict[str, str] = {
         "panels is calibration/test_coverage_multistate_panel.py, and the "
         "models' special cases are in tests/multistate/test_panel.py",
     ),
+    "JointFrailty": "recurrent events and a terminal event per unit, "
+    "which a model draw of one function does not give: its own study, "
+    "calibration/test_coverage_joint_frailty.py, simulates units with "
+    "random() and checks the parameters' bias and coverage, the bands and "
+    "the size of the test of no frailty",
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
     "calibration/test_coverage_joint.py, simulates fleets with markers and "

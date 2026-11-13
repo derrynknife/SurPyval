@@ -10,8 +10,12 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.multistate import _core, _forward
-from surpyval.multistate._base import check_bound_args, probability_bounds
+from surpyval.multistate import _core, _forward, _semimarkov
+from surpyval.multistate._base import (
+    check_bound_args,
+    probability_bounds,
+    time_fraction_bounds,
+)
 from surpyval.multistate._data import SpellData, check_spells
 from surpyval.multistate._entry import multistate_data, other_name
 from surpyval.multistate.regression import _covariates
@@ -32,17 +36,41 @@ _CLOCKS = ("forward", "reset")
 
 def _check_clock(clock: str) -> None:
     check_option("clock", clock, _CLOCKS)
-    if clock == "reset":
+
+
+def _check_reset(fitters: list, tm: TransitionMatrix, arg: str) -> None:
+    """On the clock reset a hazard is a function of the time spent in a
+    state, which starts at 0: refuse a distribution that does not live on
+    (0, inf)."""
+    for fitter, pair in zip(fitters, tm.transitions):
+        support = getattr(fitter, "support", None)
+        if support is None:
+            continue
+        lo, hi = (float(v) for v in np.ravel(support)[:2])
+        if lo != 0.0 or hi != np.inf:
+            raise ValueError(
+                f"With clock='reset' each transition's hazard is a function "
+                f"of the time spent in its 'from' state, which runs from 0 "
+                f"without limit, but the '{arg}' of {pair!r} lives on "
+                f"({lo:g}, {hi:g}). Use a distribution on (0, inf), such as "
+                "Weibull, Gamma, LogNormal, LogLogistic or Exponential."
+            )
+
+
+def _durations(data: SpellData) -> npt.NDArray:
+    """The time each spell spent in its state, ``x - tl`` (``x`` where
+    the spell was observed from the start of the clock)."""
+    entry = np.where(np.isfinite(data.tl), data.tl, 0.0)
+    dur = data.x - entry
+    if np.any(dur <= 0):
+        bad = int(np.flatnonzero(dur <= 0)[0])
         raise ValueError(
-            "clock='reset' (a semi-Markov model, each transition's hazard "
-            "a function of the time spent in the current state) is not "
-            "built: its transition probabilities are not the solution of "
-            "the forward equations, and need either nested integrals over "
-            "the times of every earlier move or simulation. Use "
-            "clock='forward' (the hazards a function of the time since "
-            "the start, a Markov model), or fit each transition to the "
-            "durations x - tl with the univariate fitters."
+            "With clock='reset' each spell is fitted on the time spent in "
+            f"its state, x - tl, which must be positive; spell {bad} has "
+            f"x = {data.x[bad]:g} and tl = {data.tl[bad]:g}. Remove "
+            "spells of no length, or give each spell's start in 'tl'."
         )
+    return dur
 
 
 def _fitters(dist: Any, tm: TransitionMatrix, regression: bool) -> list:
@@ -139,18 +167,30 @@ class _ParametricMultiStateBase(SerialisableMixin):
             )
         models = {}
         found: list = []
+        if clock == "reset":
+            _check_reset(fitters, tm, "model" if cls._regression else "dist")
+            x_fit = _durations(data)
+        else:
+            x_fit = data.x
         for h, pair in enumerate(tm.transitions):
             rows = data.g == frm[h]
             c = np.where(data.h[rows] == to[h], 0, 1)
-            # An entry at or before the start of the distribution's support
-            # truncates nothing: leave it out (the fit is then the plain
-            # one, on the same likelihood).
-            low = float(np.ravel(getattr(fitters[h], "support", [-np.inf]))[0])
-            tl = np.where(data.tl[rows] <= low, -np.inf, data.tl[rows])
-            extra = {"tl": tl} if np.any(np.isfinite(tl)) else {}
+            if clock == "reset":
+                # The clock starts at 0 on entry to the state: no
+                # truncation.
+                extra: dict = {}
+            else:
+                # An entry at or before the start of the distribution's
+                # support truncates nothing: leave it out (the fit is then
+                # the plain one, on the same likelihood).
+                low = float(
+                    np.ravel(getattr(fitters[h], "support", [-np.inf]))[0]
+                )
+                tl = np.where(data.tl[rows] <= low, -np.inf, data.tl[rows])
+                extra = {"tl": tl} if np.any(np.isfinite(tl)) else {}
             models[pair] = cls._fit_one(
                 fitters[h],
-                data.x[rows],
+                x_fit[rows],
                 Z[rows],
                 c,
                 data.n[rows],
@@ -194,6 +234,16 @@ class _ParametricMultiStateBase(SerialisableMixin):
         self.last = float(np.max(d.x))
         self._t = np.unique(d.x[d.h >= 0])
         self._cache = {}
+        if self.clock == "reset":
+            dur = d.x - np.where(np.isfinite(tl), tl, 0.0)
+            self._stay = float(np.max(dur)) if dur.size else 1.0
+
+    def __getstate__(self) -> dict:
+        # (the cache of predictions holds the hazards as closures, which do
+        # not pickle; it is rebuilt on use)
+        state = self.__dict__.copy()
+        state["_cache"] = {}
+        return state
 
     # -- parameters ---------------------------------------------------------
 
@@ -360,6 +410,15 @@ class _ParametricMultiStateBase(SerialisableMixin):
             p0 = np.zeros(k)
             p0[self.transitions.index(from_state)] = 1.0
             return p0
+        if self.clock == "reset" and s != self.start:
+            raise ValueError(
+                "With clock='reset' a prediction from a start 's' other "
+                f"than the earliest entry ({self.start:g}) needs "
+                "'from_state': the units under observation at s have been "
+                "in their states for different times, and a prediction "
+                "takes each to have just entered its state at s. Give the "
+                "state entered at s as from_state."
+            )
         key = ("p0", s)
         if key not in self._cache:
             first = (
@@ -394,16 +453,6 @@ class _ParametricMultiStateBase(SerialisableMixin):
             )
         return self._cache[key]
 
-    def _solve(self, models: list, z: npt.NDArray, grid: Any) -> npt.NDArray:
-        tm = self.transitions
-        return _forward.evaluate(
-            self._cumhaz(models, z),
-            grid,
-            tm.from_index(),
-            tm.to_index(),
-            tm.n_states,
-        )
-
     def _breaks(self) -> list:
         """The starts of the transitions' supports, where a hazard can
         jump from 0 (or be infinite)."""
@@ -415,20 +464,123 @@ class _ParametricMultiStateBase(SerialisableMixin):
                 out.append(float(support[0]))
         return out
 
+    def _matrices(
+        self,
+        models: list | None,
+        z: npt.NDArray,
+        s: float,
+        uniq: npt.NDArray,
+        what: str,
+    ) -> npt.NDArray:
+        """``(len(uniq), K, K)`` at the unique times ``uniq`` (finite, at
+        or after ``s``): the transition probabilities :math:`P(s, t)`
+        (``what="P"``) or their integrals from ``s`` (``"los"``, the
+        expected time spent in each state by ``t``), from each state at
+        ``s``."""
+        tm = self.transitions
+        if self.clock == "forward":
+            grid = self._grid(z, s, uniq)
+            f = _forward.evaluate if what == "P" else _forward.integrate
+            return f(
+                self._cumhaz(self._models() if models is None else models, z),
+                grid,
+                tm.from_index(),
+                tm.to_index(),
+                tm.n_states,
+            )
+        k = tm.n_states
+        h = self._reset_step(z)
+        near = _semimarkov.MIN_CELLS * h
+        out = np.empty((uniq.size, k, k))
+        sol = None
+        for n, t in enumerate(uniq):
+            u = float(t - s)
+            if 0 < u < near:
+                # (its own grid, ending at u)
+                one = self._reset_solution(
+                    models, z, u, u / _semimarkov.MIN_CELLS
+                )
+                occ, los = one.at(u)
+            else:
+                if sol is None:
+                    sol = self._reset_solution(
+                        models, z, float(np.max(uniq) - s)
+                    )
+                occ, los = sol.at(u)
+            out[n] = occ if what == "P" else los
+        return out
+
+    def _semi_model(self, models: list, z: npt.NDArray) -> Any:
+        tm = self.transitions
+        return _semimarkov.Model(
+            self._cumhaz(models, z),
+            tm.from_index(),
+            tm.to_index(),
+            tm.n_states,
+        )
+
+    def _reset_step(self, z: npt.NDArray) -> float:
+        """The grid step of the semi-Markov solution for covariates ``z``,
+        set by the fitted model (and kept for its bounds)."""
+        key = ("step", tuple(z.tolist()))
+        if key not in self._cache:
+            self._cache[key] = _semimarkov.step(
+                self._semi_model(self._models(), z), self._stay
+            )
+        return self._cache[key]
+
+    def _reset_solution(
+        self,
+        models: list | None,
+        z: npt.NDArray,
+        reach: float,
+        step: float | None = None,
+    ) -> Any:
+        """The solved semi-Markov grid from each state, reaching past
+        ``reach`` (a time spent since the start of the prediction); with
+        ``step``, a grid of that step ending at ``reach``."""
+        if step is None:
+            h = self._reset_step(z)
+            cells = _semimarkov.cells_for(h, reach, self._stay)
+        else:
+            h = step
+            cells = _semimarkov.MIN_CELLS
+        point = models is None
+        key = ("solution", tuple(z.tolist()), cells, h)
+        if point and key in self._cache:
+            return self._cache[key]
+        model = self._semi_model(
+            self._models() if models is None else models, z
+        )
+        weights = model.weights(h, cells)
+        starts = np.eye(self.transitions.n_states)
+        sol = _semimarkov.Solution(
+            model, weights, starts, _semimarkov.solve(model, weights, starts)
+        )
+        if point:
+            self._cache[key] = sol
+        return sol
+
+    def _point(
+        self, z: npt.NDArray, s: float, times: npt.NDArray, what: str
+    ) -> npt.NDArray:
+        """:meth:`_matrices` of the fitted model at ``times``, cached."""
+        k = self.transitions.n_states
+        if times.size == 0:
+            return np.zeros((0, k, k))
+        uniq, inverse = np.unique(times, return_inverse=True)
+        key = (what, tuple(z.tolist()), s, tuple(uniq.tolist()))
+        if key not in self._cache:
+            models = None if self.clock == "reset" else self._models()
+            self._cache[key] = self._matrices(models, z, s, uniq, what)
+        return self._cache[key][np.ravel(inverse)]
+
     def _P_at(
         self, z: npt.NDArray, s: float, times: npt.NDArray
     ) -> npt.NDArray:
         """``(len(times), K, K)``: :math:`P(s, t)` at ``times`` (finite,
         at or after ``s``)."""
-        k = self.transitions.n_states
-        if times.size == 0:
-            return np.zeros((0, k, k))
-        uniq, inverse = np.unique(times, return_inverse=True)
-        key = ("P", tuple(z.tolist()), s, tuple(uniq.tolist()))
-        if key not in self._cache:
-            grid = self._grid(z, s, uniq)
-            self._cache[key] = self._solve(self._models(), z, grid)
-        return self._cache[key][np.ravel(inverse)]
+        return self._point(z, s, times, "P")
 
     def _occupancy_values(
         self,
@@ -437,8 +589,9 @@ class _ParametricMultiStateBase(SerialisableMixin):
         p0: npt.NDArray,
         b: int,
         times: npt.NDArray,
+        what: str = "P",
     ) -> npt.NDArray:
-        return (p0 @ self._P_at(z, s, times))[:, b]
+        return (p0 @ self._point(z, s, times, what))[:, b]
 
     def _occupancy_se_values(
         self,
@@ -447,10 +600,12 @@ class _ParametricMultiStateBase(SerialisableMixin):
         p0: npt.NDArray,
         b: int,
         times: npt.NDArray,
+        what: str = "P",
     ) -> npt.NDArray:
         """The delta-method standard errors of the occupation
-        probabilities at ``times``, over every transition's parameters,
-        by central differences on the point estimate's grid."""
+        probabilities (``what="P"``) or the expected times in the state
+        (``"los"``) at ``times``, over every transition's parameters, by
+        central differences on the point estimate's grid."""
         from surpyval.univariate.competing_risks._assembly import (
             central_differences,
             checked_sd,
@@ -460,11 +615,15 @@ class _ParametricMultiStateBase(SerialisableMixin):
             return np.zeros(0)
         uniq, inverse = np.unique(times, return_inverse=True)
         idx = np.ravel(inverse)
-        grid = self._grid(z, s, uniq)
         models = self._models()
         sizes = [len(m.covariance_names) for m in models]
         est = self._estimates()
         cov = self.covariance()
+        if self.clock == "forward":
+            # (fix the grid at the point estimate's)
+            self._grid(z, s, uniq)
+        else:
+            self._reset_step(z)
 
         def occ(values: npt.NDArray) -> npt.NDArray:
             rebuilt = []
@@ -472,7 +631,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
             for m, size in zip(models, sizes):
                 rebuilt.append(m.with_params(values[start : start + size]))
                 start += size
-            P = self._solve(rebuilt, z, grid)
+            P = self._matrices(rebuilt, z, s, uniq, what)
             return (p0 @ P[idx])[:, b]
 
         from surpyval.utils.warnings import ignoring_warnings
@@ -480,9 +639,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
         with ignoring_warnings():
             G = central_differences(occ, est, cov, times.size)
         var = np.einsum("ia,ij,ja->a", G, cov, G)
-        return checked_sd(
-            var, times, "occupancy", np.ones(times.size, dtype=bool)
-        )
+        on = "occupancy" if what == "P" else "length_of_stay"
+        return checked_sd(var, times, on, np.ones(times.size, dtype=bool))
 
     # -- serialisation ------------------------------------------------------
 
@@ -560,12 +718,20 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
     The hazard of the transition from state :math:`g` to state :math:`k`
     is that of a distribution (Weibull by default) on the time since the
-    start (the clock goes forward: a Markov model). Each transition's
-    distribution is fitted to the spells in its 'from' state, where the
-    spells that ended in another transition, or were censored, are
-    censored, and a spell that began at ``tl`` is left truncated there
-    (delayed entry). That is the maximum-likelihood fit of the whole
-    model, since its likelihood is a product of one factor per transition.
+    start (by default the clock goes forward: a Markov model). Each
+    transition's distribution is fitted to the spells in its 'from'
+    state, where the spells that ended in another transition, or were
+    censored, are censored, and a spell that began at ``tl`` is left
+    truncated there (delayed entry). That is the maximum-likelihood fit of
+    the whole model, since its likelihood is a product of one factor per
+    transition.
+
+    With ``clock="reset"`` each hazard is instead a function of the time
+    spent in the current state (a semi-Markov model): each transition is
+    fitted on the durations ``x - tl``, and the probabilities come from
+    the renewal equations, solved by convolution on a grid refined until
+    they are accurate to about :math:`10^{-6}`; the forward equations
+    below are those of the default ``clock="forward"``.
 
     The transition probabilities :math:`P(s, t)` solve the Kolmogorov
     forward equations :math:`\partial P(s, t) / \partial t = P(s, t)
@@ -627,10 +793,14 @@ class ParametricMultiState(_ParametricMultiStateBase):
         dist : ParametricFitter or dict, optional
             The distribution of every transition (default ``Weibull``),
             or a ``{(from, to): distribution}`` dict with one for each.
-        clock : ('forward',), str, optional
-            The time scale of the hazards: ``'forward'``, the time since
-            the start (a Markov model). ``'reset'`` (a semi-Markov model,
-            the time in the current state) is refused, with the reason.
+        clock : ('forward', 'reset'), str, optional
+            The time scale of the hazards. ``'forward'`` (the default):
+            the time since the start (a Markov model), each spell left
+            truncated at its ``tl``. ``'reset'``: the time spent in the
+            current state (a semi-Markov model), each transition fitted
+            on the durations ``x - tl`` (``tl`` the time the unit entered
+            the state; ``x`` where it is missing), with a distribution on
+            (0, inf).
 
         Returns
         -------
@@ -653,6 +823,15 @@ class ParametricMultiState(_ParametricMultiStateBase):
         ['mgus -> pcm: alpha', 'mgus -> pcm: beta']
         >>> model.occupancy([120, 240], "death").round(3)
         array([0.581, 0.808])
+
+        On the time spent in each state (a semi-Markov model):
+
+        >>> reset = ParametricMultiState.fit(
+        ...     df["x"], df["e"], df["state"], tl=df["tl"], i=df["id"],
+        ...     transitions=tm, clock="reset",
+        ... )
+        >>> reset.occupancy([120, 240], "pcm").round(4)
+        array([0.0145, 0.0091])
         """
         from surpyval import Weibull
 
@@ -750,7 +929,8 @@ class ParametricMultiState(_ParametricMultiStateBase):
         The transition probability matrices :math:`P(s, t)` at the times
         ``x``: element ``[..., a, b]`` is the probability of being in
         state ``b`` at ``x`` for a unit in state ``a`` at ``s`` (by
-        default the earliest entry). NaN before ``s``.
+        default the earliest entry); with ``clock="reset"``, for a unit
+        that entered ``a`` at ``s``. NaN before ``s``.
 
         Examples
         --------
@@ -795,7 +975,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
             The state.
         s : float, optional
             The time the prediction starts from. Defaults to the earliest
-            entry (0 where spells are observed from the start).
+            entry (0 where spells are observed from the start). With
+            ``clock="reset"`` a later start needs ``from_state``: each
+            unit is taken to have just entered its state at ``s``.
         from_state : any, optional
             The unit's state at ``s``. By default the states of the units
             under observation at ``s``, in proportion (as for
@@ -901,12 +1083,111 @@ class ParametricMultiState(_ParametricMultiStateBase):
         )
 
     @keeps_query_shape
+    def length_of_stay(
+        self,
+        x: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        The expected length of stay: the expected time spent in ``state``
+        between ``s`` and ``x``, the area under :meth:`occupancy` over
+        that time,
+
+        .. math::
+            L_b(s, x) = \int_s^x P(\text{in } b \text{ at } u)\, du.
+
+        Over every state it adds up to ``x - s``. ``s`` and
+        ``from_state`` are as for :meth:`occupancy`; NaN before ``s``.
+
+        Examples
+        --------
+        >>> from surpyval.datasets import load_mgus2
+        >>> from surpyval.multistate import ParametricMultiState
+        >>> model = ParametricMultiState.fit_from_df(
+        ...     load_mgus2(spells=True), "x", "e", "state", tl_col="tl",
+        ...     i_col="id",
+        ... )
+        >>> model.length_of_stay(240, "mgus").round(1)
+        np.float64(110.4)
+        """
+        s = self._start(s)
+        b = self.transitions.index(state)
+        p0 = self._p0(s, from_state)
+        flat, ok = self._times(x, s)
+        out = np.full(flat.size, np.nan)
+        out[ok] = self._occupancy_values(
+            np.zeros(0), s, p0, b, flat[ok], "los"
+        )
+        return out
+
+    @keeps_query_shape
+    def length_of_stay_se(
+        self,
+        x: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        """
+        The standard error of :meth:`length_of_stay`, by the delta method
+        over every transition's parameters (the starting distribution
+        taken as known).
+        """
+        s = self._start(s)
+        b = self.transitions.index(state)
+        p0 = self._p0(s, from_state)
+        flat, ok = self._times(x, s)
+        out = np.full(flat.size, np.nan)
+        out[ok] = self._occupancy_se_values(
+            np.zeros(0), s, p0, b, flat[ok], "los"
+        )
+        return out
+
+    @keeps_query_shape
+    def length_of_stay_cb(
+        self,
+        x: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        Pointwise confidence bounds on :meth:`length_of_stay`: the Wald
+        bound on the logit of the fraction of the time ``x - s`` spent in
+        the state, from :meth:`length_of_stay_se`, so the bounds stay
+        between 0 and ``x - s`` (as the restricted mean survival time's
+        bounds do).
+
+        Examples
+        --------
+        >>> from surpyval.datasets import load_mgus2
+        >>> from surpyval.multistate import ParametricMultiState
+        >>> model = ParametricMultiState.fit_from_df(
+        ...     load_mgus2(spells=True), "x", "e", "state", tl_col="tl",
+        ...     i_col="id",
+        ... )
+        >>> model.length_of_stay_cb(240, "mgus").round(1)
+        array([105.7, 115. ])
+        """
+        check_bound_args(alpha_ci, bound, "exp")
+        x_arr = np.ravel(np.asarray(x, dtype=float))
+        start = self._start(s)
+        value = np.ravel(self.length_of_stay(x_arr, state, s, from_state))
+        se = np.ravel(self.length_of_stay_se(x_arr, state, s, from_state))
+        return time_fraction_bounds(value, se, x_arr - start, alpha_ci, bound)
+
+    @keeps_query_shape
     def cumulative_hazard(
         self, x: npt.ArrayLike, from_state: Any, to_state: Any
     ) -> npt.NDArray:
         """
         The cumulative hazard of the transition from ``from_state`` to
-        ``to_state`` at ``x``.
+        ``to_state`` at ``x`` (with ``clock="reset"``, ``x`` is the time
+        spent in ``from_state``).
 
         Examples
         --------
@@ -981,7 +1262,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
     Each transition's regression is fitted to the spells in its 'from'
     state with their covariates, the other spells censored and each spell
     left truncated at its start, as :class:`ParametricMultiState` fits
-    its distributions; every transition has its own coefficients. The
+    its distributions (or, with ``clock="reset"``, on the time spent in
+    the state); every transition has its own coefficients. The
     probabilities for a covariate row :math:`z` solve the Kolmogorov
     forward equations with the hazards :math:`h_{gk}(t \mid z)`, and
     their bounds come from the delta method over every transition's
@@ -1404,6 +1686,83 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         return probability_bounds(
             np.ravel(p), np.ravel(se), alpha_ci, bound, bound_type
         )
+
+    @keeps_query_shape
+    def length_of_stay(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        """
+        The predicted expected length of stay: the expected time a unit
+        with covariates ``Z`` spends in ``state`` between ``s`` and ``x``
+        (:meth:`ParametricMultiState.length_of_stay`); ``Z``, ``s`` and
+        ``from_state`` as for :meth:`occupancy`.
+
+        Examples
+        --------
+        >>> from surpyval.datasets import load_mgus2
+        >>> from surpyval.multistate import ParametricMultiStateRegression
+        >>> model = ParametricMultiStateRegression.fit_from_df(
+        ...     load_mgus2(spells=True), "x", ["male"], "e", "state",
+        ...     tl_col="tl", i_col="id",
+        ... )
+        >>> model.length_of_stay([240, 240], [[1], [0]], "mgus").round(1)
+        array([103.9, 117.9])
+        """
+        s = self._start(s)
+        b = self.transitions.index(state)
+        p0 = self._p0(s, from_state)
+
+        def value(z: npt.NDArray, times: npt.NDArray) -> npt.NDArray:
+            return self._occupancy_values(z, s, p0, b, times, "los")
+
+        return self._by_row(x, Z, s, value)
+
+    @keeps_query_shape
+    def length_of_stay_se(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        """The standard error of :meth:`length_of_stay`, by the delta
+        method over every transition's parameters (the starting
+        distribution taken as known)."""
+        s = self._start(s)
+        b = self.transitions.index(state)
+        p0 = self._p0(s, from_state)
+
+        def value(z: npt.NDArray, times: npt.NDArray) -> npt.NDArray:
+            return self._occupancy_se_values(z, s, p0, b, times, "los")
+
+        return self._by_row(x, Z, s, value)
+
+    @keeps_query_shape
+    def length_of_stay_cb(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """Pointwise confidence bounds on :meth:`length_of_stay`, as
+        :meth:`ParametricMultiState.length_of_stay_cb` (the Wald bound on
+        the logit of the fraction of ``x - s`` spent in the state)."""
+        check_bound_args(alpha_ci, bound, "exp")
+        x_arr = np.ravel(np.asarray(x, dtype=float))
+        start = self._start(s)
+        value = np.ravel(self.length_of_stay(x_arr, Z, state, s, from_state))
+        se = np.ravel(self.length_of_stay_se(x_arr, Z, state, s, from_state))
+        return time_fraction_bounds(value, se, x_arr - start, alpha_ci, bound)
 
     @keeps_query_shape
     def cumulative_hazard(
