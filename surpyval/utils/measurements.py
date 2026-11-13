@@ -727,11 +727,31 @@ class MeasurementsMixin:
         self._m = None if value is None else Measurements._raw({None: value})
 
     def _plain_markers(self) -> dict | None:
-        """The old ``markers`` where the measurements are one unnamed
-        measurement with no unit label (written and shown exactly as
-        before); None otherwise."""
+        """The old ``markers``, for the rows' records, where they carry
+        them (:meth:`_markers_in_records`); None otherwise."""
         m = self.m
-        return m._store[None] if m is not None and m._plain else None
+        if m is None or not self._markers_in_records():
+            return None
+        return m._store[None]
+
+    def _markers_in_records(self) -> bool:
+        """Whether a reshape through records carries the measurements in
+        each record's markers, as it always has: one unnamed measurement
+        with no unit label, and each unit on one row with no state or
+        terminal flag. Otherwise the records carry none and the dataset
+        puts its measurements back by unit (:meth:`_carry_measurements`):
+        a unit's readings checked against each of its rows' windows would
+        be refused."""
+        from surpyval.utils.surpyval_data import units_with_several_rows
+
+        m = self.m
+        return (
+            m is not None
+            and m._plain
+            and getattr(self, "s", None) is None
+            and getattr(self, "a", None) is None
+            and not units_with_several_rows(self)
+        )
 
     def with_measurement(self, name: Any) -> Any:
         """
@@ -772,11 +792,11 @@ class MeasurementsMixin:
 
     def _carry_measurements(self, out: Any) -> Any:
         """``out``, reshaped from this data's records, with this data's
-        named measurements put back for the units it keeps (a unit whose
-        observation moved keeps the readings inside its new window);
-        the records carried only the old markers."""
+        measurements put back for the units it keeps (a unit whose
+        observation moved keeps the readings inside its new window),
+        where the records did not carry them as markers."""
         m = self.m
-        if m is None or m._plain:
+        if m is None or self._markers_in_records():
             return out
         if out.m is not None:
             raise ValueError(
@@ -786,7 +806,12 @@ class MeasurementsMixin:
                 "data.m."
             )
         if out.ids is None:
-            return out
+            raise ValueError(
+                "This reshape cannot keep the data's measurements: they are "
+                "linked to the rows by unit, and the data has no unit ids. "
+                "Give i= (each row's unit), or leave the measurements out "
+                "first, data.without('m')."
+            )
         before = _windows(self)
         after = _windows(out)
         moved = {i: w for i, w in after.items() if before.get(i) != w}
@@ -808,7 +833,11 @@ class MeasurementsMixin:
             else parts
         )
         m = self.m
-        if m is None or m._plain or not set(flat) & set(MEASUREMENT_PARTS):
+        if (
+            m is None
+            or self._markers_in_records()
+            or not set(flat) & set(MEASUREMENT_PARTS)
+        ):
             return super().without(*parts)  # type: ignore[misc]
         from surpyval.utils.data_reshape import check_parts
 

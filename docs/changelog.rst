@@ -47,7 +47,8 @@ Unreleased
   fit; data with several measurements is refused by a fit until one is
   chosen. Readings are per unit: where a unit has several rows they are
   kept while any of its rows is, and a fit that takes markers refuses
-  such units rather than hand the readings to each row.
+  such units rather than hand the readings to each row; reshapes of
+  such data keep the readings by unit.
   ``extend_running`` and ``update`` of data with marker
   readings, which took its records for event histories and failed, now
   work. See :doc:`Conventions`.
@@ -66,7 +67,9 @@ Unreleased
   ``"schema": 4``). Fits that are not multi-state, ``to_xrd`` and
   ``life_table`` refuse data in more than one state, naming the
   multi-state models and ``data[data.s == state]``; data in one state
-  fits exactly as without ``s``. See :doc:`Conventions`.
+  fits exactly as without ``s``. Without ``c``, a row given as a range
+  (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
+  agree. See :doc:`Conventions`.
 - Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
   Cox model whose log hazard has Gaussian random effects, a random
   intercept per group of one or more grouping factors, nested (wards in

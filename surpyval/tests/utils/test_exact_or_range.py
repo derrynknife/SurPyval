@@ -299,3 +299,75 @@ def test_regression_fit_from_df_with_the_three_columns():
         Z_cols="load",
     )
     assert model.params.tolist() == pure.params.tolist()
+
+
+# -- with states and no c: flags from the range, else from e ------------------
+
+
+def test_states_without_c_read_a_range_rows_flag_from_its_bounds():
+    data = SurpyvalData(
+        x=[nan, 5, nan, nan],
+        xl=[8, nan, -inf, 2],
+        xr=[inf, nan, 4, 6],
+        s=["a", "a", "a", "a"],
+        e=[None, "b", "b", "b"],
+    )
+    # (8, inf) still in a at 8; 5 moved; (-inf, 4) moved by 4; (2, 6)
+    assert data.c.tolist() == [1, 0, -1, 2]
+    assert data.e.tolist() == [None, "b", "b", "b"]
+    assert np.asarray(data.x).tolist() == [
+        [8.0, 8.0],
+        [5.0, 5.0],
+        [4.0, 4.0],
+        [2.0, 6.0],
+    ]
+
+
+def test_states_without_c_refuse_a_range_that_disagrees_with_e():
+    with pytest.raises(ValueError, match="Row 0 has c = 1"):
+        SurpyvalData(
+            x=[nan, 5], xl=[8, nan], xr=[inf, nan], s=["a", "a"], e=["b", "b"]
+        )
+    with pytest.raises(ValueError, match="Row 0 has no state entered"):
+        SurpyvalData(
+            x=[nan, 5], xl=[2, nan], xr=[6, nan], s=["a", "a"], e=[None, "b"]
+        )
+
+
+def test_states_without_c_from_xl_and_xr_alone():
+    data = SurpyvalData(xl=[8, 2], xr=[inf, 6], s=["a", "a"], e=[None, "b"])
+    assert data.c.tolist() == [1, 2]
+
+
+def test_states_without_c_ignore_the_rows_left_out():
+    with pytest.warns(UserWarning, match="left out"):
+        data = SurpyvalData(
+            x=[3, nan, 5],
+            xl=[1, 8, nan],
+            xr=[4, inf, nan],
+            s=["a", "a", "a"],
+            # The row left out has a state entered that would disagree
+            e=["b", None, "b"],
+            i=[1, 2, 3],
+        )
+    assert data.ids == [2, 3] and data.c.tolist() == [1, 0]
+
+
+def test_states_without_c_through_from_dataframe():
+    df = pd.DataFrame(
+        {
+            "x": [nan, 5, nan],
+            "xl": [8, nan, nan],
+            "xr": [nan, nan, 4],
+            "s": ["a", "a", "a"],
+            "e": [None, "b", "b"],
+        }
+    )
+    data = SurpyvalData.from_dataframe(
+        df, x_col="x", xl_col="xl", xr_col="xr", s_col="s", e_col="e"
+    )
+    assert data.c.tolist() == [1, 0, -1]
+    alone = SurpyvalData.from_dataframe(
+        df.iloc[[0, 2]], xl_col="xl", xr_col="xr", s_col="s", e_col="e"
+    )
+    assert alone.c.tolist() == [1, -1]

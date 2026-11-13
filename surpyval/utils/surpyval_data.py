@@ -350,7 +350,11 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             ids, id_name = i, "i"
         else:
             id_name = "ids"
-        if handle and x is not None and (xl is not None or xr is not None):
+        if (
+            handle
+            and (xl is not None or xr is not None)
+            and (x is not None or (s is not None and c is None))
+        ):
             from surpyval.utils.data_formats import drop_rows, exact_or_range
 
             # Read row by row: an exact time in x or a range in xl and xr.
@@ -363,7 +367,11 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             )
             t = drop_rows(t, keep, matrix=True)
         if s is not None and handle:
-            c = _flags_from_entered(c, e, x, xl)
+            if c is None:
+                # A range row's flag from its bounds, an exact row's from e
+                x, c = _state_flags(x, e)
+            else:
+                c = _flags_from_entered(c, e, x, xl)
         if any(v is not None for v in (Z, e, ids, s, a)):
             group_and_sort = False
 
@@ -2905,6 +2913,32 @@ def _flags_from_entered(c: Any, e: Any, x: Any, xl: Any) -> Any:
     return np.array(
         [1 if blank else 0 for blank in _blank_entries(e, rows)], dtype=int
     )
+
+
+def _state_flags(x: Any, e: Any) -> tuple[Any, np.ndarray]:
+    """The times and flags of data with states given no ``c``: an exact
+    row's flag read from ``e`` (blank: 1, still in the state; a state: 0),
+    a range row's from its bounds: ``(v, inf)`` still in the state at
+    ``v`` (1), ``(-inf, v)`` moved by ``v`` (-1), ``(v1, v2)`` moved
+    between them (2); the one-sided ranges are written as the time ``v``
+    with their flag. ``e`` must then agree, as for a ``c`` given."""
+    flags = _flags_from_entered(None, e, x, None)
+    try:
+        arr = np.asarray(x, dtype=float)
+    except (TypeError, ValueError):
+        return x, flags
+    if arr.ndim != 2 or arr.shape[1] != 2 or len(arr) != len(flags):
+        return x, flags
+    lower, upper = arr[:, 0].copy(), arr[:, 1].copy()
+    wide = lower != upper
+    right = wide & np.isposinf(upper)
+    left = wide & np.isneginf(lower) & ~right
+    flags = np.where(
+        right, 1, np.where(left, -1, np.where(wide, 2, flags))
+    ).astype(int)
+    upper[right] = lower[right]
+    lower[left] = upper[left]
+    return np.column_stack([lower, upper]), flags
 
 
 def _entered_states(e: Any, c: np.ndarray) -> np.ndarray:
