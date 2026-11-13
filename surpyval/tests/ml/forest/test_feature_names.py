@@ -160,7 +160,9 @@ def test_interval_columns():
     ],
 )
 def test_times_given_exactly_once(columns):
-    with pytest.raises(ValueError, match="times exactly once"):
+    with pytest.raises(
+        ValueError, match="times exactly once|both an exact time"
+    ):
         SurvivalTree.fit_from_df(_frame(), Z_cols="temp", **columns)
 
 
