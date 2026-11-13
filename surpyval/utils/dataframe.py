@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 from surpyval.utils import is_missing_event, refuse_time_values
 from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.recurrent_data import takes_terminal_column
 from surpyval.utils.units import takes_unit
 
 
@@ -248,6 +249,53 @@ def _truncation(df: pd.DataFrame, value: Any, arg: str) -> npt.NDArray:
     raise ValueError(f"`{arg}` must be a scalar or a column label string")
 
 
+def exact_or_range_frame(
+    df: pd.DataFrame,
+    x_col: Any,
+    xl_col: Any,
+    xr_col: Any,
+    c_col: Any = None,
+    blank_is_infinite: bool = False,
+) -> tuple[pd.DataFrame, Any, Any, Any]:
+    """
+    The frame and time columns a ``fit_from_df`` reads, where ``x_col`` is
+    given with ``xl_col`` and/or ``xr_col``: each row is an exact time in
+    ``x_col`` or a range in ``xl_col`` and ``xr_col`` (the other blank),
+    read as :func:`~surpyval.utils.data_formats.exact_or_range` reads
+    them. Returns ``(df, None, xl_col, xr_col)``: a copy of the frame
+    without the rows that give both (left out, with a warning), its
+    ``xl_col`` and ``xr_col`` holding each row's ``[lower, upper]``
+    (``[t, t]`` for an exact time) and its ``c_col`` the flags read
+    (2 on a range with different ends, as a two-column ``x`` is flagged),
+    so the fit reads the frame as it reads ``xl_col`` and ``xr_col``.
+    Anything else is returned as it is.
+    """
+    if x_col is None or (xl_col is None and xr_col is None):
+        return df, x_col, xl_col, xr_col
+    from surpyval.utils.data_formats import exact_or_range
+
+    x = frame_column(df, x_col, "x_col", time=True)
+    xl = None if xl_col is None else frame_column(df, xl_col, "xl_col", True)
+    xr = None if xr_col is None else frame_column(df, xr_col, "xr_col", True)
+    c = None if c_col is None else frame_column(df, c_col, "c_col")
+    bounds, flags, keep = exact_or_range(x, xl, xr, c, blank_is_infinite)
+    out = df.copy() if keep is None else df.iloc[np.flatnonzero(keep)].copy()
+    names = []
+    for given, side in ((xl_col, "lower"), (xr_col, "upper")):
+        name = given
+        if name is None:
+            # The end not given gets a column of its own
+            name = f"{x_col}_{side}"
+            while name in out.columns:
+                name = f"_{name}"
+        names.append(name)
+    out[names[0]] = bounds[:, 0]
+    out[names[1]] = bounds[:, 1]
+    if flags is not None:
+        out[c_col] = flags.astype(int)
+    return out, None, names[0], names[1]
+
+
 class UnivariateDataFrameMixin:
     """``fit_from_df`` for a fitter of one lifetime per row.
 
@@ -300,14 +348,16 @@ class UnivariateDataFrameMixin:
         xl_col : string, optional
             column name for the column in df containing the left interval for
             interval censored data. If left interval is -Inf, assumes left
-            censored. If xl[i] == xr[i] assumes observed. Cannot be provided
-            with x_col, must be provided with xr_col.
+            censored. If xl[i] == xr[i] assumes observed. Provided with
+            xr_col; provided with x_col too, each row is an exact time in
+            x_col or a range in xl_col and xr_col, the other blank (a row
+            giving both is left out, with a warning).
 
         xr_col : string, optional
             column name for the column in df containing the right interval
             for interval censored data. If right interval is Inf, assumes
-            right censored. If xl[i] == xr[i] assumes observed. Cannot be
-            provided with x_col, must be provided with xl_col.
+            right censored. If xl[i] == xr[i] assumes observed. Provided
+            with xl_col; with x_col, as for xl_col.
 
         tl_col : string or scalar, optional
             If a string, the column of the left truncation of each row. If
@@ -337,8 +387,8 @@ class UnivariateDataFrameMixin:
         ------
         ValueError
             If ``df`` is not a DataFrame, a name is not one of its columns,
-            ``x_col`` is given with ``xl_col`` / ``xr_col``, or a column is
-            given that :meth:`fit` has no argument for.
+            a row has none of ``x_col``, ``xl_col`` and ``xr_col``, or a
+            column is given that :meth:`fit` has no argument for.
 
         Notes
         -----
@@ -371,12 +421,9 @@ class UnivariateDataFrameMixin:
         refuse_column_names(
             fit_options, "x", "c", "n", "xl", "xr", "tl", "tr", "w"
         )
-        if (x_col is not None) and (
-            (xl_col is not None) or (xr_col is not None)
-        ):
-            raise ValueError(
-                "Cannot use `x_col` and (`xl_col` and `xr_col`) together"
-            )
+        df, x_col, xl_col, xr_col = exact_or_range_frame(
+            df, x_col, xl_col, xr_col, c_col
+        )
         arrays: dict[str, Any] = {}
         names = {"x": "x_col", "c": "c_col", "n": "n_col"}
         names["t"] = "tl_col` / `tr_col"
@@ -430,6 +477,7 @@ class RecurrentDataFrameMixin:
     @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -470,6 +518,13 @@ class RecurrentDataFrameMixin:
             Columns of per-row left / right truncation (the start and end
             of each unit's observation window), for a fitter whose
             :meth:`fit` takes ``tl`` / ``tr``.
+        a_col : str, optional
+            Column of terminal flags: 1 where the row's event ended the
+            unit's history for good, 0 or blank elsewhere (a blank event
+            on a unit's last row is read as 1). It does not change the
+            fit: the model's ``notes`` say that each terminal event is
+            fitted as an event followed by the end of that unit's
+            observation.
         **fit_options
             Every other option of :meth:`fit`.
 
@@ -563,6 +618,7 @@ class RecurrentRegressionDataFrameMixin:
     )
     @column_arguments("x", "i", "c", "n")
     @takes_unit
+    @takes_terminal_column
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -604,6 +660,13 @@ class RecurrentRegressionDataFrameMixin:
             Column of event counts per row.
         tl_col, tr_col : str, optional
             Columns of per-row left / right truncation.
+        a_col : str, optional
+            Column of terminal flags: 1 where the row's event ended the
+            unit's history for good, 0 or blank elsewhere (a blank event
+            on a unit's last row is read as 1). It does not change the
+            fit: the model's ``notes`` say that each terminal event is
+            fitted as an event followed by the end of that unit's
+            observation.
         **fit_options
             Every other option of :meth:`fit` (``dist``, ``init``, ...).
 
@@ -705,6 +768,8 @@ class RegressionDataFrameMixin:
             Columns of the left and right ends of each observation's
             interval, in place of ``x_col`` (with ``c_col`` giving the
             censoring of each row, as for :meth:`fit` with ``xl``/``xr``).
+            Given with ``x_col``, each row is an exact time in ``x_col``
+            or a range in these, the other blank.
         formula : str, optional
             A ``formulaic`` formula for the covariates, e.g.
             ``"age + C(sex)"``, as for the regression models'
@@ -750,6 +815,9 @@ class RegressionDataFrameMixin:
                 "Give the covariates exactly once: as `Z_cols` (columns) "
                 "or as `formula`"
             )
+        df, x_col, xl_col, xr_col = exact_or_range_frame(
+            df, x_col, xl_col, xr_col, c_col
+        )
         intervals = xl_col is not None or xr_col is not None
         if (x_col is not None) == intervals or (
             intervals and (xl_col is None or xr_col is None)

@@ -5,6 +5,122 @@ Unreleased
 
 **Added.**
 
+- Several rows per unit, and the terminal flag ``a``: a unit (``i``) may
+  have several rows without states, stretches of its own clock in time
+  order (covariate stretches still running at ``x``, or repeated events),
+  and ``SurpyvalData(..., a=...)`` (``from_dataframe(a_col=...)``,
+  ``data.a``) marks the event that ended a unit's history for good. An
+  event row with no ``a`` is terminal on its unit's last row and not
+  before (``data.a_inferred`` marks those rows); ``a = 1`` on a running
+  row, a row after a terminal one and overlapping or out-of-order rows
+  are refused, naming the rows. ``a`` is carried by indexing, reshapes,
+  DataFrames and JSON (``"schema": 4``), shown in the ``repr`` and
+  ``summary()`` ("units: 2 (1 ended for good, 1 still running)"), and
+  given to a fit with an ``a`` argument. Fits of one row per unit,
+  ``to_xrd`` and ``life_table`` refuse data whose units have several
+  rows, naming ``fit_tvc`` or the recurrent models; ``n_items`` counts
+  units. Data without ``a`` and with one row per unit is unchanged. A
+  repeated id without states, refused before, is now a unit with several
+  rows.
+- ``x`` with ``xl`` and ``xr``: the three may now be given together
+  (``SurpyvalData``, ``SurpyvalData.from_dataframe`` and every
+  ``fit_from_df`` with ``x_col``, ``xl_col`` and ``xr_col``), read row by
+  row as an exact time in ``x`` or a range in ``xl`` and ``xr``, the other
+  blank (None, NaN or pandas' ``NA``). A range is read by its bounds as a
+  ``[xl, xr]`` row is, and a ``c`` given must agree with it. A row giving
+  both is left out of every per-row argument, with a warning naming it; a
+  row giving neither is refused. Only ``x``, or only ``xl`` and ``xr``,
+  is read as before. See :doc:`Conventions`.
+- Measurements in the data model: ``Measurements`` holds readings taken
+  on units over their lives, on their own timeline (one measurement, or
+  several named ones such as vibration and temperature, each with an
+  optional unit label), built from ``{i: {x: value}}``, ``{name: {i: {x:
+  value}}}`` or a long DataFrame (``Measurements.from_dataframe``), and
+  written by ``to_dataframe`` and ``to_dict``. ``SurpyvalData(..., i=...,
+  m=...)`` and ``SurpyvalData.from_dataframe(..., m=...)`` attach them,
+  linked to the rows by the unit ids (a unit with readings but no rows is
+  warned of). ``data.m`` and ``data.markers`` are one store: data with
+  one unnamed measurement (the joint models' markers) behaves, prints and
+  saves exactly as before. Indexing and every reshape keep the readings of
+  the units kept; ``without("m")`` (or ``"measurements"``) leaves them
+  out; ``with_measurement(name)`` keeps one, which the joint models then
+  fit; data with several measurements is refused by a fit until one is
+  chosen. Readings are per unit: where a unit has several rows they are
+  kept while any of its rows is, and a fit that takes markers refuses
+  such units rather than hand the readings to each row; reshapes of
+  such data keep the readings by unit.
+  ``extend_running`` and ``update`` of data with marker
+  readings, which took its records for event histories and failed, now
+  work. See :doc:`Conventions`.
+- States in the data model: ``SurpyvalData(..., s=...)`` takes the state
+  each row's unit was in during the row (from its entry ``tl`` to ``x``),
+  with ``e`` the state it moved into at ``x`` and ``i`` the unit, so one
+  unit has a row for each stay. ``c`` is read from ``e`` where it is left
+  out (a blank ``e``: still in the state), and a ``c`` that disagrees with
+  ``e`` is refused, naming the rows. Without ``s`` every row starts from
+  the one initial state and nothing changes: ordinary survival and
+  competing-risks data are that case. ``i`` is the new name of ``ids``,
+  which stays as its other name (one argument, one list). The states are
+  carried by indexing and every reshape, shown in the ``repr`` and
+  ``summary()``, read by ``from_dataframe(s_col=...)`` and written by
+  ``to_dataframe``, ``to_dict`` and ``to_json`` (data with states is
+  ``"schema": 4``). Fits that are not multi-state, ``to_xrd`` and
+  ``life_table`` refuse data in more than one state, naming the
+  multi-state models and ``data[data.s == state]``; data in one state
+  fits exactly as without ``s``. Without ``c``, a row given as a range
+  (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
+  agree. See :doc:`Conventions`.
+- The multi-state models fit a ``SurpyvalData``:
+  ``MultiState.fit(data, transitions=tm)``, and likewise
+  ``MultiStateProportionalHazards``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (which take the data's covariates
+  with their names), take ``x``, ``e``, ``s`` (as ``state``), ``tl``,
+  ``i``, ``n`` and the unit from the data, with the same result as from
+  the arrays. Data without ``s`` starts every row from the one initial
+  state (the one state of ``transitions`` nothing moves into, or
+  ``"event-free"``), so competing-risks data fits as it is. Interval- and
+  left-censored rows, weights, right truncation, time-varying covariates,
+  measurements, masked causes and data without ``s`` whose units have
+  several rows are refused, naming the rows or the fix; the terminal flag
+  ``a`` is ignored (the transitions say which states absorb). ``fit`` also
+  takes ``s=`` as another name for ``state=``, and ``fit_from_df``
+  ``s_col=`` for ``state_col=`` (give one). The panel models
+  (``PanelMultiState``, ``PanelMultiStateRegression``), whose ``s`` is
+  the state seen at a visit, take arrays and refuse a ``SurpyvalData``
+  in words. See :doc:`Multi-State Models`.
+- Recurrent fits from a ``SurpyvalData``: every recurrent model's ``fit``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``,
+  ``NonParametricCounting``, the renewal models, the
+  proportional-intensity and recurrent Cox models and the cause-specific
+  models) takes a ``SurpyvalData`` with units ``i``: ``CrowAMSAA.fit(data)``.
+  Each unit's rows are read as its history (``x`` its age at each row,
+  ``c = 1`` the end of its record), a row starting (``tl``) after the
+  previous one ended as a gap (``windows``), and covariates that change
+  within a unit are fitted by the model's ``fit_tvc``; the fit is that of
+  the same arrays. A terminal event (``a = 1``) is fitted as an event
+  followed by the end of the unit's observation, and the model's new
+  ``notes`` (shown in its ``repr``) say so, and where ``a`` was inferred.
+  Every recurrent ``fit_from_df`` takes ``a_col`` for the same notes.
+  ``EventHistoryData`` and ``handle_xicn`` are unchanged. The joint frailty
+  model reads ``a`` as its terminal event: ``JointFrailty.fit(data)`` and
+  ``JointFrailty.fit_from_df(..., a_col=...)`` (in place of
+  ``terminal_col``) fit as the arrays with ``terminal``, with a note where
+  ``a`` was inferred; ``PanelCountMCF`` and ``PanelCountRegression`` take
+  arrays of visits and counts and refuse a ``SurpyvalData`` in words.
+- Degradation and joint fits from measurements: ``DegradationAnalysis``,
+  ``WienerProcess`` and ``GammaProcess`` take their readings as a
+  ``Measurements`` (``fit(m, threshold=...)``), or a ``SurpyvalData``
+  holding them as ``data.m`` (its covariates ``Z`` are each unit's
+  stress), in place of the arrays ``x``, ``y`` and ``i``, and give the
+  arrays' fit exactly; their ``fit_from_df`` also names the readings'
+  column ``m_col`` (``y_col`` is its other name, unchanged). The joint
+  models (``WeibullJointPH``, ``JointPH(...)``) take a ``Measurements`` as
+  ``markers`` (or its other name ``m``), matched to the life rows by unit:
+  beside arrays with ``i=``, beside a ``SurpyvalData`` without readings,
+  or in ``fit_from_df(..., i_col=..., m=...)``. Several measurements are
+  refused until one is chosen with ``with_measurement(name)``, now also
+  a method of ``Measurements``. See :doc:`Degradation Modelling with
+  SurPyval` and :doc:`Joint Models`.
 - Panel counts: recurrent events seen only as the number found at each
   inspection, each unit inspected at its own times (failures found at
   each check of a machine, new tumours at each clinic visit).

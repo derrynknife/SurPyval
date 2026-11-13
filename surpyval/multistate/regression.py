@@ -16,6 +16,7 @@ from surpyval.multistate._base import (
     step_index,
 )
 from surpyval.multistate._data import SpellData, check_spells
+from surpyval.multistate._entry import multistate_data, other_name
 from surpyval.multistate.transitions import TransitionMatrix
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -24,6 +25,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
@@ -126,6 +128,9 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -147,7 +152,10 @@ class MultiStateProportionalHazards(SerialisableMixin):
         ----------
         x, e, state, tl, i, n, transitions
             The spells, as for :meth:`MultiState.fit
-            <surpyval.multistate.MultiState.fit>`.
+            <surpyval.multistate.MultiState.fit>`: ``x`` may be a
+            :class:`~surpyval.SurpyvalData` holding the spells and their
+            covariates ``Z`` (named by its ``covariate_names``), and
+            ``s`` is another name for ``state``.
         Z : array_like
             The covariates, one row per spell (a unit's covariates on each
             of its spells). Missing values are refused: dropping a spell
@@ -325,6 +333,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
     def fit_from_df(
         cls,
         df: Any,
@@ -343,7 +352,8 @@ class MultiStateProportionalHazards(SerialisableMixin):
         """
         Fit the model to a DataFrame of spells, one row each; ``Z_cols``
         names the covariate columns, and ``shared`` may name some of
-        them. The other arguments are those of :meth:`fit`.
+        them. The other arguments are those of :meth:`fit`
+        (``s_col`` is another name for ``state_col``).
 
         Examples
         --------

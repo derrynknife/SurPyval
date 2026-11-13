@@ -73,6 +73,10 @@ from surpyval.utils.no_maximum import (
     restored_maximum,
     warn_unverified,
 )
+from surpyval.utils.recurrent_data import (
+    accepts_terminal_surpyval_data,
+    notes_text,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
@@ -1024,6 +1028,17 @@ class JointFrailty(FitterRepr):
     own coefficients. ``tl`` is a unit's age when its observation began
     (delayed entry), on the calendar time scale.
 
+    **From a SurpyvalData.** ``fit(data)`` takes a ``SurpyvalData`` with
+    units ``i``, in which the terminal event is an event row with the
+    terminal flag ``a = 1``: a unit's rows are its recurrent events
+    (``c = 0``, ``a = 0``), then its terminal event (``c = 0``, ``a = 1``)
+    or a row ``c = 1`` at the end of its record without one. They are
+    read as the arrays above (the terminal event becomes the closing row
+    with ``terminal = 1``), so the fit is the same. An event on a unit's
+    last row with no ``a`` is read as its terminal event, and the
+    model's ``notes`` say so: give ``a = 0`` on a last event that was an
+    ordinary one. ``fit_from_df(..., a_col=...)`` reads such a table.
+
     Examples
     --------
     >>> import numpy as np
@@ -1049,6 +1064,7 @@ class JointFrailty(FitterRepr):
 
     @dataframe_covariates
     @takes_unit
+    @accepts_terminal_surpyval_data
     def fit(
         self,
         x: ArrayLike,
@@ -1067,9 +1083,12 @@ class JointFrailty(FitterRepr):
 
         Parameters
         ----------
-        x : array_like
+        x : array_like or SurpyvalData
             The ages of the recurrent events and of the end of each unit's
-            observation, pooled over the units.
+            observation, pooled over the units. Or a ``SurpyvalData`` with
+            units ``i`` holding the whole of the data, the terminal event
+            marked by ``a = 1`` on its event row (see the class
+            description); the other data arguments are then left out.
         Z : array_like, optional
             Covariates: one row per row of ``x`` (a 1-D array is one
             covariate), the same on every row of a unit, or a DataFrame
@@ -1253,9 +1272,11 @@ class JointFrailty(FitterRepr):
         x_col: str,
         i_col: str,
         c_col: str,
-        terminal_col: str,
+        terminal_col: str | None = None,
         Z_cols: str | list[str] | None = None,
         tl_col: str | None = None,
+        *,
+        a_col: str | None = None,
         **fit_options: Any,
     ) -> JointFrailtyModel:
         """
@@ -1269,11 +1290,21 @@ class JointFrailty(FitterRepr):
             The event log: one row per recurrent event and one per unit
             closing its observation.
         x_col, i_col, c_col, terminal_col : str
-            The columns of ``x``, ``i``, ``c`` and ``terminal``.
+            The columns of ``x``, ``i``, ``c`` and ``terminal``. Give
+            ``terminal_col`` or ``a_col``, not both.
         Z_cols : str or list of str, optional
             The covariate columns, which name the coefficients.
         tl_col : str, optional
             The column of each unit's entry age.
+        a_col : str, optional
+            In place of ``terminal_col``: the column of terminal flags of
+            the data model, 1 on the event row (``c = 0``) of a unit's
+            terminal event, 0 on its recurrent events, with a row
+            ``c = 1`` at the end of the record of a unit that had none.
+            A blank on a unit's last event reads as 1 (its terminal
+            event, which the model's ``notes`` say) and as 0 before.
+            The table is read by ``SurpyvalData.from_dataframe`` (each
+            unit's rows put in time order) and fitted as ``fit(data)``.
         **fit_options
             ``time_scale``, ``family``, ``init``, ``unit``.
 
@@ -1299,6 +1330,17 @@ class JointFrailty(FitterRepr):
 
         if not isinstance(df, pd.DataFrame):
             raise ValueError("'df' must be a pandas DataFrame.")
+        if (terminal_col is None) == (a_col is None):
+            raise TypeError(
+                "Give terminal_col (1 on the row c = 1 that closes a "
+                "unit's observation where the terminal event closed it) or "
+                "a_col (1 on the event row of the terminal event), one of "
+                "the two."
+            )
+        if a_col is not None:
+            return self._fit_from_a_col(
+                df, x_col, i_col, c_col, a_col, Z_cols, tl_col, fit_options
+            )
         cols = [x_col, i_col, c_col, terminal_col]
         if isinstance(Z_cols, str):
             Z_cols = [Z_cols]
@@ -1327,6 +1369,62 @@ class JointFrailty(FitterRepr):
         if names is not None:
             model.feature_names = names
         return model
+
+    def _fit_from_a_col(
+        self,
+        df: Any,
+        x_col: str,
+        i_col: str,
+        c_col: str,
+        a_col: str,
+        Z_cols: str | list[str] | None,
+        tl_col: str | None,
+        fit_options: dict,
+    ) -> JointFrailtyModel:
+        """``fit_from_df`` with ``a_col``: the table as a ``SurpyvalData``
+        (each unit's rows in time order, a terminal event after the
+        recurrent events at its age), fitted as ``fit(data)``."""
+        from surpyval.utils.surpyval_data import SurpyvalData
+
+        if isinstance(Z_cols, str):
+            Z_cols = [Z_cols]
+        cols = [x_col, i_col, c_col, a_col] + list(Z_cols or [])
+        for name in cols + ([tl_col] if tl_col is not None else []):
+            if name not in df.columns:
+                raise ValueError(
+                    f"{name!r} is not a column of df; its columns are "
+                    f"{list(df.columns)}."
+                )
+        x = df[x_col].to_numpy(dtype=float)
+        c = df[c_col].to_numpy()
+        flags = df[a_col].to_numpy(dtype=float, na_value=np.nan)
+        i = df[i_col].to_numpy()
+        # A unit's rows in time order: at one age, its recurrent events,
+        # then its terminal event or the end of its record.
+        last = np.where(np.asarray(c) == 1, 2, np.where(flags == 1, 1, 0))
+        try:
+            order = np.lexsort((last, x, i))
+        except TypeError:
+            order = np.lexsort((last, x, np.asarray([str(v) for v in i])))
+        ids = i[order]
+        kw: dict = {}
+        if tl_col is not None:
+            # The unit's entry, on its first row (a later row starts where
+            # the previous one ended).
+            tl = df[tl_col].to_numpy(dtype=float)[order]
+            first = np.r_[True, ids[1:] != ids[:-1]]
+            kw["tl"] = np.where(first, tl, -np.inf)
+        if Z_cols:
+            kw["Z"] = df[Z_cols].to_numpy(dtype=float)[order]
+            kw["covariate_names"] = [str(n) for n in Z_cols]
+        data = SurpyvalData(
+            x=x[order],
+            c=np.asarray(c)[order],
+            i=[v.item() if isinstance(v, np.generic) else v for v in ids],
+            a=[None if np.isnan(v) else int(v) for v in flags[order]],
+            **kw,
+        )
+        return self.fit(data, **fit_options)
 
     def from_params(
         self,
@@ -1473,6 +1571,9 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
     _held: npt.NDArray
     _lik: _Likelihood
     _ll_null: float
+    #: What ``fit(data)`` made of the data's terminal flags ``a`` (empty
+    #: from arrays); not serialised.
+    notes: tuple = ()
 
     def __getstate__(self) -> dict:
         """The state to pickle, without the likelihood-ratio searches'
@@ -2550,4 +2651,4 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         ]
         for name, value in zip(self.parameter_names, self.params):
             lines.append(f"    {name:<22}: {value:.6g}")
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines) + notes_text(self) + "\n"

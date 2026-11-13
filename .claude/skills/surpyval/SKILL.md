@@ -73,6 +73,19 @@ Every fitter's `fit()` takes the same optional arrays. Only `x` is usually neede
   Use `w`, not `n`, for weights even when they are whole numbers.
 - **`t`** — truncation, a two-column `[tl, tr]`; or pass **`tl`**/**`tr`** (left/right
   truncation) separately. Use `np.inf`/`-np.inf` for one-sided truncation.
+- **`e`, `s`, `i`** (in `SurpyvalData`) — `e` the event type (failure mode) or
+  state entered at `x`, `s` the state the unit was in during the row
+  (multi-state data; without it every row starts from one state), `i` the unit
+  (`ids` is its other name). With `s`, `c` is read from `e` (blank = still in
+  `s`); non-multi-state fits refuse data in more than one state.
+- **`a`** (in `SurpyvalData`) — 1 where a row's event ended the unit's history for
+  good, 0 where it carried on; a unit (`i`) may have several rows in time order
+  (covariate stretches or repeated events); blank `a` on an event is 1 on the
+  unit's last row, 0 before. Fits of one row per unit refuse such data.
+- **`m`** (in `SurpyvalData`) — readings taken on the units over their lives,
+  on their own timeline (`sp.Measurements`: `{i: {x: value}}`, or
+  `{name: {i: {x: value}}}` for several), linked by `i`; `data.markers` is the
+  same store (one measurement), which the joint models fit.
 
 ```python
 import numpy as np

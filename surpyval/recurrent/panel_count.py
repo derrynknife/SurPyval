@@ -52,6 +52,7 @@ from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.recurrent_utils import item_label
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
 from surpyval.utils.warnings import ignoring_warnings
@@ -280,6 +281,21 @@ def _panel_data(
                 "supported).".format(item_label(ids[unit[k]]))
             )
     return _Panel(x_arr, n_arr, unit, ids, Z_units, ids_given)
+
+
+#: The refusal of a SurpyvalData by the panel-count models' ``fit``.
+_REFUSAL = (
+    "PanelCountMCF and PanelCountRegression take arrays of visits and "
+    "counts, not a SurpyvalData: x the inspection times, n the number of "
+    "events found at each inspection since the previous one (0 where none "
+    "were found), i the unit. A SurpyvalData's rows are events or "
+    "stretches of a unit's history, and its n counts identical units (at "
+    "least 1), so an inspection that found nothing has no row in it. Pass "
+    "the arrays to fit, or the columns to fit_from_df; for the times of "
+    "the events themselves, NonParametricCounting.fit(data) and the other "
+    "recurrent models take a SurpyvalData."
+)
+_refuses_data = refuses_surpyval_data_with(_REFUSAL)
 
 
 # ---------------------------------------------------------------------------
@@ -1035,6 +1051,7 @@ class PanelCountMCF(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @_refuses_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -1368,6 +1385,7 @@ class PanelCountRegression(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @_refuses_data
     def fit(
         cls,
         x: npt.ArrayLike,

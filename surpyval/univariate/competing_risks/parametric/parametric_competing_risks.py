@@ -73,7 +73,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
-from surpyval.utils.dataframe import frame_column
+from surpyval.utils.dataframe import exact_or_range_frame, frame_column
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
@@ -1848,13 +1848,19 @@ class ParametricCompetingRisks(
             upper time, ``[xl, xr]`` in :meth:`fit` (equal for a failure
             or censoring at one time; a blank lower end is a row left
             censored at the upper one, a blank upper end one right
-            censored at the lower one).
+            censored at the lower one). Given with ``x_col``, each row is
+            an exact time in ``x_col`` (``xl_col`` and ``xr_col`` blank) or
+            a window in these (``x_col`` blank); a row giving both is left
+            out, with a warning.
 
         Returns
         -------
         ParametricCompetingRisks
             The fitted model.
         """
+        df, x_col, xl_col, xr_col = exact_or_range_frame(
+            df, x_col, xl_col, xr_col, c_col, blank_is_infinite=True
+        )
         if xl_col is not None or xr_col is not None:
             if x_col is not None or xl_col is None or xr_col is None:
                 raise ValueError(
