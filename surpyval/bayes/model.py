@@ -2198,7 +2198,9 @@ def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
     for d in (a, b):
         bayes_data("Combining data for a Bayesian fit", d)
     ua, ub = getattr(a, "unit", None), getattr(b, "unit", None)
-    if ua is not None and ub is not None and ua != ub:
+    from surpyval.utils.units import same_unit
+
+    if ua is not None and ub is not None and not same_unit(ua, ub):
         raise ValueError(
             f"The old data's ages are in {ua!r} and the new data's in "
             f"{ub!r}: convert one so both are in the same unit."

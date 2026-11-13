@@ -444,9 +444,9 @@ def test_deterministic(seals):
 
 def test_unit():
     model = sp.Weibull.fit_bayes(X, C, priors=SHAPE, unit="hours")
-    assert model.unit == "hour"
+    assert model.unit == "hours"
     assert "Unit : hour" in repr(model)
-    assert sp.from_dict(model.to_dict()).unit == "hour"
+    assert sp.from_dict(model.to_dict()).unit == "hours"
 
 
 # ---------------------------------------------------------------------------

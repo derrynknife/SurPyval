@@ -431,7 +431,7 @@ def test_with_params_keeps_names_and_unit():
     )
     other = model.with_params(model._estimates() * [1.1, 0.9, 1.0])
     assert other.covariance_names == ["mu", "sigma", "inv_T"]
-    assert other.unit == model.unit == "hour"
+    assert other.unit == model.unit == "hours"
     assert other.mu == pytest.approx(1.1 * model.mu)
     np.testing.assert_array_equal(other.stress_ref, model.stress_ref)
     # the original is untouched

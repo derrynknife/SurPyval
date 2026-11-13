@@ -326,7 +326,7 @@ def test_round_trips(name):
         pickle.loads(pickle.dumps(model)),
     ):
         assert restored.kind == model.kind
-        assert restored.unit == model.unit == "month"
+        assert restored.unit == model.unit == "months"
         assert restored.strata == model.strata
         assert restored.max_events == model.max_events
         assert (restored.n_items, restored.n_events) == (

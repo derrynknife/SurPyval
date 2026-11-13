@@ -596,7 +596,7 @@ def test_the_data_frame_entry_points_are_the_array_fits(name):
     np.testing.assert_array_equal(model.coeffs, ref.coeffs)
     assert model.feature_names == ["load", "dust"]
     assert model.parameter_names[-2:] == ["load", "dust"]
-    assert model.unit == "month"
+    assert model.unit == "months"
     assert list(model.summary().index[-2:]) == ["load", "dust"]
     # A DataFrame Z names the coefficients too.
     named = fitter.fit_tvc(

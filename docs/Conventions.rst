@@ -630,11 +630,13 @@ Every ``fit``, ``fit_from_df`` and ``from_params`` takes an optional
 ``unit=``: the unit the data were measured in, of any kind -- ``"hours"``,
 ``"km"``, ``"cycles"``, ``"pump starts"``. It is a label. The model keeps it
 as ``model.unit``, shows it in its printout and on its plots, and saves it
-with ``to_dict``; nothing is converted or checked. A unit `pint
-<https://pint.readthedocs.io>`_ knows is stored by its canonical name, so
-the same unit always reads the same (``"hrs"``, ``"hours"`` and ``"Hours"``
-are all ``"hour"``, and ``"cycles"`` is ``"cycle"``, a count); anything else
-is kept as written. Left out, it is ``None``: unknown, as before.
+with ``to_dict``, exactly as it was typed (``"hrs"`` stays ``"hrs"`` and
+``"mm/s"`` stays ``"mm/s"``; only spaces at its ends are dropped); nothing is
+converted. Where two labels are compared -- the data's and the fit's, the
+records of one dataset, two models -- they are read with `pint
+<https://pint.readthedocs.io>`_, so ``"h"``, ``"hrs"`` and ``"hours"`` agree
+(and ``"cycles"`` is a count, not pint's angle), and the label kept is the one
+typed for the result. Left out, it is ``None``: unknown, as before.
 
 .. jupyter-execute::
 
@@ -642,10 +644,10 @@ is kept as written. Left out, it is ``None``: unknown, as before.
     print(model.unit)
     print(model)
 
-A plot names its time axis by what the unit measures: "Time (h)",
-"Distance (km)", or "Usage (cycles)" for a count or any other unit. A label
-already on the axes is kept. Tools that combine models (RePyability, say)
-can convert between units with pint from the stored names.
+A plot names its time axis by what the unit measures, with the label as
+typed: "Time (hrs)", "Distance (km)", or "Usage (cycles)" for a count or any
+other unit. A label already on the axes is kept. Tools that combine models
+(RePyability, say) can convert between units with pint from the labels.
 
 The data classes carry the unit too: ``ItemLifetime(..., unit="hours")``,
 ``SurpyvalData(..., unit=)``, ``from_items`` (from its records, which must
@@ -653,16 +655,17 @@ agree), ``from_observations``, ``from_histories``, ``from_dataframe`` and
 ``handle_xicn`` all take it, every reshape, slice, ``to_first_events``,
 ``to_gaps`` and the JSON form keep it, the summary and printout show it,
 and ``fit(data)`` gives it to the model, so it is given once:
-``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hour"``. A
-``unit=`` at the fit that differs from the data's is refused, as are
-records in different units in one dataset; nothing is converted.
+``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hours"``. A
+``unit=`` at the fit that names a different unit from the data's is
+refused, as are records in different units in one dataset; nothing is
+converted.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert model.unit == "hour"
-    assert surv.from_dict(model.to_dict()).unit == "hour"
+    assert model.unit == "hrs"
+    assert surv.from_dict(model.to_dict()).unit == "hrs"
 
 Plots
 ~~~~~

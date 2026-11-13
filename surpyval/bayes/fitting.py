@@ -337,7 +337,7 @@ def fit(
     unit: Any = None,
 ) -> Any:
     """The Bayesian fit; see ``ParametricFitter.fit_bayes``."""
-    from surpyval.utils.units import normalise_unit
+    from surpyval.utils.units import normalise_unit, same_unit
 
     _check_dist(dist, method)
     data = bayes_data(
@@ -345,7 +345,11 @@ def fit(
     )
     canonical = normalise_unit(unit)
     held = getattr(data, "unit", None)
-    if canonical is not None and held is not None and held != canonical:
+    if (
+        canonical is not None
+        and held is not None
+        and not same_unit(held, canonical)
+    ):
         raise ValueError(
             f"The data's ages are in {held!r}, but unit={unit!r} was given "
             "to the fit: leave unit= out, or convert the data."
