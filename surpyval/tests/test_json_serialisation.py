@@ -358,7 +358,10 @@ def _build(name):
         AndersenGill,
         CrowAMSAA,
         GeneralizedRenewal,
+        JointFrailty,
         NonParametricCounting,
+        PanelCountMCF,
+        PanelCountRegression,
         PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
         WeiLinWeissfeld,
@@ -456,6 +459,12 @@ def _build(name):
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
         ),
+        "multistate_parametric_reset": lambda: ParametricMultiState.fit(
+            **ms_data(), clock="reset"
+        ),
+        "multistate_parametric_regression_reset": lambda: (
+            ParametricMultiStateRegression.fit(**ms_data(True), clock="reset")
+        ),
         "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
         "multistate_panel_regression": lambda: (
             PanelMultiStateRegression.fit(**panel_data(True))
@@ -479,10 +488,31 @@ def _build(name):
                 baseline=CrowAMSAA,
             )
         ),
+        "joint_frailty": lambda: JointFrailty.fit(
+            **JointFrailty.from_params(
+                (10.0, 1.2), (20.0, 1.5), 0.5, 1.0, beta=[0.5], gamma=[0.3]
+            ).random(
+                80,
+                end=15.0,
+                Z=(np.arange(80) % 2)[:, None].astype(float),
+                random_state=1,
+            )
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
             np.array([0, 0, 1, 0, 0, 1]),
+        ),
+        "panel_count_mcf": lambda: PanelCountMCF.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0],
+            [1, 0, 2, 1, 2, 0, 2, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3],
+        ),
+        "panel_count_regression": lambda: PanelCountRegression.fit(
+            [2.0, 5.0, 9.0, 3.0, 8.0, 4.0, 6.0, 10.0, 3.0, 7.0],
+            [0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+            [1, 0, 2, 1, 2, 0, 2, 1, 0, 1],
+            i=[1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
         ),
         "parametric_recurrence": lambda: CrowAMSAA.fit(
             np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
@@ -571,12 +601,17 @@ CASES = [
     "multistate_cox_shared",
     "multistate_parametric",
     "multistate_parametric_regression",
+    "multistate_parametric_reset",
+    "multistate_parametric_regression_reset",
     "multistate_panel",
     "multistate_panel_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
+    "joint_frailty",
     "mcf",
+    "panel_count_mcf",
+    "panel_count_regression",
     "parametric_recurrence",
     "proportional_intensity",
     "recurrent_cox_andersen_gill",

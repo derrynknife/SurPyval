@@ -98,6 +98,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JointFrailty
 surpyval.JointModel
 surpyval.JointPH
 surpyval.KaplanMeier
@@ -152,6 +153,8 @@ surpyval.NormalPO
 surpyval.PH
 surpyval.PO
 surpyval.PairwiseLogRankResult
+surpyval.PanelCountMCF
+surpyval.PanelCountRegression
 surpyval.PanelMultiState
 surpyval.PanelMultiStateRegression
 surpyval.ParameterSubstitutionFitter
@@ -385,8 +388,12 @@ surpyval.recurrent.GeneralizedRenewal
 surpyval.recurrent.GoodnessOfFitResult
 surpyval.recurrent.HPP
 surpyval.recurrent.InterventionTestResult
+surpyval.recurrent.JointFrailty
+surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.MCFDiffResult
 surpyval.recurrent.NonParametricCounting
+surpyval.recurrent.PanelCountMCF
+surpyval.recurrent.PanelCountRegression
 surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP

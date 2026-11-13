@@ -51,6 +51,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_COP,
     X_CR,
     X_DESTR,
+    X_JF,
     X_JOINT,
     X_MS,
     X_MSR,
@@ -60,6 +61,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_REC,
     X_UNI,
     Z_CR,
+    Z_JF,
     Z_MS,
     Z_REC,
     beta_geometric_data,
@@ -71,11 +73,13 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     joint_data,
+    joint_frailty_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
     ms_data,
     offset_data,
+    panel_count_data,
     panel_data,
     path_data,
     process_data,
@@ -957,7 +961,7 @@ def _multistate():
             **shared_options(d),
         )
 
-    def pms_from_df(d):
+    def pms_from_df(d, clock="forward"):
         return ms.ParametricMultiState.fit_from_df(
             frame(d),
             "x",
@@ -966,9 +970,10 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
 
-    def pmsr_from_df(d):
+    def pmsr_from_df(d, clock="forward"):
         return ms.ParametricMultiStateRegression.fit_from_df(
             frame(d),
             "x",
@@ -978,6 +983,7 @@ def _multistate():
             tl_col="tl",
             n_col="n",
             transitions=d["transitions"],
+            clock=clock,
         )
 
     exact = "an exact (Aalen-Johansen) estimate of the spells"
@@ -1088,6 +1094,53 @@ def _multistate():
             covariates="Z",
             drops_missing_covariate=False,
             paths={"fit_from_df": pmsr_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        ),
+        # The semi-Markov models: each transition's hazard a function of
+        # the time spent in its state, the probabilities by convolution.
+        Case(
+            name="ParametricMultiState[reset]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=_fit(ms.ParametricMultiState, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={
+                "fit_from_df": functools.partial(pms_from_df, clock="reset")
+            },
+            exclude={
+                "convergence": "each transition is fitted by its "
+                "distribution's own univariate fit, whose starved fits the "
+                "Parametric cases check; the model adds no search of its "
+                "own and takes no init"
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression[reset]",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=_fit(ms.ParametricMultiStateRegression, clock="reset"),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": functools.partial(pmsr_from_df, clock="reset")
+            },
             coefficients=lambda m: m.betas,
             intercept=True,
         ),
@@ -1447,6 +1500,50 @@ def _recurrent():
             ),
             # Each cause's Duane scale b absorbs a constant.
             intercept=True,
+        )
+    )
+    # The joint frailty model of recurrent and terminal events: the
+    # recurrent part's cif / iif / mcf and the terminal event's survival
+    # functions, at the query rows.
+    out.append(
+        Case(
+            name="JointFrailty",
+            fitters=("surpyval.recurrent.JointFrailty",),
+            model_class="surpyval.recurrent.JointFrailtyModel",
+            interface=COUNTING_REGRESSION,
+            data=joint_frailty_data,
+            fit=_fit(rc.JointFrailty),
+            functions=("cif", "iif", "mcf", "sf", "ff", "Hf", "hf", "df"),
+            x=X_JF,
+            Z=Z_JF,
+            paths={
+                "fit_from_df": lambda d: rc.JointFrailty.fit_from_df(
+                    pd.DataFrame(
+                        {
+                            "x": d["x"],
+                            "i": d["i"],
+                            "c": d["c"],
+                            "terminal": d["terminal"],
+                            "z": np.asarray(d["Z"])[:, 0],
+                        }
+                    ),
+                    "x",
+                    "i",
+                    "c",
+                    "terminal",
+                    Z_cols=["z"],
+                )
+            },
+            rows=("x", "Z", "i", "c", "terminal"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array([m.beta, m.gamma]),
+            # Each part's Weibull scale absorbs a constant.
+            intercept=True,
+            draw=lambda m, s: (lambda r: (r["x"], r["c"], r["terminal"]))(
+                m.random(4, end=15.0, Z=[0.5], random_state=s)
+            ),
+            explicit_seed=True,
         )
     )
     # A count above one is refused on an observed recurrent event (the
@@ -2030,6 +2127,65 @@ def _bayes():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Panel counts (recurrent events counted at inspections)
+# ---------------------------------------------------------------------------
+def _panel_count():
+    def mcf_from_df(d):
+        df = pd.DataFrame({"x": d["x"], "n": d["n"], "i": d["i"]})
+        return rc.PanelCountMCF.fit_from_df(df, "x", "n", i_col="i")
+
+    def reg_from_df(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "n": d["n"], "i": d["i"], "z": d["Z"][:, 0]}
+        )
+        return rc.PanelCountRegression.fit_from_df(
+            df, "x", ["z"], "n", i_col="i"
+        )
+
+    counts = (
+        "n is the number of events found at an inspection, not a "
+        "frequency: a row with n = 2 is not two rows"
+    )
+    return [
+        Case(
+            name="PanelCountMCF",
+            fitters=("surpyval.recurrent.PanelCountMCF",),
+            model_class="surpyval.recurrent.PanelCountMCF",
+            interface=COUNTING,
+            data=panel_count_data,
+            fit=_fit(rc.PanelCountMCF),
+            functions=("mcf",),
+            x=X_REC,
+            rows=("x", "n", "i"),
+            paths={"fit_from_df": mcf_from_df},
+            rtol=1e-7,
+            exclude={"counts": counts},
+        ),
+        Case(
+            name="PanelCountRegression",
+            fitters=("surpyval.recurrent.PanelCountRegression",),
+            model_class="surpyval.recurrent.PanelCountRegression",
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(panel_count_data, True),
+            fit=_fit(rc.PanelCountRegression),
+            functions=("mcf",),
+            x=X_REC,
+            Z=Z_REC,
+            z_style="single",
+            rows=("x", "Z", "n", "i"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": reg_from_df},
+            coefficients=lambda m: m.params,
+            # The unspecified baseline absorbs a constant.
+            intercept=True,
+            rtol=1e-6,
+            exclude={"counts": counts},
+        ),
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -2050,6 +2206,7 @@ CASES: list[Case] = (
     + _zero_inflated()
     + _panel_multistate()
     + _bayes()
+    + _panel_count()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -2726,21 +2883,70 @@ def _multistate_bounds(variances):
     )
 
 
+def _panel_count_bounds(regression):
+    # Percentile bootstraps of refits to resampled units (and, on the
+    # coefficients, the normal interval from the bootstrap's spread)
+    out = tuple(
+        Bound(
+            "mcf_cb",
+            point="mcf",
+            kwargs={"interp": interp, **_BOOT},
+            wald=False,
+            nan_ok=True,
+            label=f"mcf_cb[{interp}]",
+        )
+        for interp in ("step", "linear")
+    )
+    if not regression:
+        return out
+    return out + (
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs=_BOOT,
+            wald=False,
+            label="param_cb[percentile]",
+        ),
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "normal", **_BOOT},
+            in_range=False,
+            label="param_cb[normal]",
+        ),
+    )
+
+
+_LENGTH_OF_STAY = Bound(
+    "length_of_stay_cb",
+    point="length_of_stay",
+    per_cause=True,
+    # (inside (0, x - s), not the range of a probability)
+    in_range=False,
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "PanelCountMCF": _panel_count_bounds(False),
+        "PanelCountRegression": _panel_count_bounds(True),
         # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
         # variances; the Cox model's include its coefficients'.
         "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
         "MultiStateProportionalHazards": _multistate_bounds(
             ("aalen", "greenwood")
         ),
-        # The delta method over every transition's parameters.
-        "ParametricMultiState": _multistate_bounds((None,)),
-        "ParametricMultiStateRegression": _multistate_bounds((None,)),
+        # The delta method over every transition's parameters, on the
+        # occupation probabilities and on the expected length of stay
+        # (logit of the fraction of the time, inside (0, x - s)).
+        "ParametricMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        "ParametricMultiStateRegression": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
         # The delta method over the intensities (and coefficients), Wald
         # bounds on each parameter, and on each transient state's mean
         # stay.
@@ -2763,6 +2969,25 @@ def _bounds(case):
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # The delta method on each function, Wald and profile-likelihood
+        # bounds on the parameters.
+        "JointFrailtyModel": (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mcf_cb", point="mcf"),
+            Bound("sf_cb", point="sf"),
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+        ),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
         # (hours at a constant number of starts per hour).
@@ -3102,6 +3327,7 @@ _INTERP = {
     "Turnbull": _NP_INTERP,
     "NonParametricCounting": ("step", "linear"),
     "CauseSpecificMCF": ("step", "linear"),
+    "PanelCountMCF": ("step", "linear"),
     # Its baselines are steps: interp= takes "step" only (#416).
     "CompetingRisksProportionalHazards[Cox]": ("step",),
 }
@@ -3402,6 +3628,8 @@ def _starve(case):
         return _far_start(
             case, lambda m: _scaled_start(np.r_[m.params, m.coeffs])
         )
+    if cls == "JointFrailtyModel":
+        return _far_start(case, lambda m: _scaled_start(m.params))
     if cls == "CauseSpecificNHPP":
         return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
     if cls == "CauseSpecificProportionalIntensity":

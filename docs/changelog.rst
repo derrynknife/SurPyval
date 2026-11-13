@@ -70,6 +70,66 @@ Unreleased
   fits exactly as without ``s``. Without ``c``, a row given as a range
   (``xl``, ``xr``) takes its flag from its bounds, and ``e`` must
   agree. See :doc:`Conventions`.
+- Panel counts: recurrent events seen only as the number found at each
+  inspection, each unit inspected at its own times (failures found at
+  each check of a machine, new tumours at each clinic visit).
+  ``PanelCountMCF`` (also at the top level) estimates the mean cumulative
+  function without assuming a process: the maximum likelihood estimator
+  under a Poisson working model (Wellner and Zhang 2000; the default) or
+  the maximum pseudo-likelihood estimator, the isotonic regression of the
+  cumulative counts (Sun and Kalbfleisch 1995). ``PanelCountRegression``
+  fits the proportional means model ``E[N(t) | Z] = Lambda0(t)
+  exp(beta'Z)`` with the baseline unspecified, by the pseudo-likelihood
+  (the default; R ``spef``'s ``"MPL"``, matched on simulated panel
+  counts) or the likelihood (Wellner and Zhang 2007). Both are consistent
+  when the counts are not Poisson; ``mcf_cb``, ``param_cb`` and
+  ``standard_errors`` are bootstraps over units. ``fit_from_df``,
+  ``to_dict`` / ``from_dict``, aliased covariates as the other
+  regressions. The parametric intensity models
+  (``CrowAMSAA``, ``CoxLewis``, ``ProportionalIntensityNHPP``, ...) now
+  take a count of 0 on an interval-counted row (``c=2`` or ``c=-1``), so
+  they fit panel counts too; a 0 on an exact-event or end-of-observation
+  row is still refused.
+- The joint frailty model of recurrent events and a terminal event,
+  ``JointFrailty`` (``surpyval.recurrent``, and at the top level), with
+  ``JointFrailtyModel``: items with repeated events (repairs,
+  readmissions) whose history ends in an event that depends on them
+  (scrapping, death). Each item's frailty ``u`` multiplies its recurrent
+  intensity and, as ``u ** alpha``, its terminal hazard (Liu, Wolfe and
+  Huang 2004; Rondeau et al. 2007); gamma or log-normal frailty, Weibull
+  baselines (the recurrent one the power-law intensity), on the item's
+  age (``time_scale="calendar"``) or, for the recurrences, the time since
+  the last event (``"gap"``), with delayed entry (``tl``) on the
+  calendar scale. The terminal event is given by ``terminal=1`` on the
+  row (``c=1``) that closes an item's history. Fitted by maximum marginal
+  likelihood, the frailty integrated out by a trapezoid rule over each
+  item's integrand, accurate to rounding; ``theta``, ``alpha``, ``beta``,
+  ``gamma``, ``summary()``, Wald and profile-likelihood ``param_cb``,
+  ``frailty_tests()`` (no frailty, against an even mixture of chi-square
+  on one and two degrees of freedom; and ``alpha = 0``),
+  each item's predicted frailty (``frailties``), ``cif``, ``iif``,
+  ``mcf`` (the expected count, the terminal event stopping it) and the
+  terminal event's ``sf``, ``ff``, ``hf``, ``Hf`` and ``df``, for the
+  population or for one item's frailty, with ``cif_cb``, ``iif_cb``,
+  ``mcf_cb`` and ``sf_cb``; ``random`` and ``from_params``; ``to_dict`` /
+  ``from_dict``. Checked against R ``frailtypack`` 3.8.2.
+- Semi-Markov ("clock reset") parametric multi-state models:
+  ``ParametricMultiState.fit(..., clock="reset")`` and
+  ``ParametricMultiStateRegression.fit(..., clock="reset")`` (and their
+  ``fit_from_df``), where each transition's hazard is a function of the
+  time spent in the current state (the time since a repair, a relapse).
+  Each transition is fitted on the durations ``x - tl``. The occupation
+  and transition probabilities come from the renewal equations, solved
+  by convolution on a grid refined until they settle (about 1e-6), with
+  or without recovery (a cycle); ``cb`` gives delta-method bounds as on
+  the forward clock. A distribution that does not live on (0, inf), and a
+  prediction from a later start without ``from_state``, are refused with
+  the reason.
+- The expected length of stay in each state for both clocks of the
+  parametric multi-state models: ``length_of_stay(x, state, ...)``,
+  ``length_of_stay_se`` and ``length_of_stay_cb`` (delta method on the
+  logit of the fraction of ``x - s`` spent in the state). Checked against
+  R ``flexsurv`` (``totlos.fs``, ``totlos.simfs``).
 - Mixed-effects Cox regression, ``CoxMixedEffects`` (R's ``coxme``): a
   Cox model whose log hazard has Gaussian random effects, a random
   intercept per group of one or more grouping factors, nested (wards in

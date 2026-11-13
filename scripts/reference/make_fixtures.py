@@ -21,8 +21,12 @@ Two kinds of fixture:
   model, and a deliberate violation of proportional hazards for the Cox
   diagnostics, a covariate that separates the events from the survivors
   (Firth's fit),
-  recurrent events of two groups of systems for the MCF comparison, and
-  an illness-death model with recovery for the multi-state models.
+  recurrent events of two groups of systems for the MCF comparison, an
+  illness-death model with recovery for the multi-state models, and
+  recurrent events with a dependent terminal event for the joint frailty
+  model;
+* simulated panel counts (events counted at each unit's own visits) for
+  the panel-count models (``reference_r_spef.R``).
 
 Run from the repository root::
 
@@ -1196,6 +1200,46 @@ def recurrent_groups(seed, ties):
     }
 
 
+def panel_counts(seed):
+    """Panel counts of the character of a clinic-visit study: 85 units,
+    each seen at its own visits (whole months, gaps of 1 to 6, to an end
+    at 10 to 53 months), the number of new events counted at each visit
+    (often 0). A treatment indicator (probability 0.45) and two baseline
+    covariates (``size`` and ``num``, 1 plus a Poisson count, at most 7
+    and 8). Each unit's events are a Poisson process with mean
+    ``f exp(-1.0 treatment - 0.05 size + 0.25 num) 0.12 t^0.95``, ``f`` a
+    gamma frailty with mean 1 and variance 0.5, so the counts are
+    over-dispersed."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for unit in range(1, 86):
+        treatment = int(rng.random() < 0.45)
+        size = int(min(1 + rng.poisson(1.0), 7))
+        num = int(min(1 + rng.poisson(1.1), 8))
+        frailty = rng.gamma(2.0, 0.5)
+        end = int(rng.integers(10, 54))
+        visits, t = [], 0
+        while True:
+            t += int(rng.integers(1, 7))
+            if t >= end:
+                visits.append(end)
+                break
+            visits.append(t)
+        eta = -1.0 * treatment - 0.05 * size + 0.25 * num
+        mean = 0.12 * np.asarray(visits, dtype=float) ** 0.95
+        counts = rng.poisson(frailty * np.exp(eta) * np.diff(np.r_[0.0, mean]))
+        for v, c in zip(visits, counts):
+            rows.append((unit, v, int(c), treatment, size, num))
+    columns = list(zip(*rows))
+    names = ("id", "time", "count", "treatment", "size", "num")
+    return {
+        "source": "seeded synthetic, make_fixtures.panel_counts (rng {}): "
+        "the number of events found at each visit since the previous one, "
+        "one row per visit".format(seed),
+        "columns": {k: _native(v) for k, v in zip(names, columns)},
+    }
+
+
 def mgus2_multistate():
     df = load_mgus2(spells=True)
     code = {"mgus": 1, "pcm": 2, "death": 3}
@@ -1287,6 +1331,54 @@ def multistate(seed):
             "x": _native(columns[2]),
             "state": _native(columns[3]),
             "e": list(columns[4]),
+        },
+    }
+
+
+def joint_frailty(seed):
+    """Recurrent events and a dependent terminal event for 250 units: a
+    gamma frailty u (mean 1, variance 0.6) multiplies the recurrent
+    intensity, Weibull with scale 6 and shape 1.3 on the unit's age, by
+    exp(0.5 z1 - 0.3 z2), and u ** 0.8 the terminal hazard, Weibull with
+    scale 14 and shape 1.6, by exp(0.4 z1 + 0.2 z2); z1 is 0 or 1 and z2
+    standard normal (rounded to two decimals). Each unit is followed
+    until its terminal event or a uniform time in (4, 12). Times are
+    rounded to three decimals; terminal is 1 on a unit's last row where
+    the terminal event ended it."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for unit in range(1, 251):
+        z1 = float(unit % 2)
+        z2 = round(float(rng.normal()), 2)
+        u = rng.gamma(1 / 0.6, 0.6)
+        end = float(rng.uniform(4, 12))
+        lam_t = u**0.8 * math.exp(0.4 * z1 + 0.2 * z2)
+        death = 14.0 * (rng.exponential() / lam_t) ** (1 / 1.6)
+        stop = min(end, death)
+        rate = u * math.exp(0.5 * z1 - 0.3 * z2)
+        cum, last = 0.0, 0.0
+        while True:
+            cum += rng.exponential() / rate
+            t = round(6.0 * cum ** (1 / 1.3), 3)
+            if t >= round(stop, 3):
+                break
+            if t > last:
+                rows.append((unit, t, 0, 0, z1, z2))
+                last = t
+        rows.append((unit, round(stop, 3), 1, int(death <= end), z1, z2))
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.joint_frailty (rng {}): "
+        "recurrent events (c 0) and one closing row per unit (c 1, "
+        "terminal 1 where the terminal event closed it) of a joint "
+        "gamma-frailty model".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "x": _native(columns[1]),
+            "c": _native(columns[2]),
+            "terminal": _native(columns[3]),
+            "z1": _native(columns[4]),
+            "z2": _native(columns[5]),
         },
     }
 
@@ -1498,6 +1590,7 @@ def build():
         "mgus2_multistate": mgus2_multistate(),
         "mgus2_pyears": mgus2_pyears(),
         "multistate": multistate(3800),
+        "joint_frailty": joint_frailty(3801),
         "clustered": clustered(3851),
         "rank_regression": rank_regression(),
         "multistate_panel": multistate_panel(3801),
@@ -1515,6 +1608,7 @@ def build():
             "and er_event the same lives exact or right censored",
             "columns": IC_MIXED,
         },
+        "panel_counts": panel_counts(3820),
     }
 
 

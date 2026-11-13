@@ -410,10 +410,22 @@ with its own ``schema``.
      - ``"model": "NonParametricCounting"``
      - ``x``, ``mcf_hat``, ``var``, ``origin``
      - ``support``
+   * - ``PanelCountMCF``
+     - ``"model": "PanelCountMCF"``
+     - ``how``, ``x``, ``i``, ``n``
+     - --
+   * - ``PanelCountRegression``
+     - ``"model": "PanelCountRegression"``
+     - ``how``, ``x``, ``i``, ``n``, ``Z``, ``params``
+     - --
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
      - --
+   * - ``JointFrailtyModel``
+     - ``"model": "JointFrailtyModel"``
+     - ``family``, ``time_scale``, ``params``, ``n_covariates``, ``held``, ``covariance``, ``frailty_ids``, ``frailty_values``, ``maximum``
+     - ``feature_names``
    * - ``ProportionalIntensityModel``
      - ``"model": "ProportionalIntensityModel"``
      - ``kind``, ``dist``, ``param_names``, ``params``, ``coeffs``, ``covariance``, ``maximum``

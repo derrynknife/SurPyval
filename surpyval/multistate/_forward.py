@@ -315,3 +315,63 @@ def _chain(steps: npt.NDArray) -> npt.NDArray:
     for step in steps[1:]:
         out = out @ step
     return out
+
+
+def _simpson(
+    cumhaz: Hazards,
+    nodes: npt.NDArray,
+    P0: npt.NDArray,
+    frm: npt.NDArray,
+    to: npt.NDArray,
+    k: int,
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """From :math:`P` at ``nodes[0]`` (``P0``): :math:`P` at every node
+    and the integral of :math:`P` from ``nodes[0]`` to each, by
+    Simpson's rule on each interval (its middle reached by the first
+    half of its step)."""
+    a, b = nodes[:-1], nodes[1:]
+    mid = 0.5 * (a + b)
+    H = _checked(cumhaz, nodes)
+    Hm = _checked(cumhaz, mid)
+    first = _step(cumhaz, a, mid, H[:-1], Hm, frm, to, k)
+    second = _step(cumhaz, mid, b, Hm, H[1:], frm, to, k)
+    P = np.empty((nodes.size, k, k))
+    area = np.zeros((nodes.size, k, k))
+    P[0] = P0
+    for j in range(a.size):
+        Pm = P[j] @ first[j]
+        P[j + 1] = Pm @ second[j]
+        area[j + 1] = area[j] + (b[j] - a[j]) / 6.0 * (
+            P[j] + 4.0 * Pm + P[j + 1]
+        )
+    return P, area
+
+
+def integrate(
+    cumhaz: Hazards,
+    grid: Plan,
+    frm: npt.NDArray,
+    to: npt.NDArray,
+    k: int,
+) -> npt.NDArray:
+    r"""``(len(times), K, K)``: :math:`\int_s^t P(s, u)\, du` at the
+    plan's times (element ``[a, b]`` the expected time spent in ``b``
+    by then from ``a`` at ``s``), by Simpson's rule on each interval of
+    the plan's grid, with the probabilities at the middle of each
+    interval from the first half of its step."""
+    out = np.empty((grid.times.size, k, k))
+    if grid.times.size == 0:
+        return out
+    top = int(grid.last.max()) + 1
+    nodes = grid.nodes[:top]
+    if nodes.size > 1:
+        P, area = _simpson(cumhaz, nodes, np.eye(k), frm, to, k)
+    else:
+        P, area = np.eye(k)[None], np.zeros((1, k, k))
+    for n, (j, tail) in enumerate(zip(grid.last, grid.tails)):
+        if tail is None:
+            out[n] = area[j]
+            continue
+        _, extra = _simpson(cumhaz, tail, P[j], frm, to, k)
+        out[n] = area[j] + extra[-1]
+    return out
