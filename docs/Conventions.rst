@@ -15,7 +15,7 @@ The conventional formats used in SurPyval are:
 
 All functions in SurPyval have default handling for c and n. That is,
 if these variables aren't passed, it is assumed that there was one observation
-and it was a failure (``c = 0``, ``n = 1``) for every x. Truncation defaults to none (an observation
+and it was an observed event, such as a failure (``c = 0``, ``n = 1``), for every x. Truncation defaults to none (an observation
 window of :math:`(-\infty, \infty)`). For recurrent event models, if i is not passed
 it is assumed that it is all from the same item.
 
@@ -370,7 +370,7 @@ For the censoring values, surpyval uses the convention used in Meeker and Escoba
 - 1 = right
 - 2 = interval censoring. Must have left and right value in x
 
-This convention gives an intuitive feel for the placement of the data on a timeline: the failure is at the recorded value (0), somewhere to its left (-1), somewhere to its right (1), or between two values (2).
+This convention gives an intuitive feel for the placement of the data on a timeline: the event (the failure, the death, the relapse) is at the recorded value (0), somewhere to its left (-1), somewhere to its right (1), or between two values (2).
 
 .. list-table::
    :header-rows: 1
@@ -393,6 +393,8 @@ This convention gives an intuitive feel for the placement of the data on a timel
      - :math:`x_{l,j} < X \le x_{r,j}`
 
 The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored (the proportional-intensity models' start-stop form is the same, with ``c = 2`` for a count ``n`` of events within the interval). The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
+
+The words for these ideas differ between fields (failure and event, suspension and right censored, reliability and survival); the :doc:`Glossary` maps them to each other.
 
 ``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 events at 9 unique times, 51 right censored``: if you had 51 failures, the flag was read backwards. The counts are weighted by ``n``, and the number of distinct event times shows how far they are aggregated.
 
@@ -418,7 +420,7 @@ The conventions for single event SurPyval models are that each object returned f
 
 These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
 
-- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life. Every ``qf`` -- a fitted model's, with or without covariates, and a distribution's own (``surv.Weibull.qf(u, alpha, beta)``) -- gives ``nan`` with one warning for a probability outside [0, 1] (most often a percentage given for a probability, ``qf(10)`` for the B10 life), as scipy's ``ppf`` gives ``nan``; ``nan`` gives ``nan``.
+- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life (the 10th percentile of the time to the event), and ``qf(0.5)`` the median. Every ``qf`` -- a fitted model's, with or without covariates, and a distribution's own (``surv.Weibull.qf(u, alpha, beta)``) -- gives ``nan`` with one warning for a probability outside [0, 1] (most often a percentage given for a probability, ``qf(10)`` for the B10 life), as scipy's ``ppf`` gives ``nan``; ``nan`` gives ``nan``.
 - :code:`cb()` - Confidence bounds on a function (the survival function by default).
 - :code:`mean()` - The mean.
 - :code:`random()` - Random samples from the model.
