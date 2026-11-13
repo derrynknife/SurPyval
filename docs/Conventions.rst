@@ -476,6 +476,20 @@ typed: "Time (hrs)", "Distance (km)", or "Usage (cycles)" for a count or any
 other unit. A label already on the axes is kept. Tools that combine models
 (RePyability, say) can convert between units with pint from the labels.
 
+The two helpers SurPyval uses for labels are public, in ``surpyval.utils``:
+``normalise_unit(label)`` gives the label as a model stores it (as typed,
+spaces at its ends dropped; ``None`` stays ``None``), and ``same_unit(a,
+b)`` says whether two labels name the same unit, read with pint. A tool that
+combines models uses ``same_unit`` to check they are in one unit before it
+adds their times. It compares; it does not convert: ``"h"`` and ``"min"`` are
+not the same unit, and ``None`` (unknown) is the same only as ``None``.
+
+.. jupyter-execute::
+
+    from surpyval.utils import same_unit
+
+    print(same_unit("h", "hours"), same_unit("hrs", "days"))
+
 The data classes carry the unit too: ``ItemLifetime(..., unit="hours")``,
 ``SurpyvalData(..., unit=)``, ``from_items`` (from its records, which must
 agree), ``from_observations``, ``from_histories``, ``from_dataframe`` and
