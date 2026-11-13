@@ -604,3 +604,45 @@ def test_a_unit_whose_only_row_was_left_out_is_warned_of_once():
     assert "left out" in messages[0]
     assert messages[1].startswith("1 unit in m has no life rows: 'A'. Its")
     assert data.ids == ["B"] and data.m.ids == ["A", "B"]
+
+
+# -- reshapes of units with several rows and measurements -------------------
+
+
+def _stays(states, named=False):
+    readings = {1: {1.0: 3.0}, 2: {1.0: 2.0, 2.5: 2.2}}
+    if named:
+        readings = {"vib": readings}
+    kwargs = dict(x=[2, 6, 3, 8, 4], tl=[0, 2, 0, 3, 0], i=[1, 1, 2, 2, 3])
+    if states:
+        kwargs.update(
+            e=["ill", "dead", "ill", None, "dead"],
+            s=["well", "ill", "well", "ill", "well"],
+        )
+    else:
+        kwargs.update(c=[0, 0, 0, 1, 0])
+    return SurpyvalData(m=readings, **kwargs)
+
+
+@pytest.mark.parametrize("named", [False, True])
+@pytest.mark.parametrize("states", [True, False])
+def test_reshapes_of_units_with_several_rows_keep_m_by_unit(states, named):
+    data = _stays(states, named)
+    one = (lambda m: m["vib"]) if named else (lambda m: m[None])
+    for part in ("m", "markers", "measurements"):
+        out = data.without(part)
+        assert out.m is None and out.ids == data.ids
+        assert out.x.tolist() == data.x.tolist()
+    assert one(data.select(ids=[2]).m) == {2: {1.0: 2.0, 2.5: 2.2}}
+    # Cut at 2.2: unit 2 keeps the reading at 1, not the one at 2.5
+    cut = data.censor_at(2.2)
+    assert one(cut.m)[2] == {1.0: 2.0}
+    assert one(cut.m)[1] == {1.0: 3.0}
+    entered = data.enter_at(1.5)
+    assert one(entered.m)[2] == {2.5: 2.2}
+    assert one(data.extend_running(20).m) == one(data.m)
+    if states:
+        dropped = data.without("states")
+    else:
+        dropped = data.without("truncation")
+    assert one(dropped.m) == one(data.m)

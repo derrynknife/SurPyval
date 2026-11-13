@@ -55,6 +55,8 @@ from surpyval.life_models import Power
 from surpyval.multistate import (
     MultiState,
     MultiStateProportionalHazards,
+    PanelMultiState,
+    PanelMultiStateRegression,
     ParametricMultiState,
     ParametricMultiStateRegression,
 )
@@ -66,7 +68,7 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
-from surpyval.tests.conformance.registry_fixtures import ms_data
+from surpyval.tests.conformance.registry_fixtures import ms_data, panel_data
 
 # -- data ---------------------------------------------------------------------
 
@@ -175,6 +177,22 @@ def _zero_inflated():
     return surpyval.WeibullZeroInflated.fit(np.where(doa, 0.0, life), z)
 
 
+def _interval_cox():
+    """An interval-censored Cox fit: lives seen between inspections two
+    apart, a few exactly, one right censored."""
+    rng = np.random.default_rng(13)
+    z = np.tile([0.0, 1.0], 30)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(1.5, z.size)
+    lo = 2.0 * np.floor(life / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(z.size, 2)
+    x[::5] = life[::5, None]
+    c[::5] = 0
+    x[7] = [lo[7], lo[7]]
+    c[7] = 1
+    return surpyval.IntervalCoxPH.fit(x, z, c=c)
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -242,6 +260,22 @@ def _cox_frailty():
         Z=np.column_stack([df["age"], df["sex"] == 2]),
         c=1 - df["status"],
         groups=df["id"],
+    )
+
+
+def _cox_mixed_effects():
+    from surpyval import CoxMixedEffects, RandomEffect
+    from surpyval.datasets import load_kidney
+
+    df = load_kidney()
+    Z = np.column_stack([df["age"], df["sex"] == 2])
+    strata = np.arange(len(df)) % 2
+    return CoxMixedEffects.fit(
+        df["time"],
+        Z=Z,
+        c=1 - df["status"],
+        strata=strata,
+        random_effects=RandomEffect(df["id"], slopes=[1]),
     )
 
 
@@ -377,12 +411,14 @@ def _build(name):
         "cox_delayed_entry": _cox_delayed_entry,
         "frailty": _frailty,
         "cox_frailty": _cox_frailty,
+        "cox_mixed_effects": _cox_mixed_effects,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
         "aalen_additive": lambda: AalenAdditive.fit(
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
+        "interval_cox": _interval_cox,
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -411,9 +447,18 @@ def _build(name):
         "multistate_cox": lambda: MultiStateProportionalHazards.fit(
             **ms_data(True)
         ),
+        "multistate_cox_shared": lambda: MultiStateProportionalHazards.fit(
+            **ms_data(True),
+            shared={0: [("healthy", "dead"), ("ill", "dead")]},
+            proportional_baselines=[("healthy", "dead"), ("ill", "dead")],
+        ),
         "multistate_parametric": lambda: ParametricMultiState.fit(**ms_data()),
         "multistate_parametric_regression": lambda: (
             ParametricMultiStateRegression.fit(**ms_data(True))
+        ),
+        "multistate_panel": lambda: PanelMultiState.fit(**panel_data()),
+        "multistate_panel_regression": lambda: (
+            PanelMultiStateRegression.fit(**panel_data(True))
         ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
@@ -508,10 +553,12 @@ CASES = [
     "cox_delayed_entry",
     "frailty",
     "cox_frailty",
+    "cox_mixed_effects",
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
     "proportional_odds",
+    "interval_cox",
     "mixture",
     "royston_parmar",
     "fine_gray",
@@ -521,8 +568,11 @@ CASES = [
     "competing_risks",
     "multistate",
     "multistate_cox",
+    "multistate_cox_shared",
     "multistate_parametric",
     "multistate_parametric_regression",
+    "multistate_panel",
+    "multistate_panel_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",

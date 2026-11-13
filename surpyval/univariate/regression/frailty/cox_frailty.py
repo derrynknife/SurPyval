@@ -88,6 +88,7 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
+from .families import check_family
 from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
 
@@ -710,9 +711,11 @@ class CoxFrailtyFitter(FitterRepr):
         tie_method: str = "efron",
         theta: "float | None" = None,
         center: bool = False,
+        family: str = "gamma",
     ) -> "CoxFrailtyModel":
         """
-        Fit the shared gamma frailty Cox model.
+        Fit the shared frailty Cox model (gamma, or log-normal with
+        ``family="lognormal"``).
 
         For a given frailty variance ``theta`` the coefficients, the
         baseline and each group's frailty come from EM: the E-step is each
@@ -762,6 +765,18 @@ class CoxFrailtyFitter(FitterRepr):
             covariates far from 0), which is refused at ``Z = 0`` (#794).
             The coefficients, ``theta`` and the frailties are the same
             either way.
+        family : str, optional
+            ``"gamma"`` (the default; the fit described above) or
+            ``"lognormal"``: ``u = exp(w)`` with ``w ~ N(0, theta)``, a
+            random intercept on the log-hazard, fitted as R's ``coxme(...
+            + (1 | groups))`` (maximum likelihood: the coefficients and
+            each group's ``w`` maximise the penalised partial likelihood,
+            and ``theta`` its Laplace approximation to the integrated
+            partial likelihood; see :class:`CoxMixedEffectsFitter`, which
+            fits several terms and random slopes). ``frailties`` are then
+            ``exp`` of each group's predicted ``w`` (its posterior mode),
+            and ``log_likelihood`` the Laplace-approximated integrated
+            partial likelihood.
 
         Returns
         -------
@@ -785,6 +800,16 @@ class CoxFrailtyFitter(FitterRepr):
         ... )
         >>> model.beta.round(4), round(model.theta, 4)
         (array([ 0.0052, -1.5832]), 0.4078)
+
+        The log-normal frailty (R's ``coxme(Surv(time, status) ~ age +
+        sex + (1 | id))``):
+
+        >>> lognormal = CoxFrailty.fit(
+        ...     df["time"], Z=Z, c=1 - df["status"], groups=df["id"],
+        ...     family="lognormal",
+        ... )
+        >>> lognormal.beta.round(4), round(lognormal.theta, 4)
+        (array([ 0.0043, -1.3556]), 0.4574)
         """
         check_option(
             "tie_method",
@@ -793,6 +818,7 @@ class CoxFrailtyFitter(FitterRepr):
             "The frailty fit has no exact or Kalbfleisch-Prentice "
             "likelihood.",
         )
+        family = check_family(family)
         if theta is not None and not (np.isfinite(theta) and theta >= 0):
             raise ValueError(
                 "theta must be a finite, non-negative frailty variance; "
@@ -834,6 +860,25 @@ class CoxFrailtyFitter(FitterRepr):
             kept = np.setdiff1d(kept, cox.aliased)
         Zk = Zfull[:, kept]
         means = covariate_center(Zk, w) if kept.size else np.zeros(0)
+        if family == "lognormal":
+            from .cox_mixed_effects import lognormal_cox_frailty
+
+            return lognormal_cox_frailty(
+                x,
+                Zfull,
+                Zk,
+                means,
+                c,
+                w,
+                labels,
+                inv,
+                kept,
+                cox,
+                maximum,
+                tie_method,
+                theta,
+                center,
+            )
         em = _CoxFrailtyEM(x, Zk - means, c, w, inv, n_groups, tie_method)
         monotone = maximum == "no finite maximum"
         if monotone:
@@ -972,6 +1017,7 @@ class CoxFrailtyFitter(FitterRepr):
         tie_method: str = "efron",
         theta: "float | None" = None,
         center: bool = False,
+        family: str = "gamma",
     ) -> "CoxFrailtyModel":
         """Fit from a :class:`pandas.DataFrame` naming the columns.
 
@@ -995,7 +1041,7 @@ class CoxFrailtyFitter(FitterRepr):
         formula : str, optional
             A formula (formulaic syntax) for the covariates, instead of
             ``Z_cols``.
-        tie_method, theta, center : optional
+        tie_method, theta, center, family : optional
             As for :meth:`fit`.
 
         Returns
@@ -1034,6 +1080,7 @@ class CoxFrailtyFitter(FitterRepr):
             tie_method=tie_method,
             theta=theta,
             center=center,
+            family=family,
         )
 
 

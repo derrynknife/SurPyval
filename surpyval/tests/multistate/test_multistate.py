@@ -328,6 +328,143 @@ def test_a_shared_effect_is_one_coefficient():
     assert_allclose(model.betas[:, 0], model.params[0])
 
 
+INTO_DEAD = [("healthy", "dead"), ("ill", "dead")]
+
+
+def _shared_fit(d, **options):
+    return MultiStateProportionalHazards.fit(
+        d["x"],
+        np.column_stack([d["z"], np.array(d["id"]) % 3 == 0]),
+        d["e"],
+        d["state"],
+        tl=d["tl"],
+        i=d["id"],
+        transitions=TM,
+        **options,
+    )
+
+
+def test_an_effect_shared_by_some_transitions():
+    d = _simulate(400, seed=9, beta=[0.3, 0.6, 0.0, 0.6])
+    model = _shared_fit(d, shared={0: INTO_DEAD})
+    assert model.parameter_names[:3] == [
+        "z0: healthy -> ill",
+        "z0: healthy -> dead, ill -> dead",
+        "z0: ill -> healthy",
+    ]
+    assert len(model.params) == 3 + 4
+    # the two transitions into dead have the one coefficient
+    assert model.betas[1, 0] == model.betas[3, 0] == model.params[1]
+    assert model.betas[0, 0] != model.betas[2, 0]
+    # transitions named as "from -> to" are the same
+    again = _shared_fit(d, shared={"z0": ["healthy -> dead", "ill -> dead"]})
+    assert_allclose(again.params, model.params)
+    # sharing by every transition, said either way, is the old form
+    every = _shared_fit(d, shared=[0])
+    for options in ({0: "all"}, {0: None}, {0: PAIRS}):
+        other = _shared_fit(d, shared=options)
+        assert other.parameter_names == every.parameter_names
+        assert_allclose(other.params, every.params)
+    # two groups for one covariate
+    two = _shared_fit(
+        d,
+        shared={
+            0: [
+                [("healthy", "ill"), ("ill", "healthy")],
+                INTO_DEAD,
+            ]
+        },
+    )
+    assert two.parameter_names[:2] == [
+        "z0: healthy -> ill, ill -> healthy",
+        "z0: healthy -> dead, ill -> dead",
+    ]
+
+
+def test_sharing_is_a_constrained_fit():
+    # Sharing the effect is a constraint: the log partial likelihood is no
+    # higher than with each its own, and their difference is a
+    # likelihood-ratio statistic on one degree of freedom.
+    d = _simulate(400, seed=10, beta=[0.3, 0.6, 0.0, 0.6])
+    free = _shared_fit(d)
+    tied = _shared_fit(d, shared={0: INTO_DEAD})
+    assert tied.log_likelihood <= free.log_likelihood + 1e-9
+    assert 2 * (free.log_likelihood - tied.log_likelihood) < 10.0
+
+
+def test_proportional_baselines():
+    # The truth: the baseline into dead from ill is 3 times that from
+    # healthy (0.3 against 0.1), with one effect of z on both.
+    d = _simulate(3000, seed=11, beta=[0.5, 0.4, 0.0, 0.4])
+    model = _shared_fit(
+        d, shared={0: INTO_DEAD}, proportional_baselines=INTO_DEAD
+    )
+    assert model.parameter_names[-1] == (
+        "baseline: ill -> dead vs healthy -> dead"
+    )
+    est, se = model.params, model.standard_errors()
+    assert abs(est[-1] - np.log(3.0)) <= 4 * se[-1]
+    assert abs(est[1] - 0.4) <= 4 * se[1]
+    # one baseline, the other transition's a constant multiple of it
+    t = np.array([1.0, 2.0, 4.0])
+    ratio = model.cumulative_hazard(
+        t, [0.0, 0.0], "ill", "dead"
+    ) / model.cumulative_hazard(t, [0.0, 0.0], "healthy", "dead")
+    assert_allclose(ratio, np.exp(est[-1]), rtol=1e-12)
+    # the predictions recover the truth
+    beta = np.array([0.5, 0.4, 0.0, 0.4])
+    for b, state in enumerate(STATES):
+        p = model.occupancy(t, [1.0, 0.0], state, from_state="healthy")
+        p_se = model.occupancy_se(t, [1.0, 0.0], state, from_state="healthy")
+        truth = np.array([_true_P(u, beta, 1.0)[0, b] for u in t])
+        assert np.all(np.abs(p - truth) <= 4 * p_se), state
+
+
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"shared": {0: [("healthy", "gone")]}}, "not a transition"),
+        ({"shared": {0: "healthy"}}, "must be a list of transitions"),
+        ({"shared": {5: INTO_DEAD}}, "Z has 2 column"),
+        ({"shared": {"age": INTO_DEAD}}, "not a covariate"),
+        (
+            {"shared": {0: [INTO_DEAD, [("ill", "dead"), PAIRS[0]]]}},
+            "in two groups",
+        ),
+        ({"shared": {0: []}}, "is empty"),
+        ({"proportional_baselines": [("ill", "dead")]}, "two or more"),
+        (
+            {"proportional_baselines": [INTO_DEAD, [("ill", "dead")]]},
+            "in two groups",
+        ),
+    ],
+)
+def test_shared_and_proportional_refusals(options, message):
+    d = _simulate(60, seed=12)
+    with pytest.raises(ValueError, match=message):
+        _shared_fit(d, **options)
+
+
+def test_shared_groups_round_trip():
+    d = _simulate(200, seed=13, beta=[0.3, 0.6, 0.0, 0.6])
+    model = _shared_fit(
+        d,
+        shared={0: INTO_DEAD, 1: "all"},
+        proportional_baselines=INTO_DEAD,
+    )
+    back = sp.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert back.parameter_names == model.parameter_names
+    assert_allclose(back.params, model.params)
+    q = np.array([1.0, 3.0, 6.0])
+    assert_allclose(
+        back.occupancy_se(q, [1.0, 0.0], "dead"),
+        model.occupancy_se(q, [1.0, 0.0], "dead"),
+    )
+    # a model without the options saves as before
+    plain = _shared_fit(d).to_dict()
+    assert "shared_groups" not in plain and "baseline_groups" not in plain
+
+
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------

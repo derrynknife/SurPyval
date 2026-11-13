@@ -63,6 +63,7 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.univariate.competing_risks.parametric import (
     _interval_likelihood as joint,
 )
+from surpyval.univariate.competing_risks.rmtl import rmtl_result
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
@@ -1310,6 +1311,130 @@ class ParametricCompetingRisks(
         grad = central_differences(cif_of, self._estimates(), cov, t.size)
         var = np.einsum("jt,jk,kt->t", grad, cov, grad)
         return wald_cif_bound(F, var, t, alpha_ci, bound)
+
+    # -- restricted mean time lost ---------------------------------------
+
+    def _rmtl_default_tau(self, what: str) -> float:
+        """The default horizon: the largest finite time in the data the
+        causes were fitted to."""
+        for k in self.causes:
+            data = getattr(self.models[k], "data", None)
+            if isinstance(data, dict) and data.get("x") is not None:
+                x = np.asarray(data["x"], dtype=float).ravel()
+                x = x[np.isfinite(x)]
+                if x.size:
+                    return float(np.max(x))
+        raise ValueError(
+            f"{what}: this model holds no data to take the default horizon "
+            "from (it was built from parameters or fitted jointly); pass "
+            "tau."
+        )
+
+    def _rmtl_at(self, event: Any, tau: float) -> float:
+        """The area under cause ``event``'s cumulative incidence from 0
+        to ``tau``: ``tau CIF(0) + int_0^tau (tau - u) iif(u) du`` (by
+        parts), by adaptive quadrature."""
+        if tau == 0:
+            return 0.0
+        start = float(self.cif(0.0, event))
+
+        def integrand(u: float) -> float:
+            with np.errstate(all="ignore"):
+                v = float(self.iif(np.asarray([u]), event)[0])
+            return (tau - u) * v if np.isfinite(v) else 0.0
+
+        with ignoring_warnings(IntegrationWarning):
+            area, _ = quad(
+                integrand, 0.0, tau, limit=400, epsabs=0.0, epsrel=1e-10
+            )
+        return tau * start + float(area)
+
+    def _rmtl_estimate(
+        self, event: Any, tau: float, who: str = "the model"
+    ) -> tuple[float, float]:
+        """The time lost to ``event`` up to ``tau`` and its delta-method
+        variance over every cause's parameters."""
+        validate_cif_event(event)
+        self._check_event(event)
+        tau = float(tau)
+        if not np.isfinite(tau) or tau < 0:
+            raise ValueError(
+                f"tau must be a finite number at least 0; got {tau!r}."
+            )
+        try:
+            cov = self.covariance()
+        except ValueError as err:
+            raise ValueError(
+                f"{who} has no standard error of the time lost: {err}"
+            ) from err
+        mu = self._rmtl_at(event, tau)
+
+        def rmtl_of(values: npt.NDArray) -> npt.NDArray:
+            return np.array([self.with_params(values)._rmtl_at(event, tau)])
+
+        grad = central_differences(rmtl_of, self._estimates(), cov, 1)
+        var = float(np.einsum("jt,jk,kt->t", grad, cov, grad)[0])
+        return mu, max(var, 0.0)
+
+    def rmtl(
+        self, event: Any, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        r"""
+        Restricted mean time lost to cause ``event`` up to ``tau``, with
+        inference: the area under the fitted cumulative incidence, as
+        ``CompetingRisks.rmtl`` gives it from the non-parametric estimate,
+
+        .. math::
+            \text{RMTL}_k(\tau) = \int_0^\tau \text{CIF}_k(t)\,dt,
+
+        by adaptive quadrature (to about :math:`10^{-10}`, relative). The
+        standard error is the delta method's over every cause's
+        parameters (:meth:`covariance`), with the gradient by central
+        differences, and the interval is that Wald bound on the logit of
+        ``rmtl / tau``, so it stays inside ``(0, tau)``, as the parametric
+        ``rmst``.
+
+        Parameters
+        ----------
+        event : hashable
+            The cause.
+        tau : scalar, optional
+            The horizon; defaults to the largest observed time. A ``tau``
+            past the data is allowed: the fitted distributions
+            extrapolate.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmtl", "se", "lower", "upper", "tau"}``.
+
+        Raises
+        ------
+        ValueError
+            If ``event`` is not a cause, ``tau`` is negative or not
+            finite, or the model has no covariance (see
+            :meth:`covariance`).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> res = model.rmtl('a', tau=8)
+        >>> print(round(res["rmtl"], 4), round(res["se"], 4))
+        2.0452 0.7458
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmtl_default_tau("rmtl")
+        mu, var = self._rmtl_estimate(event, float(tau))
+        return rmtl_result(mu, var, float(tau), alpha_ci, "logit")
 
     # -- goodness of fit (the joint likelihood factorises over causes) ----
 

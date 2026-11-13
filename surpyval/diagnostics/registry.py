@@ -283,6 +283,16 @@ _REG = "surpyval.univariate.regression."
 #: family is registered (a registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
     Pending(
+        "interval-censored Cox regressions",
+        _instance_of(
+            _REG + "proportional_hazards.interval_cox.IntervalCoxPHModel"
+        ),
+        "Check proportional hazards with diagnose() on a parametric PH fit "
+        "of the same interval-censored data (WeibullPH.fit(x, Z, c=c)), "
+        "and compare each group's predicted curve with a Turnbull "
+        "estimate of that group.",
+    ),
+    Pending(
         "Buckley-James regressions",
         _instance_of(
             _REG + "buckley_james.buckley_james." "BuckleyJamesModel"
@@ -303,6 +313,16 @@ PENDING: tuple[Pending, ...] = (
         "model's fit of that cause), and compare the fitted cumulative "
         "incidences with the cause-specific Cox model's, "
         "CompetingRisksProportionalHazards, on the same data.",
+    ),
+    Pending(
+        "mixed-effects Cox models",
+        _instance_of(_REG + "frailty.cox_mixed_effects.CoxMixedEffectsModel"),
+        "Test the random effects with model.lr_test() and bound them "
+        "with model.variance_cb(); check proportional hazards and the "
+        "covariates' form with CoxPH.fit(...).diagnose() on the same "
+        "rows (the model without the random effects), and, for a random "
+        "intercept alone, CoxFrailty.fit(..., family='lognormal')"
+        ".diagnose().",
     ),
 )
 

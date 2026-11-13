@@ -52,6 +52,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "CoxFrailtyModel": ("surpyval.univariate.regression.frailty.cox_frailty"),
+    "CoxMixedEffectsModel": (
+        "surpyval.univariate.regression.frailty.cox_mixed_effects"
+    ),
     "AalenAdditiveModel": (
         "surpyval.univariate.regression.additive_hazards.aalen_additive"
     ),
@@ -60,6 +63,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
+    ),
+    "IntervalCoxPHModel": (
+        "surpyval.univariate.regression.proportional_hazards.interval_cox"
     ),
     "ProportionalOddsModel": (
         "surpyval.univariate.regression.proportional_odds.proportional_odds"
@@ -98,6 +104,8 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
+    "PanelMultiState": "surpyval.multistate.panel",
+    "PanelMultiStateRegression": "surpyval.multistate.panel",
     "ParametricMultiState": "surpyval.multistate.parametric",
     "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
@@ -196,7 +204,9 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # Schema 4 is the layout of v0.27, which a v0.26 reader (schema 3) refuses.
 # It is needed by a stratified Cox model (a ``"strata"`` list of
 # baselines): a schema-3 reader would read the first stratum's baseline,
-# which the dict also holds at the top level, as the model's. And by a
+# which the dict also holds at the top level, as the model's. (A
+# stratified Fine-Gray model, whose dict has no top-level baseline, is
+# stamped 4 for the same list.) And by a
 # distributional regression model whose coefficients carry SurPyval's sign
 # convention (``"coefficient_signs"``): a v0.26 reader would read a scale's
 # coefficients with the opposite sign and predict the opposite effect.
@@ -768,10 +778,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 
 
 def _is_stratified(d: dict) -> bool:
-    """Whether ``d`` is a stratified Cox model (its baselines under
-    ``"strata"``)."""
+    """Whether ``d`` is a stratified Cox or Fine-Gray model (its
+    baselines under ``"strata"``)."""
     return (
-        d.get("model") == "SemiParametricRegressionModel"
+        d.get("model") in ("SemiParametricRegressionModel", "FineGrayModel")
         and d.get("strata") is not None
     )
 
