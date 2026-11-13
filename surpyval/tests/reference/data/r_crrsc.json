@@ -1,0 +1,54 @@
+{
+  "generator": "scripts/reference/reference_r_crrsc.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "strata": {
+      "fixture": "fine_gray_strata",
+      "software": "R crrSC, cmprsk",
+      "version": "crrSC 1.1.2, cmprsk 2.2.12",
+      "call": "crrs(x, cause, cov1 = cbind(z1, z2), strata = as.integer(factor(stratum)), ctype = 1 or 2, gtol = 1e-12, maxiter = 50); crr(x, cause, cbind(z1, z2)); per stratum predict(crr(rows of the stratum, init = coef, maxiter = 0), cov1 = z)",
+      "settings": {
+        "failcode": 1,
+        "cencode": 0,
+        "covariates": ["z1", "z2"],
+        "strata": "stratum",
+        "z": [1, 0.5],
+        "times": [0.25, 0.5, 1, 2]
+      },
+      "values": {
+        "coef_within": [0.565052370633108, -0.527935338886983],
+        "se_within": [0.195419655287112, 0.101962383293318],
+        "coef_common": [0.544269605668125, -0.523458649030014],
+        "se_common": [0.292456049544226, 0.176904799743056],
+        "coef_crr": [0.525052942158673, -0.521039544986036],
+        "se_crr": [0.196425318847524, 0.107538857382004],
+        "cif_1": [0.106270643336543, 0.16112294848193, 0.226824940333666, 0.226824940333666],
+        "cif_2": [0.157427577623729, 0.306538065598828, 0.554955374336532, 0.711763596842492],
+        "cif_3": [0.17175150870347, 0.339361372775533, 0.566535113133307, 0.713897502100793]
+      }
+    },
+    "cluster": {
+      "fixture": "fine_gray_cluster",
+      "software": "R crrSC, cmprsk",
+      "version": "crrSC 1.1.2, cmprsk 2.2.12",
+      "call": "crrc(x, cause, cov1 = cbind(z1, z2), cluster = cluster, gtol = 1e-12, maxiter = 50); crr(x, cause, cbind(z1, z2)); crrs(x, cause, cov1 = z2, strata = as.integer(factor(cluster)), ctype = 1 or 2)",
+      "settings": {
+        "failcode": 1,
+        "cencode": 0,
+        "covariates": ["z1", "z2"],
+        "cluster": "cluster",
+        "small_strata": "each cluster a stratum, z2 only (z1 is constant within one)"
+      },
+      "values": {
+        "coef_cluster": [0.866169064192968, -0.472676904335516],
+        "se_cluster": [0.274823802868728, 0.137064979842546],
+        "coef_crr": [0.866169064192968, -0.472676904335516],
+        "se_crr": [0.236273423694005, 0.13076752070152],
+        "coef_small_within": -0.515875493078547,
+        "se_small_within": 0.203431662175901,
+        "coef_small_common": -0.49784805542295,
+        "se_small_common": 0.253567631715131
+      }
+    }
+  }
+}

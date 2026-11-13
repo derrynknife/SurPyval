@@ -83,6 +83,7 @@ Worked classifications:
 | KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
 | WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| IntervalCoxPH (Cox PH for interval-censored data: NPMLE baseline on the Turnbull intervals, fitted jointly with the coefficients) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
 | ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
@@ -104,7 +105,8 @@ Worked classifications:
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
 | ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
 | ParametricMultiStateRegression (a parametric regression per transition) | univariate | single_event | single/competing | multi_state | with | continuous | parametric |
-| (not built yet) semi-Markov (clock-reset), panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| PanelMultiState, PanelMultiStateRegression (a Markov model of states seen only at visits: the moves interval censored) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
+| (not built yet) semi-Markov (clock-reset); hidden Markov (misclassified states) for panel data | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:
@@ -117,13 +119,18 @@ model exist:
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula. Frailty for repairable systems is not built yet.
+  Archimedean copula; `CoxFrailty` takes a gamma or log-normal frailty.
+  `CoxMixedEffects` (R's `coxme`) generalises the log-normal one to several
+  Gaussian random-effect terms: nested and crossed grouping factors and
+  correlated random slopes. Frailty for repairable systems is not built
+  yet.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
+| CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself

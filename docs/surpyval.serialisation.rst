@@ -318,6 +318,10 @@ with its own ``schema``.
      - ``"model": "CoxFrailtyModel"``
      - ``kind``, ``family``, ``tie_method``, ``beta``, ``theta``, ``center``, ``x``, ``h0``, ``H0``, ``parameter_names``, ``group_labels``, ``frailties``, ``n_obs``, ``n_events``, ``n_groups``, ``_neg_ll``, ``log_likelihood_no_frailty``, ``k``, ``n_events_weighted``, ``n_obs_weighted``, ``data_summary``, ``maximum``, ``covariance``
      - --
+   * - ``CoxMixedEffectsModel``
+     - ``"model": "CoxMixedEffectsModel"``
+     - ``kind``, ``tie_method``, ``beta``, ``center``, ``parameter_names``, ``strata``, ``baselines``, ``terms``, ``_neg_ll``, ``log_likelihood_penalised``, ``log_likelihood_fitted``, ``log_likelihood_null``, ``log_likelihood_no_random``, ``df_penalised``, ``fixed_variance``, ``k``, ``n_obs``, ``n_events``, ``n_events_weighted``, ``n_obs_weighted``, ``data_summary``, ``maximum``, ``covariance``
+     - --
    * - ``AdditiveHazardsModel``
      - ``"model": "AdditiveHazardsModel"``
      - ``beta``, ``params``, ``x``, ``h0``, ``H0``, ``covariance``, ``se``, ``p_values``, ``drift``
@@ -333,6 +337,10 @@ with its own ``schema``.
    * - ``ProportionalOddsModel``
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
+     - --
+   * - ``IntervalCoxPHModel``
+     - ``"model": "IntervalCoxPHModel"``
+     - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``H0``, ``H0_infinite``, ``intervals``, ``p0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
      - --
    * - ``MixtureModel``
      - ``"model": "MixtureModel"``
@@ -366,6 +374,14 @@ with its own ``schema``.
      - ``"model": "ParametricMultiStateRegression"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``, ``Z``, ``covariate_names``
      - --
+   * - ``PanelMultiState``
+     - ``"model": "PanelMultiState"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
+     - ``maximum``
+   * - ``PanelMultiStateRegression``
+     - ``"model": "PanelMultiStateRegression"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
+     - ``maximum``
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
@@ -377,7 +393,7 @@ with its own ``schema``.
    * - ``MultiStateProportionalHazards``
      - ``"model": "MultiStateProportionalHazards"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``Z``, ``covariate_names``, ``shared``, ``tie_method``
-     - --
+     - ``shared_groups``, ``baseline_groups``
    * - ``CauseSpecificMCF``
      - ``"model": "CauseSpecificMCF"``
      - ``event_types``, ``models``

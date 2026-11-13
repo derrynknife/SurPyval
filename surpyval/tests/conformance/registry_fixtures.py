@@ -172,6 +172,34 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def ic_reg_data():
+    """The regression fixture's 30 lives seen at inspections every 2: an
+    interval ``(lo, lo + 2]`` for most, every fifth from the third exact,
+    every seventh right censored at its last inspection, and a life
+    before the first inspection left censored at 2; counts 2 on two
+    rows. For ``IntervalCoxPH``."""
+    z0 = np.tile([0.0, 1.0], N_REG // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, N_REG), 3)
+    life = quantiles(N_REG, 1.0, 2.0)[scramble(N_REG)]
+    t = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 3)
+    lo = 2.0 * np.floor(t / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(N_REG, 2)
+    rows = np.arange(N_REG)
+    exact = rows % 5 == 2
+    x[exact] = t[exact, None]
+    c[exact] = 0
+    right = rows % 7 == 0
+    x[right] = lo[right, None]
+    c[right] = 1
+    left = (c == 2) & (lo == 0.0)
+    x[left] = 2.0
+    c[left] = -1
+    n = np.ones(N_REG, int)
+    n[[3, 11]] = 2
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
 N_CURE = 60
 
 
@@ -493,3 +521,88 @@ X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
 # model warns of).
 X_MSR = np.array([0.5, 1.75, 3.0, 4.25, 5.0, 6.0, 6.75, 7.25])
 Z_MS = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.0], [1.0], [0.5]])
+
+
+# Panel data: fourteen units of an illness-death model with recovery seen
+# at visits: (unit, time, state seen, covariate). "dead" is entered at an
+# exact time; "alive" is a last visit that saw only that the unit was
+# alive (healthy or ill).
+_PANEL_ROWS = [
+    (1, 0.0, "healthy", 0.0),
+    (1, 1.0, "healthy", 0.0),
+    (1, 2.0, "ill", 0.0),
+    (1, 3.5, "dead", 0.0),
+    (2, 0.0, "healthy", 1.0),
+    (2, 1.5, "ill", 1.0),
+    (2, 2.5, "healthy", 1.0),
+    (2, 4.0, "ill", 1.0),
+    (3, 0.0, "healthy", 0.5),
+    (3, 1.0, "healthy", 0.5),
+    (3, 2.0, "healthy", 0.5),
+    (3, 3.0, "alive", 0.5),
+    (4, 0.0, "ill", 0.0),
+    (4, 1.0, "ill", 0.0),
+    (4, 2.0, "ill", 0.0),
+    (4, 2.2, "dead", 0.0),
+    (5, 0.0, "healthy", 1.0),
+    (5, 2.0, "ill", 1.0),
+    (5, 3.0, "ill", 1.0),
+    (5, 5.0, "healthy", 1.0),
+    (6, 0.0, "healthy", 0.0),
+    (6, 1.2, "healthy", 0.0),
+    (6, 3.9, "healthy", 0.0),
+    (6, 4.1, "dead", 0.0),
+    (7, 0.0, "healthy", 0.5),
+    (7, 1.0, "ill", 0.5),
+    (7, 2.0, "ill", 0.5),
+    (7, 3.0, "healthy", 0.5),
+    (7, 4.5, "healthy", 0.5),
+    (8, 0.0, "ill", 1.0),
+    (8, 1.5, "healthy", 1.0),
+    (8, 3.0, "alive", 1.0),
+    (9, 0.0, "healthy", 0.0),
+    (9, 2.5, "healthy", 0.0),
+    (9, 3.0, "dead", 0.0),
+    (10, 0.0, "healthy", 1.0),
+    (10, 1.0, "ill", 1.0),
+    (10, 1.8, "dead", 1.0),
+    (11, 0.0, "healthy", 0.5),
+    (11, 2.0, "healthy", 0.5),
+    (11, 4.0, "healthy", 0.5),
+    (11, 4.3, "dead", 0.5),
+    (12, 0.0, "ill", 0.0),
+    (12, 1.0, "healthy", 0.0),
+    (12, 2.0, "ill", 0.0),
+    (12, 3.0, "ill", 0.0),
+    (13, 0.0, "ill", 1.0),
+    (13, 0.8, "ill", 1.0),
+    (13, 1.0, "dead", 1.0),
+    (14, 0.0, "healthy", 0.5),
+    (14, 1.0, "ill", 0.5),
+    (14, 1.2, "dead", 0.5),
+]
+
+
+def panel_data(with_Z=False):
+    """Visits of fourteen units in an illness-death model with recovery,
+    with exactly timed deaths and two last visits that saw only
+    "alive"."""
+    d = {
+        "x": np.array([r[1] for r in _PANEL_ROWS], dtype=float),
+        "s": np.array([r[2] for r in _PANEL_ROWS], dtype=object),
+        "i": np.array([r[0] for r in _PANEL_ROWS], dtype=int),
+        "transitions": [
+            ("healthy", "ill"),
+            ("healthy", "dead"),
+            ("ill", "healthy"),
+            ("ill", "dead"),
+        ],
+        "censored": {"alive": ("healthy", "ill")},
+        "exact_entry": "dead",
+    }
+    if with_Z:
+        d["Z"] = np.array([[r[3]] for r in _PANEL_ROWS], dtype=float)
+    return d
+
+
+X_PANEL = np.array([0.5, 1.0, 2.0, 3.0, 4.5, 6.0, 8.0])
