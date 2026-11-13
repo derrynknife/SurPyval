@@ -20,6 +20,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
@@ -68,6 +69,11 @@ class ParametricRecurrenceModel(
     >>> x = Exponential.random(10, 1e-3).cumsum()
     >>> model = HPP.fit(x)
     """
+
+    # What the fit made of the data it was given (from a SurpyvalData:
+    # how the terminal flags a were read), shown by the repr; empty
+    # for a fit from arrays.
+    notes: tuple = ()
 
     # Populated by the fitters; declared for the type checker.
     dist: Any
@@ -161,6 +167,7 @@ class ParametricRecurrenceModel(
             + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
+            + notes_text(self)
         )
 
     # Simulation uses the shared conditional inverse-CIF sampler and the
