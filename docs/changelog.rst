@@ -1,5 +1,14 @@
 Changelog
 ==
+Unreleased (0.28)
+-----------------
+
+- The unit-label helpers are public: ``surpyval.utils.normalise_unit``
+  (a label as a model stores it) and ``surpyval.utils.same_unit``
+  (whether two labels name the same unit, read with pint, so ``"h"``,
+  ``"hrs"`` and ``"hours"`` agree). Tools that combine models can check
+  they are in one unit. See the Units section of :doc:`Conventions`.
+
 v0.27 (13 November 2026)
 ------------------------
 

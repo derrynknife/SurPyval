@@ -662,8 +662,10 @@ surpyval.utils.fsli_to_xcnt
 surpyval.utils.group_xcnt
 surpyval.utils.is_missing_event
 surpyval.utils.missing_events
+surpyval.utils.normalise_unit
 surpyval.utils.resolve_cr_censoring
 surpyval.utils.round_sig
+surpyval.utils.same_unit
 surpyval.utils.xcn_to_fs
 surpyval.utils.xcnt_handler
 surpyval.utils.xcnt_sort
