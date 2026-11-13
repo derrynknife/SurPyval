@@ -71,15 +71,9 @@ _CONVERGENCE_ISSUES = {
 }
 # (The regression, frailty and Fine-Gray fits of a covariate level with no
 # events now warn that the likelihood has no finite maximum, #392.)
-_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
-    "PanelCountRegression": (
-        "no maximum",
-        "a covariate level with no counted events: the default "
-        "pseudo-likelihood fit returns a finite coefficient (24.3 on the "
-        "fixture) and reports convergence, as the gradient vanishes "
-        "along the runaway direction (the likelihood fit warns)",
-    ),
-}
+# (PanelCountRegression's fits of a covariate level with no counted events
+# warn too, from a check of the data, and are not converged.)
+_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {}
 for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),

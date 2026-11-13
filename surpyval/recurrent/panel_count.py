@@ -43,12 +43,14 @@ from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
     covariate_columns,
+    describe_columns,
     expand,
     fit_columns,
     warn_aliased,
 )
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import percentile_bounds
+from surpyval.utils.no_maximum import quiet_maximum_warnings, warn_no_maximum
 from surpyval.utils.recurrent_utils import item_label
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -60,7 +62,7 @@ from surpyval.utils.warnings import ignoring_warnings
 __all__ = ["PanelCountMCF", "PanelCountRegression"]
 
 #: The estimators: maximum pseudo-likelihood and maximum likelihood.
-_HOW = ("pseudo", "likelihood")
+_HOW = ("pseudo", "MLE")
 #: The interpolations of the mean function between inspection times.
 _INTERP = ("step", "linear")
 
@@ -721,6 +723,137 @@ def _aliased(Z: npt.NDArray) -> npt.NDArray:
     return aliased
 
 
+def _runoff_direction(panel: _Panel) -> npt.NDArray | None:
+    """A direction ``d`` of the coefficients (in the units of the panel's
+    covariates, the largest component 1 in size) along which the
+    proportional means likelihoods keep increasing without bound, or
+    ``None`` where they have a finite maximum; from the data alone, so
+    that the verdict does not depend on where a search stopped (as
+    ``cox_separation.runoff_direction`` decides it for a Cox fit, #392).
+
+    Along ``beta + s d``, with the baseline at each inspection time ``t_k``
+    scaled by ``exp(s g_k)``, each inspection's term of the
+    pseudo-likelihood (a Poisson term in the unit's cumulative count)
+    tends to ``s`` times ``N (g_k + d'z) - [the expected count's rate]``.
+    It stays bounded only if ``g_k + d'z <= 0`` at every inspection, with
+    equality where the cumulative count ``N`` is positive, and ``g`` is
+    non-decreasing (the mean function is); a direction meeting these and
+    strictly below 0 at some inspection raises the likelihood without
+    bound, as the expected counts there shrink to 0 while every other
+    term holds. The pseudo-likelihood is jointly concave in the log mean
+    function and ``beta``, so such a direction exists exactly when its
+    maximum is not finite. Inspection times before the first positive
+    cumulative count are left out (the mean function's estimate is 0
+    there whatever ``beta`` is). The likelihood of the interval counts
+    leads to the same conditions (a unit's mean function is held level
+    from its first event on, at most level before it), so one rule serves
+    both ``how`` methods.
+
+    The typical case is a covariate (or level) whose units count no
+    events: every unit with events has the largest ``d'z``. With unit
+    inspection schedules that differ, units with no events by a time
+    while others have them can separate in the same way, as a Cox
+    partial likelihood does.
+
+    The direction is found by a linear programme in ``(g, d)`` (each
+    covariate centred and scaled to unit spread, ``|d_i| <= 1``)
+    maximising the total gap ``-(g_k + d'z)`` over the inspections.
+    """
+    from scipy import sparse
+    from scipy.optimize import linprog
+
+    assert panel.Z is not None
+    Z = panel.Z
+    p = Z.shape[1]
+    scale = (Z - Z.mean(axis=0)).std(axis=0)
+    scale[~(scale > 0)] = 1.0
+    Zs = (Z - Z.mean(axis=0)) / scale
+    positive = panel.N > 0
+    if p == 0 or not np.any(positive):
+        return None
+    first = int(panel.hi[positive].min())
+    rows = np.flatnonzero(panel.hi >= first)
+    K = panel.grid.size - first
+    k = panel.hi[rows] - first
+    m = rows.size
+    # Each inspection's row of the constraint: e_k for g, z for d
+    A = sparse.hstack(
+        [
+            sparse.csr_matrix((np.ones(m), (np.arange(m), k)), shape=(m, K)),
+            sparse.csr_matrix(Zs[panel.unit[rows]]),
+        ]
+    ).tocsr()
+    eq = positive[rows]
+    # The mean function is non-decreasing: g_k - g_{k+1} <= 0
+    mono = sparse.hstack(
+        [
+            sparse.eye(K - 1, K) - sparse.eye(K - 1, K, k=1),
+            sparse.csr_matrix((K - 1, p)),
+        ]
+    )
+    A_ub = sparse.vstack([A[~eq], mono]).tocsr()
+    cost = np.asarray(A.sum(axis=0)).ravel()
+    res = linprog(
+        cost,
+        A_ub=A_ub,
+        b_ub=np.zeros(A_ub.shape[0]),
+        A_eq=A[eq],
+        b_eq=np.zeros(int(eq.sum())),
+        bounds=[(None, None)] * K + [(-1.0, 1.0)] * p,
+        method="highs",
+    )
+    if res.status != 0:
+        return None
+    d = np.asarray(res.x[K:], dtype=float)
+    d[np.abs(d) < 1e-9] = 0.0
+    if not np.any(d):
+        return None
+    # Check the direction against the data (as Cox's cutting planes are
+    # checked), with g the least non-decreasing scaling that the
+    # inspections with events fix (g_k = -d'z there), which leaves the
+    # most room below: those inspections level, every other at or below
+    # its time's g, and some clearly below.
+    v = Zs[panel.unit[rows]] @ d
+    tol = 1e-7 * max(1.0, float(np.abs(v).max()))
+    fixed = np.full(K, -np.inf)
+    np.maximum.at(fixed, k[eq], -v[eq])
+    g = np.maximum.accumulate(fixed)
+    gap = -(g[k] + v)
+    if np.any(gap < -tol) or np.any(np.abs(gap[eq]) > tol):
+        return None
+    if not gap.max() > 1e3 * tol:
+        return None
+    direction = d / scale
+    return direction / np.abs(direction).max()
+
+
+def _warn_runoff(direction: npt.NDArray, kept: npt.NDArray, how: str) -> None:
+    """The one warning of a proportional means fit whose likelihood has no
+    finite maximum along ``direction`` (over the ``kept`` columns)."""
+    moving = np.flatnonzero(direction != 0)
+    signs = sorted({"+inf" if direction[j] > 0 else "-inf" for j in moving})
+    which = describe_columns(kept[moving])
+    what = (
+        "the {} keeps increasing as the coefficient(s) of covariate "
+        "column(s) {} run off to {} (one covariate, or a combination of "
+        "them, separates the units that counted events from those that "
+        "did not, as a covariate level whose units counted none does), "
+        "so the estimate is infinite".format(
+            "pseudo-likelihood" if how == "pseudo" else "likelihood",
+            which,
+            " or ".join(signs),
+        )
+    )
+    warn_no_maximum(
+        what,
+        "The fit stopped where the increase became too small to follow, "
+        "and the reported coefficients, their standard errors and bounds, "
+        "and the mean functions are meaningless",
+        "drop or merge the separating covariate (or its level), or fit a "
+        "PanelCountMCF to each group",
+    )
+
+
 def _regression_fit(
     panel: _Panel,
     how: str,
@@ -996,7 +1129,7 @@ class PanelCountMCF(SerialisableMixin):
     inspection times, as a non-decreasing step function, by one of two
     estimators:
 
-    - ``how="likelihood"`` (the default), the non-parametric maximum
+    - ``how="MLE"`` (the default), the non-parametric maximum
       likelihood estimator of Wellner and Zhang (2000): the
       :math:`\Lambda` that maximises the likelihood of the counts as if
       each were Poisson with mean :math:`\Lambda(t_{ij}) -
@@ -1037,7 +1170,7 @@ class PanelCountMCF(SerialisableMixin):
     28(3), 779-814.
     """
 
-    #: The estimator, ``"likelihood"`` or ``"pseudo"``.
+    #: The estimator, ``"MLE"`` or ``"pseudo"``.
     how: str
     #: The distinct inspection times, where the estimate is made.
     x: npt.NDArray
@@ -1057,7 +1190,7 @@ class PanelCountMCF(SerialisableMixin):
         x: npt.ArrayLike,
         n: npt.ArrayLike,
         i: npt.ArrayLike | None = None,
-        how: str = "likelihood",
+        how: str = "MLE",
     ) -> PanelCountMCF:
         """
         Estimate the mean cumulative function from panel counts.
@@ -1076,7 +1209,7 @@ class PanelCountMCF(SerialisableMixin):
         i : array_like, optional
             The unit each row belongs to. Defaults to a single unit.
         how : str, optional
-            ``"likelihood"`` (the default) for the maximum likelihood
+            ``"MLE"`` (the default) for the maximum likelihood
             estimator, or ``"pseudo"`` for the maximum pseudo-likelihood
             (isotonic regression) estimator.
 
@@ -1123,7 +1256,7 @@ class PanelCountMCF(SerialisableMixin):
         x_col: str,
         n_col: str,
         i_col: str | None = None,
-        how: str = "likelihood",
+        how: str = "MLE",
     ) -> PanelCountMCF:
         """
         Fit to panel counts held in the columns of a DataFrame, one row
@@ -1290,7 +1423,7 @@ class PanelCountMCF(SerialisableMixin):
     def __repr__(self) -> str:
         panel = self._panel
         what = {
-            "likelihood": "maximum likelihood (Wellner-Zhang)",
+            "MLE": "maximum likelihood (Wellner-Zhang)",
             "pseudo": "maximum pseudo-likelihood (isotonic regression)",
         }[self.how]
         return (
@@ -1339,7 +1472,7 @@ class PanelCountRegression(SerialisableMixin):
     - ``how="pseudo"`` (the default), the pseudo-likelihood of the
       cumulative counts, whose baseline for a given :math:`\beta` is a
       weighted isotonic regression (``spef``'s ``"MPL"`` method);
-    - ``how="likelihood"``, the likelihood of the counts in each
+    - ``how="MLE"``, the likelihood of the counts in each
       inspection interval, whose baseline for a given :math:`\beta` is
       found by the self-consistency algorithm.
 
@@ -1363,7 +1496,7 @@ class PanelCountRegression(SerialisableMixin):
     for panel count data", *Biometrika*, 89(1), 39-48.
     """
 
-    #: The estimator, ``"pseudo"`` or ``"likelihood"``.
+    #: The estimator, ``"pseudo"`` or ``"MLE"``.
     how: str
     #: The coefficients :math:`\beta`.
     params: npt.NDArray
@@ -1371,7 +1504,10 @@ class PanelCountRegression(SerialisableMixin):
     x: npt.NDArray
     #: The baseline mean function :math:`\Lambda_0` (at ``Z = 0``) at ``x``.
     baseline_hat: npt.NDArray
-    #: Whether the search reached a stationary point of the likelihood.
+    #: Whether the search reached a stationary point of the likelihood;
+    #: ``False`` too where the likelihood has no finite maximum (a
+    #: covariate separates the units that counted events from those that
+    #: did not), which the fit warns of.
     converged: bool
     #: The columns of ``Z`` that cannot be estimated (their coefficient is
     #: ``nan``; see the regression models' aliasing).
@@ -1413,7 +1549,7 @@ class PanelCountRegression(SerialisableMixin):
             The unit each row belongs to. Defaults to a single unit (which
             cannot estimate a covariate effect: give ``i``).
         how : str, optional
-            ``"pseudo"`` (the default) or ``"likelihood"``.
+            ``"pseudo"`` (the default) or ``"MLE"``.
         init : array_like, optional
             A start for the coefficients. Defaults to 0.
 
@@ -1476,7 +1612,14 @@ class PanelCountRegression(SerialisableMixin):
         out.params = expand(out.params, kept, p)
         out.feature_names = fit_columns()
         out._raw = {"x": x, "i": i, "n": n, "Z": Z}
-        if not out.converged:
+        runoff = _runoff_direction(panel)
+        if runoff is not None:
+            # No finite maximum: wherever the search stopped (the
+            # pseudo-likelihood's gradient vanishes along the run-off, so
+            # it would report convergence), the fit has not converged
+            out.converged = False
+            _warn_runoff(runoff, kept, how)
+        elif not out.converged:
             warnings.warn(
                 "The proportional means fit did not reach a point where "
                 "the gradient of the profile {} is zero; the coefficients "
@@ -1814,6 +1957,7 @@ class PanelCountRegression(SerialisableMixin):
         names = model_dict.get("feature_names")
         with (
             ignoring_warnings(PanelCountConvergenceWarning),
+            quiet_maximum_warnings(),
             covariate_columns(names),
         ):
             out = cls.fit(
@@ -1829,7 +1973,7 @@ class PanelCountRegression(SerialisableMixin):
     def __repr__(self) -> str:
         panel = self._panel
         what = {
-            "likelihood": "maximum likelihood",
+            "MLE": "maximum likelihood",
             "pseudo": "maximum pseudo-likelihood",
         }[self.how]
         coefs = ", ".join(f"{b:.6g}" for b in self.params)

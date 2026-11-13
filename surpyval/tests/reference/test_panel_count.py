@@ -56,7 +56,7 @@ def test_pseudo_likelihood_mcf_matches_spef_isotonic_regression():
 
 def test_likelihood_regression_is_near_spef_sieve_mle_and_higher():
     ref = values("r_spef", "mls")
-    model = _fit("likelihood")
+    model = _fit("MLE")
     # The sieve's spline baseline is a smaller family than the step
     # functions: close coefficients, not equal ones.
     np.testing.assert_allclose(model.params, ref["coef"], atol=0.01)

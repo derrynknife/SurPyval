@@ -1044,7 +1044,7 @@ counted at each visit, and patients differing in their underlying rates:
 
 The estimated ratio is close to the true 0.5, and its interval comes from
 resampling whole patients, so it allows for patients differing in their
-rates. ``how="likelihood"`` uses the counts in each interval rather than
+rates. ``how="MLE"`` uses the counts in each interval rather than
 their running totals; the two estimators agree when the model holds and
 the visit times carry no information about the counts, and differ in how
 they weight the visits. Standard errors and intervals for either come
