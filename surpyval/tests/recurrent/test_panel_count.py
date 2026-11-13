@@ -290,8 +290,10 @@ def test_the_separation_check_leaves_an_ordinary_fit_unchanged(
         a = PanelCountRegression.fit(X, Z, N, i=I, how=how)
         b = PanelCountRegression.fit(d["x"], d["Z"], d["n"], i=d["i"], how=how)
     assert a.converged and b.converged
-    assert a.params.tolist() == [ordinary]
-    assert b.params.tolist() == [fixture]
+    # Recorded on one machine: another platform's rounding moves the last
+    # bit or two of the search's answer.
+    np.testing.assert_allclose(a.params, [ordinary], rtol=1e-12, atol=0)
+    np.testing.assert_allclose(b.params, [fixture], rtol=1e-12, atol=0)
 
 
 def test_a_saved_separated_fit_reloads_without_warning():

@@ -3,7 +3,10 @@
 The baseline values (``terminal_flag_baseline.json``) were recorded with
 the code before ``a`` was added: plain life data, step time-varying
 covariates from records and data with states, as reprs, summaries,
-dictionaries and fitted parameters.
+dictionaries and fitted parameters. The fitted parameters were recorded
+on one machine; another platform's floating point can differ in the
+last bits, so they are compared to 1e-12 (``_same_fit``). Whether the
+flag changes a fit is checked exactly, against the same fit without it.
 """
 
 import json
@@ -41,6 +44,12 @@ def _recurrent():
     return SurpyvalData(
         x=[2, 5, 9, 4, 7], c=[0, 0, 0, 0, 1], i=[1, 1, 1, 2, 2]
     )
+
+
+def _same_fit(params, recorded):
+    """A fit's parameters against those recorded before ``a`` existed,
+    to within the platforms' rounding."""
+    np.testing.assert_allclose(params, recorded, rtol=1e-12, atol=0)
 
 
 # -- the four patterns -------------------------------------------------------
@@ -168,8 +177,8 @@ def test_plain_life_data_is_unchanged():
     plain = SurpyvalData(
         x=[1, 2, 3, 4, 5, 6], c=[0, 0, 1, 0, 1, 0], i=list("abcdef")
     )
-    assert sp.Weibull.fit(plain).params.tolist() == BASELINE["weibull"]
-    assert sp.WeibullPH.fit(data).params.tolist() == BASELINE["weibullph"]
+    _same_fit(sp.Weibull.fit(plain).params, BASELINE["weibull"])
+    _same_fit(sp.WeibullPH.fit(data).params, BASELINE["weibullph"])
 
 
 def test_states_data_is_unchanged():
@@ -224,13 +233,18 @@ def test_tvc_records_are_unchanged():
     assert repr(data) == BASELINE["tvc_repr"]
     assert data.summary() == BASELINE["tvc_summary"]
     assert data.to_dict() == BASELINE["tvc_dict"]
-    assert sp.WeibullPH.fit(data).params.tolist() == BASELINE["tvc_fit"]
+    _same_fit(sp.WeibullPH.fit(data).params, BASELINE["tvc_fit"])
 
 
 def test_all_terminal_single_rows_fit_bit_identically():
     x, c = [1.0, 2, 3, 4, 5, 6], [0, 0, 1, 0, 1, 0]
     flagged = SurpyvalData(x=x, c=c, a=[1, 1, 0, 1, 0, 1])
-    assert sp.Weibull.fit(flagged).params.tolist() == BASELINE["weibull"]
+    unflagged = SurpyvalData(x=x, c=c)
+    assert (
+        sp.Weibull.fit(flagged).params.tolist()
+        == sp.Weibull.fit(unflagged).params.tolist()
+    )
+    _same_fit(sp.Weibull.fit(flagged).params, BASELINE["weibull"])
 
 
 # -- carried along ---------------------------------------------------------

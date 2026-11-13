@@ -275,7 +275,9 @@ def test_recovery_is_the_simulation(rec_data):
 def test_a_prediction_does_not_depend_on_the_other_times(id_model):
     one = id_model.occupancy(7.3, "ill")
     many = id_model.occupancy([0.1, 7.3, 60.0], "ill")
-    assert one == many[1]
+    # The same calculation, but numpy's vectorised loops can round the
+    # last bit differently from the scalar one on x86-64 (one ulp seen).
+    assert_allclose(one, many[1], rtol=1e-14, atol=0)
     assert np.isnan(id_model.occupancy(-1.0, "ill"))
 
 
