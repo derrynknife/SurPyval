@@ -20,6 +20,7 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.record_predict import PredictsRecordsMixin
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -1541,44 +1542,13 @@ class SemiParametricRegressionModel(
                 "robust_covariance(cluster) for clustered units.",
             )
 
-    def check_ph(self, transform: str = "km") -> pd.DataFrame:
-        """
-        Test the proportional-hazards assumption (Grambsch-Therneau).
-
-        .. deprecated:: 0.26
-            ``check_ph`` is removed in v0.28. Use
-            :meth:`diagnose`, which runs the same test, with the same
-            ``transform`` (default ``"km"``): its
-            ``tables["proportional_hazards"]`` is exactly this table, and
-            its ``proportional_hazards`` rows judge it, with advice.
-
-        The table R's ``cox.zph`` prints (survival 3.0 and later): one row
-        per covariate and a last row ``GLOBAL``, with columns
-        ``statistic``, ``df`` and ``p``; the transform is in
-        ``attrs["transform"]``. A penalised fit refuses, as
-        :meth:`diagnose` does.
-
-        Parameters
-        ----------
-        transform : {"km", "rank", "identity", "log"}, optional
-            The function of time to test against, as R defines it.
-
-        Returns
-        -------
-        pandas.DataFrame
-            As ``model.diagnose(transform=transform).tables[
-            "proportional_hazards"]``.
-        """
-        from surpyval.utils.deprecation import scheduled_removal
-
-        from .proportional_hazards.diagnostics import (
-            CHECK_PH_ADVICE,
-            zph_table,
-        )
-
-        scheduled_removal("check_ph", CHECK_PH_ADVICE)
-        self._refuse_weighted("check_ph")
-        return zph_table(self, transform)
+    #: Removed in v0.28 (deprecated in v0.26): :meth:`diagnose` runs the
+    #: same test, its ``tables["proportional_hazards"]`` the same table.
+    check_ph = RemovedName(
+        "use 'diagnose()', whose tables['proportional_hazards'] is the "
+        "same test",
+        "0.28",
+    )
 
     def covariance(self) -> npt.NDArray:
         """

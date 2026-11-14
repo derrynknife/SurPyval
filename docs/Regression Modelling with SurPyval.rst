@@ -1137,8 +1137,7 @@ in ``model.diagnose()``, whose
 ``tables['proportional_hazards']`` is the test as R's ``cox.zph`` prints it: a
 1-d.f. test for each covariate and a joint ``GLOBAL`` test on the last row; a
 *small* ``p``-value is evidence *against* proportional hazards. (Until v0.26
-this table came from ``model.check_ph()``, which is deprecated and is removed
-in v0.28.) We fit the tires model
+this table came from ``model.check_ph()``, removed in v0.28.) We fit the tires model
 with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
@@ -1776,8 +1775,8 @@ the model predicts with the running maximum of :math:`H` from time 0, and
 ``penalizer`` adds a ridge penalty on the covariates' increments (each
 scaled by the covariate's variance; the baseline is not penalised), which
 keeps the fit going where few units remain at risk at the price of
-shrinking the effects. It was ``coef_penalty`` before v0.27; the old name
-still works, with a ``DeprecationWarning``, until v0.28. :math:`B(t)` and its variance agree with R's
+shrinking the effects. It was ``coef_penalty`` before v0.27 (removed in
+v0.28). :math:`B(t)` and its variance agree with R's
 ``timereg::aalen`` (with ``robust = 0``).
 
 Sampling or inverse-probability weights go in ``w`` (``w_col`` in

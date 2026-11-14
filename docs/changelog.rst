@@ -1,7 +1,68 @@
 Changelog
 ==
-Unreleased (0.28)
------------------
+v0.28 (14 November 2026)
+------------------------
+
+**Highlights.**
+
+- **The life at one usage rate.** ``EquivalenceModel.at_usage(rate)``
+  turns a life measured on two clocks (hours and starts, say) into an
+  ordinary life model in hours for a unit used at one steady rate, with
+  bounds that carry the uncertainty in the exchange between the clocks.
+  Anything that takes a life model, such as a block of a reliability block
+  diagram, can take it.
+- **Unit labels you can compare.** ``surpyval.utils.normalise_unit`` and
+  ``surpyval.utils.same_unit`` are public, so tools that combine models
+  can check that they are in one unit (``"h"``, ``"hrs"`` and ``"hours"``
+  agree).
+- **Two wrong numbers fixed.** The joint frailty model's expected count of
+  repeat events far past the terminal ages, and likelihood-ratio bounds
+  where the profile likelihood levels off: those now say the bound is
+  open (infinite) instead of giving a meaningless finite end.
+- **Two old names removed**: ``check_ph`` (use ``diagnose()``) and
+  ``AalenAdditive``'s ``coef_penalty`` (use ``penalizer``).
+
+**Upgrading from 0.27.**
+
+- **Removed names.** Each now raises the error Python would (an
+  ``AttributeError`` or a ``TypeError``) naming the replacement and the
+  release (see *Removed*):
+
+  - ``check_ph``, deprecated in 0.26: the Cox model's (and every
+    semi-parametric model's) ``check_ph()`` method and
+    ``proportional_hazards.diagnostics.check_ph``. Use
+    ``model.diagnose(transform=...)``, whose
+    ``tables["proportional_hazards"]`` is the same table, number for
+    number;
+  - ``AalenAdditive``'s ``coef_penalty`` (argument of ``fit`` and
+    ``fit_from_df``, and model attribute), deprecated in 0.27: use
+    ``penalizer``. Models saved with the old key still load.
+
+- **Numbers that change on purpose.** Each is described, with the old and
+  new values, under *Fixed* below:
+
+  - ``JointFrailtyModel.mcf`` far past the terminal event's ages now
+    rises to its limit and stays there (3.6829 on a 60-unit fit, where it
+    was 5.47 at 1e6 times the terminal scale and 1.5e-4 at 1e8 times). At
+    the ages of the data it is unchanged (to 5e-15; 7e-11 for a steep
+    recurrent shape);
+  - likelihood-ratio bounds (``param_cb(method="lr")``) where the profile
+    likelihood levels off below the critical value are now open, ``-inf``
+    or ``inf`` with a warning, instead of a spurious finite end (the joint
+    frailty model's ``alpha`` on that fit: (-inf, inf), was (-1.6e31,
+    9.3e6)). This applies to the joint frailty, shared-frailty,
+    proportional odds and interval-censored Cox models and the parametric
+    regressions. A bound the search cannot settle in 60 steps is ``nan``.
+    Bounds where the profile does reach the critical value are unchanged
+    on every test fit;
+  - a likelihood-ratio lower bound at the edge of the parameter space is
+    the edge itself: the joint frailty model's ``theta`` lower bound is 0,
+    where it was 2.2e-308.
+
+- **Warnings you may see.** An open likelihood-ratio bound comes with a
+  warning saying which end is open and why.
+
+**Added.**
 
 - The unit-label helpers are public: ``surpyval.utils.normalise_unit``
   (a label as a model stores it) and ``surpyval.utils.same_unit``
@@ -17,6 +78,21 @@ Unreleased (0.28)
   with bounds that include the uncertainty in ``k``. Tools that take a
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
+
+**Removed.**
+
+- ``check_ph``, deprecated in v0.26: ``SemiParametricRegressionModel.check_ph``
+  (``CoxPH`` and the other semi-parametric models) and
+  ``surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph``.
+  Use ``model.diagnose(transform=...)``: its
+  ``tables["proportional_hazards"]`` is the table ``check_ph`` returned,
+  and ``diagnostics.zph_table`` / ``zph_score_test`` give it directly. The
+  old names raise an ``AttributeError`` that names ``diagnose()``.
+- ``AalenAdditive``'s ``coef_penalty``, deprecated in v0.27 (the argument
+  of ``fit`` and ``fit_from_df`` and the model attribute): use
+  ``penalizer``. The old argument raises a ``TypeError`` and the attribute
+  an ``AttributeError``, each naming ``penalizer``. A model saved with the
+  old ``coef_penalty`` key still loads.
 
 **Fixed.**
 
