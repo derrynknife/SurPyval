@@ -54,12 +54,8 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
-from surpyval.utils.deprecation import (
-    REMOVED_IN,
-    RenamedAttribute,
-    renamed_arguments,
-)
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.removed_names import RemovedName, removed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -344,8 +340,8 @@ class AalenAdditiveModel(
     _B_cov: npt.NDArray
     #: The ridge penalty the fit took (0 for none).
     penalizer: float = 0.0
-    #: The name of ``penalizer`` before v0.27.
-    coef_penalty = RenamedAttribute("penalizer", REMOVED_IN)
+    #: The name of ``penalizer`` before v0.27, removed in v0.28.
+    coef_penalty = RemovedName("use 'penalizer'", "0.28")
     #: The aliased covariate columns (#476).
     _aliased: npt.NDArray
     #: The rows fitted ``(x, c, n, tl, Z)``, for ``concordance`` and the
@@ -1339,7 +1335,7 @@ class AalenAdditive_(FitterRepr):
 
     fitter_kind = "non-parametric (Aalen) additive hazards fitter"
 
-    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
+    @removed_arguments("0.28", coef_penalty="'penalizer'")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1386,10 +1382,9 @@ class AalenAdditive_(FitterRepr):
             shrinking the effects towards 0. Default 0, no penalty.
             lifelines' ``coef_penalizer`` is the same on standardised
             covariates, but penalises its intercept too. Named
-            ``coef_penalty`` before v0.27 (accepted, with a
-            ``DeprecationWarning``, until v0.28). With weights the
-            covariates' variance is the weighted one, scaled with the
-            weights (see :doc:`/Weighted Data`).
+            ``coef_penalty`` before v0.27 (removed in v0.28). With
+            weights the covariates' variance is the weighted one, scaled
+            with the weights (see :doc:`/Weighted Data`).
         w : array like, optional
             Sampling, propensity or censoring weights: how many units of
             the population each row stands for, one positive finite
@@ -1473,7 +1468,7 @@ class AalenAdditive_(FitterRepr):
             warn_if_few_effective(n, w_arr)
         return model
 
-    @renamed_arguments(REMOVED_IN, coef_penalty="penalizer")
+    @removed_arguments("0.28", coef_penalty="'penalizer'")
     @takes_unit
     def fit_from_df(
         self,

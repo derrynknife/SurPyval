@@ -25,7 +25,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.27"
+__version__ = "0.28"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -286,6 +286,7 @@ _LAZY = {
             "EquivalenceModel",
             "ExponentialEquivalence",
             "GammaEquivalence",
+            "LifeAtUsage",
             "LogLogisticEquivalence",
             "LogNormalEquivalence",
             "WeibullEquivalence",
@@ -574,6 +575,7 @@ if TYPE_CHECKING:
         EquivalenceModel,
         ExponentialEquivalence,
         GammaEquivalence,
+        LifeAtUsage,
         LogLogisticEquivalence,
         LogNormalEquivalence,
         WeibullEquivalence,

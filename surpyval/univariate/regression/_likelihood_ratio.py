@@ -24,7 +24,9 @@ from scipy.special import ndtri as z
 
 from surpyval.univariate.parametric._likelihood_ratio import (
     LikelihoodRatioMixin,
+    LRPath,
     central_gradient,
+    lr_walk,
     warn_unsettled,
 )
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
@@ -40,6 +42,13 @@ if TYPE_CHECKING:
 _LN_MAX = float(np.log(np.finfo(float).max))
 _LN_TINY = float(np.log(np.finfo(float).tiny))
 _FLOAT_MAX = float(np.finfo(float).max)
+
+#: How far out (in Wald half-widths) a parameter's profile is probed
+#: before its likelihood-ratio bound is searched for, and the most steps
+#: a walk out along a profile that is still below the critical value there
+#: takes (``LikelihoodRegion.param_sides``).
+_LR_PROBE = (2.0, 4.0)
+_LR_WALK_STEPS = 60
 
 #: The names ``method`` takes for the likelihood-ratio bounds (as the
 #: univariate models'; case does not matter).
@@ -280,46 +289,382 @@ class LikelihoodRegion(LikelihoodRatioMixin):
         profile (``_lr_param_side``) finds, by the searches of a band
         (``_PsiBoundSearch``), searched in the parameter's coordinate
         (its log, for a positive one). A side whose region reaches the
-        edge of the parameter's space is that edge. Each side is kept."""
+        edge of the parameter's space is that edge. Each side is kept.
+
+        Each side is first probed: the profile deviance at up to four
+        times the Wald half-width out (``_probe_open``). Where it is at
+        ``crit`` or above there, the bound lies inside, and the searches
+        find it as before. Where it is still below ``crit`` the profile is
+        far from quadratic on that side, and perhaps flat to the end of
+        the parameter's range, where the searches wandered out to a finite
+        "bound" at which the likelihood could no longer be solved (a joint
+        frailty model's ``alpha`` at -1.6e31, its profile level at a
+        deviance of 2.96, below 3.84, after minutes). The profile is then
+        walked out (``_lr_walk``, levelling off on a plateau): to the edge
+        of the space where it levels off below ``crit`` (an open end,
+        ``inf`` for an unbounded parameter, with a warning), to ``nan``
+        after ``_LR_WALK_STEPS`` steps or in noise (with a warning), or to
+        the first step at ``crit`` or above, inside which the searches
+        find the bound. An answer of the searches beyond the probe or
+        that step is not the first crossing: the walk solves for it
+        instead."""
         cache = self.__dict__.setdefault("_lr_params", {})
         keys = [(idx, float(crit), side) for side in (-1.0, 1.0)]
         need = [w and key not in cache for w, key in zip(want, keys)]
         if any(need):
             coords, _ = self._lr_coords()
             coord = coords[idx]
-            free = self._free()
-            box, seeds, trace = self._lr_region(free, crit)
+            # The sides the walks settle (an open end, or no bound found);
+            # the others are searched, within the probe or the walk's
+            # bracket where there is one.
+            walked = {}
+            for key, n_ in zip(keys, need):
+                side = key[2]
+                if n_ and self._probe_open(idx, crit, side):
+                    value = self._walk_side(idx, crit, side, bracket=True)
+                    if value is not None:
+                        walked[side] = value
+            search = [
+                n_ and key[2] not in walked for key, n_ in zip(keys, need)
+            ]
+            found: tuple[float, float] = (np.nan, np.nan)
             sides: set[float] = set()
-            with np.errstate(all="ignore"):
-                found = self._cb_lr_psi_bounds(
-                    lambda theta: coord.to_u(theta[idx]),
-                    free,
-                    crit,
-                    need[0],
-                    need[1],
-                    coord.ends,
-                    box,
-                    seeds,
-                    trace,
-                    unsettled=sides,
-                )
-            for key, n_, v in zip(keys, need, found):
-                if n_:
-                    # At the end of the coordinate the bound is the edge
-                    # of the space itself (a frailty variance of 0, not
-                    # 2.2e-308), as the univariate walk gives it.
-                    side = key[2]
-                    end = coord.ends[1] if side > 0 else coord.ends[0]
-                    value = coord.from_u(v)
-                    if side * (v - end) >= 0:
-                        value = float(coord.edge(side))
-                    cache[key] = (value, side in sides)
+            if any(search):
+                free = self._free()
+                box, seeds, trace = self._lr_region(free, crit)
+                with np.errstate(all="ignore"):
+                    found = self._cb_lr_psi_bounds(
+                        lambda theta: coord.to_u(theta[idx]),
+                        free,
+                        crit,
+                        search[0],
+                        search[1],
+                        coord.ends,
+                        box,
+                        seeds,
+                        trace,
+                        unsettled=sides,
+                    )
+            for key, n_, s_, v in zip(keys, need, search, found):
+                side = key[2]
+                if not n_:
+                    continue
+                if not s_:
+                    cache[key] = (walked[side], False)
+                    continue
+                probe = self._lr_probes.get((idx, float(crit), side))
+                if (
+                    probe is not None
+                    and np.isfinite(v)
+                    and side * (v - probe) > 0
+                ):
+                    # Beyond a point where the profile is already above
+                    # crit: not the first crossing. The walk solves it.
+                    value = self._walk_side(idx, crit, side)
+                    cache[key] = (np.nan if value is None else value, False)
+                    continue
+                # At the end of the coordinate the bound is the edge
+                # of the space itself (a frailty variance of 0, not
+                # 2.2e-308), as the univariate walk gives it.
+                end = coord.ends[1] if side > 0 else coord.ends[0]
+                value = coord.from_u(v)
+                if side * (v - end) >= 0:
+                    value = float(coord.edge(side))
+                cache[key] = (value, side in sides)
         out = []
         for w, key in zip(want, keys):
             out.append(cache[key] if w else (np.nan, False))
         if any(unsure for _, unsure in out):
             warn_unsettled(f"on '{self.names[idx]}'")
         return out[0][0], out[1][0]
+
+    @property
+    def _lr_probes(self) -> dict:
+        """Where each side was probed (``_probe_open``), in the search
+        coordinate, where the profile was at ``crit`` or above."""
+        return self.__dict__.setdefault("_lr_probe_points", {})
+
+    def _wald_u(self, idx: int) -> float:
+        """The Wald standard error of parameter ``idx`` in its search
+        coordinate; 1 without a usable one."""
+        coords, _ = self._lr_coords()
+        theta = float(self.params[idx])
+        cov = self.hess_inv
+        se = np.nan
+        if cov is not None:
+            with np.errstate(all="ignore"):
+                se = float(np.sqrt(cov[idx, idx])) / abs(
+                    coords[idx].slope(theta)
+                )
+        return se if np.isfinite(se) and se > 0 else 1.0
+
+    def _profile_deviance(
+        self, idx: int, path: Any, quick: bool = False
+    ) -> Callable:
+        """The profile deviance of parameter ``idx`` as a function of its
+        search coordinate, the points solved kept in ``path``: solved by
+        the univariate walk's searches (``_profile_neg_ll``), or with
+        ``quick`` by searches from the points ``path`` predicts only
+        (``_probe_neg_ll``)."""
+        coords, _ = self._lr_coords()
+        coord = coords[idx]
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+
+        def deviance(w: float) -> float:
+            with np.errstate(all="ignore"):
+                if quick:
+                    nll = self._probe_neg_ll(idx, w, path, precise=True)
+                else:
+                    nll = self._profile_neg_ll(idx, coord.from_u(w), path=path)
+            return 2.0 * (nll - nll_hat)
+
+        return deviance
+
+    def _probe_open(self, idx: int, crit: float, side: float) -> bool:
+        """Whether the profile deviance of parameter ``idx`` is still
+        below ``crit`` at ``_LR_PROBE`` Wald half-widths out on ``side``
+        (or at the end of its coordinate, if that is nearer): the side is
+        then walked (``param_sides``). Probed at two and then four
+        half-widths, stopping at the first at ``crit`` or above.
+
+        Each probe is one search of the other parameters, started where
+        their Wald (conditional) means put them, or along the line through
+        the probe before (``_lr_path``): where the likelihood is near
+        quadratic it starts at its answer and takes a few steps. (Solved
+        from the estimate alone, a joint frailty model's profile four
+        half-widths out found no finite likelihood.) A probe need not be
+        the profile's minimum: the first point below ``crit`` shows the
+        region reaches that far (the search stops there), and a search
+        that stops above it leaves the side to the searches, as before.
+        Not where the deviance is not finite."""
+        coords, _ = self._lr_coords()
+        coord = coords[idx]
+        w_hat = float(np.clip(coord.to_u(self.params[idx]), *coord.ends))
+        half = np.sqrt(crit) * self._wald_u(idx)
+        path = self._lr_path(idx, side)
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        last = w_hat
+        for k in _LR_PROBE:
+            w = float(np.clip(w_hat + side * k * half, *coord.ends))
+            if w == last:
+                return False
+            # Where no start has a finite likelihood, the points halfway
+            # back towards the last one solved are solved first, for the
+            # starts they give (at most three times)
+            targets = [w]
+            dev = np.nan
+            for _ in range(4):
+                v = targets[-1]
+                nll = self._probe_neg_ll(idx, v, path, nll_hat + 0.5 * crit)
+                dev = 2.0 * (nll - nll_hat)
+                if np.isfinite(dev) and dev >= crit:
+                    self._lr_probes[(idx, float(crit), side)] = v
+                    return False
+                if np.isfinite(dev):
+                    if v == w:
+                        break
+                    targets.pop()
+                    last = v
+                else:
+                    targets.append(0.5 * (last + v))
+            else:
+                dev = np.nan
+            if not np.isfinite(dev):
+                # (the likelihood is 0 there, or could not be solved: the
+                # searches, as before)
+                return False
+            last = w
+        return True
+
+    def _probe_neg_ll(
+        self,
+        idx: int,
+        w: float,
+        path: Any,
+        below: float = -np.inf,
+        precise: bool = False,
+    ) -> float:
+        """The least negative log-likelihood found with parameter ``idx``
+        at ``w`` in its coordinate, by L-BFGS-B in the other parameters'
+        coordinates scaled by their Wald standard errors, started from the
+        points ``path`` predicts there (its line through the two nearest
+        points solved, then the nearest), else from the estimate. A quick
+        search (the probes') takes the first start with a finite
+        likelihood, at most 25 iterations, and stops as soon as it finds a
+        value below ``below``; a ``precise`` one (the walks') runs from
+        each start to convergence and keeps the least. The point found is
+        added to ``path``; ``nan`` where no start has a finite
+        likelihood."""
+        from scipy.optimize import minimize
+
+        coords, _ = self._lr_coords()
+        others = [j for j in self._free() if j != idx]
+        theta = np.asarray(self.params, dtype=float).copy()
+        theta[idx] = coords[idx].from_u(w)
+        if not others:
+            return float(self._lr_neg_ll(theta))
+        u_hat = np.array([coords[j].to_u(self.params[j]) for j in others])
+        scale = np.ones(len(others))
+        if self.hess_inv is not None:
+            slopes = np.array(
+                [coords[j].slope(self.params[j]) for j in others]
+            )
+            with np.errstate(all="ignore"):
+                sd = np.sqrt(np.diag(self.hess_inv)[others]) / np.abs(slopes)
+            if np.all(np.isfinite(sd) & (sd > 0)):
+                scale = sd
+        if precise:
+            options = {"ftol": 1e-13, "gtol": 1e-8, "maxiter": 300}
+        else:
+            options = {"ftol": 1e-10, "gtol": 1e-6, "maxiter": 25}
+
+        class _Below(Exception):
+            pass
+
+        best = [np.inf, u_hat]
+        starts = path.starts(w)[::-1]
+        for k, start in enumerate([*starts, u_hat]):
+            if k == len(starts) and np.isfinite(best[0]):
+                break  # (the estimate only where no other start serves)
+
+            def obj(step: npt.NDArray, start: npt.NDArray = start) -> float:
+                u = start + scale * step
+                th = theta.copy()
+                th[others] = [coords[j].from_u(v) for j, v in zip(others, u)]
+                with np.errstate(all="ignore"):
+                    nll = float(self._lr_neg_ll(th))
+                if not np.isfinite(nll):
+                    return np.inf
+                if nll < best[0]:
+                    best[0], best[1] = nll, u
+                    if nll < below:
+                        raise _Below
+                return nll
+
+            z0 = np.zeros(len(others))
+            try:
+                if not np.isfinite(obj(z0)):
+                    continue
+                with np.errstate(all="ignore"):
+                    minimize(
+                        obj,
+                        z0,
+                        method="L-BFGS-B",
+                        jac="2-point",
+                        options=options,
+                    )
+            except _Below:
+                break
+            if not precise:
+                break
+        if not np.isfinite(best[0]):
+            return np.nan
+        path.add(w, best[1], float(best[0]))
+        return float(best[0])
+
+    def _lr_path(self, idx: int, side: float) -> Any:
+        """The points of parameter ``idx``'s profile solved on ``side``
+        (``LRPath``), shared by the probes and the walk, whose solves
+        start from them. It starts with the estimate and a point on the
+        line along which the other parameters' Wald (conditional) means
+        move with this one: where the likelihood is near quadratic, the
+        first probe starts at its answer."""
+        paths = self.__dict__.setdefault("_lr_profile_paths", {})
+        key = (idx, side)
+        if key in paths:
+            return paths[key]
+        path = LRPath()
+        coords, _ = self._lr_coords()
+        others = [j for j in self._free() if j != idx]
+        theta = np.asarray(self.params, dtype=float)
+        u_hat = np.array([coords[j].to_u(theta[j]) for j in others])
+        w_hat = float(np.clip(coords[idx].to_u(theta[idx]), *coords[idx].ends))
+        path.add(w_hat, u_hat)
+        cov = self.hess_inv
+        if cov is not None and others:
+            slopes = np.array(
+                [coords[j].slope(theta[j]) for j in [idx] + others]
+            )
+            with np.errstate(all="ignore"):
+                cov_u = np.asarray(cov, dtype=float)[
+                    np.ix_([idx] + others, [idx] + others)
+                ] / np.outer(slopes, slopes)
+                step = float(np.sqrt(cov_u[0, 0]))
+                line = cov_u[1:, 0] / cov_u[0, 0]
+            if np.isfinite(step) and step > 0 and np.all(np.isfinite(line)):
+                path.add(w_hat + side * step, u_hat + side * step * line)
+        paths[key] = path
+        return path
+
+    def _walk_side(
+        self, idx: int, crit: float, side: float, bracket: bool = False
+    ) -> float | None:
+        """One side of the profile-likelihood interval on parameter
+        ``idx``, by walking its profile out from the estimate
+        (``_lr_walk``): the crossing, the edge of the space (an open end,
+        with a warning where it is infinite), or ``nan`` with a warning.
+        With ``bracket``, ``None`` where the walk reaches ``crit``: the
+        searches then find the crossing, within the point it reached
+        (``_lr_probes``). That walk solves the profile from the points it
+        predicts only (``_probe_neg_ll``), not from the estimate as well:
+        the univariate walk's searches took 25 s at a joint frailty model's
+        terminal shape of 35, twice as long as the searches for the bound.
+        A search that stops short of the minimum overstates the deviance,
+        so it cannot make a side open that is not; it can make a step seem
+        at ``crit``, and an answer of the searches beyond it is then walked
+        again with the full searches."""
+        coords, _ = self._lr_coords()
+        coord = coords[idx]
+        w_hat = float(np.clip(coord.to_u(self.params[idx]), *coord.ends))
+        end = coord.ends[1] if side > 0 else coord.ends[0]
+        status, w = lr_walk(
+            self._profile_deviance(idx, self._lr_path(idx, side), bracket),
+            w_hat,
+            self._wald_u(idx),
+            side,
+            crit,
+            end=end,
+            per_step=True,
+            max_steps=_LR_WALK_STEPS,
+            bracket=bracket,
+        )
+        which = "upper" if side > 0 else "lower"
+        name = self.names[idx]
+        if status == "bracket":
+            self._lr_probes[(idx, float(crit), side)] = w
+            return None
+        if status == "root":
+            return coord.from_u(w)
+        if status == "edge":
+            edge = float(coord.edge(side))
+            if not np.isfinite(edge):
+                warnings.warn(
+                    f"The likelihood-ratio interval on '{name}' has no "
+                    f"{which} end: its profile likelihood stays within the "
+                    "critical value however far the parameter goes (the "
+                    "data do not rule any value out on that side), so "
+                    f"{edge} is returned for it.",
+                    RuntimeWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+            return edge
+        where = coord.from_u(w)
+        warnings.warn(
+            f"The likelihood-ratio {which} bound on '{name}' could not be "
+            "found: its profile likelihood is still below the critical "
+            "value"
+            + (
+                f" at {name} = {where:.6g}, beyond which it could not be "
+                "solved precisely"
+                if np.isfinite(where)
+                else f" after {_LR_WALK_STEPS} steps out"
+            )
+            + ". nan is returned for it; method='wald' gives a bound in "
+            "its place.",
+            RuntimeWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        return np.nan
 
 
 class RegressionLikelihoodRatio(LikelihoodRegion):

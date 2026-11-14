@@ -16,7 +16,7 @@ References
   ``model.diagnose()`` reports).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 import numpy as np
 import numpy.typing as npt
@@ -658,7 +658,7 @@ def _score_statistic(u: np.ndarray, info: np.ndarray) -> float:
         return float("nan")
 
 
-#: What :func:`check_ph` says until it is removed.
+#: What to use instead of ``check_ph`` (removed in v0.28).
 CHECK_PH_ADVICE = (
     "use model.diagnose(), which runs the same proportional-hazards test "
     "(transform=...)"
@@ -869,27 +869,19 @@ def zph_table(
     return table
 
 
-def check_ph(
-    model: "SemiParametricRegressionModel", transform: str = "km"
-) -> dict:
-    """
-    Deprecated: :func:`zph_score_test`, which ``model.diagnose()``
-    reports. ``check_ph`` is removed in v0.28.
+def __getattr__(name: str) -> NoReturn:
+    # check_ph, deprecated in v0.26, was removed in v0.28: the error names
+    # its replacement.
+    if name == "check_ph":
+        from surpyval.utils.removed_names import removed_message
 
-    .. deprecated:: 0.26
-        Use ``model.diagnose(transform=...)``: its
-        ``tables["proportional_hazards"]`` is this test as a table, and
-        its ``proportional_hazards`` rows judge it.
-
-    Returns
-    -------
-    dict
-        As :func:`zph_score_test`.
-    """
-    from surpyval.utils.deprecation import scheduled_removal
-
-    scheduled_removal("check_ph", CHECK_PH_ADVICE)
-    return zph_score_test(model, transform)
+        raise AttributeError(
+            removed_message(
+                f"module {__name__!r} has no attribute 'check_ph'",
+                (CHECK_PH_ADVICE, "0.28"),
+            )
+        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 #: Public names, for ``surpyval.diagnostics.cox``, of what the residuals

@@ -1,5 +1,143 @@
 Changelog
 ==
+v0.28 (14 November 2026)
+------------------------
+
+**Highlights.**
+
+- **The life at one usage rate.** ``EquivalenceModel.at_usage(rate)``
+  turns a life measured on two clocks (hours and starts, say) into an
+  ordinary life model in hours for a unit used at one steady rate, with
+  bounds that carry the uncertainty in the exchange between the clocks.
+  Anything that takes a life model, such as a block of a reliability block
+  diagram, can take it.
+- **Unit labels you can compare.** ``surpyval.utils.normalise_unit`` and
+  ``surpyval.utils.same_unit`` are public, so tools that combine models
+  can check that they are in one unit (``"h"``, ``"hrs"`` and ``"hours"``
+  agree).
+- **Two wrong numbers fixed.** The joint frailty model's expected count of
+  repeat events far past the terminal ages, and likelihood-ratio bounds
+  where the profile likelihood levels off: those now say the bound is
+  open (infinite) instead of giving a meaningless finite end.
+- **Two old names removed**: ``check_ph`` (use ``diagnose()``) and
+  ``AalenAdditive``'s ``coef_penalty`` (use ``penalizer``).
+
+**Upgrading from 0.27.**
+
+- **Removed names.** Each now raises the error Python would (an
+  ``AttributeError`` or a ``TypeError``) naming the replacement and the
+  release (see *Removed*):
+
+  - ``check_ph``, deprecated in 0.26: the Cox model's (and every
+    semi-parametric model's) ``check_ph()`` method and
+    ``proportional_hazards.diagnostics.check_ph``. Use
+    ``model.diagnose(transform=...)``, whose
+    ``tables["proportional_hazards"]`` is the same table, number for
+    number;
+  - ``AalenAdditive``'s ``coef_penalty`` (argument of ``fit`` and
+    ``fit_from_df``, and model attribute), deprecated in 0.27: use
+    ``penalizer``. Models saved with the old key still load.
+
+- **Numbers that change on purpose.** Each is described, with the old and
+  new values, under *Fixed* below:
+
+  - ``JointFrailtyModel.mcf`` far past the terminal event's ages now
+    rises to its limit and stays there (3.6829 on a 60-unit fit, where it
+    was 5.47 at 1e6 times the terminal scale and 1.5e-4 at 1e8 times). At
+    the ages of the data it is unchanged (to 5e-15; 7e-11 for a steep
+    recurrent shape);
+  - likelihood-ratio bounds (``param_cb(method="lr")``) where the profile
+    likelihood levels off below the critical value are now open, ``-inf``
+    or ``inf`` with a warning, instead of a spurious finite end (the joint
+    frailty model's ``alpha`` on that fit: (-inf, inf), was (-1.6e31,
+    9.3e6)). This applies to the joint frailty, shared-frailty,
+    proportional odds and interval-censored Cox models and the parametric
+    regressions. A bound the search cannot settle in 60 steps is ``nan``.
+    Bounds where the profile does reach the critical value are unchanged
+    on every test fit;
+  - a likelihood-ratio lower bound at the edge of the parameter space is
+    the edge itself: the joint frailty model's ``theta`` lower bound is 0,
+    where it was 2.2e-308.
+
+- **Warnings you may see.** An open likelihood-ratio bound comes with a
+  warning saying which end is open and why.
+
+**Added.**
+
+- The unit-label helpers are public: ``surpyval.utils.normalise_unit``
+  (a label as a model stores it) and ``surpyval.utils.same_unit``
+  (whether two labels name the same unit, read with pint, so ``"h"``,
+  ``"hrs"`` and ``"hours"`` agree). Tools that combine models can check
+  they are in one unit. See the Units section of :doc:`Conventions`.
+- ``EquivalenceModel.at_usage(rate)`` gives the life of a unit used at one
+  constant rate (the second clock's units per unit of the first, such as
+  starts per hour) as a plain life model on the first clock,
+  ``LifeAtUsage``: ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+  ``random(size, random_state=)``, ``mean`` (and ``mean(tau=)``), ``rmst``,
+  ``cb`` and ``quantile_cb``, each the model's ``*_at_usage`` at that rate,
+  with bounds that include the uncertainty in ``k``. Tools that take a
+  univariate life (a block of a reliability block diagram) can take it as
+  one. See :doc:`Equivalent Time Scales`.
+
+**Removed.**
+
+- ``check_ph``, deprecated in v0.26: ``SemiParametricRegressionModel.check_ph``
+  (``CoxPH`` and the other semi-parametric models) and
+  ``surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph``.
+  Use ``model.diagnose(transform=...)``: its
+  ``tables["proportional_hazards"]`` is the table ``check_ph`` returned,
+  and ``diagnostics.zph_table`` / ``zph_score_test`` give it directly. The
+  old names raise an ``AttributeError`` that names ``diagnose()``.
+- ``AalenAdditive``'s ``coef_penalty``, deprecated in v0.27 (the argument
+  of ``fit`` and ``fit_from_df`` and the model attribute): use
+  ``penalizer``. The old argument raises a ``TypeError`` and the attribute
+  an ``AttributeError``, each naming ``penalizer``. A model saved with the
+  old ``coef_penalty`` key still loads.
+
+**Fixed.**
+
+- **The joint frailty model's** ``mcf`` **far past the terminal event (a
+  wrong number; an intentional numerical change there only).**
+  ``JointFrailtyModel.mcf``, the expected count of recurrent events by an
+  age with the terminal event stopping them, went wrong at ages far beyond
+  the terminal event's: on a 60-unit fit it was 3.682 at 1e4 times its
+  terminal scale, 5.47 at 1e6 times and 1.5e-4 at 1e8 times, for a count
+  whose limit is 3.683. Past the terminal ages every unit has stopped
+  having events, so the count must rise to a limit and stay there. The
+  integral over age was a fixed 64-point rule over ``[0, x]``, whose
+  nodes all but missed the ages where events happen once ``x`` is far
+  beyond them. It is now integrated over the log of age on panels that
+  do not depend on ``x``, with the frailty average in log space, and
+  stops once the integrand has died away: the count never decreases with
+  age and reaches its limit (3.6829 on that fit, at any age from about 100
+  times the scale; checked against adaptive quadrature to 1e-10 and by
+  simulation). At the ages of the data the values are unchanged (to 5e-15;
+  7e-11 for a steep recurrent shape, where the old rule was the less
+  accurate). ``sf``, ``ff``, ``Hf``, ``hf`` and ``df`` were already right
+  there (now tested against quadrature far out).
+- **Likelihood-ratio bounds on a flat profile (a wrong number).** The
+  joint frailty model's ``param_cb(method="lr")`` reported a finite bound
+  where the profile likelihood never reaches the critical value: on a
+  60-unit fit whose profile of ``alpha`` levels off at a deviance of 2.96,
+  the 95% interval was (-1.6e31, 9.3e6) and the 99% one (-1.6e31, inf),
+  or on x86-64 Linux (-4e12, inf) and (-inf, 1.6e31) by interpreter, the
+  99% interval not containing the 95% one; each call took one to twenty
+  minutes. Those ends were where the searches could no longer solve the
+  likelihood, not crossings. The search is the one the shared-frailty,
+  proportional odds and interval-censored Cox models and the parametric
+  regressions use for ``param_cb(method="lr")``. Each side is now first
+  probed two and four Wald half-widths out; where the profile is still
+  below the critical value there, it is walked out (steps growing by 1.6,
+  at most 60) until it reaches the critical value, inside which the bound
+  is searched for as before, or levels off (flat to 1e-6 a step, too
+  little to reach the critical value before the end of the range): that
+  end is open, ``-inf`` or ``inf``, with a warning saying so. The
+  ``alpha`` interval above is now (-inf, inf) at both levels, in about 2
+  seconds; a one-sided 95% bound, whose critical value (2.71) is below
+  the plateau, is finite. Every other bound of those models' test fits is
+  unchanged. A lower bound at the edge of the space is the edge itself:
+  the joint frailty model's ``theta`` lower bound of 2.2e-308 is now 0.
+
 v0.27 (13 November 2026)
 ------------------------
 

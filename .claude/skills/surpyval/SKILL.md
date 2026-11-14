@@ -10,8 +10,8 @@ estimator accepts arbitrary combinations of observed, censored, and truncated
 data** through one consistent input convention (the "xcnt" data model). Fit a
 model, then call `sf`/`ff`/`hf`/`Hf`/`df`/`qf` on it.
 
-This skill describes SurPyval 0.27. Check the installed version with
-`surpyval.__version__`; a note marked **0.22** to **0.27** says the release
+This skill describes SurPyval 0.28. Check the installed version with
+`surpyval.__version__`; a note marked **0.22** to **0.28** says the release
 whose behaviour it describes, which earlier versions do not share.
 Import as `import surpyval` (commonly `import surpyval as sp`). Every code
 block below runs as written (`surpyval/tests/test_skill.py` executes them).
@@ -335,7 +335,7 @@ model.sf(5.0, np.array([0.5]))        # survival at t=5 for covariate vector Z=[
 # Cox when you don't want to assume a baseline shape:
 cox = sp.CoxPH.fit(x=x, Z=Z)
 cox.beta                              # about 0.6
-# Check its assumptions: diagnose() is the one API (check_ph is deprecated)
+# Check its assumptions: diagnose() is the one API (check_ph was removed in 0.28)
 d = cox.diagnose()                    # transform="km" by default, as cox.zph
 d.table                               # rows: test, p, verdict; d.advice remedies
 d.tables["proportional_hazards"]      # cox.zph table: per covariate + GLOBAL
@@ -382,6 +382,8 @@ hrs = 2000 * re_.weibull(2.0, 300) / (1 + 10 * rate)   # one start = 10 h
 em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
 em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
+life = em.at_usage(0.1)   # the life at 0.1 starts/hour, a plain life model in hours
+life.sf(500); life.qf(0.1); life.random(5, random_state=1); life.cb(500)
 
 # Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
 # covariates on who arrives dead (f0) and on the life of the rest
