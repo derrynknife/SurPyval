@@ -873,11 +873,6 @@ class LifeAtUsage:
         The fitted equivalent-scale model.
     rate : float
         The usage rate, the second clock's units per unit of the first.
-    clocks : tuple of str
-        The model's names of its two clocks, first then second.
-    unit : str or None
-        The model's unit label, exactly as it was given (``None`` where
-        none was): the unit of this life's ages.
 
     Examples
     --------
@@ -903,7 +898,7 @@ class LifeAtUsage:
 
     @property
     def clocks(self) -> tuple:
-        """The model's names of its two clocks."""
+        """The model's names of its two clocks, first then second."""
         return tuple(self.model.clocks)
 
     @property
