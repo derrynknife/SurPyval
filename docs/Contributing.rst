@@ -365,8 +365,9 @@ next minor number. A name deprecated in one release is removed in the next
 (``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
 the version reaches it while the old names are still accepted. A
 deprecation the maintainer gives longer is listed with its release in
-``SCHEDULED_REMOVALS`` (``check_ph``, removed in v0.28) and warns through
-``scheduled_removal``; its own test fails once that release is reached.
+``SCHEDULED_REMOVALS`` (``check_ph`` was, until its removal in v0.28) and
+warns through ``scheduled_removal``; its own test fails once that release
+is reached.
 The rules users rely on are in the :doc:`Deprecation Policy`; the steps
 are below.
 

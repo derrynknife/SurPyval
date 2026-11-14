@@ -51,7 +51,7 @@ How a name is retired
    The changelog lists it under **Deprecated**.
 2. **Removed**, in the next release. A few deprecations are given longer,
    each with its removal release stated in the warning
-   (``CoxPH.check_ph``, deprecated in 0.26, goes in 0.28). Some are
+   (``CoxPH.check_ph``, deprecated in 0.26, went in 0.28). Some are
    deprecated by date rather than by release, with a ``FutureWarning``
    that gives the date: the top-level data-format functions
    (``surpyval.fs_to_xcnt`` and the rest) and ``surpyval.beta.ml`` (now

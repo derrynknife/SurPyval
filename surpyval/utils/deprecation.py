@@ -4,8 +4,8 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.27 is removed in
-v0.28. This module holds the shapes such a rename takes (each with the
+one and points at the caller's line: a name renamed in v0.28 is removed in
+v0.29. This module holds the shapes such a rename takes (each with the
 rename it was written for):
 
 - :func:`renamed_arguments`, an argument of a function or method;
@@ -22,13 +22,13 @@ rename it was written for):
   ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
   flags as ids.
 
-A name deprecated in v0.28 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.29 is accepted until :data:`REMOVED_IN_NEXT`.
 
 A few deprecations are given a longer window, chosen by the maintainer:
 they are listed, each with the release that removes it, in
 :data:`SCHEDULED_REMOVALS`, and warn through :func:`scheduled_removal`
-(``CoxPH.check_ph``, deprecated in v0.26 and removed in v0.28, whose test
-``model.diagnose()`` now runs).
+(none now: ``CoxPH.check_ph``, deprecated in v0.26, was removed in
+v0.28).
 
 The top-level data-format functions (``surpyval.fs_to_xcnt`` and the
 rest), whose work :class:`~surpyval.SurpyvalData` now does, are deprecated
@@ -71,22 +71,20 @@ __all__ = [
     "ambiguous_item_ids",
 ]
 
-#: The release in which the names deprecated in v0.27 stop being
-#: accepted. (v0.26 deprecated only ``check_ph``, given a longer window in
-#: :data:`SCHEDULED_REMOVALS`; those deprecated in v0.25 were removed in
-#: v0.26.)
-REMOVED_IN = "0.28"
+#: The release in which the names deprecated in v0.28 stop being
+#: accepted. (Those deprecated in v0.27, and ``check_ph``, deprecated in
+#: v0.26 with a longer window, were removed in v0.28.)
+REMOVED_IN = "0.29"
 
-#: The release in which the names deprecated in v0.28 stop being accepted.
-REMOVED_IN_NEXT = "0.29"
+#: The release in which the names deprecated in v0.29 stop being accepted.
+REMOVED_IN_NEXT = "0.30"
 
 #: The deprecations with a longer window than one release, by name, each
 #: with the release that removes it. ``test_removed_arguments`` fails once
 #: the package's version reaches an entry still listed here.
-SCHEDULED_REMOVALS: dict[str, str] = {
-    # Deprecated in v0.26: diagnose() runs the same test (DECISIONS.md).
-    "check_ph": "0.28",
-}
+#: (``check_ph``, deprecated in v0.26, was listed until its removal in
+#: v0.28.)
+SCHEDULED_REMOVALS: dict[str, str] = {}
 
 #: The day the top-level data-format functions were deprecated.
 DATA_FUNCTIONS_DEPRECATED_ON = datetime.date(2026, 10, 12)
@@ -205,11 +203,13 @@ def scheduled_removal(name: str, advice: str, stacklevel: int = 3) -> None:
     Examples
     --------
     >>> import warnings
+    >>> SCHEDULED_REMOVALS["old_name"] = "0.31"
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
-    ...     scheduled_removal("check_ph", "use model.diagnose()", 2)
+    ...     scheduled_removal("old_name", "use new_name", 2)
+    >>> del SCHEDULED_REMOVALS["old_name"]
     >>> print(caught[0].message)
-    check_ph is deprecated and will be removed in v0.28; use model.diagnose()
+    old_name is deprecated and will be removed in v0.31; use new_name
     """
     warnings.warn(
         f"{name} is deprecated and will be removed in "
@@ -261,8 +261,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.27,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.28.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.28,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.29.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -291,7 +291,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.28;
+    describe: 'names' is deprecated and will be removed in v0.29;
     use 'labels'.
     """
 
@@ -329,7 +329,7 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.28 passes
+    attribute). A name deprecated in v0.29 passes
     ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
@@ -344,7 +344,7 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.28;
+    Model.loglik is deprecated and will be removed in v0.29;
     use 'log_likelihood'.
     """
 
