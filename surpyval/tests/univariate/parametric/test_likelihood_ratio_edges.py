@@ -513,6 +513,46 @@ def test_walk_into_noise_on_a_rising_profile_is_unresolved():
     assert np.isfinite(w)
 
 
+def _walk_per_step(deviance, crit, end=np.finfo(float).max):
+    return likelihood_ratio._lr_walk(
+        deviance, 0.0, 1.5, 1.0, crit, end, per_step=True, max_steps=60
+    )
+
+
+def test_walk_per_step_reads_a_plateau_as_open():
+    # A joint frailty model's alpha: the deviance rises to 2.96 and stays
+    # there to 1e-10 (noise of either sign), out to 1e10 and beyond. The
+    # interval is open at 95% and at 99% however far the coordinate goes
+    # (here, to the largest double, where a linear reach never passes).
+    def deviance(w):
+        return 2.962 * (1 - np.exp(-((w / 8.0) ** 2))) + 1e-10 * np.sin(w)
+
+    for crit in (CRIT_95, CRIT_99):
+        status, w = _walk_per_step(deviance, crit)
+        assert status == "edge"
+        assert w == np.finfo(float).max
+
+
+def test_walk_per_step_goes_on_past_a_shoulder():
+    # That model's terminal shape: the deviance rises ever more slowly to
+    # about 5.1, then turns up (6.64 at 21.2, 13.7 at 30). A rise that is
+    # slowing but not yet flat is not a plateau: the walk goes on and
+    # finds the crossing.
+    def deviance(w):
+        return 5.1 * (1 - np.exp(-w / 2.0)) + max(w - 15.0, 0.0) ** 2 / 20.0
+
+    status, w = _walk_per_step(deviance, CRIT_99, end=709.78)
+    assert status == "root"
+    assert deviance(w) == pytest.approx(CRIT_99, abs=1e-8)
+
+
+def test_walk_per_step_is_bounded():
+    # Rising as log(w) without a limit, slower than the steps grow: it
+    # stops after its steps, without a bound (not an open end).
+    status, w = _walk_per_step(lambda w: 0.01 * np.log1p(w), CRIT_95)
+    assert status == "fail" and np.isnan(w)
+
+
 # ---------------------------------------------------------------------------
 # #421: likelihood-ratio bands.
 # ---------------------------------------------------------------------------

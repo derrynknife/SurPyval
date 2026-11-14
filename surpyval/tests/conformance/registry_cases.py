@@ -3214,20 +3214,28 @@ def _bounds(case):
             )
             for t in ("log-log", "log", "plain")
         ),
-        # The delta method on each function and Wald bounds on the
-        # parameters. The profile-likelihood bounds are not swept here:
-        # on this fixture the profile of alpha is flat, and on x86-64
-        # Linux the search reported a finite 99% bound (1.6e31) where the
-        # 95% one was open, failing the nesting check (DECISIONS.md, 13
-        # Nov 2026, open); each sweep also took 5 to over 20 minutes.
-        # test_joint_frailty.py checks param_cb(method="lr") of theta and
-        # alpha on its own data.
+        # The delta method on each function, Wald bounds on the
+        # parameters and the profile-likelihood interval. On this fixture
+        # the profile of alpha is flat (its deviance level at 2.96 either
+        # way), so its interval is open at both ends at 95% and 99%; until
+        # 0.28 the search reported finite ends far out (-1.6e31, 9.3e6)
+        # after minutes (DECISIONS.md, 13 Nov 2026).
         "JointFrailtyModel": (
             Bound("cif_cb", point="cif"),
             Bound("iif_cb", point="iif"),
             Bound("mcf_cb", point="mcf"),
             Bound("sf_cb", point="sf"),
             _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
         ),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
