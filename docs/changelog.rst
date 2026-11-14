@@ -18,6 +18,50 @@ Unreleased (0.28)
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
 
+**Fixed.**
+
+- **The joint frailty model's** ``mcf`` **far past the terminal event (a
+  wrong number; an intentional numerical change there only).**
+  ``JointFrailtyModel.mcf``, the expected count of recurrent events by an
+  age with the terminal event stopping them, went wrong at ages far beyond
+  the terminal event's: on a 60-unit fit it was 3.682 at 1e4 times its
+  terminal scale, 5.47 at 1e6 times and 1.5e-4 at 1e8 times, for a count
+  whose limit is 3.683. Past the terminal ages every unit has stopped
+  having events, so the count must rise to a limit and stay there. The
+  integral over age was a fixed 64-point rule over ``[0, x]``, whose
+  nodes all but missed the ages where events happen once ``x`` is far
+  beyond them. It is now integrated over the log of age on panels that
+  do not depend on ``x``, with the frailty average in log space, and
+  stops once the integrand has died away: the count never decreases with
+  age and reaches its limit (3.6829 on that fit, at any age from about 100
+  times the scale; checked against adaptive quadrature to 1e-10 and by
+  simulation). At the ages of the data the values are unchanged (to 5e-15;
+  7e-11 for a steep recurrent shape, where the old rule was the less
+  accurate). ``sf``, ``ff``, ``Hf``, ``hf`` and ``df`` were already right
+  there (now tested against quadrature far out).
+- **Likelihood-ratio bounds on a flat profile (a wrong number).** The
+  joint frailty model's ``param_cb(method="lr")`` reported a finite bound
+  where the profile likelihood never reaches the critical value: on a
+  60-unit fit whose profile of ``alpha`` levels off at a deviance of 2.96,
+  the 95% interval was (-1.6e31, 9.3e6) and the 99% one (-1.6e31, inf),
+  or on x86-64 Linux (-4e12, inf) and (-inf, 1.6e31) by interpreter, the
+  99% interval not containing the 95% one; each call took one to twenty
+  minutes. Those ends were where the searches could no longer solve the
+  likelihood, not crossings. The search is the one the shared-frailty,
+  proportional odds and interval-censored Cox models and the parametric
+  regressions use for ``param_cb(method="lr")``. Each side is now first
+  probed two and four Wald half-widths out; where the profile is still
+  below the critical value there, it is walked out (steps growing by 1.6,
+  at most 60) until it reaches the critical value, inside which the bound
+  is searched for as before, or levels off (flat to 1e-6 a step, too
+  little to reach the critical value before the end of the range): that
+  end is open, ``-inf`` or ``inf``, with a warning saying so. The
+  ``alpha`` interval above is now (-inf, inf) at both levels, in about 2
+  seconds; a one-sided 95% bound, whose critical value (2.71) is below
+  the plateau, is finite. Every other bound of those models' test fits is
+  unchanged. A lower bound at the edge of the space is the edge itself:
+  the joint frailty model's ``theta`` lower bound of 2.2e-308 is now 0.
+
 v0.27 (13 November 2026)
 ------------------------
 
