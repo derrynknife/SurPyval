@@ -68,6 +68,24 @@ from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 _CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
 
 
+def _refuse_bootstrap_options(n_boot: Any, random_state: Any) -> None:
+    """The Aalen-Johansen bounds are not resampled: refuse the bootstrap's
+    options rather than ignore them."""
+    given = [
+        name
+        for name, value in (("n_boot", n_boot), ("random_state", random_state))
+        if value is not None
+    ]
+    if given:
+        raise ValueError(
+            f"{' and '.join(given)} {'is' if len(given) == 1 else 'are'} "
+            "for the bootstrap bounds of a CompetingRisks fitted to left- "
+            "or interval-censored rows (estimator 'NPMLE'). This model is "
+            "the Aalen-Johansen estimate, whose bounds are from its "
+            "variance (Aalen's, or Greenwood's for sf): leave them out."
+        )
+
+
 class CompetingRisks(SerialisableMixin):
     """
     Non-parametric competing-risks estimate: the Aalen-Johansen cumulative
@@ -93,8 +111,26 @@ class CompetingRisks(SerialisableMixin):
     left. The estimates are then conditional on surviving to the earliest
     entry, as those of ``KaplanMeier`` with ``tl`` are.
 
+    Failures found at inspections (left-censored, ``c = -1``, or
+    interval-censored, ``c = 2`` or a window ``[xl, xr]``) have no exact
+    time, so for data with any such row ``fit`` gives instead the
+    non-parametric maximum-likelihood estimate (NPMLE) of the cumulative
+    incidences (Hudgens, Satten and Longini 2001), the competing-risks
+    form of Turnbull's estimate; it also takes failures whose cause was
+    not recorded (``masked="include"``). Data with only exact and
+    right-censored rows keep the Aalen-Johansen estimate. ``estimator``
+    says which was used (``"Aalen-Johansen"`` or ``"NPMLE"``); see
+    :meth:`fit` for what each offers.
+
     Call the class method ``CompetingRisks.fit`` (or ``fit_from_df``); it
     returns a fitted instance.
+
+    References
+    ----------
+    Hudgens, M. G., Satten, G. A. and Longini, I. M. (2001),
+    "Nonparametric maximum likelihood estimation for competing risks
+    survival data subject to interval censoring and truncation",
+    Biometrics 57, 74-80.
     """
 
     #: The source DataFrame when fitted via ``fit_from_df`` (named so it
@@ -115,6 +151,10 @@ class CompetingRisks(SerialisableMixin):
     H0_e: np.ndarray
     IIF: np.ndarray
     CIF: np.ndarray
+    #: The estimate: ``"Aalen-Johansen"`` (exact and right-censored data)
+    #: or ``"NPMLE"`` (data with left- or interval-censored rows, or
+    #: masked causes); see :meth:`fit`.
+    estimator: str = "Aalen-Johansen"
     #: The survival estimator ``sf``/``ff``/``Hf`` report:
     #: ``"Nelson-Aalen"`` (``exp(-H)``) or ``"Kaplan-Meier"`` (product limit).
     how: str = "Nelson-Aalen"
@@ -192,10 +232,24 @@ class CompetingRisks(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> CompetingRisks:
-        """Rebuild a nonparametric competing-risks model from a dict."""
+        """Rebuild a nonparametric competing-risks model from a dict (of
+        either estimator)."""
         require_model_tag(
             model_dict, "CompetingRisks", "a competing-risks model"
         )
+        if model_dict.get("estimator", "Aalen-Johansen") != "Aalen-Johansen":
+            from surpyval.univariate.competing_risks.nonparametric import (
+                interval_competing_risks as icr,
+            )
+
+            if model_dict["estimator"] != icr.NPMLE:
+                raise ValueError(
+                    "Unknown CompetingRisks estimator "
+                    f"{model_dict['estimator']!r} in the dict: this "
+                    "SurPyval reads 'Aalen-Johansen' and 'NPMLE'. Upgrade "
+                    "surpyval to load it."
+                )
+            return icr._IntervalCompetingRisks._from_npmle_dict(model_dict)
         out = cls()
         out.event_idx_map = {
             label_from_native(k): int(v)
@@ -440,6 +494,35 @@ class CompetingRisks(SerialisableMixin):
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
 
+    def innermost_intervals(self, event: Any) -> dict:
+        """
+        Where cause ``event``'s probability mass lies, and how much:
+        ``{"lower": ..., "upper": ..., "mass": ...}``, in time order.
+
+        For the Aalen-Johansen estimate (exact times) each mass is at a
+        failure time of the cause, ``lower == upper``, and is the step of
+        its cumulative incidence there (:meth:`iif`). For the NPMLE
+        (``estimator == "NPMLE"``) the data say only that each mass is
+        somewhere in ``(lower, upper]``; masses of 0 are intervals the
+        estimate could have used but did not.
+
+        Examples
+        --------
+        >>> from surpyval import CompetingRisks
+        >>> model = CompetingRisks.fit([1, 2, 3, 4], ["a", "b", "a", None])
+        >>> model.innermost_intervals("a")["upper"]
+        array([1., 3.])
+        """
+        validate_event(self.event_idx_map, event)
+        validate_cif_event(event)
+        k = self.event_idx_map[event]
+        at = self.d_e[k] > 0
+        return {
+            "lower": np.asarray(self.x, dtype=float)[at],
+            "upper": np.asarray(self.x, dtype=float)[at],
+            "mass": np.asarray(self.IIF[k], dtype=float)[at],
+        }
+
     @keeps_query_shape
     def cb(
         self,
@@ -449,6 +532,8 @@ class CompetingRisks(SerialisableMixin):
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         bound_type: str = "exp",
+        n_boot: int | None = None,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Pointwise confidence bounds on the cumulative incidence of cause
@@ -504,6 +589,11 @@ class CompetingRisks(SerialisableMixin):
             ``sf``, ``ff`` and ``Hf`` it is the single-event ``cb``'s
             ``bound_type``, which also takes 'log', 'logit', 'arcsine',
             'peto' and 'rothman' (see ``KaplanMeier.cb``).
+        n_boot, random_state : optional
+            The bootstrap samples and seed of the bounds of a model fitted
+            to left- or interval-censored rows (``estimator == "NPMLE"``,
+            whose bounds are the case bootstrap's); the Aalen-Johansen
+            bounds above are not resampled and refuse them.
 
         Returns
         -------
@@ -569,6 +659,7 @@ class CompetingRisks(SerialisableMixin):
         >>> model.cb(5, on='sf').round(4)
         array([0.2551, 0.8311])
         """
+        _refuse_bootstrap_options(n_boot, random_state)
         check_alpha_ci(alpha_ci)
         check_option(
             "on",
@@ -847,6 +938,8 @@ class CompetingRisks(SerialisableMixin):
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         bound_type: str = "exp",
+        n_boot: int | None = None,
+        random_state: Any = None,
     ) -> Any:
         """
         Plot the cumulative incidence of every cause (#485), with its
@@ -882,6 +975,9 @@ class CompetingRisks(SerialisableMixin):
             Whether to draw the confidence bounds. Defaults to True.
         alpha_ci, bound, bound_type : optional
             Passed to the confidence bound calculation; see :meth:`cb`.
+        n_boot, random_state : optional
+            For a model fitted to left- or interval-censored rows only (its
+            bootstrap bounds; see :meth:`cb`).
 
         Returns
         -------
@@ -905,6 +1001,7 @@ class CompetingRisks(SerialisableMixin):
         """
         from surpyval import KaplanMeier
 
+        _refuse_bootstrap_options(n_boot, random_state)
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
         check_option("bound_type", bound_type, ("exp", "normal"))
@@ -1021,13 +1118,18 @@ class CompetingRisks(SerialisableMixin):
     def fit_from_df(
         cls,
         df: Any,
-        x_col: str,
+        x_col: str | None,
         e_col: str,
         c_col: str | None = None,
         n_col: str | None = None,
         how: str = "Nelson-Aalen",
         w_col: str | None = None,
         tl_col: str | float | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        masked: str = "refuse",
+        tol: float = 1e-9,
+        max_iter: int = 10000,
     ) -> CompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`.
@@ -1036,8 +1138,9 @@ class CompetingRisks(SerialisableMixin):
         ----------
         df : DataFrame
             The data.
-        x_col : str
-            The column of failure / censoring times.
+        x_col : str or None
+            The column of failure / censoring times; ``None`` where they
+            are given as windows by ``xl_col`` and ``xr_col``.
         e_col : str
             The column of causes (missing for a censored row).
         c_col : str, optional
@@ -1053,6 +1156,12 @@ class CompetingRisks(SerialisableMixin):
         tl_col : str or scalar, optional
             The column of each unit's entry (left truncation) time, or one
             number for every unit; the ``tl`` of :meth:`fit`.
+        xl_col, xr_col : str, optional
+            In place of ``x_col``: each row's lower and upper time (a
+            blank lower end is a row left censored at the upper one, a
+            blank upper end one right censored at the lower one).
+        masked, tol, max_iter : optional
+            As for :meth:`fit`.
 
         Returns
         -------
@@ -1074,14 +1183,51 @@ class CompetingRisks(SerialisableMixin):
         >>> model.r
         array([3, 2, 3, 3, 2, 1])
         """
-        x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
+        if xl_col is not None or xr_col is not None:
+            if x_col is not None or xl_col is None or xr_col is None:
+                raise ValueError(
+                    "Give the times as x_col, or as xl_col and xr_col "
+                    "(with x_col=None), not both."
+                )
+            lower = np.asarray(
+                frame_column(df, xl_col, "xl_col", time=True), dtype=float
+            )
+            upper = np.asarray(
+                frame_column(df, xr_col, "xr_col", time=True), dtype=float
+            )
+            x: Any = np.column_stack(
+                [
+                    np.where(np.isnan(lower), -np.inf, lower),
+                    np.where(np.isnan(upper), np.inf, upper),
+                ]
+            )
+            e = df[e_col].to_numpy(dtype=object)
+            c = None if c_col is None else df[c_col].to_numpy()
+            n = None if n_col is None else df[n_col].to_numpy()
+        elif x_col is None:
+            raise ValueError(
+                "Give the times: x_col, or xl_col and xr_col for windows."
+            )
+        else:
+            x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         w = None if w_col is None else df[w_col].values
         tl = (
             frame_column(df, tl_col, "tl_col", time=True)
             if isinstance(tl_col, str)
             else tl_col
         )
-        model = cls.fit(x, e, c, n, how, w=w, tl=tl)
+        model = cls.fit(
+            x,
+            e,
+            c,
+            n,
+            how,
+            w=w,
+            tl=tl,
+            masked=masked,
+            tol=tol,
+            max_iter=max_iter,
+        )
         # Keep the source frame without shadowing the ``df`` (density)
         # method (#253).
         model.source_df = df
@@ -1092,21 +1238,57 @@ class CompetingRisks(SerialisableMixin):
     @accepts_surpyval_data
     def fit(
         cls,
-        x: npt.ArrayLike,
-        e: npt.ArrayLike,
+        x: npt.ArrayLike | None = None,
+        e: npt.ArrayLike | None = None,
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         how: str = "Nelson-Aalen",
         w: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | float | None = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+        masked: str = "refuse",
+        tol: float = 1e-9,
+        max_iter: int = 10000,
     ) -> CompetingRisks:
         """
         Fit the non-parametric competing-risks model.
 
+        Data with only exact and right-censored rows get the Aalen-Johansen
+        estimate. Data with any left-censored (``c = -1``) or
+        interval-censored (``c = 2``, a window ``[xl, xr]``) row, or a
+        failure whose cause was not recorded taken with
+        ``masked="include"``, get the non-parametric maximum-likelihood
+        estimate (NPMLE) of Hudgens, Satten and Longini (2001), the
+        competing-risks form of Turnbull's estimate; on exact data the two
+        agree (with ``how="Kaplan-Meier"``). The model's ``estimator`` says
+        which was used.
+
+        The NPMLE puts each cause's probability mass on the innermost
+        intervals of the windows that can hold it and chooses the masses
+        that make the data most likely (the EM algorithm, accelerated by
+        SQUAREM, stopped when the Karush-Kuhn-Tucker conditions hold to
+        ``tol``; ``log_likelihood``, ``converged``, ``gap`` and
+        ``iterations`` report the search). Inside an interval the
+        cumulative incidence is held and rises at the interval's end, as
+        ``Turnbull``'s curve does; ``innermost_intervals(event)`` gives the
+        intervals and masses, and ``beyond`` the mass of the units not
+        failed by the end of follow-up. It offers ``cif``, the all-cause
+        ``sf`` / ``ff`` / ``Hf``, ``cb`` (the case bootstrap: ``n_boot``,
+        ``random_state``), ``plot`` and ``to_dict``; what needs each
+        failure's time is refused, saying what to use instead: a cause's
+        net survival (``sf(x, event)``), ``hf``, ``df``, ``iif``,
+        ``rmtl``, ``set_support``, the stacked plot and the analytic
+        bounds' ``bound_type``. Weights and delayed entry are not taken
+        with such rows.
+
         Parameters
         ----------
         x : array_like
-            Failure or censoring times.
+            Failure or censoring times: one column, with the flags ``c``,
+            or two columns, each row the window ``[xl, xr]`` the failure
+            lies in (as every SurPyval fit takes it). Leave it out to give
+            ``xl`` and ``xr``.
         e : array_like
             The cause of each failure: any hashable labels (integers,
             strings, tuples, or a mix); they are sorted to fix their order
@@ -1115,10 +1297,11 @@ class CompetingRisks(SerialisableMixin):
             right-censored row.
         c : array_like, optional
             Censoring flags: 0 a failure (with a cause in ``e``), 1
-            right-censored (with ``e`` missing). Derived from ``e`` if not
-            given. Left and interval censoring are not supported here;
-            ``IntervalCompetingRisks`` and ``ParametricCompetingRisks``
-            take them.
+            right-censored (with ``e`` missing), -1 left censored (found
+            failed at ``x``, some time before), 2 interval censored
+            (failed in ``(xl, xr]``). If omitted, a row with no cause and
+            one time is right censored and every other row's flag comes
+            from its times.
         n : array_like, optional
             Counts. Defaults to 1.
         how : str, optional
@@ -1145,7 +1328,22 @@ class CompetingRisks(SerialisableMixin):
             ``survfit(Surv(tl, x, factor(e)) ~ 1)`` the estimates are then
             conditional on surviving to the earliest entry. Right
             truncation is not supported (``fit(data)`` refuses data that
-            has it).
+            has it). Not taken with left- or interval-censored rows.
+        xl, xr : array_like, optional
+            In place of ``x``: each row's lower and upper time (equal for
+            an exact time, ``xr`` infinite for a right-censored row).
+        masked : str, optional
+            A failure with no cause in ``e``: ``"refuse"`` (the default)
+            refuses it, as every competing-risks fit does; ``"include"``
+            counts it as a failure from some cause in its window (its
+            likelihood is the sum over the causes), which needs the NPMLE.
+            This assumes that whether a cause was recorded does not depend
+            on which cause it was.
+        tol : float, optional
+            The NPMLE's convergence tolerance: the largest relative gap in
+            the Karush-Kuhn-Tucker conditions. Defaults to 1e-9.
+        max_iter : int, optional
+            The NPMLE's most accelerated EM iterations. Defaults to 10000.
 
         Returns
         -------
@@ -1185,19 +1383,50 @@ class CompetingRisks(SerialisableMixin):
         array([4, 3, 4, 3, 4, 3, 4, 3, 2, 1])
         >>> late.cif([5, 10], 'a').round(4)
         array([0.4688, 0.5859])
+
+        Ten units inspected every 2 time units, each failure found at an
+        inspection with its cause (windows, so the NPMLE):
+
+        >>> import numpy as np
+        >>> x = [[0, 2], [0, 2], [2, 4], [2, 4], [4, 6],
+        ...      [4, 6], [6, 8], [8, 10], [10, np.inf], [10, np.inf]]
+        >>> e = ["a", "b", "a", "a", "b", "a", "b", "a", None, None]
+        >>> inspected = CompetingRisks.fit(x, e)
+        >>> inspected.estimator
+        'NPMLE'
+        >>> inspected.cif([2, 4, 10], "a").round(4)
+        array([0.1, 0.3, 0.5])
+        >>> inspected.ff([10]).round(4)
+        array([0.8])
         """
-        if (
-            c is not None
-            and np.isin(np.asarray(c, dtype=object), (-1, 2)).any()
-        ):
+        from surpyval.univariate.competing_risks.nonparametric import _ic_data
+
+        if e is None:
             raise ValueError(
-                "Left- and interval-censored rows (c = -1 or 2) are not "
-                "supported by the non-parametric CompetingRisks, whose "
-                "Aalen-Johansen estimate needs each failure's time. Fit "
-                "IntervalCompetingRisks to such data (the non-parametric "
-                "estimate for windows), or ParametricCompetingRisks (a "
-                "distribution for each cause)."
+                "e, the cause of each failure, is needed (a missing cause "
+                "marks a right-censored row)."
             )
+        check_option("masked", masked, _ic_data.MASKED)
+        if _ic_data.windowed_input(x, c, xl, xr, masked):
+            rows = _ic_data.read_rows(
+                x, e, c, n, xl, xr, masked, "CompetingRisks"
+            )
+            exact = rows.xl == rows.xr
+            right = np.isposinf(rows.xr) & np.isfinite(rows.xl)
+            known = rows.cause >= 0
+            if not np.all((exact & known) | right):
+                return cls._fit_npmle(rows, w, tl, tol, max_iter)
+            # Only exact and right-censored rows: the Aalen-Johansen
+            # estimate, from the times and flags.
+            x = np.where(right, rows.xl, rows.xr)
+            c = np.where(right, 1, 0)
+            n = rows.n
+            labels = np.empty(rows.cause.size, dtype=object)
+            for i in np.flatnonzero(known):
+                labels[i] = rows.causes[rows.cause[i]]
+            e = labels
+        if x is None:
+            raise ValueError("Give the times: x, or xl and xr for windows.")
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
         check_finite_event_times(x, c)
         # Delayed entry: the (N, 2) truncation bounds, checked as every
@@ -1271,6 +1500,41 @@ class CompetingRisks(SerialisableMixin):
         model.IIF = aalen_johansen_iif(S_km, model.h0_e)
         model.CIF = model.IIF.cumsum(axis=1)
         return model
+
+    @classmethod
+    def _fit_npmle(
+        cls,
+        rows: Any,
+        w: Any,
+        tl: Any,
+        tol: float,
+        max_iter: int,
+    ) -> CompetingRisks:
+        """The NPMLE of rows with a left- or interval-censored row (or a
+        masked cause), refusing what it does not take."""
+        from surpyval.univariate.competing_risks.nonparametric import (
+            interval_competing_risks as icr,
+        )
+
+        if w is not None:
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                "CompetingRisks with left- or interval-censored rows",
+                "the non-parametric maximum-likelihood estimate of such "
+                "rows has no weighted (design-based) version built",
+                "Fit the weighted Aalen-Johansen estimate to exact times, "
+                "or ParametricCompetingRisks to the windows.",
+            )
+        if tl is not None and np.any(np.isfinite(np.asarray(tl, dtype=float))):
+            raise ValueError(
+                "Delayed entry (tl) is not taken with left- or "
+                "interval-censored rows: the non-parametric maximum-"
+                "likelihood estimate of such rows is built without "
+                "truncation. Fit ParametricCompetingRisks, which takes "
+                "both, or leave tl out."
+            )
+        return icr._IntervalCompetingRisks._fit_rows(rows, tol, max_iter)
 
     @classmethod
     def _fit_weighted(

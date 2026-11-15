@@ -702,22 +702,19 @@ def _competing_risks():
                 "n": d["n"],
             }
         )
-        return cr.IntervalCompetingRisks.fit_from_df(
+        return cr.CompetingRisks.fit_from_df(
             df, None, "e", c_col="c", n_col="n", xl_col="lo", xr_col="hi"
         )
 
+    # CompetingRisks with interval-censored rows: the NPMLE route.
     out.append(
         Case(
-            name="IntervalCompetingRisks",
-            fitters=(
-                "surpyval.univariate.competing_risks.IntervalCompetingRisks",
-            ),
-            model_class=(
-                "surpyval.univariate.competing_risks.IntervalCompetingRisks"
-            ),
+            name="CompetingRisks[interval]",
+            fitters=("surpyval.univariate.competing_risks.CompetingRisks",),
+            model_class="surpyval.univariate.competing_risks.CompetingRisks",
             interface=CAUSES,
             data=pcr_interval_data,
-            fit=_fit(cr.IntervalCompetingRisks),
+            fit=_fit(cr.CompetingRisks),
             functions=("sf", "ff", "Hf"),
             event_functions=("cif",),
             events=("a", "b"),
@@ -3238,9 +3235,10 @@ def _bounds(case):
                 query=(("healthy", [0.5]), ("ill", [1.0])),
             ),
         ),
-        # The case bootstrap (percentiles), on each cause's cumulative
-        # incidence and on the all-cause sf / ff.
-        "IntervalCompetingRisks": (
+        # CompetingRisks fitted to interval-censored rows (the NPMLE
+        # route, by case name): the case bootstrap (percentiles), on each
+        # cause's cumulative incidence and on the all-cause sf / ff.
+        "CompetingRisks[interval]": (
             Bound(
                 "cb",
                 on=("cif",),
@@ -3375,8 +3373,9 @@ def _bounds(case):
             Bound("total_iif_cb", point="total_iif"),
         ),
     }
-    if cls in fixed:
-        return fixed[cls]
+    spec = fixed.get(case.name) or fixed.get(cls)
+    if spec is not None:
+        return spec
     if cls == "Parametric":
         if case.name in _NO_COVARIANCE:
             return ()

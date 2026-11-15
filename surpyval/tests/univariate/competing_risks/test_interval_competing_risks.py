@@ -1,5 +1,6 @@
-"""The non-parametric estimate of interval-censored competing risks
-(``IntervalCompetingRisks``) and its Gray's test (``interval_gray_test``).
+"""Competing risks with left- and interval-censored rows: the
+non-parametric maximum-likelihood estimate that ``CompetingRisks.fit``
+gives for such data, and ``gray_test``'s multiple imputation.
 """
 
 import json
@@ -10,13 +11,20 @@ import pytest
 from scipy.optimize import minimize
 
 import surpyval as sp
-from surpyval import (
-    CompetingRisks,
-    IntervalCompetingRisks,
-    gray_test,
-    interval_gray_test,
-)
+from surpyval import CompetingRisks, gray_test
 from surpyval.serialisation import from_dict as load_dict
+from surpyval.univariate.competing_risks.nonparametric import _ic_data
+from surpyval.univariate.competing_risks.nonparametric.interval_competing_risks import (  # noqa: E501
+    _IntervalCompetingRisks,
+)
+
+
+def _npmle(x, e, c=None, n=None, masked="refuse", tol=1e-9):
+    """The NPMLE of any rows, exact ones included (``CompetingRisks.fit``
+    gives the Aalen-Johansen estimate for those), for the reference
+    checks of the estimate itself."""
+    rows = _ic_data.read_rows(x, e, c, n, None, None, masked, "test")
+    return _IntervalCompetingRisks._fit_rows(rows, tol, 10000)
 
 
 def _exact_data(seed=1, N=200):
@@ -58,8 +66,9 @@ def _inspected(
 @pytest.mark.parametrize("seed", [1, 2, 3])
 def test_exact_data_is_aalen_johansen(seed):
     x, e = _exact_data(seed)
-    model = IntervalCompetingRisks.fit(x, e)
+    model = _npmle(x, e)
     aj = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+    assert aj.estimator == "Aalen-Johansen" and model.estimator == "NPMLE"
     q = np.linspace(0, 21, 85)
     for cause in ("a", "b"):
         np.testing.assert_allclose(
@@ -73,7 +82,7 @@ def test_exact_data_with_counts_and_ties():
     x = [1, 1, 2, 2, 2, 3, 4, 4, 5]
     e = ["a", "b", "a", None, "b", "a", None, "b", "a"]
     n = [2, 1, 3, 2, 1, 1, 2, 1, 1]
-    model = IntervalCompetingRisks.fit(x, e, n=n)
+    model = _npmle(x, e, n=n)
     aj = CompetingRisks.fit(x, e, n=n, how="Kaplan-Meier")
     q = np.array([0.5, 1, 1.5, 2, 3, 4, 5, 6])
     for cause in ("a", "b"):
@@ -85,7 +94,8 @@ def test_exact_data_with_counts_and_ties():
 def test_one_cause_is_turnbull():
     x, e, _ = _inspected(seed=5)
     e1 = np.where(pd.isna(e), None, "fail").astype(object)
-    model = IntervalCompetingRisks.fit(x, e1)
+    model = CompetingRisks.fit(x, e1)
+    assert model.estimator == "NPMLE"
     c = np.where(np.isinf(x[:, 1]), 1, 2)
     xt = np.where(c[:, None] == 1, x[:, [0, 0]], x)
     tb = sp.Turnbull.fit(x=xt, c=c, turnbull_estimator="Kaplan-Meier")
@@ -183,7 +193,7 @@ def test_matches_a_general_optimiser():
     )
     c = np.where(np.isinf(x[:, 1]), 1, np.where(np.isinf(x[:, 0]), -1, 2))
     c[x[:, 0] == x[:, 1]] = 0
-    model = IntervalCompetingRisks.fit(x, e, c=c, tol=1e-12)
+    model = CompetingRisks.fit(x, e, c=c, tol=1e-12)
     cause = np.array([{"a": 0, "b": 1}.get(v, -1) for v in e])
     ll, cif = _direct_npmle(x, cause, 2)
     assert model.log_likelihood == pytest.approx(ll, abs=1e-6)
@@ -200,8 +210,8 @@ def test_masked_causes():
     e = np.array(["a", "b", None, "a", None, None], dtype=object)
     c = np.array([2, 2, 2, 2, 2, 1])
     with pytest.raises(ValueError, match="masked='include'"):
-        IntervalCompetingRisks.fit(x, e, c=c)
-    model = IntervalCompetingRisks.fit(x, e, c=c, masked="include")
+        CompetingRisks.fit(x, e, c=c)
+    model = CompetingRisks.fit(x, e, c=c, masked="include")
     # Every unit failed by 6 except one; the masked rows split their mass
     # between the causes, and the incidences add to the failures.
     assert model.ff([6]) == pytest.approx([5 / 6], abs=1e-8)
@@ -216,22 +226,21 @@ def test_masked_exact_failures_split_by_cause():
     x = [1, 1, 2, 3, 3]
     e = ["a", None, "b", "a", None]
     c = [0, 0, 0, 0, 1]
-    model = IntervalCompetingRisks.fit(x, e, c=c, masked="include")
+    model = CompetingRisks.fit(x, e, c=c, masked="include")
+    assert model.estimator == "NPMLE"
     assert model.cif([1], "a") == pytest.approx([0.4], abs=1e-6)
 
 
 def test_fit_paths_agree():
     x, e, _ = _inspected(seed=7, N=60)
-    a = IntervalCompetingRisks.fit(x, e)
-    b = IntervalCompetingRisks.fit(xl=x[:, 0], xr=x[:, 1], e=e)
+    a = CompetingRisks.fit(x, e)
+    b = CompetingRisks.fit(xl=x[:, 0], xr=x[:, 1], e=e)
     lower = np.where(np.isinf(x[:, 0]), np.nan, x[:, 0])
     upper = np.where(np.isinf(x[:, 1]), np.nan, x[:, 1])
     df = pd.DataFrame({"lo": lower, "hi": upper, "e": e})
-    d = IntervalCompetingRisks.fit_from_df(
-        df, None, "e", xl_col="lo", xr_col="hi"
-    )
+    d = CompetingRisks.fit_from_df(df, None, "e", xl_col="lo", xr_col="hi")
     data = sp.SurpyvalData(x=x, e=e)
-    f = IntervalCompetingRisks.fit(data)
+    f = CompetingRisks.fit(data)
     q = np.arange(0, 24, 1.0)
     for m in (b, d, f):
         np.testing.assert_allclose(m.cif(q, "a"), a.cif(q, "a"))
@@ -240,7 +249,7 @@ def test_fit_paths_agree():
 
 
 def test_cif_steps_at_interval_ends_and_query_shapes():
-    model = IntervalCompetingRisks.fit(
+    model = CompetingRisks.fit(
         [[0, 2], [2, 4], [2, 4], [4, np.inf]], ["a", "a", "b", None]
     )
     np.testing.assert_allclose(
@@ -258,24 +267,48 @@ def test_cif_steps_at_interval_ends_and_query_shapes():
 
 def test_refusals():
     x = [[0, 2], [2, 4]]
-    model = IntervalCompetingRisks.fit(x, ["a", "b"])
+    model = CompetingRisks.fit(x, ["a", "b"])
     with pytest.raises(ValueError, match="all-cause"):
         model.sf([1], event="a")
     with pytest.raises(ValueError, match="Name the cause"):
         model.cif([1], None)
-    with pytest.raises(ValueError, match="masked must be"):
-        IntervalCompetingRisks.fit(x, ["a", "b"], masked="yes")
+    with pytest.raises(ValueError, match="masked"):
+        CompetingRisks.fit(x, ["a", "b"], masked="yes")
+    with pytest.raises(ValueError, match="masked"):
+        CompetingRisks.fit([1, 2], ["a", "b"], masked="yes")
     with pytest.raises(ValueError, match="at least one failure"):
-        IntervalCompetingRisks.fit([1, 2], [None, None])
+        CompetingRisks.fit([[1, np.inf], [2, np.inf]], [None, None])
     with pytest.raises(ValueError, match="weights"):
-        IntervalCompetingRisks.fit(x, ["a", "b"], w=[1, 1])
+        CompetingRisks.fit(x, ["a", "b"], w=[1, 1])
+    with pytest.raises(ValueError, match="Delayed entry"):
+        CompetingRisks.fit(x, ["a", "b"], tl=[0.5, 0.5])
     with pytest.raises(ValueError, match="n_boot"):
         model.cb([1], "a", n_boot=1)
+    with pytest.raises(ValueError, match="bound_type"):
+        model.cb([1], "a", bound_type="normal")
+    # What needs each failure's time is refused in plain words.
+    for call in (
+        lambda: model.hf([1]),
+        lambda: model.df([1]),
+        lambda: model.iif([1], "a"),
+        lambda: model.rmtl("a", tau=3),
+        lambda: model.set_support(0, 10),
+        lambda: model.plot(stacked=True),
+        lambda: sp.rmtl_diff(model, model, "a", tau=3),
+    ):
+        with pytest.raises(ValueError, match="interval-censored rows"):
+            call()
+    # The Aalen-Johansen bounds are not resampled.
+    aj = CompetingRisks.fit([1, 2, 3], ["a", "b", None])
+    with pytest.raises(ValueError, match="n_boot"):
+        aj.cb([1], "a", n_boot=100)
+    with pytest.raises(ValueError, match="random_state"):
+        aj.plot(random_state=1)
 
 
 def test_bootstrap_bounds():
     x, e, _ = _inspected(seed=11, N=120)
-    model = IntervalCompetingRisks.fit(x, e)
+    model = CompetingRisks.fit(x, e)
     q = np.array([4.0, 10.0, 18.0])
     cb = model.cb(q, "a", n_boot=200, random_state=3)
     est = model.cif(q, "a")
@@ -294,10 +327,13 @@ def test_bootstrap_bounds():
 def test_serialisation_round_trip():
     x, e, _ = _inspected(seed=13, N=50)
     e = e.copy()
-    model = IntervalCompetingRisks.fit(x, e)
+    model = CompetingRisks.fit(x, e)
     d = json.loads(json.dumps(model.to_dict(), allow_nan=False))
+    assert d["model"] == "CompetingRisks" and d["estimator"] == "NPMLE"
+    for back in (load_dict(d), CompetingRisks.from_dict(d)):
+        assert isinstance(back, CompetingRisks)
+        assert back.estimator == "NPMLE"
     back = load_dict(d)
-    assert isinstance(back, IntervalCompetingRisks)
     q = np.arange(0, 24, 0.5)
     for cause in ("a", "b"):
         np.testing.assert_array_equal(back.cif(q, cause), model.cif(q, cause))
@@ -316,14 +352,38 @@ def test_plot():
 
     x, e, _ = _inspected(seed=17, N=40)
     fig, ax = plt.subplots()
-    IntervalCompetingRisks.fit(x, e).plot(ax=ax, n_boot=30)
+    CompetingRisks.fit(x, e).plot(ax=ax, n_boot=30)
     assert len(ax.get_lines()) == 2
     plt.close(fig)
 
 
-def test_competing_risks_refusal_names_the_new_estimate():
-    with pytest.raises(ValueError, match="IntervalCompetingRisks"):
-        CompetingRisks.fit([[0, 2], [1, 3]], ["a", "b"], c=[2, 2])
+def test_exact_and_right_censored_rows_keep_aalen_johansen():
+    # Written as windows ([x, x] and [x, inf]) or with the flags, exact
+    # and right-censored data keep the Aalen-Johansen estimate, to the bit.
+    x, e = _exact_data(6, 80)
+    ref = CompetingRisks.fit(x, e)
+    windows = np.column_stack([x, np.where(pd.isna(e), np.inf, x)])
+    for m in (
+        CompetingRisks.fit(windows, e),
+        CompetingRisks.fit(xl=windows[:, 0], xr=windows[:, 1], e=e),
+        CompetingRisks.fit(x, e, masked="include"),
+    ):
+        assert m.estimator == "Aalen-Johansen"
+        for name in ("x", "r", "d", "CIF", "S"):
+            np.testing.assert_array_equal(getattr(m, name), getattr(ref, name))
+    iv = ref.innermost_intervals("a")
+    np.testing.assert_array_equal(iv["lower"], iv["upper"])
+    np.testing.assert_allclose(iv["mass"].sum(), ref.cif(x.max(), "a"))
+    assert "estimator" not in ref.to_dict()
+
+
+def test_left_censored_rows_take_the_npmle():
+    x = [1, 2, 3, 4, 5, 6]
+    e = ["a", "b", "a", "b", "a", None]
+    c = [0, -1, 0, 0, -1, 1]
+    model = CompetingRisks.fit(x, e, c=c)
+    assert model.estimator == "NPMLE"
+    assert model.cif(6, "a") + model.cif(6, "b") == pytest.approx(model.ff(6))
 
 
 # -- Gray's test -------------------------------------------------------------
@@ -334,24 +394,34 @@ def test_gray_exact_data_is_grays_test(rho):
     x, e = _exact_data(4, 160)
     group = np.random.default_rng(4).binomial(1, 0.5, x.size)
     ref = gray_test(x, e, group, event="a", rho=rho)
-    res = interval_gray_test(x, e, group, event="a", rho=rho)
+    windows = np.column_stack([x, np.where(pd.isna(e), np.inf, x)])
+    res = gray_test(windows, e, group, event="a", rho=rho)
     assert res.statistic == pytest.approx(ref.statistic, rel=1e-12)
     assert res.p_value == pytest.approx(ref.p_value, rel=1e-12)
     assert res.df == ref.df and np.isinf(res.df_denominator)
     assert res.relative_increase == 0.0
+    assert res.method == ref.method == "Gray"
+    assert res.n_imputations == ref.n_imputations == 0
 
 
 def test_gray_finds_a_difference_and_combines():
     x, e, group = _inspected(seed=21, N=300, group_effect=1.0, jitter=True)
-    res = interval_gray_test(x, e, group, event="a", random_state=2)
+    res = gray_test(x, e, group, event="a", random_state=2)
+    assert res.method == "Gray (multiple imputation)"
+    assert res.n_imputations == 20
     assert res.p_value < 0.01
     assert res.relative_increase > 0
     assert np.isfinite(res.df_denominator)
-    again = interval_gray_test(x, e, group, event="a", random_state=2)
+    again = gray_test(x, e, group, event="a", random_state=2)
     assert again.statistic == res.statistic
     d = json.loads(json.dumps(res.to_dict(), allow_nan=False))
     assert d["groups"] == [0, 1] and d["cause"] == "a"
-    assert "Imputations" in repr(res)
+    assert d["n_imputations"] == 20
+    assert "n_imputations=20" in repr(res)
+    # Still the named tuple: it unpacks to the five fields.
+    stat, df, p, cause, groups = res
+    assert (stat, df, p, cause) == (res.statistic, 1, res.p_value, "a")
+    assert res._fields == ("statistic", "df", "p_value", "cause", "groups")
 
 
 def test_gray_with_masked_and_three_groups():
@@ -361,8 +431,8 @@ def test_gray_with_masked_and_three_groups():
     e[::10] = np.where(np.isinf(x[::10, 1]), None, None)
     c = np.where(np.isinf(x[:, 1]), 1, 2)
     with pytest.raises(ValueError, match="masked"):
-        interval_gray_test(x, e, group, event="a", c=c)
-    res = interval_gray_test(
+        gray_test(x, e, group, event="a", c=c)
+    res = gray_test(
         x,
         e,
         group,
@@ -378,18 +448,14 @@ def test_gray_with_masked_and_three_groups():
 def test_gray_refusals():
     x, e, group = _inspected(seed=25, N=40)
     with pytest.raises(ValueError, match="No failures of cause"):
-        interval_gray_test(x, e, group, event="z")
+        gray_test(x, e, group, event="z")
     with pytest.raises(ValueError, match="two groups"):
-        interval_gray_test(x, e, np.zeros(40), event="a")
-    with pytest.raises(ValueError, match="integer"):
-        interval_gray_test(x, e, group, event="a", n=np.full(40, 1.5))
+        gray_test(x, e, np.zeros(40), event="a")
+    with pytest.raises(ValueError, match="integer|whole"):
+        gray_test(x, e, group, event="a", n=np.full(40, 1.5))
     with pytest.raises(ValueError, match="n_imputations"):
-        interval_gray_test(x, e, group, event="a", n_imputations=1)
-    with pytest.raises(ValueError, match="interval_gray_test"):
-        gray_test(
-            np.where(np.isinf(x[:, 1]), x[:, 0], x[:, 1]),
-            e,
-            group,
-            event="a",
-            c=np.where(np.isinf(x[:, 1]), 1, 2),
-        )
+        gray_test(x, e, group, event="a", n_imputations=1)
+    with pytest.raises(ValueError, match="Delayed entry"):
+        gray_test(x, e, group, event="a", tl=np.full(40, 0.5))
+    with pytest.raises(ValueError, match="masked"):
+        gray_test(x, e, group, event="a", masked="yes")

@@ -459,9 +459,14 @@ def test_refuses_an_infinite_upper_end():
         )
 
 
-def test_non_parametric_refusal_names_the_parametric_model():
+def test_non_parametric_takes_left_censored_rows_by_the_npmle():
+    # CompetingRisks takes the windows too, by the non-parametric
+    # maximum-likelihood estimate; a cause's net survival then names the
+    # parametric model.
+    model = CompetingRisks.fit([1.0, 2.0, 3.0], [1, 2, 1], c=[0, -1, 0])
+    assert model.estimator == "NPMLE"
     with pytest.raises(ValueError, match="ParametricCompetingRisks"):
-        CompetingRisks.fit([1.0, 2.0, 3.0], [1, 2, 1], c=[0, -1, 0])
+        model.sf([2.0], event=1)
 
 
 def test_joint_derivatives_agree_with_finite_differences(model):

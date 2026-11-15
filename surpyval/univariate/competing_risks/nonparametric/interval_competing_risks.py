@@ -1,5 +1,11 @@
 """The non-parametric estimate of the cumulative incidence functions of
-interval-censored competing-risks data (Hudgens, Satten and Longini 2001).
+interval-censored competing-risks data (Hudgens, Satten and Longini 2001):
+what ``CompetingRisks.fit`` returns when a row is left or interval censored
+(or a failure's cause was not recorded, with ``masked="include"``).
+
+The class here is private: it is reached only through ``CompetingRisks``,
+whose single public surface it keeps, refusing in plain words what the
+estimate cannot give.
 """
 
 from __future__ import annotations
@@ -12,25 +18,27 @@ import numpy.typing as npt
 
 from surpyval import plotting
 from surpyval.serialisation import (
-    SerialisableMixin,
     require_model_tag,
     stamp_schema,
     to_native,
 )
 from surpyval.univariate.competing_risks.labels import label_from_native
 from surpyval.univariate.competing_risks.nonparametric import _ic_npmle
-from surpyval.univariate.competing_risks.nonparametric._ic_data import (
-    read_rows,
+from surpyval.univariate.competing_risks.nonparametric.competing_risks import (
+    CompetingRisks,
 )
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.surpyval_data import accepts_surpyval_data
-from surpyval.utils.units import axis_label, takes_unit
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 _CB_ON = ("cif", "sf", "ff", "R", "F")
 
+#: The ``estimator`` of a model fitted by this route.
+NPMLE = "NPMLE"
 
-class IntervalCompetingRisks(SerialisableMixin):
+
+class _IntervalCompetingRisks(CompetingRisks):
     r"""
     Non-parametric competing-risks estimate for interval-censored data: the
     non-parametric maximum-likelihood estimate (NPMLE) of each cause's
@@ -38,12 +46,14 @@ class IntervalCompetingRisks(SerialisableMixin):
 
     When failures are found at inspections, each unit is known to have
     failed from its cause somewhere between its last good inspection and
-    the one that found it failed. ``CompetingRisks`` (the Aalen-Johansen
-    estimate) needs each failure's time; this estimate takes any mix of
-    exact, right, left and interval-censored rows, and failures whose
-    cause was not recorded (``masked="include"``). For exact and right
-    censored data it is the Aalen-Johansen estimate; for one cause it is
-    Turnbull's estimate.
+    the one that found it failed. The Aalen-Johansen estimate needs each
+    failure's time; this estimate takes any mix of exact, right, left and
+    interval-censored rows, and failures whose cause was not recorded
+    (``masked="include"``). ``CompetingRisks.fit`` uses it when a row is
+    left or interval censored (or a failure's cause is masked) and says
+    so in ``estimator`` (``"NPMLE"``). For exact and right censored data it
+    is the Aalen-Johansen estimate; for one cause it is Turnbull's
+    estimate.
 
     The cumulative incidence of cause :math:`k` is the probability of
     failing from that cause by time :math:`t` while the others still act.
@@ -63,8 +73,8 @@ class IntervalCompetingRisks(SerialisableMixin):
     not known: the CIF is held at its value at the interval's start and
     rises at its end, as ``Turnbull``'s curve does. See Notes.
 
-    Call ``IntervalCompetingRisks.fit`` (or ``fit_from_df``); it returns a
-    fitted instance.
+    Reached through ``CompetingRisks.fit`` (or ``fit_from_df``); it is a
+    ``CompetingRisks``.
 
     Notes
     -----
@@ -120,10 +130,7 @@ class IntervalCompetingRisks(SerialisableMixin):
     1953-1977.
     """
 
-    #: The source DataFrame when fitted via ``fit_from_df``.
-    source_df: Any
-    event_idx_map: dict
-    n_event_types: int
+    estimator = NPMLE
     #: Each atom's cause index, lower and upper time and mass: cause
     #: ``k``'s CIF rises by ``mass`` at ``upper``. The data say only that
     #: the mass is somewhere in ``(lower, upper]`` (at ``upper`` for an
@@ -168,116 +175,6 @@ class IntervalCompetingRisks(SerialisableMixin):
     # -- fitting -----------------------------------------------------------
 
     @classmethod
-    @takes_unit
-    @accepts_surpyval_data
-    def fit(
-        cls,
-        x: npt.ArrayLike | None = None,
-        e: npt.ArrayLike | None = None,
-        c: npt.ArrayLike | None = None,
-        n: npt.ArrayLike | None = None,
-        xl: npt.ArrayLike | None = None,
-        xr: npt.ArrayLike | None = None,
-        masked: str = "refuse",
-        tol: float = 1e-9,
-        max_iter: int = 10000,
-    ) -> IntervalCompetingRisks:
-        """
-        Fit the non-parametric estimate of the cumulative incidences.
-
-        Parameters
-        ----------
-        x : array_like, optional
-            The times: one column, with the flags ``c``, or two columns,
-            each row the window ``[xl, xr]`` the failure lies in (as every
-            SurPyval fit takes it). Leave it out to give ``xl`` and ``xr``.
-        e : array_like
-            The cause of each failure: any hashable labels, sorted to fix
-            their order in ``event_idx_map``. A missing value (``None``,
-            ``NaN``) marks a right-censored row (or, with
-            ``masked="include"``, a failure whose cause was not recorded).
-        c : array_like, optional
-            Censoring flags: 0 a failure at ``x``, 1 right censored (still
-            working at ``x``), -1 left censored (found failed at ``x``,
-            some time before), 2 interval censored (failed in ``(xl,
-            xr]``). If omitted, a row with no cause and one time is right
-            censored and every other row's flag comes from its times.
-        n : array_like, optional
-            Counts. Defaults to 1.
-        xl, xr : array_like, optional
-            In place of ``x``: each row's lower and upper time (equal for
-            an exact time, ``xr`` infinite for a right-censored row).
-        masked : str, optional
-            A failure (``c`` 0, -1 or 2) with no cause in ``e``:
-            ``"refuse"`` (the default) refuses it, as every competing-risks
-            fit does; ``"include"`` counts it as a failure from some cause
-            in its window (its likelihood is the sum over the causes). This
-            assumes that whether a cause was recorded does not depend on
-            which cause it was.
-        tol : float, optional
-            The convergence tolerance: the largest relative gap in the
-            Karush-Kuhn-Tucker conditions. Defaults to 1e-9.
-        max_iter : int, optional
-            The most accelerated EM iterations. Defaults to 10000.
-
-        Returns
-        -------
-        IntervalCompetingRisks
-            The fitted estimate.
-
-        Warns
-        -----
-        UserWarning
-            If the search did not meet ``tol`` in ``max_iter`` iterations.
-
-        Examples
-        --------
-        Ten units inspected every 2 time units, each failure found at an
-        inspection with its cause:
-
-        >>> from surpyval import IntervalCompetingRisks
-        >>> import numpy as np
-        >>> x = [[0, 2], [0, 2], [2, 4], [2, 4], [4, 6],
-        ...      [4, 6], [6, 8], [8, 10], [10, np.inf], [10, np.inf]]
-        >>> e = ["a", "b", "a", "a", "b", "a", "b", "a", None, None]
-        >>> model = IntervalCompetingRisks.fit(x, e)
-        >>> model.cif([2, 4, 10], "a").round(4)
-        array([0.1, 0.3, 0.5])
-        >>> model.ff([10]).round(4)
-        array([0.8])
-
-        For exact and right-censored data it is the Aalen-Johansen
-        estimate of ``CompetingRisks``:
-
-        >>> from surpyval import CompetingRisks
-        >>> t = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
-        >>> IntervalCompetingRisks.fit(t, e).cif([5, 10], 'a').round(4)
-        array([0.3167, 0.6083])
-        >>> CompetingRisks.fit(t, e).cif([5, 10], 'a').round(4)
-        array([0.3167, 0.6083])
-        """
-        rows = read_rows(x, e, c, n, xl, xr, masked, "IntervalCompetingRisks")
-        model = cls._from_rows(
-            rows.xl,
-            rows.xr,
-            rows.cause,
-            rows.n,
-            rows.causes,
-            tol,
-            max_iter,
-        )
-        if not model.converged:
-            warnings.warn(
-                "IntervalCompetingRisks: the estimate did not converge to "
-                f"tol={tol} in max_iter={max_iter} iterations (the "
-                f"Karush-Kuhn-Tucker gap is {model.gap:.3g}); raise "
-                "max_iter.",
-                stacklevel=3,
-            )
-        return model
-
-    @classmethod
     def _from_rows(
         cls,
         xl: npt.NDArray,
@@ -287,7 +184,7 @@ class IntervalCompetingRisks(SerialisableMixin):
         causes: list,
         tol: float,
         max_iter: int,
-    ) -> IntervalCompetingRisks:
+    ) -> _IntervalCompetingRisks:
         s = _ic_npmle.structure(xl, xr, cause, n, len(causes))
         res = _ic_npmle.fit_masses(s, tol=tol, max_iter=max_iter)
         model = cls()
@@ -314,80 +211,26 @@ class IntervalCompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
-    @takes_unit
-    def fit_from_df(
-        cls,
-        df: Any,
-        x_col: str | None,
-        e_col: str,
-        c_col: str | None = None,
-        n_col: str | None = None,
-        xl_col: str | None = None,
-        xr_col: str | None = None,
-        masked: str = "refuse",
-        tol: float = 1e-9,
-        max_iter: int = 10000,
-    ) -> IntervalCompetingRisks:
-        """
-        Fit from the columns of a :class:`pandas.DataFrame`; see
-        :meth:`fit`.
-
-        Parameters
-        ----------
-        df : DataFrame
-            The data.
-        x_col : str or None
-            The column of times; ``None`` where they are given as windows
-            by ``xl_col`` and ``xr_col``.
-        e_col : str
-            The column of causes (missing for a censored row).
-        c_col, n_col : str, optional
-            The censoring-flag and count columns.
-        xl_col, xr_col : str, optional
-            In place of ``x_col``: each row's lower and upper time (a
-            blank lower end is a row left censored at the upper one, a
-            blank upper end one right censored at the lower one).
-        masked, tol, max_iter : optional
-            As for :meth:`fit`.
-
-        Returns
-        -------
-        IntervalCompetingRisks
-            The fitted estimate; the frame is kept as ``source_df``.
-        """
-        from surpyval.utils.dataframe import frame_column
-
-        if xl_col is not None or xr_col is not None:
-            if x_col is not None or xl_col is None or xr_col is None:
-                raise ValueError(
-                    "Give the times as x_col, or as xl_col and xr_col "
-                    "(with x_col=None), not both."
-                )
-            lower = np.asarray(
-                frame_column(df, xl_col, "xl_col", time=True), dtype=float
-            )
-            upper = np.asarray(
-                frame_column(df, xr_col, "xr_col", time=True), dtype=float
-            )
-            x: Any = np.column_stack(
-                [
-                    np.where(np.isnan(lower), -np.inf, lower),
-                    np.where(np.isnan(upper), np.inf, upper),
-                ]
-            )
-        elif x_col is None:
-            raise ValueError(
-                "Give the times: x_col, or xl_col and xr_col for windows."
-            )
-        else:
-            x = frame_column(df, x_col, "x_col", time=True)
-        e = df[e_col].to_numpy(dtype=object)
-        c = None if c_col is None else df[c_col].to_numpy()
-        n = None if n_col is None else df[n_col].to_numpy()
-        model = cls.fit(
-            x, e, c=c, n=n, masked=masked, tol=tol, max_iter=max_iter
+    def _fit_rows(cls, rows: Any, tol: float, max_iter: int) -> Any:
+        """The estimate of the rows read by ``read_rows``, warning if the
+        search did not converge."""
+        model = cls._from_rows(
+            rows.xl,
+            rows.xr,
+            rows.cause,
+            rows.n,
+            rows.causes,
+            tol,
+            max_iter,
         )
-        model.source_df = df
+        if not model.converged:
+            warnings.warn(
+                "CompetingRisks: the estimate of the interval-censored "
+                f"data did not converge to tol={tol} in max_iter="
+                f"{max_iter} iterations (the Karush-Kuhn-Tucker gap is "
+                f"{model.gap:.3g}); raise max_iter.",
+                stacklevel=4,
+            )
         return model
 
     # -- the estimate --------------------------------------------------------
@@ -435,11 +278,13 @@ class IntervalCompetingRisks(SerialisableMixin):
     def _all_causes(self, event: Any) -> None:
         if event is not None:
             raise ValueError(
-                "IntervalCompetingRisks has the all-cause sf, ff and Hf "
-                "only (event=None): a cause's net survival needs the "
-                "cause-specific hazard, which interval-censored data do "
-                "not give without a model. Use cif(x, event) for a "
-                "cause's incidence, or ParametricCompetingRisks."
+                "This CompetingRisks was fitted to left- or "
+                "interval-censored rows (estimator 'NPMLE'), so it has the "
+                "all-cause sf, ff and Hf only (event=None): a cause's net "
+                "survival needs the cause-specific hazard, which "
+                "interval-censored data do not give without a model. Use "
+                "cif(x, event) for a cause's incidence, or "
+                "ParametricCompetingRisks."
             )
 
     @keeps_query_shape
@@ -460,6 +305,76 @@ class IntervalCompetingRisks(SerialisableMixin):
         """The all-cause cumulative hazard, ``-log(sf)``."""
         with np.errstate(divide="ignore"):
             return 0.0 - np.log(self.sf(x, event))
+
+    def _not_built(self, what: str, why: str, instead: str) -> ValueError:
+        return ValueError(
+            f"{what} is not available for a CompetingRisks fitted to left- "
+            f"or interval-censored rows (estimator 'NPMLE'): {why}. "
+            f"{instead}"
+        )
+
+    def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """Refused: the estimate puts masses on intervals, not a hazard at
+        each time."""
+        raise self._not_built(
+            "hf",
+            "the estimate puts each cause's probability on intervals, and "
+            "where in an interval it lies is not known, so there is no "
+            "hazard at a time",
+            "Use cif(x, event) or the all-cause sf / ff / Hf, or "
+            "ParametricCompetingRisks for a hazard.",
+        )
+
+    def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """Refused, as :meth:`hf`."""
+        raise self._not_built(
+            "df",
+            "the estimate puts each cause's probability on intervals, and "
+            "where in an interval it lies is not known, so there is no "
+            "density at a time",
+            "Use innermost_intervals(event) for the masses and where they "
+            "lie, or ParametricCompetingRisks for a density.",
+        )
+
+    def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
+        """Refused, as :meth:`df`."""
+        raise self._not_built(
+            "iif",
+            "the incidence increments lie somewhere in their intervals, "
+            "not at a time",
+            "Use innermost_intervals(event) for each cause's masses and "
+            "intervals.",
+        )
+
+    def set_support(self, lower: float, upper: float) -> Any:
+        """Refused: the estimate's intervals already say where it is
+        defined."""
+        raise self._not_built(
+            "set_support",
+            "the estimate is held between its intervals' ends, which "
+            "say where it is defined",
+            "Query cif, sf and ff within the data's windows.",
+        )
+
+    def _rmtl_estimate(
+        self, event: Any, tau: float, who: str = "the model"
+    ) -> tuple[float, float]:
+        raise self._not_built(
+            f"The restricted mean time lost of {who}",
+            "it is the area under the cumulative incidence, which depends "
+            "on where in each interval the mass lies, and the data do not "
+            "say",
+            "Use ParametricCompetingRisks(...).rmtl, or "
+            "cif(tau, event) for the probability by tau.",
+        )
+
+    def rmtl(
+        self, event: Any, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        """Refused: the time lost depends on where in each interval the
+        mass lies, which the data do not say."""
+        self._rmtl_estimate(event, 0.0)
+        return {}  # pragma: no cover (refused above)
 
     def innermost_intervals(self, event: Any) -> dict:
         """
@@ -526,7 +441,8 @@ class IntervalCompetingRisks(SerialisableMixin):
         on: str = "cif",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        n_boot: int = 500,
+        bound_type: str = "exp",
+        n_boot: int | None = None,
         random_state: Any = None,
     ) -> npt.NDArray:
         """
@@ -557,6 +473,9 @@ class IntervalCompetingRisks(SerialisableMixin):
         bound : str, optional
             ``"two-sided"`` (default, ``(n, 2)``), ``"lower"`` or
             ``"upper"`` (one-sided at ``1 - alpha_ci``, ``(n,)``).
+        bound_type : str, optional
+            Only ``"exp"`` (the default) is taken: the percentile bounds
+            have no scale to choose.
         n_boot : int, optional
             The bootstrap samples. Defaults to 500.
         random_state : None, int or numpy.random.Generator, optional
@@ -570,18 +489,27 @@ class IntervalCompetingRisks(SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import IntervalCompetingRisks
+        >>> from surpyval import CompetingRisks
         >>> import numpy as np
         >>> x = [[0, 2], [0, 2], [2, 4], [2, 4], [4, 6],
         ...      [4, 6], [6, 8], [8, 10], [10, np.inf], [10, np.inf]]
         >>> e = ["a", "b", "a", "a", "b", "a", "b", "a", None, None]
-        >>> model = IntervalCompetingRisks.fit(x, e)
+        >>> model = CompetingRisks.fit(x, e)
         >>> model.cb(4, "a", n_boot=200, random_state=1).round(2)
         array([0.1, 0.6])
         """
         check_option("on", on, _CB_ON)
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
+        if bound_type != "exp":
+            raise ValueError(
+                f"bound_type={bound_type!r} is not taken by a CompetingRisks "
+                "fitted to left- or interval-censored rows (estimator "
+                "'NPMLE'): its bounds are the bootstrap's percentiles, "
+                "which have no scale to choose. Leave bound_type out."
+            )
+        if n_boot is None:
+            n_boot = 500
         if (
             isinstance(n_boot, bool)
             or not float(n_boot).is_integer()
@@ -614,13 +542,22 @@ class IntervalCompetingRisks(SerialisableMixin):
 
     # -- plotting ------------------------------------------------------------
 
+    @positional_option(
+        "stacked",
+        "whether to stack the curves of the causes",
+        "the axes 'ax' of a non-parametric model's plot(ax)",
+        "stacked=..., or ax=... for the axes",
+    )
     def plot(
         self,
+        stacked: bool = False,
         ax: Any = None,
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
-        n_boot: int = 500,
-        random_state: Any = 0,
+        bound: str = "two-sided",
+        bound_type: str = "exp",
+        n_boot: int | None = None,
+        random_state: Any = None,
     ) -> Any:
         """
         Plot each cause's cumulative incidence as a step curve, with its
@@ -629,6 +566,10 @@ class IntervalCompetingRisks(SerialisableMixin):
 
         Parameters
         ----------
+        stacked : bool, optional
+            Not taken (``False``): the causes' masses lie in intervals, so
+            a stack of them would draw a sum whose steps the data do not
+            place.
         ax : matplotlib.axes.Axes, optional
             The axes to draw on; the current axes by default.
         plot_bounds : bool, optional
@@ -636,6 +577,8 @@ class IntervalCompetingRisks(SerialisableMixin):
         alpha_ci, n_boot, random_state : optional
             Passed to :meth:`cb` (the seed defaults to 0, so the plot is
             reproducible).
+        bound, bound_type : optional
+            Only the defaults, ``"two-sided"`` and ``"exp"``, are taken.
 
         Returns
         -------
@@ -647,8 +590,8 @@ class IntervalCompetingRisks(SerialisableMixin):
         >>> import matplotlib
         >>> matplotlib.use("Agg")
         >>> import matplotlib.pyplot as plt
-        >>> from surpyval import IntervalCompetingRisks
-        >>> model = IntervalCompetingRisks.fit(
+        >>> from surpyval import CompetingRisks
+        >>> model = CompetingRisks.fit(
         ...     [[0, 2], [1, 3], [2, 4], [3, 5], [4, 6]],
         ...     ["a", "b", "a", "b", "a"],
         ... )
@@ -658,6 +601,23 @@ class IntervalCompetingRisks(SerialisableMixin):
         >>> plt.close(fig)
         """
         check_alpha_ci(alpha_ci)
+        if stacked:
+            raise self._not_built(
+                "plot(stacked=True)",
+                "each cause's mass lies somewhere in its intervals, so the "
+                "stacked sum's steps are not placed by the data",
+                "Plot the causes unstacked (the default), or the all-cause "
+                "ff(x) for the total.",
+            )
+        if bound != "two-sided" or bound_type != "exp":
+            raise ValueError(
+                "plot draws the two-sided bootstrap bounds only for a "
+                "CompetingRisks fitted to left- or interval-censored rows; "
+                "leave bound and bound_type out, or draw cb(x, event, "
+                "bound='lower') yourself."
+            )
+        if random_state is None:
+            random_state = 0
         if ax is None:
             import matplotlib.pyplot as plt
 
@@ -712,14 +672,16 @@ class IntervalCompetingRisks(SerialisableMixin):
 
     def to_dict(self) -> dict:
         """
-        Serialise the fitted estimate to a plain, JSON-serialisable dict:
+        Serialise the fitted estimate to a plain, JSON-serialisable dict,
+        tagged ``"model": "CompetingRisks"`` with ``"estimator": "NPMLE"``:
         the causes, the intervals and masses, the fit's summary and the
         rows (so the reloaded estimate has the bootstrap bounds too). The
         reloaded model reproduces every prediction exactly.
         """
 
         out: dict = {
-            "model": "IntervalCompetingRisks",
+            "model": "CompetingRisks",
+            "estimator": NPMLE,
             "event_idx_map": [
                 [to_native(k), int(v)] for k, v in self.event_idx_map.items()
             ],
@@ -737,12 +699,14 @@ class IntervalCompetingRisks(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> IntervalCompetingRisks:
-        """Rebuild the estimate from :meth:`to_dict`'s dict."""
+    def _from_npmle_dict(cls, model_dict: dict) -> _IntervalCompetingRisks:
+        """Rebuild the estimate from :meth:`to_dict`'s dict (called by
+        ``CompetingRisks.from_dict``, which applies the reader's
+        checks)."""
         require_model_tag(
             model_dict,
-            "IntervalCompetingRisks",
-            "an interval-censored competing-risks estimate",
+            "CompetingRisks",
+            "a competing-risks model",
         )
 
         out = cls()
@@ -769,7 +733,7 @@ class IntervalCompetingRisks(SerialisableMixin):
             for k, i in self.event_idx_map.items()
         }
         lines = [
-            "Interval-censored competing-risks estimate (NPMLE)",
+            "Competing risks model, interval-censored data (estimator: NPMLE)",
             f"Causes: {causes}",
             "Incidence by the end of follow-up: "
             + ", ".join(f"{k}: {v:.4g}" for k, v in shares.items()),

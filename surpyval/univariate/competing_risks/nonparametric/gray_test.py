@@ -15,6 +15,11 @@ group's size times its censoring survival, so every group carries its own
 censoring distribution: the test stays calibrated when the groups are
 censored differently.
 
+With left- or interval-censored rows (failures found at inspections) the
+test is run on data completed by multiple imputation from the pooled
+non-parametric estimate, and the results are combined by Rubin's rules
+(see ``gray_test``'s Notes).
+
 References
 ----------
 - Gray (1988), "A class of K-sample tests for comparing the cumulative
@@ -40,10 +45,18 @@ from surpyval.utils import (
     resolve_cr_censoring,
 )
 from surpyval.utils.linalg import safe_quadform
-from surpyval.utils.validation import refuse_subdistribution_entry
+from surpyval.utils.validation import (
+    check_option,
+    refuse_subdistribution_entry,
+)
+
+#: The ``method`` of a result: Gray's test of the times as given, or of
+#: data completed by multiple imputation (left- or interval-censored rows).
+GRAY = "Gray"
+IMPUTED = "Gray (multiple imputation)"
 
 
-class GrayTestResult(NamedTuple):
+class _GrayTestFields(NamedTuple):
     statistic: float
     df: int
     p_value: float
@@ -51,8 +64,111 @@ class GrayTestResult(NamedTuple):
     groups: list
 
 
+class GrayTestResult(_GrayTestFields):
+    """
+    The result of :func:`gray_test`: a named tuple
+    ``(statistic, df, p_value, cause, groups)``, so ``stat, df, p, cause,
+    groups = gray_test(...)`` unpacks it as always, with the method's
+    details as attributes beside the tuple's fields.
+
+    Attributes
+    ----------
+    statistic : float
+        The chi-squared statistic. With imputed data it is the combined
+        statistic, ``U' T^-1 U`` with ``U`` the mean over the imputations
+        of Gray's score and ``T`` its total variance (within plus between
+        imputations).
+    df : int
+        The degrees of freedom, the number of groups less one.
+    p_value : float
+        The p-value; a small one is evidence the groups' cumulative
+        incidences of ``cause`` differ.
+    cause : Any
+        The cause compared.
+    groups : list
+        The groups, in order.
+    method : str
+        ``"Gray"`` (the times as given) or ``"Gray (multiple
+        imputation)"`` (data with left- or interval-censored rows, or
+        masked causes, that needed imputing).
+    n_imputations : int
+        The number of imputed data sets; 0 when nothing was imputed.
+    df_denominator : float
+        The denominator degrees of freedom of the F reference
+        distribution of ``statistic / df`` (Li, Raghunathan and Rubin
+        1991); infinite (the chi-squared distribution) when nothing was
+        imputed or the imputations do not vary.
+    relative_increase : float
+        The relative increase in variance due to the interval censoring,
+        ``r`` of Rubin's rules (0 when nothing was imputed).
+
+    Notes
+    -----
+    The extra attributes are not tuple fields, so unpacking, indexing,
+    ``len`` and equality see the five fields only, as before; ``_asdict``
+    and ``_replace`` keep only the fields (``_replace`` gives the defaults
+    above for the rest). :meth:`to_dict` holds every attribute.
+    """
+
+    method: str = GRAY
+    n_imputations: int = 0
+    df_denominator: float = float("inf")
+    relative_increase: float = 0.0
+
+    def __new__(
+        cls,
+        statistic: float,
+        df: int,
+        p_value: float,
+        cause: Any,
+        groups: list,
+        *,
+        method: str = GRAY,
+        n_imputations: int = 0,
+        df_denominator: float = float("inf"),
+        relative_increase: float = 0.0,
+    ) -> GrayTestResult:
+        self = super().__new__(cls, statistic, df, p_value, cause, groups)
+        if method != GRAY:
+            self.method = method
+            self.n_imputations = int(n_imputations)
+            self.df_denominator = float(df_denominator)
+            self.relative_increase = float(relative_increase)
+        return self
+
+    def __repr__(self) -> str:
+        text = super().__repr__()
+        if self.method == GRAY:
+            return text
+        return text[:-1] + (
+            f", method={self.method!r}, n_imputations={self.n_imputations}"
+            f", df_denominator={self.df_denominator!r}"
+            f", relative_increase={self.relative_increase!r})"
+        )
+
+    def to_dict(self) -> dict:
+        """The result as strict JSON (a non-finite number is ``None``)."""
+        from surpyval.serialisation import to_native
+
+        def finite(v: Any) -> Any:
+            v = float(v)
+            return v if np.isfinite(v) else None
+
+        return {
+            "test": self.method,
+            "cause": to_native(self.cause),
+            "groups": [to_native(g) for g in self.groups],
+            "statistic": finite(self.statistic),
+            "df": int(self.df),
+            "p_value": finite(self.p_value),
+            "n_imputations": int(self.n_imputations),
+            "df_denominator": finite(self.df_denominator),
+            "relative_increase": finite(self.relative_increase),
+        }
+
+
 def gray_test(
-    x: npt.ArrayLike,
+    x: npt.ArrayLike | None,
     e: npt.ArrayLike,
     group: npt.ArrayLike,
     event: Any,
@@ -61,15 +177,35 @@ def gray_test(
     rho: float = 0.0,
     w: npt.ArrayLike | None = None,
     tl: npt.ArrayLike | float | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
+    masked: str = "refuse",
+    n_imputations: int = 20,
+    random_state: Any = None,
+    tol: float = 1e-9,
+    max_iter: int = 10000,
 ) -> GrayTestResult:
-    """
+    r"""
     Gray's k-sample test comparing the cumulative incidence of one cause
     across groups.
+
+    It takes exact and right-censored times, and also failures found at
+    inspections: left-censored (``c = -1``) and interval-censored rows
+    (``c = 2``, or a window ``[xl, xr]``), and, with
+    ``masked="include"``, failures whose cause was not recorded. Such
+    rows have no exact time, so each is given one (and a cause, where it
+    was not recorded) drawn from the non-parametric estimate of all the
+    groups together, Gray's test is computed on the completed data, and
+    this is repeated ``n_imputations`` times and the results combined
+    (multiple imputation; see Notes). Data with only exact and
+    right-censored rows get Gray's test exactly, as always.
 
     Parameters
     ----------
     x : array_like
-        Event/censoring times (finite).
+        Event/censoring times (finite): one column, with the flags ``c``,
+        or two columns, each row the window ``[xl, xr]`` the failure lies
+        in. Pass ``None`` to give ``xl`` and ``xr`` instead.
     e : array_like
         Cause label per observation; a missing value (``None``, ``NaN`` or
         pandas ``NA``) marks a right-censored observation, as for the
@@ -82,13 +218,16 @@ def gray_test(
         The cause (a label in ``e``) whose cumulative incidence is compared
         across groups. The result keeps it as ``cause``.
     c : array_like, optional
-        Censoring flag (``0`` event, ``1`` right-censored; for left and
-        interval censoring use :func:`interval_gray_test`). If omitted it
-        is derived from ``e`` (a missing cause is censored). If given,
+        Censoring flag: ``0`` event, ``1`` right-censored, ``-1`` left
+        censored (found failed at ``x``), ``2`` interval censored (failed
+        in ``(xl, xr]``). If omitted it is derived from ``e`` (a missing
+        cause is censored) and, for windows, from the times. If given,
         every row with ``c == 1`` must have a missing cause and every other
-        row a cause, otherwise a ``ValueError`` is raised.
+        row a cause (unless ``masked="include"``), otherwise a
+        ``ValueError`` is raised.
     n : array_like, optional
-        Count weight per observation (default 1), each positive.
+        Count weight per observation (default 1), each positive; whole
+        numbers when rows are imputed (each unit is imputed on its own).
     rho : float, optional
         Weight-family parameter: the per-time weight is ``(1 - F(t-))**rho``
         with ``F`` the pooled cumulative incidence of ``event``. ``0``
@@ -103,14 +242,31 @@ def gray_test(
         the items that failed from another cause, and with late entry it
         needs truncation weights, which are not built (``cmprsk`` has no
         delayed entry either). Entry times all before the first time
-        change nothing and are taken.
+        change nothing and are taken. Not taken with left- or
+        interval-censored rows.
+    xl, xr : array_like, optional
+        In place of ``x``, each row's lower and upper time.
+    masked : str, optional
+        A failure with no cause in ``e``: ``"refuse"`` (the default)
+        refuses it; ``"include"`` imputes its cause too (assuming whether
+        a cause was recorded does not depend on which cause it was).
+    n_imputations : int, optional
+        The number of imputed data sets, at least 2, when rows are
+        imputed. Defaults to 20.
+    random_state : None, int or numpy.random.Generator, optional
+        The seed of the bootstrap samples and the imputations.
+    tol, max_iter : optional
+        The convergence settings of the non-parametric estimates the
+        imputations are drawn from, as for ``CompetingRisks.fit``.
 
     Returns
     -------
     GrayTestResult
         ``(statistic, df, p_value, cause, groups)``; ``df`` is
         ``n_groups - 1`` and a small ``p_value`` is evidence the groups'
-        cumulative incidence functions differ.
+        cumulative incidence functions differ. Its ``method``,
+        ``n_imputations``, ``df_denominator`` and ``relative_increase``
+        describe the imputation, if any (see :class:`GrayTestResult`).
 
     Notes
     -----
@@ -143,6 +299,65 @@ def gray_test(
     counts after it, as in ``FineGray``'s weights. Counts ``n`` enter as
     frequency weights (``cmprsk`` has none).
 
+    **Left- and interval-censored rows.** For imputation ``m``, the units
+    are resampled with replacement and the pooled non-parametric estimate
+    (that of ``CompetingRisks.fit``, Hudgens, Satten and Longini 2001) is
+    refitted to the sample (the approximate Bayesian bootstrap, which
+    makes the imputations carry the estimate's uncertainty); each
+    interval-censored unit is then given one of the intervals of its
+    window in proportion to the refitted masses of its cause (of every
+    cause if its cause was not recorded), and the time at that interval's
+    upper end, the point at which the estimate's cumulative incidence
+    rises. If the refitted estimate has no mass in a unit's window, the
+    full-data estimate is used for that unit. Right-censored and exact
+    rows are kept as they are.
+
+    Gray's score vector :math:`U_m` and variance :math:`V_m` of the first
+    :math:`k` groups (:math:`k` the number of groups less one) are combined
+    by Rubin's rules: :math:`\bar U` and :math:`\bar V` their means,
+    :math:`B` the covariance of the :math:`U_m` over the imputations,
+    :math:`r = (1 + 1/M) \operatorname{tr}(B \bar V^{-1}) / k` and the
+    statistic :math:`\bar U' \bar V^{-1} \bar U / (1 + r)`, whose
+    :math:`1/k` is referred to an F distribution with :math:`k` and
+    :math:`\nu` degrees of freedom, :math:`\nu` as given by Li,
+    Raghunathan and Rubin (1991). Without rows to impute it is Gray's
+    chi-squared test.
+
+    Imputing from the pooled estimate is imputing under the null
+    hypothesis, as the score tests of interval-censored survival data
+    (``interval_logrank``) take their scores from the pooled estimate: it
+    keeps the test's size when the groups are inspected on different
+    schedules, at some cost in power, since an imputed failure's place in
+    its window carries no group difference. The test assumes the
+    inspection times are independent of the failure process, and that
+    the groups share the cumulative incidences of the other causes
+    closely enough for pooled imputation (exactly so under the null
+    hypothesis that every cause's incidence is the same). Its size was
+    checked by simulation (see the guide).
+
+    References
+    ----------
+    Gray, R. J. (1988), "A class of K-sample tests for comparing the
+    cumulative incidence of a competing risk", Annals of Statistics 16,
+    1141-1154.
+
+    Li, K. H., Raghunathan, T. E. and Rubin, D. B. (1991), "Large-sample
+    significance levels from multiply imputed data using moment-based
+    statistics and an F reference distribution", Journal of the American
+    Statistical Association 86, 1065-1073.
+
+    Pan, W. (2000), "A multiple imputation approach to Cox regression with
+    interval-censored data", Biometrics 56, 199-203.
+
+    Huang, J., Lee, C. and Yu, Q. (2008), "A generalized log-rank test for
+    interval-censored failure time data via multiple imputation",
+    Statistics in Medicine 27, 3217-3226.
+
+    Hudgens, M. G., Satten, G. A. and Longini, I. M. (2001),
+    "Nonparametric maximum likelihood estimation for competing risks
+    survival data subject to interval censoring and truncation",
+    Biometrics 57, 74-80.
+
     Examples
     --------
     Group 1 has twice group 0's hazard of cause ``a``:
@@ -162,6 +377,21 @@ def gray_test(
     (20.113, 1)
     >>> bool(res.p_value < 0.001)
     True
+
+    The same units inspected every 2 time units up to 20, so each failure
+    is known only to lie in a window:
+
+    >>> t = np.minimum(t_a, t_b)
+    >>> lo = np.floor(t / 2) * 2
+    >>> seen = lo < 20
+    >>> windows = np.column_stack([np.where(seen, lo, 20),
+    ...                            np.where(seen, lo + 2, np.inf)])
+    >>> e_w = np.where(seen, first, None)
+    >>> res_w = gray_test(windows, e_w, group, event="a", random_state=1)
+    >>> res_w.method, res_w.n_imputations
+    ('Gray (multiple imputation)', 20)
+    >>> bool(res_w.p_value < 0.01)
+    True
     """
     if w is not None:
         from surpyval.utils.weights import refuse_weighted
@@ -176,6 +406,39 @@ def gray_test(
             "incidences of CompetingRisks.fit(..., w=w) fitted per group "
             "by their robust bounds (cb).",
         )
+    from surpyval.univariate.competing_risks.nonparametric import _ic_data
+
+    check_option("masked", masked, _ic_data.MASKED)
+    if _ic_data.windowed_input(x, c, xl, xr, masked):
+        if tl is not None and np.any(np.isfinite(np.asarray(tl, dtype=float))):
+            raise ValueError(
+                "Delayed entry (tl) is not taken by Gray's test with left- "
+                "or interval-censored rows: the non-parametric estimate the "
+                "imputations come from is built without truncation. Leave "
+                "tl out."
+            )
+        from surpyval.univariate.competing_risks.nonparametric import (
+            _imputed_gray,
+        )
+
+        return _imputed_gray.imputed_gray_test(
+            x,
+            e,
+            group,
+            event,
+            c,
+            n,
+            xl,
+            xr,
+            rho,
+            masked,
+            n_imputations,
+            random_state,
+            tol,
+            max_iter,
+        )
+    if x is None:
+        raise ValueError("Give the times: x, or xl and xr for windows.")
     refuse_subdistribution_entry(
         x,
         tl,
@@ -360,9 +623,8 @@ def _validate(
         raise ValueError("c must have one censoring flag per time in x.")
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
-            "c must be 0 (a failure) or 1 (right-censored); for left- "
-            "and interval-censored rows use interval_gray_test, which "
-            "takes them."
+            "c must be 0 (a failure), 1 (right-censored), -1 (left "
+            "censored) or 2 (interval censored)."
         )
     e_arr = check_c_and_e(c_arr, e_arr)
     censored = c_arr.astype(int) == 1

@@ -1,5 +1,5 @@
-"""Size of ``interval_gray_test`` (Gray's test by multiple imputation) when
-the groups are inspected on different schedules.
+"""Size of ``gray_test`` on interval-censored rows (Gray's test by multiple
+imputation) when the groups are inspected on different schedules.
 
 Design (fixed before the first run): two groups of 100 units with the same
 cumulative incidences -- cause ``a`` exponential with mean 12.5, cause
@@ -18,7 +18,7 @@ import warnings
 
 import numpy as np
 
-from surpyval import interval_gray_test
+from surpyval import gray_test
 from surpyval.tests.calibration._montecarlo import process_pool
 
 N_GROUP = 100
@@ -57,7 +57,7 @@ def _replicate(seed):
     group = np.repeat([0, 1], N_GROUP)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = interval_gray_test(
+        res = gray_test(
             x, e, group, event="a", n_imputations=M, random_state=seed
         )
     return res.p_value

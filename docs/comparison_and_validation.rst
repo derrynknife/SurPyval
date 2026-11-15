@@ -87,13 +87,9 @@ competing risks:
    :members:
    :exclude-members: count, index
 
-Gray's test for failures found at inspections (interval-censored), by
-multiple imputation:
-
-.. autofunction:: surpyval.univariate.competing_risks.nonparametric.interval_gray_test.interval_gray_test
-
-.. autoclass:: surpyval.univariate.competing_risks.nonparametric.interval_gray_test.IntervalGrayTestResult
-   :members:
+``gray_test`` also takes failures found at inspections (left- and
+interval-censored rows), by multiple imputation; the result's ``method``,
+``n_imputations``, ``df_denominator`` and ``relative_increase`` describe it.
 
 Restricted mean survival time
 -----------------------------

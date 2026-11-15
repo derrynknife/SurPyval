@@ -1,6 +1,6 @@
 """Reading interval-censored competing-risks data: the rows' windows, their
-causes and counts, shared by :class:`IntervalCompetingRisks` and
-:func:`interval_gray_test`."""
+causes and counts, shared by ``CompetingRisks.fit`` and ``gray_test`` when
+the data have left- or interval-censored rows (or masked causes)."""
 
 from __future__ import annotations
 
@@ -28,6 +28,20 @@ class Rows(NamedTuple):
     cause: npt.NDArray
     n: npt.NDArray
     causes: list
+
+
+def windowed_input(x: Any, c: Any, xl: Any, xr: Any, masked: str) -> bool:
+    """Whether the data may hold a left- or interval-censored row (or a
+    masked cause to include): then the rows are read as windows by
+    :func:`read_rows`. One column of times with flags 0 and 1 only (and
+    ``masked="refuse"``) is read as it always was."""
+    if xl is not None or xr is not None or masked == "include":
+        return True
+    if x is not None and not np.isscalar(x) and np.ndim(x) == 2:
+        return True
+    if c is None:
+        return False
+    return bool(np.isin(np.asarray(c, dtype=object), (-1, 2)).any())
 
 
 def _as_objects(e: Any) -> npt.NDArray:

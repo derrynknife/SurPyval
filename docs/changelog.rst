@@ -90,25 +90,34 @@ v0.28 (14 November 2026)
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
 - **Competing risks with failures found at inspections, without a
-  model.** ``IntervalCompetingRisks`` estimates each cause's cumulative
-  incidence from exact, right-, left- and interval-censored rows (the
-  non-parametric maximum-likelihood estimate of Hudgens, Satten and
-  Longini 2001): ``cif``, the all-cause ``sf`` / ``ff`` / ``Hf``,
-  ``innermost_intervals``, case-bootstrap bounds (``cb``), ``plot``,
-  ``to_dict``. Failures whose cause was not recorded are taken with
-  ``masked="include"``. With exact times it is the Aalen-Johansen
-  estimate of ``CompetingRisks`` (to 1e-8), with one cause Turnbull's.
-  ``CompetingRisks``'s refusal of such rows now names it. See
-  :doc:`Competing Risks SurPyval Modelling`.
-- **Gray's test for failures found at inspections.**
-  ``interval_gray_test`` compares a cause's cumulative incidence across
-  groups when failures are known only to lie in windows: Gray's test on
-  data completed by multiple imputation from the pooled non-parametric
-  estimate (refitted to a bootstrap sample for each imputation), combined
-  by Rubin's rules with Li, Raghunathan and Rubin's F reference. With no
-  windows it is ``gray_test`` exactly. Its size with the groups inspected
-  on different schedules was 0.033 at the 5% level (300 replicates).
-  ``gray_test``'s refusal of such rows now names it.
+  model.** ``CompetingRisks.fit`` (and ``fit_from_df``, ``fit(data)``)
+  now takes left- and interval-censored rows (``c = -1``, ``c = 2``, or
+  windows ``[xl, xr]``) and estimates each cause's cumulative incidence
+  by the non-parametric maximum-likelihood estimate of Hudgens, Satten and
+  Longini (2001): ``cif``, the all-cause ``sf`` / ``ff`` / ``Hf``,
+  ``innermost_intervals``, case-bootstrap bounds (``cb(...,
+  n_boot=, random_state=)``), ``plot``, ``to_dict``. Failures whose cause
+  was not recorded are taken with ``masked="include"``. Data with only
+  exact and right-censored rows keep the Aalen-Johansen estimate, with
+  the same numbers as before; the fitted model's ``estimator`` says which
+  was used (``"Aalen-Johansen"`` or ``"NPMLE"``). With exact times the
+  NPMLE is the Aalen-Johansen estimate (to 1e-8), with one cause
+  Turnbull's. What needs each failure's time (a cause's net survival,
+  ``hf``, ``df``, ``iif``, ``rmtl``, ``set_support``, the stacked plot,
+  weights, delayed entry) is refused for such data, saying what to use.
+  See :doc:`Competing Risks SurPyval Modelling`.
+- **Gray's test for failures found at inspections.** ``gray_test`` now
+  takes left- and interval-censored rows (and masked causes with
+  ``masked="include"``): Gray's test on data completed by multiple
+  imputation from the pooled non-parametric estimate (refitted to a
+  bootstrap sample for each imputation), combined by Rubin's rules with
+  Li, Raghunathan and Rubin's F reference (``n_imputations``,
+  ``random_state``). On exact and right-censored data it is Gray's test
+  exactly, as before. Its size with the groups inspected on different
+  schedules was 0.033 at the 5% level (300 replicates). The result is
+  still the named tuple ``(statistic, df, p_value, cause, groups)``, now
+  with ``method``, ``n_imputations``, ``df_denominator`` and
+  ``relative_increase`` as attributes and a ``to_dict``.
 - ``surpyval.pooled_rate(events, exposure, kind=...)`` pools event counts
   from several sources (sites, hospitals, studies, fleets) that may each
   have their own true rate: the two-stage (hierarchical) gamma-Poisson

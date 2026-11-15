@@ -19,16 +19,15 @@ SurPyval's competing-risks tools, and the question each one answers:
    * - Tool
      - Answers
    * - ``CompetingRisks``
-     - Non-parametric (Aalen-Johansen) cumulative incidence of each cause.
+     - Non-parametric cumulative incidence of each cause: Aalen-Johansen for
+       exact times, and the non-parametric maximum-likelihood estimate when
+       failures are found at inspections (interval-censored), or their cause
+       was not recorded.
    * - ``ParametricCompetingRisks``
      - One distribution per cause; smooth CIFs, extrapolation, simulation.
-   * - ``IntervalCompetingRisks``
-     - Non-parametric cumulative incidence when failures are found at
-       inspections (interval-censored), or their cause was not recorded.
    * - ``gray_test``
-     - Does the cumulative incidence of a cause differ between groups?
-   * - ``interval_gray_test``
-     - The same question for failures found at inspections.
+     - Does the cumulative incidence of a cause differ between groups? Also
+       for failures found at inspections.
    * - ``FineGray``
      - How do covariates change the cumulative incidence of one cause?
    * - ``CompetingRisksProportionalHazards``
@@ -40,8 +39,8 @@ SurPyval's competing-risks tools, and the question each one answers:
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
-right-censored data; ``ParametricCompetingRisks``, ``IntervalCompetingRisks``
-and ``interval_gray_test`` also take failures found at inspections (left- and
+right-censored data; ``CompetingRisks``, ``ParametricCompetingRisks`` and
+``gray_test`` also take failures found at inspections (left- and
 interval-censored rows). For repeated events with several failure modes see
 the cause-specific MCF and NHPP models in
 :doc:`Recurrent Event Modelling with SurPyval`.
@@ -850,10 +849,12 @@ probability scale, refined until it holds to about :math:`10^{-12}`.
 The non-parametric estimate for inspection data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``CompetingRisks`` needs each failure's time, so it refuses windows.
-``IntervalCompetingRisks`` takes the same rows as ``ParametricCompetingRisks``
-and estimates each cause's cumulative incidence without assuming any
-distribution. In plain words: it shares out each unit's failure among the
+The Aalen-Johansen estimate needs each failure's time. Given windows (any
+left- or interval-censored row), ``CompetingRisks.fit`` takes the same rows as
+``ParametricCompetingRisks`` and estimates each cause's cumulative incidence
+without assuming any distribution, by the non-parametric maximum-likelihood
+estimate (NPMLE); the fitted model's ``estimator`` says which estimate it
+holds (``"Aalen-Johansen"`` or ``"NPMLE"``). In plain words: it shares out each unit's failure among the
 stretches of time its window could have held it, with each cause's share put
 where the other units' windows overlap most, and picks the shares that make
 the data most likely. With exact times this is the Aalen-Johansen estimate;
@@ -861,9 +862,10 @@ with one cause it is Turnbull's.
 
 .. jupyter-execute::
 
-    from surpyval import IntervalCompetingRisks
+    from surpyval import CompetingRisks
 
-    np_inspected = IntervalCompetingRisks.fit(x_i, e_i, c=c_i)
+    np_inspected = CompetingRisks.fit(x_i, e_i, c=c_i)
+    print(np_inspected.estimator)
     print(np_inspected)
     print("wear CIF at 100 h, non-parametric / parametric: %.3f / %.3f" % (
         np_inspected.cif(100.0, "wear"), inspected.cif(100.0, "wear")))
@@ -881,7 +883,13 @@ more slowly than one from exact times.
 Two more things it takes. A failure whose cause was not recorded counts, with
 ``masked="include"``, as a failure from *some* cause in its window (this
 assumes that whether a cause was recorded does not depend on which cause it
-was). And the curves can be drawn with ``plot()``, as ``CompetingRisks``'s.
+was). And the curves can be drawn with ``plot()``, as for exact times.
+
+What needs each failure's time is refused with a message saying what to use
+instead: a cause's net survival (``sf(x, event)``), the hazard and density
+(``hf``, ``df``, ``iif``), the restricted mean time lost (``rmtl``, which
+depends on where inside each window the failures happened),
+``set_support``, the stacked plot, weights and delayed entry.
 
 In formulas (Hudgens, Satten and Longini 2001): with :math:`p_{kj}` the
 probability of cause :math:`k` on interval :math:`j`, the estimate maximises
@@ -1072,18 +1080,18 @@ null hypothesis is true.
 Gray's test for failures found at inspections
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``gray_test`` needs each failure's time. ``interval_gray_test`` takes windows:
-it gives each failure in a window a plausible exact time (and cause, if not
+Gray's test needs each failure's time. Given windows, ``gray_test`` gives each
+failure in a window a plausible exact time (and cause, if not
 recorded), drawn from the non-parametric estimate of all the groups together,
 runs Gray's test on the completed data, and repeats this to average out the
 guesswork (multiple imputation). Each repeat first refits the estimate to a
 resample of the units, so the spread between repeats includes the estimate's
 own uncertainty, and the combined test accounts for it. With no windows
-nothing is imputed and it is ``gray_test`` exactly.
+nothing is imputed and it is Gray's test exactly, as always.
 
 .. jupyter-execute::
 
-    from surpyval import interval_gray_test
+    from surpyval import gray_test
 
     rng = np.random.default_rng(11)
     n = 300
@@ -1099,13 +1107,16 @@ nothing is imputed and it is ``gray_test`` exactly.
     x_w = np.column_stack([np.where(seen, lo, 20), np.where(seen, hi, np.inf)])
     e_w = np.where(seen, np.where(t_1 < t_2, 1, 2), None)
 
-    res_w = interval_gray_test(x_w, e_w, grp, event=1, random_state=2)
+    res_w = gray_test(x_w, e_w, grp, event=1, random_state=2)
     print(res_w)
+    print(res_w.method, res_w.n_imputations)
 
-The result's ``statistic`` is on the chi-squared scale with ``df`` the number
-of groups minus one; its p-value is from an F distribution with
-``df_denominator`` degrees of freedom (Li, Raghunathan and Rubin 1991), which
-reflects how much the imputations disagree (``relative_increase``).
+The result is the same named tuple as for exact times, ``(statistic, df,
+p_value, cause, groups)``, with the imputation's details as attributes. Its
+``statistic`` is on the chi-squared scale with ``df`` the number of groups
+minus one; its p-value is from an F distribution with ``df_denominator``
+degrees of freedom (Li, Raghunathan and Rubin 1991), which reflects how much
+the imputations disagree (``relative_increase``).
 
 Imputing from the pooled estimate is imputing as if the null hypothesis
 held, as the score tests of interval-censored survival data do
