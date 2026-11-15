@@ -19,6 +19,11 @@ v0.28 (14 November 2026)
   repeat events far past the terminal ages, and likelihood-ratio bounds
   where the profile likelihood levels off: those now say the bound is
   open (infinite) instead of giving a meaningless finite end.
+- **Fast Bayesian predictive curves.** A Bayesian fit on a grid of tens
+  of thousands of points gives its predictive ``sf``, ``hf`` and the rest
+  in microseconds after a table built in under a second, within 1e-6 of
+  the exact sum,
+  so calculators that ask for many values take a second, not minutes.
 - **Two old names removed**: ``check_ph`` (use ``diagnose()``) and
   ``AalenAdditive``'s ``coef_penalty`` (use ``penalizer``).
 
@@ -79,6 +84,44 @@ v0.28 (14 November 2026)
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
 
+- **A Bayesian fit's predictive curve is fast** where its posterior has
+  many points. Each value of the posterior predictive (``sf``, ``ff``,
+  ``df``, ``hf``, ``Hf``, and through them ``qf``, ``cs`` and ``mrl``) was
+  a sum over every point of the posterior, about 37,500 for a grid of two
+  free parameters, so a calculation that asks for many values took
+  minutes (in one application an optimal replacement age took about 40 s
+  and a failure-finding search over 6 minutes on such a fit). A posterior
+  of more than 2,000 points now tabulates its predictive cumulative
+  hazard once, on first use: summed exactly at a few hundred times placed
+  adaptively and read between them by a Hermite cubic in ``log H``
+  against ``log t`` with the exact slopes. Every stretch is checked
+  against the full sum at two points; the far tails, and any stretch that
+  cannot be brought within the tolerance (near the points' own offsets,
+  for example), use the full sum, so nothing is extrapolated. ``sf``,
+  ``ff`` and ``Hf`` are within 1e-6 of the full sum, relative, and ``hf``
+  and ``df`` (the curve's slope) within 1e-5 (at most 4e-7 and 8e-6 on
+  the posteriors tested: Weibull grids, an exponential of rate 1e-9,
+  offsets, a limited failure population, zero inflation), and the curve
+  is still a proper distribution (``df`` the slope of ``ff``, ``qf`` the
+  inverse of ``ff``). On a 37,538-point grid the table takes 0.7 s; then
+  ``sf`` and ``hf`` at 1,000 times take under a millisecond (2.0 s
+  before), 2,000 single-time calls of each 0.13 s (3.7 s), and an
+  optimal-replacement search 0.07 s (1.2 s). ``model.predictive_table =
+  False`` gives the full sum everywhere. See "Many points: a table" in
+  :doc:`Bayesian Fitting with SurPyval`.
+
+**Changed.**
+
+- **A Bayesian fit of more than 2,000 posterior points** gives predictive
+  values from the table above, so they move from the full sum's by less
+  than 1e-6 relative in ``sf``, ``ff`` and ``Hf`` and 1e-5 in ``hf`` and
+  ``df``. The 12 November rule for the tails (a small ``ff`` keeps its
+  digits) holds there to that relative accuracy rather than to a
+  rounding; beyond the tabulated range (failure or survival
+  probabilities below about 1e-10) it is the full sum, as before. Fits of
+  fewer points, the closed forms, ``mean``, ``random`` and the credible
+  intervals are unchanged.
+
 **Removed.**
 
 - ``check_ph``, deprecated in v0.26: ``SemiParametricRegressionModel.check_ph``
@@ -95,6 +138,18 @@ v0.28 (14 November 2026)
   old ``coef_penalty`` key still loads.
 
 **Fixed.**
+
+- **A Bayesian fit's** ``qf`` **with an offset and a limited failure
+  population, or zero inflation, no longer fails to bracket.** For
+  example ``p`` of 0.04 with an offset of 20 and a share failing of 0.8
+  raised ``ValueError: f(a) and f(b) must have different signs`` (and so
+  did any array of probabilities containing such a value): the root was
+  sought on the log of time between ends whose values were computed on
+  time itself, and ``exp(log(t))`` is not ``t`` to the last bit, so an
+  end that sat on the root could change sign. The ends are taken again on
+  the log scale, and an end with the other end's sign there is the root
+  to a rounding. With a limited failure population the share that ever
+  fails is now worked out once per fit, not at every ``qf`` call.
 
 - **The joint frailty model's** ``mcf`` **far past the terminal event (a
   wrong number; an intentional numerical change there only).**

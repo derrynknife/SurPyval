@@ -160,6 +160,11 @@ def model_of(name):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             _CACHE[name] = BUILDERS[name]()
+        # These tests hold the full sum over the posterior's points to a
+        # rounding; a posterior of many points reads its predictive from a
+        # table within 1e-6 of that sum, which test_predictive_table.py
+        # holds to its own promise.
+        _CACHE[name].predictive_table = False
     return _CACHE[name]
 
 
