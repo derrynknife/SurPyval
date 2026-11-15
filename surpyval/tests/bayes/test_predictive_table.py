@@ -210,6 +210,67 @@ def test_qf_offset_lfp_at_004():
     )
 
 
+# -- qf at 0 with points that each have their own offset -----------------
+
+
+def _spread(n, zi=False, lfp=False):
+    """Points whose offsets (and shares) differ, drawn from a seed fixed
+    before any result was seen."""
+    rng = np.random.default_rng(SEED)
+    cols = [
+        rng.uniform(150.0, 250.0, n),
+        rng.uniform(1.5, 2.2, n),
+        rng.uniform(10.0, 30.0, n),
+    ]
+    names = ["alpha", "beta", "gamma"]
+    if lfp:
+        cols.append(rng.uniform(0.7, 0.9, n))
+        names.append("lfp_p")
+    if zi:
+        cols.append(rng.uniform(0.02, 0.08, n))
+        names.append("f0")
+    pts = np.column_stack(cols)
+    return BayesianParametric.from_draws(sp.Weibull, pts, names), pts
+
+
+P_LOW = np.array([0.0, 1e-12, 1e-9, 1e-6, 1e-3, 0.01, 0.1, 0.5])
+
+
+@pytest.mark.parametrize("n", [200, pt.TABULATE_ABOVE + 500])
+@pytest.mark.parametrize("lfp", [False, True], ids=["", "lfp"])
+def test_qf_at_0_is_the_smallest_offset(n, lfp):
+    """qf(0) is where the predictive starts, the smallest point's offset,
+    not the posterior median offset (which is above qf of small p)."""
+    fit, pts = _spread(n, lfp=lfp)
+    q = fit.qf(P_LOW)
+    assert q[0] == pts[:, 2].min()
+    assert q[0] < fit.gamma
+    assert np.all(np.diff(q) >= 0)
+    assert fit.ff(q[1:]) == pytest.approx(P_LOW[1:], rel=1e-6)
+    assert float(fit.qf(0.0)) == q[0]
+
+
+@pytest.mark.parametrize("n", [200, pt.TABULATE_ABOVE + 500])
+@pytest.mark.parametrize("offset", [False, True], ids=["", "offset"])
+def test_zero_inflated_qf_at_0_is_0(n, offset):
+    """With zero inflation the predictive starts at 0 (the units dead on
+    arrival), so qf is 0 up to the mass there and inverts ff above it."""
+    fit, pts = _spread(n, zi=True)
+    if not offset:
+        keep = [0, 1, 3]
+        fit = BayesianParametric.from_draws(
+            sp.Weibull, pts[:, keep], ["alpha", "beta", "f0"]
+        )
+    q = fit.qf(P_LOW)
+    assert q[0] == 0.0
+    assert np.all(np.diff(q) >= 0)
+    mass = float(fit.ff(0.0))
+    assert 0.02 < mass < 0.08
+    np.testing.assert_array_equal(q[P_LOW <= mass], 0.0)
+    above = P_LOW > mass
+    assert fit.ff(q[above]) == pytest.approx(P_LOW[above], rel=1e-6)
+
+
 # -- speed -----------------------------------------------------------------
 
 

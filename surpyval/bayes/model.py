@@ -1038,11 +1038,20 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         if u >= top - 1e-15 and top < 1:
             return float("inf")
         lo_edge = float(self.dist.support[0])
-        if u == 0:
-            return lo_edge + (self.gamma if self.offset else 0.0)
         if u >= 1:
             return float(self.dist.support[1])
         th = self._theta()
+        # Below the predictive support's lower edge nothing has failed:
+        # the edge is the smallest of the points' support edges plus their
+        # offsets, or 0 for the zero-inflation mass. qf(0) is that edge
+        # (not the posterior median offset, which is above qf of small p).
+        edge = lo_edge
+        if self.offset:
+            edge = lo_edge + float(np.min(th["gamma"]))
+        if self.zi:
+            edge = min(edge, 0.0)
+        if u == 0:
+            return edge
         with np.errstate(all="ignore"):
             comp = np.asarray(
                 quantity_at(self.dist, ("q", u), th), dtype=float
@@ -1070,14 +1079,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 lv = max(float(np.log(v)), -1000.0)
             return lv - target if lower else target - lv
 
-        # Below the predictive support's lower edge nothing has failed, so
-        # the bracket stops there: the edge is every point's support edge
-        # plus its offset, or 0 for the zero-inflation mass.
-        edge = lo_edge
-        if self.offset:
-            edge = lo_edge + float(np.min(th["gamma"]))
-        if self.zi:
-            edge = min(edge, 0.0)
+        # (the bracket stops at the predictive support's lower edge)
         a = max(a, edge)
         # (a time typical of the points' own quantiles: the tolerance
         # below is in its units, so it does not depend on the time unit)
