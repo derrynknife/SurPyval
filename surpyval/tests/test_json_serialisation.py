@@ -376,6 +376,7 @@ def _build(name):
         CompetingRisks,
         CompetingRisksProportionalHazards,
         FineGray,
+        IntervalCompetingRisks,
         ParametricCompetingRisks,
         ParametricCompetingRisksRegression,
     )
@@ -446,6 +447,10 @@ def _build(name):
         "competing_risks": lambda: CompetingRisks.fit(
             np.abs(np.random.default_rng(3).weibull(1.3, 40) * 15) + 0.2,
             np.random.default_rng(4).choice([1, 2], 40),
+        ),
+        "interval_competing_risks": lambda: IntervalCompetingRisks.fit(
+            [[0, 2], [0, 2], [2, 4], [1, 5], [3, 3], [4, np.inf]],
+            ["a", "b", "a", "b", "a", None],
         ),
         "multistate": lambda: MultiState.fit(**ms_data()),
         "multistate_cox": lambda: MultiStateProportionalHazards.fit(
@@ -606,6 +611,7 @@ CASES = [
     "parametric_competing_risks",
     "parametric_competing_risks_regression",
     "competing_risks",
+    "interval_competing_risks",
     "multistate",
     "multistate_cox",
     "multistate_cox_shared",

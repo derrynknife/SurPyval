@@ -93,6 +93,7 @@ surpyval.GumbelPO
 surpyval.HPP
 surpyval.Hypoexponential
 surpyval.InstantlyOccurs
+surpyval.IntervalCompetingRisks
 surpyval.IntervalCoxPH
 surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
@@ -302,6 +303,7 @@ surpyval.fsli_to_xcnt
 surpyval.gray_test
 surpyval.handle_xicn
 surpyval.integrated_brier_score
+surpyval.interval_gray_test
 surpyval.interval_logrank
 surpyval.landmark
 surpyval.landmark_kaplan_meier
@@ -467,6 +469,7 @@ surpyval.trend_logrank
 surpyval.univariate.competing_risks.CompetingRisks
 surpyval.univariate.competing_risks.CompetingRisksProportionalHazards
 surpyval.univariate.competing_risks.FineGray
+surpyval.univariate.competing_risks.IntervalCompetingRisks
 surpyval.univariate.competing_risks.ParametricCompetingRisks
 surpyval.univariate.competing_risks.ParametricCompetingRisksRegression
 surpyval.univariate.competing_risks.rmtl_diff

@@ -87,6 +87,14 @@ competing risks:
    :members:
    :exclude-members: count, index
 
+Gray's test for failures found at inspections (interval-censored), by
+multiple imputation:
+
+.. autofunction:: surpyval.univariate.competing_risks.nonparametric.interval_gray_test.interval_gray_test
+
+.. autoclass:: surpyval.univariate.competing_risks.nonparametric.interval_gray_test.IntervalGrayTestResult
+   :members:
+
 Restricted mean survival time
 -----------------------------
 

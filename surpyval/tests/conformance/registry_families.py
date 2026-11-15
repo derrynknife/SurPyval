@@ -313,6 +313,11 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.univariate.competing_risks.CompetingRisks": (
         "a non-parametric (Aalen-Johansen) estimate"
     ),
+    "surpyval.univariate.competing_risks.IntervalCompetingRisks": (
+        "a non-parametric maximum likelihood over step functions (the "
+        "self-consistency EM), with no AIC; its convergence is a "
+        "Karush-Kuhn-Tucker check"
+    ),
     "surpyval.multistate.MultiState": (
         "a non-parametric (Aalen-Johansen) estimate"
     ),

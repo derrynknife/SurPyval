@@ -301,9 +301,11 @@ _LAZY = {
             "CompetingRisks",
             "CompetingRisksProportionalHazards",
             "FineGray",
+            "IntervalCompetingRisks",
             "ParametricCompetingRisks",
             "ParametricCompetingRisksRegression",
             "gray_test",
+            "interval_gray_test",
             "rmtl_diff",
         ),
         "surpyval.univariate.competing_risks",
@@ -564,9 +566,11 @@ if TYPE_CHECKING:
         CompetingRisks,
         CompetingRisksProportionalHazards,
         FineGray,
+        IntervalCompetingRisks,
         ParametricCompetingRisks,
         ParametricCompetingRisksRegression,
         gray_test,
+        interval_gray_test,
         rmtl_diff,
     )
     from surpyval.univariate.equivalence import (

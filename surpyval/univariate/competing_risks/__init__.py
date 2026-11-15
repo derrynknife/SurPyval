@@ -1,4 +1,11 @@
-from .nonparametric import CompetingRisks, GrayTestResult, gray_test
+from .nonparametric import (
+    CompetingRisks,
+    GrayTestResult,
+    IntervalCompetingRisks,
+    IntervalGrayTestResult,
+    gray_test,
+    interval_gray_test,
+)
 from .parametric import ParametricCompetingRisks
 from .regression import (
     CompetingRisksProportionalHazards,
@@ -9,6 +16,7 @@ from .rmtl import rmtl_diff
 
 __all__ = [
     "CompetingRisks",
+    "IntervalCompetingRisks",
     "ParametricCompetingRisks",
     "CompetingRisksProportionalHazards",
     "FineGray",

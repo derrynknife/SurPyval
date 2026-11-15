@@ -78,6 +78,26 @@ v0.28 (14 November 2026)
   with bounds that include the uncertainty in ``k``. Tools that take a
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
+- **Competing risks with failures found at inspections, without a
+  model.** ``IntervalCompetingRisks`` estimates each cause's cumulative
+  incidence from exact, right-, left- and interval-censored rows (the
+  non-parametric maximum-likelihood estimate of Hudgens, Satten and
+  Longini 2001): ``cif``, the all-cause ``sf`` / ``ff`` / ``Hf``,
+  ``innermost_intervals``, case-bootstrap bounds (``cb``), ``plot``,
+  ``to_dict``. Failures whose cause was not recorded are taken with
+  ``masked="include"``. With exact times it is the Aalen-Johansen
+  estimate of ``CompetingRisks`` (to 1e-8), with one cause Turnbull's.
+  ``CompetingRisks``'s refusal of such rows now names it. See
+  :doc:`Competing Risks SurPyval Modelling`.
+- **Gray's test for failures found at inspections.**
+  ``interval_gray_test`` compares a cause's cumulative incidence across
+  groups when failures are known only to lie in windows: Gray's test on
+  data completed by multiple imputation from the pooled non-parametric
+  estimate (refitted to a bootstrap sample for each imputation), combined
+  by Rubin's rules with Li, Raghunathan and Rubin's F reference. With no
+  windows it is ``gray_test`` exactly. Its size with the groups inspected
+  on different schedules was 0.033 at the 5% level (300 replicates).
+  ``gray_test``'s refusal of such rows now names it.
 
 **Removed.**
 

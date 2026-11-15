@@ -82,11 +82,11 @@ def gray_test(
         The cause (a label in ``e``) whose cumulative incidence is compared
         across groups. The result keeps it as ``cause``.
     c : array_like, optional
-        Censoring flag (``0`` event, ``1`` right-censored; left and interval
-        censoring are not supported). If omitted it is derived from ``e``
-        (a missing cause is censored). If given, every row with ``c == 1``
-        must have a missing cause and every other row a cause, otherwise a
-        ``ValueError`` is raised.
+        Censoring flag (``0`` event, ``1`` right-censored; for left and
+        interval censoring use :func:`interval_gray_test`). If omitted it
+        is derived from ``e`` (a missing cause is censored). If given,
+        every row with ``c == 1`` must have a missing cause and every other
+        row a cause, otherwise a ``ValueError`` is raised.
     n : array_like, optional
         Count weight per observation (default 1), each positive.
     rho : float, optional
@@ -360,8 +360,9 @@ def _validate(
         raise ValueError("c must have one censoring flag per time in x.")
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
-            "c must be 0 (a failure) or 1 (right-censored); left and "
-            "interval censoring are not supported by Gray's test."
+            "c must be 0 (a failure) or 1 (right-censored); for left- "
+            "and interval-censored rows use interval_gray_test, which "
+            "takes them."
         )
     e_arr = check_c_and_e(c_arr, e_arr)
     censored = c_arr.astype(int) == 1
