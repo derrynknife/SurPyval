@@ -171,6 +171,7 @@ surpyval.PenaltyPath
 surpyval.PermutationLogRankResult
 surpyval.PersonYears
 surpyval.Poisson
+surpyval.PooledRate
 surpyval.PredictionScores
 surpyval.PrenticeWilliamsPeterson
 surpyval.ProportionalHazardsFitter
@@ -364,6 +365,7 @@ surpyval.plot_coefficients
 surpyval.plot_likelihood_contour
 surpyval.plot_nonparametric
 surpyval.poisson_rate_bounds
+surpyval.pooled_rate
 surpyval.prior
 surpyval.pseudo_cif
 surpyval.pseudo_regression

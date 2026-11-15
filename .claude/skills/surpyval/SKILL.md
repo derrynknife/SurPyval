@@ -409,6 +409,11 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
 py = sp.person_years(x, c, factors={"g": g},          # exposure table:
                      timescales={"age": (0, [0, 5, 10, np.inf])}, per=1000)
 py.table; py.rate_ratio({"g": "B"}, {"g": "A"})  # rates, exact bounds
+# Pooling counts from several sources that differ (two-stage, hierarchical):
+pr = sp.pooled_rate([12, 4, 0, 9, 21], [8000, 5200, 1900, 4100, 9800],
+                    alpha_ci=0.1)  # kind="probability" for events / trials
+pr.average; pr.predictive          # the mean across sources; a new source
+pr.sources; pr.heterogeneity; pr.update(2, 1000)  # shrunk; own data
 ```
 
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
