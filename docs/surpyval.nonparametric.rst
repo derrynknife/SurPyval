@@ -56,8 +56,9 @@ Other Non-Parametric Functions
 ------------------------------
 
 Zero-failure (success-run) testing, the plotting positions used by
-probability plots and by the ``MPP`` parametric fitting method, and
-exposure (person-years) tables of event rates by factor and time band.
+probability plots and by the ``MPP`` parametric fitting method,
+exposure (person-years) tables of event rates by factor and time band, and
+the pooling of event rates (or probabilities per trial) across sources.
 
 .. toctree::
    :maxdepth: 1
@@ -65,3 +66,4 @@ exposure (person-years) tables of event rates by factor and time band.
    univariate/success_run
    univariate/plotting_positions
    univariate/person_years
+   univariate/pooled_rate
