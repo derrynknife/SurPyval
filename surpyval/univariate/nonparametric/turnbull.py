@@ -112,7 +112,8 @@ def innermost_pieces(
     """The pieces inside Turnbull's innermost intervals of the supports
     ``[lo, hi]`` (piece indices, as :func:`turnbull_pieces` returns
     them), for estimates that find them for a subset of the rows
-    (``IntervalCompetingRisks``, one cause at a time)."""
+    (``CompetingRisks`` with interval-censored rows, one cause at a
+    time)."""
     return _innermost(lo, hi, M)
 
 

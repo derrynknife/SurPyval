@@ -311,12 +311,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.ml.SurvivalTree": "a tree of greedy splits",
     "surpyval.ml.RandomSurvivalForest": "an ensemble of trees",
     "surpyval.univariate.competing_risks.CompetingRisks": (
-        "a non-parametric (Aalen-Johansen) estimate"
-    ),
-    "surpyval.univariate.competing_risks.IntervalCompetingRisks": (
-        "a non-parametric maximum likelihood over step functions (the "
-        "self-consistency EM), with no AIC; its convergence is a "
-        "Karush-Kuhn-Tucker check"
+        "a non-parametric (Aalen-Johansen) estimate, or with interval-"
+        "censored rows a non-parametric maximum likelihood over step "
+        "functions (the self-consistency EM), with no AIC; its convergence "
+        "is a Karush-Kuhn-Tucker check"
     ),
     "surpyval.multistate.MultiState": (
         "a non-parametric (Aalen-Johansen) estimate"
