@@ -194,6 +194,24 @@ def _interval_cox():
     return surpyval.IntervalCoxPH.fit(x, z, c=c)
 
 
+def _cox_npmle():
+    """CoxPH's full-likelihood route: inspected lives with two causes,
+    some units entering late, some right truncated."""
+    rng = np.random.default_rng(14)
+    z = np.tile([0.0, 1.0], 30)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(1.5, z.size)
+    lo = 2.0 * np.floor(life / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(z.size, 2)
+    e = np.where(np.arange(z.size) % 3 == 0, "wear", "crack").astype(object)
+    x[::5] = life[::5, None]
+    c[::5] = 0
+    x[7] = [lo[7], lo[7]]
+    c[7] = 1
+    e[7] = None
+    return surpyval.CoxPH.fit(x, z, c=c, e=e)
+
+
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -423,6 +441,7 @@ def _build(name):
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
         "interval_cox": _interval_cox,
+        "cox_npmle": _cox_npmle,
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -603,6 +622,7 @@ CASES = [
     "buckley_james",
     "proportional_odds",
     "interval_cox",
+    "cox_npmle",
     "mixture",
     "royston_parmar",
     "fine_gray",

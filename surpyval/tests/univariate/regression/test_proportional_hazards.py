@@ -936,32 +936,47 @@ def _cox_data() -> tuple:
     return x, Z
 
 
-def test_cox_rejects_left_censoring():
-    # c = -1 used to be read as right-censored: the fit matched c[2] = 1.
+def _full_likelihood(fit):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return fit()
+
+
+def test_cox_takes_left_censoring_by_the_full_likelihood():
+    # c = -1 used to be read as right-censored (the fit matched c[2] = 1),
+    # then was refused; it now takes the full-likelihood route (NPMLE
+    # baseline), which uses the row as left censored.
     x, Z = _cox_data()
-    with pytest.raises(ValueError, match="left-censored"):
-        CoxPH.fit(x, Z, c=[0, 0, -1, 0, 0, 1])
+    model = _full_likelihood(lambda: CoxPH.fit(x, Z, c=[0, 0, -1, 0, 0, 1]))
+    assert model.estimator == "NPMLE"
+    assert not np.allclose(
+        model.params, CoxPH.fit(x, Z, c=[0, 0, 1, 0, 0, 1]).params
+    )
 
 
-def test_cox_rejects_interval_censoring():
-    # Interval rows used to fail with an IndexError deep in the generator.
+def test_cox_takes_interval_censoring_by_the_full_likelihood():
+    # Interval rows used to fail with an IndexError deep in the generator,
+    # then were refused.
     x, Z = _cox_data()
     x2 = [[1, 2], 2, 3, 4, 5, 6]
-    with pytest.raises(ValueError, match="interval-censored"):
-        CoxPH.fit(x2, Z, c=[2, 0, 0, 0, 0, 1])
+    model = _full_likelihood(lambda: CoxPH.fit(x2, Z, c=[2, 0, 0, 0, 0, 1]))
+    assert model.estimator == "NPMLE"
 
 
 @pytest.mark.parametrize("method", ["breslow", "efron", "exact", "kp"])
-def test_cox_rejects_left_censoring_every_entry_point(method):
+def test_cox_left_censoring_every_entry_point(method):
     x, Z = _cox_data()
     c = [0, 0, -1, 0, 0, 1]
-    with pytest.raises(ValueError, match="parametric regression"):
+    # Strata have no full-likelihood form: refused, saying what to do.
+    with pytest.raises(ValueError, match="put the stratum in Z"):
         CoxPH.fit(x, Z, c=c, tie_method=method, strata=[0, 0, 0, 1, 1, 1])
     df = pd.DataFrame({"x": x, "z": Z[:, 0], "c": c})
-    with pytest.raises(ValueError, match="parametric regression"):
-        CoxPH.fit_from_df(
+    model = _full_likelihood(
+        lambda: CoxPH.fit_from_df(
             df, x_col="x", Z_cols="z", c_col="c", tie_method=method
         )
+    )
+    assert model.estimator == "NPMLE"
 
 
 def test_cox_accepts_two_column_exact_times():

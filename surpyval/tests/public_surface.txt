@@ -32,6 +32,7 @@ surpyval.CoxLewis
 surpyval.CoxMixedEffects
 surpyval.CoxMixedEffectsFitter
 surpyval.CoxMixedEffectsModel
+surpyval.CoxNPMLEModel
 surpyval.CoxPH
 surpyval.CrowAMSAA
 surpyval.CustomDistribution
@@ -577,6 +578,7 @@ surpyval.univariate.regression.CoxFrailtyModel
 surpyval.univariate.regression.CoxMixedEffects
 surpyval.univariate.regression.CoxMixedEffectsFitter
 surpyval.univariate.regression.CoxMixedEffectsModel
+surpyval.univariate.regression.CoxNPMLEModel
 surpyval.univariate.regression.CoxPH
 surpyval.univariate.regression.DualExponential
 surpyval.univariate.regression.DualPower

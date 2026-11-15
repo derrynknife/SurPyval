@@ -547,7 +547,9 @@ def test_issue_933_fit_refusals_name_the_call_to_make():
     with pytest.raises(
         ValueError, match=r"without\('event_types'\), or data.for_event_type"
     ):
-        sp.CoxPH.fit(data)
+        sp.WeibullPH.fit(data)
+    # CoxPH takes the event types: the cause-specific model.
+    assert sp.CoxPH.fit(data).n_event_types == len(set(data.e) - {None})
     with pytest.raises(ValueError, match="without\\('event_types'\\)"):
         sp.Weibull.fit_from_surpyval_data(data.without("covariates"))
 

@@ -342,6 +342,10 @@ with its own ``schema``.
      - ``"model": "IntervalCoxPHModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``H0``, ``H0_infinite``, ``intervals``, ``p0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
      - --
+   * - ``CoxNPMLEModel``
+     - ``"model": "CoxNPMLEModel"``
+     - ``estimator``, ``causes``, ``single``, ``betas``, ``se``, ``covariance``, ``p_values``, ``d``, ``left``, ``right``, ``allowed``, ``report_lower``, ``tau``, ``center``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``tol``, ``maximum``
+     - --
    * - ``MixtureModel``
      - ``"model": "MixtureModel"``
      - ``dist``, ``m``, ``params``, ``w``, ``maximum``, ``_neg_ll``, ``ic_n``, ``theta_covariance``

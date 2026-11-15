@@ -216,6 +216,7 @@ _LAZY = {
             "ParametricRegressionModel",
             "IntervalCoxPH",
             "IntervalCoxPHModel",
+            "CoxNPMLEModel",
             "ProportionalHazardsFitter",
             "ProportionalOdds",
             "ProportionalOddsFitter",

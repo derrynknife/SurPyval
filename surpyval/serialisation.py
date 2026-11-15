@@ -64,6 +64,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "CoxNPMLEModel": (
+        "surpyval.univariate.regression.proportional_hazards.cox_npmle"
+    ),
     "IntervalCoxPHModel": (
         "surpyval.univariate.regression.proportional_hazards.interval_cox"
     ),

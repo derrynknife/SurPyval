@@ -1291,7 +1291,46 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, cox_frailty, cox_me, ah, bj, po, aalen, interval_cox]
+
+    def cox_ic_from_df(d):
+        x = np.asarray(d["x"], dtype=float)
+        df = pd.DataFrame(d["Z"], columns=["z0", "z1"])
+        df["xl"], df["xr"], df["c"], df["n"] = x[:, 0], x[:, 1], d["c"], d["n"]
+        return sp.CoxPH.fit_from_df(
+            df,
+            xl_col="xl",
+            xr_col="xr",
+            Z_cols=["z0", "z1"],
+            c_col="c",
+            n_col="n",
+        )
+
+    # CoxPH's full-likelihood route (interval and left-censored rows).
+    cox_interval = regression(
+        "CoxPH[interval]",
+        sp.CoxPH,
+        data=ic_reg_data,
+        fitters=(),
+        model_class="surpyval.CoxNPMLEModel",
+        paths={"fit_from_df": cox_ic_from_df},
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    return [
+        cox,
+        strat,
+        cox_frailty,
+        cox_me,
+        ah,
+        bj,
+        po,
+        aalen,
+        interval_cox,
+        cox_interval,
+    ]
 
 
 _NO_COEFFICIENTS = (

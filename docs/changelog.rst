@@ -1,5 +1,45 @@
 Changelog
 ==
+v0.29 (unreleased)
+------------------
+
+**Added.**
+
+- **``CoxPH`` takes every kind of row, and competing risks.**
+  ``CoxPH.fit`` (and ``fit_from_df``, ``fit(data)``) now accepts left-
+  and interval-censored rows (``c = -1``, ``c = 2``, or windows
+  ``[xl, xr]``; ``xl_col`` / ``xr_col``), right truncation (``tr``,
+  ``tr_col``) beside left truncation, and the cause of each failure
+  (``e``, ``e_col``) for the cause-specific model. Exact and
+  right-censored data, with or without delayed entry, keep the partial
+  likelihood with the same numbers as before (with causes, the
+  partial-likelihood ``CompetingRisksProportionalHazards``). Any left- or
+  interval-censored row, or any right truncation, is fitted by the full
+  likelihood with each cause's baseline a non-parametric
+  maximum-likelihood estimate on the Turnbull intervals, every baseline
+  and every coefficient in one joint fit, returning a ``CoxNPMLEModel``:
+  per-cause coefficients and hazard ratios with profile-likelihood
+  standard errors, likelihood-ratio and bootstrap intervals
+  (``param_cb``), each cause's cumulative incidence ``cif(x, Z, event)``,
+  the all-cause ``sf`` / ``ff`` / ``Hf``, approximate bootstrap bounds on
+  the curves (``cb``), ``to_dict`` / ``from_dict``. Failures with no
+  recorded cause are taken with ``masked="include"``. Every Cox model now
+  says how it was fitted in ``estimator`` (``"partial likelihood"`` or
+  ``"NPMLE"``), as ``CompetingRisks`` does. With one cause the new route
+  is ``IntervalCoxPH`` (coefficients to 1e-6), with no covariates the
+  non-parametric estimate of ``CompetingRisks`` (cumulative incidences to
+  1e-6) and, with one cause, Turnbull's (left and right truncation
+  included). Where every row is right truncated, the data say nothing
+  after the largest truncation time: the fit warns, and its curves are
+  ``nan`` there. 90% Wald coverage of the coefficients with interval
+  censoring and delayed entry: see :doc:`Competing Risks Analysis`.
+
+**Changed.**
+
+- ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
+  fits them by the full likelihood, above), and its ``fit_from_df``'s
+  ``x_col`` is optional (give ``xl_col`` and ``xr_col`` instead).
+
 v0.28 (14 November 2026)
 ------------------------
 

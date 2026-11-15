@@ -64,6 +64,7 @@ from .penalty_path import PenaltyPath, penalty_path
 from .plot_coefficients import CoefficientPlot, plot_coefficients
 from .proportional_hazards import (
     PH,
+    CoxNPMLEModel,
     CoxPH,
     ExponentialPH,
     GammaPH,
@@ -110,6 +111,7 @@ __all__ = [
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
     "IntervalCoxPHModel",
+    "CoxNPMLEModel",
     "FrailtyModel",
     # A regression's life at fixed covariates, model.at(Z)
     "LifeAtCovariates",
