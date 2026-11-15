@@ -361,6 +361,10 @@ _LAZY = {
         "surpyval.univariate.adjusted",
     ),
     **dict.fromkeys(
+        ("PooledRate", "pooled_rate"),
+        "surpyval.univariate.pooled_rate",
+    ),
+    **dict.fromkeys(
         (
             "PseudoRegressionResult",
             "pseudo_cif",
@@ -594,6 +598,7 @@ if TYPE_CHECKING:
         landmark,
         landmark_kaplan_meier,
     )
+    from surpyval.univariate.pooled_rate import PooledRate, pooled_rate
     from surpyval.univariate.pseudo import (
         PseudoRegressionResult,
         pseudo_cif,

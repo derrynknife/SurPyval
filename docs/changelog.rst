@@ -11,6 +11,12 @@ v0.28 (14 November 2026)
   bounds that carry the uncertainty in the exchange between the clocks.
   Anything that takes a life model, such as a block of a reliability block
   diagram, can take it.
+- **Pooling rates across sources.** ``surpyval.pooled_rate`` combines
+  event counts and exposures (or events out of trials) from several
+  sources that really differ, giving the average across them, an honest
+  range for a new source like them, and each source's estimate pulled
+  towards the others, instead of one over-precise number from adding
+  everything into one pot.
 - **Unit labels you can compare.** ``surpyval.utils.normalise_unit`` and
   ``surpyval.utils.same_unit`` are public, so tools that combine models
   can check that they are in one unit (``"h"``, ``"hrs"`` and ``"hours"``
@@ -19,6 +25,11 @@ v0.28 (14 November 2026)
   repeat events far past the terminal ages, and likelihood-ratio bounds
   where the profile likelihood levels off: those now say the bound is
   open (infinite) instead of giving a meaningless finite end.
+- **Fast Bayesian predictive curves.** A Bayesian fit on a grid of tens
+  of thousands of points gives its predictive ``sf``, ``hf`` and the rest
+  in microseconds after a table built in under a second, within 1e-6 of
+  the exact sum,
+  so calculators that ask for many values take a second, not minutes.
 - **Two old names removed**: ``check_ph`` (use ``diagnose()``) and
   ``AalenAdditive``'s ``coef_penalty`` (use ``penalizer``).
 
@@ -98,6 +109,61 @@ v0.28 (14 November 2026)
   windows it is ``gray_test`` exactly. Its size with the groups inspected
   on different schedules was 0.033 at the 5% level (300 replicates).
   ``gray_test``'s refusal of such rows now names it.
+- ``surpyval.pooled_rate(events, exposure, kind=...)`` pools event counts
+  from several sources (sites, hospitals, studies, fleets) that may each
+  have their own true rate: the two-stage (hierarchical) gamma-Poisson
+  model for events in a time at risk (``kind="rate"``) and beta-binomial
+  model for events out of a number of trials (``kind="probability"``). Its
+  ``PooledRate`` result gives the population (between-source) distribution
+  as a ``Gamma`` or ``Beta`` with its parameters, the average across
+  sources with its interval, the range for a new source like these (the
+  predictive interval), each source's own (Jeffreys) and shrunk estimate
+  with intervals, Pearson's heterogeneity test with :math:`I^2`, the
+  one-pot estimate for comparison, ``update(events, exposure)`` for a new
+  source's own data, the assumptions in words, and ``to_dict`` /
+  ``from_dict``. ``method="Bayes"`` (default: a weak prior, the posterior on
+  a grid) or ``"MLE"`` (marginal maximum likelihood with profile-likelihood
+  and parametric-bootstrap intervals). Below ``min_sources`` (default 4) it
+  gives no population, with a warning, and shows the sources side by side.
+  See :doc:`Pooling Rates Across Sources`.
+
+- **A Bayesian fit's predictive curve is fast** where its posterior has
+  many points. Each value of the posterior predictive (``sf``, ``ff``,
+  ``df``, ``hf``, ``Hf``, and through them ``qf``, ``cs`` and ``mrl``) was
+  a sum over every point of the posterior, about 37,500 for a grid of two
+  free parameters, so a calculation that asks for many values took
+  minutes (in one application an optimal replacement age took about 40 s
+  and a failure-finding search over 6 minutes on such a fit). A posterior
+  of more than 2,000 points now tabulates its predictive cumulative
+  hazard once, on first use: summed exactly at a few hundred times placed
+  adaptively and read between them by a Hermite cubic in ``log H``
+  against ``log t`` with the exact slopes. Every stretch is checked
+  against the full sum at two points; the far tails, and any stretch that
+  cannot be brought within the tolerance (near the points' own offsets,
+  for example), use the full sum, so nothing is extrapolated. ``sf``,
+  ``ff`` and ``Hf`` are within 1e-6 of the full sum, relative, and ``hf``
+  and ``df`` (the curve's slope) within 1e-5 (at most 4e-7 and 8e-6 on
+  the posteriors tested: Weibull grids, an exponential of rate 1e-9,
+  offsets, a limited failure population, zero inflation), and the curve
+  is still a proper distribution (``df`` the slope of ``ff``, ``qf`` the
+  inverse of ``ff``). On a 37,538-point grid the table takes 0.7 s; then
+  ``sf`` and ``hf`` at 1,000 times take under a millisecond (2.0 s
+  before), 2,000 single-time calls of each 0.13 s (3.7 s), and an
+  optimal-replacement search 0.07 s (1.2 s). ``model.predictive_table =
+  False`` gives the full sum everywhere. See "Many points: a table" in
+  :doc:`Bayesian Fitting with SurPyval`.
+
+**Changed.**
+
+- **A Bayesian fit of more than 2,000 posterior points** gives predictive
+  values from the table above, so they move from the full sum's by less
+  than 1e-6 relative in ``sf``, ``ff`` and ``Hf`` and 1e-5 in ``hf`` and
+  ``df``. The 12 November rule for the tails (a small ``ff`` keeps its
+  digits) holds there to that relative accuracy rather than to a
+  rounding; beyond the tabulated range (failure or survival
+  probabilities below about 1e-10) it is the full sum, as before. Fits of
+  fewer points, the closed forms, ``mean``, ``random`` and the credible
+  intervals are unchanged.
 
 **Removed.**
 
@@ -115,6 +181,27 @@ v0.28 (14 November 2026)
   old ``coef_penalty`` key still loads.
 
 **Fixed.**
+
+- **A Bayesian fit's** ``qf`` **with an offset and a limited failure
+  population, or zero inflation, no longer fails to bracket.** For
+  example ``p`` of 0.04 with an offset of 20 and a share failing of 0.8
+  raised ``ValueError: f(a) and f(b) must have different signs`` (and so
+  did any array of probabilities containing such a value): the root was
+  sought on the log of time between ends whose values were computed on
+  time itself, and ``exp(log(t))`` is not ``t`` to the last bit, so an
+  end that sat on the root could change sign. The ends are taken again on
+  the log scale, and an end with the other end's sign there is the root
+  to a rounding. With a limited failure population the share that ever
+  fails is now worked out once per fit, not at every ``qf`` call.
+
+- **A Bayesian fit's** ``qf(0)`` **with offsets or zero inflation (a
+  wrong number).** Where the posterior points each have their own offset,
+  or the fit is zero-inflated, ``BayesianParametric.qf(0)`` returned the
+  posterior median offset (19.76 on one fit), above ``qf(0.01)``: a B0
+  life later than the B1 life. It is now where the predictive life
+  starts: 0 with zero inflation, otherwise the smallest offset across the
+  posterior points. ``qf`` never decreases in ``p``, and ``ff(qf(p))`` is
+  ``p`` above any mass at 0. ``qf`` of any ``p`` above 0 is unchanged.
 
 - **The joint frailty model's** ``mcf`` **far past the terminal event (a
   wrong number; an intentional numerical change there only).**

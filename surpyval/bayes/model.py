@@ -121,6 +121,13 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         is proper; ``nan`` otherwise.
     diagnostics : dict
         How the posterior was computed and how accurately.
+    predictive_table : bool
+        Whether a posterior of more than 2,000 points reads its predictive
+        ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` from a table built once
+        (within 1e-6 of the full sum over the points in ``sf``, ``ff`` and
+        ``Hf``, 1e-5 in ``hf`` and ``df``; see "Many points: a table" in
+        the Bayesian fitting guide). True by default; False gives the
+        full sum everywhere.
 
     Examples
     --------
@@ -174,6 +181,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         self._log_post: Any = None
         self._log_z: float | None = None
         self.unit: str | None = None
+        self.predictive_table = True
         self._set_medians()
         self._attach_density()
 
@@ -788,6 +796,67 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             out[gone] = -self._log_sf(x[gone])
         return out + 0.0
 
+    def _summed(self, fname: str, flat: npt.NDArray) -> npt.NDArray:
+        """The predictive ``fname`` at the 1-D ``flat`` by the full sum
+        over the posterior's points."""
+        with np.errstate(all="ignore"):
+            if fname in ("sf", "ff"):
+                out = self._probability(fname, flat)
+            elif fname == "Hf":
+                out = self._cumulative_hazard(flat)
+            elif fname == "df":
+                out = self._expect("df", flat)
+            else:
+                out = self._expect("df", flat) / self._probability("sf", flat)
+        return np.asarray(out, dtype=float)
+
+    def _exact_at(
+        self, t: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """The predictive ``(ff, sf, df, Hf)`` at the 1-D ``t`` by the full
+        sum (the nodes of the predictive table)."""
+        # (a matrix product: the nodes' values need not be reproducible to
+        # the last bit whatever their place, as the predictive's own are)
+        w = self.posterior.weights
+
+        def mean(fname: str) -> npt.NDArray:
+            return self._chunks(fname, t, lambda v: w @ np.nan_to_num(v))
+
+        F = np.clip(mean("ff"), 0.0, 1.0)
+        S = np.clip(mean("sf"), 0.0, 1.0)
+        small = F <= S
+        F, S = np.where(small, F, 1.0 - S), np.where(small, 1.0 - F, S)
+        f = mean("df")
+        with np.errstate(divide="ignore"):
+            H = np.where(F < 0.5, -np.log1p(-F), -np.log(S))
+        gone = ~(F < 0.5) & (S < 1e-290)
+        if np.any(gone):
+            H[gone] = -self._log_sf(t[gone])
+        return F, S, f, H + 0.0
+
+    def _table(self) -> Any:
+        """The predictive tabulated to ``RTOL`` (built once, on first use)
+        where the posterior has more than ``TABULATE_ABOVE`` points and
+        ``predictive_table`` is on; else None (the full sum is used)."""
+        from surpyval.bayes import _predictive_table as pt
+
+        if not getattr(self, "predictive_table", True):
+            return None
+        if self.dist.discrete or len(self.posterior.weights) <= (
+            pt.TABULATE_ABOVE
+        ):
+            return None
+        if self._closed_predictive() is not None or self._lomax() is not None:
+            return None
+        held = self.__dict__.get("_ptable")
+        # (keyed to the posterior: a copy given other points rebuilds it)
+        if held is None or held[0] is not self.posterior:
+            with np.errstate(all="ignore"):
+                table = pt.PredictiveTable(self, self._exact_at)
+            held = (self.posterior, table)
+            self.__dict__["_ptable"] = held
+        return held[1] if held[1].ok else None
+
     def _predict(self, fname: str, x: Any) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         closed = self._closed_predictive()
@@ -800,15 +869,30 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             out = self._lomax_predict(fname, xs, *lomax)
             return np.where(nan, np.nan, out)
         flat = xs.ravel()
-        with np.errstate(all="ignore"):
-            if fname in ("sf", "ff"):
-                out = self._probability(fname, flat)
-            elif fname == "Hf":
-                out = self._cumulative_hazard(flat)
-            elif fname == "df":
-                out = self._expect("df", flat)
-            else:
-                out = self._expect("df", flat) / self._probability("sf", flat)
+        table = self._table()
+        if table is None:
+            out = self._summed(fname, flat)
+        else:
+            out = np.empty(flat.shape)
+            where, H, h = table.read(flat)
+            known = where > 0
+            with np.errstate(all="ignore"):
+                F = -np.expm1(-H)
+                S = np.exp(-H)
+                # (paired as the full sum's are: the smaller kept, the
+                # larger one minus it)
+                small = F <= S
+                F, S = np.where(small, F, 1.0 - S), np.where(small, 1.0 - F, S)
+                vals = {
+                    "sf": S,
+                    "ff": F,
+                    "Hf": H,
+                    "hf": h,
+                    "df": h * S,
+                }[fname]
+            out[known] = vals[known]
+            if not np.all(known):
+                out[~known] = self._summed(fname, flat[~known])
         out = np.asarray(out, dtype=float).reshape(xs.shape)
         return np.where(nan, np.nan, out)
 
@@ -945,15 +1029,29 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         # Only a limited failure population's ff stops short of 1
         top = 1.0
         if self.lfp:
-            top = float(self._predict("ff", np.array([np.inf]))[0])
+            held = self.__dict__.get("_ff_top")
+            if held is None or held[0] is not self.posterior:
+                v = float(self._predict("ff", np.array([np.inf]))[0])
+                held = (self.posterior, v)
+                self.__dict__["_ff_top"] = held
+            top = held[1]
         if u >= top - 1e-15 and top < 1:
             return float("inf")
         lo_edge = float(self.dist.support[0])
-        if u == 0:
-            return lo_edge + (self.gamma if self.offset else 0.0)
         if u >= 1:
             return float(self.dist.support[1])
         th = self._theta()
+        # Below the predictive support's lower edge nothing has failed:
+        # the edge is the smallest of the points' support edges plus their
+        # offsets, or 0 for the zero-inflation mass. qf(0) is that edge
+        # (not the posterior median offset, which is above qf of small p).
+        edge = lo_edge
+        if self.offset:
+            edge = lo_edge + float(np.min(th["gamma"]))
+        if self.zi:
+            edge = min(edge, 0.0)
+        if u == 0:
+            return edge
         with np.errstate(all="ignore"):
             comp = np.asarray(
                 quantity_at(self.dist, ("q", u), th), dtype=float
@@ -981,14 +1079,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 lv = max(float(np.log(v)), -1000.0)
             return lv - target if lower else target - lv
 
-        # Below the predictive support's lower edge nothing has failed, so
-        # the bracket stops there: the edge is every point's support edge
-        # plus its offset, or 0 for the zero-inflation mass.
-        edge = lo_edge
-        if self.offset:
-            edge = lo_edge + float(np.min(th["gamma"]))
-        if self.zi:
-            edge = min(edge, 0.0)
+        # (the bracket stops at the predictive support's lower edge)
         a = max(a, edge)
         # (a time typical of the points' own quantiles: the tolerance
         # below is in its units, so it does not depend on the time unit)
@@ -2082,6 +2173,8 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
         state["_log_post"] = None
+        state.pop("_ptable", None)
+        state.pop("_ff_top", None)
         post = copy(state["posterior"])
         post.log_density_fn = None
         state["posterior"] = post
@@ -2626,10 +2719,23 @@ def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
             return lo
     if lo == b:
         return b
+
+    def g(v: float) -> float:
+        return f(float(np.exp(v)))
+
+    v_lo, v_hi = float(np.log(lo)), float(np.log(b))
+    # ``exp(log(t))`` need not be ``t`` to the last bit, so the ends of the
+    # bracket are taken again on the log scale: where one has the other
+    # end's sign there, the root is within a rounding of that end.
+    g_lo, g_hi = g(v_lo), g(v_hi)
+    if not g_lo < 0:
+        return float(np.exp(v_lo)) if g_lo == g_lo else lo
+    if not g_hi > 0:
+        return float(np.exp(v_hi)) if g_hi == g_hi else b
     root = optimize.brentq(
-        lambda v: f(float(np.exp(v))),
-        float(np.log(lo)),
-        float(np.log(b)),
+        g,
+        v_lo,
+        v_hi,
         xtol=1e-15,
         rtol=1e-15,
         maxiter=1000,

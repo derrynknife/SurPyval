@@ -330,6 +330,29 @@ to the median and on the log of ``sf`` above it, so
 failure population's quantile is infinite above the proportion that ever
 fails).
 
+**Many points: a table.** A grid of two or three free parameters has tens
+of thousands of points, and each value of the predictive is a sum over
+all of them, too slow for a calculation that asks for tens of thousands
+of values (an optimal replacement age, an integral). Where the posterior
+has more than 2,000 points, the first predictive value builds a table:
+the predictive cumulative hazard :math:`H(t)` is summed exactly at a few
+hundred times and read between them by a cubic in :math:`\log H` against
+:math:`\log t` (against :math:`t` for a distribution on the whole line),
+with the exact slope at each time, so ``sf``, ``ff``, ``Hf``, ``hf`` and
+``df`` come from one curve and stay a proper distribution. The times are
+placed adaptively: each stretch is checked against the full sum at two
+points and split until ``sf`` and ``ff`` (relative to itself, so a small
+failure probability keeps its digits) are within :math:`3 \times
+10^{-7}` and ``hf`` within ten times that. A stretch that cannot be
+brought within that (near the posterior points' own offsets, say), and
+the far tails (where the points have a failure or survival probability
+below :math:`10^{-10}`), use the full sum, so nothing is extrapolated:
+``sf``, ``ff`` and ``Hf`` are within :math:`10^{-6}` of the full sum,
+relative, and ``hf`` and ``df`` within :math:`10^{-5}`. Building it
+takes under a second for 37,500 points; after it a value takes
+microseconds. Set ``model.predictive_table = False`` for the full sum
+everywhere.
+
 **Random lives.** ``model.random(size, random_state)`` takes one uniform
 number per life. With a closed-form predictive the life is its quantile
 at that number. Otherwise the number picks a parameter value by where it
