@@ -913,6 +913,69 @@ by SQUAREM, until its Karush-Kuhn-Tucker conditions hold to ``tol``.
     assert abs(np_inspected.cif(100.0, "wear")
                - inspected.cif(100.0, "wear")) < 0.06
 
+Covariates with inspection data: ``CoxPH``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To see how covariates change each cause's rate when failures are found at
+inspections, give ``CoxPH.fit`` the windows and the causes. In plain words:
+each cause gets its own hazard ratios, as in the cause-specific Cox model
+below, but because nobody knows exactly when an inspected unit failed, the
+fit uses the full likelihood -- the probability of each unit failing from its
+cause somewhere in its window -- and estimates every cause's baseline from
+the data together with the coefficients. The fitted model's ``estimator``
+says ``"NPMLE"``; with exact times and right censoring only ``CoxPH`` keeps
+the partial likelihood (``"partial likelihood"``). Delayed entry (``tl``) and
+right truncation (``tr``) are taken too.
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+
+    rng = np.random.default_rng(7)
+    n_units = 150
+    load = rng.binomial(1, 0.5, n_units).astype(float)
+    h_wear = 0.010 * np.exp(0.8 * load)    # load speeds up wear ...
+    h_crack = 0.006 * np.exp(-0.5 * load)  # ... and slows cracking
+    life = rng.exponential(1 / (h_wear + h_crack))
+    cause = np.where(rng.random(n_units) < h_wear / (h_wear + h_crack),
+                     "wear", "crack").astype(object)
+    # Inspected every 25 h up to 200 h
+    lo = 25.0 * np.floor(life / 25.0)
+    x_cox = np.column_stack([lo, lo + 25.0])
+    c_cox = np.full(n_units, 2)
+    still = life > 200.0
+    x_cox[still] = 200.0
+    c_cox[still] = 1
+    cause[still] = None
+
+    cox_inspected = CoxPH.fit(x_cox, load, c=c_cox, e=cause)
+    print(cox_inspected.estimator)
+    print(cox_inspected.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(3))
+    print("wear CIF at 100 h, low / high load: %.3f / %.3f" % (
+        cox_inspected.cif(100.0, [0.0], "wear"),
+        cox_inspected.cif(100.0, [1.0], "wear")))
+
+The standard errors come from the curvature of the profile likelihood (each
+baseline refitted around the estimate); ``param_cb`` also gives
+likelihood-ratio and bootstrap intervals, and ``cb`` approximate bootstrap
+bounds on the curves. With one cause (no ``e``) the same route is the
+interval-censored Cox model, ``IntervalCoxPH``. Where every row is right
+truncated the data cannot say how many units fail after the largest
+truncation time: the fit warns, and its curves are ``nan`` after it. See
+:doc:`Competing Risks Analysis` for the likelihood.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox_inspected.estimator == "NPMLE"
+    assert cox_inspected.maximum == "verified"
+    _b = dict(zip(cox_inspected.parameter_names, cox_inspected.params))
+    assert _b["wear: coef_0"] > 0 > _b["crack: coef_0"], _b
+    assert abs(cox_inspected.cif(100.0, [1.0], "wear")
+               + cox_inspected.cif(100.0, [1.0], "crack")
+               - cox_inspected.ff(100.0, [1.0])) < 1e-12
+
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

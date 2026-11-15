@@ -183,6 +183,10 @@ class CompetingRisksProportionalHazards(
     #: them. ``None`` on a model restored with ``from_dict``, which does
     #: not store them (only their coefficients and baselines).
     models: dict | None = None
+    #: How the coefficients were estimated: each cause's partial
+    #: likelihood (``CoxPH``'s full-likelihood route, for interval data
+    #: or right truncation, returns a ``CoxNPMLEModel`` instead).
+    estimator: str = "partial likelihood"
     #: Each cause's coefficients' covariance, in ``event_idx_map`` order
     #: (``None`` for a Cox model restored from a dict saved before they
     #: were stored).

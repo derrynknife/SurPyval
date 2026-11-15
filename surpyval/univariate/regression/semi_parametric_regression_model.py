@@ -161,6 +161,10 @@ class SemiParametricRegressionModel(
         regression models."""
         return coefficient_names(self, len(self.params))
 
+    #: How the coefficients were estimated: Cox's partial likelihood.
+    #: (``CoxPH``'s full-likelihood route returns a ``CoxNPMLEModel``,
+    #: whose ``estimator`` is ``"NPMLE"``.)
+    estimator: str = "partial likelihood"
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
     beta: npt.NDArray

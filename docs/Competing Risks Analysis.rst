@@ -630,6 +630,101 @@ time, and the message names what to use instead: the cause-specific Cox
 model for covariate effects, or the Aalen-Johansen estimate with ``tl`` for
 the cumulative incidence.
 
+Interval-censored and truncated data: Cox's full likelihood
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**In plain words.** Often a failure is not seen when it happens: an
+inspection finds a unit failed, from a known cause, somewhere since the last
+inspection that found it working. The partial likelihood above needs each
+failure's time, to know who else was at risk then, so it cannot use such a
+row. ``CoxPH.fit(x, Z, c=c, e=causes)`` takes any row anyway: given an
+interval (``c = 2``), a failure before the first inspection (``c = -1``) or
+right truncation (``tr``), it fits the same cause-specific model -- each
+cause's hazard is its baseline times :math:`e^{\beta_k' Z}` -- by its full
+likelihood, with every cause's baseline left to the data and estimated
+together with all the coefficients in one fit. The model it returns says so
+in ``method``; data with exact times and right censoring only (with or
+without delayed entry) still get the partial likelihood, so their numbers
+do not change.
+
+What the data can say is limited in two ways, and the model says so rather
+than guessing:
+
+- Inside an interval the data do not say when the failures happened, so the
+  curves (survival, each cause's incidence) stay level through an interval
+  and move at its end, as the Turnbull estimate's do.
+- With right truncation (a unit is in the data only because it failed by
+  some time :math:`t_r`, as in a registry of cases reported by a date), the
+  data cannot tell how many units would have failed after the largest
+  :math:`t_r`. When every row is right truncated, the fit takes every unit
+  to fail by then (Turnbull's convention), warns that it has done so, and
+  every curve is ``nan`` after that time. A parametric model is the way to
+  extrapolate.
+
+**The likelihood.** Write :math:`S(t \mid Z) = \exp(-\sum_k \Lambda_k(t \mid
+Z))` for the probability of no event of any cause by :math:`t`. A unit that
+failed from cause :math:`k` somewhere in :math:`(l, r]` contributes the
+probability of exactly that,
+
+.. math::
+
+    \int_l^r S(t^- \mid Z)\, d\Lambda_k(t \mid Z),
+
+an exact time is the limit of a short interval, a failure before the first
+inspection is the interval :math:`(0, r]`, a right-censored row contributes
+:math:`S(l \mid Z)`, and a failure whose cause was not recorded (accepted
+with ``masked="include"``) contributes the sum of the causes' terms. A row
+with an observation window :math:`(t_l, t_r]` -- delayed entry, right
+truncation or both -- is divided by the probability of being seen,
+
+.. math::
+
+    S(t_l \mid Z) - S(t_r \mid Z).
+
+That denominator is the *all-cause* survival because entry and truncation
+select units on their first event of any cause: a unit enters at
+:math:`t_l` only if no event of any cause has happened by then, and is in a
+right-truncated sample only if its event, of whichever cause, happened by
+:math:`t_r`. This is the truncated competing-risks likelihood of Hudgens,
+Satten and Longini [Hudgens2001cr]_. A design in which only one cause's
+events are sampled is a different likelihood, which SurPyval does not
+offer.
+
+Each baseline :math:`\Lambda_{0k}` is a step function with jumps
+:math:`d_{kj} \ge 0` on the Turnbull intervals of the data (with
+truncation, every piece some row can cover [Turnbull1976cr]_; without it,
+the innermost intervals of the rows that can hold cause :math:`k`, a
+cause's mass placed at the interval's end). Within an interval the causes'
+hazards act in proportion, so a unit still event-free at the interval's
+start fails there from cause :math:`k` with probability :math:`S_j \,
+(u_{kj} / \lambda_j)(1 - e^{-\lambda_j})`, :math:`u_{kj} = d_{kj}
+e^{\beta_k' Z}` and :math:`\lambda_j = \sum_k u_{kj}`, the step of the
+partial-likelihood model above, so the causes' incidences again sum to
+:math:`1 - S`. Every baseline jump and every coefficient is fitted at once
+by a projected Newton method with the exact Hessian, the jumps held at or
+above 0.
+
+**What it reduces to.** With one cause it is ``IntervalCoxPH``; with no
+covariates it is the non-parametric estimate of the cumulative incidences
+of interval-censored data [Hudgens2001cr]_ (and, with one cause, the
+Turnbull estimate, truncation included). With exact and right-censored data
+it is close to, but not the same as, the partial-likelihood fit: it treats
+each event time as a drop of a step survival curve (the grouped-data model
+of Prentice and Gloeckler), where the partial likelihood treats the baseline
+as a continuous hazard. Both are consistent, and on 400 units the two sets
+of coefficients differed by less than a tenth of a standard error.
+
+**Uncertainty.** The coefficients' standard errors come from the curvature
+of the profile likelihood, the baselines re-fitted at each point (as for
+``IntervalCoxPH``); ``param_cb`` also gives profile likelihood-ratio and
+bootstrap intervals. The curves' bounds (``cb``) are by the case bootstrap
+and approximate: the baselines converge more slowly than the coefficients,
+and for current-status data the plain bootstrap of them is not consistent.
+In a calibration study (200 units, two causes, every failure found between
+inspections, half the units entering late; 300 replicates) the 90% Wald
+intervals of the four coefficients covered 0.887, 0.860, 0.900 and 0.887 of
+the time: close to nominal, a little under it.
+
 The Fine-Gray model in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -988,6 +1083,15 @@ Further Reading
   competing risks and multi-state models. *Statistics in Medicine*, 26(11),
   2389–2430. An accessible introduction to cause-specific hazards, the CIF and
   the Aalen-Johansen estimator.
+
+.. [Hudgens2001cr] Hudgens, M. G., Satten, G. A., & Longini, I. M. (2001).
+   Nonparametric maximum likelihood estimation for competing risks survival
+   data subject to interval censoring and truncation. *Biometrics*, 57,
+   74-80.
+
+.. [Turnbull1976cr] Turnbull, B. W. (1976). The empirical distribution
+   function with arbitrarily grouped, censored and truncated data.
+   *Journal of the Royal Statistical Society B*, 38, 290-295.
 
 .. [Tsiatis1975cr] Tsiatis, A. (1975). A nonidentifiability aspect of the
    problem of competing risks. *Proceedings of the National Academy of

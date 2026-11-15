@@ -994,6 +994,33 @@ def _search_interval_cox(model, data):
     return [search.in_covariate_units(_columns(beta), fd.Z[:, kept])]
 
 
+def _search_cox_npmle(model, data):
+    """The profile likelihood of CoxPH's full-likelihood fit over every
+    cause's coefficients, the baselines maximised at each point (the
+    fit's own projected Newton, from the fitted baselines), by central
+    differences."""
+    from surpyval.univariate.regression.proportional_hazards import (
+        _cs_npmle as engine,
+    )
+    from surpyval.univariate.regression.proportional_hazards import cox_npmle
+
+    fd = model._fit_data
+    K, p = np.shape(model.betas)
+    kept = np.flatnonzero(~np.isnan(np.asarray(model.betas)[0]))
+    fit = cox_npmle._Fit(fd, K, kept, 1e-12)
+    theta = fit.solution.theta
+
+    def fun(beta):
+        b = np.asarray(beta, float).reshape(K, kept.size)
+        return -float(engine.profile(fit.lik, b, theta).value)
+
+    beta = np.asarray(model.betas, dtype=float)[:, kept].ravel()
+    events = float(np.sum(fd.n[fd.c != 1]))
+    search = _numerical(fun, beta, events)
+    Zk = np.tile(fd.Z[:, kept], (1, K))
+    return [search.in_covariate_units(_columns(beta), Zk)]
+
+
 def _numerical(fun, x, n_obs):
     """A :class:`Search` of a likelihood written in plain numpy, by
     central differences (see :func:`_derivatives`)."""
@@ -1381,6 +1408,7 @@ SEARCHES: dict[str, Callable] = {
     "SemiParametricRegressionModel": _search_cox,
     "ProportionalOddsModel": _search_proportional_odds,
     "IntervalCoxPHModel": _search_interval_cox,
+    "CoxNPMLEModel": _search_cox_npmle,
     "FineGrayModel": _search_fine_gray,
     "CompetingRisksProportionalHazards": _search_crph,
     "MultiStateProportionalHazards": _search_multistate_cox,

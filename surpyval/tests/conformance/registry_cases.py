@@ -725,6 +725,55 @@ def _competing_risks():
             rtol=1e-7,
         )
     )
+
+    def cox_icr_data():
+        # The interval-censored causes with a covariate.
+        d = pcr_interval_data()
+        d["Z"] = cr_data(True)["Z"]
+        return d
+
+    def cox_icr_from_df(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+                "z0": d["Z"][:, 0],
+            }
+        )
+        return sp.CoxPH.fit_from_df(
+            df,
+            xl_col="lo",
+            xr_col="hi",
+            Z_cols=["z0"],
+            c_col="c",
+            n_col="n",
+            e_col="e",
+        )
+
+    out.append(
+        Case(
+            name="CoxPH[interval, causes]",
+            fitters=(),
+            model_class="surpyval.CoxNPMLEModel",
+            interface=CAUSES_REGRESSION,
+            data=cox_icr_data,
+            fit=_fit(sp.CoxPH),
+            functions=("sf", "ff"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "c", "e", "n"),
+            covariates="Z",
+            paths={"fit_from_df": cox_icr_from_df},
+            rtol=1e-6,
+            coefficients=lambda m: m.betas,
+            intercept=True,
+        )
+    )
     for how in ("Cox", "Fine-Gray"):
         out.append(
             Case(
@@ -3342,6 +3391,52 @@ def _bounds(case):
                 wald=False,
                 slow=True,
             ),
+        ),
+        # CoxPH's full-likelihood route: the coefficients as
+        # IntervalCoxPH's, and the curves by the case bootstrap.
+        "CoxNPMLEModel": (
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "bootstrap", **_BOOT},
+                label="param_cb[bootstrap]",
+                wald=False,
+                slow=True,
+            ),
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs=_BOOT,
+                label="cb[bootstrap]",
+                wald=False,
+                slow=True,
+            ),
+        )
+        + (
+            (
+                Bound(
+                    "cb",
+                    on=("cif",),
+                    per_cause=True,
+                    kwargs=_BOOT,
+                    label="cb[cif, bootstrap]",
+                    wald=False,
+                    slow=True,
+                ),
+            )
+            if case.events
+            else ()
         ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
         # The Cox model's predicted curves: R's survfit conf.types
