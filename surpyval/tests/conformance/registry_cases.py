@@ -3908,7 +3908,8 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames"):
+    if name in ("Turnbull", "BuckleyJames", "CompetingRisks[interval]"):
+        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
         # The life model's first parameter (the first is a fixed
