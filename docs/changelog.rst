@@ -11,6 +11,12 @@ v0.28 (14 November 2026)
   bounds that carry the uncertainty in the exchange between the clocks.
   Anything that takes a life model, such as a block of a reliability block
   diagram, can take it.
+- **Pooling rates across sources.** ``surpyval.pooled_rate`` combines
+  event counts and exposures (or events out of trials) from several
+  sources that really differ, giving the average across them, an honest
+  range for a new source like them, and each source's estimate pulled
+  towards the others, instead of one over-precise number from adding
+  everything into one pot.
 - **Unit labels you can compare.** ``surpyval.utils.normalise_unit`` and
   ``surpyval.utils.same_unit`` are public, so tools that combine models
   can check that they are in one unit (``"h"``, ``"hrs"`` and ``"hours"``
@@ -83,6 +89,23 @@ v0.28 (14 November 2026)
   with bounds that include the uncertainty in ``k``. Tools that take a
   univariate life (a block of a reliability block diagram) can take it as
   one. See :doc:`Equivalent Time Scales`.
+- ``surpyval.pooled_rate(events, exposure, kind=...)`` pools event counts
+  from several sources (sites, hospitals, studies, fleets) that may each
+  have their own true rate: the two-stage (hierarchical) gamma-Poisson
+  model for events in a time at risk (``kind="rate"``) and beta-binomial
+  model for events out of a number of trials (``kind="probability"``). Its
+  ``PooledRate`` result gives the population (between-source) distribution
+  as a ``Gamma`` or ``Beta`` with its parameters, the average across
+  sources with its interval, the range for a new source like these (the
+  predictive interval), each source's own (Jeffreys) and shrunk estimate
+  with intervals, Pearson's heterogeneity test with :math:`I^2`, the
+  one-pot estimate for comparison, ``update(events, exposure)`` for a new
+  source's own data, the assumptions in words, and ``to_dict`` /
+  ``from_dict``. ``method="Bayes"`` (default: a weak prior, the posterior on
+  a grid) or ``"MLE"`` (marginal maximum likelihood with profile-likelihood
+  and parametric-bootstrap intervals). Below ``min_sources`` (default 4) it
+  gives no population, with a warning, and shows the sources side by side.
+  See :doc:`Pooling Rates Across Sources`.
 
 - **A Bayesian fit's predictive curve is fast** where its posterior has
   many points. Each value of the posterior predictive (``sf``, ``ff``,
