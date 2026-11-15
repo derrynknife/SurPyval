@@ -368,6 +368,11 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what person_years tabulated (an exposure table), not a model"
     ),
     "surpyval.PseudoRegressionResult": _RESULT,
+    "surpyval.PooledRate": (
+        "what pooled_rate estimated (a population of rates from counts "
+        "and exposures, covered by tests/univariate/test_pooled_rate.py), "
+        "not a model of times"
+    ),
     "surpyval.AdjustedCurves": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
@@ -379,6 +384,7 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
     "surpyval.univariate.regression.LifeAtCovariates": _RESULT,
+    "surpyval.LifeAtUsage": _RESULT,
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
     "surpyval.univariate.regression.penalty_path": _FUNCTION,
     "surpyval.penalty_path": _FUNCTION,
@@ -450,6 +456,7 @@ for _fn in (
     "life_table",
     "person_years",
     "poisson_rate_bounds",
+    "pooled_rate",
     "rmst_diff",
     "rmtl_diff",
     "sf_diff",

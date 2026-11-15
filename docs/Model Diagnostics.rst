@@ -21,7 +21,7 @@ The name is ``diagnose``, not ``check_assumptions``: besides the
 assumptions it looks at the fit, the functional form and the rows that
 drive the estimates. It is the one way to check a model's assumptions:
 the Cox model's ``check_ph()``, deprecated in v0.26 and removed in v0.28,
-is now ``diagnose()``'s proportional-hazards test (see `The
+was replaced by ``diagnose()``'s proportional-hazards test (see `The
 proportional-hazards table`_).
 
 The families, each with its section below: Cox proportional hazards
@@ -135,7 +135,7 @@ it is ``"identity"`` or ``"log"``.
     model.diagnose(transform='rank').tables['proportional_hazards'].round(4)
 
 This is the table ``model.check_ph(transform)`` returned, number for
-number; ``check_ph`` is deprecated (it warns) and is removed in v0.28.
+number, until ``check_ph`` was removed in v0.28.
 For a cause-specific competing-risks model the table has one block per
 cause, indexed by ``(cause, covariate)``. The table is kept by
 ``d.to_dict()`` and ``Diagnosis.from_dict``.
@@ -352,8 +352,6 @@ API
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.zph_score_test
 
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.zph_table
-
-.. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph
 
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.added_covariate_score_test
 

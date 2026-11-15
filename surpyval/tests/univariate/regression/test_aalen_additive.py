@@ -551,23 +551,28 @@ def test_a_negative_summary_time_is_refused_by_name():
         model.summary(at=-1.0)
 
 
-def test_coef_penalty_is_the_old_name_of_penalizer():
-    # Renamed in v0.27 so the package has one name for a penalty; the old
-    # argument and attribute warn and give the same fit until v0.28.
+def test_coef_penalty_was_removed_in_028():
+    # Renamed penalizer in v0.27 so the package has one name for a
+    # penalty; the old argument and attribute were removed in v0.28 and
+    # raise errors naming the new one.
     import json
 
     df = _rossi()
     x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
     Z = df[["fin", "age", "prio"]].to_numpy(float)
     new = sp.AalenAdditive.fit(x, Z, c=c, penalizer=2.0)
-    with pytest.warns(DeprecationWarning, match="'penalizer'"):
-        old = sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=2.0)
-    np.testing.assert_array_equal(old.B, new.B)
-    np.testing.assert_array_equal(old.B_var, new.B_var)
-    with pytest.warns(DeprecationWarning, match="'penalizer'"):
-        assert new.coef_penalty == 2.0
-    with pytest.raises(ValueError):
-        sp.AalenAdditive.fit(x, Z, c=c, penalizer=1.0, coef_penalty=1.0)
+    with pytest.raises(TypeError, match="removed in v0.28; use 'penalizer'"):
+        sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=2.0)
+    with pytest.raises(TypeError, match="removed in v0.28; use 'penalizer'"):
+        sp.AalenAdditive.fit_from_df(
+            df,
+            x_col="week",
+            c_col="censored",
+            Z_cols=["fin", "age", "prio"],
+            coef_penalty=2.0,
+        )
+    with pytest.raises(AttributeError, match="use 'penalizer'"):
+        new.coef_penalty
     # A dict saved before the rename still loads.
     saved = new.to_dict()
     assert saved["penalizer"] == 2.0

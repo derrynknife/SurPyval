@@ -1,4 +1,8 @@
-from .nonparametric import CompetingRisks, GrayTestResult, gray_test
+from .nonparametric import (
+    CompetingRisks,
+    GrayTestResult,
+    gray_test,
+)
 from .parametric import ParametricCompetingRisks
 from .regression import (
     CompetingRisksProportionalHazards,

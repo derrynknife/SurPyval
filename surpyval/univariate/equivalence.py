@@ -85,6 +85,7 @@ import numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian
 from scipy.optimize import brentq
+from scipy.special import expit
 from scipy.stats import chi2, norm
 
 from surpyval.serialisation import (
@@ -812,6 +813,315 @@ def _reshape(values: np.ndarray, shape: tuple, two_sided: bool) -> Any:
     return out
 
 
+def _one_rate(rate: Any) -> float:
+    """``rate`` as the one usage rate ``at_usage`` binds: a finite number,
+    0 or more, refused (saying what to do) otherwise."""
+    arr = np.asarray(rate, dtype=float)
+    if arr.ndim != 0:
+        if arr.size != 1:
+            raise ValueError(
+                "at_usage takes one rate and gives the life of a unit used "
+                f"at it; got {arr.size} rates. Call it once per rate, "
+                "[model.at_usage(r) for r in rates], or pass every rate to "
+                "the *_at_usage methods, model.sf_at_usage(x, rates)."
+            )
+        arr = arr.reshape(())
+    r = float(arr)
+    if not np.isfinite(r) or r < 0:
+        raise ValueError(
+            "rate, the second clock's units per unit of the first (starts "
+            f"per hour), must be a finite number, 0 or more; got {rate!r}."
+        )
+    return r
+
+
+class LifeAtUsage:
+    r"""
+    The lifetime distribution of a unit used at one constant rate: a
+    fitted equivalent-scale model (:func:`Equivalence`) with the rate
+    bound, as a plain life model on the first clock.
+
+    ``model.at_usage(rate)`` returns one. ``rate`` is the second clock's
+    units per unit of the first, in the model's own units: starts per
+    hour for a model fitted to ``(hours, starts)``. A unit used at that
+    rate ages :math:`a = 1 + k \cdot rate` units of the combined clock per
+    unit of the first, so its life on the first clock is the combined life
+    divided by :math:`a`. Every function takes ages (or probabilities) on
+    the first clock only, as a univariate model's do, and answers on the
+    first clock: ``sf(x)`` is ``model.sf_at_usage(x, rate)``, and so for
+    ``ff``, ``hf``, ``qf``, ``mean``, ``cb`` (``cb_at_usage``) and
+    ``quantile_cb`` (``quantile_cb_at_usage``); ``df(x)`` is the density
+    per unit of the first clock, :math:`a f(a x)`, and ``Hf(x)`` the
+    cumulative hazard :math:`H(a x)`. The second clock's age at a first
+    clock age ``x`` is ``rate * x``.
+
+    ``random(size)`` is ``qf(U)`` for uniform ``U``, as
+    ``Parametric.random`` is, so the same ``random_state`` gives common
+    random numbers across models (and the first clock's ages that
+    ``model.random(size, rate)`` draws). The bounds (``cb``,
+    ``quantile_cb``, ``rmst``) carry the uncertainty of :math:`k` and of
+    the distribution together; a model built from given parameters has
+    none, and they refuse, saying so.
+
+    It is a view, not a copy: it holds the model and the rate, and every
+    call goes to the model, so it has no ``to_dict`` of its own; save the
+    model (``model.to_dict()``) and the rate.
+
+    Attributes
+    ----------
+    model : EquivalenceModel
+        The fitted equivalent-scale model.
+    rate : float
+        The usage rate, the second clock's units per unit of the first.
+
+    Examples
+    --------
+    >>> from surpyval import WeibullEquivalence
+    >>> model = WeibullEquivalence.from_params(
+    ...     [2000, 2, 10], clocks=("hours", "starts"), unit="hours")
+    >>> life = model.at_usage(0.1)  # 0.1 starts per hour
+    >>> life
+    LifeAtUsage(WeibullEquivalence, clocks=('hours', 'starts'), rate=0.1)
+    >>> life.acceleration  # 1 + k rate: two equivalent hours per hour
+    2.0
+    >>> life.sf([500, 1000]).round(4)
+    array([0.7788, 0.3679])
+    >>> float(life.qf(0.1).round(1))  # its B10 life, in hours
+    324.6
+    >>> bool(life.sf(1000) == model.sf_at_usage(1000, 0.1))
+    True
+    """
+
+    def __init__(self, model: Any, rate: Any) -> None:
+        self.model = model
+        self.rate = _one_rate(rate)
+
+    @property
+    def clocks(self) -> tuple:
+        """The model's names of its two clocks, first then second."""
+        return tuple(self.model.clocks)
+
+    @property
+    def unit(self) -> str | None:
+        """The model's unit label, as typed (the unit of this life's
+        ages), or ``None``."""
+        return getattr(self.model, "unit", None)
+
+    @property
+    def acceleration(self) -> float:
+        """``1 + k rate``: the combined clock's units per unit of the
+        first, at this rate."""
+        return 1.0 + self.model.k * self.rate
+
+    def sf(self, x: npt.ArrayLike) -> Any:
+        """The survival at ages ``x`` on the first clock:
+        ``model.sf_at_usage(x, rate)``."""
+        return self.model.sf_at_usage(x, self.rate)
+
+    def ff(self, x: npt.ArrayLike) -> Any:
+        """The failure probability at ages ``x`` on the first clock:
+        ``model.ff_at_usage(x, rate)``."""
+        return self.model.ff_at_usage(x, self.rate)
+
+    def df(self, x: npt.ArrayLike) -> Any:
+        """The density per unit of the first clock at ages ``x``:
+        ``a model.df(a x)``, ``a`` the :attr:`acceleration`."""
+        tb, rb, shape = _broadcast(x, self.rate)
+        a = self.acceleration
+        out = np.asarray(self.model._base.df(tb * a), dtype=float) * a
+        return _reshape(out, shape, False)
+
+    def hf(self, x: npt.ArrayLike) -> Any:
+        """The hazard per unit of the first clock at ages ``x``:
+        ``model.hf_at_usage(x, rate)``."""
+        return self.model.hf_at_usage(x, self.rate)
+
+    def Hf(self, x: npt.ArrayLike) -> Any:
+        """The cumulative hazard at ages ``x`` on the first clock:
+        ``model.Hf(a x)``, ``a`` the :attr:`acceleration`."""
+        tb, rb, shape = _broadcast(x, self.rate)
+        out = np.asarray(
+            self.model._base.Hf(tb * self.acceleration), dtype=float
+        )
+        return _reshape(out, shape, False)
+
+    def qf(self, p: npt.ArrayLike) -> Any:
+        """The age on the first clock by which a fraction ``p`` have
+        failed: ``model.qf_at_usage(p, rate)``."""
+        return self.model.qf_at_usage(p, self.rate)
+
+    def random(self, size: int, random_state: Any = None) -> np.ndarray:
+        """
+        Draw ``size`` lives on the first clock of units used at this
+        rate.
+
+        Each draw is ``qf(u)`` for one uniform ``u``, drawn as
+        ``Parametric.random`` draws them, so the same ``random_state``
+        gives common random numbers across models, and the same draws as
+        the first clock of ``model.random(size, rate)``.
+
+        Parameters
+        ----------
+        size : int
+            The number of draws.
+        random_state : None, int or numpy.random.Generator, optional
+            ``None`` (the default) draws from numpy's global generator, so
+            ``np.random.seed`` reproduces the draw; an int or a
+            ``Generator`` gives a stream of its own.
+
+        Returns
+        -------
+        numpy array
+            ``size`` lives on the first clock.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullEquivalence
+        >>> model = WeibullEquivalence.from_params([2000, 2, 10])
+        >>> life = model.at_usage(0.1)
+        >>> hours, _ = model.random(3, rate=0.1, random_state=7)
+        >>> bool((life.random(3, random_state=7) == hours).all())
+        True
+        """
+        from surpyval.univariate.parametric.parametric import uniform_draws
+
+        u = np.asarray(uniform_draws(int(size), random_state), dtype=float)
+        T = np.asarray(self.model.dist.qf(u, *self.model.dist_params))
+        return np.asarray(T, dtype=float) / self.acceleration
+
+    def mean(self, tau: float | None = None) -> float:
+        """
+        The mean life on the first clock, ``model.mean_at_usage(rate)``;
+        with ``tau``, the restricted mean up to ``tau`` on the first clock
+        (the area under :meth:`sf` from 0 to ``tau``), the point value of
+        :meth:`rmst`.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullEquivalence
+        >>> life = WeibullEquivalence.from_params([2000, 2, 10]).at_usage(0.1)
+        >>> round(life.mean(), 1)
+        886.2
+        >>> round(life.mean(tau=500), 1)
+        461.3
+        """
+        if tau is None:
+            return float(self.model.mean_at_usage(self.rate))
+        tau = _check_tau(tau)
+        a = self.acceleration
+        return float(self.model._base.mean(tau=tau * a)) / a
+
+    def rmst(self, tau: float, alpha_ci: float = 0.05) -> dict:
+        """
+        The restricted mean life up to ``tau`` on the first clock, with
+        its Wald interval: the delta method over every parameter (``k``
+        included), on the logit of its fraction of ``tau`` so that it
+        stays in ``(0, tau)``, as ``Parametric.rmst`` forms it.
+
+        Returns
+        -------
+        dict
+            ``{"rmst", "se", "lower", "upper", "tau"}``, as
+            ``Parametric.rmst``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullEquivalence
+        >>> rng = np.random.default_rng(1)
+        >>> rate = rng.choice([0.02, 0.1, 0.5], 300)
+        >>> hours = 2000 * rng.weibull(2.0, 300) / (1 + 10 * rate)
+        >>> model = WeibullEquivalence.fit(hours, rate * hours)
+        >>> res = model.at_usage(0.1).rmst(500)
+        >>> round(res["lower"], 1) < round(res["rmst"], 1) < res["upper"]
+        True
+        """
+        from surpyval.univariate.parametric._likelihood_ratio import (
+            central_jacobian,
+        )
+
+        check_alpha_ci(alpha_ci)
+        tau = _check_tau(tau)
+        try:
+            cov = self.model.covariance()
+        except ValueError as error:
+            raise ValueError(
+                "{} The point estimate alone is life.mean(tau={:g}).".format(
+                    str(error), tau
+                )
+            ) from None
+        dist, r = self.model.dist, self.rate
+
+        def rmst_of(phi: npt.NDArray) -> Any:
+            a = 1.0 + phi[-1] * r
+            base = dist.from_params(list(phi[:-1]))
+            return np.array([float(base.mean(tau=tau * a)) / a])
+
+        phi = np.asarray(self.model.params, dtype=float)
+        value = float(rmst_of(phi)[0])
+        with np.errstate(all="ignore"):
+            g = np.ravel(central_jacobian(rmst_of, phi))
+            se = float(np.sqrt(max(float(g @ cov @ g), 0.0)))
+            z = norm.ppf(1.0 - alpha_ci / 2.0)
+            if tau == 0 or se == 0 or not 0 < value < tau:
+                lower = upper = value
+            else:
+                psi = np.log(value) - np.log(tau - value)
+                se_psi = se * (1.0 / value + 1.0 / (tau - value))
+                lower = float(tau * expit(psi - z * se_psi))
+                upper = float(tau * expit(psi + z * se_psi))
+        return {
+            "rmst": value,
+            "se": se,
+            "lower": lower,
+            "upper": upper,
+            "tau": tau,
+        }
+
+    def cb(self, x: npt.ArrayLike, **kwargs: Any) -> Any:
+        """
+        Wald confidence bounds on ``sf``, ``ff`` or ``Hf`` at ages ``x``
+        on the first clock: ``model.cb_at_usage(x, rate, **kwargs)``
+        (``on="sf"`` by default, and its ``alpha_ci`` and ``bound``).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullEquivalence
+        >>> rng = np.random.default_rng(1)
+        >>> rate = rng.choice([0.02, 0.1, 0.5], 300)
+        >>> hours = 2000 * rng.weibull(2.0, 300) / (1 + 10 * rate)
+        >>> model = WeibullEquivalence.fit(hours, rate * hours)
+        >>> model.at_usage(0.5).cb(500).round(3)
+        array([0.061, 0.14 ])
+        """
+        return self.model.cb_at_usage(x, self.rate, **kwargs)
+
+    def quantile_cb(self, p: npt.ArrayLike, **kwargs: Any) -> Any:
+        """Wald confidence bounds on the life ``qf(p)``:
+        ``model.quantile_cb_at_usage(p, rate, **kwargs)``."""
+        return self.model.quantile_cb_at_usage(p, self.rate, **kwargs)
+
+    def __repr__(self) -> str:
+        return "LifeAtUsage({}Equivalence, clocks={!r}, rate={:g})".format(
+            self.model.dist.name, self.clocks, self.rate
+        )
+
+
+def _check_tau(tau: Any) -> float:
+    """A restricted mean's horizon: a finite number, 0 or more."""
+    try:
+        t = float(tau)
+    except (TypeError, ValueError):
+        t = np.nan
+    if np.ndim(tau) != 0 or not np.isfinite(t) or t < 0:
+        raise ValueError(
+            "tau, the horizon of the restricted mean on the first clock, "
+            f"must be one finite number, 0 or more; got {tau!r}."
+        )
+    return t
+
+
 class EquivalenceModel(InformationCriteriaMixin, SerialisableMixin):
     r"""
     A fitted equivalent time scale (:func:`Equivalence`): the combined
@@ -1115,6 +1425,38 @@ class EquivalenceModel(InformationCriteriaMixin, SerialisableMixin):
         r = np.asarray(rate, dtype=float)
         out = self.mean() / (1.0 + self.k * r)
         return out[()] if np.ndim(out) == 0 else out
+
+    def at_usage(self, rate: float) -> LifeAtUsage:
+        """
+        The life of a unit used at one constant ``rate``, as a plain life
+        model on the first clock: an object whose ``sf``, ``ff``, ``df``,
+        ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst``, ``cb`` and
+        ``quantile_cb`` take ages (or probabilities) on the first clock
+        only, each this model's ``*_at_usage`` at ``rate``. Hand it to
+        code that expects a univariate model ("the life of a pump making
+        0.1 starts per hour").
+
+        Parameters
+        ----------
+        rate : float
+            The second clock's units per unit of the first, in the
+            model's units (starts per hour for a model fitted to hours
+            and starts): one finite number, 0 or more. Several rates are
+            refused: call it once per rate.
+
+        Returns
+        -------
+        LifeAtUsage
+            A view on this model at ``rate``.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullEquivalence
+        >>> model = WeibullEquivalence.from_params([2000, 2, 10])
+        >>> round(model.at_usage(0.1).mean(), 1)
+        886.2
+        """
+        return LifeAtUsage(self, rate)
 
     # -- uncertainty ----------
     def covariance(self) -> np.ndarray:

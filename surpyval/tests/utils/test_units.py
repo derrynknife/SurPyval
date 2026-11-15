@@ -392,6 +392,19 @@ def test_same_unit_reads_labels_with_pint(a, b, same):
     assert same_unit(b, a) is same
 
 
+def test_unit_helpers_are_public_in_surpyval_utils():
+    # Tools that combine models (RePyability) check units with these.
+    import surpyval.utils as su
+
+    assert {"normalise_unit", "same_unit"} <= set(su.__all__)
+    assert su.same_unit is same_unit
+    assert su.normalise_unit is normalise_unit
+    assert su.same_unit("hrs", "hours") and not su.same_unit("h", "days")
+    assert su.same_unit("cycles", "cycle")
+    assert not su.same_unit("cycles", "starts")
+    assert su.normalise_unit(" hrs ") == "hrs"
+
+
 def test_an_unknown_unit_is_kept_as_before():
     # pint does not know it: kept as a label, compared as text
     model = sp.Weibull.from_params([10, 2], unit="landing gear swaps")

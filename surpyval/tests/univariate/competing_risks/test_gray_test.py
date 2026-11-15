@@ -213,8 +213,7 @@ G6 = [0, 0, 0, 1, 1, 1]
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        ({"c": [-1, 0, 0, 0, 0, 0]}, "c must be 0"),
-        ({"c": [2, 0, 0, 0, 0, 0]}, "c must be 0"),
+        ({"c": [3, 0, 0, 0, 0, 0]}, "c must be 0"),
         ({"n": [0, 1, 1, 1, 1, 1]}, "n must be finite and positive"),
         ({"n": [-1, 1, 1, 1, 1, 1]}, "n must be finite and positive"),
         ({"n": [1, 1]}, "one count per time"),

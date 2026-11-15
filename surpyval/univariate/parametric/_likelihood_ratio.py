@@ -264,6 +264,38 @@ def _lr_steady(
     return all(abs(g(v + s * hair) - at) <= tol for s in (-1.0, 1.0))
 
 
+def _lr_levels_off(
+    ws: list[float], ds: list[float], end: float, crit: float
+) -> bool:
+    """``_lr_walk``'s *levelling off*: over the last three steps the
+    deviance ``ds`` (at ``ws``) has risen ever more slowly per unit of the
+    coordinate, and a straight line at the latest of those rates stays
+    below ``crit`` all the way to ``end``."""
+    if len(ds) < 4:
+        return False
+    with np.errstate(all="ignore"):
+        h = np.abs(np.diff(ws[-4:]))
+        rate = np.maximum(np.diff(ds[-4:]), 0.0) / h
+        slowing = np.all(rate[1:] <= rate[:-1] + _LR_NOISE / h[1:])
+        reach = ds[-1] + rate[-1] * abs(end - ws[-1]) + _LR_NOISE
+    return bool(slowing and reach < crit)
+
+
+def _lr_plateau(
+    ws: list[float], ds: list[float], step: float, end: float, crit: float
+) -> bool:
+    """Whether a walk's deviance ``ds`` (at ``ws``) is on a plateau below
+    ``crit``: risen by at most ``_LR_NOISE`` in each of its last three
+    steps, and rising by as much in each step still left to ``end`` (each
+    1.6 times the one before, ``step`` the next one's length) would leave
+    it below ``crit`` (``_lr_walk``'s ``per_step``)."""
+    with np.errstate(all="ignore"):
+        rise = np.diff(ds[-4:])
+        left = np.ceil(np.log1p(0.6 * abs(end - ws[-1]) / step) / np.log(1.6))
+        reach = ds[-1] + max(rise[-1], 0.0) * left + _LR_NOISE
+    return bool(np.all(rise <= _LR_NOISE) and reach < crit)
+
+
 def _lr_walk(
     deviance: Callable[[float], float],
     w_hat: float,
@@ -273,6 +305,9 @@ def _lr_walk(
     end: float,
     stop: float | None = None,
     d_hat: float = 0.0,
+    per_step: bool = False,
+    max_steps: int = 80,
+    bracket: bool = False,
 ) -> tuple[str, float]:
     """Walk out from ``w_hat`` to where ``deviance`` first reaches ``crit``.
 
@@ -312,6 +347,20 @@ def _lr_walk(
     second, lower mode of the likelihood further out); the bound is then
     the edge, wider than it need be, never narrower.
 
+    With ``per_step`` the deviance also levels off on a plateau: where it
+    has risen by at most ``_LR_NOISE`` in each of the last three steps
+    (each 1.6 times the one before), and rising by that much in each of
+    the steps still left to ``end`` would leave it below ``crit``. A
+    profile whose likelihood tends to that of a limiting model (a joint
+    frailty model's ``alpha``, its deviance level at 2.96 to 1e-10 from
+    ``alpha`` = 20 out to 1e10 either way) passes; one that is still
+    rising, however slowly, is walked on (that model's terminal shape,
+    whose deviance rises by 0.01 to 0.05 a step to 5.10 at 15, then
+    turns up through 6.63 at 21.2). The walk stops after ``max_steps``
+    steps (``"fail"``). With ``bracket`` it returns ``("bracket", w)`` at
+    the first step ``w`` whose deviance reaches ``crit``, without solving
+    for the crossing.
+
     *Resolution.* A root is checked: the deviance a hair either side of
     it (``_LR_HAIR``) must be within ``_LR_RESOLVED`` of ``crit``, beyond
     what its slope over the bracket moves it; and the last points of a
@@ -348,14 +397,9 @@ def _lr_walk(
         return (_LR_UNREACHABLE if d == np.inf else d) - crit
 
     def levels_off() -> bool:
-        if len(ds) < 4:
-            return False
-        with np.errstate(all="ignore"):
-            h = np.abs(np.diff(ws[-4:]))
-            rate = np.maximum(np.diff(ds[-4:]), 0.0) / h
-            slowing = np.all(rate[1:] <= rate[:-1] + _LR_NOISE / h[1:])
-            reach = ds[-1] + rate[-1] * abs(end - ws[-1]) + _LR_NOISE
-        return bool(slowing and reach < crit)
+        return _lr_levels_off(ws, ds, end, crit) or (
+            per_step and len(ds) >= 4 and _lr_plateau(ws, ds, step, end, crit)
+        )
 
     def edge_or_unresolved() -> tuple[str, float]:
         # Levelling off is read from the last points: they must be ones
@@ -365,7 +409,7 @@ def _lr_walk(
             return "edge", float(end)
         return _lr_in_noise(ws, ds, crit, end, ws[-2])
 
-    for _ in range(80):
+    for _ in range(max_steps):
         w = ws[-1] + direction * step
         step *= 1.6
         at_stop = stop is not None and direction * (w - stop) >= 0
@@ -376,6 +420,8 @@ def _lr_walk(
         elif at_end:
             w, at_stop = float(end), False
         dev = dev_at(w)
+        if dev >= crit and bracket:
+            return "bracket", float(w)
         if dev >= crit:
             # Walk the bracket again, in eight steps from its near end.
             for v in np.linspace(ws[-1], w, 9)[1:]:
@@ -414,6 +460,12 @@ def _lr_walk(
         if levels_off():
             return edge_or_unresolved()
     return "fail", np.nan
+
+
+# The profile walk and its path, as the regression models'
+# ``LikelihoodRegion`` uses them (``param_sides``).
+LRPath = _LRPath
+lr_walk = _lr_walk
 
 
 def central_gradient(

@@ -25,7 +25,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.27"
+__version__ = "0.28"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -286,6 +286,7 @@ _LAZY = {
             "EquivalenceModel",
             "ExponentialEquivalence",
             "GammaEquivalence",
+            "LifeAtUsage",
             "LogLogisticEquivalence",
             "LogNormalEquivalence",
             "WeibullEquivalence",
@@ -356,6 +357,10 @@ _LAZY = {
     **dict.fromkeys(
         ("AdjustedCurves", "direct_adjustment", "weight_diagnostics"),
         "surpyval.univariate.adjusted",
+    ),
+    **dict.fromkeys(
+        ("PooledRate", "pooled_rate"),
+        "surpyval.univariate.pooled_rate",
     ),
     **dict.fromkeys(
         (
@@ -574,6 +579,7 @@ if TYPE_CHECKING:
         EquivalenceModel,
         ExponentialEquivalence,
         GammaEquivalence,
+        LifeAtUsage,
         LogLogisticEquivalence,
         LogNormalEquivalence,
         WeibullEquivalence,
@@ -588,6 +594,7 @@ if TYPE_CHECKING:
         landmark,
         landmark_kaplan_meier,
     )
+    from surpyval.univariate.pooled_rate import PooledRate, pooled_rate
     from surpyval.univariate.pseudo import (
         PseudoRegressionResult,
         pseudo_cif,

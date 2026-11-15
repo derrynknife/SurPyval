@@ -383,6 +383,171 @@ def test_mcf_by_simulation():
     assert float(model.ff(12.0, [1.0])) == pytest.approx(died.mean(), abs=0.01)
 
 
+def _log_moment(D, H, alpha, theta, family):
+    """``log E[u^D exp(-u^alpha H)]`` by scipy's adaptive quadrature over
+    ``w = log u`` either side of the peak, found on a grid wide enough for
+    the peak far out at a large ``H`` (``_peaked``'s ends at -60 and 8 are
+    not)."""
+    if family == "gamma":
+        k = 1.0 / theta
+
+        def log_g(w):
+            return k * np.log(k) - gammaln(k) + k * w - k * np.exp(w)
+
+    else:
+
+        def log_g(w):
+            return -(w**2) / (2 * theta) - 0.5 * np.log(2 * np.pi * theta)
+
+    def h(w):
+        with np.errstate(all="ignore"):
+            return D * w + log_g(w) - np.exp(np.clip(alpha * w, -700, 700)) * H
+
+    grid = np.linspace(-500.0, 30.0, 53001)
+    values = h(grid)
+    peak, top = grid[np.nanargmax(values)], np.nanmax(values)
+    total = 0.0
+    for a, b in ((-np.inf, peak), (peak, np.inf)):
+        total += quad(
+            lambda w: np.exp(h(w) - top),
+            a,
+            b,
+            epsabs=0,
+            epsrel=1e-13,
+            limit=400,
+        )[0]
+    return top + np.log(total)
+
+
+def _mcf_by_quadrature(model, x, frailty=None):
+    """``E[N(x)]`` by scipy's adaptive quadrature over the log of age, with
+    the inner expectation ``E[u exp(-u^alpha H)]`` by ``_log_moment`` (in
+    log space): independent of ``model._mcf``."""
+    rs, rk, ts, tk, theta, alpha = model.params[:6]
+
+    def log_g(H):
+        if frailty is not None:
+            return np.log(frailty) - frailty**alpha * H
+        return _log_moment(1.0, max(H, 1e-300), alpha, theta, model.family)
+
+    def f(z):
+        H = np.exp(tk * (z - np.log(ts)))
+        return np.exp(np.log(rk) + rk * (z - np.log(rs)) + log_g(H))
+
+    # where the integrand matters: up to the terminal scale and well past
+    # it (it falls as a power of age, or faster, beyond)
+    top = min(np.log(x), np.log(ts) + 40.0 / tk)
+    cuts = [c for c in np.log(ts) + np.array([-3.0, 0.0, 3.0]) if c < top]
+    total, lo = 0.0, -np.inf
+    for hi in cuts + [top]:
+        total += quad(f, lo, hi, epsabs=0, epsrel=1e-12, limit=400)[0]
+        lo = hi
+    return total
+
+
+_MCF_MODELS = [
+    ((10.0, 1.2), (20.0, 1.5), 0.5, 1.0, "gamma"),
+    ((10.0, 1.2), (20.0, 1.5), 2.0, 0.3, "gamma"),
+    ((10.0, 0.6), (20.0, 3.0), 0.5, 1.0, "gamma"),
+    ((5.0, 2.0), (50.0, 0.8), 1.0, 1.0, "lognormal"),
+    ((10.0, 1.2), (20.0, 1.5), 0.2, 2.5, "lognormal"),
+]
+
+
+@pytest.mark.parametrize("rec, term, theta, alpha, family", _MCF_MODELS)
+def test_mcf_levels_off_past_the_terminal_event(
+    rec, term, theta, alpha, family
+):
+    # Once every unit has reached the terminal event no more events
+    # accrue: the expected count rises to a limit and stays there. Until
+    # 0.28 a fixed rule over [0, x] lost the integrand far past the
+    # terminal ages and the count went wrong there (3.682, 5.47 and 1.5e-4
+    # in the conformance fit at 1e4, 1e6 and 1e8 times its terminal scale,
+    # for a limit of 3.683).
+    model = JointFrailty.from_params(rec, term, theta, alpha, family=family)
+    x = term[0] * np.logspace(-4, 8, 400)
+    for frailty in (None, 0.7):
+        m = model.mcf(x, frailty=frailty)
+        assert np.all(np.isfinite(m)) and np.all(np.diff(m) >= 0)
+        assert m[-1] == m[-2]
+        assert m[-1] == pytest.approx(
+            _mcf_by_quadrature(model, 1e300, frailty), rel=1e-10
+        )
+
+
+@pytest.mark.parametrize("rec, term, theta, alpha, family", _MCF_MODELS)
+def test_mcf_by_quadrature_in_the_ordinary_range(
+    rec, term, theta, alpha, family
+):
+    # The ages of the data: the values of 0.27 to 1e-10 (it had them to
+    # about 5e-15, but 7e-11 for the lognormal model with the steep
+    # recurrent shape)
+    model = JointFrailty.from_params(rec, term, theta, alpha, family=family)
+    for t in np.array([0.05, 0.5, 1.0, 2.0]) * term[0]:
+        assert float(model.mcf(t)) == pytest.approx(
+            _mcf_by_quadrature(model, t), rel=1e-10
+        )
+
+
+def test_mcf_of_the_conformance_fit_far_out():
+    from surpyval.tests.conformance.registry_fixtures import joint_frailty_data
+
+    d = joint_frailty_data()
+    model = JointFrailty.fit(
+        x=d["x"], i=d["i"], c=d["c"], terminal=d["terminal"], Z=d["Z"]
+    )
+    scale = model.params[2]
+    x = scale * np.logspace(-2, 8, 300)
+    for z in ([0.0], [1.0]):
+        m = model.mcf(x, z)
+        assert np.all(np.diff(m) >= 0)
+        # Within 1e-5 of the limit from 100 times the scale (the count
+        # still creeps up, as a power of age, with a gamma frailty): it
+        # was 5.47 and 1.5e-4 at 1e6 and 1e8 times the scale
+        assert m[np.searchsorted(x, 100 * scale)] == pytest.approx(
+            m[-1], rel=1e-5
+        )
+    assert float(model.mcf(1e8 * scale, [0.0])) == pytest.approx(
+        3.682916, abs=1e-6
+    )
+
+
+def test_mcf_limit_by_simulation():
+    # Followed until every unit has reached its terminal event: the mean
+    # count of events is the mcf's limit.
+    model = JointFrailty.from_params(
+        (10.0, 1.2), (20.0, 1.5), 0.8, 1.5, beta=[0.4], gamma=[0.2]
+    )
+    sims = model.random(40000, end=1e7, Z=[1.0], random_state=11)
+    assert np.all(sims["terminal"][sims["c"] == 1] == 1)
+    mean = np.sum(sims["c"] == 0) / 40000
+    assert float(model.mcf(1e7, [1.0])) == pytest.approx(mean, rel=0.03)
+    assert float(model.mcf(1e300, [1.0])) == pytest.approx(
+        float(model.mcf(1e7, [1.0])), rel=1e-5
+    )
+
+
+def test_terminal_functions_far_out():
+    # sf, hf and df of the terminal event far past its ages, against the
+    # frailty integrals by quadrature (in log space, so they do not
+    # underflow)
+    for family in ("gamma", "lognormal"):
+        model = JointFrailty.from_params(
+            (10.0, 1.2), (20.0, 1.5), 0.5, 1.3, family=family
+        )
+        for x in (200.0, 2e4, 2e8):
+            H = (x / 20.0) ** 1.5
+            h0 = 1.5 / 20.0 * (x / 20.0) ** 0.5
+            log_s = _log_moment(0.0, H, 1.3, 0.5, family)
+            hf = h0 * np.exp(_log_moment(1.3, H, 1.3, 0.5, family) - log_s)
+            assert float(model.sf(x)) == pytest.approx(np.exp(log_s), rel=1e-9)
+            assert float(model.Hf(x)) == pytest.approx(-log_s, rel=1e-10)
+            assert float(model.hf(x)) == pytest.approx(hf, rel=1e-9)
+            assert float(model.df(x)) == pytest.approx(
+                hf * np.exp(log_s), rel=1e-9
+            )
+
+
 def test_conditional_predictions_and_frailties(fitted):
     assert len(fitted.frailties) == 150
     values = np.array(list(fitted.frailties.values()))
@@ -405,6 +570,75 @@ def test_bounds_contain_estimates(fitted):
         est = getattr(fitted, name)
         assert wald[0] < est < wald[1]
         assert lr[0] < est < lr[1]
+
+
+def test_well_identified_lr_bounds_are_unchanged(fitted):
+    # The probe four Wald half-widths out finds the profile above the
+    # critical value, and the searches give the bounds they gave in 0.27
+    want = {
+        ("theta", 0.05): [0.264095475012, 0.911073995334],
+        ("theta", 0.01): [0.196886866437, 1.056309291055],
+        ("alpha", 0.05): [0.732155138087, 3.92024961485],
+        ("alpha", 0.01): [0.518119690297, 5.547221426304],
+    }
+    for (name, alpha_ci), bounds in want.items():
+        got = fitted.param_cb(name, alpha_ci=alpha_ci, method="lr")
+        np.testing.assert_allclose(got, bounds, rtol=1e-9)
+
+
+@pytest.fixture(scope="module")
+def flat_alpha():
+    """The conformance fixture's fit (60 units), on which the profile of
+    ``alpha`` is flat: its deviance rises to 2.96 and stays there, to
+    1e-10, from ``alpha`` = 20 out to 1e10 (and from -2 out to -1e10)."""
+    from surpyval.tests.conformance.registry_fixtures import joint_frailty_data
+
+    d = joint_frailty_data()
+    return JointFrailty.fit(
+        x=d["x"], i=d["i"], c=d["c"], terminal=d["terminal"], Z=d["Z"]
+    )
+
+
+def test_flat_profile_gives_open_ends(flat_alpha):
+    # Until 0.28 the search reported finite ends far out where the
+    # likelihood could no longer be solved, which moved with the platform
+    # and the interpreter (-1.6e31 and 9.3e6 at 95%; -4e12 or 1.6e31 at
+    # 99% on x86-64 Linux, the 99% interval not containing the 95% one),
+    # after a minute or more each. Where the critical value is above the
+    # plateau both ends are open, with a warning saying so; where it is
+    # below it (a one-sided 95% bound: 2.71) the profile crosses it.
+    import time
+
+    start = time.perf_counter()
+    for alpha_ci in (0.01, 0.05):
+        with pytest.warns(RuntimeWarning) as rec:
+            got = flat_alpha.param_cb("alpha", alpha_ci=alpha_ci, method="lr")
+        messages = [str(w.message) for w in rec]
+        assert any("has no lower end" in m for m in messages)
+        assert any("has no upper end" in m for m in messages)
+        assert got[0] == -np.inf and got[1] == np.inf
+    for bound, want in (("lower", -np.inf), ("upper", np.inf)):
+        with pytest.warns(RuntimeWarning, match="has no"):
+            got = flat_alpha.param_cb(
+                "alpha", alpha_ci=0.01, bound=bound, method="lr"
+            )
+        assert got.tolist() == [want]
+    # The runtime is bounded: the probes find the profile below the
+    # critical value at a few Wald half-widths and the walks stop on its
+    # plateau (about 3 s on an M1; one to twenty minutes per call before)
+    assert time.perf_counter() - start < 60.0
+    lower = flat_alpha.param_cb("alpha", bound="lower", method="lr")[0]
+    upper = flat_alpha.param_cb("alpha", bound="upper", method="lr")[0]
+    assert -1.0 < lower < flat_alpha.alpha < 9.0 < upper < 10.0
+
+
+def test_lr_bound_on_the_edge_of_the_space_is_the_edge(flat_alpha):
+    # theta's profile stays below the critical value down to theta = 0:
+    # the lower bound is 0 itself (it was 2.2e-308, the end of the
+    # search's coordinate); the upper bound is unchanged
+    got = flat_alpha.param_cb("theta", alpha_ci=0.05, method="lr")
+    assert got[0] == 0.0
+    assert got[1] == pytest.approx(0.6489965790, rel=1e-8)
 
 
 def test_frailty_tests(fitted):

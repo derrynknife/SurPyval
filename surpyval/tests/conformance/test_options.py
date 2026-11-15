@@ -410,6 +410,10 @@ def test_every_uncertainty_method_is_swept(case):
         if name == "rmst_cb" and not getattr(case, "continuous", True):
             # refused on a discrete distribution, with the sum to use
             continue
+        if name == "rmtl" and getattr(model, "estimator", "") == "NPMLE":
+            # refused for interval-censored rows (the time lost depends on
+            # where in each window the mass lies), saying what to use
+            continue
         try:
             with warnings.catch_warnings():
                 # A deprecated attribute's old name warns when read; it

@@ -1,10 +1,9 @@
 """``diagnose()`` is the one assumptions-checking API: it gives the
-proportional-hazards test ``check_ph`` gave, as the same table, on the
-same ``transform`` (``d.tables["proportional_hazards"]``), and
-``check_ph``, deprecated in v0.26, warns until it is removed in v0.28.
-
-Each test here that calls ``check_ph`` goes when it is removed; the
-``diagnose()`` side stays.
+proportional-hazards test ``check_ph`` gave, as the same table
+(:func:`zph_table`), on the same ``transform``
+(``d.tables["proportional_hazards"]``). ``check_ph``, deprecated in
+v0.26, was removed in v0.28: the old names raise an error naming
+``diagnose()``.
 """
 
 import json
@@ -21,14 +20,10 @@ from surpyval.univariate.competing_risks import (
 )
 from surpyval.univariate.regression.proportional_hazards import diagnostics
 from surpyval.utils.deprecation import SCHEDULED_REMOVALS
+from surpyval.utils.removed_names import RemovedName
 
 TRANSFORMS = ("km", "rank", "identity", "log")
 TIES = ("efron", "breslow", "exact", "kalbfleisch-prentice")
-MESSAGE = (
-    "check_ph is deprecated and will be removed in v0.28; use "
-    "model.diagnose(), which runs the same proportional-hazards test "
-    "(transform=...)"
-)
 
 
 def _quiet(call, *args, **kwargs):
@@ -49,7 +44,8 @@ def _tied_data(seed=3, n=150):
 
 
 def _old_table(model, transform):
-    return _quiet(model.check_ph, transform)
+    # What check_ph returned until v0.28.
+    return _quiet(diagnostics.zph_table, model, transform)
 
 
 # -- the table is check_ph's, number for number ------------------------------
@@ -71,7 +67,7 @@ def test_default_transform_is_check_ph_default():
     x, Z, c = _tied_data()
     model = _quiet(sp.CoxPH.fit, x, Z, c=c)
     table = _quiet(model.diagnose).tables["proportional_hazards"]
-    pd.testing.assert_frame_equal(table, _quiet(model.check_ph))
+    pd.testing.assert_frame_equal(table, _quiet(diagnostics.zph_table, model))
     assert table.attrs["transform"] == "km"
 
 
@@ -201,39 +197,43 @@ def test_a_family_without_a_table_has_none():
     assert d.tables == {}
 
 
-# -- check_ph is deprecated --------------------------------------------------
+# -- check_ph was removed in v0.28 ------------------------------------------
 
 
-def test_check_ph_is_scheduled_for_removal_in_028():
-    assert SCHEDULED_REMOVALS["check_ph"] == "0.28"
+def test_check_ph_is_no_longer_scheduled():
+    assert "check_ph" not in SCHEDULED_REMOVALS
 
 
-def test_the_method_warns_and_returns_the_same_table():
+def test_the_method_is_gone_and_names_diagnose():
     x, Z, c = _tied_data()
     model = _quiet(sp.CoxPH.fit, x, Z, c=c)
-    with pytest.warns(DeprecationWarning) as caught:
-        old = model.check_ph("rank")
-    assert [str(w.message) for w in caught] == [MESSAGE]
-    # The warning points at the line that called check_ph.
-    assert caught[0].filename == __file__
-    pd.testing.assert_frame_equal(
-        old, model.diagnose(transform="rank").tables["proportional_hazards"]
+    assert not hasattr(model, "check_ph")
+    hint = next(
+        k.__dict__["check_ph"]
+        for k in type(model).__mro__
+        if "check_ph" in k.__dict__
     )
+    assert isinstance(hint, RemovedName)
+    with pytest.raises(AttributeError) as err:
+        model.check_ph("rank")
+    message = str(err.value)
+    assert "removed in v0.28" in message and "diagnose()" in message
 
 
-def test_the_function_warns_and_returns_the_same_dict():
-    x, Z, c = _tied_data()
-    model = _quiet(sp.CoxPH.fit, x, Z, c=c)
-    with pytest.warns(DeprecationWarning) as caught:
-        old = diagnostics.check_ph(model, "log")
-    assert [str(w.message) for w in caught] == [MESSAGE]
-    assert caught[0].filename == __file__
-    assert old == diagnostics.zph_score_test(model, "log")
+def test_the_function_is_gone_and_names_diagnose():
+    with pytest.raises(AttributeError) as err:
+        diagnostics.check_ph
+    message = str(err.value)
+    assert "removed in v0.28" in message and "diagnose()" in message
+    with pytest.raises(ImportError):
+        exec(
+            "from surpyval.univariate.regression.proportional_hazards."
+            "diagnostics import check_ph"
+        )
 
 
 def test_diagnose_raises_no_deprecation_warning():
-    # diagnose() and the shared functions use the test directly: nothing
-    # inside SurPyval calls check_ph.
+    # diagnose() and the shared functions use the test directly.
     x, Z, c = _tied_data()
     model = _quiet(sp.CoxPH.fit, x, Z, c=c)
     competing = _competing()
@@ -245,7 +245,7 @@ def test_diagnose_raises_no_deprecation_warning():
         diagnostics.zph_table(model, "rank")
 
 
-# -- a penalised fit: check_ph refuses as diagnose() does --------------------
+# -- a penalised fit: the table refuses as diagnose() does -------------------
 
 
 def test_a_penalised_fit_is_refused_alike():
@@ -253,10 +253,10 @@ def test_a_penalised_fit_is_refused_alike():
     model = _quiet(sp.CoxPH.fit_penalised, x, Z, c=c, penalizer=0.1)
     with pytest.raises(ValueError) as by_diagnose:
         model.diagnose()
-    with pytest.raises(ValueError) as by_method:
+    with pytest.raises(ValueError) as by_table:
         _old_table(model, "km")
     with pytest.raises(ValueError) as by_function:
-        _quiet(diagnostics.check_ph, model)
+        _quiet(diagnostics.zph_score_test, model)
     assert "penalty" in str(by_diagnose.value)
-    assert str(by_method.value) == str(by_diagnose.value)
+    assert str(by_table.value) == str(by_diagnose.value)
     assert str(by_function.value) == str(by_diagnose.value)

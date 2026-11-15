@@ -1,7 +1,8 @@
 """Data handling shared by every model: SurPyval's data formats and the
 conversions between them (``data_formats``), the checks the fitters make
 of their inputs (``validation``), covariate handling (``covariates``),
-rounding helpers (``numeric``) and where warnings point (``warnings``).
+rounding helpers (``numeric``), where warnings point (``warnings``) and
+reading unit labels (``units``: ``normalise_unit``, ``same_unit``).
 
 ``__all__`` lists what this namespace promises: the documented handlers,
 converters and helpers (see the Utilities page). Every other name
@@ -54,6 +55,7 @@ from surpyval.utils.numeric import (
     ffill_or_zero,
     round_sig,
 )
+from surpyval.utils.units import normalise_unit, same_unit
 from surpyval.utils.validation import (
     FG_BASELINE_OPTIONS,
     _check_x_not_empty,
@@ -95,6 +97,8 @@ __all__ = [
     "is_missing_event",
     "missing_events",
     "resolve_cr_censoring",
+    "normalise_unit",
+    "same_unit",
 ]
 
 # The promised names are documented here, as ``surpyval.utils.<name>``, so

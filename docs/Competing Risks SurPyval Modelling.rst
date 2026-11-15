@@ -19,11 +19,15 @@ SurPyval's competing-risks tools, and the question each one answers:
    * - Tool
      - Answers
    * - ``CompetingRisks``
-     - Non-parametric (Aalen-Johansen) cumulative incidence of each cause.
+     - Non-parametric cumulative incidence of each cause: Aalen-Johansen for
+       exact times, and the non-parametric maximum-likelihood estimate when
+       failures are found at inspections (interval-censored), or their cause
+       was not recorded.
    * - ``ParametricCompetingRisks``
      - One distribution per cause; smooth CIFs, extrapolation, simulation.
    * - ``gray_test``
-     - Does the cumulative incidence of a cause differ between groups?
+     - Does the cumulative incidence of a cause differ between groups? Also
+       for failures found at inspections.
    * - ``FineGray``
      - How do covariates change the cumulative incidence of one cause?
    * - ``CompetingRisksProportionalHazards``
@@ -35,8 +39,9 @@ SurPyval's competing-risks tools, and the question each one answers:
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
-right-censored data, and ``ParametricCompetingRisks`` also failures found at
-inspections (left- and interval-censored rows). For repeated events with several failure modes see
+right-censored data; ``CompetingRisks``, ``ParametricCompetingRisks`` and
+``gray_test`` also take failures found at inspections (left- and
+interval-censored rows). For repeated events with several failure modes see
 the cause-specific MCF and NHPP models in
 :doc:`Recurrent Event Modelling with SurPyval`.
 
@@ -841,6 +846,73 @@ probability scale, refined until it holds to about :math:`10^{-12}`.
                - truth.probability_of_cause("wear")) < 0.05
     assert abs(inspected.covariance()[0, 2]) > 0
 
+The non-parametric estimate for inspection data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Aalen-Johansen estimate needs each failure's time. Given windows (any
+left- or interval-censored row), ``CompetingRisks.fit`` takes the same rows as
+``ParametricCompetingRisks`` and estimates each cause's cumulative incidence
+without assuming any distribution, by the non-parametric maximum-likelihood
+estimate (NPMLE); the fitted model's ``estimator`` says which estimate it
+holds (``"Aalen-Johansen"`` or ``"NPMLE"``). In plain words: it shares out each unit's failure among the
+stretches of time its window could have held it, with each cause's share put
+where the other units' windows overlap most, and picks the shares that make
+the data most likely. With exact times this is the Aalen-Johansen estimate;
+with one cause it is Turnbull's.
+
+.. jupyter-execute::
+
+    from surpyval import CompetingRisks
+
+    np_inspected = CompetingRisks.fit(x_i, e_i, c=c_i)
+    print(np_inspected.estimator)
+    print(np_inspected)
+    print("wear CIF at 100 h, non-parametric / parametric: %.3f / %.3f" % (
+        np_inspected.cif(100.0, "wear"), inspected.cif(100.0, "wear")))
+    print(np_inspected.cb([100.0], "wear", n_boot=200, random_state=1).round(3))
+
+The estimate is a step function, and the data cannot say where inside a
+window the failures happened: each cause's curve is flat across an interval
+and steps up at its end, as Turnbull's survival curve does.
+``innermost_intervals(cause)`` lists those intervals and the probability on
+each; ``beyond`` is the share of units not failed by the end of follow-up.
+The bounds are by the case bootstrap (the units resampled and the estimate
+refitted), and are approximate: an estimate from inspection data settles
+more slowly than one from exact times.
+
+Two more things it takes. A failure whose cause was not recorded counts, with
+``masked="include"``, as a failure from *some* cause in its window (this
+assumes that whether a cause was recorded does not depend on which cause it
+was). And the curves can be drawn with ``plot()``, as for exact times.
+
+What needs each failure's time is refused with a message saying what to use
+instead: a cause's net survival (``sf(x, event)``), the hazard and density
+(``hf``, ``df``, ``iif``), the restricted mean time lost (``rmtl``, which
+depends on where inside each window the failures happened),
+``set_support``, the stacked plot, weights and delayed entry.
+
+In formulas (Hudgens, Satten and Longini 2001): with :math:`p_{kj}` the
+probability of cause :math:`k` on interval :math:`j`, the estimate maximises
+
+.. math::
+    \prod_i \Big(\sum_{(k, j) \subseteq \text{row } i} p_{kj}\Big)^{n_i},
+
+a row found failed from cause :math:`k` in :math:`(x_l, x_r]` covering cause
+:math:`k`'s intervals inside its window, a row whose cause was not recorded
+every cause's, and a right-censored row every cause's after :math:`x_l` and
+the probability left after follow-up. Cause :math:`k`'s intervals are the
+innermost intervals (Turnbull's maximal intersections) of the windows of the
+rows that can hold it. The maximum is found by the EM algorithm, accelerated
+by SQUAREM, until its Karush-Kuhn-Tucker conditions hold to ``tol``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np_inspected.converged
+    assert abs(np_inspected.cif(100.0, "wear")
+               - inspected.cif(100.0, "wear")) < 0.06
+
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1004,6 +1076,64 @@ null hypothesis is true.
     :hide-output:
 
     assert abs(same - 0.05) < 0.03 and abs(different - 0.05) < 0.03
+
+Gray's test for failures found at inspections
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Gray's test needs each failure's time. Given windows, ``gray_test`` gives each
+failure in a window a plausible exact time (and cause, if not
+recorded), drawn from the non-parametric estimate of all the groups together,
+runs Gray's test on the completed data, and repeats this to average out the
+guesswork (multiple imputation). Each repeat first refits the estimate to a
+resample of the units, so the spread between repeats includes the estimate's
+own uncertainty, and the combined test accounts for it. With no windows
+nothing is imputed and it is Gray's test exactly, as always.
+
+.. jupyter-execute::
+
+    from surpyval import gray_test
+
+    rng = np.random.default_rng(11)
+    n = 300
+    grp = rng.binomial(1, 0.5, n)
+    t_1 = rng.exponential(1 / (0.08 * np.exp(0.8 * grp)))   # cause 1
+    t_2 = rng.exponential(1 / 0.05, n)                       # cause 2
+    t = np.minimum(t_1, t_2)
+    # Each unit inspected every 2 time units from its own start, up to 20:
+    offset = rng.uniform(0, 2, n).round(1)
+    lo = np.where(t <= offset, 0.0, offset + 2 * np.floor((t - offset) / 2))
+    hi = np.where(t <= offset, offset, lo + 2)
+    seen = hi <= 20
+    x_w = np.column_stack([np.where(seen, lo, 20), np.where(seen, hi, np.inf)])
+    e_w = np.where(seen, np.where(t_1 < t_2, 1, 2), None)
+
+    res_w = gray_test(x_w, e_w, grp, event=1, random_state=2)
+    print(res_w)
+    print(res_w.method, res_w.n_imputations)
+
+The result is the same named tuple as for exact times, ``(statistic, df,
+p_value, cause, groups)``, with the imputation's details as attributes. Its
+``statistic`` is on the chi-squared scale with ``df`` the number of groups
+minus one; its p-value is from an F distribution with ``df_denominator``
+degrees of freedom (Li, Raghunathan and Rubin 1991), which reflects how much
+the imputations disagree (``relative_increase``).
+
+Imputing from the pooled estimate is imputing as if the null hypothesis
+held, as the score tests of interval-censored survival data do
+(``interval_logrank``): it keeps the test's size when the groups are
+inspected on different schedules, at some cost in power. In the calibration
+study (``surpyval/tests/calibration/test_size_interval_gray.py``: two groups
+of 100 with the same incidences, one inspected every time unit and the other
+every 3, follow-up ending uniformly between 10 and 25, 300 replicates of 10
+imputations), it rejected at the 5% level in 3.3% of replicates and at the
+10% level in 8.3%: a little conservative. The test assumes the inspection
+times do not depend on the failures.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert res_w.p_value < 0.01
 
 Gray's test versus a cause-specific log-rank
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

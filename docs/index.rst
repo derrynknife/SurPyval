@@ -338,6 +338,7 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Bayesian Fitting with SurPyval
+   Pooling Rates Across Sources
    Regression Modelling with SurPyval
    Distributional Regression
    Mixture-Cure Regression

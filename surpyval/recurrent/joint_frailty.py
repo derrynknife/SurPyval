@@ -106,8 +106,18 @@ BASELINE_NAMES = [
 #: within 1e-10 (``test_joint_frailty.py``).
 N_NODES = 64
 _DROP = 36.0
-#: Gauss-Legendre nodes of the integral over time in ``mcf``.
-N_TIME_NODES = 64
+#: The integral over age in ``mcf``: Gauss-Legendre nodes per panel of
+#: the log of age, the panels' width in units of ``1 / max(shape)`` (the
+#: log of age over which either cumulative hazard grows by a factor
+#: ``e``), the head's cumulative terminal hazard below which a series in
+#: it is exact to rounding, the fall (in nats) below its peak at which
+#: the integrand is taken to have died away, and the panels taken at a
+#: time.
+N_TIME_NODES = 16
+_MCF_PANEL = 1.0
+_MCF_HEAD = 1e-8
+_MCF_DROP = 40.0
+_MCF_BATCH = 32
 _EXP_CAP = 700.0
 
 
@@ -1781,9 +1791,24 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         et: npt.NDArray,
         u: npt.NDArray | None,
     ) -> npt.NDArray:
-        """``E[N(x)]``: ``e^{beta'Z} int_0^{R_0(x)} E[u S_T(s | u)] dv``
-        with ``v = R_0(s)``, by Gauss-Legendre in ``y`` with ``v = V
-        y^2`` (smooth where the integrand has a power of ``v`` at 0)."""
+        """``E[N(x)] = e^{beta'Z} int_0^x r_0(s) g(s) ds`` with ``g(s) =
+        E[u e^{-u^alpha H(s)}]`` and ``H(s) = e^{gamma'Z} Lambda_0(s)``
+        (``u`` itself, not the expectation, for a given frailty).
+
+        The head, the ages where ``H`` is below ``_MCF_HEAD`` (scaled
+        down by ``E[u^(1 + alpha)] / E[u]``), is the series ``E[u] R_0(b)
+        - E[u^(1 + alpha)] R_0(b) H(b) k_r / (k_r + k_t)``, exact to
+        rounding. The rest is integrated over the log of age, ``z = log
+        s``, where ``r_0(s) s g(s)`` is smooth, on panels of fixed width
+        from the head's end (16-point Gauss-Legendre each), with ``log g``
+        from :func:`log_frailty_integral` (so it never underflows). The
+        panels do not depend on ``x``: ``x`` cuts the last one short, so
+        the expected count can only grow with ``x``. Past its peak, once
+        the integrand has fallen by ``e^-40`` (the units have reached the
+        terminal event), the rest is negligible and the count stays at
+        its limit. Until 0.28 a fixed rule over ``[0, x]`` lost the
+        integrand's peak far beyond the terminal event's ages, and the
+        count went wrong there (too high, then towards 0)."""
         if self.time_scale != "calendar":
             raise ValueError(
                 "mcf is the expected count of recurrent events on the "
@@ -1792,29 +1817,130 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
                 "closed form: simulate it with random()."
             )
         rs, rk, ts, tk, theta, alpha = (float(v) for v in params[:6])
-        V = (x / rs) ** rk
+        n = x.size
+        er = np.broadcast_to(np.asarray(er, dtype=float), (n,))
+        et = np.broadcast_to(np.asarray(et, dtype=float), (n,))
+        # The moments of the head's series and the log of g
+        if u is None:
+            if theta <= 0:
+                m1 = np.ones(n)
+                m2 = np.ones(n)
+            else:
+                m1 = np.full(n, self._mean_frailty(params))
+                m2 = np.full(
+                    n,
+                    float(
+                        np.exp(
+                            log_frailty_integral(
+                                1.0 + alpha,
+                                0.0,
+                                0.0,
+                                alpha,
+                                theta,
+                                self.family,
+                            )
+                        )
+                    ),
+                )
+        else:
+            m1 = np.asarray(u, dtype=float)
+            m2 = m1 ** (1.0 + alpha)
+
+        def log_g(H: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+            if u is not None:
+                ua = (m1[rows] ** alpha)[:, None]
+                return np.log(m1[rows])[:, None] - ua * H
+            if theta <= 0:
+                return -H
+            zero = np.zeros_like(H)
+            return log_frailty_integral(
+                zero + 1.0, zero, H, alpha, theta, self.family
+            )
+
+        out = np.zeros(n)
+        with np.errstate(all="ignore"):
+            log_x = np.log(x)
+            # The head ends where H(b) = h_b, at log age z0
+            ratio = np.where(m1 > 0, m2 / m1, 1.0)
+            log_h = np.log(_MCF_HEAD) - np.log(np.maximum(1.0, ratio))
+            z0 = np.log(ts) + (log_h - np.log(et)) / tk
+            zb = np.minimum(log_x, z0)
+            R_b = np.exp(rk * (zb - np.log(rs)))
+            H_b = np.exp(np.log(et) + tk * (zb - np.log(ts)))
+            out = m1 * R_b - m2 * R_b * H_b * rk / (rk + tk)
+            out = np.where(x > 0, out, 0.0)
+        live = np.flatnonzero((x > 0) & (log_x > z0) & (m1 > 0))
+        if live.size:
+            out[live] += self._mcf_tail(
+                live, log_x[live], z0[live], et[live], rs, rk, ts, tk, log_g
+            )
+        return er * out
+
+    @staticmethod
+    def _mcf_tail(
+        rows: npt.NDArray,
+        z_end: npt.NDArray,
+        z0: npt.NDArray,
+        et: npt.NDArray,
+        rs: float,
+        rk: float,
+        ts: float,
+        tk: float,
+        log_g: Any,
+    ) -> npt.NDArray:
+        """``int r_0(s) g(s) ds`` from ``e^z0`` to ``e^z_end``, over ``z =
+        log s`` on panels of fixed width from ``z0`` (see ``_mcf``)."""
         y, wt = roots_legendre(N_TIME_NODES)
         y = 0.5 * (y + 1.0)
         wt = 0.5 * wt
-        v = V[:, None] * y**2
-        s = rs * v ** (1.0 / rk)
-        H = et[:, None] * (s / ts) ** tk
-        if u is None:
-            if theta <= 0:
-                inner = np.exp(-H)
-            else:
-                zero = np.zeros_like(H)
-                inner = np.exp(
-                    log_frailty_integral(
-                        zero + 1.0, zero, H, alpha, theta, self.family
-                    )
+        dz = _MCF_PANEL / max(rk, tk)
+        n = rows.size
+        total = np.zeros(n)
+        peak = np.full(n, -np.inf)
+        active = np.arange(n)
+        j = 0
+        # The integral is taken no further than the largest float age.
+        z_cap = float(np.log(np.finfo(float).max))
+        while active.size:
+            js = np.arange(j, j + _MCF_BATCH)
+            a_ = z0[active, None] + js * dz
+            lo = np.minimum(a_, z_end[active, None])
+            hi = np.minimum(a_ + dz, z_end[active, None])
+            lo = np.minimum(lo, z_cap)
+            hi = np.minimum(hi, z_cap)
+            width = hi - lo
+            z = lo[:, :, None] + width[:, :, None] * y
+            with np.errstate(all="ignore"):
+                log_H = np.log(et[active])[:, None, None] + tk * (
+                    z - np.log(ts)
                 )
-            mult = er
-        else:
-            inner = np.exp(-(u[:, None] ** alpha) * H)
-            mult = er * u
-        integral = np.sum(wt * inner * 2.0 * V[:, None] * y, axis=1)
-        return mult * integral
+                H = np.exp(log_H)
+                lg = log_g(H.reshape(active.size, -1), rows[active]).reshape(
+                    z.shape
+                )
+                log_f = np.log(rk) + rk * (z - np.log(rs)) + lg
+                f = np.where(np.isfinite(log_f), np.exp(log_f), 0.0)
+                panel = width * np.sum(wt * f, axis=-1)
+            # Panels in order, so the count is a running sum of
+            # non-negative terms; a row stops at x, or once its integrand
+            # has died away past its peak.
+            top = np.where(np.isfinite(log_f), log_f, -np.inf).max(axis=-1)
+            done = np.zeros(active.size, dtype=bool)
+            for k in range(js.size):
+                still = ~done
+                total[active[still]] += panel[still, k]
+                peak[active] = np.where(
+                    still, np.maximum(peak[active], top[:, k]), peak[active]
+                )
+                ends = hi[:, k] >= np.minimum(z_end[active], z_cap)
+                died = (
+                    (top[:, k] < peak[active] - _MCF_DROP)
+                    & (log_f[:, k, -1] <= log_f[:, k, 0])
+                ) | ~np.isfinite(top[:, k])
+                done |= still & (ends | died)
+            active = active[~done]
+            j += _MCF_BATCH
+        return total
 
     def _evaluate(
         self, name: str, x: Any, Z: Any, frailty: Any, params: Any = None
@@ -2225,8 +2351,11 @@ class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
         - ``"lr"`` -- the profile-likelihood interval: the values whose
           deviance, every other parameter re-fitted, stays below the
           :math:`\\chi^2_1` critical value. Where it stays below it down
-          to ``theta = 0`` the lower bound on ``theta`` is 0. It needs the
-          data, which a model restored from a dict does not keep.
+          to ``theta = 0`` the lower bound on ``theta`` is 0; where it
+          stays below it however far ``alpha`` or a coefficient goes (the
+          profile levels off), that end is ``-inf`` or ``inf``, with a
+          warning. It needs the data, which a model restored from a dict
+          does not keep.
 
         Parameters
         ----------

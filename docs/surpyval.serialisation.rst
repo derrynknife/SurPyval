@@ -384,8 +384,8 @@ with its own ``schema``.
      - ``maximum``
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
-     - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
-     - ``support``
+     - ``event_idx_map``, ``n_event_types``
+     - the Aalen-Johansen estimate: ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``, and ``support``; the NPMLE of interval-censored rows, marked ``estimator`` (``"NPMLE"``; absent for Aalen-Johansen): ``beyond``, ``_neg_ll``, ``converged``, ``gap``, ``iterations``, ``tol``, ``max_iter``, ``atom_cause``, ``atom_lower``, ``atom_upper``, ``atom_mass``, ``data_xl``, ``data_xr``, ``data_cause``, ``data_n``
    * - ``MultiState``
      - ``"model": "MultiState"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``

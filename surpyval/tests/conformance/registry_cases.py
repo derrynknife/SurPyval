@@ -691,6 +691,40 @@ def _competing_risks():
             },
         )
     )
+
+    def icr_from_df(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.CompetingRisks.fit_from_df(
+            df, None, "e", c_col="c", n_col="n", xl_col="lo", xr_col="hi"
+        )
+
+    # CompetingRisks with interval-censored rows: the NPMLE route.
+    out.append(
+        Case(
+            name="CompetingRisks[interval]",
+            fitters=("surpyval.univariate.competing_risks.CompetingRisks",),
+            model_class="surpyval.univariate.competing_risks.CompetingRisks",
+            interface=CAUSES,
+            data=pcr_interval_data,
+            fit=_fit(cr.CompetingRisks),
+            functions=("sf", "ff", "Hf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "c", "e", "n"),
+            paths={"fit_from_df": icr_from_df},
+            continuous=False,
+            rtol=1e-7,
+        )
+    )
     for how in ("Cox", "Fine-Gray"):
         out.append(
             Case(
@@ -3201,6 +3235,26 @@ def _bounds(case):
                 query=(("healthy", [0.5]), ("ill", [1.0])),
             ),
         ),
+        # CompetingRisks fitted to interval-censored rows (the NPMLE
+        # route, by case name): the case bootstrap (percentiles), on each
+        # cause's cumulative incidence and on the all-cause sf / ff.
+        "CompetingRisks[interval]": (
+            Bound(
+                "cb",
+                on=("cif",),
+                per_cause=True,
+                label="cb[cif]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+            Bound(
+                "cb",
+                on=("sf", "ff"),
+                label="cb[all-cause]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         # Robust (clustered) Wald bounds on the dynamic prediction from
         # the landmark s, on each of its scales.
@@ -3214,20 +3268,28 @@ def _bounds(case):
             )
             for t in ("log-log", "log", "plain")
         ),
-        # The delta method on each function and Wald bounds on the
-        # parameters. The profile-likelihood bounds are not swept here:
-        # on this fixture the profile of alpha is flat, and on x86-64
-        # Linux the search reported a finite 99% bound (1.6e31) where the
-        # 95% one was open, failing the nesting check (DECISIONS.md, 13
-        # Nov 2026, open); each sweep also took 5 to over 20 minutes.
-        # test_joint_frailty.py checks param_cb(method="lr") of theta and
-        # alpha on its own data.
+        # The delta method on each function, Wald bounds on the
+        # parameters and the profile-likelihood interval. On this fixture
+        # the profile of alpha is flat (its deviance level at 2.96 either
+        # way), so its interval is open at both ends at 95% and 99%; until
+        # 0.28 the search reported finite ends far out (-1.6e31, 9.3e6)
+        # after minutes (DECISIONS.md, 13 Nov 2026).
         "JointFrailtyModel": (
             Bound("cif_cb", point="cif"),
             Bound("iif_cb", point="iif"),
             Bound("mcf_cb", point="mcf"),
             Bound("sf_cb", point="sf"),
             _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
         ),
         # Wald bounds over every parameter, k included; the profile
         # likelihood bound is on k alone; and the life along a usage path
@@ -3311,8 +3373,9 @@ def _bounds(case):
             Bound("total_iif_cb", point="total_iif"),
         ),
     }
-    if cls in fixed:
-        return fixed[cls]
+    spec = fixed.get(case.name) or fixed.get(cls)
+    if spec is not None:
+        return spec
     if cls == "Parametric":
         if case.name in _NO_COVARIANCE:
             return ()
@@ -3845,7 +3908,8 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames"):
+    if name in ("Turnbull", "BuckleyJames", "CompetingRisks[interval]"):
+        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
         # The life model's first parameter (the first is a fixed

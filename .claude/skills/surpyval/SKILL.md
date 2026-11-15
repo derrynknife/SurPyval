@@ -10,8 +10,8 @@ estimator accepts arbitrary combinations of observed, censored, and truncated
 data** through one consistent input convention (the "xcnt" data model). Fit a
 model, then call `sf`/`ff`/`hf`/`Hf`/`df`/`qf` on it.
 
-This skill describes SurPyval 0.27. Check the installed version with
-`surpyval.__version__`; a note marked **0.22** to **0.27** says the release
+This skill describes SurPyval 0.28. Check the installed version with
+`surpyval.__version__`; a note marked **0.22** to **0.28** says the release
 whose behaviour it describes, which earlier versions do not share.
 Import as `import surpyval` (commonly `import surpyval as sp`). Every code
 block below runs as written (`surpyval/tests/test_skill.py` executes them).
@@ -298,13 +298,13 @@ silently wrong numbers, not errors.
 | **Parametric distributions** | `sp.<Name>` | Weibull, Exponential, Gamma, LogNormal, Normal, Gumbel, Logistic, LogLogistic, ExpoWeibull, Rayleigh, Beta, Beta4, Uniform, and discrete (Bernoulli, Poisson, Binomial, Geometric, NegativeBinomial, DiscreteWeibull, ...) |
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
 | **Non-parametric plot** | `sp.plot_nonparametric` | One or more fitted non-parametric models (a list, or `{label: model}` for groups) on one axes: `sf`/`ff`/`Hf`, `cb` or `band`, censor ticks, `quantiles=0.5` median lines and a number-at-risk table (`at_risk_rows="all"`); returns `fig`, `ax`, `counts`, `quantiles`. The table alone, no matplotlib: `sp.at_risk_table(models, times=, rows=, counts=)` |
-| **Tests** | `sp.logrank`, `sp.pairwise_logrank`, `sp.interval_logrank` (interval-censored data), `sp.maxcombo_logrank` (non-proportional hazards), `sp.trend_logrank` (ordered groups), `sp.permutation_logrank` (exact / Monte Carlo p-value), `sp.maxstat_logrank` (cut-point of a continuous covariate, search-corrected p-value), `sp.sf_diff`, `model.likelihood_ratio_test()`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
+| **Tests** | `sp.logrank`, `sp.pairwise_logrank`, `sp.interval_logrank` (interval-censored data), `sp.maxcombo_logrank` (non-proportional hazards), `sp.trend_logrank` (ordered groups), `sp.permutation_logrank` (exact / Monte Carlo p-value), `sp.maxstat_logrank` (cut-point of a continuous covariate, search-corrected p-value), `sp.sf_diff`, `model.likelihood_ratio_test()`, `sp.gray_test` (interval-censored rows too, by multiple imputation), `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
 | **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
 | **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). `sp.IntervalCoxPH` takes interval-, left- and right-censored rows (`x` as `[left, right]` pairs, `c=2`): Cox PH with an NPMLE baseline on the Turnbull intervals (icenReg's `ic_sp`); `param_cb` Wald (profile likelihood), `"lr"`, `"bootstrap"`; no `cb` on curves. |
 | **Time-varying covariates** | `sp.StepSchedule`, `sp.CovariatePath` | Evaluate a fitted regression along a covariate path with `sf_tvc` / `Hf_tvc`; `CovariatePath.from_points` / `from_callable` (**0.22**) for ramps and cycles; item records with a `CovariatePath` as `time_varying_covariates` are fitted on it (cut into steps, halved until the fit stops moving: `model.path_steps`; `path.to_steps(t_max, steps)` gives the steps) |
 | **Frailty** | `sp.WeibullFrailty`, ..., `sp.CoxFrailty` | Shared gamma frailty PH (`family="lognormal"` for a log-normal frailty); `params` = baseline, coefficients, `theta` |
 | **Mixed-effects Cox** | `sp.CoxMixedEffects`, `sp.RandomEffect` | R's `coxme`: Gaussian random effects on the log hazard, nested/crossed groups and correlated random slopes; `fit(x, Z, c, groups=)` or `random_effects=[RandomEffect(g, slopes=[0])]`; `fit_from_df(..., random_effects="(1 + trt \| centre)")`; `variance_components()`, `variance_cb()`, `lr_test()`, `random_effects`; `sf(x, Z, group=, marginal=)` |
-| **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards`, `ParametricCompetingRisksRegression` (a parametric regression per cause, `model=WeibullPH` or `{cause: fitter}`: `cif(x, Z, event)` past the data, `probability_of_cause(Z, event)`, `cb`) |
+| **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF: Aalen-Johansen for exact times; with left/interval-censored rows the NPMLE, `estimator == "NPMLE"`, masked causes with `masked="include"`, bootstrap `cb(n_boot=, random_state=)`), `ParametricCompetingRisks` (takes interval-censored rows too), `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards`, `ParametricCompetingRisksRegression` (a parametric regression per cause, `model=WeibullPH` or `{cause: fitter}`: `cif(x, Z, event)` past the data, `probability_of_cause(Z, event)`, `cb`) |
 | **Recurrent events** | `surpyval.recurrent` | `NonParametricCounting` (MCF), NHPP/HPP intensity fits (`CrowAMSAA`, `Duane`, `CoxLewis`, `HPP`), renewal / imperfect repair (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`), proportional-intensity regression (`ProportionalIntensityHPP` / `NHPP`; `fit_tvc` / `fit_tvc_timeline` for covariates that change over time, then `cif_tvc` / `iif_tvc` / `cb_tvc` along a `StepSchedule`), semi-parametric recurrent regression with robust (cluster-by-item) standard errors (`AndersenGill`, `PrenticeWilliamsPeterson(time_scale="total"|"gap")`, `WeiLinWeissfeld`; `fit(x, Z, i=, c=)` or start-stop `fit_tvc(i, xl, xr, c, Z)`; `summary()`, `cif(x, Z, stratum=)`), cause-specific MCF/NHPP, cause-specific regression (`CauseSpecificProportionalIntensity.fit(x, Z, i=, c=, e=, baseline=)`: each failure mode its own baseline and coefficients; `coefficients()` for the rate ratio of each covariate on each mode, `cif(x, Z, event)`, `total_cif(x, Z)` and their `_cb` bounds), panel counts (events only counted at each unit's own inspections, `n` the count since the last one, 0 allowed: `PanelCountMCF.fit(x, n, i=, how="MLE"|"pseudo")` for the MCF, `PanelCountRegression.fit(x, Z, n, i=, how="pseudo"|"MLE")` for proportional means, which warns "No finite maximum" and sets `converged=False` when a covariate separates the units with events from those without; bootstrap `mcf_cb` / `param_cb`), joint frailty model of recurrences and a dependent terminal event (`JointFrailty.fit(x, Z, i=, c=, terminal=, time_scale="calendar"|"gap", family="gamma"|"lognormal")`: `terminal=1` on the closing `c=1` row where the terminal event (scrapping, death) ended the history; `theta`, `alpha`, `frailty_tests()`, `frailties`, `mcf` / `sf` with `_cb` bounds, `random(size, Z, end=)`), trend/GoF diagnostics |
 | **Degradation & RUL** | `surpyval.degradation` | `DegradationAnalysis` (path models via `PATH_MODELS`: linear, exponential, power, ...), stochastic processes `WienerProcess`/`GammaProcess`, `InducedFailureDistribution` (Lu–Meeker), `ProcessRUL` |
 | **Joint models** | `sp.WeibullJointPH`, `sp.JointPH` | A marker read repeatedly plus a lifetime: a degradation path (any `PathModel`) with random effects, Weibull PH in its current value, its slope or the area under it (`link="value"`, `"slope"`, `"cumulative"`, or a list); covariates per part (`hazard_covariates`, `path_covariates`); all censoring and truncation; `sf/ff/cb(x, Z, markers=, given=)` and `predict(...)` (dynamic prediction: `hf`, `remaining_life`, `marker`, `random`) |
@@ -335,7 +335,7 @@ model.sf(5.0, np.array([0.5]))        # survival at t=5 for covariate vector Z=[
 # Cox when you don't want to assume a baseline shape:
 cox = sp.CoxPH.fit(x=x, Z=Z)
 cox.beta                              # about 0.6
-# Check its assumptions: diagnose() is the one API (check_ph is deprecated)
+# Check its assumptions: diagnose() is the one API (check_ph was removed in 0.28)
 d = cox.diagnose()                    # transform="km" by default, as cox.zph
 d.table                               # rows: test, p, verdict; d.advice remedies
 d.tables["proportional_hazards"]      # cox.zph table: per covariate + GLOBAL
@@ -382,6 +382,8 @@ hrs = 2000 * re_.weibull(2.0, 300) / (1 + 10 * rate)   # one start = 10 h
 em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
 em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
+life = em.at_usage(0.1)   # the life at 0.1 starts/hour, a plain life model in hours
+life.sf(500); life.qf(0.1); life.random(5, random_state=1); life.cb(500)
 
 # Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
 # covariates on who arrives dead (f0) and on the life of the rest
@@ -407,6 +409,11 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
 py = sp.person_years(x, c, factors={"g": g},          # exposure table:
                      timescales={"age": (0, [0, 5, 10, np.inf])}, per=1000)
 py.table; py.rate_ratio({"g": "B"}, {"g": "A"})  # rates, exact bounds
+# Pooling counts from several sources that differ (two-stage, hierarchical):
+pr = sp.pooled_rate([12, 4, 0, 9, 21], [8000, 5200, 1900, 4100, 9800],
+                    alpha_ci=0.1)  # kind="probability" for events / trials
+pr.average; pr.predictive          # the mean across sources; a new source
+pr.sources; pr.heterogeneity; pr.update(2, 1000)  # shrunk; own data
 ```
 
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and

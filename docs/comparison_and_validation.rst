@@ -31,6 +31,7 @@ the number of pairs, and the adjustment on its own:
 
 .. autoclass:: surpyval.univariate.nonparametric.logrank.PairwiseLogRankResult
    :members: to_dict
+   :no-inherited-members:
 
 .. autofunction:: surpyval.univariate.nonparametric.logrank.adjust_p_values
 
@@ -41,6 +42,7 @@ exact, right, left and interval-censored rows), and the result they return:
 
 .. autoclass:: surpyval.univariate.nonparametric.interval_logrank.IntervalLogRankResult
    :members: to_dict
+   :no-inherited-members:
 
 The max-combo test of two groups, the largest of several
 Fleming-Harrington weighted log-rank statistics with a p-value that allows
@@ -50,6 +52,7 @@ for taking the largest (for hazards that are not proportional):
 
 .. autoclass:: surpyval.univariate.nonparametric.logrank_maxcombo.MaxComboResult
    :members: to_dict
+   :no-inherited-members:
 
 The log-rank test for trend across ordered groups (one degree of freedom):
 
@@ -57,6 +60,7 @@ The log-rank test for trend across ordered groups (one degree of freedom):
 
 .. autoclass:: surpyval.univariate.nonparametric.logrank_trend.TrendLogRankResult
    :members: to_dict
+   :no-inherited-members:
 
 The log-rank test with an exact or Monte Carlo permutation p-value, for
 small samples:
@@ -65,6 +69,7 @@ small samples:
 
 .. autoclass:: surpyval.univariate.nonparametric.logrank_permutation.PermutationLogRankResult
    :members: to_dict
+   :no-inherited-members:
 
 The maximally selected log-rank statistic: the cut-point of a continuous
 covariate, with a p-value corrected for the search:
@@ -73,6 +78,7 @@ covariate, with a p-value corrected for the search:
 
 .. autoclass:: surpyval.univariate.nonparametric.maxstat.MaxStatResult
    :members: to_dict
+   :no-inherited-members:
 
 The test of two groups' survival at one time:
 
@@ -84,8 +90,12 @@ competing risks:
 .. autofunction:: surpyval.univariate.competing_risks.nonparametric.gray_test.gray_test
 
 .. autoclass:: surpyval.univariate.competing_risks.nonparametric.gray_test.GrayTestResult
-   :members:
-   :exclude-members: count, index
+   :members: to_dict
+   :no-inherited-members:
+
+``gray_test`` also takes failures found at inspections (left- and
+interval-censored rows), by multiple imputation; the result's ``method``,
+``n_imputations``, ``df_denominator`` and ``relative_increase`` describe it.
 
 Restricted mean survival time
 -----------------------------

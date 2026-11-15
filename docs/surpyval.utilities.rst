@@ -69,6 +69,13 @@ deprecated and removed in the first release on or after 2027-04-12 (see
 
 .. autofunction:: surpyval.utils.round_sig
 
+Unit labels (see :doc:`Conventions`): how a model stores the ``unit=`` it
+was given, and whether two labels name the same unit.
+
+.. autofunction:: surpyval.utils.normalise_unit
+
+.. autofunction:: surpyval.utils.same_unit
+
 Random draws follow one seeding rule (see :doc:`Conventions`); SurPyval
 turns every ``random_state`` or ``seed`` argument into a generator with:
 

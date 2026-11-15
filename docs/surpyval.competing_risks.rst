@@ -33,6 +33,20 @@ comparison of two groups.
 
 .. autofunction:: surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl
 
+Non-Parametric, Interval-Censored
+---------------------------------
+
+``CompetingRisks.fit`` given left- or interval-censored rows (or failures
+whose cause was not recorded, with ``masked="include"``) estimates each
+cause's cumulative incidence without a model by the non-parametric
+maximum-likelihood estimate (Hudgens, Satten and Longini 2001); the fitted
+model's ``estimator`` is then ``"NPMLE"``, and its ``innermost_intervals``,
+``beyond``, ``log_likelihood``, ``converged``, ``gap`` and ``iterations``
+describe the estimate (see :meth:`CompetingRisks.fit
+<surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks.fit>`).
+``gray_test`` takes the same rows, by multiple imputation; it is with the
+other hypothesis tests in :doc:`comparison_and_validation`.
+
 Parametric
 ----------
 

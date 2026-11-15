@@ -165,6 +165,43 @@ the hours. And the chance a unit survives 8,000 hours in each duty:
 The usual functions (``sf``, ``ff``, ``hf``, ``qf``, ``mean`` and ``cb``)
 are those of the distribution on the combined clock, in equivalent hours.
 
+The life at one duty, as a plain life model
+-------------------------------------------
+
+``model.at_usage(rate)`` binds one rate and gives the life of a unit used
+at it as an ordinary life model in hours: its ``sf``, ``ff``, ``df``,
+``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst``, ``cb`` and
+``quantile_cb`` take hours only, each the model's ``*_at_usage`` at that
+rate. ``rate`` is in the model's own units: the second clock's units per
+unit of the first, here starts per hour. A unit at that rate ages
+``1 + k rate`` equivalent hours per hour (``life.acceleration``). Hand it
+to code that expects a univariate model, such as a block of a reliability
+block diagram ("this pump, peaking"). The model's unit label goes with
+it, as typed.
+
+.. jupyter-execute::
+
+    peaking = model.at_usage(0.3)
+    peaking, peaking.qf(0.1).round(0), peaking.sf(8000).round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert peaking.qf(0.1) == model.qf_at_usage(0.1, 0.3)
+    assert peaking.sf(8000) == model.sf_at_usage(8000, 0.3)
+
+Its draws are ``qf(U)`` for uniform ``U``, so a seed gives common random
+numbers across models, and its bounds carry the uncertainty in
+:math:`k`:
+
+.. jupyter-execute::
+
+    peaking.random(3, random_state=1).round(0), peaking.rmst(2000)
+
+It is a view on the model: save the model (``model.to_dict()``) and the
+rate.
+
 What the model assumes, and its limits
 --------------------------------------
 

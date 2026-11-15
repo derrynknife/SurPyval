@@ -96,9 +96,12 @@ def normalise_unit(unit: Any) -> str | None:
     ``"mm/s"``; :func:`same_unit` reads labels with pint where they are
     compared.
 
+    Public as ``surpyval.utils.normalise_unit``, for a tool that stores
+    labels the way SurPyval's models do.
+
     Examples
     --------
-    >>> from surpyval.utils.units import normalise_unit
+    >>> from surpyval.utils import normalise_unit
     >>> normalise_unit("hrs"), normalise_unit("mm/s"), normalise_unit("°C")
     ('hrs', 'mm/s', '°C')
     >>> normalise_unit("  pump starts ")
@@ -128,15 +131,32 @@ def same_unit(a: str | None, b: str | None) -> bool:
     text (runs of spaces aside), or units pint reads as equal (``"h"``,
     ``"hrs"``, ``"hours"`` and ``"hour"``; ``"mm/s"`` and
     ``"millimeter / second"``, as files saved before labels were kept as
-    typed hold them). None (unknown) is the same only as None.
+    typed hold them). None (unknown) is the same only as None. Counts
+    are their own units: ``"cycles"`` is a cycle, not pint's angle, and
+    is not the same as ``"starts"``. Nothing is converted: ``"h"`` and
+    ``"min"`` are both times but not the same unit.
+
+    Public as ``surpyval.utils.same_unit``, for a tool that combines
+    models (RePyability, say) and must check they are in one unit.
+
+    Parameters
+    ----------
+    a, b : str or None
+        Unit labels, as a model's ``unit`` holds them.
+
+    Returns
+    -------
+    bool
 
     Examples
     --------
-    >>> from surpyval.utils.units import same_unit
+    >>> from surpyval.utils import same_unit
     >>> same_unit("h", "hours"), same_unit("mm/s", "millimeter / second")
     (True, True)
     >>> same_unit("h", "km"), same_unit("pump starts", "pump  starts")
     (False, True)
+    >>> same_unit("h", "min"), same_unit(None, None), same_unit("h", None)
+    (False, True, False)
     """
     if a is None or b is None:
         return a is None and b is None

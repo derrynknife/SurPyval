@@ -447,6 +447,10 @@ def _build(name):
             np.abs(np.random.default_rng(3).weibull(1.3, 40) * 15) + 0.2,
             np.random.default_rng(4).choice([1, 2], 40),
         ),
+        "interval_competing_risks": lambda: CompetingRisks.fit(
+            [[0, 2], [0, 2], [2, 4], [1, 5], [3, 3], [4, np.inf]],
+            ["a", "b", "a", "b", "a", None],
+        ),
         "multistate": lambda: MultiState.fit(**ms_data()),
         "multistate_cox": lambda: MultiStateProportionalHazards.fit(
             **ms_data(True)
@@ -606,6 +610,7 @@ CASES = [
     "parametric_competing_risks",
     "parametric_competing_risks_regression",
     "competing_risks",
+    "interval_competing_risks",
     "multistate",
     "multistate_cox",
     "multistate_cox_shared",
@@ -666,7 +671,12 @@ def models():
 
 
 def _model_class(model):
-    return model if isinstance(model, type) else type(model)
+    """The model's public class: a private route of a public class (the
+    interval-censored ``CompetingRisks``) is documented under it."""
+    cls = model if isinstance(model, type) else type(model)
+    while cls.__name__.startswith("_"):
+        cls = cls.__base__
+    return cls
 
 
 def _dicts(model):
