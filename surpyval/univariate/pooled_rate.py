@@ -390,13 +390,32 @@ def _mle(fam: Any, x: Any, T: Any) -> tuple[float, float, float]:
     L, U = np.meshgrid(locs, us, indexing="ij")
     ll = _total_loglik(fam, x, T, L, U)
     i, j = np.unravel_index(np.argmax(ll), ll.shape)
+    bounds = [(lo, hi), (_LOG_SHAPE_MIN, _LOG_SHAPE_MAX)]
+
+    def nll(p: Any) -> float:
+        return -float(_total_loglik(fam, x, T, p[0], p[1]))
+
     res = minimize(
-        lambda p: -float(_total_loglik(fam, x, T, p[0], p[1])),
+        nll,
         x0=[L[i, j], U[i, j]],
         method="L-BFGS-B",
-        bounds=[(lo, hi), (_LOG_SHAPE_MIN, _LOG_SHAPE_MAX)],
+        bounds=bounds,
         options={"ftol": 1e-15, "gtol": 1e-10},
     )
+    # The likelihood is flat along the shape, where L-BFGS-B's
+    # finite-difference gradient is noise: its line search stops short
+    # ("ABNORMAL") about 1e-3 away from the maximum in the shape, and where
+    # depends on the platform's arithmetic. A derivative-free polish from
+    # there reaches the maximum.
+    polish = minimize(
+        nll,
+        x0=res.x,
+        method="Nelder-Mead",
+        bounds=bounds,
+        options={"xatol": 1e-10, "fatol": 1e-13, "maxiter": 5000},
+    )
+    if polish.fun < res.fun:
+        res = polish
     loc, u = float(res.x[0]), float(res.x[1])
     best = -float(res.fun)
     # the homogeneous end: one rate for all, its own closed-form MLE
@@ -809,15 +828,6 @@ class PooledRate:
         heterogeneity test are still given.
     message : str
         Why there is no population (``""`` when there is one).
-    population : ParametricDistribution or None
-        The between-source distribution, as a SurPyval ``Gamma`` (shape,
-        rate) or ``Beta`` (a, b). Under ``"MLE"`` it is the MLE. Under
-        ``"Bayes"`` the population averaged over the posterior is not
-        exactly a gamma or beta; this is the gamma or beta with the same
-        median and upper ``1 - alpha_ci / 2`` quantile as
-        :attr:`predictive` (its upper side, which matters most, is
-        kept). It updates with a new source's own counts by conjugacy
-        (see :meth:`update` for the exact update).
     population_params : dict or None
         The population's parameters: ``{"shape", "rate", "mean"}`` for a
         gamma, ``{"a", "b", "mean"}`` for a beta, and ``"cv"``, its
@@ -1056,10 +1066,18 @@ class PooledRate:
 
     @property
     def population(self) -> Any:
-        """The population (between-source) distribution as a SurPyval
-        ``Gamma`` or ``Beta`` (``None`` without a population, or for an
-        MLE with no spread, whose population is the single value
-        ``population_params["mean"]``)."""
+        """The population (between-source) distribution, as a SurPyval
+        ``Gamma`` (shape, rate) or ``Beta`` (a, b); ``None`` without a
+        population, or for an MLE with no spread, whose population is the
+        single value ``population_params["mean"]``.
+
+        Under ``"MLE"`` it is the MLE. Under ``"Bayes"`` the population
+        averaged over the posterior is not exactly a gamma or beta; this
+        is the gamma or beta with the same median and upper
+        ``1 - alpha_ci / 2`` quantile as :attr:`predictive` (its upper
+        side, which matters most, is kept). It updates with a new
+        source's own counts by conjugacy (see :meth:`update` for the
+        exact update)."""
         if self.population_params is None:
             return None
         import surpyval

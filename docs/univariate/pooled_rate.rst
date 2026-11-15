@@ -13,3 +13,4 @@ The guide, in plain words and then the maths, is
 
 .. autoclass:: surpyval.PooledRate
    :members: n_sources, population, sources, update, assumptions, method_description, to_dict, from_dict
+   :no-inherited-members:

@@ -60,6 +60,7 @@ RULES = {
     "CompetingRisks[Nelson-Aalen]": "hold",
     "CompetingRisks[Kaplan-Meier]": "hold",
     "CompetingRisks[tl]": "hold",
+    "CompetingRisks[interval]": "hold",
     "CompetingRisksProportionalHazards[Cox]": "hold",
     "CompetingRisksProportionalHazards[Fine-Gray]": "hold",
     "FineGray": "hold",
@@ -115,6 +116,9 @@ WITHOUT_SET_SUPPORT = {
     "(interval-counted data): not given set_support yet",
     "PanelCountRegression": "semi-parametric: a baseline mean function known "
     "only at the inspection times; not given set_support yet",
+    "CompetingRisks[interval]": "the NPMLE route refuses set_support, saying "
+    "why (DECISIONS.md): its estimate is held between its innermost "
+    "intervals' ends, which say where it is defined",
 }
 
 
@@ -317,19 +321,34 @@ def test_set_support(case):
             assert same, f"{fname} at inf: {v}"
 
 
+def _offers_set_support(name):
+    """Whether the case's fitted model takes ``set_support``: it has the
+    method and does not refuse it (a route of a class may refuse what the
+    class offers, saying why)."""
+    case = _case(name)
+    model = fitted(case)
+    if not hasattr(model, "set_support"):
+        return False
+    lower, upper, _ = _support(case)
+    try:
+        copy.deepcopy(model).set_support(lower, upper)
+    except ValueError:
+        return False
+    return True
+
+
 def test_non_parametric_estimates_have_set_support():
     """So a new non-parametric estimator gets an explicit support too."""
     missing = [
         name
         for name in RULES
-        if name not in WITHOUT_SET_SUPPORT
-        and not hasattr(fitted(_case(name)), "set_support")
+        if name not in WITHOUT_SET_SUPPORT and not _offers_set_support(name)
     ]
     assert not missing, f"no set_support (principle 11): {missing}"
     stale = [
         name
         for name in WITHOUT_SET_SUPPORT
-        if name not in RULES or hasattr(fitted(_case(name)), "set_support")
+        if name not in RULES or _offers_set_support(name)
     ]
     assert not stale, f"remove from WITHOUT_SET_SUPPORT: {stale}"
 

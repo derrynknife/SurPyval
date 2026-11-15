@@ -59,7 +59,7 @@ from surpyval.utils.data_formats import _get_idx, xcnt_handler, xcnt_to_xrd
 from surpyval.utils.dataframe import frame_column
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.surpyval_data import accepts_surpyval_data, needs_data
 from surpyval.utils.units import axis_label, takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
@@ -1236,6 +1236,7 @@ class CompetingRisks(SerialisableMixin):
     @classmethod
     @takes_unit
     @accepts_surpyval_data
+    @needs_data("e")
     def fit(
         cls,
         x: npt.ArrayLike | None = None,

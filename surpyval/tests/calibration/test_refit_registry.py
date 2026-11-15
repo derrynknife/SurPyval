@@ -682,6 +682,63 @@ def _pcr_inspected(case, truth, n):
     return draw
 
 
+def _cr_step(case, truth) -> float:
+    """The inspection interval of :func:`_cr_inspected`: a third of the
+    median of the times the step estimate jumps at."""
+    return float(np.median(np.unique(case.data()["x"]))) / 3.0
+
+
+def _cr_inspected(case, truth, n):
+    """:func:`_cr` (draws from the step estimate's cumulative
+    incidences) with a third of the failures found at inspections, as in
+    the fixture: the inspections are :func:`_cr_step` apart, and such a
+    failure is recorded with its cause in the window between the
+    inspections around it (left censored before the first). Which
+    failures are found at an inspection is a draw independent of their
+    times."""
+    base = _cr(case, truth, n)
+    step = _cr_step(case, truth)
+
+    def draw(rng):
+        d = base(rng)
+        t = d["x"]
+        failed = np.array([v is not None for v in d["e"]])
+        found = failed & (rng.uniform(size=n) < 1 / 3)
+        # (lo, hi] holds t
+        lo = (np.ceil(t / step) - 1) * step
+        hi = lo + step
+        left = found & (lo <= 0)
+        x = np.column_stack(
+            [
+                np.where(found & ~left, lo, np.where(left, hi, t)),
+                np.where(found, hi, t),
+            ]
+        )
+        c = np.where(found, np.where(left, -1, 2), np.where(failed, 0, 1))
+        return {"x": x, "c": c, "e": d["e"]}
+
+    return draw
+
+
+def _cr_inspection_grid(case, truth, data):
+    """The inspection times of :func:`_cr_inspected` inside the data
+    (5% to 95% of it): where the windows identify the estimate."""
+    x = np.asarray(data["x"], dtype=float).ravel()
+    lo, hi = np.quantile(x[np.isfinite(x)], [0.05, 0.95])
+    step = _cr_step(case, truth)
+    return step * np.arange(np.ceil(lo / step), np.floor(hi / step) + 1)
+
+
+def _cr_step_truth(case, truth, grid):
+    """The cumulative incidences :func:`_cr` draws from: each cause's
+    incidence at the fixture's times, held between them."""
+    support = np.unique(case.data()["x"])
+    cif = _cif_rows(case, truth, np.zeros((1, 1)), support)[0]
+    k = np.searchsorted(support, grid, side="right") - 1
+    held = np.where(k >= 0, cif[:, np.maximum(k, 0)], 0.0)
+    return np.concatenate(list(held))
+
+
 def _pcrr(case, truth, n):
     # The model's own sampler, at each of the fixture's covariate rows:
     # (time, cause) records.
@@ -1340,6 +1397,15 @@ PLANS["ParametricCompetingRisksRegression"] = Plan(
 )
 PLANS["ParametricCompetingRisks[interval]"] = Plan(
     _pcr_inspected, 300, 60, params=_pcr_params
+)
+PLANS["CompetingRisks[interval]"] = Plan(
+    _cr_inspected,
+    300,
+    60,
+    grid=_cr_inspection_grid,
+    truth_curve=_cr_step_truth,
+    note="drawn from the step estimate's own cumulative incidences; read "
+    "at the inspection times, where interval censored data identify it",
 )
 for _name in (
     "CompetingRisksProportionalHazards[Cox]",

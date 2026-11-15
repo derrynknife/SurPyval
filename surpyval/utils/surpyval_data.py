@@ -2387,6 +2387,20 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
     return decorate
 
 
+def needs_data(*names: str) -> Callable[[F], F]:
+    """Mark a fit's data arguments that it needs though they have a
+    default (``e`` after an ``x`` that may be left out for ``xl`` and
+    ``xr``), so that :func:`accepts_surpyval_data`, applied over it,
+    refuses a :class:`SurpyvalData` that holds none of them, as it does
+    for an argument with no default."""
+
+    def mark(method: F) -> F:
+        method._surpyval_needs = frozenset(names)  # type: ignore[attr-defined]
+        return method
+
+    return mark
+
+
 def accepts_surpyval_data(method: F) -> F:
     """Let a fitter's ``fit`` take a :class:`SurpyvalData` as its ``x``:
     ``Weibull.fit(data)``. The data is the whole of it, so its other data
@@ -2413,6 +2427,13 @@ def accepts_surpyval_data(method: F) -> F:
     names = set(params)
     if "x" not in names:
         return method
+    # Arguments the fit needs: those with no default, and any marked by
+    # ``needs_data``.
+    required = {
+        p
+        for p in params
+        if signature.parameters[p].default is inspect.Parameter.empty
+    } | set(getattr(method, "_surpyval_needs", ()))
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -2447,7 +2468,7 @@ def accepts_surpyval_data(method: F) -> F:
                     data,
                 )
         state = _state_argument(names)
-        _check_needed(data, names, bound, signature, state)
+        _check_needed(data, names, bound, required, state)
         filled: dict[str, Any] = {"x": data.x}
         lost = []
         if "c" in names:
@@ -2546,11 +2567,12 @@ def _check_needed(
     data: SurpyvalData,
     names: set,
     bound: inspect.BoundArguments,
-    signature: inspect.Signature,
+    required: set,
     state: str | None,
 ) -> None:
-    """Refuse data that holds none of what the fit needs (an argument
-    with no default): covariates, event types or states."""
+    """Refuse data that holds none of what the fit needs (``required``:
+    an argument with no default, or one marked by ``needs_data``):
+    covariates, event types or states."""
     needs = [
         (
             "Z",
@@ -2582,7 +2604,7 @@ def _check_needed(
             held is None
             and name in names
             and bound.arguments.get(name) is None
-            and signature.parameters[name].default is inspect.Parameter.empty
+            and name in required
         ):
             raise TypeError(
                 f"This fit needs {what}, {name}, and the SurpyvalData "
