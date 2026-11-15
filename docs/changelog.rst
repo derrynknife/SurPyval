@@ -174,6 +174,15 @@ v0.28 (14 November 2026)
   to a rounding. With a limited failure population the share that ever
   fails is now worked out once per fit, not at every ``qf`` call.
 
+- **A Bayesian fit's** ``qf(0)`` **with offsets or zero inflation (a
+  wrong number).** Where the posterior points each have their own offset,
+  or the fit is zero-inflated, ``BayesianParametric.qf(0)`` returned the
+  posterior median offset (19.76 on one fit), above ``qf(0.01)``: a B0
+  life later than the B1 life. It is now where the predictive life
+  starts: 0 with zero inflation, otherwise the smallest offset across the
+  posterior points. ``qf`` never decreases in ``p``, and ``ff(qf(p))`` is
+  ``p`` above any mass at 0. ``qf`` of any ``p`` above 0 is unchanged.
+
 - **The joint frailty model's** ``mcf`` **far past the terminal event (a
   wrong number; an intentional numerical change there only).**
   ``JointFrailtyModel.mcf``, the expected count of recurrent events by an
