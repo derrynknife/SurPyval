@@ -106,6 +106,16 @@ def _innermost(
     return np.cumsum(mark[:M]) > 0
 
 
+def innermost_pieces(
+    lo: npt.NDArray, hi: npt.NDArray, M: int
+) -> npt.NDArray[np.bool_]:
+    """The pieces inside Turnbull's innermost intervals of the supports
+    ``[lo, hi]`` (piece indices, as :func:`turnbull_pieces` returns
+    them), for estimates that find them for a subset of the rows
+    (``IntervalCompetingRisks``, one cause at a time)."""
+    return _innermost(lo, hi, M)
+
+
 def _coverage(a: npt.NDArray, b: npt.NDArray, M: int) -> npt.NDArray:
     """How many of the index ranges ``[a, b]`` contain each piece."""
     count = np.zeros(M + 1)

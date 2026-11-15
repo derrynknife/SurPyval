@@ -386,6 +386,10 @@ with its own ``schema``.
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``, ``method``, ``x``, ``d``, ``r``, ``h0``, ``H0``, ``S``, ``d_e``, ``h0_e``, ``H0_e``, ``IIF``, ``CIF``
      - ``support``
+   * - ``IntervalCompetingRisks``
+     - ``"model": "IntervalCompetingRisks"``
+     - ``event_idx_map``, ``n_event_types``, ``beyond``, ``_neg_ll``, ``converged``, ``gap``, ``iterations``, ``tol``, ``max_iter``, ``atom_cause``, ``atom_lower``, ``atom_upper``, ``atom_mass``, ``data_xl``, ``data_xr``, ``data_cause``, ``data_n``
+     - --
    * - ``MultiState``
      - ``"model": "MultiState"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``

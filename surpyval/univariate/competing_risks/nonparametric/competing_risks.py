@@ -1117,7 +1117,8 @@ class CompetingRisks(SerialisableMixin):
             Censoring flags: 0 a failure (with a cause in ``e``), 1
             right-censored (with ``e`` missing). Derived from ``e`` if not
             given. Left and interval censoring are not supported here;
-            ``ParametricCompetingRisks`` takes them.
+            ``IntervalCompetingRisks`` and ``ParametricCompetingRisks``
+            take them.
         n : array_like, optional
             Counts. Defaults to 1.
         how : str, optional
@@ -1193,8 +1194,9 @@ class CompetingRisks(SerialisableMixin):
                 "Left- and interval-censored rows (c = -1 or 2) are not "
                 "supported by the non-parametric CompetingRisks, whose "
                 "Aalen-Johansen estimate needs each failure's time. Fit "
-                "ParametricCompetingRisks to such data: it takes them, "
-                "with a distribution for each cause."
+                "IntervalCompetingRisks to such data (the non-parametric "
+                "estimate for windows), or ParametricCompetingRisks (a "
+                "distribution for each cause)."
             )
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
         check_finite_event_times(x, c)

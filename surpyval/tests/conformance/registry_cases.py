@@ -691,6 +691,43 @@ def _competing_risks():
             },
         )
     )
+
+    def icr_from_df(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.IntervalCompetingRisks.fit_from_df(
+            df, None, "e", c_col="c", n_col="n", xl_col="lo", xr_col="hi"
+        )
+
+    out.append(
+        Case(
+            name="IntervalCompetingRisks",
+            fitters=(
+                "surpyval.univariate.competing_risks.IntervalCompetingRisks",
+            ),
+            model_class=(
+                "surpyval.univariate.competing_risks.IntervalCompetingRisks"
+            ),
+            interface=CAUSES,
+            data=pcr_interval_data,
+            fit=_fit(cr.IntervalCompetingRisks),
+            functions=("sf", "ff", "Hf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "c", "e", "n"),
+            paths={"fit_from_df": icr_from_df},
+            continuous=False,
+            rtol=1e-7,
+        )
+    )
     for how in ("Cox", "Fine-Gray"):
         out.append(
             Case(
@@ -3199,6 +3236,25 @@ def _bounds(case):
                 "sojourn_cb",
                 kind="summary",
                 query=(("healthy", [0.5]), ("ill", [1.0])),
+            ),
+        ),
+        # The case bootstrap (percentiles), on each cause's cumulative
+        # incidence and on the all-cause sf / ff.
+        "IntervalCompetingRisks": (
+            Bound(
+                "cb",
+                on=("cif",),
+                per_cause=True,
+                label="cb[cif]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+            Bound(
+                "cb",
+                on=("sf", "ff"),
+                label="cb[all-cause]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),

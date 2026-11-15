@@ -33,6 +33,19 @@ comparison of two groups.
 
 .. autofunction:: surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl
 
+Non-Parametric, Interval-Censored
+---------------------------------
+
+The cumulative incidence of each cause estimated without a model when
+failures are found at inspections (left- and interval-censored rows),
+or their cause was not recorded: the non-parametric maximum-likelihood
+estimate (Hudgens, Satten and Longini 2001). Its Gray's test,
+``interval_gray_test``, is with the other hypothesis tests in
+:doc:`comparison_and_validation`.
+
+.. autoclass:: surpyval.univariate.competing_risks.nonparametric.interval_competing_risks.IntervalCompetingRisks
+   :members:
+
 Parametric
 ----------
 

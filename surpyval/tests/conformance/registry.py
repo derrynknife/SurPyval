@@ -463,6 +463,7 @@ for _fn in (
     "success_run",
     "weibayes",
     "gray_test",
+    "interval_gray_test",
     "auc_td",
     "brier_score",
     "compare_concordance",
