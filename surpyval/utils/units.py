@@ -249,6 +249,27 @@ def set_unit(model: Any, unit: Any) -> Any:
 R = TypeVar("R")
 
 
+def _refuse_second_clock(owner: Any, qualname: str, given: list) -> Any:
+    """The refusal of a second clock (``x2``, or its columns) by a fit
+    that takes one clock only: a ``ValueError`` naming the argument and
+    the fits that take two clocks, in place of Python's ``TypeError``."""
+    if owner is not None and hasattr(owner, "fit"):
+        cls = owner if isinstance(owner, type) else type(owner)
+        name = getattr(owner, "name", None)
+        if not (isinstance(name, str) and name.isidentifier()):
+            name = cls.__name__.rstrip("_")
+        where = f"{name}.{qualname.rsplit('.', 1)[-1]}"
+    else:
+        where = qualname
+    return ValueError(
+        f"{where} does not take {', '.join(given)}: it fits one clock. A "
+        "life on a main clock (hours) with a second, subordinate clock "
+        "(starts, cycles, landings) read at the same moments is fitted by "
+        "the two-clock fits, e.g. WeibullEquivalence.fit(x, x2=...) "
+        "(Equivalence(dist) for the other distributions)."
+    )
+
+
 def takes_unit(method: Callable[..., R]) -> Callable[..., R]:
     """Give a ``fit``, ``fit_from_df`` or ``from_params`` an optional
     keyword ``unit=``, stored on the model it returns (see
@@ -273,8 +294,30 @@ def takes_unit(method: Callable[..., R]) -> Callable[..., R]:
     ):
         weight_arg = None
 
+    # ... and a second clock (``x2``, the two-clock fits' ``Equivalence``)
+    # given to a fit that takes none, with what to use instead.
+    clock_args = [
+        name
+        for name in {
+            "fit": ("x2",),
+            "fit_from_df": (
+                "x2_col",
+                "x2l_col",
+                "x2r_col",
+                "tl2_col",
+                "x2_name",
+            ),
+        }.get(method.__name__, ())
+        if name not in signature.parameters
+    ]
+
     @functools.wraps(method)
     def wrapper(*args: Any, unit: Any = None, **kwargs: Any) -> R:
+        given = [name for name in clock_args if name in kwargs]
+        if given:
+            raise _refuse_second_clock(
+                args[0] if args else None, method.__qualname__, given
+            )
         if weight_arg is not None and weight_arg in kwargs:
             from surpyval.utils.weights import refuse_unsupported_weights
 

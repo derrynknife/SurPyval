@@ -376,7 +376,10 @@ cm = sp.WeibullMixtureCure.fit(tc, lot, c=(~ever).astype(int))
 cm.cure_probability([1]); cm.sf(100, [1], susceptible=True)   # the latency alone
 cm.cure_given_survival(100, [1])       # P(never fails | still running at 100)
 
-# Equivalent time scale: one life on two clocks, T = hours + k * starts
+# Equivalent time scale: one life on a main clock (hours) and a subordinate
+# second clock (starts) read at the same moments, T = hours + k * starts.
+# Univariate data: x, c, n, tl on the main clock, plus x2 (an array or a
+# SecondaryClock); c is the unit's (the second clock has none)
 re_ = np.random.default_rng(1); rate = re_.choice([0.02, 0.1, 0.5], 300)  # starts/hour
 hrs = 2000 * re_.weibull(2.0, 300) / (1 + 10 * rate)   # one start = 10 h
 em = sp.WeibullEquivalence.fit(hrs, rate * hrs, clocks=("hours", "starts"))
@@ -384,11 +387,12 @@ em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
 life = em.at_usage(0.1)   # the life at 0.1 starts/hour, a plain life model in hours
 life.sf(500); life.qf(0.1); life.random(5, random_state=1); life.cb(500)
-# The same clocks as one MultivariateSurpyvalData (2 axes, column 0 first clock;
-# c the same on both clocks per row; names become em.clocks; t lower = entry)
-from surpyval.multivariate import MultivariateSurpyvalData
-md = MultivariateSurpyvalData([hrs, rate * hrs], names=("hours", "starts"))
-sp.WeibullEquivalence.fit(md).clocks   # ('hours', 'starts'), same numbers
+# SecondaryClock: the second clock's name and its readings at late entry
+# (tl= on the fit is the main clock's); N x 2 windows for interval rows (c=2)
+starts = sp.SecondaryClock(rate * hrs, tl=0.1 * rate * hrs, name="starts")
+sp.WeibullEquivalence.fit(hrs, starts, tl=0.1 * hrs)   # clocks ('x1', 'starts')
+# DataFrame: x_col/xl_col/xr_col, c_col, n_col, tl_col + x2_col (or
+# x2l_col/x2r_col), tl2_col, x2_name. Not a MultivariateSurpyvalData (refused).
 
 # Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
 # covariates on who arrives dead (f0) and on the life of the rest

@@ -138,6 +138,7 @@ series' arrays ``(x, c, xl, xr, tl, tr)``:
 
     # the same fit, to the optimiser's tolerance
     assert abs(by_count.params[0] - by_row.params[0]) < 1e-3
+    assert np.isclose(by_count.log_likelihood, by_row.log_likelihood)
 
 Two or more axes, and what they mean
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -150,12 +151,16 @@ are ``N`` by ``D``, ``t`` is ``N`` by ``D`` by 2 and ``n`` is one count per
 row. Data with one value per row is a ``SurpyvalData``, and is refused here.
 
 The data does not say what its columns are; the **model** does. A copula
-reads them as two correlated series (the two bearings of a shaft). An
-equivalent-time-scale fit (:doc:`Equivalent Time Scales`) reads them as two
-clocks of one life (hours and starts): column 0 is the first clock and
-column 1 the second. Each fitter says how many axes it takes in
-``n_axes`` and refuses data with any other number, so a copula refuses
-three series plainly, rather than fit two of them.
+reads them as two correlated series (the two bearings of a shaft). Each
+fitter says how many axes it takes in ``n_axes`` and refuses data with any
+other number, so a copula refuses three series plainly, rather than fit two
+of them.
+
+One life read on two clocks is not multivariate data. A part that wears
+on a main clock (hours) and a subordinate one (starts, landings) has one
+event, on the main clock, with the second clock read at the same moments:
+univariate data, with the second clock as ``x2`` or a ``SecondaryClock``
+(:doc:`Equivalent Time Scales`).
 
 The axes can be named. The names are used only in messages (a value that
 is not valid names its axis) and in the results of a model fitted to the
@@ -179,7 +184,6 @@ name, and the data saves and loads with ``to_json`` / ``from_json`` (or
         Clayton.fit(three, margins=[surv.Weibull] * 3)
     except ValueError as error:
         print(error)
-    assert np.isclose(by_count.log_likelihood, by_row.log_likelihood)
 
 Interval-censored entries need their bounds: a ``c`` of ``2`` without ``xl``
 and ``xr`` raises a ``ValueError``, as does any array of the wrong shape.

@@ -349,6 +349,8 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.TransitionMatrix": _DATA
     + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
+    "surpyval.SecondaryClock": _DATA
+    + ": the second clock of the two-clock fits (WeibullEquivalence, ...)",
     "surpyval.StepSchedule": _DATA,
     "surpyval.landmark": _FUNCTION + ": derives landmark data from data",
     "surpyval.landmark_kaplan_meier": _FUNCTION

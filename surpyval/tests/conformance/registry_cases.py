@@ -2195,27 +2195,21 @@ def _equivalence_df(fitter):
             {"hours": d["x"], "starts": d["x2"], "c": d["c"], "n": d["n"]}
         )
         return fitter.fit_from_df(
-            df, x_cols=["hours", "starts"], c_col="c", n_col="n"
+            df, x_col="hours", x2_col="starts", c_col="c", n_col="n"
         )
 
     return fit
 
 
-def _equivalence_data(fitter):
-    """The fit of the fixture as one MultivariateSurpyvalData: the two
-    clocks its axes (named), one censoring code per row on both."""
+def _equivalence_clock(fitter):
+    """The fit with the second clock as a named SecondaryClock: the
+    numbers of the bare array."""
 
     def fit(d):
-        from surpyval.multivariate import MultivariateSurpyvalData
-
-        c = np.asarray(d["c"])
-        data = MultivariateSurpyvalData(
-            [d["x"], d["x2"]],
-            c=np.column_stack([c, c]),
-            n=d["n"],
-            names=("hours", "starts"),
+        clock = sp.SecondaryClock(d["x2"], name="starts")
+        return fitter.fit(
+            d["x"], clock, c=d.get("c"), n=d.get("n"), init=d.get("init")
         )
-        return fitter.fit(data, init=d.get("init"))
 
     return fit
 
@@ -2245,7 +2239,7 @@ def _equivalence():
                 x=X_UNI,
                 paths={
                     "fit_from_df": _equivalence_df(fitter),
-                    "fit(data)": _equivalence_data(fitter),
+                    "SecondaryClock": _equivalence_clock(fitter),
                 },
                 # the second clock (starts) is a count, not a time: the
                 # units property rescales the first, and k with it

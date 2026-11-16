@@ -1,9 +1,11 @@
 """Aligned multivariate survival data: one row, two or more values.
 
-A joint observation is a *row* across ``D >= 2`` axes (series, clocks,
-...). The data says nothing about what the axes mean; the model that is
-fitted to it does: a copula reads them as two correlated series, an
-equivalent-time-scale fit (``Equivalence``) as one life on two clocks.
+A joint observation is a *row* across ``D >= 2`` axes (series, ...).
+The data says nothing about what the axes mean; the model that is fitted
+to it does: a copula reads them as two correlated series. (One life on a
+main clock with a subordinate second clock is univariate data: the
+two-clock fits, ``Equivalence``, take ``x`` and ``x2`` /
+``SecondaryClock``.)
 Data with one value per row is a
 :class:`~surpyval.utils.surpyval_data.SurpyvalData`. Every series
 of a row carries its own censoring code (using the same convention as the
@@ -53,8 +55,7 @@ class MultivariateSurpyvalData:
     Each of ``x``, ``xl``, ``xr`` and ``c`` is ``N`` rows by ``D`` axes,
     ``t`` is ``N`` by ``D`` by 2 and ``n`` is one count per row, for any
     ``D`` of 2 or more. What the axes mean is the model's business: a
-    copula takes exactly two correlated series, an equivalent-time-scale
-    fit two clocks of one life (column 0 the first clock).
+    copula takes exactly two correlated series.
 
     Parameters
     ----------
@@ -74,8 +75,7 @@ class MultivariateSurpyvalData:
     names : sequence of D str, optional
         A name for each axis, such as ``("hours", "landings")``. Used
         only in messages and in the results of a model fitted to the
-        data (an equivalent-time-scale model's ``clocks``); nothing is
-        computed from them.
+        data; nothing is computed from them.
 
     Raises
     ------

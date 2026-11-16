@@ -32,8 +32,18 @@ hours has survival :math:`S(h(1 + k\rho_i); \theta)`, and so
   :math:`f(T_i; \theta)\,(1 + k\rho_i)`, :math:`T_i = h_i + k s_i`;
 - a unit still running contributes :math:`S(T_i; \theta)`; one that had
   failed before it was inspected (left-censored), :math:`F(T_i; \theta)`;
+- a unit that failed between two inspections, at
+  :math:`(h_{a,i}, s_{a,i})` and :math:`(h_{b,i}, s_{b,i})` (interval
+  censored), :math:`S(h_{a,i} + k s_{a,i}; \theta) - S(h_{b,i} + k
+  s_{b,i}; \theta)`: its combined clock passed the failure age between
+  the two, whatever the path between them, so no rate is assumed;
 - a unit that entered observation late, at :math:`(h_{l,i}, s_{l,i})`, is
   divided by :math:`S(h_{l,i} + k s_{l,i}; \theta)`.
+
+The data are univariate: one row per unit on the main clock ``x`` (with
+``c``, ``n`` and ``tl`` as for any univariate fit), and the subordinate
+clock's readings at the same moments, ``x2`` (a :class:`SecondaryClock`,
+or an array). Censoring is the unit's, so the second clock has none.
 
 The factor :math:`1 + k\rho_i` is the Jacobian of the change of clock.
 Leaving it out -- fitting the distribution to the :math:`T_i` as if they
@@ -78,6 +88,7 @@ conditions. *Journal of the American Statistical Association* 82,
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import autograd.numpy as anp
@@ -98,6 +109,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.aliases import canonical_name
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
 from surpyval.utils.linalg import (
     cb_link,
     sf_link_bound,
@@ -174,13 +186,255 @@ def _as_1d(values: Any, name: str) -> np.ndarray:
     return out
 
 
-class _Data:
-    """The validated data of a fit: each unit's two clocks ``h`` and
-    ``s``, censoring ``c``, counts ``n`` and entry point ``(hl, sl)``."""
+def _as_window(values: Any, name: str) -> np.ndarray:
+    """``values`` as an ``N x 2`` array of each row's window: a 1-D array
+    (one reading per row) as equal columns, an ``N x 2`` one as it is."""
+    try:
+        out = np.asarray(values, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{name} must be numbers, one per row (or a [lower, upper] "
+            f"pair per row for intervals); got {values!r}."
+        ) from None
+    if out.ndim == 0:
+        out = out[None]
+    if out.ndim == 1:
+        return np.column_stack([out, out])
+    if out.ndim == 2 and out.shape[1] == 2:
+        return out
+    raise ValueError(
+        f"{name} is one value per row, or an N x 2 array of each row's "
+        f"[lower, upper] for interval rows (equal columns elsewhere); got "
+        f"an array of shape {out.shape}."
+    )
+
+
+def _entry(values: Any, size: int, name: str) -> np.ndarray:
+    """An entry reading (``tl``): one number for every row, or one per
+    row; 0 or more, finite."""
+    try:
+        out = np.asarray(values, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{name} must be numbers, one per row; got {values!r}."
+        ) from None
+    if out.ndim == 0:
+        out = np.full(size, float(out))
+    if out.ndim != 1 or out.size != size:
+        raise ValueError(
+            f"{name}, the reading at entry, is one number per row: {size} "
+            f"values; got shape {out.shape}."
+        )
+    out = np.where(np.isneginf(out), 0.0, out)
+    if not np.isfinite(out).all() or (out < 0).any():
+        rows = np.flatnonzero(~np.isfinite(out) | (out < 0))[:5].tolist()
+        raise ValueError(
+            f"{name} must hold readings of 0 or more with no missing "
+            f"values; rows {rows} do not."
+        )
+    return out
+
+
+class SecondaryClock:
+    r"""
+    The second clock of a two-clock fit (:func:`Equivalence`): a
+    **subordinate** clock (starts, cycles, landings) read at the same
+    moments as the main clock ``x``.
+
+    The data stay univariate: one event per unit, on the main clock, with
+    its censoring ``c``, counts ``n`` and late entry ``tl``. This object
+    adds the second clock's readings at those same moments. A bare array
+    given as ``x2`` means ``SecondaryClock(array)``.
+
+    Parameters
+    ----------
+    values : array_like
+        The second clock's reading at each row's ``x``: one per row, or,
+        like ``x``, an ``N x 2`` array of each row's window for interval
+        rows (``c = 2``), with equal columns where the row is not an
+        interval.
+    tl : array_like or float, optional
+        Its reading when each unit entered observation (late entry),
+        aligned with the main clock's ``tl``; one number for every row,
+        or one per row.
+    name : str, optional
+        The clock's name ("starts", "landings"), used in messages and as
+        the model's name for the second clock (``model.clocks[1]``).
+
+    There is no censoring here: a unit is failed or still running as a
+    whole, so ``c`` belongs to the main clock alone.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import SecondaryClock, WeibullEquivalence
+    >>> rng = np.random.default_rng(1)
+    >>> rate = rng.choice([0.02, 0.1, 0.5], 300)   # starts per hour
+    >>> hours = 2000 * rng.weibull(2.0, 300) / (1 + 10 * rate)
+    >>> starts = SecondaryClock(rate * hours, name="starts")
+    >>> model = WeibullEquivalence.fit(hours, starts)
+    >>> model.clocks, round(model.k, 1)
+    (('x1', 'starts'), 9.8)
+    >>> SecondaryClock.from_dict(starts.to_dict()).name
+    'starts'
+    """
 
     def __init__(
         self,
-        x1: Any,
+        values: npt.ArrayLike,
+        tl: npt.ArrayLike | None = None,
+        name: str | None = None,
+    ) -> None:
+        if isinstance(values, SecondaryClock):
+            raise ValueError(
+                "values is already a SecondaryClock: pass it as x2 itself."
+            )
+        if name is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError(
+                    "name names the second clock, e.g. 'starts' or "
+                    f"'landings'; got {name!r}."
+                )
+            name = name.strip()
+        self.name = name
+        label = "The secondary clock" + (f" ({name})" if name else "")
+        window = _as_window(values, f"{label}'s values")
+        self._two_d = np.ndim(values) == 2
+        bad = ~np.isfinite(window).all(axis=1)
+        if bad.any():
+            rows = np.flatnonzero(bad)[:5].tolist()
+            raise ValueError(
+                f"{label} has {int(bad.sum())} missing or infinite "
+                f"reading(s), at rows {rows}: a unit's age on each clock is "
+                "needed; drop those rows or fill them."
+            )
+        if (window < 0).any():
+            rows = np.flatnonzero((window < 0).any(axis=1))[:5].tolist()
+            raise ValueError(
+                f"{label} has negative readings, at rows {rows}: an age on "
+                "a clock is 0 or more."
+            )
+        if (window[:, 0] > window[:, 1]).any():
+            rows = np.flatnonzero(window[:, 0] > window[:, 1])[:5].tolist()
+            raise ValueError(
+                f"{label}'s windows at rows {rows} end before they start: "
+                "each interval row is [lower, upper] with lower <= upper."
+            )
+        self.values = window if self._two_d else window[:, 0].copy()
+        self._window = window
+        self.tl = (
+            None if tl is None else _entry(tl, len(window), f"{label}'s tl")
+        )
+
+    def __len__(self) -> int:
+        return int(self._window.shape[0])
+
+    def __repr__(self) -> str:
+        parts = [f"{len(self)} rows"]
+        if self._two_d:
+            parts.append("with windows")
+        if self.tl is not None:
+            parts.append("with entry readings")
+        name = "" if self.name is None else f"{self.name!r}, "
+        return f"SecondaryClock({name}{', '.join(parts)})"
+
+    @classmethod
+    def _of(cls, x2: Any) -> SecondaryClock:
+        """``x2`` as a SecondaryClock: itself, or a bare array wrapped."""
+        return x2 if isinstance(x2, cls) else cls(x2)
+
+    def _label(self) -> str:
+        return "the secondary clock" + (f" ({self.name})" if self.name else "")
+
+    def _check_rows(self, size: int, main: str = "x") -> None:
+        """Refuse a clock whose rows do not line up with ``size`` rows of
+        the main clock, saying what is off."""
+        if len(self) != size:
+            raise ValueError(
+                f"{main} has {size} rows but {self._label()} has "
+                f"{len(self)} readings: give one reading per row of {main}, "
+                "taken at the same moment."
+            )
+
+    # -- saving ----------
+    def to_dict(self) -> dict:
+        """
+        The clock as a plain, JSON-ready ``dict``: its ``"class"``, its
+        ``values`` (as given: one per row, or the ``N x 2`` windows), its
+        entry readings ``tl`` and its ``name``. ``surpyval.from_dict``
+        reads it too.
+
+        Examples
+        --------
+        >>> from surpyval import SecondaryClock
+        >>> clock = SecondaryClock([3.0, 5.0], tl=[0.0, 1.0], name="starts")
+        >>> clock.to_dict()["values"], clock.to_dict()["tl"]
+        ([3.0, 5.0], [0.0, 1.0])
+        """
+        return stamp_schema(
+            {
+                "class": "SecondaryClock",
+                "values": np.asarray(self.values, dtype=float).tolist(),
+                "tl": None if self.tl is None else self.tl.tolist(),
+                "name": self.name,
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, data_dict: dict) -> SecondaryClock:
+        """The clock back from its :meth:`to_dict` dictionary (checked
+        again, as when it was built)."""
+        from surpyval.serialisation import check_schema
+
+        if not isinstance(data_dict, dict):
+            raise ValueError(
+                "Expected a serialised SecondaryClock dict, got "
+                f"{type(data_dict).__name__}."
+            )
+        tag = data_dict.get("class")
+        if tag is not None and tag != "SecondaryClock":
+            raise ValueError(
+                f"This dictionary was written by {tag}, not SecondaryClock: "
+                f"read it with {tag}.from_dict, or surpyval.from_dict."
+            )
+        if "values" not in data_dict:
+            raise ValueError(
+                "A serialised SecondaryClock needs 'values'; this "
+                "dictionary has no such entry."
+            )
+        check_schema(data_dict)
+        tl = data_dict.get("tl")
+        return cls(
+            np.asarray(data_dict["values"], dtype=float),
+            tl=None if tl is None else np.asarray(tl, dtype=float),
+            name=data_dict.get("name"),
+        )
+
+    def to_json(self, filepath: Any = None) -> str | None:
+        """The clock as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath`` (then None is returned)."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: Any) -> SecondaryClock:
+        """The clock back from JSON text, or from the file holding it
+        (``surpyval.from_json`` reads it too)."""
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
+
+
+class _Data:
+    """The validated data of a fit: each row's main clock ``h`` and
+    secondary clock ``s`` (the window's upper ends; ``h_lo``, ``s_lo`` its
+    lower ends, equal but for interval rows), censoring ``c``, counts
+    ``n`` and entry point ``(hl, sl)``."""
+
+    def __init__(
+        self,
+        x: Any,
         x2: Any,
         c: Any = None,
         n: Any = None,
@@ -188,61 +442,98 @@ class _Data:
         clocks: tuple[str, str] = ("x1", "x2"),
     ) -> None:
         a, b = clocks
-        h = _as_1d(x1, "x1")
-        s = _as_1d(x2, "x2")
-        if h.size == 0:
-            raise ValueError("x1 and x2 are empty: there is nothing to fit.")
-        if h.size != s.size:
+        clock = SecondaryClock._of(x2)
+        xw = _as_window(x, "x")
+        size = xw.shape[0]
+        if size == 0:
+            raise ValueError("x and x2 are empty: there is nothing to fit.")
+        clock._check_rows(size)
+        sw = clock._window
+        label_x = "x" if a in ("x", "x1") else f"x ({a})"
+        bad = ~np.isfinite(xw).all(axis=1)
+        if bad.any():
+            rows = np.flatnonzero(bad)[:5].tolist()
             raise ValueError(
-                f"x1 ({a}) and x2 ({b}) must have one value per unit each; "
-                f"got {h.size} and {s.size}."
+                f"{label_x} has {int(bad.sum())} missing or infinite "
+                f"value(s), at rows {rows}: a unit's age on each clock is "
+                "needed; drop those rows or fill them."
             )
-        for name, clock, v in (("x1", a, h), ("x2", b, s)):
-            bad = ~np.isfinite(v)
-            if bad.any():
-                rows = np.flatnonzero(bad)[:5].tolist()
-                label = name if clock == name else f"{name} ({clock})"
-                raise ValueError(
-                    f"{label} has {int(bad.sum())} missing or "
-                    f"infinite value(s), at rows {rows}: a unit's age on "
-                    "each clock is needed; drop those rows or fill them."
-                )
-            if (v < 0).any():
-                rows = np.flatnonzero(v < 0)[:5].tolist()
-                label = name if clock == name else f"{name} ({clock})"
-                raise ValueError(
-                    f"{label} has negative values, at rows "
-                    f"{rows}: an age on a clock is 0 or more."
-                )
-        c = np.zeros(h.size) if c is None else _as_1d(c, "c")
-        n = np.ones(h.size) if n is None else _as_1d(n, "n")
-        if c.size == 1 and h.size > 1:
-            c = np.full(h.size, c[0])
-        if n.size == 1 and h.size > 1:
-            n = np.full(h.size, n[0])
-        if c.size != h.size or n.size != h.size:
+        if (xw < 0).any():
+            rows = np.flatnonzero((xw < 0).any(axis=1))[:5].tolist()
             raise ValueError(
-                "c and n must have one value per unit, as x1 does; got "
-                f"{c.size} and {n.size} for {h.size} units."
+                f"{label_x} has negative values, at rows {rows}: an age on "
+                "a clock is 0 or more."
+            )
+        if c is None:
+            c = np.where(xw[:, 0] < xw[:, 1], 2, 0)
+        c = _as_1d(c, "c")
+        n = np.ones(size) if n is None else _as_1d(n, "n")
+        if c.size == 1 and size > 1:
+            c = np.full(size, c[0])
+        if n.size == 1 and size > 1:
+            n = np.full(size, n[0])
+        if c.size != size or n.size != size:
+            raise ValueError(
+                "c and n must have one value per row, as x does; got "
+                f"{c.size} and {n.size} for {size} rows."
             )
         if not np.isin(c, (0, 1, -1, 2)).all():
             raise ValueError(
-                "c must be 0 (failed), 1 (still running) or -1 (failed "
-                f"before it was seen); got {sorted(set(c.tolist()))}."
-            )
-        if (c == 2).any():
-            raise ValueError(
-                "Interval-censored units (c=2) are not supported by an "
-                "equivalent-scale fit: an interval on two clocks needs "
-                "both ends on each, so give each such unit as failed "
-                "before its later inspection (c=-1) or still running at "
-                "its earlier one (c=1)."
+                "c must be 0 (failed), 1 (still running), -1 (failed "
+                "before it was seen) or 2 (failed between two "
+                f"inspections); got {sorted(set(c.tolist()))}."
             )
         if not np.isfinite(n).all() or (n <= 0).any():
             raise ValueError(
                 "n, the count of each row, must be positive; got "
                 f"{n[~np.isfinite(n) | (n <= 0)][:5].tolist()}."
             )
+        if (xw[:, 0] > xw[:, 1]).any():
+            rows = np.flatnonzero(xw[:, 0] > xw[:, 1])[:5].tolist()
+            raise ValueError(
+                f"{label_x}'s windows at rows {rows} end before they "
+                "start: each interval row is [lower, upper] with "
+                "lower <= upper."
+            )
+        interval = c == 2
+        wide = (xw[:, 0] != xw[:, 1]) | (sw[:, 0] != sw[:, 1])
+        if (wide & ~interval).any():
+            rows = np.flatnonzero(wide & ~interval)[:5].tolist()
+            raise ValueError(
+                f"Rows {rows} have a window ([lower, upper] that differ) on "
+                f"{label_x} or {clock._label()}, but are not intervals "
+                "(c = 2): give equal columns where a row is not an "
+                "interval, or set its c to 2."
+            )
+        if interval.any():
+            narrow = interval & ~wide
+            if narrow.any():
+                rows = np.flatnonzero(narrow)[:5].tolist()
+                if not clock._two_d and np.ndim(x) == 2:
+                    raise ValueError(
+                        f"Rows {rows} are intervals (c = 2), but "
+                        f"{clock._label()} has one reading per row: an "
+                        "interval needs its reading at both inspections. "
+                        "Give the secondary clock as an N x 2 array, "
+                        "SecondaryClock([[lower, upper], ...]), as x is."
+                    )
+                raise ValueError(
+                    f"Rows {rows} are intervals (c = 2) of no width on "
+                    "either clock: give each interval row's [lower, upper] "
+                    "on x and on the secondary clock (N x 2 arrays), or "
+                    "set c to 0 for a failure seen at that age."
+                )
+            if not clock._two_d and (xw[interval, 0] < xw[interval, 1]).any():
+                rows = np.flatnonzero(interval)[:5].tolist()
+                raise ValueError(
+                    f"Rows {rows} are intervals (c = 2), but "
+                    f"{clock._label()} has one reading per row: an interval "
+                    "needs its reading at both inspections. Give the "
+                    "secondary clock as an N x 2 array, "
+                    "SecondaryClock([[lower, upper], ...]), as x is."
+                )
+        h, s = xw[:, 1], sw[:, 1]
+        h_lo, s_lo = xw[:, 0], sw[:, 0]
         zero = (h == 0) & (s == 0)
         if (zero & (c != 1)).any():
             rows = np.flatnonzero(zero & (c != 1))[:5].tolist()
@@ -251,35 +542,35 @@ class _Data:
                 "a failure needs some age on one of them. Check those "
                 "rows, or drop them."
             )
-        if tl is None:
-            hl = np.zeros(h.size)
-            sl = np.zeros(h.size)
-        else:
-            tl_arr = np.asarray(tl, dtype=float)
-            if tl_arr.ndim == 1 and tl_arr.size == 2:
-                tl_arr = np.tile(tl_arr, (h.size, 1))
-            if tl_arr.shape != (h.size, 2):
-                raise ValueError(
-                    "tl, each unit's age at entry, is a pair "
-                    f"({a}, {b}) per unit: an array of shape "
-                    f"({h.size}, 2); got shape {tl_arr.shape}."
-                )
-            if not np.isfinite(tl_arr).all() or (tl_arr < 0).any():
-                raise ValueError(
-                    "tl must hold ages of 0 or more on both clocks, with "
-                    "no missing values."
-                )
-            hl, sl = tl_arr[:, 0], tl_arr[:, 1]
-            if (hl > h).any() or (sl > s).any():
-                rows = np.flatnonzero((hl > h) | (sl > s))[:5].tolist()
-                raise ValueError(
-                    f"Rows {rows} entered observation (tl) later than they "
-                    "were last seen on one of the clocks: each entry age "
-                    "must be at or before the unit's age in x1 and x2."
-                )
+        # Late entry, on each clock
+        hl = np.zeros(size) if tl is None else _entry(tl, size, "tl")
+        sl = np.zeros(size) if clock.tl is None else clock.tl
+        if tl is not None and clock.tl is None and (hl > 0).any():
+            raise ValueError(
+                f"tl was given for {int((hl > 0).sum())} units but "
+                f"{clock._label()} has no entry reading: set "
+                "SecondaryClock(..., tl=...), each unit's reading on it "
+                "when it entered observation."
+            )
+        if clock.tl is not None and tl is None and (sl > 0).any():
+            raise ValueError(
+                f"{clock._label().capitalize()} has entry readings (tl) for "
+                f"{int((sl > 0).sum())} units but tl, the main clock's "
+                "reading at entry, was not given: set tl= as well (0 for a "
+                "unit that entered with no age on it)."
+            )
+        if (hl > h_lo).any() or (sl > s_lo).any():
+            rows = np.flatnonzero((hl > h_lo) | (sl > s_lo))[:5].tolist()
+            raise ValueError(
+                f"Rows {rows} entered observation (tl) later than they "
+                "were seen on one of the clocks: each entry reading must "
+                "be at or before the row's x (the lower end of an "
+                "interval), on the main clock and the secondary clock."
+            )
         # A unit seen still running at 0 on both clocks says nothing.
         keep = ~(zero & (c == 1))
         self.h, self.s, self.c, self.n = h[keep], s[keep], c[keep], n[keep]
+        self.h_lo, self.s_lo = h_lo[keep], s_lo[keep]
         self.hl, self.sl = hl[keep], sl[keep]
         self.clocks = (a, b)
         if not (self.c != 1).any():
@@ -295,6 +586,7 @@ class _Data:
         self.i_obs = np.flatnonzero(obs)
         self.i_right = np.flatnonzero(self.c == 1)
         self.i_left = np.flatnonzero(self.c == -1)
+        self.i_int = np.flatnonzero(self.c == 2)
         self.i_tl = np.flatnonzero((self.hl > 0) | (self.sl > 0))
         with np.errstate(divide="ignore", invalid="ignore"):
             self.rho = np.where(self.h > 0, self.s / self.h, np.inf)
@@ -337,10 +629,32 @@ class _Data:
     def size(self) -> float:
         return float(self.n.sum())
 
+    @property
+    def zero_width_at_k0(self) -> bool:
+        """Whether an interval row has no width on the main clock, so
+        that it is impossible at ``k = 0``."""
+        i = self.i_int
+        return bool(i.size and (self.h_lo[i] == self.h[i]).any())
+
     def to_arrays(self) -> dict:
-        return dict(
+        out = dict(
             h=self.h, s=self.s, c=self.c, n=self.n, hl=self.hl, sl=self.sl
         )
+        if self.i_int.size:
+            out.update(h_lo=self.h_lo, s_lo=self.s_lo)
+        return out
+
+    def combined(self, k: float) -> tuple[np.ndarray, Any]:
+        """The combined ages at ``k`` as a univariate fit takes them: one
+        column, or each row's window where some row is an interval; and
+        the ages at entry (or None)."""
+        T = self.h + k * self.s
+        if self.i_int.size:
+            T = np.column_stack([self.h_lo + k * self.s_lo, T])
+        tl = None
+        if self.i_tl.size:
+            tl = self.hl + k * self.sl
+        return T, tl
 
     def k_ref(self) -> float:
         """A natural unit for ``k``: the typical hours per start, so the
@@ -369,6 +683,18 @@ def _log_lik(dist: Any, d: _Data, theta: Any, k: Any) -> Any:
         ll = ll + anp.sum(d.n[d.i_right] * dist.log_sf(T[d.i_right], *theta))
     if d.i_left.size:
         ll = ll + anp.sum(d.n[d.i_left] * dist.log_ff(T[d.i_left], *theta))
+    if d.i_int.size:
+        # S(T_lo) - S(T_hi), on the log scale: log S(T_lo) +
+        # log(1 - S(T_hi) / S(T_lo)); S(0) = 1 where the window opens at 0
+        i = d.i_int
+        lo = d.h_lo[i] + k * d.s_lo[i]
+        pos = lo > 0
+        safe = anp.where(pos, lo, 1.0)
+        lsf_lo = anp.where(pos, dist.log_sf(safe, *theta), 0.0)
+        lsf_hi = dist.log_sf(T[i], *theta)
+        ll = ll + anp.sum(
+            d.n[i] * (lsf_lo + anp.log(-anp.expm1(lsf_hi - lsf_lo)))
+        )
     if d.i_tl.size:
         Tl = d.hl[d.i_tl] + k * d.sl[d.i_tl]
         pos = Tl > 0
@@ -384,10 +710,7 @@ def _profile(dist: Any, d: _Data, k: float) -> tuple[float, np.ndarray]:
     a fixed ``k``, and where: at fixed ``k`` the fit is the
     distribution's own fit to the combined ages (the Jacobian does not
     involve the distribution's parameters)."""
-    T = d.h + k * d.s
-    tl = None
-    if d.i_tl.size:
-        tl = d.hl + k * d.sl
+    T, tl = d.combined(k)
     with ignoring_warnings():
         fitted = dist.fit(T, d.c, d.n, tl=tl)
     theta = np.asarray(fitted.params, dtype=float)
@@ -431,6 +754,54 @@ def _search_objective(dist: Any, d: _Data, tr: _Transform) -> Any:
     return fun
 
 
+def _refuse_other_data(x: Any, x2: Any) -> None:
+    """Refuse a data object the two-clock fit does not take, saying what
+    to give instead."""
+    from surpyval.multivariate.parametric.data import (
+        MultivariateSurpyvalData,
+    )
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    if isinstance(x, MultivariateSurpyvalData) or isinstance(
+        x2, MultivariateSurpyvalData
+    ):
+        raise ValueError(
+            "The two-clock fit takes univariate data, not a "
+            "MultivariateSurpyvalData: give x (with c, n and tl) on the "
+            "main clock, and the secondary clock's readings at the same "
+            "moments as x2, an array or SecondaryClock(values, tl=..., "
+            "name=...). A MultivariateSurpyvalData is for models of "
+            "several correlated series (the copulas)."
+        )
+    if isinstance(x, SurpyvalData):
+        raise ValueError(
+            "The two-clock fit takes x as an array, not a SurpyvalData: "
+            "a SurpyvalData groups and sorts its rows, so they would no "
+            "longer line up with x2. Give x, c, n and tl as arrays, and "
+            "x2 as an array or SecondaryClock."
+        )
+
+
+def _old_pair_entry(tl: Any, size: int) -> np.ndarray | None:
+    """``tl`` as 0.28's pair of entry ages per unit (main clock, second
+    clock), an ``(N, 2)`` array or one pair for every unit; None where it
+    is the main clock's entry alone."""
+    if tl is None:
+        return None
+    arr = np.asarray(tl, dtype=float)
+    if arr.ndim == 2 and arr.shape[1] == 2:
+        return arr
+    if arr.ndim == 1 and arr.size == 2 and size != 2:
+        return np.tile(arr, (size, 1))
+    return None
+
+
+_PAIR_ENTRY_ADVICE = (
+    "give tl= the main clock's reading at entry and the second clock's "
+    "in SecondaryClock(x2, tl=...)"
+)
+
+
 class EquivalenceFitter:
     """A fitter of an equivalent time scale; build one with
     :func:`Equivalence`, or use a prebuilt one
@@ -442,11 +813,6 @@ class EquivalenceFitter:
     >>> Equivalence(Weibull)
     WeibullEquivalence: an equivalent time scale x1 + k x2, Weibull on it
     """
-
-    #: How many axes of a ``MultivariateSurpyvalData`` the fit takes:
-    #: exactly two clocks, column 0 the first (the one ``k`` is measured
-    #: in) and column 1 the second.
-    n_axes: int = 2
 
     def __init__(self, dist: Any) -> None:
         _check_distribution(dist)
@@ -468,54 +834,71 @@ class EquivalenceFitter:
         then ``k``."""
         return [*self.dist.parameter_names, "k"]
 
+    @renamed_arguments(removed_in=REMOVED_IN_NEXT, x1="x")
     @takes_unit
     def fit(
         self,
-        x1: Any,
-        x2: npt.ArrayLike | None = None,
+        x: npt.ArrayLike | None = None,
+        x2: npt.ArrayLike | SecondaryClock | None = None,
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
         clocks: tuple[str, str] | None = None,
         init: npt.ArrayLike | None = None,
+        *,
+        t: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
     ) -> EquivalenceModel:
         r"""
-        Fit the combined clock ``x1 + k x2`` and the distribution on it by
+        Fit the combined clock ``x + k x2`` and the distribution on it by
         maximum likelihood.
+
+        The data are univariate: one row per unit (or ``n`` alike), on
+        the main clock, as any univariate fit takes them (``x``, ``c``,
+        ``n``, ``t``), plus ``x2``, the second clock's reading at the same
+        moments.
 
         Parameters
         ----------
-        x1 : array_like or MultivariateSurpyvalData
-            Each unit's age on the first clock (hours, say): at its
-            failure, or when last seen running. Or the whole data as a
-            :class:`~surpyval.multivariate.MultivariateSurpyvalData` with
-            exactly two axes (``n_axes``): column 0 the first clock,
-            column 1 the second, ``c`` the same on both clocks in each
-            row (a unit is failed or running as a whole), ``n`` the
-            counts and ``t``'s lower bounds each clock's age at entry;
-            its axis names name the clocks. ``x2``, ``c``, ``n`` and
-            ``tl`` are then left out.
-        x2 : array_like, optional
-            The same units' ages on the second clock (starts, cycles,
-            ...). ``k`` is what one unit of this clock is worth on the
-            first.
+        x : array_like
+            Each unit's age on the main clock (hours, say): at its
+            failure, or when last seen running; for an interval row
+            (``c = 2``), its ``[lower, upper]`` window (an ``N x 2``
+            array, equal columns elsewhere). ``k`` is measured in this
+            clock's units.
+        x2 : array_like or SecondaryClock
+            The second clock's reading (starts, cycles, landings) at each
+            row's ``x``: an array (one per row, or ``N x 2`` windows as
+            ``x``), or a :class:`SecondaryClock` with its entry readings
+            ``tl`` and its ``name``. It has no censoring of its own.
         c : array_like, optional
-            Censoring: 0 failed at that age (the default), 1 still
-            running, -1 failed before it was seen.
+            Censoring, of the unit on the main clock: 0 failed at that age
+            (the default), 1 still running, -1 failed before it was seen,
+            2 failed between two inspections (an interval row). By
+            default 2 where ``x``'s window has width, else 0.
         n : array_like, optional
             The count of units in each row.
-        tl : array_like, optional
-            Late entry: each unit's age on both clocks when observation
-            began, an array of shape ``(len(x1), 2)`` (or one pair for
-            every unit).
+        tl : array_like or float, optional
+            Late entry: each unit's reading on the main clock when
+            observation began. The second clock's goes in
+            ``SecondaryClock(..., tl=...)``. (The 0.28 form, a pair per
+            unit of shape ``(N, 2)``, is deprecated.)
         clocks : tuple of two str, optional
             Names of the two clocks, used when the model describes ``k``
-            (default ``("x1", "x2")``; ``fit_from_df`` uses the columns'
-            names).
+            (default ``("x1", "x2")``, the second the
+            ``SecondaryClock``'s name where it has one; ``fit_from_df``
+            uses the columns' names).
         init : array_like, optional
             A start for the search: the distribution's parameters, then
             ``k``. The default start is searched as well, and the better
             answer kept.
+        t : array_like, optional
+            The truncation window ``[tl, tr]`` of each row on the main
+            clock (in place of ``tl`` and ``tr``). Only late entry is
+            taken; a finite upper bound is refused.
+        tr : array_like, optional
+            Right truncation: refused where finite (it is not
+            supported).
 
         Returns
         -------
@@ -524,7 +907,7 @@ class EquivalenceFitter:
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import WeibullEquivalence
+        >>> from surpyval import SecondaryClock, WeibullEquivalence
         >>> rng = np.random.default_rng(1)
         >>> rate = rng.choice([0.02, 0.1, 0.5], 300)   # starts per hour
         >>> T = 2000 * rng.weibull(2.0, 300)          # equivalent hours
@@ -534,51 +917,130 @@ class EquivalenceFitter:
         >>> round(model.k, 1)
         9.8
 
-        The same data as one ``MultivariateSurpyvalData``, its axes named:
+        The same, the second clock named:
 
-        >>> from surpyval.multivariate import MultivariateSurpyvalData
-        >>> data = MultivariateSurpyvalData(
-        ...     [hours, starts], names=("hours", "starts")
-        ... )
-        >>> same = WeibullEquivalence.fit(data)
+        >>> same = WeibullEquivalence.fit(
+        ...     hours, SecondaryClock(starts, name="starts"),
+        ...     clocks=("hours", "starts"))
         >>> same.clocks, bool(np.allclose(same.params, model.params))
         (('hours', 'starts'), True)
         """
-        from surpyval.multivariate.parametric.data import (
-            MultivariateSurpyvalData,
-        )
-
-        if isinstance(x1, MultivariateSurpyvalData):
-            x1, x2, c, n, tl, clocks = _from_multivariate(
-                self, x1, x2, c, n, tl, clocks
-            )
-        elif x2 is None:
+        _refuse_other_data(x, x2)
+        if x is None:
             raise ValueError(
-                "x2, each unit's age on the second clock, is needed beside "
-                "x1 (or give both clocks as one MultivariateSurpyvalData)."
+                "x, each unit's age on the main clock, is needed."
             )
-        names = ("x1", "x2") if clocks is None else tuple(clocks)
-        if len(names) != 2:
-            raise ValueError(f"clocks names the two clocks; got {names!r}.")
-        d = _Data(x1, x2, c, n, tl, clocks=(str(names[0]), str(names[1])))
+        if x2 is None:
+            raise ValueError(
+                "x2, the second clock's reading at each row's x, is needed "
+                "beside x: an array, or SecondaryClock(values, tl=..., "
+                "name=...)."
+            )
+        if t is not None:
+            if tl is not None or tr is not None:
+                raise ValueError(
+                    "Give the truncation once: t (each row's [tl, tr]), or "
+                    "tl and tr, not both."
+                )
+            t_arr = np.asarray(t, dtype=float)
+            if t_arr.ndim == 1 and t_arr.size == 2:
+                t_arr = t_arr[None, :]
+            if t_arr.ndim != 2 or t_arr.shape[1] != 2:
+                raise ValueError(
+                    "t is each row's truncation window [tl, tr]: an N x 2 "
+                    f"array (or one pair for every row); got shape "
+                    f"{t_arr.shape}."
+                )
+            tl, tr = t_arr[:, 0], t_arr[:, 1]
+            if tl.size == 1:
+                tl, tr = tl[0], tr[0]
+        if tr is not None:
+            tr_arr = np.atleast_1d(np.asarray(tr, dtype=float))
+            if np.isfinite(tr_arr).any():
+                rows = np.flatnonzero(np.isfinite(tr_arr))[:5].tolist()
+                raise ValueError(
+                    f"Rows {rows} are right truncated (a finite tr, or a "
+                    "finite upper bound in t): the two-clock fit takes late "
+                    "entry only. Leave the upper bounds at inf."
+                )
+        try:
+            size = len(np.atleast_1d(np.asarray(x, dtype=float)))
+        except (TypeError, ValueError):
+            size = -1  # refused, saying why, as the data are read
+        pair = _old_pair_entry(tl, size)
+        if pair is not None:
+            if isinstance(x2, SecondaryClock) and x2.tl is not None:
+                raise ValueError(
+                    "tl is a pair per unit (0.28's form) and the "
+                    "SecondaryClock has entry readings too: give the "
+                    "second clock's entry once, in SecondaryClock(..., "
+                    "tl=...), and tl= the main clock's alone."
+                )
+            warnings.warn(
+                "EquivalenceFitter.fit: tl as a pair per unit (main clock, "
+                "second clock) is deprecated and will be removed in "
+                f"v{REMOVED_IN_NEXT}; {_PAIR_ENTRY_ADVICE}.",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            name = x2.name if isinstance(x2, SecondaryClock) else None
+            values = x2.values if isinstance(x2, SecondaryClock) else x2
+            x2 = SecondaryClock(values, tl=pair[:, 1], name=name)
+            tl = pair[:, 0]
+        clock = SecondaryClock._of(x2)
+        names: tuple[str, ...]
+        if clocks is None:
+            names = ("x1", clock.name or "x2")
+        else:
+            names = tuple(str(v) for v in clocks)
+            if len(names) != 2:
+                raise ValueError(
+                    f"clocks names the two clocks; got {names!r}."
+                )
+            if clock.name is not None and clock.name != names[1]:
+                raise ValueError(
+                    f"clocks names the second clock {names[1]!r}, but the "
+                    f"SecondaryClock is named {clock.name!r}: give the name "
+                    "once, in the SecondaryClock or in clocks."
+                )
+        d = _Data(x, clock, c, n, tl, clocks=(names[0], names[1]))
         return _fit(self, d, init)
 
     @takes_unit
     def fit_from_df(
         self,
         df: Any,
-        x_cols: list[str],
+        x_col: str | None = None,
         c_col: str | None = None,
         n_col: str | None = None,
-        tl_cols: list[str] | None = None,
+        tl_col: Any = None,
         init: npt.ArrayLike | None = None,
+        *,
+        x2_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        x2l_col: str | None = None,
+        x2r_col: str | None = None,
+        tl2_col: Any = None,
+        tr_col: Any = None,
+        x2_name: str | None = None,
+        clocks: tuple[str, str] | None = None,
+        x_cols: list[str] | None = None,
+        tl_cols: list[str] | None = None,
     ) -> EquivalenceModel:
         """
-        Fit from a DataFrame: ``x_cols`` names the two clocks' columns,
-        first the one ``k`` is measured in (``["hours", "starts"]``
-        reports what one start is worth in hours); ``tl_cols`` the two
-        columns of the ages at entry, in the same order. The columns'
-        names name the clocks in the model's description.
+        Fit from a DataFrame: the main clock's columns as for any
+        univariate fit (``x_col``, or ``xl_col`` and ``xr_col`` for
+        intervals; ``c_col``, ``n_col``, ``tl_col``), and the second
+        clock's: ``x2_col`` (or ``x2l_col`` and ``x2r_col`` for the
+        windows of interval rows) and ``tl2_col``, its reading at entry.
+        ``x2_name`` names the second clock (by default its column's name);
+        the main clock is named after ``x_col``. ``tl_col`` and
+        ``tl2_col`` also take one number for every row. The
+        :class:`SecondaryClock` is built from the columns.
+
+        ``x_cols=[main, second]`` and ``tl_cols``, the 0.28 form, are
+        deprecated.
 
         Examples
         --------
@@ -591,39 +1053,131 @@ class EquivalenceFitter:
         >>> hours = T / (1 + 10 * rate)
         >>> df = pd.DataFrame({"hours": hours, "starts": rate * hours})
         >>> model = WeibullEquivalence.fit_from_df(
-        ...     df, x_cols=["hours", "starts"])
+        ...     df, x_col="hours", x2_col="starts")
         >>> model.clocks
         ('hours', 'starts')
         """
-        x_cols = list(x_cols)
-        if len(x_cols) != 2:
-            raise ValueError(
-                "x_cols names the two clocks' columns, e.g. "
-                f"['hours', 'starts']; got {x_cols!r}."
+        # 0.28's form: x_cols = [main, second] (also given by position,
+        # where x_col now is), tl_cols = [main, second]
+        if isinstance(x_col, (list, tuple)):
+            x_cols, x_col = list(x_col), None
+        if isinstance(tl_col, (list, tuple)):
+            tl_cols, tl_col = list(tl_col), None
+        if x_cols is not None or tl_cols is not None:
+            warnings.warn(
+                "EquivalenceFitter.fit_from_df: x_cols and tl_cols (both "
+                "clocks' columns in one list) are deprecated and will be "
+                f"removed in v{REMOVED_IN_NEXT}; use x_col and x2_col, and "
+                "tl_col and tl2_col.",
+                DeprecationWarning,
+                stacklevel=3,
             )
-        for col in [*x_cols, c_col, n_col, *(tl_cols or [])]:
-            if col is not None and col not in df.columns:
+        if x_cols is not None:
+            x_cols = list(x_cols)
+            if len(x_cols) != 2:
                 raise ValueError(
-                    f"Column {col!r} is not in the DataFrame, whose "
-                    f"columns are {list(df.columns)}."
+                    "x_cols names the two clocks' columns, e.g. "
+                    f"['hours', 'starts']; got {x_cols!r}. Better: "
+                    "x_col='hours', x2_col='starts'."
                 )
-        tl = None
+            if x_col is not None or x2_col is not None:
+                raise ValueError(
+                    "Give the clocks' columns once: x_col and x2_col, or "
+                    "(deprecated) x_cols."
+                )
+            x_col, x2_col = (str(v) for v in x_cols)
         if tl_cols is not None:
             tl_cols = list(tl_cols)
             if len(tl_cols) != 2:
                 raise ValueError(
                     "tl_cols names the two columns of the ages at entry, "
-                    f"in the order of x_cols; got {tl_cols!r}."
+                    f"in the order of the clocks; got {tl_cols!r}. Better: "
+                    "tl_col and tl2_col."
                 )
-            tl = df[tl_cols].to_numpy(dtype=float)
+            if tl_col is not None or tl2_col is not None:
+                raise ValueError(
+                    "Give the entry columns once: tl_col and tl2_col, or "
+                    "(deprecated) tl_cols."
+                )
+            tl_col, tl2_col = tl_cols
+        names = [
+            v
+            for v in (
+                x_col,
+                xl_col,
+                xr_col,
+                c_col,
+                n_col,
+                x2_col,
+                x2l_col,
+                x2r_col,
+            )
+            if v is not None
+        ] + [v for v in (tl_col, tl2_col, tr_col) if isinstance(v, str)]
+        for col in names:
+            if col not in df.columns:
+                raise ValueError(
+                    f"Column {col!r} is not in the DataFrame, whose "
+                    f"columns are {list(df.columns)}."
+                )
+
+        def column(col: str) -> np.ndarray:
+            return df[col].to_numpy(dtype=float)
+
+        def window(
+            point: str | None, lo: str | None, hi: str | None, what: str
+        ) -> np.ndarray:
+            one, two = f"{what}_col", f"{what}l_col and {what}r_col"
+            if point is not None:
+                if lo is not None or hi is not None:
+                    raise ValueError(
+                        f"Give {what} as one column ({one}) or as two "
+                        f"({two}), not both."
+                    )
+                return column(point)
+            if lo is None or hi is None:
+                clock = "main" if what == "x" else "second"
+                raise ValueError(
+                    f"{one}, the column of the {clock} clock's readings, "
+                    f"is needed (or {two}, for intervals)."
+                )
+            return np.column_stack([column(lo), column(hi)])
+
+        x = window(x_col, xl_col, xr_col, "x")
+        x2 = window(x2_col, x2l_col, x2r_col, "x2")
+
+        def entry(col: Any) -> Any:
+            if col is None:
+                return None
+            if isinstance(col, str):
+                return column(col)
+            return float(col)
+
+        if clocks is not None:
+            given = tuple(str(v) for v in clocks)
+            if len(given) != 2:
+                raise ValueError(
+                    f"clocks names the two clocks; got {given!r}."
+                )
+            if x2_name is not None and x2_name != given[1]:
+                raise ValueError(
+                    f"clocks names the second clock {given[1]!r} and "
+                    f"x2_name {x2_name!r}: name it once."
+                )
+            main, second = given
+        else:
+            main = x_col or "x1"
+            second = x2_name or x2_col or "x2"
+        clock = SecondaryClock(x2, tl=entry(tl2_col), name=second)
         return self.fit(
-            df[x_cols[0]].to_numpy(dtype=float),
-            df[x_cols[1]].to_numpy(dtype=float),
+            x,
+            clock,
             c=None if c_col is None else df[c_col].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
-            tl=tl,
-            clocks=(str(x_cols[0]), str(x_cols[1])),
+            tl=entry(tl_col),
+            clocks=(str(main), str(second)),
             init=init,
+            tr=entry(tr_col),
         )
 
     @takes_unit
@@ -664,86 +1218,6 @@ class EquivalenceFitter:
         return model
 
 
-def _from_multivariate(
-    fitter: EquivalenceFitter,
-    data: Any,
-    x2: Any,
-    c: Any,
-    n: Any,
-    tl: Any,
-    clocks: Any,
-) -> tuple:
-    """The arrays of a fit from a ``MultivariateSurpyvalData`` with two
-    axes: each clock's ages, the censoring (one code per row, the same on
-    both clocks), the counts, each clock's age at entry (from ``t``'s
-    lower bounds; ``-inf``, no entry, is 0) and the clocks' names."""
-    from surpyval.multivariate.parametric.data import check_axes
-
-    given = [
-        k
-        for k, v in (("x2", x2), ("c", c), ("n", n), ("tl", tl))
-        if v is not None
-    ]
-    if given:
-        raise ValueError(
-            "x1 is a MultivariateSurpyvalData, which holds the data: leave "
-            f"out {', '.join(given)} (they go in the data)."
-        )
-    check_axes(
-        "An equivalent-time-scale fit",
-        data,
-        fitter.n_axes,
-        "two clocks of one life: column 0 the first, column 1 the second",
-    )
-    if data.names is not None:
-        if clocks is not None and tuple(map(str, clocks)) != data.names:
-            raise ValueError(
-                f"clocks {tuple(clocks)!r} differ from the data's axis "
-                f"names {data.names!r}: give the names once, in the data "
-                "or in clocks."
-            )
-        clocks = data.names
-    a, b = ("x1", "x2") if clocks is None else tuple(map(str, clocks))
-    cc = data.c
-    differ = cc[:, 0] != cc[:, 1]
-    if differ.any():
-        rows = np.flatnonzero(differ)
-        r = int(rows[0])
-        more = (
-            f" (and {rows.size - 1} more row(s): {rows[1:6].tolist()}"
-            + ("..." if rows.size > 6 else "")
-            + ")"
-            if rows.size > 1
-            else ""
-        )
-        raise ValueError(
-            f"Row {r} has c = {int(cc[r, 0])} on {a} and {int(cc[r, 1])} "
-            f"on {b}{more}: a unit is failed or still running as a whole, "
-            "so its censoring is the same on both clocks. Give each row "
-            "one code on both clocks."
-        )
-    upper = data.t[:, :, 1]
-    if np.isfinite(upper).any():
-        rows = np.flatnonzero(np.isfinite(upper).any(axis=1))[:5].tolist()
-        raise ValueError(
-            f"Rows {rows} are right truncated (a finite upper bound in t): "
-            "an equivalent-time-scale fit takes late entry only (t's lower "
-            "bounds). Leave the upper bounds at inf."
-        )
-    lower = data.t[:, :, 0]
-    tl_arr = None
-    if np.isfinite(lower).any():
-        tl_arr = np.where(np.isfinite(lower), lower, 0.0)
-    return (
-        data.x[:, 0],
-        data.x[:, 1],
-        cc[:, 0],
-        data.n,
-        tl_arr,
-        (a, b),
-    )
-
-
 def _fit(
     fitter: EquivalenceFitter, d: _Data, init: Any = None
 ) -> EquivalenceModel:
@@ -754,8 +1228,10 @@ def _fit(
 
     dist = fitter.dist
     k_ref = d.k_ref()
-    can_be_zero = d.i_obs_0.size == 0 and not (
-        d.i_left.size and (d.h[d.i_left] == 0).any()
+    can_be_zero = (
+        d.i_obs_0.size == 0
+        and not (d.i_left.size and (d.h[d.i_left] == 0).any())
+        and not d.zero_width_at_k0
     )
 
     # The start: the best k of a coarse profile.
