@@ -125,6 +125,39 @@ hours-only model makes failures look more random than they are.
 
     sp.Weibull.fit(df["hours"], df["c"]).params
 
+The same data as one ``MultivariateSurpyvalData``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The two clocks are two values per row, which is what a
+:class:`~surpyval.multivariate.MultivariateSurpyvalData` holds (see
+:doc:`Multivariate Modelling with SurPyval`). ``fit`` takes one with
+exactly two axes: column 0 is the first clock (the one :math:`k` is
+measured in), column 1 the second, and the axis names name the clocks.
+Each row's censoring must be the same on both clocks, because a unit has
+failed or is still running as a whole; a row that differs is refused,
+naming it. Late entry is each clock's age at entry, the lower bounds of
+``t``. Interval-censored rows (``c = 2``) can be held in the data but are
+still refused by the fit. The numbers are those of the arrays:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    data = MultivariateSurpyvalData(
+        df[["hours", "starts"]].to_numpy(),
+        c=np.column_stack([df["c"], df["c"]]),
+        names=("hours", "starts"),
+    )
+    same = sp.WeibullEquivalence.fit(data)
+    same.clocks, np.allclose(same.params, model.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert same.clocks == ("hours", "starts")
+    assert np.array_equal(same.params, model.params), (same.params, model.params)
+
 Lives along a duty
 ------------------
 

@@ -13,6 +13,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-16
+
+### Multivariate data: any number of axes; the model decides what they mean (16 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SurpyvalData` stays as it is: one value per row. Anything with more than one value per row uses `MultivariateSurpyvalData`, which is x/c/n/t with an axis of 2 or more columns: `x`, `xl`, `xr` and `c` are N x D, `t` is N x D x 2, `n` one count per row, for any D >= 2 (D = 1 is refused, pointing to `SurpyvalData`). The maintainer's words: "I think we keep the multivariate version then. Don't want the regular version being too complex"; "I think multivariate just needs each value, xcnt, to have the length axis to be 2 or more rows/cols"; "xl and xr as well". | maintainer (2026-11-16) | One simple univariate data object; the multivariate one generalises the same letters. | done |
+| The **model** decides what the columns mean: a copula reads two correlated series, an equivalent-time-scale fit two clocks of one life (column 0 the first clock, column 1 the second). Each multivariate fitter states how many axes it takes as `n_axes` and refuses any other number with a `ValueError` saying so (`check_axes` in `surpyval/multivariate/parametric/data.py`). The copulas' refusal of D != 2 was a `NotImplementedError`; it is now that `ValueError`. | maintainer (shape), proposed (`n_axes`, wording) | Principle 2; the copula behaviour for two series is unchanged. | done |
+| Optional axis names (`names=("hours", "landings")`) are carried by the data and used only in messages (`"Series 1 (landings): ..."`, the old `"Series 1: ..."` without names) and in a fitted model's results (an `EquivalenceModel`'s `clocks`); `dimension(d)` takes a position or a name. Names given both in the data and in `clocks=` must agree. | proposed | Names that change no number; one place to give them. | done |
+| `to_dict` / `to_json` / `from_dict` / `from_json` (tag `"MultivariateSurpyvalData"`, read by `surpyval.from_dict` / `from_json`) save `x`, `c`, `n`, `t`, `xl`, `xr` and the names; `from_dict` builds the data again, so it is re-checked. | proposed | As for the other data classes (#935). | done |
+| The two-clock fit (`EquivalenceFitter.fit`) takes a `MultivariateSurpyvalData` with two axes in place of `x1`; `x2`, `c`, `n` and `tl` are then refused beside it. Each row's censoring must agree on both clocks (a unit is failed or running as a whole); a mismatch is refused naming the row. Interval rows (c = 2) stay refused with the existing message, though the data carries them. Late entry is per clock from `t`'s lower bounds (`-inf`, no entry, is 0); a finite upper bound (right truncation) is refused, as the arrays have none. The numbers are those of the arrays (tested equal, and a `fit(data)` conformance path). `fit_from_df` is unchanged. | maintainer (shape), proposed (details) | One data model for every model with more than one value per row. | done |
+| Copula `fit` takes a `MultivariateSurpyvalData` as `x` (the other data arguments then refused). | proposed | Principle 1: every fitter's `fit` takes its data object. | done |
+
 ## 2026-11-13
 
 ### Panel counts: `how="MLE"` and separation (13 Nov 2026)

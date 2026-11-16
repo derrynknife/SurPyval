@@ -166,6 +166,9 @@ class Copula:
     """
 
     name: str = "Copula"
+    #: How many axes of a ``MultivariateSurpyvalData`` the family takes:
+    #: exactly two series. Data with any other number is refused.
+    n_axes: int = 2
     # Parameter bounds in the same ``(low, high)`` form the univariate
     # fitters use, so ``bounds_convert`` can map them to unbounded space.
     bounds: tuple = ((0, None),)
@@ -810,6 +813,9 @@ class Copula:
         x, c, n, t, xl, xr
             Multivariate survival data; see
             :class:`MultivariateSurpyvalData` for the accepted shapes.
+            ``x`` can be a ``MultivariateSurpyvalData`` itself, with
+            exactly two axes (a copula takes two series, ``n_axes``); the
+            other data arguments are then left out.
         margins : sequence of length D
             Either surpyval distribution classes (e.g. ``surpyval.Weibull``)
             to be fitted, or already-fitted models exposing ``ff``/``df``.
@@ -906,11 +912,30 @@ class Copula:
         )
         from surpyval.multivariate.parametric.data import (
             MultivariateSurpyvalData,
+            check_axes,
         )
 
-        data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
-        if data.D != 2:
-            raise NotImplementedError("only bivariate copulas are supported")
+        if isinstance(x, MultivariateSurpyvalData):
+            given = [
+                k
+                for k, v in (
+                    ("c", c),
+                    ("n", n),
+                    ("t", t),
+                    ("xl", xl),
+                    ("xr", xr),
+                )
+                if v is not None
+            ]
+            if given:
+                raise ValueError(
+                    f"x is a MultivariateSurpyvalData, which holds the data: "
+                    f"leave out {', '.join(given)} (they go in the data)."
+                )
+            data = x
+        else:
+            data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
+        check_axes(f"A {self.name} copula", data, self.n_axes, "two series")
         margins = _check_margins(margins, data.D, fitted_only=False)
 
         check_option("how", how, ("IFM", "MLE"))

@@ -138,6 +138,47 @@ series' arrays ``(x, c, xl, xr, tl, tr)``:
 
     # the same fit, to the optimiser's tolerance
     assert abs(by_count.params[0] - by_row.params[0]) < 1e-3
+
+Two or more axes, and what they mean
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``MultivariateSurpyvalData`` is the data of any model with more than one
+value per row. It is the ``x``, ``c``, ``n``, ``t`` of a
+:class:`~surpyval.utils.surpyval_data.SurpyvalData` with an extra axis of
+``D`` columns, for any ``D`` of 2 or more: ``x``, ``xl``, ``xr`` and ``c``
+are ``N`` by ``D``, ``t`` is ``N`` by ``D`` by 2 and ``n`` is one count per
+row. Data with one value per row is a ``SurpyvalData``, and is refused here.
+
+The data does not say what its columns are; the **model** does. A copula
+reads them as two correlated series (the two bearings of a shaft). An
+equivalent-time-scale fit (:doc:`Equivalent Time Scales`) reads them as two
+clocks of one life (hours and starts): column 0 is the first clock and
+column 1 the second. Each fitter says how many axes it takes in
+``n_axes`` and refuses data with any other number, so a copula refuses
+three series plainly, rather than fit two of them.
+
+The axes can be named. The names are used only in messages (a value that
+is not valid names its axis) and in the results of a model fitted to the
+data; nothing is computed from them. ``dimension`` takes a position or a
+name, and the data saves and loads with ``to_json`` / ``from_json`` (or
+``to_dict`` / ``from_dict``, and ``surpyval.from_json``), names included:
+
+.. jupyter-execute::
+
+    three = MultivariateSurpyvalData(
+        [[1200.0, 800.0, 2300.0], [40.0, 12.0, 95.0], [310.0, 150.0, 640.0]],
+        c=[0, 1, 0],
+        names=("hours", "landings", "cycles"),
+    )
+    print(three)
+    print(three.dimension("landings")[0])
+    again = MultivariateSurpyvalData.from_json(three.to_json())
+    print(again.names, np.array_equal(again.x, three.x))
+
+    try:
+        Clayton.fit(three, margins=[surv.Weibull] * 3)
+    except ValueError as error:
+        print(error)
     assert np.isclose(by_count.log_likelihood, by_row.log_likelihood)
 
 Interval-censored entries need their bounds: a ``c`` of ``2`` without ``xl``

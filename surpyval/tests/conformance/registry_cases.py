@@ -2201,6 +2201,25 @@ def _equivalence_df(fitter):
     return fit
 
 
+def _equivalence_data(fitter):
+    """The fit of the fixture as one MultivariateSurpyvalData: the two
+    clocks its axes (named), one censoring code per row on both."""
+
+    def fit(d):
+        from surpyval.multivariate import MultivariateSurpyvalData
+
+        c = np.asarray(d["c"])
+        data = MultivariateSurpyvalData(
+            [d["x"], d["x2"]],
+            c=np.column_stack([c, c]),
+            n=d["n"],
+            names=("hours", "starts"),
+        )
+        return fitter.fit(data, init=d.get("init"))
+
+    return fit
+
+
 def _equivalence():
     out = []
     for base in CURE_LATENCIES:
@@ -2224,7 +2243,10 @@ def _equivalence():
                 fit=_equivalence_fit(fitter),
                 functions=UNI_FUNCTIONS + ("qf",),
                 x=X_UNI,
-                paths={"fit_from_df": _equivalence_df(fitter)},
+                paths={
+                    "fit_from_df": _equivalence_df(fitter),
+                    "fit(data)": _equivalence_data(fitter),
+                },
                 # the second clock (starts) is a count, not a time: the
                 # units property rescales the first, and k with it
                 rows=("x", "x2", "c", "n"),
