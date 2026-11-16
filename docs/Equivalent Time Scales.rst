@@ -77,13 +77,16 @@ equivalent hours and shape 2.5.
     df.head()
 
 Each row is one unit: its hours and starts at its failure (``c = 0``) or
-now, if it is still running (``c = 1``). Fit the combined clock. The
-first column of ``x_cols`` is the clock :math:`k` is measured in.
+now, if it is still running (``c = 1``). This is ordinary univariate
+data on the main clock, hours (``x_col``, ``c_col``), with the second
+clock, starts, read at the same moments (``x2_col``). The censoring is the
+unit's: the starts have none of their own. Fit the combined clock;
+:math:`k` is measured in the main clock's units.
 
 .. jupyter-execute::
 
     model = sp.WeibullEquivalence.fit_from_df(
-        df, x_cols=["hours", "starts"], c_col="c"
+        df, x_col="hours", x2_col="starts", c_col="c"
     )
     model
 
@@ -125,38 +128,86 @@ hours-only model makes failures look more random than they are.
 
     sp.Weibull.fit(df["hours"], df["c"]).params
 
-The same data as one ``MultivariateSurpyvalData``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The data: arrays, or a ``SecondaryClock``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The two clocks are two values per row, which is what a
-:class:`~surpyval.multivariate.MultivariateSurpyvalData` holds (see
-:doc:`Multivariate Modelling with SurPyval`). ``fit`` takes one with
-exactly two axes: column 0 is the first clock (the one :math:`k` is
-measured in), column 1 the second, and the axis names name the clocks.
-Each row's censoring must be the same on both clocks, because a unit has
-failed or is still running as a whole; a row that differs is refused,
-naming it. Late entry is each clock's age at entry, the lower bounds of
-``t``. Interval-censored rows (``c = 2``) can be held in the data but are
-still refused by the fit. The numbers are those of the arrays:
+``fit`` takes the data as any univariate fit does, on the main clock
+(``x``, ``c``, ``n``, and ``tl`` or ``t`` for late entry), plus ``x2``, the
+second clock's reading at each row's ``x``. ``x2`` is an array, or a
+:class:`~surpyval.univariate.equivalence.SecondaryClock`, which also
+carries the second clock's name (it becomes the model's name for the
+clock) and its readings when units entered observation. The three give
+the same numbers:
 
 .. jupyter-execute::
 
-    from surpyval.multivariate import MultivariateSurpyvalData
-
-    data = MultivariateSurpyvalData(
-        df[["hours", "starts"]].to_numpy(),
-        c=np.column_stack([df["c"], df["c"]]),
-        names=("hours", "starts"),
+    hours, starts, c = df["hours"], df["starts"], df["c"]
+    by_array = sp.WeibullEquivalence.fit(hours, starts, c=c)
+    by_clock = sp.WeibullEquivalence.fit(
+        hours, sp.SecondaryClock(starts, name="starts"), c=c
     )
-    same = sp.WeibullEquivalence.fit(data)
-    same.clocks, np.allclose(same.params, model.params)
+    by_clock.clocks, np.allclose(by_clock.params, model.params)
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert same.clocks == ("hours", "starts")
-    assert np.array_equal(same.params, model.params), (same.params, model.params)
+    assert np.array_equal(by_array.params, model.params)
+    assert np.array_equal(by_clock.params, model.params)
+    assert by_clock.clocks == ("x1", "starts")
+
+Late entry is given per clock: ``tl`` the hours when a unit came under
+observation, and ``SecondaryClock(..., tl=...)`` its starts then. A
+unit's entry needs both, and the fit says so if one is missing. Here,
+units bought second hand, with a fifth of their hours and starts already
+on them:
+
+.. jupyter-execute::
+
+    entered = sp.WeibullEquivalence.fit(
+        hours,
+        sp.SecondaryClock(starts, tl=0.2 * starts, name="starts"),
+        c=c,
+        tl=0.2 * hours,
+    )
+    entered.k
+
+From a DataFrame, ``tl_col`` and ``tl2_col`` name the entry columns and
+``x2_name`` names the second clock (by default its column's name).
+
+Units inspected rather than watched
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A failure found at an inspection happened some time after the previous
+one: an interval row (``c = 2``). Give each clock's reading at both
+inspections, as ``N x 2`` arrays (equal columns on the rows that are not
+intervals), or from a DataFrame with ``xl_col`` / ``xr_col`` and
+``x2l_col`` / ``x2r_col``. The unit's combined clock passed its failure age
+between :math:`h_a + k s_a` and :math:`h_b + k s_b`, so the row contributes
+:math:`S(h_a + k s_a) - S(h_b + k s_b)`, whatever the unit did between
+the two inspections. The same fleet, inspected every 500 hours:
+
+.. jupyter-execute::
+
+    inspect = 500.0
+    found = df["c"] == 0  # found failed at the first inspection after it
+    next_inspection = np.ceil(df["hours"] / inspect) * inspect
+    upper = np.where(found, np.minimum(next_inspection, followed.round()), df["hours"])
+    lower = np.where(found, np.maximum(upper - inspect, 0.0), df["hours"])
+    x = np.column_stack([lower, upper])  # hours at the two inspections
+    x2 = rate[:, None] * x  # starts at the same two inspections
+    inspected = sp.WeibullEquivalence.fit(
+        x, sp.SecondaryClock(x2, name="starts"), c=np.where(found, 2, 1)
+    )
+    inspected.k, inspected.param_cb("k")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert inspected.maximum == "verified"
+    _lo, _hi = inspected.param_cb("k")
+    assert _lo < 20 < _hi, (_lo, _hi)
 
 Lives along a duty
 ------------------
@@ -261,11 +312,16 @@ What the model assumes, and its limits
 - **Units with no hours.** A unit that failed with starts but no running
   hours is fine: its age is :math:`k s`. Such a failure is impossible
   if starts did not matter, so it rules out :math:`k = 0`.
-- **Data.** Failures (``c = 0``), units still running (``c = 1``),
-  units that failed before they were inspected (``c = -1``), counts
-  ``n`` and late entry (``tl``, a pair of hours and starts at entry per
-  unit) are taken. Intervals (``c = 2``) are not: an interval on two
-  clocks needs both ends on each.
+- **Data.** Univariate data on the main clock, with the second clock
+  read at the same moments: failures (``c = 0``), units still running
+  (``c = 1``), units that failed before they were inspected
+  (``c = -1``), units that failed between two inspections (``c = 2``,
+  with both clocks' readings at each), counts ``n`` and late entry
+  (``tl`` the main clock's, ``SecondaryClock(..., tl=...)`` the second's)
+  are taken. Right truncation is not. The constant-usage assumption
+  above is used only for exact failures (it gives the factor below); an
+  interval, a censored unit and a late entry need only the clocks'
+  readings.
 
 Why the factor (1 + k rate) matters
 -----------------------------------

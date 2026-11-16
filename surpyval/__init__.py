@@ -290,6 +290,7 @@ _LAZY = {
             "LifeAtUsage",
             "LogLogisticEquivalence",
             "LogNormalEquivalence",
+            "SecondaryClock",
             "WeibullEquivalence",
         ),
         "surpyval.univariate.equivalence",
@@ -583,6 +584,7 @@ if TYPE_CHECKING:
         LifeAtUsage,
         LogLogisticEquivalence,
         LogNormalEquivalence,
+        SecondaryClock,
         WeibullEquivalence,
     )
     from surpyval.univariate.joint import (

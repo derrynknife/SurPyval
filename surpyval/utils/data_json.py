@@ -33,6 +33,7 @@ DATA_CLASSES = {
     "ItemLifetime": "surpyval.utils.item_lifetime",
     "ItemHistory": "surpyval.utils.item_history",
     "MultivariateSurpyvalData": "surpyval.multivariate.parametric.data",
+    "SecondaryClock": "surpyval.univariate.equivalence",
 }
 
 

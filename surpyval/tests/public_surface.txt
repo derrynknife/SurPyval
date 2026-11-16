@@ -189,6 +189,7 @@ surpyval.RoystonParmarModel
 surpyval.RoystonParmarPH
 surpyval.RoystonParmarPO
 surpyval.RoystonParmarRegression
+surpyval.SecondaryClock
 surpyval.SemiParametricRegressionModel
 surpyval.StepSchedule
 surpyval.StepValuedError

@@ -44,15 +44,34 @@ v0.29 (unreleased)
   ``from_dict`` / ``from_json`` (and ``surpyval.from_json``) save and load
   it, names included. The model decides what the columns mean, and each
   multivariate fitter says how many axes it takes in ``n_axes`` (2 for the
-  copulas and the equivalent-time-scale fits).
-- **The two-clock fit takes a ``MultivariateSurpyvalData``.**
-  ``WeibullEquivalence.fit(data)`` (and every ``Equivalence`` fitter): two
-  axes, column 0 the first clock and column 1 the second, the axis names
-  the model's ``clocks``, late entry per clock from ``t``. The numbers are
-  those of the arrays ``fit(x1, x2, c, n, tl)``, which work as before. A
-  row whose censoring differs between the clocks is refused, naming the
-  row; interval rows stay refused.
+  copulas).
 - Copula ``fit`` takes a ``MultivariateSurpyvalData`` as ``x``.
+- **The two-clock fit's data is univariate, with a ``SecondaryClock``.**
+  A part that wears on a main clock (hours) and a subordinate one (starts,
+  cycles, landings) has one event per unit, on the main clock, with the
+  second clock read at the same moments. ``WeibullEquivalence.fit`` (and
+  every ``Equivalence`` fitter) takes ``x``, ``c``, ``n`` and ``tl`` or
+  ``t`` on the main clock, as any univariate fit does, plus ``x2``: an
+  array, or the new ``SecondaryClock(values, tl=None, name=None)`` with
+  the second clock's readings at entry (``tl``) and its name (the model's
+  name for the clock). The clock has no censoring: ``c`` is the unit's.
+  Shapes that do not line up are refused saying what is off (``"tl was
+  given for 12 units but the secondary clock has no entry reading: set
+  SecondaryClock(..., tl=...)"``). ``SecondaryClock`` saves and loads with
+  ``to_dict`` / ``to_json`` / ``from_dict`` / ``from_json`` (and
+  ``surpyval.from_dict``). ``fit_from_df`` reads ``x_col``, ``c_col``,
+  ``n_col``, ``tl_col`` and ``x2_col``, ``tl2_col``, ``x2_name``. The
+  numbers are those of 0.28's ``fit(x1, x2, ...)``, unchanged.
+- **Interval rows in the two-clock fit.** A unit found failed at an
+  inspection (``c = 2``) is taken, with each clock's reading at both
+  inspections (``N x 2`` arrays, or ``xl_col`` / ``xr_col`` and
+  ``x2l_col`` / ``x2r_col``): it contributes
+  :math:`S(x_l + k\,x_{2,l}) - S(x_r + k\,x_{2,r})`, checked against a
+  brute-force maximisation of the written-out likelihood.
+- A fit that takes one clock refuses ``x2`` (and ``fit_from_df`` refuses
+  ``x2_col``, ``x2l_col``, ``x2r_col``, ``tl2_col`` and ``x2_name``) with a
+  ``ValueError`` pointing to the two-clock fits, in place of Python's
+  ``TypeError``.
 
 **Changed.**
 
@@ -64,6 +83,17 @@ v0.29 (unreleased)
   ``NotImplementedError``), and ``MultivariateSurpyvalData`` refuses data
   with one value per row, pointing to ``SurpyvalData`` (it was accepted
   and refused by every model that reads it).
+- The two-clock fit's ``fit_from_df`` names its columns as the univariate
+  fits do (``x_col`` and ``x2_col``, ``tl_col`` and ``tl2_col``).
+
+**Deprecated.**
+
+- ``EquivalenceFitter.fit``'s keyword ``x1`` (use ``x``), ``tl`` as a
+  pair per unit of both clocks' entry ages (give ``tl`` the main clock's
+  and ``SecondaryClock(x2, tl=...)`` the second's), and ``fit_from_df``'s
+  ``x_cols`` and ``tl_cols`` (use ``x_col`` and ``x2_col``, ``tl_col`` and
+  ``tl2_col``): each warns, gives the same numbers, and is removed in
+  v0.30.
 
 v0.28 (14 November 2026)
 ------------------------

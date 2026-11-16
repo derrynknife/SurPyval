@@ -1237,6 +1237,28 @@ def test_surpyval_data_to_json_is_strict_and_round_trips(tmp_path):
     np.testing.assert_array_equal(SurpyvalData.from_json(fp).t, data.t)
 
 
+def test_secondary_clock_to_json_is_strict_and_round_trips(tmp_path):
+    # The two-clock fits' second clock (0.29): its readings (windows
+    # too), its entry readings and its name.
+    clock = surpyval.SecondaryClock(
+        [[1.0, 3.0], [5.0, 5.0]], tl=[0.0, 0.5], name="landings"
+    )
+    parsed = _strict_loads(clock.to_json())
+    assert parsed["class"] == "SecondaryClock"
+    for restored in (
+        surpyval.from_json(clock.to_json()),
+        surpyval.from_dict(parsed),
+    ):
+        assert isinstance(restored, surpyval.SecondaryClock)
+        np.testing.assert_array_equal(restored.values, clock.values)
+        np.testing.assert_array_equal(restored.tl, clock.tl)
+        assert restored.name == "landings"
+    fp = tmp_path / "clock.json"
+    clock.to_json(fp)
+    _strict_loads(fp.read_text())
+    assert surpyval.SecondaryClock.from_json(fp).name == "landings"
+
+
 def test_hand_edited_dicts_name_the_bad_entry():
     # #663: strings of numbers are read as numbers; a word or a ragged
     # covariance is named, not a numpy error later.
