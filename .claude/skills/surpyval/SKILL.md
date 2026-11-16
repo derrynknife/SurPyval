@@ -309,7 +309,7 @@ silently wrong numbers, not errors.
 | **Degradation & RUL** | `surpyval.degradation` | `DegradationAnalysis` (path models via `PATH_MODELS`: linear, exponential, power, ...), stochastic processes `WienerProcess`/`GammaProcess`, `InducedFailureDistribution` (Lu–Meeker), `ProcessRUL` |
 | **Joint models** | `sp.WeibullJointPH`, `sp.JointPH` | A marker read repeatedly plus a lifetime: a degradation path (any `PathModel`) with random effects, Weibull PH in its current value, its slope or the area under it (`link="value"`, `"slope"`, `"cumulative"`, or a list); covariates per part (`hazard_covariates`, `path_covariates`); all censoring and truncation; `sf/ff/cb(x, Z, markers=, given=)` and `predict(...)` (dynamic prediction: `hf`, `remaining_life`, `marker`, `random`) |
 | **Landmarking** | `sp.landmark`, `sp.LandmarkCox`, `sp.landmark_kaplan_meier` | Dynamic prediction (the chance of the event by `s + w` for a unit event-free at `s`, given `Z(s)`) without a model of the covariates' paths: `landmark(life, at, horizon)` gives the units at risk at each landmark with covariates as known then (a `SurpyvalData`, stacked over landmarks); `LandmarkCox.fit(life, at=[...], horizon=w)` a Cox model or supermodel (stratified or pooled baseline, effects polynomial in the landmark) with robust standard errors clustered on the unit; `predict(s, Z)`, `cb`, `table`, `beta(s)` |
-| **Multivariate** | `surpyval.multivariate` | Bivariate copulas: `Clayton`, `Frank`, `Gumbel`, `Joe`, `AMH`, `Gaussian`, `StudentT`, `Independence` (with rotations) |
+| **Multivariate** | `surpyval.multivariate` | Bivariate copulas: `Clayton`, `Frank`, `Gumbel`, `Joe`, `AMH`, `Gaussian`, `StudentT`, `Independence` (with rotations). `MultivariateSurpyvalData`: x/c/n/t with D >= 2 columns and optional axis `names`; the model decides what the columns mean and says how many it takes (`n_axes`; copulas 2) |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `score_predictions` (standard errors, model comparisons), `survival_probability`; `e=`/`cause=` score one cause's predicted CIF with competing risks |
 | **Trees and forests** | `surpyval.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
@@ -384,6 +384,11 @@ em.k; em.param_cb("k"); em.k_lr_test()["p_value"]   # what a start is worth
 em.qf_at_usage(0.1, rate=0.1); em.quantile_cb_at_usage(0.1, rate=0.1)   # B10 in hours
 life = em.at_usage(0.1)   # the life at 0.1 starts/hour, a plain life model in hours
 life.sf(500); life.qf(0.1); life.random(5, random_state=1); life.cb(500)
+# The same clocks as one MultivariateSurpyvalData (2 axes, column 0 first clock;
+# c the same on both clocks per row; names become em.clocks; t lower = entry)
+from surpyval.multivariate import MultivariateSurpyvalData
+md = MultivariateSurpyvalData([hrs, rate * hrs], names=("hours", "starts"))
+sp.WeibullEquivalence.fit(md).clocks   # ('hours', 'starts'), same numbers
 
 # Zero inflated: some units fail at time 0 (dead on arrival, x = 0, c = 0);
 # covariates on who arrives dead (f0) and on the life of the rest

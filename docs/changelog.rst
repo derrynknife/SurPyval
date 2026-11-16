@@ -34,11 +34,36 @@ v0.29 (unreleased)
   ``nan`` there. 90% Wald coverage of the coefficients with interval
   censoring and delayed entry: see :doc:`Competing Risks Analysis`.
 
+- **``MultivariateSurpyvalData`` for any number of axes, with names.**
+  The data of any model with more than one value per row: ``x``, ``xl``,
+  ``xr`` and ``c`` are ``N`` by ``D`` and ``t`` ``N`` by ``D`` by 2 for any
+  ``D`` of 2 or more, ``n`` one count per row. Optional axis names
+  (``names=("hours", "landings")``) are used in messages (``"Series 1
+  (landings): ..."``) and in a fitted model's results;
+  ``dimension(d)`` takes a position or a name; ``to_dict`` / ``to_json`` /
+  ``from_dict`` / ``from_json`` (and ``surpyval.from_json``) save and load
+  it, names included. The model decides what the columns mean, and each
+  multivariate fitter says how many axes it takes in ``n_axes`` (2 for the
+  copulas and the equivalent-time-scale fits).
+- **The two-clock fit takes a ``MultivariateSurpyvalData``.**
+  ``WeibullEquivalence.fit(data)`` (and every ``Equivalence`` fitter): two
+  axes, column 0 the first clock and column 1 the second, the axis names
+  the model's ``clocks``, late entry per clock from ``t``. The numbers are
+  those of the arrays ``fit(x1, x2, c, n, tl)``, which work as before. A
+  row whose censoring differs between the clocks is refused, naming the
+  row; interval rows stay refused.
+- Copula ``fit`` takes a ``MultivariateSurpyvalData`` as ``x``.
+
 **Changed.**
 
 - ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
   fits them by the full likelihood, above), and its ``fit_from_df``'s
   ``x_col`` is optional (give ``xl_col`` and ``xr_col`` instead).
+- A copula given data with other than two series now raises a
+  ``ValueError`` saying it takes exactly two axes (it was a
+  ``NotImplementedError``), and ``MultivariateSurpyvalData`` refuses data
+  with one value per row, pointing to ``SurpyvalData`` (it was accepted
+  and refused by every model that reads it).
 
 v0.28 (14 November 2026)
 ------------------------

@@ -324,3 +324,120 @@ def test_refusals_say_what_to_do():
         _fit(d).cb([100.0], method="lr")
     with pytest.raises(ValueError, match="does not take weights"):
         sp.WeibullEquivalence.fit(h, s, w=np.ones(50))
+
+
+# ---------------------------------------------------------------------------
+# A MultivariateSurpyvalData with two axes (the two clocks)
+# ---------------------------------------------------------------------------
+def _two_clock_arrays():
+    rng = np.random.default_rng(7)
+    rate = rng.choice([0.02, 0.1, 0.5], 250)
+    T = 2000 * rng.weibull(2.0, 250)
+    hours = T / (1 + 10 * rate)
+    c = (hours > 1500).astype(int)
+    hours = np.minimum(hours, 1500)
+    starts = rate * hours
+    n = rng.integers(1, 3, 250)
+    tl = np.column_stack([hours * 0.1, starts * 0.1])
+    tl[::3] = 0.0
+    return hours, starts, c, n, tl
+
+
+def _as_data(hours, starts, c, n, tl, names=("hours", "starts")):
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    t = np.stack([tl, np.full_like(tl, np.inf)], axis=-1)
+    return MultivariateSurpyvalData(
+        [hours, starts], c=np.column_stack([c, c]), n=n, t=t, names=names
+    )
+
+
+def test_data_object_fit_equals_the_array_fit():
+    from surpyval import WeibullEquivalence
+
+    hours, starts, c, n, tl = _two_clock_arrays()
+    arrays = WeibullEquivalence.fit(
+        hours, starts, c=c, n=n, tl=tl, clocks=("hours", "starts")
+    )
+    by_data = WeibullEquivalence.fit(_as_data(hours, starts, c, n, tl))
+    np.testing.assert_array_equal(by_data.params, arrays.params)
+    np.testing.assert_array_equal(by_data.covariance(), arrays.covariance())
+    assert by_data.neg_ll() == arrays.neg_ll()
+    assert by_data.clocks == ("hours", "starts")
+    assert "hours" in repr(by_data) and "starts" in repr(by_data)
+
+
+def test_data_object_without_names_or_entry_is_the_plain_fit():
+    from surpyval import WeibullEquivalence
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    hours, starts, c, n, _ = _two_clock_arrays()
+    arrays = WeibullEquivalence.fit(hours, starts, c=c, n=n)
+    data = MultivariateSurpyvalData(
+        np.column_stack([hours, starts]), c=np.column_stack([c, c]), n=n
+    )
+    by_data = WeibullEquivalence.fit(data)
+    np.testing.assert_array_equal(by_data.params, arrays.params)
+    assert by_data.clocks == ("x1", "x2")
+    named = WeibullEquivalence.fit(data, clocks=("h", "s"))
+    assert named.clocks == ("h", "s")
+
+
+def test_censoring_must_agree_across_the_clocks():
+    from surpyval import WeibullEquivalence
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    hours, starts, c, n, _ = _two_clock_arrays()
+    cc = np.column_stack([c, c])
+    cc[4] = [0, 1]
+    data = MultivariateSurpyvalData(
+        [hours, starts], c=cc, names=("hours", "landings")
+    )
+    with pytest.raises(
+        ValueError, match="Row 4 has c = 0 on hours and 1 on landings"
+    ):
+        WeibullEquivalence.fit(data)
+
+
+def test_interval_rows_stay_refused_with_the_existing_message():
+    from surpyval import WeibullEquivalence
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    hours, starts, c, n, _ = _two_clock_arrays()
+    cc = np.column_stack([c, c])
+    cc[0] = 2
+    xl = np.column_stack([hours, starts]) * 0.5
+    xr = np.column_stack([hours, starts])
+    data = MultivariateSurpyvalData(
+        [hours, starts], c=cc, xl=xl, xr=xr, names=("hours", "starts")
+    )
+    assert (data.c == 2).any()  # the data carries them
+    with pytest.raises(ValueError, match=r"Interval-censored units \(c=2\)"):
+        WeibullEquivalence.fit(data)
+
+
+def test_data_object_refusals():
+    from surpyval import WeibullEquivalence
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    hours, starts, c, n, tl = _two_clock_arrays()
+    data = _as_data(hours, starts, c, n, tl)
+    assert WeibullEquivalence.n_axes == 2
+    three = MultivariateSurpyvalData(
+        [hours, starts, starts], names=("hours", "starts", "cycles")
+    )
+    with pytest.raises(ValueError, match=r"exactly 2 axes .*has 3"):
+        WeibullEquivalence.fit(three)
+    with pytest.raises(ValueError, match="leave out x2, c"):
+        WeibullEquivalence.fit(data, starts, c=c)
+    with pytest.raises(ValueError, match="differ from the data's axis names"):
+        WeibullEquivalence.fit(data, clocks=("h", "s"))
+    t = data.t.copy()
+    t[3, 1, 1] = 1e6
+    truncated = MultivariateSurpyvalData(
+        data.x, c=data.c, n=data.n, t=t, names=("hours", "starts")
+    )
+    with pytest.raises(ValueError, match=r"Rows \[3\] are right truncated"):
+        WeibullEquivalence.fit(truncated)
+    with pytest.raises(ValueError, match="x2, each unit's age"):
+        WeibullEquivalence.fit(hours)

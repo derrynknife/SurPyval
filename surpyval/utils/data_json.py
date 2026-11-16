@@ -32,6 +32,7 @@ DATA_CLASSES = {
     "EventHistoryData": "surpyval.utils.event_history_data",
     "ItemLifetime": "surpyval.utils.item_lifetime",
     "ItemHistory": "surpyval.utils.item_history",
+    "MultivariateSurpyvalData": "surpyval.multivariate.parametric.data",
 }
 
 

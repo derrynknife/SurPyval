@@ -443,6 +443,11 @@ class EquivalenceFitter:
     WeibullEquivalence: an equivalent time scale x1 + k x2, Weibull on it
     """
 
+    #: How many axes of a ``MultivariateSurpyvalData`` the fit takes:
+    #: exactly two clocks, column 0 the first (the one ``k`` is measured
+    #: in) and column 1 the second.
+    n_axes: int = 2
+
     def __init__(self, dist: Any) -> None:
         _check_distribution(dist)
         self.dist = dist
@@ -466,8 +471,8 @@ class EquivalenceFitter:
     @takes_unit
     def fit(
         self,
-        x1: npt.ArrayLike,
-        x2: npt.ArrayLike,
+        x1: Any,
+        x2: npt.ArrayLike | None = None,
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
@@ -480,10 +485,17 @@ class EquivalenceFitter:
 
         Parameters
         ----------
-        x1 : array_like
+        x1 : array_like or MultivariateSurpyvalData
             Each unit's age on the first clock (hours, say): at its
-            failure, or when last seen running.
-        x2 : array_like
+            failure, or when last seen running. Or the whole data as a
+            :class:`~surpyval.multivariate.MultivariateSurpyvalData` with
+            exactly two axes (``n_axes``): column 0 the first clock,
+            column 1 the second, ``c`` the same on both clocks in each
+            row (a unit is failed or running as a whole), ``n`` the
+            counts and ``t``'s lower bounds each clock's age at entry;
+            its axis names name the clocks. ``x2``, ``c``, ``n`` and
+            ``tl`` are then left out.
+        x2 : array_like, optional
             The same units' ages on the second clock (starts, cycles,
             ...). ``k`` is what one unit of this clock is worth on the
             first.
@@ -521,7 +533,30 @@ class EquivalenceFitter:
         >>> model = WeibullEquivalence.fit(hours, starts)
         >>> round(model.k, 1)
         9.8
+
+        The same data as one ``MultivariateSurpyvalData``, its axes named:
+
+        >>> from surpyval.multivariate import MultivariateSurpyvalData
+        >>> data = MultivariateSurpyvalData(
+        ...     [hours, starts], names=("hours", "starts")
+        ... )
+        >>> same = WeibullEquivalence.fit(data)
+        >>> same.clocks, bool(np.allclose(same.params, model.params))
+        (('hours', 'starts'), True)
         """
+        from surpyval.multivariate.parametric.data import (
+            MultivariateSurpyvalData,
+        )
+
+        if isinstance(x1, MultivariateSurpyvalData):
+            x1, x2, c, n, tl, clocks = _from_multivariate(
+                self, x1, x2, c, n, tl, clocks
+            )
+        elif x2 is None:
+            raise ValueError(
+                "x2, each unit's age on the second clock, is needed beside "
+                "x1 (or give both clocks as one MultivariateSurpyvalData)."
+            )
         names = ("x1", "x2") if clocks is None else tuple(clocks)
         if len(names) != 2:
             raise ValueError(f"clocks names the two clocks; got {names!r}.")
@@ -627,6 +662,86 @@ class EquivalenceFitter:
         model._ic_n = None
         model.data = None
         return model
+
+
+def _from_multivariate(
+    fitter: EquivalenceFitter,
+    data: Any,
+    x2: Any,
+    c: Any,
+    n: Any,
+    tl: Any,
+    clocks: Any,
+) -> tuple:
+    """The arrays of a fit from a ``MultivariateSurpyvalData`` with two
+    axes: each clock's ages, the censoring (one code per row, the same on
+    both clocks), the counts, each clock's age at entry (from ``t``'s
+    lower bounds; ``-inf``, no entry, is 0) and the clocks' names."""
+    from surpyval.multivariate.parametric.data import check_axes
+
+    given = [
+        k
+        for k, v in (("x2", x2), ("c", c), ("n", n), ("tl", tl))
+        if v is not None
+    ]
+    if given:
+        raise ValueError(
+            "x1 is a MultivariateSurpyvalData, which holds the data: leave "
+            f"out {', '.join(given)} (they go in the data)."
+        )
+    check_axes(
+        "An equivalent-time-scale fit",
+        data,
+        fitter.n_axes,
+        "two clocks of one life: column 0 the first, column 1 the second",
+    )
+    if data.names is not None:
+        if clocks is not None and tuple(map(str, clocks)) != data.names:
+            raise ValueError(
+                f"clocks {tuple(clocks)!r} differ from the data's axis "
+                f"names {data.names!r}: give the names once, in the data "
+                "or in clocks."
+            )
+        clocks = data.names
+    a, b = ("x1", "x2") if clocks is None else tuple(map(str, clocks))
+    cc = data.c
+    differ = cc[:, 0] != cc[:, 1]
+    if differ.any():
+        rows = np.flatnonzero(differ)
+        r = int(rows[0])
+        more = (
+            f" (and {rows.size - 1} more row(s): {rows[1:6].tolist()}"
+            + ("..." if rows.size > 6 else "")
+            + ")"
+            if rows.size > 1
+            else ""
+        )
+        raise ValueError(
+            f"Row {r} has c = {int(cc[r, 0])} on {a} and {int(cc[r, 1])} "
+            f"on {b}{more}: a unit is failed or still running as a whole, "
+            "so its censoring is the same on both clocks. Give each row "
+            "one code on both clocks."
+        )
+    upper = data.t[:, :, 1]
+    if np.isfinite(upper).any():
+        rows = np.flatnonzero(np.isfinite(upper).any(axis=1))[:5].tolist()
+        raise ValueError(
+            f"Rows {rows} are right truncated (a finite upper bound in t): "
+            "an equivalent-time-scale fit takes late entry only (t's lower "
+            "bounds). Leave the upper bounds at inf."
+        )
+    lower = data.t[:, :, 0]
+    tl_arr = None
+    if np.isfinite(lower).any():
+        tl_arr = np.where(np.isfinite(lower), lower, 0.0)
+    return (
+        data.x[:, 0],
+        data.x[:, 1],
+        cc[:, 0],
+        data.n,
+        tl_arr,
+        (a, b),
+    )
 
 
 def _fit(
