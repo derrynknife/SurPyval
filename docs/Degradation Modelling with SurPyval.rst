@@ -974,22 +974,34 @@ and leaves the others alone; the methods that describe a single unit
     _q = np.ravel(adt.qf(0.5, use))
     assert np.all(np.isfinite(_q[:2])) and np.isnan(_q[2])
 
-Two-stage confidence bounds at a stress are available by bootstrap: units
-are resampled (each carrying its stress), the whole accelerated pipeline is
-rerun, and the reliability at ``Z`` is read off each refit, so the first-stage
-path/extrapolation uncertainty is folded in — just as for the plain model, but
-evaluated at a chosen stress:
+Two-stage confidence bounds at a stress fold the first-stage
+path/extrapolation uncertainty in, just as for the plain model. The analytic
+bound (the default) applies the same generated-regressor correction to the
+regression life fit: each unit's pseudo-time variance enters through the
+derivative of the regression score at that unit's stress, so it is in closed
+form, with no refitting. The bootstrap resamples units (each carrying its
+stress), reruns the whole accelerated pipeline and reads the reliability at
+``Z`` off each refit:
 
 .. jupyter-execute::
 
     t = np.array([50.0, 100.0, 150.0])
-    band = model.cb(t, Z=[0.0], on='sf', method='bootstrap',
+    band = model.cb(t, Z=[0.0], on='sf')        # (n, 2): [lower, upper] at Z=0
+    boot = model.cb(t, Z=[0.0], on='sf', method='bootstrap',
                     n_boot=50, random_state=0)
-    band                                        # (n, 2): [lower, upper] at Z=0
+    band, boot
 
-The analytic (generated-regressor) delta-method correction used for the plain
-model is not derived for the regression life fit, so ``method='bootstrap'`` is
-required for a covariate model (and ``model.cb`` needs the stress ``Z``). The
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _plain = model.life_model.cb(t, [0.0], on='sf')
+    assert np.all(band[:, 0] <= _plain[:, 0] + 1e-12)
+    assert np.all(band[:, 1] >= _plain[:, 1] - 1e-12)
+
+``model.cb`` needs the stress ``Z``, and
+``model.life_parameter_covariance()`` is the corrected covariance of the
+regression parameters, ordered as ``model.life_model.params``. The
 first-stage-only regression bounds — which ignore the extrapolation
 uncertainty — remain available directly through ``model.life_model.cb(x, Z,
 ...)``.
@@ -1341,24 +1353,32 @@ population, and each sampled failure time is mapped back to calendar time
 along the history and the plan. ``predict_failure_time`` and
 ``predict_remaining_life`` take the same ``Z`` and ``Z_future``.
 ``induced_life(Z=...)`` pushes the whole population of paths through the
-threshold under any stress or profile, and the two-stage confidence bounds are
-available by bootstrap: units are resampled with their stress histories and
-the clock is re-estimated on every resample.
+threshold under any stress or profile. The two-stage confidence bounds are
+analytic by default: with ``population_method='moments'`` the clock and every
+unit's path are, together, one least-squares fit, so the joint covariance of
+the stress coefficients and the pseudo failure times follows in closed form
+(every pseudo failure time shares the estimated clock, so they are
+correlated), and the bound on life under a stress carries the uncertainty of
+both the life parameters and the clock. ``step.life_parameter_covariance()``
+returns that covariance: the reference-stress life parameters followed by
+``gamma``. The bootstrap resamples units with their stress histories and
+re-estimates the clock on every resample.
 
 .. jupyter-execute::
 
     induced = step.induced_life(Z=profile, random_state=0)
     print('induced median life on the profile:', round(induced.median(), 1))
-    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50,
-            random_state=0)
+    print(step.cb([200.0, 240.0], Z=profile))            # analytic
+    print(step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50,
+                  random_state=0))
 
 ``acceleration='clock'`` cannot be combined with ``links`` or ``path='best'``,
 and the life model must be a plain distribution, since stress enters through
-the clock. The analytic confidence-bound correction is not derived for a clock
-model, whose pseudo failure times also depend on the estimated clock, so
-``cb`` needs ``method='bootstrap'``. With ``population_method='reml'`` every
-bootstrap resample re-runs the mixed-model estimate of the clock, which takes
-seconds per resample; budget ``n_boot`` accordingly.
+the clock. The analytic bound is derived for the profile least-squares clock
+(``population_method='moments'``); a ``population_method='reml'`` model, whose
+clock is the mixed-model estimate, needs ``cb(..., method='bootstrap')``, and
+every bootstrap resample re-runs the mixed-model estimate of the clock, which
+takes seconds per resample; budget ``n_boot`` accordingly.
 
 Which stress model?
 ~~~~~~~~~~~~~~~~~~~

@@ -72,6 +72,28 @@ v0.29 (unreleased)
   ``x2_col``, ``x2l_col``, ``x2r_col``, ``tl2_col`` and ``x2_name``) with a
   ``ValueError`` pointing to the two-clock fits, in place of Python's
   ``TypeError``.
+- **Analytic two-stage bounds for accelerated degradation.**
+  ``DegradationModel.cb(x, Z)`` with ``method="analytic"`` (the default)
+  and ``life_parameter_covariance()`` now work for a model fitted with
+  stress covariates ``Z`` and for a step-stress
+  (``acceleration="clock"``) model fitted with
+  ``population_method="moments"``; both raised ``NotImplementedError``
+  and pointed to the bootstrap. The covariate (ADT) bound applies the
+  generated-regressor correction to the regression life fit, each unit's
+  pseudo-time variance entering at its own stress; with paths that fit
+  their readings exactly it is ``life_model.cb``'s. The step-stress bound
+  takes the joint least-squares covariance of the clock and every unit's
+  path, so the pseudo failure times are correlated through the shared
+  clock, and the bound under a stress carries the uncertainty of both the
+  life parameters and ``gamma``; ``life_parameter_covariance()`` returns
+  the life parameters followed by ``gamma``. In closed form, with no
+  refitting: a fraction of a second where a 200-resample bootstrap takes
+  about ten. In
+  100 simulated step-stress tests the analytic standard error of
+  ``gamma`` was within 3% of the spread of the estimates. A
+  ``population_method="reml"`` step-stress model still refuses the
+  analytic bound (its mixed-model clock's covariance is not derived) and
+  points to ``method="bootstrap"``.
 
 **Changed.**
 

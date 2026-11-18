@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-16
 
+### Analytic two-stage bounds for the accelerated degradation models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A covariate (ADT) `DegradationModel` gets the plain model's generated-regressor correction on its regression parameters: `H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'`, with `H^{-1}` the regression model's own `life_model.covariance()` (over the free parameters; held ones zero, aliased ones `nan`, as there) and the mixed partials of the regression log-likelihood taken at each unit's stress. `cb(x, Z)` is the delta method through it on the baseline's probability-plot scale. | proposed | One method for the plain and covariate fits; using the regression model's covariance makes the bound reduce exactly to `life_model.cb` when the paths fit their readings exactly (tested). In 150 simulated LogNormal ADT data sets the analytic standard error of the stress coefficient was 0.053 against a spread of 0.045 (the first-stage-only one 0.040): conservative, as the plain model's correction is. | done |
+| A step-stress (`acceleration="clock"`, `population_method="moments"`) model's first stage is the joint least-squares fit of the clock and every unit's path, so its covariance is the Gauss-Newton `sigma^2 (J'J)^{-1}`, formed unit by unit through the Schur complement of the clock block. A crossing unit's time moves with its path parameters, a censored unit's (its first or last reference-stress time) with the clock alone. `life_parameter_covariance()` returns the life parameters followed by `gamma`; `cb` takes the delta method in both, through `S0(tau_Z(x; gamma); phi)`. | proposed | Profile least squares is exactly that joint fit, so its covariance needs no new estimate; the times share the clock, so they are correlated, and life under any stress other than the reference moves with `gamma`. Checked against the dense `(J'J)^{-1}` and, for `gamma`, against 100 simulated tests (standard error 25.8 against a spread of 25.1). | done |
+| The analytic bound of a `population_method="reml"` step-stress model is not built: it raises `NotImplementedError` pointing to `method="bootstrap"` (or a `"moments"` refit). | proposed | Its clock is the mixed-model profile-likelihood estimate, whose sampling covariance (and its correlation with the per-unit paths) is not the least-squares one. | gap |
+
 ### A subordinate clock is univariate data: `x2` / `SecondaryClock`, not multivariate (16 Nov 2026)
 
 | Decision | By | Reason | Status |
