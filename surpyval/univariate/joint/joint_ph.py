@@ -38,6 +38,7 @@ from ._likelihood import (
     place,
 )
 from ._markers import marker_start, survival_start
+from .compare import LinkComparison, compare_links
 from .joint_model import (
     JointModel,
     covariate_parts,
@@ -332,6 +333,96 @@ class JointPHFitter(FitterRepr):
             hazard_covariates,
         )
         return _fit(self, records, counts, names, reference, parts)
+
+    def compare_links(
+        self,
+        *args: Any,
+        links: Any = None,
+        metric: str = "aic",
+        **kwargs: Any,
+    ) -> LinkComparison:
+        """
+        Fit the joint model with each of several links to the same data
+        and compare them: does the risk follow the marker's level, how
+        fast it is changing, the exposure accumulated so far, or more
+        than one?
+
+        Each candidate has this fitter's baseline, path model and varying
+        path parameters (its own ``link`` is not used) and is fitted as
+        :meth:`fit` fits, to the data given here, so the log-likelihoods
+        and criteria compare directly. The result ranks the links by
+        ``metric`` (lower is better), with each one's difference from the
+        best and its weight (``table``), and tests each nested pair, such
+        as ``"value"`` against ``"value + slope"``, by the likelihood
+        ratio (``likelihood_ratio_tests()``): see
+        :class:`~surpyval.univariate.joint.compare.LinkComparison`. Which
+        link a marker's risk follows is a question for each dataset, and
+        this is the way to ask it.
+
+        A fit that is not a verified maximum is shown but neither ranked
+        nor tested, with one warning naming it; a link that cannot be
+        fitted is listed in ``failed`` with the reason, with one warning.
+        A warning about the data that every fit gives is given once.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            The data and the options, as :meth:`fit` takes them: a
+            ``SurpyvalData`` of items with markers, or arrays with
+            ``markers=``; ``Z``, ``path_covariates``,
+            ``hazard_covariates``, ``unit``, ... A ``marker_reference`` is
+            given to the links that follow the value only (it moves their
+            ``alpha`` and nothing else).
+        links : list, optional
+            The links to compare, two or more, each a link (``"value"``,
+            ``"slope"`` or ``"cumulative"``) or a list of them, each set
+            once. Default the five: ``"value"``, ``"slope"``,
+            ``"cumulative"``, ``["value", "slope"]`` and ``["value",
+            "cumulative"]`` (a Lloyd-Lipow path, which has no finite area
+            from age 0, leaves out the two with the cumulative, with a
+            warning).
+        metric : str, optional
+            The criterion the links are ranked by: ``"aic"`` (default),
+            ``"aic_c"`` or ``"bic"``.
+
+        Returns
+        -------
+        LinkComparison
+            The fitted candidates (``models``, by the link's name, such as
+            ``"value + slope"``), the ranking (``table``), the best fit
+            (``best``, ``best_link``) and ``likelihood_ratio_tests()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> data = SurpyvalData.from_items(items)
+        >>> comparison = WeibullJointPH.compare_links(
+        ...     data, links=["value", "slope", ["value", "slope"]]
+        ... )
+        >>> sorted(comparison.models)
+        ['slope', 'value', 'value + slope']
+        >>> list(comparison.table.columns[:4])
+        ['k', 'log_likelihood', 'aic', 'aic_c']
+        >>> comparison.likelihood_ratio_tests()[["simpler", "richer", "df"]]
+          simpler         richer  df
+        0   value  value + slope   1
+        1   slope  value + slope   1
+        """
+        return compare_links(self, args, kwargs, links=links, metric=metric)
 
     @takes_unit
     def fit_from_df(
