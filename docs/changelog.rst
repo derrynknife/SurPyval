@@ -72,6 +72,40 @@ v0.29 (unreleased)
   ``x2_col``, ``x2l_col``, ``x2r_col``, ``tl2_col`` and ``x2_name``) with a
   ``ValueError`` pointing to the two-clock fits, in place of Python's
   ``TypeError``.
+- **Penalised fits on five more models.** Ridge, lasso and elastic-net
+  fits with the objective, standardisation and refusals of the other
+  penalised fits (no covariance, standard errors, bounds or p-values;
+  ``aic`` and ``bic`` count the effective degrees of freedom; the penalty is
+  saved by ``to_dict``):
+
+  - ``FineGray.fit_penalised``: the subdistribution hazards model, the
+    objective of R's ``fastcmprsk::fastCrrp``; matches glmnet's Cox fit on
+    rows carrying the censoring weights to 1e-6 (the PBC data), with
+    ``strata``.
+  - ``AdditiveHazards.fit_penalised``: Lin and Ying's model, its quadratic
+    loss in place of a likelihood (Gorst-Rasmussen and Scheike 2012, R's
+    ``ahaz::ahazpen`` for the lasso); the penalty is put on the
+    coefficients (rates) in the unit of the mean follow-up
+    (``model.time_scale``), so the fit does not depend on the unit of time.
+    Matches glmnet on the equivalent least-squares problem to 1e-6, and
+    the ridge fit's closed form. No likelihood, so no ``aic`` or ``bic``;
+    ``penalty_path`` gives its coefficients and refuses to choose
+    (``PenaltyPath.likelihood``).
+  - ``ProportionalOdds.fit_penalised``: the semi-parametric proportional
+    odds model's profile likelihood, with delayed entry.
+  - ``Frailty(...).fit_penalised`` (``WeibullFrailty.fit_penalised``, ...):
+    the parametric shared-frailty models, gamma or log-normal frailty, the
+    frailty variance not penalised; at ``theta = 0`` it is the penalised
+    proportional hazards fit.
+  - ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+    parametric PH, PO and AFT families: time-varying covariates, ``N`` and
+    the standardisation over the subjects, as ``CoxPH.fit_tvc_penalised``,
+    so splitting a subject's rows does not change the fit. The parametric
+    additive hazards models refuse (a penalty on their rates would depend
+    on the unit of time).
+
+  ``diagnose()`` refuses each of these penalised models, as it does a
+  penalised Cox model.
 
 **Changed.**
 
