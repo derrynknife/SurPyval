@@ -46,6 +46,8 @@ surpyval.Distributional
 surpyval.DistributionalFitter
 surpyval.DistributionalRegressionModel
 surpyval.Duane
+surpyval.DynamicAccuracy
+surpyval.DynamicCalibration
 surpyval.Equivalence
 surpyval.EquivalenceFitter
 surpyval.EquivalenceModel
@@ -293,6 +295,9 @@ surpyval.diagnostics.Diagnosis
 surpyval.diagnostics.DiagnosticsFailed
 surpyval.diagnostics.diagnose
 surpyval.direct_adjustment
+surpyval.dynamic_auc
+surpyval.dynamic_brier
+surpyval.dynamic_calibration
 surpyval.fit_best
 surpyval.forecast
 surpyval.from_dict
@@ -328,12 +333,17 @@ surpyval.maxcombo_logrank
 surpyval.maxstat_logrank
 surpyval.metrics.ConcordanceComparison
 surpyval.metrics.ConcordanceResult
+surpyval.metrics.DynamicAccuracy
+surpyval.metrics.DynamicCalibration
 surpyval.metrics.PredictionScores
 surpyval.metrics.auc_td
 surpyval.metrics.brier_score
 surpyval.metrics.compare_concordance
 surpyval.metrics.concordance_estimate
 surpyval.metrics.concordance_index
+surpyval.metrics.dynamic_auc
+surpyval.metrics.dynamic_brier
+surpyval.metrics.dynamic_calibration
 surpyval.metrics.integrated_brier_score
 surpyval.metrics.score_predictions
 surpyval.metrics.survival_probability

@@ -962,6 +962,118 @@ covered its truth 93.0% to 96.5% of the time (exact) and 91.5% to 97.5%
 spread. The Wald band can run a little narrow for this sample size, most
 at 180 days ahead with exact times.
 
+How good are the predictions
+----------------------------
+
+A joint model gives each running pump a chance of failing in the next six
+months. Before acting on those chances, check how good they were on pumps
+whose outcome is known. Three questions, at an age ``s`` (standing at one
+year old, say) and over a window ``w`` (the next 180 days), among the
+pumps still running at ``s``:
+
+- **Do the pumps that failed get the higher chances?** The dynamic AUC
+  (:func:`~surpyval.metrics.dynamic.dynamic_auc`): take one pump that
+  failed in the window and one that did not; the AUC is how often the
+  model gave the one that failed the higher chance. 0.5 is a coin toss, 1
+  is perfect.
+- **How far are the chances from what happened?** The dynamic Brier score
+  (:func:`~surpyval.metrics.dynamic.dynamic_brier`): the mean squared
+  difference between each pump's chance and 1 if it failed in the
+  window, 0 if not. Lower is better.
+- **Does "30%" mean about 30%?** Calibration
+  (:func:`~surpyval.metrics.dynamic.dynamic_calibration`): group the pumps
+  by their chance, and set each group's mean chance beside the share that
+  failed.
+
+Each pump's chance is made from what was known at ``s``: its readings up to
+age ``s``, never those after. And each question is worth asking against a
+simpler model, to see whether the readings earn their cost: here a Weibull
+fitted to the ages alone, which gives every pump of the same age the same
+chance. A dict of models scores each on the same pumps and compares them,
+with the difference's interval and p-value:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import dynamic_auc, dynamic_brier, dynamic_calibration
+
+    models = {"age only": Weibull.fit(fleet.without("markers")), "joint": model}
+    auc = dynamic_auc(models, fleet, at=[180, 365], horizon=180)
+    auc
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (auc.estimate("age only") == 0.5).all()
+    assert (auc.estimate("joint") > 0.6).all()
+    assert auc.estimate("joint")[1] > auc.estimate("joint")[0]
+
+The age alone ranks the pumps no better than a coin toss: at one age it
+gives them all the same chance. The readings rank them well, and better at
+a year old than at six months, when each pump's readings say more about its
+line. The Brier score tells the same story in the error of the chances:
+
+.. jupyter-execute::
+
+    brier = dynamic_brier(models, fleet, at=[180, 365], horizon=180)
+    brier.comparisons
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    p = brier.comparisons["p_value"].to_numpy()
+    assert p[0] > 0.05 and p[1] < 0.01
+    assert (brier.estimate("joint") < brier.estimate("age only")).all()
+
+At six months the readings do not yet cut the error by more than chance; at
+a year they clearly do. Calibration, in groups of predicted chance:
+
+.. jupyter-execute::
+
+    cal = dynamic_calibration(
+        model, fleet, at=365, horizon=180, bins=[0, 0.1, 0.2, 0.3, 0.4, 0.6, 1]
+    )
+    columns = ["risk_from", "risk_to", "n", "predicted", "observed", "lower", "upper"]
+    cal.table[columns].round(3)
+
+A pump censored inside the window (still running when last seen) is not
+known to have failed or not. It is accounted for, as in Rizopoulos (2011)
+and Blanche et al. (2015): the AUC and the Brier score weight the pumps
+whose outcome is known by the inverse of the chance of being seen to the end
+of the window (the reverse Kaplan-Meier of the pumps at risk at ``s``), and
+calibration's share that failed is each group's Kaplan-Meier estimate. With
+no censoring inside the window they are the plain AUC, mean squared error
+and share. A calibration study (``tests/calibration/test_metric_bias.py``:
+200 simulated data sets of 300 units, 30% of them censored, scored with the
+true model's predictions) found the mean estimates within Monte Carlo
+error of the true values at two ages.
+
+The pumps scored above are the ones the model was fitted to, which flatters
+it. ``cross_validate=k`` gives honest numbers: the pumps are split at random
+into ``k`` groups, the model is refitted ``k`` times without one group, and
+each pump is predicted by the fit that never saw it. Give the fitters in
+place of the fitted models (``LandmarkCox`` and functions of the data work
+too, for a like-for-like comparison with landmarking):
+
+.. jupyter-execute::
+
+    honest = dynamic_brier(
+        {"age only": Weibull, "joint": WeibullJointPH},
+        fleet, at=[180, 365], horizon=180, cross_validate=5, random_state=1,
+    )
+    honest.scores[["model", "at", "estimate", "se"]]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(honest.estimate("joint"), brier.estimate("joint"), atol=0.01)
+
+With 300 pumps the model barely flatters itself here; with fewer units or
+a richer model the difference grows. The intervals are two-sided 95% by
+default (``alpha_ci=0.1`` for 90%), and the result says so.
+
 Saving and loading
 ------------------
 
@@ -996,7 +1108,10 @@ The joint model (#891) is the standard one. It has:
 - predictions for one item given its readings, with Wald (delta method)
   bounds, as arrays (``sf``, ``ff``, ``cb``) or as one item's dynamic
   prediction (``predict``: the hazard, remaining life, the smoothed and
-  projected marker, and draws).
+  projected marker, and draws);
+- the accuracy of those predictions at an age over a window (dynamic AUC,
+  Brier score and calibration in ``surpyval.metrics``, with
+  cross-validation by unit).
 
 Not yet (see #891's roadmap): spline paths; other survival parts (an
 accelerated failure time part, in which the marker speeds the item's
@@ -1008,6 +1123,13 @@ References
 
 - Rizopoulos, D. (2012). *Joint Models for Longitudinal and Time-to-Event
   Data, with Applications in R*. Chapman & Hall/CRC.
+- Rizopoulos, D. (2011). Dynamic predictions and prospective accuracy in
+  joint models for longitudinal and time-to-event data. *Biometrics*, 67,
+  819--829.
+- Blanche, P., Proust-Lima, C., Loubère, L., Berr, C., Dartigues, J.-F. and
+  Jacqmin-Gadda, H. (2015). Quantifying and comparing dynamic predictive
+  accuracy of joint models for longitudinal marker and time-to-event in
+  presence of censoring and competing risks. *Biometrics*, 71, 102--113.
 - Wulfsohn, M. S. and Tsiatis, A. A. (1997). A joint model for survival and
   longitudinal data measured with error. *Biometrics*, 53, 330--339.
 - Tsiatis, A. A. and Davidian, M. (2004). Joint modeling of longitudinal and
