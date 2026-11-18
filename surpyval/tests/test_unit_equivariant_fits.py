@@ -96,6 +96,7 @@ JOINT = [
         "WeibullJointPH",
         "WeibullJointPH[slope]",
         "WeibullJointPH[value+slope]",
+        "WeibullJointAFT",
     )
     for k in (SECONDS, MEGA)
 ]

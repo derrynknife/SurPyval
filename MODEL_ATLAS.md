@@ -156,7 +156,8 @@ single / terminal / parametric, with standard errors, bounds and AIC.
 The joint models (`JointPH`, `WeibullJointPH`) model the measurements and the
 failure times *together*: each item's marker follows a degradation path with
 random effects, and the hazard is Weibull proportional hazards in the path's
-current value. Their event-time part classifies as univariate / single_event /
+current value (or, in `JointAFT` / `WeibullJointAFT`, the path speeds up the
+item's ageing: an accelerated failure time part on the Weibull). Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
 truncation; one item's dynamic prediction given its readings so far is

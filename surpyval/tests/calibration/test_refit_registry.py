@@ -1679,6 +1679,10 @@ EXCLUDED: dict[str, str] = {
         "from this link is in univariate/joint/test_joint_links.py"
         for _link in ("slope", "cumulative", "value+slope")
     },
+    "WeibullJointAFT": "a lifetime with marker readings along it, which a "
+    "model draw does not give: recovery of fleets simulated from the "
+    "accelerated model is in univariate/joint/test_joint_aft.py, and the "
+    "recovery study per path model in scripts/studies/joint_recovery",
 }
 
 

@@ -73,6 +73,33 @@ v0.29 (unreleased)
   ``ValueError`` pointing to the two-clock fits, in place of Python's
   ``TypeError``.
 
+- **An accelerated survival part for the joint models.** ``JointAFT(Weibull,
+  path_model, varying=, link=)``, ready-made as ``WeibullJointAFT`` (a
+  straight line), beside ``JointPH``: the marker speeds up the item's
+  ageing instead of multiplying its hazard. By age :math:`t` an item has
+  used up the effective age :math:`A(t) = \int_0^t \exp(\gamma' z +
+  \zeta_v (m(s) - r) + \zeta_s m'(s))\, ds`, and its survival is the
+  Weibull's at that age, so life used at a high reading is not given back
+  when the reading falls (the cumulative-exposure model of step-stress
+  tests, with the reading as the stress). The same data, path models,
+  ``varying``, ``hazard_covariates`` / ``path_covariates``,
+  ``marker_reference``, ``fit`` / ``fit_from_df``, parameter names,
+  ``predict`` and ``DynamicPrediction``; ``marker_effect`` is the log
+  of how many times faster an item ages per unit. Links ``"value"`` and
+  ``"slope"``; ``"cumulative"`` is refused, saying why. Every kind of
+  item (failures, right, left and interval censoring, left and right
+  truncation) is fitted, its likelihood checked against a dense-grid
+  integral to within 1e-5 an item; with a marker that never changes the
+  fit is ``JointPH``'s with every effect divided by ``beta``. The fitted
+  ``JointModel`` says which survival part it has in ``survival``
+  (``"PH"`` or ``"AFT"``), its ``kind``, printout and summary
+  headings. See :doc:`Joint Models`.
+- An accelerated joint model saves as schema 5, which SurPyval 0.28 and
+  older refuse with a request to upgrade rather than read it as a
+  proportional hazards model. Every other file keeps its schema; a joint
+  model saved before has no ``"survival"`` and loads as proportional
+  hazards.
+
 **Changed.**
 
 - ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
