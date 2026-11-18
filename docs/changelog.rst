@@ -85,6 +85,19 @@ v0.29 (unreleased)
   and refused by every model that reads it).
 - The two-clock fit's ``fit_from_df`` names its columns as the univariate
   fits do (``x_col`` and ``x2_col``, ``tl_col`` and ``tl2_col``).
+- Four of ``diagnose()``'s refusals are now worded as permanent, not as
+  checks still to come, and each names what to use instead: a discrete
+  distribution (compare discrete fits by ``aic()`` and ``sf`` with
+  ``KaplanMeier.fit``), a distribution whose fitter lacks the shared
+  optimiser (its ``sf`` beside ``KaplanMeier.fit``, and ``aic()``), a
+  parametric regression with a link other than ``exp(beta'Z)`` (refit with
+  ``PH(dist)`` or ``AFT(dist)`` and diagnose that), and a parametric
+  proportional odds or additive hazards model fitted to left- or
+  interval-censored or right-truncated data (diagnose the PH and AFT fits
+  of the same data, compare by ``aic()``). The last now points to those
+  fits rather than only to ``likelihood_ratio_test()``, which tests
+  whether the covariates matter, not whether their effects stay constant.
+  Each still raises ``NotImplementedError``.
 
 **Deprecated.**
 

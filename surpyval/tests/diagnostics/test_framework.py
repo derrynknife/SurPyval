@@ -374,6 +374,97 @@ def test_a_real_fit_of_a_pending_family_refuses(rossi):
         model.diagnose()
 
 
+def _custom_link_fit():
+    import autograd.numpy as anp
+
+    def linear_rr(Z, *params):
+        return 1.0 + anp.dot(Z, anp.array(params))
+
+    fitter = sp.ProportionalHazardsFitter(
+        "WeibullLinearRR",
+        sp.Weibull,
+        linear_rr,
+        "Linear [1 + beta'Z]",
+        phi_bounds=lambda Z: ((0, None),) * Z.shape[1],
+        phi_param_map=lambda Z: {f"beta_{i}": i for i in range(Z.shape[1])},
+        phi_init=lambda Z: np.full(Z.shape[1], 0.5),
+    )
+    rng = np.random.default_rng(0)
+    dose = rng.uniform(0, 4, 200)
+    x = 10 * (-np.log(rng.uniform(size=200)) / (1 + 0.5 * dose)) ** 0.5
+    return fitter.fit(x=x, Z=dose)
+
+
+def _po_or_ah_fit(fitter, how):
+    rng = np.random.default_rng(4)
+    z = rng.binomial(1, 0.5, 80)
+    t = 10 * rng.weibull(1.5, 80) * np.exp(-0.3 * z)
+    if how == "interval":
+        xl = np.column_stack([np.floor(t), np.floor(t) + 1])
+        return fitter.fit(xl, z, c=np.full(80, 2))
+    return fitter.fit(t, z, tr=np.full(80, 60.0))
+
+
+# Kinds of model whose refusal is the end state, not a check to come: each
+# is refused for good and the message names what to use instead, as
+# features spelt the way AdviceRule.features spells them.
+@pytest.mark.parametrize(
+    "fit, reason, features",
+    [
+        (
+            lambda: sp.Poisson.fit([1, 2, 3, 4, 2, 1, 0, 3]),
+            "discrete distribution",
+            ("aic", "NegativeBinomial", "sf", "KaplanMeier.fit"),
+        ),
+        (
+            lambda: sp.Hypoexponential.from_params([1.0, 3.0]),
+            "shared optimiser",
+            ("aic", "KaplanMeier"),
+        ),
+        (
+            _custom_link_fit,
+            "covariate link",
+            ("WeibullPH", "PH", "WeibullAFT", "AFT", "aic"),
+        ),
+        (
+            lambda: _po_or_ah_fit(sp.WeibullPO, "interval"),
+            "interval-censored",
+            (
+                "WeibullPH.fit",
+                "WeibullAFT.fit",
+                "aic",
+                "likelihood_ratio_test",
+            ),
+        ),
+        (
+            lambda: _po_or_ah_fit(sp.WeibullAH, "truncated"),
+            "right-truncated",
+            (
+                "WeibullPH.fit",
+                "WeibullAFT.fit",
+                "aic",
+                "likelihood_ratio_test",
+            ),
+        ),
+    ],
+    ids=["discrete", "no-shared-optimiser", "custom-link", "po-ic", "ah-rt"],
+)
+def test_permanent_refusals_name_the_alternative(fit, reason, features):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = fit()
+    with pytest.raises(NotImplementedError) as info:
+        model.diagnose()
+    message = str(info.value)
+    assert message.startswith("diagnose() does not check")
+    assert reason in message
+    for word in ("not yet", "meanwhile", "not built", "#"):
+        assert word not in message
+    for feature in features:
+        assert feature in message
+        assert _feature_exists(feature), feature
+
+
 class _Toy:
     """A stand-in model for a family registered by a test."""
 

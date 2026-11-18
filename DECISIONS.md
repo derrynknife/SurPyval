@@ -13,6 +13,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-18
+
+### diagnose(): four refusals that stay refusals (18 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Four kinds of model keep `diagnose()`'s refusal as the end state, not as a check to be built: a discrete distribution (goodness of fit on counts), a distribution whose fitter lacks the shared optimiser (`OptimisedFitMixin`; the bootstrap needs its refit), a parametric regression with a covariate link other than `exp(beta'Z)`, and a parametric PO or additive hazards model fitted to left- or interval-censored rows or with a finite right truncation. Each refusal says so without "not yet" or "meanwhile" and names the alternative: `aic()` among discrete fits and `sf` against `KaplanMeier.fit`; `sf` beside `KaplanMeier.fit` and `aic()` for a fitted model; a refit with `PH(dist)` / `AFT(dist)` and its `diagnose()`; the PH and AFT fits of the same data, whose `diagnose()` takes every censoring kind and truncation, compared by `aic()`, with `likelihood_ratio_test()` for whether the covariates matter. Each stays a `NotImplementedError` (no change of type for code that catches it). They come back only if someone needs one of these checks on real data. | maintainer | Rarely useful, and each refusal already names a working alternative (principles 2 and 22). | closed (2026-11-18) |
+
 ## 2026-11-16
 
 ### A subordinate clock is univariate data: `x2` / `SecondaryClock`, not multivariate (16 Nov 2026)
