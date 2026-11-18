@@ -430,10 +430,29 @@ def validate_1d(arr: npt.ArrayLike, name: str) -> npt.NDArray:
     return out
 
 
-def check_left_or_int_cens(c: npt.NDArray) -> None:
-    if (-1 in c) or (2 in c):
+#: What a competing-risks regression offers for left- or interval-censored
+#: rows instead.
+CR_WINDOWS_INSTEAD = (
+    "FineGray, CompetingRisksProportionalHazards and "
+    "ParametricCompetingRisksRegression take exact and right-censored rows "
+    "only. With covariates, fit the cause-specific Cox "
+    "model by CoxPH.fit(x, Z, c=c, e=e), which takes failures found at "
+    "inspections (x as [xl, xr] rows); without covariates, "
+    "CompetingRisks.fit(x, e, c=c) (non-parametric) or "
+    "ParametricCompetingRisks.fit(x, e, c=c)."
+)
+
+
+def check_left_or_int_cens(
+    c: npt.NDArray, instead: str = CR_WINDOWS_INSTEAD
+) -> None:
+    """Refuse left- (-1) and interval-censored (2) rows, saying why and
+    what to use (``instead``, the end of the sentence)."""
+    c = np.asarray(c)
+    if ((c == -1) | (c == 2)).any():
         raise ValueError(
-            "Left or interval censoring not implemented with Competing Risks"
+            "Left- or interval-censored rows (c = -1 or 2) are not "
+            f"supported here: {instead}"
         )
 
 
@@ -523,8 +542,12 @@ def validate_cr_inputs(
     # Check same shape
     check_e_and_x(e, x)
 
-    # Not implemented, yet.
-    check_left_or_int_cens(c)
+    check_left_or_int_cens(
+        c,
+        "the Aalen-Johansen estimate needs each failure's time. "
+        "CompetingRisks.fit(x, e, c=c) takes such rows, by the "
+        "non-parametric maximum-likelihood estimate.",
+    )
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
