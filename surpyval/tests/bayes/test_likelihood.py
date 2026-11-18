@@ -16,8 +16,8 @@ from surpyval.univariate.parametric import ParametricFitter
 
 #: Families whose support moves with their parameters (fit_bayes refuses
 #: them: the grid does not hold a moving support), and a point mass with
-#: no density, and the Hypoexponential (given its rates, not fitted),
-#: whose likelihoods are not used.
+#: no density, and the Hypoexponential (one rate per stage, a number
+#: fit_bayes does not take), whose likelihoods are not used.
 NOT_USED = {"Uniform", "Beta4", "ExactEventTime", "Hypoexponential"}
 
 CONTINUOUS = sorted(
