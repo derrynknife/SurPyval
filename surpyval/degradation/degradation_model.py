@@ -38,7 +38,6 @@ from surpyval.utils.validation import (
     alpha_ci_error,
     check_alpha_ci,
     check_option,
-    option_error,
     warn_outside_unit_interval,
 )
 
@@ -1698,22 +1697,23 @@ class DegradationModel(SerialisableMixin):
         See :meth:`cb` for the two-stage rationale; ``method='analytic'`` is
         the delta-method / generated-regressor correction
         ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
+
+        * A plain model: the life distribution's parameters, ordered as
+          ``life_model.params``.
+        * An accelerated-degradation (covariate) model: the regression life
+          model's parameters, ordered as ``life_model.params`` (the
+          distribution's, then the covariate coefficients); a parameter held
+          fixed has a zero row and column and an aliased one ``nan``, as in
+          ``life_model.covariance()``.
+        * A step-stress (``acceleration="clock"``) model: the reference-stress
+          life parameters followed by the stress coefficients ``gamma``. The
+          pseudo failure times all share the estimated clock, so the
+          first-stage term is the joint least-squares covariance of the clock
+          and the path fits, and the clock's own uncertainty is the last
+          block. Derived for ``population_method="moments"`` (the profile
+          least-squares clock); a ``"reml"`` model raises
+          ``NotImplementedError`` and points to the bootstrap.
         """
-        if self._is_clock:
-            raise NotImplementedError(
-                "The two-stage life-parameter covariance is not derived for "
-                "a step-stress (acceleration='clock') model, whose pseudo "
-                "failure times also depend on the estimated clock; use "
-                "cb(..., method='bootstrap'), which re-estimates the clock "
-                "on every resample."
-            )
-        if self.is_accelerated:
-            raise NotImplementedError(
-                "The two-stage life-parameter covariance is not implemented "
-                "for accelerated-degradation (covariate) models; use "
-                "life_model.covariance() for the (first-stage-only) "
-                "regression parameter covariance."
-            )
         return life_parameter_covariance(self, method=method)
 
     @keeps_query_shape
@@ -1738,11 +1738,15 @@ class DegradationModel(SerialisableMixin):
         first-stage (measurement + extrapolation) uncertainty back in.
 
         For an **accelerated-degradation (covariate) model** the bound is
-        evaluated at a stress vector ``Z`` and only ``method='bootstrap'``
-        is available: the generated-regressor delta-method correction is not
-        derived for the regression life fit, so the first-stage uncertainty is
-        folded in by resampling units (each carrying its stress) and rerunning
-        the whole accelerated pipeline.
+        evaluated at a stress vector ``Z``. The analytic bound applies the
+        generated-regressor correction to the regression life fit: each
+        unit's pseudo-time variance enters through the derivative of the
+        regression score at that unit's stress. For a **step-stress**
+        (``acceleration="clock"``) model the analytic bound also carries the
+        uncertainty of the estimated clock, which every pseudo failure time
+        and every prediction under stress depends on (see
+        :meth:`life_parameter_covariance`); it is derived for
+        ``population_method="moments"`` only.
 
         Parameters
         ----------
@@ -1752,11 +1756,11 @@ class DegradationModel(SerialisableMixin):
             Stress vector at which to evaluate the bound; required for an
             accelerated model, rejected for a plain one. For a step-stress
             (``acceleration="clock"``) model it is one stress row or a
-            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
-            and only ``method='bootstrap'`` is available: units are resampled
-            with their stress histories and the clock is re-estimated on each
-            resample (with the model's ``population_method``, so a ``"reml"``
-            model's bootstrap takes correspondingly longer).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`;
+            its bootstrap resamples units with their stress histories and
+            re-estimates the clock on each resample (with the model's
+            ``population_method``, so a ``"reml"`` model's bootstrap takes
+            correspondingly longer).
         on : {'sf', 'ff', 'Hf'}, optional
             The function to bound (``'R'`` and ``'F'`` are accepted as
             aliases of ``'sf'`` and ``'ff'``). Default ``'sf'``.
@@ -1766,10 +1770,11 @@ class DegradationModel(SerialisableMixin):
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
         method : {'analytic', 'bootstrap'}, optional
-            ``'analytic'`` (default) is a fast delta-method correction;
-            ``'bootstrap'`` resamples units and reruns the whole pipeline (a
-            slower, assumption-light cross-check). Accelerated (covariate)
-            models support ``'bootstrap'`` only.
+            ``'analytic'`` (default) is a fast delta-method correction, in
+            closed form with no refitting; ``'bootstrap'`` resamples units and
+            reruns the whole pipeline (a slower, assumption-light
+            cross-check). A step-stress model fitted with
+            ``population_method="reml"`` supports ``'bootstrap'`` only.
         n_boot : int, optional
             Bootstrap resamples (``method='bootstrap'`` only). Default 200.
         random_state : int or numpy.random.Generator, optional
@@ -1785,45 +1790,17 @@ class DegradationModel(SerialisableMixin):
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         check_option("bound", bound, BOUNDS)
         check_alpha_ci(alpha_ci)
+        check_option("method", method, ("analytic", "bootstrap"))
         if self._is_clock:
             self._clock(Z)  # validates the stress
             Z = self._covariates(Z)
-            if method == "analytic":
-                raise NotImplementedError(
-                    "The two-stage analytic correction is not derived for a "
-                    "step-stress (acceleration='clock') model, whose pseudo "
-                    "failure times also depend on the estimated clock; use "
-                    "method='bootstrap', which re-estimates the clock on "
-                    "every resample."
-                )
-            if method == "bootstrap":
-                return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
-                )
-            raise option_error("method", method, ("analytic", "bootstrap"))
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            if method == "analytic":
-                raise NotImplementedError(
-                    "The two-stage analytic (generated-regressor) correction "
-                    "is not derived for accelerated-degradation (covariate) "
-                    "life fits; use method='bootstrap' (which folds the "
-                    "first-stage uncertainty in by resampling), or "
-                    "life_model.cb(x, Z, on=...) for the first-stage-only "
-                    "regression bounds."
-                )
-            if method == "bootstrap":
-                return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
-                )
-            raise option_error("method", method, ("analytic", "bootstrap"))
+        else:
+            Z = self._predict_Z(Z)
         if method == "analytic":
-            return analytic_cb(self, x, on, alpha_ci, bound)
-        elif method == "bootstrap":
-            return bootstrap_cb(
-                self, x, on, alpha_ci, bound, n_boot, random_state
-            )
-        raise option_error("method", method, ("analytic", "bootstrap"))
+            return analytic_cb(self, x, on, alpha_ci, bound, Z=Z)
+        return bootstrap_cb(
+            self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
+        )
 
     def plot(self, ax: Any = None) -> Any:
         """

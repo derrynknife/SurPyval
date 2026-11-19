@@ -762,6 +762,114 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: Any,
+        Z: Any,
+        c: Any = None,
+        n: Any = None,
+        groups: Any = None,
+        penalizer: Any = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-10,
+        w: Any = None,
+    ) -> FrailtyModel:
+        """Fit the shared-frailty model with a ridge, lasso or elastic-net
+        penalty on the coefficients (the baseline's parameters and the
+        frailty variance ``theta`` are not penalised): for many
+        covariates, or correlated ones.
+
+        The fit minimises the negative marginal log-likelihood of
+        :meth:`fit` (the frailty integrated out) divided by the number of
+        units ``N`` (the sum of ``n``), plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} b_j^2
+            + a |b_j| \\right),
+
+        with :math:`\\lambda_j` the ``penalizer``, :math:`a` the
+        ``l1_ratio`` and :math:`b_j` the coefficient of covariate ``j``
+        divided by its standard deviation (``standardise=True``), as every
+        penalised fit in SurPyval (see ``WeibullPH.fit_penalised``).
+
+        ``theta = 0``, no shared frailty, is the edge of its space, where
+        the model is the proportional hazards model of the same baseline.
+        Where the objective is smallest there, ``theta`` is 0 and the fit
+        is the penalised proportional hazards fit
+        (``WeibullPH.fit_penalised`` for ``WeibullFrailty``), with the
+        objective checked not to fall as ``theta`` leaves 0. With no
+        penalty it is the fit of :meth:`fit`.
+
+        The model predicts as the fit's does (the marginal curve by
+        default, a group's with ``group=``), but has no covariance,
+        standard errors, bounds or p-values: penalised estimates are
+        biased towards 0 by design, and intervals from them would not have
+        their stated coverage; those calls raise an error that says so
+        (``summary()`` shows them as ``nan``). Its ``aic`` and ``bic``
+        count the effective degrees of freedom (the baseline's
+        parameters and ``theta`` one each).
+
+        Parameters
+        ----------
+        x, Z, c, n, groups
+            As for :meth:`fit`; ``Z`` is required (with no covariates
+            there is nothing to penalise: use :meth:`fit`).
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves a coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default) penalises the coefficients of the
+            covariates divided by their standard deviations (count-
+            weighted, divisor ``N``, as glmnet), so the penalty does not
+            depend on their units; the coefficients are reported on the
+            covariates' own scale either way.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : None
+            Weights are refused: :meth:`fit` takes none either (give
+            repeated rows as counts ``n``).
+
+        Returns
+        -------
+        FrailtyModel
+            The fitted model, with ``penalty`` (the ``penalizer`` per
+            column, ``l1_ratio``, ``standardise``, the columns' ``scale``
+            and the effective degrees of freedom).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(4)
+        >>> groups = np.repeat(np.arange(30), 6)
+        >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+        >>> Z = rng.normal(size=(180, 4))
+        >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+        >>> model = WeibullFrailty.fit_penalised(
+        ...     10 * H**0.5, Z, groups=groups, penalizer=0.1, l1_ratio=1
+        ... )
+        >>> model.beta.round(3), round(model.theta, 3)
+        (array([0.397, 0.   , 0.   , 0.   ]), 0.67)
+        """
+        from .._penalised import refuse_weights
+        from ._penalised_frailty import fit_frailty_penalised
+
+        refuse_weights(w)
+        if Z is None:
+            raise ValueError(
+                "fit_penalised penalises the coefficients of Z, and no Z was "
+                "given; fit a frailty model without covariates with fit."
+            )
+        return fit_frailty_penalised(
+            self, x, Z, c, n, groups, penalizer, l1_ratio, standardise, tol
+        )
+
     @takes_unit
     def fit_from_df(
         self,

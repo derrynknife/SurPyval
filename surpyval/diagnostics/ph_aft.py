@@ -116,6 +116,12 @@ keeps one level through each unit (a note names one that does not). The
 AIC screens refit each candidate with its own ``fit_tvc``.
 ``calibration`` is not made. A weighted ``fit_tvc`` model is refused, as
 its pseudo-likelihood cannot be compared between models.
+
+A parametric regression with any other covariate link (a custom
+``phi`` given to ``ProportionalHazardsFitter``, say) is refused, and
+that refusal is permanent: every test here is built on the
+``exp(beta'Z)`` link. It says to refit with that link, diagnose the
+refit and compare the two fits by AIC.
 """
 
 from __future__ import annotations
@@ -2142,11 +2148,11 @@ def _validate(model: Any) -> None:
     link = getattr(getattr(model, "reg_model", None), "name", None)
     if link not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
         raise NotImplementedError(
-            "diagnose() is not yet available for a parametric regression "
-            "with the covariate link {!r}: its checks are for the "
-            "exp(beta'Z) link of WeibullPH, PH(dist), WeibullAFT and "
-            "AFT(dist). Refit with one of those to diagnose the "
-            "model.".format(link)
+            "diagnose() does not check a parametric regression with the "
+            "covariate link {!r}: its tests are built on the exp(beta'Z) "
+            "link of WeibullPH, PH(dist), WeibullAFT and AFT(dist). Refit "
+            "with one of those to diagnose the model, and compare that fit "
+            "with this one by model.aic().".format(link)
         )
     if model.maximum == "no finite maximum":
         raise ValueError(

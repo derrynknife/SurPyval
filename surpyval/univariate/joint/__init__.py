@@ -4,12 +4,15 @@ fitter (the marker following a degradation path model, a straight line by
 default) whose marker multiplies the hazard, ``JointAFT(dist,
 path_model)`` one whose marker speeds up the item's ageing;
 ``WeibullJointPH`` and ``WeibullJointAFT`` are the ready-made Weibull
-ones with a line, and a fit returns a :class:`JointModel`, whose
-``predict`` gives one item's :class:`DynamicPrediction`."""
+ones with a line, a fit returns a :class:`JointModel`, whose ``predict``
+gives one item's :class:`DynamicPrediction`, and a PH fitter's
+``compare_links`` fits several links to the same data and compares them
+(:class:`LinkComparison`)."""
 
 from surpyval.degradation.path_models import LinearPath
 from surpyval.univariate.parametric import Weibull
 
+from .compare import LinkComparison
 from .dynamic import DynamicPrediction
 from .joint_aft import JointAFT, JointAFTFitter
 from .joint_model import JointModel
@@ -25,6 +28,7 @@ __all__ = [
     "JointModel",
     "JointPH",
     "JointPHFitter",
+    "LinkComparison",
     "WeibullJointAFT",
     "WeibullJointPH",
 ]

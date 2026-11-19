@@ -84,6 +84,7 @@ from surpyval.univariate.regression._fit_skeleton import (
 from surpyval.univariate.regression._partial_effects import (
     CompetingRisksPartialEffectsMixin,
 )
+from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_table,
@@ -281,6 +282,107 @@ def _parts_neg_ll(parts: tuple, beta: Any) -> Any:
     return total
 
 
+def _partial_likelihood(
+    n: npt.NDArray,
+    fitted: list,
+    denom0s: list,
+    Z: npt.NDArray,
+    nZ_events: list,
+    cols: npt.NDArray,
+) -> tuple:
+    """The weighted partial likelihood of :func:`_fit_cause` (each
+    stratum's rows ``fitted``, their risk-set sums at 0 ``denom0s``, the
+    centred covariates ``Z`` and each stratum's events' sum of ``n Z``,
+    ``nZ_events``) on the columns ``cols``, differentiable by
+    autograd (the no-maximum check and the information take its
+    derivatives); the objective with its gradient for BFGS, ``-(nZ_event
+    - sum_j d_j S1_j / S0_j)`` (``S1`` the risk-set sums of ``w Z``), by
+    hand: a fit of 1e5 rows took 1.2 s with autograd's gradient, 0.7 s
+    with this; and the gradient with the information, by hand, for
+    Newton-Raphson. Each is a sum over the strata.
+
+    Each shifts the linear predictor by its largest value inside the
+    risk-set sums and adds the shift back outside the logarithm, as
+    ``CoxPH`` does, so ``exp(beta'Z)`` cannot overflow at any
+    coefficients: on covariates of order 1e4 it did at the search's
+    first step, and the fit failed ("SVD did not converge", #606). The
+    objective is a ``functools.partial`` of a module-level function,
+    not a closure, so the model, which keeps it, pickles (#573)."""
+    args = tuple(
+        (n[part.rows], part.sets, denom0, Z[part.rows][:, cols], nZ[cols])
+        for part, denom0, nZ in zip(fitted, denom0s, nZ_events)
+    )
+    # One stratum (the whole sample) keeps the objective a partial of
+    # _weighted_neg_ll itself.
+    neg_ll = (
+        functools.partial(_weighted_neg_ll, *args[0])
+        if len(args) == 1
+        else functools.partial(_parts_neg_ll, args)
+    )
+
+    def shifted(
+        n_sorted: npt.NDArray, sets: _RiskSets, Zk: npt.NDArray, beta: Any
+    ) -> tuple:
+        # The weights e^(eta - shift), their risk-set sums and the shift
+        eta = Zk @ beta
+        shift = float(eta.max()) if eta.size else 0.0
+        weighted_exp = n_sorted * np.exp(eta - shift)
+        return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
+
+    def underflows(denom: npt.NDArray) -> bool:
+        # A risk set's sum lost to underflow: the derivatives are then
+        # autograd's, of the objective in logs (_weighted_neg_ll, #760)
+        # (not a coefficient that is not finite, nan either way)
+        finite = np.all(np.isfinite(denom))
+        return bool(finite and not np.all(denom >= _LEAST_SUM))
+
+    def value_and_gradient(beta: npt.NDArray) -> tuple:
+        value, gradient = 0.0, np.zeros(cols.size)
+        for n_sorted, sets, denom0, Zk, nZk_event in args:
+            weighted_exp, denom, shift = shifted(n_sorted, sets, Zk, beta)
+            if underflows(denom):
+                one = functools.partial(
+                    _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+                )
+                v, gr = value_and_grad(one)(beta)
+                value += float(v)
+                gradient += np.asarray(gr, dtype=float)
+                continue
+            value -= nZk_event @ beta - np.sum(
+                sets.d * (np.log(denom / denom0) + shift)
+            )
+            # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
+            weights = _risk_set_weights(sets.d / denom, sets)
+            gradient -= nZk_event - Zk.T @ (weighted_exp * weights)
+        return value, gradient
+
+    def gradient_and_information(beta: npt.NDArray) -> tuple:
+        # The information sum_j d_j (S2_j / S0_j - M_j M_j'), M_j =
+        # S1_j / S0_j, in O(N p^2) as at beta = 0
+        # (_information_at_zero); the shift cancels in every ratio.
+        gradient = np.zeros(cols.size)
+        information = np.zeros((cols.size, cols.size))
+        for n_sorted, sets, denom0, Zk, nZk_event in args:
+            weighted_exp, denom, _ = shifted(n_sorted, sets, Zk, beta)
+            if underflows(denom):
+                one = functools.partial(
+                    _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+                )
+                gradient += grad(one)(beta)
+                information += hessian(one)(beta)
+                continue
+            a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
+            M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
+            M = M / denom[:, None]
+            gradient -= nZk_event - Zk.T @ a
+            information += Zk.T @ (a[:, None] * Zk) - M.T @ (
+                sets.d[:, None] * M
+            )
+        return gradient, information
+
+    return neg_ll, value_and_gradient, gradient_and_information
+
+
 def _fit_cause(
     x: npt.NDArray,
     Z: npt.NDArray,
@@ -387,94 +489,8 @@ def _fit_cause(
     )
 
     def partial_neg_ll(cols: npt.NDArray) -> tuple:
-        """The objective on the columns ``cols``, differentiable by
-        autograd (the no-maximum check and the information take its
-        derivatives); the objective with its gradient for BFGS, ``-(nZ_event
-        - sum_j d_j S1_j / S0_j)`` (``S1`` the risk-set sums of ``w Z``), by
-        hand: a fit of 1e5 rows took 1.2 s with autograd's gradient, 0.7 s
-        with this; and the gradient with the information, by hand, for
-        Newton-Raphson. Each is a sum over the strata.
-
-        Each shifts the linear predictor by its largest value inside the
-        risk-set sums and adds the shift back outside the logarithm, as
-        ``CoxPH`` does, so ``exp(beta'Z)`` cannot overflow at any
-        coefficients: on covariates of order 1e4 it did at the search's
-        first step, and the fit failed ("SVD did not converge", #606). The
-        objective is a ``functools.partial`` of a module-level function,
-        not a closure, so the model, which keeps it, pickles (#573)."""
-        args = tuple(
-            (n[part.rows], part.sets, denom0, Z[part.rows][:, cols], nZ[cols])
-            for part, denom0, nZ in zip(fitted, denom0s, nZ_events)
-        )
-        # One stratum (the whole sample) keeps the objective a partial of
-        # _weighted_neg_ll itself.
-        neg_ll = (
-            functools.partial(_weighted_neg_ll, *args[0])
-            if len(args) == 1
-            else functools.partial(_parts_neg_ll, args)
-        )
-
-        def shifted(
-            n_sorted: npt.NDArray, sets: _RiskSets, Zk: npt.NDArray, beta: Any
-        ) -> tuple:
-            # The weights e^(eta - shift), their risk-set sums and the shift
-            eta = Zk @ beta
-            shift = float(eta.max()) if eta.size else 0.0
-            weighted_exp = n_sorted * np.exp(eta - shift)
-            return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
-
-        def underflows(denom: npt.NDArray) -> bool:
-            # A risk set's sum lost to underflow: the derivatives are then
-            # autograd's, of the objective in logs (_weighted_neg_ll, #760)
-            # (not a coefficient that is not finite, nan either way)
-            finite = np.all(np.isfinite(denom))
-            return bool(finite and not np.all(denom >= _LEAST_SUM))
-
-        def value_and_gradient(beta: npt.NDArray) -> tuple:
-            value, gradient = 0.0, np.zeros(cols.size)
-            for n_sorted, sets, denom0, Zk, nZk_event in args:
-                weighted_exp, denom, shift = shifted(n_sorted, sets, Zk, beta)
-                if underflows(denom):
-                    one = functools.partial(
-                        _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
-                    )
-                    v, gr = value_and_grad(one)(beta)
-                    value += float(v)
-                    gradient += np.asarray(gr, dtype=float)
-                    continue
-                value -= nZk_event @ beta - np.sum(
-                    sets.d * (np.log(denom / denom0) + shift)
-                )
-                # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
-                weights = _risk_set_weights(sets.d / denom, sets)
-                gradient -= nZk_event - Zk.T @ (weighted_exp * weights)
-            return value, gradient
-
-        def gradient_and_information(beta: npt.NDArray) -> tuple:
-            # The information sum_j d_j (S2_j / S0_j - M_j M_j'), M_j =
-            # S1_j / S0_j, in O(N p^2) as at beta = 0
-            # (_information_at_zero); the shift cancels in every ratio.
-            gradient = np.zeros(cols.size)
-            information = np.zeros((cols.size, cols.size))
-            for n_sorted, sets, denom0, Zk, nZk_event in args:
-                weighted_exp, denom, _ = shifted(n_sorted, sets, Zk, beta)
-                if underflows(denom):
-                    one = functools.partial(
-                        _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
-                    )
-                    gradient += grad(one)(beta)
-                    information += hessian(one)(beta)
-                    continue
-                a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
-                M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
-                M = M / denom[:, None]
-                gradient -= nZk_event - Zk.T @ a
-                information += Zk.T @ (a[:, None] * Zk) - M.T @ (
-                    sets.d[:, None] * M
-                )
-            return gradient, information
-
-        return neg_ll, value_and_gradient, gradient_and_information
+        # The objective on the columns cols (_partial_likelihood)
+        return _partial_likelihood(n, fitted, denom0s, Z, nZ_events, cols)
 
     # Coefficients the weighted partial likelihood does not depend on are
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
@@ -1497,7 +1513,96 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
     return np.broadcast_to(Z_arr, (n_x, p))
 
 
+def _prepared(
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    e: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    event: Any,
+    w: npt.ArrayLike | float | None,
+    tl: npt.ArrayLike | float | None,
+    strata: npt.ArrayLike | None,
+    cluster: npt.ArrayLike | None,
+    strata_censoring: str,
+) -> tuple[
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray | None,
+    dict,
+    list | None,
+    Any,
+]:
+    """The checked rows of a Fine-Gray fit (``FineGray.fit`` and
+    ``fit_penalised``): ``(x, Z, e, c, n, w, found, strata_levels,
+    event)``, with ``found`` the integer codes of the ``strata`` and
+    ``cluster`` labels given (rows with a missing label dropped, with a
+    warning), ``strata_levels`` the strata's labels and ``event`` the
+    cause of interest."""
+    refuse_subdistribution_entry(x, tl, "FineGray", ENTRY_INSTEAD)
+    check_option("strata_censoring", strata_censoring, ("within", "common"))
+    if strata is None and strata_censoring != "within":
+        raise ValueError(
+            "strata_censoring='common' is for a stratified fit: give "
+            "strata=..., or leave strata_censoring out (a fit without "
+            "strata has one censoring distribution already)."
+        )
+    rows = int(np.size(np.atleast_1d(np.asarray(x, dtype=object)), 0))
+    coded = {}
+    for name, labels in (("strata", strata), ("cluster", cluster)):
+        if labels is not None:
+            coded[name] = _label_codes(labels, name, rows)
+    validated = _validated(
+        x, Z, e, c, n, w, labels=tuple(v[0] for v in coded.values())
+    )
+    x, Z, e, c, n, w_kept = validated[:6]
+    codes: list = list(validated[7:])
+    found = dict(zip(coded, codes))
+    missing = np.zeros(x.size, dtype=bool)
+    for name, values in found.items():
+        missing |= values < 0
+    if missing.any():
+        warnings.warn(
+            "Dropped {} of {} rows with a missing {} label.".format(
+                int(missing.sum()),
+                missing.size,
+                " or ".join(k for k, v in found.items() if (v < 0).any()),
+            ),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        keep = ~missing
+        x, Z, e, c, n = x[keep], Z[keep], e[keep], c[keep], n[keep]
+        w_kept = None if w_kept is None else w_kept[keep]
+        found = {k: v[keep] for k, v in found.items()}
+    # Recode: a level whose rows were all dropped has no code
+    strata_levels = None
+    for name in found:
+        used, recoded = np.unique(found[name], return_inverse=True)
+        if name == "strata":
+            strata_levels = [
+                to_native(level) for level in coded[name][1][used]
+            ]
+        found[name] = recoded.astype(int)
+
+    causes = ordered_labels(e)
+    if event is None:
+        if len(causes) != 1:
+            raise missing_cause_error(
+                f"A Fine-Gray model (the data have causes {causes})"
+            )
+        event = causes[0]
+    elif event not in causes:
+        raise unknown_cause_error(event, causes)
+
+    return x, Z, e, c, n, w_kept, found, strata_levels, event
+
+
 class FineGrayModel(
+    PenalisedModelMixin,
     CompetingRisksPartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
@@ -1608,6 +1713,7 @@ class FineGrayModel(
         self.maximum = fit.get("maximum", "unknown")
         self._objective = fit.get("objective")
         self._fit_data = fit.get("fit_data")
+        self.penalty = fit.get("penalty")
         self.weighted = bool(fit.get("weighted", False))
         self.effective_n = fit.get("effective_n")
         labels = fit.get("strata_labels")
@@ -1704,6 +1810,8 @@ class FineGrayModel(
         >>> model.covariance(robust=False).round(5)
         array([[0.04419]])
         """
+        # A penalised fit (fit_penalised) has neither covariance
+        self._refuse_if_penalised()
         if not robust:
             return self._model_based_covariance()
         if self._covariance is None:
@@ -1778,14 +1886,21 @@ class FineGrayModel(
         grp        0.6626     1.9398    0.1727
         """
         check_alpha_ci(alpha_ci)
+        # A penalised fit has estimates and no inference: nan columns.
+        se = (
+            np.full(self.params.size, np.nan)
+            if self.penalty is not None
+            else self.standard_errors(robust)
+        )
         return coefficient_table(
-            self.parameter_names,
-            self.params,
-            self.standard_errors(robust),
-            alpha_ci,
+            self.parameter_names, self.params, se, alpha_ci
         )
 
-    def _ic_k(self) -> int:
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective degrees of freedom.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         # The estimated coefficients (an aliased one, nan, is not).
         return int(np.isfinite(np.asarray(self.beta, dtype=float)).sum())
 
@@ -1860,6 +1975,7 @@ class FineGrayModel(
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
+        out.update(self._penalty_entry())
         if self.weighted:
             # Schema 4: a reader without weights would offer the
             # information criteria.
@@ -1945,6 +2061,7 @@ class FineGrayModel(
         )
         names = model_dict.get("feature_names")
         out.feature_names = None if names is None else list(names)
+        out._restore_penalty(model_dict)
         return out
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
@@ -2047,7 +2164,9 @@ class FineGrayModel(
             names, self.beta, table["se(coef)"], table["p"]
         ):
             lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
-        if not self.weighted:
+        if self.penalty is not None:
+            lines.append(self._penalty_printout().lstrip("\n"))
+        elif not self.weighted:
             lines.append(
                 "Standard errors     : "
                 + (
@@ -2357,64 +2476,9 @@ class FineGray_(FitterRepr):
         >>> model.cif([5, 10], [[1]]).round(4)
         array([0.5808, 0.7395])
         """
-        refuse_subdistribution_entry(x, tl, "FineGray", ENTRY_INSTEAD)
-        check_option(
-            "strata_censoring", strata_censoring, ("within", "common")
+        x, Z, e, c, n, w_kept, found, strata_levels, event = _prepared(
+            x, Z, e, c, n, event, w, tl, strata, cluster, strata_censoring
         )
-        if strata is None and strata_censoring != "within":
-            raise ValueError(
-                "strata_censoring='common' is for a stratified fit: give "
-                "strata=..., or leave strata_censoring out (a fit without "
-                "strata has one censoring distribution already)."
-            )
-        rows = int(np.size(np.atleast_1d(np.asarray(x, dtype=object)), 0))
-        coded = {}
-        for name, labels in (("strata", strata), ("cluster", cluster)):
-            if labels is not None:
-                coded[name] = _label_codes(labels, name, rows)
-        validated = _validated(
-            x, Z, e, c, n, w, labels=tuple(v[0] for v in coded.values())
-        )
-        x, Z, e, c, n, w_kept = validated[:6]
-        codes: list = list(validated[7:])
-        found = dict(zip(coded, codes))
-        missing = np.zeros(x.size, dtype=bool)
-        for name, values in found.items():
-            missing |= values < 0
-        if missing.any():
-            warnings.warn(
-                "Dropped {} of {} rows with a missing {} label.".format(
-                    int(missing.sum()),
-                    missing.size,
-                    " or ".join(k for k, v in found.items() if (v < 0).any()),
-                ),
-                UserWarning,
-                stacklevel=caller_stacklevel(),
-            )
-            keep = ~missing
-            x, Z, e, c, n = x[keep], Z[keep], e[keep], c[keep], n[keep]
-            w_kept = None if w_kept is None else w_kept[keep]
-            found = {k: v[keep] for k, v in found.items()}
-        # Recode: a level whose rows were all dropped has no code
-        strata_levels = None
-        for name in found:
-            used, recoded = np.unique(found[name], return_inverse=True)
-            if name == "strata":
-                strata_levels = [
-                    to_native(level) for level in coded[name][1][used]
-                ]
-            found[name] = recoded.astype(int)
-
-        causes = ordered_labels(e)
-        if event is None:
-            if len(causes) != 1:
-                raise missing_cause_error(
-                    f"A Fine-Gray model (the data have causes {causes})"
-                )
-            event = causes[0]
-        elif event not in causes:
-            raise unknown_cause_error(event, causes)
-
         fit = _fit_cause(
             x,
             Z,
@@ -2435,6 +2499,137 @@ class FineGray_(FitterRepr):
         model = FineGrayModel(fit)
         model.maximum = maximum
         return model
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        event: Any = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        center: bool = False,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
+        strata: npt.ArrayLike | None = None,
+        strata_censoring: str = "within",
+    ) -> FineGrayModel:
+        """
+        Fit the Fine-Gray model with a ridge, lasso or elastic-net penalty
+        on the coefficients: for many covariates, or correlated ones.
+
+        The fit minimises the negative weighted partial log-likelihood of
+        :meth:`fit` (the subdistribution risk sets with their
+        inverse-probability-of-censoring weights) divided by the number of
+        units ``N`` (the sum of ``n``), plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} b_j^2
+            + a |b_j| \\right),
+
+        with :math:`\\lambda_j` the ``penalizer``, :math:`a` the
+        ``l1_ratio`` and :math:`b_j` the coefficient of covariate ``j``
+        divided by its standard deviation (``standardise=True``): the
+        objective of R's ``fastcmprsk::fastCrrp`` and ``crrp``, and the
+        one every penalised fit in SurPyval minimises (see
+        ``CoxPH.fit_penalised``). A lasso or elastic-net penalty sets some
+        coefficients exactly to 0. With no penalty it is the fit of
+        :meth:`fit`.
+
+        With ``strata`` each stratum has its own baseline, risk sets and
+        censoring distribution, as for :meth:`fit`; ``N`` counts the units
+        of every stratum, and the covariates are standardised over all the
+        rows.
+
+        The model predicts the cumulative incidence as any Fine-Gray
+        model does, but has no covariance, standard errors or p-values
+        (robust or model-based): penalised estimates are biased towards 0
+        by design, and intervals from them would not have their stated
+        coverage; those calls raise an error that says so (``summary()``
+        shows them as ``nan``). Its ``aic`` and ``bic`` count the
+        effective degrees of freedom.
+
+        Parameters
+        ----------
+        x, Z, e, c, n, event, center, strata, strata_censoring
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves a coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default) penalises the coefficients of the
+            covariates divided by their standard deviations (count-
+            weighted, divisor ``N``, as glmnet), so the penalty does not
+            depend on their units; the coefficients are reported on the
+            covariates' own scale either way.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : None
+            Weights are refused: give repeated rows as counts ``n``, or
+            fit the unpenalised model with ``w``.
+        tl : None
+            Delayed entry is refused as by :meth:`fit` (entry times all
+            before the first time change nothing and are taken).
+
+        Returns
+        -------
+        FineGrayModel
+            The fitted model, with ``penalty`` (the ``penalizer`` per
+            column, ``l1_ratio``, ``standardise``, the columns' ``scale``
+            and the effective degrees of freedom).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.normal(size=(300, 4))
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 300)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = FineGray.fit_penalised(
+        ...     x, Z, e, event="a", penalizer=0.1, l1_ratio=1
+        ... )
+        >>> model.beta.round(3)
+        array([0.367, 0.   , 0.   , 0.   ])
+        """
+        from surpyval.univariate.regression._penalised import refuse_weights
+
+        from .fine_gray_penalised import fit_fine_gray_penalised
+
+        refuse_weights(w)
+        x, Z, e, c, n, _, found, strata_levels, event = _prepared(
+            x, Z, e, c, n, event, None, tl, strata, None, strata_censoring
+        )
+        fit = fit_fine_gray_penalised(
+            x,
+            Z,
+            e,
+            c,
+            n,
+            event,
+            penalizer,
+            l1_ratio,
+            standardise,
+            center,
+            tol,
+            found.get("strata"),
+            strata_censoring == "common",
+        )
+        if strata_levels is not None:
+            fit["strata_labels"] = strata_levels
+            fit["strata_censoring"] = strata_censoring
+        return FineGrayModel(fit)
 
 
 FineGray = FineGray_()

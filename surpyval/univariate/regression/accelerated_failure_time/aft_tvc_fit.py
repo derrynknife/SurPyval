@@ -305,6 +305,146 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._tvc_fit_rows = rows
         return model
 
+    def fit_tvc_penalised(
+        self,
+        i: npt.ArrayLike,
+        xl: npt.ArrayLike,
+        xr: npt.ArrayLike,
+        c: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+    ) -> ParametricRegressionModel:
+        """
+        Fit the accelerated failure time model to start-stop
+        time-varying-covariate data (as :meth:`fit_tvc`, on the
+        accumulated-age likelihood) with a ridge, lasso or elastic-net
+        penalty on the coefficients (as ``fit_penalised``).
+
+        The objective is ``fit_penalised``'s, with ``N`` the number of
+        subjects (each weighted by the ``n`` of its last row), the
+        likelihood having one term per subject, and the covariates
+        standardised over the subjects: each subject's covariate is its
+        average over its follow-up, each row weighted by its length ``xr -
+        xl``. A subject's accelerated age is the sum over its rows of
+        ``exp(beta'z) (xr - xl)``, so splitting a row into several with
+        the same covariates leaves the likelihood, ``N`` and the scale,
+        and so the fit, unchanged. The model has no covariance, standard
+        errors, bounds or tests (see ``fit_penalised``).
+
+        Parameters
+        ----------
+        i, xl, xr, c, Z, n : array_like
+            As for :meth:`fit_tvc` (each subject's rows tile its follow-up
+            from 0).
+        penalizer, l1_ratio, standardise, tol
+            As for ``fit_penalised``.
+        w : None
+            Weights are refused: :meth:`fit_tvc` takes none either.
+
+        Returns
+        -------
+        ParametricRegressionModel
+            The fitted model, with ``is_tvc`` and ``penalty`` set.
+
+        Examples
+        --------
+        Each unit runs at its own stress ``z``, which steps up by 0.5 half
+        way through its life; two other covariates do nothing:
+
+        >>> import numpy as np
+        >>> from surpyval import WeibullAFT
+        >>> rng = np.random.default_rng(1)
+        >>> z = rng.normal(size=200)
+        >>> T = rng.weibull(2.0, 200) * 5 * np.exp(-0.5 * z)
+        >>> other = rng.normal(size=(200, 2))
+        >>> i = np.repeat(np.arange(200), 2)
+        >>> xl = np.column_stack([0 * T, T / 2]).ravel()
+        >>> xr = np.column_stack([T / 2, T]).ravel()
+        >>> c = np.tile([1, 0], 200)
+        >>> Z = np.column_stack(
+        ...     [np.column_stack([z, z + 0.5]).ravel(), other[i]]
+        ... )
+        >>> model = WeibullAFT.fit_tvc_penalised(
+        ...     i, xl, xr, c, Z, penalizer=0.05, l1_ratio=1
+        ... )
+        >>> model.params.round(3)
+        array([ 5.502,  1.943,  0.585, -0.066,  0.   ])
+        """
+        from .._penalised import refuse_weights
+        from ..proportional_hazards.tvc import handle_tvc
+
+        refuse_weights(w)
+        x, c_a, n_a, tl, Z_a, ident = handle_tvc(i, xl, xr, c, Z, n)
+        model = self._fit_tvc_penalised_arrays(
+            x,
+            c_a,
+            n_a,
+            tl,
+            Z_a,
+            ident,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tol,
+        )
+        rows = {"i": ident, "xl": tl, "xr": x, "c": c_a, "Z": Z_a, "n": n_a}
+        model.tvc_subject_ids = ident
+        model._tvc_fit_rows = rows
+        return model
+
+    def fit_tvc_timeline_penalised(
+        self,
+        i: npt.ArrayLike,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+    ) -> ParametricRegressionModel:
+        """
+        :meth:`fit_tvc_timeline` with a ridge, lasso or elastic-net
+        penalty: the timeline is expanded to start-stop rows and fitted by
+        :meth:`fit_tvc_penalised`, so it gives the same fit as the
+        equivalent start-stop data.
+
+        Parameters
+        ----------
+        i, x, Z, c, n : array_like
+            As for :meth:`fit_tvc_timeline`.
+        penalizer, l1_ratio, standardise, tol, w
+            As for :meth:`fit_tvc_penalised`.
+
+        Returns
+        -------
+        ParametricRegressionModel
+            The fitted model, with ``is_tvc`` and ``penalty`` set.
+        """
+        from ..proportional_hazards.tvc import handle_tvc_timeline
+
+        i2, xl, xr, c2, Z2, n2 = handle_tvc_timeline(i, x, Z, c, n)
+        return self.fit_tvc_penalised(
+            i2,
+            xl,
+            xr,
+            c2,
+            Z2,
+            n=n2,
+            penalizer=penalizer,
+            l1_ratio=l1_ratio,
+            standardise=standardise,
+            tol=tol,
+            w=w,
+        )
+
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -420,6 +560,136 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             fixed=fixed,
             center=center,
         )
+
+    def _fit_tvc_penalised_arrays(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+        Z: npt.NDArray,
+        ident: npt.NDArray,
+        penalizer: Any,
+        l1_ratio: Any,
+        standardise: Any,
+        tol: float,
+    ) -> ParametricRegressionModel:
+        """The penalised fit of :meth:`fit_tvc_penalised` on the rows
+        ``handle_tvc`` checked."""
+        from autograd import grad as ag_grad
+        from autograd import hessian as ag_hessian
+        from scipy.optimize import OptimizeResult
+
+        from surpyval.utils.no_maximum import warn_unverified
+
+        from .._penalised import PenalisedObjective, penalised_fit
+        from ..tvc_fit import subject_units
+        from .aft_fitter import AFTTVCFitter
+
+        Z = numpy.atleast_2d(numpy.asarray(Z, dtype=float))
+        if Z.shape[0] == 1 and x.shape[0] != 1:
+            Z = Z.reshape(-1, 1)
+        p = Z.shape[1]
+        k = self.k_dist
+        real_line = float(self.support[0]) < 0
+        _validate_full_coverage(x, tl, ident, real_line)
+        check_baseline_support(
+            self, SurpyvalData(x, c, n, None, group_and_sort=False)
+        )
+        grp = _grouped_episodes(x, c, n, tl, ident, real_line)
+        phi_param_map = LogLinearPhi.make_param_map(Z, self.param_map)
+        bounds = (*self.bounds, *(((None, None),) * p))
+        param_map = {
+            **self.param_map,
+            **{key: v + k for key, v in phi_param_map.items()},
+        }
+        transform, inv_trans, const, _, _ = bounds_convert(
+            grp["exit"], bounds, None, param_map
+        )
+        init_data = SurpyvalData(
+            grp["exit"], grp["term_c"], None, None, group_and_sort=False
+        )
+        with numpy.errstate(all="ignore"):
+            ps = self.dist.fit_from_surpyval_data(init_data).params
+        start = numpy.asarray(
+            transform(numpy.array([*ps, *numpy.zeros(p)])), dtype=float
+        )
+
+        def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+            # The accumulated-age likelihood of the covariates divided by
+            # their scale, over N (the subjects).
+            scaled = AFTTVCFitter(self.dist)
+            scaled._tvc = {**grp, "Zep": Z / scale}
+
+            def objective(theta: Any) -> Any:
+                return scaled.neg_ll(None, *inv_trans(const(theta))) / N
+
+            gradient, curvature = ag_grad(objective), ag_hessian(objective)
+            return PenalisedObjective(
+                lambda th: float(objective(np.asarray(th))),
+                lambda th: numpy.asarray(
+                    gradient(np.asarray(th)), dtype=float
+                ),
+                lambda th: numpy.asarray(
+                    curvature(np.asarray(th)), dtype=float
+                ),
+                start,
+            )
+
+        Z_units, n_units = subject_units(x, tl, Z, n, ident)
+        with numpy.errstate(all="ignore"):
+            fit = penalised_fit(
+                build,
+                Z_units,
+                n_units,
+                numpy.arange(k, k + p),
+                penalizer,
+                l1_ratio,
+                standardise,
+                tol,
+            )
+        res, scale = fit.result, fit.penalty.scale
+        params = numpy.array(inv_trans(const(res.x)), dtype=float)
+        params[k:] = params[k:] / scale
+        like = AFTTVCFitter(self.dist)
+        like._tvc = {**grp, "Zep": Z}
+        with numpy.errstate(all="ignore"):
+            neg_ll = float(like.neg_ll(None, *params))
+        if not numpy.isfinite(neg_ll):
+            raise ValueError(
+                "The penalised fit did not reach a finite likelihood; check "
+                "the data, or use a larger `penalizer`."
+            )
+        edata = SurpyvalData(
+            x,
+            c,
+            n,
+            numpy.column_stack([tl, numpy.full(tl.shape[0], numpy.inf)]),
+            group_and_sort=False,
+        )
+        edata.add_covariates(Z)
+        model = assemble_regression_model(
+            like,
+            ACCELERATED_FAILURE_TIME,
+            LogLinearPhi(LogLinearPhi.NAME_EXP, phi_param_map),
+            edata,
+            OptimizeResult(x=res.x, fun=res.fun, success=res.verified),
+            params,
+            bounds,
+            phi_param_map,
+            {},
+            neg_ll=neg_ll,
+        )
+        model.is_tvc = True
+        model.penalty = fit.penalty
+        model.maximum = "verified" if res.verified else "unverified"
+        if not res.verified:
+            warn_unverified("The penalised fit")
+        model.n_subjects = int(grp["n_subjects"])
+        model._ic_n = ic_sample_size(
+            numpy.where(grp["event"], 0, 1), grp["weight"]
+        )
+        return model
 
     def _fit_tvc_arrays(
         self,
