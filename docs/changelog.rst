@@ -117,6 +117,19 @@ v0.29 (unreleased)
   ``tl2_col``): each warns, gives the same numbers, and is removed in
   v0.30.
 
+**Documentation.**
+
+- The coverage quoted for the bootstrap bounds of limited-failure and
+  zero-inflated models (``method="bootstrap"``) in
+  :doc:`Parametric SurPyval Modelling` is remeasured with the current
+  bootstrap (the old figures predated v0.27's reading of the bounds at
+  their levels): 90% intervals 88.8% on average, 95% ones 94.0%, at their
+  level for a limited failure population with ``lfp_p`` well below 1 and
+  one to three points short for a zero-inflated model and with ``lfp_p``
+  at 1. 500 refits in place of 200 give the same, so the default
+  ``n_boot`` stays; the study is ``scripts/studies/lfp_zi_bootstrap/draws.py``.
+  Nothing computed changes.
+
 v0.28 (14 November 2026)
 ------------------------
 
