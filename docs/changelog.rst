@@ -5,6 +5,28 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: the links compared in one call.** Each joint model
+  fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
+  fits the fitter's model (its baseline, path model and varying path
+  parameters) with each of several links to the same data -- by default
+  the value, the slope and the cumulative area alone, and the slope and the
+  area each beside the value -- and returns a ``LinkComparison``
+  (``surpyval.univariate.joint``). Its ``table`` ranks the links by AIC,
+  AIC_c or BIC (``metric``), best first, with each link's ``k``,
+  log-likelihood, criteria, difference from the best (``delta``), weight
+  (Akaike weights for AIC), ``maximum`` and ``status``;
+  ``likelihood_ratio_tests()`` tests each nested pair (``"value"``
+  against ``"value + slope"``, ...) by twice the gain in
+  log-likelihood; ``models`` holds every fit by its link's name, and
+  ``best`` / ``best_link`` the best. Each candidate is the fit of its own
+  link to the last digit. The data and options are those of ``fit``; a
+  ``marker_reference`` goes to the links that follow the value only. A fit
+  that is not a verified maximum is shown but neither ranked nor tested,
+  and a link that cannot be fitted is listed with the reason, each said in
+  one warning; a warning every fit gives about the data is given once. A
+  Lloyd-Lipow path is compared without the cumulative links, with a
+  warning. See "Comparing the links" in :doc:`Joint Models`.
+
 - **``CoxPH`` takes every kind of row, and competing risks.**
   ``CoxPH.fit`` (and ``fit_from_df``, ``fit(data)``) now accepts left-
   and interval-censored rows (``c = -1``, ``c = 2``, or windows
@@ -107,6 +129,19 @@ v0.29 (unreleased)
   and refused by every model that reads it).
 - The two-clock fit's ``fit_from_df`` names its columns as the univariate
   fits do (``x_col`` and ``x2_col``, ``tl_col`` and ``tl2_col``).
+- Four of ``diagnose()``'s refusals are now worded as permanent, not as
+  checks still to come, and each names what to use instead: a discrete
+  distribution (compare discrete fits by ``aic()`` and ``sf`` with
+  ``KaplanMeier.fit``), a distribution whose fitter lacks the shared
+  optimiser (its ``sf`` beside ``KaplanMeier.fit``, and ``aic()``), a
+  parametric regression with a link other than ``exp(beta'Z)`` (refit with
+  ``PH(dist)`` or ``AFT(dist)`` and diagnose that), and a parametric
+  proportional odds or additive hazards model fitted to left- or
+  interval-censored or right-truncated data (diagnose the PH and AFT fits
+  of the same data, compare by ``aic()``). The last now points to those
+  fits rather than only to ``likelihood_ratio_test()``, which tests
+  whether the covariates matter, not whether their effects stay constant.
+  Each still raises ``NotImplementedError``.
 
 **Deprecated.**
 
