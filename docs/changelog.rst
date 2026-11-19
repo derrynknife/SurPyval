@@ -5,6 +5,21 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Likelihood-ratio and bootstrap bounds for a parametric competing-risks
+  fit to inspection data.** A ``ParametricCompetingRisks`` model fitted to
+  left- or interval-censored rows (its causes fitted together) now takes
+  ``method="lr"`` and ``method="bootstrap"`` on a cause's net ``sf``,
+  ``ff`` and ``Hf`` (``cb(x, event=k, on="sf", method=...)``), as a
+  model fitted a cause at a time does; they were refused. The
+  likelihood-ratio bound profiles the joint likelihood over every cause's
+  parameters (with one cause it is the univariate fit's bound, to 1e-5);
+  the bootstrap resamples the units with their windows and refits the
+  causes together (``n_boot``, ``random_state``; refits kept for an
+  integer seed), the bias-corrected percentile interval. In a simulation
+  of failures found at inspections (n = 300, 200 replicates) the 95%
+  likelihood-ratio bounds on each cause's net survival covered 92.5% to
+  96%. Both need the fitted data: a model restored with ``from_dict``
+  refuses them, saying to refit or use ``method="wald"``.
 - **Joint models: the links compared in one call.** Each joint model
   fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
   fits the fitter's model (its baseline, path model and varying path
@@ -119,6 +134,13 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- ``FineGray``, ``CompetingRisksProportionalHazards`` and
+  ``ParametricCompetingRisksRegression`` refuse left- and
+  interval-censored rows with a message naming what takes them
+  (``CoxPH.fit(x, Z, c=c, e=e)`` with covariates, ``CompetingRisks`` or
+  ``ParametricCompetingRisks`` without), in place of "Left or interval
+  censoring not implemented with Competing Risks". ``pseudo_cif`` refuses
+  such rows (and two-column ``x``) saying the same.
 - ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
   fits them by the full likelihood, above), and its ``fit_from_df``'s
   ``x_col`` is optional (give ``xl_col`` and ``xr_col`` instead).

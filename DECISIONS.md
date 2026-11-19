@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-18
 
+### Likelihood-ratio and bootstrap bounds of a joint competing-risks fit (18 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A `ParametricCompetingRisks` model fitted to left- or interval-censored rows offers `method="lr"` and `"bootstrap"` on a cause's net `sf` / `ff` / `Hf`, over the joint likelihood. The likelihood-ratio bound is the extreme of the cause's cumulative hazard over every cause's parameters within the univariate fits' critical value (`z ** 2`), found by SLSQP from the end of the Wald interval, `nan` with a warning where it does not settle. | proposed | "Every bound": the cause-at-a-time fit has them. With one cause it equals the univariate interval-censored fit's bound (tested to 1e-5), and it is checked against an independent profile of the joint likelihood. | done |
+| The bootstrap there is by cases (units drawn with replacement, each with its window, cause and entry, the causes refitted together from the estimate), not the parametric bootstrap of the univariate fits; the interval is the bias-corrected percentile one. A resample with no failure of some cause is left out and counted in the refit warning. | proposed | A parametric resample of inspection data would need each unit's inspection schedule, which the data do not hold; the case bootstrap resamples what was observed, as `CompetingRisks`' NPMLE bounds and the weighted univariate bootstrap do. | done |
+| The data and estimate behind them are kept on the fitted model (in memory and through pickle), not in `to_dict`: a model restored with `from_dict` refuses both methods, saying to refit or use `method="wald"`. | proposed | Keeps the saved dict (schema 4) unchanged. | done |
+| The cumulative incidence and the all-cause functions keep Wald bounds only, joint fit or not; the conformance registry still declares Wald bounds alone for `ParametricCompetingRisks` (its sweeps call a per-cause bound without a cause, which is the all-cause function). | proposed | Unchanged gap, refused with what to use; the new bounds are checked in `test_parametric_competing_risks_interval.py` and the calibration study. | gap |
 ### diagnose(): four refusals that stay refusals (18 Nov 2026)
 
 | Decision | By | Reason | Status |

@@ -3517,7 +3517,9 @@ def _bounds(case):
         # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
         # its own model's cb. (Its method="lr" and "bootstrap", the
         # cause's own, are swept on the Parametric cases: the cb_transform
-        # sweep calls a per-cause bound without its cause.)
+        # sweep calls a per-cause bound without its cause. A joint fit's,
+        # over the joint likelihood, are checked in
+        # test_parametric_competing_risks_interval.py.)
         return (
             Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
             Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),

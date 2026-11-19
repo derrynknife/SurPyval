@@ -368,12 +368,13 @@ Censoring and truncation
 Censoring enters the Aalen-Johansen estimator only through the risk sets
 :math:`r_j`: a unit censored at :math:`x_i` counts as at risk at every event
 time up to and including :math:`x_i` and then leaves, exactly as in the
-Kaplan-Meier estimator. The competing-risks classes in SurPyval support
-**right censoring** only. Left- and interval-censored rows (``c`` of ``-1`` or
-``2``) are rejected with a ``ValueError``: with an interval-censored failure
-of known cause the unit's contribution to :math:`F_k` would have to be spread
-across the interval using all of the cause-specific hazards, which these
-estimators do not do.
+Kaplan-Meier estimator. The Aalen-Johansen estimator takes **right
+censoring** only: with an interval-censored failure of known cause the
+unit's contribution to :math:`F_k` has to be spread across the interval
+using all of the cause-specific hazards. Given left- or interval-censored
+rows (``c`` of ``-1`` or ``2``), ``CompetingRisks.fit`` uses the
+non-parametric maximum-likelihood estimate of Hudgens, Satten and Longini
+[Hudgens2001cr]_ instead (see :doc:`Competing Risks SurPyval Modelling`).
 
 Left truncation (delayed entry) enters the same way. A unit that comes under
 observation at :math:`\tau_i` counts as at risk only for
