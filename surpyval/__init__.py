@@ -295,6 +295,12 @@ _LAZY = {
         ),
         "surpyval.univariate.equivalence",
     ),
+    # Relative survival: net survival and excess hazards beyond a
+    # population's own rates (a rate table)
+    **dict.fromkeys(
+        ("ExcessHazard", "RateTable", "RelativeSurvival"),
+        "surpyval.univariate.relative",
+    ),
     # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
     # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
     "prior": "surpyval.bayes",
@@ -617,6 +623,11 @@ if TYPE_CHECKING:
         pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
+    from surpyval.univariate.relative import (
+        ExcessHazard,
+        RateTable,
+        RelativeSurvival,
+    )
     from surpyval.univariate.regression.distributional import (
         Distributional,
         DistributionalFitter,

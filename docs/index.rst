@@ -347,6 +347,7 @@ Contents:
    Interval-Censored Cox Regression
    Pseudo-Observations
    Adjusted Survival Curves
+   Relative Survival
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling

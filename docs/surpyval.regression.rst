@@ -10,7 +10,9 @@ The univariate regression models are importable directly from
 narrative introduction with worked examples, see
 :doc:`Regression Modelling with SurPyval`. Tree-based models are under
 :doc:`surpyval.ml`, and regression for recurrent events under
-:doc:`surpyval.counting`.
+:doc:`surpyval.counting`. Excess hazard regression, where the covariates
+act on the hazard beyond a population's own rates, is documented with
+net survival in :doc:`univariate/relative_survival`.
 
 Semi-Parametric Models
 ----------------------

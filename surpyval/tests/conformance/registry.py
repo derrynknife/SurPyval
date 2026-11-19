@@ -352,6 +352,8 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.SecondaryClock": _DATA
     + ": the second clock of the two-clock fits (WeibullEquivalence, ...)",
     "surpyval.StepSchedule": _DATA,
+    "surpyval.RateTable": _DATA
+    + ": the population hazards of RelativeSurvival and ExcessHazard",
     "surpyval.landmark": _FUNCTION + ": derives landmark data from data",
     "surpyval.landmark_kaplan_meier": _FUNCTION
     + " (Kaplan-Meier fits, registered, of landmark data)",

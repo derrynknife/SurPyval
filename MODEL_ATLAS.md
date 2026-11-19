@@ -86,6 +86,8 @@ Worked classifications:
 | IntervalCoxPH (Cox PH for interval-censored data: NPMLE baseline on the Turnbull intervals, fitted jointly with the coefficients) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
+| RelativeSurvival (net survival beyond a rate table's population hazards: Pohar Perme, Ederer II) | univariate | single_event | single (the cause not recorded) | terminal | none | continuous | nonparametric |
+| ExcessHazard (population hazard plus `lambda_0(t) exp(beta'Z)`, piecewise-constant baseline) | univariate | single_event | single (the cause not recorded) | terminal | with | continuous | parametric |
 | ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |

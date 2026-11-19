@@ -1561,6 +1561,14 @@ _ML = (
 )
 EXCLUDED: dict[str, str] = {
     **dict.fromkeys(
+        ("RelativeSurvival", "ExcessHazard"),
+        "the plans draw lifetimes from the model alone, and relative "
+        "survival data need each unit's population death time too, drawn "
+        "from its rate table: recovery and the bounds' coverage on such "
+        "data are checked by calibration/test_coverage_relative_survival.py "
+        "and tests/univariate/test_relative_survival.py",
+    ),
+    **dict.fromkeys(
         ("PanelCountMCF", "PanelCountRegression"),
         "no simulation from the model: the mean function is a step "
         "function with no shape beyond the inspection times and the model "
