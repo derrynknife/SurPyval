@@ -1367,9 +1367,8 @@ def test_593_parametric_ph_fit_evaluates_each_point_once(monkeypatch):
     # it now takes the value and the gradient from one pass.
     from autograd.tracer import Box
 
-    from surpyval.univariate.regression.proportional_hazards import (
-        proportional_hazards_fitter as ph_module,
-    )
+    # The PH fitter's likelihood is the shared base class's.
+    from surpyval.univariate.regression import _regression_fitter as ph_module
 
     def unboxed(value):
         while isinstance(value, Box):

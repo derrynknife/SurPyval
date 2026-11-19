@@ -10,36 +10,19 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
-from .._fit_skeleton import (
-    BaselineInversionMixin,
-    LogLinearPhi,
-    MirroredDistributionAttrs,
-    draws_by_row,
-    fit_log_linear,
-    mirror_distribution,
-    optimise_nm_tnc,
-    split_log_linear,
-)
-from .._likelihood import regression_neg_ll
-from .._penalised_fit import PenalisedFitMixin
+from .._fit_skeleton import LogLinearPhi, draws_by_row, split_log_linear
+from .._regression_fitter import LogLinearRegressionFitter
 from ..kinds import PROPORTIONAL_ODDS
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
 
 _TINY = float(np.finfo(float).tiny)
 
 
-class ProportionalOddsFitter(
-    MirroredDistributionAttrs,
-    BaselineInversionMixin,
-    TVCFitMixin,
-    DataFrameRegressionMixin,
-    PenalisedFitMixin,
-):
+class ProportionalOddsFitter(TVCFitMixin, LogLinearRegressionFitter):
     """
     Proportional Odds model fitter using :math:`\\phi = e^{\\beta' Z}` as
     the multiplier of the survival odds :math:`O(x) = S(x) / F(x)`:
@@ -70,15 +53,10 @@ class ProportionalOddsFitter(
     fitter_kind = "proportional odds fitter"
     _penalised_kind = PROPORTIONAL_ODDS
     name_suffix = "PO"
+    _baseline_functions = ("Hf", "hf", "sf", "ff", "df", "log_sf")
 
     def __init__(self, distribution: Any) -> None:
-        mirror_distribution(self, distribution)
-        self.Hf_dist = distribution.Hf
-        self.hf_dist = distribution.hf
-        self.sf_dist = distribution.sf
-        self.ff_dist = distribution.ff
-        self.df_dist = distribution.df
-        self.log_sf_dist = distribution.log_sf
+        self._take_distribution(distribution)
 
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
         return LogLinearPhi.phi(Z, *phi_params)
@@ -180,9 +158,6 @@ class ProportionalOddsFitter(
         F0 = self.ff_dist(x, *dist_params)
         denom = F0 + phi * S0
         return np.log(phi) + np.log(f0) - 2.0 * np.log(denom)
-
-    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        return regression_neg_ll(self, data, *params)
 
     def random(
         self,
@@ -313,22 +288,7 @@ class ProportionalOddsFitter(
         >>> model.params.round(3)
         array([9.708, 2.337, 0.918])
         """
-        t = truncation_window(x, t, tl, tr)
-        return fit_log_linear(
-            self,
-            x,
-            Z,
-            c,
-            n,
-            t,
-            init,
-            fixed,
-            center,
-            w=w,
-            kind=PROPORTIONAL_ODDS,
-            optimiser=optimise_nm_tnc,
-            reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
-        )
+        return self._fit(x, Z, c, n, t, init, fixed, center, tl, tr, w)
 
 
 def PO(distribution: Any) -> ProportionalOddsFitter:

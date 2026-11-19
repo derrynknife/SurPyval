@@ -45,7 +45,6 @@ from .._aliasing import (
 from .._fit_skeleton import (
     FixedWithAliased,
     HazardIdentitiesMixin,
-    MirroredDistributionAttrs,
     assemble_regression_model,
     canonical_order,
     check_baseline_support,
@@ -58,16 +57,15 @@ from .._fit_skeleton import (
     free_coefficients,
     keep_information,
     make_objective,
-    mirror_distribution,
     newton_finish,
     one_sided_positions,
     require_finite_fit,
     uniform_draws,
 )
-from .._likelihood import regression_neg_ll
+from .._regression_fitter import RegressionFitter
 from .._robust import note_source_rows
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin, truncation_window
+from ..regression_data import truncation_window
 from .lifemodel import LifeModel
 
 
@@ -287,9 +285,7 @@ def _coefficient_units(
     return coefficient_floor(len(free), coefs, Z)
 
 
-class ParameterSubstitutionFitter(
-    MirroredDistributionAttrs, HazardIdentitiesMixin, DataFrameRegressionMixin
-):
+class ParameterSubstitutionFitter(HazardIdentitiesMixin, RegressionFitter):
     """
     Accelerated life fitter: the life parameter of a distribution is
     replaced by a function of the stress, :math:`L(Z)`, given by a life
@@ -307,6 +303,7 @@ class ParameterSubstitutionFitter(
     #: The ``repr`` (#614)
     fitter_kind = "accelerated life fitter"
     name_suffix = "AL"
+    _baseline_functions = ("Hf", "hf", "sf", "ff", "df")
 
     def _repr_details(self) -> list[str]:
         return [*super()._repr_details(), self.life_model.name + " life model"]
@@ -332,14 +329,9 @@ class ParameterSubstitutionFitter(
 
         self.name = name
         self.kind = kind
-        mirror_distribution(self, distribution)
+        self._take_distribution(distribution)
         self.life_model = life_model
         self.phi = life_model.phi
-        self.Hf_dist = self.dist.Hf
-        self.hf_dist = self.dist.hf
-        self.sf_dist = self.dist.sf
-        self.ff_dist = self.dist.ff
-        self.df_dist = self.dist.df
         self.baseline = baseline
         self.life_parameter = life_parameter
         self.life_relation = life_relation
@@ -538,9 +530,6 @@ class ParameterSubstitutionFitter(
                 cols = len(stress)
             Z_out.append(np.ones((size, cols)) * stress)
         return np.array(x).flatten(), np.concatenate(Z_out)
-
-    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        return regression_neg_ll(self, data, *params)
 
     def _check_stresses(self, Z_arr: npt.NDArray) -> None:
         """Refuse stresses the life model is not defined at.
