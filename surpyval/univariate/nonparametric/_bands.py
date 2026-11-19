@@ -27,6 +27,8 @@ from surpyval.utils.validation import (
     check_option,
 )
 
+from ._scales import survival_bound
+
 # The equal precision band's default range of a = N sigma^2 / (1 + N
 # sigma^2) (#390): its standardized boundary is unbounded as a nears 0 or
 # 1, and there the estimate rests on a few failures or a few at risk. Over
@@ -34,49 +36,6 @@ from surpyval.utils.validation import (
 # range 0.94-0.96 (n = 40 to 400). Klein and Moeschberger tabulate it for
 # a_L from 0.02 and a_U to 0.98.
 _EP_RANGE = (0.1, 0.9)
-
-
-# The scales the pointwise bounds (``cb``) and the bands (``band``) of a
-# survival estimate are formed on, written once for both. Each moves the
-# estimate ``R`` by ``d``, a normal deviate times the standard error of
-# ``log R`` (negative for the lower bound, positive for the upper).
-def loglog_survival_bound(R: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
-    """The survival ``R`` moved by ``d`` on the log(-log) scale, whose
-    standard error is that of ``log R`` over ``|log R|`` (bound type
-    ``'exp'``; R's ``conf.type = "log-log"``).
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric._bands import (
-    ...     loglog_survival_bound,
-    ... )
-    >>> R = np.array([0.8, 0.8])
-    >>> loglog_survival_bound(R, np.array([-0.2, 0.2])).round(4)
-    array([0.5788, 0.913 ])
-    """
-    out = np.log(-np.log(R)) - d / np.abs(np.log(R))
-    return np.exp(-np.exp(out))
-
-
-def arcsine_survival_bound(R: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
-    """The survival ``R`` moved by ``d`` on the arcsine-square-root scale,
-    whose standard error is that of ``log R`` times ``sqrt(R / (1 - R)) /
-    2`` (bound type ``'arcsine'``; Klein and Moeschberger, section 4.4),
-    the angle held within ``[0, pi / 2]``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric._bands import (
-    ...     arcsine_survival_bound,
-    ... )
-    >>> R = np.array([0.8, 0.8])
-    >>> arcsine_survival_bound(R, np.array([-0.2, 0.2])).round(4)
-    array([0.6206, 0.9321])
-    """
-    out = np.arcsin(np.sqrt(R)) + d * 0.5 * np.sqrt(R / (1 - R))
-    return np.sin(np.clip(out, 0.0, np.pi / 2)) ** 2
 
 
 # Keyed on exactly what the value depends on, so a model's repeated
@@ -540,16 +499,16 @@ class BandsMixin:
                 # pull the cumulative hazard down by a factor e^-c at the
                 # first event, as on the log(-log) scale, where a step of
                 # a few failures is far from normal (#390).
-                lower = arcsine_survival_bound(self.R, -half_width)
-                upper = arcsine_survival_bound(self.R, half_width)
+                lower = survival_bound("arcsine", self.R, -half_width)
+                upper = survival_bound("arcsine", self.R, half_width)
             elif bound_type == "exp":
                 # Band applied on the log(-log) scale, as the pointwise
                 # exponential Greenwood bounds are.
-                lower = loglog_survival_bound(self.R, -half_width)
-                upper = loglog_survival_bound(self.R, half_width)
+                lower = survival_bound("exp", self.R, -half_width)
+                upper = survival_bound("exp", self.R, half_width)
             else:
-                lower = self.R - half_width * self.R
-                upper = self.R + half_width * self.R
+                lower = survival_bound("normal", self.R, -half_width)
+                upper = survival_bound("normal", self.R, half_width)
 
             lower = np.where(valid, lower, np.nan)
             upper = np.where(valid, upper, np.nan)

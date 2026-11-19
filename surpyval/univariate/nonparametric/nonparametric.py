@@ -22,11 +22,8 @@ from surpyval.utils.validation import (
     warn_outside_unit_interval,
 )
 
-from ._bands import (
-    BandsMixin,
-    arcsine_survival_bound,
-    loglog_survival_bound,
-)
+from ._bands import BandsMixin
+from ._scales import SCALES, survival_bound
 from ._support import (
     check_support,
     interp_bound,
@@ -81,17 +78,11 @@ def pointwise_survival_bounds(
     'log-log' (``exp``), 'plain' (``normal``, unclipped), 'logit',
     'arcsin') and of ``km.ci::km.ci(method=...)`` ('peto', 'rothman')."""
     sd = np.sqrt(var_log)
-    if bound_type == "exp":
-        out = loglog_survival_bound(R, stat * sd)
-    elif bound_type == "normal":
-        out = R + R * sd * stat
-    elif bound_type == "log":
-        out = np.minimum(R * np.exp(stat * sd), 1.0)
-    elif bound_type == "logit":
-        out = np.log(R / (1.0 - R)) + stat * sd / (1.0 - R)
-        out = 1.0 / (1.0 + np.exp(-out))
-    elif bound_type == "arcsine":
-        out = arcsine_survival_bound(R, stat * sd)
+    if bound_type in SCALES:
+        # On the scale's transform, shared with the bands and sf_diff.
+        out = survival_bound(bound_type, R, stat * sd)
+        if bound_type == "log":
+            out = np.minimum(out, 1.0)
     elif bound_type == "peto":
         out = R + stat * R * np.sqrt((1.0 - R) / r)
     else:

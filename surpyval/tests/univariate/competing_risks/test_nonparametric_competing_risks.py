@@ -433,3 +433,31 @@ def test_rmtl_and_the_fitted_cif_share_the_increment():
     widths = np.diff(grid)
     area = np.sum(model.cif(grid[:-1], "a") * widths)
     assert rmtl == pytest.approx(area, rel=1e-12)
+
+
+def test_cif_bound_is_the_log_minus_log_scale_of_the_survival_bounds():
+    # The incidence's 'exp' bound is the survival bounds' log(-log) scale
+    # applied to F, here written out: exp(log F * exp(-+ s)), with s = z
+    # se / (F |log F|).
+    from scipy.stats import norm
+
+    from surpyval.univariate.competing_risks.aalen_johansen import (
+        aalen_johansen_variance,
+    )
+
+    x = np.array([1.0, 2.0, 2.0, 3.0, 5.0, 6.0, 8.0, 9.0, 11.0])
+    e = np.array(["a", "b", "a", None, "b", "a", "a", None, "b"], dtype=object)
+    c = np.array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    model = CompetingRisks.fit(x, e, c=c)
+    k = model.event_idx_map["a"]
+    F = model.CIF[k]
+    se = np.sqrt(aalen_johansen_variance(model.r, model.d, model.d_e[k]))
+    s = norm.ppf(0.975) * se / (F * np.abs(np.log(F)))
+    inside = (se > 0) & (F < 1)
+    got = model.cb(model.x, "a", on="cif")
+    np.testing.assert_allclose(
+        got[inside, 0], np.exp(np.log(F) * np.exp(s))[inside], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        got[inside, 1], np.exp(np.log(F) * np.exp(-s))[inside], rtol=1e-12
+    )
