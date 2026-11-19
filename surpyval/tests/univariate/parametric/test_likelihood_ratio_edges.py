@@ -149,6 +149,154 @@ def test_nb_bands_reach_the_poisson_valley(nb):
     assert nb.dist.df(np.array([5.0]), *theta)[0] > 0.1941
 
 
+# The NegativeBinomial's 95% region, slice by slice: at each r, the
+# stretch of p inside it, and over that stretch the extreme of the
+# function. The region runs off to r -> inf along a valley whose limit is
+# the shifted Poisson, whose own stretch of its mean is taken in scipy's
+# Poisson. Slices are taken out to log r = 18: further out p can no longer
+# be told from 1 finely enough to follow the valley (1 - p is 1.5e-8 of
+# it there), and the Poisson is closer.
+_NB_LOG_R_TOP = 18.0
+
+
+def _nb_stretch(nb, log_r, crit):
+    """The interval of logit(p) inside the region at r = exp(log_r), or
+    ``None``."""
+
+    def excess(lp):
+        with np.errstate(all="ignore"):
+            d = _deviance(nb, [np.exp(log_r), expit(lp)])
+        return (d if np.isfinite(d) else 1e10) - crit
+
+    grid = np.linspace(log_r - 8.0, log_r + 6.0, 57)
+    values = [excess(v) for v in grid]
+    k = int(np.argmin(values))
+    res = minimize_scalar(
+        excess,
+        bounds=(grid[max(k - 1, 0)], grid[min(k + 1, len(grid) - 1)]),
+        method="bounded",
+        options={"xatol": 1e-12},
+    )
+    if not res.fun < 0:
+        return None
+    lo = brentq(excess, grid[0], res.x, xtol=1e-15, rtol=1e-15)
+    hi = brentq(excess, res.x, grid[-1], xtol=1e-15, rtol=1e-15)
+    return lo, hi
+
+
+def _extreme_on(g, lo, hi, sign):
+    """The largest of ``sign * g`` over ``[lo, hi]``: its ends, and its
+    interior maximum."""
+    res = minimize_scalar(
+        lambda v: -sign * g(v),
+        bounds=(lo, hi),
+        method="bounded",
+        options={"xatol": 1e-13},
+    )
+    return max(sign * g(lo), sign * g(hi), -res.fun)
+
+
+@pytest.fixture(scope="module")
+def nb_slices(nb):
+    """The stretches of the 95% region on a grid of log r, from the
+    lower bound on r to _NB_LOG_R_TOP, and the Poisson limit's stretch of
+    log(mean)."""
+    lo_r = float(nb.param_cb("r", method="lr")[0])
+    grid = np.linspace(np.log(lo_r) + 1e-9, _NB_LOG_R_TOP, 37)
+    slices = {}
+    for v in grid:
+        stretch = _nb_stretch(nb, v, CRIT_95)
+        if stretch is not None:
+            slices[float(v)] = stretch
+    d = nb.data
+    x, c, n = (np.asarray(d[k], float) for k in ("x", "c", "n"))
+    nll_hat = neg_ll_at(nb, nb.params)
+
+    def excess(log_lam):
+        lam = np.exp(log_lam)
+        ll = np.where(
+            c == 0, poisson.logpmf(x - 1.0, lam), poisson.logsf(x - 1.0, lam)
+        )
+        return 2.0 * (-np.sum(n * ll) - nll_hat) - CRIT_95
+
+    centre = minimize_scalar(excess, bounds=(0.0, 3.0), method="bounded").x
+    limit = (
+        brentq(excess, -2.0, centre, xtol=1e-15, rtol=1e-15),
+        brentq(excess, centre, 4.0, xtol=1e-15, rtol=1e-15),
+    )
+    return slices, limit
+
+
+# (the function on the NegativeBinomial's parameters, and on the
+# Poisson limit's mean, of T = 1 + Y with Y Poisson)
+_NB_FUNCTIONS = {
+    "sf": (
+        lambda nb, x, r, p: nb.dist.sf(np.array([x]), r, p)[0],
+        lambda x, lam: poisson.sf(x - 1.0, lam),
+    ),
+    "df": (
+        lambda nb, x, r, p: nb.dist.df(np.array([x]), r, p)[0],
+        lambda x, lam: poisson.pmf(x - 1.0, lam),
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "on, x, side, rtol",
+    [
+        ("sf", 2.0, 0, 1e-12),
+        ("sf", 2.0, 1, 1e-12),
+        ("sf", 5.0, 0, 1e-12),
+        ("sf", 5.0, 1, 1e-12),
+        ("sf", 8.0, 1, 1e-12),
+        ("df", 5.0, 0, 1e-12),
+        # At the Poisson limit, approached only as r -> inf
+        ("df", 5.0, 1, 1e-10),
+        # also, but where the searches follow the valley only as far as
+        # 1 - p can be told apart in doubles: 6e-8 short of the limit
+        ("sf", 8.0, 0, 1e-7),
+    ],
+)
+def test_nb_band_is_the_extreme_of_its_region_by_brute_force(
+    nb, nb_slices, on, x, side, rtol
+):
+    # The extreme over every slice of the region (on a grid of log r,
+    # refined about the best) and over the Poisson limit, against the
+    # band. The searches took a point up to 1e-6 of deviance outside the
+    # region, or as far inside, as on its boundary: the bands agreed with
+    # these extremes to 1e-11 or 1e-12, and the sf(8) lower bound, at the
+    # limit, was 3e-8 beyond it. Taken onto the boundary they agree to
+    # 1e-13 inside the region and 1e-11 at the limit.
+    slices, limit = nb_slices
+    f, f_limit = _NB_FUNCTIONS[on]
+    sign = 1.0 if side else -1.0
+
+    def on_slice(log_r):
+        stretch = slices.get(log_r) or _nb_stretch(nb, log_r, CRIT_95)
+        if stretch is None:
+            return -np.inf
+
+        def g(lp):
+            return f(nb, x, np.exp(log_r), expit(lp))
+
+        return _extreme_on(g, *stretch, sign)
+
+    grid = list(slices)
+    values = [on_slice(v) for v in grid]
+    k = int(np.argmax(values))
+    res = minimize_scalar(
+        lambda v: -on_slice(v),
+        bounds=(grid[max(k - 1, 0)], grid[min(k + 1, len(grid) - 1)]),
+        method="bounded",
+        options={"xatol": 1e-10},
+    )
+    best = max(values[k], -res.fun)
+    at_limit = _extreme_on(lambda v: f_limit(x, np.exp(v)), *limit, sign)
+    extreme = sign * max(best, at_limit)
+    band = nb.cb(x, on=on, method="lr")
+    assert band[side] == pytest.approx(extreme, rel=rtol, abs=0)
+
+
 # ---------------------------------------------------------------------------
 # ExpoWeibull: valleys to alpha -> 0 and to beta -> infinity
 # ---------------------------------------------------------------------------
@@ -617,6 +765,40 @@ def test_lr_band_of_the_uniform_follows_the_support_edge():
     # The profile bound on a ends at the smallest observation.
     lo, hi = model.param_cb("a", method="lr")
     assert lo < hi == model.params[0] == 2.411
+
+
+@pytest.mark.parametrize("alpha", [0.01, 0.05, 0.2])
+def test_lr_band_of_the_uniform_is_the_extreme_of_its_triangle(alpha):
+    # On exact data the likelihood is (b - a)^-n for a <= min(x) = m and
+    # b >= max(x) = M, so the region is the triangle {a <= m, b >= M,
+    # b - a <= W}, W = (M - m) exp(crit / 2n). The sf is a ratio of
+    # functions linear in a and b, and the hazard and density depend on
+    # b - x and b - a alone, so each extreme is at one of its three
+    # corners. The bands stopped inside it by up to 3e-9; taken onto the
+    # region's boundary they are its extremes to rounding at 95% and
+    # 80%, and at 99% to the 1e-11 the parameters' bounds, which make the
+    # searches' box, are solved to.
+    model = fresh_conformance_fit("Uniform")
+    d = CASE_BY_NAME["Uniform"].data()
+    assert np.all(d["c"] == 0)
+    n = int(np.sum(d["n"]))
+    m, M = float(np.min(d["x"])), float(np.max(d["x"]))
+    crit = z(1.0 - alpha / 2.0) ** 2
+    W = (M - m) * np.exp(crit / (2.0 * n))
+    corners = [(m, M), (m, m + W), (M - W, M)]
+    x = np.array([3.2, 8.0, 14.6])
+    for on in ("sf", "Hf", "hf", "df"):
+        band = no_warnings(model.cb, x, on=on, alpha_ci=alpha, method="lr")
+        f = getattr(model.dist, on)
+        at = np.array(
+            [[f(np.array([t]), a, b)[0] for a, b in corners] for t in x]
+        )
+        exact = np.column_stack([at.min(axis=1), at.max(axis=1)])
+        np.testing.assert_allclose(band, exact, rtol=1e-10, atol=0)
+    lo_a = model.param_cb("a", alpha_ci=alpha, method="lr")[0]
+    hi_b = model.param_cb("b", alpha_ci=alpha, method="lr")[1]
+    assert lo_a == pytest.approx(M - W, rel=1e-9, abs=0)
+    assert hi_b == pytest.approx(m + W, rel=1e-9, abs=0)
 
 
 # ---------------------------------------------------------------------------

@@ -120,6 +120,39 @@ v0.29 (unreleased)
   fits rather than only to ``likelihood_ratio_test()``, which tests
   whether the covariates matter, not whether their effects stay constant.
   Each still raises ``NotImplementedError``.
+- **Likelihood-ratio bounds are taken exactly onto the region's
+  boundary.** The searches took a point up to 1e-6 of deviance outside
+  the likelihood region, or as far inside, as on its boundary, and the
+  bound was the function's value there. Each answer is now moved onto the
+  boundary from where its search ended (back onto it where it is
+  outside, then out along the function's gradient), so a bound is the
+  function's value at a point of the region. A Uniform's bands, which
+  stopped up to 3e-9 inside its region, are its extremes to rounding
+  (checked against the corners of the region, a triangle); a
+  NegativeBinomial's agree to 1e-12 with the extremes found slice by
+  slice (1e-11 where the extreme is its Poisson limit, approached only as
+  ``r -> inf``). Its 95% ``sf(8)`` lower bound, which was 3e-8 beyond the
+  extreme of that limit, is a point of the region 6e-8 short of it: down
+  that valley ``1 - p`` cannot be resolved in doubles finely enough to go
+  further. Where the step back onto the boundary would lose an
+  ExpoWeibull's narrowing valley, the answer is kept as found. Other
+  likelihood-ratio bounds move in their last digits.
+- **Faster likelihood-ratio bounds where the region runs down an edge
+  valley.** The check that a search's answer is the extreme stops at the
+  first of its two searches that finds the region going further (the one
+  from the estimate now goes first: the one from beside a slice's extreme
+  far down a NegativeBinomial's valley took up to 0.9 s to find nothing);
+  an answer from the probes down the valleys that checks out and is as
+  far out as every point of the region known is taken without the further
+  searches from the estimate and the walks' tips, which found the same
+  extreme; the walks out to a parameter's bounds at several levels solve
+  the steps they share once (each level's bounds are the same to the
+  bit); and the NegativeBinomial's likelihood evaluates its log-gamma
+  ratios in plain numpy where nothing is traced (18% faster an
+  evaluation, the same to the bit). The conformance registry's
+  likelihood-ratio sweeps take 58 s rather than 150 s for the
+  NegativeBinomial and 399 s rather than 549 s for the ExpoWeibull (one
+  process, the same machine).
 
 **Deprecated.**
 
