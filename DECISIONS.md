@@ -13,6 +13,20 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-17
+
+### Dynamic accuracy of predictions made at an age (17 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| New names in `surpyval.metrics` -- `dynamic_auc`, `dynamic_brier`, `dynamic_calibration`, returning `DynamicAccuracy` / `DynamicCalibration` -- rather than an `at=` argument on `auc_td` / `brier_score`. They take the model and the data (`model, data, at, horizon`), not a matrix of predictions. | proposed | The prediction means something else: a chance made at an age from what was known then, scored only on the units at risk then; `auc_td` takes `S(t | Z)` from age 0. Taking the model lets the functions make each unit's prediction from its readings up to the age (never after), and refit under cross-validation. | done |
+| The estimates are `auc_td` / `brier_score` (and the standard errors and paired comparisons of `score_predictions`) applied to the units at risk at `s`, at the horizon `s + w`. The censoring survival is the reverse Kaplan-Meier of those units, which equals the full sample's `G(t) / G(s)` for `t > s`. | proposed | One set of censoring weights in the package (events-first ties, `1 / G(x_i-)`), and the published dynamic estimators (Rizopoulos 2011; Blanche et al. 2015) are these on the at-risk set. A calibration study (200 data sets, 30% censored, true model) puts the mean estimates within Monte Carlo error of the closed-form truth. | done |
+| "At risk at `s`" is entered by `s` (`tl <= s`) and failed or censored after `s` (`x > s`); readings at age `s` count as known at `s`. A unit censored inside the window (by `s + w`) is neither case nor control. | proposed | The same rule as `landmark` (a reading at the landmark is known at the landmark). | done |
+| `model` may be one model or a dict of named models, all scored on the same units; a unit with no prediction from any model (a landmark model with no reading by `s`) is left out of every model's scores at that age, with one warning counting them. | proposed | A paired comparison needs the same units; principle 22. | done |
+| `cross_validate=k` takes the fitters in `model`: a fitter's `fit(data)` (given `data.without("m")` where `fit` takes no readings, so `Weibull` is an age-only baseline as it stands), `LandmarkCox` itself (fitted at the ages `at` with the window `horizon`), or a function of the data. Units are split at random into `k` groups (`random_state`, principle 19); a row counted `n` stays in one group. A fitted model with `cross_validate`, or a fitter without it, is refused saying which to give. | proposed | Honest numbers need units the model was not fitted to; refitting needs the fitter. | done |
+| `alpha_ci` defaults to 0.05, as everywhere in the package; the result prints the level ("Intervals: 95% two-sided"), and the docs show `alpha_ci=0.1` for 90%. | principle | Principle 21 (checked by `conformance/test_options.py`). | done |
+| Calibration's observed share is one minus each group's Kaplan-Meier survival from `s` to `s + w`, with Greenwood's interval on the log(-log) scale (`nan` where nothing, or everything, failed). `bins` is a number of groups of about equal size (default 10; quantile edges, fewer where predictions tie) or edges from 0 to 1. | proposed | Kaplan-Meier within the group needs no censoring model across groups and is the share failed without censoring. | done |
+| Not done here: reference values from R (`JM::aucJM`, `prederrJM`, `JMbayes2::tvAUC` / `tvBrier` on PBC). R is not available where this was built. | proposed | To be added as a reference test where R can be run. | open |
 ## 2026-11-18
 
 ### Likelihood-ratio and bootstrap bounds of a joint competing-risks fit (18 Nov 2026)

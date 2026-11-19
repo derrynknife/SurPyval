@@ -5,6 +5,35 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **How good are dynamic predictions: accuracy at an age, over a window.**
+  ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
+  ``dynamic_calibration`` (also importable from ``surpyval``) score a
+  model's chance that a unit still running at an age ``s`` fails within
+  the next ``w``, made from what was known at ``s``: a joint model's
+  readings up to ``s`` (never those after), a ``LandmarkCox``'s covariates
+  and last readings then, or the age alone for a distribution or a
+  regression fit. At each age of ``at``, among the units at risk then:
+  the AUC (does a unit that failed in the window get a higher chance than
+  one that did not?), the Brier score (the mean squared error of the
+  chances) and a calibration table (each group's mean chance beside the
+  share that failed, by Kaplan-Meier, with an interval). Units censored
+  inside the window are handled by inverse-probability-of-censoring
+  weights from the units at risk at ``s`` (Rizopoulos 2011; Blanche et
+  al. 2015), the same weights as ``auc_td`` and ``brier_score``; with no
+  censoring inside the window the numbers are the plain AUC and mean
+  squared error. A dict of models (a joint model against a Weibull of the
+  ages alone, say) is scored on the same units, with standard errors,
+  intervals and paired comparisons (difference, interval, p-value) from
+  ``score_predictions``. ``cross_validate=k`` (with ``random_state``)
+  splits the units into ``k`` groups and predicts each from the model
+  refitted without it: give the fitters (``WeibullJointPH``, ``Weibull``,
+  ``LandmarkCox`` or a function of the data). The results,
+  ``DynamicAccuracy`` and ``DynamicCalibration``, print what they measure
+  in words and the interval level, and write strict JSON (``to_dict`` /
+  ``from_dict``). Checked by hand-worked examples, against the plain
+  window outcomes, and by a calibration study (200 data sets, 30%
+  censored: mean estimates within Monte Carlo error of the true values).
+  See "How good are the predictions" in :doc:`Joint Models`.
 - **Likelihood-ratio and bootstrap bounds for a parametric competing-risks
   fit to inspection data.** A ``ParametricCompetingRisks`` model fitted to
   left- or interval-censored rows (its causes fitted together) now takes
