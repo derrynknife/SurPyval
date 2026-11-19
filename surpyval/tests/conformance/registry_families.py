@@ -225,6 +225,7 @@ DECLARED_ATTRIBUTES = frozenset(
         "surpyval.AdditiveHazardsModel",
         "surpyval.AalenAdditiveModel",
         "surpyval.BuckleyJamesModel",
+        "surpyval.QuantileRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
     }
@@ -304,6 +305,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     ),
     "surpyval.BuckleyJamesModel": (
         "the Buckley-James estimating equations, by iterated least squares"
+    ),
+    "surpyval.QuantileRegressionModel": (
+        "censored quantile regression's estimating equations, a linear "
+        "programme at each level of a grid"
     ),
     "surpyval.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
@@ -867,6 +872,40 @@ def _beta(model):
     return model.beta
 
 
+def _coefs(model):
+    """A quantile regression's coefficients, a row per level."""
+    return model.coefs
+
+
+def _fixed_method(case, method):
+    """``case`` (a regression) with ``method=`` given to every fit, its
+    refits marked slow."""
+    fitter = sp.QuantileRegression
+
+    def from_df(d, formula=False):
+        cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+        df = pd.DataFrame(d["Z"], columns=cols)
+        df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+        covariates = (
+            {"formula": " + ".join(cols)} if formula else {"Z_cols": cols}
+        )
+        return fitter.fit_from_df(
+            df, x_col="x", c_col="c", n_col="n", method=method, **covariates
+        )
+
+    return replace(
+        case,
+        name=f"{case.name}[{method}]",
+        fitters=(),
+        fit=_fit(fitter, method=method),
+        paths={
+            "fit_from_df": from_df,
+            "formula": functools.partial(from_df, formula=True),
+        },
+        slow=REFIT_PROPERTIES,
+    )
+
+
 # Parametric regression: every kind with every baseline is registered, and
 # every case gets the properties that need no refit. The refitting ones run
 # on a pull request for the Weibull baseline of each kind (a scale family)
@@ -1222,6 +1261,22 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    qr = regression(
+        "QuantileRegression",
+        sp.QuantileRegression,
+        model_class="surpyval.QuantileRegressionModel",
+        functions=("sf", "ff", "Hf"),
+        exclude={
+            "df_hf_sf": "QuantileRegressionModel has no hf or df: its "
+            "distribution is a step function read from the quantiles",
+            "random_sf": NO_RANDOM,
+        },
+        draw=None,
+        rtol=1e-6,
+        coefficients=_coefs,
+        intercept=True,
+    )
+    portnoy = _fixed_method(qr, "portnoy")
     po = regression(
         "ProportionalOdds",
         sp.ProportionalOdds,
@@ -1326,6 +1381,8 @@ def _semi_parametric():
         cox_me,
         ah,
         bj,
+        qr,
+        portnoy,
         po,
         aalen,
         interval_cox,

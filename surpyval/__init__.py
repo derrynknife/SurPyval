@@ -221,6 +221,8 @@ _LAZY = {
             "ProportionalOdds",
             "ProportionalOddsFitter",
             "ProportionalOddsModel",
+            "QuantileRegression",
+            "QuantileRegressionModel",
             "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",

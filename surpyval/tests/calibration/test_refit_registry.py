@@ -1619,6 +1619,17 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
+    **dict.fromkeys(
+        ("QuantileRegression", "QuantileRegression[portnoy]"),
+        "the quantile process fitted to the fixture's 30 rows is constant "
+        "over runs of levels, so each row's distribution is a step function "
+        "with jumps of up to 0.17: data drawn from it are tied at those "
+        "steps, a refit's steps fall beside the truth's, and the curve check, "
+        "read at the data's own times, sees a whole jump (0.09 at worst over "
+        "40 refits of 300, with the plan of BuckleyJames). Recovery of the "
+        "coefficient process from continuous data with known quantiles is "
+        "tested in tests/univariate/regression/test_quantile_regression.py",
+    ),
     "Hypoexponential": _NO_DATA,
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,

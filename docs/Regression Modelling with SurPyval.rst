@@ -37,8 +37,8 @@ data arguments and how predictions pair times with covariates). Second, the
 *semi-parametric* models, which leave the baseline to the data: the Cox model
 with its whole toolkit — tied times, delayed entry, DataFrames and formulas,
 time-varying covariates, the proportional-hazards check, robust errors and
-strata — then its accelerated-time counterpart Buckley-James and the
-additive-hazards model. Third, the *parametric* families — proportional
+strata — then its accelerated-time counterpart Buckley-James, censored
+quantile regression and the additive-hazards model. Third, the *parametric* families — proportional
 hazards, accelerated failure time, proportional odds, their confidence bounds,
 accelerated life testing, time-varying covariates across families and shared
 frailty. Fourth, drawing what a fitted model says a covariate does, choosing
@@ -64,6 +64,10 @@ below points straight to the section that answers it.
        distribution assumed
      - `Accelerated Failure Time (AFT)`_,
        `Semi-Parametric — Buckley-James (AFT)`_
+   * - see how a covariate changes a quantile itself (the B10, the median),
+       with no PH or AFT assumption
+     - ``QuantileRegression``
+     - `Semi-Parametric — Censored Quantile Regression`_
    * - carry accelerated-test results to use conditions through a physical
        stress-life law
      - ``AcceleratedLife(Weibull, life_models.Exponential)``, ...
@@ -1551,6 +1555,154 @@ single covariate row and returns the curve at every time given:
 
 ``BuckleyJames.fit_from_df`` accepts ``Z_cols`` or a ``formula``, exactly as the
 other families do.
+
+
+Semi-Parametric — Censored Quantile Regression
+----------------------------------------------
+
+Every model above says how a covariate changes the whole distribution
+through one number: a hazard ratio, a time ratio. A reliability question is
+often about one quantile -- *how does the load change the B10 life?* -- and
+a covariate need not act on the early failures as it acts on the median: a
+harsh environment can widen the spread of the lives as well as shorten them.
+Censored quantile regression models the quantiles directly. For each level
+:math:`\tau`,
+
+.. math::
+
+    \log Q_T(\tau \mid Z) = \beta_0(\tau) + \beta(\tau)' Z,
+
+with coefficients of its own at every level and no proportional hazards or
+accelerated failure time assumption (an AFT model is the special case where
+the slopes are the same at every level). :math:`e^{\beta_k(\tau)}` is the
+factor by which a unit of covariate :math:`k` multiplies the :math:`\tau`
+quantile: above 1 it lengthens that life.
+
+Here the load shortens the median life by a factor :math:`e^{-0.4}` per unit,
+but it also widens the spread, so its effect on the B10 life is stronger,
+:math:`-0.4 - 0.15 \times 1.28 \approx -0.59` on the log scale; the coating
+lengthens every quantile by the same :math:`e^{0.3}`. The test is stopped at
+40 hours.
+
+.. jupyter-execute::
+
+    from surpyval import QuantileRegression
+
+    rng = np.random.default_rng(1)
+    load = rng.uniform(0, 2, 400)
+    coated = rng.integers(0, 2, 400)
+    life = np.exp(
+        3.0 - 0.4 * load + 0.3 * coated
+        + (0.25 + 0.15 * load) * rng.normal(size=400)
+    )
+    x_qr = np.minimum(life, 40.0)
+    c_qr = (life > 40.0).astype(int)
+    Z_qr = np.column_stack([load, coated])
+
+    qr = QuantileRegression.fit(x_qr, Z_qr, c=c_qr)
+    qr
+
+The printout gives the coefficients at five levels. The load's coefficient
+runs from about -0.65 at the B10 to -0.2 at the 90th percentile: it hurts the
+early failures most. A log-normal AFT model has one coefficient for the load,
+about -0.43, right for the median but not for the tails: it puts the B10 of
+an unloaded unit at 11.4 hours, against a true 14.6, where the quantile
+regression has 14.9.
+
+.. jupyter-execute::
+
+    from scipy.stats import norm
+
+    print(qr.coefficients([0.1, 0.5, 0.9]).round(3))
+    aft = surv.LogNormalAFT.fit(x_qr, Z_qr, c=c_qr)
+    rows = [[0.0, 0], [2.0, 0]]
+    loads = np.array([0.0, 2.0])
+    true_b10 = np.exp(3.0 - 0.4 * loads + (0.25 + 0.15 * loads) * norm.ppf(0.1))
+    print("B10 by quantile regression:", qr.qf(0.1, rows).round(2))
+    print("B10 by log-normal AFT:     ", aft.qf(0.1, rows).round(2))
+    print("true B10:                  ", true_b10.round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = qr.coefficients([0.1, 0.5, 0.9])
+    assert round(_b[0, 1], 2) == -0.65 and round(_b[2, 1], 1) == -0.2, _b
+    assert round(-aft.params[2], 2) == -0.43, aft.params
+    _qr10, _aft10 = qr.qf(0.1, rows), aft.qf(0.1, rows)
+    assert round(_aft10[0], 1) == 11.4 and round(true_b10[0], 1) == 14.6
+    assert round(_qr10[0], 1) == 14.9, _qr10
+
+The whole coefficient process shows the same thing: the load's effect
+weakens steadily up the distribution, while the coating's stays around 0.3.
+``model.taus`` are the levels fitted, ``model.intercepts`` the intercept at
+each and ``model.coefs`` the coefficients, a row per level.
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots()
+    ax.step(qr.taus, qr.coefs[:, 0], where="post", label="load")
+    ax.step(qr.taus, qr.coefs[:, 1], where="post", label="coated")
+    ax.axhline(-aft.params[2], ls="--", color="grey", label="AFT, load")
+    ax.set_xlabel("Quantile level")
+    ax.set_ylabel("Coefficient (log time)")
+    ax.legend();
+
+There is no closed-form standard error, so the intervals are percentile
+bootstrap intervals: the units are resampled, the process refitted, and the
+percentiles of the refits taken. ``summary(tau, n_boot=...)`` tabulates
+one level with two-sided intervals (here 90%), and ``quantile_cb`` bounds a
+quantile itself: the one-sided 90% lower bound on the B10 life at no load
+and at full load. Calls with the same ``n_boot`` and integer
+``random_state`` share one set of refits.
+
+.. jupyter-execute::
+
+    b10_lower = qr.quantile_cb(
+        0.1, rows, alpha_ci=0.1, bound="lower", n_boot=100, random_state=1
+    )
+    print("B10:", qr.qf(0.1, rows).round(2))
+    print("90% lower bound:", b10_lower.round(2))
+    qr.summary(0.1, alpha_ci=0.1, n_boot=100, random_state=1)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _table = qr.summary(0.1, alpha_ci=0.1, n_boot=100, random_state=1)
+    assert (_table["coef upper 90%"].iloc[1] < -0.4), _table
+    assert np.all(b10_lower < qr.qf(0.1, rows)), b10_lower
+
+The upper end of the load's 90% interval at the B10 is below -0.4, the
+median's coefficient: the data say the load acts more strongly on the early
+failures than on the median.
+
+A few things to know:
+
+- **The estimators.** ``method="peng-huang"`` (the default) solves Peng and
+  Huang's (2008) martingale estimating equations; ``method="portnoy"`` is
+  Portnoy's (2003) recursively reweighted quantile regression. Both are R's
+  ``quantreg::crq`` methods and agree closely when the censoring does not
+  depend on the covariates; with no covariates they are the Nelson-Aalen
+  and Kaplan-Meier quantiles. Both are fitted on a grid of levels,
+  ``step=0.01`` by default; a finer grid follows the estimator more
+  closely, at a linear programme per level.
+- **How far up it goes.** The process stops at ``model.tau_max``, the last
+  level at which some units' quantile is still within the data. Where the
+  censoring is heavy, a level near ``tau_max`` may be within the data only
+  for the units most at risk, and the linear model carries it to the
+  others: read high quantiles with care, and look at the bootstrap
+  intervals. Above ``tau_max`` ``qf`` is ``nan`` and ``ff`` holds
+  ``tau_max``.
+- **Predictions.** ``ff``, ``sf`` and ``Hf`` are those of the step
+  distribution each unit's quantiles give (rearranged into order where the
+  fitted quantiles of two levels cross), so they and ``qf`` agree; the model
+  has no density or hazard rate. Rows of ``Z`` pair with the times as in
+  the other regression models.
+- **What it takes.** Observed and right-censored lives (``c`` of 0 or 1),
+  positive times and counts ``n``; ``fit_from_df`` takes ``Z_cols`` or a
+  ``formula``. It has no likelihood, so no ``aic()``; compare it with other
+  models on their predictions.
 
 
 Semi-Parametric — Additive Hazards

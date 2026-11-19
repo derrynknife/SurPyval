@@ -105,7 +105,14 @@ LINE = (
 
 
 @pytest.mark.parametrize(
-    "fitter", [sp.CoxPH, sp.WeibullPH, sp.WeibullAFT, sp.BuckleyJames]
+    "fitter",
+    [
+        sp.CoxPH,
+        sp.WeibullPH,
+        sp.WeibullAFT,
+        sp.BuckleyJames,
+        sp.QuantileRegression,
+    ],
 )
 def test_regression_printout_has_the_data_line(rossi, fitter):
     x, Z, c = rossi

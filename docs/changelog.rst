@@ -5,6 +5,28 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Censored quantile regression.** ``QuantileRegression`` models the
+  quantiles of the time to an event directly, ``log Q(tau | Z) = b0(tau) +
+  b(tau)'Z`` with coefficients of their own at every level, so a
+  covariate's effect on the B10 life can differ from its effect on the
+  median, with no proportional hazards or accelerated failure time
+  assumption. Right-censored data are fitted by Peng and Huang's (2008)
+  martingale estimating equations (``method="peng-huang"``, the default)
+  or Portnoy's (2003) recursively reweighted quantile regression
+  (``method="portnoy"``), on a grid of levels (``step=0.01``), as R's
+  ``quantreg::crq`` fits them. The model's ``coefficients(tau)``,
+  ``taus`` / ``intercepts`` / ``coefs`` (the whole process) and
+  ``summary(tau)`` give the effects; ``qf(p, Z)`` the B-life of each
+  covariate row, and ``ff``, ``sf``, ``Hf`` the step distribution its
+  quantiles make (rearranged where two levels cross). Bounds are case
+  bootstrap percentile intervals: ``bootstrap_ci(tau)``,
+  ``summary(tau, n_boot=...)``, ``quantile_cb(p, Z, bound=...)`` and
+  ``cb(x, Z, on=...)``. ``fit_from_df`` takes columns or a formula;
+  ``to_dict`` / ``from_dict`` keep the data, so a restored model still
+  bootstraps. Checked against ordinary quantile regression (no censoring),
+  the Kaplan-Meier and Nelson-Aalen quantiles (no covariates) and the true
+  coefficients of simulated data. See "Semi-Parametric — Censored Quantile
+  Regression" in :doc:`Regression Modelling with SurPyval`.
 - **How good are dynamic predictions: accuracy at an age, over a window.**
   ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
   ``dynamic_calibration`` (also importable from ``surpyval``) score a
