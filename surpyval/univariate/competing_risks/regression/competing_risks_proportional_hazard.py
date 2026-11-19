@@ -1036,7 +1036,8 @@ class CompetingRisksProportionalHazards(
         no covariance, standard errors, bounds or p-values (they raise an
         error that says why; ``summary()`` shows them as ``nan``), and its
         ``aic`` and ``bic`` count the causes' effective degrees of freedom.
-        The Fine-Gray model has no penalised fit.
+        The Fine-Gray model's penalised fit is ``FineGray.fit_penalised``,
+        one cause at a time.
 
         Parameters
         ----------

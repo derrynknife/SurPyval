@@ -120,6 +120,7 @@ from .._fit_skeleton import (
     baseline_at_origin_error,
     covariate_center,
 )
+from .._penalised import PenalisedModelMixin
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -512,6 +513,7 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
+    PenalisedModelMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
@@ -837,7 +839,11 @@ class ProportionalOddsModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def _ic_k(self) -> int:
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective degrees of freedom.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         # The estimated coefficients; the baseline is profiled out, as a
         # Cox model's is (an aliased coefficient, nan, is not counted).
         return int(np.isfinite(np.asarray(self.params, dtype=float)).sum())
@@ -864,7 +870,9 @@ class ProportionalOddsModel(
         return self._se
 
     def _require_covariance(self) -> npt.NDArray:
-        """The covariance, refused for a model built by with_params."""
+        """The covariance, refused for a penalised fit and for a model
+        built by with_params."""
+        self._refuse_if_penalised()
         if self._covariance is None:
             raise no_covariance_error(
                 "it was built from coefficients with with_params; use the "
@@ -1093,6 +1101,8 @@ class ProportionalOddsModel(
         check_alpha_ci(alpha_ci)
         from .._likelihood_ratio import is_lr, profile_interval
 
+        # No bound of either kind on a penalised estimate.
+        self._refuse_if_penalised()
         lr = is_lr(method)
         names = self.parameter_names
         if name not in names:
@@ -1235,9 +1245,14 @@ class ProportionalOddsModel(
                     np.array2string(self._center(), separator=", ")
                 )
             )
+        out += self._penalty_printout()
         out += (
             "\nCoefficients        : exp(coef) is the survival odds ratio; "
-            "Wald 95% intervals\n"
+            + (
+                "no intervals\n"
+                if self.penalty is not None
+                else "Wald 95% intervals\n"
+            )
         )
         return out + coefficient_repr(self.summary()) + "\n"
 
@@ -1289,6 +1304,7 @@ class ProportionalOddsModel(
             out["center"] = self._center().tolist()
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        out.update(self._penalty_entry())
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -1331,6 +1347,7 @@ class ProportionalOddsModel(
         out.n_iter = int(model_dict.get("n_iter", 0))
         out.maximum = restored_maximum(model_dict)
         out._data_summary = model_dict.get("data_summary")
+        out._restore_penalty(model_dict)
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -1483,25 +1500,11 @@ class ProportionalOdds_(FitterRepr):
         cov = np.full((p, p), np.nan)
         cov[np.ix_(kept, kept)] = cov_k
 
-        # The baseline odds jumps, fitted at the means, moved to Z = 0
-        # unless center=True; then laid on every distinct observed time
-        # (0 where there is no event), as CoxPH's baseline is.
         gamma_full = np.zeros(p)
         gamma_full[kept] = gamma
-        log_g = u
-        if center:
-            model_center = mean
-        else:
-            log_g = _baseline_at_origin(
-                u, -float(gamma_full @ mean), Z @ gamma_full, mean
-            )
-            model_center = np.zeros(p)
-        times = np.unique(x)
-        at = np.searchsorted(times, lik.t)
-        g0 = np.zeros(times.size)
-        g0[at] = np.exp(log_g)
-        d = np.zeros(times.size)
-        d[at] = lik.d
+        times, g0, d, model_center = _placed_baseline(
+            x, lik, u, gamma_full, mean, Z, center
+        )
 
         model = ProportionalOddsModel()
         model.beta = beta
@@ -1517,6 +1520,173 @@ class ProportionalOdds_(FitterRepr):
         model.log_likelihood = float(der["value"])
         model.n_iter = int(n_iter)
         model.maximum = maximum
+        model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
+        return model
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-9,
+        center: bool = False,
+        w: npt.ArrayLike | float | None = None,
+    ) -> ProportionalOddsModel:
+        """
+        Fit the semi-parametric proportional odds model with a ridge,
+        lasso or elastic-net penalty on the coefficients: for many
+        covariates, or correlated ones.
+
+        The fit minimises the negative *profile* log-likelihood of
+        :meth:`fit`, :math:`-p\\ell(\\beta) = -\\max_g \\ell(\\beta, g)`
+        (the baseline odds maximised out at each ``beta``), divided by
+        the number of units ``N`` (the sum of ``n``), plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} b_j^2
+            + a |b_j| \\right),
+
+        with :math:`\\lambda_j` the ``penalizer``, :math:`a` the
+        ``l1_ratio`` and :math:`b_j` the coefficient of covariate ``j``
+        divided by its standard deviation (``standardise=True``), as every
+        penalised fit in SurPyval (see ``CoxPH.fit_penalised``). The
+        profile's gradient and Hessian are exact (the gradient at the
+        solved baseline, and the Schur complement of the observed
+        information), so the solver's Newton polish and its check of the
+        optimality conditions are those of the other penalised fits. The
+        baseline is the one that maximises the likelihood at the
+        penalised coefficients. With no penalty it is the fit of
+        :meth:`fit`.
+
+        The model predicts as the fit's does, but has no covariance,
+        standard errors, bounds or p-values: penalised estimates are
+        biased towards 0 by design, and intervals from them would not have
+        their stated coverage; those calls raise an error that says so
+        (``summary()`` shows them as ``nan``). Its ``aic`` and ``bic``
+        count the effective degrees of freedom.
+
+        Parameters
+        ----------
+        x, Z, c, n, tl, center
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves a coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default) penalises the coefficients of the
+            covariates divided by their standard deviations (count-
+            weighted, divisor ``N``, as glmnet), so the penalty does not
+            depend on their units; the coefficients are reported on the
+            covariates' own scale either way.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : None
+            Weights are refused: :meth:`fit` takes none either.
+
+        Returns
+        -------
+        ProportionalOddsModel
+            The fitted model, with ``penalty`` (the ``penalizer`` per
+            column, ``l1_ratio``, ``standardise``, the columns' ``scale``
+            and the effective degrees of freedom).
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
+        >>> model = ProportionalOdds.fit_penalised(
+        ...     df["week"], df[cols], c=1 - df["arrest"], penalizer=0.02,
+        ...     l1_ratio=1,
+        ... )
+        >>> model.beta.round(3)
+        array([ 0.209,  0.038, -0.06 ,  0.215,  0.219,  0.   , -0.079])
+        """
+        from .._penalised import (
+            PenalisedObjective,
+            penalised_fit,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        x, c, n, tl, Z = _validate(x, Z, c, n, tl)
+        p = Z.shape[1]
+        mean = covariate_center(Z, n)
+        Zc = Z - mean
+        inner_tol = min(tol, 1e-10) * 1e-2
+
+        def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+            # The profile likelihood of the covariates divided by their
+            # scale, over N; each baseline solved from the last one.
+            lik = _POLikelihood(x, c, n, tl, Zc / scale)
+            last: dict[str, Any] = {"u": lik.start(x, n, tl), "b": None}
+
+            def solved(b: npt.NDArray) -> dict:
+                b = np.asarray(b, dtype=float)
+                if last["b"] is None or not np.array_equal(b, last["b"]):
+                    with np.errstate(all="ignore"):
+                        u, der = _inner(lik, -b, last["u"], inner_tol)
+                    if np.all(np.isfinite(u)):
+                        last["u"] = u
+                    last.update(b=b.copy(), der=der, S=None)
+                return last
+
+            def hessian(b: npt.NDArray) -> npt.NDArray:
+                state = solved(b)
+                if state["S"] is None:
+                    state["S"] = _safe_schur(lik, state["der"])
+                return state["S"] / N
+
+            # The coefficients are beta = -gamma: the gradient of -pl/N in
+            # beta is the profile's gradient in gamma over N, and its
+            # Hessian the profile information (the Schur complement) over
+            # N.
+            return PenalisedObjective(
+                lambda b: -float(solved(b)["der"]["value"]) / N,
+                lambda b: np.asarray(solved(b)["der"]["grad_gamma"]) / N,
+                hessian,
+                np.zeros(p),
+            )
+
+        fit = penalised_fit(
+            build, Z, n, np.arange(p), penalizer, l1_ratio, standardise, tol
+        )
+        res = fit.result
+        if not res.verified:
+            warn_unverified("The penalised ProportionalOdds fit")
+        beta = fit.coefficients
+        lik = _POLikelihood(x, c, n, tl, Zc)
+        with np.errstate(all="ignore"):
+            u, der = _inner(lik, -beta, lik.start(x, n, tl), inner_tol)
+        times, g0, d, model_center = _placed_baseline(
+            x, lik, u, -beta, mean, Z, center
+        )
+
+        model = ProportionalOddsModel()
+        model.beta = beta.copy()
+        model.params = beta.copy()
+        model._se = np.full(p, np.nan)
+        model._covariance = None
+        model.p_values = np.full(p, np.nan)
+        model.x = times
+        model.d = d
+        model.g0 = g0
+        model.G0 = np.cumsum(g0)
+        model.center = model_center
+        model.log_likelihood = float(der["value"])
+        model.maximum = "verified" if res.verified else "unverified"
+        model.penalty = fit.penalty
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
@@ -1578,6 +1748,36 @@ class ProportionalOdds_(FitterRepr):
             tol=tol,
             center=center,
         )
+
+
+def _placed_baseline(
+    x: npt.NDArray,
+    lik: _POLikelihood,
+    u: npt.NDArray,
+    gamma: npt.NDArray,
+    mean: npt.NDArray,
+    Z: npt.NDArray,
+    center: bool,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The model's baseline from the log jumps ``u`` fitted at the
+    covariate means at the failure-odds coefficients ``gamma`` (one per
+    column, 0 where aliased): ``(times, g0, d, center)``, moved to ``Z =
+    0`` unless ``center``, then laid on every distinct observed time (0
+    where there is no event), as CoxPH's baseline is."""
+    p = Z.shape[1]
+    log_g = u
+    if center:
+        model_center = mean
+    else:
+        log_g = _baseline_at_origin(u, -float(gamma @ mean), Z @ gamma, mean)
+        model_center = np.zeros(p)
+    times = np.unique(x)
+    at = np.searchsorted(times, lik.t)
+    g0 = np.zeros(times.size)
+    g0[at] = np.exp(log_g)
+    d = np.zeros(times.size)
+    d[at] = lik.d
+    return times, g0, d, model_center
 
 
 def _inverse_information(S: npt.NDArray) -> npt.NDArray:

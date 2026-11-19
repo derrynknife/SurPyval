@@ -10,6 +10,9 @@ maximum likelihood (Murphy, Rossini and van der Vaart, 1997). A positive
 coefficient means a longer life, as in the parametric ``PO`` family in
 :doc:`parametric`. ``ProportionalOdds`` is an instance of the fitter class
 below. Supports observed and right-censored data, with left truncation.
+``ProportionalOdds.fit_penalised`` adds a ridge, lasso or elastic-net
+penalty to the profile likelihood (see the penalised regression section of
+:doc:`/Regression Modelling with SurPyval`).
 
 .. autoclass:: surpyval.univariate.regression.proportional_odds.proportional_odds.ProportionalOdds_
    :members:

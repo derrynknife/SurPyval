@@ -1129,6 +1129,11 @@ def _overall_panels(ctx: Context) -> list[Panel]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _validate(model: Any) -> None:
+    from surpyval.univariate.regression._penalised import refuse_if_penalised
+
+    # A penalised fit has no p-values; the message is the one its
+    # covariance gives.
+    refuse_if_penalised(model)
     cox = _is_cox(model)
     fitter = "CoxFrailty" if cox else frailty_fitter_name(model)
     if getattr(model, "_fit_data", None) is None:
