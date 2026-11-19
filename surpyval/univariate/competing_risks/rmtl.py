@@ -9,6 +9,10 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+    survival_before,
+)
 from surpyval.utils.validation import check_alpha_ci
 
 
@@ -87,8 +91,8 @@ def aalen_johansen_rmtl(
         p_k = np.where(r > 0, d_k / r, 0.0)
     p_o = p - p_k
     S = np.cumprod(1.0 - p)
-    S_prev = np.concatenate([[1.0], S[:-1]])
-    F = np.cumsum(S_prev * p_k)
+    S_prev = survival_before(S)
+    F = np.cumsum(aalen_johansen_iif(S, p_k))
     # The area under the step incidence from each time to tau.
     upper = np.append(x[1:], tau)
     A = np.cumsum((F * (upper - x))[::-1])[::-1]
