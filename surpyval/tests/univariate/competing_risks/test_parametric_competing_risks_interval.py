@@ -331,10 +331,153 @@ def test_net_bound_is_the_cause_block(model):
     np.testing.assert_array_equal(
         model.models[1].covariance(), model.covariance()[:2, :2]
     )
-    with pytest.raises(ValueError, match="use method='wald'"):
-        model.cb(5.0, 1, on="sf", method="lr")
-    with pytest.raises(ValueError, match="use method='wald'"):
-        model.cb(5.0, 1, on="sf", method="bootstrap")
+
+
+# ---------------------------------------------------------------------------
+# Likelihood-ratio and bootstrap bounds on a cause's net functions
+# ---------------------------------------------------------------------------
+LR_TIMES = np.array([1.0, 4.0, 8.0, 15.0])
+
+
+def test_lr_net_bound_with_one_cause_is_the_univariate_lr_bound():
+    # One cause: the joint likelihood is the univariate interval-censored
+    # likelihood, so the profile bounds are the univariate fit's.
+    x, c = _inspected()
+    e = np.where(CAUSE == 0, None, "fail").astype(object)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = ParametricCompetingRisks.fit(x, e, c=c, dist=Weibull)
+        uni = Weibull.fit(x=x, c=c)
+        for on in ("sf", "ff", "Hf"):
+            for bound in ("two-sided", "lower", "upper"):
+                np.testing.assert_allclose(
+                    model.cb(
+                        LR_TIMES, "fail", on=on, bound=bound, method="lr"
+                    ),
+                    uni.cb(LR_TIMES, on=on, bound=bound, method="lr"),
+                    rtol=1e-5,
+                    err_msg=f"{on} {bound}",
+                )
+
+
+def test_lr_net_bound_is_on_the_edge_of_the_profile_likelihood(model):
+    # The bounds on cause 1's net cumulative hazard at t, checked by an
+    # independent profile: hold H_1(t) at a value (the scale given by the
+    # shape), maximise over the other three parameters, and read the
+    # deviance. At each bound it is the critical value 1.96^2; halfway to
+    # the estimate it is below it.
+    from scipy.optimize import minimize
+
+    t = 8.0
+    lo, hi = model.cb(t, 1, on="Hf", method="lr")
+    H_hat = float(model.Hf(t, event=1))
+    assert lo < H_hat < hi
+    data = model._joint_state["data"]
+    theta = model._joint_state["theta"]
+    nll_hat = joint.neg_ll(theta, data)
+
+    def deviance(H):
+        def nll(v):
+            beta1, a2, b2 = np.exp(v)
+            alpha1 = t / H ** (1.0 / beta1)
+            return joint.neg_ll(np.array([alpha1, beta1, a2, b2]), data)
+
+        v0 = np.log(theta[1:])
+        res = minimize(
+            nll,
+            v0,
+            method="Nelder-Mead",
+            options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 20000},
+        )
+        return 2.0 * (res.fun - nll_hat)
+
+    crit = norm.ppf(0.975) ** 2
+    for end in (lo, hi):
+        assert deviance(end) == pytest.approx(crit, abs=1e-4)
+        assert deviance(0.5 * (end + H_hat)) < crit - 0.5
+
+
+def test_lr_net_bounds_are_one_band_and_contain_the_estimate(model):
+    for k in (1, 2):
+        S = model.sf(LR_TIMES, event=k)
+        sf = model.cb(LR_TIMES, k, on="sf", method="lr")
+        assert np.all((sf[:, 0] < S) & (S < sf[:, 1]))
+        np.testing.assert_allclose(
+            model.cb(LR_TIMES, k, on="ff", method="lr"),
+            1.0 - sf[:, ::-1],
+            rtol=1e-10,
+        )
+        np.testing.assert_allclose(
+            model.cb(LR_TIMES, k, on="Hf", method="lr"),
+            -np.log(sf[:, ::-1]),
+            rtol=1e-10,
+        )
+        # One side at alpha is the end of the two-sided bound at 2 alpha.
+        np.testing.assert_allclose(
+            model.cb(LR_TIMES, k, on="sf", bound="lower", method="lr"),
+            model.cb(LR_TIMES, k, on="sf", alpha_ci=0.1, method="lr")[:, 0],
+            rtol=1e-6,
+        )
+        # Wider than the 90% band at 95%.
+        narrow = model.cb(LR_TIMES, k, on="sf", alpha_ci=0.1, method="lr")
+        assert np.all((sf[:, 0] < narrow[:, 0]) & (narrow[:, 1] < sf[:, 1]))
+    # Before any failure can happen there is nothing to bound.
+    np.testing.assert_array_equal(
+        model.cb([0.0], 1, on="sf", method="lr"), [[1.0, 1.0]]
+    )
+
+
+def test_bootstrap_resamples_the_units_and_refits_jointly():
+    # The first refit is the joint fit of the first resample, drawn as the
+    # docstring says: a multinomial draw of the units over the rows.
+    from surpyval.utils.rng import as_generator
+
+    x, c = _inspected()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = ParametricCompetingRisks.fit(x, E, c=c, dist=Weibull)
+    band = model.cb(
+        LR_TIMES, 1, on="sf", method="bootstrap", n_boot=20, random_state=3
+    )
+    refits = model._joint_refits[(20, 3)]
+    assert len(refits) == 20
+    drawn = as_generator(3).multinomial(X.size, np.full(X.size, 1 / X.size))
+    keep = drawn > 0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        first = ParametricCompetingRisks.fit(
+            x[keep], E[keep], c=c[keep], n=drawn[keep], dist=Weibull
+        )
+    np.testing.assert_allclose(refits[0], first.params, rtol=1e-6)
+    # The refits are reused: the other cause and other functions read them.
+    again = model.cb(
+        LR_TIMES, 1, on="ff", method="bootstrap", n_boot=20, random_state=3
+    )
+    np.testing.assert_allclose(again, 1.0 - band[:, ::-1], rtol=1e-12)
+    assert model._joint_refits[(20, 3)] is refits
+    S = model.sf(LR_TIMES, event=1)
+    assert np.all((band[:, 0] <= S) & (S <= band[:, 1]))
+    assert np.all((0 <= band) & (band <= 1))
+    # The same seed gives the same bounds from a fresh fit.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fresh = ParametricCompetingRisks.fit(x, E, c=c, dist=Weibull)
+    np.testing.assert_array_equal(
+        fresh.cb(
+            LR_TIMES, 1, on="sf", method="bootstrap", n_boot=20, random_state=3
+        ),
+        band,
+    )
+
+
+def test_lr_and_bootstrap_need_the_data(model):
+    back = ParametricCompetingRisks.from_dict(model.to_dict())
+    for method in ("lr", "bootstrap"):
+        with pytest.raises(ValueError, match="from_dict does not keep"):
+            back.cb(5.0, 1, on="sf", method=method)
+    # The cumulative incidence and the all-cause functions stay Wald.
+    with pytest.raises(ValueError, match="have Wald bounds only"):
+        model.cb(5.0, 1, method="lr")
 
 
 def test_standard_errors_and_information_criteria(model):
@@ -457,6 +600,37 @@ def test_refuses_an_infinite_upper_end():
         ParametricCompetingRisks.fit(
             [[1.0, 1.0], [2.0, np.inf], [4.0, 4.0]], [1, 1, 2], c=[0, 2, 0]
         )
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda x, Z, e, c: sp.FineGray.fit(x, Z, e, c=c),
+        lambda x, Z, e, c: sp.CompetingRisksProportionalHazards.fit(
+            x, Z, e, c=c
+        ),
+        lambda x, Z, e, c: sp.ParametricCompetingRisksRegression.fit(
+            x, Z, e, c=c
+        ),
+    ],
+    ids=[
+        "FineGray",
+        "CompetingRisksProportionalHazards",
+        "ParametricCompetingRisksRegression",
+    ],
+)
+def test_regressions_refuse_windows_saying_what_to_use(fit):
+    x, c = _inspected()
+    Z = np.linspace(-1.0, 1.0, X.size)[:, None]
+    with pytest.raises(ValueError, match=r"CoxPH\.fit\(x, Z, c=c, e=e\)"):
+        fit(x, Z, E, c)
+
+
+def test_pseudo_cif_refuses_windows_saying_what_to_use():
+    x, c = _inspected()
+    for xs in (x, x[:, 1]):
+        with pytest.raises(ValueError, match=r"CompetingRisks\.fit"):
+            sp.pseudo_cif(xs, E, 4.0, 1, c=c)
 
 
 def test_non_parametric_takes_left_censored_rows_by_the_npmle():

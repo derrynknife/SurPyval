@@ -581,3 +581,97 @@ def start(
             )
         out.append(np.ravel(np.asarray(model.params, dtype=float)))
     return np.concatenate(out)
+
+
+# -- likelihood-ratio bounds -----------------------------------------------
+
+
+def likelihood_extreme(
+    data: JointData,
+    theta: npt.NDArray,
+    value: Any,
+    rise: float,
+    side: str,
+) -> float:
+    """The smallest (``side="lower"``) or largest (``"upper"``) of
+    ``value(theta)`` over the parameters whose negative log-likelihood is
+    at most ``rise`` above its value at the maximum ``theta``: the
+    likelihood-ratio bound on ``value`` (an autograd function of every
+    cause's parameters), with ``rise`` half the chi-squared critical
+    value. Found by SLSQP in the unbounded search space, from the end of
+    the Wald interval and, failing that, from the maximum; ``nan`` where
+    neither search ends on the edge of the region."""
+    natural = _to_natural(data.bounds)
+    u_hat = _to_search(np.asarray(theta, dtype=float), data.bounds)
+    sign = 1.0 if side == "lower" else -1.0
+
+    def nll_u(u: Any) -> Any:
+        return neg_ll(natural(u), data)
+
+    def val_u(u: Any) -> Any:
+        return value(natural(u))
+
+    with np.errstate(all="ignore"):
+        limit = float(nll_u(u_hat)) + rise
+        v_hat = float(val_u(u_hat))
+    if rise <= 0:
+        return v_hat
+    nll_vg = value_and_grad(nll_u)
+    val_vg = value_and_grad(val_u)
+
+    def objective(u: npt.NDArray) -> tuple:
+        with np.errstate(all="ignore"):
+            v, g = val_vg(u)
+        if not np.isfinite(v) or not np.all(np.isfinite(g)):
+            return 1e10, np.zeros_like(u)
+        return sign * float(v), sign * np.asarray(g, dtype=float)
+
+    def slack(u: npt.NDArray) -> float:
+        with np.errstate(all="ignore"):
+            out = float(limit - nll_u(u))
+        return out if np.isfinite(out) else -1e10
+
+    def slack_grad(u: npt.NDArray) -> npt.NDArray:
+        with np.errstate(all="ignore"):
+            g = -np.asarray(nll_vg(u)[1], dtype=float)
+        return np.where(np.isfinite(g), g, 0.0)
+
+    starts = [u_hat]
+    # The end of the Wald interval of the value in the search space: the
+    # point of the quadratic region that is extreme in the value.
+    with np.errstate(all="ignore"):
+        try:
+            H = np.asarray(hessian(nll_u)(u_hat), dtype=float)
+            g = np.asarray(val_vg(u_hat)[1], dtype=float)
+            step = np.linalg.solve(H, g)
+            scale = np.sqrt(2.0 * rise / float(g @ step))
+            if np.all(np.isfinite(step)) and np.isfinite(scale):
+                starts.insert(0, u_hat - sign * scale * step)
+        except (np.linalg.LinAlgError, ValueError):
+            pass
+    constraint = {"type": "ineq", "fun": slack, "jac": slack_grad}
+    # A bound is accepted where the search ends on the edge of the region,
+    # at least as far out as the estimate.
+    tol = 1e-6 * max(1.0, rise)
+    best = np.nan
+    with ignoring_warnings(RuntimeWarning):
+        for u0 in starts:
+            res = minimize(
+                objective,
+                u0,
+                jac=True,
+                method="SLSQP",
+                constraints=[constraint],
+                options={"ftol": 1e-13, "maxiter": 500},
+            )
+            u = np.asarray(res.x, dtype=float)
+            found = sign * float(res.fun)
+            if (
+                np.all(np.isfinite(u))
+                and np.isfinite(found)
+                and abs(slack(u)) <= tol
+                and sign * (v_hat - found) >= -1e-10 * max(1.0, abs(v_hat))
+            ):
+                best = float(val_u(u))
+                break
+    return best

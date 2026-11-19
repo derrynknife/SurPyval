@@ -1934,9 +1934,11 @@ def _joint():
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
-    the area under it, or its value and slope together."""
+    the area under it, or its value and slope together; or the marker's
+    value speeds up the item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
+        "WeibullJointAFT": sp.WeibullJointAFT,
         "WeibullJointPH[slope]": sp.JointPH(sp.Weibull, link="slope"),
         "WeibullJointPH[cumulative]": sp.JointPH(
             sp.Weibull, link="cumulative"
@@ -1951,7 +1953,7 @@ def _joint():
             name,
             fitter,
             # the links are ways of calling the one public factory
-            fitters=("surpyval.WeibullJointPH",) if "[" not in name else (),
+            fitters=(f"surpyval.{name}",) if "[" not in name else (),
             model_class="surpyval.JointModel",
             data=joint_data,
             x=X_JOINT,
@@ -3499,7 +3501,9 @@ def _bounds(case):
         # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
         # its own model's cb. (Its method="lr" and "bootstrap", the
         # cause's own, are swept on the Parametric cases: the cb_transform
-        # sweep calls a per-cause bound without its cause.)
+        # sweep calls a per-cause bound without its cause. A joint fit's,
+        # over the joint likelihood, are checked in
+        # test_parametric_competing_risks_interval.py.)
         return (
             Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
             Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),

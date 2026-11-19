@@ -5,6 +5,72 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **How good are dynamic predictions: accuracy at an age, over a window.**
+  ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
+  ``dynamic_calibration`` (also importable from ``surpyval``) score a
+  model's chance that a unit still running at an age ``s`` fails within
+  the next ``w``, made from what was known at ``s``: a joint model's
+  readings up to ``s`` (never those after), a ``LandmarkCox``'s covariates
+  and last readings then, or the age alone for a distribution or a
+  regression fit. At each age of ``at``, among the units at risk then:
+  the AUC (does a unit that failed in the window get a higher chance than
+  one that did not?), the Brier score (the mean squared error of the
+  chances) and a calibration table (each group's mean chance beside the
+  share that failed, by Kaplan-Meier, with an interval). Units censored
+  inside the window are handled by inverse-probability-of-censoring
+  weights from the units at risk at ``s`` (Rizopoulos 2011; Blanche et
+  al. 2015), the same weights as ``auc_td`` and ``brier_score``; with no
+  censoring inside the window the numbers are the plain AUC and mean
+  squared error. A dict of models (a joint model against a Weibull of the
+  ages alone, say) is scored on the same units, with standard errors,
+  intervals and paired comparisons (difference, interval, p-value) from
+  ``score_predictions``. ``cross_validate=k`` (with ``random_state``)
+  splits the units into ``k`` groups and predicts each from the model
+  refitted without it: give the fitters (``WeibullJointPH``, ``Weibull``,
+  ``LandmarkCox`` or a function of the data). The results,
+  ``DynamicAccuracy`` and ``DynamicCalibration``, print what they measure
+  in words and the interval level, and write strict JSON (``to_dict`` /
+  ``from_dict``). Checked by hand-worked examples, against the plain
+  window outcomes, and by a calibration study (200 data sets, 30%
+  censored: mean estimates within Monte Carlo error of the true values).
+  See "How good are the predictions" in :doc:`Joint Models`.
+- **Likelihood-ratio and bootstrap bounds for a parametric competing-risks
+  fit to inspection data.** A ``ParametricCompetingRisks`` model fitted to
+  left- or interval-censored rows (its causes fitted together) now takes
+  ``method="lr"`` and ``method="bootstrap"`` on a cause's net ``sf``,
+  ``ff`` and ``Hf`` (``cb(x, event=k, on="sf", method=...)``), as a
+  model fitted a cause at a time does; they were refused. The
+  likelihood-ratio bound profiles the joint likelihood over every cause's
+  parameters (with one cause it is the univariate fit's bound, to 1e-5);
+  the bootstrap resamples the units with their windows and refits the
+  causes together (``n_boot``, ``random_state``; refits kept for an
+  integer seed), the bias-corrected percentile interval. In a simulation
+  of failures found at inspections (n = 300, 200 replicates) the 95%
+  likelihood-ratio bounds on each cause's net survival covered 92.5% to
+  96%. Both need the fitted data: a model restored with ``from_dict``
+  refuses them, saying to refit or use ``method="wald"``.
+- **Joint models: the links compared in one call.** Each joint model
+  fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
+  fits the fitter's model (its baseline, path model and varying path
+  parameters) with each of several links to the same data -- by default
+  the value, the slope and the cumulative area alone, and the slope and the
+  area each beside the value -- and returns a ``LinkComparison``
+  (``surpyval.univariate.joint``). Its ``table`` ranks the links by AIC,
+  AIC_c or BIC (``metric``), best first, with each link's ``k``,
+  log-likelihood, criteria, difference from the best (``delta``), weight
+  (Akaike weights for AIC), ``maximum`` and ``status``;
+  ``likelihood_ratio_tests()`` tests each nested pair (``"value"``
+  against ``"value + slope"``, ...) by twice the gain in
+  log-likelihood; ``models`` holds every fit by its link's name, and
+  ``best`` / ``best_link`` the best. Each candidate is the fit of its own
+  link to the last digit. The data and options are those of ``fit``; a
+  ``marker_reference`` goes to the links that follow the value only. A fit
+  that is not a verified maximum is shown but neither ranked nor tested,
+  and a link that cannot be fitted is listed with the reason, each said in
+  one warning; a warning every fit gives about the data is given once. A
+  Lloyd-Lipow path is compared without the cumulative links, with a
+  warning. See "Comparing the links" in :doc:`Joint Models`.
+
 - **``CoxPH`` takes every kind of row, and competing risks.**
   ``CoxPH.fit`` (and ``fit_from_df``, ``fit(data)``) now accepts left-
   and interval-censored rows (``c = -1``, ``c = 2``, or windows
@@ -100,6 +166,99 @@ v0.29 (unreleased)
   small give the same numbers as before. ``moment`` is a sum of
   positive terms (``moment(2, 0.5, 1.5, 3.0)`` is 13.555555555555555,
   the last digit of 122/9 now right).
+- **Penalised fits on five more models.** Ridge, lasso and elastic-net
+  fits with the objective, standardisation and refusals of the other
+  penalised fits (no covariance, standard errors, bounds or p-values;
+  ``aic`` and ``bic`` count the effective degrees of freedom; the penalty is
+  saved by ``to_dict``):
+
+  - ``FineGray.fit_penalised``: the subdistribution hazards model, the
+    objective of R's ``fastcmprsk::fastCrrp``; matches glmnet's Cox fit on
+    rows carrying the censoring weights to 1e-6 (the PBC data), with
+    ``strata``.
+  - ``AdditiveHazards.fit_penalised``: Lin and Ying's model, its quadratic
+    loss in place of a likelihood (Gorst-Rasmussen and Scheike 2012, R's
+    ``ahaz::ahazpen`` for the lasso); the penalty is put on the
+    coefficients (rates) in the unit of the mean follow-up
+    (``model.time_scale``), so the fit does not depend on the unit of time.
+    Matches glmnet on the equivalent least-squares problem to 1e-6, and
+    the ridge fit's closed form. No likelihood, so no ``aic`` or ``bic``;
+    ``penalty_path`` gives its coefficients and refuses to choose
+    (``PenaltyPath.likelihood``).
+  - ``ProportionalOdds.fit_penalised``: the semi-parametric proportional
+    odds model's profile likelihood, with delayed entry.
+  - ``Frailty(...).fit_penalised`` (``WeibullFrailty.fit_penalised``, ...):
+    the parametric shared-frailty models, gamma or log-normal frailty, the
+    frailty variance not penalised; at ``theta = 0`` it is the penalised
+    proportional hazards fit.
+  - ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+    parametric PH, PO and AFT families: time-varying covariates, ``N`` and
+    the standardisation over the subjects, as ``CoxPH.fit_tvc_penalised``,
+    so splitting a subject's rows does not change the fit. The parametric
+    additive hazards models refuse (a penalty on their rates would depend
+    on the unit of time).
+
+  ``diagnose()`` refuses each of these penalised models, as it does a
+  penalised Cox model.
+- **Analytic two-stage bounds for accelerated degradation.**
+  ``DegradationModel.cb(x, Z)`` with ``method="analytic"`` (the default)
+  and ``life_parameter_covariance()`` now work for a model fitted with
+  stress covariates ``Z`` and for a step-stress
+  (``acceleration="clock"``) model fitted with
+  ``population_method="moments"``; both raised ``NotImplementedError``
+  and pointed to the bootstrap. The covariate (ADT) bound applies the
+  generated-regressor correction to the regression life fit, each unit's
+  pseudo-time variance entering at its own stress; with paths that fit
+  their readings exactly it is ``life_model.cb``'s. The step-stress bound
+  takes the joint least-squares covariance of the clock and every unit's
+  path, so the pseudo failure times are correlated through the shared
+  clock, and the bound under a stress carries the uncertainty of both the
+  life parameters and ``gamma``; ``life_parameter_covariance()`` returns
+  the life parameters followed by ``gamma``. In closed form, with no
+  refitting: a fraction of a second where a 200-resample bootstrap takes
+  about ten. In
+  100 simulated step-stress tests the analytic standard error of
+  ``gamma`` was within 3% of the spread of the estimates. A
+  ``population_method="reml"`` step-stress model still refuses the
+  analytic bound (its mixed-model clock's covariance is not derived) and
+  points to ``method="bootstrap"``.
+
+- **An accelerated survival part for the joint models.** ``JointAFT(Weibull,
+  path_model, varying=, link=)``, ready-made as ``WeibullJointAFT`` (a
+  straight line), beside ``JointPH``: the marker speeds up the item's
+  ageing instead of multiplying its hazard. By age :math:`t` an item has
+  used up the effective age :math:`A(t) = \int_0^t \exp(\gamma' z +
+  \zeta_v (m(s) - r) + \zeta_s m'(s))\, ds`, and its survival is the
+  Weibull's at that age, so life used at a high reading is not given back
+  when the reading falls (the cumulative-exposure model of step-stress
+  tests, with the reading as the stress). The same data, path models,
+  ``varying``, ``hazard_covariates`` / ``path_covariates``,
+  ``marker_reference``, ``fit`` / ``fit_from_df``, parameter names,
+  ``predict`` and ``DynamicPrediction``; ``marker_effect`` is the log
+  of how many times faster an item ages per unit. Links ``"value"`` and
+  ``"slope"``; ``"cumulative"`` is refused, saying why. Every kind of
+  item (failures, right, left and interval censoring, left and right
+  truncation) is fitted, its likelihood checked against a dense-grid
+  integral to within 1e-5 an item; with a marker that never changes the
+  fit is ``JointPH``'s with every effect divided by ``beta``. The fitted
+  ``JointModel`` says which survival part it has in ``survival``
+  (``"PH"`` or ``"AFT"``), its ``kind``, printout and summary
+  headings. See :doc:`Joint Models`.
+- An accelerated joint model saves as schema 5, which SurPyval 0.28 and
+  older refuse with a request to upgrade rather than read it as a
+  proportional hazards model. Every other file keeps its schema; a joint
+  model saved before has no ``"survival"`` and loads as proportional
+  hazards.
+
+**Changed.**
+
+- ``FineGray``, ``CompetingRisksProportionalHazards`` and
+  ``ParametricCompetingRisksRegression`` refuse left- and
+  interval-censored rows with a message naming what takes them
+  (``CoxPH.fit(x, Z, c=c, e=e)`` with covariates, ``CompetingRisks`` or
+  ``ParametricCompetingRisks`` without), in place of "Left or interval
+  censoring not implemented with Competing Risks". ``pseudo_cif`` refuses
+  such rows (and two-column ``x``) saying the same.
 - ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
   fits them by the full likelihood, above), and its ``fit_from_df``'s
   ``x_col`` is optional (give ``xl_col`` and ``xr_col`` instead).
@@ -110,6 +269,19 @@ v0.29 (unreleased)
   and refused by every model that reads it).
 - The two-clock fit's ``fit_from_df`` names its columns as the univariate
   fits do (``x_col`` and ``x2_col``, ``tl_col`` and ``tl2_col``).
+- Four of ``diagnose()``'s refusals are now worded as permanent, not as
+  checks still to come, and each names what to use instead: a discrete
+  distribution (compare discrete fits by ``aic()`` and ``sf`` with
+  ``KaplanMeier.fit``), a distribution whose fitter lacks the shared
+  optimiser (its ``sf`` beside ``KaplanMeier.fit``, and ``aic()``), a
+  parametric regression with a link other than ``exp(beta'Z)`` (refit with
+  ``PH(dist)`` or ``AFT(dist)`` and diagnose that), and a parametric
+  proportional odds or additive hazards model fitted to left- or
+  interval-censored or right-truncated data (diagnose the PH and AFT fits
+  of the same data, compare by ``aic()``). The last now points to those
+  fits rather than only to ``likelihood_ratio_test()``, which tests
+  whether the covariates matter, not whether their effects stay constant.
+  Each still raises ``NotImplementedError``.
 
 **Deprecated.**
 

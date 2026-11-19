@@ -271,7 +271,13 @@ _LAZY = {
         "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
-        ("JointModel", "JointPH", "WeibullJointPH"),
+        (
+            "JointAFT",
+            "JointModel",
+            "JointPH",
+            "WeibullJointAFT",
+            "WeibullJointPH",
+        ),
         "surpyval.univariate.joint",
     ),
     # Landmark analysis and dynamic prediction
@@ -382,6 +388,11 @@ _LAZY = {
             "compare_concordance",
             "concordance_estimate",
             "concordance_index",
+            "dynamic_auc",
+            "dynamic_brier",
+            "dynamic_calibration",
+            "DynamicAccuracy",
+            "DynamicCalibration",
             "integrated_brier_score",
             "PredictionScores",
             "score_predictions",
@@ -520,12 +531,17 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        DynamicAccuracy,
+        DynamicCalibration,
         PredictionScores,
         auc_td,
         brier_score,
         compare_concordance,
         concordance_estimate,
         concordance_index,
+        dynamic_auc,
+        dynamic_brier,
+        dynamic_calibration,
         integrated_brier_score,
         score_predictions,
         survival_probability,
@@ -588,8 +604,10 @@ if TYPE_CHECKING:
         WeibullEquivalence,
     )
     from surpyval.univariate.joint import (
+        JointAFT,
         JointModel,
         JointPH,
+        WeibullJointAFT,
         WeibullJointPH,
     )
     from surpyval.univariate.landmark import (

@@ -4895,8 +4895,46 @@ has the coefficients but cannot choose the penalty by them.
   Cox model, one penalised Cox fit per cause with the other causes
   censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
   fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
-  causes, and ``models`` holds each cause's penalised Cox model. The
-  Fine-Gray model has no penalised fit.
+  causes, and ``models`` holds each cause's penalised Cox model.
+- ``FineGray.fit_penalised``: the Fine-Gray model's weighted partial
+  likelihood (the subdistribution risk sets with their censoring weights)
+  over ``N``, the units, plus the penalty: the objective of R's
+  ``fastcmprsk::fastCrrp``. The weighted partial likelihood is a Cox
+  partial likelihood on rows that carry the weights, and the fit matches
+  glmnet's Cox fit on those rows to 1e-6. ``strata`` are taken (one
+  baseline, risk sets and censoring distribution per stratum, ``N`` and the
+  standardisation over every row); ``cluster`` only changes a covariance,
+  which a penalised model does not have, and weights are refused.
+- ``AdditiveHazards.fit_penalised``: Lin and Ying's estimating equation
+  ``A beta = b`` is the gradient of the quadratic loss
+  :math:`\tfrac12 \beta' A \beta - b' \beta`, which takes the place of the
+  negative log-likelihood (Gorst-Rasmussen and Scheike 2012; R's
+  ``ahaz::ahazpen`` for the lasso). Its coefficients are rates, an excess
+  hazard per unit of time. The loss and the lasso's penalty both scale
+  with the unit of time, so a lasso fit in days is the fit in weeks with
+  the coefficients divided by 7; the ridge part would not be, so it is
+  put on the coefficients measured in the unit ``model.time_scale``, the
+  mean follow-up, and then every ``l1_ratio`` gives the same fit in any
+  unit. There is no likelihood, so no ``aic`` or ``bic``, and a
+  ``penalty_path`` of it has the coefficients but no criterion to choose
+  by.
+- ``ProportionalOdds.fit_penalised``: the semi-parametric proportional odds
+  model's profile likelihood (the baseline odds maximised out at each
+  ``beta``), with its exact gradient and Hessian, so the solver and its
+  check are those of the other fits; delayed entry ``tl`` is taken.
+- ``WeibullFrailty.fit_penalised`` (any ``Frailty(dist, family=...)``):
+  the marginal likelihood of the shared-frailty model, the frailty
+  variance ``theta`` and the baseline not penalised. ``theta = 0``, no
+  shared frailty, is the edge of its space; where the objective is
+  smallest there the fit is the penalised proportional hazards fit of the
+  same baseline (``WeibullPH.fit_penalised``), with ``theta`` 0.
+- ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+  parametric PH and PO families and of the AFT family: the start-stop or
+  timeline data of ``fit_tvc`` (for AFT, its accumulated-age likelihood),
+  with ``N`` the subjects and the covariates standardised over the
+  subjects, as ``CoxPH.fit_tvc_penalised``, so splitting a subject's rows
+  does not change the fit. The parametric additive hazards models have no
+  penalised fit (their coefficients are rates; see below) and refuse.
 - ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
   with a constant baseline rate, ``N`` the number of items and the
   covariates standardised over the items; for exact event times it is
@@ -4971,10 +5009,34 @@ no standard errors or bounds (choosing the penalty from the same data is
 one more reason for that). Cross-validation is not offered.
 
 The coefficients of these models are log hazard, odds or time ratios, which
-have no unit, so the penalty does not depend on the unit of time.
-``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
-scale and the standardisation would both have to be weighted, and it
-refuses them rather than ignore them.
+have no unit, so the penalty does not depend on the unit of time. Lin and
+Ying's are rates, and their penalty is made not to depend on it (above);
+the parametric additive hazards models have no penalised fit, as a penalty
+on their rates would. The fits beyond ``CoxPH``, its time-varying form and
+the parametric PH, AFT and PO families do not take sampling weights ``w``
+yet: the penalty's scale and the standardisation would both have to be
+weighted, and they refuse them rather than ignore them.
+
+.. jupyter-execute::
+
+    from surpyval import AdditiveHazards, ProportionalOdds
+
+    lin_ying = AdditiveHazards.fit_penalised(
+        rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
+        l1_ratio=1.0)
+    odds = ProportionalOdds.fit_penalised(
+        rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
+        l1_ratio=1.0)
+    pd.DataFrame({'excess hazard per week': lin_ying.params,
+                  'log survival odds ratio': odds.params},
+                 index=cols).round(5)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert lin_ying.maximum == odds.maximum == 'verified'
+    assert np.any(lin_ying.params == 0) and np.any(odds.params == 0)
 
 
 Firth's penalty: Cox regression when a covariate separates the events

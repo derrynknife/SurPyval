@@ -142,6 +142,11 @@ The later versions, each refused by the SurPyval releases before it:
        ``"hess_inv"``); a stratified Cox model (``"strata"``); a model
        whose coefficients carry their signs (``"coefficient_signs"``).
      - 0.27
+   * - 5
+     - A joint model with the accelerated survival part
+       (``"survival": "AFT"``, from ``JointAFT``): a reader without it
+       would predict from it as a proportional hazards model.
+     - 0.29
 
 .. _saved-model-dictionary:
 
@@ -488,7 +493,7 @@ with its own ``schema``.
      - --
    * - ``JointModel``
      - ``"model": "JointModel"``
-     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
+     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
      - --
    * - ``EquivalenceModel``
      - ``"model": "EquivalenceModel"``

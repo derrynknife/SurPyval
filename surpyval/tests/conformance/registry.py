@@ -340,6 +340,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PO": _FACTORY,
     "surpyval.AH": _FACTORY,
     "surpyval.JointPH": _FACTORY,
+    "surpyval.JointAFT": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
     "surpyval.EventHistoryData": _DATA,
@@ -366,6 +367,8 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PermutationLogRankResult": _RESULT,
     "surpyval.MaxStatResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
+    "surpyval.DynamicAccuracy": _RESULT,
+    "surpyval.DynamicCalibration": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -470,6 +473,9 @@ for _fn in (
     "compare_concordance",
     "concordance_estimate",
     "concordance_index",
+    "dynamic_auc",
+    "dynamic_brier",
+    "dynamic_calibration",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",
