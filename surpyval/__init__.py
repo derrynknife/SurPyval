@@ -271,7 +271,13 @@ _LAZY = {
         "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
-        ("JointModel", "JointPH", "WeibullJointPH"),
+        (
+            "JointAFT",
+            "JointModel",
+            "JointPH",
+            "WeibullJointAFT",
+            "WeibullJointPH",
+        ),
         "surpyval.univariate.joint",
     ),
     # Landmark analysis and dynamic prediction
@@ -598,8 +604,10 @@ if TYPE_CHECKING:
         WeibullEquivalence,
     )
     from surpyval.univariate.joint import (
+        JointAFT,
         JointModel,
         JointPH,
+        WeibullJointAFT,
         WeibullJointPH,
     )
     from surpyval.univariate.landmark import (

@@ -1948,9 +1948,11 @@ def _joint():
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
-    the area under it, or its value and slope together."""
+    the area under it, or its value and slope together; or the marker's
+    value speeds up the item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
+        "WeibullJointAFT": sp.WeibullJointAFT,
         "WeibullJointPH[slope]": sp.JointPH(sp.Weibull, link="slope"),
         "WeibullJointPH[cumulative]": sp.JointPH(
             sp.Weibull, link="cumulative"
@@ -1965,7 +1967,7 @@ def _joint():
             name,
             fitter,
             # the links are ways of calling the one public factory
-            fitters=("surpyval.WeibullJointPH",) if "[" not in name else (),
+            fitters=(f"surpyval.{name}",) if "[" not in name else (),
             model_class="surpyval.JointModel",
             data=joint_data,
             x=X_JOINT,

@@ -12,7 +12,8 @@ each item's path plugged in.
    (``sigma^2 (J'J)^-1``), is a moment estimate of ``D``.
 3. **Survival plug-in.** Each item's most likely path given its readings
    and that population, as a known time-varying covariate of a Weibull
-   proportional hazards fit, gives the survival part.
+   proportional hazards fit (an accelerated one, for the accelerated
+   survival part), gives the survival part.
 
 This two-stage estimate is biased (a predicted path is not the true one,
 and the readings stop when an item fails); it is only where the joint
@@ -36,9 +37,7 @@ from ._likelihood import (
     JointArrays,
     Model,
     _path_params,
-    log_cumhaz,
-    log_event,
-    log_fails_between,
+    lifetime_functions,
     modes,
     path_jacobian,
 )
@@ -138,6 +137,7 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     from surpyval import Weibull
 
     layout = model.layout
+    log_cumhaz, log_event, log_fails_between = lifetime_functions(layout)
     p = layout.p
     # the hazard's estimated coefficients
     k = layout.n_hazard
