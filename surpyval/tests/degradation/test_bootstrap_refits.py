@@ -124,3 +124,35 @@ def test_the_bounds_are_those_of_cold_refits(monkeypatch):
     monkeypatch.setattr(refits, "DEGRADATION_REFIT", Cold())
     cold = model.cb(t, method="bootstrap", n_boot=40, random_state=3)
     np.testing.assert_allclose(warm, cold, rtol=1e-6)
+
+
+def test_refit_tally_counts_what_the_one_warning_says():
+    # The two-stage and the destructive degradation bootstraps count their
+    # refits with one RefitTally: the kept ones by the maximum they
+    # reached, a resample with no maximum at all as left out with no
+    # estimate, any other failure as failed.
+    from surpyval.degradation._maximum import RefitTally
+    from surpyval.utils.no_maximum import (
+        BootstrapRefitWarning,
+        NoFiniteMaximumError,
+    )
+
+    def no_maximum():
+        raise NoFiniteMaximumError("no failures in the resample")
+
+    def broken():
+        raise RuntimeError("the fit failed")
+
+    tally = RefitTally()
+    assert tally.refit(no_maximum) is None
+    assert tally.refit(broken) is None
+    assert tally.refit(lambda value: value, 3) == 3
+    for reached in ("verified", "unverified", "no finite maximum", None):
+        tally.keep(reached)
+    with pytest.warns(BootstrapRefitWarning) as caught:
+        tally.warn(10, advice="more units would settle them")
+    found = caught[0].message
+    assert (found.n_boot, found.no_maximum, found.unverified) == (10, 1, 1)
+    # Ten asked for, four kept, one left out with no estimate: five failed.
+    assert (found.no_estimate, found.failed) == (1, 5)
+    assert "more units would settle them" in str(found)
