@@ -282,6 +282,22 @@ v0.29 (unreleased)
   fits rather than only to ``likelihood_ratio_test()``, which tests
   whether the covariates matter, not whether their effects stay constant.
   Each still raises ``NotImplementedError``.
+- **Development: more copied code shared.** The weighting of the
+  Aalen-Johansen incidence increments by the survival just before each
+  time is one pair of helpers, ``survival_before`` and
+  ``aalen_johansen_iif`` (which now take one curve per row as well as
+  one curve), read by the non-parametric incidence and its variances, the
+  restricted mean time lost, Gray's test and the pseudo-observations. The
+  HPP and proportional-intensity HPP likelihoods take their Poisson-count
+  sums from one ``poisson_count_sums`` and their right-truncation terms
+  from the NHPP's ``log_one_minus_exp``. The two degradation bootstraps
+  (the two-stage one and the destructive one) count their refits with one
+  ``RefitTally``. The Cox start-stop fits (plain, weighted and
+  penalised) check their row weights and mark their models through one
+  helper each. The non-parametric estimates' pointwise bounds and bands
+  form their log(-log) and arcsine intervals with the same two
+  transforms. Fitted numbers, bounds, printouts, messages and warnings are
+  bit-identical, checked with the refactor snapshot.
 
 **Deprecated.**
 
