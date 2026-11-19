@@ -24,7 +24,10 @@ SurPyval's joint model (``WeibullJointPH``, #891) is the standard one
 The hazard need not follow the marker's level. It can follow **how fast the
 marker is changing** (its slope), or **the exposure accumulated so far**
 (the area under its path), or more than one of these: see `What the hazard
-follows: the link`_.
+follows: the link`_. And the marker need not multiply the hazard at all:
+in ``WeibullJointAFT`` it makes the item **age faster**, the life used up
+at a high reading not given back when the reading falls (see `How the
+reading acts: a higher failure rate, or faster ageing`_).
 
 Why not the obvious approaches?
 -------------------------------
@@ -848,6 +851,203 @@ the same curvature ``c``. At most three may vary (the quadrature's grid is
 the joint model, as it does a degradation model: choose it as you would
 there (see :doc:`Degradation Analysis`).
 
+How the reading acts: a higher failure rate, or faster ageing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every model so far is a proportional hazards model (``JointPH``): a high
+reading multiplies the failure rate for as long as it is high, and when the
+reading comes back down the rate comes down with it, as though the high
+stretch had never happened. ``JointAFT`` (``WeibullJointAFT`` for a
+line) is the other way a reading can act: it makes the item **age
+faster**. A month at a high reading uses up more than a month of life, and
+the life used up is not given back when the reading falls. It is the
+cumulative-exposure model of step-stress accelerated life tests, with the
+measured reading as the stress, so its effects mean what they mean in an
+accelerated test of the same product. It suits a reading of a stress that
+consumes life -- a load, a temperature, a speed -- and a biomarker that
+hastens the course of a disease; an effect reads as "a life so many times
+shorter", which many find easier than a hazard ratio. (It is a statistical model of the readings and the
+lifetimes, not a model of the physics of the damage.)
+
+By age :math:`t` the item has used up the *effective age*
+
+.. math::
+
+    A_i(t) = \int_0^t \exp\left(\gamma' z_i
+    + \zeta_v \bigl(m_i(s) - r\bigr) + \zeta_s\, m_i'(s)\right) ds,
+
+and its survival and hazard are the baseline Weibull's at that age:
+
+.. math::
+
+    S_i(t) = \exp\left(-\left(\frac{A_i(t)}{\alpha}\right)^{\beta}
+    \right), \qquad
+    h_i(t) = \frac{\beta}{\alpha}\left(\frac{A_i(t)}{\alpha}
+    \right)^{\beta - 1} A_i'(t).
+
+A worked example, with made-up numbers. Say each ppm of oil debris above 3
+ppm makes a gearbox age :math:`e^{0.3}` times as fast (``marker_effect``
+0.3, ``marker_reference`` 3), and the baseline is a Weibull of scale 6
+years and shape 2. At 3 ppm a gearbox ages a year a year; at 5 ppm it ages
+:math:`e^{0.3 \times 2} = 1.82` years a year. One that ran two years at 3
+ppm and then a year at 5 ppm has an effective age of :math:`2 + 1.82 =
+3.82` years at the age of three, and a survival of :math:`\exp(-(3.82 /
+6)^2) = 0.67`, against 0.78 for one that stayed at 3 ppm. If its debris
+then falls back to 3 ppm, the proportional hazards model returns it to the
+failure rate of a three-year-old (0.17 a year); the accelerated model keeps
+it a 3.82-year-old (0.21 a year).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _A = 2 + np.exp(0.3 * 2)
+    assert round(np.exp(0.6), 2) == 1.82 and round(_A, 2) == 3.82
+    assert round(float(Weibull.sf(_A, 6.0, 2.0)), 2) == 0.67
+    assert round(float(Weibull.sf(3.0, 6.0, 2.0)), 2) == 0.78
+    assert round(float(Weibull.hf(3.0, 6.0, 2.0)), 2) == 0.17
+    assert round(float(Weibull.hf(_A, 6.0, 2.0)), 2) == 0.21
+
+The fitter is built and used as ``JointPH``'s is: the same data, path
+models, ``varying``, ``hazard_covariates`` and ``path_covariates``,
+``marker_reference``, ``fit``, ``fit_from_df``, predictions and
+saving, and the same parameter names. A fleet of 300 gearboxes whose debris
+is a line in years, each ageing :math:`e^{0.6}` times as fast for each ppm
+above 4:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullJointAFT
+
+    gen_aft = np.random.default_rng(29)
+
+
+    def loaded(n, alpha=2.5, beta=2.0, effect=0.6, centre=4.0):
+        spread = np.array([[0.36, 0.06], [0.06, 0.25]])  # sds 0.6, 0.5
+        lines = gen_aft.multivariate_normal([3.0, 1.0], spread, size=n)
+        items = []
+        for k, (level, rate) in enumerate(lines):
+            used = alpha * gen_aft.weibull(beta)  # the effective age it reaches
+            # a line's effective age: e^(effect (level - centre)) (e^(k t) - 1) / k
+            start, speed = np.exp(effect * (level - centre)), effect * rate
+            grow = speed * used / start
+            life = np.log1p(grow) / speed if grow > -1 else np.inf
+            end = min(life, 2.0)                       # followed for two years
+            ages = np.arange(0.0, end + 1e-9, 1 / 12)  # read monthly
+            readings = level + rate * ages + gen_aft.normal(0, 0.7, ages.size)
+            outcome = "observed" if life <= 2.0 else "right_censored"
+            items.append(
+                ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, readings)))
+            )
+        return SurpyvalData.from_items(items)
+
+
+    gearboxes_aft = loaded(300)
+    aged = WeibullJointAFT.fit(gearboxes_aft, marker_reference=4.0, unit="years")
+    aged.summary()[["coef", "se(coef)", "exp(coef)"]].round(3).tail(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert aged.maximum == "verified" and aged.survival == "AFT"
+    _p = dict(zip(aged.parameter_names, aged.params))
+    _se = dict(zip(aged.parameter_names, aged.standard_errors()))
+    for _name, _truth in [("marker_effect", 0.6), ("alpha", 2.5), ("beta", 2.0)]:
+        assert abs(_p[_name] - _truth) < 3 * _se[_name], _name
+
+``exp(coef)`` of ``marker_effect`` is how many times as fast a gearbox
+ages for each ppm more (0.62 against the 0.6 simulated); ``alpha`` and
+``beta`` are the Weibull of a gearbox held at the reference, 4 ppm. The
+two models of the same fleet compare by ``aic()``, as the links do:
+
+.. jupyter-execute::
+
+    multiplied = WeibullJointPH.fit(gearboxes_aft, marker_reference=4.0, unit="years")
+    print(f"AIC, faster ageing:        {aged.aic():.1f}")
+    print(f"AIC, higher failure rate:  {multiplied.aic():.1f}")
+    print(f"marker_effect: {aged.params[-1]:.2f} (ageing), "
+          f"{multiplied.params[-1]:.2f} (hazard)")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(aged.params[-1], 2) == 0.62
+    assert round(multiplied.params[-1], 2) == 1.13
+    assert round(aged.aic() - multiplied.aic()) == 4
+
+Here the data cannot tell the two apart: the proportional hazards model
+even has the lower AIC, by 4, though the fleet was simulated from the
+accelerated one. A line that only rises gives both models much the same
+shape of risk, the hazard model's effect (1.13) taking the place of
+roughly :math:`\beta` times the ageing one (:math:`2.05 \times 0.62 =
+1.27`).
+The two part company where a reading rises and falls, or where the
+baseline is not a Weibull; with paths that only rise, choose the model by
+what the reading is rather than by a few units of AIC.
+
+Four things to know:
+
+- **The links.** ``link="value"`` (the default) and ``"slope"`` (or both)
+  set the ageing rate; ``"cumulative"`` is refused, because the
+  effective age already accumulates the reading over the item's life.
+- **When the two models agree.** With a reading that never changes and a
+  Weibull baseline the accelerated model is the proportional hazards one,
+  each effect multiplied by ``beta`` (an ageing rate :math:`e^{\zeta}`
+  is a hazard ratio :math:`e^{\beta\zeta}`): the two fits of such a fleet
+  have the same likelihood and parameters to 1e-4
+  (``tests/univariate/joint/test_joint_aft.py``). Once the reading
+  moves they differ.
+- **The history counts.** The effective age at ``given`` depends on the
+  whole path from age 0, so ages are ages since new, and the readings
+  should start early in the item's life: before the first reading the
+  item's path is the path model's, extended back from its readings.
+- **Which model.** By what the reading is: a symptom of the present
+  damage (proportional hazards), or a stress that uses up life
+  (accelerated); and by ``aic()`` where the readings move enough for
+  the data to tell.
+
+The fitted model says which survival part it has (``aged.survival`` is
+``"AFT"``; the printout's survival line and the summary's heading say
+so), saves it with ``to_dict`` (a file that SurPyval 0.28 and older
+refuse rather than misread as proportional hazards) and predicts as before:
+
+.. jupyter-execute::
+
+    now = aged.predict(markers={0.0: 3.4, 0.5: 3.9, 1.0: 4.5}, given=1.0)
+    print("life left, 10/50/90%:", now.remaining_life([0.1, 0.5, 0.9]).round(2))
+    print(aged.cb([1.5, 2.0], markers=now.markers, given=1.0).round(3))
+
+The likelihood is a second one beside the proportional hazards one, with
+the same quadrature over each item's path: the effective age by the
+cumulative hazard's 15-point Gauss--Legendre rule, and an interval's
+cumulative hazard from the effective age at its start and the age used up
+over it, integrated directly. It agrees with an independent dense-grid
+integral for every kind of item to within 1e-5 an item, for the value and
+the slope links and with covariates in each part.
+
+A recovery study of the accelerated model (run on 2026-11-18 with
+``scripts/studies/joint_recovery/study.py``'s ``aft_`` paths; this page
+does not re-run it) fitted 200 fleets for each of the four paths of the
+study below -- the same pumps, readings and paths, each pump ageing at
+the rate :math:`e^{0.45 (m - 4)}` against a Weibull of 800 days and shape
+2 in effective age -- with ``JointAFT`` and ``marker_reference=4.0``.
+All 800 fits reached a verified maximum. The marker effect's bias was
++2.6% (Monte Carlo se 1.3%) for the line, +2.5% (1.1%) for the
+exponential, +2.3% (1.2%) with ``b`` on a log link and +1.1% (1.5%) for
+the quadratic, its 95% interval covering the truth 94.5%, 94.0%, 93.0%
+and 95.5% of the time. Of the 37 parameters, 36 intervals covered the
+truth between 92% and 98% of the time; the exception was the quadratic's
+``sd_a``, 0.905 (0.021), whose estimate was 0.8% (0.3%) low. The spread of
+the estimates was 0.91 to 1.07 times their mean standard error, except the
+quadratic's ``alpha`` at 1.21, from two fleets with long tails (1.01
+without them). Biases of more than two Monte Carlo standard errors, all
+small: the marker effect for the line and the exponential (above),
+``alpha`` +0.7% (0.4%) for the line and +2.1% (0.9%) for the quadratic,
+and the exponential's ``corr_a_b``, +0.011 (0.005). The per-parameter
+table is ``scripts/studies/joint_recovery/table.txt``.
+
 How well it recovers the truth
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1159,6 +1359,9 @@ The joint model (#891) is the standard one. It has:
   path_model)``; ``WeibullJointPH`` is the line; other baselines are
   refused) in the path's current value, its slope, the area under it, or
   more than one of them (``link=``);
+- or an accelerated (AFT) survival part on the Weibull (``JointAFT(Weibull,
+  path_model)``; ``WeibullJointAFT`` is the line), the path's value, its
+  slope or both setting how fast the item ages;
 - covariates in both parts (every path parameter's mean, and the hazard)
   by default, or each in the parts named by ``hazard_covariates`` and
   ``path_covariates``;
@@ -1172,10 +1375,12 @@ The joint model (#891) is the standard one. It has:
   Brier score and calibration in ``surpyval.metrics``, with
   cross-validation by unit).
 
-Not yet (see #891's roadmap): spline paths; other survival parts (an
-accelerated failure time part, in which the marker speeds the item's
-clock instead of multiplying its hazard, and spline baselines); several
-markers.
+Not yet (see #891's roadmap): spline paths; other baselines (a
+log-normal or log-logistic one for the accelerated part, whose risk can
+rise and then fall, and spline baselines); several markers. The
+accelerated part has not yet been compared with R's ``JM``
+(``method = "weibull-AFT-aGH"``, the same model) on reference data, nor
+had its prediction band put through a calibration study.
 
 References
 ----------
@@ -1197,14 +1402,19 @@ References
 API reference
 -------------
 
-``WeibullJointPH`` is ``JointPH(Weibull, LinearPath)``, an instance of the
-fitter class below; import everything from ``surpyval`` (or
+``WeibullJointPH`` is ``JointPH(Weibull, LinearPath)`` and
+``WeibullJointAFT`` is ``JointAFT(Weibull, LinearPath)``, instances of the
+fitter classes below; import everything from ``surpyval`` (or
 ``surpyval.univariate.joint``).
 
 .. autofunction:: surpyval.univariate.joint.joint_ph.JointPH
 
 .. autoclass:: surpyval.univariate.joint.joint_ph.JointPHFitter
    :members: fit, fit_from_df, compare_links
+
+.. autofunction:: surpyval.univariate.joint.joint_aft.JointAFT
+
+.. autoclass:: surpyval.univariate.joint.joint_aft.JointAFTFitter
 
 .. autoclass:: surpyval.univariate.joint.joint_model.JointModel
    :members: sf, ff, cb, predict, summary, covariance, standard_errors, to_dict, from_dict

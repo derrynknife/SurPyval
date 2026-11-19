@@ -160,6 +160,34 @@ v0.29 (unreleased)
   ``x2_col``, ``x2l_col``, ``x2r_col``, ``tl2_col`` and ``x2_name``) with a
   ``ValueError`` pointing to the two-clock fits, in place of Python's
   ``TypeError``.
+- **``Hypoexponential.fit``.** The sum of exponential stages is fitted
+  to data: ``Hypoexponential.fit(x, c, n, t, ..., stages=m)`` estimates
+  the ``m`` stage rates by maximum likelihood (or ``how='MPS'``,
+  ``'MSE'``, ``'MOM'``) with every kind of censoring and truncation,
+  counts, weights, an offset, a limited failure population and zero
+  inflation, with covariance, every bound and the bootstrap, as for any
+  distribution; ``fit_from_df``, ``fit_from_surpyval_data`` and
+  ``fit(data)`` take ``stages`` too. The number of stages is the caller's
+  choice (``stages`` is required; a fitted model's ``dist.fit`` refits
+  with its own); compare the AIC of fits with different numbers. The rates
+  are reported slowest stage first. Where the data need fewer stages a
+  rate runs to infinity, and the fit warns "No finite maximum", saying to
+  fit fewer. ``fit_bayes`` refuses it, pointing to ``fit``.
+
+**Changed.**
+
+- **``Hypoexponential`` takes equal and close rates.** Rates no longer
+  have to be distinct: equal rates are the Erlang, and match ``Gamma``
+  with an integer shape to 1e-12. Where the partial-fraction coefficients
+  are large (their absolute values summing to more than 100), the
+  functions come from the matrix exponential of the stages' generator,
+  computed from non-negative terms only, so they keep their precision:
+  four rates 1e-5 apart gave twice the density and a CDF 18% off at
+  x = 2, where every function is now within 1e-12 of a 150-digit
+  reference. Rates whose coefficients are
+  small give the same numbers as before. ``moment`` is a sum of
+  positive terms (``moment(2, 0.5, 1.5, 3.0)`` is 13.555555555555555,
+  the last digit of 122/9 now right).
 - **Penalised fits on five more models.** Ridge, lasso and elastic-net
   fits with the objective, standardisation and refusals of the other
   penalised fits (no covariance, standard errors, bounds or p-values;
@@ -216,6 +244,33 @@ v0.29 (unreleased)
   ``population_method="reml"`` step-stress model still refuses the
   analytic bound (its mixed-model clock's covariance is not derived) and
   points to ``method="bootstrap"``.
+
+- **An accelerated survival part for the joint models.** ``JointAFT(Weibull,
+  path_model, varying=, link=)``, ready-made as ``WeibullJointAFT`` (a
+  straight line), beside ``JointPH``: the marker speeds up the item's
+  ageing instead of multiplying its hazard. By age :math:`t` an item has
+  used up the effective age :math:`A(t) = \int_0^t \exp(\gamma' z +
+  \zeta_v (m(s) - r) + \zeta_s m'(s))\, ds`, and its survival is the
+  Weibull's at that age, so life used at a high reading is not given back
+  when the reading falls (the cumulative-exposure model of step-stress
+  tests, with the reading as the stress). The same data, path models,
+  ``varying``, ``hazard_covariates`` / ``path_covariates``,
+  ``marker_reference``, ``fit`` / ``fit_from_df``, parameter names,
+  ``predict`` and ``DynamicPrediction``; ``marker_effect`` is the log
+  of how many times faster an item ages per unit. Links ``"value"`` and
+  ``"slope"``; ``"cumulative"`` is refused, saying why. Every kind of
+  item (failures, right, left and interval censoring, left and right
+  truncation) is fitted, its likelihood checked against a dense-grid
+  integral to within 1e-5 an item; with a marker that never changes the
+  fit is ``JointPH``'s with every effect divided by ``beta``. The fitted
+  ``JointModel`` says which survival part it has in ``survival``
+  (``"PH"`` or ``"AFT"``), its ``kind``, printout and summary
+  headings. See :doc:`Joint Models`.
+- An accelerated joint model saves as schema 5, which SurPyval 0.28 and
+  older refuse with a request to upgrade rather than read it as a
+  proportional hazards model. Every other file keeps its schema; a joint
+  model saved before has no ``"survival"`` and loads as proportional
+  hazards.
 
 **Changed.**
 

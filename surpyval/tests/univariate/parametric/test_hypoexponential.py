@@ -1,15 +1,28 @@
 """The hypoexponential distribution: a sum of exponential stages."""
 
+import warnings
+from types import SimpleNamespace
+
+import autograd.numpy as anp
 import numpy as np
+import pandas as pd
 import pytest
+from autograd import grad, hessian
 from scipy import integrate
 
 import surpyval
-from surpyval import Exponential, Gamma, Hypoexponential, Parametric
+from surpyval import (
+    Exponential,
+    Gamma,
+    Hypoexponential,
+    Parametric,
+    SurpyvalData,
+    Weibull,
+)
 from surpyval.tests._helpers import json_round_trip
 from surpyval.univariate.parametric.distributions.hypoexponential import (
-    DISTINCT_RATES_TOL,
     Hypoexponential_,
+    _slowest_first,
 )
 
 RATES = (0.5, 1.5, 3.0)
@@ -205,8 +218,6 @@ def test_serialisation_round_trip_json_file(tmp_path):
         ([1.0, 0.0], "strictly positive"),
         ([1.0, np.inf], "finite"),
         ([1.0, np.nan], "finite"),
-        ([2.0, 2.0], "distinct"),
-        ([2.0, 2.0 * (1 + 0.5 * DISTINCT_RATES_TOL)], "distinct"),
     ],
 )
 def test_invalid_rates_are_refused(rates, match):
@@ -216,30 +227,276 @@ def test_invalid_rates_are_refused(rates, match):
         Hypoexponential.sf(1.0, *rates)
 
 
-def test_repeated_rates_error_points_at_erlang():
-    with pytest.raises(ValueError, match="Erlang"):
-        Hypoexponential.from_params([1.0, 1.0, 1.0])
-    # ... which is where equal rates belong: a Gamma with integer shape
-    x = np.linspace(0.0, 10.0, 21)
-    erlang = Gamma.sf(x, 3, 1.0)
-    nearly = Hypoexponential.sf(x, 1.0, 1.0 + 1e-3, 1.0 - 1e-3)
-    assert np.allclose(nearly, erlang, atol=1e-5)
+# -- equal and close rates ----------------------------------------------------
+
+_FUNCTIONS = ("sf", "ff", "df", "hf", "Hf", "log_sf", "log_ff", "log_df")
 
 
-def test_rates_just_above_tolerance_are_still_accurate():
-    a = 1.0
-    b = a * (1 + 10 * DISTINCT_RATES_TOL)
-    x = np.linspace(0.0, 10.0, 21)
-    # against the Erlang(2) limit, which the two-stage sf approaches
+@pytest.mark.parametrize("m, rate", [(2, 1.0), (3, 2.0), (5, 0.3)])
+def test_equal_rates_are_the_erlang(m, rate):
+    # from the origin, through the series and the matrix forms, to a tail
+    # where sf and df underflow but their logs do not
+    x = np.array([1e-12, 1e-3, 0.1, 0.5, 1.0, 3.0, 10.0, 50.0, 2000.0])
+    x = x / rate
+    rates = [rate] * m
+    for fn in _FUNCTIONS:
+        got = getattr(Hypoexponential, fn)(x, *rates)
+        want = getattr(Gamma, fn)(x, m, rate)
+        assert np.allclose(got, want, rtol=1e-12, atol=0), fn
+    model = Hypoexponential.from_params(rates)
+    assert model.k == m
+    assert np.allclose(model.sf(x), Gamma.sf(x, m, rate), rtol=1e-12, atol=0)
+    u = np.array([1e-9, 0.1, 0.5, 0.9, 1 - 1e-9])
     assert np.allclose(
-        Hypoexponential.sf(x, a, b), Gamma.sf(x, 2, a), atol=1e-5
+        Hypoexponential.qf(u, *rates), Gamma.qf(u, m, rate), rtol=1e-10
     )
-    assert np.all(np.diff(Hypoexponential.sf(x, a, b)) <= 0)
 
 
-def test_fit_is_refused_with_guidance():
-    with pytest.raises(NotImplementedError, match="from_params"):
-        Hypoexponential.fit([1.0, 2.0, 3.0])
+def _exact(x, rates):
+    """sf, ff and df from the generator's matrix exponential in 150-digit
+    arithmetic."""
+    mp = pytest.importorskip("mpmath")
+    m = len(rates)
+    with mp.workdps(150):
+        Q = mp.zeros(m + 1, m + 1)
+        for i, r in enumerate(rates):
+            Q[i, i] = -mp.mpf(float(r))
+            Q[i, i + 1] = mp.mpf(float(r))
+        row = mp.expm(Q * mp.mpf(float(x)), method="taylor")
+        sf = mp.fsum(row[0, j] for j in range(m))
+        return float(sf), float(row[0, m]), float(rates[-1] * row[0, m - 1])
+
+
+@pytest.mark.parametrize(
+    "rates",
+    [
+        # four rates 1e-5 apart (relative): the partial fractions gave
+        # twice the density and a CDF 18% off at x = 2
+        0.5 * (1 + 1e-5 * np.array([-1.5, -0.5, 0.5, 1.5])),
+        np.array([1.0, 1.0 + 1e-9, 3.0]),
+        np.array([0.2, 0.2, 0.2 * (1 + 1e-3), 5.0]),
+    ],
+)
+def test_close_rates_keep_their_precision(rates):
+    x = np.array([0.05, 0.5, 2.0, 8.0, 20.0, 60.0])
+    for fn, values in zip(
+        ("sf", "ff", "df"), zip(*[_exact(t, rates) for t in x])
+    ):
+        got = getattr(Hypoexponential, fn)(x, *rates)
+        assert np.allclose(got, values, rtol=1e-12, atol=0), fn
+
+
+def test_two_close_rates_match_the_two_stage_closed_form():
+    # (b e^(-a x) - a e^(-b x)) / (b - a) in a form that does not cancel:
+    # e^(-a x) (1 + a (1 - e^(-(b - a) x)) / (b - a))
+    a, b = 1.0, 1.0 + 1e-4
+    x = np.array([1.5, 3.0, 10.0, 30.0])
+    d = b - a
+    sf = np.exp(-a * x) * (1 + a * -np.expm1(-d * x) / d)
+    assert np.allclose(Hypoexponential.sf(x, a, b), sf, rtol=1e-12)
+
+
+def test_moments_with_equal_rates_are_the_erlang():
+    for k in range(1, 5):
+        erlang = np.prod(np.arange(3, 3 + k)) / 2.0**k
+        assert Hypoexponential.moment(k, 2.0, 2.0, 2.0) == pytest.approx(
+            erlang, rel=1e-14
+        )
+    model = Hypoexponential.from_params([2.0, 2.0, 2.0])
+    assert model.var() == pytest.approx(3 / 4)
+
+
+# -- derivatives --------------------------------------------------------------
+
+
+def _central(f, at, eps=1e-6):
+    at = np.asarray(at, dtype=float)
+    steps = eps * np.eye(len(at))
+    return np.array([(f(at + s) - f(at - s)) / (2 * eps) for s in steps])
+
+
+@pytest.mark.parametrize("rates", [(0.5, 1.5, 3.0), (1.0, 1.0), (0.7,)])
+@pytest.mark.parametrize("fn", _FUNCTIONS)
+def test_derivatives_match_finite_differences(fn, rates):
+    # The likelihood is differentiated in the rates (to second order, for
+    # the Hessian) and, with an offset, in x
+    x = np.array([0.05, 0.4, 1.3, 2.5, 7.0, 30.0])
+
+    def total(r):
+        return anp.sum(getattr(Hypoexponential, fn)(x, *r))
+
+    rates = np.array(rates)
+    gradient = grad(total)
+    assert np.allclose(
+        gradient(rates), _central(total, rates), rtol=1e-6, atol=1e-8
+    )
+    assert np.allclose(
+        hessian(total)(rates),
+        _central(gradient, rates),
+        rtol=1e-5,
+        atol=1e-7,
+    )
+    in_x = grad(lambda t: anp.sum(getattr(Hypoexponential, fn)(t, *rates)))
+    eps = 1e-6
+    by_x = (
+        getattr(Hypoexponential, fn)(x + eps, *rates)
+        - getattr(Hypoexponential, fn)(x - eps, *rates)
+    ) / (2 * eps)
+    assert np.allclose(in_x(x), by_x, rtol=1e-6, atol=1e-8)
+
+
+# -- fitting ------------------------------------------------------------------
+
+
+def _neg_ll(model, data):
+    return float(
+        model.dist._neg_ll_func(
+            data, *model.params, model.gamma, model.f0, model.lfp_p
+        )
+    )
+
+
+def test_fit_recovers_the_rates():
+    x = Hypoexponential.random(3000, 0.5, 2.0, random_state=11)
+    model = Hypoexponential.fit(x, stages=2)
+    assert isinstance(model, Parametric)
+    assert model.k == 2
+    assert model.maximum == "verified"
+    se = model.standard_errors()
+    assert np.all(np.abs(model.params - [0.5, 2.0]) < 3 * se)
+    assert model.params[0] < model.params[1]
+
+
+def test_fit_with_censoring_and_truncation_is_a_maximum():
+    x = Hypoexponential.random(400, 0.3, 1.2, random_state=4)
+    keep = x > 0.5
+    x = x[keep]
+    c = (x > 8).astype(int)
+    x = np.minimum(x, 8)
+    model = Hypoexponential.fit(x, c, tl=0.5, stages=2)
+    assert model.maximum == "verified"
+    data = SurpyvalData(x, c, tl=0.5)
+    best = _neg_ll(model, data)
+    for step in ([1, 0], [0, 1], [1, 1], [1, -1]):
+        for sign in (1, -1):
+            moved = Hypoexponential.from_params(
+                model.params * (1 + sign * 1e-3 * np.array(step))
+            )
+            assert _neg_ll(moved, data) > best
+
+
+def test_erlang_data_give_equal_rates():
+    x = Gamma.random(200, 3, 1.0, random_state=2)
+    model = Hypoexponential.fit(x, stages=3)
+    assert model.maximum == "verified"
+    rates = model.params
+    assert np.all(np.diff(rates) >= 0)
+    assert np.ptp(rates) < 1e-2 * rates.mean()
+    # an Erlang of three stages is a Hypoexponential of three: the fit is
+    # at least as likely as the best of them
+    erlang = Gamma.fit(x, fixed={"alpha": 3})
+    assert model.log_likelihood >= erlang.log_likelihood - 1e-6
+
+
+def test_one_stage_is_the_exponential():
+    x = Weibull.random(50, 10, 1.3, random_state=5)
+    c = (x > 15).astype(int)
+    one = Hypoexponential.fit(np.minimum(x, 15), c, stages=1)
+    exponential = Exponential.fit(np.minimum(x, 15), c)
+    assert one.params == pytest.approx(exponential.params, rel=1e-6)
+
+
+def test_stages_is_required_and_checked():
+    x = [1.0, 2.0, 3.0, 4.5]
+    with pytest.raises(ValueError, match="stages"):
+        Hypoexponential.fit(x)
+    for bad in (0, -1, 1.5, True, "2"):
+        with pytest.raises(ValueError, match="stages"):
+            Hypoexponential.fit(x, stages=bad)
+
+
+def test_a_fitted_model_refits_with_its_own_stages():
+    x = Hypoexponential.random(300, 0.4, 1.0, 3.0, random_state=8)
+    model = Hypoexponential.fit(x, stages=3)
+    again = model.dist.fit(x)
+    assert again.k == 3
+    assert np.allclose(again.params, model.params)
+    assert model.dist.fit(x, stages=2).k == 2
+
+
+def test_fit_paths_agree():
+    x = Hypoexponential.random(200, 0.5, 2.0, random_state=3)
+    c = (x > 4).astype(int)
+    x = np.minimum(x, 4)
+    model = Hypoexponential.fit(x, c, stages=2)
+    df = pd.DataFrame({"t": x, "status": c})
+    by_df = Hypoexponential.fit_from_df(
+        df, x_col="t", c_col="status", stages=2
+    )
+    by_data = Hypoexponential.fit(SurpyvalData(x, c), stages=2)
+    for other in (by_df, by_data):
+        assert np.allclose(other.params, model.params, rtol=1e-8)
+
+
+def test_too_many_stages_warn_and_point_to_fewer():
+    # more spread than one exponential stage (a coefficient of variation
+    # above 1): no sum of stages fits better than the fewest
+    x = Weibull.random(100, 10, 0.8, random_state=3)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = Hypoexponential.fit(x, stages=2)
+    assert model.maximum == "no finite maximum"
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1
+    assert "stages=1" in messages[0]
+
+
+def test_offset_and_limited_failure_fits():
+    x = 5 + Hypoexponential.random(400, 0.5, 2.0, random_state=9)
+    shifted = Hypoexponential.fit(x, stages=2, offset=True)
+    assert shifted.gamma < x.min()
+    assert shifted.gamma == pytest.approx(5, abs=0.3)
+    lives = Hypoexponential.random(400, 0.5, 2.0, random_state=10)
+    lives[:100] = np.inf
+    c = (lives > 15).astype(int)
+    cured = Hypoexponential.fit(np.minimum(lives, 15), c, stages=2, lfp=True)
+    assert cured.lfp_p == pytest.approx(0.75, abs=0.06)
+
+
+def test_a_fitted_model_has_bounds_and_round_trips():
+    x = Hypoexponential.random(300, 0.5, 2.0, random_state=12)
+    model = Hypoexponential.fit(x, stages=2)
+    t = np.array([0.5, 2.0, 6.0])
+    bounds = model.cb(t, alpha_ci=0.1)
+    assert np.all(bounds[:, 0] <= model.sf(t))
+    assert np.all(model.sf(t) <= bounds[:, 1])
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
+    assert restored.k == 2
+    assert np.array_equal(restored.sf(t), model.sf(t))
+    assert np.allclose(restored.cb(t, alpha_ci=0.1), bounds)
+
+
+def test_rates_are_put_slowest_first_with_their_covariance():
+    cov = np.array([[1.0, 0.1, 0.2], [0.1, 2.0, 0.3], [0.2, 0.3, 3.0]])
+    model = SimpleNamespace(
+        params=np.array([2.0, 1.0]),
+        _covariance=cov,
+        hess_inv=cov[:2, :2],
+        dist=Hypoexponential_("Hypoexponential", 2),
+    )
+    _slowest_first(model)
+    assert np.array_equal(model.params, [1.0, 2.0])
+    assert np.array_equal(
+        model._covariance,
+        [[2.0, 0.1, 0.3], [0.1, 1.0, 0.2], [0.3, 0.2, 3.0]],
+    )
+    assert np.array_equal(model.hess_inv, [[2.0, 0.1], [0.1, 1.0]])
+    assert (model.lambda_1, model.lambda_2) == (1.0, 2.0)
+
+
+def test_fit_bayes_refuses_and_says_what_to_use():
+    with pytest.raises(ValueError, match="stages"):
+        Hypoexponential.fit_bayes([1.0, 2.0, 3.0])
 
 
 def test_from_params_rejects_offset_on_top_of_invalid_rates_first():

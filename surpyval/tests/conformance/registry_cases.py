@@ -394,23 +394,9 @@ def _univariate():
             },
         )
     )
+    # The number of stages is an argument of the fit, not estimated
+    out.append(continuous("Hypoexponential", fixed={"stages": 2}))
     no_data = "built from its parameters, not fitted to data"
-    out.append(
-        Case(
-            name="Hypoexponential",
-            fitters=("surpyval.Hypoexponential",),
-            model_class="surpyval.Parametric",
-            interface=UNIVARIATE,
-            data=dict,
-            fit=lambda d: sp.Hypoexponential.from_params([0.5, 1.5, 3.0]),
-            functions=UNI_FUNCTIONS + ("qf",),
-            x=np.array([0.1, 0.5, 1.0, 2.0, 4.0, 8.0]),
-            rows=(),
-            draw=lambda m, s: m.random(15, random_state=s),
-            explicit_seed=True,
-            exclude={p: no_data for p in REFIT_PROPERTIES},
-        )
-    )
     for name in ("NeverOccurs", "InstantlyOccurs"):
         cls = getattr(sp, name)
         out.append(
@@ -1948,9 +1934,11 @@ def _joint():
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
-    the area under it, or its value and slope together."""
+    the area under it, or its value and slope together; or the marker's
+    value speeds up the item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
+        "WeibullJointAFT": sp.WeibullJointAFT,
         "WeibullJointPH[slope]": sp.JointPH(sp.Weibull, link="slope"),
         "WeibullJointPH[cumulative]": sp.JointPH(
             sp.Weibull, link="cumulative"
@@ -1965,7 +1953,7 @@ def _joint():
             name,
             fitter,
             # the links are ways of calling the one public factory
-            fitters=("surpyval.WeibullJointPH",) if "[" not in name else (),
+            fitters=(f"surpyval.{name}",) if "[" not in name else (),
             model_class="surpyval.JointModel",
             data=joint_data,
             x=X_JOINT,
@@ -2702,7 +2690,6 @@ CASES = [_add_df_path(c) for c in CASES]
 
 # Cases with no fit_from_df path, and why (checked by test_fit_paths.py).
 NO_DF_PATH: dict[str, str] = {
-    "Hypoexponential": "built from its parameters: its fit refuses data",
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
@@ -2719,10 +2706,7 @@ _ON_SURVIVAL = ("sf", "ff", "Hf")
 # Parametric fits with no covariance to bound with: cb and param_cb
 # raise ValueError, as documented ("Only MLE has confidence bounds"; a
 # closed-form estimate or a model built from its parameters carries none).
-_NO_COVARIANCE = (
-    "ExactEventTime",
-    "Hypoexponential",
-)
+_NO_COVARIANCE = ("ExactEventTime",)
 # The probability models: param_cb bounds p from the counts of events and
 # trials (exact Clopper-Pearson by default, Wald, likelihood ratio and
 # Jeffreys as options), and covariance() is p (1 - p) / N from the same
@@ -4201,21 +4185,3 @@ def _with_convergence(case):
 
 
 CASES = [_with_convergence(c) for c in CASES]
-
-
-# Cases whose fit is not a likelihood maximisation, though other fits of
-# their model class are (the "maximum" property, test_maximum.py; whole
-# classes are in registry_families.NOT_A_LIKELIHOOD_FIT).
-_NOT_MAXIMISED: dict[str, str] = {
-    "Hypoexponential": "built from its parameters: its fit refuses data",
-}
-
-
-def _with_maximum(case):
-    if case.name not in _NOT_MAXIMISED:
-        return case
-    reason = _NOT_MAXIMISED[case.name]
-    return replace(case, exclude={**case.exclude, "maximum": reason})
-
-
-CASES = [_with_maximum(c) for c in CASES]

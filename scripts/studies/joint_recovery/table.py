@@ -5,6 +5,7 @@ import os
 
 D = os.path.dirname(os.path.abspath(__file__)) + os.sep
 inside = total = 0
+aft_inside = aft_total = 0
 for tag in [
     "linear",
     "exp",
@@ -13,6 +14,10 @@ for tag in [
     "loglink_gh11",
     "exp_gh11",
     "loglink_n1200",
+    "aft_linear",
+    "aft_exp",
+    "aft_loglink",
+    "aft_quad",
 ]:
     s = json.load(open(D + f"summary_{tag}.json"))
     print(
@@ -36,6 +41,9 @@ for tag in [
         if tag in ("linear", "exp", "loglink", "quad"):
             total += 1
             inside += 0.92 <= r["coverage"] <= 0.98
+        if tag.startswith("aft_"):
+            aft_total += 1
+            aft_inside += 0.92 <= r["coverage"] <= 0.98
         b = (
             f"{100 * r['bias']:+.2f}% ({100 * r['bias_mcse']:.2f}%)"
             if r["relative"]
@@ -47,3 +55,4 @@ for tag in [
             f"| {r['sd_over_se']:.2f} | {', '.join(flag)} |"
         )
 print("\ncoverage inside 0.92-0.98:", inside, "of", total)
+print("accelerated, coverage inside 0.92-0.98:", aft_inside, "of", aft_total)

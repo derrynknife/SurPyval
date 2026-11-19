@@ -285,7 +285,6 @@ NOT_DIFFERENTIATED = {
     "Bernoulli": _NO_DERIVATIVES + "a closed-form estimate",
     "FixedEventProbability": _NO_DERIVATIVES + "a closed-form estimate",
     "ExactEventTime": _NO_DERIVATIVES + "a closed-form estimate",
-    "Hypoexponential": _NO_DERIVATIVES + "the model is given its rates",
     **dict.fromkeys(
         ("CrowAMSAA", "Duane", "CoxLewis", "ProportionalIntensityNHPP"),
         _NO_DERIVATIVES + "a search on finite-difference gradients, and "

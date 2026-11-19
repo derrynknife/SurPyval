@@ -320,9 +320,15 @@ def test_user_entry_points_accept_array_likes():
     # list or an array. ``Numeric`` and ``Boxable`` both exclude ``list``
     # -- and every one of these accepts a list, as their own docstring
     # examples show (``Binomial.from_params([5, 0.3])``).
+    # An ``x`` that may be left out (for ``xl`` and ``xr``, as the base
+    # fit's) is optional as well.
     wrong = {}
     for mod, (args, _) in _annotations("fit").items():
-        if args and args[0][0] == "x" and args[0][1] != "npt.ArrayLike":
+        if (
+            args
+            and args[0][0] == "x"
+            and args[0][1] not in ("npt.ArrayLike", "npt.ArrayLike | None")
+        ):
             wrong[f"{mod}.fit(x)"] = args[0][1]
     for mod, (args, _) in _annotations("from_params").items():
         if args and args[0][0] == "params" and args[0][1] != "npt.ArrayLike":

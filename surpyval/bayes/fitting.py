@@ -72,11 +72,17 @@ def _check_dist(dist: Any, method: str) -> None:
             "discrete. log_likelihood_fn and posterior draws from another "
             "sampler are the way to a Bayesian fit of it for now."
         )
-    if dist.name in ("ExactEventTime", "Hypoexponential"):
+    if dist.name == "ExactEventTime":
         raise ValueError(
-            f"fit_bayes does not take {dist.name}: it is given its "
-            "parameters (a point mass, or a chain of given rates), not "
-            "fitted."
+            "fit_bayes does not take ExactEventTime: it is given its "
+            "parameters (a point mass), not fitted."
+        )
+    if dist.name == "Hypoexponential":
+        raise ValueError(
+            "fit_bayes does not take Hypoexponential: its parameters are "
+            "one rate per stage, and fit_bayes has no argument for the "
+            "number of stages. Fit it by maximum likelihood, "
+            "Hypoexponential.fit(x, stages=m)."
         )
     if dist.name in _MOVING_SUPPORT:
         raise ValueError(

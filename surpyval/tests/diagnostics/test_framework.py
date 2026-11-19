@@ -407,6 +407,23 @@ def _po_or_ah_fit(fitter, how):
 
 # Kinds of model whose refusal is the end state, not a check to come: each
 # is refused for good and the message names what to use instead, as
+def _no_shared_optimiser_fit():
+    """A fitted model whose fitter lacks the shared optimiser.
+
+    Every public continuous distribution has it now (the Hypoexponential
+    gained it when it learnt to fit from data), so the refusal is checked
+    on a stand-in fitter, as a custom distribution would be.
+    """
+
+    class PlainFitter:
+        name = "PlainFitter"
+        discrete = False
+
+    model = sp.Exponential.fit([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    model.dist = PlainFitter()
+    return model
+
+
 # features spelt the way AdviceRule.features spells them.
 @pytest.mark.parametrize(
     "fit, reason, features",
@@ -417,7 +434,7 @@ def _po_or_ah_fit(fitter, how):
             ("aic", "NegativeBinomial", "sf", "KaplanMeier.fit"),
         ),
         (
-            lambda: sp.Hypoexponential.from_params([1.0, 3.0]),
+            _no_shared_optimiser_fit,
             "shared optimiser",
             ("aic", "KaplanMeier"),
         ),

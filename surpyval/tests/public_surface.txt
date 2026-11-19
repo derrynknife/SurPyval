@@ -101,6 +101,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JointAFT
 surpyval.JointFrailty
 surpyval.JointModel
 surpyval.JointPH
@@ -209,6 +210,7 @@ surpyval.WeibullAH
 surpyval.WeibullDistributional
 surpyval.WeibullEquivalence
 surpyval.WeibullFrailty
+surpyval.WeibullJointAFT
 surpyval.WeibullJointPH
 surpyval.WeibullMixtureCure
 surpyval.WeibullPH
