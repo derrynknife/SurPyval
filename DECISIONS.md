@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-19
+
+### Consolidation: shared base for the regression fitters, shared interval scales (19 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The parametric regression fitters (PH, AFT, PO, additive hazards, accelerated life) derive from `RegressionFitter` (`univariate/regression/_regression_fitter.py`): the distribution's metadata, the baseline functions each family reads (`_baseline_functions`, kept as `<name>_dist`) and `neg_ll`. PH, AFT and PO derive from `LogLinearRegressionFitter`, whose `_fit` is their whole fit (`truncation_window` and `fit_log_linear`, with the family's `_fit_options`). Each family keeps its own `fit` signature, decorators and docstring, which call `_fit`, and its own `_phi`. | proposed | One copy of what every family repeated. The docstrings stay literal per family, as the project keeps them (Contributing); `_phi` stays per family because the time-varying evaluation and the closed-form quantile tell AFT from PO by the identity of `_phi`. Bit-identical by the refactor snapshot; the attribute resolution of every fitter class is unchanged apart from the moved methods. | done |
+| The non-parametric intervals take their scales from one table (`univariate/nonparametric/_scales.py`): the pointwise bounds' `exp`, `log`, `logit`, `arcsine` and `normal` types, the bands, `sf_diff`'s transforms and the non-parametric cumulative incidence's log(-log) bound. | proposed | One transform, delta-method scale and inverse per scale. The `log` and `normal` pointwise bounds, the incidence bound and `sf_diff`'s variances move by at most 1.6e-13 relative (the order of the arithmetic), within the 1e-12 Contributing allows a refactor. | done |
+| The start-stop likelihood of the proportional-intensity fitters (`recurrent/regression/tvc.py::tvc_neg_ll`) stays its own function; a test checks it equals `nhpp_log_likelihood` with each row a piece of its own (to 1e-12). | proposed | Routed through `nhpp_log_likelihood` it gives the same value to the last digit or two, but the sums in a different order moved the time-varying fits of `ProportionalIntensityNHPP`, `ProportionalIntensityHPP` and `CauseSpecificProportionalIntensity` by up to 1.3e-7 relative (the search stopping at a slightly different point), beyond what a refactor may change. Merging them is a change of fitted values for the maintainer to accept. | open |
+
 ## 2026-11-18
 
 ### Hypoexponential fitted from data, with a given number of stages (18 Nov 2026)
