@@ -44,10 +44,11 @@ def test_cb_takes_Z_second():
 
     x, y, i, Z = adt_data(seed=1)
     model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
-    # Z reaches Z (not ``on``): the analytic bound is not derived for an
-    # accelerated model, and says so.
-    with pytest.raises(NotImplementedError, match="method='bootstrap'"):
-        _quiet(lambda: model.cb(T, [1.0]))
+    # Z reaches Z (not ``on``): the analytic bound is the model's at that
+    # stress
+    np.testing.assert_array_equal(
+        _quiet(lambda: model.cb(T, [1.0])), model.cb(T, Z=[1.0])
+    )
     got = _quiet(
         lambda: model.cb(
             T, [1.0], method="bootstrap", n_boot=4, random_state=3

@@ -5,6 +5,72 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **How good are dynamic predictions: accuracy at an age, over a window.**
+  ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
+  ``dynamic_calibration`` (also importable from ``surpyval``) score a
+  model's chance that a unit still running at an age ``s`` fails within
+  the next ``w``, made from what was known at ``s``: a joint model's
+  readings up to ``s`` (never those after), a ``LandmarkCox``'s covariates
+  and last readings then, or the age alone for a distribution or a
+  regression fit. At each age of ``at``, among the units at risk then:
+  the AUC (does a unit that failed in the window get a higher chance than
+  one that did not?), the Brier score (the mean squared error of the
+  chances) and a calibration table (each group's mean chance beside the
+  share that failed, by Kaplan-Meier, with an interval). Units censored
+  inside the window are handled by inverse-probability-of-censoring
+  weights from the units at risk at ``s`` (Rizopoulos 2011; Blanche et
+  al. 2015), the same weights as ``auc_td`` and ``brier_score``; with no
+  censoring inside the window the numbers are the plain AUC and mean
+  squared error. A dict of models (a joint model against a Weibull of the
+  ages alone, say) is scored on the same units, with standard errors,
+  intervals and paired comparisons (difference, interval, p-value) from
+  ``score_predictions``. ``cross_validate=k`` (with ``random_state``)
+  splits the units into ``k`` groups and predicts each from the model
+  refitted without it: give the fitters (``WeibullJointPH``, ``Weibull``,
+  ``LandmarkCox`` or a function of the data). The results,
+  ``DynamicAccuracy`` and ``DynamicCalibration``, print what they measure
+  in words and the interval level, and write strict JSON (``to_dict`` /
+  ``from_dict``). Checked by hand-worked examples, against the plain
+  window outcomes, and by a calibration study (200 data sets, 30%
+  censored: mean estimates within Monte Carlo error of the true values).
+  See "How good are the predictions" in :doc:`Joint Models`.
+- **Likelihood-ratio and bootstrap bounds for a parametric competing-risks
+  fit to inspection data.** A ``ParametricCompetingRisks`` model fitted to
+  left- or interval-censored rows (its causes fitted together) now takes
+  ``method="lr"`` and ``method="bootstrap"`` on a cause's net ``sf``,
+  ``ff`` and ``Hf`` (``cb(x, event=k, on="sf", method=...)``), as a
+  model fitted a cause at a time does; they were refused. The
+  likelihood-ratio bound profiles the joint likelihood over every cause's
+  parameters (with one cause it is the univariate fit's bound, to 1e-5);
+  the bootstrap resamples the units with their windows and refits the
+  causes together (``n_boot``, ``random_state``; refits kept for an
+  integer seed), the bias-corrected percentile interval. In a simulation
+  of failures found at inspections (n = 300, 200 replicates) the 95%
+  likelihood-ratio bounds on each cause's net survival covered 92.5% to
+  96%. Both need the fitted data: a model restored with ``from_dict``
+  refuses them, saying to refit or use ``method="wald"``.
+- **Joint models: the links compared in one call.** Each joint model
+  fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
+  fits the fitter's model (its baseline, path model and varying path
+  parameters) with each of several links to the same data -- by default
+  the value, the slope and the cumulative area alone, and the slope and the
+  area each beside the value -- and returns a ``LinkComparison``
+  (``surpyval.univariate.joint``). Its ``table`` ranks the links by AIC,
+  AIC_c or BIC (``metric``), best first, with each link's ``k``,
+  log-likelihood, criteria, difference from the best (``delta``), weight
+  (Akaike weights for AIC), ``maximum`` and ``status``;
+  ``likelihood_ratio_tests()`` tests each nested pair (``"value"``
+  against ``"value + slope"``, ...) by twice the gain in
+  log-likelihood; ``models`` holds every fit by its link's name, and
+  ``best`` / ``best_link`` the best. Each candidate is the fit of its own
+  link to the last digit. The data and options are those of ``fit``; a
+  ``marker_reference`` goes to the links that follow the value only. A fit
+  that is not a verified maximum is shown but neither ranked nor tested,
+  and a link that cannot be fitted is listed with the reason, each said in
+  one warning; a warning every fit gives about the data is given once. A
+  Lloyd-Lipow path is compared without the cumulative links, with a
+  warning. See "Comparing the links" in :doc:`Joint Models`.
+
 - **``CoxPH`` takes every kind of row, and competing risks.**
   ``CoxPH.fit`` (and ``fit_from_df``, ``fit(data)``) now accepts left-
   and interval-censored rows (``c = -1``, ``c = 2``, or windows
@@ -106,9 +172,38 @@ v0.29 (unreleased)
 
   ``diagnose()`` refuses each of these penalised models, as it does a
   penalised Cox model.
+- **Analytic two-stage bounds for accelerated degradation.**
+  ``DegradationModel.cb(x, Z)`` with ``method="analytic"`` (the default)
+  and ``life_parameter_covariance()`` now work for a model fitted with
+  stress covariates ``Z`` and for a step-stress
+  (``acceleration="clock"``) model fitted with
+  ``population_method="moments"``; both raised ``NotImplementedError``
+  and pointed to the bootstrap. The covariate (ADT) bound applies the
+  generated-regressor correction to the regression life fit, each unit's
+  pseudo-time variance entering at its own stress; with paths that fit
+  their readings exactly it is ``life_model.cb``'s. The step-stress bound
+  takes the joint least-squares covariance of the clock and every unit's
+  path, so the pseudo failure times are correlated through the shared
+  clock, and the bound under a stress carries the uncertainty of both the
+  life parameters and ``gamma``; ``life_parameter_covariance()`` returns
+  the life parameters followed by ``gamma``. In closed form, with no
+  refitting: a fraction of a second where a 200-resample bootstrap takes
+  about ten. In
+  100 simulated step-stress tests the analytic standard error of
+  ``gamma`` was within 3% of the spread of the estimates. A
+  ``population_method="reml"`` step-stress model still refuses the
+  analytic bound (its mixed-model clock's covariance is not derived) and
+  points to ``method="bootstrap"``.
 
 **Changed.**
 
+- ``FineGray``, ``CompetingRisksProportionalHazards`` and
+  ``ParametricCompetingRisksRegression`` refuse left- and
+  interval-censored rows with a message naming what takes them
+  (``CoxPH.fit(x, Z, c=c, e=e)`` with covariates, ``CompetingRisks`` or
+  ``ParametricCompetingRisks`` without), in place of "Left or interval
+  censoring not implemented with Competing Risks". ``pseudo_cif`` refuses
+  such rows (and two-column ``x``) saying the same.
 - ``CoxPH.fit`` no longer refuses left- or interval-censored rows (it
   fits them by the full likelihood, above), and its ``fit_from_df``'s
   ``x_col`` is optional (give ``xl_col`` and ``xr_col`` instead).
@@ -119,6 +214,19 @@ v0.29 (unreleased)
   and refused by every model that reads it).
 - The two-clock fit's ``fit_from_df`` names its columns as the univariate
   fits do (``x_col`` and ``x2_col``, ``tl_col`` and ``tl2_col``).
+- Four of ``diagnose()``'s refusals are now worded as permanent, not as
+  checks still to come, and each names what to use instead: a discrete
+  distribution (compare discrete fits by ``aic()`` and ``sf`` with
+  ``KaplanMeier.fit``), a distribution whose fitter lacks the shared
+  optimiser (its ``sf`` beside ``KaplanMeier.fit``, and ``aic()``), a
+  parametric regression with a link other than ``exp(beta'Z)`` (refit with
+  ``PH(dist)`` or ``AFT(dist)`` and diagnose that), and a parametric
+  proportional odds or additive hazards model fitted to left- or
+  interval-censored or right-truncated data (diagnose the PH and AFT fits
+  of the same data, compare by ``aic()``). The last now points to those
+  fits rather than only to ``likelihood_ratio_test()``, which tests
+  whether the covariates matter, not whether their effects stay constant.
+  Each still raises ``NotImplementedError``.
 
 **Deprecated.**
 

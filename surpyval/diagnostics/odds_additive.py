@@ -829,6 +829,17 @@ def _ah_panels(ctx: Context) -> list[Panel]:
 # ---------------------------------------------------------------------------
 # Refusals and notes
 # ---------------------------------------------------------------------------
+#: What the refusal of a parametric model fitted to censoring intervals or
+#: right-truncated rows says to do instead.
+_CENSORED_INSTEAD = (
+    "Fit the PH and AFT models with the same baseline to the same data "
+    "(WeibullPH.fit, WeibullAFT.fit, ...), whose diagnose() takes every "
+    "kind of censoring and truncation, and compare them with this model "
+    "by model.aic(); model.likelihood_ratio_test() tests whether the "
+    "covariates have any effect."
+)
+
+
 def _validate(model: Any) -> None:
     label = "ProportionalOdds" if _is_po(model) else "AdditiveHazards"
     if _is_parametric(model):
@@ -844,24 +855,20 @@ def _validate(model: Any) -> None:
         c = np.asarray(model.data.c)
         if np.any((c == -1) | (c == 2)):
             raise NotImplementedError(
-                "diagnose() is not yet available for a parametric "
-                "proportional odds or additive hazards model fitted to "
-                "left- or interval-censored data: its trend tests split "
-                "each row's follow-up at the cut times, which a censoring "
-                "interval cannot be split by. Test each covariate by "
-                "comparing the fits with and without it, with "
-                "model.likelihood_ratio_test(), meanwhile."
+                "diagnose() does not check a parametric proportional odds "
+                "or additive hazards model fitted to left- or "
+                "interval-censored data: its trend tests split each row's "
+                "follow-up at the cut times, which a censoring interval "
+                "cannot be split by. " + _CENSORED_INSTEAD
             )
         t = np.asarray(model.data.t, dtype=float)
         if np.any(np.isfinite(t[:, 1])):
             raise NotImplementedError(
-                "diagnose() is not yet available for a parametric "
-                "proportional odds or additive hazards model fitted to "
-                "right-truncated data (a finite tr): its trend tests "
-                "split each row at the cut times, which a right-truncated "
-                "row cannot be split by. Test each covariate by "
-                "comparing the fits with and without it, with "
-                "model.likelihood_ratio_test(), meanwhile."
+                "diagnose() does not check a parametric proportional odds "
+                "or additive hazards model fitted to right-truncated data "
+                "(a finite tr): its trend tests split each row at the cut "
+                "times, which a right-truncated row cannot be split by. "
+                + _CENSORED_INSTEAD
             )
     else:
         from surpyval.univariate.regression._penalised import (

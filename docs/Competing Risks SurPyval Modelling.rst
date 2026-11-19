@@ -84,9 +84,13 @@ Every competing-risks fit takes the same core arrays:
   see `Delayed entry`_, `Assembling a model from separately fitted causes`_
   and `Delayed entry in the cause-specific model`_).
 
-Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected by
-every fit but ``ParametricCompetingRisks`` (see `Failures found at
-inspections`_), whose error says so.
+Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are taken by
+``ParametricCompetingRisks`` (see `Failures found at inspections`_),
+``CompetingRisks`` (`The non-parametric estimate for inspection data`_),
+``gray_test`` and the cause-specific ``CoxPH``; the other regressions
+(``FineGray``, ``CompetingRisksProportionalHazards``,
+``ParametricCompetingRisksRegression``) and ``pseudo_cif`` refuse them,
+saying which of those to use.
 
 lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
 integer column with ``0`` for a censored row. Here ``0`` is a cause like any
@@ -817,7 +821,24 @@ bound (``cb`` on ``cif``, ``sf``, ``ff`` and ``Hf``, ``standard_errors``) uses
 it. Each cause's model in ``models`` carries its parameters and its block of
 that covariance, so its own Wald bounds hold; it has no data of its own, so
 its likelihood-ratio and bootstrap bounds, ``neg_ll`` and ``aic`` are the
-model's, not the cause's. Only ``how="MLE"`` and continuous distributions
+model's, not the cause's. A cause's net ``sf``, ``ff`` and ``Hf`` take
+``method="lr"`` and ``method="bootstrap"`` on the model, over the joint
+likelihood: the likelihood-ratio bound profiles every cause's parameters
+(with one cause it is the univariate fit's bound), and the bootstrap is by
+cases -- the units resampled with their windows, the causes fitted together
+again -- since a parametric resample would need the inspection schedule.
+Both need the data the model was fitted to, which ``from_dict`` does not
+restore.
+
+.. jupyter-execute::
+
+    print(inspected.cb([50.0, 100.0], "wear", on="sf", method="lr").round(3))
+
+In a simulation of failures found at inspections every 2 time units (n =
+300, 200 replicates;
+``surpyval/tests/calibration/test_coverage_competing_risks_interval.py``)
+the 95% likelihood-ratio bounds on each cause's net survival covered 92.5%
+to 96% at three times. Only ``how="MLE"`` and continuous distributions
 are supported, and a row in a window needs its cause. ``diagnose()`` does
 not yet check such a fit (its checks need each failure's exact time) and
 says so; compare distributions by their ``aic()``, and the all-cause
