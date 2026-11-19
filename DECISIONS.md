@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-18
 
+### Hypoexponential fitted from data, with a given number of stages (18 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Hypoexponential.fit(..., stages=m)` (and `fit_from_surpyval_data`, `fit_from_df`, `fit(data)`) estimates the `m` rates through the ordinary parametric fit, so every `how` but MPP, censoring, truncation, counts, weights, `offset`, `lfp`, `zi`, bounds and the bootstrap come with it. `stages` is keyword-only and required on the singleton (a `ValueError` says what to pass); an `m`-stage instance (a fitted model's `dist`, which the bootstrap refits) defaults to its own `m`. The number of stages is not estimated: the caller compares fits by AIC. | proposed | No number of stages is a best standard default (principle 15); estimating it is model selection, which the AIC comparison the package already offers does. | done |
+| The rates are exchangeable, so a fit reports them sorted, slowest stage first, with the covariance's rows and columns permuted to match; not when `fixed` names a rate (the names would move). | proposed | A stable, readable answer; the search may cross the diagonal. | done |
+| Equal and close rates are accepted everywhere (`from_params`, the functions, the fit). Where the partial fractions' coefficients sum (in absolute value) above 100, the functions come from the first row of the generator's matrix exponential, by scaling and squaring a matrix with no negative entry (Taylor terms and products of non-negative numbers only). The near-equal refusal (`DISTINCT_RATES_TOL`) is removed. | proposed | The MLE is often on the diagonal (Erlang-like data: every fixture fit of two stages to the conformance data has equal rates), so a fit must be able to return equal rates and the model built from them must load (principle 20). The old form also lost every digit between its refusal threshold and well-separated rates (four rates 1e-5 apart: twice the density). Rates whose coefficients are small give the same numbers as before. | done |
+| The likelihood is differentiated through an autograd primitive for `log_sf`, `log_df` and `log_ff` whose derivative in a rate is the same function with that stage repeated (`d ln G / d lambda_j = (1 - G(lambda, lambda_j) / G(lambda)) / lambda_j`), so derivatives of every order are exact; in `x`, `-h`, `f / F` and `lambda_m (f_{-m} / f - 1)`. | proposed | The piecewise evaluation is not traceable by autograd; this keeps the gradient and Hessian exact (principle 12's derivative check passes). | done |
+| `fit_bayes` refuses the Hypoexponential, saying to use `fit`: it has no argument for the number of stages. | proposed | Principle 2. | gap |
 ### Joint models: the accelerated survival part, `JointAFT` (18 Nov 2026)
 
 | Decision | By | Reason | Status |

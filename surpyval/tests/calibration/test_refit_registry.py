@@ -1180,6 +1180,15 @@ PLANS["Beta4"] = Plan(
     "with a and inherit their bias (1.5 and 1.2 sd at n = 300)",
 )
 PLANS["BetaGeometric"] = Plan(_uni_censored, 300, 100)
+PLANS["Hypoexponential"] = Plan(
+    _uni_censored,
+    300,
+    60,
+    note="the curve only: the fixture's two rates are equal (an Erlang), "
+    "and a fit reports its rates in order, slowest first, so each "
+    "estimate is the smaller or larger of two and biased away from a "
+    "common truth by construction",
+)
 for _name in ("Binomial", "Bernoulli", "FixedEventProbability"):
     PLANS[_name] = Plan(_uni_plain, 300, 100, params=_parametric_params)
 PLANS["ExactEventTime"] = Plan(_inspected, 300, 100, params=_parametric_params)
@@ -1619,7 +1628,6 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
-    "Hypoexponential": _NO_DATA,
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,
     "SurvivalTree[weibull]": _ML,
