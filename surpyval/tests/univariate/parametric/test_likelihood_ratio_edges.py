@@ -264,8 +264,8 @@ def test_nb_band_is_the_extreme_of_its_region_by_brute_force(
     # refined about the best) and over the Poisson limit, against the
     # band. The searches took a point up to 1e-6 of deviance outside the
     # region, or as far inside, as on its boundary: the bands agreed with
-    # these extremes to 1e-11 or 1e-12, and the sf(8) lower bound, at the
-    # limit, was 3e-8 beyond it. Taken onto the boundary they agree to
+    # these extremes to 1e-10 to 1e-12, and the sf(8) lower bound, at the
+    # limit, was 3e-8 beyond it. Taken onto the boundary these agree to
     # 1e-13 inside the region and 1e-11 at the limit.
     slices, limit = nb_slices
     f, f_limit = _NB_FUNCTIONS[on]

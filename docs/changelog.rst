@@ -129,7 +129,7 @@ v0.29 (unreleased)
   function's value at a point of the region. A Uniform's bands, which
   stopped up to 3e-9 inside its region, are its extremes to rounding
   (checked against the corners of the region, a triangle); a
-  NegativeBinomial's agree to 1e-12 with the extremes found slice by
+  NegativeBinomial's agree to 3e-12 with the extremes found slice by
   slice (1e-11 where the extreme is its Poisson limit, approached only as
   ``r -> inf``). Its 95% ``sf(8)`` lower bound, which was 3e-8 beyond the
   extreme of that limit, is a point of the region 6e-8 short of it: down

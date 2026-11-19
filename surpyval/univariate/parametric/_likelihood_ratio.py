@@ -1546,17 +1546,18 @@ class _PsiBoundSearch:
         as at the extreme. A Uniform's bands stopped up to 3e-9 inside its
         region (a triangle, whose corners give the extremes exactly), and
         a NegativeBinomial's agreed with the extremes found slice by slice
-        to 1e-11 or 1e-12, its ``sf(8)`` lower bound 3e-8 beyond the
+        to 1e-10 to 1e-12, its ``sf(8)`` lower bound 3e-8 beyond the
         extreme of its Poisson limit. Settled, the Uniform's are its
-        extremes to rounding, and the NegativeBinomial's to 1e-13; that
-        lower bound is a point of the region, 6e-8 short of the limit,
-        which is approached only as ``r -> inf`` and ``p -> 1``, where
-        ``1 - p`` cannot be told apart in doubles finely enough to follow
-        the valley further. Where the step back onto the boundary moves
-        psi by more than the checks' hair (``_lr_hair``), the
-        differences have lost the valley (an ExpoWeibull's as ``beta ->
-        inf``, whose width in ``log(alpha)`` shrinks as ``1 / beta``),
-        and the answer is kept as the searches found it."""
+        extremes to rounding, and the NegativeBinomial's to 3e-12 (1e-11
+        at the Poisson limit); that lower bound is a point of the region,
+        6e-8 short of the limit, which is approached only as ``r -> inf``
+        and ``p -> 1``, where ``1 - p`` cannot be told apart in doubles
+        finely enough to follow the valley further. Where the step back
+        onto the boundary moves psi by more than the checks' hair
+        (``_lr_hair``), the differences have lost the valley (an
+        ExpoWeibull's as ``beta -> inf``, whose width in ``log(alpha)``
+        shrinks as ``1 / beta``), and the answer is kept as the searches
+        found it."""
         at = [u for psi, u in self.known if psi == answer]
         if not at or not np.isfinite(answer):
             return answer
