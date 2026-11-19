@@ -12,7 +12,10 @@ replicates, seed 20261107 (fixed before the first run).
 
 The two-sided 95% bounds on each cause's cumulative incidence and on the
 all-cause survival at t = 4, 8 and 15 are checked against the truth, with
-the slack of the other coverage studies (0.01).
+the slack of the other coverage studies (0.01). The likelihood-ratio
+bounds on each cause's net survival at the same times are checked the same
+way on their own 200 replicates (seed 20261121, fixed before the first
+run).
 ``scripts/studies/parametric_competing_risks_interval_coverage.py`` runs
 the same design (and inspections every 5) over 500 replicates.
 """
@@ -82,3 +85,29 @@ def test_wald_coverage_with_inspection_data():
     ):
         band = np.array([o[i] for o in out])
         check_coverage(band[..., 0], band[..., 1], target, 0.95, label)
+
+
+LR_SEED = 20261121
+
+
+def _lr_replicate(job):
+    x, e, c = job
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        model = ParametricCompetingRisks.fit(x, e, c=c, dist=sp.Weibull)
+        return tuple(
+            model.cb(TIMES, k, on="sf", method="lr") for k in ("a", "b")
+        )
+
+
+def test_lr_net_coverage_with_inspection_data():
+    rng = np.random.default_rng(LR_SEED)
+    jobs = [_sample(rng) for _ in range(REPS)]
+    with process_pool(max_workers=os.cpu_count()) as pool:
+        out = list(pool.map(_lr_replicate, jobs))
+    for i, k in enumerate(("a", "b")):
+        target = sp.Weibull.from_params(list(TRUE[k])).sf(TIMES)
+        band = np.array([o[i] for o in out])
+        check_coverage(
+            band[..., 0], band[..., 1], target, 0.95, f"net sf {k} (lr)"
+        )

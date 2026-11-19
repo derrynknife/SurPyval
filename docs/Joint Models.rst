@@ -633,7 +633,7 @@ Three things to know:
   lifetimes differ *between* items with different rates, so it needs
   rates that vary between items (``b`` in ``varying``, or shifted by a
   covariate). The links are compared by ``aic()``, the models having the
-  same data.
+  same data, or all at once by ``compare_links`` (see `Comparing the links`_).
 
 A fleet of gearboxes, their oil debris read monthly for two years (ages
 in years). Each starts near 3 ppm and rises about 1 ppm a year, at a level
@@ -781,6 +781,65 @@ R's ``JM`` (``jointModel`` with ``parameterization = "both"``) gives the
 same estimates on these data, as it does for the value, the slope and the
 cumulative links alone: the comparison, with the treatment in the hazard,
 is ``tests/reference/test_joint_links.py``.
+
+Comparing the links
+~~~~~~~~~~~~~~~~~~~
+
+Which link a marker's risk follows is a question about each dataset, and
+the data answer it by comparing fits. A fitter's ``compare_links`` fits
+the same model -- its baseline, path model and varying parameters -- with
+each link to the same data, in one call. By default it fits five: the
+value, the slope and the area alone, and the slope and the area each beside
+the value (``links=[...]`` chooses others, each a link or a list of them).
+On the gearboxes whose risk follows how fast the debris rises:
+
+.. jupyter-execute::
+
+    links = JointPH(Weibull).compare_links(rising, unit="years")
+    links.table[["k", "log_likelihood", "aic", "delta", "weight"]].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert links.best_link == ("slope",)
+    assert list(links.table.index[:2]) == ["slope", "value + slope"]
+    assert links.table["weight"].iloc[0] > 0.6
+
+The table is ranked by AIC (``metric="bic"`` or ``"aic_c"`` for another
+criterion), best first. ``delta`` is each link's AIC less the best's and
+``weight`` its Akaike weight, its share of :math:`e^{-\Delta/2}`: the slope
+link has about two thirds and the value with the slope the rest, the links
+without the slope almost none. ``links.best`` is the best fit, and
+``links.models["value + slope"]`` any other.
+
+A link whose terms are all in another's is that model with the extra
+effects at 0, so the two are also compared by a likelihood-ratio test:
+twice the gain in log-likelihood, on one degree of freedom an extra effect.
+
+.. jupyter-execute::
+
+    links.likelihood_ratio_tests().round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    tests = links.likelihood_ratio_tests().set_index(["simpler", "richer"])
+    assert tests.loc[("value", "value + slope"), "p_value"] < 0.01
+    assert tests.loc[("slope", "value + slope"), "p_value"] > 0.05
+
+The slope adds to the value (p = 0.0002) and the value adds nothing to the
+slope (p = 0.37): risk here follows how fast the debris is rising, not
+where it stands. Links that are not nested, such as the value and the
+slope, are compared by the table only.
+
+Each candidate is fitted as its own ``fit`` would fit it, to the same
+parameters. A fit that is not a verified maximum is shown in the table as
+``set aside`` and is neither ranked nor tested, and a link that cannot be
+fitted is listed with the reason (``links.failed``); each is said in one
+warning. A Lloyd-Lipow path, which has no finite area from age 0, is
+compared without the area.
 
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
@@ -1145,10 +1204,13 @@ fitter class below; import everything from ``surpyval`` (or
 .. autofunction:: surpyval.univariate.joint.joint_ph.JointPH
 
 .. autoclass:: surpyval.univariate.joint.joint_ph.JointPHFitter
-   :members: fit, fit_from_df
+   :members: fit, fit_from_df, compare_links
 
 .. autoclass:: surpyval.univariate.joint.joint_model.JointModel
    :members: sf, ff, cb, predict, summary, covariance, standard_errors, to_dict, from_dict
+
+.. autoclass:: surpyval.univariate.joint.compare.LinkComparison
+   :members: table, likelihood_ratio_tests, best_link, best_label
 
 .. autoclass:: surpyval.univariate.joint.dynamic.DynamicPrediction
    :members: sf, ff, hf, df, Hf, qf, remaining_life, cb, marker, marker_interval, random

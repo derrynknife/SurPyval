@@ -80,8 +80,11 @@ class DiagnoseMixin:
         ------
         NotImplementedError
             For a model whose family's diagnostics are not built yet,
-            saying what to check it with meanwhile, and for an option of the
-            model the checks do not support yet (a stratified Cox fit).
+            saying what to check it with meanwhile; for an option of the
+            model the checks do not support yet; and for a kind of model
+            the checks do not cover by design (a discrete distribution, a
+            parametric regression with a custom link, ...), saying what to
+            use instead.
         ValueError
             For a model the checks cannot be run on (one restored with
             ``from_dict``, which has no data), saying what to do.

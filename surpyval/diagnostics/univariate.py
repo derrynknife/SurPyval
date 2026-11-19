@@ -84,11 +84,15 @@ What is diagnosed
 -----------------
 A continuous distribution fitted to data, by any ``how``. ``diagnose()``
 refuses, saying what to do: a model without data (``from_params``, or
-restored without them), one whose fit has no finite maximum, a discrete
-distribution and a fit by a fitter without the shared optimiser (not yet,
-#875), and an event-probability model (``Bernoulli``,
-``FixedEventProbability``) or ``ExactEventTime``, which have no
-distribution of times to test. A mixture (``MixtureModel``) is a model
+restored without them), one whose fit has no finite maximum, and an
+event-probability model (``Bernoulli``, ``FixedEventProbability``) or
+``ExactEventTime``, which have no distribution of times to test. Two
+more refusals are permanent, each naming what to use instead: a discrete
+distribution (``Poisson``, ``NegativeBinomial``, ``DiscreteWeibull``,
+...), whose counts the tests of continuous times do not apply to, and a
+distribution whose fitter lacks the shared optimiser
+(``OptimisedFitMixin``), which the bootstrap needs to refit each
+resample. A mixture (``MixtureModel``) is a model
 class of its own, without ``diagnose()``.
 """
 
@@ -810,18 +814,23 @@ def _validate(model: Any) -> None:
         )
     if getattr(dist, "discrete", False):
         raise NotImplementedError(
-            "diagnose() is not yet available for a discrete distribution "
-            "({}): the goodness-of-fit tests of a discrete model (on its "
-            "counts) are not built yet. Compare discrete models with "
-            "model.aic() meanwhile.".format(name)
+            "diagnose() does not check a discrete distribution ({}): its "
+            "goodness-of-fit tests and probability plot are for continuous "
+            "times, not counts. Compare discrete distributions fitted to "
+            "the same counts with model.aic() (Poisson against "
+            "NegativeBinomial for overdispersion, say), and compare "
+            "model.sf with KaplanMeier.fit of the same data.".format(name)
         )
     if not isinstance(dist, OptimisedFitMixin):
         raise NotImplementedError(
-            "diagnose() is not yet available for a {} model: its "
-            "bootstrap needs the refit of the shared optimiser, which the "
-            "{} fitter does not have. Compare it with other "
-            "distributions fitted to the same data with model.aic(), or "
-            "plot it beside KaplanMeier fitted to them.".format(name, name)
+            "diagnose() does not check a {} model: its goodness-of-fit "
+            "tests refit the distribution to each bootstrap resample with "
+            "the shared optimiser, which the {} fitter does not have. "
+            "Plot model.sf beside KaplanMeier.fit of the data it is meant "
+            "to describe and, for a model fitted to data, compare it with "
+            "other distributions fitted to them by model.aic().".format(
+                name, name
+            )
         )
     if getattr(model, "data", None) is None:
         raise ValueError(

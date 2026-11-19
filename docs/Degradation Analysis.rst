@@ -492,12 +492,37 @@ Two corrections are available.
   held fixed across resamples, so after a ``path="best"`` selection the band
   does not include the uncertainty of having chosen the shape.
 
-For the accelerated models further down, the analytic correction is not
-derived (the regression life fit, or the estimated clock, adds uncertainty the
-formula above does not capture), and the bootstrap is the method: units are
-resampled together with their stresses (a step-stress unit with its whole
-stress history) and the whole accelerated fit — including, for the clock, the
-estimate of :math:`\gamma` — is rerun each time.
+The accelerated models further down have both bounds too.
+
+* **A covariate (ADT) life fit.** The same correction applies to the
+  regression parameters :math:`\phi` (the distribution's and the stress
+  coefficients): the derivative of the regression score in
+  :math:`T_i` is taken at unit :math:`i`'s stress, and the bound on
+  survival at a stress :math:`z` follows by the delta method.
+* **A step-stress (clock) fit.** Here every pseudo failure time also depends
+  on the estimated clock :math:`\hat\gamma`, so the times are correlated,
+  and life under a stress depends on :math:`\hat\gamma` directly. With
+  ``population_method="moments"`` the clock and the path parameters
+  :math:`\theta_1, \dots, \theta_n` are one joint least-squares fit, whose
+  Gauss-Newton covariance :math:`\sigma^2 (J^\top J)^{-1}` gives the joint
+  covariance of :math:`\hat\gamma` and the pseudo failure times (the
+  Schur complement of the clock block keeps it to one small matrix per
+  unit). The corrected covariance of :math:`(\hat\phi, \hat\gamma)` is then
+
+  .. math::
+
+      \mathrm{Cov}(\hat\phi) = H^{-1} + A\,\mathrm{Cov}(\hat T)\,A^{\top},
+      \quad
+      \mathrm{Cov}(\hat\phi, \hat\gamma) = A\,\mathrm{Cov}(\hat T, \hat\gamma),
+
+  with :math:`A = \partial\hat\phi/\partial T` as above, and the bound on
+  :math:`S_0(\tau_z(t; \hat\gamma); \hat\phi)` follows by the delta method in
+  both. The mixed-model clock (``population_method="reml"``) is not
+  covered: its bound is the bootstrap's.
+
+The bootstrap resamples units together with their stresses (a step-stress
+unit with its whole stress history) and reruns the whole accelerated fit —
+including, for the clock, the estimate of :math:`\gamma` — each time.
 
 Accelerated degradation: stress-dependent path parameters
 ---------------------------------------------------------
