@@ -1494,6 +1494,10 @@ SEARCHES: dict[str, Callable] = {
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,
     "DestructiveDegradationModel": _search_destructive,
+    # A whole number of faults, found exactly: no gradient to check (the
+    # case is in NOT_DIFFERENTIABLE; its own tests compare the estimate
+    # with a search over every whole number).
+    "JelinskiMorandaModel": lambda model, data: (),
 }
 
 

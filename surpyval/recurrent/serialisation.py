@@ -30,6 +30,7 @@ def intensity_dist_by_name(name: str) -> Any:
         "Yamada delayed S-shaped": recurrent.YamadaDelayedS,
         "Inflection S-shaped": recurrent.InflectionS,
         "Musa-Okumoto": recurrent.MusaOkumoto,
+        "Rayleigh defects": recurrent.RayleighDefects,
     }
     if name not in mapping:
         raise ValueError(

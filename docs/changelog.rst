@@ -21,6 +21,22 @@ v0.29 (unreleased)
   SurPyval 0.28 refuses rather than misread. See "Which path parameters
   are correlated" in :doc:`Joint Models`.
 
+- **The Rayleigh defect model, for defects by development phase.**
+  ``surpyval.recurrent.RayleighDefects`` (also at the top level) is a
+  Poisson process with :math:`\Lambda(t) = K (1 - e^{-t^2 / (2 c^2)})`:
+  the defects found in each phase of a development (reviews,
+  inspections, test stages) rise to a peak and fall. Fitted to the
+  counts of the phases done so far, it predicts the later phases and
+  what is left for the field. ``phases_to_data(counts, lengths=None)``
+  turns a table of counts by phase into the rows ``fit`` takes (phase
+  ``j`` as ``[j - 1, j]``, or the phases' lengths on the calendar).
+  Counts that have not yet turned down have no finite total and are
+  refused, saying so. And on every fitted Poisson process,
+  ``expected_events(start, end)`` and ``expected_events_cb`` give the
+  events expected in a stretch of time (a later phase, a further month
+  of testing) with delta-method bounds. See "Before testing starts" in
+  :doc:`Software Reliability Growth`.
+
 - **WAIC and leave-one-out cross-validation for Bayesian fits.**
   ``model.waic()`` and ``model.loo()`` of a ``BayesianParametric`` estimate
   the expected log predictive density of a new observation, with its
