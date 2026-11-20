@@ -55,6 +55,9 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     # log time (#477).
     _cb_link = "loglog"
 
+    # How the parameters move with the time (rescale_time): sigma is a time.
+    _time_roles = ("time",)
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

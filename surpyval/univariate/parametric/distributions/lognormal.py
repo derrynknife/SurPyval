@@ -74,6 +74,10 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         # is another name for ``LogNormal``).
         return "LogNormal"
 
+    # How the parameters move with the time (rescale_time): mu is the log of a
+    # time; sigma has no unit.
+    _time_roles = ("log_time", "shape")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
