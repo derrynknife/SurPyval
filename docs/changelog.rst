@@ -5,6 +5,26 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Competing-risks survival trees.** ``SurvivalTree.fit`` (and
+  ``fit_from_df``, with ``e_col``) takes the cause of each failure as
+  ``e``. The tree then chooses cuts that tell the causes apart --
+  ``split="cause-specific"`` (the default), the sum over the causes of the
+  squared cause-specific log-rank statistics, or ``split="gray"``, Gray's
+  two-sample statistic for one nominated cause's cumulative incidence
+  (``event=``) -- fits a competing-risks model in each leaf (the
+  Aalen-Johansen estimate for ``kind="non-parametric"``, one Weibull or
+  Exponential per cause otherwise), and predicts each cause's cumulative
+  incidence at given covariates with ``cif(x, Z, event)``, their sum with
+  ``total_cif`` and the all-cause ``sf``, ``ff``, ``Hf``, ``hf`` and
+  ``df``. A cause with no failure in a leaf has zero incidence there,
+  which ``print(tree)`` says. A tree of depth 0 is the plain
+  competing-risks fit; with one cause the cause-specific rule makes the
+  plain log-rank tree's cuts. Exact and right-censored times with delayed
+  entry are taken; left and interval censoring, right truncation,
+  ``selection="ctree"`` and ``min_split_gain`` are refused with causes,
+  each saying what to use. Trees save and load with their causes. Without
+  ``e`` nothing changes. See :doc:`surpyval.ml`.
+
 - **Relative survival: net survival and excess hazards beyond a
   population's own rates.** Where units have the event for reasons
   besides the one studied, and the cause of each event is not recorded,

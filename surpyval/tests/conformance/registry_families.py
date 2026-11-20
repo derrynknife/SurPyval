@@ -20,15 +20,18 @@ import surpyval as sp
 from surpyval import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry_fixtures import (
+    X_CR,
     X_DISC,
     X_REG,
     X_STRESS,
     X_UNI,
     Z_AH,
+    Z_CR,
     Z_REG,
     Z_STRESS,
     Z_STRESS2,
     ah_data,
+    cr_data,
     discrete_data,
     grouped_reg_data,
     ic_reg_data,
@@ -1478,10 +1481,39 @@ def _trees():
             "aliasing": _NO_COEFFICIENTS,
         },
     )
+
+    def tree_with_causes(kind):
+        return Case(
+            name=f"SurvivalTree[causes, {kind}]",
+            fitters=(),
+            model_class="surpyval.ml.SurvivalTree",
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=_seeded(_fit(ml.SurvivalTree, kind=kind)),
+            functions=("sf", "ff", "Hf", "hf", "df"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            jump_functions=("hf", "df") if kind == "non-parametric" else (),
+            exclude={
+                "aliasing": _NO_COEFFICIENTS,
+                **(
+                    {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
+                    if kind == "non-parametric"
+                    else {}
+                ),
+            },
+        )
+
     return [
         tree("weibull"),
         tree("exponential"),
         tree("non-parametric"),
+        tree_with_causes("non-parametric"),
+        tree_with_causes("weibull"),
         forest,
     ]
 

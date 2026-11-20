@@ -2697,6 +2697,10 @@ def _df_paths():
         paths[f"SurvivalTree[{kind}]"] = _seeded(
             _col_df(ml.SurvivalTree, ("x", "c", "n"), kind=kind)
         )
+    for kind in ("non-parametric", "weibull"):
+        paths[f"SurvivalTree[causes, {kind}]"] = _seeded(
+            _col_df(ml.SurvivalTree, ("x", "e", "n"), kind=kind)
+        )
     paths["RandomSurvivalForest"] = _seeded(
         _col_df(ml.RandomSurvivalForest, ("x", "c", "n"), n_trees=3)
     )
@@ -4261,6 +4265,10 @@ for _kind in ("weibull", "exponential", "non-parametric"):
         "no public iteration limit or starting point: the splits are "
         "bounded searches, and a leaf is fitted when first used"
     )
+for _kind in ("non-parametric", "weibull"):
+    _NO_STARVE[f"SurvivalTree[causes, {_kind}]"] = _NO_STARVE[
+        "SurvivalTree[weibull]"
+    ]
 _NO_STARVE["RandomSurvivalForest"] = _NO_STARVE["SurvivalTree[weibull]"]
 
 
