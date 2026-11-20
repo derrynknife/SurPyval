@@ -76,6 +76,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     frailty_recurrent_data,
+    growth_data,
     joint_data,
     joint_frailty_data,
     lfp_count_data,
@@ -1379,9 +1380,14 @@ def _timed_draw(m, s):
     return m.time_terminated_simulation(60.0, items=2, random_state=s)
 
 
+# The software reliability growth models, fitted to data with growth
+_GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
+_LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
+
+
 def _recurrent():
     out = []
-    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         fitter = getattr(rc, name)
         paths = {"fit_from_recurrent_data": _recurrent_data_path(fitter)}
         paths["from_params"] = lambda d, f=fitter: f.from_params(
@@ -1396,13 +1402,15 @@ def _recurrent():
                     ".ParametricRecurrenceModel"
                 ),
                 interface=COUNTING,
-                data=recurrent_data,
+                data=growth_data if name in _GROWTH else recurrent_data,
                 fit=_fit(fitter),
                 functions=("cif", "iif"),
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths=paths,
-                draw=_timed_draw if name == "CoxLewis" else _counting_draw,
+                # A finite number of faults in all, as a falling
+                # Cox-Lewis intensity has: drawn to a time.
+                draw=_timed_draw if name in _LEVELS_OFF else _counting_draw,
                 explicit_seed=True,
             )
         )
@@ -2821,7 +2829,7 @@ def _df_paths():
         paths[f"FineGray[{label}]"] = _col_df(
             cr.FineGray, ("x", "e", "n", label), event="a"
         )
-    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         paths[name] = _col_df(getattr(rc, name))
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
     for name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
@@ -4101,7 +4109,7 @@ def _estimators(case):
         )
     if name == "ParametricCompetingRisks":
         return {"how": ("MLE", "MPS", "MSE", "MPP")}, {}, None
-    if name in ("CrowAMSAA", "Duane", "CoxLewis"):
+    if name in ("CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         return {"how": ("MLE", "MSE")}, {}, _recurrent_sample
     if name in ("WeibullJointPH", "WeibullJointAFT"):
         # the two-stage estimate is biased by design, so the two are not

@@ -1424,7 +1424,16 @@ for _name in (
     PLANS[_name] = Plan(_cr, 300, 40, note=_SEMI)
 
 # Recurrent events: n is the number of items, observed over [0, 60].
-for _name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+for _name in (
+    "HPP",
+    "CrowAMSAA",
+    "Duane",
+    "CoxLewis",
+    "GoelOkumoto",
+    "YamadaDelayedS",
+    "InflectionS",
+    "MusaOkumoto",
+):
     PLANS[_name] = Plan(
         _recurrent_own, 40, 100, params=lambda m: np.asarray(m.params)
     )
