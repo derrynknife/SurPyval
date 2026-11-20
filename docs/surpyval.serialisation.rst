@@ -475,6 +475,10 @@ with its own ``schema``.
      - ``"model": "JelinskiMorandaModel"``
      - ``params``, ``n``, ``how``, ``maximum``
      - ``test_time``, ``weighted_time``
+   * - ``LittlewoodVerrallModel``
+     - ``"model": "LittlewoodVerrallModel"``
+     - ``params``, ``psi``, ``n``, ``how``, ``covariance``, ``maximum``
+     - (none)
    * - ``DegradationModel``
      - ``"model": "DegradationModel"``
      - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``
