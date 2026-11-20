@@ -339,6 +339,10 @@ with its own ``schema``.
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
      - --
+   * - ``QuantileRegressionModel``
+     - ``"model": "QuantileRegressionModel"``
+     - ``method``, ``step``, ``taus``, ``intercepts``, ``coefs``, ``data``
+     - --
    * - ``ProportionalOddsModel``
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``

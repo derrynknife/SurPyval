@@ -13,6 +13,21 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-19
+
+### Censored quantile regression (19 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new fitter, `QuantileRegression` (`QuantileRegressionModel`), with `method="peng-huang"` (default) or `"portnoy"`, rather than one fitter per estimator. | proposed | One model, two estimators of the same coefficient process (as R's `crq(method=)`); the model they return is the same. Peng and Huang's is the default: it needs no reweighting loop and its one-sample form is the Nelson-Aalen quantile, a closed form to check against. | done |
+| Coefficients are on the log-time scale with their natural sign (`exp(coef)` multiplies the quantile; positive lengthens life), not the package's accelerated-failure sign. The intercept is reported. | proposed | The coefficients *are* quantiles of log time, as in every reference on the method (quantreg, Koenker 2005); negating them would make the intercept a negative log time. The docstrings and the guide say which way round they are. | done |
+| The process is fitted on a grid `step, 2 step, ...` (`step=0.01`), each level a linear programme solved through its dual by HiGHS (scipy). A point at `+inf` (Portnoy's reweighting, Peng and Huang's pseudo-observations) enters as a linear term, not a large finite value. Log times and covariates are standardised before the programmes, and identical rows merged after a canonical sort. | proposed | The dual has as many constraints as coefficients (fast); the linear term is exact; standardising and merging make a change of unit, a covariate's scale, the row order and `n = k` against `k` rows pose the same programmes (conformance properties units, covariate_scale, row_order, counts). | done |
+| Portnoy on a grid: a censored unit on or below the fitted line at `tau_j` is crossed there (crossing level `tau_j`), and the level refitted until no more cross. | proposed | Taking only units strictly below the line as crossed lagged every crossing by about `1/n` in `tau` whatever the grid, so the one-sample fit missed the Kaplan-Meier quantile by up to 0.04 at 300 units; with "on or below" it is within a step and `1/n` (tested). | done |
+| The process stops at the first level whose programme has no finite solution or whose fitted quantile is above every event; `tau_max` is the last level fitted. | proposed | Past it no event is left to inform a quantile. Where censoring is heavy, levels near `tau_max` may be within the data only for the units most at risk; documented, not refused. | done |
+| Predictions read each row's quantiles at the fitted levels, rearranged into order where they cross (Chernozhukov, Fernandez-Val and Galichon 2010): `ff` is the share of levels whose quantile is at or below `x`, holding `tau_max` after the last; `qf` is its inverse, `nan` above `tau_max`. No `hf`/`df`. | proposed | One proper step distribution per row, so `ff`, `sf`, `Hf` and `qf` agree; quantile crossing is common at small samples. | done |
+| Bounds are the case bootstrap only (units resampled, the process refitted, percentile intervals): `bootstrap_ci(tau)` on the coefficients, `summary(tau, n_boot=)`, `quantile_cb(p, Z)` and `cb(x, Z, on=)`. Refits are kept for a repeat call with the same `n_boot` and integer seed. A resample that cannot reach the level, or in which a covariate is constant, is left out with a warning counting it. Defaults `alpha_ci=0.05`, `n_boot=200`. | proposed | Neither estimator has a usable closed-form variance (quantreg also bootstraps `crq`). The resampling is that of `BuckleyJames`. | done |
+| Not done here: Wald bounds, left truncation, interval censoring and weights `w` (each refused, saying what is taken); R reference values (R was not available where this was built; the checks are against ordinary quantile regression, the Kaplan-Meier and Nelson-Aalen quantiles and simulated truths). | proposed | Kept to the two estimators and their bootstrap. | gap |
+
 ## 2026-11-18
 
 ### Hypoexponential fitted from data, with a given number of stages (18 Nov 2026)

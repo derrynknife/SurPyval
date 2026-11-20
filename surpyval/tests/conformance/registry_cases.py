@@ -3123,6 +3123,28 @@ def _competing_risks_bounds():
 
 _PARAM_CB = Bound("param_cb", kind="param")
 _BOOT = {"n_boot": 20, "random_state": 1}
+# A censored quantile regression's case bootstrap: the calls with the same
+# n_boot and seed share one set of refits. (Its quantile is nan above the
+# last level the refit reaches.)
+_QUANTILE_REGRESSION_BOUNDS = (
+    Bound("cb", on=_ON_SURVIVAL, kwargs=_BOOT, wald=False, slow=True),
+    Bound(
+        "quantile_cb",
+        point="qf",
+        kwargs=_BOOT,
+        wald=False,
+        nan_ok=True,
+        slow=True,
+    ),
+    Bound(
+        "bootstrap_ci",
+        kind="coef",
+        kwargs={**_BOOT, "tau": 0.5},
+        sides=False,
+        wald=False,
+        slow=True,
+    ),
+)
 
 
 def _parameter_bounds(case):
@@ -3250,6 +3272,7 @@ def _bounds(case):
         "BayesianParametric": _BAYES_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
+        "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,
         # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
         # variances; the Cox model's include its coefficients'.
         "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
@@ -4105,6 +4128,11 @@ _NO_STARVE: dict[str, str] = {
     "ExactEventTime": _CLOSED_FORM,
     "AdditiveHazards": _CLOSED_FORM + " (Lin-Ying: a linear system)",
     "AalenAdditive": _CLOSED_FORM + " (least squares at each event time)",
+    "QuantileRegression": "a linear programme at each level, each solved "
+    "exactly by the simplex method: no iteration limit or starting point",
+    "QuantileRegression[portnoy]": "a linear programme at each level, each "
+    "solved exactly by the simplex method: no iteration limit or starting "
+    "point",
     "KaplanMeier": _EXACT,
     "NelsonAalen": _EXACT,
     "FlemingHarrington": _EXACT,

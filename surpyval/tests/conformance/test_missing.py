@@ -211,6 +211,7 @@ def _semi_parametric_fits():
         CoxPH,
         FineGray,
         ProportionalOdds,
+        QuantileRegression,
     )
 
     # Each takes (x, Z, c, e) and returns the fitted coefficients; ``e``
@@ -226,6 +227,10 @@ def _semi_parametric_fits():
             lambda x, Z, c, e: AdditiveHazards.fit(x, Z, c=c).params,
         ),
         ("BuckleyJames", lambda x, Z, c, e: BuckleyJames.fit(x, Z, c=c).beta),
+        (
+            "QuantileRegression",
+            lambda x, Z, c, e: QuantileRegression.fit(x, Z, c=c).coefs,
+        ),
         (
             "FineGray",
             lambda x, Z, c, e: FineGray.fit(x, Z, e, c=c, event="a").beta,

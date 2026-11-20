@@ -185,6 +185,8 @@ surpyval.ProportionalOdds
 surpyval.ProportionalOddsFitter
 surpyval.ProportionalOddsModel
 surpyval.PseudoRegressionResult
+surpyval.QuantileRegression
+surpyval.QuantileRegressionModel
 surpyval.RandomEffect
 surpyval.Rayleigh
 surpyval.RoystonParmar
@@ -648,6 +650,8 @@ surpyval.univariate.regression.ProportionalHazardsFitter
 surpyval.univariate.regression.ProportionalOdds
 surpyval.univariate.regression.ProportionalOddsFitter
 surpyval.univariate.regression.ProportionalOddsModel
+surpyval.univariate.regression.QuantileRegression
+surpyval.univariate.regression.QuantileRegressionModel
 surpyval.univariate.regression.RandomEffect
 surpyval.univariate.regression.RoystonParmarPH
 surpyval.univariate.regression.RoystonParmarPO
