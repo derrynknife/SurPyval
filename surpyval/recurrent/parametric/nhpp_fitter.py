@@ -170,6 +170,11 @@ class NHPPFitter(IntensityModel):
         over the longest time)."""
         return np.ones(len(self.parameter_names))
 
+    def _check_identified(self, data: EventHistoryData) -> None:
+        """Refuse data for which the model's likelihood has no maximum
+        (nothing, by default; the software reliability growth models
+        refuse data that show no growth)."""
+
     def _closed_form_mle(self, data: EventHistoryData) -> np.ndarray | None:
         """The exact maximum-likelihood parameters where the model has a
         closed form for ``data``, else ``None`` (the default): the search
@@ -219,6 +224,7 @@ class NHPPFitter(IntensityModel):
         if frailty is not None or cluster is not None:
             return self._frailty_fit(data, how, init, frailty, cluster)
         validate_nhpp_data(data, self)
+        self._check_identified(data)
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
         default_init = self._default_start(data, x_unqiue, mcf_hat)

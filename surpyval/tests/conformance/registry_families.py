@@ -305,7 +305,16 @@ NOT_DIFFERENTIATED = {
     "FixedEventProbability": _NO_DERIVATIVES + "a closed-form estimate",
     "ExactEventTime": _NO_DERIVATIVES + "a closed-form estimate",
     **dict.fromkeys(
-        ("CrowAMSAA", "Duane", "CoxLewis", "ProportionalIntensityNHPP"),
+        (
+            "CrowAMSAA",
+            "Duane",
+            "CoxLewis",
+            "GoelOkumoto",
+            "YamadaDelayedS",
+            "InflectionS",
+            "MusaOkumoto",
+            "ProportionalIntensityNHPP",
+        ),
         _NO_DERIVATIVES + "a search on finite-difference gradients, and "
         "a numerical Hessian",
     ),
