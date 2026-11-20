@@ -228,6 +228,9 @@ surpyval.auc_td
 surpyval.bayes.BayesianParametric
 surpyval.bayes.LogLikelihood
 surpyval.bayes.Posterior
+surpyval.bayes.PredictiveComparison
+surpyval.bayes.PredictiveCriterion
+surpyval.bayes.compare
 surpyval.bayes.log_likelihood_fn
 surpyval.bayes.prior
 surpyval.bayes.prior.DistributionPrior
