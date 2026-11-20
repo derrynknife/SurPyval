@@ -227,6 +227,61 @@ read the future, and the data seen so far cannot settle it alone. Give
 most weight to the model whose assumptions describe how the testing was
 done.
 
+Which model predicts best?
+--------------------------
+
+A fit to the failures seen is a weak guide to the failures to come, as
+the last plot shows. A stronger one is to ask how each model *would
+have* predicted, had it been used all along. ``compare_predictions``
+does that: at each failure it fits every model to the failures before
+it, takes the model's prediction of the time to the next failure, and
+scores the prediction against the time that came [ACL1986]_. Here it is
+on all 31 failures of the NTDS production and test phases, starting from
+the tenth:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import compare_predictions
+
+    all_days = np.cumsum(days_between + [87, 47, 12, 9, 135])
+    result = compare_predictions(
+        all_days, [GoelOkumoto, YamadaDelayedS, CrowAMSAA, HPP], start=10
+    )
+    print(result)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _table = result.summary()
+    assert result.best == "YamadaDelayedS", result.best
+    assert _table.loc["GoelOkumoto", "failed"] == 12, _table
+    assert _table.loc["YamadaDelayedS", "failed"] == 0, _table
+
+The table has one row per model:
+
+- ``log_likelihood`` is the *prequential likelihood*, in logs: how
+  probable the model's predictions made the times that came. Higher is
+  better, and a difference of 2 or 3 is a clear preference.
+- ``u_distance`` and ``bias`` are the *u-plot*: whether the predictions
+  were biased. *Optimistic* means failures came sooner than predicted.
+  ``biased`` says whether the bias is more than chance would give.
+- ``y_distance`` and ``drifting`` are the *y-plot*: whether the bias
+  changed as testing went on.
+- ``failed`` counts the steps at which the model could not be fitted at
+  all. Goel-Okumoto fails at 12 of the 21 steps here: until the long gap
+  before failure 24 the failures were not slowing down, and it refuses
+  data with no growth. A model that cannot be fitted for much of the
+  test cannot be relied on to predict during it.
+
+The verdict below the table says the same in words.
+``result.plot("u")``, ``result.plot("y")`` and ``result.plot("ratio")``
+draw the plots:
+
+.. jupyter-execute::
+
+    result.plot("u");
+
 How many faults are left?
 -------------------------
 
@@ -451,7 +506,8 @@ being honest. An upper bound of ``inf`` is possible too, and means the
 data do not limit the number of faults at that level. As with
 Goel-Okumoto, data that show no growth have no estimate at all, and the
 fit is refused, saying why. Its ``aic()`` compares with that of the
-other models fitted to the same failure times.
+other models fitted to the same failure times, and it can be one of the
+models given to ``compare_predictions``.
 
 When not to trust the answers
 -----------------------------
@@ -512,6 +568,10 @@ References
 .. [LXZ2015] Liu, J., Xu, M. and Zhou, Z. (2015), "Parameter estimation
    of Jelinski-Moranda model based on weighted nonlinear least squares
    and heteroscedasticity", arXiv:1503.00094 (Table 1: the NTDS data).
+
+.. [ACL1986] Abdel-Ghaly, A. A., Chan, P. Y. and Littlewood, B. (1986),
+   "Evaluation of competing software reliability predictions", *IEEE
+   Transactions on Software Engineering* SE-12(9), 950-967.
 
 .. [OG1980] Okumoto, K. and Goel, A. L. (1980), "Optimum release time
    for software systems based on reliability and cost criteria", *Journal
