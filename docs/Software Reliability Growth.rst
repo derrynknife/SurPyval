@@ -596,6 +596,145 @@ simpler models to use. ``LittlewoodVerrall`` can be given to
 ``compare_predictions`` with the others, which is the fair way to judge
 whether its extra caution earns its keep on your data.
 
+When the testing was not steady: effort and change points
+---------------------------------------------------------
+
+Every curve above supposes steady testing. A week with half the testers
+then looks like a week with half the faults left, and a model fitted to
+the calendar reads a holiday as growth. Two tools put the same models on
+a better clock.
+
+**Testing effort.** If you know how much testing was done in each period
+(tester hours, test cases run, hours of execution), ``EffortClock``
+runs a model on the effort spent instead of the time passed:
+:math:`\Lambda(t) = \Lambda_0(W(t))`, with :math:`W(t)` the effort
+spent by ``t``. With ``GoelOkumoto`` this is the testing-effort model of
+Yamada, Ohtera and Narihisa [YON1986]_, :math:`a (1 - e^{-b W(t)})`:
+``b`` is then the detection rate per unit of effort. The counts and
+hours here are made up for illustration: eight weeks of testing by a
+team that grew and then moved on.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import EffortClock
+
+    weeks = np.arange(8.0)
+    periods = np.column_stack([weeks, weeks + 1])
+    hours = [40, 80, 160, 200, 200, 120, 60, 40]
+    found = [3, 9, 17, 16, 11, 5, 2, 1]
+    data = dict(x=periods, c=[2] * 8, n=found)
+
+    on_hours = EffortClock(GoelOkumoto, (weeks + 1, hours)).fit(**data)
+    by_week = GoelOkumoto.fit(**data)
+    s_shaped = YamadaDelayedS.fit(**data)
+    for name, m in (("Goel-Okumoto on hours", on_hours),
+                    ("Goel-Okumoto by week", by_week),
+                    ("delayed S-shaped by week", s_shaped)):
+        print(f"{name:25s} aic {m.aic():5.1f}   faults left "
+              f"{m.remaining_faults(8.0):4.1f}")
+    print("next week, at 40 hours:", on_hours.expected_events(8, 9).round(1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(on_hours.aic(), 1) == 34.1, on_hours.aic()
+    assert round(by_week.aic(), 1) == 63.3, by_week.aic()
+    assert round(s_shaped.aic(), 1) == 44.2, s_shaped.aic()
+    assert round(float(on_hours.remaining_faults(8.0)), 1) == 23.6
+    assert round(float(s_shaped.remaining_faults(8.0)), 1) == 5.7
+
+The effort is a table of amounts per period, ``(ends, amounts)``, spent
+evenly within each; the fit takes the same data as before, in time, and
+every answer (``remaining_faults``, ``time_to_intensity``,
+``release_time``, the bounds) is in time. Here the model on hours fits
+far better than either calendar model, and tells a different story: the
+failures fell away in the last weeks because the testing did, not
+because the faults ran out. The S-shaped curve, which fits the rise and
+fall of the counts well enough by week, puts a quarter as many faults
+left. After the table's last period the effort is taken to carry on at
+the last period's rate; a table that runs on into the plan (the hours
+you intend to spend) answers "how many will next month's testing find".
+Where the effort follows a smooth rise and fall, ``WeibullEffort.fit``
+fits the curve :math:`W(t) = N (1 - e^{-\beta t^m})` to the table, and
+can be given in its place. Effort cannot fall, and a failure recorded in
+a period with no effort is refused: check the table against the
+failures.
+
+**A change point.** Where the testing changed at a known time (a new
+team, a new test strategy, a new release), ``ChangePoint(model,
+tau=...)`` lets the model's clock run at a different speed from ``tau``
+on: every rate of the model is multiplied by ``ratio`` after it, an
+extra parameter. For ``GoelOkumoto`` the detection rate ``b`` becomes
+``ratio * b``, the change-point model of Zhao [Zhao1993]_; the curve is
+continuous at ``tau`` and the number of faults is unchanged. Where the
+time is not known, leave ``tau`` out and it is estimated, from failure
+*times* of one system.
+
+The NTDS failures above are a case. ``GoelOkumoto`` fitted them with
+growth all the way; but look for a change, and the growth model with a
+change point is refused:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import HPP, ChangePoint
+
+    try:
+        ChangePoint(GoelOkumoto).fit(days)
+    except ValueError as err:
+        print(err)
+
+Either side of the best change point the failures are steady: there is
+no growth left for the curve to measure, and the fit says which model to
+use instead, a constant rate that changes.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import change_point_cb, change_point_test
+
+    steps = ChangePoint(HPP).fit(days)
+    growth = GoelOkumoto.fit(days)
+    print("change at day", steps.change_point["tau"],
+          " 90% bounds", change_point_cb(steps, alpha_ci=0.1))
+    print("rate before:", steps.params[0].round(3), "a day;  after:",
+          (steps.params[0] * steps.params[1]).round(3))
+    print("aic", round(steps.aic() + 2, 1), "against", round(growth.aic(), 1),
+          "for Goel-Okumoto")
+    test = change_point_test(steps, n_boot=99, random_state=1)
+    print("no change: p =", test["p_value"])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert steps.change_point["tau"] == 105.0
+    assert change_point_cb(steps, alpha_ci=0.1).tolist() == [104.0, 116.0]
+    assert round(steps.params[0], 3) == 0.190, steps.params
+    assert round(steps.params[0] * steps.params[1], 3) == 0.041
+    assert round(steps.aic() + 2, 1) == 162.5, steps.aic()
+    assert test["p_value"] == 0.01, test
+
+A failure every five days until day 105, and one every twenty-four days
+after: these data read as well as one step as they do as steady growth
+(better, by ``aic``), and the two readings predict differently: the
+growth curve expects the rate to keep falling, the step expects it to
+stay where it is. Nothing in the failure times says which; the test
+log might.
+
+Three cautions. An estimated ``tau`` is searched for, so its fit looks
+better than a change at a time chosen in advance would: the fitted
+model's ``aic()`` and bounds take ``tau`` as given (2 is added above for
+it), and ``change_point_cb`` gives likelihood-ratio bounds for ``tau``
+itself, whose level is approximate. For the same reason the usual
+chi-squared test of "no change" is wrong, and ``change_point_test`` uses
+a parametric bootstrap instead: it simulates data with no change from
+the fitted model, searches each for its best change point, and reports
+how often the improvement is as large as the one seen (so ``n_boot=99``
+gives a p-value in steps of 0.01, and takes about 99 times as long as
+the fit). And a change point will always be found if you look: ask for
+one where something did change, and compare its predictions with the
+plain model's by ``compare_predictions``, which takes both.
+
 When not to trust the answers
 -----------------------------
 
@@ -633,9 +772,10 @@ of the test with ``iif`` early on.
 
 **The testing changed.** A new test team, a new kind of test, a big
 release of new code or a holiday all break the assumption that testing is
-steady. Fit the stretch of testing that is like what comes next, or use
-a clock that measures effort (test cases run, hours of execution) in
-place of days.
+steady. Fit the stretch of testing that is like what comes next, use a
+clock that measures effort (test cases run, hours of execution) in
+place of days, or fit the change: see "When the testing was not steady"
+above.
 
 **The use is not like the test.** Reliability "now" is the reliability
 under more of the same testing. If customers use the software
@@ -670,6 +810,14 @@ References
 
 .. [Kan2002] Kan, S. H. (2002), *Metrics and Models in Software Quality
    Engineering* (2nd ed.), Addison-Wesley, chapter 7.
+
+.. [YON1986] Yamada, S., Ohtera, H. and Narihisa, H. (1986), "Software
+   reliability growth models with testing-effort", *IEEE Transactions on
+   Reliability* R-35(1), 19-23.
+
+.. [Zhao1993] Zhao, M. (1993), "Change-point problems in software and
+   hardware reliability", *Communications in Statistics: Theory and
+   Methods* 22(3), 757-768.
 
 Goel, A. L. and Okumoto, K. (1979), "Time-dependent error-detection rate
 model for software reliability and other performance measures", *IEEE

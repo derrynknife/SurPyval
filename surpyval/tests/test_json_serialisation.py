@@ -591,6 +591,12 @@ def _build(name):
         "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
         ),
+        "effort_clock": lambda: surpyval.EffortClock(
+            surpyval.GoelOkumoto, ([20.0, 40.0, 60.0], [200.0, 240.0, 160.0])
+        ).from_params([9.0, 0.005]),
+        "change_point": lambda: surpyval.ChangePoint(
+            surpyval.GoelOkumoto, tau=20.0
+        ).from_params([9.0, 0.05, 2.0]),
         "jelinski_moranda": lambda: surpyval.JelinskiMoranda.fit(
             np.array([3.0, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99])
         ),
@@ -688,6 +694,8 @@ CASES = [
     "recurrent_cox_pwp_gap",
     "recurrent_cox_wei_lin_weissfeld",
     "renewal",
+    "effort_clock",
+    "change_point",
     "jelinski_moranda",
     "littlewood_verrall",
     "degradation",

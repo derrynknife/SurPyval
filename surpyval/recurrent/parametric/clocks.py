@@ -49,9 +49,20 @@ from .software_growth import (
 )
 
 #: The entries of the likelihood's split of the data that are times
-_TIME_KEYS = ("x_o", "x_o_prev", "x_right", "x_right_prev", "x_left")
-_TIME_KEYS += ("x_left_prev", "x_i_l", "x_i_r", "sel_from", "sel_to")
-_TIME_KEYS += ("gap_from", "gap_to")
+_TIME_KEYS: tuple[str, ...] = (
+    "x_o",
+    "x_o_prev",
+    "x_right",
+    "x_right_prev",
+    "x_left",
+    "x_left_prev",
+    "x_i_l",
+    "x_i_r",
+    "sel_from",
+    "sel_to",
+    "gap_from",
+    "gap_to",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -433,11 +444,16 @@ class EffortClock(_ClockFitter):
         )
 
     def _default_start(self, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
+        if not hasattr(self.base, "_default_start"):
+            # HPP: the events over the effort, in place of over the time
+            last = float(onp.max(x_unique))
+            rate = _plain_fit(self.base, data).params
+            return rate * last / float(self.effort.cumulative(last))
         return self.base._default_start(
             data, onp.asarray(self.effort.cumulative(x_unique)), mcf_hat
         )
 
-    def fit_from_recurrent_data(  # type: ignore[override]
+    def fit_from_recurrent_data(
         self,
         data: Any,
         how: str = "MLE",
@@ -596,8 +612,61 @@ class ChangePoint(_ClockFitter):
         return model
 
     def _default_start(self, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
-        return onp.append(
-            self.base._default_start(data, x_unique, mcf_hat), 1.0
+        return onp.append(_base_start(self.base, data, x_unique, mcf_hat), 1.0)
+
+    def _limit_log_likelihood(self, data: Any, ratio: float) -> float:
+        """The greatest log-likelihood of the limit of the model at the
+        edge of its parameters: the base model's limit, ``c u**p``, on
+        this clock, ``u`` running ``ratio`` times as fast after
+        ``tau`` (for ``p = 1``, a constant rate that changes at
+        ``tau``). Maximised over ``c`` in closed form and over the
+        ratio by a search from ``ratio``."""
+        s = data.split_for_nhpp_likelihood()
+        late = int(onp.sum(s["x_o"] > self._tau()))
+        best = -onp.inf
+        for p in self.base._limit_powers():
+
+            def loss(log_ratio: float, p: int = p) -> float:
+                rho = float(onp.exp(log_ratio))
+                clocked = {
+                    k: (self._clock(v, rho)[0] if k in _TIME_KEYS else v)
+                    for k, v in s.items()
+                }
+                with onp.errstate(all="ignore"):
+                    value = _power_law_limit(clocked, p) + late * log_ratio
+                return -value if onp.isfinite(value) else 1e300
+
+            start = float(onp.log(ratio))
+            res = minimize_scalar(
+                loss, bracket=(start - 0.5, start + 0.5), tol=1e-10
+            )
+            best = max(best, -float(min(res.fun, loss(start))))
+        return best
+
+    def _check_beats_limit(self, data: Any, model: Any) -> None:
+        """Refuse a fit that does not beat the model's limit, as the
+        growth models do: the search then ran to the edge of the
+        parameters, and stopped anywhere."""
+        if not isinstance(self.base, GrowthNHPPFitter):
+            return
+        if not self.base._limit_powers():
+            return
+        limit = self._limit_log_likelihood(data, float(model.params[-1]))
+        if _log_likelihood(model) > limit + LIMIT_MARGIN:
+            return
+        raise ValueError(
+            self.base._no_growth(None, None)
+            + " (With the change at tau = {:g}: the limit is {} on each "
+            "side of it, at different levels.{})".format(
+                self._tau(),
+                self.base._limit_name,
+                (
+                    " ChangePoint(HPP, tau=...) fits that: a constant "
+                    "rate that changes at tau."
+                    if self.base._limit_powers() == (1,)
+                    else ""
+                ),
+            )
         )
 
     def _check_identified(self, data: Any) -> None:
@@ -639,7 +708,7 @@ class ChangePoint(_ClockFitter):
             )
         )
 
-    def fit_from_recurrent_data(  # type: ignore[override]
+    def fit_from_recurrent_data(
         self,
         data: Any,
         how: str = "MLE",
@@ -654,6 +723,8 @@ class ChangePoint(_ClockFitter):
             )
         if self.tau is not None:
             model = super().fit_from_recurrent_data(data, how, init)
+            if how == "MLE":
+                self._check_beats_limit(data, model)
             model.change_point = {"tau": self.tau}
             return model
         if how != "MLE":
@@ -808,6 +879,14 @@ def _log_likelihood(model: Any) -> float:
     return -float(model._neg_ll(onp.asarray(model.params, dtype=float)))
 
 
+def _base_start(base: Any, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
+    """Where the base model's own search starts (its fit, for HPP,
+    which has no search)."""
+    if hasattr(base, "_default_start"):
+        return base._default_start(data, x_unique, mcf_hat)
+    return onp.asarray(_plain_fit(base, data).params, dtype=float)
+
+
 def _plain_fit(base: Any, data: Any) -> Any:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -823,7 +902,7 @@ def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
         # The model has no fit without a change (a detection rate that
         # rose can leave no growth overall): start as its fit does.
         x_unique, r, d = data.to_xrd()
-        start = base._default_start(data, x_unique, onp.cumsum(d / r))
+        start = _base_start(base, data, x_unique, onp.cumsum(d / r))
         no_change = None
     if init is not None and onp.size(init) != len(base.parameter_names) + 1:
         raise ValueError(
@@ -836,9 +915,9 @@ def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
     profile = _Profile(base, data, start)
     tau, params, _, taus, values = profile.search(data, init)
     # the fit at the chosen time, with a fit's checks and warnings
-    model = NHPPFitter.fit_from_recurrent_data(
-        ChangePoint(base, tau=tau), data, "MLE", params
-    )
+    chosen = ChangePoint(base, tau=tau)
+    model = NHPPFitter.fit_from_recurrent_data(chosen, data, "MLE", params)
+    chosen._check_beats_limit(data, model)
     model.change_point = {
         "tau": tau,
         "candidates": taus,
@@ -909,6 +988,10 @@ def change_point_test(
     p-value is the share of simulated statistics at least as large as
     the one observed, counting the observed one.
 
+    Where the model has no fit without a change (a growth model on
+    failures that, taken together, show no growth), there is nothing to
+    test against, and the call is refused saying so.
+
     Parameters
     ----------
     model : ParametricRecurrenceModel
@@ -925,6 +1008,22 @@ def change_point_test(
         ``"statistic"``, ``"p_value"``, ``"n_boot"`` (the simulated data
         sets used), ``"skipped"`` (those on which a fit was refused, left
         out), ``"tau"`` and ``"ratio"``.
+
+    Examples
+    --------
+    The NTDS failures (Jelinski and Moranda 1972): a constant rate, or
+    one that changed?
+
+    >>> import numpy as np
+    >>> from surpyval.recurrent import HPP, ChangePoint, change_point_test
+    >>> days = np.cumsum([9, 12, 11, 4, 7, 2, 5, 8, 5, 7, 1, 6, 1,
+    ...                   9, 4, 1, 3, 3, 6, 1, 11, 33, 7, 91, 2, 1])
+    >>> model = ChangePoint(HPP).fit(days)
+    >>> model.change_point["tau"]
+    105.0
+    >>> out = change_point_test(model, n_boot=19, random_state=1)
+    >>> round(out["statistic"], 2), out["p_value"]
+    (13.15, 0.05)
     """
     from surpyval.recurrent import diagnostics
 

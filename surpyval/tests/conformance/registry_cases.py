@@ -1426,6 +1426,16 @@ def _recurrent():
                 # Cox-Lewis intensity has: drawn to a time.
                 draw=_timed_draw if name in _LEVELS_OFF else _counting_draw,
                 explicit_seed=True,
+                exclude=(
+                    {
+                        "units": "the clock is fixed times (the effort "
+                        "table's periods, tau) in the fit's unit, which "
+                        "the property cannot rescale; test_clocks.py "
+                        "rescales both"
+                    }
+                    if name in _ON_A_CLOCK
+                    else {}
+                ),
             )
         )
     out.append(
@@ -2895,7 +2905,9 @@ def _df_paths():
             cr.FineGray, ("x", "e", "n", label), event="a"
         )
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
-        paths[name] = _col_df(getattr(rc, name))
+        paths[name] = _col_df(
+            _ON_A_CLOCK.get(name, lambda name=name: getattr(rc, name))()
+        )
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
     for name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
         paths[name] = _col_df(getattr(rc, name))

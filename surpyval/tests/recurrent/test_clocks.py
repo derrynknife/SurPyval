@@ -330,6 +330,78 @@ def test_a_change_after_the_data_is_refused_by_the_fit():
         ChangePoint(GoelOkumoto, tau=60.0).fit(X, c=C)
 
 
+def _two_rates(tau=30.0):
+    events = X[:-1]
+    before, after = np.sum(events <= tau), np.sum(events > tau)
+    return before, after, before / tau, after / (X[-1] - tau)
+
+
+def test_a_constant_rate_that_changes_is_its_closed_form():
+    """``ChangePoint(HPP, tau)``: the failures over the time, on each
+    side of ``tau``. The likelihood at those rates is the closed form's,
+    and the fit's is no higher and as high to 1e-9."""
+    before, after, rate, later = _two_rates()
+    closed = before * np.log(rate) + after * np.log(later) - (before + after)
+    model = ChangePoint(HPP, tau=30.0).fit(X, c=C)
+    at_closed = -model._neg_ll(np.array([rate, later / rate]))
+    assert at_closed == pytest.approx(closed, rel=1e-13)
+    fitted = -model._neg_ll(model.params)
+    assert fitted <= at_closed + 1e-12
+    assert fitted == pytest.approx(closed, rel=1e-9)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="The fit's parameters are 1.0e-5 and 2.0e-5 (relative) from "
+    "the closed form, and its expected failures by the end 1.6e-5 from "
+    "the failures seen, outside the 1e-5 and 1e-6 this test set before "
+    "it was run (the likelihood is as high to 1e-9, checked above): "
+    "the precision of the intensity models' shared likelihood search "
+    "(the growth models' tests compare a fit with its likelihood "
+    "equations at 2e-4). Left failing, for the maintainer to choose: "
+    "this family's 2e-4 here, or a finer search.",
+)
+def test_a_constant_rate_that_changes_fits_to_its_closed_form():
+    before, after, rate, later = _two_rates()
+    model = ChangePoint(HPP, tau=30.0).fit(X, c=C)
+    np.testing.assert_allclose(model.params, [rate, later / rate], rtol=1e-5)
+    assert model.cif(X[-1]) == pytest.approx(before + after, rel=1e-6)
+
+
+# The NTDS failures (the guide's data): steady to day 105, then few
+NTDS = np.cumsum(
+    [9, 12, 11, 4, 7, 2, 5, 8, 5, 7, 1, 6, 1]
+    + [9, 4, 1, 3, 3, 6, 1, 11, 33, 7, 91, 2, 1]
+)
+
+
+def test_a_fit_at_the_models_limit_is_refused():
+    """Where the failures are steady on each side of the change, a
+    growth model with a change point fits no better than a constant rate
+    that changes: its faults run off to infinity, and it is refused,
+    naming the model that is its limit. That model's likelihood is the
+    limit's, in closed form."""
+    for fitter in (
+        ChangePoint(GoelOkumoto, tau=105.0),
+        ChangePoint(GoelOkumoto),
+    ):
+        with pytest.raises(ValueError, match="no reliability growth") as err:
+            fitter.fit(NTDS)
+        assert "ChangePoint(HPP, tau=...)" in str(err.value)
+        assert "tau = 105" in str(err.value)
+    steps = ChangePoint(HPP).fit(NTDS)
+    assert steps.change_point["tau"] == 105.0
+    limit = ChangePoint(GoelOkumoto, tau=105.0)._limit_log_likelihood(
+        sp.handle_xicn(NTDS, as_recurrent_data=True), 0.5
+    )
+    closed = 20 * np.log(20 / 105) + 6 * np.log(6 / 145) - 26
+    assert limit == pytest.approx(closed, rel=1e-10)
+    assert -steps._neg_ll(steps.params) == pytest.approx(closed, rel=1e-8)
+    # a model with growth to show is well above its limit
+    delayed = ChangePoint(YamadaDelayedS, tau=105.0).fit(NTDS)
+    assert delayed.params[0] < 1e4
+
+
 @pytest.mark.parametrize("base, params", BASES, ids=IDS)
 def test_the_curve_is_continuous_and_the_rate_jumps(base, params):
     tau, ratio = 20.0, 3.0
@@ -491,6 +563,29 @@ def test_change_point_refusals(estimated):
         change_point_cb(estimated, alpha_ci=1.5)
 
 
+def test_a_change_of_units_rescales_the_clock_with_the_data():
+    """Times in another unit, with the table's periods and ``tau`` in it
+    too, give the same curve (the conformance suite's property, which
+    cannot rescale a fitter's own times)."""
+    k = 7.3
+    t = np.array([5.0, 20.0, 45.0, 70.0])
+    pairs = [
+        (
+            EffortClock(GoelOkumoto, ([35.0, 70.0], [30.0, 40.0])),
+            EffortClock(GoelOkumoto, ([35.0 * k, 70.0 * k], [30.0, 40.0])),
+        ),
+        (
+            ChangePoint(GoelOkumoto, tau=20.0),
+            ChangePoint(GoelOkumoto, tau=20.0 * k),
+        ),
+    ]
+    for fitter, rescaled in pairs:
+        ref = fitter.fit(X, c=C)
+        got = rescaled.fit(X * k, c=C)
+        np.testing.assert_allclose(got.cif(t * k), ref.cif(t), rtol=1e-3)
+        np.testing.assert_allclose(got.iif(t * k) * k, ref.iif(t), rtol=1e-3)
+
+
 # -- with the rest of the package --------------------------------------
 
 
@@ -561,11 +656,13 @@ def test_they_are_compared_by_their_predictions(changed_data):
     assert "ChangePoint(GoelOkumoto)" in text
 
 
-def test_repr_names_the_model_on_the_clock():
+def test_repr_and_a_constant_rate_per_unit_of_effort():
     table = EffortTable(ENDS, AMOUNTS)
     assert repr(EffortClock(GoelOkumoto, table)).startswith(
         "EffortClock(GoelOkumoto): "
     )
+    hours = EffortClock(HPP, table).fit(X, c=C)
+    np.testing.assert_allclose(hours.params, [10 / 150.0], rtol=1e-5)
     assert repr(ChangePoint(MusaOkumoto, tau=3.0)).startswith(
         "ChangePoint(MusaOkumoto): "
     )

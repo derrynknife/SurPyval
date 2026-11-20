@@ -92,6 +92,9 @@ class ParametricRecurrenceModel(
     mcf_hat: "np.ndarray"
     how: str
     res: Any
+    #: For a ``ChangePoint`` model: the time of the change, ``tau``, and
+    #: for an estimated one the profile it was read from.
+    change_point: dict
     #: What a maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
     #: applicable"`` for a least-squares fit or a model built from its

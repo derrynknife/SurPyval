@@ -21,6 +21,35 @@ v0.29 (unreleased)
   SurPyval 0.28 refuses rather than misread. See "Which path parameters
   are correlated" in :doc:`Joint Models`.
 
+- **Testing effort and change points for the growth models.**
+  ``surpyval.recurrent.EffortClock(model, effort)`` (also at the top
+  level) runs any intensity model (``GoelOkumoto``, ``YamadaDelayedS``,
+  ``InflectionS``, ``MusaOkumoto``, ``CrowAMSAA``, ``Duane``,
+  ``CoxLewis``, ``HPP``) on the testing effort spent instead of time,
+  :math:`\Lambda(t) = \Lambda_0(W(t))`: with ``GoelOkumoto``, the
+  testing-effort model of Yamada, Ohtera and Narihisa (1986). The effort
+  is a table of amounts per period (``EffortTable``, or ``(ends,
+  amounts)``) or a ``WeibullEffort`` curve (``WeibullEffort.fit`` finds
+  it from a table). ``ChangePoint(model, tau=None)`` multiplies the
+  model's rates by a further parameter, ``ratio``, from the time ``tau``
+  on (for ``GoelOkumoto``, Zhao's 1993 change-point model); ``tau`` is
+  given, or estimated by profile likelihood from one system's failure
+  times, with ``change_point_cb`` for its likelihood-ratio bounds and
+  ``change_point_test`` for the test of no change by parametric
+  bootstrap (the chi-squared table does not apply). Both return the
+  ``ParametricRecurrenceModel`` the models do, with every answer in time
+  (``remaining_faults``, ``time_to_intensity``, ``release_time``, the
+  bounds), save and load, and can be given to ``compare_predictions``.
+  Refused, each saying what to do: effort that falls, a failure in a
+  period with no effort, a ``tau`` with no failures on one side of it,
+  and a fit that only reaches the model's limit (no growth on the effort
+  clock, or steady failures either side of the change, where
+  ``ChangePoint(HPP)`` is the model). A saved model on a clock has the
+  key ``clock`` (the model, and the effort or the time of the change),
+  and a ``dist`` that SurPyval 0.28 does not know and so refuses. See
+  "When the testing was not steady" in
+  :doc:`Software Reliability Growth`.
+
 - **The Littlewood-Verrall software reliability model.**
   ``surpyval.recurrent.LittlewoodVerrall`` (also at the top level) fits
   one test campaign's times between failures: each is exponential with a
