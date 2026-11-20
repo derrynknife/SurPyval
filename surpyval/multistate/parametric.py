@@ -1064,6 +1064,17 @@ class ParametricMultiState(_ParametricMultiStateBase):
             keeps the bounds in (0, 1); ``'normal'`` is the estimate plus
             and minus ``z`` standard errors.
 
+        Notes
+        -----
+        In simulation the default bounds hold their level for common
+        and rarely occupied states alike once each transition has a few
+        dozen observed moves. With fewer (a rare state in about 100
+        units, some 10 to 35 moves out of it) they are two to four
+        points short of 90% and 95%, the band more often below the
+        truth than above it; ``'normal'`` is further short there. The
+        study is ``scripts/studies/multistate_occupancy`` in the
+        repository.
+
         Examples
         --------
         >>> from surpyval.datasets import load_mgus2

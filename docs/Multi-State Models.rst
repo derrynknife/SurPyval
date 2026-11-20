@@ -434,6 +434,19 @@ its own), on the log(-log) scale by default so that they stay in (0, 1):
 
     weibull.cb([120, 240], "pcm")
 
+In a simulation study of illness-death and progressive models with
+constant and Weibull hazards (1000 replicates of each design at 100, 300
+and 1000 units; ``scripts/studies/multistate_occupancy`` in the
+repository), these bounds held their level at 300 and 1000 units for every
+state, including one occupied 1% to 5% of the time: 95% bounds covered
+93.3% to 97.2% cell by cell, 95.0% on average. At 100 units, where the
+hazard out of the rare state rested on some 10 to 35 observed moves, the
+bounds that involve the rare state were two to four points short (as low
+as 91.2% for 95% and 86.0% for 90%), the band lying below the truth more
+often than above it; ``bound_type="normal"`` was further short (85.0%).
+With few moves between two states, read the bounds as somewhat
+optimistic.
+
 ``ParametricMultiStateRegression`` puts a parametric regression on each
 transition (``WeibullPH`` by default; any of the proportional-hazards,
 accelerated-failure-time and other parametric regressions, one for every
