@@ -5,6 +5,26 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Software reliability growth models.** Four non-homogeneous Poisson
+  processes for faults found and removed during testing, in
+  ``surpyval.recurrent`` (and at the top level): ``GoelOkumoto``
+  (:math:`a (1 - e^{-b t})`), ``YamadaDelayedS``
+  (:math:`a (1 - (1 + b t) e^{-b t})`), ``InflectionS`` (Ohba's,
+  :math:`a (1 - e^{-b t}) / (1 + \psi e^{-b t})`) and ``MusaOkumoto``
+  (the logarithmic Poisson model,
+  :math:`\log(1 + \lambda_0 \theta t) / \theta`). Each fits failure
+  times of one system or several, or the failures counted in each period
+  of testing (``c=2`` rows of ``[start, end]`` with their counts ``n``),
+  by maximum likelihood or least squares, and returns the
+  ``ParametricRecurrenceModel`` the other intensity models do: ``cif``,
+  ``iif``, ``mtbf``, their bounds, ``param_cb``, ``next_failure_sf``,
+  ``trend_test``, ``aic``, simulation, saving and loading. Data that show
+  no reliability growth have no maximum-likelihood estimate (the
+  expected number of faults ``a`` runs to infinity), and the fit is
+  refused, saying what was seen and to fit ``HPP`` or ``CrowAMSAA``
+  instead. ``InflectionS`` takes ``psi`` down to -1, so a Goel-Okumoto
+  shape (``psi = 0``) is inside its range.
+
 - **Torch helpers (``surpyval.torch``): the censored and truncated
   likelihood as a PyTorch loss**, for people who train their own networks.
   ``targets(data)`` (or ``x=, c=, n=, tl=, ...``) turns lifetime data,
