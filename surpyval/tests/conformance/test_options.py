@@ -78,6 +78,11 @@ NOT_SWEPT = {
     + _GROWTH_ANSWERS,
     "time_to_reliability_cb": "the testing time to a target reliability, "
     + _GROWTH_ANSWERS,
+    "release_time_cb": "the cheapest release time for given costs (its "
+    "arguments are costs, not the case's times); the delta method against "
+    "its closed form and the seeded bootstrap in "
+    "recurrent/test_release_time.py, and coverage in calibration/"
+    "test_coverage_growth_answers.py",
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
