@@ -7,4 +7,5 @@ from .hpp import HPP
 from .inflection_s import InflectionS
 from .musa_okumoto import MusaOkumoto
 from .parametric_recurrence import ParametricRecurrenceModel
+from .rayleigh_defects import RayleighDefects
 from .yamada_delayed_s import YamadaDelayedS

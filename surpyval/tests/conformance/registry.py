@@ -507,6 +507,9 @@ for _fn in (
     "compare_predictions",
 ):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
+OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
+    _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
+)
 for _name, _why in (
     ("JointPHFitter", _BASE),
     ("JointAFTFitter", _BASE),

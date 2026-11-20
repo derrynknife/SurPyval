@@ -1383,7 +1383,9 @@ def _timed_draw(m, s):
 
 # The software reliability growth models, fitted to data with growth
 _GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
+_GROWTH += ("RayleighDefects",)
 _LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
+_LEVELS_OFF += ("RayleighDefects",)
 
 
 def _recurrent():
@@ -1430,6 +1432,11 @@ def _recurrent():
                 "fit_from_df": lambda d: rc.JelinskiMoranda.fit_from_df(
                     pd.DataFrame(d), x_col="x", c_col="c"
                 )
+            },
+            exclude={
+                "convergence": "no search to starve: the number of faults "
+                "is the best whole number, found exactly, and the rate is "
+                "in closed form"
             },
             rtol=1e-9,
         )
@@ -3483,7 +3490,8 @@ _LENGTH_OF_STAY = Bound(
 # The fixtures' processes that level off: the three finite-fault growth
 # models, and the Cox-Lewis fixture's falling intensity.
 _REMAINING_FAULTS = dict.fromkeys(
-    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis")
+    + ("RayleighDefects",),
     (Bound("remaining_faults_cb", point="remaining_faults"),),
 )
 

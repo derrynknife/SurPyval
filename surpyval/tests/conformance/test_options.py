@@ -74,6 +74,8 @@ _GROWTH_ANSWERS = (
 NOT_SWEPT = {
     "next_failure_sf_cb": "the reliability over a mission from each unit's "
     "age, " + _GROWTH_ANSWERS,
+    "expected_events_cb": "the events expected in a stretch of time (two "
+    "arguments, its ends), " + _GROWTH_ANSWERS,
     "time_to_intensity_cb": "the testing time to a target intensity, "
     + _GROWTH_ANSWERS,
     "time_to_reliability_cb": "the testing time to a target reliability, "

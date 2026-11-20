@@ -36,7 +36,7 @@ def _power_gain(start: np.ndarray, end: np.ndarray, p: int) -> np.ndarray:
     return end**p - start**p
 
 
-def limit_centroids(s: dict, p: int) -> tuple[float, float]:
+def limit_centroids(s: dict, p: int, m: int = 1) -> tuple[float, float]:
     """The mean time of the events, and the mean time the limiting
     process ``c t**p`` would give them over the same observation.
 
@@ -45,7 +45,10 @@ def limit_centroids(s: dict, p: int) -> tuple[float, float]:
     an event of the limiting process in it, ``p / (p + 1) (r**(p + 1) -
     l**(p + 1)) / (r**p - l**p)`` (the midpoint for ``p = 1``). The
     limiting process's own mean is the same expression over every
-    observed stretch.
+    observed stretch. With ``m`` it is the mean of the time to the power
+    ``m`` (``p / (p + m)`` and powers ``p + m`` in the expression), for a
+    model whose curve bends with ``t**m``: the Rayleigh model's, with
+    ``t**2``.
 
     Examples
     --------
@@ -63,13 +66,13 @@ def limit_centroids(s: dict, p: int) -> tuple[float, float]:
     >>> float(seen), float(limit)
     (3.0, 5.0)
     """
-    q = p + 1
+    q = p + m
     ratio = p / q
     starts = [s["x_left_prev"], s["x_i_l"]]
     ends = [s["x_left"], s["x_i_r"]]
     counts = [s["n_left"], s["n_i"]]
     total = float(np.size(s["x_o"]))
-    moment = float(np.sum(s["x_o"]))
+    moment = float(np.sum(np.asarray(s["x_o"], dtype=float) ** m))
     for lo, hi, n in zip(starts, ends, counts):
         lo, hi = np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
         n = np.asarray(n, dtype=float)
@@ -98,6 +101,9 @@ class GrowthNHPPFitter(NHPPFitter):
     #: this ``p`` (1, a constant rate; 2, a rate rising in proportion to
     #: time), or ``None`` where the edge is not one such process.
     _limit_power: int | None = 1
+    #: The failures' times are compared with the limit's in the mean of
+    #: this power of the time (the power of ``t`` the curve bends with)
+    _limit_moment: int = 1
     #: What the limiting process is, in words, and what is lost there
     _limit_name = "a constant rate"
     _no_estimate = "the expected total number of faults a"
@@ -117,7 +123,7 @@ class GrowthNHPPFitter(NHPPFitter):
         s = data.split_for_nhpp_likelihood()
         if self._limit_power is None or self._has_selection(s):
             return
-        seen, limit = limit_centroids(s, self._limit_power)
+        seen, limit = limit_centroids(s, self._limit_power, self._limit_moment)
         if not seen < limit:
             raise ValueError(self._no_growth(seen, limit))
 
@@ -129,9 +135,14 @@ class GrowthNHPPFitter(NHPPFitter):
             )
         else:
             evidence = (
-                "the failures' mean time, {:.6g}, is not earlier than the "
-                "{:.6g} that the model's limit, {}, would give over the "
-                "same observation".format(seen, limit, self._limit_name)
+                "the failures' mean {}time, {:.6g}, is not earlier than "
+                "the {:.6g} that the model's limit, {}, would give over "
+                "the same observation".format(
+                    "squared " if self._limit_moment == 2 else "",
+                    seen,
+                    limit,
+                    self._limit_name,
+                )
             )
         return (
             "The data show no reliability growth that the {name} model "

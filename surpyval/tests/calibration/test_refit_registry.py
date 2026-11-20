@@ -1433,6 +1433,7 @@ for _name in (
     "YamadaDelayedS",
     "InflectionS",
     "MusaOkumoto",
+    "RayleighDefects",
 ):
     PLANS[_name] = Plan(
         _recurrent_own, 40, 100, params=lambda m: np.asarray(m.params)

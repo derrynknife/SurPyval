@@ -51,6 +51,7 @@ the failures counted in each period of testing.
     counting/yamada_delayed_s
     counting/inflection_s
     counting/musa_okumoto
+    counting/rayleigh_defects
 
 Fault-Count Models
 ------------------

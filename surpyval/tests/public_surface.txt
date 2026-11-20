@@ -195,6 +195,7 @@ surpyval.QuantileRegressionModel
 surpyval.RandomEffect
 surpyval.RateTable
 surpyval.Rayleigh
+surpyval.RayleighDefects
 surpyval.RelativeSurvival
 surpyval.RoystonParmar
 surpyval.RoystonParmarModel
@@ -436,6 +437,7 @@ surpyval.recurrent.PredictionComparison
 surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP
+surpyval.recurrent.RayleighDefects
 surpyval.recurrent.RenewalModel
 surpyval.recurrent.SharedFrailtyModel
 surpyval.recurrent.TrendTestResult
@@ -447,6 +449,7 @@ surpyval.recurrent.intervention_test
 surpyval.recurrent.laplace
 surpyval.recurrent.mcf_diff
 surpyval.recurrent.mil_hdbk_189c
+surpyval.recurrent.phases_to_data
 surpyval.rmst_diff
 surpyval.rmtl_diff
 surpyval.round_sig
