@@ -355,11 +355,44 @@ def markers_by_row(markers: Any, i: Any, x: Any) -> Any:
     return [dict(store.get(k, {})) for k in ids]
 
 
+def _take_marker_unit(arguments: dict, x: Any, readings: Any) -> None:
+    """Set a joint fit's ``marker_unit`` to its readings' own unit, from
+    a Measurements of one measurement (given, or held by the data as
+    ``data.m``) that has one; a different ``marker_unit`` given beside
+    it is refused (a label only: nothing is converted)."""
+    from surpyval.utils.measurements import Measurements
+    from surpyval.utils.surpyval_data import SurpyvalData
+    from surpyval.utils.units import normalise_unit, same_unit
+
+    held = None
+    if isinstance(x, SurpyvalData) and x.m is not None:
+        held = x.m
+    elif isinstance(readings, Measurements):
+        held = readings
+    if held is None or len(held.names) != 1:
+        return
+    unit = held.units[held.names[0]]
+    if unit is None:
+        return
+    given = normalise_unit(arguments.get("marker_unit"))
+    if given is None:
+        arguments["marker_unit"] = unit
+    elif not same_unit(given, unit):
+        raise ValueError(
+            f"The readings are in {unit!r}, but marker_unit={given!r} was "
+            "given to the fit: a model is in the unit of its readings (no "
+            "conversion is made), so leave marker_unit out, or convert the "
+            "readings."
+        )
+
+
 def takes_joint_readings(method: F) -> F:
     """Let a joint fit take its readings as ``m`` (the other name of
     ``markers``; giving both is a TypeError), and a Measurements beside
     a SurpyvalData without readings: they are attached to the data
-    (``data.m``) and fitted as from data holding them."""
+    (``data.m``) and fitted as from data holding them. A fit with a
+    ``marker_unit`` takes it from the readings where they have one
+    (:func:`_take_marker_unit`)."""
     signature = inspect.signature(method)
 
     @functools.wraps(method)
@@ -385,6 +418,8 @@ def takes_joint_readings(method: F) -> F:
         from surpyval.utils.surpyval_data import SurpyvalData
 
         x = arguments.get("x")
+        if "marker_unit" in signature.parameters:
+            _take_marker_unit(arguments, x, readings)
         if isinstance(x, SurpyvalData) and readings is not None:
             if x.m is not None:
                 raise TypeError(

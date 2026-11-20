@@ -1358,14 +1358,15 @@ quantile's extreme can lie far down it, or be approached only at the end
 of the search's range for the parameter (where it is no longer a double
 distinct from the edge). The search follows each parameter's profile down
 such valleys before seeking the extreme there. Each bound is then taken
-exactly onto the region's boundary from where the search ended, so it is
-the function's value at a point of the region: where the extreme is
+exactly onto the region's boundary from where the search ended, and along
+the boundary to where the function is most extreme, so it is the
+function's value at a point of the region: where the extreme is
 reached at a point (inside the parameters' space, or on the edge of a
 parameter's range such as a Uniform's smallest observation) the bound is
 that extreme to about one part in :math:`10^{12}`. Where the extreme is
 only approached down a valley, the bound is as close to it as the
-parameters can be followed there in double precision: about one part in
-:math:`10^{7}` for a NegativeBinomial's Poisson limit, where :math:`1 - p`
+parameters can be followed there in double precision: a few parts in
+:math:`10^{9}` for a NegativeBinomial's Poisson limit, where :math:`1 - p`
 is about :math:`10^{-8}`, and a few parts in :math:`10^{7}` for an
 ExpoWeibull's. Where a search is still moving out when it stops, the
 bound returned is the most extreme point of the region it found, with a
