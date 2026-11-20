@@ -52,6 +52,17 @@ the failures counted in each period of testing.
     counting/inflection_s
     counting/musa_okumoto
 
+Fault-Count Models
+------------------
+
+Models of one test campaign's times between failures in which the
+faults are counted in whole numbers.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/jelinski_moranda
+
 Non-Parametric Models
 ---------------------
 
