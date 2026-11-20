@@ -25,6 +25,17 @@ The model
 .. autoclass:: surpyval.bayes.Posterior
    :members:
 
+Comparing fits
+--------------
+
+.. autofunction:: surpyval.bayes.compare
+
+.. autoclass:: surpyval.bayes.PredictiveCriterion
+   :members:
+
+.. autoclass:: surpyval.bayes.PredictiveComparison
+   :members:
+
 Priors
 ------
 

@@ -39,6 +39,7 @@ from ._likelihood import (
     check_integration,
     check_lag,
     check_random_effects,
+    check_weight,
     neg_ll,
     place,
 )
@@ -214,6 +215,7 @@ class JointPHFitter(FitterRepr):
         varying: Any = None,
         link: Any = "value",
         lag: float = 0.0,
+        weight: Any = None,
         random_effects: Any = "full",
     ) -> None:
         from surpyval import Weibull
@@ -303,6 +305,16 @@ class JointPHFitter(FitterRepr):
             )
         self.lag = check_lag(lag)
         _check_lag_at_zero(path_model, self.link, self.lag)
+        self.weight = check_weight(weight)
+        if self.weight is not None and "cumulative" not in self.link:
+            raise ValueError(
+                "'weight' weights the accumulated exposure, the area "
+                "under the marker's path that the 'cumulative' link "
+                f"follows, and the link here is {list(self.link)!r}, "
+                "which has no area to weight. Add the link "
+                "(link='cumulative', or link=['value', 'cumulative']), or "
+                "leave weight out."
+            )
         self.dist = distribution
         self.path_model = path_model
         # in the path's order
@@ -335,6 +347,8 @@ class JointPHFitter(FitterRepr):
             out.append("link: " + ", ".join(self.link))
         if self.lag > 0:
             out.append(f"lag: {self.lag:g}")
+        if self.weight is not None:
+            out.append("weight: {} {:g}".format(*self.weight))
         return out
 
     @dataframe_covariates
@@ -829,6 +843,7 @@ def JointPH(
     varying: Any = None,
     link: Any = "value",
     lag: float = 0.0,
+    weight: Any = None,
     random_effects: Any = "full",
 ) -> JointPHFitter:
     """
@@ -871,6 +886,23 @@ def JointPH(
         is fixed, not estimated: the likelihood is not smooth in it. To
         choose one, fit each lag you have in mind and compare them by
         ``aic()`` (the same data, the same number of parameters).
+    weight : tuple, optional
+        How much of the accumulated exposure (the ``"cumulative"`` link,
+        which it needs) still counts, by how long ago it was. The
+        default, ``None``, counts all of it equally: an hour of exposure
+        ten years ago like one last week. ``("exponential", scale)``
+        makes exposure fade: what was accumulated ``u`` ago counts
+        ``exp(-u / scale)`` of what is accumulated now (damage that
+        heals or is repaired), so the hazard follows
+        :math:`\\int_0^t e^{-(t - s)/\\mathrm{scale}} m(s) ds`.
+        ``("window", width)`` counts only the last ``width`` of it, the
+        area under the path over ``(max(t - width, 0), t)``. The scale
+        or width is in the lifetimes' unit of time and, like the lag, is
+        fixed, not estimated: fit each one you have in mind and compare
+        them by ``aic()``. With a ``lag`` the weighted exposure acts
+        ``lag`` later (the weighted area at ``max(t - lag, 0)``).
+        ``cumulative_effect`` is still per unit of the marker times a
+        unit of age.
     random_effects : str or sequence, optional
         Which of the varying path parameters are correlated between
         items. ``"full"`` (the default): every pair, a correlation each
@@ -910,13 +942,22 @@ def JointPH(
     ... # doctest: +ELLIPSIS, +NORMALIZE_WHITESPACE
     WeibullQuadraticJointPH: joint model fitter (..., random effects:
     correlated in blocks {a, b}, {c})
+    >>> JointPH(Weibull, link="cumulative", weight=("exponential", 0.5))
+    ... # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., weight: exponential 0.5)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
     return JointPHFitter(
-        distribution, path_model, varying, link, lag, random_effects
+        distribution,
+        path_model,
+        varying,
+        link,
+        lag,
+        weight,
+        random_effects=random_effects,
     )
 
 
@@ -1219,7 +1260,7 @@ def _fit(
     )
     model = Model(
         layout,
-        PathFunction(path_model, fitter.link, fitter.lag),
+        PathFunction(path_model, fitter.link, fitter.lag, fitter.weight),
         centre,
         integration,
     )
@@ -1297,6 +1338,7 @@ def _fit(
     out.parameter_names = full_names
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
+    out.weight = fitter.weight
     out.survival = fitter.survival
     out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
@@ -1589,13 +1631,16 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     from .joint_aft import JointAFT
 
     factory = JointAFT if model.survival == "AFT" else JointPH
+    # (an accelerated model has no accumulated exposure to weight)
+    weighted = {} if model.weight is None else {"weight": model.weight}
     fitter = factory(
         model.dist,
         model.path_model,
         model.varying,
         model.link,
         model.lag,
-        model.random_effects_structure,
+        **weighted,
+        random_effects=model.random_effects_structure,
     )
     records, counts, names = _records(
         data["x"],

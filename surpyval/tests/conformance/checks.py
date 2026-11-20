@@ -142,6 +142,8 @@ RULES = {
 # For recurrent events ``cif`` is a cumulative intensity, not a probability.
 # The instantaneous MTBF, 1 / iif, of a recurrence model (#578).
 COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1), mtbf=(0.0, np.inf, 0))
+# The faults a finite-fault process has left fall as the testing goes on
+COUNTING_RULES["remaining_faults"] = (0.0, np.inf, -1)
 # The totals over the causes of a cause-specific intensity model
 COUNTING_RULES.update(
     total_cif=COUNTING_RULES["cif"],

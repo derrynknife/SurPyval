@@ -122,6 +122,12 @@ def _order(link: Any) -> tuple:
     return tuple(LINKS.index(term) for term in link)
 
 
+def _has_cumulative(link: Any) -> bool:
+    """Whether ``link`` (a link or a list of them) follows the
+    accumulated exposure."""
+    return "cumulative" in ([link] if isinstance(link, str) else list(link))
+
+
 def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
     """The fitters to compare, one per link; the default links left out
     because the path cannot take them, and why."""
@@ -166,6 +172,7 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
                 "such as ['value', 'slope', ['value', 'slope']]; got "
                 f"{links!r}."
             )
+    # a weight is on the accumulated exposure: the links that follow it
     fitters = [
         JointPH(
             fitter.dist,
@@ -173,7 +180,8 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
             fitter.varying,
             link,
             fitter.lag,
-            fitter.random_effects,
+            fitter.weight if _has_cumulative(link) else None,
+            random_effects=fitter.random_effects,
         )
         for link in chosen
     ]

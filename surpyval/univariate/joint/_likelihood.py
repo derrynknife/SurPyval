@@ -20,7 +20,10 @@ be in the hazard, the path or both: the entries of ``Delta`` and
 The hazard may follow, in place of the path's value or beside it, the
 path's slope or the area under it from age 0 (the links, each with an
 effect of its own): ``zeta (path - c)`` is then the sum over the links
-(:func:`predictor`), and everything below holds with it.
+(:func:`predictor`), and everything below holds with it. The area may
+count older exposure for less (:class:`WeightedArea`: an exponential
+weight, or a window), and each link may be followed a lag later
+(:class:`LaggedPath`).
 
 Given ``theta_i`` the readings and the lifetime are independent, so an
 item's likelihood is the integral over its varying parameters
@@ -374,6 +377,130 @@ class LinkPath:
         return x[:, None] * np.einsum("k,mkp->mp", AREA_W, J)
 
 
+#: The weights the accumulated exposure may take (``weight``).
+WEIGHTS = ("exponential", "window")
+#: An exponentially weighted area is summed over the last ``EXP_SPAN``
+#: scales of the weight (what is older has ``exp(-30)``, 1e-13, of the
+#: newest exposure's weight), in pieces that end at these fractions of
+#: that span back from the age (the oldest first).
+EXP_SPAN = 30.0
+EXP_EDGES = (1.0, 0.5, 0.2, 0.0)
+#: Plain Gauss-Legendre on (0, 1), for a piece with nothing at its ends.
+PLAIN_NODES = GL_NODES
+PLAIN_W = np.exp(GL_LOGW) / 4.0
+
+
+def check_weight(weight: Any) -> tuple | None:
+    """``weight`` as ``(kind, scale)`` with a float scale, or ``None``;
+    refused unless it is ``None`` or one of ``WEIGHTS`` with one finite
+    scale above 0."""
+    if weight is None:
+        return None
+    try:
+        kind, scale = weight
+        value = float(scale)
+        fine = (
+            isinstance(kind, str)
+            and kind in WEIGHTS
+            and not np.ndim(scale)
+            and np.isfinite(value)
+            and value > 0
+        )
+    except (TypeError, ValueError):
+        fine = False
+    if not fine:
+        raise ValueError(
+            "'weight' says how much of the accumulated exposure (the "
+            "'cumulative' link) still counts, by how long ago it was: "
+            "('exponential', scale) for exposure that fades as "
+            "exp(-(time since) / scale), or ('window', width) to count "
+            "only the last 'width' of it, the scale or width one finite "
+            "number above 0 in the lifetimes' unit of time; or None for "
+            f"all of it, equally; got {weight!r}."
+        )
+    return (kind, value)
+
+
+class WeightedArea(LinkPath):
+    """The area under a marker's path with older exposure counting for
+    less, as a path of its own: at age ``x``
+
+        int_0^x w(x - s) path(s) ds,
+
+    with ``w(u) = exp(-u / scale)`` (``"exponential"``) or ``w(u) = 1``
+    for ``u <= scale`` and 0 beyond (``"window"``). :meth:`rule` gives
+    the ages and weights of the sum, which the path and its Jacobian
+    share."""
+
+    def __init__(self, path_model: Any, weight: tuple) -> None:
+        super().__init__(path_model, "cumulative")
+        self.kind, self.scale = weight[0], float(weight[1])
+        self.name = (
+            f"{path_model.name} (cumulative, {self.kind} weight "
+            f"{self.scale:g})"
+        )
+
+    def rule(self, x: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+        """The ages ``(..., K)`` and weights ``(..., K)`` (the kernel
+        ``w`` included) of the weighted area at the ages ``x`` ``(...)``.
+
+        A window is one piece, ``(max(x - scale, 0), x)``, by the plain
+        area's rule from its older end (``AREA_NODES``: the plain area's
+        own sum while the window reaches back to age 0).
+
+        An exponential weight is summed over ``(max(x - 30 scale, 0),
+        x)`` in three pieces, which end 100%, 50%, 20% and 0% of that
+        span back from ``x`` (``EXP_EDGES``), each by 15-point
+        Gauss-Legendre: the kernel changes by a factor of at most
+        ``e^15`` over a piece, which the rule follows to 1e-10 of the
+        area. The oldest piece is by the plain area's rule where it
+        starts at age 0 (a path may have a logarithmic or root
+        singularity there), and by plain Gauss-Legendre where it does
+        not (there the path is smooth, and what lies at its older end
+        has a weight of 1e-13)."""
+        x = np.asarray(x, dtype=float)[..., None]
+        if self.kind == "window":
+            lo = np.maximum(x - self.scale, 0.0)
+            width = x - lo
+            return lo + width * AREA_NODES, width * AREA_W
+        reach = EXP_SPAN * self.scale
+        span = np.minimum(x, reach)
+        from_zero = x <= reach
+        ages, weights = [], []
+        for k in range(len(EXP_EDGES) - 1):
+            a = x - span * EXP_EDGES[k]
+            width = span * (EXP_EDGES[k] - EXP_EDGES[k + 1])
+            if k == 0:
+                nodes = np.where(from_zero, AREA_NODES, PLAIN_NODES)
+                w = np.where(from_zero, AREA_W, PLAIN_W)
+            else:
+                nodes, w = PLAIN_NODES, PLAIN_W
+            s = a + width * nodes
+            ages.append(s)
+            weights.append(width * w * np.exp(-(x - s) / self.scale))
+        return np.concatenate(ages, axis=-1), np.concatenate(weights, axis=-1)
+
+    def path(self, x: Any, *params: Any) -> Any:
+        ages, weights = self.rule(x)
+        spread = [np.asarray(v, dtype=float)[..., None] for v in params]
+        m = np.asarray(self.base.path(ages, *spread), dtype=float)
+        return np.sum(weights * m, axis=-1)
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        ages, weights = self.rule(x)
+        K = ages.shape[-1]
+        P = np.stack(
+            [
+                np.repeat(np.broadcast_to(np.asarray(v, float), x.shape), K)
+                for v in params
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.base, ages.ravel(), P).reshape(x.size, K, -1)
+        return np.einsum("mk,mkp->mp", weights, J)
+
+
 class LaggedPath:
     """What the hazard follows of a marker's path ``lag`` later (a path
     model, or a :class:`LinkPath`, as ``inner``): at age ``x`` the
@@ -418,7 +545,7 @@ class LaggedPath:
 
 
 def lag_rule(
-    lo: npt.NDArray, hi: npt.NDArray, lag: float
+    lo: npt.NDArray, hi: npt.NDArray, lag: Any
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """The ages ``(N, 2 GL_POINTS)`` and log weights of the rule for
     ``int_lo^hi f(s) ds`` (``0 <= lo < hi``, finite) when the hazard
@@ -426,13 +553,19 @@ def lag_rule(
     where the lagged path has a kink (its slope a jump), and each piece
     by the cumulative hazard's own rule, ``s = a + (b - a) w^4`` and
     15-point Gauss-Legendre in ``w``. A piece of no width has weights
-    ``-inf``."""
+    ``-inf``. ``lag`` may be several ages, ascending
+    (``PathFunction.cuts``: the lag, and where a window on the
+    accumulated exposure starts to move): the interval is split at each,
+    ``GL_POINTS`` ages a piece."""
     lo = np.asarray(lo, dtype=float)
     hi = np.asarray(hi, dtype=float)
-    cut = np.clip(lag, lo, hi)
+    edges = [lo]
+    for cut in np.atleast_1d(np.asarray(lag, dtype=float)):
+        edges.append(np.clip(cut, lo, hi))
+    edges.append(hi)
     ages, logw = [], []
     with np.errstate(divide="ignore"):
-        for a, b in ((lo, cut), (cut, hi)):
+        for a, b in zip(edges[:-1], edges[1:]):
             width = b - a
             ages.append(a[:, None] + width[:, None] * GL_U[None, :])
             logw.append(
@@ -466,21 +599,42 @@ class PathFunction:
     that. ``terms`` holds what the hazard follows, one ``(link, path,
     function)`` for each of ``links``: the path itself (``"value"``),
     or its :class:`LinkPath`; with a ``lag`` above 0, each of those
-    ``lag`` later (:class:`LaggedPath`). The readings are always of the
-    path itself (``values``)."""
+    ``lag`` later (:class:`LaggedPath`). With a ``weight`` (``(kind,
+    scale)``, :func:`check_weight`) the cumulative link is the
+    :class:`WeightedArea`. The readings are always of the path itself
+    (``values``).
+
+    ``cuts`` are the ages, ascending, at which what the hazard follows
+    has a kink, where the integrals of the hazard over age are split
+    (:func:`lag_rule`): the lag, and with a window on the accumulated
+    exposure the age at which the window stops reaching back to age 0
+    (the lag plus its width)."""
 
     def __init__(
-        self, path_model: Any, links: tuple = ("value",), lag: float = 0.0
+        self,
+        path_model: Any,
+        links: tuple = ("value",),
+        lag: float = 0.0,
+        weight: tuple | None = None,
     ) -> None:
         self.model = path_model
         self.values, self.jac = _differentiable(path_model)
         self.links = tuple(links)
         self.lag = float(lag)
+        self.weight = weight if "cumulative" in self.links else None
+        cuts = [self.lag] if self.lag > 0 else []
+        if self.weight is not None and self.weight[0] == "window":
+            cuts.append(self.lag + float(self.weight[1]))
+        self.cuts = tuple(cuts)
         self.terms: list = []
         for link in self.links:
-            followed = (
-                path_model if link == "value" else LinkPath(path_model, link)
-            )
+            followed: Any
+            if link == "value":
+                followed = path_model
+            elif link == "cumulative" and self.weight is not None:
+                followed = WeightedArea(path_model, self.weight)
+            else:
+                followed = LinkPath(path_model, link)
             if self.lag > 0:
                 followed = LaggedPath(followed, self.lag, link != "value")
                 self.terms.append(
@@ -950,8 +1104,8 @@ def log_cumhaz(
     ``t_i`` is 0)."""
     positive = t > 0
     safe = np.where(positive, t, 1.0)
-    if path.lag > 0:
-        # from age 0, split at the lag
+    if path.cuts:
+        # from age 0, split at the lag (and a window's start)
         out = log_cumhaz_between(
             theta, path, params, arrays, np.zeros(safe.size), safe, centre
         )
@@ -990,10 +1144,11 @@ def log_cumhaz_between(
     15-point Gauss-Legendre in ``w`` (with ``lo = 0`` this is the
     cumulative hazard's own rule), so a narrow interval late in life
     loses no precision to a difference of two cumulative hazards. With
-    a lag, split there (:func:`lag_rule`)."""
+    a lag (or a window on the accumulated exposure), split at
+    ``path.cuts`` (:func:`lag_rule`)."""
     width = hi - lo
-    if path.lag > 0:
-        s, logw = lag_rule(lo, hi, path.lag)
+    if path.cuts:
+        s, logw = lag_rule(lo, hi, path.cuts)
     else:
         s = lo[:, None] + width[:, None] * GL_U[None, :]
     eta = predictor(theta, path, params, s, centre)
@@ -1006,7 +1161,7 @@ def log_cumhaz_between(
         + lin[:, None, None]
         + eta
     )
-    if path.lag > 0:
+    if path.cuts:
         return logsumexp(logw[:, None, :] + log_h, axis=-1)
     inner = logsumexp(GL_LOGW + 3 * np.log(GL_NODES) + log_h, axis=-1)
     return np.log(width)[:, None] + inner
@@ -1179,9 +1334,9 @@ def _mode_objective(
             safe = np.where(positive, t, 1.0)
             beta = float(theta["beta"])
             lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
-            if path.lag > 0:
+            if path.cuts:
                 # from age 0, split at the lag (as log_cumhaz)
-                s_ages, logw = lag_rule(np.zeros(safe.size), safe, path.lag)
+                s_ages, logw = lag_rule(np.zeros(safe.size), safe, path.cuts)
                 terms = followed(s_ages)
                 alpha = float(theta["alpha"])
                 log_lam = (
@@ -1217,8 +1372,8 @@ def _mode_objective(
                 if rows.any():
                     width = hi - lo
                     alpha = float(theta["alpha"])
-                    if path.lag > 0:
-                        s_ages, logw = lag_rule(lo, hi, path.lag)
+                    if path.cuts:
+                        s_ages, logw = lag_rule(lo, hi, path.cuts)
                         terms = followed(s_ages)
                         log_lam = (
                             (lin + np.log(beta / alpha))[:, None]

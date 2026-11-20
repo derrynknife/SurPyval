@@ -53,7 +53,12 @@ class JointAFTFitter(JointPHFitter):
                 "follows the area."
             )
         super().__init__(
-            distribution, path_model, varying, link, lag, random_effects
+            distribution,
+            path_model,
+            varying,
+            link,
+            lag,
+            random_effects=random_effects,
         )
 
     def _repr_details(self) -> list[str]:

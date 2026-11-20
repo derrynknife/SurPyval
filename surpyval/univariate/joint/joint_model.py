@@ -44,6 +44,7 @@ from ._likelihood import (
     block_labels,
     check_lag,
     check_random_effects,
+    check_weight,
     continued_modes,
     log_integrals,
     log_integrand,
@@ -64,6 +65,17 @@ _LINK_WORDS = {
     "slope": "slope",
     "cumulative": "cumulative area",
 }
+
+
+def _weight_words(weight: tuple | None) -> str:
+    """The weight on the accumulated exposure in words, to follow the
+    links' (empty with none)."""
+    if weight is None:
+        return ""
+    if weight[0] == "window":
+        return f", the area over the last {weight[1]:g} only (window)"
+    return f", the area fading over {weight[1]:g} (exponential weight)"
+
 
 #: The ways a joint model is fitted (``how``): the joint likelihood's
 #: maximum, or the approximate two-stage estimate.
@@ -455,7 +467,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     area of 0. With a ``lag`` above 0 the hazard at age :math:`t` follows
     each of these at :math:`\\max(t - \\mathrm{lag}, 0)` (the path held at
     its age-0 value until the lag has passed, so the slope is 0 there):
-    a reading acts ``lag`` later.
+    a reading acts ``lag`` later. With a ``weight`` the area counts
+    older exposure for less, :math:`\\int_0^t w(t - s) m(s) ds` with
+    :math:`w(u) = e^{-u/\\mathrm{scale}}` (``("exponential", scale)``)
+    or :math:`w(u) = 1` for :math:`u` up to the width and 0 beyond
+    (``("window", width)``).
 
     In an accelerated model (``survival == "AFT"``) the marker speeds up
     the item's ageing in place of multiplying its hazard: by age
@@ -556,6 +572,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: path at ``max(t - lag, 0)``. Fixed by the fit's fitter, not
     #: estimated.
     lag: float = 0.0
+    #: How the accumulated exposure (the ``"cumulative"`` link) is
+    #: weighted by how long ago it was: ``None`` (all of it equally),
+    #: ``("exponential", scale)`` (it fades as ``exp(-u / scale)``, ``u``
+    #: the time since) or ``("window", width)`` (only the last ``width``
+    #: counts). Fixed by the fit's fitter, not estimated.
+    weight: tuple | None = None
     #: The survival part: ``"PH"`` (the marker multiplies the hazard,
     #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
     #: ``JointAFT``).
@@ -686,7 +708,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def _likelihood_model(self) -> Model:
         return Model(
             self._layout,
-            PathFunction(self.path_model, tuple(self.link), self.lag),
+            PathFunction(
+                self.path_model, tuple(self.link), self.lag, self.weight
+            ),
             self._centre,
             self.integration,
         )
@@ -806,6 +830,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "link: "
                 + ", ".join(_LINK_WORDS[link] for link in self.link)
                 + (f", lag {self.lag:g}" if self.lag > 0 else "")
+                + _weight_words(self.weight)
                 + two,
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
@@ -906,6 +931,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
+        followed += _weight_words(self.weight)
         if self.lag > 0:
             followed += f", {self.lag:g} earlier (lag)"
         if self.survival == "AFT":
@@ -1575,6 +1601,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "varying": list(self.varying),
             "link": list(self.link),
             **({} if self.lag == 0 else {"lag": float(self.lag)}),
+            **(
+                {}
+                if self.weight is None
+                else {"weight": [self.weight[0], float(self.weight[1])]}
+            ),
             "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -1695,6 +1726,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.link = tuple(model_dict.get("link") or ("value",))
         # saved before the lag, or with none: at once
         out.lag = check_lag(model_dict.get("lag", 0.0))
+        # saved before the weights, or with none: all the exposure
+        saved_weight = model_dict.get("weight")
+        out.weight = check_weight(
+            None if saved_weight is None else tuple(saved_weight)
+        )
+        if out.weight is not None and "cumulative" not in out.link:
+            raise ValueError(
+                "A joint model's weight is on its accumulated exposure "
+                "(the 'cumulative' link); the dict has the weight "
+                f"{list(out.weight)!r} and the link {list(out.link)!r}."
+            )
         # saved before the accelerated survival part: proportional hazards
         survival = model_dict.get("survival") or "PH"
         if survival not in _SURVIVAL_WORDS:

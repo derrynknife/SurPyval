@@ -1424,7 +1424,16 @@ for _name in (
     PLANS[_name] = Plan(_cr, 300, 40, note=_SEMI)
 
 # Recurrent events: n is the number of items, observed over [0, 60].
-for _name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+for _name in (
+    "HPP",
+    "CrowAMSAA",
+    "Duane",
+    "CoxLewis",
+    "GoelOkumoto",
+    "YamadaDelayedS",
+    "InflectionS",
+    "MusaOkumoto",
+):
     PLANS[_name] = Plan(
         _recurrent_own, 40, 100, params=lambda m: np.asarray(m.params)
     )
@@ -1743,6 +1752,11 @@ EXCLUDED: dict[str, str] = {
     "WeibullJointPH[lag]": "a lifetime with marker readings along it, "
     "which a model draw does not give: recovery of a fleet simulated with "
     "a lag is in univariate/joint/test_joint_lag.py",
+    "WeibullJointPH[weight]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated with "
+    "a weight on the accumulated exposure is in "
+    "univariate/joint/test_joint_weight.py and "
+    "calibration/test_coverage_joint_weight.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "

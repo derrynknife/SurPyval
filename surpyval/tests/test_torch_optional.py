@@ -14,7 +14,8 @@ def test_import_surpyval_does_not_import_torch():
     code = (
         "import sys, surpyval, surpyval.torch; "
         "from surpyval.torch import SUPPORTED, Targets, constrain, nll, "
-        "targets; print('torch' in sys.modules, len(SUPPORTED))"
+        "sf, targets, to_surpyval; "
+        "print('torch' in sys.modules, len(SUPPORTED))"
     )
     out = subprocess.run(
         [sys.executable, "-c", code],
@@ -64,10 +65,15 @@ def _calls():
             lambda: spt.nll(sp.Weibull, None, {"alpha": 1.0, "beta": 1.0}),
         ),
         ("NLLLoss", lambda: spt.NLLLoss(sp.Weibull)),
+        ("sf", lambda: spt.sf(sp.Weibull, [1.0], {"alpha": 1, "beta": 1})),
+        (
+            "to_surpyval",
+            lambda: spt.to_surpyval(sp.Weibull, {"alpha": 1, "beta": 1}),
+        ),
     ]
 
 
-@pytest.mark.parametrize("index", range(4))
+@pytest.mark.parametrize("index", range(6))
 def test_each_helper_says_to_install_torch(without_torch, index):
     what, call = _calls()[index]
     with pytest.raises(ImportError, match="pip install torch") as err:

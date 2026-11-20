@@ -365,6 +365,40 @@ def recurrent_data(with_Z=False, with_e=False):
     return d
 
 
+def growth_data():
+    """Three systems under test to t = 60 whose failures slow down after
+    a steady start (9, 8 and 8 of them), each ending with a censoring
+    row: data with reliability growth, for the software reliability
+    growth models. The times are the quantiles of an inflection S-shaped
+    curve, ``a = 9``, ``b = 0.1``, ``psi = 3``, at evenly spread counts,
+    rounded to a decimal place."""
+    events = (
+        [2.1, 5.9, 9.3, 12.7, 16.1, 19.9, 24.3, 30.4, 42.3],
+        [2.3, 6.3, 9.9, 13.5, 16.3, 20.3, 25.2, 32.3],
+        [1.4, 5.4, 8.9, 12.4, 15.9, 19.8, 23.4, 29.2],
+    )
+    x, i, c = [], [], []
+    for k, times in enumerate(events):
+        x += [*times, 60.0]
+        i += [k + 1] * (len(times) + 1)
+        c += [0] * len(times) + [1]
+    return {
+        "x": np.array(x),
+        "i": np.array(i),
+        "c": np.array(c),
+        "n": np.ones(len(x), int),
+    }
+
+
+def campaign_data():
+    """One test campaign: twelve failure times of a program under test,
+    and the end of testing at 110 with no failure since the last."""
+    x = np.array([3, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99, 110.0])
+    c = np.zeros(13, int)
+    c[-1] = 1
+    return {"x": x, "c": c}
+
+
 def frailty_recurrent_data(with_Z=False):
     """Ten repairable items watched to 60, with 1 to 12 failures each
     (more spread than Poisson counts have, so a frailty is estimated):

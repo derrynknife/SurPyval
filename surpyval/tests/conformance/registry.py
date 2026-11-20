@@ -413,6 +413,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.MCFDiffResult": _RESULT,
+    "surpyval.recurrent.PredictionComparison": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -498,7 +499,13 @@ for _fn in ("to_stacked", "from_stacked"):
     OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
         _FUNCTION + ": converts multi-state data between its forms"
     )
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
+for _fn in (
+    "laplace",
+    "mil_hdbk_189c",
+    "intervention_test",
+    "mcf_diff",
+    "compare_predictions",
+):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _name, _why in (
     ("JointPHFitter", _BASE),
@@ -598,6 +605,12 @@ OUT_OF_SCOPE["surpyval.bayes.log_likelihood_fn"] = (
 )
 OUT_OF_SCOPE["surpyval.bayes.LogLikelihood"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.Posterior"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.compare"] = (
+    _FUNCTION + " (ranks Bayesian fits by WAIC or LOO; checked in "
+    "surpyval/tests/bayes/test_criteria.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.PredictiveCriterion"] = _RESULT
+OUT_OF_SCOPE["surpyval.bayes.PredictiveComparison"] = _RESULT
 for _name in (
     "Prior",
     "JointPrior",

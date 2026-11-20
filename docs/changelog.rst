@@ -21,6 +21,42 @@ v0.29 (unreleased)
   SurPyval 0.28 refuses rather than misread. See "Which path parameters
   are correlated" in :doc:`Joint Models`.
 
+- **WAIC and leave-one-out cross-validation for Bayesian fits.**
+  ``model.waic()`` and ``model.loo()`` of a ``BayesianParametric`` estimate
+  the expected log predictive density of a new observation, with its
+  standard error and the effective number of parameters, and
+  ``surpyval.bayes.compare(fits, criterion="loo")`` (or ``"waic"``) ranks
+  fits to the same data by it, with the standard error of each
+  difference from the paired rows. Every row counts through its own
+  likelihood term (censored, interval, truncated) and a count ``n`` is
+  ``n`` units. Conjugate fits are in closed form; grid and Laplace fits
+  use the grid's quadrature, with each row's share of its leave-one-out
+  posterior at the grid's edge; fits from draws use Pareto-smoothed
+  importance sampling, with each row's Pareto ``k``. Each warns, counting
+  the rows, where its estimate is unreliable. ``LogLikelihood.pointwise``
+  gives each row's log-likelihood. Checked against refitting without each
+  unit, closed forms and ArviZ. See "Comparing fits: WAIC and
+  leave-one-out" in :doc:`Bayesian Fitting with SurPyval`.
+
+- **The Jelinski-Moranda software reliability model.**
+  ``surpyval.recurrent.JelinskiMoranda`` (also at the top level) fits one
+  test campaign's failure times, or the times between failures
+  (``gaps=True``), with the end of testing after the last failure as a
+  ``c=1`` row: the software holds a whole number of faults ``N``, each
+  found at the rate ``phi``. The estimate of ``N`` is a whole number. The
+  fitted ``JelinskiMorandaModel`` gives the faults left
+  (``remaining_faults()``), the failure rate now (``current_rate()``),
+  ``mtbf()``, ``next_failure_sf``, ``profile_likelihood(N)``, ``aic()``
+  and likelihood-ratio bounds (``param_cb``, ``remaining_faults_cb``,
+  ``current_rate_cb``, ``mtbf_cb``); an upper bound of ``inf`` on ``N``
+  says that the data do not limit the number of faults. Data that show
+  no reliability growth have no finite ``N``; the fit is refused, with
+  the condition (the failures' mean time against ``(n + 1) T / (2 n)``)
+  and what to fit instead. Wald and bootstrap bounds are refused with
+  the reason. It reproduces the published fit to the Naval Tactical Data
+  System failures (Jelinski and Moranda 1972). See "A whole number of
+  faults" in :doc:`Software Reliability Growth`.
+
 - **A model on another clock.** ``model.rescale_time(factor)`` gives the
   model whose survival function is ``R(factor * t)``: a life in operating
   time put on the calendar (``factor=0.25`` for a unit that runs a quarter
@@ -41,6 +77,77 @@ v0.29 (unreleased)
   refuse, saying what to do. See "Rescaling a model's time" in
   :doc:`Conventions`.
 
+- **Which model predicts best.** ``surpyval.recurrent.compare_predictions(x,
+  models, start=10)`` compares models of one system's failures by their
+  one-step-ahead predictions (Abdel-Ghaly, Chan and Littlewood 1986): at
+  each failure every model is fitted to the failures before it and its
+  distribution of the time to the next is scored at the time that came.
+  The ``PredictionComparison`` it returns has each model's prequential
+  log-likelihood (and ``likelihood_ratio(a, b)``, step by step), the
+  u-plot's and y-plot's Kolmogorov distances with the direction of the
+  bias (``u_plot``, ``y_plot``), a ``summary()`` table, a ``verdict`` in
+  words and ``plot("u" | "y" | "ratio")``. It takes any of the
+  Poisson-process fitters and ``JelinskiMoranda``. A fit refused at some
+  step makes no prediction there: the step is kept with the reason, the
+  likelihoods are compared on the steps every model predicted, and the
+  table counts the failed steps. See "Which model predicts best?" in
+  :doc:`Software Reliability Growth`.
+
+- **The cheapest time to release.** ``release_time(test_cost, fix_cost,
+  field_cost)`` on a fitted Poisson process (the software reliability
+  growth models and the other intensity models) gives the testing time
+  that minimises the expected total cost of testing, of the faults fixed
+  in testing and of the faults left for the field (Okumoto and Goel
+  1980): the time at which the intensity has fallen to ``test_cost /
+  (field_cost - fix_cost)``. It returns the time, its cost, and the band
+  of times whose cost is within ``within`` (1%) of the least; with
+  ``reliability=`` and ``mission=`` the release also waits for that
+  target, and ``life=`` ends the field's exposure (needed by a model
+  with no finite number of faults). ``release_time_cb`` bounds the time
+  by the delta method or a seeded parametric bootstrap
+  (``method="bootstrap"``). A model whose intensity never falls that
+  far, and costs with ``field_cost <= fix_cost``, are refused with the
+  reason. See "When to release" in :doc:`Software Reliability Growth`.
+
+- **Remaining faults, mission reliability and the testing needed to reach
+  a target**, on every fitted Poisson process
+  (``ParametricRecurrenceModel``: the software reliability growth models,
+  and ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and ``HPP`` where the
+  question has an answer). ``remaining_faults(x)`` is the faults expected
+  to be left after testing to ``x`` (refused, with the reason, for a
+  process whose failures go on without limit);
+  ``time_to_intensity(target)`` and ``time_to_reliability(target, x)``
+  are the testing times at which the intensity has fallen to a target and
+  at which a mission of length ``x`` succeeds with a target probability
+  (refused where the fitted curve never gets there). Each has confidence
+  bounds: ``remaining_faults_cb``, ``next_failure_sf_cb`` (the bounds on
+  ``next_failure_sf``, which is the reliability over a mission),
+  ``time_to_intensity_cb`` and ``time_to_reliability_cb`` (the last two
+  by inverting the bounds on the curve, so an upper bound can be
+  ``inf``). A new guide, :doc:`Software Reliability Growth`, works
+  through the models, the answers and when not to trust them on the
+  Naval Tactical Data System failures.
+
+- **Software reliability growth models.** Four non-homogeneous Poisson
+  processes for faults found and removed during testing, in
+  ``surpyval.recurrent`` (and at the top level): ``GoelOkumoto``
+  (:math:`a (1 - e^{-b t})`), ``YamadaDelayedS``
+  (:math:`a (1 - (1 + b t) e^{-b t})`), ``InflectionS`` (Ohba's,
+  :math:`a (1 - e^{-b t}) / (1 + \psi e^{-b t})`) and ``MusaOkumoto``
+  (the logarithmic Poisson model,
+  :math:`\log(1 + \lambda_0 \theta t) / \theta`). Each fits failure
+  times of one system or several, or the failures counted in each period
+  of testing (``c=2`` rows of ``[start, end]`` with their counts ``n``),
+  by maximum likelihood or least squares, and returns the
+  ``ParametricRecurrenceModel`` the other intensity models do: ``cif``,
+  ``iif``, ``mtbf``, their bounds, ``param_cb``, ``next_failure_sf``,
+  ``trend_test``, ``aic``, simulation, saving and loading. Data that show
+  no reliability growth have no maximum-likelihood estimate (the
+  expected number of faults ``a`` runs to infinity), and the fit is
+  refused, saying what was seen and to fit ``HPP`` or ``CrowAMSAA``
+  instead. ``InflectionS`` takes ``psi`` down to -1, so a Goel-Okumoto
+  shape (``psi = 0``) is inside its range.
+
 - **Torch helpers (``surpyval.torch``): the censored and truncated
   likelihood as a PyTorch loss**, for people who train their own networks.
   ``targets(data)`` (or ``x=, c=, n=, tl=, ...``) turns lifetime data,
@@ -59,6 +166,21 @@ v0.29 (unreleased)
   it, and the helpers ask you to install it when it is absent. There are no
   training loops or network architectures.
 
+- **Torch helpers: mixtures, survival curves out and a guide.**
+  ``nll(dist, target, params, mixture=logits)`` (and ``NLLLoss``) is the
+  likelihood of a mixture of ``K`` components of one family per row, the
+  model of Deep Survival Machines, for every kind of censoring and
+  truncation: ``(N, K)`` logits give the weights, each parameter is
+  ``(N, K)``, ``(K,)`` or a scalar, and ``constrain`` maps a network's
+  ``(N, K, k)`` outputs. In double precision it equals ``MixtureModel``'s
+  likelihood to 1e-10; with one component it is the loss without a
+  mixture. ``sf(dist, times, params, mixture=None)`` gives each row's
+  survival curve as an ``(N, T)`` tensor, for ``score_predictions`` and the
+  concordance index, and ``to_surpyval(dist, params, row=i)`` turns any
+  row into an ordinary SurPyval model (a ``MixtureModel`` for a mixture).
+  The new page :doc:`Torch with SurPyval` trains a mixture network and
+  scores it.
+
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
   ``max(t - 200, 0)``: a reading acts that long later. Every link is
@@ -70,6 +192,22 @@ v0.29 (unreleased)
   is the model as before, number for number. A lag on the value of a path
   infinite at age 0 is refused. Checked against R's ``JM`` with a lag on
   the PBC trial. See "A reading that acts later" in :doc:`Joint Models`.
+
+- **Joint models: exposure that fades.** ``JointPH(Weibull,
+  link="cumulative", weight=("exponential", 0.5))`` makes the
+  accumulated exposure count for less the older it is (what was
+  accumulated ``u`` ago counts ``exp(-u / 0.5)``), and
+  ``weight=("window", 1.0)`` counts only the last 1.0 of it. The plain
+  cumulative link counts an hour of exposure ten years ago like one last
+  week. The scale and the width are in the lifetimes' unit of time and
+  fixed, not estimated; compare them by ``aic()``. A weight needs the
+  cumulative link and is refused without it. The model keeps ``weight``,
+  shows it in ``repr`` and ``summary()``, saves it (schema 5, which
+  SurPyval 0.28 and older refuse rather than predict as if all the
+  exposure counted) and predicts with it; with no weight the model is
+  as before, number for number, and a window wider than every age is the
+  plain cumulative link. See "Exposure that fades" in
+  :doc:`Joint Models`.
 
 - **Competing-risks random survival forests.** ``RandomSurvivalForest.fit``
   (and ``fit_from_df``, with ``e_col``) takes the cause of each failure as

@@ -349,8 +349,12 @@ _LAZY = {
             "Duane",
             "GeneralizedOneRenewal",
             "GeneralizedRenewal",
+            "GoelOkumoto",
             "HPP",
+            "InflectionS",
+            "JelinskiMoranda",
             "JointFrailty",
+            "MusaOkumoto",
             "NonParametricCounting",
             "PanelCountMCF",
             "PanelCountRegression",
@@ -358,6 +362,7 @@ _LAZY = {
             "ProportionalIntensityHPP",
             "ProportionalIntensityNHPP",
             "WeiLinWeissfeld",
+            "YamadaDelayedS",
         ),
         "surpyval.recurrent",
     ),
@@ -576,7 +581,11 @@ if TYPE_CHECKING:
         Duane,
         GeneralizedOneRenewal,
         GeneralizedRenewal,
+        GoelOkumoto,
+        InflectionS,
+        JelinskiMoranda,
         JointFrailty,
+        MusaOkumoto,
         NonParametricCounting,
         PanelCountMCF,
         PanelCountRegression,
@@ -584,6 +593,7 @@ if TYPE_CHECKING:
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
         WeiLinWeissfeld,
+        YamadaDelayedS,
     )
     from surpyval.univariate.adjusted import (
         AdjustedCurves,
@@ -633,11 +643,6 @@ if TYPE_CHECKING:
         pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
-    from surpyval.univariate.relative import (
-        ExcessHazard,
-        RateTable,
-        RelativeSurvival,
-    )
     from surpyval.univariate.regression.distributional import (
         Distributional,
         DistributionalFitter,
@@ -666,6 +671,11 @@ if TYPE_CHECKING:
         ZeroInflated,
         ZeroInflatedFitter,
         ZeroInflatedModel,
+    )
+    from surpyval.univariate.relative import (
+        ExcessHazard,
+        RateTable,
+        RelativeSurvival,
     )
 
 # The subpackages ``import surpyval`` used to import, so that

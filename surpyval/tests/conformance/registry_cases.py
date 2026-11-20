@@ -69,6 +69,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     Z_REG,
     beta_geometric_data,
     binary_data,
+    campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -76,6 +77,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     frailty_recurrent_data,
+    growth_data,
     joint_data,
     joint_frailty_data,
     lfp_count_data,
@@ -1379,9 +1381,14 @@ def _timed_draw(m, s):
     return m.time_terminated_simulation(60.0, items=2, random_state=s)
 
 
+# The software reliability growth models, fitted to data with growth
+_GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
+_LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
+
+
 def _recurrent():
     out = []
-    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         fitter = getattr(rc, name)
         paths = {"fit_from_recurrent_data": _recurrent_data_path(fitter)}
         paths["from_params"] = lambda d, f=fitter: f.from_params(
@@ -1396,16 +1403,37 @@ def _recurrent():
                     ".ParametricRecurrenceModel"
                 ),
                 interface=COUNTING,
-                data=recurrent_data,
+                data=growth_data if name in _GROWTH else recurrent_data,
                 fit=_fit(fitter),
                 functions=("cif", "iif"),
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths=paths,
-                draw=_timed_draw if name == "CoxLewis" else _counting_draw,
+                # A finite number of faults in all, as a falling
+                # Cox-Lewis intensity has: drawn to a time.
+                draw=_timed_draw if name in _LEVELS_OFF else _counting_draw,
                 explicit_seed=True,
             )
         )
+    out.append(
+        Case(
+            name="JelinskiMoranda",
+            fitters=("surpyval.recurrent.JelinskiMoranda",),
+            model_class="surpyval.recurrent.JelinskiMorandaModel",
+            interface=COUNTING,
+            data=campaign_data,
+            fit=_fit(rc.JelinskiMoranda),
+            functions=("cif", "iif"),
+            x=X_REC,
+            rows=("x", "c"),
+            paths={
+                "fit_from_df": lambda d: rc.JelinskiMoranda.fit_from_df(
+                    pd.DataFrame(d), x_col="x", c_col="c"
+                )
+            },
+            rtol=1e-9,
+        )
+    )
     out.append(
         Case(
             name="NonParametricCounting",
@@ -2018,9 +2046,10 @@ def _joint():
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
     the area under it, or its value and slope together, or its value 90
-    days earlier (a lag), or its value with the line's start and rate
-    uncorrelated between items (``random_effects="diagonal"``); or the
-    marker's value speeds up the item's ageing (``WeibullJointAFT``)."""
+    days earlier (a lag), or the area with exposure fading over 180 days
+    (a weight), or its value with the line's start and rate uncorrelated
+    between items (``random_effects="diagonal"``); or the marker's value
+    speeds up the item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2032,6 +2061,9 @@ def _joint():
             sp.Weibull, link=["value", "slope"]
         ),
         "WeibullJointPH[lag]": sp.JointPH(sp.Weibull, lag=90.0),
+        "WeibullJointPH[weight]": sp.JointPH(
+            sp.Weibull, link="cumulative", weight=("exponential", 180.0)
+        ),
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
         ),
@@ -2084,6 +2116,16 @@ def _joint():
                         "lag=90 * k)"
                     }
                     if name.endswith("[lag]")
+                    else {}
+                ),
+                **(
+                    {
+                        "units": "the weight's scale is a fixed time (180 "
+                        "days): in another unit the same model is "
+                        "JointPH(Weibull, link='cumulative', "
+                        "weight=('exponential', 180 * k))"
+                    }
+                    if name.endswith("[weight]")
                     else {}
                 ),
             },
@@ -2811,7 +2853,7 @@ def _df_paths():
         paths[f"FineGray[{label}]"] = _col_df(
             cr.FineGray, ("x", "e", "n", label), event="a"
         )
-    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         paths[name] = _col_df(getattr(rc, name))
     paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
     for name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
@@ -3442,12 +3484,32 @@ _LENGTH_OF_STAY = Bound(
 )
 
 
+# The fixtures' processes that level off: the three finite-fault growth
+# models, and the Cox-Lewis fixture's falling intensity.
+_REMAINING_FAULTS = dict.fromkeys(
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    (Bound("remaining_faults_cb", point="remaining_faults"),),
+)
+
+
+# Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
+# Wald and bootstrap bounds are refused with the reason.
+_LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
+_JELINSKI_MORANDA_BOUNDS = (
+    Bound("param_cb", kind="param", **_LR_ONLY),
+    Bound("remaining_faults_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("current_rate_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("mtbf_cb", kind="summary", query=((),), **_LR_ONLY),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
         "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,
@@ -3875,6 +3937,8 @@ def _bounds(case):
             Bound("iif_cb", point="iif"),
             Bound("mtbf_cb", point="mtbf"),
             _PARAM_CB,
+            # (the faults left, for the processes with a finite number)
+            *_REMAINING_FAULTS.get(case.name, ()),
         )
     if cls == "ProportionalIntensityModel":
         return (
@@ -4091,7 +4155,7 @@ def _estimators(case):
         )
     if name == "ParametricCompetingRisks":
         return {"how": ("MLE", "MPS", "MSE", "MPP")}, {}, None
-    if name in ("CrowAMSAA", "Duane", "CoxLewis"):
+    if name in ("CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         return {"how": ("MLE", "MSE")}, {}, _recurrent_sample
     if name in ("WeibullJointPH", "WeibullJointAFT"):
         # the two-stage estimate is biased by design, so the two are not
