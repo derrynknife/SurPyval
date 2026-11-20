@@ -62,6 +62,16 @@ _LINK_WORDS = {
     "cumulative": "cumulative area",
 }
 
+#: The ways a joint model is fitted (``how``): the joint likelihood's
+#: maximum, or the approximate two-stage estimate.
+HOWS = ("MLE", "two-stage")
+
+#: What a two-stage fit's printout and summary say of each part: stage
+#: one's moment estimates have no standard errors, and stage two's
+#: estimates are approximate with standard errors that are too small.
+_STAGE_ONE = "two-stage, stage 1: no standard errors"
+_STAGE_TWO = "two-stage, stage 2: approximate, standard errors understated"
+
 #: Each survival part in words, for the printout.
 _SURVIVAL_WORDS = {
     "PH": "proportional hazards",
@@ -429,6 +439,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     covariates ``Z``, its readings so far and the age it was last seen
     running; ``sf(x, item)`` takes them from an ``ItemLifetime``.
 
+    A model fitted with ``how="two-stage"`` (``how``) has the same
+    parameters and predictions, from the approximate two-stage estimate:
+    the paths fitted to the readings alone, then the survival part with
+    each item's predicted path taken as known. Its estimates are biased
+    (most where the readings are few or the path curves); its survival
+    part's standard errors (and so the bounds of its predictions) are too
+    small, and its marker part has none (``nan``; the bounds hold it at
+    its estimates). It has no likelihood of the whole model, so
+    ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` are refused. The
+    printout and the summary say so.
+
     Examples
     --------
     >>> import numpy as np
@@ -485,8 +506,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     marker_reference: float | None
     #: The number of estimated parameters, the ``k`` of the criteria.
     k: int
-    #: What the fit reached (``surpyval.utils.no_maximum``).
+    #: What the fit reached (``surpyval.utils.no_maximum``): ``"not
+    #: applicable"`` for a two-stage fit, which maximises no likelihood
+    #: of the whole model.
     maximum: str = "unknown"
+    #: How it was fitted: ``"MLE"`` (the joint likelihood's maximum) or
+    #: ``"two-stage"`` (the approximate two-stage estimate).
+    how: str = "MLE"
     #: The numbers of items, failures and readings fitted (count
     #: weighted).
     n_items: float = 0.0
@@ -622,6 +648,30 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``parameter_names``."""
         return standard_errors_of(self.covariance())
 
+    def _refuse_two_stage(self, name: str) -> None:
+        if self.how == "two-stage":
+            raise ValueError(
+                f"A two-stage fit has no {name}: its two stages (the paths "
+                "from the readings, then the lifetimes with each item's "
+                "predicted path taken as known) have no likelihood of the "
+                "whole model. Compare it with the joint fit by the accuracy "
+                "of their predictions (surpyval.metrics.score_predictions, "
+                "dynamic_auc, dynamic_brier), or refit with how='MLE' for "
+                "the likelihood and the criteria."
+            )
+
+    def neg_ll(self) -> float:
+        """The negative log-likelihood of the readings and the lifetimes
+        together, at the fitted parameters. Refused for a two-stage fit
+        (``how="two-stage"``), which has no likelihood of the whole
+        model."""
+        self._refuse_two_stage("neg_ll()")
+        return super().neg_ll()
+
+    def _refuse_ic(self, name: str) -> None:
+        self._refuse_two_stage(name)
+        super()._refuse_ic(name)
+
     def _ic_sample_size_from_data(self) -> float:
         return ic_sample_size(
             [0, 1], [self.n_events, self.n_items - self.n_events]
@@ -648,25 +698,31 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "slope": "slope = 0",
             "cumulative": "area = 0",
         }
+        one, two = "", ""
+        if self.how == "two-stage":
+            one, two = f" ({_STAGE_ONE})", f" ({_STAGE_TWO})"
         return [
             (
-                "path: {} ({})".format(
-                    self.path_model.name, path_formula(self.path_model)
+                "path: {} ({}){}".format(
+                    self.path_model.name, path_formula(self.path_model), one
                 ),
                 path,
             ),
-            ("spread between items", spread),
-            ("noise", [i]),
+            ("spread between items" + one, spread),
+            ("noise" + one, [i]),
             (
-                "survival: {} {}, alpha at {}".format(
+                "survival: {} {}, alpha at {}{}".format(
                     self.dist.name,
                     self.survival,
                     ", ".join(at[link] for link in self.link),
+                    two,
                 ),
                 list(range(i + 1, i + 3 + p)),
             ),
             (
-                "link: " + ", ".join(_LINK_WORDS[link] for link in self.link),
+                "link: "
+                + ", ".join(_LINK_WORDS[link] for link in self.link)
+                + two,
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
         ]
@@ -688,7 +744,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         for that unit (its life divided by that). The intervals of the
         positive parameters (the sds, ``alpha``, ``beta``) are on the log
         scale and those of the correlations on Fisher's ``atanh`` scale,
-        so each stays in its parameter's range.
+        so each stays in its parameter's range. A two-stage fit
+        (``how="two-stage"``) says so in each part's heading: the marker
+        parts (stage 1) have no standard errors, and the survival part's
+        and the link's (stage 2) are approximate and understated.
 
         Examples
         --------
@@ -780,7 +839,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
-            f"\nFit                 : maximum {self.maximum}"
+            f"\nFit                 : {self._fit_line()}"
             "\nEffect units        : "
         )
         out += "; ".join(
@@ -803,6 +862,19 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 format_table(rows, list(columns.values())),
             )
         return out
+
+    def _fit_line(self) -> str:
+        """What the printout's ``Fit`` line says."""
+        if self.how != "two-stage":
+            return f"maximum {self.maximum}"
+        line = (
+            "two-stage (approximate: the paths from the readings alone, "
+            "then the lifetimes with each item's predicted path taken as "
+            "known; estimates biased, standard errors understated, no AIC)"
+        )
+        if self.maximum == "unverified":
+            line += "; stage 2 not at a verified maximum"
+        return line
 
     # -- prediction ------------------------------------------------------
 
@@ -1265,6 +1337,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``log(-log sf)`` (so the bounds stay in (0, 1)), the adaptive
         nodes held at the fitted parameters while differentiating. An age
         at or before ``given`` gives ``[1, 1]`` (``[0, 0]`` on ``ff``).
+        A two-stage fit's bounds are from its survival part's
+        uncertainty alone (its marker part held at its estimates), with
+        standard errors that are too small: they are too narrow.
 
         Parameters
         ----------
@@ -1322,6 +1397,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             est = self._estimated
             params = np.asarray(self.params, dtype=float)[est]
             sub = cov[np.ix_(est, est)]
+            if self.how == "two-stage":
+                # stage one's estimates have no variance: held at them
+                sub = np.where(np.isfinite(sub), sub, 0.0)
 
             def log_H(v: Any) -> Any:
                 return anp.log(-f(v))
@@ -1437,6 +1515,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
+            **({} if self.how == "MLE" else {"how": self.how}),
         }
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance).tolist()
@@ -1536,7 +1615,16 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.n_readings = float(model_dict.get("n_readings", 0.0))
         # saved before the marker's unit was kept: unknown
         out.marker_unit = model_dict.get("marker_unit")
-        out._neg_ll = float(model_dict["_neg_ll"])
+        # saved before the two-stage fit: the joint likelihood's maximum
+        how = model_dict.get("how") or "MLE"
+        if how not in HOWS:
+            raise ValueError(
+                "A joint model is fitted by 'MLE' or 'two-stage'; the dict "
+                f"names {how!r}."
+            )
+        out.how = how
+        neg_ll = model_dict["_neg_ll"]
+        out._neg_ll = np.nan if neg_ll is None else float(neg_ll)
         out.k = int(np.sum(~np.isnan(out.params)))
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:

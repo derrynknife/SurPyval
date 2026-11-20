@@ -400,7 +400,9 @@ class DynamicPrediction:
             the model has no covariance); ``remaining_life``, ``{"p":
             [0.1, 0.5, 0.9], "life": [...]}``; and ``marker``, the item's
             path from its first reading (or ``age``) to the last age,
-            ``{"x", "mean", "lower", "upper"}``.
+            ``{"x", "mean", "lower", "upper"}``; and ``how``, how the
+            model was fitted (``"two-stage"`` for the approximate
+            estimate, whose bounds are too narrow).
 
         Examples
         --------
@@ -460,6 +462,7 @@ class DynamicPrediction:
             covariates = z.tolist()
         out: dict = {
             "result": type(self).__name__,
+            "how": self.model.how,
             "age": self.age,
             "covariates": covariates,
             "markers": [[float(a), float(v)] for a, v in self.markers.items()],
@@ -485,10 +488,16 @@ class DynamicPrediction:
 
     def __repr__(self) -> str:
         median = float(self.remaining_life(0.5))
-        return (
+        out = (
             "Dynamic prediction of a joint model\n"
             "===================================\n"
             f"Age now             : {self.age:.6g}\n"
             f"Readings            : {len(self.markers)}\n"
             f"Median life left    : {median:.6g}"
         )
+        if self.model.how == "two-stage":
+            out += (
+                "\nModel               : two-stage fit (approximate; its "
+                "bounds are too narrow)"
+            )
+        return out

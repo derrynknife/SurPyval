@@ -3977,6 +3977,10 @@ def _estimators(case):
         return {"how": ("MLE", "MPS", "MSE", "MPP")}, {}, None
     if name in ("CrowAMSAA", "Duane", "CoxLewis"):
         return {"how": ("MLE", "MSE")}, {}, _recurrent_sample
+    if name in ("WeibullJointPH", "WeibullJointAFT"):
+        # the two-stage estimate is biased by design, so the two are not
+        # compared on a large sample
+        return {"how": ("MLE", "two-stage")}, {}, None
     if name == "CauseSpecificNHPP":
         return {"how": ("MLE", "MSE")}, {}, None
     if case.model_class == "surpyval.multivariate.CopulaModel":

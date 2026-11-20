@@ -242,7 +242,9 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # refuses. It is needed by a joint model with the accelerated survival
 # part (``"survival": "AFT"``): a v0.28 reader would ignore the entry
 # and predict from the parameters as if the marker multiplied the
-# hazard.
+# hazard. And by a two-stage joint model (``"how": "two-stage"``): a
+# v0.28 reader would ignore the entry and present the approximate
+# estimate as the joint likelihood's.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 5
 
@@ -276,7 +278,8 @@ _SCHEMA_STATES = 4
 _SCHEMA_MEASUREMENTS = 4
 
 # The schema of a joint model with the accelerated survival part
-# (``"survival": "AFT"``): v0.29's schema 5.
+# (``"survival": "AFT"``), or fitted in two stages (``"how":
+# "two-stage"``): v0.29's schema 5.
 _SCHEMA_ACCELERATED_JOINT = 5
 
 # The oldest version whose readers restore a document with neither of
@@ -767,7 +770,7 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
     if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
-        _is_accelerated_joint(d) for d in dicts
+        _is_schema_5_joint(d) for d in dicts
     ):
         return _SCHEMA_ACCELERATED_JOINT
     if _SCHEMA_STRATIFIED in stamped_versions or any(
@@ -804,10 +807,12 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     )
 
 
-def _is_accelerated_joint(d: dict) -> bool:
+def _is_schema_5_joint(d: dict) -> bool:
     """Whether ``d`` is a joint model with the accelerated survival
-    part."""
-    return d.get("model") == "JointModel" and d.get("survival") == "AFT"
+    part, or one fitted in two stages: either needs schema 5."""
+    return d.get("model") == "JointModel" and (
+        d.get("survival") == "AFT" or d.get("how") == "two-stage"
+    )
 
 
 def _is_stratified(d: dict) -> bool:
