@@ -3446,6 +3446,14 @@ _LENGTH_OF_STAY = Bound(
 )
 
 
+# The fixtures' processes that level off: the three finite-fault growth
+# models, and the Cox-Lewis fixture's falling intensity.
+_REMAINING_FAULTS = dict.fromkeys(
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    (Bound("remaining_faults_cb", point="remaining_faults"),),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
@@ -3879,6 +3887,8 @@ def _bounds(case):
             Bound("iif_cb", point="iif"),
             Bound("mtbf_cb", point="mtbf"),
             _PARAM_CB,
+            # (the faults left, for the processes with a finite number)
+            *_REMAINING_FAULTS.get(case.name, ()),
         )
     if cls == "ProportionalIntensityModel":
         return (
