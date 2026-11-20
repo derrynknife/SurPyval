@@ -37,7 +37,7 @@ from numpy.typing import NDArray
 
 from surpyval.ml.forest.log_rank_split import _LogRankScan
 from surpyval.univariate.competing_risks.nonparametric.gray_test import (
-    _score_and_variance,
+    score_and_variance,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -282,7 +282,7 @@ def gray_split(
             D1 = np.vstack([d1[j], all_d1 - d1[j]])
             D2 = np.vstack([d2[j], all_d2 - d2[j]])
             with np.errstate(divide="ignore", invalid="ignore"):
-                U, V = _score_and_variance(Y, D1, D2, 0.0)
+                U, V = score_and_variance(Y, D1, D2, 0.0)
             if V[0, 0] > 0 and np.isfinite(V[0, 0]):
                 statistic[j] = U[0] ** 2 / V[0, 0]
         k = int(np.argmax(statistic))

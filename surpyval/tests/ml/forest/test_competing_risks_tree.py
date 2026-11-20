@@ -167,18 +167,18 @@ def test_gray_split_statistic_is_gray_test():
     x, Z, e = planted(size=120)
     data = SurpyvalData(x, np.where(e == None, 1, 0), e=e)  # noqa: E711
     seen = {}
-    real = css._score_and_variance
+    real = css.score_and_variance
 
     def spy(Y, d1, d2, rho):
         U, V = real(Y, d1, d2, rho)
         seen[float(Y[0, 0])] = U[0] ** 2 / V[0, 0]
         return U, V
 
-    css._score_and_variance = spy
+    css.score_and_variance = spy
     try:
         u, v = css.gray_split(data, Z, 5, 2, [0], ["a", "b"], "a")
     finally:
-        css._score_and_variance = real
+        css.score_and_variance = real
     left = Z[:, u] <= v
     res = gray_test(x, e, left.astype(int), event="a")
     assert seen[float(left.sum())] == pytest.approx(res.statistic, rel=1e-10)

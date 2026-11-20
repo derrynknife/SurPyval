@@ -32,7 +32,7 @@ from surpyval.univariate.competing_risks.nonparametric._ic_data import (
 from surpyval.univariate.competing_risks.nonparametric.gray_test import (
     IMPUTED,
     GrayTestResult,
-    _score_and_variance,
+    score_and_variance,
 )
 from surpyval.utils import is_missing_event
 
@@ -85,7 +85,7 @@ def _gray_parts(
     d2 = np.zeros((K, T))
     np.add.at(d2, (gi[is_comp], t_idx[is_comp]), count[is_comp])
     Y = counts[:, ::-1].cumsum(axis=1)[:, ::-1]
-    return _score_and_variance(Y, d1, d2, rho)
+    return score_and_variance(Y, d1, d2, rho)
 
 
 def imputed_gray_test(
