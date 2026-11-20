@@ -674,6 +674,13 @@ v0.29 (unreleased)
 
 **Fixed.**
 
+- The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
+  ``censored_likelihood``) had a NaN gradient for a row whose truncation
+  or interval had a bound so far in a tail that the probability beyond
+  it rounds to 0 (a Weibull ``tl=1e-170``, say), though its value was
+  right; PyMC's sampler needs the gradient. Such a bound is now taken as
+  its limit, as ``fit`` takes it, and the gradient is finite.
+
 - ``RenewalModel.with_params`` refuses a lifetime (or ARI baseline)
   parameter at or outside its range, and any value that is not finite,
   naming each and saying to draw inside ``parameter_bounds``. An ARI
