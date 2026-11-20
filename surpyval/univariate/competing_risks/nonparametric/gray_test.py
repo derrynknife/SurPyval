@@ -470,7 +470,7 @@ def gray_test(
     # Everyone with x >= t is at risk at t.
     Y = counts[:, ::-1].cumsum(axis=1)[:, ::-1]
 
-    U, V = _score_and_variance(Y, d1, d2, rho)
+    U, V = score_and_variance(Y, d1, d2, rho)
     # Drop the last group for a full-rank (G-1) quadratic form.
     stat = safe_quadform(V[:-1, :-1], U[:-1])
     df = K - 1
@@ -483,7 +483,7 @@ def gray_test(
     )
 
 
-def _score_and_variance(
+def score_and_variance(
     Y: npt.NDArray, d1: npt.NDArray, d2: npt.NDArray, rho: float
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Gray's score and its variance, as R's ``cmprsk`` computes them.

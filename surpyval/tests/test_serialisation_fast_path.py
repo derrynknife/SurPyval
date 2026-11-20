@@ -413,6 +413,13 @@ def _old_required_schema(model_dict):
             and d.get("strata") is not None
         )
 
+    # Schema 5 (v0.29): a joint model with the accelerated survival part
+    # ("survival": "AFT"), which takes precedence over every other rule.
+    def accelerated_joint(d):
+        return d.get("model") == "JointModel" and d.get("survival") == "AFT"
+
+    if walk(model_dict, accelerated_joint):
+        return 5
     if walk(model_dict, stratified):
         return 4
     tests = (lambda d: NON_FINITE_KEY in d, formula, support, center)

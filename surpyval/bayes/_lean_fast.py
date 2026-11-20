@@ -118,7 +118,7 @@ def _lognormal(p: Prepared, kind: str, mu: float, sigma: float) -> Pieces:
 
 def _gamma(p: Prepared, kind: str, alpha: float, beta: float) -> Pieces:
     from surpyval import Gamma
-    from surpyval.utils.autograd_gamma_compat import _log_pq_da
+    from surpyval.utils.autograd_gamma_compat import log_pq_da
 
     x, log_x = p
     log_b = math.log(beta)
@@ -133,7 +133,7 @@ def _gamma(p: Prepared, kind: str, alpha: float, beta: float) -> Pieces:
     sign = -1.0 if kind == "S" else 1.0
     d_beta = sign * (x / beta) * np.exp(log_f - v)
     d_alpha = np.asarray(
-        _log_pq_da(1 if kind == "S" else 0)(alpha, beta * x), dtype=float
+        log_pq_da(1 if kind == "S" else 0)(alpha, beta * x), dtype=float
     )
     bad = ~np.isfinite(d_alpha)
     if np.any(bad):

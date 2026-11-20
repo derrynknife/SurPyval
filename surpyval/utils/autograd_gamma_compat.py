@@ -134,7 +134,7 @@ def _cdiff2_b(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
 
 
 #: The most terms of the series and fraction of the incomplete gamma's
-#: exact shape derivatives (``_log_pq_da``, #797), and their tolerance.
+#: exact shape derivatives (``log_pq_da``, #797), and their tolerance.
 _PQ_TERMS = 5000
 _PQ_TOL = 4e-16
 
@@ -238,7 +238,7 @@ def _log_pq_shape_derivatives(a: npt.NDArray, x: npt.NDArray) -> tuple:
     return d_log_p, d_log_q, converged
 
 
-def _log_pq_da(which: int) -> Callable:
+def log_pq_da(which: int) -> Callable:
     """The exact shape derivative of log P (``which`` 0) or log Q (1),
     ``f(a, x)`` in plain numpy (:func:`_log_pq_shape_derivatives`);
     ``nan`` where that did not converge, or at an ``x`` of 0 or inf
@@ -280,7 +280,7 @@ def _make_da_primitive(
     positive.
 
     With ``f_a``, f's exact derivative in the shape where it is not
-    ``nan`` (``_log_pq_da``, #797), ``df/da`` is that: the five-point
+    ``nan`` (``log_pq_da``, #797), ``df/da`` is that: the five-point
     differences of ``f`` were up to 4e-9 off mpmath's for the logs of the
     incomplete gamma below x = 30. ``d2f/da2`` is then the difference of
     that first derivative.
@@ -455,7 +455,7 @@ def gammaincln(a: Boxable, x: Boxable) -> Boxable:
 _gammaincln_da = _make_da_primitive(
     _gammaincln_raw,
     lambda a, x: np.exp(_log_gamma_density(a, x) - _gammaincln_raw(a, x)),
-    _log_pq_da(0),
+    log_pq_da(0),
 )
 
 defvjp(
@@ -516,7 +516,7 @@ def gammainccln(a: Boxable, x: Boxable) -> Boxable:
 _gammainccln_da = _make_da_primitive(
     _gammainccln_raw,
     lambda a, x: -np.exp(_log_gamma_density(a, x) - _gammainccln_raw(a, x)),
-    _log_pq_da(1),
+    log_pq_da(1),
 )
 
 defvjp(
