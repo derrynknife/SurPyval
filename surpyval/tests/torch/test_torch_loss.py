@@ -475,8 +475,9 @@ def test_constrain_refuses_a_wrong_width_naming_the_parameters():
     assert "(N, 2)" in message
     with pytest.raises(ValueError, match=r"1 parameter \(failure_rate"):
         spt.constrain(sp.Exponential, torch.zeros(5, 2, dtype=F64))
-    with pytest.raises(ValueError, match=r"shape \(2, 5, 2\)"):
-        spt.constrain(sp.Weibull, torch.zeros(2, 5, 2, dtype=F64))
+    # (three axes are a mixture's (N, K, k); four are nothing)
+    with pytest.raises(ValueError, match=r"shape \(2, 5, 3, 2\)"):
+        spt.constrain(sp.Weibull, torch.zeros(2, 5, 3, 2, dtype=F64))
     with pytest.raises(TypeError, match="must be a torch tensor"):
         spt.constrain(sp.Weibull, [[0.0, 0.0]])
     with pytest.raises(TypeError, match="use raw.double()"):
