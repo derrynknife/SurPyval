@@ -147,15 +147,16 @@ may vary.
 
 ``integration=`` on ``fit`` (and ``fit_from_df``) chooses the nodes:
 
-- ``"grid"``: the full grid. The default with up to three varying
-  parameters.
+- ``"grid"``: the full grid. The default, whatever the number of varying
+  parameters: the more accurate choice.
 - ``"pruned"``: the grid without the nodes whose weight is negligible --
   its far corners, where several parameters are extreme at once. The rule
   is fixed: the lowest-weight nodes are left out, as many as hold less
   than 1e-9 of the grid's weight between them (nodes of equal weight
   together), whatever the data. That is none of the nodes for up to three
-  parameters, 80 of 2,401 for four and 1,392 of 16,807 for five. The
-  default with four and five.
+  parameters, 80 of 2,401 for four and 1,392 of 16,807 for five. An
+  option, never the default: it trades a little accuracy for a little
+  speed, and in practice saves little (below).
 
 The model says which it used (``model.integration``, and the
 ``Integration`` line of its printout), keeps it when saved, and predicts
@@ -167,9 +168,9 @@ on the same kind of grid. A model saved before the choice existed reads as
     from surpyval import JointPH, Weibull
 
     fitter = JointPH(Weibull, cubic)            # a, b, c and d all vary
-    model = fitter.fit(data)                    # the pruned grid
-    model.integration                           # 'pruned'
-    full = fitter.fit(data, integration="grid") # all 2,401 nodes an item
+    model = fitter.fit(data)                    # the full grid: 2,401 nodes an item
+    model.integration                           # 'grid'
+    pruned = fitter.fit(data, integration="pruned")
 
 The pruned grid is a small saving that costs no accuracy: 3% fewer nodes
 with four varying parameters and 8% fewer with five (one evaluation of the
@@ -939,7 +940,7 @@ the value, so there is nothing to compare and it is refused.
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
 the same curvature ``c``. At most five may vary (the quadrature's grid is
-7 points in each, pruned by default beyond three: see :ref:`how the
+7 points in each, the full grid by default: see :ref:`how the
 integral is done <joint-integration>`). A path model fitted to a curve it cannot follow biases
 the joint model, as it does a degradation model: choose it as you would
 there (see :doc:`Degradation Analysis`).
