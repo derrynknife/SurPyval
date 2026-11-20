@@ -262,9 +262,11 @@ A model with no fixed number of faults has no answer to this question,
 and says so:
 
 .. jupyter-execute::
-    :raises: ValueError
 
-    fits["Musa-Okumoto"].remaining_faults(250)
+    try:
+        fits["Musa-Okumoto"].remaining_faults(250)
+    except ValueError as err:
+        print(err)
 
 Ask it instead how many failures to expect in a stretch of further use,
 ``cif(t2) - cif(t1)``, which every model can answer.
@@ -343,9 +345,11 @@ constant failure rate, for instance, never falls to a lower target
 however long the test:
 
 .. jupyter-execute::
-    :raises: ValueError
 
-    fits["Homogeneous Poisson Process"].time_to_intensity(0.01)
+    try:
+        fits["Homogeneous Poisson Process"].time_to_intensity(0.01)
+    except ValueError as err:
+        print(err)
 
 When to release
 ---------------
@@ -407,10 +411,12 @@ straight line, and "the number of faults" runs off to infinity. SurPyval
 refuses such a fit rather than print a huge number, and says what it saw:
 
 .. jupyter-execute::
-    :raises: ValueError
 
     steady = np.arange(10.0, 260.0, 10.0)   # a failure every 10 days
-    GoelOkumoto.fit(steady)
+    try:
+        GoelOkumoto.fit(steady)
+    except ValueError as err:
+        print(err)
 
 Keep testing (growth may show later), or report the constant rate
 (``HPP``) for what it is. Beware the S-shaped models here: they can fit

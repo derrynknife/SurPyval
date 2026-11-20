@@ -60,6 +60,10 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
     # log time (#477).
     _cb_link = "logit"
 
+    # How the parameters move with the time (rescale_time): alpha is a time;
+    # beta has no unit.
+    _time_roles = ("time", "shape")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

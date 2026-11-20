@@ -62,6 +62,15 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
             The second shape parameter for the Beta distribution
         """
 
+    # rescale_time: on a new clock the Beta lives on (0, 1 / factor), so
+    # it is a Beta4 (rescale_time(factor) refuses and says so).
+    _time_roles_refusal = (
+        "its support is fixed at (0, 1), and on a new clock it is "
+        "(0, 1 / factor), which the Beta cannot describe: build the "
+        "Beta4 with the same alpha and beta and the ends 0 and "
+        "1 / factor, Beta4.from_params([alpha, beta, 0, 1 / factor])"
+    )
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

@@ -13,8 +13,13 @@ here: only SurPyval's likelihood, for your own network and loop.
 - :func:`constrain` maps a network's raw outputs into the parameters of
   a distribution, each inside its range;
 - :func:`nll` is SurPyval's exact censored and truncated negative
-  log-likelihood as a loss, for the families in :data:`SUPPORTED`, and
-  :class:`NLLLoss` the same as a ``torch.nn.Module``.
+  log-likelihood as a loss, for the families in :data:`SUPPORTED`, of
+  one distribution or a mixture of ``K`` (``mixture=``, the model of Deep
+  Survival Machines), and :class:`NLLLoss` the same as a
+  ``torch.nn.Module``;
+- :func:`sf` gives each row's survival curve as an ``(N, T)`` tensor, the
+  predictions ``surpyval.metrics.score_predictions`` scores, and
+  :func:`to_surpyval` any row as an ordinary SurPyval model.
 
 >>> import pytest; torch = pytest.importorskip("torch")
 >>> import surpyval as sp
@@ -30,6 +35,7 @@ from typing import Any
 
 from surpyval.torch.data import Targets, targets
 from surpyval.torch.loss import SUPPORTED, constrain, nll
+from surpyval.torch.predict import sf, to_surpyval
 
 __all__ = [
     "SUPPORTED",
@@ -37,7 +43,9 @@ __all__ = [
     "Targets",
     "constrain",
     "nll",
+    "sf",
     "targets",
+    "to_surpyval",
 ]
 
 

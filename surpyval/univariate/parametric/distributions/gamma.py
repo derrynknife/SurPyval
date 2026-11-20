@@ -328,6 +328,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             The rate parameter for the Gamma distribution
         """
 
+    # How the parameters move with the time (rescale_time): alpha has no unit;
+    # beta is a rate.
+    _time_roles = ("shape", "rate")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
