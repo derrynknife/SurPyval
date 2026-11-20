@@ -96,7 +96,7 @@ Worked classifications:
 | ParametricCompetingRisksRegression | univariate | single_event | competing | terminal | with | continuous | parametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
-| HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis; software reliability growth: Goel-Okumoto, Yamada delayed S-shaped, inflection S-shaped, Musa-Okumoto) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis; software reliability growth: Goel-Okumoto, Yamada delayed S-shaped, inflection S-shaped, Musa-Okumoto; the Rayleigh defect model over development phases) | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | AndersenGill, PrenticeWilliamsPeterson, WeiLinWeissfeld | univariate | recurrent | single | recurrent | with | continuous | semiparametric |

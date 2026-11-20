@@ -233,6 +233,90 @@ class GrowthAnswersMixin:
         cb = log_transformed_cb(left(self._mle), se, alpha_ci, bound)
         return cb.reshape(shape + cb.shape[1:])
 
+    # -- the events of a stretch --------------------------------------------
+
+    def expected_events(self, start: ArrayLike, end: ArrayLike) -> np.ndarray:
+        """
+        The events expected between the times ``start`` and ``end``,
+        ``cif(end) - cif(start)``: the failures of a further stretch of
+        testing or use, or the defects of a later phase.
+
+        Parameters
+        ----------
+        start, end : array_like
+            The stretch's ends (each ``end`` at or after its ``start``),
+            of shapes that broadcast.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import GoelOkumoto
+        >>> model = GoelOkumoto.from_params([100, 0.05])
+        >>> model.expected_events([0, 20], [20, 40]).round(2)
+        array([63.21, 23.25])
+        """
+        lo, hi = self._stretch(start, end)
+        return np.asarray(self.cif(hi), dtype=float) - np.asarray(
+            self.cif(lo), dtype=float
+        )
+
+    @staticmethod
+    def _stretch(start: ArrayLike, end: ArrayLike) -> tuple:
+        lo = np.asarray(start, dtype=float)
+        hi = np.asarray(end, dtype=float)
+        lo, hi = np.broadcast_arrays(lo, hi)
+        if np.any(hi < lo):
+            raise ValueError(
+                "end must be at or after start for each stretch; got "
+                "start {} with end {}".format(lo[hi < lo][:3], hi[hi < lo][:3])
+            )
+        return lo, hi
+
+    def expected_events_cb(
+        self,
+        start: ArrayLike,
+        end: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
+        """
+        Confidence bounds on :meth:`expected_events`, by the delta
+        method on its log (so they cannot go below 0), from the
+        parameter covariance. They are bounds on the *expected* number,
+        not a prediction interval for the count that will be seen, which
+        also has its own Poisson scatter.
+
+        Parameters
+        ----------
+        start, end : array_like
+            The stretch's ends.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds have a last axis of ``[lower, upper]``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GoelOkumoto
+        >>> weeks = np.arange(8.0)
+        >>> x = np.column_stack([weeks, weeks + 1])
+        >>> model = GoelOkumoto.fit(
+        ...     x, c=[2] * 8, n=[12, 9, 8, 5, 4, 4, 2, 1]
+        ... )
+        >>> model.expected_events(8, 12).round(2)
+        np.float64(3.43)
+        >>> model.expected_events_cb(8, 12).round(2)
+        array([1.19, 9.88])
+        """
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        self._check_inference()
+        lo, hi = self._stretch(start, end)
+        cb = self._gained_cb(
+            lo.reshape(-1), (hi - lo).reshape(-1), alpha_ci, bound
+        )
+        return cb.reshape(lo.shape + cb.shape[1:])
+
     # -- reliability over a mission ----------------------------------------
 
     def _log_gained(self, start: np.ndarray, x: np.ndarray) -> Callable:

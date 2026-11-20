@@ -8,6 +8,7 @@ from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .panel_count import PanelCountMCF, PanelCountRegression
+from .phases import phases_to_data
 from .parametric import (
     HPP,
     CountingProcess,
@@ -17,6 +18,7 @@ from .parametric import (
     GoelOkumoto,
     InflectionS,
     MusaOkumoto,
+    RayleighDefects,
     YamadaDelayedS,
 )
 from .regression import (

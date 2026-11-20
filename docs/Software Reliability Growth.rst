@@ -350,6 +350,52 @@ however long the test:
     except ValueError as err:
         print(err)
 
+Before testing starts: defects by phase
+---------------------------------------
+
+The models above need failures from testing. Earlier in a project there
+is a different record: the defects found in each phase of development
+(requirements review, design review, code inspection, unit test,
+integration, system test). Across the phases these tend to rise to a
+peak and fall away, and the *Rayleigh defect model* [Kan2002]_ fits that
+shape: :math:`\Lambda(t) = K (1 - e^{-t^2 / (2c^2)})`, with ``K`` the
+defects that will be found in all and ``c`` where the peak is. Fitted to
+the phases done so far, it predicts what the later phases, and the
+field, will find.
+
+``phases_to_data`` turns a table of counts into the rows the fit takes
+(phase ``j`` is the interval from ``j - 1`` to ``j``; give ``lengths=``
+if the phases' durations are known and unequal). The counts here are
+made up for illustration, for a project with five of its six phases
+done:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import RayleighDefects, phases_to_data
+
+    found = [18, 44, 52, 41, 24]
+    phases = RayleighDefects.fit(**phases_to_data(found))
+    print("defects in all:", phases.params[0].round(), " peak at phase",
+          phases.params[1].round(2))
+    print("sixth phase:", phases.expected_events(5, 6).round(1),
+          phases.expected_events_cb(5, 6, alpha_ci=0.2).round(1))
+    print("left for the field:", phases.remaining_faults(6).round(1),
+          phases.remaining_faults_cb(6, alpha_ci=0.2).round(1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(phases.params[0]) == 197, phases.params
+    assert round(float(phases.expected_events(5, 6)), 1) == 11.6
+    assert round(float(phases.remaining_faults(6)), 1) == 6.2
+
+``expected_events(start, end)`` is the number expected in any stretch
+(here the sixth phase), on every model on this page, and
+``remaining_faults`` what is left after it. The bounds are on the
+expected numbers. The model cannot say anything until the counts have
+turned down: before the peak, any total fits, and the fit is refused.
+
 When not to trust the answers
 -----------------------------
 
@@ -409,6 +455,9 @@ References
 .. [LXZ2015] Liu, J., Xu, M. and Zhou, Z. (2015), "Parameter estimation
    of Jelinski-Moranda model based on weighted nonlinear least squares
    and heteroscedasticity", arXiv:1503.00094 (Table 1: the NTDS data).
+
+.. [Kan2002] Kan, S. H. (2002), *Metrics and Models in Software Quality
+   Engineering* (2nd ed.), Addison-Wesley, chapter 7.
 
 Goel, A. L. and Okumoto, K. (1979), "Time-dependent error-detection rate
 model for software reliability and other performance measures", *IEEE

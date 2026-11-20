@@ -1382,7 +1382,9 @@ def _timed_draw(m, s):
 
 # The software reliability growth models, fitted to data with growth
 _GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
+_GROWTH += ("RayleighDefects",)
 _LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
+_LEVELS_OFF += ("RayleighDefects",)
 
 
 def _recurrent():
@@ -3449,7 +3451,8 @@ _LENGTH_OF_STAY = Bound(
 # The fixtures' processes that level off: the three finite-fault growth
 # models, and the Cox-Lewis fixture's falling intensity.
 _REMAINING_FAULTS = dict.fromkeys(
-    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis")
+    + ("RayleighDefects",),
     (Bound("remaining_faults_cb", point="remaining_faults"),),
 )
 

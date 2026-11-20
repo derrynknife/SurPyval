@@ -313,6 +313,7 @@ NOT_DIFFERENTIATED = {
             "YamadaDelayedS",
             "InflectionS",
             "MusaOkumoto",
+            "RayleighDefects",
             "ProportionalIntensityNHPP",
         ),
         _NO_DERIVATIVES + "a search on finite-difference gradients, and "

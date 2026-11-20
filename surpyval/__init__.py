@@ -360,6 +360,7 @@ _LAZY = {
             "PrenticeWilliamsPeterson",
             "ProportionalIntensityHPP",
             "ProportionalIntensityNHPP",
+            "RayleighDefects",
             "WeiLinWeissfeld",
             "YamadaDelayedS",
         ),
@@ -590,6 +591,7 @@ if TYPE_CHECKING:
         PrenticeWilliamsPeterson,
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
+        RayleighDefects,
         WeiLinWeissfeld,
         YamadaDelayedS,
     )
