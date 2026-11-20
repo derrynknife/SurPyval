@@ -228,6 +228,9 @@ surpyval.auc_td
 surpyval.bayes.BayesianParametric
 surpyval.bayes.LogLikelihood
 surpyval.bayes.Posterior
+surpyval.bayes.PredictiveComparison
+surpyval.bayes.PredictiveCriterion
+surpyval.bayes.compare
 surpyval.bayes.log_likelihood_fn
 surpyval.bayes.prior
 surpyval.bayes.prior.DistributionPrior
@@ -486,6 +489,14 @@ surpyval.test_planning.rmst_power
 surpyval.test_planning.rmst_sample_size
 surpyval.test_planning.sequential_demonstration_test
 surpyval.test_planning.sequential_mtbf_test
+surpyval.torch.NLLLoss
+surpyval.torch.SUPPORTED
+surpyval.torch.Targets
+surpyval.torch.constrain
+surpyval.torch.nll
+surpyval.torch.sf
+surpyval.torch.targets
+surpyval.torch.to_surpyval
 surpyval.trend_logrank
 surpyval.univariate.competing_risks.CompetingRisks
 surpyval.univariate.competing_risks.CompetingRisksProportionalHazards

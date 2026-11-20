@@ -63,6 +63,7 @@ NAMESPACES: tuple[str, ...] = (
     "surpyval.test_planning",
     "surpyval.datasets",
     "surpyval.pymc",
+    "surpyval.torch",
     "surpyval.utils",
 )
 
