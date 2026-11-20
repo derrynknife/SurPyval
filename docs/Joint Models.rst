@@ -47,7 +47,9 @@ Two shortcuts are common, and both are biased:
 
 The joint likelihood fixes both: each item's line is integrated over what
 its readings leave uncertain, and its readings and its lifetime inform the
-same line. (A third approach, which models no path at all, is
+same line. (A middle way, fitting each item's line first and the lifetimes
+on those lines second, is quick but still biased: see `A quick first look:
+the two-stage fit`_.) (A third approach, which models no path at all, is
 :doc:`landmarking <Landmark Analysis>`: a model of the units still at risk
 at a time, by their last readings then.)
 
@@ -114,7 +116,8 @@ The fit starts from the path fitted to each item alone (the path model's
 own ``fit``; items with too few readings for it are left out of this
 step), the spread of those fits about the covariates' means, and a
 survival fit with each item's predicted path plugged in -- a two-stage
-estimate, which is biased, and only a start. The covariance is the inverse
+estimate, which is biased (`A quick first look: the two-stage fit`_
+returns it as a model of its own). The covariance is the inverse
 of the Hessian of the negative log-likelihood, by autograd.
 
 An item found failed at an inspection is known only to have failed between
@@ -1499,6 +1502,211 @@ With 300 pumps the model barely flatters itself here; with fewer units or
 a richer model the difference grows. The intervals are two-sided 95% by
 default (``alpha_ci=0.1`` for 90%), and the result says so.
 
+A quick first look: the two-stage fit
+-------------------------------------
+
+There is a quicker way to put the readings and the lifetimes together, in
+two steps. First, fit each pump's line to its readings alone, pulling a
+pump with few readings towards the fleet's average line (the less its own
+readings say, the further it is pulled; statisticians call the result a
+best linear unbiased predictor). Then fit the lifetimes by Weibull
+proportional hazards with each pump's line as a time-varying covariate, as
+if the lines were known. It takes a fraction of a second, against seconds
+or minutes for the joint fit, and it is the method most published analyses
+used before joint models. It is ``fit(..., how="two-stage")``, and it is
+exactly where the joint fit starts its search:
+
+.. jupyter-execute::
+
+    quick = WeibullJointPH.fit(fleet, unit="days", how="two-stage")
+    quick
+
+In formulas, step one fits :math:`y_{ij} = m(t_{ij}; \theta_i) +
+\varepsilon_{ij}`, :math:`\theta_i \sim N(\mu + \Delta z_i, D)`, to the
+readings alone (the path fitted to each item, then a moment estimate of
+the means and of :math:`D`), and takes each item's most likely path given
+its readings, :math:`\hat\theta_i`. Step two maximises the likelihood of
+the lifetimes with the hazard :math:`h_0(t) \exp(\gamma' z_i + \zeta\,
+m(t; \hat\theta_i))` (or the slope or the area: the ``link``), the path
+taken as a known covariate. ``JointAFT`` fitters take it too, with the
+accelerated survival part in step two.
+
+The result is a joint model like any other -- the same parameters,
+predictions (``sf``, ``cb``, ``predict``), accuracy measures and saving
+-- and it says what it is (``quick.how`` is ``"two-stage"``). It is
+approximate in three ways, which the printout and ``summary()`` state:
+
+- **Its estimates are biased.** Step two forgets that each line is an
+  estimate, and that a pump's readings stop when it fails, so the pumps
+  that failed early have the least certain lines.
+- **Its standard errors are too small.** Those of the survival part take
+  each line as known, so they and the bands of its predictions (``cb``)
+  are too narrow; the path part (step one's moment estimates) has none
+  (``nan``).
+- **It has no likelihood.** The two steps fit different things, so there
+  is no likelihood of the whole model: ``neg_ll()``, ``aic()``,
+  ``aic_c()``, ``bic()`` and ``compare_links`` refuse it.
+
+.. jupyter-execute::
+    :raises: ValueError
+
+    quick.aic()
+
+With a reading every month, as here, the two fits are close:
+
+.. jupyter-execute::
+
+    def effect(m):
+        return f"{m.params[-1]:.2f} (se {m.standard_errors()[-1]:.2f})"
+
+
+    print("two-stage:  ", effect(quick))
+    print("joint model:", effect(model))
+
+With a reading every six months they part:
+
+.. jupyter-execute::
+
+    every_six_months = SurpyvalData.from_items(
+        [
+            item.clone(
+                markers={a: v for a, v in item.markers.items() if a % 180 == 0}
+            )
+            for item in fleet.to_items()
+        ]
+    )
+    sparse_quick = WeibullJointPH.fit(every_six_months, how="two-stage")
+    sparse_joint = WeibullJointPH.fit(every_six_months)
+    print("two-stage:  ", effect(sparse_quick))
+    print("joint model:", effect(sparse_joint))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert quick.how == "two-stage" and quick.maximum == "not applicable"
+    assert round(quick.params[-1], 2) == 0.99
+    assert round(sparse_quick.params[-1], 2) == 0.86
+    assert round(sparse_joint.params[-1], 2) == 1.04
+    assert sparse_quick.standard_errors()[-1] < sparse_joint.standard_errors()[-1]
+    assert np.isnan(quick.standard_errors()[0])
+
+The two-stage effect is the lower, and claims to be the more certain (a
+standard error of 0.10 against 0.15).
+
+Its predictions are compared with the joint model's as any two models'
+are, by their accuracy (see `How good are the predictions`_); give the
+two-stage fit as a function of the data to cross-validate it:
+
+.. jupyter-execute::
+
+    two_ways = dynamic_brier(
+        {
+            "two-stage": lambda data: WeibullJointPH.fit(data, how="two-stage"),
+            "joint": WeibullJointPH,
+        },
+        fleet, at=[180, 365], horizon=180, cross_validate=5, random_state=1,
+    )
+    two_ways.comparisons
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (two_ways.estimate("joint") <= two_ways.estimate("two-stage") + 0.002).all()
+    p = two_ways.comparisons["p_value"].to_numpy()
+    assert p[0] > 0.5 and p[1] < 0.05
+
+Predicting each pump from a fit that never saw it, the two are alike at
+six months; at a year the joint model's chances are a little better (a
+Brier score lower by 0.006, p = 0.03). Here the quick fit would have done
+for a first look; the study below says where it does not.
+
+How much the two-stage fit loses
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A simulation study (run on 2026-11-20 with
+``scripts/studies/joint_recovery/study.py`` and ``HOW=two-stage``; this
+page does not re-run it) fitted the two-stage estimate to the same 200
+fleets of each path as the joint model's studies (`How well it recovers the
+truth`_, and the accelerated model's), and to 200 fleets of the line read
+every 180 days instead of every 30, fitted both ways. For the marker
+effect, the bias (Monte Carlo standard error) and how often the 95%
+interval covered the truth:
+
+.. list-table::
+   :header-rows: 1
+
+   * - fleets
+     - joint: bias
+     - joint: coverage
+     - two-stage: bias
+     - two-stage: coverage
+   * - line
+     - +0.4% (0.8%)
+     - 0.930
+     - +0.3% (0.8%)
+     - 0.900
+   * - exponential
+     - +0.9% (0.7%)
+     - 0.980
+     - +0.7% (0.7%)
+     - 0.965
+   * - exponential, log link
+     - +2.0% (0.7%)
+     - 0.955
+     - +4.8% (0.7%)
+     - 0.935
+   * - quadratic
+     - +0.5% (0.7%)
+     - 0.960
+     - -4.8% (0.9%)
+     - 0.830
+   * - line, accelerated
+     - +2.6% (1.3%)
+     - 0.945
+     - -0.1% (1.3%)
+     - 0.920
+   * - exponential, accelerated
+     - +2.5% (1.1%)
+     - 0.940
+     - +1.5% (1.1%)
+     - 0.950
+   * - log link, accelerated
+     - +2.3% (1.2%)
+     - 0.930
+     - -1.9% (1.2%)
+     - 0.930
+   * - quadratic, accelerated
+     - +1.1% (1.5%)
+     - 0.955
+     - -1.0% (2.4%)
+     - 0.800
+   * - line, read every 180 days
+     - +2.4% (1.1%)
+     - 0.920
+     - -8.0% (0.9%)
+     - 0.805
+
+With a reading every month and a path that does not curve much, the
+two-stage effect is about as good as the joint model's; what it loses is
+in its intervals, which cover the truth less often than they say (90% of
+the time for the line, the estimates' spread 1.11 times their standard
+error). The loss grows where the path curves (the quadratic: intervals
+covering 80% to 83% of the time, the spread 1.4 to 1.7 times the standard
+error) and where readings are few (every 180 days: 8% low, covering 80.5%
+of the time, where the joint fit is within 2.4% and covers 92%). Step one's
+spread between items is poor: the line's ``sd_b`` came out 14% low, the
+log link's ``sd_log(b)`` 68% low and the quadratic's ``sd_b`` five times
+the truth (+403%), where the joint fits' were within 1%; so a two-stage
+model's predictions for items with few readings, which lean on that
+spread, deserve the least trust. Each two-stage fit took about a tenth of
+a second. The per-parameter tables are in
+``scripts/studies/joint_recovery/table.txt``.
+
+Use it for a first look at a new dataset, and to see how far the joint
+model moves the answer; report the joint fit.
+
 Saving and loading
 ------------------
 
@@ -1539,14 +1747,19 @@ The joint model (#891) is the standard one. It has:
   projected marker, and draws);
 - the accuracy of those predictions at an age over a window (dynamic AUC,
   Brier score and calibration in ``surpyval.metrics``, with
-  cross-validation by unit).
+  cross-validation by unit);
+- the quick, approximate two-stage fit (``how="two-stage"``) for a first
+  look and for comparison.
 
 Not yet (see #891's roadmap): spline paths; other baselines (a
 log-normal or log-logistic one for the accelerated part, whose risk can
 rise and then fall, and spline baselines); several markers. The
 accelerated part has not yet been compared with R's ``JM``
 (``method = "weibull-AFT-aGH"``, the same model) on reference data, nor
-had its prediction band put through a calibration study.
+had its prediction band put through a calibration study. The two-stage fit
+has not yet been compared with R's two-step equivalent (``nlme::lme``,
+then ``survival`` with the fitted paths) on reference data, and its path
+part has no standard errors.
 
 References
 ----------

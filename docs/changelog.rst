@@ -512,6 +512,31 @@ v0.29 (unreleased)
   proportional hazards model. Every other file keeps its schema; a joint
   model saved before has no ``"survival"`` and loads as proportional
   hazards.
+- **Joint models: the quick two-stage fit, for a first look and for
+  comparison.** ``fit(..., how="two-stage")`` (and ``fit_from_df``) on
+  any joint fitter, ``JointPH`` or ``JointAFT``, fits each item's path to
+  its readings alone (pulled towards the fleet's average where it has few
+  readings), then the survival part with each item's predicted path taken
+  as a known covariate: a fraction of a second, where the joint fit takes
+  seconds to minutes. It is exactly where the joint fit starts its search,
+  now returned as a ``JointModel`` of its own with ``how ==
+  "two-stage"`` and ``maximum == "not applicable"``: the same parameters,
+  predictions, ``predict`` / ``DynamicPrediction`` and accuracy measures.
+  It is approximate, and says so in its printout (the ``Fit`` line), its
+  ``summary()`` headings and its prediction's printout and ``to_dict``
+  (``"how"``): its estimates are biased, its survival part's standard
+  errors (and its prediction bands) are too small, and its path part has
+  none (``nan``). It has no likelihood of the whole model, so
+  ``neg_ll()``, ``log_likelihood``, ``aic()``, ``aic_c()``, ``bic()`` and
+  ``compare_links`` refuse it, pointing to the accuracy measures. A
+  simulation study on the joint model's fleets (200 a path) found its
+  marker effect within 5% with monthly readings, but its intervals
+  covering the truth 80% to 97% of the time (the joint fit's 93% to 98%),
+  and 8% low, covering 80.5%, with readings every six months; its spread
+  between items was far off for curved paths. See "A quick first look: the
+  two-stage fit" in :doc:`Joint Models`.
+- A two-stage joint model saves as schema 5, which SurPyval 0.28 and older
+  refuse rather than present it as the joint likelihood's fit.
 
 **Changed.**
 

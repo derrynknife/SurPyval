@@ -1,6 +1,7 @@
-"""Starting values for the joint fit (#891): the marker's path fitted to
-each item alone, the spread of those fits, then the survival part with
-each item's path plugged in.
+"""Starting values for the joint fit (#891), and the two-stage fit
+(``fit(..., how="two-stage")``), which is those values: the marker's path
+fitted to each item alone, the spread of those fits, then the survival
+part with each item's path plugged in.
 
 1. **Per-item paths.** The path model's own ``fit(ages, readings)`` on
    each item with readings at as many ages as the path has parameters
@@ -16,8 +17,10 @@ each item's path plugged in.
    survival part), gives the survival part.
 
 This two-stage estimate is biased (a predicted path is not the true one,
-and the readings stop when an item fails); it is only where the joint
-fit starts.
+and the readings stop when an item fails): the joint fit only starts from
+it. Asked for as a fit of its own, its survival part's covariance is the
+plug-in likelihood's (:func:`survival_stage`), which treats each item's
+predicted path as known and so understates the uncertainty.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from typing import Any
 import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
-from autograd import value_and_grad
+from autograd import hessian, value_and_grad
 from scipy.optimize import minimize
 
 from surpyval.utils.linalg import psd_floor
@@ -128,12 +131,72 @@ def marker_start(
     }
 
 
+#: The gradient of the plug-in likelihood, in standard errors of each
+#: parameter, below which stage two of the two-stage fit is taken as at its
+#: maximum: a step of at most this many standard errors is left.
+_STAGE_TWO_GTOL = 1e-3
+
+
 def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     """``theta`` (the marker part filled in) with the survival part --
     the Weibull ``alpha`` and ``beta``, ``gamma`` and the marker's effect
     ``zeta`` -- from the fit with each item's path taken as its most
     likely one given its readings: its lifetime given that path, from
     its entry age."""
+    return _plug_in_fit(model, arrays, theta)[0]
+
+
+def survival_stage(
+    model: Model, arrays: JointArrays, theta: dict
+) -> tuple[dict, npt.NDArray | None, str | None]:
+    """Stage two of the two-stage fit: ``(theta, cov, reason)``.
+    ``theta`` is :func:`survival_start`'s (the same search, so the
+    two-stage fit is exactly where the joint fit starts); ``cov`` the
+    covariance of the survival part's internal parameters (``log alpha``,
+    ``log beta``, the hazard's coefficients and the effects, in the order
+    of :meth:`Layout.pack`), the inverse Hessian of the plug-in
+    likelihood, which takes each item's predicted path as known (``None``
+    where it is not positive definite); and why the search is not a
+    verified maximum of that likelihood (``None`` where it is)."""
+    out, objective, v, scales, finite = _plug_in_fit(model, arrays, theta)
+    if not finite:
+        return out, None, "the search did not reach a finite point"
+    total = float(np.sum(arrays.w))
+    with ignoring_warnings(), np.errstate(all="ignore"):
+        _, grad = value_and_grad(objective)(v)
+        H = np.asarray(hessian(objective)(v), dtype=float) * total
+    grad = np.asarray(grad, dtype=float) * total
+    H = 0.5 * (H + H.T)
+    if not np.all(np.isfinite(H)):
+        return out, None, "the Hessian could not be evaluated there"
+    # judged and inverted in each parameter's own scale
+    diag = np.diag(H)
+    ok = diag > 0
+    size = np.where(ok, 1.0 / np.sqrt(np.where(ok, diag, 1.0)), 1.0)
+    scaled = H * np.outer(size, size)
+    try:
+        positive = bool(np.all(np.linalg.eigvalsh(scaled) > 0))
+    except np.linalg.LinAlgError:
+        positive = False
+    if not positive:
+        return out, None, "the Hessian is not positive definite there"
+    cov_v = np.linalg.inv(scaled) * np.outer(size, size)
+    sd = np.sqrt(np.diag(cov_v))
+    # the effects were searched in units of their spread over the items
+    to_u = np.concatenate([np.ones(v.size - scales.size), scales])
+    cov = cov_v * np.outer(to_u, to_u)
+    if not np.max(np.abs(grad) * sd) < _STAGE_TWO_GTOL:
+        return out, cov, "the gradient is not zero there"
+    return out, cov, None
+
+
+def _plug_in_fit(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+    """The survival part fitted with each item's predicted path plugged
+    in: ``(theta, objective, v, scales, finite)``: the search's objective
+    (the negative log-likelihood a unit of weight) and its answer ``v``
+    (``log alpha``, ``log beta``, the hazard's coefficients, then the
+    effects divided by ``scales``), and whether that answer was finite
+    (else ``v`` is the search's start)."""
     from surpyval import Weibull
 
     layout = model.layout
@@ -258,10 +321,11 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
         result = minimize(
             value_and_grad(objective), v0, jac=True, method="BFGS"
         )
-    v = result.x if np.all(np.isfinite(result.x)) else v0
+    finite = bool(np.all(np.isfinite(result.x)))
+    v = result.x if finite else v0
     out = dict(trial)
     out["alpha"], out["beta"] = float(np.exp(v[0])), float(np.exp(v[1]))
     gamma = np.zeros(p)
     gamma[layout.hazard] = v[2 : 2 + k]
     out["gamma"], out["zeta"] = gamma, v[2 + k :] * scales
-    return out
+    return out, objective, v, scales, finite

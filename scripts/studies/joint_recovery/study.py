@@ -12,6 +12,14 @@ with JointAFT.
     path: linear, exp, quad, loglink, aft_linear, aft_exp, aft_quad,
     aft_loglink
 
+EVERY=<days> reads the pumps that often (the study's is 30); tagged
+_every<days>.
+
+HOW=two-stage fits the same fleets by the approximate two-stage estimate
+(``fit(..., how="two-stage")``) in place of the joint likelihood; its
+files are tagged _two_stage. Its marker part has no standard errors, so
+those parameters' coverage is not recorded (null).
+
 Each fit is appended to results_<path>.jsonl as it finishes; a rerun
 skips the seeds already there (so a killed run resumes). At the end the
 summary is written to summary_<path>.json and printed. At most 4 worker
@@ -49,6 +57,15 @@ TAG = WHICH if GH is None else f"{WHICH}_gh{GH}"
 N = int(os.environ.get("N", "300"))
 if N != 300:
     TAG += f"_n{N}"
+#: Days between readings (the study's is monthly, 30); tagged _every<days>.
+EVERY = float(os.environ.get("EVERY", "30"))
+if EVERY != 30:
+    TAG += f"_every{EVERY:g}"
+#: The way to fit: "MLE" (the study's), or "two-stage", the approximate
+#: estimate it is compared with; tagged _two_stage.
+HOW = os.environ.get("HOW", "MLE")
+if HOW != "MLE":
+    TAG += "_" + HOW.replace("-", "_")
 
 
 def setup():
@@ -128,12 +145,13 @@ def one(seed):
         *spec,
         n=N,
         seed=seed,
+        every=EVERY,
         effect=EFFECT,
         survival="AFT" if AFT else "PH",
     )
     t0 = time.time()
     try:
-        m = fitter.fit(data, marker_reference=4.0)
+        m = fitter.fit(data, marker_reference=4.0, how=HOW)
         out = dict(
             seed=seed,
             ok=True,
@@ -164,6 +182,24 @@ def summarise(results, truth):
         scale = abs(t) if t != 0 else 1.0
         bias = float(np.mean(err) / scale)
         bias_mcse = float(np.std(err, ddof=1) / np.sqrt(R) / scale)
+        if not finite.any():
+            # no standard errors (a two-stage fit's marker part)
+            rows.append(
+                dict(
+                    name=name,
+                    truth=t,
+                    relative=t != 0,
+                    mean=float(np.mean(est)),
+                    bias=bias,
+                    bias_mcse=bias_mcse,
+                    bias_z=bias / bias_mcse if bias_mcse > 0 else None,
+                    coverage=None,
+                    coverage_mcse=None,
+                    sd_over_se=None,
+                    finite_se=0,
+                )
+            )
+            continue
         cover = np.abs(err[finite]) <= 1.959964 * se[finite]
         p = float(np.mean(cover))
         rows.append(
@@ -183,6 +219,7 @@ def summarise(results, truth):
         )
     return dict(
         path=WHICH,
+        how=HOW,
         reps=len(results),
         fitted=R,
         failed=[r for r in results if not r["ok"]],
@@ -234,14 +271,21 @@ if __name__ == "__main__":
     )
     for row in summary["rows"]:
         flag = ""
-        if not 0.92 <= row["coverage"] <= 0.98:
-            flag += " COVERAGE"
-        if abs(row["bias_z"]) > 2:
-            flag += " BIAS"
         kind = "rel" if row["relative"] else "abs"
-        print(
+        line = (
             f"{row['name']:15s} {kind} bias {row['bias']:+.4f} "
-            f"({row['bias_mcse']:.4f})  coverage {row['coverage']:.3f} "
-            f"({row['coverage_mcse']:.3f})  sd/se {row['sd_over_se']:.2f}"
-            f"{flag}"
+            f"({row['bias_mcse']:.4f})"
         )
+        if row["bias_z"] is not None and abs(row["bias_z"]) > 2:
+            flag += " BIAS"
+        if row["coverage"] is None:
+            line += "  no standard errors"
+        else:
+            if not 0.92 <= row["coverage"] <= 0.98:
+                flag += " COVERAGE"
+            line += (
+                f"  coverage {row['coverage']:.3f} "
+                f"({row['coverage_mcse']:.3f})  sd/se "
+                f"{row['sd_over_se']:.2f}"
+            )
+        print(line + flag)

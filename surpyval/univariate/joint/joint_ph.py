@@ -25,6 +25,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import normalise_unit, takes_unit
+from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
@@ -39,9 +40,10 @@ from ._likelihood import (
     neg_ll,
     place,
 )
-from ._markers import marker_start, survival_start
+from ._markers import marker_start, survival_stage, survival_start
 from .compare import LinkComparison, compare_links
 from .joint_model import (
+    HOWS,
     JointModel,
     covariate_parts,
     parameter_names,
@@ -344,11 +346,13 @@ class JointPHFitter(FitterRepr):
         i: npt.ArrayLike | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        how: str = "MLE",
         integration: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
-        likelihood.
+        likelihood (or, with ``how="two-stage"``, by the quick and
+        approximate two-stage estimate).
 
         Each item's marker follows the fitter's path model with
         parameters of its own -- those that vary between items
@@ -369,6 +373,20 @@ class JointPHFitter(FitterRepr):
         Hessian. The fit starts from the path fitted to each item alone,
         the spread of those fits, and a survival fit with each item's
         predicted path.
+
+        That start is also a fit of its own, ``how="two-stage"``: first
+        each item's path from its readings alone, pulled towards the
+        fleet's average where it has few readings, then a Weibull
+        proportional hazards (or accelerated) fit of the lifetimes with
+        each item's predicted path taken as a known covariate. It takes a
+        fraction of a second, and it is biased: it forgets that each path
+        is an estimate and that the readings stop when an item fails (in
+        a simulation study, the marker's effect was 8% low with readings
+        every six months, where the joint fit's was within 2.4%), and its
+        standard errors (of the survival part only) are too small. It is
+        for a first look and for comparison with the joint fit; the model
+        says it is approximate (``how``), and has no likelihood to
+        compare (``aic()``, ``bic()`` and ``neg_ll()`` are refused).
 
         The data are usually a :class:`~surpyval.SurpyvalData` of
         :class:`~surpyval.ItemLifetime` records with ``markers``:
@@ -442,6 +460,13 @@ class JointPHFitter(FitterRepr):
             link's effect is per (``effect_units``: a
             ``cumulative_effect`` is per ``(mm/s)·years``, say). A label
             only: nothing is converted.
+        how : str, optional
+            ``"MLE"`` (the default), the joint likelihood's maximum; or
+            ``"two-stage"``, the approximate two-stage estimate (the
+            paths from the readings alone, then the survival part with
+            each item's predicted path as a known covariate): fast, but
+            its estimates are biased, its survival part's standard errors
+            are understated and its marker part has none.
         integration : {"grid", "pruned"}, optional
             The nodes each item's likelihood is integrated on, over its
             varying path parameters: ``"grid"``, the full grid of 7
@@ -481,7 +506,19 @@ class JointPHFitter(FitterRepr):
         'verified'
         >>> model.integration
         'grid'
+        >>> quick = WeibullJointPH.fit(
+        ...     SurpyvalData.from_items(items), how="two-stage"
+        ... )
+        >>> quick.how, quick.maximum
+        ('two-stage', 'not applicable')
         """
+        check_option(
+            "how",
+            how,
+            HOWS,
+            "'MLE' fits the joint likelihood; 'two-stage' is the quick, "
+            "approximate estimate.",
+        )
         integration = check_integration(integration, len(self.varying))
         reference = None
         if marker_reference is not None:
@@ -512,7 +549,7 @@ class JointPHFitter(FitterRepr):
             hazard_covariates,
         )
         model = _fit(
-            self, records, counts, names, reference, parts, integration
+            self, records, counts, names, reference, parts, integration, how
         )
         model.marker_unit = marker_unit
         return model
@@ -626,6 +663,15 @@ class JointPHFitter(FitterRepr):
         0   value  value + slope   1
         1   slope  value + slope   1
         """
+        if kwargs.get("how", "MLE") != "MLE":
+            raise ValueError(
+                "compare_links ranks the links by an information criterion "
+                "and tests them by the likelihood ratio, which a two-stage "
+                "fit has not (its two stages have no likelihood of the "
+                "whole model): leave out how=, or compare two-stage fits "
+                "by the accuracy of their predictions "
+                "(surpyval.metrics.score_predictions)."
+            )
         return compare_links(self, args, kwargs, links=links, metric=metric)
 
     @takes_unit
@@ -647,6 +693,7 @@ class JointPHFitter(FitterRepr):
         i_col: str | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        how: str = "MLE",
         integration: str | None = None,
     ) -> JointModel:
         """
@@ -669,8 +716,10 @@ class JointPHFitter(FitterRepr):
         the items by unit. ``m`` and ``markers_col`` are two ways of
         giving the readings: give one. ``marker_unit`` is the unit the
         readings are in, as for :meth:`fit` (from ``m``'s own unit where
-        it has one). ``integration`` is the nodes of each item's
-        integral, ``"grid"`` or ``"pruned"``, as for :meth:`fit`.
+        it has one), and ``how`` the way to fit, as for :meth:`fit`
+        (``"two-stage"`` for the quick, approximate estimate).
+        ``integration`` is the nodes of each item's integral, ``"grid"``
+        or ``"pruned"``, as for :meth:`fit`.
 
         Examples
         --------
@@ -758,6 +807,7 @@ class JointPHFitter(FitterRepr):
                 i=None if i_col is None else list(df[i_col]),
                 m=m,
                 marker_unit=marker_unit,
+                how=how,
                 integration=integration,
             )
 
@@ -1069,9 +1119,11 @@ def _fit(
     reference: float | None,
     parts: tuple,
     integration: str = "grid",
+    how: str = "MLE",
 ) -> JointModel:
-    """The joint fit of ``records`` (``counts`` of each); ``parts`` is
-    ``(shifts, hazard)``, which covariates enter which part
+    """The joint fit of ``records`` (``counts`` of each), by ``how``
+    (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
+    enter which part
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`)."""
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
@@ -1140,9 +1192,97 @@ def _fit(
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_power(fitter, theta["mu"], "the readings put")
     _check_start_at_zero(fitter, theta["mu"])
-    theta = survival_start(model, arrays, theta)
-    u = layout.pack(theta)
     total = float(np.sum(counts))
+    if how == "two-stage":
+        u, value, cov_u, maximum = _two_stage(model, arrays, theta)
+    else:
+        u, value, cov_u, maximum = _maximise(
+            model, arrays, survival_start(model, arrays, theta)
+        )
+        _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
+    estimated = np.asarray(
+        reported_params(layout.unpack(u), layout, refs), dtype=float
+    )
+    covariance = None
+    if cov_u is not None:
+        J = jacobian(
+            lambda v: reported_params(layout.unpack(v), layout, refs)
+        )(u)
+        covariance = J @ cov_u @ J.T
+        covariance = 0.5 * (covariance + covariance.T)
+        if how == "two-stage":
+            # stage one's moment estimates have no standard errors
+            n_marker = len(estimated) - (2 + layout.n_hazard + layout.n_links)
+            covariance[:n_marker, :] = np.nan
+            covariance[:, :n_marker] = np.nan
+    else:
+        warn_no_covariance()
+    # every parameter, nan for an aliased covariate's
+    full_names = parameter_names(
+        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
+    )
+    kept_names = parameter_names(
+        path_names,
+        list(fitter.varying),
+        kept_names,
+        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
+        [c for c in hazard if c in kept_names],
+        fitter.link,
+    )
+    where = [full_names.index(name) for name in kept_names]
+    params = np.full(len(full_names), np.nan)
+    params[where] = estimated
+    out = JointModel()
+    out.dist = fitter.dist
+    out.path_model = path_model
+    out.varying = list(fitter.varying)
+    out.params = params
+    out.feature_names = list(names)
+    out.aliased = aliased
+    every_one = all(shifts[n] == list(names) for n in path_names) and list(
+        hazard
+    ) == list(names)
+    # saved as None where every covariate is in both parts (as before)
+    out.path_covariates = (
+        None if every_one else {n: list(shifts[n]) for n in path_names}
+    )
+    out.hazard_covariates = None if every_one else list(hazard)
+    out.parameter_names = full_names
+    out.link = tuple(fitter.link)
+    out.lag = fitter.lag
+    out.survival = fitter.survival
+    out.marker_reference = float(reference) if "value" in fitter.link else None
+    out._centre = centre
+    out._zbar = zbar
+    if covariance is not None:
+        full_cov = np.full((len(full_names),) * 2, np.nan)
+        full_cov[np.ix_(where, where)] = covariance
+        out._covariance = full_cov
+    out._neg_ll = float(value)
+    # the path part where it was found, a start for another link's fit
+    found = layout.unpack(u)
+    out._path_start = {
+        key: np.array(found[key], dtype=float)
+        for key in ("mu", "Delta", "L", "sigma")
+    }
+    out.k = len(estimated)
+    out.maximum = maximum
+    out.how = how
+    out.integration = integration
+    out.n_items = total
+    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
+    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
+    return out
+
+
+def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+    """The joint likelihood's maximum from the start ``theta``:
+    ``(u, value, cov_u, maximum)``, the internal parameters, the negative
+    log-likelihood there, their covariance (``None`` where the Hessian is
+    not positive definite) and what the search reached (``"verified"`` or
+    ``"unverified"``, with a warning)."""
+    layout = model.layout
+    u = layout.pack(theta)
 
     def objective(v: Any, placed: tuple) -> Any:
         return neg_ll(v, model, arrays, placed)
@@ -1217,74 +1357,34 @@ def _fit(
         elif not flat:
             reason = "the gradient is not zero there"
         warn_unverified("The joint fit", reason)
-    _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
-    estimated = np.asarray(
-        reported_params(layout.unpack(u), layout, refs), dtype=float
-    )
-    covariance = None
-    if cov_u is not None:
-        J = jacobian(
-            lambda v: reported_params(layout.unpack(v), layout, refs)
-        )(u)
-        covariance = J @ cov_u @ J.T
-        covariance = 0.5 * (covariance + covariance.T)
-    else:
-        warn_no_covariance()
-    # every parameter, nan for an aliased covariate's
-    full_names = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
-    )
-    kept_names = parameter_names(
-        path_names,
-        list(fitter.varying),
-        kept_names,
-        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
-        [c for c in hazard if c in kept_names],
-        fitter.link,
-    )
-    where = [full_names.index(name) for name in kept_names]
-    params = np.full(len(full_names), np.nan)
-    params[where] = estimated
-    out = JointModel()
-    out.dist = fitter.dist
-    out.path_model = path_model
-    out.varying = list(fitter.varying)
-    out.params = params
-    out.feature_names = list(names)
-    out.aliased = aliased
-    every_one = all(shifts[n] == list(names) for n in path_names) and list(
-        hazard
-    ) == list(names)
-    # saved as None where every covariate is in both parts (as before)
-    out.path_covariates = (
-        None if every_one else {n: list(shifts[n]) for n in path_names}
-    )
-    out.hazard_covariates = None if every_one else list(hazard)
-    out.parameter_names = full_names
-    out.link = tuple(fitter.link)
-    out.lag = fitter.lag
-    out.survival = fitter.survival
-    out.marker_reference = float(reference) if "value" in fitter.link else None
-    out._centre = centre
-    out._zbar = zbar
-    if covariance is not None:
-        full_cov = np.full((len(full_names),) * 2, np.nan)
-        full_cov[np.ix_(where, where)] = covariance
-        out._covariance = full_cov
-    out._neg_ll = float(value)
-    # the path part where it was found, a start for another link's fit
-    found = layout.unpack(u)
-    out._path_start = {
-        key: np.array(found[key], dtype=float)
-        for key in ("mu", "Delta", "L", "sigma")
-    }
-    out.k = len(estimated)
-    out.maximum = "verified" if verified else "unverified"
-    out.integration = integration
-    out.n_items = total
-    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
-    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
-    return out
+    return u, value, cov_u, "verified" if verified else "unverified"
+
+
+def _two_stage(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+    """The two-stage estimate from stage one's marker part ``theta``:
+    ``(u, value, cov_u, maximum)`` as :func:`_maximise` gives them.
+    There is no likelihood of the whole model (``value`` is ``nan``);
+    the covariance is stage two's, of the survival part alone (the
+    marker part's entries 0, to be set to ``nan`` once reported), and
+    ``maximum`` is ``"not applicable"``, or ``"unverified"``, with a
+    warning, where stage two's search did not reach a verified maximum
+    of its own likelihood."""
+    theta, cov, reason = survival_stage(model, arrays, theta)
+    u = model.layout.pack(theta)
+    cov_u = None
+    if cov is not None:
+        k = cov.shape[0]
+        cov_u = np.zeros((u.size, u.size))
+        cov_u[-k:, -k:] = cov
+    if reason is not None:
+        warn_unverified(
+            "Stage two of the two-stage fit (the survival part, each "
+            "item's predicted path taken as known)",
+            reason,
+            "check the fit, or fit the joint likelihood (how='MLE')",
+        )
+        return u, np.nan, cov_u, "unverified"
+    return u, np.nan, cov_u, "not applicable"
 
 
 def _given_path_start(start: dict | None, layout: Layout) -> dict | None:
