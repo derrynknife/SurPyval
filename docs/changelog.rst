@@ -5,6 +5,22 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: which varying path parameters are correlated.**
+  ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
+  varying path parameters as independent between items, and
+  ``random_effects=[("a", "b"), ("c",)]`` correlates those in a block
+  with each other and with none outside it. A correlation left out is 0,
+  not estimated: it has no entry in ``params``, ``summary()`` or the
+  saved model, and ``aic()`` counts the parameters estimated, so
+  structures compare by ``aic()`` on the same data. With five varying
+  parameters the full structure has ten correlations, more than most
+  fleets can pin down. The model keeps the structure as
+  ``random_effects_structure``, and its printout and the summary's
+  heading say it. The default, ``"full"``, is the model as before, number
+  for number. A model with another structure saves as schema 5, which
+  SurPyval 0.28 refuses rather than misread. See "Which path parameters
+  are correlated" in :doc:`Joint Models`.
+
 - **The Rayleigh defect model, for defects by development phase.**
   ``surpyval.recurrent.RayleighDefects`` (also at the top level) is a
   Poisson process with :math:`\Lambda(t) = K (1 - e^{-t^2 / (2 c^2)})`:

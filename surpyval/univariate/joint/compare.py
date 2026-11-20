@@ -181,6 +181,7 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
             link,
             fitter.lag,
             fitter.weight if _has_cumulative(link) else None,
+            random_effects=fitter.random_effects,
         )
         for link in chosen
     ]
