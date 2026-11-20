@@ -46,6 +46,10 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
             The upper parameter for the Uniform distribution
         """
 
+    # How the parameters move with the time (rescale_time): the ends a and b
+    # are times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

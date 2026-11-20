@@ -53,6 +53,11 @@ removed in 0.24; the frailty models' dict became an array).
 
 A model built from parameters needs no data: `sp.Weibull.from_params([10, 3])`.
 Its `plot()` draws the CDF alone, handy for comparing a spec with a fit.
+**0.29:** `model.rescale_time(factor, unit=None)` is the same life on another
+clock, `R(factor * t)`: a life in operating hours on the calendar of a unit
+that runs a quarter of the time (`0.25`), or in days (`24, unit="days"`),
+with the fit's covariance, data and bounds carried over (any parametric
+distribution of time, `MixtureModel`; counts, `Beta`, custom refuse).
 
 ## The xcnt data model (the thing to get right)
 
@@ -366,6 +371,7 @@ sp.KaplanMeier.fit(x, c, w=w).cb(5)   # also NelsonAalen, the regressions, CoxPH
 # Bayesian fit: priors in sp.prior, credible intervals via cri, not cb
 b = sp.Weibull.fit_bayes(x, c, priors={"beta": sp.prior.around(2, between=(1.5, 3))})
 b.param_cri("beta"); b.cri(5); b.quantile_cri(0.1)   # on="sf" by default for cri
+b.loo(); b.waic()   # compare Bayesian fits: sp.bayes.compare({"a": b, ...}), not aic
 
 # Distributional regression: covariates on every parameter (shape too)
 df = pd.DataFrame({"t": x, "c": c, "load": Z[:, 0]})
@@ -503,7 +509,13 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   net(X))` (raw `(N, k)` outputs -> `{"alpha": ..., "beta": ...}` in range);
   `loss = spt.nll(sp.Weibull, y, params)` (`reduction="mean"` per unit,
   `"sum"`, `"none"`), or `spt.NLLLoss(sp.Weibull)`. Families:
-  `spt.SUPPORTED`. Use float64 to match `fit`.
+  `spt.SUPPORTED`. Use float64 to match `fit`. Mixtures (Deep Survival
+  Machines): `params = spt.constrain(sp.Weibull, raw.reshape(N, K, 2))`,
+  `spt.nll(sp.Weibull, y, params, mixture=logits)` with `(N, K)` logits.
+  Out: `S = spt.sf(sp.Weibull, times, params, mixture=logits)` (`(N, T)`;
+  `.detach().numpy()` into `score_predictions`), and
+  `spt.to_surpyval(sp.Weibull, params, row=i, mixture=logits)` (a
+  `MixtureModel`; without `mixture`, `dist.from_params`).
 
 ## Serialisation (files & MongoDB)
 

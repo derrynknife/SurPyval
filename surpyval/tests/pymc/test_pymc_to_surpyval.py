@@ -3,6 +3,8 @@ model. Skipped where PyMC is not installed (it is not a test dependency
 of SurPyval). The draws are made with fixed seeds, chosen before the
 first run."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,14 @@ pm = pytest.importorskip("pymc")
 az = pytest.importorskip("arviz")
 
 from surpyval.pymc import to_surpyval  # noqa: E402
+
+
+def _posterior(**variables):
+    # ArviZ 1.0 takes a dict of groups; 0.x (which PyMC 5 installs) takes
+    # each group as a keyword, and reads a dict of groups as one variable.
+    if int(az.__version__.split(".")[0]) >= 1:
+        return az.from_dict({"posterior": variables})
+    return az.from_dict(posterior=variables)
 
 
 def _trace():
@@ -25,7 +35,7 @@ def _trace():
         ],
         axis=-1,
     )
-    trace = az.from_dict({"posterior": {"beta": beta, "log_alpha": log_alpha}})
+    trace = _posterior(beta=beta, log_alpha=log_alpha)
     return trace, beta.ravel(), np.exp(log_alpha[..., 1]).ravel()
 
 
@@ -52,13 +62,9 @@ def test_draws_become_a_bayesian_model():
 
 def test_a_parameter_not_mapped_is_the_variable_of_its_name():
     rng = np.random.default_rng(3)
-    trace = az.from_dict(
-        {
-            "posterior": {
-                "alpha": rng.lognormal(np.log(100.0), 0.05, (1, 200)),
-                "beta": rng.lognormal(np.log(2.0), 0.05, (1, 200)),
-            }
-        }
+    trace = _posterior(
+        alpha=rng.lognormal(np.log(100.0), 0.05, (1, 200)),
+        beta=rng.lognormal(np.log(2.0), 0.05, (1, 200)),
     )
     model = to_surpyval(trace, sp.Weibull)
     assert model.params[0] == pytest.approx(100.0, rel=0.02)
@@ -77,7 +83,9 @@ def test_a_multitrace_gives_the_same_model():
             progressbar=False,
             compute_convergence_checks=False,
         )
-        with pytest.warns(FutureWarning):
+        with warnings.catch_warnings():
+            # older PyMC warns that a MultiTrace is deprecated; 5.28 not
+            warnings.simplefilter("ignore", FutureWarning)
             multitrace = pm.sample(
                 draws=100,
                 tune=100,
@@ -109,7 +117,7 @@ def test_refusals():
             transform={"alpha": "exp"},
         )
     log_rate = np.random.default_rng(5).normal(np.log(0.01), 0.1, (1, 50))
-    rates = az.from_dict({"posterior": {"log_rate": log_rate}})
+    rates = _posterior(log_rate=log_rate)
     with pytest.raises(ValueError, match="Is a transform missing"):
         to_surpyval(rates, sp.Exponential, failure_rate="log_rate")
     model = to_surpyval(

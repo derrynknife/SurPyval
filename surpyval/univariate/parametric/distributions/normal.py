@@ -51,6 +51,10 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         # is another name for ``Normal``).
         return "Normal"
 
+    # How the parameters move with the time (rescale_time): mu and sigma are
+    # times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
