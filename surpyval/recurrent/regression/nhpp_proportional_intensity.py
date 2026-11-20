@@ -207,6 +207,8 @@ class ProportionalIntensityNHPP(
         data: Any,
         baseline: Any = Duane,
         init: ArrayLike | None = None,
+        frailty: str | None = None,
+        cluster: Any = None,
     ) -> Any:
         """
         Fit from a prepared
@@ -224,18 +226,34 @@ class ProportionalIntensityNHPP(
             The baseline intensity model, as for :meth:`fit`.
         init : array_like, optional
             Initial parameter estimates, as for :meth:`fit`.
+        frailty : {'gamma', 'lognormal'}, optional
+            A shared frailty, as for :meth:`fit`.
+        cluster : mapping or array_like, optional
+            Each item's cluster, as for :meth:`fit`.
 
         Returns
         -------
 
         ProportionalIntensityModel
-            The fitted model.
+            The fitted model (a ``SharedFrailtyModel`` with ``frailty``).
         """
         dist = baseline
         if not isinstance(dist, CountingProcess):
             raise TypeError(
                 "`baseline` must be a CountingProcess instance "
                 "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
+            )
+        if frailty is not None or cluster is not None:
+            from surpyval.recurrent.shared_frailty import fit_shared_frailty
+
+            if frailty is None:
+                raise ValueError(
+                    "'cluster' names the clusters that share a frailty, so "
+                    "it needs 'frailty': give frailty='gamma' (or "
+                    "'lognormal'), or leave out 'cluster'."
+                )
+            return fit_shared_frailty(
+                dist, data, frailty, cluster, init, regression=True
             )
         validate_nhpp_data(data, dist)
         out = ProportionalIntensityModel()
@@ -408,6 +426,8 @@ class ProportionalIntensityNHPP(
         tr: ArrayLike | None = None,
         baseline: Any = Duane,
         init: ArrayLike | None = None,
+        frailty: str | None = None,
+        cluster: Any = None,
     ) -> Any:
         """
         Fit the model using the provided data and initial parameters.
@@ -466,17 +486,46 @@ class ProportionalIntensityNHPP(
             ``dist``, was removed in v0.25.
         init : array_like, optional
             Initial parameter estimates: the baseline parameters followed by
-            the covariate coefficients.
+            the covariate coefficients (with ``frailty``: the baseline
+            parameters, ``theta``, then the coefficients).
+        frailty : {'gamma', 'lognormal'}, optional
+            Give each cluster of items an unobserved frailty that
+            multiplies its intensity, for items that differ by more than
+            their covariates explain: gamma with mean 1 and variance
+            ``theta``, or log-normal with ``log u ~ N(0, theta)``.
+            ``theta`` is estimated with the other parameters, and the fit
+            is a :class:`~surpyval.recurrent.SharedFrailtyModel`. It
+            needs at least two clusters and each event's time (no
+            ``c=-1`` or ``c=2`` counts, no right truncation). Default
+            ``None``: no frailty.
+        cluster : mapping or array_like, optional
+            With ``frailty``, the items that share one: ``{item:
+            cluster}``, or one label per row of ``x`` (the same on every
+            row of an item). By default each item has its own.
 
         Returns
         -------
 
         ProportionalIntensityModel
             An object containing the results of the fitting process, including
-            parameter estimates.
+            parameter estimates (a ``SharedFrailtyModel`` with
+            ``frailty``).
         """
+        if cluster is not None and frailty is not None:
+            from surpyval.recurrent.shared_frailty import cluster_of_items
+
+            # Read against the rows as given, before they are sorted
+            cluster = cluster_of_items(
+                cluster,
+                i,
+                np.shape(x)[0] if np.ndim(x) else 1,
+                " With a SurpyvalData or an EventHistoryData as x, give "
+                "the mapping.",
+            )
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
-        return self.fit_from_recurrent_data(data, baseline, init)
+        return self.fit_from_recurrent_data(
+            data, baseline, init, frailty, cluster
+        )
 
     @dataframe_covariates
     @takes_unit

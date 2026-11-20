@@ -423,6 +423,7 @@ surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP
 surpyval.recurrent.RenewalModel
+surpyval.recurrent.SharedFrailtyModel
 surpyval.recurrent.TrendTestResult
 surpyval.recurrent.WeiLinWeissfeld
 surpyval.recurrent.intervention_test

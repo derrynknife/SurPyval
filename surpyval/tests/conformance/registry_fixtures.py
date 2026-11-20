@@ -365,6 +365,32 @@ def recurrent_data(with_Z=False, with_e=False):
     return d
 
 
+def frailty_recurrent_data(with_Z=False):
+    """Ten repairable items watched to 60, with 1 to 12 failures each
+    (more spread than Poisson counts have, so a frailty is estimated):
+    item k's j-th of n failures at ``60 ((j + 0.5 + 0.3 frac(0.618 k j))
+    / (n + 0.6)) ** 0.8``, rounded to 3 places."""
+    counts = [1, 2, 2, 3, 4, 5, 7, 8, 10, 12]
+    x, i, c, Z = [], [], [], []
+    for k, n in enumerate(counts):
+        j = np.arange(n)
+        shift = 0.3 * ((0.6180339887498949 * (k + 1) * (j + 1)) % 1.0)
+        times = np.round(60.0 * ((j + 0.5 + shift) / (n + 0.6)) ** 0.8, 3)
+        x += [*np.sort(times), 60.0]
+        i += [k + 1] * (n + 1)
+        c += [0] * n + [1]
+        Z += [[0.0, 1.0, 0.5][k % 3]] * (n + 1)
+    d = {
+        "x": np.array(x),
+        "i": np.array(i),
+        "c": np.array(c),
+        "n": np.ones(len(x), int),
+    }
+    if with_Z:
+        d["Z"] = np.array(Z)[:, None]
+    return d
+
+
 X_REC = np.array([1.0, 5.0, 12.0, 25.0, 40.0, 55.0])
 Z_REC = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.2]])
 
