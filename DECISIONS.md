@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-20
+
+### Joint models: the slope link and paths whose slope is unbounded at age 0 (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `link="slope"` (alone or with others) is refused for the logarithmic and Lloyd-Lipow paths (and either on links) when `JointPH` or `JointAFT` builds the fitter. The message gives the slope's formula, says it is unbounded at age 0, names the links the path can take (value and cumulative for the logarithmic path, the cumulative not for `JointAFT`; the value only for Lloyd-Lipow) and paths whose slope is finite at 0. | principle 2 | The hazard (or the ageing rate) is integrated from age 0, and `exp(zeta b / t)` is not integrable there whenever `zeta b > 0`: the true likelihood gives such items no chance of surviving any age, while the 15-point rule, whose nodes never reach 0, returns a finite and wrong value. On a small fleet simulated with no slope effect the fits returned slope effects of -1.1 (logarithmic) and -1.0 (power 0.5), pushed below 0 by the rule rather than by the data. | done |
+| A power path `a t^b` is judged by its average item's power (the mean of `b`, on its natural scale for a path on links), which only the data give: the fit refuses it once from the starting values (`the readings put ...`) and once from the estimate (`the fit puts ...`), each when below 1. Items whose own power is below 1 while the average is above are not refused. | proposed | A power of 1 or more has a finite slope at 0. Refusing every power path would refuse paths that are well defined; judging each item would refuse almost any fleet in which `b` varies. | done |
+| `compare_links` leaves the slope links out of its default five for a logarithmic path (one warning naming them and why), and refuses a Lloyd-Lipow path, now left with the value alone, saying there is nothing to compare. | proposed | As the cumulative was already left out for Lloyd-Lipow; a comparison of one link is no comparison. | done |
+
 ## 2026-11-19
 
 ### Consolidation: shared base for the regression fitters, shared interval scales (19 Nov 2026)

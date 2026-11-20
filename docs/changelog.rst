@@ -219,6 +219,22 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **The slope link refuses paths whose slope is infinite at age 0.**
+  ``JointPH`` and ``JointAFT`` with ``link="slope"`` (alone or in a list)
+  refuse a logarithmic path (slope ``b / t``) and a Lloyd-Lipow path
+  (slope ``b / t^2``) when the fitter is built, and the fit refuses a power
+  path ``a t^b`` whose average item's power is below 1, by the readings
+  or by the fitted estimate. The cumulative hazard starts at age 0, where
+  such a slope makes the failure rate infinite for every item whose slope
+  has the sign of its effect, so a fit could stall at the start or return
+  an effect pushed towards 0 by the quadrature's nodes rather than by the
+  data. Each refusal says what to use: the links the path can take, or a
+  path whose slope is finite at 0 (``LinearPath``, ``QuadraticPath``,
+  ``ExponentialPath``). ``compare_links`` leaves the slope links out for
+  a logarithmic path, with one warning naming them, and refuses a
+  Lloyd-Lipow path, which can now take only the value, saying there is
+  nothing to compare. The Lloyd-Lipow path's refusal of the cumulative
+  link no longer suggests the slope.
 - **``Hypoexponential`` takes equal and close rates.** Rates no longer
   have to be distinct: equal rates are the Erlang, and match ``Gamma``
   with an integer shape to 1e-12. Where the partial-fraction coefficients

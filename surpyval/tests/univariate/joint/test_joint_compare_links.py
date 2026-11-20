@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from surpyval import JointPH, Weibull, WeibullJointPH
-from surpyval.degradation import LloydLipowPath
+from surpyval.degradation import LloydLipowPath, LogarithmicPath
 from surpyval.tests.univariate.joint._fleet import simulate_links
 from surpyval.univariate.joint import JointPHFitter, LinkComparison
 from surpyval.univariate.joint.compare import DEFAULT_LINKS, _candidates
@@ -190,22 +190,53 @@ def test_links_and_metric_are_passed_on():
 
 def test_the_fitters_own_path_and_varying_are_kept():
     fitter = JointPH(Weibull, varying="a")
-    candidates, left_out = _candidates(fitter, None)
+    candidates, left_out, reasons = _candidates(fitter, None)
     assert [c.link for c in candidates] == list(DEFAULT_LINKS)
     assert left_out == []
+    assert reasons == []
     for candidate in candidates:
         assert candidate.path_model is fitter.path_model
         assert candidate.varying == ("a",)
 
 
-def test_a_path_with_no_finite_area_leaves_out_the_cumulative():
-    candidates, left_out = _candidates(JointPH(Weibull, LloydLipowPath), None)
+def test_a_path_whose_slope_is_unbounded_at_0_leaves_out_the_slope():
+    fitter = JointPH(Weibull, LogarithmicPath)
+    candidates, left_out, reasons = _candidates(fitter, None)
     assert [c.link for c in candidates] == [
         ("value",),
-        ("slope",),
-        ("value", "slope"),
+        ("cumulative",),
+        ("value", "cumulative"),
     ]
-    assert left_out == ["cumulative", "value + cumulative"]
+    assert left_out == ["slope", "value + slope"]
+    assert len(reasons) == 1 and "unbounded at age 0" in reasons[0]
+    with pytest.raises(ValueError, match="unbounded at age 0"):
+        _candidates(fitter, ["value", "slope"])
+
+
+def test_the_comparison_says_which_links_it_left_out(monkeypatch):
+    fitted = _alone("value")  # fitted before the stand-in replaces fit
+
+    def stand_in(self, *args, **kwargs):
+        return fitted
+
+    monkeypatch.setattr(JointPHFitter, "fit", stand_in)
+    with pytest.warns(UserWarning) as caught:
+        JointPH(Weibull, LogarithmicPath).compare_links(_data())
+    messages = [str(w.message) for w in caught]
+    left = [m for m in messages if "left out of the comparison" in m]
+    assert len(left) == 1
+    assert "slope b / t, unbounded at age 0" in left[0]
+    assert "2 link(s) were left out" in left[0]
+    assert "(slope, value + slope)" in left[0]
+
+
+def test_a_path_that_can_take_only_the_value_has_nothing_to_compare():
+    with pytest.raises(ValueError, match="nothing to compare") as refusal:
+        _candidates(JointPH(Weibull, LloydLipowPath), None)
+    message = str(refusal.value)
+    assert "only the value link" in message
+    assert "no finite area" in message
+    assert "unbounded at age 0" in message
     with pytest.raises(ValueError, match="no finite area"):
         _candidates(JointPH(Weibull, LloydLipowPath), ["value", "cumulative"])
 

@@ -55,6 +55,87 @@ _ROUND_TOL = 1e-10
 #: A verified maximum's gradient, in standard errors of each parameter.
 _GTOL = 1e-4
 
+#: What a built-in path cannot give the hazard to follow, and why: the
+#: Lloyd-Lipow path has no finite area from age 0, and its slope and the
+#: logarithmic path's are unbounded at age 0 (the power path's is too for
+#: a power below 1, which only the fit can tell: ``_check_power``).
+_CANNOT_FOLLOW = {
+    ("Lloyd-Lipow", "cumulative"): (
+        "The Lloyd-Lipow path a - b / t has no finite area from age 0, so "
+        "the hazard cannot follow its cumulative"
+    ),
+    ("Lloyd-Lipow", "slope"): (
+        "The Lloyd-Lipow path a - b / t has the slope b / t^2, unbounded at "
+        "age 0, so the hazard cannot follow its slope"
+    ),
+    ("Logarithmic", "slope"): (
+        "The Logarithmic path a + b ln(t) has the slope b / t, unbounded at "
+        "age 0, so the hazard cannot follow its slope"
+    ),
+}
+
+
+def cannot_follow(path_model: Any, links: Any) -> list[str]:
+    """Why the hazard cannot follow each of ``links`` of ``path_model``
+    (a built-in path, or one on links), one reason a link; empty where it
+    can follow them all."""
+    name = str(getattr(getattr(path_model, "base", path_model), "name", ""))
+    return [
+        _CANNOT_FOLLOW[(name, link)]
+        for link in links
+        if (name, link) in _CANNOT_FOLLOW
+    ]
+
+
+def _instead(path_model: Any, survival: str, refused: Any) -> str:
+    """What to use in place of the ``refused`` links of ``path_model``:
+    the links it can take, and for the slope a path whose slope is finite
+    at age 0."""
+    usable = [
+        link
+        for link in LINKS
+        if link not in refused
+        and not cannot_follow(path_model, (link,))
+        and not (survival == "AFT" and link == "cumulative")
+    ]
+    out = "Use link=" + " or ".join(repr(link) for link in usable)
+    if "slope" in refused:
+        return out + (
+            ", or for the slope link a path whose slope is finite at age 0, "
+            "such as LinearPath, QuadraticPath or ExponentialPath."
+        )
+    return out + ", or another path."
+
+
+def _infinite_near_zero(survival: str) -> str:
+    rate = "ageing rate" if survival == "AFT" else "failure rate"
+    return (
+        f"(near age 0 the {rate} would be infinite for every item whose "
+        "slope has the sign of its effect)"
+    )
+
+
+def _check_power(fitter: Any, mu: npt.NDArray, found_by: str) -> None:
+    """Refuse the slope link of a power path ``a t^b`` whose average
+    item's power (from ``mu``, the path parameters' means on the path
+    model's scale) is below 1: its slope ``a b t^(b - 1)`` is then
+    unbounded at age 0, where the cumulative hazard starts."""
+    path = fitter.path_model
+    base = getattr(path, "base", path)
+    if "slope" not in fitter.link or getattr(base, "name", None) != "Power":
+        return
+    mu = np.asarray(mu, dtype=float)
+    natural = path.to_natural(mu) if path is not base else mu
+    power = float(natural[list(base.parameter_names).index("b")])
+    if power < 1.0:
+        raise ValueError(
+            "The power path a t^b has the slope a b t^(b - 1), unbounded at "
+            f"age 0 for a power b below 1, and {found_by} the average "
+            f"item's power at b = {power:.3g}, so the hazard cannot follow "
+            f"its slope {_infinite_near_zero(fitter.survival)}. "
+            + _instead(path, fitter.survival, ("slope",))
+        )
+
 
 class JointPHFitter(FitterRepr):
     """
@@ -139,12 +220,18 @@ class JointPHFitter(FitterRepr):
                 f"list of them, each once; got {link!r}."
             )
         self.link = tuple(name for name in LINKS if name in links)
-        base = getattr(path_model, "base", path_model)
-        if "cumulative" in self.link and base.name == "Lloyd-Lipow":
+        reasons = cannot_follow(path_model, self.link)
+        if reasons:
+            refused = [
+                link
+                for link in self.link
+                if cannot_follow(path_model, (link,))
+            ]
+            said = "; ".join(reasons)
+            if "slope" in refused:
+                said += " " + _infinite_near_zero(self.survival)
             raise ValueError(
-                "The Lloyd-Lipow path a - b / t has no finite area from age "
-                "0, so the hazard cannot follow its cumulative: use "
-                "link='value' or 'slope', or another path."
+                said + ". " + _instead(path_model, self.survival, refused)
             )
         every = parameter_names(
             names, [n for n in names if n in varying], [], links=self.link
@@ -400,9 +487,11 @@ class JointPHFitter(FitterRepr):
             ``"slope"`` or ``"cumulative"``) or a list of them, each set
             once. Default the five: ``"value"``, ``"slope"``,
             ``"cumulative"``, ``["value", "slope"]`` and ``["value",
-            "cumulative"]`` (a Lloyd-Lipow path, which has no finite area
-            from age 0, leaves out the two with the cumulative, with a
-            warning).
+            "cumulative"]``, less those the path cannot take, with a
+            warning: a logarithmic path, whose slope is unbounded at age 0,
+            leaves out the two with the slope. A Lloyd-Lipow path, which
+            also has no finite area from age 0, can take only the value,
+            and is refused.
         metric : str, optional
             The criterion the links are ranked by: ``"aic"`` (default),
             ``"aic_c"`` or ``"bic"``.
@@ -928,6 +1017,7 @@ def _fit(
     # Starting values: each item's path alone, their spread, then the
     # survival part on each item's predicted path
     theta = marker_start(model, ages, values, Z - zbar, counts)
+    _check_power(fitter, theta["mu"], "the readings put")
     theta = survival_start(model, arrays, theta)
     u = layout.pack(theta)
     total = float(np.sum(counts))
@@ -1005,6 +1095,7 @@ def _fit(
         elif not flat:
             reason = "the gradient is not zero there"
         warn_unverified("The joint fit", reason)
+    _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
     estimated = np.asarray(
         reported_params(layout.unpack(u), layout, refs), dtype=float
     )
