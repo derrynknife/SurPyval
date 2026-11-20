@@ -5,6 +5,24 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **The Jelinski-Moranda software reliability model.**
+  ``surpyval.recurrent.JelinskiMoranda`` (also at the top level) fits one
+  test campaign's failure times, or the times between failures
+  (``gaps=True``), with the end of testing after the last failure as a
+  ``c=1`` row: the software holds a whole number of faults ``N``, each
+  found at the rate ``phi``. The estimate of ``N`` is a whole number. The
+  fitted ``JelinskiMorandaModel`` gives the faults left
+  (``remaining_faults()``), the failure rate now (``current_rate()``),
+  ``mtbf()``, ``next_failure_sf``, ``profile_likelihood(N)``, ``aic()``
+  and likelihood-ratio bounds (``param_cb``, ``remaining_faults_cb``,
+  ``current_rate_cb``, ``mtbf_cb``); an upper bound of ``inf`` on ``N``
+  says that the data do not limit the number of faults. Data that show
+  no reliability growth have no finite ``N``; the fit is refused, with
+  the condition (the failures' mean time against ``(n + 1) T / (2 n)``)
+  and what to fit instead. Wald and bootstrap bounds are refused with
+  the reason. It reproduces the published fit to the Naval Tactical Data
+  System failures (Jelinski and Moranda 1972).
+
 - **A model on another clock.** ``model.rescale_time(factor)`` gives the
   model whose survival function is ``R(factor * t)``: a life in operating
   time put on the calendar (``factor=0.25`` for a unit that runs a quarter

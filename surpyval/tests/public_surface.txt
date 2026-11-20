@@ -102,6 +102,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JelinskiMoranda
 surpyval.JointAFT
 surpyval.JointFrailty
 surpyval.JointModel
@@ -413,6 +414,8 @@ surpyval.recurrent.GeneralizedRenewal
 surpyval.recurrent.GoodnessOfFitResult
 surpyval.recurrent.HPP
 surpyval.recurrent.InterventionTestResult
+surpyval.recurrent.JelinskiMoranda
+surpyval.recurrent.JelinskiMorandaModel
 surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.MCFDiffResult

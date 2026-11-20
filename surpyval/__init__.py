@@ -350,6 +350,7 @@ _LAZY = {
             "GeneralizedOneRenewal",
             "GeneralizedRenewal",
             "HPP",
+            "JelinskiMoranda",
             "JointFrailty",
             "NonParametricCounting",
             "PanelCountMCF",
@@ -576,6 +577,7 @@ if TYPE_CHECKING:
         Duane,
         GeneralizedOneRenewal,
         GeneralizedRenewal,
+        JelinskiMoranda,
         JointFrailty,
         NonParametricCounting,
         PanelCountMCF,
@@ -633,11 +635,6 @@ if TYPE_CHECKING:
         pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
-    from surpyval.univariate.relative import (
-        ExcessHazard,
-        RateTable,
-        RelativeSurvival,
-    )
     from surpyval.univariate.regression.distributional import (
         Distributional,
         DistributionalFitter,
@@ -666,6 +663,11 @@ if TYPE_CHECKING:
         ZeroInflated,
         ZeroInflatedFitter,
         ZeroInflatedModel,
+    )
+    from surpyval.univariate.relative import (
+        ExcessHazard,
+        RateTable,
+        RelativeSurvival,
     )
 
 # The subpackages ``import surpyval`` used to import, so that

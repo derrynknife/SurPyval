@@ -356,6 +356,10 @@ def _estimate(case, spec, fname, event):
             out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "sojourn_cb":
             out.append(model.mean_sojourn(*args))
+        elif spec.method in ("remaining_faults_cb", "current_rate_cb"):
+            out.append(getattr(model, spec.method.removesuffix("_cb"))())
+        elif spec.method == "mtbf_cb":
+            out.append(model.mtbf())
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)

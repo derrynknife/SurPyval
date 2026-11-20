@@ -37,6 +37,17 @@ system as it was just before the failure ("as bad as old").
     counting/cox_lewis
     counting/crow_amsaa
 
+Fault-Count Models
+------------------
+
+Models of one test campaign's times between failures in which the
+faults are counted in whole numbers.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/jelinski_moranda
+
 Non-Parametric Models
 ---------------------
 
