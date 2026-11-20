@@ -41,7 +41,9 @@ from ._likelihood import (
     PathFunction,
     _at,
     _path_params,
+    block_labels,
     check_lag,
+    check_random_effects,
     continued_modes,
     log_integrals,
     log_integrand,
@@ -196,17 +198,19 @@ def parameter_names(
     shifts: dict[str, list[str]] | None = None,
     hazard: list[str] | None = None,
     links: tuple = ("value",),
+    random_effects: Any = "full",
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
     ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
-    ``sd_b``, ..., then ``corr_a_b``, ...); ``sd_noise``; the Weibull
-    ``alpha`` and ``beta``; the hazard's covariate coefficients
-    (``<cov>``); and the effect of each of ``links``, what of the path
-    the hazard follows (``marker_effect`` of its value, ``slope_effect``,
-    ``cumulative_effect``). ``shifts`` and ``hazard`` (as
-    :func:`covariate_parts` gives them) say which covariates enter which
-    part; default every one in both."""
+    ``sd_b``, ..., then ``corr_a_b``, ... of each pair correlated in
+    ``random_effects``, checked: every pair where it is ``"full"``, the
+    default); ``sd_noise``; the Weibull ``alpha`` and ``beta``; the
+    hazard's covariate coefficients (``<cov>``); and the effect of each
+    of ``links``, what of the path the hazard follows (``marker_effect``
+    of its value, ``slope_effect``, ``cumulative_effect``). ``shifts``
+    and ``hazard`` (as :func:`covariate_parts` gives them) say which
+    covariates enter which part; default every one in both."""
     if shifts is None:
         shifts = {name: list(covariates) for name in path_names}
     if hazard is None:
@@ -215,10 +219,12 @@ def parameter_names(
     for name in path_names:
         out += [name] + [f"{name}_{cov}" for cov in shifts.get(name, [])]
     out += [f"sd_{name}" for name in varying]
+    label = block_labels(random_effects, varying)
     out += [
         f"corr_{a}_{b}"
         for i, a in enumerate(varying)
-        for b in varying[i + 1 :]
+        for j, b in enumerate(varying)
+        if j > i and label[i] == label[j]
     ]
     effects = [EFFECTS[link] for link in links]
     return out + ["sd_noise", "alpha", "beta", *hazard, *effects]
@@ -246,10 +252,12 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         D = anp.dot(L, anp.transpose(L))
         sd = anp.sqrt(anp.stack([D[i, i] for i in range(q)]))
         parts.append(sd)
+        same = layout.correlated
         corr = [
             D[i, j] / (sd[i] * sd[j])
             for i in range(q)
             for j in range(i + 1, q)
+            if same[i, j]
         ]
         if corr:
             parts.append(anp.stack(corr))
@@ -304,7 +312,8 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         i += 1 + n
     sd = params[i : i + q]
     i += q
-    n_corr = q * (q - 1) // 2
+    same = layout.correlated
+    n_corr = len(layout.lower)
     corr = params[i : i + n_corr]
     i += n_corr
     if q:
@@ -313,16 +322,20 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         upper = {}
         for a in range(q):
             for b in range(a + 1, q):
-                upper[(a, b)] = corr[k]
-                k += 1
+                if same[a, b]:
+                    upper[(a, b)] = corr[k]
+                    k += 1
         for a in range(q):
             row = []
             for b in range(q):
                 if a == b:
                     row.append(sd[a] ** 2)
-                else:
+                elif same[a, b]:
                     rho = upper[(min(a, b), max(a, b))]
                     row.append(rho * sd[a] * sd[b])
+                else:
+                    # uncorrelated: 0 between the blocks
+                    row.append(0.0 * sd[a] * sd[b])
             rows.append(anp.stack(row))
         L = _cholesky(rows, q)
     else:
@@ -365,6 +378,33 @@ def _cholesky(rows: list, q: int) -> Any:
             for i in range(q)
         ]
     )
+
+
+def structure_words(random_effects: Any) -> str:
+    """The covariance structure of the varying parameters in words, for
+    the printouts and the summary's heading: ``""`` for the full one,
+    ``"uncorrelated"``, or ``"correlated in blocks {a, b}, {c}"``."""
+    if random_effects == "full":
+        return ""
+    if random_effects == "diagonal":
+        return "uncorrelated"
+    blocks = ", ".join(
+        "{" + ", ".join(block) + "}" for block in random_effects
+    )
+    return f"correlated in blocks {blocks}"
+
+
+def _structure_words(random_effects: Any) -> str:
+    """:func:`structure_words` in brackets after a space, or nothing."""
+    words = structure_words(random_effects)
+    return f" ({words})" if words else ""
+
+
+def _saved_structure(random_effects: Any) -> Any:
+    """``random_effects`` in JSON: its name, or its blocks as lists."""
+    if isinstance(random_effects, str):
+        return random_effects
+    return [list(block) for block in random_effects]
 
 
 def _in_brackets(label: str) -> str:
@@ -439,14 +479,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     parameter's mean (by the path model's own names: ``a``, ``b``, ...)
     followed by its covariates' shifts (``a_<cov>``, ...); the spread of
     the varying ones between items (``sd_a``, ``sd_b``, ...,
-    ``corr_a_b``, ...); ``sd_noise``; the Weibull ``alpha`` and
-    ``beta``; the hazard's covariate coefficients (``<cov>``); and
-    ``marker_effect`` (:math:`\\zeta`, the change in the log hazard per
-    unit of the marker; ``slope_effect`` and ``cumulative_effect`` for
-    those links). An aliased covariate's entries are ``nan``
-    (``aliased``). ``neg_ll()`` is the negative log-likelihood of the
-    readings and the lifetimes together (so ``aic()`` and ``bic()``
-    compare joint models of the same data).
+    ``corr_a_b``, ... of each pair correlated: every pair unless the
+    fitter was given ``random_effects``); ``sd_noise``; the Weibull
+    ``alpha`` and ``beta``; the hazard's covariate coefficients
+    (``<cov>``); and ``marker_effect`` (:math:`\\zeta`, the change in the
+    log hazard per unit of the marker; ``slope_effect`` and
+    ``cumulative_effect`` for those links). An aliased covariate's
+    entries are ``nan`` (``aliased``). ``neg_ll()`` is the negative
+    log-likelihood of the readings and the lifetimes together (so
+    ``aic()`` and ``bic()`` compare joint models of the same data).
 
     ``sf(x, Z, markers=..., given=...)`` predicts for one item: its
     covariates ``Z``, its readings so far and the age it was last seen
@@ -537,6 +578,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: ``"pruned"`` (the same grid without the nodes of negligible
     #: weight: the default with four or five varying parameters).
     integration: str = "grid"
+    #: Which varying path parameters are correlated between items:
+    #: ``"full"`` (every pair), ``"diagonal"`` (none) or a tuple of blocks
+    #: of names, those in one block correlated with each other and with
+    #: none outside it (the fitter's ``random_effects``). A correlation
+    #: outside the blocks is 0, not estimated: it has no entry in
+    #: ``params``.
+    random_effects_structure: Any = "full"
     #: The numbers of items, failures and readings fitted (count
     #: weighted).
     n_items: float = 0.0
@@ -632,6 +680,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             np.array([cov in hazard for cov in kept], dtype=bool),
             tuple(self.link),
             self.survival,
+            block_labels(self.random_effects_structure, self.varying),
         )
 
     def _likelihood_model(self) -> Model:
@@ -714,9 +763,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         shifts, hazard = self._covariate_parts()
         n_path = len(names) + sum(len(shifts.get(n, [])) for n in names)
         p = len(hazard)
-        q = len(self.varying)
+        n_spread = self._layout.n_spread
         path = list(range(n_path))
-        spread = list(range(n_path, n_path + q + q * (q - 1) // 2))
+        spread = list(range(n_path, n_path + n_spread))
         i = spread[-1] + 1 if spread else n_path
         at = {
             "value": "marker = {:.6g}".format(
@@ -737,7 +786,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 ),
                 path,
             ),
-            ("spread between items" + one, spread),
+            (
+                "spread between items"
+                + _structure_words(self.random_effects_structure)
+                + one,
+                spread,
+            ),
             ("noise" + one, [i]),
             (
                 "survival: {} {}, alpha at {}{}".format(
@@ -765,7 +819,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``(part, name)``, the parts headed by what they are: the path
         (its model and formula: its parameters' means and their
         covariates' shifts), the spread between items (``sd_<name>``,
-        ``corr_<name>_<name>``), the noise (``sd_noise``), the survival
+        ``corr_<name>_<name>``; the heading says which are correlated
+        where the fitter's ``random_effects`` was not ``"full"``), the
+        noise (``sd_noise``), the survival
         part (the Weibull ``alpha`` -- the heading says at which marker
         value -- and ``beta``, and the covariate coefficients) and the
         link (``marker_effect``). ``exp(coef)`` is the hazard ratio of
@@ -868,6 +924,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nMarker path         : {self.path_model.name}, "
             f"{path_formula(self.path_model)}; varying between items: "
             f"{', '.join(self.varying)}"
+            f"{_structure_words(self.random_effects_structure)}"
             f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
@@ -1457,16 +1514,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def to_dict(self) -> dict:
         """
         The model as a plain, JSON-serialisable ``dict``: its path model
-        (by its built-in name) and which of its parameters vary, its
-        parameters and their names, the covariates' names and the aliased
-        ones, the marker reference, the centres its predictions are
-        computed at, the covariance, the fitted negative log-likelihood
-        and the counts of the data (not the data). :meth:`from_dict`
-        rebuilds it, and it predicts and bounds as the original. A built-in
-        path on links (``LinkedPathModel``) is saved as its name and its
-        links. A path model of one's own cannot be rebuilt from a name,
-        and is refused (``NotImplementedError``); the model pickles all
-        the same.
+        (by its built-in name) and which of its parameters vary (and
+        which of those are correlated, ``"random_effects"``, where not
+        every pair is), its parameters and their names, the covariates'
+        names and the aliased ones, the marker reference, the centres its
+        predictions are computed at, the covariance, the fitted negative
+        log-likelihood and the counts of the data (not the data).
+        :meth:`from_dict` rebuilds it, and it predicts and bounds as the
+        original. A built-in path on links (``LinkedPathModel``) is saved
+        as its name and its links. A path model of one's own cannot be
+        rebuilt from a name, and is refused (``NotImplementedError``); the
+        model pickles all the same.
 
         Examples
         --------
@@ -1548,6 +1606,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 else {"marker_unit": self.marker_unit}
             ),
             "integration": self.integration,
+            **(
+                {}
+                if self.random_effects_structure == "full"
+                else {
+                    "random_effects": _saved_structure(
+                        self.random_effects_structure
+                    )
+                }
+            ),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
             **({} if self.how == "MLE" else {"how": self.how}),
@@ -1660,6 +1727,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 f"dict names {integration!r}."
             )
         out.integration = integration
+        # saved before the structure had a choice (or full): every pair
+        # correlated
+        out.random_effects_structure = check_random_effects(
+            model_dict.get("random_effects") or "full", out.varying
+        )
         # saved before the two-stage fit: the joint likelihood's maximum
         how = model_dict.get("how") or "MLE"
         if how not in HOWS:
@@ -1678,4 +1750,21 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError(
                 "The dict's 'parameter_names' and 'params' differ in length."
             )
+        if out.random_effects_structure != "full":
+            shifts, hazard = out._covariate_parts()
+            expected = parameter_names(
+                list(out.path_model.parameter_names),
+                out.varying,
+                out.feature_names,
+                shifts,
+                hazard,
+                out.link,
+                out.random_effects_structure,
+            )
+            if expected != out.parameter_names:
+                saved = _saved_structure(out.random_effects_structure)
+                raise ValueError(
+                    "The dict's 'parameter_names' are not those of its "
+                    f"'random_effects' ({saved!r}): expected {expected!r}."
+                )
         return out

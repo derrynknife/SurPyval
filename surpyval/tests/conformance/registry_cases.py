@@ -2018,8 +2018,9 @@ def _joint():
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
     the area under it, or its value and slope together, or its value 90
-    days earlier (a lag); or the marker's value speeds up the item's
-    ageing (``WeibullJointAFT``)."""
+    days earlier (a lag), or its value with the line's start and rate
+    uncorrelated between items (``random_effects="diagonal"``); or the
+    marker's value speeds up the item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2031,6 +2032,9 @@ def _joint():
             sp.Weibull, link=["value", "slope"]
         ),
         "WeibullJointPH[lag]": sp.JointPH(sp.Weibull, lag=90.0),
+        "WeibullJointPH[diagonal]": sp.JointPH(
+            sp.Weibull, random_effects="diagonal"
+        ),
     }
     out = []
     for name, fitter in fitters.items():

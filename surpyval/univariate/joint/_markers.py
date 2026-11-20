@@ -88,7 +88,8 @@ def marker_start(
     w: npt.NDArray,
 ) -> dict:
     """The marker part of the start: ``mu``, ``Delta``, ``L`` (the
-    Cholesky factor of ``D``) and ``sigma``."""
+    Cholesky factor of ``D``, 0 between the layout's blocks) and
+    ``sigma``."""
     layout = model.layout
     path_model = model.path.model
     items, fits, jacs, sigma2 = per_item_fits(path_model, ages, values)
@@ -123,6 +124,9 @@ def marker_start(
     size = np.sqrt(np.maximum(np.diag(spread), 1e-300))
     D = psd_floor(np.atleast_2d(D) / np.outer(size, size), 1e-2, 1e-2)
     D = D * np.outer(size, size)
+    # uncorrelated between the blocks of the random effects (a principal
+    # block of a positive definite matrix is positive definite)
+    D = np.where(layout.correlated, D, 0.0)
     return {
         "mu": mu,
         "Delta": Delta,

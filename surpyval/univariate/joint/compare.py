@@ -168,7 +168,12 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
             )
     fitters = [
         JointPH(
-            fitter.dist, fitter.path_model, fitter.varying, link, fitter.lag
+            fitter.dist,
+            fitter.path_model,
+            fitter.varying,
+            link,
+            fitter.lag,
+            fitter.random_effects,
         )
         for link in chosen
     ]

@@ -35,8 +35,10 @@ from ._likelihood import (
     Layout,
     Model,
     PathFunction,
+    block_labels,
     check_integration,
     check_lag,
+    check_random_effects,
     neg_ll,
     place,
 )
@@ -49,6 +51,7 @@ from .joint_model import (
     parameter_names,
     path_formula,
     reported_params,
+    structure_words,
 )
 
 #: The most rounds of placing the nodes and searching from them.
@@ -211,6 +214,7 @@ class JointPHFitter(FitterRepr):
         varying: Any = None,
         link: Any = "value",
         lag: float = 0.0,
+        random_effects: Any = "full",
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -303,6 +307,9 @@ class JointPHFitter(FitterRepr):
         self.path_model = path_model
         # in the path's order
         self.varying = tuple(n for n in names if n in varying)
+        self.random_effects = check_random_effects(
+            random_effects, self.varying
+        )
         plain = "".join(ch for ch in path_model.name if ch.isalnum())
         self.name = (
             f"{distribution.name}Joint{self.survival}"
@@ -320,6 +327,10 @@ class JointPHFitter(FitterRepr):
         ]
         if len(self.varying) < len(names):
             out.append("varying: " + ", ".join(self.varying))
+        if self.random_effects != "full":
+            out.append(
+                "random effects: " + structure_words(self.random_effects)
+            )
         if self.link != ("value",):
             out.append("link: " + ", ".join(self.link))
         if self.lag > 0:
@@ -818,6 +829,7 @@ def JointPH(
     varying: Any = None,
     link: Any = "value",
     lag: float = 0.0,
+    random_effects: Any = "full",
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -859,6 +871,20 @@ def JointPH(
         is fixed, not estimated: the likelihood is not smooth in it. To
         choose one, fit each lag you have in mind and compare them by
         ``aic()`` (the same data, the same number of parameters).
+    random_effects : str or sequence, optional
+        Which of the varying path parameters are correlated between
+        items. ``"full"`` (the default): every pair, a correlation each
+        (``corr_a_b``, ...; three for three varying parameters, ten for
+        five); ``"diagonal"``: none, each varying independently of the
+        others; or blocks of names, such as ``[("a", "b"), ("c",)]``:
+        those in a block are correlated with each other and with none
+        outside it, every varying parameter in exactly one block. A
+        correlation left out is 0, not estimated, and has no entry in
+        ``params``, ``summary()`` or the saved model, so ``aic()`` counts
+        the parameters estimated. With many varying parameters and a
+        fleet too small to tell their correlations apart, fewer can be
+        what makes the fit identifiable; nested structures compare by
+        ``aic()`` or the likelihood ratio of the same data.
 
     Returns
     -------
@@ -880,12 +906,18 @@ def JointPH(
     WeibullJointPH: joint model fitter (..., link: value, slope)
     >>> JointPH(Weibull, lag=200.0)  # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., lag: 200)
+    >>> JointPH(Weibull, QuadraticPath, random_effects=[("a", "b"), "c"])
+    ... # doctest: +ELLIPSIS, +NORMALIZE_WHITESPACE
+    WeibullQuadraticJointPH: joint model fitter (..., random effects:
+    correlated in blocks {a, b}, {c})
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying, link, lag)
+    return JointPHFitter(
+        distribution, path_model, varying, link, lag, random_effects
+    )
 
 
 # -- the data ----------------------------------------------------------------
@@ -1130,7 +1162,13 @@ def _fit(
     shifts, hazard = parts
     p_all = len(names)
     every = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
+        path_names,
+        list(fitter.varying),
+        names,
+        shifts,
+        hazard,
+        fitter.link,
+        fitter.random_effects,
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -1177,6 +1215,7 @@ def _fit(
         np.array([cov in hazard for cov in kept_names], dtype=bool),
         fitter.link,
         fitter.survival,
+        block_labels(fitter.random_effects, fitter.varying),
     )
     model = Model(
         layout,
@@ -1219,7 +1258,13 @@ def _fit(
         warn_no_covariance()
     # every parameter, nan for an aliased covariate's
     full_names = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
+        path_names,
+        list(fitter.varying),
+        names,
+        shifts,
+        hazard,
+        fitter.link,
+        fitter.random_effects,
     )
     kept_names = parameter_names(
         path_names,
@@ -1228,6 +1273,7 @@ def _fit(
         {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
         [c for c in hazard if c in kept_names],
         fitter.link,
+        fitter.random_effects,
     )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -1236,6 +1282,7 @@ def _fit(
     out.dist = fitter.dist
     out.path_model = path_model
     out.varying = list(fitter.varying)
+    out.random_effects_structure = fitter.random_effects
     out.params = params
     out.feature_names = list(names)
     out.aliased = aliased
@@ -1543,7 +1590,12 @@ def search_space(model: JointModel, **data: Any) -> tuple:
 
     factory = JointAFT if model.survival == "AFT" else JointPH
     fitter = factory(
-        model.dist, model.path_model, model.varying, model.link, model.lag
+        model.dist,
+        model.path_model,
+        model.varying,
+        model.link,
+        model.lag,
+        model.random_effects_structure,
     )
     records, counts, names = _records(
         data["x"],

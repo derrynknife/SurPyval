@@ -164,6 +164,106 @@ def check_integration(integration: Any, q: int) -> str:
     return integration
 
 
+#: The covariance structures of the varying parameters named in words:
+#: every pair correlated (one block), or none (each in a block of its
+#: own). Any other is given as its blocks.
+RANDOM_EFFECTS = ("full", "diagonal")
+
+
+def check_random_effects(random_effects: Any, varying: Any) -> Any:
+    """``random_effects`` for the varying parameters ``varying`` (in the
+    path's order), checked and in one form: ``"full"`` (one block: every
+    pair correlated), ``"diagonal"`` (each its own block: none
+    correlated), or a tuple of blocks, each a tuple of the names of the
+    parameters correlated with each other, in ``varying``'s order and the
+    blocks by their first. Blocks that make one of the two are named by
+    it (so one varying parameter is ``"full"``). Every varying parameter
+    is in exactly one block; anything else is refused, saying which."""
+    varying = list(varying)
+    usage = (
+        "'full' (every pair of varying path parameters correlated), "
+        "'diagonal' (none), or a list of blocks of the names correlated "
+        "with each other, such as [('a', 'b'), ('c',)], each varying "
+        f"parameter in exactly one; the varying parameters are {varying!r}"
+    )
+    if isinstance(random_effects, str):
+        if random_effects not in RANDOM_EFFECTS:
+            raise ValueError(
+                f"'random_effects' is {usage}; got {random_effects!r}."
+            )
+        if random_effects == "full":
+            blocks = [list(varying)]
+        else:
+            blocks = [[v] for v in varying]
+    else:
+        try:
+            if isinstance(random_effects, dict):
+                raise TypeError
+            given = list(random_effects)
+        except TypeError:
+            raise ValueError(
+                f"'random_effects' is {usage}; got {random_effects!r}."
+            ) from None
+        blocks = []
+        for block in given:
+            if isinstance(block, str):
+                block = [block]
+            try:
+                names = list(block)
+            except TypeError:
+                names = [block]
+            if not names:
+                raise ValueError(
+                    "'random_effects' has an empty block: each block names "
+                    f"one or more varying parameters, of {varying!r}."
+                )
+            blocks.append(names)
+        named = [name for block in blocks for name in block]
+        unknown = [name for name in named if name not in varying]
+        if unknown:
+            raise ValueError(
+                f"'random_effects' names {unknown!r}, which are not varying "
+                f"path parameters; those are {varying!r} (a parameter "
+                "common to all items has no spread to correlate)."
+            )
+        twice = [v for v in varying if named.count(v) > 1]
+        if twice:
+            raise ValueError(
+                f"'random_effects' names {twice!r} more than once: put each "
+                "varying parameter in exactly one block."
+            )
+        missing = [v for v in varying if v not in named]
+        if missing:
+            raise ValueError(
+                f"'random_effects' leaves out {missing!r}: put each varying "
+                "parameter in exactly one block, one correlated with none "
+                f"in a block of its own, such as ({missing[0]!r},)."
+            )
+    ordered = sorted(
+        (tuple(sorted(block, key=varying.index)) for block in blocks),
+        key=lambda block: varying.index(block[0]),
+    )
+    if len(ordered) == 1:
+        return "full"
+    if all(len(block) == 1 for block in ordered):
+        return "diagonal"
+    return tuple(ordered)
+
+
+def block_labels(random_effects: Any, varying: Any) -> tuple:
+    """The block of each of ``varying`` (``0, 1, ...``) in the checked
+    ``random_effects`` (:func:`check_random_effects`)."""
+    q = len(varying)
+    if random_effects == "full":
+        return (0,) * q
+    if random_effects == "diagonal":
+        return tuple(range(q))
+    label = {
+        name: k for k, block in enumerate(random_effects) for name in block
+    }
+    return tuple(label[name] for name in varying)
+
+
 def _gl_grid() -> tuple[npt.NDArray, npt.NDArray]:
     x, w = np.polynomial.legendre.leggauss(GL_POINTS)
     nodes = (x + 1.0) / 2.0
@@ -478,7 +578,14 @@ class Layout:
 
     ``shifts`` ``(P, p)`` and ``hazard`` ``(p,)`` say which covariates
     enter which part (default every one in both): an entry that is off is
-    held at 0, not estimated."""
+    held at 0, not estimated.
+
+    ``blocks`` ``(q,)`` labels each varying parameter with its block of
+    correlated ones (default one block: every pair correlated). An entry
+    of the Cholesky factor between two blocks is held at 0, not
+    estimated, so ``D`` is block diagonal: the factor of a matrix that is
+    block diagonal, in any order of its rows, is 0 between the blocks
+    too, and a factor that is gives such a matrix."""
 
     P: int
     p: int
@@ -487,6 +594,7 @@ class Layout:
     hazard: Any = None
     links: tuple = ("value",)
     survival: str = "PH"
+    blocks: Any = None
 
     def __post_init__(self) -> None:
         self.links = tuple(self.links)
@@ -500,10 +608,35 @@ class Layout:
             if self.hazard is None
             else np.asarray(self.hazard, dtype=bool).reshape(self.p)
         )
+        self.blocks = (
+            (0,) * len(self.varying)
+            if self.blocks is None
+            else tuple(int(b) for b in self.blocks)
+        )
 
     @property
     def q(self) -> int:
         return len(self.varying)
+
+    @property
+    def correlated(self) -> npt.NDArray:
+        """``(q, q)``: whether two varying parameters are in one block
+        (their correlation estimated, else held at 0)."""
+        labels = np.asarray(self.blocks, dtype=int)
+        return labels[:, None] == labels[None, :]
+
+    @property
+    def lower(self) -> list[tuple[int, int]]:
+        """``(row, column)`` of each estimated entry below the diagonal
+        of the Cholesky factor (and of each correlation), by rows."""
+        same = self.correlated
+        return [(r, c) for r in range(self.q) for c in range(r) if same[r, c]]
+
+    @property
+    def n_spread(self) -> int:
+        """The number of estimated spread parameters: ``q`` sds and the
+        correlations within the blocks."""
+        return self.q + len(self.lower)
 
     @property
     def common(self) -> tuple:
@@ -523,11 +656,10 @@ class Layout:
 
     @property
     def size(self) -> int:
-        q = self.q
         return (
             self.P
             + self.n_shifts
-            + q * (q + 1) // 2
+            + self.n_spread
             + 3
             + self.n_hazard
             + self.n_links
@@ -545,8 +677,7 @@ class Layout:
     def hazard_positions(self) -> list[tuple[int, int]]:
         """``(position in u, covariate column)`` of each estimated
         hazard coefficient."""
-        q = self.q
-        start = self.P + self.n_shifts + q * (q + 1) // 2 + 3
+        start = self.P + self.n_shifts + self.n_spread + 3
         cols = np.flatnonzero(self.hazard)
         return [(start + k, int(c)) for k, c in enumerate(cols)]
 
@@ -580,16 +711,20 @@ class Layout:
         i += n_shifts
         diag = anp.exp(u[i : i + q])
         i += q
-        lower = u[i : i + q * (q - 1) // 2]
-        i += q * (q - 1) // 2
+        n_lower = len(self.lower)
+        lower = u[i : i + n_lower]
+        i += n_lower
+        same = self.correlated
         rows = []
         k = 0
         for r in range(q):
             row = []
             for col in range(q):
-                if col < r:
+                if col < r and same[r, col]:
                     row.append(lower[k])
                     k += 1
+                elif col < r:
+                    row.append(0.0 * diag[r])
                 elif col == r:
                     row.append(diag[r])
                 else:
@@ -610,7 +745,7 @@ class Layout:
     def pack(self, theta: dict) -> npt.NDArray:
         L = np.asarray(theta["L"], dtype=float)
         q = self.q
-        lower = [L[r, c] for r in range(q) for c in range(r)]
+        lower = [L[r, c] for r, c in self.lower]
         Delta = np.asarray(theta["Delta"], dtype=float).reshape(self.P, self.p)
         gamma = np.atleast_1d(np.asarray(theta["gamma"], dtype=float))
         return np.concatenate(
@@ -764,7 +899,10 @@ def predictor(
 
 
 def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
-    """``log phi(theta_V; mu_V + Delta_V z, D)`` at the nodes."""
+    """``log phi(theta_V; mu_V + Delta_V z, D)`` at the nodes. ``D`` is
+    block diagonal where the layout has blocks (``Layout.blocks``): the
+    Cholesky factor's entries between them, held at 0, are left out of
+    the substitution."""
     q = layout.q
     if q == 0:
         return anp.zeros(nodes.shape[:2])
@@ -774,12 +912,14 @@ def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
     )
     diff = nodes - mean[:, None, :]
     L = theta["L"]
+    same = layout.correlated
     # forward substitution: L x = diff
     xs: list = []
     for r in range(q):
         acc = diff[..., r]
         for c in range(r):
-            acc = acc - L[r, c] * xs[c]
+            if same[r, c]:
+                acc = acc - L[r, c] * xs[c]
         xs.append(acc / L[r, r])
     quad = sum(x_**2 for x_ in xs)
     log_det = anp.sum(anp.log(anp.stack([L[r, r] for r in range(q)])))
