@@ -537,6 +537,12 @@ v0.29 (unreleased)
   two-stage fit" in :doc:`Joint Models`.
 - A two-stage joint model saves as schema 5, which SurPyval 0.28 and older
   refuse rather than present it as the joint likelihood's fit.
+- A joint model with a lag, or with four or five varying path parameters,
+  saves as schema 5, which SurPyval 0.28 and older refuse with a request to
+  upgrade. Before, 0.28 read a lagged model and predicted as if there were
+  no lag, and failed with a ``KeyError`` at the first prediction of a model
+  with more than three varying parameters. A joint model with no lag and
+  at most three varying parameters keeps its schema.
 
 **Changed.**
 

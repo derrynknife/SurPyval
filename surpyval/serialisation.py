@@ -245,7 +245,12 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # and predict from the parameters as if the marker multiplied the
 # hazard. And by a two-stage joint model (``"how": "two-stage"``): a
 # v0.28 reader would ignore the entry and present the approximate
-# estimate as the joint likelihood's.
+# estimate as the joint likelihood's. And by a joint model with a lag
+# (``"lag"`` above 0): a v0.28 reader would ignore the entry and predict
+# as if the hazard followed the marker with no delay. And by a joint
+# model with more than three varying path parameters: a v0.28 reader has
+# no prediction grid for four or five, and would fail with a KeyError at
+# its first prediction rather than refuse at the load.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 5
 
@@ -279,9 +284,13 @@ _SCHEMA_STATES = 4
 _SCHEMA_MEASUREMENTS = 4
 
 # The schema of a joint model with the accelerated survival part
-# (``"survival": "AFT"``), or fitted in two stages (``"how":
-# "two-stage"``): v0.29's schema 5.
+# (``"survival": "AFT"``), fitted in two stages (``"how":
+# "two-stage"``), with a lag (``"lag"`` above 0) or with more than three
+# varying path parameters: v0.29's schema 5.
 _SCHEMA_ACCELERATED_JOINT = 5
+
+# The most path parameters a v0.28 joint model may vary between items.
+_MAX_VARYING_V028 = 3
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -809,10 +818,17 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 
 
 def _is_schema_5_joint(d: dict) -> bool:
-    """Whether ``d`` is a joint model with the accelerated survival
-    part, or one fitted in two stages: either needs schema 5."""
-    return d.get("model") == "JointModel" and (
-        d.get("survival") == "AFT" or d.get("how") == "two-stage"
+    """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
+    with the accelerated survival part, fitted in two stages, with a lag
+    or with more than three varying path parameters. Each needs schema
+    5."""
+    if d.get("model") != "JointModel":
+        return False
+    return (
+        d.get("survival") == "AFT"
+        or d.get("how") == "two-stage"
+        or (d.get("lag") or 0) > 0
+        or len(d.get("varying") or ()) > _MAX_VARYING_V028
     )
 
 
