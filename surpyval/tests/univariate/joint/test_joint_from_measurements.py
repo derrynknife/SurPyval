@@ -239,3 +239,45 @@ def test_other_joint_fitters_take_measurements(d):
         d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=IDS, m=_readings(d)
     )
     np.testing.assert_array_equal(old.params, new.params)
+
+
+def test_the_readings_unit_is_the_models_marker_unit(d, ref):
+    in_mm_s = Measurements(
+        {IDS[k]: dict(d["markers"][k]) for k in range(40)}, units="mm/s"
+    )
+    rows = dict(c=d["c"], n=d["n"], Z=d["Z"])
+    by_arrays = WeibullJointPH.fit(d["x"], **rows, i=IDS, m=in_mm_s)
+    held = SurpyvalData(d["x"], **rows, i=IDS, m=in_mm_s)
+    by_data = WeibullJointPH.fit(held, unit="days")
+    for model in (by_arrays, by_data):
+        assert model.marker_unit == "mm/s"
+        # a label only: the fit is the one without it
+        np.testing.assert_array_equal(model.params, ref.params)
+    assert by_data.effect_units == {"marker_effect": "mm/s"}
+    # the same unit spelt another way is taken; a different one refused
+    same = WeibullJointPH.fit(
+        d["x"], **rows, i=IDS, m=in_mm_s, marker_unit="millimeter / second"
+    )
+    assert same.marker_unit == "millimeter / second"
+    with pytest.raises(ValueError, match="readings are in 'mm/s'.*ppm"):
+        WeibullJointPH.fit(held, marker_unit="ppm")
+    # readings with no unit of their own take the one given, by any entry
+    listed = WeibullJointPH.fit(
+        d["x"], **rows, markers=d["markers"], marker_unit="ppm"
+    )
+    assert listed.marker_unit == "ppm"
+    assert ref.marker_unit is None
+    assert "marker_unit" not in ref.to_dict()
+    life = pd.DataFrame({"unit": IDS, "age": d["x"], "running": d["c"]})
+    framed = JointPH(Weibull, link="cumulative").fit_from_df(
+        life, x_col="age", c_col="running", i_col="unit", m=in_mm_s
+    )
+    assert framed.effect_units == {"cumulative_effect": "(mm/s)·(time unit)"}
+    # saved and restored
+    restored = JointPH(Weibull).fit(held, unit="days").to_dict()
+    assert restored["marker_unit"] == "mm/s"
+    from surpyval import from_dict
+
+    assert from_dict(restored).effect_units == {"marker_effect": "mm/s"}
+    with pytest.raises(TypeError, match="unit must be text"):
+        WeibullJointPH.fit(d["x"], **rows, markers=d["markers"], marker_unit=3)
