@@ -76,6 +76,49 @@ A few things worth knowing:
   processes; given a ``random_state`` the forest is the same whatever
   ``n_jobs`` is.
 
+Competing-risks trees
+---------------------
+
+With several causes of failure, a tree grown on "any failure" splits on
+whatever changes the overall risk, and its leaves cannot say which cause a
+unit is at risk of. Give ``SurvivalTree.fit`` the cause of each failure as
+``e`` (a missing value for a right-censored row; ``fit_from_df`` takes it
+as ``e_col``) and the tree becomes a competing-risks tree:
+
+- **Splits that tell the causes apart** (``split``). The default,
+  ``"cause-specific"``, scores a cut by the sum over the causes of the
+  squared cause-specific log-rank statistics (each cause's failures as the
+  events, everything else censored): the chi-squared statistic of "this cut
+  changes no cause's hazard", so a cut that raises one cause and lowers
+  another counts, rather than cancelling. ``"gray"`` scores a cut by Gray's
+  two-sample statistic for one nominated cause's cumulative incidence
+  (``event=``); it targets the incidence itself, but costs a full Gray test
+  per candidate cut, so it is much slower on a large node, and it refuses
+  delayed entry, as ``gray_test`` does. With one cause the cause-specific
+  rule is the plain log-rank split.
+- **A competing-risks model in each leaf.** For ``kind="non-parametric"``
+  the Aalen-Johansen estimate (``CompetingRisks``, with the Kaplan-Meier
+  all-cause survival, so ``sf`` is one less the sum of the incidences); for
+  ``"weibull"`` or ``"exponential"`` one distribution per cause, each
+  fitted to the cause-specific view of the leaf as a plain leaf of that
+  kind is, assembled as ``ParametricCompetingRisks``. A cause with no
+  failure in a leaf has zero incidence there, and ``print(tree)`` says so.
+  ``min_leaf_failures`` counts every failure; for a parametric kind each
+  child must also keep that many failures of each cause the node has at
+  least twice that many of.
+- **Predictions per cause.** ``cif(x, Z, event)`` is the cumulative
+  incidence of a cause where the covariates put a unit, ``total_cif(x, Z)``
+  the sum over the causes, and ``sf``, ``ff``, ``Hf``, ``hf`` and ``df``
+  the all-cause functions; the shapes are those of ``sf``.
+
+A tree with causes takes exact and right-censored times, with delayed
+entry (``tl``) for the cause-specific rule. Left- and interval-censored
+rows and right truncation are refused for now (fit ``CompetingRisks`` or
+``ParametricCompetingRisks`` to such data), as are ``selection="ctree"``
+and a non-zero ``min_split_gain``, whose tests and likelihoods are of a
+single event. Without ``e`` a tree is exactly as before. The forest does
+not take causes yet.
+
 Random Survival Forest
 ----------------------
 
@@ -104,3 +147,12 @@ leaf's fitted distribution is reached.
 
 .. autoclass:: surpyval.ml.forest.node.TerminalNode
    :members:
+
+.. autoclass:: surpyval.ml.forest.node.CompetingRisksLeaf
+   :members:
+
+Cause-aware splits
+------------------
+
+.. automodule:: surpyval.ml.forest.cause_specific_split
+   :members: cause_specific_split, gray_split
