@@ -63,7 +63,21 @@ from surpyval.tests.conformance.registry import (
 SIDES = ("two-sided", "lower", "upper")
 
 # Public methods taking a level or bound= that are not swept, and why.
+_GROWTH_ANSWERS = (
+    "by inversion or transformation of a swept delta-method bound (iif_cb, "
+    "cif_cb), with arguments that are not the case's times; checked "
+    "against closed forms, the bound it inverts and by coverage in "
+    "recurrent/test_growth_answers.py and calibration/"
+    "test_coverage_growth_answers.py"
+)
+
 NOT_SWEPT = {
+    "next_failure_sf_cb": "the reliability over a mission from each unit's "
+    "age, " + _GROWTH_ANSWERS,
+    "time_to_intensity_cb": "the testing time to a target intensity, "
+    + _GROWTH_ANSWERS,
+    "time_to_reliability_cb": "the testing time to a target reliability, "
+    + _GROWTH_ANSWERS,
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
@@ -421,6 +435,10 @@ def test_every_uncertainty_method_is_swept(case):
         if name == "rmst_cb" and not getattr(case, "continuous", True):
             # refused on a discrete distribution, with the sum to use
             continue
+        if name == "remaining_faults_cb" and not _finite_faults(model):
+            # refused for a process whose failures go on without limit,
+            # saying so and what to ask instead
+            continue
         if name == "rmtl" and getattr(model, "estimator", "") == "NPMLE":
             # refused for interval-censored rows (the time lost depends on
             # where in each window the mass lies), saying what to use
@@ -439,6 +457,14 @@ def test_every_uncertainty_method_is_swept(case):
         f"{case.name}: uncertainty methods not declared in its bounds "
         f"(registry.py, _bounds): {missing}"
     )
+
+
+def _finite_faults(model):
+    try:
+        model.remaining_faults(1.0)
+    except ValueError:
+        return False
+    return True
 
 
 def _percentile(spec):

@@ -3466,6 +3466,14 @@ _LENGTH_OF_STAY = Bound(
 )
 
 
+# The fixtures' processes that level off: the three finite-fault growth
+# models, and the Cox-Lewis fixture's falling intensity.
+_REMAINING_FAULTS = dict.fromkeys(
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    (Bound("remaining_faults_cb", point="remaining_faults"),),
+)
+
+
 # Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
 # Wald and bootstrap bounds are refused with the reason.
 _LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
@@ -3911,6 +3919,8 @@ def _bounds(case):
             Bound("iif_cb", point="iif"),
             Bound("mtbf_cb", point="mtbf"),
             _PARAM_CB,
+            # (the faults left, for the processes with a finite number)
+            *_REMAINING_FAULTS.get(case.name, ()),
         )
     if cls == "ProportionalIntensityModel":
         return (
