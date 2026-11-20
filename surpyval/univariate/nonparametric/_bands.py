@@ -27,6 +27,8 @@ from surpyval.utils.validation import (
     check_option,
 )
 
+from ._scales import survival_bound
+
 # The equal precision band's default range of a = N sigma^2 / (1 + N
 # sigma^2) (#390): its standardized boundary is unbounded as a nears 0 or
 # 1, and there the estimate rests on a few failures or a few at risk. Over
@@ -497,20 +499,16 @@ class BandsMixin:
                 # pull the cumulative hazard down by a factor e^-c at the
                 # first event, as on the log(-log) scale, where a step of
                 # a few failures is far from normal (#390).
-                angle = np.arcsin(np.sqrt(self.R))
-                se = 0.5 * half_width * np.sqrt(self.R / (1 - self.R))
-                lower = np.sin(np.maximum(angle - se, 0.0)) ** 2
-                upper = np.sin(np.minimum(angle + se, np.pi / 2)) ** 2
+                lower = survival_bound("arcsine", self.R, -half_width)
+                upper = survival_bound("arcsine", self.R, half_width)
             elif bound_type == "exp":
-                # Band applied on the log(-log) scale, mirroring the
-                # pointwise exponential Greenwood bounds.
-                theta = np.log(-np.log(self.R))
-                se = half_width / np.abs(np.log(self.R))
-                lower = np.exp(-np.exp(theta + se))
-                upper = np.exp(-np.exp(theta - se))
+                # Band applied on the log(-log) scale, as the pointwise
+                # exponential Greenwood bounds are.
+                lower = survival_bound("exp", self.R, -half_width)
+                upper = survival_bound("exp", self.R, half_width)
             else:
-                lower = self.R - half_width * self.R
-                upper = self.R + half_width * self.R
+                lower = survival_bound("normal", self.R, -half_width)
+                upper = survival_bound("normal", self.R, half_width)
 
             lower = np.where(valid, lower, np.nan)
             upper = np.where(valid, upper, np.nan)

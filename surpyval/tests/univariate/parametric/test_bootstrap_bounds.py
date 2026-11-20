@@ -289,6 +289,22 @@ def test_286_counts_weight_the_jackknife_as_repeated_rows():
     )
 
 
+def test_286_more_refits_for_a_seed_extend_the_fewer():
+    # The resamples come one after another from the seed's stream, so the
+    # first k refits at a larger n_boot are the k at n_boot=k. The study
+    # of n_boot (scripts/studies/lfp_zi_bootstrap/draws.py) relies on it
+    # to compare 200 and 500 refits on the same draws.
+    from surpyval.univariate.parametric import _bootstrap as boot
+
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        few = boot.refits(m, 10, 7)
+        many = boot.refits(m, 25, 7)
+    assert few.failed == many.failed == 0
+    np.testing.assert_array_equal(many.values[:10], few.values)
+
+
 def test_286_plain_and_offset_bounds_stay_percentile(offset_model):
     from surpyval.univariate.parametric import _bootstrap as boot
 

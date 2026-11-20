@@ -38,14 +38,11 @@ from surpyval.univariate.regression import (
     CoxPH,
     Power,
     _fit_skeleton,
+    _regression_fitter,
 )
 from surpyval.univariate.regression._fit_skeleton import finite_start
-from surpyval.univariate.regression.accelerated_failure_time import aft_fitter
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
     zph_table,
-)
-from surpyval.univariate.regression.proportional_odds import (
-    proportional_odds_fitter,
 )
 
 
@@ -197,11 +194,7 @@ def test_parametric_ph_aic_bic():
 # ---------------------------------------------------------------------------
 
 
-FITTERS = [
-    (sp.WeibullAFT, aft_fitter),
-    (sp.LogNormalAFT, aft_fitter),
-    (sp.WeibullPO, proportional_odds_fitter),
-]
+FITTERS = [sp.WeibullAFT, sp.LogNormalAFT, sp.WeibullPO]
 
 
 def _data(n=400, seed=499):
@@ -212,7 +205,7 @@ def _data(n=400, seed=499):
     return x, Z, c
 
 
-def _capture_objective(fitter, module):
+def _capture_objective(fitter):
     """The objective and start the fitter hands to ``optimise_nm_tnc``."""
     captured = []
     real = _fit_skeleton.optimise_nm_tnc
@@ -221,7 +214,8 @@ def _capture_objective(fitter, module):
         captured.append((fun, np.array(init_t, dtype=float)))
         return real(fun, init_t, quiet=quiet, **kwargs)
 
-    with mock.patch.object(module, "optimise_nm_tnc", spy):
+    # The AFT and PO fits take their search from the shared base class.
+    with mock.patch.object(_regression_fitter, "optimise_nm_tnc", spy):
         fitter.fit(*_data())
     assert captured, "the fitter did not call optimise_nm_tnc"
     return captured[0]
@@ -235,17 +229,17 @@ def _legacy_ladder(fun, init_t):
     return res2 if res2.success else res
 
 
-@pytest.mark.parametrize("fitter,module", FITTERS)
-def test_reaches_at_least_the_old_ladders_optimum(fitter, module):
-    fun, init_t = _capture_objective(fitter, module)
+@pytest.mark.parametrize("fitter", FITTERS)
+def test_reaches_at_least_the_old_ladders_optimum(fitter):
+    fun, init_t = _capture_objective(fitter)
     new = _fit_skeleton.optimise_nm_tnc(fun, init_t, quiet=True)
     old = _legacy_ladder(fun, init_t)
     assert new.fun <= old.fun + 1e-6 * max(1.0, abs(old.fun))
 
 
-@pytest.mark.parametrize("fitter,module", FITTERS)
-def test_no_nelder_mead_when_the_gradient_ladder_converges(fitter, module):
-    fun, init_t = _capture_objective(fitter, module)
+@pytest.mark.parametrize("fitter", FITTERS)
+def test_no_nelder_mead_when_the_gradient_ladder_converges(fitter):
+    fun, init_t = _capture_objective(fitter)
     methods = []
     real_minimize = _fit_skeleton.minimize
 

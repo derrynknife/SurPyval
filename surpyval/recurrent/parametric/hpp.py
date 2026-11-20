@@ -9,12 +9,15 @@ from autograd import hessian, jacobian
 from autograd import numpy as anp
 from numpy.typing import ArrayLike
 from scipy.optimize import root
-from scipy.special import gammaln
 
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric.counting_process import (
     Boxable,
     CountingProcess,
+)
+from surpyval.recurrent.parametric.nhpp_fitter import (
+    log_one_minus_exp,
+    poisson_count_sums,
 )
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -204,24 +207,23 @@ class HPP(CountingProcess):
         # the origin 0), not from time 0 whatever ``tl`` says.
         x_left = s["x_left"] - s["x_left_prev"]
         n_left = s["n_left"]
-        n_log_x_left_sum = (n_left * np.log(x_left)).sum()
+        n_left_sum, n_log_x_left_sum, n_l_factorial_sum = poisson_count_sums(
+            n_left, x_left
+        )
         x_left_sum = x_left.sum()
-        n_left_sum = n_left.sum()
-        n_l_factorial_sum = gammaln(n_left + 1).sum()
 
         delta_xi = s["x_i_r"] - s["x_i_l"]
-        n_interval = s["n_i"]
         x_interval_sum = delta_xi.sum()
-        n_interval_sum = n_interval.sum()
-        n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
-        n_i_factorial_sum = gammaln(n_interval + 1).sum()
+        n_interval_sum, n_log_x_interval_sum, n_i_factorial_sum = (
+            poisson_count_sums(s["n_i"], delta_xi)
+        )
 
         def negll_func(log_rate: np.ndarray) -> float:
             rate = anp.exp(log_rate)
             ll = len_observed * log_rate + rate * observed_time
             ll += rate * right_censored_time
-            ll -= anp.sum(anp.log(-anp.expm1(-rate * selection_time)))
-            ll += anp.sum(anp.log(-anp.expm1(-rate * gap_time)))
+            ll -= anp.sum(log_one_minus_exp(rate * selection_time))
+            ll += anp.sum(log_one_minus_exp(rate * gap_time))
             ll += (
                 log_rate * n_left_sum
                 + n_log_x_left_sum

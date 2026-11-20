@@ -161,3 +161,26 @@ def test_665_log_gamma_ratio_gradient_at_whole_numbers(y):
     assert grad(ag.log_gamma_ratio, 0)(y, a) == pytest.approx(
         expected, rel=1e-12
     )
+
+
+def test_log_gamma_ratio_untraced_is_the_traced_value_to_the_bit():
+    # Where nothing is traced it is computed in plain numpy, stopping the
+    # shifts once every argument has reached 10: the same value, to the
+    # bit, as the traced computation (here, autograd's forward pass).
+    from autograd import make_vjp
+
+    rng = np.random.default_rng(665)
+    y = np.r_[
+        np.arange(1.0, 13.0), 0.25, 9.999, np.exp(rng.uniform(-5, 30, 40))
+    ]
+    for a in (0.5, 2.5, 4.13, 1e8):
+        _, traced = make_vjp(lambda v: ag.log_gamma_ratio(v, a))(y)
+        np.testing.assert_array_equal(ag.log_gamma_ratio(y, a), traced)
+        # every argument above 10, and a scalar
+        np.testing.assert_array_equal(
+            ag.log_gamma_ratio(y + 10.0, a),
+            make_vjp(lambda v: ag.log_gamma_ratio(v, a))(y + 10.0)[1],
+        )
+        assert ag.log_gamma_ratio(3.0, a) == (
+            make_vjp(lambda v: ag.log_gamma_ratio(v, a))(3.0)[1]
+        )

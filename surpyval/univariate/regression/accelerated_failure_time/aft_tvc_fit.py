@@ -55,7 +55,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..kinds import ACCELERATED_FAILURE_TIME
 from ..parametric_regression_model import ParametricRegressionModel
-from ..tvc_fit import fit_tvc_df
+from ..tvc_fit import fit_tvc_df, mark_tvc_fit, start_stop_rows
 
 
 def _validate_full_coverage(
@@ -297,12 +297,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model = self._fit_tvc_arrays(
             x, c_a, n_a, tl, Z_a, ident, AFTTVCFitter, fixed, center
         )
-        # Each row's subject, and the rows as given (the order of
-        # model.data), which diagnose() sums its residuals over and refits
-        # the other models to.
-        rows = {"i": ident, "xl": tl, "xr": x, "c": c_a, "Z": Z_a, "n": n_a}
-        model.tvc_subject_ids = ident
-        model._tvc_fit_rows = rows
+        # The rows as given, in the order of model.data.
+        mark_tvc_fit(model, start_stop_rows(ident, tl, x, c_a, Z_a, n_a))
         return model
 
     def fit_tvc_penalised(
@@ -392,9 +388,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             standardise,
             tol,
         )
-        rows = {"i": ident, "xl": tl, "xr": x, "c": c_a, "Z": Z_a, "n": n_a}
-        model.tvc_subject_ids = ident
-        model._tvc_fit_rows = rows
+        mark_tvc_fit(model, start_stop_rows(ident, tl, x, c_a, Z_a, n_a))
         return model
 
     def fit_tvc_timeline_penalised(

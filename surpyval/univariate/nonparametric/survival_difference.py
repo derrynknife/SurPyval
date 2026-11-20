@@ -8,11 +8,21 @@ import numpy as np
 
 from surpyval.utils.validation import check_alpha_ci, check_option
 
+from ._scales import transformed_survival
+
 if TYPE_CHECKING:
     from .nonparametric import NonParametric
 
 #: The ``transform`` values of :func:`sf_diff`.
 TRANSFORMS = ("log-log", "log", "linear", "arcsine-sqrt", "logit")
+#: Each transform's scale, by the name ``cb``'s ``bound_type`` gives it.
+_SCALE_OF = {
+    "log-log": "exp",
+    "log": "log",
+    "linear": "normal",
+    "arcsine-sqrt": "arcsine",
+    "logit": "logit",
+}
 
 
 def _at(model: NonParametric, name: str, x: float) -> tuple[float, float]:
@@ -52,20 +62,12 @@ def _contrast(
     """The transformed survival ``g(s)`` and the delta-method variance of
     ``g(S)`` from ``v``, the variance of ``log S``; ``None`` where ``g`` is
     not defined at ``s``."""
-    if transform == "linear":
-        return s, v * s**2
-    if s <= 0:
+    if transform != "linear" and s <= 0:
         return None
-    if transform == "log":
-        return np.log(s), v
-    if s >= 1:
+    if transform not in ("linear", "log") and s >= 1:
         return None
-    if transform == "log-log":
-        return np.log(-np.log(s)), v / np.log(s) ** 2
-    if transform == "arcsine-sqrt":
-        return np.arcsin(np.sqrt(s)), v * s / (4 * (1 - s))
-    # logit
-    return np.log(s / (1 - s)), v / (1 - s) ** 2
+    # The scales of the bounds (cb's names for them).
+    return transformed_survival(_SCALE_OF[transform], s, v)
 
 
 def sf_diff(

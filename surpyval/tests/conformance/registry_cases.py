@@ -27,6 +27,7 @@ from surpyval.tests.conformance.registry_families import (
     COUNTING_CAUSES,
     COUNTING_REGRESSION,
     REFIT_PROPERTIES,
+    REGRESSION,
     STATES,
     STATES_REGRESSION,
     UNI_FUNCTIONS,
@@ -59,11 +60,13 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_PATH,
     X_PROC,
     X_REC,
+    X_REG,
     X_UNI,
     Z_CR,
     Z_JF,
     Z_MS,
     Z_REC,
+    Z_REG,
     beta_geometric_data,
     binary_data,
     copula_data,
@@ -86,6 +89,8 @@ from surpyval.tests.conformance.registry_fixtures import (
     quantiles,
     recurrent_data,
     reg_data,
+    relative_data,
+    relative_reg_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -2494,6 +2499,78 @@ def _panel_count():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Relative survival: net survival and excess hazards beyond a rate table
+# ---------------------------------------------------------------------------
+_RELATIVE_ROWS = ("x", "c", "n", "age", "year", "stratum")
+_RATE_TABLE_UNITS = (
+    "the rate table's rates are per unit of time and its ages and years "
+    "are times too, so a change of unit rescales them all, which the "
+    "property does not do; the change of unit is checked in "
+    "tests/univariate/test_relative_survival.py"
+)
+
+
+def _relative_df(fitter, regression=False):
+    def run(d):
+        keys = _RELATIVE_ROWS + (("Z",) if regression else ())
+        df, rest = _frame(d, keys)
+        names = {f"{k}_col": k for k in _RELATIVE_ROWS if k in df}
+        if regression:
+            names["Z_cols"] = _column_names(df, "Z")
+        return fitter.fit_from_df(df, **names, **rest)
+
+    return run
+
+
+def _relative():
+    return [
+        Case(
+            name="RelativeSurvival",
+            fitters=("surpyval.RelativeSurvival",),
+            model_class="surpyval.RelativeSurvival",
+            interface=UNIVARIATE,
+            data=relative_data,
+            fit=_fit(sp.RelativeSurvival),
+            functions=("sf", "ff", "Hf"),
+            x=X_UNI,
+            rows=_RELATIVE_ROWS,
+            labels=("age", "year", "stratum"),
+            paths={"fit_from_df": _relative_df(sp.RelativeSurvival)},
+            rtol=1e-9,
+            exclude={
+                "units": _RATE_TABLE_UNITS,
+                "bounds": "net survival is a difference of hazards, not a "
+                "probability: it rises where fewer units fail than the "
+                "population rates expect (between the events, as the "
+                "expected hazard accrues), and can exceed 1 (documented, "
+                "principle 9)",
+            },
+        ),
+        Case(
+            name="ExcessHazard",
+            fitters=("surpyval.ExcessHazard",),
+            model_class="surpyval.ExcessHazard",
+            interface=REGRESSION,
+            data=relative_reg_data,
+            fit=_fit(sp.ExcessHazard),
+            functions=UNI_FUNCTIONS,
+            x=X_REG,
+            Z=Z_REG,
+            rows=("x", "Z") + _RELATIVE_ROWS[1:],
+            covariates="Z",
+            labels=("age", "year", "stratum"),
+            paths={"fit_from_df": _relative_df(sp.ExcessHazard, True)},
+            coefficients=lambda m: m.coef,
+            # The baseline excess hazard absorbs a constant column.
+            intercept=True,
+            draw=lambda m, s: m.random(15, Z_REG[:2], random_state=s)[0],
+            explicit_seed=True,
+            exclude={"units": _RATE_TABLE_UNITS},
+        ),
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -2516,6 +2593,7 @@ CASES: list[Case] = (
     + _panel_multistate()
     + _bayes()
     + _panel_count()
+    + _relative()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -3123,6 +3201,28 @@ def _competing_risks_bounds():
 
 _PARAM_CB = Bound("param_cb", kind="param")
 _BOOT = {"n_boot": 20, "random_state": 1}
+# A censored quantile regression's case bootstrap: the calls with the same
+# n_boot and seed share one set of refits. (Its quantile is nan above the
+# last level the refit reaches.)
+_QUANTILE_REGRESSION_BOUNDS = (
+    Bound("cb", on=_ON_SURVIVAL, kwargs=_BOOT, wald=False, slow=True),
+    Bound(
+        "quantile_cb",
+        point="qf",
+        kwargs=_BOOT,
+        wald=False,
+        nan_ok=True,
+        slow=True,
+    ),
+    Bound(
+        "bootstrap_ci",
+        kind="coef",
+        kwargs={**_BOOT, "tau": 0.5},
+        sides=False,
+        wald=False,
+        slow=True,
+    ),
+)
 
 
 def _parameter_bounds(case):
@@ -3250,6 +3350,7 @@ def _bounds(case):
         "BayesianParametric": _BAYES_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
+        "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,
         # The Greenwood-type, Aalen-type (mstate) and jackknife (survfit)
         # variances; the Cox model's include its coefficients'.
         "MultiState": _multistate_bounds(("greenwood", "aalen", "robust")),
@@ -3305,6 +3406,23 @@ def _bounds(case):
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # Net survival's pointwise bounds on each scale; neither is cut at
+        # 1 (net survival can exceed it), nor the "normal" one at 0, where
+        # its bound on Hf, -log of it, is NaN (documented).
+        "RelativeSurvival": tuple(
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"bound_type": bound_type},
+                in_range=False,
+                nan_ok=bound_type == "normal",
+                label=f"cb[{bound_type}]",
+            )
+            for bound_type in ("log", "normal")
+        ),
+        # The delta method on log H, and Wald bounds on each parameter
+        # (a baseline rate's on the log scale).
+        "ExcessHazard": (Bound("cb", on=_ON_SURVIVAL), _PARAM_CB),
         # Robust (clustered) Wald bounds on the dynamic prediction from
         # the landmark s, on each of its scales.
         "LandmarkCox": tuple(
@@ -4085,6 +4203,9 @@ def _starve(case):
         return lambda d: fit(_no_event_level(d))
     if cls == "PanelCountRegression":
         return lambda d: fit(_separated_panel(d))
+    if cls == "ExcessHazard":
+        # A group with no events: its excess hazard runs to 0.
+        return lambda d: fit(_no_event_level(d))
     if cls == "EquivalenceModel":
         # k a million times its estimate
         return _far_start(
@@ -4105,6 +4226,11 @@ _NO_STARVE: dict[str, str] = {
     "ExactEventTime": _CLOSED_FORM,
     "AdditiveHazards": _CLOSED_FORM + " (Lin-Ying: a linear system)",
     "AalenAdditive": _CLOSED_FORM + " (least squares at each event time)",
+    "QuantileRegression": "a linear programme at each level, each solved "
+    "exactly by the simplex method: no iteration limit or starting point",
+    "QuantileRegression[portnoy]": "a linear programme at each level, each "
+    "solved exactly by the simplex method: no iteration limit or starting "
+    "point",
     "KaplanMeier": _EXACT,
     "NelsonAalen": _EXACT,
     "FlemingHarrington": _EXACT,
@@ -4112,6 +4238,7 @@ _NO_STARVE: dict[str, str] = {
     "CompetingRisks[Kaplan-Meier]": _EXACT,
     "CompetingRisks[tl]": _EXACT,
     "NonParametricCounting": _EXACT,
+    "RelativeSurvival": _EXACT + " (observed less expected hazard)",
     "CauseSpecificMCF": _EXACT,
     "IndependenceCopula": "no dependence parameter: the margins are "
     "univariate fits, starved in their own cases",

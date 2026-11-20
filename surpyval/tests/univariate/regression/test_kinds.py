@@ -51,3 +51,45 @@ def test_the_former_private_module_still_gives_the_same_names():
     old = importlib.import_module("surpyval.univariate.regression._kinds")
     for name in kinds.__all__:
         assert getattr(old, name) is getattr(kinds, name)
+
+
+@pytest.mark.parametrize(
+    "fitter, log_linear",
+    [
+        ("WeibullPH", True),
+        ("WeibullAFT", True),
+        ("WeibullPO", True),
+        ("WeibullAH", False),
+    ],
+)
+def test_every_family_shares_the_regression_fitter_base(fitter, log_linear):
+    # One base for every parametric regression family: the distribution,
+    # the baseline functions it reads and the likelihood; and one fit for
+    # the families whose covariates act through exp(beta'Z).
+    from surpyval.univariate.regression._regression_fitter import (
+        LogLinearRegressionFitter,
+        RegressionFitter,
+    )
+
+    model = getattr(surv, fitter)
+    assert isinstance(model, RegressionFitter)
+    assert isinstance(model, LogLinearRegressionFitter) == log_linear
+    for name in model._baseline_functions:
+        assert getattr(model, name + "_dist") == getattr(surv.Weibull, name)
+    # The additive hazards fitter adds its support barrier to the shared
+    # likelihood; the others take it as it is.
+    shared = type(model).neg_ll is RegressionFitter.neg_ll
+    assert shared == log_linear
+
+
+def test_the_accelerated_life_fitter_shares_the_base():
+    from surpyval.life_models import Power
+    from surpyval.univariate.regression._regression_fitter import (
+        LogLinearRegressionFitter,
+        RegressionFitter,
+    )
+
+    model = surv.AcceleratedLife(surv.Weibull, Power)
+    assert isinstance(model, RegressionFitter)
+    assert not isinstance(model, LogLinearRegressionFitter)
+    assert model.df_dist == surv.Weibull.df

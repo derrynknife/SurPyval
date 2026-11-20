@@ -71,6 +71,60 @@ def fit_tvc_df(
     return model
 
 
+def start_stop_rows(
+    ident: npt.NDArray,
+    xl: npt.NDArray,
+    xr: npt.NDArray,
+    c: npt.NDArray,
+    Z: npt.ArrayLike,
+    n: npt.NDArray,
+) -> dict[str, Any]:
+    """The start-stop rows of a time-varying fit as ``handle_tvc`` gives
+    them: each row's subject ``i``, entry ``xl``, exit ``xr``, ``c``,
+    ``Z`` and ``n``. A fitted model keeps them (:func:`mark_tvc_fit`):
+    ``diagnose()`` sums its residuals over them and refits the other
+    models to them."""
+    return {"i": ident, "xl": xl, "xr": xr, "c": c, "Z": Z, "n": n}
+
+
+def mark_tvc_fit(model: Any, rows: dict[str, Any]) -> None:
+    """Mark a parametric ``model`` fitted to the start-stop ``rows``
+    (:func:`start_stop_rows`): ``is_tvc``, each row's subject, and the
+    rows as given."""
+    model.is_tvc = True
+    model.tvc_subject_ids = rows["i"]
+    model._tvc_fit_rows = rows
+
+
+def _count_subjects(
+    model: Any, first: npt.NDArray, counts: npt.NDArray, n: npt.NDArray
+) -> None:
+    """The sample sizes of a time-varying model's ``bic`` and ``aic_c``:
+    they count observed failures, and fall back (with none) to subjects,
+    each weighted by its last interval's count (as the AFT time-varying
+    fit does), not interval rows: splitting a subject's follow-up into
+    more intervals leaves the likelihood unchanged and must leave the
+    criteria unchanged too. ``first`` and ``counts`` are each subject's
+    first row and number of rows."""
+    model.n_subjects = int(first.shape[0])
+    model._ic_n_total = float(n[first + counts - 1].sum())
+
+
+def _entered_at(fitter: Any, tl: npt.NDArray) -> npt.NDArray:
+    """The entry of each start-stop row for the fit: its ``xl``, as
+    given (#952). A subject's first row at 0 entered at 0, as at any
+    other time, and one at -inf is not truncated. For a baseline that
+    starts at 0 the two are the same (survival to 0 is certain), so an
+    entry at or before the start of its support is no truncation there.
+    For one defined below 0 (Normal, Gumbel, Logistic) an entry at 0
+    conditions on surviving to 0; followed since -inf, the subject's
+    first covariate holds since then."""
+    support_lo = float(fitter.support[0])
+    if support_lo > -np.inf:
+        return np.where(tl <= support_lo, -np.inf, tl)
+    return tl
+
+
 def _check_additive_from_zero(
     ident: npt.NDArray,
     first: npt.NDArray,
@@ -245,39 +299,21 @@ class TVCFitMixin:
         _, first, counts = np.unique(
             ident, return_index=True, return_counts=True
         )
-        # Each row enters at its xl: a subject's first row at 0 entered
-        # at 0, as at any other time, and one at -inf is not truncated
-        # (#952). For a baseline that starts at 0 the two are the same
-        # (survival to 0 is certain), so an entry at or before the start
-        # of its support is no truncation there. For one defined below 0
-        # (Normal, Gumbel, Logistic) an entry at 0 conditions on surviving
-        # to 0; followed since -inf, the subject's first covariate holds
-        # since then.
-        given = {"i": ident, "xl": tl, "xr": x, "c": c_arr, "Z": Z_arr}
-        given["n"] = n_arr
-        support_lo = float(self.support[0])  # type: ignore[attr-defined]
-        if support_lo > -np.inf:
-            tl = np.where(tl <= support_lo, -np.inf, tl)
-        elif getattr(self, "fitter_kind", "") == "additive hazards fitter":
+        # The rows as given, in the order of handle_tvc
+        # (model.data._source_rows maps the fitted rows to them).
+        given = start_stop_rows(ident, tl, x, c_arr, Z_arr, n_arr)
+        if (
+            float(self.support[0]) == -np.inf  # type: ignore[attr-defined]
+            and getattr(self, "fitter_kind", "") == "additive hazards fitter"
+        ):
             _check_additive_from_zero(ident, first, counts, tl, x)
+        tl = _entered_at(self, tl)
         t = np.column_stack([tl, np.full(tl.shape[0], np.inf)])
         model = self.fit(  # type: ignore[attr-defined]
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
         )
-        model.is_tvc = True
-        # Each row's subject, and the rows as given (in the order of
-        # handle_tvc; model.data._source_rows maps the fitted rows to
-        # them), which diagnose() sums its residuals over and refits the
-        # other baselines to.
-        model.tvc_subject_ids = ident
-        model._tvc_fit_rows = given
-        # bic and aic_c count observed failures, and fall back (with none)
-        # to subjects, each weighted by its last interval's count (as the
-        # AFT time-varying fit does), not interval rows: splitting a
-        # subject's follow-up into more intervals leaves the likelihood
-        # unchanged and must leave the criteria unchanged too.
-        model.n_subjects = int(first.shape[0])
-        model._ic_n_total = float(n_arr[first + counts - 1].sum())
+        mark_tvc_fit(model, given)
+        _count_subjects(model, first, counts, n_arr)
         return model
 
     def fit_tvc_penalised(
@@ -379,16 +415,13 @@ class TVCFitMixin:
         _, first, counts = np.unique(
             ident, return_index=True, return_counts=True
         )
-        given = {"i": ident, "xl": tl, "xr": x, "c": c_arr, "Z": Z_arr}
-        given["n"] = n_arr
+        given = start_stop_rows(ident, tl, x, c_arr, Z_arr, n_arr)
         Z_arr = np.asarray(Z_arr, dtype=float)
         if Z_arr.ndim == 1:
             Z_arr = Z_arr.reshape(-1, 1)
         units = subject_units(x, tl, Z_arr, n_arr, ident)
         # Each row enters at its xl, as for fit_tvc (#952).
-        support_lo = float(self.support[0])  # type: ignore[attr-defined]
-        if support_lo > -np.inf:
-            tl = np.where(tl <= support_lo, -np.inf, tl)
+        tl = _entered_at(self, tl)
         t = np.column_stack([tl, np.full(tl.shape[0], np.inf)])
         model = fit_parametric_penalised(
             self,
@@ -405,11 +438,8 @@ class TVCFitMixin:
             tol,
             units=units,
         )
-        model.is_tvc = True
-        model.tvc_subject_ids = ident
-        model._tvc_fit_rows = given
-        model.n_subjects = int(first.shape[0])
-        model._ic_n_total = float(n_arr[first + counts - 1].sum())
+        mark_tvc_fit(model, given)
+        _count_subjects(model, first, counts, n_arr)
         return model
 
     def fit_tvc_timeline_penalised(

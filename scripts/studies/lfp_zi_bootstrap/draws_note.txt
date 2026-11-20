@@ -1,0 +1,89 @@
+Bootstrap coverage of limited-failure (lfp) and zero-inflated (zi) fits
+with the current way of reading bounds from the refits, and at 200 against
+500 refits.
+
+Why. The calibration figures recorded for these bounds (90% intervals
+0.835-0.925, 95% 0.90-0.965) and the 400-replicate comparison with a case
+bootstrap (results_note.txt) were measured before bootstrap bounds were
+read at the (n + 1) p-th refit instead of the (n - 1) p-th, a change that
+widened every bootstrap interval a little and added about a point of
+coverage to the plain models'. They had not been measured since. And the
+question left open there: do more refits (n_boot above 200) close the
+remaining shortfall?
+
+Run. draws.py 200 4, then draws_summary.py (4 cores, about 2.5 hours;
+35,000 core-seconds: lfp_edge 14,954, lognormal_lfp 8,204, lfp 7,314,
+zi 4,528). Replicate r of each design is the r-th data set drawn from the
+calibration study's seed (311-314), so the 200 replicates are its data
+exactly, and the bounds are the public param_cb, cb and quantile_cb with
+the calibration's random_state = 1000 * seed + r. The 200-refit bounds
+are therefore what test_bootstrap_coverage computes on this code. The 500
+refits extend the 200 (one stream of resamples: the first 200 of the 500
+are the 200, checked on two replicates per design and by
+test_bootstrap_bounds.py::test_286_more_refits_for_a_seed_extend_the_fewer),
+so the two counts are paired. No refit failed. Per-cell figures, with the
+paired counts and median widths, are in draws_summary.json.
+
+Monte Carlo error of one cell at 200 replicates: about 0.021 at 0.90 and
+0.015 at 0.95. The calibration rule's tolerance is 0.074 and 0.056.
+
+1. Every cell passes the calibration rule at both counts. Mean over the
+   35 cells whose target is the nominal level (the edge design's lfp_p
+   left out, as the calibration's pooled report leaves it out):
+
+                     90% interval            95% interval
+   design         n_boot 200  n_boot 500  n_boot 200  n_boot 500
+   lfp               0.904       0.913       0.951       0.961
+   lfp_edge          0.877       0.867       0.935       0.937
+   zi                0.871       0.871       0.930       0.932
+   lognormal_lfp     0.898       0.906       0.944       0.951
+   all               0.888       0.890       0.940       0.945
+
+   Cell ranges at n_boot 200: 90% lfp 0.870-0.935, lfp_edge 0.855-0.890,
+   zi 0.845-0.910, lognormal_lfp 0.845-0.920; 95% lfp 0.940-0.965,
+   lfp_edge 0.905-0.970, zi 0.915-0.950, lognormal_lfp 0.915-0.965. The
+   edge design's lfp_p covered 0.995 (target 0.95) and 0.995 (0.975).
+
+2. The (n + 1) p rule moved these designs as it moved the plain ones: the
+   lfp and LogNormal lfp designs are now at their level. The edge and zi
+   designs are still about 2.5-3 points short at 90% and 1.5-2 at 95%,
+   in every kind of bound (parameters, sf and quantiles); the lowest cells
+   are the Weibull scale alpha (0.855 and 0.86 at 90%) and the zi
+   design's sf and quantiles at its middle quantiles (0.845-0.865). The
+   400-replicate study under the old rule (parameters only) had every
+   design's distribution parameters a point or two short, these two among
+   them; with the point the rule added, that agrees with a real shortfall
+   of one to three points at 100 units, which 200 replicates cannot pin
+   to particular designs. It is inside the rule and smaller than the
+   figures recorded before.
+
+3. More refits do not close it. At 500 refits the edge and zi designs are
+   where they were at 200 (0.867 and 0.871 at 90%); the mean over all
+   cells moves 0.2 points at 90% and 0.5 at 95%. Paired, the replicates a
+   cell covers at one count and not the other are few and split both ways
+   (at most 8 of 200 in a cell). The shortfall is not the noise of 200
+   draws in the interval's ends; the default n_boot = 200 can stay.
+
+4. The number of failures does not explain it. Within a design, data sets
+   with fewer failures than the design's median cover the distribution's
+   own parameters a little less (90%: 0.872 of 708 intervals against
+   0.896 of 892; 95%: 0.929 against 0.938), but across designs the short
+   ones have the most failures (median 71 in lfp_edge, 74 in zi) and the
+   ones at their level the fewest (42 and 43). A warning keyed to a small
+   number of failures would not flag the data sets that fall short here,
+   so none is proposed from this study. A study that varies the sample
+   size would be needed to set one.
+
+5. What is left for later. Case resampling was compared already and is no
+   better (results_note.txt). Likelihood-ratio bounds that allow for the
+   edge (a critical value from the 50:50 mixture of chi-square(0) and
+   chi-square(1) for lfp_p and f0) would not touch this shortfall: lfp_p
+   and f0 are the cells at or above their level, and on the edge such a
+   bound would be less conservative, not wider. The candidates that could
+   are a better small-sample interval for the distribution's parameters
+   and functions of time under these models: a calibrated (double)
+   bootstrap, a studentised interval, or Bayesian credible intervals.
+   Each is a larger change with a study of its own.
+
+The calibration test itself is unchanged: no seed, replicate count,
+n_boot or tolerance moved.

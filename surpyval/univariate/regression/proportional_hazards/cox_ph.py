@@ -1991,8 +1991,6 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             i, xl, xr, c, Z, n, strata
         )
         if w is not None:
-            from surpyval.utils.weights import check_weights
-
             if strata_arr is not None:
                 from surpyval.utils.weights import refuse_weighted
 
@@ -2003,23 +2001,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 )
             from ._weighted_cox import fit_weighted_cox
 
-            w_rows = check_weights(w, len(row_order))[row_order]
             model = fit_weighted_cox(
                 x,
                 Z_arr,
                 c,
                 n_arr,
                 tl,
-                w_rows,
+                _row_weights(w, row_order),
                 tie_method,
                 tol,
                 center,
                 cluster=ident,
             )
-            model.is_tvc = True
-            model.tvc_subject_ids = ident
-            model.tvc_row_order = row_order
-            return model
+            return _as_tvc(model, ident, row_order)
         model = self.fit(
             x=x,
             Z=Z_arr,
@@ -2031,14 +2025,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
             strata=strata_arr,
         )
-        model.is_tvc = True
-        # Subject ids per *internal* (sorted) row, and the permutation from
-        # the caller's row order to the internal order: residuals and
-        # cluster-robust SEs align with the internal order, so user-supplied
-        # per-row labels must be permuted the same way (#259).
-        model.tvc_subject_ids = ident
-        model.tvc_row_order = row_order
-        return model
+        return _as_tvc(model, ident, row_order)
 
     def fit_tvc_from_df(
         self,
@@ -2229,11 +2216,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
-        w_rows = None
-        if w is not None:
-            from surpyval.utils.weights import check_weights
-
-            w_rows = check_weights(w, len(row_order))[row_order]
+        w_rows = _row_weights(w, row_order)
         model = fit_cox_penalised(
             self,
             x,
@@ -2251,10 +2234,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             w=w_rows,
             units=_subject_covariates(x, tl, Z_arr, n_arr, ident, w_rows),
         )
-        model.is_tvc = True
-        model.tvc_subject_ids = ident
-        model.tvc_row_order = row_order
-        return model
+        return _as_tvc(model, ident, row_order)
 
     def fit_tvc_timeline_penalised(
         self,
@@ -2385,6 +2365,35 @@ def _tvc_rows(
             )
         strata_arr = strata_arr[row_order]
     return x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr
+
+
+def _row_weights(
+    w: npt.ArrayLike | float | None, row_order: npt.NDArray
+) -> npt.NDArray | None:
+    """The weights ``w`` of :meth:`CoxPH_.fit_tvc`'s start-stop rows
+    (one per row, or one for every row), checked and put in the internal
+    row order of :func:`_tvc_rows`; ``None`` for no weights."""
+    if w is None:
+        return None
+    from surpyval.utils.weights import check_weights
+
+    return check_weights(w, len(row_order))[row_order]
+
+
+def _as_tvc(
+    model: SemiParametricRegressionModel,
+    ident: npt.NDArray,
+    row_order: npt.NDArray,
+) -> SemiParametricRegressionModel:
+    """Mark a Cox ``model`` fitted to start-stop rows: ``is_tvc``, the
+    subject of each *internal* (sorted) row, and the permutation from the
+    caller's row order to the internal order. Residuals and cluster-robust
+    standard errors align with the internal order, so per-row labels a
+    user supplies must be permuted the same way (#259)."""
+    model.is_tvc = True
+    model.tvc_subject_ids = ident
+    model.tvc_row_order = row_order
+    return model
 
 
 def _subject_covariates(

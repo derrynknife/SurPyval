@@ -35,6 +35,7 @@ from surpyval.univariate.competing_risks.rmtl import (
     aalen_johansen_rmtl,
     rmtl_result,
 )
+from surpyval.univariate.nonparametric._scales import survival_bound
 from surpyval.univariate.nonparametric._support import (
     check_support,
     on_support,
@@ -739,11 +740,13 @@ class CompetingRisks(SerialisableMixin):
             one = F >= 1.0 - 1e-12
             inside = (var > 0) & ~one
             with np.errstate(divide="ignore", invalid="ignore"):
-                log_F = np.log(np.where(inside, F, 0.5))
-                s = z * se / (F * np.abs(log_F))
-                # On the log(-log F) scale, where -log F falls as F rises.
-                lower = np.where(inside, np.exp(log_F * np.exp(s)), F)
-                upper = np.where(inside, np.exp(log_F * np.exp(-s)), F)
+                # On the log(-log F) scale, the survival bounds' 'exp'
+                # scale with F for the survival, z se / F the deviate
+                # times the standard error of log F.
+                F_in = np.where(inside, F, 0.5)
+                d = z * se / F_in
+                lower = np.where(inside, survival_bound("exp", F_in, -d), F)
+                upper = np.where(inside, survival_bound("exp", F_in, d), F)
             if np.any(one & (var > 0)):
                 below = lower[~one]
                 top = below.max() if below.size else 0.0
