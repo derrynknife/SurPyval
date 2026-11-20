@@ -598,6 +598,12 @@ OUT_OF_SCOPE["surpyval.bayes.log_likelihood_fn"] = (
 )
 OUT_OF_SCOPE["surpyval.bayes.LogLikelihood"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.Posterior"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.compare"] = (
+    _FUNCTION + " (ranks Bayesian fits by WAIC or LOO; checked in "
+    "surpyval/tests/bayes/test_criteria.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.PredictiveCriterion"] = _RESULT
+OUT_OF_SCOPE["surpyval.bayes.PredictiveComparison"] = _RESULT
 for _name in (
     "Prior",
     "JointPrior",
