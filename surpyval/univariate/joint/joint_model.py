@@ -527,6 +527,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     _zbar: npt.NDArray
     _covariance: npt.NDArray | None = None
     _neg_ll: float
+    #: The path part of the internal estimates (``mu``, ``Delta``, ``L``,
+    #: ``sigma``), a start for another link's fit of the same data
+    #: (``compare_links``); not saved.
+    _path_start: dict | None = None
 
     @property
     def kind(self) -> str:

@@ -198,6 +198,9 @@ class JointPHFitter(FitterRepr):
     #: speeds up the item's ageing (``"AFT"``, :class:`JointAFTFitter
     #: <surpyval.univariate.joint.joint_aft.JointAFTFitter>`).
     survival = "PH"
+    #: A start for the path part (``mu``, ``Delta``, ``L``, ``sigma``)
+    #: from another link's fit of the same data (``compare_links``).
+    _path_start: dict | None = None
 
     def __init__(
         self,
@@ -535,9 +538,21 @@ class JointPHFitter(FitterRepr):
         best and its weight (``table``), and tests each nested pair, such
         as ``"value"`` against ``"value + slope"``, by the likelihood
         ratio (``likelihood_ratio_tests()``): see
-        :class:`~surpyval.univariate.joint.compare.LinkComparison`. Which
-        link a marker's risk follows is a question for each dataset, and
-        this is the way to ask it.
+        :class:`~surpyval.univariate.joint.compare.LinkComparison`. Links
+        less than 2 apart are no real preference, and the simpler of them
+        is the best (fewer parameters, then the level before the slope
+        before the area). The table says each row in words
+        (``reads_as``) and ``verdict`` the whole comparison, such as
+        "Risk follows how fast the marker is changing. Adding the level
+        does not improve the fit. ..."; ``to_dict()`` gives both as
+        strict JSON. Which link a marker's risk follows is a question for
+        each dataset, and this is the way to ask it.
+
+        The value link is fitted first and the others start from its
+        estimates of the path, which saves about a third of the time; a
+        fit from that start that does not reach a verified maximum is made
+        again from its own start, so each candidate is the maximum its
+        own :meth:`fit` finds.
 
         A fit that is not a verified maximum is shown but neither ranked
         nor tested, with one warning naming it; a link that cannot be
@@ -572,7 +587,8 @@ class JointPHFitter(FitterRepr):
         LinkComparison
             The fitted candidates (``models``, by the link's name, such as
             ``"value + slope"``), the ranking (``table``), the best fit
-            (``best``, ``best_link``) and ``likelihood_ratio_tests()``.
+            (``best``, ``best_link``), ``likelihood_ratio_tests()``, the
+            ``verdict`` in words and ``to_dict()``.
 
         Examples
         --------
@@ -599,6 +615,12 @@ class JointPHFitter(FitterRepr):
         ['slope', 'value', 'value + slope']
         >>> list(comparison.table.columns[:4])
         ['k', 'log_likelihood', 'aic', 'aic_c']
+        >>> comparison.best_label
+        'value'
+        >>> comparison.table.loc["slope", "reads_as"]
+        'clearly worse'
+        >>> comparison.verdict.split(". ")[1]
+        'Adding the rate of change does not clearly improve the fit'
         >>> comparison.likelihood_ratio_tests()[["simpler", "richer", "df"]]
           simpler         richer  df
         0   value  value + slope   1
@@ -1110,9 +1132,12 @@ def _fit(
         centre,
         integration,
     )
-    # Starting values: each item's path alone, their spread, then the
-    # survival part on each item's predicted path
-    theta = marker_start(model, ages, values, Z - zbar, counts)
+    # Starting values: each item's path alone, their spread (or, where
+    # given, another link's fit of the same data: compare_links), then
+    # the survival part on each item's predicted path
+    theta = _given_path_start(fitter._path_start, layout)
+    if theta is None:
+        theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_power(fitter, theta["mu"], "the readings put")
     _check_start_at_zero(fitter, theta["mu"])
     theta = survival_start(model, arrays, theta)
@@ -1247,12 +1272,35 @@ def _fit(
         full_cov[np.ix_(where, where)] = covariance
         out._covariance = full_cov
     out._neg_ll = float(value)
+    # the path part where it was found, a start for another link's fit
+    found = layout.unpack(u)
+    out._path_start = {
+        key: np.array(found[key], dtype=float)
+        for key in ("mu", "Delta", "L", "sigma")
+    }
     out.k = len(estimated)
     out.maximum = "verified" if verified else "unverified"
     out.integration = integration
     out.n_items = total
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
+    return out
+
+
+def _given_path_start(start: dict | None, layout: Layout) -> dict | None:
+    """A copy of the path part ``start`` (``mu``, ``Delta``, ``L``,
+    ``sigma``) where its shapes are this layout's; ``None`` otherwise."""
+    if start is None:
+        return None
+    shapes = {
+        "mu": (layout.P,),
+        "Delta": (layout.P, layout.p),
+        "L": (layout.q, layout.q),
+        "sigma": (),
+    }
+    out = {key: np.array(start[key], dtype=float) for key in shapes}
+    if any(out[key].shape != shape for key, shape in shapes.items()):
+        return None
     return out
 
 
