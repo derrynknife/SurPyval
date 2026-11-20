@@ -509,7 +509,7 @@ with its own ``schema``.
      - --
    * - ``JointModel``
      - ``"model": "JointModel"``
-     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
+     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``integration``, ``_neg_ll``, ``maximum``, ``covariance``
      - --
    * - ``EquivalenceModel``
      - ``"model": "EquivalenceModel"``
