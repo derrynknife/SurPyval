@@ -537,6 +537,8 @@ class Hypoexponential_(OptimisedFitMixin, ParametricFitter):
         # No probability-plotting transform: the survival function is
         # a sum of exponentials with no single linearising scale.
         self.supports_mpp = False
+        # Every stage's rate is per unit of time (rescale_time).
+        self._time_roles = ("rate",) * m
 
     def _for_params(self, params: Any) -> Hypoexponential_:
         """The ``m``-stage fitter that models ``params``."""

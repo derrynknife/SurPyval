@@ -128,6 +128,10 @@ class InformationCriteriaMixin:
     # the data when set: restored by ``from_dict`` so a model saved without
     # its data reports the same ``bic``/``aic_c`` as the fitted one.
     _ic_n: "float | None" = None
+    # Why a model has no log-likelihood where "fitted with data" is not
+    # the reason (a model rescaled with ``rescale_time`` without its
+    # data): the refusal of ``neg_ll`` and the criteria says this.
+    _no_likelihood_reason: "str | None" = None
 
     def _ic_sample_size_from_data(self) -> float:
         raise NotImplementedError
@@ -191,6 +195,10 @@ class InformationCriteriaMixin:
         if getattr(self, "_neg_ll", None) is not None:
             return self._neg_ll
         if getattr(self, "data", None) is None:
+            if self._no_likelihood_reason is not None:
+                raise ValueError(
+                    f"No log-likelihood: {self._no_likelihood_reason}."
+                )
             raise ValueError("Must have been fit with data")
 
         return self._neg_ll
