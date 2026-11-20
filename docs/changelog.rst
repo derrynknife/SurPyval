@@ -236,6 +236,17 @@ v0.29 (unreleased)
   ``"time unit"`` standing in for one not given. The printout shows it
   on an ``Effect units`` line. A label only: nothing is converted, and
   the fit is unchanged.
+- **A fast log-posterior and gradient for samplers.**
+  ``surpyval.bayes.likelihood.log_posterior_and_grad(data, dist, priors)``
+  returns ``f(z) -> (value, gradient)`` at one point of the free
+  parameters' unconstrained scale: the posterior ``fit_bayes`` uses (to
+  rounding), for every distribution and form it takes, every kind of
+  censoring and truncation and every kind of prior, with the data checked
+  and split once rather than on every call. The gradient is by automatic
+  differentiation, and written out by hand for the Weibull, Exponential,
+  Normal, LogNormal and Gamma; a Weibull with 1,000 rows takes about 35
+  microseconds a call (``scripts/bench_log_posterior.py``). It is the
+  groundwork for a gradient-based sampler; ``fit_bayes`` is unchanged.
 
 **Changed.**
 
