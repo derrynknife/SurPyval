@@ -1508,6 +1508,30 @@ def _trees():
             },
         )
 
+    forest_with_causes = Case(
+        name="RandomSurvivalForest[causes]",
+        fitters=(),
+        model_class="surpyval.ml.RandomSurvivalForest",
+        interface=CAUSES_REGRESSION,
+        data=functools.partial(cr_data, True),
+        fit=_seeded(_fit(ml.RandomSurvivalForest, n_trees=3)),
+        functions=("sf", "ff", "Hf", "hf", "df"),
+        event_functions=("cif",),
+        events=("a", "b"),
+        x=X_CR,
+        Z=Z_CR,
+        rows=("x", "Z", "e", "n"),
+        covariates="Z",
+        slow=REFIT_PROPERTIES,
+        exclude={
+            "row_order": forest.exclude["row_order"],
+            "counts": forest.exclude["counts"],
+            "df_hf_sf": forest.exclude["df_hf_sf"],
+            "Hf_sf": forest.exclude["Hf_sf"],
+            "aliasing": _NO_COEFFICIENTS,
+        },
+    )
+
     return [
         tree("weibull"),
         tree("exponential"),
@@ -1515,6 +1539,7 @@ def _trees():
         tree_with_causes("non-parametric"),
         tree_with_causes("weibull"),
         forest,
+        forest_with_causes,
     ]
 
 

@@ -182,6 +182,115 @@ def drop_missing_covariate_rows(
     return data[mask], Z[mask]
 
 
+def parse_causes(
+    data: SurpyvalData,
+    selection: str,
+    min_split_gain: Any,
+    split: "str | None",
+    event: Any,
+    causes: "list | None" = None,
+    model: str = "tree",
+) -> "tuple[list, str, Any] | None":
+    """The causes, split rule and nominated cause of a tree or forest
+    (``model``) grown with ``e``, checked; ``None`` (with ``split`` and
+    ``event`` refused) for one grown without causes. ``causes``, given,
+    is the list of causes to grow for (a forest's, which a tree's
+    bootstrap sample may not all have); by default those in ``e``."""
+    e = getattr(data, "e", None)
+    if e is None:
+        given = [
+            name
+            for name, value in (("split", split), ("event", event))
+            if value is not None
+        ]
+        if given:
+            verb = "is" if len(given) == 1 else "are"
+            raise ValueError(
+                f"{' and '.join(given)} {verb}"
+                f" for a {model} grown with the cause of each failure: pass "
+                "the causes as e (fit(..., e=...) or fit_from_df(..., "
+                "e_col=...)), or leave it out."
+            )
+        return None
+    split = "cause-specific" if split is None else split
+    check_option("split", split, SPLITS)
+    c = np.asarray(data.c)
+    if np.isin(c, (-1, 2)).any():
+        raise ValueError(
+            f"A {model} grown with causes (e) takes exact and right-censored "
+            f"times; {int(np.isin(c, (-1, 2)).sum())} rows are left- or "
+            "interval-censored (c = -1 or 2). Those are not built yet "
+            "for the cause-aware splits: fit CompetingRisks or "
+            f"ParametricCompetingRisks to such data, or grow the {model} "
+            "without e."
+        )
+    if np.isfinite(np.asarray(data.t[:, 1], dtype=float)).any():
+        raise ValueError(
+            f"A {model} grown with causes (e) does not take right truncation "
+            "(tr), as the competing-risks estimates do not: leave it out."
+        )
+    failed = c == 0
+    masked = int(sum(v is None for v in e[failed]))
+    if masked:
+        raise ValueError(
+            f"{masked} failures (c = 0) have no cause in e. Give each "
+            "failure its cause, or mark a row with no failure right "
+            "censored (c = 1, or a missing cause with c left out)."
+        )
+    found = ordered_labels(e[failed])
+    if causes is None:
+        causes = found
+        if not causes:
+            raise ValueError(
+                "e gives no failure a cause: every row is censored. A "
+                f"{model} with causes needs at least one failure."
+            )
+    else:
+        # A tree of a forest is grown for every cause of the forest, some
+        # of which its bootstrap sample may lack.
+        causes = list(causes)
+        extra = [k for k in found if k not in causes]
+        if extra:
+            raise ValueError(
+                f"e has causes {extra} that are not among causes={causes}: "
+                "list every cause, or leave causes out."
+            )
+    if selection != "greedy":
+        raise ValueError(
+            f"selection='ctree' is not built for a {model} grown with causes "
+            "(e): its tests are of a single event's scores. Use "
+            "selection='greedy' with max_depth or min_leaf_failures to "
+            "stop the tree."
+        )
+    if min_split_gain != 0:
+        raise ValueError(
+            "min_split_gain is a log-likelihood gain, and the cause-aware "
+            f"splits are not likelihoods: leave it at 0 for a {model} grown "
+            "with causes (e), and stop the tree with max_depth or "
+            "min_leaf_failures."
+        )
+    if split == "gray":
+        if event is None:
+            raise ValueError(
+                "split='gray' compares the cumulative incidence of one "
+                f"cause: name it with event (one of {causes})."
+            )
+        tl = np.asarray(data.t[:, 0], dtype=float)
+        x = np.asarray(data.x, dtype=float)
+        if np.any(np.isfinite(tl) & (tl >= np.min(x))):
+            raise ValueError(
+                "split='gray' does not take delayed entry (tl), as "
+                "gray_test does not: its subdistribution risk set needs "
+                "truncation weights, which are not built. Use "
+                "split='cause-specific', which takes it."
+            )
+    if event is not None and event not in causes:
+        from surpyval.utils.validation import unknown_cause_error
+
+        raise unknown_cause_error(event, causes)
+    return causes, split, event
+
+
 class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
     """
     A Survival Tree, for use in `RandomSurvivalForest`.
@@ -272,6 +381,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         min_split_gain: float | str = 0.0,
         split: str | None = None,
         event: Any = None,
+        causes: list | None = None,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
@@ -294,7 +404,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
 
         self.kind = parse_kind(kind, self.data)
         self.min_split_gain = parse_min_split_gain(min_split_gain, self.kind)
-        competing = self._parse_causes(split, event)
+        competing = self._parse_causes(split, event, causes)
 
         self._root = build_tree(
             data=self.data,
@@ -316,96 +426,27 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         fit_leaves(self._root)
 
     def _parse_causes(
-        self, split: "str | None", event: Any
+        self, split: "str | None", event: Any, causes: "list | None" = None
     ) -> "CauseSplit | None":
         """The causes of a tree grown with ``e``, checked, and what its
         nodes need to split by them; ``None`` (and ``split`` and ``event``
         refused) for a tree without causes."""
-        e = getattr(self.data, "e", None)
-        if e is None:
-            given = [
-                name
-                for name, value in (("split", split), ("event", event))
-                if value is not None
-            ]
-            if given:
-                verb = "is" if len(given) == 1 else "are"
-                raise ValueError(
-                    f"{' and '.join(given)} {verb}"
-                    " for a tree grown with the cause of each failure: pass "
-                    "the causes as e (fit(..., e=...) or fit_from_df(..., "
-                    "e_col=...)), or leave it out."
-                )
+        parsed = parse_causes(
+            self.data,
+            self.selection,
+            self.min_split_gain,
+            split,
+            event,
+            causes,
+        )
+        if parsed is None:
             return None
-        split = "cause-specific" if split is None else split
-        check_option("split", split, SPLITS)
-        c = np.asarray(self.data.c)
-        if np.isin(c, (-1, 2)).any():
-            raise ValueError(
-                "A tree grown with causes (e) takes exact and right-censored "
-                f"times; {int(np.isin(c, (-1, 2)).sum())} rows are left- or "
-                "interval-censored (c = -1 or 2). Those are not built yet "
-                "for the cause-aware splits: fit CompetingRisks or "
-                "ParametricCompetingRisks to such data, or grow the tree "
-                "without e."
-            )
-        if np.isfinite(np.asarray(self.data.t[:, 1], dtype=float)).any():
-            raise ValueError(
-                "A tree grown with causes (e) does not take right truncation "
-                "(tr), as the competing-risks estimates do not: leave it out."
-            )
-        failed = c == 0
-        masked = int(sum(v is None for v in e[failed]))
-        if masked:
-            raise ValueError(
-                f"{masked} failures (c = 0) have no cause in e. Give each "
-                "failure its cause, or mark a row with no failure right "
-                "censored (c = 1, or a missing cause with c left out)."
-            )
-        causes = ordered_labels(e[failed])
-        if not causes:
-            raise ValueError(
-                "e gives no failure a cause: every row is censored. A tree "
-                "with causes needs at least one failure."
-            )
-        if self.selection != "greedy":
-            raise ValueError(
-                "selection='ctree' is not built for a tree grown with causes "
-                "(e): its tests are of a single event's scores. Use "
-                "selection='greedy' with max_depth or min_leaf_failures to "
-                "stop the tree."
-            )
-        if self.min_split_gain != 0:
-            raise ValueError(
-                "min_split_gain is a log-likelihood gain, and the cause-aware "
-                "splits are not likelihoods: leave it at 0 for a tree grown "
-                "with causes (e), and stop the tree with max_depth or "
-                "min_leaf_failures."
-            )
-        if split == "gray":
-            if event is None:
-                raise ValueError(
-                    "split='gray' compares the cumulative incidence of one "
-                    f"cause: name it with event (one of {causes})."
-                )
-            tl = np.asarray(self.data.t[:, 0], dtype=float)
-            x = np.asarray(self.data.x, dtype=float)
-            if np.any(np.isfinite(tl) & (tl >= np.min(x))):
-                raise ValueError(
-                    "split='gray' does not take delayed entry (tl), as "
-                    "gray_test does not: its subdistribution risk set needs "
-                    "truncation weights, which are not built. Use "
-                    "split='cause-specific', which takes it."
-                )
-        if event is not None and event not in causes:
-            from surpyval.utils.validation import unknown_cause_error
-
-            raise unknown_cause_error(event, causes)
-        self.causes = causes
-        self.split = split
-        self.event = event
+        self.causes, self.split, self.event = parsed
         return CauseSplit(
-            causes, split, event, per_cause_min=self.kind != "non-parametric"
+            self.causes,
+            self.split,
+            self.event,
+            per_cause_min=self.kind != "non-parametric",
         )
 
     @classmethod

@@ -2701,6 +2701,9 @@ def _df_paths():
         paths[f"SurvivalTree[causes, {kind}]"] = _seeded(
             _col_df(ml.SurvivalTree, ("x", "e", "n"), kind=kind)
         )
+    paths["RandomSurvivalForest[causes]"] = _seeded(
+        _col_df(ml.RandomSurvivalForest, ("x", "e", "n"), n_trees=3)
+    )
     paths["RandomSurvivalForest"] = _seeded(
         _col_df(ml.RandomSurvivalForest, ("x", "c", "n"), n_trees=3)
     )
@@ -4270,6 +4273,9 @@ for _kind in ("non-parametric", "weibull"):
         "SurvivalTree[weibull]"
     ]
 _NO_STARVE["RandomSurvivalForest"] = _NO_STARVE["SurvivalTree[weibull]"]
+_NO_STARVE["RandomSurvivalForest[causes]"] = _NO_STARVE[
+    "SurvivalTree[weibull]"
+]
 
 
 # Fits whose initial guess is already the maximum, so returning it is right.
