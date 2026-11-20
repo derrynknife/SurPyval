@@ -49,6 +49,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -242,6 +243,7 @@ def _baseline(
 
 
 class AdditiveHazardsModel(
+    ParameterBoundsMixin,
     PenalisedModelMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,
@@ -757,6 +759,10 @@ class AdditiveHazardsModel(
         """The names of the rows (and columns) of :meth:`covariance`: the
         coefficients, :attr:`parameter_names`."""
         return list(self.parameter_names)
+
+    def _declared_bounds(self) -> list:
+        """Each coefficient is unbounded."""
+        return [(None, None)] * len(self.covariance_names)
 
     def _estimates(self) -> npt.NDArray:
         """The fitted coefficients, in the order of

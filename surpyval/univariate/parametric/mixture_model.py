@@ -15,6 +15,7 @@ from scipy.special import logsumexp
 from scipy.special import ndtri as z
 
 from surpyval import Distribution
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -157,6 +158,7 @@ def _stack(values: list, n: int) -> npt.NDArray:
 
 
 class MixtureModel(
+    ParameterBoundsMixin,
     InformationCriteriaMixin,
     UnivariateDataFrameMixin,
     SerialisableMixin,
@@ -2041,6 +2043,11 @@ class MixtureModel(
             for name in self.dist.parameter_names
         ]
         return names + [f"w_{i}" for i in range(self.m)]
+
+    def _declared_bounds(self) -> list:
+        """The range of each entry of :meth:`_estimates`: each component's
+        distribution's, then ``(0, 1)`` for each weight."""
+        return list(self.dist.bounds) * self.m + [(0, 1)] * self.m
 
     def _estimates(self) -> npt.NDArray:
         """The fitted values in the order of :attr:`covariance_names`: the

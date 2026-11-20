@@ -824,6 +824,49 @@ def _search_joint_frailty(model, data):
     return [search.in_covariate_units(coefs, lik.Z)]
 
 
+def _search_shared_frailty(model, data):
+    """The shared-frailty Poisson process's marginal likelihood (the
+    model keeps it) at the reported parameters, in the space of its fit:
+    the baseline's parameters unconstrained (a positive one as its log)
+    and in their own units (Cox-Lewis's slope in units of one over the
+    longest time), the log of theta, and the coefficients in their
+    covariates' units. A fit with theta on its boundary 0 reports the
+    model without frailty, whose own fit is the plain one's."""
+    from surpyval.recurrent._bounded import unconstraining_maps
+
+    lik = model._lik
+    k = len(model.dist.parameter_names)
+    estimated = model._estimated()
+    if not estimated[k]:
+        return None
+    p_hat = model._p()
+    units = (
+        np.asarray(model.dist._search_units(model.data), dtype=float)
+        if hasattr(model.dist, "_search_units")
+        else np.ones(k)
+    )
+    to_natural, to_search = unconstraining_maps(list(model.dist.bounds))
+    kept = np.flatnonzero(estimated[k + 1 :])
+
+    def natural(u):
+        base = to_natural(u[:k] * units)
+        parts = [base[j] for j in range(k)] + [anp.exp(u[k])]
+        coefs = [0.0 * u[0]] * model.n_covariates
+        for at, j in enumerate(kept):
+            coefs[j] = u[k + 1 + at]
+        return anp.array(parts + coefs)
+
+    def fun(u):
+        return lik(natural(u))
+
+    u = np.r_[
+        to_search(p_hat[:k]) / units, np.log(p_hat[k]), p_hat[k + 1 :][kept]
+    ]
+    search = Search(fun, u, model._n_obs)
+    coefs = [(k + 1 + at, int(j)) for at, j in enumerate(kept)]
+    return [search.in_covariate_units(coefs, lik.Z)]
+
+
 def _search_panel_multistate(model, data):
     """The panel likelihood (the forward recursion over each unit's
     visits) in the space the fit searches: log intensities in units of
@@ -1426,6 +1469,7 @@ SEARCHES: dict[str, Callable] = {
     "MultiStateProportionalHazards": _search_multistate_cox,
     "ParametricMultiState": _search_parametric_multistate,
     "JointFrailtyModel": _search_joint_frailty,
+    "SharedFrailtyModel": _search_shared_frailty,
     "ParametricMultiStateRegression": (
         _search_parametric_multistate_regression
     ),

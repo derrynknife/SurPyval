@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval import plotting
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
@@ -74,6 +75,7 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
+    ParameterBoundsMixin,
     TVCEvaluationMixin,
     PenalisedModelMixin,
     DiagnoseMixin,

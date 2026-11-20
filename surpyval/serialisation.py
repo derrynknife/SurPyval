@@ -130,6 +130,7 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
     "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "SharedFrailtyModel": "surpyval.recurrent.shared_frailty",
     "PanelCountMCF": "surpyval.recurrent.panel_count",
     "PanelCountRegression": "surpyval.recurrent.panel_count",
     "ParametricRecurrenceModel": (

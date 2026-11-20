@@ -7,6 +7,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
+from surpyval.ml.forest.cause_specific_split import CauseSplit, cause_codes
 from surpyval.ml.forest.conditional_inference import ctree_select
 from surpyval.ml.forest.deviance_split import (
     _exp_theta0,
@@ -18,6 +19,7 @@ from surpyval.ml.forest.deviance_split import (
 from surpyval.ml.forest.log_rank_split import log_rank_split
 from surpyval.ml.forest.turnbull_score_split import turnbull_score_split
 from surpyval.serialisation import to_native
+from surpyval.univariate.competing_risks.labels import label_from_native
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -31,10 +33,12 @@ class Node(ABC):
         function_name: str,
         x: int | float | ArrayLike,
         Z: NDArray,
+        event: Any = None,
     ) -> NDArray:
         """
-        Evaluate ``function_name`` (``"sf"``, ``"Hf"``, ...) of the leaf
-        model(s) reached by ``Z`` at the times ``x``.
+        Evaluate ``function_name`` (``"sf"``, ``"Hf"``, ...; ``"cif"`` of
+        cause ``event`` in a tree grown with causes) of the leaf model(s)
+        reached by ``Z`` at the times ``x``.
 
         A 1-D ``Z`` is one covariate vector and returns that leaf's values
         at ``x``. A 2-D ``Z`` holds one covariate vector per row; each row
@@ -74,6 +78,7 @@ class IntermediateNode(Node):
         alpha_split: float = 0.05,
         p_value: float | None = None,
         min_split_gain: float | str = 0.0,
+        competing: CauseSplit | None = None,
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -101,6 +106,7 @@ class IntermediateNode(Node):
             selection=selection,
             alpha_split=alpha_split,
             min_split_gain=min_split_gain,
+            competing=competing,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -115,6 +121,7 @@ class IntermediateNode(Node):
             selection=selection,
             alpha_split=alpha_split,
             min_split_gain=min_split_gain,
+            competing=competing,
         )
 
     def apply_model_function(
@@ -122,14 +129,17 @@ class IntermediateNode(Node):
         function_name: str,
         x: int | float | ArrayLike,
         Z: NDArray,
+        event: Any = None,
     ) -> NDArray:
         if np.ndim(Z) < 2:
             # One covariate vector: follow its side of the split
             if Z[self.split_feature_index] <= self.split_feature_value:
                 return self.left_child.apply_model_function(
-                    function_name, x, Z
+                    function_name, x, Z, event
                 )
-            return self.right_child.apply_model_function(function_name, x, Z)
+            return self.right_child.apply_model_function(
+                function_name, x, Z, event
+            )
 
         # One covariate vector per row: split the rows on the feature
         # *column* and send each group down its own branch, so every leaf
@@ -138,11 +148,11 @@ class IntermediateNode(Node):
         res = np.empty((Z.shape[0], np.size(x)), dtype=np.float64)
         if goes_left.any():
             res[goes_left] = self.left_child.apply_model_function(
-                function_name, x, Z[goes_left]
+                function_name, x, Z[goes_left], event
             )
         if not goes_left.all():
             res[~goes_left] = self.right_child.apply_model_function(
-                function_name, x, Z[~goes_left]
+                function_name, x, Z[~goes_left], event
             )
         return res
 
@@ -313,13 +323,21 @@ class TerminalNode(Node):
         function_name: str,
         x: int | float | ArrayLike,
         Z: NDArray,
+        event: Any = None,
     ) -> NDArray:
-        values = getattr(self.model, function_name)(x)
+        values = self.evaluate(function_name, x, event)
         if np.ndim(Z) < 2:
             return values
         # Every row that reached this leaf shares its curve
         values = np.asarray(values, dtype=np.float64).reshape(1, -1)
         return np.repeat(values, np.shape(Z)[0], axis=0)
+
+    def evaluate(
+        self, function_name: str, x: int | float | ArrayLike, event: Any = None
+    ) -> Any:
+        """The leaf model's ``function_name`` at the times ``x`` (``event``
+        is for a leaf with causes; a plain leaf has none)."""
+        return getattr(self.model, function_name)(x)
 
     def to_dict(self) -> dict:
         """Serialise the leaf as its *fitted* model rather than its data, so
@@ -356,6 +374,163 @@ class TerminalNode(Node):
         return node
 
 
+class CompetingRisksLeaf(TerminalNode):
+    """
+    A leaf of a survival tree grown with the cause of each failure. Its
+    ``model`` is a competing-risks model of the rows that reach it: for a
+    ``"non-parametric"`` tree the Aalen-Johansen estimate
+    (:class:`~surpyval.univariate.competing_risks.CompetingRisks`, with the
+    Kaplan-Meier all-cause survival, so ``sf`` is one less the sum of the
+    causes' cumulative incidences); for a ``"weibull"`` or
+    ``"exponential"`` tree a
+    :class:`~surpyval.univariate.competing_risks.ParametricCompetingRisks`
+    of one distribution per cause, each fitted to the cause-specific view
+    of the leaf's rows (that cause's failures observed, the rest censored)
+    as a plain leaf of the kind is fitted. ``None`` for a leaf with no
+    failures.
+
+    A cause of the tree with no failure in the leaf (``absent``) has zero
+    incidence there, and :meth:`describe` says so.
+    """
+
+    def __init__(self, data: SurpyvalData, kind: str, causes: list) -> None:
+        super().__init__(data, kind, copy=False)
+        self.causes = list(causes)
+
+    @cached_property
+    def present(self) -> list:
+        """The tree's causes with at least one failure in the leaf."""
+        codes = cause_codes(self.data.e, self.causes)
+        failed = np.asarray(self.data.c) == 0
+        return [
+            label
+            for k, label in enumerate(self.causes)
+            if (failed & (codes == k)).any()
+        ]
+
+    @property
+    def absent(self) -> list:
+        """The tree's causes with no failure in the leaf."""
+        return [k for k in self.causes if k not in self.present]
+
+    @cached_property
+    def model(self) -> Any:
+        """The leaf's competing-risks model (``None`` with no failures)."""
+        # Local imports: the competing-risks package imports the top-level
+        # surpyval namespace, which imports this module.
+        from surpyval.univariate.competing_risks import (
+            CompetingRisks,
+            ParametricCompetingRisks,
+        )
+
+        if not self.present:
+            return None
+        data = self.data
+        tl = np.asarray(data.t[:, 0], dtype=float)
+        entry = {"tl": tl} if np.isfinite(tl).any() else {}
+        if self.kind == "non-parametric":
+            return CompetingRisks.fit(
+                np.asarray(data.x, dtype=float),
+                data.e,
+                data.c,
+                data.n,
+                how="Kaplan-Meier",
+                **entry,
+            )
+        codes = cause_codes(data.e, self.causes)
+        models = {}
+        for label in self.present:
+            failed = codes == self.causes.index(label)
+            view = SurpyvalData(
+                np.asarray(data.x),
+                np.where(failed, 0, 1),
+                np.asarray(data.n),
+                data.t,
+                handle=False,
+            )
+            models[label] = TerminalNode(view, self.kind, copy=False).model
+        return ParametricCompetingRisks.from_fitted(models)
+
+    def evaluate(
+        self, function_name: str, x: int | float | ArrayLike, event: Any = None
+    ) -> Any:
+        """``function_name`` at the times ``x``: the all-cause ``sf``,
+        ``ff``, ``Hf``, ``hf`` or ``df``, or ``"cif"`` of cause ``event``
+        (zero for a cause absent from the leaf)."""
+        x = np.asarray(x, dtype=float)
+        model = self.model
+        if function_name == "cif":
+            if model is None or event not in self.present:
+                return np.where(np.isnan(x), np.nan, 0.0)
+            return np.asarray(model.cif(x, event), dtype=float)
+        if model is None:
+            # No failures: nothing happens
+            value = 1.0 if function_name == "sf" else 0.0
+            return np.where(np.isnan(x), np.nan, value)
+        return np.asarray(getattr(model, function_name)(x), dtype=float)
+
+    def describe(self) -> str:
+        """The leaf as text: its causes' models, the causes with zero
+        incidence here, and the number of units that reached it."""
+        model = self.model
+        if model is None:
+            text = "no failures: every cause has zero incidence"
+        else:
+            if hasattr(model, "models"):
+                parts = []
+                for label in self.present:
+                    sub = model.models[label]
+                    params = ", ".join(
+                        f"{name}={float(value):.4g}"
+                        for name, value in zip(sub.parameter_names, sub.params)
+                    )
+                    parts.append(f"{label!r}: {sub.dist.name}({params})")
+                text = "; ".join(parts)
+            else:
+                text = "Aalen-Johansen, causes " + ", ".join(
+                    repr(k) for k in self.present
+                )
+            if self.absent:
+                text += "; zero incidence (no failures here): " + ", ".join(
+                    repr(k) for k in self.absent
+                )
+        units = self.units
+        if units is not None:
+            text += f", {units:g} units"
+        return text
+
+    def to_dict(self) -> dict:
+        """The leaf's fitted competing-risks model (``None`` with no
+        failures), the causes present and the units that reached it."""
+        model = self.model
+        out: dict = {
+            "node": "terminal-causes",
+            "kind": self.kind,
+            "causes": to_native(list(self.causes)),
+            "present": to_native(list(self.present)),
+            "leaf": None if model is None else model.to_dict(),
+        }
+        if self.units is not None:
+            out["units"] = self.units
+        return out
+
+    @classmethod
+    def from_dict(cls, node_dict: dict) -> "CompetingRisksLeaf":
+        from surpyval.serialisation import from_dict as _restore_model
+
+        node = cls.__new__(cls)
+        node.kind = node_dict["kind"]
+        node.data = None  # type: ignore[assignment]
+        node.causes = [label_from_native(k) for k in node_dict["causes"]]
+        leaf = node_dict["leaf"]
+        node.__dict__["model"] = None if leaf is None else _restore_model(leaf)
+        node.__dict__["present"] = [
+            label_from_native(k) for k in node_dict["present"]
+        ]
+        node.__dict__["_units"] = node_dict.get("units")
+        return node
+
+
 def fit_leaves(root: Node) -> None:
     """Fit the parametric leaves of the tree under ``root`` together.
 
@@ -373,6 +548,7 @@ def fit_leaves(root: Node) -> None:
             stack += [node.right_child, node.left_child]
         elif (
             isinstance(node, TerminalNode)
+            and not isinstance(node, CompetingRisksLeaf)
             and node.kind != "non-parametric"
             and node.data is not None
             and "model" not in node.__dict__
@@ -451,9 +627,12 @@ def node_from_dict(node_dict: dict) -> Node:
         return IntermediateNode.from_dict(node_dict)
     if kind == "terminal":
         return TerminalNode.from_dict(node_dict)
+    if kind == "terminal-causes":
+        return CompetingRisksLeaf.from_dict(node_dict)
     raise ValueError(
         f"Unrecognised tree node dict (node={kind!r}); expected "
-        "'intermediate' or 'terminal'."
+        "'intermediate', 'terminal' or 'terminal-causes'. A dict from a "
+        "newer SurPyval may need it: upgrade surpyval to load it."
     )
 
 
@@ -476,6 +655,8 @@ def point_time_data(data: SurpyvalData) -> SurpyvalData:
     Z = getattr(data, "Z", None)
     if Z is not None:
         out.add_covariates(Z)
+    if data.e is not None:
+        out.e = data.e
     return out
 
 
@@ -492,6 +673,7 @@ def build_tree(
     selection: str = "greedy",
     alpha_split: float = 0.05,
     min_split_gain: float | str = 0.0,
+    competing: CauseSplit | None = None,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -520,6 +702,11 @@ def build_tree(
     ``min_split_gain`` is the least log-likelihood gain a deviance split
     must make (see
     :func:`~surpyval.ml.forest.deviance_split.deviance_split`).
+
+    ``competing``, for a tree grown with the cause of each failure, gives
+    the causes and the split rule (see
+    :mod:`~surpyval.ml.forest.cause_specific_split`); its leaves are
+    :class:`CompetingRisksLeaf`, a competing-risks model of the ``kind``.
     """
     if rng is None:
         rng = np.random.mtrand._rand
@@ -530,9 +717,14 @@ def build_tree(
         # read 1-D times (#543).
         data = point_time_data(data)
 
+    def leaf() -> TerminalNode:
+        if competing is not None:
+            return CompetingRisksLeaf(data, kind, competing.causes)
+        return TerminalNode(data, kind, copy=False)
+
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(data, kind, copy=False)
+        return leaf()
 
     # Choose the random n_features_split subset of features, without
     # replacement
@@ -549,11 +741,15 @@ def build_tree(
             data, Z, kind, min_leaf_samples, min_leaf_failures, candidates
         )
         if chosen == -1 or not p_value < alpha_split:
-            return TerminalNode(data, kind, copy=False)
+            return leaf()
         candidates = np.array([chosen])
 
     # Figure out best feature-value split
-    if kind == "non-parametric" and needs_full_likelihood_split(data):
+    if competing is not None:
+        split_feature_index, split_feature_value = competing.best_cut(
+            data, Z, min_leaf_samples, min_leaf_failures, candidates
+        )
+    elif kind == "non-parametric" and needs_full_likelihood_split(data):
         # Left or interval censoring, or right truncation: the log-rank
         # scores of the pooled Turnbull estimate, less each truncated
         # row's window score.
@@ -578,7 +774,7 @@ def build_tree(
     # If the split rule can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(data, kind, copy=False)
+        return leaf()
 
     # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(
@@ -598,4 +794,5 @@ def build_tree(
         alpha_split=alpha_split,
         p_value=p_value,
         min_split_gain=min_split_gain,
+        competing=competing,
     )

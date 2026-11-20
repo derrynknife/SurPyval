@@ -303,14 +303,17 @@ def simulate_links(
     follow=2.0,
     every=1 / 12,
     sd_noise=0.7,
+    lag=0.0,
 ):
     """``n`` items with ages in years, followed for ``follow`` years and
     read monthly: each marker a line from 3.0 (sd 0.6) rising 1.0 a year
     (sd 0.5, correlation 0.2), read with noise ``sd_noise``; the hazard
     Weibull (``alpha``, ``beta``) times ``exp`` of ``value`` per unit of
     the line above ``centre``, ``slope`` per unit a year of its rise,
-    and ``cumulative`` per unit-year of the area under it from age 0.
-    The lifetimes are by a trapezium rule on a fine grid of ages."""
+    and ``cumulative`` per unit-year of the area under it from age 0,
+    each ``lag`` years later (the line held at its age-0 value until
+    then: its slope 0). The lifetimes are by a trapezium rule on a fine
+    grid of ages."""
     rng = np.random.default_rng(seed)
     sd0, sd1, r = 0.6, 0.5, 0.2
     D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
@@ -320,10 +323,11 @@ def simulate_links(
     t = np.linspace(0.0, 40.0, 400001)
     items = []
     for k in range(n):
+        u = np.maximum(t - lag, 0.0)
         eta = (
-            value * (m0[k] + m1[k] * t - centre)
-            + slope * m1[k]
-            + cumulative * (m0[k] * t + m1[k] * t**2 / 2)
+            value * (m0[k] + m1[k] * u - centre)
+            + slope * m1[k] * ((t > lag) if lag > 0 else 1.0)
+            + cumulative * (m0[k] * u + m1[k] * u**2 / 2)
         )
         with np.errstate(all="ignore"):
             h = (

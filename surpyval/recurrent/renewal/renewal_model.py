@@ -12,6 +12,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -313,8 +314,39 @@ def conditional_gaps(
     the next age came back as ``v`` itself and the simulated MCF went flat.
 
     ``H`` is inverted with the quantile function while that is accurate
-    (see ``_QF_HAZARD_LIMIT``) and by Newton's method on ``H`` beyond it
-    (see ``_invert_cumulative_hazard``).
+    and by Newton's method on ``H`` beyond it. A mixture's quantile
+    function is itself a root search on its failure function, which loses
+    about ``eps * exp(H)`` of the age, so a mixture's draws all take
+    Newton's steps on ``H``, from a lower bound found from its components.
+
+    Parameters
+    ----------
+    lifetime : model
+        The lifetime distribution: a fitted or built univariate model
+        (``Weibull.from_params(...)``, a ``MixtureModel``, ...), with its
+        cumulative hazard ``Hf``.
+    v : numpy.ndarray
+        The items' virtual ages.
+    u : numpy.ndarray
+        Uniforms on (0, 1), one per item: ``u`` is the chance of surviving
+        the gap drawn, so a smaller ``u`` gives a longer one.
+
+    Returns
+    -------
+    numpy.ndarray
+        The time from each virtual age to the next failure.
+
+    Examples
+    --------
+    The median residual life of a Weibull at ages 0 and 5:
+
+    >>> import numpy as np
+    >>> from surpyval import Weibull
+    >>> from surpyval.recurrent import conditional_gaps
+    >>> life = Weibull.from_params([10.0, 2.0])
+    >>> v, u = np.array([0.0, 5.0]), np.array([0.5, 0.5])
+    >>> conditional_gaps(life, v, u).round(3)
+    array([8.326, 4.712])
     """
     with np.errstate(divide="ignore"):
         energy = -np.log(np.asarray(u, dtype=float))
@@ -342,19 +374,86 @@ def conditional_gaps_from_energy(
     at_once = np.isinf(H_v) & (H_v > 0)
     # u == 0 (or an undefined H): an infinitely late event.
     never = ~at_once & ~np.isfinite(target)
+    mixture = both is not None and _is_mixture(lifetime)
     easy = ~at_once & ~never & (target <= _QF_HAZARD_LIMIT)
+    if mixture:
+        easy[...] = False
     hard = ~at_once & ~never & ~easy
     x = np.array(v, dtype=float)
     if easy.any():
         x[easy] = quantile(-np.expm1(-target[easy]))
     if hard.any():
+        start = (
+            _mixture_start(lifetime, v[hard], target[hard])
+            if mixture
+            else None
+        )
         x[hard] = _invert_cumulative_hazard(
-            hazard, v[hard], target[hard], both=both, H_v=H_v[hard]
+            hazard,
+            v[hard],
+            target[hard],
+            both=both,
+            H_v=H_v[hard],
+            start=start,
         )
     gap = np.maximum(x - v, 0.0)
     gap[at_once] = 0.0
     gap[never] = np.inf
     return gap
+
+
+def _is_mixture(lifetime: Any) -> bool:
+    """Whether ``lifetime`` is a continuous mixture whose components
+    bound its cumulative hazard (see ``_mixture_start``)."""
+    return (
+        callable(getattr(lifetime, "_hazard_and_rate", None))
+        and getattr(lifetime, "params", None) is not None
+        and getattr(lifetime, "w", None) is not None
+        and not getattr(getattr(lifetime, "dist", None), "discrete", False)
+    )
+
+
+def _mixture_start(
+    lifetime: Any, v: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """A point at or below each root of ``H(x) = target`` (``x >= v``)
+    for a mixture with weights ``w_i`` and components' cumulative hazards
+    ``H_i``, from which Newton's method starts.
+
+    The mixture's survival ``S = sum_i w_i S_i`` is at least its smallest
+    component's survival, and at least each ``w_i S_i``; so ``H`` is
+    below the target wherever every ``H_i`` is (before the smallest of
+    the components' roots ``H_i(t) = target``) and wherever some ``H_i``
+    is below ``target + log w_i``. The larger of the two bounds is close
+    to the root at both ends: in the body, where the components' roots
+    are close, and in the tail, where the longest-lived component's
+    survivors are nearly all that is left. The components' roots come
+    from their quantile functions, which are only a little out where
+    ``exp(-target)`` is small; the solver checks the point's side
+    rather than trusting it, and a component whose quantile is not
+    finite gives no bound."""
+    dist = lifetime.dist
+    params = np.asarray(lifetime.params, dtype=float)
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        log_w = np.log(np.asarray(lifetime.w, dtype=float))
+
+        lowest = np.full(target.shape, np.inf)
+        bound = np.full(target.shape, -np.inf)
+        for i, row in enumerate(params):
+            # Both of the component's roots from one call of its qf.
+            level = np.stack([target, target + log_w[i]])
+            t = np.broadcast_to(
+                np.asarray(
+                    dist.qf(-np.expm1(-np.maximum(level, 0.0)), *row),
+                    dtype=float,
+                ),
+                level.shape,
+            )
+            t = np.where(np.isfinite(t) & (level > 0), t, -np.inf)
+            lowest = np.minimum(lowest, t[0])
+            bound = np.maximum(bound, t[1])
+        bound = np.maximum(bound, lowest)
+    return np.where(np.isfinite(bound) & (bound > v), bound, v)
 
 
 def _lifetime_functions(
@@ -498,6 +597,7 @@ def _invert_cumulative_hazard(
     target: np.ndarray,
     both: "Callable | None" = None,
     H_v: "np.ndarray | None" = None,
+    start: "np.ndarray | None" = None,
 ) -> np.ndarray:
     """Solve ``H(x_k) = target_k`` for ``x_k > v_k`` (where ``H(v_k) <
     target_k``), for every ``k`` at once.
@@ -525,11 +625,18 @@ def _invert_cumulative_hazard(
     draw where ``both`` is ``None``. One draw at a time (what the
     simulations ask for) runs the same steps on Python floats
     (``_newton_one``), without the array bookkeeping.
+
+    ``start`` (``>= v``), where given, is where the steps begin in place
+    of ``v`` (``H_v`` is then not used); which side of the root it lies on
+    is found from ``H`` there, not assumed.
     """
     v = np.asarray(v, dtype=float)
     target = np.asarray(target, dtype=float)
     if both is None:
         return _bracket_and_solve(hazard, v, target)
+    if start is not None:
+        start = np.broadcast_to(np.asarray(start, dtype=float), v.shape)
+        H_v = None
     if H_v is not None:
         H_v = np.broadcast_to(np.asarray(H_v, dtype=float), v.shape)
     if v.size == 1:
@@ -538,6 +645,7 @@ def _invert_cumulative_hazard(
             float(v.reshape(-1)[0]),
             float(target.reshape(-1)[0]),
             None if H_v is None else float(H_v.reshape(-1)[0]),
+            None if start is None else float(start.reshape(-1)[0]),
         )
         if root is not None:
             return np.full(v.shape, root)
@@ -549,7 +657,10 @@ def _invert_cumulative_hazard(
     first = np.maximum(np.abs(v), 1.0)
     # The relative size of the last Newton step (inf after any other).
     previous = np.full(n, np.inf)
-    x = np.array(v, dtype=float)
+    x = np.array(v if start is None else start, dtype=float)
+    # Without a start the first point is v, below the root by
+    # construction; a start's side is found from H there.
+    assume_below = start is None
     active = np.arange(n)
     give_up = np.zeros(n, dtype=bool)
     for k in range(_NEWTON_MAXITER + 1):
@@ -566,7 +677,7 @@ def _invert_cumulative_hazard(
         # aside); past a bounded support H is inf or nan.
         bad = ~np.isfinite(H)
         exact = (g == 0) & (k > 0)
-        below = (g < 0) | (k == 0)
+        below = (g < 0) | ((k == 0) & assume_below)
         lo[a] = np.where(below & ~bad, xa, lo[a])
         hi[a] = np.where(~below & ~bad, xa, hi[a])
         lo_a, hi_a = lo[a], hi[a]
@@ -628,7 +739,11 @@ def _newton_point_one(x: float, H: float, h: float, target: float) -> float:
 
 
 def _newton_one(
-    both: Callable, v: float, target: float, H_v: "float | None"
+    both: Callable,
+    v: float,
+    target: float,
+    H_v: "float | None",
+    start: "float | None" = None,
 ) -> "float | None":
     """``_invert_cumulative_hazard``'s Newton steps for one draw, on
     floats, with the same rules; ``None`` where it hands the draw to
@@ -636,7 +751,8 @@ def _newton_one(
     lo, hi = v, math.inf
     first = max(abs(v), 1.0)
     previous = math.inf
-    x = v
+    x = v if start is None else start
+    assume_below = start is None
     for k in range(_NEWTON_MAXITER + 1):
         point = np.array([x])
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
@@ -650,7 +766,7 @@ def _newton_one(
         g = H - target
         if g == 0 and k > 0:
             return x
-        if g < 0 or k == 0:
+        if g < 0 or (k == 0 and assume_below):
             lo = x
         else:
             hi = x
@@ -700,9 +816,12 @@ def _bracket_and_solve(
         if not growing.size:
             break
         growing = growing[g(hi[growing], growing) < 0]
+        # Still below the target at infinity: it is never reached.
+        growing = growing[np.isfinite(hi[growing])]
         lo[growing] = hi[growing]
-        step[growing] *= 2.0
-        hi[growing] = lo[growing] + step[growing]
+        with np.errstate(over="ignore"):
+            step[growing] *= 2.0
+            hi[growing] = lo[growing] + step[growing]
     # Past a bounded support H can be inf or nan; bisect until hi is a
     # finite point at or above the target so the root is bracketed.
     g_hi = g(hi, everything)
@@ -717,7 +836,11 @@ def _bracket_and_solve(
         g_hi[bad] = g(hi[bad], bad)
     # H jumps to infinity at the end of the support: fail there.
     out = np.where(np.isfinite(g_hi), hi, lo)
-    rest = np.flatnonzero(np.isfinite(g_hi) & (g_hi != 0))
+    # H never reaches the target (it levels off below it, as with a
+    # limited-failure population): the event never comes.
+    short = np.isfinite(g_hi) & (g_hi < 0)
+    out[short] = np.inf
+    rest = np.flatnonzero(np.isfinite(g_hi) & (g_hi > 0))
     if rest.size:
         out[rest] = solve_bracketed(
             lambda x, sel: g(x, rest[sel]),
@@ -916,6 +1039,7 @@ class UnitStates:
 
 
 class RenewalModel(
+    ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,
     RecurrenceSimulationMixin,
@@ -1276,6 +1400,7 @@ class RenewalModel(
                     len(names), names, np.shape(params)
                 )
             )
+        self._check_with_params(values)
         import surpyval.recurrent as recurrent
 
         family = self._family()
@@ -1306,6 +1431,34 @@ class RenewalModel(
         if unit is not None:
             out.unit = unit
         return out
+
+    def _check_with_params(self, values: np.ndarray) -> None:
+        """Refuse a vector for :meth:`with_params` with a value that is
+        not finite or is outside :attr:`parameter_bounds`: an end of the
+        restoration parameter's range is allowed (``q = 0``, ``rho`` of
+        0 or 1, as the fitters check them), an end of the lifetime's (or
+        ARI baseline's) is not."""
+        names = self.covariance_names
+        bad = []
+        for i, (low, high) in enumerate(self.parameter_bounds):
+            v = values[i]
+            closed = i == 0
+            if not np.isfinite(v):
+                bad.append(f"{names[i]} = {v} (not finite)")
+            elif (low is not None and (v < low if closed else v <= low)) or (
+                high is not None and (v > high if closed else v >= high)
+            ):
+                bad.append(f"{names[i]} = {v:.6g} (outside ({low}, {high}))")
+        if bad:
+            raise ValueError(
+                "with_params got parameters the model is not defined at: "
+                "{}. A draw from covariance() can fall outside a "
+                "parameter's range where its standard error is large; draw "
+                "inside parameter_bounds (on the log scale of a positive "
+                "parameter, the logit of one between two ends).".format(
+                    "; ".join(bad)
+                )
+            )
 
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by

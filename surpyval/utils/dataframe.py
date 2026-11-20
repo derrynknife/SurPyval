@@ -718,7 +718,7 @@ class RegressionDataFrameMixin:
     columns or a formula, and the univariate time columns."""
 
     @fitter_method
-    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
+    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr", "e")
     @takes_unit
     def fit_from_df(
         self,
@@ -732,6 +732,7 @@ class RegressionDataFrameMixin:
         xl_col: str | None = None,
         xr_col: str | None = None,
         formula: str | None = None,
+        e_col: str | None = None,
         **fit_options: Any,
     ) -> Any:
         """
@@ -775,6 +776,11 @@ class RegressionDataFrameMixin:
             ``"age + C(sex)"``, as for the regression models'
             ``fit_from_df``: categoricals get reference-level columns and
             the intercept is dropped. Its columns are the features.
+        e_col : str, optional
+            Column of the cause of each failure, a blank cell for a
+            right-censored row, passed to :meth:`fit` as ``e`` (a
+            ``SurvivalTree`` grown with causes; a model whose ``fit`` takes
+            no ``e`` refuses it).
         **fit_options
             Every other option of :meth:`fit`.
 
@@ -836,6 +842,8 @@ class RegressionDataFrameMixin:
             "tr": tr_col,
         }
         arrays = read_columns(df, columns)
+        if e_col is not None:
+            arrays["e"] = cause_column(df, e_col)
         model_spec = None
         if Z_cols is not None:
             names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

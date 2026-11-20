@@ -447,6 +447,7 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_multistate_panel.py
+              surpyval/tests/calibration/test_coverage_multistate_parametric.py
           - group: pool-joint-frailty
             workers: '0'
             test-timeout: 5400
@@ -497,6 +498,7 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_bootstrap.py
               --ignore=surpyval/tests/calibration/test_coverage_panel_count.py
               --ignore=surpyval/tests/calibration/test_coverage_multistate_panel.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_parametric.py
               --ignore=surpyval/tests/calibration/test_coverage_joint_frailty.py
               --ignore=surpyval/tests/calibration/test_coverage_cox_mixed_effects.py
               --ignore=surpyval/tests/calibration/test_coverage_interval_cox.py

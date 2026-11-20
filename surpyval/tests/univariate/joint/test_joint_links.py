@@ -252,7 +252,26 @@ LINK_FITS = {
 }
 
 
-def _brute_force_neg_ll(model, data):
+def _simpson(f, lo, hi, lag=0.0):
+    """``int_lo^hi f(s) ds`` by Simpson's rule with 2001 points, on each
+    side of ``lag`` where it is inside ``(lo, hi)``, where a lagged
+    marker has a kink; ``f`` takes an array of ages and gives ``(..,
+    ages)``. The piece after ``lag`` starts just past it, so a slope that
+    starts there is taken from the right."""
+    total = 0.0
+    cuts = [lo] + ([lag] if lo < lag < hi else []) + [hi]
+    for k, (a, b) in enumerate(zip(cuts[:-1], cuts[1:])):
+        s = np.linspace(a, b, 2001)
+        w = np.ones(s.size)
+        w[1:-1:2], w[2:-1:2] = 4, 2
+        at = s.copy()
+        if k > 0:
+            at[0] = np.nextafter(a, np.inf)
+        total = total + f(at) @ w * (s[1] - s[0]) / 3
+    return total
+
+
+def _brute_force_neg_ll(model, data, lag=0.0):
     """The negative log-likelihood of ``data`` by a dense grid over the
     random effects (161 points a dimension, 7 sds each way) and Simpson's
     rule in age (2001 points), from the model's parameters alone, the
@@ -284,16 +303,20 @@ def _brute_force_neg_ll(model, data):
         def hazard(t, m0=m0, m1=m1):
             t = np.atleast_1d(t)[None, :]
             h0 = (p["beta"] / p["alpha"]) * (t / p["alpha"]) ** (p["beta"] - 1)
+            # the line lag later, held at its age-0 value until then
+            u = np.maximum(t - lag, 0.0)
             eta = 0.0
             if "marker_effect" in p:
                 eta = eta + p["marker_effect"] * (
-                    m0[:, None] + m1[:, None] * t - reference
+                    m0[:, None] + m1[:, None] * u - reference
                 )
             if "slope_effect" in p:
-                eta = eta + p["slope_effect"] * m1[:, None]
+                eta = eta + p["slope_effect"] * m1[:, None] * (
+                    (t > lag) if lag > 0 else 1.0
+                )
             if "cumulative_effect" in p:
                 eta = eta + p["cumulative_effect"] * (
-                    m0[:, None] * t + m1[:, None] * t**2 / 2
+                    m0[:, None] * u + m1[:, None] * u**2 / 2
                 )
             return h0 * np.exp(eta)
 
@@ -302,10 +325,7 @@ def _brute_force_neg_ll(model, data):
                 return np.zeros(B0.size)
             if t <= 0:
                 return np.ones(B0.size)
-            s = np.linspace(0, t, 2001)
-            w = np.ones(s.size)
-            w[1:-1:2], w[2:-1:2] = 4, 2
-            return np.exp(-hazard(s) @ w * (s[1] - s[0]) / 3)
+            return np.exp(-_simpson(hazard, 0.0, t, lag))
 
         readings = data["markers"][k]
         ages = np.array(list(readings), dtype=float)

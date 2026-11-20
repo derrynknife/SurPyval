@@ -33,14 +33,15 @@ from surpyval.utils.validation import (
 
 from ._likelihood import (
     EFFECTS,
-    GH_PREDICT,
+    GH_FIT,
+    INTEGRATIONS,
     JointArrays,
     Layout,
     Model,
     PathFunction,
     _at,
     _path_params,
-    adaptive_nodes,
+    check_lag,
     continued_modes,
     log_integrals,
     log_integrand,
@@ -76,6 +77,15 @@ _STAGE_TWO = "two-stage, stage 2: approximate, standard errors understated"
 _SURVIVAL_WORDS = {
     "PH": "proportional hazards",
     "AFT": "accelerated failure time",
+}
+
+#: Each integration in words, for the printout.
+_INTEGRATION_WORDS = {
+    "grid": f"adaptive Gauss-Hermite, full grid ({GH_FIT} points a dimension)",
+    "pruned": (
+        f"adaptive Gauss-Hermite, pruned grid ({GH_FIT} points a "
+        "dimension, without the nodes of negligible weight)"
+    ),
 }
 
 #: The formula of each built-in path model, by its name, for the
@@ -402,7 +412,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     (``slope_effect`` times :math:`m'(t)`) or the area under it from age
     0 (``cumulative_effect`` times :math:`\\int_0^t m(s) ds`), in place
     of the value or beside it; the baseline is then at a slope and an
-    area of 0.
+    area of 0. With a ``lag`` above 0 the hazard at age :math:`t` follows
+    each of these at :math:`\\max(t - \\mathrm{lag}, 0)` (the path held at
+    its age-0 value until the lag has passed, so the slope is 0 there):
+    a reading acts ``lag`` later.
 
     In an accelerated model (``survival == "AFT"``) the marker speeds up
     the item's ageing in place of multiplying its hazard: by age
@@ -497,6 +510,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: current value), ``"slope"`` (its rate of change), ``"cumulative"``
     #: (the area under it from age 0), one or more.
     link: tuple = ("value",)
+    #: How long after the marker the hazard follows it, in the lifetimes'
+    #: unit of time (0: at once): the hazard at age ``t`` follows the
+    #: path at ``max(t - lag, 0)``. Fixed by the fit's fitter, not
+    #: estimated.
+    lag: float = 0.0
     #: The survival part: ``"PH"`` (the marker multiplies the hazard,
     #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
     #: ``JointAFT``).
@@ -513,6 +531,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: How it was fitted: ``"MLE"`` (the joint likelihood's maximum) or
     #: ``"two-stage"`` (the approximate two-stage estimate).
     how: str = "MLE"
+    #: How each item's likelihood was integrated over its varying path
+    #: parameters, in the fit and in this model's predictions: ``"grid"``
+    #: (adaptive Gauss-Hermite on the full grid of 7 points in each) or
+    #: ``"pruned"`` (the same grid without the nodes of negligible
+    #: weight: the default with four or five varying parameters).
+    integration: str = "grid"
     #: The numbers of items, failures and readings fitted (count
     #: weighted).
     n_items: float = 0.0
@@ -609,8 +633,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def _likelihood_model(self) -> Model:
         return Model(
             self._layout,
-            PathFunction(self.path_model, tuple(self.link)),
+            PathFunction(self.path_model, tuple(self.link), self.lag),
             self._centre,
+            self.integration,
         )
 
     @property
@@ -722,6 +747,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             (
                 "link: "
                 + ", ".join(_LINK_WORDS[link] for link in self.link)
+                + (f", lag {self.lag:g}" if self.lag > 0 else "")
                 + two,
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
@@ -820,6 +846,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
+        if self.lag > 0:
+            followed += f", {self.lag:g} earlier (lag)"
         if self.survival == "AFT":
             survival = (
                 f"{self.dist.name} accelerated failure time, ageing sped "
@@ -840,6 +868,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : {self._fit_line()}"
+            f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
             "\nEffect units        : "
         )
         out += "; ".join(
@@ -1052,7 +1081,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, many, times, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            nodes = model.prediction_nodes(mode, root)
             log_I = log_integrals(
                 theta, model, many, nodes, times, np.zeros(M), readings=True
             )
@@ -1086,7 +1115,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, one, t, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            nodes = model.prediction_nodes(mode, root)
             log_g = np.asarray(
                 log_integrand(
                     theta, model, one, nodes, t, np.zeros(1), readings=True
@@ -1189,7 +1218,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         mode, root = continued_modes(
             theta, model.layout, model.path, many, times, self._centre
         )
-        nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+        nodes = model.prediction_nodes(mode, root)
         zero = np.zeros(M)
 
         def f(params: Any) -> Any:
@@ -1483,6 +1512,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "links": links,
             "varying": list(self.varying),
             "link": list(self.link),
+            **({} if self.lag == 0 else {"lag": float(self.lag)}),
             "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -1513,6 +1543,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 if self.marker_unit is None
                 else {"marker_unit": self.marker_unit}
             ),
+            "integration": self.integration,
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
             **({} if self.how == "MLE" else {"how": self.how}),
@@ -1591,6 +1622,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.hazard_covariates = None if hazard is None else list(hazard)
         # saved before the hazard could follow anything but the value
         out.link = tuple(model_dict.get("link") or ("value",))
+        # saved before the lag, or with none: at once
+        out.lag = check_lag(model_dict.get("lag", 0.0))
         # saved before the accelerated survival part: proportional hazards
         survival = model_dict.get("survival") or "PH"
         if survival not in _SURVIVAL_WORDS:
@@ -1615,6 +1648,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.n_readings = float(model_dict.get("n_readings", 0.0))
         # saved before the marker's unit was kept: unknown
         out.marker_unit = model_dict.get("marker_unit")
+        # saved before the integration had a choice: the full grid
+        integration = model_dict.get("integration") or "grid"
+        if integration not in INTEGRATIONS:
+            raise ValueError(
+                "A joint model's integration is 'grid' or 'pruned'; the "
+                f"dict names {integration!r}."
+            )
+        out.integration = integration
         # saved before the two-stage fit: the joint likelihood's maximum
         how = model_dict.get("how") or "MLE"
         if how not in HOWS:

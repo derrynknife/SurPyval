@@ -57,6 +57,7 @@ from ._likelihood import (
     JointArrays,
     PathFunction,
     _between,
+    lag_rule,
     log1mexp,
     predictor,
 )
@@ -139,7 +140,12 @@ def log_age_between(
     centre: float,
 ) -> Any:
     """``log int_lo^hi psi(s) ds`` at the nodes ``(N, K)``, the age used
-    up over ``(lo_i, hi_i]``, for ``0 <= lo < hi`` (finite)."""
+    up over ``(lo_i, hi_i]``, for ``0 <= lo < hi`` (finite); with a lag,
+    split there (:func:`~._likelihood.lag_rule`)."""
+    if path.lag > 0:
+        s, logw = lag_rule(lo, hi, path.lag)
+        log_psi = _log_rate(theta, path, params, arrays, s, centre)
+        return logsumexp(logw[:, None, :] + log_psi, axis=-1)
     width = hi - lo
     s = lo[:, None] + width[:, None] * GL_U[None, :]
     log_psi = _log_rate(theta, path, params, arrays, s, centre)
@@ -234,6 +240,7 @@ def mode_terms(
     followed: Any,
     log_effect: Any,
     weighted: Any,
+    lag: float = 0.0,
 ) -> tuple:
     """The lifetime's part of ``-log`` the integrand at one point of the
     varying parameters per row, its gradient and its (Gauss-Newton)
@@ -242,7 +249,8 @@ def mode_terms(
     links' values and Jacobians at given ages, the marker's part of the
     log rate, and the gradient and Gauss-Newton curvature of a weighted
     sum of the rate in the varying parameters (as
-    :func:`~._likelihood._mode_objective` defines them).
+    :func:`~._likelihood._mode_objective` defines them); with a ``lag``
+    the rule is split there (:func:`~._likelihood.lag_rule`).
 
     With the effective age ``A``, its gradient ``a = sum lam g`` and
     ``S = sum lam g g'`` over the rule's nodes (``lam`` the node's share
@@ -262,11 +270,16 @@ def mode_terms(
     def age(lo: npt.NDArray, width: npt.NDArray) -> tuple:
         """The age used up over ``(lo, lo + width]``, its gradient and
         ``S``."""
-        s = lo[:, None] + width[:, None] * GL_U[None, :]
-        terms = followed(s)
-        log_lam = (
-            (lin + np.log(width))[:, None] + _AGE_LOGW + log_effect(terms)
-        )
+        if lag > 0:
+            s, logw = lag_rule(lo, lo + width, lag)
+            terms = followed(s)
+            log_lam = lin[:, None] + logw + log_effect(terms)
+        else:
+            s = lo[:, None] + width[:, None] * GL_U[None, :]
+            terms = followed(s)
+            log_lam = (
+                (lin + np.log(width))[:, None] + _AGE_LOGW + log_effect(terms)
+            )
         lam = np.exp(log_lam)
         grad, curve = weighted(lam, terms)
         return lam.sum(axis=1), grad, curve
