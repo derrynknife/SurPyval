@@ -479,6 +479,18 @@ jobs:
               surpyval/tests/calibration/test_coverage_zero_inflated.py
               surpyval/tests/calibration/test_coverage_mixture_cure.py
               surpyval/tests/calibration/test_coverage_equivalence.py
+          # The joint model with a weight on its accumulated exposure:
+          # two studies of 200 fits, each fit fitted twice (with the weight
+          # and without). On 20 November 2026, on two busy cores of a
+          # Linux container, the exponential weight took 3,504 s and the
+          # window 1,980 s: over the 45-minute per-test limit of "rest",
+          # so a group of their own, one study per worker.
+          - group: joint-weight
+            workers: '2'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_weight.py
           - group: rest
             workers: auto
             args: >-
@@ -501,6 +513,7 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_multistate_panel.py
               --ignore=surpyval/tests/calibration/test_coverage_multistate_parametric.py
               --ignore=surpyval/tests/calibration/test_coverage_joint_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_weight.py
               --ignore=surpyval/tests/calibration/test_coverage_cox_mixed_effects.py
               --ignore=surpyval/tests/calibration/test_coverage_interval_cox.py
               --ignore=surpyval/tests/calibration/test_coverage_semimarkov.py
