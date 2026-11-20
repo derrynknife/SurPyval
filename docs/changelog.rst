@@ -61,6 +61,22 @@ v0.29 (unreleased)
   refuse, saying what to do. See "Rescaling a model's time" in
   :doc:`Conventions`.
 
+- **The cheapest time to release.** ``release_time(test_cost, fix_cost,
+  field_cost)`` on a fitted Poisson process (the software reliability
+  growth models and the other intensity models) gives the testing time
+  that minimises the expected total cost of testing, of the faults fixed
+  in testing and of the faults left for the field (Okumoto and Goel
+  1980): the time at which the intensity has fallen to ``test_cost /
+  (field_cost - fix_cost)``. It returns the time, its cost, and the band
+  of times whose cost is within ``within`` (1%) of the least; with
+  ``reliability=`` and ``mission=`` the release also waits for that
+  target, and ``life=`` ends the field's exposure (needed by a model
+  with no finite number of faults). ``release_time_cb`` bounds the time
+  by the delta method or a seeded parametric bootstrap
+  (``method="bootstrap"``). A model whose intensity never falls that
+  far, and costs with ``field_cost <= fix_cost``, are refused with the
+  reason. See "When to release" in :doc:`Software Reliability Growth`.
+
 - **Remaining faults, mission reliability and the testing needed to reach
   a target**, on every fitted Poisson process
   (``ParametricRecurrenceModel``: the software reliability growth models,

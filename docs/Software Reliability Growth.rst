@@ -9,6 +9,7 @@ which answers the questions a test or release manager asks:
 - How many faults are left?
 - How reliable is the software now?
 - How much more testing would it take to reach a target?
+- When is it cheapest to release?
 
 Nothing here is special to software: the same models fit any process in
 which problems are found and removed (the commissioning of a plant, the
@@ -350,8 +351,59 @@ however long the test:
     except ValueError as err:
         print(err)
 
+When to release
+---------------
+
+Testing costs money, and so do faults that reach the field. If you can
+put a figure on a day of testing, on a fault fixed during testing and on
+a fault that reaches use, ``release_time`` finds the day on which to stop
+testing for the least expected total cost [OG1980]_. Testing pays for
+itself while the failure rate is above ``test_cost / (field_cost -
+fix_cost)``; the cheapest release is the day the rate falls to that
+level. Say a day of testing costs 1 (thousand), a fault 0.5 to fix in
+testing and 40 in the field:
+
+.. jupyter-execute::
+
+    plan = model.release_time(test_cost=1, fix_cost=0.5, field_cost=40)
+    print("release on day", round(plan["time"]),
+          "at an expected cost of", round(plan["cost"]))
+    print("within 1% of that cost:", [round(t) for t in plan["band"]])
+    print("80% bounds on the day:",
+          model.release_time_cb(1, 0.5, 40, alpha_ci=0.2).round())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(plan["time"]) == 354 and plan["binding"] == "cost"
+    assert [round(t) for t in plan["band"]] == [313, 399], plan["band"]
+    assert round(plan["cost"]) == 544, plan["cost"]
+
+The ``band`` is the stretch of days whose cost is within 1% of the best,
+here about twelve weeks: the exact day matters little, and the bounds on the day (which come from
+the uncertainty in the fitted model) are wider still.
+``method="bootstrap"`` gives bounds by simulation instead.
+
+Costs are in any currency and time is in the model's unit. A model with
+no fixed number of faults needs ``life=``, the time at which the software
+goes out of use, to add up the field's failures. A release may also have
+to meet a reliability target, whatever the costs say; give it and the
+release is the later of the two days:
+
+.. jupyter-execute::
+
+    plan = model.release_time(1, 0.5, 40, reliability=0.8, mission=30)
+    print("release on day", round(plan["time"]), "set by", plan["binding"])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(plan["time"]) == 551 and plan["binding"] == "reliability"
+
 A whole number of faults: Jelinski-Moranda
------------------------------------------
+------------------------------------------
 
 The oldest model of all [JM1972]_ counts the faults in whole numbers:
 the software starts with ``N`` faults, each causes failures at the same
@@ -460,6 +512,10 @@ References
 .. [LXZ2015] Liu, J., Xu, M. and Zhou, Z. (2015), "Parameter estimation
    of Jelinski-Moranda model based on weighted nonlinear least squares
    and heteroscedasticity", arXiv:1503.00094 (Table 1: the NTDS data).
+
+.. [OG1980] Okumoto, K. and Goel, A. L. (1980), "Optimum release time
+   for software systems based on reliability and cost criteria", *Journal
+   of Systems and Software* 1, 315-318.
 
 Goel, A. L. and Okumoto, K. (1979), "Time-dependent error-detection rate
 model for software reliability and other performance measures", *IEEE

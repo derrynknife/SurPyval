@@ -1,6 +1,7 @@
 """Coverage of the bounds on a fitted growth model's answers:
-``remaining_faults_cb``, ``next_failure_sf_cb``, ``time_to_intensity_cb``
-and ``time_to_reliability_cb``.
+``remaining_faults_cb``, ``next_failure_sf_cb``, ``time_to_intensity_cb``,
+``time_to_reliability_cb`` and ``release_time_cb`` (its delta-method
+bound).
 
 Data: 10 systems tested to T = 60, each a Goel-Okumoto process with a =
 30 faults and b = 0.05 (95% of the faults found by the end, about 285
@@ -26,6 +27,9 @@ from surpyval.tests.calibration._montecarlo import (
 
 A, B, T_END, SYSTEMS = 30.0, 0.05, 60.0, 10
 MISSION, RATE, RELIABILITY = 5.0, 0.02, 0.9
+# The costs of a unit of testing, of a fault fixed in testing and of one
+# found in use (a release at t = 78.5)
+TEST, FIX, FIELD = 5.0, 10.0, 180.0
 
 
 def test_growth_answers_coverage():
@@ -40,6 +44,8 @@ def test_growth_answers_coverage():
             A * -np.expm1(-B * MISSION) / -np.log(RELIABILITY)
         )
         / B,
+        # the cheapest release: log(a b (c2 - c1) / c3) / b
+        "release_time_cb": np.log(A * B * (FIELD - FIX) / TEST) / B,
     }
     reps = 1000
     bounds = {name: np.full((reps, 2), np.nan) for name in truth}
@@ -68,6 +74,9 @@ def test_growth_answers_coverage():
             )
             bounds["time_to_reliability_cb"][r] = model.time_to_reliability_cb(
                 RELIABILITY, MISSION
+            )
+            bounds["release_time_cb"][r] = model.release_time_cb(
+                TEST, FIX, FIELD
             )
     for name, value in truth.items():
         check_coverage(
