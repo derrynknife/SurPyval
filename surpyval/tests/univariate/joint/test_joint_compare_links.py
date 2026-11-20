@@ -2,14 +2,17 @@
 ``JointPHFitter.compare_links`` and ``LinkComparison``.
 
 The checks: each candidate is the fit of its own link to the same data
-(the same parameters and log-likelihood as fitting it alone); the table's
-ranking, differences and weights; the likelihood-ratio tests of the
-nested pairs against the separate fits' log-likelihoods; the options
-(``links``, ``metric``, ``marker_reference``); what is shown but not ranked
-(a fit that is not a verified maximum, a link that could not be fitted);
-warnings said once; and the refusals. The fleet is
-``_fleet.simulate_links`` with the slope link (seed 5, as in
-``test_joint_links.py``).
+(the same parameters and log-likelihood as fitting it alone, though the
+later fits start from the value fit's path estimates); the table's
+ranking, differences, weights, tests and words; the choice of the best
+(the simpler of links within 2); the verdict; ``to_dict``; the
+likelihood-ratio tests of the nested pairs against the separate fits'
+log-likelihoods; the options (``links``, ``metric``,
+``marker_reference``); what is shown but not ranked (a fit that is not a
+verified maximum, a link that could not be fitted); warnings said once;
+and the refusals. The fleet is ``_fleet.simulate_links`` with the slope
+link (seed 5, as in ``test_joint_links.py``). On the Mayo PBC trial the
+comparison's table is that of the four links fitted one at a time.
 """
 
 import copy
@@ -61,8 +64,13 @@ def test_each_candidate_is_its_links_own_fit():
         alone = _alone(label)
         assert model.link == alone.link
         assert model.parameter_names == alone.parameter_names
-        np.testing.assert_array_equal(model.params, alone.params)
-        assert model.log_likelihood == alone.log_likelihood
+        assert model.maximum == "verified"
+        # the same maximum, whichever start the search had
+        gap = (model.params - alone.params) / alone.standard_errors()
+        assert np.max(np.abs(gap)) < 1e-4
+        assert model.log_likelihood == pytest.approx(
+            alone.log_likelihood, abs=1e-6
+        )
 
 
 def test_the_table_ranks_the_links():
@@ -76,8 +84,11 @@ def test_the_table_ranks_the_links():
         "bic",
         "delta",
         "weight",
+        "lr_against",
+        "lr_p_value",
         "maximum",
         "status",
+        "reads_as",
         "reason",
     ]
     assert table.index.name == "link"
@@ -378,3 +389,304 @@ def test_a_richer_fit_below_the_simpler_one_is_not_tested():
     row = comparison.likelihood_ratio_tests().iloc[0]
     assert np.isnan(row["statistic"]) and np.isnan(row["p_value"])
     assert "did not reach its maximum" in row["note"]
+
+
+# -- the best, the words and the verdict ------------------------------------
+
+
+def _with_aic(label, aic):
+    """The link's fit with its log-likelihood moved to give this AIC."""
+    model = copy.copy(_alone(label))
+    model._neg_ll = (aic - 2 * model.k) / 2
+    for cached in ("_aic", "_aic_c", "_bic"):
+        model.__dict__.pop(cached, None)
+    assert model.aic() == pytest.approx(aic)
+    return model
+
+
+def _crafted(aics, metric="aic"):
+    return LinkComparison(
+        {label: _with_aic(label, aic) for label, aic in aics.items()},
+        {},
+        metric,
+    )
+
+
+def test_within_2_the_simpler_link_is_best():
+    # one effect more is not worth 1.5 of AIC
+    comparison = _crafted({"value": 100.0, "value + slope": 98.5})
+    assert comparison.best_label == "value"
+    table = comparison.table
+    assert list(table.index) == ["value", "value + slope"]
+    assert table.loc["value + slope", "delta"] == pytest.approx(-1.5)
+    assert table.loc["value + slope", "reads_as"].startswith(
+        "as good: no real preference; the rate of change adds"
+    )
+    assert comparison.verdict == (
+        "Risk follows the marker's level. Adding the rate of change does "
+        "not clearly improve the fit."
+    )
+    # but it is worth 2.5
+    comparison = _crafted({"value": 100.0, "value + slope": 97.5})
+    assert comparison.best_label == "value + slope"
+    assert comparison.table.loc["value", "delta"] == pytest.approx(2.5)
+    assert comparison.table.loc["value", "reads_as"] == "worse"
+
+
+def test_on_a_tie_the_level_comes_first():
+    comparison = _crafted({"slope": 99.0, "cumulative": 98.5, "value": 100.0})
+    assert comparison.best_label == "value"
+    comparison = _crafted({"slope": 99.0, "cumulative": 98.5, "value": 101.5})
+    assert comparison.best_label == "slope"
+    assert comparison.table["delta"].tolist() == pytest.approx(
+        [0.0, -0.5, 2.5]
+    )
+    # the weights are the Akaike weights whichever link is best
+    delta = comparison.table["delta"].to_numpy()
+    weight = np.exp(-delta / 2) / np.exp(-delta / 2).sum()
+    np.testing.assert_allclose(comparison.table["weight"], weight)
+
+
+def test_the_rows_in_words():
+    comparison = _crafted(
+        {
+            "slope": 100.0,
+            "value + slope": 101.6,
+            "value": 105.0,
+            "cumulative": 126.5,
+        }
+    )
+    reads = comparison.table["reads_as"]
+    assert reads["slope"] == "best"
+    assert reads["value"] == "worse"
+    assert reads["cumulative"] == "clearly worse"
+    # the richer link is tested against the best, nested in it
+    row = comparison.table.loc["value + slope"]
+    assert row["lr_against"] == "slope"
+    from scipy.stats import chi2
+
+    gain = (
+        comparison.models["value + slope"].log_likelihood
+        - comparison.models["slope"].log_likelihood
+    )
+    p = chi2.sf(2 * gain, 1)
+    assert row["lr_p_value"] == pytest.approx(p)
+    assert reads["value + slope"] == (
+        "as good: no real preference; the level adds nothing "
+        f"(test p = {p:.2g})"
+    )
+    for label in ("slope", "value", "cumulative"):
+        assert comparison.table.loc[label, "lr_against"] == ""
+        assert np.isnan(comparison.table.loc[label, "lr_p_value"])
+
+
+def test_the_verdict_of_the_fleet():
+    assert _comparison().verdict == (
+        "Risk follows how fast the marker is changing. Adding the level "
+        "does not improve the fit. The remaining 3 links fit clearly worse "
+        "(AIC 13.4 or more higher)."
+    )
+    assert "Verdict             : Risk follows" in repr(_comparison())
+
+
+def test_the_verdict_of_a_richer_best_and_of_a_tie():
+    comparison = _crafted(
+        {"value + slope": 100.0, "value": 104.0, "slope": 140.0}
+    )
+    p = comparison.table.loc["value + slope", "lr_p_value"]
+    assert comparison.table.loc["value + slope", "lr_against"] == "value"
+    assert comparison.verdict == (
+        "Risk follows the marker's level and how fast the marker is "
+        "changing. The rate of change adds to what the level alone "
+        f"explains (test p = {p:.2g}). The other 2 links fit worse (AIC "
+        "4.0 or more higher)."
+    )
+    comparison = _crafted({"value": 100.0, "slope": 99.2}, metric="aic")
+    assert comparison.verdict == (
+        "Risk follows the marker's level. The data cannot tell this from "
+        "a risk that follows how fast the marker is changing (AIC differs "
+        "by 0.8: no real preference)."
+    )
+    comparison = _crafted({"value": 100.0, "cumulative": 112.0})
+    assert comparison.verdict == (
+        "Risk follows the marker's level. A risk that follows the "
+        "marker's accumulated exposure (the area under its path) fits "
+        "clearly worse (AIC 12.0 higher)."
+    )
+
+
+def test_the_verdict_names_what_was_not_compared():
+    models = {k: _alone(k) for k in ("value", "slope")}
+    models["cumulative"] = copy.copy(_alone("cumulative"))
+    models["cumulative"].maximum = "unverified"
+    comparison = LinkComparison(
+        models, {"value + slope": "could not start"}, "bic"
+    )
+    assert comparison.verdict.endswith(
+        "Not compared: cumulative, value + slope (see the table's reason)."
+    )
+    assert "BIC" in comparison.verdict
+    reads = comparison.table["reads_as"]
+    assert reads["cumulative"] == "set aside"
+    assert reads["value + slope"] == "not fitted"
+    unranked = {}
+    for label in ("value", "slope"):
+        unranked[label] = copy.copy(_alone(label))
+        unranked[label].maximum = "unverified"
+    assert LinkComparison(unranked, {}, "aic").verdict.startswith(
+        "No fit reached a verified maximum"
+    )
+
+
+def test_to_dict_is_strict_json():
+    import json
+
+    comparison = _comparison()
+    out = comparison.to_dict()
+    assert json.loads(json.dumps(out, allow_nan=False)) == out
+    assert out["metric"] == "aic"
+    assert out["best"] == "slope"
+    assert out["best_link"] == ["slope"]
+    assert out["verdict"] == comparison.verdict
+    table = comparison.table
+    assert [row["link"] for row in out["table"]] == list(table.index)
+    first = out["table"][0]
+    assert first["aic"] == table["aic"].iloc[0]
+    assert first["k"] == table["k"].iloc[0]
+    assert first["lr_p_value"] is None
+    assert out["table"][1]["lr_against"] == "slope"
+    assert len(out["likelihood_ratio_tests"]) == 4
+    # a failed link's numbers are None
+    failed = LinkComparison(
+        {k: _alone(k) for k in ("value", "slope")}, {"cumulative": "no"}
+    ).to_dict()
+    row = failed["table"][-1]
+    assert row["link"] == "cumulative"
+    assert row["aic"] is None and row["k"] is None
+    json.dumps(failed, allow_nan=False)
+
+
+# -- warm starts --------------------------------------------------------------
+
+
+def _recording(monkeypatch, starts):
+    original = JointPHFitter.fit
+
+    def fit(self, *args, **kwargs):
+        starts.append((self.link, self._path_start))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(JointPHFitter, "fit", fit)
+
+
+def test_later_fits_start_from_the_value_fits_path(monkeypatch):
+    starts = []
+    _recording(monkeypatch, starts)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        comparison = WeibullJointPH.compare_links(
+            _data(), links=["slope", "value", ["value", "slope"]]
+        )
+    # the value link first, from its own start; then the others from it
+    assert [link for link, _ in starts] == [
+        ("value",),
+        ("slope",),
+        ("value", "slope"),
+    ]
+    assert starts[0][1] is None
+    given = comparison.models["value"]._path_start
+    for _, start in starts[1:]:
+        assert start is given
+    # the models in the order the links were given
+    assert list(comparison.models) == ["slope", "value", "value + slope"]
+    assert set(given) == {"mu", "Delta", "L", "sigma"}
+
+
+def test_a_warm_start_that_is_not_verified_is_fitted_again(monkeypatch):
+    original = JointPHFitter.fit
+    calls = []
+
+    def fit(self, *args, **kwargs):
+        calls.append((self.link, self._path_start is not None))
+        model = original(self, *args, **kwargs)
+        if self._path_start is not None:
+            model = copy.copy(model)
+            model.maximum = "unverified"
+        return model
+
+    monkeypatch.setattr(JointPHFitter, "fit", fit)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        comparison = WeibullJointPH.compare_links(
+            _data(), links=["value", "slope"]
+        )
+    assert calls == [
+        (("value",), False),
+        (("slope",), True),
+        (("slope",), False),
+    ]
+    assert comparison.models["slope"].maximum == "verified"
+    np.testing.assert_array_equal(
+        comparison.models["slope"].params, _alone("slope").params
+    )
+
+
+def test_a_start_of_another_shape_is_not_used():
+    from surpyval.univariate.joint._likelihood import Layout
+    from surpyval.univariate.joint.joint_ph import _given_path_start
+
+    layout = Layout(2, 0, (0, 1))
+    start = dict(_alone("value")._path_start)
+    assert _given_path_start(start, layout) is not None
+    start["L"] = np.eye(3)
+    assert _given_path_start(start, layout) is None
+    assert _given_path_start(None, layout) is None
+
+
+# -- the Mayo PBC trial -------------------------------------------------------
+
+
+def test_the_pbc_table_is_the_four_links_fitted_alone():
+    from surpyval.tests.reference.test_joint_links import _patients
+
+    patients = _patients()
+    options = dict(hazard_covariates=["treated"], path_covariates=[])
+    links = ["value", "slope", ["value", "slope"], "cumulative"]
+    comparison = WeibullJointPH.compare_links(
+        patients["years"].to_numpy(),
+        c=patients["censored"].to_numpy(),
+        Z=patients[["treated"]],
+        markers=list(patients["readings"]),
+        links=links,
+        **options,
+    )
+    table = comparison.table
+    for link in links:
+        alone = JointPH(Weibull, link=link).fit_from_df(
+            patients,
+            x_col="years",
+            c_col="censored",
+            markers_col="readings",
+            Z_cols=["treated"],
+            **options,
+        )
+        model = comparison.models[" + ".join(alone.link)]
+        row = table.loc[" + ".join(alone.link)]
+        assert alone.maximum == model.maximum == "verified"
+        gap = (model.params - alone.params) / alone.standard_errors()
+        assert np.max(np.abs(gap)) < 1e-3
+        assert row["log_likelihood"] == pytest.approx(
+            alone.log_likelihood, abs=1e-5
+        )
+        assert row["aic"] == pytest.approx(alone.aic(), abs=1e-4)
+        assert row["bic"] == pytest.approx(alone.bic(), abs=1e-4)
+        assert row["k"] == alone.k
+    # both the level and its rise carry information
+    assert comparison.best_label == "value + slope"
+    assert table.loc["value + slope", "lr_against"] == "value"
+    assert table.loc["value + slope", "lr_p_value"] < 0.01
+    assert comparison.verdict.startswith(
+        "Risk follows the marker's level and how fast the marker is "
+        "changing. The rate of change adds to what the level alone "
+        "explains"
+    )

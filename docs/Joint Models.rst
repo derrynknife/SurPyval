@@ -904,11 +904,44 @@ On the gearboxes whose risk follows how fast the debris rises:
     assert links.table["weight"].iloc[0] > 0.6
 
 The table is ranked by AIC (``metric="bic"`` or ``"aic_c"`` for another
-criterion), best first. ``delta`` is each link's AIC less the best's and
-``weight`` its Akaike weight, its share of :math:`e^{-\Delta/2}`: the slope
-link has about two thirds and the value with the slope the rest, the links
-without the slope almost none. ``links.best`` is the best fit, and
+criterion), best first. AIC is :math:`2k - 2 \log L`, with :math:`L` the
+likelihood of the readings and the lifetimes together: the links' AICs
+compare with each other, not with that of a model of the lifetimes alone.
+``delta`` is each link's AIC less the best's and ``weight`` its Akaike
+weight, its share of :math:`e^{-\Delta/2}`: the slope link has about two
+thirds and the value with the slope the rest, the links without the slope
+almost none. ``links.best`` is the best fit, and
 ``links.models["value + slope"]`` any other.
+
+Two links less than 2 apart are no real preference, and the simpler of
+them is the best: the one with fewer parameters, and on a tie the level
+before the slope before the area. So a link one effect richer than another
+is the best only where it is more than 2 lower, which, by AIC, is where the
+likelihood-ratio test of the extra effect rejects it at the 4.55% level; a
+``delta`` can be below 0 for a richer link the data do not prefer. The
+comparison says the same in words, row by row (``reads_as``: "as good: no
+real preference" within 2, "worse" from 2 to 10, "clearly worse" beyond,
+after Burnham and Anderson), and as a whole:
+
+.. jupyter-execute::
+
+    print(links.verdict)
+    links.table[["delta", "lr_against", "lr_p_value", "reads_as"]].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert links.verdict.startswith(
+        "Risk follows how fast the marker is changing. Adding the level "
+        "does not improve the fit."
+    )
+
+``lr_against`` and ``lr_p_value`` give, for a link with another nested in
+it, the likelihood-ratio test of its extra effects against that one (the
+best, where the best is nested in it). ``links.to_dict()`` holds the
+verdict, the table and the tests as strict JSON; save a fitted model with
+its own ``to_dict``, as ``links.best.to_dict()``.
 
 A link whose terms are all in another's is that model with the extra
 effects at 0, so the two are also compared by a likelihood-ratio test:
@@ -932,7 +965,10 @@ where it stands. Links that are not nested, such as the value and the
 slope, are compared by the table only.
 
 Each candidate is fitted as its own ``fit`` would fit it, to the same
-parameters. A fit that is not a verified maximum is shown in the table as
+maximum. The value link is fitted first, and the others start from its
+estimates of the path (the path changes little from link to link), which
+saves about a third of the time; a fit from that start that does not reach
+a verified maximum is made again from its own start. A fit that is not a verified maximum is shown in the table as
 ``set aside`` and is neither ranked nor tested, and a link that cannot be
 fitted is listed with the reason (``links.failed``); each is said in one
 warning. A path that cannot take some of the default links is compared
