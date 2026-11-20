@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-20
 
+### Process models: the level given survival (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The level of a unit that has not failed is `level_at(t, Z, y0=, t0=, given_survival=True)`, not a new method; it returns the same `ProcessLevel`, which gains `given_survival` and `threshold` (`None` unless conditioned). The default `False` keeps `level_at` as it was. | proposed | One method for "the level at `t`", with the condition as an option, keeps every argument (stress, the reading) in one place; the result has the same functions (`sf`, `ff`, `df`, `qf`, `random`, `mean`, `to_dict`), so a caller that draws by `qf` of its own uniforms (common random numbers) does the same with or without the condition. | done |
+| Wiener: the method of images (density less its reflection in the threshold, over the first-passage survival), its `qf` by vectorised bisection from the exact lower bracket `m + s ndtri(p S)` to the threshold; the reflection's weight is taken in log space. Gamma: the increase truncated at the distance to the threshold, `qf` through `gammaincinv`. Mean and sd in closed form for both. | proposed | Known closed forms; the bisection always converges and needs no derivative. | done |
+| Stress is taken: the level given survival is the unstressed one over the process-clock time, as for `level_at` and the life. The process models have no random effects or measurement error, so nothing else needed a refusal. | principle 1 | Only the clock changes with stress, and the no-crossing event is the same on either clock. | done |
+| `given_survival=True` refuses a reading `y0` at or past the threshold (the unit has failed), and a survival that is 0 to double precision, each saying what to use. Without the condition such a reading is still taken. | principle 2 | There is no level of a working unit to describe. | done |
+| No bounds on the level (from the parameters' covariance), conditioned or not: `with_params` draws carry the uncertainty, as the docs show. | proposed | Unchanged from the plain level; a `cb` on the level would be a separate addition. | gap |
+
 ### Competing-risks survival trees: the split rule and the leaves (20 Nov 2026)
 
 | Decision | By | Reason | Status |
