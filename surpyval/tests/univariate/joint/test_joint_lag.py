@@ -25,6 +25,7 @@ import surpyval
 from surpyval import JointAFT, JointModel, JointPH, Weibull
 from surpyval.degradation import LloydLipowPath, LogarithmicPath
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
+from surpyval.serialisation import required_schema
 from surpyval.tests.univariate.joint import test_joint_aft as aft
 from surpyval.tests.univariate.joint import test_joint_links as links
 from surpyval.tests.univariate.joint._fleet import simulate_links
@@ -253,6 +254,24 @@ def test_round_trips_through_json_and_pickle():
     )
     assert without.lag == 0.0
     assert not np.allclose(without.sf([1.0, 1.5], **question), expected)
+
+
+def test_a_lagged_model_saves_as_schema_5_which_0_28_refuses():
+    # SurPyval 0.28 reads schema 4 and below; it would ignore "lag" and
+    # predict as if the hazard followed the marker with no delay.
+    assert _fit(0.5).to_dict()["schema"] == 5
+    assert _fit(0.0).to_dict()["schema"] < 5
+
+
+def test_more_than_three_varying_path_parameters_need_schema_5():
+    # 0.28 has no prediction grid for four or five varying parameters;
+    # the schema makes it refuse at the load rather than fail later.
+    saved = _fit(0.0).to_dict()
+    assert required_schema(saved) < 5
+    for varying in (["a", "b", "c"], ["a", "b", "c", "d"]):
+        bigger = dict(saved, varying=varying)
+        expected = 5 if len(varying) > 3 else required_schema(saved)
+        assert required_schema(bigger) == expected
 
 
 def test_a_saved_negative_lag_is_refused():
