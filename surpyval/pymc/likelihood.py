@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import numpy as np
@@ -148,46 +149,59 @@ def _log_windows(
     params: list,
 ) -> Any:
     """``log[F(hi) - F(lo)]`` for each window, with a bound outside the
-    support (or infinite) taken as its limit, the rows ``index``."""
+    support (or infinite) taken as its limit, the rows ``index``.
+
+    A bound so far in its tail that the probability beyond it rounds to 0
+    is taken as its limit too, as ``fit`` takes it: its log, ``-inf``,
+    would otherwise put a NaN into the gradient (a ``switch`` sends 0 to
+    the branch it drops, and ``0 * inf`` is NaN). Which bounds those are
+    depends on the parameters, so it is decided in the graph, with no
+    gradient; and every form is evaluated, on the rows it does not serve,
+    at the family's ``centre``, where it is finite."""
+    still = importlib.import_module("pytensor.gradient").disconnected_grad
     lo_in = np.isfinite(lo) & (lo > support[0])
     hi_in = np.isfinite(hi) & (hi < support[1])
-    parts = []
-    only_hi = ~lo_in & hi_in
-    if only_hi.any():
-        parts.append(
-            family.log_ff(
-                pt, hi[only_hi], *_take(params, index[only_hi])
-            ).ravel()
-        )
-    only_lo = lo_in & ~hi_in
-    if only_lo.any():
-        parts.append(
-            family.log_sf(
-                pt, lo[only_lo], *_take(params, index[only_lo])
-            ).ravel()
-        )
-    both = lo_in & hi_in
-    if both.any():
-        p = _take(params, index[both])
-        a, b = lo[both], hi[both]
-        log_fa = family.log_ff(pt, a, *p)
-        log_fb = family.log_ff(pt, b, *p)
-        log_sa = family.log_sf(pt, a, *p)
-        log_sb = family.log_sf(pt, b, *p)
-        # F(b) - F(a) from the CDF in the lower half and from the
-        # survival function in the upper, where F rounds to 1.
-        upper = log_fa > -np.log(2.0)
-        by_ff = log_fb + log1mexp(pt, pt.switch(upper, -1.0, log_fa - log_fb))
-        by_sf = log_sa + log1mexp(pt, pt.switch(upper, log_sb - log_sa, -1.0))
-        parts.append(pt.switch(upper, by_sf, by_ff).ravel())
-    if not parts:
-        return pt.zeros(len(lo))
-    order = np.concatenate(
-        [np.flatnonzero(m) for m in (only_hi, only_lo, both) if m.any()]
-        + [np.flatnonzero(~lo_in & ~hi_in)]
+    some = lo_in | hi_in
+    out = pt.zeros(len(lo))
+    if not some.any():
+        return out
+    rows = np.flatnonzero(some)
+    p = _take(params, index[rows])
+    centre = still(family.centre(pt, *p) * pt.ones(len(rows)))
+    lo_ok, hi_ok = lo_in[rows], hi_in[rows]
+    # each bound, or the centre where it is not inside the support
+    lo_x = pt.switch(lo_ok, np.where(lo_ok, lo[rows], 0.0), centre)
+    hi_x = pt.switch(hi_ok, np.where(hi_ok, hi[rows], 0.0), centre)
+    # a bound counts where the probability beyond it is not 0
+    lo_on = pt.and_(lo_ok, ~pt.isinf(still(family.log_ff(pt, lo_x, *p))))
+    hi_on = pt.and_(hi_ok, ~pt.isinf(still(family.log_sf(pt, hi_x, *p))))
+    both = pt.and_(lo_on, hi_on)
+    only_hi = pt.and_(~lo_on, hi_on)
+    only_lo = pt.and_(lo_on, ~hi_on)
+    # F(b) - F(a) from the CDF in the lower half and from the survival
+    # function in the upper, where F rounds to 1.
+    a = pt.switch(both, lo_x, centre)
+    b = pt.switch(both, hi_x, centre)
+    log_fa = family.log_ff(pt, a, *p)
+    log_fb = family.log_ff(pt, b, *p)
+    log_sa = family.log_sf(pt, a, *p)
+    log_sb = family.log_sf(pt, b, *p)
+    upper = log_fa > -np.log(2.0)
+    lower_d = pt.switch(pt.and_(both, ~upper), log_fa - log_fb, -1.0)
+    upper_d = pt.switch(pt.and_(both, upper), log_sb - log_sa, -1.0)
+    two = pt.switch(
+        upper,
+        log_sa + log1mexp(pt, upper_d),
+        log_fb + log1mexp(pt, lower_d),
     )
-    values = pt.concatenate(parts + [pt.zeros(int((~lo_in & ~hi_in).sum()))])
-    return values[np.argsort(order)]
+    up_to_hi = family.log_ff(pt, pt.switch(only_hi, hi_x, centre), *p)
+    from_lo = family.log_sf(pt, pt.switch(only_lo, lo_x, centre), *p)
+    values = pt.switch(
+        both,
+        two,
+        pt.switch(only_hi, up_to_hi, pt.switch(only_lo, from_lo, 0.0)),
+    )
+    return pt.set_subtensor(out[rows], values)
 
 
 def log_likelihood(

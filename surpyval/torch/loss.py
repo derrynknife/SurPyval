@@ -73,13 +73,15 @@ def constrain(dist: Any, raw: Any) -> dict:
     raw : Tensor
         Shape ``(N, k)`` for ``N`` rows, or ``(k,)`` for one set of
         parameters shared by every row, where ``k`` is the number of
-        parameters of ``dist``.
+        parameters of ``dist``; ``(N, K, k)`` (or ``(K, k)``) for the
+        ``K`` components of a mixture.
 
     Returns
     -------
     dict
         Each parameter's tensor by name, of shape ``(N,)`` (or a scalar
-        tensor from a ``(k,)`` input): what :func:`nll` takes.
+        tensor from a ``(k,)`` input; ``(N, K)`` or ``(K,)`` for a
+        mixture): what :func:`nll` takes.
 
     Notes
     -----
@@ -118,13 +120,14 @@ def constrain(dist: Any, raw: Any) -> dict:
             f"{what}: raw must be a floating tensor, not {raw.dtype}: "
             "use raw.double() (or .float())."
         )
-    if raw.ndim not in (1, 2) or raw.shape[-1] != len(names):
+    if raw.ndim not in (1, 2, 3) or raw.shape[-1] != len(names):
         raise ValueError(
             f"{what}: raw has shape {tuple(raw.shape)}. {dist.name} has "
             f"{len(names)} parameter{'s' if len(names) > 1 else ''} "
             f"({', '.join(names)}, in that order), so raw must have shape "
             f"(N, {len(names)}), one column for each, or ({len(names)},) "
-            "for values shared by every row."
+            "for values shared by every row; (N, K, "
+            f"{len(names)}) for the K components of a mixture."
         )
     out = {}
     for j, (name, (lo, hi)) in enumerate(zip(names, dist.bounds)):
@@ -145,11 +148,13 @@ def constrain(dist: Any, raw: Any) -> dict:
     return out
 
 
-def _parameters(
-    torch: Any, dist: Any, params: Any, rows: int, what: str
+def _given(
+    torch: Any, dist: Any, params: Any, what: str, extra: tuple = ()
 ) -> list:
-    """Each of ``dist``'s parameters as a tensor of one type on one
-    device, in its order: a scalar, or one value per row."""
+    """Each of ``dist``'s parameters as a tensor, in its order, all of one
+    floating type on one device: those of the tensors among them (and
+    ``extra``), or ``torch.float64`` where there are none. Their shapes
+    are not checked here."""
     names = list(dist.parameter_names)
     if not isinstance(params, dict):
         raise TypeError(
@@ -172,7 +177,7 @@ def _parameters(
             "a tensor or a number."
         )
     given = [params[p] for p in names]
-    tensors = [v for v in given if isinstance(v, torch.Tensor)]
+    tensors = [v for v in [*given, *extra] if isinstance(v, torch.Tensor)]
     floats = [v.dtype for v in tensors if v.is_floating_point()]
     dtype = torch.float64
     if floats:
@@ -180,9 +185,34 @@ def _parameters(
         for other in floats[1:]:
             dtype = torch.promote_types(dtype, other)
     device = tensors[0].device if tensors else None
-    out = []
-    for name, value in zip(names, given):
-        tensor = torch.as_tensor(value, dtype=dtype, device=device)
+    return [
+        torch.as_tensor(value, dtype=dtype, device=device) for value in given
+    ]
+
+
+def _parameters(
+    torch: Any, dist: Any, params: Any, rows: int | None, what: str
+) -> list:
+    """Each of ``dist``'s parameters as a tensor of one type on one
+    device, in its order: a scalar, or one value per row. With ``rows``
+    None, the rows are those of the parameters (1 if each is a
+    scalar)."""
+    names = list(dist.parameter_names)
+    out = _given(torch, dist, params, what)
+    if rows is None:
+        lengths = {len(t) for t in out if t.ndim == 1}
+        rows = lengths.pop() if len(lengths) == 1 else 1
+        if lengths:
+            shapes = ", ".join(
+                f"{name} {tuple(t.shape)}" for name, t in zip(names, out)
+            )
+            raise ValueError(
+                f"{what}: the parameters have different numbers of rows "
+                f"({shapes}). Each is a scalar, shared by every row, or "
+                "one value per row, with every such parameter of one "
+                "length."
+            )
+    for name, tensor in zip(names, out):
         if tensor.ndim > 1 or (tensor.ndim == 1 and len(tensor) != rows):
             raise ValueError(
                 f"{what}: {name} has shape {tuple(tensor.shape)} and the "
@@ -190,10 +220,89 @@ def _parameters(
                 f"parameter is a scalar or one value per row (shape "
                 f"({rows},), in the order of the target's rows): for an "
                 "(N, 1) tensor use .squeeze(-1), and for a network's "
-                "(N, k) outputs use constrain."
+                "(N, k) outputs use constrain. For a mixture, give its "
+                "logits as mixture=."
             )
-        out.append(tensor)
     return out
+
+
+def _logits(torch: Any, mixture: Any, what: str) -> Any:
+    """The mixture's logits, checked: a floating tensor of shape (N, K)
+    or (K,)."""
+    if not isinstance(mixture, torch.Tensor):
+        raise TypeError(
+            f"{what}: mixture must be a tensor of the components' logits "
+            "(a network's outputs, shape (N, K)), not a "
+            f"{type(mixture).__name__}."
+        )
+    if not mixture.is_floating_point():
+        raise TypeError(
+            f"{what}: mixture must be a floating tensor, not "
+            f"{mixture.dtype}: use .double() (or .float())."
+        )
+    if mixture.ndim not in (1, 2) or mixture.shape[-1] < 1:
+        raise ValueError(
+            f"{what}: mixture has shape {tuple(mixture.shape)}. It is the "
+            "logits of the K components' weights (a softmax over the last "
+            "axis gives the weights): shape (N, K), one row of logits per "
+            "row, or (K,) for weights shared by every row."
+        )
+    return mixture
+
+
+def _mixture_parameters(
+    torch: Any,
+    dist: Any,
+    params: Any,
+    mixture: Any,
+    rows: int | None,
+    what: str,
+) -> tuple:
+    """The parameters of a mixture's components and their log weights,
+    each of shape ``(rows, K)``, of one type on one device. With ``rows``
+    None, the rows are those of the parameters and logits (1 if every
+    one is shared)."""
+    names = list(dist.parameter_names)
+    logits = _logits(torch, mixture, what)
+    components = logits.shape[-1]
+    out = _given(torch, dist, params, what, extra=(logits,))
+    shapes = [tuple(t.shape) for t in [*out, logits]]
+    within = [
+        len(s) <= 2 and s[-1:] in ((), (1,), (components,)) for s in shapes
+    ]
+    try:
+        whole = tuple(
+            torch.broadcast_shapes(
+                *shapes, (1 if rows is None else rows, components)
+            )
+        )
+    except RuntimeError:
+        whole = None
+    target = rows
+    if rows is None and whole is not None:
+        rows = whole[0]
+    if not all(within) or whole != (rows, components):
+        given = ", ".join(
+            f"{name} {shape}"
+            for name, shape in zip([*names, "mixture"], shapes)
+        )
+        of_target = "" if target is None else f" and the target {target} rows"
+        raise ValueError(
+            f"{what}: the mixture has {components} component"
+            f"{'s' if components != 1 else ''} (the last axis of its "
+            f"logits){of_target}, and the shapes {given} do not fit them. "
+            f"In a mixture each parameter is ({target or 'N'}, "
+            f"{components}), one "
+            f"value per row and component, ({components},) for one value "
+            "per component shared by every row, or a scalar shared by "
+            "all: for one value per row shared by the components use "
+            "p[:, None]."
+        )
+    log_w = torch.log_softmax(logits.to(out[0].dtype), dim=-1)
+    return (
+        [t.expand(rows, components) for t in out],
+        log_w.to(out[0].device).expand(rows, components),
+    )
 
 
 def _target(torch: Any, target: Any, what: str) -> Targets:
@@ -317,6 +426,7 @@ def nll(
     target: Any,
     params: Any,
     *,
+    mixture: Any = None,
     reduction: str = "mean",
 ) -> Any:
     """
@@ -344,7 +454,20 @@ def nll(
         Every parameter of ``dist`` by name, as :func:`constrain` returns:
         each a scalar (a tensor or a number), shared by every row, or a
         tensor of one value per row, in the target's row order. Each must
-        be inside its range.
+        be inside its range. With ``mixture``, the components' parameters:
+        each of shape ``(N, K)``, one value per row and component,
+        ``(K,)`` for one value per component shared by every row, or a
+        scalar shared by all.
+    mixture : Tensor, optional
+        For a mixture of ``K`` components of ``dist`` (the model of Deep
+        Survival Machines): the logits of the components' weights, shape
+        ``(N, K)``, or ``(K,)`` for weights shared by every row; the
+        weights are their softmax over the last axis. Each row's term is
+        then the log of the weighted sum of the components' likelihoods of
+        the row, less the log of the weighted sum of their probabilities
+        of its truncation window: an interval's probability is the
+        mixture's ``F(xr) - F(xl)``. With ``K = 1`` the loss is that
+        without a mixture.
     reduction : {"mean", "sum", "none"}, default "mean"
         ``"sum"`` is the negative log-likelihood; ``"mean"`` divides it by
         the total count ``sum(n)``, the loss per unit, which does not
@@ -369,6 +492,14 @@ def nll(
     distribution's derivative in its shape cannot be differentiated
     again.
 
+    In a mixture, a component can give a row probability 0 in double
+    precision (the row is far in its tail) while another explains it:
+    the loss and its gradient stay finite, that component taking no part
+    in the row's gradient. Nothing in the loss keeps a component from
+    collapsing (a weight going to 0, or a scale to a point): mixtures
+    train slowly and can do so, and how to train them is yours to
+    choose.
+
     Examples
     --------
     >>> import pytest; torch = pytest.importorskip("torch")
@@ -391,37 +522,39 @@ def nll(
     >>> loss.backward()
     >>> raw.grad.shape
     torch.Size([3, 2])
+
+    A mixture of two Weibull components, from a network's ``(N, K, k)``
+    outputs and its ``(N, K)`` logits:
+
+    >>> raw = torch.zeros(3, 2, 2, dtype=torch.float64)
+    >>> params = spt.constrain(sp.Weibull, raw)
+    >>> params["alpha"].shape
+    torch.Size([3, 2])
+    >>> logits = torch.zeros(3, 2, dtype=torch.float64)
+    >>> loss = spt.nll(sp.Weibull, y, params, mixture=logits)
+    >>> round(float(loss), 6)
+    2.190203
     """
-    return _nll(dist, target, params, reduction, "nll")
+    return _nll(dist, target, params, mixture, reduction, "nll")
 
 
-def _nll(
-    dist: Any, target: Any, params: Any, reduction: Any, what: str
+def _log_observed(
+    torch: Any, family: Family, support: tuple, y: Targets, theta: list
 ) -> Any:
-    torch = _torch(what)
-    family = _family(dist, what)
-    _reduction(reduction, what)
-    target = _target(torch, target, what)
-    theta = _parameters(torch, dist, params, len(target.xl), what)
-    dtype, device = theta[0].dtype, theta[0].device
-    y = Targets(
-        *(
-            v.to(device=device) if name == "c" else v.to(device, dtype)
-            for name, v in zip(Targets._fields, target)
-        )
-    )
-    support = tuple(float(s) for s in dist.support)
-    _check_inside_support(torch, dist, support, y, what)
+    """Each row's log-likelihood of what was observed of it, before its
+    truncation: ``log f(x)`` for a failure and ``log[F(xr) - F(xl)]``
+    for the rest (a censored row is the window it is known to lie in).
+    ``theta`` are the rows' own parameters."""
     failed = y.c == 0
-    terms = torch.zeros_like(y.xl)
+    out = torch.zeros_like(y.xl)
     index = torch.nonzero(failed).ravel()
     if len(index):
-        terms = terms.index_add(
+        out = out.index_add(
             0, index, family.log_df(torch, y.xl[index], *_take(theta, index))
         )
     index = torch.nonzero(~failed).ravel()
     if len(index):
-        terms = terms.index_add(
+        out = out.index_add(
             0,
             index,
             _log_windows(
@@ -433,12 +566,21 @@ def _nll(
                 _take(theta, index),
             ),
         )
+    return out
+
+
+def _log_truncation(
+    torch: Any, family: Family, support: tuple, y: Targets, theta: list
+) -> Any:
+    """Each row's ``log[F(tr) - F(tl)]``, the log-probability of its
+    truncation window: 0 for a row with none."""
+    out = torch.zeros_like(y.xl)
     index = torch.nonzero(torch.isfinite(y.tl) | torch.isfinite(y.tr)).ravel()
     if len(index):
-        terms = terms.index_add(
+        out = out.index_add(
             0,
             index,
-            -_log_windows(
+            _log_windows(
                 torch,
                 family,
                 support,
@@ -447,12 +589,119 @@ def _nll(
                 _take(theta, index),
             ),
         )
+    return out
+
+
+def _finite_only(torch: Any, values: Any, again: Any) -> Any:
+    """``values`` (a log-probability per row), with every ``-inf`` among
+    them a constant: the rows that are finite are worked out again on
+    their own (``again(index)``), so that no gradient passes through a
+    probability that rounded to 0.
+
+    A component of a mixture can give a row probability 0 (its tail
+    underflows) while another explains the row. The mixture's sum gives
+    such a term a weight of 0 in the gradient, but 0 times the infinite
+    derivative of ``log 0`` is a NaN; worked out without those rows, no
+    such product is formed. Only when the gradient is wanted and a value
+    is ``-inf``: otherwise ``values`` itself."""
+    if not values.requires_grad:
+        return values
+    low = values == -float("inf")
+    if not bool(low.any()):
+        return values
+    index = torch.nonzero(~low).ravel()
+    out = torch.full_like(values.detach(), -float("inf"))
+    if len(index):
+        out = out.index_put((index,), again(index))
+    return out
+
+
+def _subset(y: Targets, index: Any) -> Targets:
+    return Targets(*(v[index] for v in y))
+
+
+def _nll(
+    dist: Any,
+    target: Any,
+    params: Any,
+    mixture: Any,
+    reduction: Any,
+    what: str,
+) -> Any:
+    torch = _torch(what)
+    family = _family(dist, what)
+    _reduction(reduction, what)
+    target = _target(torch, target, what)
+    rows = len(target.xl)
+    if mixture is None:
+        theta = _parameters(torch, dist, params, rows, what)
+    else:
+        theta, log_w = _mixture_parameters(
+            torch, dist, params, mixture, rows, what
+        )
+    dtype, device = theta[0].dtype, theta[0].device
+    y = Targets(
+        *(
+            v.to(device=device) if name == "c" else v.to(device, dtype)
+            for name, v in zip(Targets._fields, target)
+        )
+    )
+    support = tuple(float(s) for s in dist.support)
+    _check_inside_support(torch, dist, support, y, what)
+    if mixture is None:
+        terms = _log_observed(torch, family, support, y, theta) - (
+            _log_truncation(torch, family, support, y, theta)
+        )
+    else:
+        terms = _mixture_terms(torch, family, support, y, theta, log_w)
     loss = -(y.n * terms)
     if reduction == "sum":
         return loss.sum()
     if reduction == "mean":
         return loss.sum() / y.n.sum()
     return loss
+
+
+def _mixture_terms(
+    torch: Any,
+    family: Family,
+    support: tuple,
+    y: Targets,
+    theta: list,
+    log_w: Any,
+) -> Any:
+    """Each row's log-likelihood under its mixture: the log of the
+    weighted sum of the components' likelihoods of the row, less the log
+    of the weighted sum of their probabilities of its truncation window,
+    each by log-sum-exp. ``theta`` and ``log_w`` are ``(N, K)``."""
+    rows, components = log_w.shape
+    # Every (row, component) pair as a row of its own, row-major.
+    pairs = _subset(
+        y, torch.arange(rows, device=y.c.device).repeat_interleave(components)
+    )
+    p = [t.reshape(-1) for t in theta]
+
+    def observed(index: Any) -> Any:
+        return _log_observed(
+            torch, family, support, _subset(pairs, index), _take(p, index)
+        )
+
+    def window(index: Any) -> Any:
+        return _log_truncation(
+            torch, family, support, _subset(pairs, index), _take(p, index)
+        )
+
+    every = slice(None)
+    log_l = _finite_only(torch, observed(every), observed)
+    terms = torch.logsumexp(log_w + log_l.reshape(rows, components), dim=-1)
+    truncated = torch.isfinite(y.tl) | torch.isfinite(y.tr)
+    if bool(truncated.any()):
+        log_t = _finite_only(torch, window(every), window)
+        log_t = torch.logsumexp(
+            log_w + log_t.reshape(rows, components), dim=-1
+        )
+        terms = terms - torch.where(truncated, log_t, 0.0)
+    return terms
 
 
 @cache
@@ -494,8 +743,12 @@ def nll_loss_class() -> Any:
             self.dist = dist
             self.reduction = reduction
 
-        def forward(self, target: Any, params: Any) -> Any:
-            return _nll(self.dist, target, params, self.reduction, "NLLLoss")
+        def forward(
+            self, target: Any, params: Any, mixture: Any = None
+        ) -> Any:
+            return _nll(
+                self.dist, target, params, mixture, self.reduction, "NLLLoss"
+            )
 
         def extra_repr(self) -> str:
             return f"{self.dist.name}, reduction={self.reduction!r}"

@@ -494,7 +494,9 @@ surpyval.torch.SUPPORTED
 surpyval.torch.Targets
 surpyval.torch.constrain
 surpyval.torch.nll
+surpyval.torch.sf
 surpyval.torch.targets
+surpyval.torch.to_surpyval
 surpyval.trend_logrank
 surpyval.univariate.competing_risks.CompetingRisks
 surpyval.univariate.competing_risks.CompetingRisksProportionalHazards

@@ -426,6 +426,10 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             shape parameter for the ExpoWeibull distribution
         """
 
+    # How the parameters move with the time (rescale_time): alpha is a time;
+    # beta and mu have no unit.
+    _time_roles = ("time", "shape", "shape")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

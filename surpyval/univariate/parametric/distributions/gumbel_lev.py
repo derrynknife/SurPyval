@@ -48,6 +48,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
             The scale parameter of the distribution
         """
 
+    # How the parameters move with the time (rescale_time): mu and sigma are
+    # times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
