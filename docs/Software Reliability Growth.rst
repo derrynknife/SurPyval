@@ -555,6 +555,47 @@ done:
 expected numbers. The model cannot say anything until the counts have
 turned down: before the peak, any total fits, and the fit is refused.
 
+When a fix may not help: Littlewood-Verrall
+-------------------------------------------
+
+Every model so far takes each fix to work. The Littlewood-Verrall model
+[LV1973]_ does not: after each failure the failure rate is drawn afresh,
+lower *on average* than the one before, but possibly higher. The rates
+follow a gamma distribution with shape ``alpha`` whose scale shrinks as
+failures accumulate (through ``psi(i) = beta0 + beta1 i``). There is no
+number of faults in this model. What it gives is a prediction of the
+next failure that allows for not knowing the rate:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import LittlewoodVerrall
+
+    lv = LittlewoodVerrall.fit(all_days)
+    print(lv)
+    print("chance of 30 more days without a failure:",
+          lv.next_failure_sf(30.0).round(3))
+    print("90% interval for the failure rate now:",
+          lv.current_rate_qf([0.05, 0.95]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert lv.maximum == "verified"
+    _lv_sf = float(lv.next_failure_sf(30.0))
+    assert 0 < _lv_sf < 1
+
+``next_failure_qf(0.5)`` is the median time to the next failure, which
+always exists; the *mean* is infinite when ``alpha`` is 1 or less, and
+``next_failure_mean`` then refuses and points to the median. ``alpha``
+is hard to pin down: ``param_cb("alpha")`` gives its likelihood-ratio
+bounds, whose upper end is often ``inf``. If the times between failures
+are no more scattered than a model with exact rates would make them,
+``alpha`` has no estimate at all and the fit is refused, naming the
+simpler models to use. ``LittlewoodVerrall`` can be given to
+``compare_predictions`` with the others, which is the fair way to judge
+whether its extra caution earns its keep on your data.
+
 When not to trust the answers
 -----------------------------
 
@@ -618,6 +659,10 @@ References
 .. [ACL1986] Abdel-Ghaly, A. A., Chan, P. Y. and Littlewood, B. (1986),
    "Evaluation of competing software reliability predictions", *IEEE
    Transactions on Software Engineering* SE-12(9), 950-967.
+
+.. [LV1973] Littlewood, B. and Verrall, J. L. (1973), "A Bayesian
+   reliability growth model for computer software", *Journal of the Royal
+   Statistical Society C* 22(3), 332-346.
 
 .. [OG1980] Okumoto, K. and Goel, A. L. (1980), "Optimum release time
    for software systems based on reliability and cost criteria", *Journal

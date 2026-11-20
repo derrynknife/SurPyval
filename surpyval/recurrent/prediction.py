@@ -531,7 +531,8 @@ def compare_predictions(
         The models to compare: any of the Poisson-process fitters
         (``GoelOkumoto``, ``YamadaDelayedS``, ``InflectionS``,
         ``MusaOkumoto``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``, ``HPP``)
-        and ``JelinskiMoranda``. A fitted model stands for its fitter.
+        ``JelinskiMoranda`` and ``LittlewoodVerrall``. A fitted model
+        stands for its fitter.
     start : int, optional
         The number of failures the first prediction is made from.
         Default 10; at least two more than the parameters of the

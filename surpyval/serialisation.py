@@ -131,6 +131,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
     "JelinskiMorandaModel": "surpyval.recurrent.software.jelinski_moranda",
     "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "LittlewoodVerrallModel": (
+        "surpyval.recurrent.software.littlewood_verrall"
+    ),
     "SharedFrailtyModel": "surpyval.recurrent.shared_frailty",
     "PanelCountMCF": "surpyval.recurrent.panel_count",
     "PanelCountRegression": "surpyval.recurrent.panel_count",

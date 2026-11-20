@@ -53,16 +53,18 @@ the failures counted in each period of testing.
     counting/musa_okumoto
     counting/rayleigh_defects
 
-Fault-Count Models
-------------------
+Models of the Times Between Failures
+------------------------------------
 
-Models of one test campaign's times between failures in which the
-faults are counted in whole numbers.
+Models of one test campaign's times between failures that are not
+Poisson processes: a whole number of faults (Jelinski-Moranda), or a
+rate that is itself uncertain (Littlewood-Verrall).
 
 .. toctree::
     :maxdepth: 1
 
     counting/jelinski_moranda
+    counting/littlewood_verrall
 
 Non-Parametric Models
 ---------------------

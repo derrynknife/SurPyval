@@ -399,6 +399,18 @@ def campaign_data():
     return {"x": x, "c": c}
 
 
+def scattered_campaign_data():
+    """One test campaign: 24 failure times whose gaps lengthen and are
+    more scattered than exponential times (a few long gaps early, short
+    ones late), and the end of testing at 400."""
+    gaps = [2, 1, 9, 3, 1, 4, 22, 2, 6, 3, 38, 5, 2, 11, 7, 61, 4, 9, 3, 15]
+    gaps += [88, 6, 13, 40]
+    x = np.append(np.cumsum(gaps), 400.0).astype(float)
+    c = np.zeros(x.size, int)
+    c[-1] = 1
+    return {"x": x, "c": c}
+
+
 def frailty_recurrent_data(with_Z=False):
     """Ten repairable items watched to 60, with 1 to 12 failures each
     (more spread than Poisson counts have, so a frailty is estimated):

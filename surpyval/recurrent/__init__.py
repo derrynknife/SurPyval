@@ -44,5 +44,10 @@ from .renewal import (
 )
 from .renewal.renewal_model import conditional_gaps
 from .shared_frailty import SharedFrailtyModel
-from .software import JelinskiMoranda, JelinskiMorandaModel
+from .software import (
+    JelinskiMoranda,
+    JelinskiMorandaModel,
+    LittlewoodVerrall,
+    LittlewoodVerrallModel,
+)
 from .tests import TrendTestResult, laplace, mil_hdbk_189c
