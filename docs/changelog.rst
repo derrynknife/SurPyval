@@ -504,6 +504,19 @@ v0.29 (unreleased)
   ``n_boot`` stays; the study is ``scripts/studies/lfp_zi_bootstrap/draws.py``.
   Nothing computed changes.
 
+- The coverage of the delta-method bounds on state occupation
+  probabilities of ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (``cb``) is measured, for common
+  states and for one occupied 1% to 5% of the time
+  (``scripts/studies/multistate_occupancy``; :doc:`Multi-State Models`
+  gives the figures). At 300 and 1000 units the default bounds hold their
+  level throughout; at 100 units, with 10 to 35 observed moves out of the
+  rare state, those involving it are two to four points short. A logit
+  scale and a bootstrap by parameter draws were measured beside them and
+  neither does better where it matters, so the default
+  (``bound_type="exp"``) stays and nothing computed changes. A cut-down
+  version of the study joins the calibration suite.
+
 v0.28 (14 November 2026)
 ------------------------
 
