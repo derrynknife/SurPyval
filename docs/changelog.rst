@@ -239,6 +239,25 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **A mixture's residual life is drawn to the last bits, about ten times
+  faster.** The renewal models' draws of the life left at an age
+  (``conditional_gaps``, used by their simulations) inverted a
+  ``MixtureModel``'s quantile function wherever the cumulative hazard to
+  reach was below 20, which loses about ``eps * exp(H)`` of the age found
+  (1e-12 to 2e-11 relative at ``u = 1e-6``) and was itself a root search
+  costing some 1.5 ms a draw. A mixture's draws now take Newton's steps on
+  its cumulative hazard throughout, from a bound found from its
+  components: the age found is the root to 1e-13 relative (checked
+  against 50-digit references for two- and three-component Weibull and
+  log-normal mixtures, at ages from 0 to the 0.999 quantile and ``u``
+  from 1e-9 to 1 - 1e-9), in about 0.15 ms. *Intentional numerical
+  change:* seeded simulations with a mixture lifetime change in the last
+  digits. Draws for every other lifetime are unchanged, bit for bit,
+  except below.
+- A residual-life draw from a lifetime whose cumulative hazard levels
+  off below the amount to reach (a limited-failure population) is
+  ``inf``, an event that never comes, where beyond a cumulative hazard
+  of 20 it came back NaN.
 - **The slope link refuses paths whose slope is infinite at age 0.**
   ``JointPH`` and ``JointAFT`` with ``link="slope"`` (alone or in a list)
   refuse a logarithmic path (slope ``b / t``) and a Lloyd-Lipow path
