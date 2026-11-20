@@ -93,10 +93,9 @@ GL_POINTS = 15
 MAX_VARYING = 5
 #: How the integral over the varying parameters is done: on the full
 #: product grid (``"grid"``), or on it without the nodes of negligible
-#: weight (``"pruned"``). The default is the full grid up to
-#: ``GRID_DEFAULT_UP_TO`` varying parameters and the pruned one beyond.
+#: weight (``"pruned"``). The default is always the full grid, the more
+#: accurate one; pruning is an option the caller chooses.
 INTEGRATIONS = ("grid", "pruned")
-GRID_DEFAULT_UP_TO = 3
 #: The pruned grid leaves out the lowest-weight nodes of the product
 #: grid, as many as have less than this share of the grid's total weight
 #: between them (nodes of equal weight are kept or left out together).
@@ -153,7 +152,7 @@ def check_integration(integration: Any, q: int) -> str:
     ``integration`` itself where it is given, else the default for
     ``q``."""
     if integration is None:
-        return "grid" if q <= GRID_DEFAULT_UP_TO else "pruned"
+        return "grid"
     if not isinstance(integration, str) or integration not in INTEGRATIONS:
         raise ValueError(
             "'integration' is how each item's likelihood is integrated "

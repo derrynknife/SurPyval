@@ -199,13 +199,11 @@ def test_the_pruned_grid_keeps_its_symmetries(dim):
 
 
 def test_the_default_integration_by_the_number_of_varying_parameters():
+    # The full grid, the more accurate, is the default at every size;
+    # pruning is only ever chosen.
     assert [lik.check_integration(None, q) for q in range(1, 6)] == [
-        "grid",
-        "grid",
-        "grid",
-        "pruned",
-        "pruned",
-    ]
+        "grid"
+    ] * 5
     assert lik.check_integration("grid", 5) == "grid"
     assert lik.check_integration("pruned", 2) == "pruned"
 
@@ -352,7 +350,7 @@ def _four_truth(model):
 
 @pytest.mark.calibration
 def test_a_four_dimension_fleet_is_recovered_on_the_pruned_grid():
-    model = _four()
+    model = _four("pruned")
     assert model.integration == "pruned"
     assert model.varying == ["a", "b", "c", "d"]
     assert model.maximum == "verified"
@@ -368,7 +366,7 @@ def test_a_four_dimension_fleet_is_recovered_on_the_pruned_grid():
 
 @pytest.mark.calibration
 def test_the_four_dimension_fit_agrees_with_the_full_grids():
-    pruned, full = _four(), _four("grid")
+    pruned, full = _four("pruned"), _four()
     assert full.integration == "grid"
     assert abs(pruned.neg_ll() - full.neg_ll()) < 1e-6 * FOUR_N
     shift = (pruned.params - full.params) / full.standard_errors()

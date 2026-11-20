@@ -170,9 +170,9 @@ v0.29 (unreleased)
   ``integration="grid"`` (the full grid) or ``"pruned"`` (the grid
   without its lowest-weight nodes, the far corners that hold less than
   1e-9 of its weight between them: 80 of the 2,401 and 1,392 of the
-  16,807; none in up to three dimensions). The default is the full grid
-  up to three varying parameters -- those fits are unchanged to the last
-  digit -- and the pruned one for four and five. The model keeps the
+  16,807; none in up to three dimensions). The default is the full grid,
+  whatever the number of varying parameters -- fits with up to three are
+  unchanged to the last digit -- and ``"pruned"`` is an option. The model keeps the
   choice as ``integration``, prints it, saves and restores it (a model
   saved before reads as ``"grid"``), and predicts on the same kind of
   grid. With a normal integrand (no marker effect) both grids reproduce

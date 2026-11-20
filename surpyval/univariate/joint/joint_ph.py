@@ -399,9 +399,9 @@ class JointPHFitter(FitterRepr):
             its lowest-weight nodes, those that hold less than 1e-9 of
             its weight between them (2,321 nodes for four, 15,415 for
             five; none are left out for up to three). Default the full
-            grid up to three varying parameters and the pruned one for
-            four and five. The model keeps it as ``integration``, and
-            its predictions use the same.
+            grid, the more accurate; ``"pruned"`` is an option. The
+            model keeps it as ``integration``, and its predictions use
+            the same.
 
         Returns
         -------
