@@ -253,7 +253,9 @@ _NB_FUNCTIONS = {
         # At the Poisson limit, approached only as r -> inf
         ("df", 5.0, 1, 1e-10),
         # also, but where the searches follow the valley only as far as
-        # 1 - p can be told apart in doubles: 6e-8 short of the limit
+        # 1 - p can be told apart in doubles: 3e-9 short of the limit
+        # (6e-8 on x86-64 Linux and 1.2e-7 on arm64 while the step back
+        # onto the boundary went along the gradient alone)
         ("sf", 8.0, 0, 1e-7),
     ],
 )
@@ -265,8 +267,13 @@ def test_nb_band_is_the_extreme_of_its_region_by_brute_force(
     # band. The searches took a point up to 1e-6 of deviance outside the
     # region, or as far inside, as on its boundary: the bands agreed with
     # these extremes to 1e-10 to 1e-12, and the sf(8) lower bound, at the
-    # limit, was 3e-8 beyond it. Taken onto the boundary these agree to
-    # 1e-13 inside the region and 1e-11 at the limit.
+    # limit, was 3e-8 beyond it. Taken onto the boundary these agreed to
+    # 1e-13 inside the region and 1e-11 at the limit on x86-64 Linux, but
+    # the sf(2) upper bound was 2e-12 short on arm64: the searches stop
+    # on the boundary up to 1e-6 along it from the extreme, as rounding
+    # falls. Taken along the boundary to the extreme as well, these agree
+    # to 3e-14 inside the region (1e-11 at the df(5) limit, 3e-9 at the
+    # sf(8) one).
     slices, limit = nb_slices
     f, f_limit = _NB_FUNCTIONS[on]
     sign = 1.0 if side else -1.0

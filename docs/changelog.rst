@@ -367,16 +367,23 @@ v0.29 (unreleased)
   the likelihood region, or as far inside, as on its boundary, and the
   bound was the function's value there. Each answer is now moved onto the
   boundary from where its search ended (back onto it where it is
-  outside, then out along the function's gradient), so a bound is the
-  function's value at a point of the region. A Uniform's bands, which
-  stopped up to 3e-9 inside its region, are its extremes to rounding
-  (checked against the corners of the region, a triangle); a
-  NegativeBinomial's agree to 3e-12 with the extremes found slice by
-  slice (1e-11 where the extreme is its Poisson limit, approached only as
-  ``r -> inf``). Its 95% ``sf(8)`` lower bound, which was 3e-8 beyond the
-  extreme of that limit, is a point of the region 6e-8 short of it: down
-  that valley ``1 - p`` cannot be resolved in doubles finely enough to go
-  further. Where the step back onto the boundary would lose an
+  outside, along the gradient or along whichever single parameter loses
+  least; then out along the function's gradient; then along the boundary
+  to where the function is most extreme), so a bound is the function's
+  value at a point of the region. A Uniform's bands, which stopped up to
+  3e-9 inside its region, are its extremes to rounding (checked against
+  the corners of the region, a triangle); a NegativeBinomial's agree to
+  3e-14 with the extremes found slice by slice (1e-11 where the extreme
+  is its Poisson limit, approached only as ``r -> inf``), on every
+  platform: the searches stop on the boundary up to 1e-6 along it from
+  the extreme, which left its ``sf(2)`` upper bound 2e-12 short on arm64.
+  Its 95% ``sf(8)`` lower bound, which was 3e-8 beyond the extreme of
+  that limit, is a point of the region 3e-9 short of it: down that valley
+  ``1 - p`` cannot be resolved in doubles finely enough to go further
+  (one ulp of ``p`` there is 1.2e-7 of ``sf(8)``, which a step back along
+  the gradient alone lost or not as the platform's rounding fell: 6e-8
+  short on x86-64 Linux, 1.2e-7 on arm64). Where the step back onto the
+  boundary would lose an
   ExpoWeibull's narrowing valley, the answer is kept as found. Other
   likelihood-ratio bounds move in their last digits.
 - **Faster likelihood-ratio bounds where the region runs down an edge
