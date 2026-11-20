@@ -8,7 +8,6 @@ from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .panel_count import PanelCountMCF, PanelCountRegression
-from .phases import phases_to_data
 from .parametric import (
     HPP,
     CountingProcess,
@@ -21,6 +20,8 @@ from .parametric import (
     RayleighDefects,
     YamadaDelayedS,
 )
+from .phases import phases_to_data
+from .prediction import PredictionComparison, compare_predictions
 from .regression import (
     AndersenGill,
     PrenticeWilliamsPeterson,
@@ -28,7 +29,6 @@ from .regression import (
     ProportionalIntensityNHPP,
     WeiLinWeissfeld,
 )
-from .shared_frailty import SharedFrailtyModel
 from .renewal import (
     ARA,
     ARI,
@@ -37,4 +37,6 @@ from .renewal import (
     RenewalModel,
 )
 from .renewal.renewal_model import conditional_gaps
+from .shared_frailty import SharedFrailtyModel
+from .software import JelinskiMoranda, JelinskiMorandaModel
 from .tests import TrendTestResult, laplace, mil_hdbk_189c

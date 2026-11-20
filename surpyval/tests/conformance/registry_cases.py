@@ -69,6 +69,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     Z_REG,
     beta_geometric_data,
     binary_data,
+    campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -1418,6 +1419,25 @@ def _recurrent():
         )
     out.append(
         Case(
+            name="JelinskiMoranda",
+            fitters=("surpyval.recurrent.JelinskiMoranda",),
+            model_class="surpyval.recurrent.JelinskiMorandaModel",
+            interface=COUNTING,
+            data=campaign_data,
+            fit=_fit(rc.JelinskiMoranda),
+            functions=("cif", "iif"),
+            x=X_REC,
+            rows=("x", "c"),
+            paths={
+                "fit_from_df": lambda d: rc.JelinskiMoranda.fit_from_df(
+                    pd.DataFrame(d), x_col="x", c_col="c"
+                )
+            },
+            rtol=1e-9,
+        )
+    )
+    out.append(
+        Case(
             name="NonParametricCounting",
             fitters=("surpyval.recurrent.NonParametricCounting",),
             model_class="surpyval.recurrent.NonParametricCounting",
@@ -2028,8 +2048,9 @@ def _joint():
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
     the area under it, or its value and slope together, or its value 90
-    days earlier (a lag); or the marker's value speeds up the item's
-    ageing (``WeibullJointAFT``)."""
+    days earlier (a lag), or the area with exposure fading over 180 days
+    (a weight); or the marker's value speeds up the item's ageing
+    (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2041,6 +2062,9 @@ def _joint():
             sp.Weibull, link=["value", "slope"]
         ),
         "WeibullJointPH[lag]": sp.JointPH(sp.Weibull, lag=90.0),
+        "WeibullJointPH[weight]": sp.JointPH(
+            sp.Weibull, link="cumulative", weight=("exponential", 180.0)
+        ),
     }
     out = []
     for name, fitter in fitters.items():
@@ -2090,6 +2114,16 @@ def _joint():
                         "lag=90 * k)"
                     }
                     if name.endswith("[lag]")
+                    else {}
+                ),
+                **(
+                    {
+                        "units": "the weight's scale is a fixed time (180 "
+                        "days): in another unit the same model is "
+                        "JointPH(Weibull, link='cumulative', "
+                        "weight=('exponential', 180 * k))"
+                    }
+                    if name.endswith("[weight]")
                     else {}
                 ),
             },
@@ -3457,12 +3491,24 @@ _REMAINING_FAULTS = dict.fromkeys(
 )
 
 
+# Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
+# Wald and bootstrap bounds are refused with the reason.
+_LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
+_JELINSKI_MORANDA_BOUNDS = (
+    Bound("param_cb", kind="param", **_LR_ONLY),
+    Bound("remaining_faults_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("current_rate_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("mtbf_cb", kind="summary", query=((),), **_LR_ONLY),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
         "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,

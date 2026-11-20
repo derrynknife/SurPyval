@@ -80,6 +80,11 @@ NOT_SWEPT = {
     + _GROWTH_ANSWERS,
     "time_to_reliability_cb": "the testing time to a target reliability, "
     + _GROWTH_ANSWERS,
+    "release_time_cb": "the cheapest release time for given costs (its "
+    "arguments are costs, not the case's times); the delta method against "
+    "its closed form and the seeded bootstrap in "
+    "recurrent/test_release_time.py, and coverage in calibration/"
+    "test_coverage_growth_answers.py",
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
@@ -372,6 +377,10 @@ def _estimate(case, spec, fname, event):
             out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "sojourn_cb":
             out.append(model.mean_sojourn(*args))
+        elif spec.method in ("remaining_faults_cb", "current_rate_cb"):
+            out.append(getattr(model, spec.method.removesuffix("_cb"))())
+        elif spec.method == "mtbf_cb":
+            out.append(model.mtbf())
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)

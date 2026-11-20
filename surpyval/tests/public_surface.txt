@@ -104,6 +104,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JelinskiMoranda
 surpyval.JointAFT
 surpyval.JointFrailty
 surpyval.JointModel
@@ -423,6 +424,8 @@ surpyval.recurrent.GoodnessOfFitResult
 surpyval.recurrent.HPP
 surpyval.recurrent.InflectionS
 surpyval.recurrent.InterventionTestResult
+surpyval.recurrent.JelinskiMoranda
+surpyval.recurrent.JelinskiMorandaModel
 surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.MCFDiffResult
@@ -430,6 +433,7 @@ surpyval.recurrent.MusaOkumoto
 surpyval.recurrent.NonParametricCounting
 surpyval.recurrent.PanelCountMCF
 surpyval.recurrent.PanelCountRegression
+surpyval.recurrent.PredictionComparison
 surpyval.recurrent.PrenticeWilliamsPeterson
 surpyval.recurrent.ProportionalIntensityHPP
 surpyval.recurrent.ProportionalIntensityNHPP
@@ -439,6 +443,7 @@ surpyval.recurrent.SharedFrailtyModel
 surpyval.recurrent.TrendTestResult
 surpyval.recurrent.WeiLinWeissfeld
 surpyval.recurrent.YamadaDelayedS
+surpyval.recurrent.compare_predictions
 surpyval.recurrent.conditional_gaps
 surpyval.recurrent.intervention_test
 surpyval.recurrent.laplace

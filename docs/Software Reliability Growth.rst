@@ -9,6 +9,7 @@ which answers the questions a test or release manager asks:
 - How many faults are left?
 - How reliable is the software now?
 - How much more testing would it take to reach a target?
+- When is it cheapest to release?
 
 Nothing here is special to software: the same models fit any process in
 which problems are found and removed (the commissioning of a plant, the
@@ -226,6 +227,61 @@ read the future, and the data seen so far cannot settle it alone. Give
 most weight to the model whose assumptions describe how the testing was
 done.
 
+Which model predicts best?
+--------------------------
+
+A fit to the failures seen is a weak guide to the failures to come, as
+the last plot shows. A stronger one is to ask how each model *would
+have* predicted, had it been used all along. ``compare_predictions``
+does that: at each failure it fits every model to the failures before
+it, takes the model's prediction of the time to the next failure, and
+scores the prediction against the time that came [ACL1986]_. Here it is
+on all 31 failures of the NTDS production and test phases, starting from
+the tenth:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import compare_predictions
+
+    all_days = np.cumsum(days_between + [87, 47, 12, 9, 135])
+    result = compare_predictions(
+        all_days, [GoelOkumoto, YamadaDelayedS, CrowAMSAA, HPP], start=10
+    )
+    print(result)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _table = result.summary()
+    assert result.best == "YamadaDelayedS", result.best
+    assert _table.loc["GoelOkumoto", "failed"] == 12, _table
+    assert _table.loc["YamadaDelayedS", "failed"] == 0, _table
+
+The table has one row per model:
+
+- ``log_likelihood`` is the *prequential likelihood*, in logs: how
+  probable the model's predictions made the times that came. Higher is
+  better, and a difference of 2 or 3 is a clear preference.
+- ``u_distance`` and ``bias`` are the *u-plot*: whether the predictions
+  were biased. *Optimistic* means failures came sooner than predicted.
+  ``biased`` says whether the bias is more than chance would give.
+- ``y_distance`` and ``drifting`` are the *y-plot*: whether the bias
+  changed as testing went on.
+- ``failed`` counts the steps at which the model could not be fitted at
+  all. Goel-Okumoto fails at 12 of the 21 steps here: until the long gap
+  before failure 24 the failures were not slowing down, and it refuses
+  data with no growth. A model that cannot be fitted for much of the
+  test cannot be relied on to predict during it.
+
+The verdict below the table says the same in words.
+``result.plot("u")``, ``result.plot("y")`` and ``result.plot("ratio")``
+draw the plots:
+
+.. jupyter-execute::
+
+    result.plot("u");
+
 How many faults are left?
 -------------------------
 
@@ -350,6 +406,109 @@ however long the test:
     except ValueError as err:
         print(err)
 
+When to release
+---------------
+
+Testing costs money, and so do faults that reach the field. If you can
+put a figure on a day of testing, on a fault fixed during testing and on
+a fault that reaches use, ``release_time`` finds the day on which to stop
+testing for the least expected total cost [OG1980]_. Testing pays for
+itself while the failure rate is above ``test_cost / (field_cost -
+fix_cost)``; the cheapest release is the day the rate falls to that
+level. Say a day of testing costs 1 (thousand), a fault 0.5 to fix in
+testing and 40 in the field:
+
+.. jupyter-execute::
+
+    plan = model.release_time(test_cost=1, fix_cost=0.5, field_cost=40)
+    print("release on day", round(plan["time"]),
+          "at an expected cost of", round(plan["cost"]))
+    print("within 1% of that cost:", [round(t) for t in plan["band"]])
+    print("80% bounds on the day:",
+          model.release_time_cb(1, 0.5, 40, alpha_ci=0.2).round())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(plan["time"]) == 354 and plan["binding"] == "cost"
+    assert [round(t) for t in plan["band"]] == [313, 399], plan["band"]
+    assert round(plan["cost"]) == 544, plan["cost"]
+
+The ``band`` is the stretch of days whose cost is within 1% of the best,
+here about twelve weeks: the exact day matters little, and the bounds on the day (which come from
+the uncertainty in the fitted model) are wider still.
+``method="bootstrap"`` gives bounds by simulation instead.
+
+Costs are in any currency and time is in the model's unit. A model with
+no fixed number of faults needs ``life=``, the time at which the software
+goes out of use, to add up the field's failures. A release may also have
+to meet a reliability target, whatever the costs say; give it and the
+release is the later of the two days:
+
+.. jupyter-execute::
+
+    plan = model.release_time(1, 0.5, 40, reliability=0.8, mission=30)
+    print("release on day", round(plan["time"]), "set by", plan["binding"])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(plan["time"]) == 551 and plan["binding"] == "reliability"
+
+A whole number of faults: Jelinski-Moranda
+------------------------------------------
+
+The oldest model of all [JM1972]_ counts the faults in whole numbers:
+the software starts with ``N`` faults, each causes failures at the same
+rate ``phi`` until it is fixed, so the failure rate steps down by
+``phi`` at every failure. ``JelinskiMoranda`` fits it to one test's
+failure times (or to the times between failures, with ``gaps=True``):
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import JelinskiMoranda
+
+    jm = JelinskiMoranda.fit(days, unit="days")
+    print(jm)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert jm.N == 31 and round(jm.phi, 6) == 0.006948, (jm.N, jm.phi)
+    assert jm.remaining_faults() == 5
+
+It estimates 31 faults, so 5 left after the 26 found. (With ``N``
+allowed to be any real number, as most texts fit it, the estimate is
+31.2: the published figure for these data [LXZ2015]_.) Its answers are
+methods of their own, with bounds by the likelihood ratio:
+
+.. jupyter-execute::
+
+    print("faults left:", jm.remaining_faults(),
+          jm.remaining_faults_cb(alpha_ci=0.2))
+    print("failures a day now:", round(jm.current_rate(), 4),
+          jm.current_rate_cb(alpha_ci=0.2).round(4))
+    print("95% bounds on the number of faults:", jm.param_cb("N"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert jm.param_cb("N").tolist() == [26.0, 94.0], jm.param_cb("N")
+    _left = jm.remaining_faults_cb(alpha_ci=0.2)
+
+The bounds are whole numbers, and they are wide and lopsided: 26 faults
+found, and anything from 26 to 94 in all at 95%. That is the model
+being honest. An upper bound of ``inf`` is possible too, and means the
+data do not limit the number of faults at that level. As with
+Goel-Okumoto, data that show no growth have no estimate at all, and the
+fit is refused, saying why. Its ``aic()`` compares with that of the
+other models fitted to the same failure times, and it can be one of the
+models given to ``compare_predictions``.
+
 Before testing starts: defects by phase
 ---------------------------------------
 
@@ -455,6 +614,14 @@ References
 .. [LXZ2015] Liu, J., Xu, M. and Zhou, Z. (2015), "Parameter estimation
    of Jelinski-Moranda model based on weighted nonlinear least squares
    and heteroscedasticity", arXiv:1503.00094 (Table 1: the NTDS data).
+
+.. [ACL1986] Abdel-Ghaly, A. A., Chan, P. Y. and Littlewood, B. (1986),
+   "Evaluation of competing software reliability predictions", *IEEE
+   Transactions on Software Engineering* SE-12(9), 950-967.
+
+.. [OG1980] Okumoto, K. and Goel, A. L. (1980), "Optimum release time
+   for software systems based on reliability and cost criteria", *Journal
+   of Systems and Software* 1, 315-318.
 
 .. [Kan2002] Kan, S. H. (2002), *Metrics and Models in Software Quality
    Engineering* (2nd ed.), Addison-Wesley, chapter 7.

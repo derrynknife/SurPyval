@@ -413,6 +413,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.MCFDiffResult": _RESULT,
+    "surpyval.recurrent.PredictionComparison": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -498,7 +499,13 @@ for _fn in ("to_stacked", "from_stacked"):
     OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
         _FUNCTION + ": converts multi-state data between its forms"
     )
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
+for _fn in (
+    "laplace",
+    "mil_hdbk_189c",
+    "intervention_test",
+    "mcf_diff",
+    "compare_predictions",
+):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
     _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
