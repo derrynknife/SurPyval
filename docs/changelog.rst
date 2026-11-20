@@ -5,6 +5,29 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Shared frailty for repairable systems.** ``frailty="gamma"`` (or
+  ``"lognormal"``) on ``CrowAMSAA.fit``, ``Duane.fit``, ``CoxLewis.fit``
+  and ``ProportionalIntensityNHPP.fit`` (and their ``fit_from_df`` and
+  ``fit_from_recurrent_data``) gives each unit an unobserved factor on
+  its intensity, for a fleet whose units differ by more than a Poisson
+  process (or their covariates) allows; ``cluster=`` names units that
+  share one. The frailty's variance ``theta`` is estimated with the
+  intensity (the gamma frailty by its closed-form marginal likelihood,
+  the log-normal by quadrature), and the fit is a
+  ``surpyval.recurrent.SharedFrailtyModel``: ``cif`` / ``iif`` / ``mcf``
+  for the population or for a unit of given frailty, with delta-method
+  bounds; Wald and profile-likelihood ``param_cb``; ``frailty_test()``,
+  the likelihood-ratio test of ``theta = 0`` (a 50:50 mixture of 0 and
+  chi-square(1)); ``frailties()``, each cluster's predicted frailty with
+  an interval; and ``forecast`` (also ``surpyval.forecast``, which takes
+  ``cluster=`` for it), whose prediction intervals carry the frailty
+  (negative binomial counts for the gamma frailty). Where ``theta`` is
+  estimated at 0 the fit warns and is the plain one. It takes delayed
+  entry and observation windows; counts in intervals, right truncation,
+  ``how="MSE"`` and fewer than two clusters are refused, saying what to
+  use. Checked against quadrature of each cluster's frailty integral, R's
+  ``MASS::glm.nb`` and simulated fleets. See :doc:`Recurrent Event
+  Modelling with SurPyval`.
 - **Competing-risks survival trees.** ``SurvivalTree.fit`` (and
   ``fit_from_df``, with ``e_col``) takes the cause of each failure as
   ``e``. The tree then chooses cuts that tell the causes apart --

@@ -71,6 +71,10 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "frailties": "a table of each cluster's predicted frailty with the "
+    "interval of its distribution given the cluster's history (not a "
+    "confidence bound on a function; checked against the gamma posterior "
+    "and by quadrature in recurrent/test_shared_frailty.py)",
     "variance_cb": "a table of the variance components' profile-likelihood "
     "intervals of a mixed-effects Cox model (no point method to sweep; "
     "checked in regression/test_cox_mixed_effects.py)",
