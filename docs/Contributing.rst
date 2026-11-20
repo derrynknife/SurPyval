@@ -54,6 +54,10 @@ naming the class, method and difference, when a copy has drifted.
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
+``--run-torch`` runs the tests of the torch helpers (``surpyval.torch``),
+where PyTorch is installed: it is not a dependency nor in
+``requirements_dev.txt``, so these run in the release run's ``torch`` job
+and nowhere else unless you install it and ask.
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which the release pull request's full run also runs, on

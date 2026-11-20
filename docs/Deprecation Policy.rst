@@ -18,7 +18,7 @@ What is public
   ``surpyval.multivariate``, ``surpyval.ml``, ``surpyval.life_models``,
   ``surpyval.metrics``, ``surpyval.diagnostics``, ``surpyval.bayes`` (and
   ``surpyval.prior``), ``surpyval.test_planning``, ``surpyval.datasets``,
-  ``surpyval.pymc``, ``surpyval.utils``, the five
+  ``surpyval.pymc``, ``surpyval.torch``, ``surpyval.utils``, the five
   ``surpyval.univariate`` packages (``parametric``, ``nonparametric``,
   ``regression``, ``competing_risks`` and ``joint``), and
   ``surpyval.univariate.regression.kinds``, the names of the regression
