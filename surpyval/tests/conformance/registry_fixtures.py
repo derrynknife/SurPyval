@@ -390,6 +390,15 @@ def growth_data():
     }
 
 
+def campaign_data():
+    """One test campaign: twelve failure times of a program under test,
+    and the end of testing at 110 with no failure since the last."""
+    x = np.array([3, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99, 110.0])
+    c = np.zeros(13, int)
+    c[-1] = 1
+    return {"x": x, "c": c}
+
+
 def frailty_recurrent_data(with_Z=False):
     """Ten repairable items watched to 60, with 1 to 12 failures each
     (more spread than Poisson counts have, so a frailty is estimated):

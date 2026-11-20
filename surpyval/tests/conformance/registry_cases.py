@@ -69,6 +69,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     Z_REG,
     beta_geometric_data,
     binary_data,
+    campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -1414,6 +1415,25 @@ def _recurrent():
                 explicit_seed=True,
             )
         )
+    out.append(
+        Case(
+            name="JelinskiMoranda",
+            fitters=("surpyval.recurrent.JelinskiMoranda",),
+            model_class="surpyval.recurrent.JelinskiMorandaModel",
+            interface=COUNTING,
+            data=campaign_data,
+            fit=_fit(rc.JelinskiMoranda),
+            functions=("cif", "iif"),
+            x=X_REC,
+            rows=("x", "c"),
+            paths={
+                "fit_from_df": lambda d: rc.JelinskiMoranda.fit_from_df(
+                    pd.DataFrame(d), x_col="x", c_col="c"
+                )
+            },
+            rtol=1e-9,
+        )
+    )
     out.append(
         Case(
             name="NonParametricCounting",
@@ -3460,12 +3480,32 @@ _LENGTH_OF_STAY = Bound(
 )
 
 
+# The fixtures' processes that level off: the three finite-fault growth
+# models, and the Cox-Lewis fixture's falling intensity.
+_REMAINING_FAULTS = dict.fromkeys(
+    ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis"),
+    (Bound("remaining_faults_cb", point="remaining_faults"),),
+)
+
+
+# Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
+# Wald and bootstrap bounds are refused with the reason.
+_LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
+_JELINSKI_MORANDA_BOUNDS = (
+    Bound("param_cb", kind="param", **_LR_ONLY),
+    Bound("remaining_faults_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("current_rate_cb", kind="summary", query=((),), **_LR_ONLY),
+    Bound("mtbf_cb", kind="summary", query=((),), **_LR_ONLY),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
         "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,
@@ -3893,6 +3933,8 @@ def _bounds(case):
             Bound("iif_cb", point="iif"),
             Bound("mtbf_cb", point="mtbf"),
             _PARAM_CB,
+            # (the faults left, for the processes with a finite number)
+            *_REMAINING_FAULTS.get(case.name, ()),
         )
     if cls == "ProportionalIntensityModel":
         return (

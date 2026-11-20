@@ -32,6 +32,8 @@ from surpyval.utils.validation import (
     warn_outside_unit_interval,
 )
 
+from .growth_answers import GrowthAnswersMixin
+
 # The bound on 1 / f that a bound on f gives.
 OPPOSITE_BOUND = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
 
@@ -44,6 +46,7 @@ _FITTED_BY = {
 
 
 class ParametricRecurrenceModel(
+    GrowthAnswersMixin,
     ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,

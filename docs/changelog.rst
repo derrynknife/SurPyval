@@ -22,6 +22,25 @@ v0.29 (unreleased)
   unit, closed forms and ArviZ. See "Comparing fits: WAIC and
   leave-one-out" in :doc:`Bayesian Fitting with SurPyval`.
 
+- **The Jelinski-Moranda software reliability model.**
+  ``surpyval.recurrent.JelinskiMoranda`` (also at the top level) fits one
+  test campaign's failure times, or the times between failures
+  (``gaps=True``), with the end of testing after the last failure as a
+  ``c=1`` row: the software holds a whole number of faults ``N``, each
+  found at the rate ``phi``. The estimate of ``N`` is a whole number. The
+  fitted ``JelinskiMorandaModel`` gives the faults left
+  (``remaining_faults()``), the failure rate now (``current_rate()``),
+  ``mtbf()``, ``next_failure_sf``, ``profile_likelihood(N)``, ``aic()``
+  and likelihood-ratio bounds (``param_cb``, ``remaining_faults_cb``,
+  ``current_rate_cb``, ``mtbf_cb``); an upper bound of ``inf`` on ``N``
+  says that the data do not limit the number of faults. Data that show
+  no reliability growth have no finite ``N``; the fit is refused, with
+  the condition (the failures' mean time against ``(n + 1) T / (2 n)``)
+  and what to fit instead. Wald and bootstrap bounds are refused with
+  the reason. It reproduces the published fit to the Naval Tactical Data
+  System failures (Jelinski and Moranda 1972). See "A whole number of
+  faults" in :doc:`Software Reliability Growth`.
+
 - **A model on another clock.** ``model.rescale_time(factor)`` gives the
   model whose survival function is ``R(factor * t)``: a life in operating
   time put on the calendar (``factor=0.25`` for a unit that runs a quarter
@@ -41,6 +60,25 @@ v0.29 (unreleased)
   counts, the ``Beta`` (use the ``Beta4``) and a ``CustomDistribution``
   refuse, saying what to do. See "Rescaling a model's time" in
   :doc:`Conventions`.
+
+- **Remaining faults, mission reliability and the testing needed to reach
+  a target**, on every fitted Poisson process
+  (``ParametricRecurrenceModel``: the software reliability growth models,
+  and ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and ``HPP`` where the
+  question has an answer). ``remaining_faults(x)`` is the faults expected
+  to be left after testing to ``x`` (refused, with the reason, for a
+  process whose failures go on without limit);
+  ``time_to_intensity(target)`` and ``time_to_reliability(target, x)``
+  are the testing times at which the intensity has fallen to a target and
+  at which a mission of length ``x`` succeeds with a target probability
+  (refused where the fitted curve never gets there). Each has confidence
+  bounds: ``remaining_faults_cb``, ``next_failure_sf_cb`` (the bounds on
+  ``next_failure_sf``, which is the reliability over a mission),
+  ``time_to_intensity_cb`` and ``time_to_reliability_cb`` (the last two
+  by inverting the bounds on the curve, so an upper bound can be
+  ``inf``). A new guide, :doc:`Software Reliability Growth`, works
+  through the models, the answers and when not to trust them on the
+  Naval Tactical Data System failures.
 
 - **Software reliability growth models.** Four non-homogeneous Poisson
   processes for faults found and removed during testing, in
