@@ -6,6 +6,10 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
+from surpyval.ml.forest.cause_specific_split import (
+    SPLITS,
+    CauseSplit,
+)
 from surpyval.ml.forest.conditional_inference import parse_selection
 from surpyval.ml.forest.deviance_split import parse_min_split_gain
 from surpyval.ml.forest.node import (
@@ -21,6 +25,11 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+    to_native,
+)
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    ordered_labels,
 )
 from surpyval.univariate.parametric import Exponential, Weibull
 from surpyval.univariate.regression.regression_data import (
@@ -35,7 +44,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import check_paired_rows, flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.units import takes_unit
-from surpyval.utils.validation import option_error
+from surpyval.utils.validation import check_option, option_error
 
 Random = np.random.Generator | np.random.RandomState
 
@@ -221,10 +230,28 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       many values and stops the tree where the data show no effect. See
       :mod:`~surpyval.ml.forest.conditional_inference`.
 
+    With the cause of each failure (``e``), the tree is a competing-risks
+    tree: it splits by a rule that tells the causes apart (``split``; see
+    :mod:`~surpyval.ml.forest.cause_specific_split`), each leaf is a
+    competing-risks model of the ``kind``
+    (:class:`~surpyval.ml.forest.node.CompetingRisksLeaf`), and
+    :meth:`cif` gives each cause's cumulative incidence at given
+    covariates, :meth:`total_cif` their sum and ``sf`` the all-cause
+    survival.
+
     Predictions take one value per covariate the tree was grown on, in
     its column order (or a DataFrame with its columns); another number
     raises a ``ValueError`` (#657).
     """
+
+    #: The causes of failure of a tree grown with ``e``, in their sorted
+    #: order; ``None`` for a tree grown without causes.
+    causes: "list | None" = None
+    #: The split rule of a tree grown with causes (``"cause-specific"`` or
+    #: ``"gray"``), and the cause it was nominated for (``None``: every
+    #: cause); ``None`` for a tree without causes.
+    split: "str | None" = None
+    event: Any = None
 
     #: The covariate count a restored tree's :meth:`to_dict` saved.
     _saved_n_covariates: "int | None" = None
@@ -243,6 +270,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         random_state: Any = None,
         feature_names: list[str] | None = None,
         min_split_gain: float | str = 0.0,
+        split: str | None = None,
+        event: Any = None,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
@@ -265,6 +294,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
 
         self.kind = parse_kind(kind, self.data)
         self.min_split_gain = parse_min_split_gain(min_split_gain, self.kind)
+        competing = self._parse_causes(split, event)
 
         self._root = build_tree(
             data=self.data,
@@ -279,10 +309,104 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             selection=self.selection,
             alpha_split=self.alpha_split,
             min_split_gain=self.min_split_gain,
+            competing=competing,
         )
         # The parametric leaves all at once, rather than one by one on
         # first use (#549)
         fit_leaves(self._root)
+
+    def _parse_causes(
+        self, split: "str | None", event: Any
+    ) -> "CauseSplit | None":
+        """The causes of a tree grown with ``e``, checked, and what its
+        nodes need to split by them; ``None`` (and ``split`` and ``event``
+        refused) for a tree without causes."""
+        e = getattr(self.data, "e", None)
+        if e is None:
+            given = [
+                name
+                for name, value in (("split", split), ("event", event))
+                if value is not None
+            ]
+            if given:
+                verb = "is" if len(given) == 1 else "are"
+                raise ValueError(
+                    f"{' and '.join(given)} {verb}"
+                    " for a tree grown with the cause of each failure: pass "
+                    "the causes as e (fit(..., e=...) or fit_from_df(..., "
+                    "e_col=...)), or leave it out."
+                )
+            return None
+        split = "cause-specific" if split is None else split
+        check_option("split", split, SPLITS)
+        c = np.asarray(self.data.c)
+        if np.isin(c, (-1, 2)).any():
+            raise ValueError(
+                "A tree grown with causes (e) takes exact and right-censored "
+                f"times; {int(np.isin(c, (-1, 2)).sum())} rows are left- or "
+                "interval-censored (c = -1 or 2). Those are not built yet "
+                "for the cause-aware splits: fit CompetingRisks or "
+                "ParametricCompetingRisks to such data, or grow the tree "
+                "without e."
+            )
+        if np.isfinite(np.asarray(self.data.t[:, 1], dtype=float)).any():
+            raise ValueError(
+                "A tree grown with causes (e) does not take right truncation "
+                "(tr), as the competing-risks estimates do not: leave it out."
+            )
+        failed = c == 0
+        masked = int(sum(v is None for v in e[failed]))
+        if masked:
+            raise ValueError(
+                f"{masked} failures (c = 0) have no cause in e. Give each "
+                "failure its cause, or mark a row with no failure right "
+                "censored (c = 1, or a missing cause with c left out)."
+            )
+        causes = ordered_labels(e[failed])
+        if not causes:
+            raise ValueError(
+                "e gives no failure a cause: every row is censored. A tree "
+                "with causes needs at least one failure."
+            )
+        if self.selection != "greedy":
+            raise ValueError(
+                "selection='ctree' is not built for a tree grown with causes "
+                "(e): its tests are of a single event's scores. Use "
+                "selection='greedy' with max_depth or min_leaf_failures to "
+                "stop the tree."
+            )
+        if self.min_split_gain != 0:
+            raise ValueError(
+                "min_split_gain is a log-likelihood gain, and the cause-aware "
+                "splits are not likelihoods: leave it at 0 for a tree grown "
+                "with causes (e), and stop the tree with max_depth or "
+                "min_leaf_failures."
+            )
+        if split == "gray":
+            if event is None:
+                raise ValueError(
+                    "split='gray' compares the cumulative incidence of one "
+                    f"cause: name it with event (one of {causes})."
+                )
+            tl = np.asarray(self.data.t[:, 0], dtype=float)
+            x = np.asarray(self.data.x, dtype=float)
+            if np.any(np.isfinite(tl) & (tl >= np.min(x))):
+                raise ValueError(
+                    "split='gray' does not take delayed entry (tl), as "
+                    "gray_test does not: its subdistribution risk set needs "
+                    "truncation weights, which are not built. Use "
+                    "split='cause-specific', which takes it."
+                )
+        if event is not None and event not in causes:
+            from surpyval.utils.validation import unknown_cause_error
+
+            raise unknown_cause_error(event, causes)
+        self.causes = causes
+        self.split = split
+        self.event = event
+        return CauseSplit(
+            causes, split, event, per_cause_min=self.kind != "non-parametric"
+        )
 
     @classmethod
     @takes_unit
@@ -306,6 +430,9 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         alpha_split: float = 0.05,
         min_split_gain: float | str = 0.0,
         random_state: Any = None,
+        e: ArrayLike | None = None,
+        split: str | None = None,
+        event: Any = None,
     ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
@@ -389,6 +516,35 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             so ``np.random.seed`` reproduces the tree; a seed or
             ``Generator`` gives a stream of its own and leaves the global
             one alone.
+        e : array_like, optional
+            The cause of each failure: any hashable labels, as the
+            competing-risks models take them, with a missing value
+            (``None``, ``NaN``) for a right-censored row. Given, the tree is
+            a competing-risks tree (see the class docstring): ``c`` may be
+            left out (a row with a cause failed, one without is right
+            censored), the times must be exact or right censored (left- and
+            interval-censored rows and right truncation are refused; delayed
+            entry is taken), ``selection`` must be ``"greedy"`` and
+            ``min_split_gain`` 0. Its leaves are the Aalen-Johansen estimate
+            for ``kind="non-parametric"``, or one ``kind`` distribution per
+            cause; ``min_leaf_failures`` counts every failure, and for a
+            parametric ``kind`` also the failures of each cause the node has
+            at least ``2 * min_leaf_failures`` of (each leaf fits every
+            cause on its own). A cause with no failure in a leaf has zero
+            incidence there.
+        split : str, optional
+            With ``e``, how a node chooses its cut:
+            ``"cause-specific"`` (the default), the largest sum over the
+            causes of the squared cause-specific log-rank statistics; or
+            ``"gray"``, the largest Gray two-sample statistic for the
+            cumulative incidence of the cause ``event`` (much slower, and
+            refuses delayed entry). See
+            :mod:`~surpyval.ml.forest.cause_specific_split`.
+        event : optional
+            With ``e``, the cause the split targets: required by
+            ``split="gray"``; with ``"cause-specific"``, that cause's
+            log-rank statistic alone (``None``, the default: every
+            cause's).
 
         Returns
         -------
@@ -455,11 +611,57 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         >>> root = ctree._root
         >>> int(root.split_feature_index), bool(root.p_value < 1e-10)
         (0, True)
+
+        With the cause of each failure, the tree finds a feature that
+        changes the risk of one cause only, and gives each cause's
+        cumulative incidence where a unit's covariates put it:
+
+        >>> u = rng.uniform(0, 1, (300, 2))
+        >>> t_a = rng.exponential(np.where(u[:, 0] > 0.5, 2.0, 10.0))
+        >>> t_b = rng.exponential(10.0, 300)
+        >>> xe = np.minimum(np.minimum(t_a, t_b), 8.0)
+        >>> e = np.where(t_a < t_b, "a", "b").astype(object)
+        >>> e[xe == 8.0] = None
+        >>> cr_tree = SurvivalTree.fit(
+        ...     xe, u, e=e, kind="non-parametric", max_depth=1,
+        ...     n_features_split="all",
+        ... )
+        >>> cr_tree.causes
+        ['a', 'b']
+        >>> int(cr_tree._root.split_feature_index)
+        0
+        >>> cr_tree.cif(5.0, [[0.2, 0.5], [0.8, 0.5]], "a").round(2)
+        array([0.3 , 0.78])
+        >>> cr_tree.cif(5.0, [[0.2, 0.5], [0.8, 0.5]], "b").round(2)
+        array([0.39, 0.17])
+
+        The causes' incidences add up to the all-cause failure
+        probability:
+
+        >>> q = [[0.2, 0.5], [0.8, 0.5]]
+        >>> bool(np.allclose(cr_tree.total_cif(5.0, q), cr_tree.ff(5.0, q)))
+        True
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
+        if e is not None and c is None and xl is None and xr is None:
+            # A row with a cause failed; one without is right censored
+            from surpyval.utils.data_formats import is_missing_event
+
+            # Row by row, so a tuple label stays one label
+            labels: Any = e
+            c = [1 if is_missing_event(v) else 0 for v in labels]
         data = SurpyvalData(
-            x, c, n, t, xl=xl, xr=xr, tl=tl, tr=tr, group_and_sort=False
+            x,
+            c,
+            n,
+            t,
+            xl=xl,
+            xr=xr,
+            tl=tl,
+            tr=tr,
+            group_and_sort=False,
+            e=e,
         )
         Z, feature_names = covariate_matrix(Z)
         Z = np.asarray(Z)
@@ -479,6 +681,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             random_state,
             feature_names,
             min_split_gain,
+            split=split,
+            event=event,
         )
 
     def apply_model_function(
@@ -488,10 +692,12 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         Z: ArrayLike | NDArray,
         *,
         grid: bool = False,
+        event: Any = None,
     ) -> NDArray:
         """
         Evaluate ``function_name`` (``"sf"``, ``"ff"``, ``"df"``, ``"hf"``
-        or ``"Hf"``) of the leaf model that each covariate vector falls in.
+        or ``"Hf"``; ``"cif"`` of cause ``event`` for a tree grown with
+        causes) of the leaf model that each covariate vector falls in.
 
         Parameters
         ----------
@@ -529,10 +735,12 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             x.size, Z.ndim, Z.shape[0] if Z.ndim == 2 else 1, grid
         )
         if layout == "paired":
-            return restore(self._apply_flat(function_name, x, Z, True))
+            return restore(
+                self._apply_flat(function_name, x, Z, True, event=event)
+            )
         if layout == "grid" and Z.ndim == 1:
             Z = Z[None, :]
-        res = self._apply_flat(function_name, x, Z)
+        res = self._apply_flat(function_name, x, Z, event=event)
         if layout == "row":
             return restore(res[0])
         if layout == "time":
@@ -566,6 +774,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: NDArray,
         Z: ArrayLike | NDArray,
         paired: bool = False,
+        event: Any = None,
     ) -> NDArray:
         # ``apply_model_function`` at a 1-D array of times: on the grid of
         # every time for every row, or, ``paired``, row i at time x[i].
@@ -590,7 +799,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         if Z.ndim == 1:
             if np.isnan(Z).any():
                 return np.full(x.shape, np.nan)
-            return self._root.apply_model_function(function_name, x, Z)
+            return self._root.apply_model_function(function_name, x, Z, event)
         missing = np.isnan(Z).any(axis=1)
         if paired:
             # Each row's leaf at its own time (#666): the rows grouped by
@@ -600,15 +809,15 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             for leaf, idx in route_to_leaves(self._root, Z[rows]):
                 sel = rows[idx]
                 out[sel] = np.asarray(
-                    getattr(leaf.model, function_name)(x[sel]), dtype=float
+                    leaf.evaluate(function_name, x[sel], event), dtype=float
                 )
             return out
         if not missing.any():
-            return self._root.apply_model_function(function_name, x, Z)
+            return self._root.apply_model_function(function_name, x, Z, event)
         res = np.full((Z.shape[0], x.size), np.nan)
         if not missing.all():
             res[~missing] = self._root.apply_model_function(
-                function_name, x, Z[~missing]
+                function_name, x, Z[~missing], event
             )
         return res
 
@@ -679,6 +888,63 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         """
         return self.apply_model_function("Hf", x, Z, grid=grid)
 
+    def _check_event(self, event: Any) -> None:
+        if self.causes is None:
+            raise ValueError(
+                "This tree was grown without causes, so it has no cumulative "
+                "incidence of a cause: grow it with e (fit(..., e=...)) for "
+                "cif, or use ff for the probability of failure."
+            )
+        if event is None:
+            raise ValueError(
+                f"cif needs the cause: pass event, one of {self.causes} "
+                "(total_cif gives every cause's together)."
+            )
+        if event not in self.causes:
+            from surpyval.utils.validation import unknown_cause_error
+
+            raise unknown_cause_error(event, self.causes)
+
+    def cif(
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        event: Any,
+        *,
+        grid: bool = False,
+    ) -> NDArray:
+        """
+        Cumulative incidence of cause ``event`` at ``x``: the probability of
+        having failed from that cause by ``x``, with the other causes
+        acting, of the leaf each covariate vector falls in. ``Z``, ``grid``
+        and the result are as for :meth:`sf`. A cause with no failure in a
+        leaf has zero incidence there. Only for a tree grown with causes
+        (``e``).
+        """
+        self._check_event(event)
+        return self.apply_model_function("cif", x, Z, grid=grid, event=event)
+
+    def total_cif(
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: bool = False,
+    ) -> NDArray:
+        """
+        The sum of every cause's cumulative incidence at ``x`` (the
+        probability of having failed from any cause), as for :meth:`cif`.
+        For a ``"non-parametric"`` tree it is ``1 - sf``: the leaves'
+        all-cause survival is the Kaplan-Meier estimate.
+        """
+        if self.causes is None:
+            self._check_event(None)
+        assert self.causes is not None
+        out = self.cif(x, Z, self.causes[0], grid=grid)
+        for label in self.causes[1:]:
+            out = out + self.cif(x, Z, label, grid=grid)
+        return out
+
     def to_dict(self) -> dict:
         """Serialise the fitted tree to a plain, JSON/BSON-safe dictionary.
 
@@ -702,6 +968,11 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         n_covariates = self._n_covariates()
         if n_covariates is not None:
             out["n_covariates"] = n_covariates
+        if self.causes is not None:
+            out["causes"] = to_native(list(self.causes))
+            out["split"] = self.split
+            if self.event is not None:
+                out["event"] = to_native(self.event)
         serialise_covariate_meta(self, out)
         # The leaves are finished model dictionaries already (#549)
         return stamp_schema(out, stamped=True)
@@ -724,6 +995,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         # The covariate count predictions are checked against (#657);
         # trees saved before it was stored have none.
         tree._saved_n_covariates = model_dict.get("n_covariates")
+        if "causes" in model_dict:
+            tree.causes = [label_from_native(k) for k in model_dict["causes"]]
+            tree.split = model_dict["split"]
+            tree.event = label_from_native(model_dict.get("event"))
         # Trees saved before feature names existed have none.
         restore_covariate_meta(tree, model_dict)
         tree._root = node_from_dict(model_dict["root"])
@@ -744,9 +1019,15 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         the left branch and ``name >  value`` for the right one (with the
         adjusted p-value of a ``selection="ctree"`` split), each branch's
         subtree indented under it, and each leaf's model."""
+        causes = (
+            ""
+            if self.causes is None
+            else f", causes={self.causes!r}, split={self.split!r}"
+            + ("" if self.event is None else f", event={self.event!r}")
+        )
         lines = [
             f"SurvivalTree(kind={self.kind!r}, "
-            f"selection={self.selection!r})"
+            f"selection={self.selection!r}{causes})"
         ]
         lines += tree_lines(self._root, self.feature_labels)
         return "\n".join(lines)
