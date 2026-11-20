@@ -92,6 +92,9 @@ class ParametricRecurrenceModel(
     mcf_hat: "np.ndarray"
     how: str
     res: Any
+    #: For a ``ChangePoint`` model: the time of the change, ``tau``, and
+    #: for an estimated one the profile it was read from.
+    change_point: dict
     #: What a maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
     #: applicable"`` for a least-squares fit or a model built from its
@@ -120,18 +123,22 @@ class ParametricRecurrenceModel(
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "ParametricRecurrenceModel",
-                "dist": self.dist.name,
-                "params": np.asarray(self.params, dtype=float).tolist(),
-                "how": getattr(self, "how", "from_params"),
-                # What the Wald bounds need (null for a model with no
-                # likelihood); optional on reading.
-                "covariance": self._covariance_entry(),
-                **maximum_entry(self.maximum),
-            }
-        )
+        out = {
+            "model": "ParametricRecurrenceModel",
+            "dist": self.dist.name,
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "how": getattr(self, "how", "from_params"),
+            # What the Wald bounds need (null for a model with no
+            # likelihood); optional on reading.
+            "covariance": self._covariance_entry(),
+            **maximum_entry(self.maximum),
+        }
+        if hasattr(self.dist, "to_spec"):
+            # An intensity model on another clock (EffortClock,
+            # ChangePoint) is not stateless: its model's name, and the
+            # effort or the time of the change.
+            out["clock"] = self.dist.to_spec()
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricRecurrenceModel":
@@ -146,7 +153,14 @@ class ParametricRecurrenceModel(
             model_dict, "ParametricRecurrenceModel", "a recurrence model"
         )
         out = cls()
-        out.dist = intensity_dist_by_name(model_dict["dist"])
+        if model_dict.get("clock") is not None:
+            from surpyval.recurrent.parametric.clocks import clock_from_spec
+
+            out.dist = clock_from_spec(model_dict["clock"])
+            if "tau" in model_dict["clock"]:
+                out.change_point = {"tau": out.dist.tau}
+        else:
+            out.dist = intensity_dist_by_name(model_dict["dist"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
         out.maximum = restored_maximum(model_dict)

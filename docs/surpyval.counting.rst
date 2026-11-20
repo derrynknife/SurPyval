@@ -52,6 +52,7 @@ the failures counted in each period of testing.
     counting/inflection_s
     counting/musa_okumoto
     counting/rayleigh_defects
+    counting/clocks
 
 Models of the Times Between Failures
 ------------------------------------

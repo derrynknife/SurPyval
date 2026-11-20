@@ -450,7 +450,7 @@ with its own ``schema``.
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
-     - --
+     - ``clock``
    * - ``SharedFrailtyModel``
      - ``"model": "SharedFrailtyModel"``
      - ``baseline``, ``family``, ``how``, ``params``, ``n_covariates``, ``regression``, ``held``, ``covariance``, ``cluster_ids``, ``cluster_events``, ``cluster_exposure``, ``maximum``
@@ -478,7 +478,7 @@ with its own ``schema``.
    * - ``LittlewoodVerrallModel``
      - ``"model": "LittlewoodVerrallModel"``
      - ``params``, ``psi``, ``n``, ``how``, ``covariance``, ``maximum``
-     - (none)
+     - --
    * - ``DegradationModel``
      - ``"model": "DegradationModel"``
      - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``

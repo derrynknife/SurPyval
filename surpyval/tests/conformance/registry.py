@@ -507,6 +507,14 @@ for _fn in (
     "compare_predictions",
 ):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
+for _fn in ("change_point_cb", "change_point_test"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = (
+        _FUNCTION + ": for a fitted change point (test_clocks.py)"
+    )
+for _name in ("EffortTable", "WeibullEffort"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = _DATA + (
+        ": the testing effort over time that EffortClock takes"
+    )
 OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
     _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
 )

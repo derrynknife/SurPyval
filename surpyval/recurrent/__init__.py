@@ -10,15 +10,21 @@ from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .panel_count import PanelCountMCF, PanelCountRegression
 from .parametric import (
     HPP,
+    ChangePoint,
     CountingProcess,
     CoxLewis,
     CrowAMSAA,
     Duane,
+    EffortClock,
+    EffortTable,
     GoelOkumoto,
     InflectionS,
     MusaOkumoto,
     RayleighDefects,
+    WeibullEffort,
     YamadaDelayedS,
+    change_point_cb,
+    change_point_test,
 )
 from .phases import phases_to_data
 from .prediction import PredictionComparison, compare_predictions
