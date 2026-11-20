@@ -325,6 +325,9 @@ def _estimate(case, spec, fname, event):
     if spec.kind == "param":
         return _parameters(model)[1]
     if spec.kind == "coef":
+        if "tau" in spec.kwargs:
+            # (a quantile regression's intercept and coefficients at tau)
+            return np.asarray(model.coefficients(spec.kwargs["tau"]), float)
         return np.asarray(model.coef, float)
     out = []
     for args in spec.query:

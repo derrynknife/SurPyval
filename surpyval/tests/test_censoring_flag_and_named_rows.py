@@ -95,6 +95,7 @@ DATA = _named_data()
         sp.WeibullPO,
         sp.AdditiveHazards,
         sp.BuckleyJames,
+        sp.QuantileRegression,
     ],
     ids=lambda m: getattr(m, "name", type(m).__name__),
 )

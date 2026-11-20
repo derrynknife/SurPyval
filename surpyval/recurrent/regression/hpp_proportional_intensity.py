@@ -8,10 +8,13 @@ import autograd.numpy as np
 import numpy as onp
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
-from scipy.special import gammaln
 
 from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent.parametric.nhpp_fitter import (
+    log_one_minus_exp,
+    poisson_count_sums,
+)
 from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.univariate.regression._aliasing import (
     dataframe_covariates,
@@ -188,16 +191,16 @@ class ProportionalIntensityHPP(
         x_left = s["x_left"] - s["x_left_prev"]
         n_left = s["n_left"]
         Z_left = rows(s["mask_left"])
-        n_log_x_left_sum = (n_left * np.log(x_left)).sum()
-        n_left_sum = n_left.sum()
-        n_l_factorial_sum = gammaln(n_left + 1).sum()
+        n_left_sum, n_log_x_left_sum, n_l_factorial_sum = poisson_count_sums(
+            n_left, x_left
+        )
 
         delta_xi = s["x_i_r"] - s["x_i_l"]
         n_interval = s["n_i"]
         Z_i = rows(s["mask_i"])
-        n_interval_sum = n_interval.sum()
-        n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
-        n_i_factorial_sum = gammaln(n_interval + 1).sum()
+        n_interval_sum, n_log_x_interval_sum, n_i_factorial_sum = (
+            poisson_count_sums(n_interval, delta_xi)
+        )
 
         # Right truncation (#924): the windows over which each truncated
         # item is known to have failed (it is in the data because of it).
@@ -222,9 +225,9 @@ class ProportionalIntensityHPP(
             ll += rate * (x_right * phi_right).sum()
 
             phi_sel = np.exp(np.dot(Z_sel, beta_coeffs))
-            ll -= np.sum(np.log(-np.expm1(-rate * phi_sel * selection_time)))
+            ll -= np.sum(log_one_minus_exp(rate * phi_sel * selection_time))
             phi_gap = np.exp(np.dot(Z_gap, beta_coeffs))
-            ll += np.sum(np.log(-np.expm1(-rate * phi_gap * gap_time)))
+            ll += np.sum(log_one_minus_exp(rate * phi_gap * gap_time))
 
             phi_exponent_left = np.dot(Z_left, beta_coeffs)
             ll += (

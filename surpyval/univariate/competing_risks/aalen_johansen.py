@@ -1,40 +1,71 @@
 """Shared Aalen-Johansen incidence increment (#299).
 
 The S(t-) weighting that turns cause-specific hazard increments into
-cumulative-incidence increments was implemented three times (the
-nonparametric CIF, the CR-PH ``cif`` and Gray's pooled CIF), and one of
-those copies went wrong (#278). It now lives here once.
+cumulative-incidence increments lives here once: :func:`survival_before`
+takes the all-cause survival just before each time, and
+:func:`aalen_johansen_iif` weights the increments by it. The
+non-parametric CIF and its variances, the restricted mean time lost,
+Gray's test and the pseudo-observations all read them, one curve at a
+time or many (one per row) at once.
 """
 
 import numpy as np
 import numpy.typing as npt
 
 
+def survival_before(S: npt.ArrayLike) -> npt.NDArray:
+    """The survival just before each time, ``S(t_i-)``: ``S`` shifted one
+    step along its last axis, with 1 first.
+
+    ``S`` is a step survival stored at its event times along the last
+    axis, one curve (1-D) or one per row; the value before the first time
+    is 1, and before each later time the value at the previous one.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.competing_risks.aalen_johansen import (
+    ...     survival_before,
+    ... )
+    >>> survival_before(np.array([0.9, 0.8, 0.6]))
+    array([1. , 0.9, 0.8])
+    >>> survival_before(np.array([[0.9, 0.8], [0.5, 0.25]]))
+    array([[1. , 0.9],
+           [1. , 0.5]])
+    """
+    S = np.asarray(S, dtype=float)
+    first = np.ones(S.shape[:-1] + (1,))
+    return np.concatenate([first, S[..., :-1]], axis=-1)
+
+
 def aalen_johansen_iif(
-    S: npt.NDArray, hazard_increments: npt.NDArray
+    S: npt.ArrayLike, hazard_increments: npt.ArrayLike
 ) -> npt.NDArray:
     """Instantaneous incidence increments.
 
     The cause-specific hazard increment at ``t_i`` acts on the
     population still alive just *before* ``t_i``, so each increment is
-    weighted by ``S(t_i-)`` — the survival after the previous event
-    time — not ``S(t_i)`` (#253). ``S`` and the last axis of
-    ``hazard_increments`` must be aligned on the same event-time grid;
-    the cumulative incidence is the cumulative sum of the result.
+    weighted by ``S(t_i-)`` (:func:`survival_before`) -- the survival
+    after the previous event time -- not ``S(t_i)`` (#253). ``S`` and
+    the last axis of ``hazard_increments`` must be aligned on the same
+    event-time grid; the cumulative incidence is the cumulative sum of the
+    result along that axis.
 
     Parameters
     ----------
     S : array_like
-        The all-cause (Kaplan-Meier) survival at each event time.
+        The all-cause (Kaplan-Meier) survival at each event time: one
+        curve (1-D), or one per row, the times along the last axis.
     hazard_increments : array_like
         The cause-specific hazard increments ``d_j / r`` at the same
-        times, one row per cause (or a single 1-D row).
+        times: one row per cause (or a single 1-D row) for one curve
+        ``S``, and the shape of ``S`` (or one that broadcasts with it)
+        for several.
 
     Returns
     -------
     numpy array
-        ``hazard_increments * S(t-)``, the same shape as
-        ``hazard_increments``.
+        ``hazard_increments * S(t-)``, broadcast to the shape of the two.
 
     Examples
     --------
@@ -45,10 +76,15 @@ def aalen_johansen_iif(
     >>> S = np.array([0.9, 0.8, 0.6])
     >>> aalen_johansen_iif(S, np.array([0.1, 0.0, 0.25]))
     array([0.1, 0. , 0.2])
+
+    Two curves at once, one per row:
+
+    >>> S = np.array([[0.9, 0.8], [0.5, 0.25]])
+    >>> aalen_johansen_iif(S, np.array([[0.1, 0.1], [0.5, 0.5]]))
+    array([[0.1 , 0.09],
+           [0.5 , 0.25]])
     """
-    S = np.asarray(S, dtype=float)
-    S_prev = np.concatenate([[1.0], S[:-1]])
-    return np.asarray(hazard_increments) * S_prev
+    return np.asarray(hazard_increments) * survival_before(S)
 
 
 def aalen_johansen_variance(
@@ -121,7 +157,7 @@ def aalen_johansen_variance(
         def ties(m: npt.NDArray) -> npt.NDArray:
             return np.where(m > 1, (r - m) / np.maximum(r - 1.0, 1.0), 1.0)
 
-        S_prev = np.concatenate([[1.0], S[:-1]])
+        S_prev = survival_before(S)
         w_k = np.where(d_k > 0, ties(d_k) * d_k * S_prev**2 / r**2, 0.0)
         w_o = np.where(
             (d_o > 0) & (S > 0), ties(d_o) * d_o * S_prev**2 / r**2, 0.0
@@ -235,7 +271,7 @@ def weighted_aalen_johansen(
     with np.errstate(divide="ignore", invalid="ignore"):
         S = np.cumprod(np.where(d > 0, 1.0 - d / r, 1.0))
         h_e = np.where(d_e > 0, d_e / r, 0.0)
-    S_prev = np.concatenate([[1.0], S[:-1]])
+    S_prev = survival_before(S)
     alive = S_prev > 0
     var = np.zeros((n_causes, m))
     factor = n * w**2

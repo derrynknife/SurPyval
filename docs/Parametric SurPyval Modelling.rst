@@ -2686,12 +2686,17 @@ are too, so the interval on ``lfp_p`` closes up to 1. The intervals are BCa:
 the bias-corrected percentiles of the refits, moved by an acceleration from
 the jackknife (the model refitted without each unit in turn). On 200
 simulated samples of 100 units each
-(``calibration/test_coverage_extra_parameters.py``) its 95% intervals
-covered 90% to 96.5% of the time and its 90% ones 83.5% to 92.5%, a little
-short at 90% for a zero-inflated model and for ``lfp_p`` near its edge.
-(Those figures were measured before 0.27, which widened every bootstrap
-interval a little by reading its bounds from the refits at the levels
-asked; see the note below.)
+(``calibration/test_coverage_extra_parameters.py``), with the default
+``n_boot=200``, its 95% intervals covered 90.5% to 97% of the time (94.0%
+on average over every bound checked) and its 90% ones 84.5% to 93.5%
+(88.8% on average). They hold their level for a limited failure population
+with ``lfp_p`` well below 1 (90% intervals 90.4% on average, Weibull), and
+run one to three points short for a zero-inflated model (87.1%) and for
+the distribution's parameters and functions of time when ``lfp_p`` is 1
+(87.7%); there ``lfp_p`` itself is conservative (99.5%). More refits do
+not change this (``n_boot=500`` on the same samples: 89.0% overall, 87.1%
+and 86.7% for those two designs), so where the level matters use the
+likelihood-ratio bounds (``method="lr"``).
 
 .. note::
 

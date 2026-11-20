@@ -339,6 +339,10 @@ with its own ``schema``.
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
      - --
+   * - ``QuantileRegressionModel``
+     - ``"model": "QuantileRegressionModel"``
+     - ``method``, ``step``, ``taus``, ``intercepts``, ``coefs``, ``data``
+     - --
    * - ``ProportionalOddsModel``
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
@@ -430,6 +434,18 @@ with its own ``schema``.
    * - ``PanelCountRegression``
      - ``"model": "PanelCountRegression"``
      - ``how``, ``x``, ``i``, ``n``, ``Z``, ``params``
+     - --
+   * - ``RelativeSurvival``
+     - ``"model": "RelativeSurvival"``
+     - ``method``, ``x``, ``at_risk``, ``events``, ``n_units``, ``observed``, ``expected``, ``variance``
+     - --
+   * - ``ExcessHazard``
+     - ``"model": "ExcessHazard"``
+     - ``params``, ``parameter_names``, ``breaks``, ``aliased``, ``k``, ``_neg_ll``, ``ic_n``, ``covariance``, ``rate_table``, ``maximum``
+     - --
+   * - ``RateTable``
+     - ``"model": "RateTable"``
+     - ``ages``, ``years``, ``strata``, ``rates``
      - --
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``

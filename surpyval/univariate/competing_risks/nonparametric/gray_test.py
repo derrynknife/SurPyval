@@ -35,6 +35,10 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+    survival_before,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
@@ -496,11 +500,10 @@ def _score_and_variance(
     # Each group's all-cause Kaplan-Meier survival (S, and S_minus just
     # before each time) and Aalen-Johansen incidence of the cause (F1).
     S = np.cumprod(1.0 - np.where(at_risk, (d1 + d2) / Y_safe, 0.0), axis=1)
-    S_minus = _left_limit(S, 1.0)
+    S_minus = survival_before(S)
     S_minus_safe = np.where(at_risk, S_minus, 1.0)
-    F1_minus = _left_limit(
-        np.cumsum(S_minus * np.where(at_risk, d1 / Y_safe, 0.0), axis=1), 0.0
-    )
+    dF1 = aalen_johansen_iif(S, np.where(at_risk, d1 / Y_safe, 0.0))
+    F1_minus = _left_limit(np.cumsum(dF1, axis=1), 0.0)
 
     # Gray's subdistribution risk sets R_g = Y_g (1 - F1_g(t-)) / S_g(t-).
     # Y_g / S_g(t-) (``size``) is the group size times its censoring
