@@ -5,6 +5,21 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Competing-risks random survival forests.** ``RandomSurvivalForest.fit``
+  (and ``fit_from_df``, with ``e_col``) takes the cause of each failure as
+  ``e``, with ``split`` and ``event`` as for the tree, and grows every tree
+  as a competing-risks tree for every cause in the data. ``cif(x, Z,
+  event)`` averages the trees' leaf incidences, ``total_cif`` sums the
+  causes and ``sf`` is the all-cause survival. ``oob_log_likelihood()``
+  scores each out-of-bag failure by the ensemble's sub-density of its own
+  cause (the competing-risks likelihood), and ``oob_log_likelihood(event=)``
+  and ``feature_importances(event=)`` restrict the score to one cause's
+  cause-specific likelihood, so a feature that changes only one cause's
+  risk shows up for that cause alone. ``mortality(x, Z, event=)`` and
+  ``score(x, Z, c, e=, event=)`` give a cause's mortality and its
+  concordance. Forests save and load with their causes; without ``e``
+  nothing changes. See :doc:`surpyval.ml`.
+
 - **The level of a degradation process given that the unit has not
   failed.** ``level_at(t, y0=, t0=, given_survival=True)`` of a
   ``WienerProcessModel`` or ``GammaProcessModel`` is the distribution of

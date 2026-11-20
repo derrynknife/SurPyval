@@ -116,8 +116,35 @@ entry (``tl``) for the cause-specific rule. Left- and interval-censored
 rows and right truncation are refused for now (fit ``CompetingRisks`` or
 ``ParametricCompetingRisks`` to such data), as are ``selection="ctree"``
 and a non-zero ``min_split_gain``, whose tests and likelihoods are of a
-single event. Without ``e`` a tree is exactly as before. The forest does
-not take causes yet.
+single event. Without ``e`` a tree is exactly as before.
+
+Competing-risks forests
+-----------------------
+
+``RandomSurvivalForest.fit`` takes ``e`` (and ``split``, ``event``) the
+same way, and grows every tree as a competing-risks tree for every cause in
+the data, even where a tree's bootstrap sample misses a rare cause (that
+tree then gives it zero incidence).
+
+- ``cif(x, Z, event)`` is the average over the trees of their leaf
+  incidences of the cause, ``total_cif`` the sum over the causes, and
+  ``sf`` the average all-cause survival.
+- ``oob_log_likelihood()`` scores each failure by the ensemble's
+  sub-density of *its own cause*, the slope of that cause's cumulative
+  incidence at its time, and each censored row by the all-cause survival:
+  the competing-risks likelihood, so a forest that gets the time right but
+  the cause wrong scores badly. ``oob_log_likelihood(event=k)`` restricts
+  it to cause ``k``: the cause-specific likelihood (a failure from ``k``
+  scores the cause's own density, every other row its own survival), which
+  judges the cause's hazard alone.
+- ``feature_importances(event=k)`` shuffles each feature and measures the
+  drop in that restricted score, so a feature that changes only one
+  cause's risk is important for that cause and near zero for the others;
+  without ``event`` it uses the full score.
+- ``mortality(x, Z, event=k)`` sums the cause's incidence over the times
+  (the expected time lost to the cause), and ``score(x, Z, c, e=e,
+  event=k)`` is its concordance with the failures from ``k``, a failure
+  from another cause counting as later than all of them (Wolbers et al.).
 
 Random Survival Forest
 ----------------------

@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-20
 
+### Competing-risks forests: the ensemble, the out-of-bag score and the importances (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `RandomSurvivalForest.fit(..., e=, split=, event=)` checks the causes once on every row and grows every tree for all of them (`SurvivalTree` takes the list as `causes=`), so a tree whose bootstrap sample misses a rare cause gives it zero incidence rather than not knowing it. `cif`/`total_cif` average the trees' leaves; `sf` is the average all-cause survival. | principle 1 | The tree's names (`event=`) and refusals; a cause list per tree would make the ensemble's `cif` of a rare cause fail. | done |
+| The out-of-bag score with causes is the competing-risks likelihood: a failure from cause k scores the ensemble's sub-density of k (the averaged leaf sub-densities: `iif` for a parametric leaf, the slope of the Aalen-Johansen incidence joined linearly between the all-cause drops for a step leaf, the exponential tail shared by the incidences' proportions), a censored row the all-cause survival, delayed entry divided by `S(t_l)`. | proposed | A likelihood that ignores the cause cannot judge the cause predictions; the step-leaf reading is the plain forest's, applied per cause, and the joins add up to the all-cause curve. | done |
+| `oob_log_likelihood(event=k)` and `feature_importances(event=k)` use the cause-specific (net) likelihood of cause k: `h_k S_k` for a failure from k, `S_k` for every other row, `S_k(t_l)` for delayed entry. Not the subdistribution likelihood (`1 - F_k(inf)` for another cause's failure). | proposed | Both judge one cause. The subdistribution version needs each parametric leaf's `F_k` by adaptive quadrature at every out-of-bag time (about 0.1 s per leaf and cause; minutes for a default forest's importances), and fixed quadrature rules missed by up to 1e-3. The net version is closed form, and for one parametric tree the causes' restricted scores add up to the full score. The importance is then of the cause's hazard, not its incidence; docs say so. | done |
+| `mortality(x, Z, event=k)` sums cause k's incidence over `x` (Ishwaran et al. 2014's cause-specific mortality); `score(x, Z, c, e=, event=)` is Harrell's index of it with a failure from another cause censored at infinity (Wolbers et al. 2014's concordance without censoring weights). | proposed | The all-cause `score` and `mortality` are unchanged; the cause versions are the standard ones for a competing-risks forest. | done |
+| A row whose out-of-bag trees never saw its cause (one failure of a rare cause) scores zero probability: `-inf`, with the existing count warning, which now names this case. | principle 22 | An honest score; the warning says to grow more trees. | done |
 ### Each parameter's range, public; public homes for `DynamicPrediction` and `conditional_gaps` (20 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -44,7 +53,7 @@ Design decisions made while working on the open issues, with the reason for each
 | A parametric leaf fits each cause on its own, as a plain leaf of the kind is fitted (the closed-form maximum where it applies), assembled with `ParametricCompetingRisks.from_fitted`. A depth-0 tree is that model; its maximum agrees with `ParametricCompetingRisks.fit`'s to about 1e-6 relative and has a log-likelihood no lower. | proposed | The leaf fits stay those of the plain tree; the difference is the optimiser's tolerance. | done |
 | `min_leaf_failures` counts every failure; for a parametric kind each child must also keep that many failures of each cause the node has at least twice as many of. A rarer cause may fall wholly to one side; the other child then gives it zero incidence, and `describe()` says so. | proposed | A parametric leaf fits every cause separately, so it needs failures of each; requiring them of a cause too rare to give both children any would stop every split. The Aalen-Johansen leaf needs no minimum per cause. | done |
 | With `e`, left- and interval-censored rows, right truncation, `selection="ctree"` and a non-zero `min_split_gain` are refused, each saying what to use. | principle 2 | The cause-aware splits are risk-set statistics; the conditional-inference tests and the likelihood gain are of a single event. The leaf models take interval censoring, so a later change may add it. | gap |
-| The forest does not take causes yet. | proposed | Part of the work in two steps: the tree first. | gap |
+| The forest does not take causes yet. | proposed | Part of the work in two steps: the tree first. | done (next table) |
 
 ### Joint models: the slope link and paths whose slope is unbounded at age 0 (20 Nov 2026)
 
