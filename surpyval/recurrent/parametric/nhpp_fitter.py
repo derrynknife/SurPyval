@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from autograd import numpy as np
 from numpy.typing import ArrayLike
@@ -181,7 +182,9 @@ class NHPPFitter(IntensityModel):
         data: EventHistoryData,
         how: str = "MLE",
         init: ArrayLike | None = None,
-    ) -> ParametricRecurrenceModel:
+        frailty: str | None = None,
+        cluster: Any = None,
+    ) -> Any:
         """
         Fit the NHPP model from recurrent data using either Maximum Likelihood
         Estimation (MLE) or Mean Square Error (MSE) methods.
@@ -199,15 +202,22 @@ class NHPPFitter(IntensityModel):
         init: array_like, optional
             Initial parameters for optimization. The default start is
             tried too, and the better fit kept.
+        frailty: {'gamma', 'lognormal'}, optional
+            A shared frailty, as for :meth:`fit`.
+        cluster: mapping or array_like, optional
+            Each item's cluster, as for :meth:`fit`.
 
         Returns
         -------
 
         ParametricRecurrenceModel
             An instance of the ParametricRecurrenceModel class containing the
-            fitted model, estimated parameters, and other relevant attributes.
+            fitted model, estimated parameters, and other relevant attributes
+            (a ``SharedFrailtyModel`` with ``frailty``).
         """
         check_option("how", how, ("MLE", "MSE"))
+        if frailty is not None or cluster is not None:
+            return self._frailty_fit(data, how, init, frailty, cluster)
         validate_nhpp_data(data, self)
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
@@ -323,6 +333,35 @@ class NHPPFitter(IntensityModel):
             model._n_obs = bic_sample_size(data)
         return model
 
+    def _frailty_fit(
+        self,
+        data: EventHistoryData,
+        how: str,
+        init: ArrayLike | None,
+        frailty: str | None,
+        cluster: Any,
+    ) -> Any:
+        """The fit with a shared frailty (``frailty=``)."""
+        from surpyval.recurrent.shared_frailty import (
+            FAMILIES,
+            fit_shared_frailty,
+        )
+
+        if frailty is None:
+            raise ValueError(
+                "'cluster' names the clusters that share a frailty, so it "
+                "needs 'frailty': give frailty='gamma' (or 'lognormal'), "
+                "or leave out 'cluster'."
+            )
+        check_option("frailty", frailty, FAMILIES)
+        if how != "MLE":
+            raise ValueError(
+                "A frailty fit is by maximum likelihood: how='MSE' has no "
+                "frailty. Use how='MLE' (the default), or leave out "
+                "'frailty'."
+            )
+        return fit_shared_frailty(self, data, frailty, cluster, init)
+
     def _closed_form_model(
         self,
         data: EventHistoryData,
@@ -368,7 +407,9 @@ class NHPPFitter(IntensityModel):
         how: str = "MLE",
         init: ArrayLike | None = None,
         windows: dict | None = None,
-    ) -> ParametricRecurrenceModel:
+        frailty: str | None = None,
+        cluster: Any = None,
+    ) -> Any:
         """
         Fit the NHPP model from the provided data. This function prepares the
         data to ensure that it is in the correct format for the fitting.
@@ -435,12 +476,27 @@ class NHPPFitter(IntensityModel):
             windows are independent for an NHPP, each window is fitted as its
             own observation period. Mutually exclusive with ``t``/``tl``/
             ``tr``.
+        frailty: {'gamma', 'lognormal'}, optional
+            Give each cluster of items an unobserved frailty that
+            multiplies its intensity, for a fleet whose items differ by
+            more than a Poisson process allows: gamma with mean 1 and
+            variance ``theta``, or log-normal with ``log u ~ N(0,
+            theta)``. ``theta`` is estimated with the intensity's
+            parameters, and the fit is a
+            :class:`~surpyval.recurrent.SharedFrailtyModel`. It needs at
+            least two clusters and each event's time (no ``c=-1`` or
+            ``c=2`` counts, no right truncation), by maximum likelihood.
+            Default ``None``: no frailty.
+        cluster: mapping or array_like, optional
+            With ``frailty``, the items that share one: ``{item:
+            cluster}``, or one label per row of ``x`` (the same on every
+            row of an item). By default each item has its own.
 
         Returns
         -------
 
         ParametricRecurrenceModel
-            The fitted model.
+            The fitted model (a ``SharedFrailtyModel`` with ``frailty``).
 
         Examples
         --------
@@ -457,6 +513,17 @@ class NHPPFitter(IntensityModel):
         >>> model.cif(60)
         np.float64(4.5)
         """
+        if cluster is not None and frailty is not None:
+            from surpyval.recurrent.shared_frailty import cluster_of_items
+
+            # Read against the rows as given, before they are sorted
+            cluster = cluster_of_items(
+                cluster,
+                i,
+                np.shape(x)[0] if np.ndim(x) else 1,
+                " With a SurpyvalData or an EventHistoryData as x, give "
+                "the mapping.",
+            )
         data = handle_xicn(
             x,
             i,
@@ -468,7 +535,7 @@ class NHPPFitter(IntensityModel):
             as_recurrent_data=True,
             windows=windows,
         )
-        return self.fit_from_recurrent_data(data, how, init)
+        return self.fit_from_recurrent_data(data, how, init, frailty, cluster)
 
     @takes_unit
     def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:

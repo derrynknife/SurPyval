@@ -29,9 +29,11 @@ item's likelihood is the integral over its varying parameters
           phi(theta_V; mu_V + Delta_V z_i, D) d theta_V,
 
 evaluated by adaptive Gauss-Hermite quadrature: a product grid
-(7 points a dimension) centred at the mode of the integrand and scaled
-by its curvature there (Gauss-Newton: the path's Jacobian, which is the
-exact curvature for a path linear in its parameters). The nodes are
+(7 points a dimension; with four or five varying parameters by default
+without the nodes whose weight is negligible, :func:`gh_grid`) centred
+at the mode of the integrand and scaled by its curvature there
+(Gauss-Newton: the path's Jacobian, which is the exact curvature for a
+path linear in its parameters). The nodes are
 placed in the space of the varying parameters themselves and held fixed
 while the parameters are searched, so the path is evaluated at fixed
 nodes (any path model works, and autograd differentiates the rest),
@@ -81,26 +83,85 @@ from autograd.scipy.special import logsumexp
 
 #: Gauss-Hermite points a dimension: in the fit (adaptive; 2-3 fail on
 #: sparse data), and in a prediction (by the number of varying path
-#: parameters: 15, 15, then 9 for three).
+#: parameters: 15, 15, then 9 for three and 7 for four and five).
 GH_FIT = 7
-GH_PREDICT = {1: 15, 2: 15, 3: 9}
+GH_PREDICT = {1: 15, 2: 15, 3: 9, 4: 7, 5: 7}
 #: Gauss-Legendre points of the cumulative hazard.
 GL_POINTS = 15
-#: The most path parameters that may vary: a full grid has 7^q nodes.
-MAX_VARYING = 3
+#: The most path parameters that may vary: a full grid has 7^q nodes
+#: (2,401 for four, 16,807 for five).
+MAX_VARYING = 5
+#: How the integral over the varying parameters is done: on the full
+#: product grid (``"grid"``), or on it without the nodes of negligible
+#: weight (``"pruned"``). The default is always the full grid, the more
+#: accurate one; pruning is an option the caller chooses.
+INTEGRATIONS = ("grid", "pruned")
+#: The pruned grid leaves out the lowest-weight nodes of the product
+#: grid, as many as have less than this share of the grid's total weight
+#: between them (nodes of equal weight are kept or left out together).
+PRUNE_SHARE = 1e-9
 
 
-def gh_grid(dim: int, points: int) -> tuple[npt.NDArray, npt.NDArray]:
+def gh_grid(
+    dim: int, points: int, prune: bool = False
+) -> tuple[npt.NDArray, npt.NDArray]:
     """The ``dim``-dimensional product Gauss-Hermite grid: nodes
     ``(K, dim)`` and log weights ``(K,)`` for ``int exp(-|z|^2) f(z)
-    dz``."""
+    dz``.
+
+    With ``prune`` the nodes of negligible weight are left out: the
+    lowest-weight nodes, as many as together hold less than
+    ``PRUNE_SHARE`` (1e-9) of the grid's total weight, nodes of equal
+    weight kept or left out together (so the grid keeps its symmetries).
+    They are the corners, where several coordinates are extreme at once:
+    none of 7 points in up to three dimensions, 80 of the 2,401 nodes
+    in four and 1,392 of the 16,807 in five. The rule depends on ``dim``
+    and ``points`` only, never on the data. The kept nodes are in the
+    full grid's order and
+    their weights are not rescaled."""
     x, w = np.polynomial.hermite.hermgauss(points)
     grids = np.meshgrid(*([x] * dim), indexing="ij")
     z = np.stack([g.ravel() for g in grids], axis=-1)
     logw = np.zeros(z.shape[0])
     for g in np.meshgrid(*([np.log(w)] * dim), indexing="ij"):
         logw = logw + g.ravel()
+    if prune:
+        keep = _heavy_enough(logw)
+        z, logw = z[keep], logw[keep]
     return z, logw
+
+
+def _heavy_enough(logw: npt.NDArray) -> npt.NDArray:
+    """The mask of the nodes a pruned grid keeps (:func:`gh_grid`)."""
+    share = np.exp(logw - np.max(logw))
+    share = share / share.sum()
+    ordered = np.sort(share)
+    # the nodes that could go one at a time, lightest first
+    below = int(np.searchsorted(np.cumsum(ordered), PRUNE_SHARE, "left"))
+    if below == 0:
+        return np.ones(share.size, dtype=bool)
+    if below == share.size:  # pragma: no cover - PRUNE_SHARE < 1
+        below -= 1
+    # ... but every node as heavy as the first one kept stays (a tie is
+    # equal to a few ulps: the same product in another order)
+    return share >= ordered[below] * (1.0 - 1e-9)
+
+
+def check_integration(integration: Any, q: int) -> str:
+    """The name of the integration over ``q`` varying parameters:
+    ``integration`` itself where it is given, else the default for
+    ``q``."""
+    if integration is None:
+        return "grid"
+    if not isinstance(integration, str) or integration not in INTEGRATIONS:
+        raise ValueError(
+            "'integration' is how each item's likelihood is integrated "
+            "over its varying path parameters: 'grid' (the full grid of "
+            f"{GH_FIT} points in each) or 'pruned' (the grid without the "
+            "nodes of negligible weight), or leave it out for the "
+            f"default; got {integration!r}."
+        )
+    return integration
 
 
 def _gl_grid() -> tuple[npt.NDArray, npt.NDArray]:
@@ -213,24 +274,121 @@ class LinkPath:
         return x[:, None] * np.einsum("k,mkp->mp", AREA_W, J)
 
 
+class LaggedPath:
+    """What the hazard follows of a marker's path ``lag`` later (a path
+    model, or a :class:`LinkPath`, as ``inner``): at age ``x`` the
+    inner path at ``max(x - lag, 0)``. The lagged path is the path held
+    at its age-0 value until ``lag``, so its value there is the path's
+    at age 0 and its slope and the area under it are 0 (``held_at_zero``
+    is ``False`` for the value, ``True`` for the slope and the area)."""
+
+    def __init__(self, inner: Any, lag: float, held_at_zero: bool) -> None:
+        self.inner = inner
+        self.lag = float(lag)
+        self.held_at_zero = held_at_zero
+        self.name = f"{inner.name} ({lag:g} earlier)"
+        self.parameter_names = list(inner.parameter_names)
+
+    def _ages(self, x: Any) -> tuple:
+        """The inner path's ages, and where ``x`` is past the lag."""
+        x = np.asarray(x, dtype=float)
+        past = x > self.lag
+        if self.held_at_zero:
+            # 0 before the lag, whatever the inner path is at age 0
+            return np.where(past, x - self.lag, 1.0), past
+        return np.maximum(x - self.lag, 0.0), past
+
+    def path(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        with np.errstate(all="ignore"):
+            out = np.asarray(self.inner.path(ages, *params), dtype=float)
+        return np.where(past, out, 0.0) if self.held_at_zero else out
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        P = np.stack(
+            [
+                np.broadcast_to(np.asarray(v, float), ages.shape)
+                for v in params
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.inner, ages, P)
+        return np.where(past[..., None], J, 0.0) if self.held_at_zero else J
+
+
+def lag_rule(
+    lo: npt.NDArray, hi: npt.NDArray, lag: float
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The ages ``(N, 2 GL_POINTS)`` and log weights of the rule for
+    ``int_lo^hi f(s) ds`` (``0 <= lo < hi``, finite) when the hazard
+    follows the marker ``lag`` later: the interval split at ``lag``,
+    where the lagged path has a kink (its slope a jump), and each piece
+    by the cumulative hazard's own rule, ``s = a + (b - a) w^4`` and
+    15-point Gauss-Legendre in ``w``. A piece of no width has weights
+    ``-inf``."""
+    lo = np.asarray(lo, dtype=float)
+    hi = np.asarray(hi, dtype=float)
+    cut = np.clip(lag, lo, hi)
+    ages, logw = [], []
+    with np.errstate(divide="ignore"):
+        for a, b in ((lo, cut), (cut, hi)):
+            width = b - a
+            ages.append(a[:, None] + width[:, None] * GL_U[None, :])
+            logw.append(
+                np.log(width)[:, None]
+                + (GL_LOGW + 3 * np.log(GL_NODES))[None, :]
+            )
+    return np.concatenate(ages, axis=1), np.concatenate(logw, axis=1)
+
+
+def check_lag(lag: Any) -> float:
+    """``lag`` as a float, refused unless it is one finite number of 0
+    or more."""
+    try:
+        value = float(lag)
+    except (TypeError, ValueError):
+        value = np.nan
+    if np.ndim(lag) or not np.isfinite(value) or value < 0:
+        raise ValueError(
+            "'lag' is how long after a reading the hazard follows it (the "
+            "hazard at age t follows the marker's path at t - lag, and at "
+            "age 0 before the lag), one finite number of 0 or more in the "
+            f"lifetimes' unit of time; got {lag!r}."
+        )
+    return value
+
+
 class PathFunction:
     """``path(params, x)`` of a path model for autograd: ``params``
     ``(..., p)`` and ``x`` ``(...)`` of one shape, its derivatives the
     path model's Jacobian and, for the second, central differences of
     that. ``terms`` holds what the hazard follows, one ``(link, path,
     function)`` for each of ``links``: the path itself (``"value"``),
-    or its :class:`LinkPath`."""
+    or its :class:`LinkPath`; with a ``lag`` above 0, each of those
+    ``lag`` later (:class:`LaggedPath`). The readings are always of the
+    path itself (``values``)."""
 
-    def __init__(self, path_model: Any, links: tuple = ("value",)) -> None:
+    def __init__(
+        self, path_model: Any, links: tuple = ("value",), lag: float = 0.0
+    ) -> None:
         self.model = path_model
         self.values, self.jac = _differentiable(path_model)
         self.links = tuple(links)
+        self.lag = float(lag)
         self.terms: list = []
         for link in self.links:
-            if link == "value":
+            followed = (
+                path_model if link == "value" else LinkPath(path_model, link)
+            )
+            if self.lag > 0:
+                followed = LaggedPath(followed, self.lag, link != "value")
+                self.terms.append(
+                    (link, followed, _differentiable(followed)[0])
+                )
+            elif link == "value":
                 self.terms.append((link, path_model, self.values))
             else:
-                followed = LinkPath(path_model, link)
                 self.terms.append(
                     (link, followed, _differentiable(followed)[0])
                 )
@@ -652,6 +810,12 @@ def log_cumhaz(
     ``t_i`` is 0)."""
     positive = t > 0
     safe = np.where(positive, t, 1.0)
+    if path.lag > 0:
+        # from age 0, split at the lag
+        out = log_cumhaz_between(
+            theta, path, params, arrays, np.zeros(safe.size), safe, centre
+        )
+        return anp.where(positive[:, None], out, -anp.inf)
     eta = predictor(theta, path, params, safe[:, None] * GL_U[None, :], centre)
     beta = theta["beta"]
     inner = logsumexp(
@@ -685,9 +849,13 @@ def log_cumhaz_between(
     ``(lo, hi]`` directly, with ``s = lo + (hi - lo) w^4``, by the same
     15-point Gauss-Legendre in ``w`` (with ``lo = 0`` this is the
     cumulative hazard's own rule), so a narrow interval late in life
-    loses no precision to a difference of two cumulative hazards."""
+    loses no precision to a difference of two cumulative hazards. With
+    a lag, split there (:func:`lag_rule`)."""
     width = hi - lo
-    s = lo[:, None] + width[:, None] * GL_U[None, :]
+    if path.lag > 0:
+        s, logw = lag_rule(lo, hi, path.lag)
+    else:
+        s = lo[:, None] + width[:, None] * GL_U[None, :]
     eta = predictor(theta, path, params, s, centre)
     alpha, beta = theta["alpha"], theta["beta"]
     lin = anp.dot(arrays.Z, theta["gamma"])
@@ -698,6 +866,8 @@ def log_cumhaz_between(
         + lin[:, None, None]
         + eta
     )
+    if path.lag > 0:
+        return logsumexp(logw[:, None, :] + log_h, axis=-1)
     inner = logsumexp(GL_LOGW + 3 * np.log(GL_NODES) + log_h, axis=-1)
     return np.log(width)[:, None] + inner
 
@@ -852,26 +1022,47 @@ def _mode_objective(
             from ._aft import mode_terms
 
             life = mode_terms(
-                theta, arrays, d, t, upper, followed, log_effect, weighted
+                theta,
+                arrays,
+                d,
+                t,
+                upper,
+                followed,
+                log_effect,
+                weighted,
+                lag=path.lag,
             )
             f, g, H = f + life[0], g + life[1], H + life[2]
         else:
             # the lifetime: an event flag d at age t, survival to t
             positive = t > 0
             safe = np.where(positive, t, 1.0)
-            s_ages = safe[:, None] * GL_U[None, :]
-            terms = followed(s_ages)
             beta = float(theta["beta"])
             lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
-            log_lam = (
-                (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
-                    :, None
-                ]
-                + np.log(beta)
-                + GL_LOGW
-                + (4 * beta - 1) * np.log(GL_NODES)
-                + log_effect(terms)
-            )
+            if path.lag > 0:
+                # from age 0, split at the lag (as log_cumhaz)
+                s_ages, logw = lag_rule(np.zeros(safe.size), safe, path.lag)
+                terms = followed(s_ages)
+                alpha = float(theta["alpha"])
+                log_lam = (
+                    (lin + np.log(beta / alpha))[:, None]
+                    + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                    + logw
+                    + log_effect(terms)
+                )
+            else:
+                s_ages = safe[:, None] * GL_U[None, :]
+                terms = followed(s_ages)
+                log_lam = (
+                    (
+                        lin
+                        + beta * (np.log(safe) - np.log(float(theta["alpha"])))
+                    )[:, None]
+                    + np.log(beta)
+                    + GL_LOGW
+                    + (4 * beta - 1) * np.log(GL_NODES)
+                    + log_effect(terms)
+                )
             lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
             f = f + lam.sum(axis=1)
             grad, curve = weighted(lam, terms)
@@ -885,16 +1076,28 @@ def _mode_objective(
                 rows, lo, hi = _between(t, upper)
                 if rows.any():
                     width = hi - lo
-                    s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
-                    terms = followed(s_ages)
                     alpha = float(theta["alpha"])
-                    log_lam = (
-                        (lin + np.log(width) + np.log(beta / alpha))[:, None]
-                        + (beta - 1) * (np.log(s_ages) - np.log(alpha))
-                        + GL_LOGW
-                        + 3 * np.log(GL_NODES)
-                        + log_effect(terms)
-                    )
+                    if path.lag > 0:
+                        s_ages, logw = lag_rule(lo, hi, path.lag)
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(beta / alpha))[:, None]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + logw
+                            + log_effect(terms)
+                        )
+                    else:
+                        s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(width) + np.log(beta / alpha))[
+                                :, None
+                            ]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + GL_LOGW
+                            + 3 * np.log(GL_NODES)
+                            + log_effect(terms)
+                        )
                     lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
                     delta = np.where(rows, lam.sum(axis=1), 1.0)
                     g_delta, _ = weighted(lam, terms)
@@ -1047,13 +1250,15 @@ def continued_modes(
 
 
 def adaptive_nodes(
-    mode: npt.NDArray, root: npt.NDArray, points: int
+    mode: npt.NDArray, root: npt.NDArray, points: int, prune: bool = False
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """The nodes ``(N, K, q)`` of each item's adaptive grid and their log
     weights ``(N, K)``, the change of variables included: ``int f db ~
-    sum_k exp(logw_k) f(b_k)``."""
+    sum_k exp(logw_k) f(b_k)``. ``prune``: without the nodes of
+    negligible weight (:func:`gh_grid`), so ``K`` is below ``points **
+    q``; nothing downstream needs a full product."""
     q = mode.shape[1]
-    z, logw = gh_grid(q, points)
+    z, logw = gh_grid(q, points, prune)
     nodes = mode[:, None, :] + np.sqrt(2.0) * np.einsum("nij,kj->nki", root, z)
     log_det = q * 0.5 * np.log(2.0) + np.sum(
         np.log(np.diagonal(root, axis1=1, axis2=2)), axis=1
@@ -1070,11 +1275,24 @@ def adaptive_nodes(
 @dataclass
 class Model:
     """What the likelihood needs besides the parameters: the layout, the
-    path, and the marker's centre ``c`` in the hazard."""
+    path, the marker's centre ``c`` in the hazard, and how the integral
+    over the varying parameters is done (``INTEGRATIONS``)."""
 
     layout: Layout
     path: PathFunction
     centre: float
+    integration: str = "grid"
+
+    @property
+    def prune(self) -> bool:
+        return self.integration == "pruned"
+
+    def prediction_nodes(self, mode: npt.NDArray, root: npt.NDArray) -> tuple:
+        """The adaptive nodes of a prediction (``GH_PREDICT`` points a
+        dimension, pruned as the fit's were)."""
+        return adaptive_nodes(
+            mode, root, GH_PREDICT[self.layout.q], self.prune
+        )
 
 
 def log_integrals(
@@ -1145,7 +1363,7 @@ def place(
         start=lik_start,
         upper=arrays.U,
     )
-    nodes = adaptive_nodes(mode, root, GH_FIT)
+    nodes = adaptive_nodes(mode, root, GH_FIT, model.prune)
     entry = None
     entered = arrays.truncated
     e_mode = None
@@ -1163,7 +1381,7 @@ def place(
             start=entry_start,
             upper=sub.Rt,
         )
-        entry = adaptive_nodes(e_mode, e_root, GH_FIT)
+        entry = adaptive_nodes(e_mode, e_root, GH_FIT, model.prune)
     return (nodes, entry), (mode, e_mode)
 
 

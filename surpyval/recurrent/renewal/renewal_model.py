@@ -12,6 +12,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -313,12 +314,39 @@ def conditional_gaps(
     the next age came back as ``v`` itself and the simulated MCF went flat.
 
     ``H`` is inverted with the quantile function while that is accurate
-    (see ``_QF_HAZARD_LIMIT``) and by Newton's method on ``H`` beyond it
-    (see ``_invert_cumulative_hazard``). A mixture's quantile function is
-    itself a root search on its failure function, which loses about ``eps
-    * exp(H)`` of the age, so a mixture's draws all take Newton's steps on
-    ``H``, from a lower bound found from its components
-    (``_mixture_start``).
+    and by Newton's method on ``H`` beyond it. A mixture's quantile
+    function is itself a root search on its failure function, which loses
+    about ``eps * exp(H)`` of the age, so a mixture's draws all take
+    Newton's steps on ``H``, from a lower bound found from its components.
+
+    Parameters
+    ----------
+    lifetime : model
+        The lifetime distribution: a fitted or built univariate model
+        (``Weibull.from_params(...)``, a ``MixtureModel``, ...), with its
+        cumulative hazard ``Hf``.
+    v : numpy.ndarray
+        The items' virtual ages.
+    u : numpy.ndarray
+        Uniforms on (0, 1), one per item: ``u`` is the chance of surviving
+        the gap drawn, so a smaller ``u`` gives a longer one.
+
+    Returns
+    -------
+    numpy.ndarray
+        The time from each virtual age to the next failure.
+
+    Examples
+    --------
+    The median residual life of a Weibull at ages 0 and 5:
+
+    >>> import numpy as np
+    >>> from surpyval import Weibull
+    >>> from surpyval.recurrent import conditional_gaps
+    >>> life = Weibull.from_params([10.0, 2.0])
+    >>> v, u = np.array([0.0, 5.0]), np.array([0.5, 0.5])
+    >>> conditional_gaps(life, v, u).round(3)
+    array([8.326, 4.712])
     """
     with np.errstate(divide="ignore"):
         energy = -np.log(np.asarray(u, dtype=float))
@@ -1011,6 +1039,7 @@ class UnitStates:
 
 
 class RenewalModel(
+    ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,
     RecurrenceSimulationMixin,
@@ -1371,6 +1400,7 @@ class RenewalModel(
                     len(names), names, np.shape(params)
                 )
             )
+        self._check_with_params(values)
         import surpyval.recurrent as recurrent
 
         family = self._family()
@@ -1401,6 +1431,34 @@ class RenewalModel(
         if unit is not None:
             out.unit = unit
         return out
+
+    def _check_with_params(self, values: np.ndarray) -> None:
+        """Refuse a vector for :meth:`with_params` with a value that is
+        not finite or is outside :attr:`parameter_bounds`: an end of the
+        restoration parameter's range is allowed (``q = 0``, ``rho`` of
+        0 or 1, as the fitters check them), an end of the lifetime's (or
+        ARI baseline's) is not."""
+        names = self.covariance_names
+        bad = []
+        for i, (low, high) in enumerate(self.parameter_bounds):
+            v = values[i]
+            closed = i == 0
+            if not np.isfinite(v):
+                bad.append(f"{names[i]} = {v} (not finite)")
+            elif (low is not None and (v < low if closed else v <= low)) or (
+                high is not None and (v > high if closed else v >= high)
+            ):
+                bad.append(f"{names[i]} = {v:.6g} (outside ({low}, {high}))")
+        if bad:
+            raise ValueError(
+                "with_params got parameters the model is not defined at: "
+                "{}. A draw from covariance() can fall outside a "
+                "parameter's range where its standard error is large; draw "
+                "inside parameter_bounds (on the log scale of a positive "
+                "parameter, the logit of one between two ends).".format(
+                    "; ".join(bad)
+                )
+            )
 
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by

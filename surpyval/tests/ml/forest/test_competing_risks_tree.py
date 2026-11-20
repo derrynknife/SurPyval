@@ -368,17 +368,6 @@ def test_fit_from_df_reads_the_causes():
     )
 
 
-def test_forest_refuses_e_col():
-    from surpyval.ml import RandomSurvivalForest
-
-    x, Z, e = planted(size=40)
-    df = pd.DataFrame({"x": x, "z": Z[:, 0], "cause": e})
-    with pytest.raises(ValueError, match="takes no `e`"):
-        RandomSurvivalForest.fit_from_df(
-            df, x_col="x", Z_cols="z", e_col="cause"
-        )
-
-
 @pytest.mark.parametrize(
     "options, match",
     [

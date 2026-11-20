@@ -41,6 +41,7 @@ import numpy.typing as npt
 from scipy.integrate import IntegrationWarning, quad
 from scipy.optimize import brentq
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -149,6 +150,7 @@ def _validate(
 
 
 class ParametricCompetingRisks(
+    ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,
 ):
@@ -872,6 +874,13 @@ class ParametricCompetingRisks(
             f"{k}: {name}"
             for k in self.causes
             for name in _cause_covariance_names(self.models[k])
+        ]
+
+    def _declared_bounds(self) -> list:
+        """Each cause's own ranges, in the order of
+        :attr:`covariance_names`."""
+        return [
+            b for k in self.causes for b in self.models[k].parameter_bounds
         ]
 
     def _estimates(self) -> npt.NDArray:
