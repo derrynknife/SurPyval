@@ -4,8 +4,10 @@ The first half of this file makes the ``--doctest-modules`` run compare
 the numbers in an example's output as numbers rather than as text; see
 the comment above ``RTOL``. The rest is the opt-in gating below.
 
-Four groups are skipped unless asked for, because all are expensive and
-none guards a regression that the default run would miss quickly:
+Five groups are skipped unless asked for. Four because they are
+expensive and none guards a regression that the default run would miss
+quickly, and one (``torch``, last below) because it needs a library
+SurPyval does not install:
 
 ``ml``
     The survival tree and forest tests (``surpyval.ml``). They fit hundreds of
@@ -38,6 +40,14 @@ none guards a regression that the default run would miss quickly:
     by its issue. Seconds in all, but end to end rather than unit by
     unit; they run in the release pull request's full run (on 3.12) and
     when asked for with ``--run-scenarios``.
+
+``torch``
+    The tests of the torch helpers under ``surpyval/tests/torch``. PyTorch
+    is not a dependency of SurPyval nor in ``requirements_dev.txt``, so
+    they run only in the release run's ``torch`` job, which installs it,
+    and when asked for with ``--run-torch`` where it is installed (they
+    skip where it is not). Not running them by default keeps a local run
+    the same whether or not PyTorch happens to be installed.
 
 Continuous integration passes ``--run-ml`` everywhere, and
 ``--run-calibration`` and ``--run-scenarios`` on 3.12. The invariant

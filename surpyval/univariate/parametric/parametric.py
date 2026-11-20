@@ -53,7 +53,7 @@ from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.units import axis_label
+from surpyval.utils.units import axis_label, normalise_unit
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
@@ -1373,6 +1373,153 @@ class Parametric(
         _check_drawn_extras(extras)
         # The data's unit is the model's whatever its parameters (#845)
         return self.dist.from_params(core, **extras, unit=self.unit)
+
+    def rescale_time(self, factor: float, *, unit: Any = None) -> Parametric:
+        r"""
+        The model on another clock: the same life with its time divided by
+        ``factor``, whose survival function is :math:`R(\text{factor}\,t)`.
+
+        Use it to put a life in operating time on the calendar (a unit that
+        operates a quarter of the time ages a quarter of an hour in each
+        hour: ``factor=0.25``), or to change the unit of time (a life in
+        hours, in days: ``factor=24``). The model is the one a fit to the
+        data in the new unit gives (principle 6), found without refitting:
+        each parameter that is a time is divided by ``factor`` (a scale, a
+        location, an end of the support, the offset ``gamma``), a rate is
+        multiplied by it, the log of a time (the LogNormal's ``mu``) less
+        ``log(factor)``, and a shape, ``lfp_p`` and ``f0`` are kept.
+
+        Everything a fit has comes across: its covariance and inverse
+        Hessian by the delta method (exact, as each parameter moves by an
+        affine map of itself), so the standard errors of the shapes are
+        unchanged and those of the times divided by ``factor``; its data
+        in the new unit, so the likelihood-ratio, bootstrap and pivotal
+        bounds are a refit's; its ``maximum``, how it was fitted and its
+        log-likelihood, which rises by ``log(factor)`` for each exact
+        observation (a density per unit of time) and is otherwise a
+        probability, unchanged.
+
+        Parameters
+        ----------
+        factor : float
+            The time on the model's clock for each unit of time on the new
+            one, a finite number above 0: the fraction of the time a unit
+            operates, or the number of the model's units in the new unit
+            (24 hours in a day). ``1`` gives the same model.
+        unit : str, optional
+            The unit label of the new model. Without it the model's own is
+            kept, which is right on another clock in the same unit (a duty
+            cycle); give it when ``factor`` changes the unit. It is a label:
+            nothing is checked against ``factor``.
+
+        Returns
+        -------
+        Parametric
+            A model of the same distribution, with the same offset,
+            limited-failure proportion and zero inflation.
+
+        Raises
+        ------
+        ValueError
+            Where ``factor`` is not a finite number above 0; and for a
+            distribution whose time cannot be rescaled within it, with
+            what to do instead: a discrete distribution (a count has no
+            unit of time), the Beta (whose support (0, 1) would move:
+            use the ``Beta4``) and a ``CustomDistribution`` (which does
+            not say which of its parameters are times).
+
+        Notes
+        -----
+        A model rescaled from one that holds no data (built from
+        parameters, or restored from a dict saved without its data) has
+        the Wald bounds of its covariance but no log-likelihood, since
+        moving it needs the count of exact observations: its ``neg_ll``,
+        ``aic`` and ``bic`` refuse and say so.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as surv
+        >>> model = surv.Weibull.from_params([1000, 2], unit="hours")
+
+        A unit that operates a quarter of the time lasts four times as long
+        on the calendar:
+
+        >>> calendar = model.rescale_time(0.25)
+        >>> calendar.params, calendar.unit
+        (array([4000.,    2.]), 'hours')
+        >>> bool(np.isclose(calendar.sf(2000.0), model.sf(500.0)))
+        True
+
+        The same life in days, with a fit's standard errors carried over:
+
+        >>> x = [10, 12, 15, 17, 20, 25, 31]
+        >>> fit = surv.Weibull.fit(x, unit="hours")
+        >>> days = fit.rescale_time(24, unit="days")
+        >>> days.unit, days.params.round(4)
+        ('days', array([0.87  , 2.9314]))
+        >>> (days.standard_errors() / fit.standard_errors()).round(6)
+        array([0.041667, 1.      ])
+        """
+        from . import _rescale_time as rescale
+
+        d = rescale.checked_factor(factor)
+        roles = rescale.time_roles(self.dist)
+        new_unit = self.unit if unit is None else normalise_unit(unit)
+        # The model as saved, rebuilt (what a model is, without the
+        # fit's working state), and moved to the new clock.
+        out = type(self).from_dict(self.to_dict())
+        params, slope = rescale.moved(self.params, roles, d)
+        out.params = params
+        for name, value in zip(self.dist.parameter_names, params):
+            if name in self.__dict__:
+                setattr(out, name, value)
+        if self.offset:
+            out.gamma = float(self.gamma) / d
+        out.dist._set_support(out, out.offset)
+        if out._covariance is not None:
+            out._covariance = rescale.carried(out._covariance, slope)
+        if getattr(out, "hess_inv", None) is not None:
+            out.hess_inv = rescale.carried(out.hess_inv, slope)
+        out._weibayes_alpha_ci = self._weibayes_alpha_ci
+        out.unit = new_unit
+        if self.data is not None:
+            self._rescale_data_into(out, d)
+        elif getattr(out, "_neg_ll", None) is not None:
+            del out._neg_ll
+            out._no_likelihood_reason = rescale.NO_LIKELIHOOD
+        return out
+
+    def _rescale_data_into(self, out: Parametric, d: float) -> None:
+        """Give ``out``, this model on a clock ``d`` times slower, this
+        model's data in its unit, the bounds of its search that the data
+        set (an offset's upper end) and its log-likelihood."""
+        from ._rescale_time import density_count
+
+        data = dict(self.data)
+        data["x"] = onp.asarray(self.data["x"], dtype=float) / d
+        if self.data.get("t") is not None:
+            data["t"] = onp.asarray(self.data["t"], dtype=float) / d
+        out.data = data
+        out.bounds = type(self)(
+            out.dist, out.method, data, out.offset, out.lfp, out.zi
+        ).bounds
+        out.surv_data = SurpyvalData(
+            x=data["x"],
+            c=data["c"],
+            n=data["n"],
+            t=data.get("t"),
+            w=data.get("w"),
+        )
+        if getattr(out, "_neg_ll", None) is not None:
+            count = density_count(
+                self.data["x"],
+                self.data["c"],
+                self.data["n"],
+                self.data.get("w"),
+                zero_mass=bool(self.zi and self.f0 != 0),
+            )
+            out._neg_ll = float(out._neg_ll) - count * float(onp.log(d))
 
     def rba(self, basis: str = "median") -> Parametric:
         r"""

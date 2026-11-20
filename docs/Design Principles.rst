@@ -95,7 +95,10 @@ Inputs
    (``test_covariate_origin*``, and ``test_covariate_scale*`` with a
    column multiplied by 1/731, 731 and 1e-6, by ``fit`` and by
    ``fit_tvc``) and ``test_maximum.py``'s small- and large-scale (x1e4)
-   fits (#577, #612). One family is excepted:
+   fits (#577, #612). ``rescale_time``, which moves a fitted model to
+   another unit or clock without refitting, is checked against the refit
+   (predictions, covariance, bounds and likelihood) for every registered
+   distribution and mixture by ``conformance/test_rescale_time.py``. One family is excepted:
    the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
    depend on the units, and warns when it does; its MPS fit does not
    (#385).

@@ -53,6 +53,11 @@ removed in 0.24; the frailty models' dict became an array).
 
 A model built from parameters needs no data: `sp.Weibull.from_params([10, 3])`.
 Its `plot()` draws the CDF alone, handy for comparing a spec with a fit.
+**0.29:** `model.rescale_time(factor, unit=None)` is the same life on another
+clock, `R(factor * t)`: a life in operating hours on the calendar of a unit
+that runs a quarter of the time (`0.25`), or in days (`24, unit="days"`),
+with the fit's covariance, data and bounds carried over (any parametric
+distribution of time, `MixtureModel`; counts, `Beta`, custom refuse).
 
 ## The xcnt data model (the thing to get right)
 
@@ -497,6 +502,13 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   exact censored/truncated likelihood; `prior_from_model`, `prior_from_spec`;
   `to_surpyval(trace, sp.Weibull, alpha="log_alpha[1]",
   transform={"alpha": "exp"}, beta="beta")` gives a `BayesianParametric`.
+- **PyTorch** (`surpyval.torch as spt`, torch not a dependency): the exact
+  censored/truncated likelihood as a loss for your own network.
+  `y = spt.targets(x=x, c=c, n=n, tl=tl)`; `params = spt.constrain(sp.Weibull,
+  net(X))` (raw `(N, k)` outputs -> `{"alpha": ..., "beta": ...}` in range);
+  `loss = spt.nll(sp.Weibull, y, params)` (`reduction="mean"` per unit,
+  `"sum"`, `"none"`), or `spt.NLLLoss(sp.Weibull)`. Families:
+  `spt.SUPPORTED`. Use float64 to match `fit`.
 
 ## Serialisation (files & MongoDB)
 

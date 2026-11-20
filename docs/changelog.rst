@@ -21,6 +21,44 @@ v0.29 (unreleased)
   SurPyval 0.28 refuses rather than misread. See "Which path parameters
   are correlated" in :doc:`Joint Models`.
 
+- **A model on another clock.** ``model.rescale_time(factor)`` gives the
+  model whose survival function is ``R(factor * t)``: a life in operating
+  time put on the calendar (``factor=0.25`` for a unit that runs a quarter
+  of the time), or a life in another unit (``factor=24`` from hours to
+  days, with ``unit="days"`` for the new label; without ``unit`` the label
+  is kept). Every parametric distribution of time has it, with an offset,
+  a limited-failure population and zero inflation, and so do
+  ``MixtureModel`` and the point masses. It is the fit to the data in the
+  new unit, found without refitting: a time parameter is divided by
+  ``factor``, a rate multiplied by it, the LogNormal's ``mu`` less
+  ``log(factor)``, and shapes, ``lfp_p`` and ``f0`` are kept; the
+  covariance follows by the delta method (exactly), the data move to the
+  new unit, so the likelihood-ratio, bootstrap and pivotal bounds are a
+  refit's, and the log-likelihood rises by ``log(factor)`` per exact
+  observation. A model without its data keeps its Wald bounds but refuses
+  ``neg_ll``, ``aic`` and ``bic``, saying why. The distributions of
+  counts, the ``Beta`` (use the ``Beta4``) and a ``CustomDistribution``
+  refuse, saying what to do. See "Rescaling a model's time" in
+  :doc:`Conventions`.
+
+- **Torch helpers (``surpyval.torch``): the censored and truncated
+  likelihood as a PyTorch loss**, for people who train their own networks.
+  ``targets(data)`` (or ``x=, c=, n=, tl=, ...``) turns lifetime data,
+  checked as ``fit`` checks it, into the tensors of a ``Targets``;
+  ``constrain(dist, raw)`` maps a network's ``(N, k)`` outputs into the
+  distribution's parameters by name, each inside its range; and
+  ``nll(dist, target, params, reduction="mean")`` is the exact negative
+  log-likelihood of failures, right, left and interval censoring, left and
+  right truncation and counts, each parameter a scalar or one value per
+  row. ``NLLLoss(dist)`` is the same as a ``torch.nn.Module``. For the
+  Weibull, Exponential, LogNormal, Gamma, LogLogistic, Normal, Gumbel,
+  Logistic and Rayleigh distributions (``surpyval.torch.SUPPORTED``). In
+  double precision the loss equals the distribution's own likelihood to
+  1e-10, with a finite gradient wherever it is finite. PyTorch is not a
+  dependency, not even an optional one: ``import surpyval`` does not import
+  it, and the helpers ask you to install it when it is absent. There are no
+  training loops or network architectures.
+
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
   ``max(t - 200, 0)``: a reading acts that long later. Every link is
@@ -671,6 +709,13 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
+  ``censored_likelihood``) had a NaN gradient for a row whose truncation
+  or interval had a bound so far in a tail that the probability beyond
+  it rounds to 0 (a Weibull ``tl=1e-170``, say), though its value was
+  right; PyMC's sampler needs the gradient. Such a bound is now taken as
+  its limit, as ``fit`` takes it, and the gradient is finite.
 
 - ``RenewalModel.with_params`` refuses a lifetime (or ARI baseline)
   parameter at or outside its range, and any value that is not finite,
