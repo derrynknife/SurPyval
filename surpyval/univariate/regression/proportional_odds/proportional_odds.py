@@ -78,6 +78,7 @@ from scipy.linalg import LinAlgError, solveh_banded
 from scipy.special import expit
 from scipy.stats import norm
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -513,6 +514,7 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
+    ParameterBoundsMixin,
     PenalisedModelMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,

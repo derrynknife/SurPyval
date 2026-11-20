@@ -499,6 +499,16 @@ for _fn in ("to_stacked", "from_stacked"):
     )
 for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
+for _name, _why in (
+    ("JointPHFitter", _BASE),
+    ("JointAFTFitter", _BASE),
+    ("DynamicPrediction", _RESULT),
+    ("LinkComparison", _RESULT),
+):
+    OUT_OF_SCOPE[f"surpyval.univariate.joint.{_name}"] = _why
+OUT_OF_SCOPE["surpyval.recurrent.conditional_gaps"] = (
+    _FUNCTION + ": draws residual lives from a given lifetime model"
+)
 for _fn in (
     "filliben",
     "fleming_harrington",

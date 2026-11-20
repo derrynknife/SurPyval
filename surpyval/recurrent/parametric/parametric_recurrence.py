@@ -5,6 +5,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval import plotting
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
@@ -43,6 +44,7 @@ _FITTED_BY = {
 
 
 class ParametricRecurrenceModel(
+    ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,
     RecurrenceSimulationMixin,

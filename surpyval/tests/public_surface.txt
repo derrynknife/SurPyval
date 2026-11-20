@@ -425,6 +425,7 @@ surpyval.recurrent.ProportionalIntensityNHPP
 surpyval.recurrent.RenewalModel
 surpyval.recurrent.TrendTestResult
 surpyval.recurrent.WeiLinWeissfeld
+surpyval.recurrent.conditional_gaps
 surpyval.recurrent.intervention_test
 surpyval.recurrent.laplace
 surpyval.recurrent.mcf_diff
@@ -491,6 +492,15 @@ surpyval.univariate.competing_risks.FineGray
 surpyval.univariate.competing_risks.ParametricCompetingRisks
 surpyval.univariate.competing_risks.ParametricCompetingRisksRegression
 surpyval.univariate.competing_risks.rmtl_diff
+surpyval.univariate.joint.DynamicPrediction
+surpyval.univariate.joint.JointAFT
+surpyval.univariate.joint.JointAFTFitter
+surpyval.univariate.joint.JointModel
+surpyval.univariate.joint.JointPH
+surpyval.univariate.joint.JointPHFitter
+surpyval.univariate.joint.LinkComparison
+surpyval.univariate.joint.WeibullJointAFT
+surpyval.univariate.joint.WeibullJointPH
 surpyval.univariate.nonparametric.FIT_FUNCS
 surpyval.univariate.nonparametric.FlemingHarrington
 surpyval.univariate.nonparametric.IntervalLogRankResult

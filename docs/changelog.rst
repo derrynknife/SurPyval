@@ -248,6 +248,27 @@ v0.29 (unreleased)
   microseconds a call (``scripts/bench_log_posterior.py``). It is the
   groundwork for a gradient-based sampler; ``fit_bayes`` is unchanged.
 
+- **Each parameter's range, public.** Every fitted model with
+  ``with_params`` -- the parametric, mixture and Royston-Parmar models,
+  the regressions (parametric, additive hazards, proportional odds,
+  interval-censored Cox), the parametric competing-risks models, the
+  recurrence, renewal and proportional intensity models, the joint
+  frailty model, the Wiener and gamma degradation processes, the
+  panel-data multi-state models -- and the copulas gives
+  ``model.parameter_bounds``: one ``(low, high)`` pair per entry of the
+  vector ``with_params`` takes (the order of ``covariance_names``),
+  ``None`` for an unbounded end. A draw inside the ranges is not refused
+  for being out of range, so a parameter can be drawn on the log or logit
+  scale its range calls for instead of found by trial. Joint constraints
+  (a mixture's weights summing to 1, a Uniform's ``a < b``, a
+  Royston-Parmar spline that does not fall) are stated in its docstring.
+- **Public homes for two names.** ``surpyval.univariate.joint`` is now a
+  public namespace (``DynamicPrediction``, ``JointModel``,
+  ``LinkComparison``, the joint fitters and factories), and
+  ``conditional_gaps`` -- the time to the next failure from a virtual age,
+  drawn from a uniform -- is ``surpyval.recurrent.conditional_gaps``. See
+  :doc:`Deprecation Policy`.
+
 **Changed.**
 
 - **A mixture's residual life is drawn to the last bits, about ten times
@@ -490,6 +511,14 @@ v0.29 (unreleased)
   ``x_cols`` and ``tl_cols`` (use ``x_col`` and ``x2_col``, ``tl_col`` and
   ``tl2_col``): each warns, gives the same numbers, and is removed in
   v0.30.
+
+**Fixed.**
+
+- ``RenewalModel.with_params`` refuses a lifetime (or ARI baseline)
+  parameter at or outside its range, and any value that is not finite,
+  naming each and saying to draw inside ``parameter_bounds``. An ARI
+  model took a negative scale or shape without a word and predicted
+  ``nan``.
 
 **Documentation.**
 

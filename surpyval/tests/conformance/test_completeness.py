@@ -33,6 +33,7 @@ NAMESPACES = (
     "surpyval.univariate.nonparametric",
     "surpyval.univariate.regression",
     "surpyval.univariate.competing_risks",
+    "surpyval.univariate.joint",
     "surpyval.multistate",
     "surpyval.recurrent",
     "surpyval.degradation",

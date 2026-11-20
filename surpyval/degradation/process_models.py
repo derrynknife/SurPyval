@@ -51,6 +51,7 @@ from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
 from scipy.stats import gamma as gamma_dist
 from scipy.stats import norm
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -880,7 +881,9 @@ class ProcessLevel:
 # --------------------------------------------------------------------------
 
 
-class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
+class FirstPassageProcessModel(
+    ParameterBoundsMixin, InformationCriteriaMixin, SerialisableMixin
+):
     """
     The machinery shared by the fitted process models.
 
@@ -907,6 +910,8 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
     _human_name: str
 
     parameter_names: list
+    #: ``(low, high)`` of each of ``parameter_names`` (``None``: unbounded).
+    _process_bounds: tuple
     #: The model's parameters, in the order of ``parameter_names``.
     params: npt.NDArray
     threshold: float
@@ -1155,6 +1160,12 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             else:
                 names += [f"gamma_{j}" for j in range(self.gamma.size)]
         return names
+
+    def _declared_bounds(self) -> list:
+        """The process's ranges (:attr:`_process_bounds`), then the stress
+        coefficients, unbounded."""
+        k = len(self.covariance_names) - len(self.parameter_names)
+        return [*self._process_bounds, *[(None, None)] * k]
 
     def _estimates(self) -> npt.NDArray:
         """The fitted parameters in the order of :attr:`covariance_names`."""
@@ -2203,6 +2214,7 @@ class WienerProcessModel(FirstPassageProcessModel):
     _model_tag = "WienerProcessModel"
     _human_name = "Wiener-process"
     parameter_names = ["mu", "sigma"]
+    _process_bounds: tuple = ((None, None), (0, None))
 
     def __init__(
         self,
@@ -2692,6 +2704,7 @@ class GammaProcessModel(FirstPassageProcessModel):
     _model_tag = "GammaProcessModel"
     _human_name = "gamma-process"
     parameter_names = ["alpha", "beta"]
+    _process_bounds: tuple = ((0, None), (0, None))
 
     def __init__(
         self,
