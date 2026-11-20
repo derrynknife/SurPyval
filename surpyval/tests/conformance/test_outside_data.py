@@ -50,6 +50,9 @@ RULES = {
     "Turnbull": "hold",
     "CoxPH": "hold",
     "CoxPH[strata]": "hold",
+    # The full-likelihood route (NPMLE baselines), held after its last
+    # innermost interval as CompetingRisks[interval] is.
+    "CoxPH[interval, causes]": "hold",
     "CoxFrailty": "hold",
     "CoxMixedEffects": "hold",
     "AdditiveHazards": "hold",
@@ -103,6 +106,7 @@ _SEMI += "estimates only"
 WITHOUT_SET_SUPPORT = {
     "CoxPH": _SEMI,
     "CoxPH[strata]": _SEMI,
+    "CoxPH[interval, causes]": _SEMI,
     "CoxFrailty": _SEMI,
     "CoxMixedEffects": _SEMI,
     "AdditiveHazards": _SEMI,
