@@ -141,6 +141,7 @@ model exist:
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
+| Shared-frailty Poisson process (`frailty=` on CrowAMSAA, Duane, CoxLewis, ProportionalIntensityNHPP; a frailty per item or cluster of items) | multivariate (clustered) | recurrent | single | recurrent | none / with | continuous | parametric |
 | CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:

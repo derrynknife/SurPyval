@@ -1690,6 +1690,22 @@ EXCLUDED: dict[str, str] = {
         "panels is calibration/test_coverage_multistate_panel.py, and the "
         "models' special cases are in tests/multistate/test_panel.py",
     ),
+    **dict.fromkeys(
+        (
+            "CrowAMSAA[frailty=gamma]",
+            "CoxLewis[frailty=gamma]",
+            "Duane[frailty=lognormal]",
+            "ProportionalIntensityNHPP[frailty=gamma]",
+            "ProportionalIntensityNHPP[frailty=lognormal]",
+        ),
+        "a fleet whose units each have a frailty, which a model draw does "
+        "not give (the model has no simulator): its own study, "
+        "calibration/test_coverage_shared_frailty.py, simulates fleets "
+        "from the definition and checks the parameters' bias and "
+        "coverage, the bands, the forecast interval and the size of the "
+        "test of no frailty; recovery with covariates is in "
+        "recurrent/test_shared_frailty.py",
+    ),
     "JointFrailty": "recurrent events and a terminal event per unit, "
     "which a model draw of one function does not give: its own study, "
     "calibration/test_coverage_joint_frailty.py, simulates units with "

@@ -156,6 +156,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     ROBUST_COVARIANCE,
     STATES,
     STATES_REGRESSION,
+    SURVIVING_LEVEL,
     UNI_FUNCTIONS,
     UNIVARIATE,
     WITH_COVARIATES,

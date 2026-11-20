@@ -5,6 +5,45 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **The level of a degradation process given that the unit has not
+  failed.** ``level_at(t, y0=, t0=, given_survival=True)`` of a
+  ``WienerProcessModel`` or ``GammaProcessModel`` is the distribution of
+  the level at ``t`` of a unit that has not reached the threshold since
+  ``t0``: what an inspection finds on a unit still working. For a gamma
+  process it is the increase truncated at the threshold; for a Wiener
+  process the normal level less its reflection in the threshold (the
+  method of images), which also leaves out the paths that crossed and
+  came back. It has ``sf``, ``ff``, ``df``, ``qf`` (closed form for the
+  gamma process, a bisection for the Wiener process), ``random``,
+  ``mean`` and ``to_dict`` (with ``given_survival`` and ``threshold``),
+  and works with stress as ``level_at`` does. A reading at or past the
+  threshold is refused with ``given_survival=True``. The default,
+  ``given_survival=False``, is unchanged: the level of every path. See
+  :doc:`Degradation Modelling with SurPyval`.
+
+- **Shared frailty for repairable systems.** ``frailty="gamma"`` (or
+  ``"lognormal"``) on ``CrowAMSAA.fit``, ``Duane.fit``, ``CoxLewis.fit``
+  and ``ProportionalIntensityNHPP.fit`` (and their ``fit_from_df`` and
+  ``fit_from_recurrent_data``) gives each unit an unobserved factor on
+  its intensity, for a fleet whose units differ by more than a Poisson
+  process (or their covariates) allows; ``cluster=`` names units that
+  share one. The frailty's variance ``theta`` is estimated with the
+  intensity (the gamma frailty by its closed-form marginal likelihood,
+  the log-normal by quadrature), and the fit is a
+  ``surpyval.recurrent.SharedFrailtyModel``: ``cif`` / ``iif`` / ``mcf``
+  for the population or for a unit of given frailty, with delta-method
+  bounds; Wald and profile-likelihood ``param_cb``; ``frailty_test()``,
+  the likelihood-ratio test of ``theta = 0`` (a 50:50 mixture of 0 and
+  chi-square(1)); ``frailties()``, each cluster's predicted frailty with
+  an interval; and ``forecast`` (also ``surpyval.forecast``, which takes
+  ``cluster=`` for it), whose prediction intervals carry the frailty
+  (negative binomial counts for the gamma frailty). Where ``theta`` is
+  estimated at 0 the fit warns and is the plain one. It takes delayed
+  entry and observation windows; counts in intervals, right truncation,
+  ``how="MSE"`` and fewer than two clusters are refused, saying what to
+  use. Checked against quadrature of each cluster's frailty integral, R's
+  ``MASS::glm.nb`` and simulated fleets. See :doc:`Recurrent Event
+  Modelling with SurPyval`.
 - **Competing-risks survival trees.** ``SurvivalTree.fit`` (and
   ``fit_from_df``, with ``e_col``) takes the cause of each failure as
   ``e``. The tree then chooses cuts that tell the causes apart --
@@ -121,6 +160,30 @@ v0.29 (unreleased)
   likelihood-ratio bounds on each cause's net survival covered 92.5% to
   96%. Both need the fitted data: a model restored with ``from_dict``
   refuses them, saying to refit or use ``method="wald"``.
+- **Joint models: four and five path parameters varying between items,
+  and ``integration=``.** A joint model averages each item's likelihood
+  over the path parameters it could have, on a grid of 7 values of each:
+  49 nodes for two, 343 for three, and until now no more. ``varying=``
+  now takes up to five names (2,401 nodes an item for four, 16,807 for
+  five), for paths whose shape differs item by item in more than three
+  ways; a sixth is refused, saying what to hold common. The fits take
+  ``integration="grid"`` (the full grid) or ``"pruned"`` (the grid
+  without its lowest-weight nodes, the far corners that hold less than
+  1e-9 of its weight between them: 80 of the 2,401 and 1,392 of the
+  16,807; none in up to three dimensions). The default is the full grid
+  up to three varying parameters -- those fits are unchanged to the last
+  digit -- and the pruned one for four and five. The model keeps the
+  choice as ``integration``, prints it, saves and restores it (a model
+  saved before reads as ``"grid"``), and predicts on the same kind of
+  grid. With a normal integrand (no marker effect) both grids reproduce
+  the closed form in four and five dimensions to 1e-9 an item, and with
+  a marker effect the pruned log-likelihood is within 1e-6 an item of the
+  full grid's (3e-10 an item on a fleet read often; estimates of a fleet
+  of 60 within 1e-6 of a standard error). A fit with four varying
+  parameters takes minutes, not seconds, on either grid: the saving in
+  nodes is 3% (8% for five), and the search over the spread's variances
+  and correlations is most of the time. See "How the integral is done"
+  in :doc:`Joint Models`.
 - **Joint models: the links compared in one call.** Each joint model
   fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
   fits the fitter's model (its baseline, path model and varying path

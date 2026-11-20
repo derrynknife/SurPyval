@@ -47,7 +47,15 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.integrate import quad
 from scipy.optimize import OptimizeResult, minimize, minimize_scalar
-from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
+from scipy.special import (
+    gammainc,
+    gammaincc,
+    gammaincinv,
+    gammaln,
+    log_ndtr,
+    ndtr,
+    ndtri_exp,
+)
 from scipy.stats import gamma as gamma_dist
 from scipy.stats import norm
 
@@ -637,6 +645,11 @@ class ProcessRUL:
         }
 
 
+# Halvings of the Wiener level's quantile bracket: enough to close any
+# double-precision bracket to adjacent floats (the loop stops changing it).
+_LEVEL_BISECTIONS = 200
+
+
 class ProcessLevel:
     """The distribution of a process model's degradation level at one time.
 
@@ -653,6 +666,20 @@ class ProcessLevel:
     process clock: ``t - t0`` without stress, and that time scaled by the
     acceleration factor (integrated over a stress profile) with stress.
 
+    ``level_at(..., given_survival=True)`` returns the level of a unit
+    known not to have failed by ``t``: the paths that reached the
+    threshold between ``t0`` and ``t`` are left out, and the rest
+    renormalised, so all of its mass is below the threshold. For a gamma
+    process (a rising path) that is the gamma increase truncated at the
+    distance to the threshold. For a Wiener process it is the normal
+    density less its reflection in the threshold (the method of images):
+    with ``m = y0 + mu * exposure`` and ``s = sigma * sqrt(exposure)``,
+    the density at ``y`` below the threshold ``L`` is proportional to
+    ``phi((y - m) / s) - exp(2 mu (L - y0) / sigma**2) phi((y - m - 2 (L
+    - y0)) / s)``, and its total is the first-passage survival. ``qf``
+    is closed form for the gamma process and a bisection of ``ff`` for
+    the Wiener process.
+
     Attributes
     ----------
     t : float
@@ -668,7 +695,15 @@ class ProcessLevel:
     params : dict
         The distribution's parameters: ``loc`` and ``scale`` (mean and
         standard deviation) for ``"normal"``; ``shape`` and ``rate`` of
-        the increase over ``y0`` for ``"gamma"``.
+        the increase over ``y0`` for ``"gamma"``. With ``given_survival``
+        these are the distribution before the paths that failed are left
+        out.
+    given_survival : bool
+        Whether the level is that of a unit that has not reached the
+        threshold by ``t``.
+    threshold : float or None
+        The failure threshold the level is conditioned on, with
+        ``given_survival``; ``None`` otherwise.
 
     Examples
     --------
@@ -685,6 +720,16 @@ class ProcessLevel:
     0.2398
     >>> round(float(level.qf(0.9)), 2)
     64.06
+
+    The same unit, known still to be working at 100 hours (below a
+    threshold of 60, here): the paths that reached 60 are left out.
+
+    >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=60)
+    >>> working = model.level_at(100.0, y0=30.0, t0=50.0, given_survival=True)
+    >>> float(working.ff(60.0))
+    1.0
+    >>> round(float(working.qf(0.9)), 2)
+    57.76
     """
 
     def __init__(
@@ -695,6 +740,7 @@ class ProcessLevel:
         exposure: float,
         family: str,
         params: dict,
+        threshold: float | None = None,
     ) -> None:
         self.t = float(t)
         self.t0 = float(t0)
@@ -702,6 +748,152 @@ class ProcessLevel:
         self.exposure = float(exposure)
         self.family = family
         self.params = {k: float(v) for k, v in params.items()}
+        self.threshold = None if threshold is None else float(threshold)
+        if self.threshold is not None and not self.y0 < self.threshold:
+            raise ValueError(
+                "y0 = {:.6g} is at or past the threshold {:.6g}: a unit "
+                "read there has failed, so it has no level given that it "
+                "has not failed. Use given_survival=False for the level "
+                "of every path.".format(self.y0, self.threshold)
+            )
+        if self.given_survival and not self._degenerate:
+            self._log_surv = self._log_survival()
+            if not np.isfinite(self._log_surv):
+                raise ValueError(
+                    "the chance that the unit has not failed by t = {:.6g} "
+                    "is 0 to double precision, so its level given "
+                    "survival is not defined; use an earlier t, or "
+                    "given_survival=False".format(self.t)
+                )
+
+    @property
+    def given_survival(self) -> bool:
+        return self.threshold is not None
+
+    def _limit(self) -> float:
+        # The threshold of a level given survival.
+        if self.threshold is None:
+            raise AssertionError("only a level given survival has one")
+        return self.threshold
+
+    # -- conditioned on no crossing of the threshold ------------------------
+
+    def _wiener_terms(self) -> tuple[float, float, float, float]:
+        # The free path's mean and sd, the image's extra shift 2 (L - y0)
+        # and the log of its weight exp(2 mu (L - y0) / sigma**2), written
+        # through the free path's parameters: mu = (m - y0) / exposure and
+        # sigma**2 = s**2 / exposure.
+        m, s = self.params["loc"], self.params["scale"]
+        gap = self._limit() - self.y0
+        log_weight = 2.0 * (m - self.y0) * gap / s**2
+        return m, s, 2.0 * gap, log_weight
+
+    def _below(self, y: npt.NDArray) -> npt.NDArray:
+        """P(level <= y and no crossing by t), for y at most the
+        threshold."""
+        if self.family == "normal":
+            m, s, shift, log_weight = self._wiener_terms()
+            free = ndtr((y - m) / s)
+            image = np.exp(log_weight + log_ndtr((y - m - shift) / s))
+            return np.clip(free - image, 0.0, None)
+        a, rate = self.params["shape"], self.params["rate"]
+        return gammainc(a, rate * np.maximum(y - self.y0, 0.0))
+
+    def _log_survival(self) -> float:
+        """log P(no crossing of the threshold by t)."""
+        L = self._limit()
+        if self.family == "normal":
+            m, s, shift, log_weight = self._wiener_terms()
+            log_free = float(log_ndtr((L - m) / s))
+            log_image = log_weight + float(log_ndtr((L - m - shift) / s))
+            ratio = min(log_image - log_free, 0.0)
+            with np.errstate(divide="ignore"):
+                return log_free + float(np.log(-np.expm1(ratio)))
+        with np.errstate(divide="ignore"):
+            return float(np.log(self._below(np.array(L))))
+
+    def _surviving_ff(self, y: npt.NDArray) -> npt.NDArray:
+        L = self._limit()
+        below = self._below(np.minimum(y, L))
+        return np.minimum(below / np.exp(self._log_surv), 1.0)
+
+    def _surviving_sf(self, y: npt.NDArray) -> npt.NDArray:
+        L = self._limit()
+        surv = np.exp(self._log_surv)
+        above = np.clip(surv - self._below(np.minimum(y, L)), 0.0, None)
+        return np.where(y >= L, 0.0, above / surv)
+
+    def _surviving_df(self, y: npt.NDArray) -> npt.NDArray:
+        L = self._limit()
+        log_surv = self._log_surv
+        if self.family == "normal":
+            m, s, shift, log_weight = self._wiener_terms()
+            free = norm.pdf((y - m) / s)
+            image = np.exp(
+                log_weight - 0.5 * ((y - m - shift) / s) ** 2
+            ) / np.sqrt(2.0 * np.pi)
+            out = np.clip(free - image, 0.0, None) / (s * np.exp(log_surv))
+        else:
+            # at L at most: the pdf at inf is inf - inf in scipy
+            out = self._dist().pdf(np.minimum(y, L)) / np.exp(log_surv)
+        return np.where(y < L, out, 0.0)
+
+    def _surviving_qf(self, p: npt.NDArray) -> npt.NDArray:
+        L = self._limit()
+        with np.errstate(divide="ignore"):
+            log_target = np.log(p) + self._log_surv
+        if self.family == "gamma":
+            a, rate = self.params["shape"], self.params["rate"]
+            out = self.y0 + gammaincinv(a, np.exp(log_target)) / rate
+            return np.where(np.isnan(p), np.nan, np.minimum(out, L))
+        m, s, _, _ = self._wiener_terms()
+        # Bracket: below(y) <= Phi((y - m) / s), so the quantile is at
+        # or above the free path's quantile of p * S; and below L.
+        ok = np.isfinite(log_target)
+        lo = np.where(ok, m + s * ndtri_exp(np.where(ok, log_target, 0.0)), L)
+        lo = np.minimum(lo, L)
+        hi = np.full_like(lo, L)
+        target = np.exp(log_target)
+        for _ in range(_LEVEL_BISECTIONS):
+            mid = 0.5 * (lo + hi)
+            low = self._below(mid) < target
+            lo = np.where(low, mid, lo)
+            hi = np.where(low, hi, mid)
+        out = 0.5 * (lo + hi)
+        out = np.where(p == 0.0, -np.inf, out)
+        out = np.where(p == 1.0, L, out)
+        return np.where(np.isnan(p), np.nan, out)
+
+    def _surviving_moments(self) -> tuple[float, float]:
+        """The mean and sd of the level given survival."""
+        L = self._limit()
+        surv = np.exp(self._log_surv)
+        if self.family == "gamma":
+            a, rate = self.params["shape"], self.params["rate"]
+            c = rate * (L - self.y0)
+            p0 = surv
+            m1 = a / rate * gammainc(a + 1.0, c) / p0
+            m2 = a * (a + 1.0) / rate**2 * gammainc(a + 2.0, c) / p0
+            return self.y0 + m1, float(np.sqrt(max(m2 - m1**2, 0.0)))
+        # In the free path's units around its mean m: X = (level - m) / s
+        # is a standard normal less its image, a normal at d = shift / s
+        # weighted by exp(log_weight), both cut at z = (L - m) / s. The
+        # image's weighted density at z equals phi(z) (the reflection
+        # identity), which the terms below use.
+        m, s, shift, log_weight = self._wiener_terms()
+        z = (L - m) / s
+        d = shift / s
+        phi = norm.pdf(z)
+        big_phi = ndtr(z)
+        w = np.exp(log_weight + log_ndtr(z - d))  # weight * Phi(z - d)
+        # E[X; X < z] of N(0, 1) is -phi(z); of N(d, 1) it is
+        # d Phi(z - d) - phi(z - d).
+        e1 = (-phi - (d * w - phi)) / surv
+        # E[X**2; X < z] of N(0, 1) is Phi(z) - z phi(z); of N(d, 1) it is
+        # (1 + d**2) Phi(z - d) - (z + d) phi(z - d).
+        e2 = (big_phi - z * phi - ((1.0 + d**2) * w - (z + d) * phi)) / surv
+        var = max(float(e2 - e1**2), 0.0)
+        return float(m + s * e1), float(s * np.sqrt(var))
 
     @property
     def _degenerate(self) -> bool:
@@ -732,6 +924,8 @@ class ProcessLevel:
         y = np.asarray(y, dtype=float)
         if self._degenerate:
             out = np.where(y < self.y0, 1.0, 0.0)
+        elif self.given_survival:
+            out = self._surviving_sf(y)
         else:
             out = self._dist().sf(y)
         return np.where(np.isnan(y), np.nan, out)
@@ -751,6 +945,8 @@ class ProcessLevel:
         y = np.asarray(y, dtype=float)
         if self._degenerate:
             out = np.where(y < self.y0, 0.0, 1.0)
+        elif self.given_survival:
+            out = self._surviving_ff(y)
         else:
             out = self._dist().cdf(y)
         return np.where(np.isnan(y), np.nan, out)
@@ -774,6 +970,8 @@ class ProcessLevel:
                 "density; use sf or ff, or a time after t0".format(self.y0)
             )
         y = np.asarray(y, dtype=float)
+        if self.given_survival:
+            return np.where(np.isnan(y), np.nan, self._surviving_df(y))
         return np.where(np.isnan(y), np.nan, self._dist().pdf(y))
 
     @keeps_query_shape
@@ -793,6 +991,8 @@ class ProcessLevel:
         p = np.where(warn_outside_unit_interval(p), np.nan, p)
         if self._degenerate:
             return np.where(np.isnan(p), np.nan, self.y0)
+        if self.given_survival:
+            return self._surviving_qf(p)
         return self._dist().ppf(p)
 
     def random(
@@ -837,25 +1037,37 @@ class ProcessLevel:
         >>> model.level_at(200.0, y0=5.0, t0=10.0).mean()
         100.0
         """
+        if self.given_survival and not self._degenerate:
+            return self._surviving_moments()[0]
+        if self._degenerate:
+            return self.y0
         if self.family == "normal":
             return self.params["loc"]
         return self.y0 + self.params["shape"] / self.params["rate"]
 
     def _sd(self) -> float:
+        if self._degenerate:
+            return 0.0
+        if self.given_survival:
+            return self._surviving_moments()[1]
         if self.family == "normal":
             return self.params["scale"]
         return float(np.sqrt(self.params["shape"]) / self.params["rate"])
 
     def __repr__(self) -> str:
+        given = ", given_survival=True" if self.given_survival else ""
         return (
-            "ProcessLevel(t={:.4g}, family={!r}, mean={:.4g}, "
-            "sd={:.4g})".format(self.t, self.family, self.mean(), self._sd())
+            "ProcessLevel(t={:.4g}, family={!r}{}, mean={:.4g}, "
+            "sd={:.4g})".format(
+                self.t, self.family, given, self.mean(), self._sd()
+            )
         )
 
     def to_dict(self) -> dict:
         """The distribution as a plain dict of native values, ready for
         ``json.dumps``: ``t``, ``t0``, ``y0``, ``exposure``, ``family``,
-        ``params`` (a dict), ``mean`` and ``sd``.
+        ``params`` (a dict), ``given_survival``, ``threshold`` (``None``
+        unless ``given_survival``), ``mean`` and ``sd``.
 
         Examples
         --------
@@ -871,6 +1083,8 @@ class ProcessLevel:
             "exposure": self.exposure,
             "family": self.family,
             "params": dict(self.params),
+            "given_survival": self.given_survival,
+            "threshold": self.threshold,
             "mean": float(self.mean()),
             "sd": float(self._sd()),
         }
@@ -1907,6 +2121,7 @@ class FirstPassageProcessModel(
         *,
         y0: float | None = None,
         t0: float = 0.0,
+        given_survival: bool = False,
     ) -> ProcessLevel:
         """
         The distribution of the degradation level at time ``t``.
@@ -1929,6 +2144,15 @@ class FirstPassageProcessModel(
         so ``level_at(t).sf(threshold)`` is less than ``ff(t)``: the
         level at ``t`` misses the units that crossed and fell back.
 
+        ``given_survival=True`` gives instead the level of a unit known
+        not to have failed by ``t`` (not to have reached the threshold
+        between ``t0`` and ``t``): the level an inspection at ``t`` finds
+        on a unit still working. All of its mass is below the threshold.
+        For a gamma process it is the increase truncated at the distance
+        to the threshold; for a Wiener process the normal less its
+        reflection in the threshold (see :class:`ProcessLevel`). Far from
+        the threshold the two agree.
+
         Parameters
         ----------
         t : float
@@ -1948,6 +2172,10 @@ class FirstPassageProcessModel(
         t0 : float, optional
             The age of the reading ``y0``. Default 0; a later ``t0``
             needs ``y0``.
+        given_survival : bool, optional
+            ``True`` for the level of a unit that has not reached the
+            threshold by ``t``; ``y0`` must then be below the threshold.
+            Default ``False``: the level of every path, failed or not.
 
         Returns
         -------
@@ -1973,7 +2201,22 @@ class FirstPassageProcessModel(
 
         >>> round(float(model.level_at(150.0, y0=60.0, t0=100.0).sf(80.0)), 4)
         0.9829
+
+        At 200 hours about half the new units have failed. Of those still
+        working, the share past 90, against the share of all units:
+
+        >>> working = model.level_at(200.0, given_survival=True)
+        >>> round(float(working.sf(90.0)), 4), float(working.sf(100.0))
+        (0.9606, 0.0)
+        >>> round(float(model.level_at(200.0).sf(90.0)), 4)
+        0.98
         """
+        if given_survival not in (True, False):
+            raise ValueError(
+                "given_survival must be True (the level of a unit that has "
+                "not failed by t) or False (every path); got "
+                "{!r}".format(given_survival)
+            )
         start, t0 = self._level_start(y0, t0)
         if np.ndim(t) != 0 and np.size(t) != 1:
             raise ValueError(
@@ -1993,7 +2236,18 @@ class FirstPassageProcessModel(
                 "from the reading y0 at t0 onwards".format(t, t0)
             )
         exposure = float(self._exposure(np.array([t]), Z, t0)[0])
-        return self._level(t, t0, start, exposure)
+        level = self._level(t, t0, start, exposure)
+        if not given_survival:
+            return level
+        return ProcessLevel(
+            level.t,
+            level.t0,
+            level.y0,
+            level.exposure,
+            level.family,
+            level.params,
+            threshold=self.threshold,
+        )
 
     def random_path(
         self,

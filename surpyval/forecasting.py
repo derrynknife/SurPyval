@@ -222,6 +222,7 @@ def forecast(
     *,
     items: int | None = None,
     random_state: Any = None,
+    cluster: npt.ArrayLike | None = None,
 ) -> Forecast:
     r"""
     Forecast the failures of units in service at their current ages.
@@ -254,6 +255,14 @@ def forecast(
       <surpyval.recurrent.renewal.renewal_model.RenewalModel.unit_states>`)
       and the expected counts, their variance and the interval are those
       of the simulated counts.
+    - a Poisson process with a shared frailty (a ``SharedFrailtyModel``,
+      from ``fit(..., frailty=...)``): the units of a cluster share an
+      unobserved factor on their intensity, so their counts are not
+      Poisson. A fitted cluster's frailty is that given its history
+      (with a gamma frailty its count ahead is negative binomial), a
+      new unit's is the frailty distribution itself; the fleet's count
+      is the sum over the clusters, and its interval is that of its
+      exact distribution, wider than the Poisson one.
 
     ``probability`` is then the chance of at least one failure, and
     ``per_unit`` and ``unit_expected`` the expected number.
@@ -303,6 +312,12 @@ def forecast(
         other model's forecast is exact, with nothing to simulate, so it
         ignores ``random_state`` (it is accepted so that one call serves a
         loop over model types; #666).
+    cluster : array_like, optional
+        For a shared-frailty model only, with ``age``: the cluster of
+        each unit, whose units share a frailty. A label of a fitted
+        cluster stands for that cluster, with its history; any other is
+        a new cluster. By default each unit is a new cluster of its own.
+        Keyword only.
 
     Returns
     -------
@@ -420,10 +435,18 @@ def forecast(
             "model's forecast; this model's forecast is exact, so there is "
             "nothing to simulate"
         )
+    if kind != "frailty" and cluster is not None:
+        raise ValueError(
+            "cluster names the units that share a frailty, for a "
+            "shared-frailty model's forecast (a fit with frailty=...); "
+            "this model has no frailty"
+        )
     if kind == "renewal":
         return _renewal_forecast(
             model, age, h, Z, n, limit, alpha_ci, items, random_state
         )
+    if kind == "frailty":
+        return _frailty_forecast(model, age, h, Z, n, limit, alpha_ci, cluster)
     if kind == "intensity":
         return _intensity_forecast(model, age, h, Z, n, limit, alpha_ci)
     if age is None:
@@ -532,7 +555,8 @@ def _counts(n: Any, k: int) -> npt.NDArray:
 
 def _recurrent_kind(model: Any) -> str | None:
     """``"renewal"`` for a renewal model, ``"intensity"`` for a Poisson
-    process (plain or proportional intensity), else ``None``."""
+    process (plain or proportional intensity), ``"frailty"`` for one with
+    a shared frailty, else ``None``."""
     from surpyval.recurrent.competing_risks.parametric import (
         CauseSpecificNHPP,
     )
@@ -546,7 +570,10 @@ def _recurrent_kind(model: Any) -> str | None:
         ProportionalIntensityModel,
     )
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
+    from surpyval.recurrent.shared_frailty import SharedFrailtyModel
 
+    if isinstance(model, SharedFrailtyModel):
+        return "frailty"
     if isinstance(model, CauseSpecificProportionalIntensity):
         # Several event types with covariates: not forecast yet. The
         # model's own refusal says what to use instead.
@@ -666,6 +693,215 @@ def _intensity_forecast(
         period_upper=period_upper,
         alpha_ci=float(alpha_ci),
         per_unit=mean,
+        units=units,
+    )
+
+
+def _convolved(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+    """The distribution of the sum of two counts with probabilities ``a``
+    and ``b`` on ``0 .. len - 1``, on the same range (exact there: a sum
+    in the range has both its parts in it)."""
+    from scipy.signal import fftconvolve
+
+    if a.size * b.size <= 250_000:
+        out = np.convolve(a, b)
+    else:
+        out = fftconvolve(a, b)
+    return np.clip(out[: a.size], 0.0, None)
+
+
+def _frailty_count_summary(
+    model: Any,
+    events: npt.NDArray,
+    exposure: npt.NDArray,
+    ahead: npt.NDArray,
+    level: tuple[float, float],
+) -> tuple[float, float, float, float]:
+    """The mean, variance and equal-tailed interval of the number of
+    failures of clusters with ``events`` so far over a cumulative
+    intensity ``exposure`` (at frailty 1), over a time ahead in which
+    their cumulative intensities are ``ahead``: the sum of independent
+    mixed-Poisson counts."""
+    from scipy.special import gammaln
+
+    from surpyval.recurrent.shared_frailty import (
+        frailty_moments,
+        mixed_poisson_log_moment,
+    )
+
+    theta, family = model.theta, model.family
+    m1, v = frailty_moments(events, exposure, theta, family)
+    mean = float(np.sum(ahead * m1))
+    variance = float(np.sum(ahead * m1 + ahead**2 * v))
+    if not (np.isfinite(mean) and np.isfinite(variance)):
+        return mean, variance, np.nan, np.nan
+    active = ahead > 0
+    if not active.any():
+        return mean, variance, 0.0, 0.0
+    base = mixed_poisson_log_moment(
+        events[active], exposure[active], theta, family
+    )
+    size = int(np.ceil(mean + 12.0 * np.sqrt(variance))) + 30
+    while True:
+        k = np.arange(size + 1, dtype=float)
+        total = None
+        for g, (n_g, a_g, m_g) in enumerate(
+            zip(events[active], exposure[active], ahead[active])
+        ):
+            with np.errstate(over="ignore", under="ignore"):
+                pmf = np.exp(
+                    k * np.log(m_g)
+                    - gammaln(k + 1)
+                    + mixed_poisson_log_moment(
+                        n_g + k, a_g + m_g, theta, family
+                    )
+                    - base[g]
+                )
+            total = pmf if total is None else _convolved(total, pmf)
+        assert total is not None
+        cdf = np.cumsum(total)
+        if cdf[-1] >= level[1] + 0.5 * (1.0 - level[1]) or size > 2**24:
+            break
+        size *= 2
+    ends = [float(np.searchsorted(cdf, q - 1e-12, side="left")) for q in level]
+    return mean, variance, min(ends[0], size), min(ends[1], size)
+
+
+def _frailty_forecast(
+    model: Any,
+    age: Any,
+    h: npt.NDArray,
+    Z: Any,
+    n: Any,
+    limit: Any,
+    alpha_ci: float,
+    cluster: Any,
+) -> Forecast:
+    """:func:`forecast` for a Poisson process with a shared frailty:
+    every failure counted, the clusters' counts mixed over what is known
+    of their frailties."""
+    from surpyval.recurrent.shared_frailty import (
+        frailty_moments,
+        mixed_poisson_log_moment,
+    )
+
+    if n is not None:
+        raise ValueError(
+            "n is not taken for a shared-frailty model: units that share "
+            "a frailty are named by cluster, and each other unit has its "
+            "own, so give one age per unit"
+        )
+    fitted = {}
+    if model.cluster_ids is not None:
+        fitted = {
+            label: (float(e), float(a))
+            for label, e, a in zip(
+                model.cluster_ids, model.cluster_events, model.cluster_exposure
+            )
+        }
+    units = None
+    if age is None:
+        data = getattr(model, "data", None)
+        if data is None or getattr(data, "window_map", None) is not None:
+            raise ValueError(
+                "age is required: this model carries no data to take the "
+                "units from (restored, or fitted to gapped observation)"
+            )
+        if Z is not None or cluster is not None:
+            raise ValueError(
+                "With age left out the units are the fitted data's items, "
+                "with their own covariates and clusters; give Z and "
+                "cluster only with age"
+            )
+        first, _ = data.item_rows()
+        _, age_arr = data.item_observation_windows()
+        age_arr = np.asarray(age_arr, dtype=float)
+        units = np.asarray(data.ids)
+        labels = [model._item_cluster[item] for item in list(data.ids)]
+        if model.regression:
+            Z = np.asarray(data.Z, dtype=float)[first]
+    else:
+        age_arr = _ages(age)
+        if cluster is None:
+            labels = [("new unit", j) for j in range(age_arr.size)]
+        else:
+            labels = np.asarray(cluster, dtype=object).reshape(-1).tolist()
+            if len(labels) != age_arr.size:
+                raise ValueError(
+                    "cluster must be one label per age ({} ages); got {} "
+                    "labels".format(age_arr.size, len(labels))
+                )
+    k = age_arr.size
+    end_limit = _limits(limit, k)
+    if model.regression and Z is None:
+        raise ValueError(
+            "This is a regression model: give the covariates of each unit "
+            "as Z (one row per unit, or a single row for every unit)"
+        )
+    if not model.regression and Z is not None:
+        raise ValueError(
+            "This model takes no covariates, so Z cannot be used; it "
+            "forecasts every unit from its age alone"
+        )
+    kwargs: dict = {"frailty": 1.0}
+    if model.regression:
+        Z_arr = np.asarray(Z, dtype=float)
+        Z_arr = Z_arr.reshape(1, -1) if Z_arr.ndim < 2 else Z_arr
+        kwargs["Z"] = np.broadcast_to(Z_arr, (k, Z_arr.shape[1]))
+    # Each unit's cumulative intensity ahead, at frailty 1
+    start = np.asarray(model.cif(age_arr, **kwargs), dtype=float)
+    at_one = np.empty((k, h.size))
+    for j, hj in enumerate(h):
+        span = np.clip(np.minimum(age_arr + hj, end_limit) - age_arr, 0, None)
+        end = np.asarray(model.cif(age_arr + span, **kwargs), dtype=float)
+        at_one[:, j] = np.where(span > 0, end - start, 0.0)
+    period_one = np.diff(np.column_stack([np.zeros(k), at_one]), axis=1)
+    # The clusters: what is known of each one's frailty
+    names = list(dict.fromkeys(labels))
+    position = {label: g for g, label in enumerate(names)}
+    of_unit = np.array([position[label] for label in labels], dtype=int)
+    events = np.array([fitted.get(label, (0.0, 0.0))[0] for label in names])
+    exposure = np.array([fitted.get(label, (0.0, 0.0))[1] for label in names])
+    theta, family = model.theta, model.family
+    m1, _ = frailty_moments(events, exposure, theta, family)
+    level = (alpha_ci / 2, 1 - alpha_ci / 2)
+
+    def summaries(per_unit: npt.NDArray) -> list:
+        out = []
+        for j in range(h.size):
+            ahead = np.bincount(
+                of_unit, weights=per_unit[:, j], minlength=len(names)
+            )
+            out.append(
+                _frailty_count_summary(model, events, exposure, ahead, level)
+            )
+        return out
+
+    cum = summaries(at_one)
+    per = summaries(period_one)
+    base = mixed_poisson_log_moment(events, exposure, theta, family)[of_unit]
+    none = np.exp(
+        mixed_poisson_log_moment(
+            events[of_unit][:, None],
+            exposure[of_unit][:, None] + at_one,
+            theta,
+            family,
+        )
+        - base[:, None]
+    )
+    return Forecast(
+        horizon=h,
+        probability=1.0 - none,
+        n=np.ones(k),
+        expected=np.array([c[0] for c in cum]),
+        variance=np.array([c[1] for c in cum]),
+        lower=np.array([c[2] for c in cum]),
+        upper=np.array([c[3] for c in cum]),
+        period_expected=np.array([c[0] for c in per]),
+        period_lower=np.array([c[2] for c in per]),
+        period_upper=np.array([c[3] for c in per]),
+        alpha_ci=float(alpha_ci),
+        per_unit=at_one * m1[of_unit][:, None],
         units=units,
     )
 
