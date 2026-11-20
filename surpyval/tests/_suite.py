@@ -113,4 +113,9 @@ OPT_IN = {
         "practitioner scenario cards",
         "surpyval/tests/scenarios",
     ),
+    "torch": (
+        "--run-torch",
+        "torch helpers' tests (they need PyTorch installed)",
+        "surpyval/tests/torch",
+    ),
 }
