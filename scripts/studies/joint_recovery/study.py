@@ -2,11 +2,15 @@
 model, each of 300 pumps read monthly for up to two years, the hazard
 Weibull PH (alpha 800 days, beta 2 at a marker of 4) with a marker effect
 of 0.9 per unit; fitted with marker_reference=4, so the truth is in the
-model's own parameterisation.
+model's own parameterisation. The accelerated model's fleets (``aft_``
+before the path's name) are the same pumps ageing at the rate exp(0.45
+(marker - 4)) against a Weibull (800 days, 2) of effective age, fitted
+with JointAFT.
 
     python scripts/studies/joint_recovery/study.py <path> [reps]
 
-    path: linear, exp, quad, loglink
+    path: linear, exp, quad, loglink, aft_linear, aft_exp, aft_quad,
+    aft_loglink
 
 Each fit is appended to results_<path>.jsonl as it finishes; a rerun
 skips the seeds already there (so a killed run resumes). At the end the
@@ -29,6 +33,11 @@ SEED0 = 1000
 import numpy as np  # noqa: E402
 
 WHICH = sys.argv[1]
+#: The accelerated survival part: its fleets and fitter.
+AFT = WHICH.startswith("aft_")
+PATH = WHICH[4:] if AFT else WHICH
+#: The marker effect of the simulation (per unit of the marker).
+EFFECT = 0.45 if AFT else 0.9
 REPS = int(sys.argv[2]) if len(sys.argv) > 2 else 200
 #: A diagnostic only: GH=<points> refits with that many quadrature points
 #: a dimension (the package's is 7), to separate quadrature error from
@@ -44,7 +53,7 @@ if N != 300:
 
 def setup():
     """``(truth, simulation spec, fitter)`` of the path model."""
-    from surpyval import JointPH, Weibull
+    from surpyval import JointAFT, JointPH, Weibull
     from surpyval.degradation import (
         ExponentialPath,
         LinearPath,
@@ -52,13 +61,14 @@ def setup():
         QuadraticPath,
     )
 
-    if WHICH == "exp":
+    Joint = JointAFT if AFT else JointPH
+    if PATH == "exp":
         truth = dict(
             a=3.0, b=0.0008, sd_a=0.4, sd_b=0.0003, sd_noise=0.3, corr_a_b=0.0
         )
         spec = (ExponentialPath, [3.0, 0.0008], [0.4, 0.0003], 0.3)
-        fitter = JointPH(Weibull, ExponentialPath)
-    elif WHICH == "loglink":
+        fitter = Joint(Weibull, ExponentialPath)
+    elif PATH == "loglink":
         path = LinkedPathModel(ExponentialPath, {"b": "log"})
         truth = {
             "a": 3.0,
@@ -69,8 +79,8 @@ def setup():
             "sd_noise": 0.3,
         }
         spec = (path, [3.0, np.log(0.0008)], [0.4, 0.3], 0.3)
-        fitter = JointPH(Weibull, path)
-    elif WHICH == "quad":
+        fitter = Joint(Weibull, path)
+    elif PATH == "quad":
         truth = dict(
             a=3.0,
             b=0.5 / 365,
@@ -86,8 +96,8 @@ def setup():
             [0.5, 0.3 / 365, 0.0],
             0.4,
         )
-        fitter = JointPH(Weibull, QuadraticPath, varying=("a", "b"))
-    elif WHICH == "linear":
+        fitter = Joint(Weibull, QuadraticPath, varying=("a", "b"))
+    elif PATH == "linear":
         truth = dict(
             a=3.0,
             b=1.0 / 365,
@@ -97,10 +107,10 @@ def setup():
             corr_a_b=0.0,
         )
         spec = (LinearPath, [3.0, 1.0 / 365], [0.6, 0.5 / 365], 0.7)
-        fitter = JointPH(Weibull, LinearPath)
+        fitter = Joint(Weibull, LinearPath)
     else:
         raise SystemExit(f"unknown path {WHICH!r}")
-    truth.update(alpha=800.0, beta=2.0, marker_effect=0.9)
+    truth.update(alpha=800.0, beta=2.0, marker_effect=EFFECT)
     return truth, spec, fitter
 
 
@@ -114,7 +124,13 @@ def one(seed):
         lk.GH_FIT = int(GH)
 
     truth, spec, fitter = setup()
-    data = simulate_path(*spec, n=N, seed=seed)
+    data = simulate_path(
+        *spec,
+        n=N,
+        seed=seed,
+        effect=EFFECT,
+        survival="AFT" if AFT else "PH",
+    )
     t0 = time.time()
     try:
         m = fitter.fit(data, marker_reference=4.0)

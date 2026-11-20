@@ -870,7 +870,15 @@ def _validate(model: Any) -> None:
                 "times, which a right-truncated row cannot be split by. "
                 + _CENSORED_INSTEAD
             )
-    elif getattr(model, "_fit_data", None) is None:
+    else:
+        from surpyval.univariate.regression._penalised import (
+            refuse_if_penalised,
+        )
+
+        # A penalised semi-parametric fit has no p-values; the message is
+        # the one its covariance gives.
+        refuse_if_penalised(model)
+    if not _is_parametric(model) and getattr(model, "_fit_data", None) is None:
         raise ValueError(
             "diagnose() needs the data the model was fitted to, which a "
             "model restored with from_dict / from_json does not carry. "

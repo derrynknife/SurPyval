@@ -146,13 +146,18 @@ def simulate_path(
     beta=2.0,
     effect=0.9,
     centre=CENTRE,
+    survival="PH",
 ):
     """``n`` items whose marker follows ``path_model`` with parameters
     normal about ``mean`` with standard deviations ``sd`` (0 for a common
     one, independent), read every ``every`` days with noise ``sd_noise``
     and followed to ``follow`` days, failing at a Weibull PH hazard in
     the path's current value (``effect`` per unit, baseline ``alpha``,
-    ``beta`` at the marker ``centre``)."""
+    ``beta`` at the marker ``centre``); with ``survival="AFT"``, by the
+    accelerated model instead: the item ages at the rate ``exp(effect
+    (m - centre))`` and fails when its effective age reaches a Weibull
+    (``alpha``, ``beta``) draw (the effective age by the same trapezium
+    rule)."""
     rng = np.random.default_rng(seed)
     mean, sd = np.asarray(mean, float), np.asarray(sd, float)
     grid = np.linspace(0, 20 * follow, 40001)
@@ -161,15 +166,21 @@ def simulate_path(
         theta = mean + sd * rng.normal(size=mean.size)
         with np.errstate(all="ignore"):
             m = path_model.path(grid, *theta)
-            h = (
-                (beta / alpha)
-                * (grid / alpha) ** (beta - 1)
-                * np.exp(effect * (m - centre))
-            )
+            if survival == "AFT":
+                h = np.exp(effect * (m - centre))
+            else:
+                h = (
+                    (beta / alpha)
+                    * (grid / alpha) ** (beta - 1)
+                    * np.exp(effect * (m - centre))
+                )
         h = np.where(np.isfinite(h), h, 1e300)
         H = np.concatenate(
             [[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(grid))]
         )
+        if survival == "AFT":
+            # the rate integrated is the effective age
+            H = (H / alpha) ** beta
         life = float(np.interp(rng.exponential(), H, grid))
         end = min(life, follow)
         ages = np.arange(0.0, end + 1e-9, every)
@@ -335,6 +346,59 @@ def simulate_links(
             ItemLifetime(
                 k,
                 **{outcome: float(end)},
+                markers=dict(zip(ages.tolist(), y.tolist())),
+            )
+        )
+    return SurpyvalData.from_items(items)
+
+
+def simulate_aft(
+    n=300,
+    seed=0,
+    alpha=2.5,
+    beta=2.0,
+    value=0.0,
+    slope=0.0,
+    centre=CENTRE,
+    follow=2.0,
+    every=1 / 12,
+    sd_noise=0.7,
+    gamma=0.0,
+):
+    """``n`` items as :func:`simulate_links`' (ages in years, lines from
+    3.0, sd 0.6, rising 1.0 a year, sd 0.5, correlation 0.2, read monthly
+    with noise ``sd_noise``, followed for ``follow`` years), failing by
+    the accelerated model: each ages at the rate ``exp(value (m(s) -
+    centre) + slope m'(s) + gamma z)`` (``z`` a 0/1 covariate on half
+    the fleet where ``gamma`` is not 0), and fails when its effective
+    age reaches a Weibull (``alpha``, ``beta``) draw. For a line the
+    effective age is in closed form, ``A(t) = r0 (exp(k t) - 1) / k``
+    with ``k = value m1``, so the lifetimes are exact."""
+    rng = np.random.default_rng(seed)
+    sd0, sd1, r = 0.6, 0.5, 0.2
+    D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
+    b = rng.multivariate_normal([0.0, 0.0], D, size=n)
+    m0, m1 = 3.0 + b[:, 0], 1.0 + b[:, 1]
+    z = rng.integers(0, 2, n).astype(float) if gamma else np.zeros(n)
+    used = alpha * rng.exponential(size=n) ** (1.0 / beta)
+    r0 = np.exp(value * (m0 - centre) + slope * m1 + gamma * z)
+    k = value * m1
+    items = []
+    for j in range(n):
+        if abs(k[j]) < 1e-12:
+            life = used[j] / r0[j]
+        else:
+            grow = 1.0 + k[j] * used[j] / r0[j]
+            life = np.log(grow) / k[j] if grow > 0 else np.inf
+        end = min(life, follow)
+        ages = np.arange(0.0, end + 1e-9, every)
+        y = m0[j] + m1[j] * ages + rng.normal(0, sd_noise, ages.size)
+        outcome = "observed" if life <= follow else "right_censored"
+        items.append(
+            ItemLifetime(
+                j,
+                **{outcome: float(end)},
+                covariates={"z": z[j]} if gamma else None,
                 markers=dict(zip(ages.tolist(), y.tolist())),
             )
         )

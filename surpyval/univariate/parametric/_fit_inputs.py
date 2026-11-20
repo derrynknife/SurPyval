@@ -645,6 +645,17 @@ class FitInputsMixin:
                     "use a continuous distribution."
                 )
 
+    def _refuse_mpp_without_plot(self) -> None:
+        """Refuse probability plotting for a distribution with no
+        straight-line probability plot."""
+        if not self.supports_mpp:
+            detail = (
+                f"{self.name} distribution does not work"
+                " with probability plot fitting; use how='MLE', 'MSE' or"
+                " 'MOM' instead"
+            )
+            raise ValueError(detail)
+
     def _check_method(
         self,
         surv_data: SurpyvalData,
@@ -675,13 +686,8 @@ class FitInputsMixin:
 
         check_option("how", how, PARA_METHODS, "Case does not matter.")
 
-        if how == "MPP" and not self.supports_mpp:
-            detail = (
-                f"{self.name} distribution does not work"
-                " with probability plot fitting; use how='MLE', 'MSE' or"
-                " 'MOM' instead"
-            )
-            raise ValueError(detail)
+        if how == "MPP":
+            self._refuse_mpp_without_plot()
 
         if how == "MPS" and self.discrete:
             detail = (

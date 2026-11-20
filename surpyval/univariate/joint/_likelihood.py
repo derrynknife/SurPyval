@@ -60,6 +60,12 @@ by 15-point Gauss-Legendre in ``w``: the nodes do not move with
 ``beta``, so the path is evaluated at fixed ages, and the error is
 below 3e-6 relative for shapes 0.5 to 5 with the hazard changing by a
 factor of up to e^8 over ``(0, t]``.
+
+That is the proportional hazards survival part. The accelerated one
+(``Layout.survival == "AFT"``: the marker speeds up the item's ageing)
+has its own lifetime terms in :mod:`._aft`, which the integrand and the
+search for each item's mode take in place of these
+(:func:`lifetime_functions`); the rest is shared.
 """
 
 from __future__ import annotations
@@ -308,6 +314,9 @@ class Layout:
     coefficients ``gamma`` (the covariates of ``hazard``) and the
     marker's effects ``zeta``, one for each of ``links`` (what of the
     path the hazard follows: its value, slope or cumulative area).
+    ``survival`` is the survival part, ``"PH"`` (proportional hazards)
+    or ``"AFT"`` (accelerated: the covariates and the links speed up
+    the item's ageing); the parameters are the same in both.
 
     ``shifts`` ``(P, p)`` and ``hazard`` ``(p,)`` say which covariates
     enter which part (default every one in both): an entry that is off is
@@ -319,6 +328,7 @@ class Layout:
     shifts: Any = None
     hazard: Any = None
     links: tuple = ("value",)
+    survival: str = "PH"
 
     def __post_init__(self) -> None:
         self.links = tuple(self.links)
@@ -753,6 +763,17 @@ def log_event(
     return base[:, None] + eta
 
 
+def lifetime_functions(layout: Layout) -> tuple:
+    """``(log_cumhaz, log_event, log_fails_between)`` of the layout's
+    survival part: this module's (proportional hazards), or the
+    accelerated part's (:mod:`._aft`), which take the same arguments."""
+    if layout.survival == "AFT":
+        from . import _aft
+
+        return _aft.log_cumhaz, _aft.log_event, _aft.log_fails_between
+    return log_cumhaz, log_event, log_fails_between
+
+
 # -- where the nodes go -------------------------------------------------------
 
 
@@ -827,59 +848,67 @@ def _mode_objective(
             f = f + np.sum(r**2, axis=1) / (2 * s2)
             g = g - np.einsum("nr,nrj->nj", r, J) / s2
             H = H + np.einsum("nri,nrj->nij", J, J) / s2
-        # the lifetime: an event flag d at age t, survival to t
-        positive = t > 0
-        safe = np.where(positive, t, 1.0)
-        s_ages = safe[:, None] * GL_U[None, :]
-        terms = followed(s_ages)
-        beta = float(theta["beta"])
-        lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
-        log_lam = (
-            (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
-                :, None
-            ]
-            + np.log(beta)
-            + GL_LOGW
-            + (4 * beta - 1) * np.log(GL_NODES)
-            + log_effect(terms)
-        )
-        lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
-        f = f + lam.sum(axis=1)
-        grad, curve = weighted(lam, terms)
-        g = g + grad
-        H = H + curve
-        if np.any(d > 0):
-            for effect, mT, JT in followed(safe[:, None]):
-                f = f - d * effect * mT[:, 0]
-                g = g - (d * effect)[:, None] * JT[:, 0]
-        if upper is not None:
-            rows, lo, hi = _between(t, upper)
-            if rows.any():
-                width = hi - lo
-                s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
-                terms = followed(s_ages)
-                alpha = float(theta["alpha"])
-                log_lam = (
-                    (lin + np.log(width) + np.log(beta / alpha))[:, None]
-                    + (beta - 1) * (np.log(s_ages) - np.log(alpha))
-                    + GL_LOGW
-                    + 3 * np.log(GL_NODES)
-                    + log_effect(terms)
-                )
-                lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
-                delta = np.where(rows, lam.sum(axis=1), 1.0)
-                g_delta, _ = weighted(lam, terms)
-                small = -np.expm1(-delta)
-                f = f - np.where(rows, np.log(small), 0.0)
-                g = (
-                    g
-                    - np.where(rows, 1.0 / np.expm1(delta), 0.0)[:, None]
-                    * g_delta
-                )
-                curve = np.where(rows, np.exp(-delta) / small**2, 0.0)
-                H = H + curve[:, None, None] * np.einsum(
-                    "ni,nj->nij", g_delta, g_delta
-                )
+        if layout.survival == "AFT":
+            from ._aft import mode_terms
+
+            life = mode_terms(
+                theta, arrays, d, t, upper, followed, log_effect, weighted
+            )
+            f, g, H = f + life[0], g + life[1], H + life[2]
+        else:
+            # the lifetime: an event flag d at age t, survival to t
+            positive = t > 0
+            safe = np.where(positive, t, 1.0)
+            s_ages = safe[:, None] * GL_U[None, :]
+            terms = followed(s_ages)
+            beta = float(theta["beta"])
+            lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
+            log_lam = (
+                (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
+                    :, None
+                ]
+                + np.log(beta)
+                + GL_LOGW
+                + (4 * beta - 1) * np.log(GL_NODES)
+                + log_effect(terms)
+            )
+            lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
+            f = f + lam.sum(axis=1)
+            grad, curve = weighted(lam, terms)
+            g = g + grad
+            H = H + curve
+            if np.any(d > 0):
+                for effect, mT, JT in followed(safe[:, None]):
+                    f = f - d * effect * mT[:, 0]
+                    g = g - (d * effect)[:, None] * JT[:, 0]
+            if upper is not None:
+                rows, lo, hi = _between(t, upper)
+                if rows.any():
+                    width = hi - lo
+                    s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
+                    terms = followed(s_ages)
+                    alpha = float(theta["alpha"])
+                    log_lam = (
+                        (lin + np.log(width) + np.log(beta / alpha))[:, None]
+                        + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                        + GL_LOGW
+                        + 3 * np.log(GL_NODES)
+                        + log_effect(terms)
+                    )
+                    lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
+                    delta = np.where(rows, lam.sum(axis=1), 1.0)
+                    g_delta, _ = weighted(lam, terms)
+                    small = -np.expm1(-delta)
+                    f = f - np.where(rows, np.log(small), 0.0)
+                    g = (
+                        g
+                        - np.where(rows, 1.0 / np.expm1(delta), 0.0)[:, None]
+                        * g_delta
+                    )
+                    curve = np.where(rows, np.exp(-delta) / small**2, 0.0)
+                    H = H + curve[:, None, None] * np.einsum(
+                        "ni,nj->nij", g_delta, g_delta
+                    )
         # the prior
         Lc = np.asarray(theta["L"], dtype=float)
         Dinv = np.linalg.inv(Lc @ Lc.T)
@@ -1082,18 +1111,17 @@ def log_integrand(
     the integrand at each node plus the node's log weight."""
     b, logw = nodes
     layout, path, c = model.layout, model.path, model.centre
+    cumhaz, event, fails_between = lifetime_functions(layout)
     params = _path_params(theta, layout, arrays.Z, b)
     log_g = log_prior(theta, layout, arrays.Z, b) + logw
     if readings:
         log_g = log_g + log_readings(theta, path, params, arrays)
-    H = anp.exp(log_cumhaz(theta, path, params, arrays, t, c))
+    H = anp.exp(cumhaz(theta, path, params, arrays, t, c))
     log_g = log_g - H
     if np.any(d > 0):
-        log_g = log_g + d[:, None] * log_event(theta, path, params, arrays, c)
+        log_g = log_g + d[:, None] * event(theta, path, params, arrays, c)
     if upper is not None and np.any(np.isfinite(upper)):
-        log_g = log_g + log_fails_between(
-            theta, path, params, arrays, t, upper, c
-        )
+        log_g = log_g + fails_between(theta, path, params, arrays, t, upper, c)
     return log_g
 
 

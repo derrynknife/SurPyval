@@ -29,6 +29,7 @@ the data, and only the covariate effect is parameterised.
     regression/aalen_additive
     regression/proportional_odds
     regression/buckley_james
+    regression/quantile_regression
 
 Parametric Models
 -----------------

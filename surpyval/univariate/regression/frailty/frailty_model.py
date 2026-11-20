@@ -60,6 +60,7 @@ from surpyval.utils.validation import (
 from surpyval.utils.warnings import ignoring_warnings
 
 from .._concordance import ConcordanceMixin
+from .._penalised import PenalisedModelMixin
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -90,6 +91,7 @@ def _standard_error(variance: Any) -> np.ndarray:
 
 
 class _SharedFrailty(
+    PenalisedModelMixin,
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     ConcordanceMixin,
@@ -139,12 +141,18 @@ class _SharedFrailty(
         ``parameter_names`` (#605). It was an attribute before v0.23.
 
         Raises a ``ValueError`` where the model has none (its information
-        was singular)."""
+        was singular, or it is a penalised fit)."""
+        self._refuse_if_penalised()
         if self._covariance is None:
             raise no_covariance_error()
         return np.asarray(self._covariance)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective degrees of freedom.
+        penalised_k = self._penalised_ic_k()
+        return self.k if penalised_k is None else penalised_k
 
     def _ic_sample_size_from_data(self) -> float:
         # The shared rule (ic_sample_size) on the fitted data, which the
@@ -806,6 +814,8 @@ class FrailtyModel(_SharedFrailty):
         check_alpha_ci(alpha_ci)
         from .._likelihood_ratio import is_lr
 
+        # No bound of either kind on a penalised estimate.
+        self._refuse_if_penalised()
         if not is_lr(method):
             return super().param_cb(name, alpha_ci, bound)
         from .._likelihood_ratio import profile_interval
@@ -928,16 +938,24 @@ class FrailtyModel(_SharedFrailty):
             rows.index.name = None
             return format_table(rows, list(estimates.values()))
 
+        out += self._penalty_printout()
+        wald = "Wald 95% intervals" if self.penalty is None else "no intervals"
         out += (
-            "\nBaseline            : {} parameters; Wald 95% "
-            "intervals\n".format(self.dist.name)
+            "\nBaseline            : {} parameters; {}\n".format(
+                self.dist.name, wald
+            )
         ) + block("baseline")
         if self.beta.size:
             out += (
                 "\nCoefficients        : exp(coef) is the hazard ratio "
-                "given the frailty; Wald 95% intervals\n"
+                "given the frailty; {}\n".format(wald)
             ) + coefficient_repr(table.loc["coefficients"])
-        out += "\nFrailty variance    : Wald 95% interval\n" + block("frailty")
+        out += (
+            "\nFrailty variance    : "
+            + ("Wald 95% interval" if self.penalty is None else "no interval")
+            + "\n"
+            + block("frailty")
+        )
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -966,6 +984,7 @@ class FrailtyModel(_SharedFrailty):
         }
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance, float).tolist()
+        out.update(self._penalty_entry())
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -1017,5 +1036,6 @@ class FrailtyModel(_SharedFrailty):
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
             out._covariance = np.array(model_dict["covariance"], dtype=float)
+        out._restore_penalty(model_dict)
         restore_covariate_meta(out, model_dict)
         return out

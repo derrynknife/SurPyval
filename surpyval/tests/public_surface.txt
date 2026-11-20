@@ -102,6 +102,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JointAFT
 surpyval.JointFrailty
 surpyval.JointModel
 surpyval.JointPH
@@ -185,6 +186,8 @@ surpyval.ProportionalOdds
 surpyval.ProportionalOddsFitter
 surpyval.ProportionalOddsModel
 surpyval.PseudoRegressionResult
+surpyval.QuantileRegression
+surpyval.QuantileRegressionModel
 surpyval.RandomEffect
 surpyval.RateTable
 surpyval.Rayleigh
@@ -210,6 +213,7 @@ surpyval.WeibullAH
 surpyval.WeibullDistributional
 surpyval.WeibullEquivalence
 surpyval.WeibullFrailty
+surpyval.WeibullJointAFT
 surpyval.WeibullJointPH
 surpyval.WeibullMixtureCure
 surpyval.WeibullPH
@@ -649,6 +653,8 @@ surpyval.univariate.regression.ProportionalHazardsFitter
 surpyval.univariate.regression.ProportionalOdds
 surpyval.univariate.regression.ProportionalOddsFitter
 surpyval.univariate.regression.ProportionalOddsModel
+surpyval.univariate.regression.QuantileRegression
+surpyval.univariate.regression.QuantileRegressionModel
 surpyval.univariate.regression.RandomEffect
 surpyval.univariate.regression.RoystonParmarPH
 surpyval.univariate.regression.RoystonParmarPO

@@ -80,6 +80,11 @@ RULES = {
 # past the data only because the curve has reached its limit to the
 # last bit of a float.
 NOT_DATA_BOUNDED = {
+    "QuantileRegression[portnoy]": "a quantile regression: each row's "
+    "quantiles at the fitted levels are given by the linear model, inside "
+    "or beyond the data, and its ff holds tau_max past the largest of "
+    "them; on this row the largest (14.3) is before the last time (17.0), "
+    "and for others (the Peng-Huang case's first row) it is after it",
     "WeibullMixtureCure": "parametric: the latency's survival at the last "
     "censoring time (60) is 5e-27, so the population's sf is on its "
     "plateau, 1 - lfp_p(z), to the last bit there and beyond; within the "

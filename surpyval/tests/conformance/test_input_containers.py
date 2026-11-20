@@ -44,9 +44,8 @@ variant applies to:
   events (rounding puts several events of a unit at one time), degradation
   (the readings, not the times, carry the model) nor the copulas (the
   margins are fitted on the unit square's scale);
-- the cases with no fixture (``Hypoexponential``, ``NeverOccurs``,
-  ``InstantlyOccurs``: models given their parameters) get only the query
-  variants.
+- the cases with no fixture (``NeverOccurs``, ``InstantlyOccurs``: models
+  given their parameters) get only the query variants.
 
 The joint model's ``markers`` (readings by age, a list of dicts per row)
 stay as they are: they are not an array.

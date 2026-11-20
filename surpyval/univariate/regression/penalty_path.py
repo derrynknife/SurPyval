@@ -64,6 +64,11 @@ class PenaltyPath:
         (``nan`` for weighted fits, whose criteria are refused).
     weighted : bool
         Whether the fits were weighted (``w``).
+    likelihood : bool
+        Whether the model has a likelihood: Lin and Ying's additive
+        hazards model has none, so its path has the coefficients and
+        effective degrees of freedom but ``nan`` for ``neg_ll``, ``aic`` and
+        ``bic``, and ``best`` refuses.
 
     Examples
     --------
@@ -94,9 +99,18 @@ class PenaltyPath:
         self.effective_df = np.array(
             [m.penalty.effective_df for m in models], dtype=float
         )
-        self.neg_ll = np.array([m.neg_ll() for m in models], dtype=float)
+        from .regression_data import NoLikelihoodMixin
+
+        # Lin and Ying's additive hazards model has no likelihood: its
+        # path has the coefficients but no criteria.
+        self.likelihood = not isinstance(models[0], NoLikelihoodMixin)
+        self.neg_ll = (
+            np.array([m.neg_ll() for m in models], dtype=float)
+            if self.likelihood
+            else np.full(len(models), np.nan)
+        )
         self.weighted = bool(getattr(models[0], "weighted", False))
-        if self.weighted:
+        if self.weighted or not self.likelihood:
             # Refused for a weighted fit (its pseudo-likelihood is not the
             # data's): nan here, and best() says why.
             self.aic = np.full(len(models), np.nan)
@@ -109,6 +123,17 @@ class PenaltyPath:
         return self.penalizers.size
 
     def __repr__(self) -> str:
+        if not self.likelihood:
+            return (
+                "Penalty path: {} fits, penalties from {:.4g} to {:.4g}, "
+                "l1_ratio {:g}; no AIC or BIC (the model has no "
+                "likelihood)".format(
+                    len(self),
+                    self.penalizers[0],
+                    self.penalizers[-1],
+                    self.l1_ratio,
+                )
+            )
         if self.weighted:
             return (
                 "Penalty path: {} weighted fits, penalties from {:.4g} to "
@@ -157,6 +182,15 @@ class PenaltyPath:
         from surpyval.utils.validation import check_option
 
         check_option("criterion", criterion, CRITERIA)
+        if not self.likelihood:
+            raise ValueError(
+                "Choosing the penalty by {}() needs a likelihood, and this "
+                "model has none (Lin and Ying's estimator solves estimating "
+                "equations). The path's coefficients and effective degrees "
+                "of freedom are still given; choose the penalty from them, "
+                "or fit a likelihood-based model to choose by AIC or "
+                "BIC.".format(criterion)
+            )
         if self.weighted:
             from surpyval.utils.weights import refuse_information_criterion
 
@@ -194,7 +228,11 @@ class PenaltyPath:
             _, ax = plt.subplots()
         for j, name in enumerate(self.coefficient_names):
             ax.plot(self.penalizers, self.coefficients[:, j], label=name)
-        marks = () if self.weighted else (("aic", ":"), ("bic", "--"))
+        marks = (
+            ()
+            if self.weighted or not self.likelihood
+            else (("aic", ":"), ("bic", "--"))
+        )
         for criterion, style in marks:
             ax.axvline(
                 self.best_penalizer(criterion),

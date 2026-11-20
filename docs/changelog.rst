@@ -35,6 +35,28 @@ v0.29 (unreleased)
   where Ederer II does not. Net survival can rise, and exceed 1, where
   fewer units fail than the population rates expect; it is reported as
   it is. See :doc:`Relative Survival`.
+- **Censored quantile regression.** ``QuantileRegression`` models the
+  quantiles of the time to an event directly, ``log Q(tau | Z) = b0(tau) +
+  b(tau)'Z`` with coefficients of their own at every level, so a
+  covariate's effect on the B10 life can differ from its effect on the
+  median, with no proportional hazards or accelerated failure time
+  assumption. Right-censored data are fitted by Peng and Huang's (2008)
+  martingale estimating equations (``method="peng-huang"``, the default)
+  or Portnoy's (2003) recursively reweighted quantile regression
+  (``method="portnoy"``), on a grid of levels (``step=0.01``), as R's
+  ``quantreg::crq`` fits them. The model's ``coefficients(tau)``,
+  ``taus`` / ``intercepts`` / ``coefs`` (the whole process) and
+  ``summary(tau)`` give the effects; ``qf(p, Z)`` the B-life of each
+  covariate row, and ``ff``, ``sf``, ``Hf`` the step distribution its
+  quantiles make (rearranged where two levels cross). Bounds are case
+  bootstrap percentile intervals: ``bootstrap_ci(tau)``,
+  ``summary(tau, n_boot=...)``, ``quantile_cb(p, Z, bound=...)`` and
+  ``cb(x, Z, on=...)``. ``fit_from_df`` takes columns or a formula;
+  ``to_dict`` / ``from_dict`` keep the data, so a restored model still
+  bootstraps. Checked against ordinary quantile regression (no censoring),
+  the Kaplan-Meier and Nelson-Aalen quantiles (no covariates) and the true
+  coefficients of simulated data. See "Semi-Parametric — Censored Quantile
+  Regression" in :doc:`Regression Modelling with SurPyval`.
 - **How good are dynamic predictions: accuracy at an age, over a window.**
   ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
   ``dynamic_calibration`` (also importable from ``surpyval``) score a
@@ -168,6 +190,68 @@ v0.29 (unreleased)
   ``x2_col``, ``x2l_col``, ``x2r_col``, ``tl2_col`` and ``x2_name``) with a
   ``ValueError`` pointing to the two-clock fits, in place of Python's
   ``TypeError``.
+- **``Hypoexponential.fit``.** The sum of exponential stages is fitted
+  to data: ``Hypoexponential.fit(x, c, n, t, ..., stages=m)`` estimates
+  the ``m`` stage rates by maximum likelihood (or ``how='MPS'``,
+  ``'MSE'``, ``'MOM'``) with every kind of censoring and truncation,
+  counts, weights, an offset, a limited failure population and zero
+  inflation, with covariance, every bound and the bootstrap, as for any
+  distribution; ``fit_from_df``, ``fit_from_surpyval_data`` and
+  ``fit(data)`` take ``stages`` too. The number of stages is the caller's
+  choice (``stages`` is required; a fitted model's ``dist.fit`` refits
+  with its own); compare the AIC of fits with different numbers. The rates
+  are reported slowest stage first. Where the data need fewer stages a
+  rate runs to infinity, and the fit warns "No finite maximum", saying to
+  fit fewer. ``fit_bayes`` refuses it, pointing to ``fit``.
+
+**Changed.**
+
+- **``Hypoexponential`` takes equal and close rates.** Rates no longer
+  have to be distinct: equal rates are the Erlang, and match ``Gamma``
+  with an integer shape to 1e-12. Where the partial-fraction coefficients
+  are large (their absolute values summing to more than 100), the
+  functions come from the matrix exponential of the stages' generator,
+  computed from non-negative terms only, so they keep their precision:
+  four rates 1e-5 apart gave twice the density and a CDF 18% off at
+  x = 2, where every function is now within 1e-12 of a 150-digit
+  reference. Rates whose coefficients are
+  small give the same numbers as before. ``moment`` is a sum of
+  positive terms (``moment(2, 0.5, 1.5, 3.0)`` is 13.555555555555555,
+  the last digit of 122/9 now right).
+- **Penalised fits on five more models.** Ridge, lasso and elastic-net
+  fits with the objective, standardisation and refusals of the other
+  penalised fits (no covariance, standard errors, bounds or p-values;
+  ``aic`` and ``bic`` count the effective degrees of freedom; the penalty is
+  saved by ``to_dict``):
+
+  - ``FineGray.fit_penalised``: the subdistribution hazards model, the
+    objective of R's ``fastcmprsk::fastCrrp``; matches glmnet's Cox fit on
+    rows carrying the censoring weights to 1e-6 (the PBC data), with
+    ``strata``.
+  - ``AdditiveHazards.fit_penalised``: Lin and Ying's model, its quadratic
+    loss in place of a likelihood (Gorst-Rasmussen and Scheike 2012, R's
+    ``ahaz::ahazpen`` for the lasso); the penalty is put on the
+    coefficients (rates) in the unit of the mean follow-up
+    (``model.time_scale``), so the fit does not depend on the unit of time.
+    Matches glmnet on the equivalent least-squares problem to 1e-6, and
+    the ridge fit's closed form. No likelihood, so no ``aic`` or ``bic``;
+    ``penalty_path`` gives its coefficients and refuses to choose
+    (``PenaltyPath.likelihood``).
+  - ``ProportionalOdds.fit_penalised``: the semi-parametric proportional
+    odds model's profile likelihood, with delayed entry.
+  - ``Frailty(...).fit_penalised`` (``WeibullFrailty.fit_penalised``, ...):
+    the parametric shared-frailty models, gamma or log-normal frailty, the
+    frailty variance not penalised; at ``theta = 0`` it is the penalised
+    proportional hazards fit.
+  - ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+    parametric PH, PO and AFT families: time-varying covariates, ``N`` and
+    the standardisation over the subjects, as ``CoxPH.fit_tvc_penalised``,
+    so splitting a subject's rows does not change the fit. The parametric
+    additive hazards models refuse (a penalty on their rates would depend
+    on the unit of time).
+
+  ``diagnose()`` refuses each of these penalised models, as it does a
+  penalised Cox model.
 - **Analytic two-stage bounds for accelerated degradation.**
   ``DegradationModel.cb(x, Z)`` with ``method="analytic"`` (the default)
   and ``life_parameter_covariance()`` now work for a model fitted with
@@ -190,6 +274,33 @@ v0.29 (unreleased)
   ``population_method="reml"`` step-stress model still refuses the
   analytic bound (its mixed-model clock's covariance is not derived) and
   points to ``method="bootstrap"``.
+
+- **An accelerated survival part for the joint models.** ``JointAFT(Weibull,
+  path_model, varying=, link=)``, ready-made as ``WeibullJointAFT`` (a
+  straight line), beside ``JointPH``: the marker speeds up the item's
+  ageing instead of multiplying its hazard. By age :math:`t` an item has
+  used up the effective age :math:`A(t) = \int_0^t \exp(\gamma' z +
+  \zeta_v (m(s) - r) + \zeta_s m'(s))\, ds`, and its survival is the
+  Weibull's at that age, so life used at a high reading is not given back
+  when the reading falls (the cumulative-exposure model of step-stress
+  tests, with the reading as the stress). The same data, path models,
+  ``varying``, ``hazard_covariates`` / ``path_covariates``,
+  ``marker_reference``, ``fit`` / ``fit_from_df``, parameter names,
+  ``predict`` and ``DynamicPrediction``; ``marker_effect`` is the log
+  of how many times faster an item ages per unit. Links ``"value"`` and
+  ``"slope"``; ``"cumulative"`` is refused, saying why. Every kind of
+  item (failures, right, left and interval censoring, left and right
+  truncation) is fitted, its likelihood checked against a dense-grid
+  integral to within 1e-5 an item; with a marker that never changes the
+  fit is ``JointPH``'s with every effect divided by ``beta``. The fitted
+  ``JointModel`` says which survival part it has in ``survival``
+  (``"PH"`` or ``"AFT"``), its ``kind``, printout and summary
+  headings. See :doc:`Joint Models`.
+- An accelerated joint model saves as schema 5, which SurPyval 0.28 and
+  older refuse with a request to upgrade rather than read it as a
+  proportional hazards model. Every other file keeps its schema; a joint
+  model saved before has no ``"survival"`` and loads as proportional
+  hazards.
 
 **Changed.**
 
