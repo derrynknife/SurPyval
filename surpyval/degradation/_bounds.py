@@ -633,8 +633,9 @@ def bootstrap_cb(
     (``warn_bootstrap_refits``), as the parametric bootstrap does.
     """
     from surpyval.univariate.parametric.parametric import Parametric
-    from surpyval.utils.no_maximum import warn_bootstrap_refits
     from surpyval.utils.refits import DEGRADATION_REFIT
+
+    from ._maximum import RefitTally
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
     rng = as_generator(random_state)
@@ -675,7 +676,7 @@ def bootstrap_cb(
         ),
     }
     token = DEGRADATION_REFIT.set(refit)
-    counts = {"no finite maximum": 0, "unverified": 0, "no estimate": 0}
+    tally = RefitTally()
     try:
         curves = _bootstrap_curves(
             model,
@@ -686,7 +687,7 @@ def bootstrap_cb(
             n_boot,
             rng,
             clock_kwargs,
-            counts,
+            tally,
         )
     finally:
         DEGRADATION_REFIT.reset(token)
@@ -706,12 +707,8 @@ def bootstrap_cb(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
         )
-    warn_bootstrap_refits(
+    tally.warn(
         n_boot,
-        no_maximum=counts["no finite maximum"],
-        no_estimate=counts["no estimate"],
-        unverified=counts["unverified"],
-        failed=n_boot - len(curves) - counts["no estimate"],
         advice="treat the bounds as rough; more units, or units followed "
         "closer to the threshold, would settle them",
     )
@@ -727,17 +724,40 @@ def _bootstrap_curves(
     n_boot: int,
     rng: Any,
     clock_kwargs: dict,
-    counts: "dict | None" = None,
+    tally: Any,
 ) -> list:
     """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
     ``model``'s units, each refitted and its ``method_name`` curve taken at
     ``x`` (and ``Z``), those not finite where the model's own is dropped.
-    ``counts`` (updated in place) counts the kept refits whose life fit
-    has no finite or an unverified maximum, and the resamples whose life
-    fit has no maximum at all (left out)."""
-    from surpyval.utils.no_maximum import NoFiniteMaximumError
-
+    ``tally`` (a ``RefitTally``, updated in place) counts the refits
+    kept, by the maximum their life fit reached, and the resamples whose
+    life fit has no maximum at all (left out)."""
     from .degradation_analysis import DegradationAnalysis
+
+    def refit(
+        xs: npt.NDArray, ys: npt.NDArray, ids: npt.NDArray, Zs: Any
+    ) -> "tuple[npt.NDArray, Any] | None":
+        # The resample's curve and what its life fit reached, or None
+        # where the curve is not finite where the model's own is.
+        m = DegradationAnalysis.fit(
+            xs,
+            ys,
+            ids,
+            threshold=model.threshold,
+            path=model.path_model,
+            distribution=model._distribution,
+            how=model._how,
+            Z=Zs,
+            **clock_kwargs,
+        )
+        curve_fn = getattr(m, method_name)
+        curve = np.asarray(
+            curve_fn(x) if Z is None else curve_fn(x, Z), dtype=float
+        )
+        if not np.isfinite(curve[~missing]).all():
+            return None
+        reached = getattr(m.life_model, "maximum", None)
+        return np.where(missing, np.nan, curve), reached
 
     n_units = len(model.units)
     clock = bool(clock_kwargs)
@@ -759,33 +779,16 @@ def _bootstrap_curves(
                     Zs.append(model.Z[mask])
                 elif Z is not None:
                     Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
-            try:
-                m = DegradationAnalysis.fit(
-                    np.concatenate(xs),
-                    np.concatenate(ys),
-                    np.concatenate(ids),
-                    threshold=model.threshold,
-                    path=model.path_model,
-                    distribution=model._distribution,
-                    how=model._how,
-                    Z=None if Z is None else np.concatenate(Zs),
-                    **clock_kwargs,
-                )
-                curve_fn = getattr(m, method_name)
-                curve = np.asarray(
-                    curve_fn(x) if Z is None else curve_fn(x, Z), dtype=float
-                )
-                if np.isfinite(curve[~missing]).all():
-                    curves.append(np.where(missing, np.nan, curve))
-                    reached = getattr(m.life_model, "maximum", None)
-                    if counts is not None and reached in counts:
-                        counts[reached] += 1
-            except NoFiniteMaximumError:
-                if counts is not None:
-                    counts["no estimate"] += 1
-                continue
-            except Exception:
-                continue
+            found = tally.refit(
+                refit,
+                np.concatenate(xs),
+                np.concatenate(ys),
+                np.concatenate(ids),
+                None if Z is None else np.concatenate(Zs),
+            )
+            if found is not None:
+                curves.append(found[0])
+                tally.keep(found[1])
     return curves
 
 

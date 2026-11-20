@@ -334,6 +334,34 @@ v0.29 (unreleased)
   fits rather than only to ``likelihood_ratio_test()``, which tests
   whether the covariates matter, not whether their effects stay constant.
   Each still raises ``NotImplementedError``.
+- **Development: more copied code shared.** The weighting of the
+  Aalen-Johansen incidence increments by the survival just before each
+  time is one pair of helpers, ``survival_before`` and
+  ``aalen_johansen_iif`` (which now take one curve per row as well as
+  one curve), read by the non-parametric incidence and its variances, the
+  restricted mean time lost, Gray's test and the pseudo-observations. The
+  HPP and proportional-intensity HPP likelihoods take their Poisson-count
+  sums from one ``poisson_count_sums`` and their right-truncation terms
+  from the NHPP's ``log_one_minus_exp``. The two degradation bootstraps
+  (the two-stage one and the destructive one) count their refits with one
+  ``RefitTally``. The Cox start-stop fits (plain, weighted and
+  penalised) check their row weights and mark their models through one
+  helper each, and the parametric PH, AH, PO and AFT start-stop fits keep
+  their rows and mark their models through ``start_stop_rows`` and
+  ``mark_tvc_fit``. The parametric regression fitters (PH, AFT, PO,
+  additive hazards and accelerated life) share one base class,
+  ``RegressionFitter`` (the distribution, the baseline functions each
+  family reads, and the likelihood), and the PH, AFT and PO fitters one
+  fit through ``LogLinearRegressionFitter``. Fitted numbers, printouts,
+  messages and warnings are bit-identical, checked with the refactor
+  snapshot.
+- **Development: one set of scales for the non-parametric intervals.**
+  The pointwise bounds (``bound_type`` 'exp', 'log', 'logit', 'arcsine'
+  and 'normal'), the bands, ``sf_diff``'s transforms and the
+  non-parametric cumulative incidence's log(-log) bound all take their
+  transform, its delta-method scale and its inverse from one table. Some
+  bounds and ``sf_diff`` statistics move in their last digit or two
+  (within 1e-12 relative), from the order of the arithmetic.
 - **Likelihood-ratio bounds are taken exactly onto the region's
   boundary.** The searches took a point up to 1e-6 of deviance outside
   the likelihood region, or as far inside, as on its boundary, and the

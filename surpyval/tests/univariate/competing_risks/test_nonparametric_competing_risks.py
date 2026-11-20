@@ -392,3 +392,72 @@ def test_746_no_bounds_on_the_jumps_as_for_a_single_event(on):
     if on != "iif":
         with pytest.raises(ValueError, match="'on' must be one of"):
             KaplanMeier.fit(X10).cb([1, 2], on=on)
+
+
+def test_aalen_johansen_iif_weights_one_curve_per_row():
+    # Gray's test and the pseudo-observations weight many curves at once
+    # through the helper the single estimate uses: row by row, the same
+    # numbers as one curve at a time.
+    from surpyval.univariate.competing_risks.aalen_johansen import (
+        aalen_johansen_iif,
+        survival_before,
+    )
+
+    rng = np.random.default_rng(3)
+    S = np.cumprod(rng.uniform(0.7, 1.0, size=(3, 6)), axis=1)
+    h = rng.uniform(0.0, 0.3, size=(3, 6))
+    rows = aalen_johansen_iif(S, h)
+    before = survival_before(S)
+    np.testing.assert_array_equal(before[:, 0], 1.0)
+    np.testing.assert_array_equal(before[:, 1:], S[:, :-1])
+    for k in range(3):
+        np.testing.assert_array_equal(rows[k], aalen_johansen_iif(S[k], h[k]))
+        np.testing.assert_array_equal(before[k], survival_before(S[k]))
+    # One curve, one row of increments per cause.
+    causes = aalen_johansen_iif(S[0], h[:2])
+    np.testing.assert_array_equal(causes, h[:2] * before[0])
+
+
+def test_rmtl_and_the_fitted_cif_share_the_increment():
+    # The restricted mean time lost is the area under the fitted CIF.
+    from surpyval.univariate.competing_risks.rmtl import aalen_johansen_rmtl
+
+    x = np.array([1.0, 2.0, 2.0, 3.0, 5.0, 6.0, 8.0])
+    e = np.array(["a", "b", "a", None, "b", "a", None], dtype=object)
+    c = np.array([0, 0, 0, 1, 0, 0, 1])
+    model = CompetingRisks.fit(x, e, c=c, how="Kaplan-Meier")
+    k = model.event_idx_map["a"]
+    tau = 7.0
+    rmtl, _ = aalen_johansen_rmtl(model.x, model.r, model.d, model.d_e[k], tau)
+    grid = np.append(model.x[model.x <= tau], tau)
+    widths = np.diff(grid)
+    area = np.sum(model.cif(grid[:-1], "a") * widths)
+    assert rmtl == pytest.approx(area, rel=1e-12)
+
+
+def test_cif_bound_is_the_log_minus_log_scale_of_the_survival_bounds():
+    # The incidence's 'exp' bound is the survival bounds' log(-log) scale
+    # applied to F, here written out: exp(log F * exp(-+ s)), with s = z
+    # se / (F |log F|).
+    from scipy.stats import norm
+
+    from surpyval.univariate.competing_risks.aalen_johansen import (
+        aalen_johansen_variance,
+    )
+
+    x = np.array([1.0, 2.0, 2.0, 3.0, 5.0, 6.0, 8.0, 9.0, 11.0])
+    e = np.array(["a", "b", "a", None, "b", "a", "a", None, "b"], dtype=object)
+    c = np.array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    model = CompetingRisks.fit(x, e, c=c)
+    k = model.event_idx_map["a"]
+    F = model.CIF[k]
+    se = np.sqrt(aalen_johansen_variance(model.r, model.d, model.d_e[k]))
+    s = norm.ppf(0.975) * se / (F * np.abs(np.log(F)))
+    inside = (se > 0) & (F < 1)
+    got = model.cb(model.x, "a", on="cif")
+    np.testing.assert_allclose(
+        got[inside, 0], np.exp(np.log(F) * np.exp(s))[inside], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        got[inside, 1], np.exp(np.log(F) * np.exp(-s))[inside], rtol=1e-12
+    )

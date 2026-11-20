@@ -504,3 +504,35 @@ def test_577_a_small_scale_covariate_is_searched_in_its_own_units(fitter):
     np.testing.assert_allclose(
         kelvin.params, milli.params * np.r_[1.0, 1.0, 1000.0], rtol=1e-4
     )
+
+
+@pytest.mark.parametrize(
+    "name, penalised",
+    [
+        ("WeibullPH", False),
+        ("WeibullPH", True),
+        ("WeibullAH", False),
+        ("WeibullPO", False),
+        ("WeibullPO", True),
+        ("WeibullAFT", False),
+        ("WeibullAFT", True),
+    ],
+)
+def test_every_parametric_tvc_fit_keeps_its_rows_alike(name, penalised):
+    # Every family's start-stop fit, plain or penalised, marks its model
+    # the same way: is_tvc, each row's subject and the rows as given.
+    from surpyval import WeibullAFT
+
+    fitter = {**TVC_FITTERS, "WeibullAFT": WeibullAFT}[name]
+    _, (ident, xl, xr, c, Zs) = _constant_covariate_split(
+        n=60, adds_hazard=name.endswith("AH")
+    )
+    if penalised:
+        model = fitter.fit_tvc_penalised(ident, xl, xr, c, Zs, penalizer=0.1)
+    else:
+        model = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)
+    rows = model._tvc_fit_rows
+    assert model.is_tvc
+    assert list(rows) == ["i", "xl", "xr", "c", "Z", "n"]
+    np.testing.assert_array_equal(model.tvc_subject_ids, rows["i"])
+    assert sorted(rows["i"].tolist()) == sorted(ident.tolist())

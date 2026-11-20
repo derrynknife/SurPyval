@@ -168,3 +168,31 @@ def test_weighted_fits_use_the_robust_variance_whatever_the_weight_scale():
         23,
     )
     assert not np.isclose(res["statistic"], plain["statistic"], rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "transform", ["log-log", "log", "linear", "arcsine-sqrt", "logit"]
+)
+def test_each_transform_is_its_delta_method_scale(aml, transform):
+    # The transforms are the scales of the pointwise bounds: g(S) and the
+    # variance v (R g'(R))^2, v the variance of log S, written out here.
+    def scale(s, v):
+        if transform == "log-log":
+            return np.log(-np.log(s)), v / np.log(s) ** 2
+        if transform == "log":
+            return np.log(s), v
+        if transform == "linear":
+            return s, v * s**2
+        if transform == "arcsine-sqrt":
+            return np.arcsin(np.sqrt(s)), v * s / (4 * (1 - s))
+        return np.log(s / (1 - s)), v / (1 - s) ** 2
+
+    a, b = aml
+    res = sp.sf_diff(a, b, 30, transform=transform)
+    parts = []
+    for model in (a, b):
+        i = np.searchsorted(model.x, 30, side="right") - 1
+        parts.append(scale(model.R[i], model.greenwood[i]))
+    (g_a, v_a), (g_b, v_b) = parts
+    expected = (g_a - g_b) ** 2 / (v_a + v_b)
+    assert res["statistic"] == pytest.approx(expected, rel=1e-12)

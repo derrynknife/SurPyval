@@ -316,6 +316,57 @@ def test_the_fit_maximises_an_independent_likelihood(name):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("name", ["Duane", "CrowAMSAA"])
+def test_the_start_stop_likelihood_is_the_nhpp_likelihood(name):
+    # The start-stop likelihood is the NHPP one of the fixed-covariate fit
+    # with each row a piece of its own: a row ending in a failure an
+    # observed failure, a count an interval count, and the rest (a count
+    # of 0 too) exposure alone. It stays its own function, as written for
+    # start-stop rows, because summing in the NHPP's order moves the
+    # time-varying fits by up to about 1e-7.
+    from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
+    from surpyval.recurrent.regression.tvc import nhpp_tvc_neg_ll
+
+    dist = BASELINES[name][1]["baseline"]
+    rows = handle_recurrent_tvc(**_mixed_rows())
+    xl, xr, c, n = rows["xl"], rows["xr"], rows["c"], rows["n"]
+    event = c == 0
+    counted = (c == 2) & (n > 0)
+    exposed = ~(event | counted)
+    none = np.zeros(0)
+    s = {
+        "x_o": xr[event],
+        "x_o_prev": xl[event],
+        "x_right": xr[exposed],
+        "x_right_prev": xl[exposed],
+        "x_left": none,
+        "x_left_prev": none,
+        "n_left": none,
+        "x_i_l": xl[counted],
+        "x_i_r": xr[counted],
+        "n_i": n[counted],
+        "sel_from": none,
+        "sel_to": none,
+        "gap_from": none,
+        "gap_to": none,
+    }
+    neg_ll = nhpp_tvc_neg_ll(rows, dist)
+    for theta, beta in (([1.2, 0.3], [0.4, -0.2]), ([0.9, 0.05], [-0.3, 1.1])):
+        if name == "CrowAMSAA":
+            theta = [10.0 * theta[0], theta[0]]
+        eta = rows["Z"] @ beta
+        pieces = {"o": eta[event], "right": eta[exposed], "i": eta[counted]}
+        pieces.update(left=none, sel=none, gap=none)
+        expected = nhpp_log_likelihood(
+            lambda x: dist.cif(x, *theta),
+            lambda x: dist.log_iif(x, *theta),
+            s,
+            pieces,
+        )
+        got = -neg_ll(np.array([*theta, *beta]))
+        assert got == pytest.approx(expected, rel=1e-12)
+
+
 def _simulate_switching(rng, n_items, alpha, beta, coef):
     """Items with a power-law baseline ``(t / alpha) ** beta`` and one
     binary covariate that switches at known times: start-stop rows cut at

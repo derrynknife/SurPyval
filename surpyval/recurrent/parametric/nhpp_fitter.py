@@ -106,6 +106,32 @@ def log_one_minus_exp(delta: np.ndarray) -> np.ndarray:
     return np.log(-np.expm1(-delta))
 
 
+def poisson_count_sums(
+    n: np.ndarray, delta: np.ndarray
+) -> tuple[float, float, float]:
+    """The sums a constant-rate (HPP) likelihood needs from Poisson counts
+    ``n`` over windows of length ``delta``: ``sum(n)``, ``sum(n log
+    delta)`` and ``sum(log n!)``. With the intensity ``rate * phi`` the
+    counts' log-likelihood is ``sum(n log phi) + log(rate) sum(n) + sum(n
+    log delta) - rate sum(phi delta) - sum(log n!)``; the three sums are
+    fixed by the data, so the plain and the proportional-intensity HPP take
+    them once, before the search.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.recurrent.parametric.nhpp_fitter import (
+    ...     poisson_count_sums,
+    ... )
+    >>> total, n_log_delta, log_factorials = poisson_count_sums(
+    ...     np.array([2.0, 0.0, 3.0]), np.array([1.0, 2.0, 1.0])
+    ... )
+    >>> float(total), float(n_log_delta), round(float(log_factorials), 4)
+    (5.0, 0.0, 2.4849)
+    """
+    return n.sum(), (n * np.log(delta)).sum(), gammaln(n + 1).sum()
+
+
 class NHPPFitter(IntensityModel):
 
     #: The ``repr`` (#614)

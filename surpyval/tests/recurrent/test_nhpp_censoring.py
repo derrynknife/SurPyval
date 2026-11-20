@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from surpyval.recurrent import HPP, CrowAMSAA
+from surpyval.recurrent import HPP, CrowAMSAA, ProportionalIntensityHPP
+from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -93,3 +94,56 @@ class TestNHPPDegenerateIntervals:
             x=np.column_stack([t_ev, t_ev]), i=np.ones(40, dtype=int)
         )
         np.testing.assert_allclose(m1.params, m2.params, rtol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# The HPP and the proportional-intensity HPP take the sums their likelihood
+# needs from the data once, before the search; with a constant rate it is
+# the general NHPP likelihood, term for term.
+# ---------------------------------------------------------------------------
+
+
+def _every_piece_of_the_likelihood():
+    """Rows of every kind the NHPP likelihood splits: exact events, right
+    censoring, a left-censored count, interval counts, and items followed
+    to a right-truncation time with (item 4) and without (item 5) a
+    failure."""
+    t = [2, 5, 8, 4, 6, 9, 0, 3, 7, 1, 2.5, 3]
+    x = np.array([[v, v] for v in t], dtype=float)
+    x[6], x[7] = [0.0, 3.0], [3.0, 7.0]
+    i = np.array([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5])
+    c = np.array([0, 0, 1, -1, 0, 1, 2, 2, 0, 0, 0, 1])
+    n = np.array([1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1])
+    tr = np.array([np.inf] * 9 + [4.0, 4.0, 5.0])
+    Z = np.array([0.5, 0.5, 0.5, -1, -1, -1, 2, 2, 2, 0, 0, 1.0])
+    return x, i, c, n, tr, Z.reshape(-1, 1)
+
+
+def test_hpp_likelihood_is_the_nhpp_likelihood_at_a_constant_rate():
+    x, i, c, n, tr, _ = _every_piece_of_the_likelihood()
+    data = handle_xicn(x, i, c, n, tr=tr)
+    s = data.split_for_nhpp_likelihood()
+    assert all(s[key].size for key in ("x_left", "x_i_l", "sel_to", "gap_to"))
+    neg_ll = HPP.create_negll_func(data)
+    for rate in (0.05, 0.4, 3.0):
+        expected = nhpp_log_likelihood(
+            lambda t: rate * t, lambda t: np.log(rate) + 0.0 * t, s
+        )
+        assert np.isclose(-neg_ll(np.array([np.log(rate)])), expected)
+
+
+def test_pi_hpp_likelihood_is_the_pi_nhpp_likelihood_at_a_constant_rate():
+    x, i, c, n, tr, Z = _every_piece_of_the_likelihood()
+    data = handle_xicn(x, i, c, n, tr=tr, Z=Z)
+    s = data.split_for_nhpp_likelihood()
+    neg_ll = ProportionalIntensityHPP.create_negll_func(data)
+    masks = {k: s["mask_" + k] for k in ("o", "right", "left", "i")}
+    for rate, beta in ((0.4, -0.3), (1.5, 0.8)):
+        eta = {k: data.Z[m] @ [beta] for k, m in masks.items()}
+        eta["sel"] = data.Z[s["sel_idx"]] @ [beta]
+        eta["gap"] = data.Z[s["gap_idx"]] @ [beta]
+        expected = nhpp_log_likelihood(
+            lambda t: rate * t, lambda t: np.log(rate) + 0.0 * t, s, eta
+        )
+        got = -neg_ll(np.array([np.log(rate), beta]))
+        assert np.isclose(got, expected)
