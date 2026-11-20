@@ -23,6 +23,21 @@ v0.29 (unreleased)
   it, and the helpers ask you to install it when it is absent. There are no
   training loops or network architectures.
 
+- **Torch helpers: mixtures, survival curves out and a guide.**
+  ``nll(dist, target, params, mixture=logits)`` (and ``NLLLoss``) is the
+  likelihood of a mixture of ``K`` components of one family per row, the
+  model of Deep Survival Machines, for every kind of censoring and
+  truncation: ``(N, K)`` logits give the weights, each parameter is
+  ``(N, K)``, ``(K,)`` or a scalar, and ``constrain`` maps a network's
+  ``(N, K, k)`` outputs. In double precision it equals ``MixtureModel``'s
+  likelihood to 1e-10; with one component it is the loss without a
+  mixture. ``sf(dist, times, params, mixture=None)`` gives each row's
+  survival curve as an ``(N, T)`` tensor, for ``score_predictions`` and the
+  concordance index, and ``to_surpyval(dist, params, row=i)`` turns any
+  row into an ordinary SurPyval model (a ``MixtureModel`` for a mixture).
+  The new page :doc:`Torch with SurPyval` trains a mixture network and
+  scores it.
+
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
   ``max(t - 200, 0)``: a reading acts that long later. Every link is

@@ -503,7 +503,13 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   net(X))` (raw `(N, k)` outputs -> `{"alpha": ..., "beta": ...}` in range);
   `loss = spt.nll(sp.Weibull, y, params)` (`reduction="mean"` per unit,
   `"sum"`, `"none"`), or `spt.NLLLoss(sp.Weibull)`. Families:
-  `spt.SUPPORTED`. Use float64 to match `fit`.
+  `spt.SUPPORTED`. Use float64 to match `fit`. Mixtures (Deep Survival
+  Machines): `params = spt.constrain(sp.Weibull, raw.reshape(N, K, 2))`,
+  `spt.nll(sp.Weibull, y, params, mixture=logits)` with `(N, K)` logits.
+  Out: `S = spt.sf(sp.Weibull, times, params, mixture=logits)` (`(N, T)`;
+  `.detach().numpy()` into `score_predictions`), and
+  `spt.to_surpyval(sp.Weibull, params, row=i, mixture=logits)` (a
+  `MixtureModel`; without `mixture`, `dist.from_params`).
 
 ## Serialisation (files & MongoDB)
 
