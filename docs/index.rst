@@ -361,6 +361,7 @@ Contents:
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
    PyMC with SurPyval
+   Torch with SurPyval
 
 .. toctree::
    :maxdepth: 2

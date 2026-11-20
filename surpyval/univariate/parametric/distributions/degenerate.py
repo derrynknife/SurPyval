@@ -88,6 +88,33 @@ class _PointMass(Distribution):
             )
         return read_model_dict(cls, model_dict)
 
+    @classmethod
+    def rescale_time(
+        cls, factor: float, *, unit: Any = None
+    ) -> type["Distribution"]:
+        """The distribution on another clock (see
+        ``Parametric.rescale_time``): itself, as a point mass at 0 or at
+        infinity is there on every clock. ``factor`` is checked as there.
+        The class carries no unit, so ``unit`` is refused.
+
+        Examples
+        --------
+        >>> from surpyval import NeverOccurs
+        >>> NeverOccurs.rescale_time(24) is NeverOccurs
+        True
+        """
+        from surpyval.univariate.parametric._rescale_time import (
+            checked_factor,
+        )
+
+        checked_factor(factor)
+        if unit is not None:
+            raise ValueError(
+                f"{cls.name} is the same on every clock and carries no unit "
+                "label: call rescale_time without 'unit'."
+            )
+        return cls
+
 
 class NeverOccurs(_PointMass):
     """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf).

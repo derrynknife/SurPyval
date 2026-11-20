@@ -317,9 +317,11 @@ A model with no fixed number of faults has no answer to this question,
 and says so:
 
 .. jupyter-execute::
-    :raises: ValueError
 
-    fits["Musa-Okumoto"].remaining_faults(250)
+    try:
+        fits["Musa-Okumoto"].remaining_faults(250)
+    except ValueError as err:
+        print(err)
 
 Ask it instead how many failures to expect in a stretch of further use,
 ``cif(t2) - cif(t1)``, which every model can answer.
@@ -398,9 +400,11 @@ constant failure rate, for instance, never falls to a lower target
 however long the test:
 
 .. jupyter-execute::
-    :raises: ValueError
 
-    fits["Homogeneous Poisson Process"].time_to_intensity(0.01)
+    try:
+        fits["Homogeneous Poisson Process"].time_to_intensity(0.01)
+    except ValueError as err:
+        print(err)
 
 When to release
 ---------------
@@ -453,6 +457,58 @@ release is the later of the two days:
 
     assert round(plan["time"]) == 551 and plan["binding"] == "reliability"
 
+A whole number of faults: Jelinski-Moranda
+------------------------------------------
+
+The oldest model of all [JM1972]_ counts the faults in whole numbers:
+the software starts with ``N`` faults, each causes failures at the same
+rate ``phi`` until it is fixed, so the failure rate steps down by
+``phi`` at every failure. ``JelinskiMoranda`` fits it to one test's
+failure times (or to the times between failures, with ``gaps=True``):
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import JelinskiMoranda
+
+    jm = JelinskiMoranda.fit(days, unit="days")
+    print(jm)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert jm.N == 31 and round(jm.phi, 6) == 0.006948, (jm.N, jm.phi)
+    assert jm.remaining_faults() == 5
+
+It estimates 31 faults, so 5 left after the 26 found. (With ``N``
+allowed to be any real number, as most texts fit it, the estimate is
+31.2: the published figure for these data [LXZ2015]_.) Its answers are
+methods of their own, with bounds by the likelihood ratio:
+
+.. jupyter-execute::
+
+    print("faults left:", jm.remaining_faults(),
+          jm.remaining_faults_cb(alpha_ci=0.2))
+    print("failures a day now:", round(jm.current_rate(), 4),
+          jm.current_rate_cb(alpha_ci=0.2).round(4))
+    print("95% bounds on the number of faults:", jm.param_cb("N"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert jm.param_cb("N").tolist() == [26.0, 94.0], jm.param_cb("N")
+    _left = jm.remaining_faults_cb(alpha_ci=0.2)
+
+The bounds are whole numbers, and they are wide and lopsided: 26 faults
+found, and anything from 26 to 94 in all at 95%. That is the model
+being honest. An upper bound of ``inf`` is possible too, and means the
+data do not limit the number of faults at that level. As with
+Goel-Okumoto, data that show no growth have no estimate at all, and the
+fit is refused, saying why. Its ``aic()`` compares with that of the
+other models fitted to the same failure times, and it can be one of the
+models given to ``compare_predictions``.
+
 When not to trust the answers
 -----------------------------
 
@@ -462,10 +518,12 @@ straight line, and "the number of faults" runs off to infinity. SurPyval
 refuses such a fit rather than print a huge number, and says what it saw:
 
 .. jupyter-execute::
-    :raises: ValueError
 
     steady = np.arange(10.0, 260.0, 10.0)   # a failure every 10 days
-    GoelOkumoto.fit(steady)
+    try:
+        GoelOkumoto.fit(steady)
+    except ValueError as err:
+        print(err)
 
 Keep testing (growth may show later), or report the constant rate
 (``HPP``) for what it is. Beware the S-shaped models here: they can fit

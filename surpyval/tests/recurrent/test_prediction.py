@@ -21,6 +21,7 @@ from surpyval.recurrent import (  # noqa: E402
     CrowAMSAA,
     GoelOkumoto,
     InflectionS,
+    JelinskiMoranda,
     MusaOkumoto,
     PredictionComparison,
     compare_predictions,
@@ -181,6 +182,32 @@ def test_a_refused_fit_is_a_step_with_its_reason():
         in result.verdict
     )
     assert "show no reliability growth" in result.verdict
+
+
+def test_jelinski_moranda_predicts_with_its_rate_now():
+    result = compare_predictions(TIMES, [JelinskiMoranda, HPP], start=10)
+    assert result.names == ["JelinskiMoranda", "HPP"]
+    made = result.predicted("JelinskiMoranda")
+    assert made.any()
+    for k in np.flatnonzero(made):
+        i = result.steps[k]
+        rate = JelinskiMoranda.fit(TIMES[:i]).current_rate()
+        gap = result.gaps[k]
+        assert result.u["JelinskiMoranda"][k] == pytest.approx(
+            -np.expm1(-rate * gap), rel=1e-12
+        )
+        if rate > 0:
+            assert result.log_density["JelinskiMoranda"][k] == pytest.approx(
+                np.log(rate) - rate * gap, rel=1e-12
+            )
+        else:
+            # no fault left on that fit: the failure that came had no
+            # chance, and the verdict says so
+            assert result.log_density["JelinskiMoranda"][k] == -np.inf
+    if np.any(np.isneginf(result.log_density["JelinskiMoranda"][made])):
+        assert "no chance at all" in result.verdict
+        assert result.prequential_log_likelihood("JelinskiMoranda") == -np.inf
+        assert result.best == "HPP"
 
 
 def test_fitted_models_stand_for_their_fitters_and_plots_draw():

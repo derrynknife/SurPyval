@@ -2039,6 +2039,84 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             )
         return Comparison2(prob, label, assumption)
 
+    def waic(self) -> Any:
+        """
+        The widely applicable information criterion (WAIC, Watanabe 2010):
+        the expected log predictive density of a new observation,
+        estimated from the posterior, as ``lppd - p_waic``.
+
+        ``lppd`` is each data row's log posterior predictive density and
+        ``p_waic`` the posterior variance of its log-likelihood (the
+        effective number of parameters); a row with count ``n`` is ``n``
+        units, and every row enters through its own likelihood term
+        (censored, interval, truncated). Conjugate fits are in closed
+        form; the others are weighted sums over the posterior's points.
+        Warns when a row's ``p_waic`` term is above 0.4, where WAIC is
+        unreliable and :meth:`loo` should be used.
+
+        Returns
+        -------
+        PredictiveCriterion
+            ``elpd``, ``se``, ``p``, ``ic`` (``-2 elpd``, on AIC's scale),
+            ``pointwise`` and ``p_pointwise``. See "Comparing fits: WAIC
+            and leave-one-out" in the Bayesian fitting guide.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> x = sp.Weibull.random(40, 1000, 2.5, random_state=1).round()
+        >>> model = sp.Weibull.fit_bayes(
+        ...     x, priors={"beta": sp.prior.around(2, between=(1, 4))})
+        >>> res = model.waic()
+        >>> round(res.elpd, 2), round(res.p, 2)
+        (-295.02, 1.55)
+        """
+        from surpyval.bayes.criteria import waic
+
+        return waic(self)
+
+    def loo(self) -> Any:
+        """
+        Leave-one-out cross-validation: the expected log predictive
+        density of a new observation, as the sum over the data's units of
+        ``log p(y_i | y_-i)``, the density of each unit given the others.
+
+        It is computed from the one posterior, without refitting, by
+        ``p(y_i | y_-i) = 1 / E[1 / p(y_i | theta)]``:
+
+        - a conjugate fit in closed form;
+        - a grid or Laplace fit by the grid's quadrature, with ``edge``,
+          each row's share of its leave-one-out posterior in the grid's
+          outermost cells (warns above 0.001: it may reach past the grid);
+        - a fit from draws (:meth:`from_draws`) by Pareto-smoothed
+          importance sampling (Vehtari et al. 2024), with each row's
+          Pareto ``k`` (warns, counting the rows, above
+          ``min(1 - 1/log10(S), 0.7)`` for ``S`` draws). The draws are
+          taken as independent.
+
+        Returns
+        -------
+        PredictiveCriterion
+            ``elpd``, ``se``, ``p`` (``p_loo``), ``ic`` (``-2 elpd``),
+            ``pointwise``, and ``pareto_k`` or ``edge``. Compare fits with
+            :func:`surpyval.bayes.compare`.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> x = sp.Weibull.random(40, 1000, 2.5, random_state=1).round()
+        >>> model = sp.Weibull.fit_bayes(
+        ...     x, priors={"beta": sp.prior.around(2, between=(1, 4))})
+        >>> res = model.loo()
+        >>> res.method, round(res.elpd, 2), round(res.se, 2)
+        ('quadrature', -295.03, 3.68)
+        >>> int(res.flagged.size)
+        0
+        """
+        from surpyval.bayes.criteria import loo
+
+        return loo(self)
+
     # ------------------------------------------------------------------
     # Checks and summaries
     # ------------------------------------------------------------------

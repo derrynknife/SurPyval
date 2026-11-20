@@ -104,6 +104,7 @@ surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
 surpyval.ItemHistory
 surpyval.ItemLifetime
+surpyval.JelinskiMoranda
 surpyval.JointAFT
 surpyval.JointFrailty
 surpyval.JointModel
@@ -232,6 +233,9 @@ surpyval.auc_td
 surpyval.bayes.BayesianParametric
 surpyval.bayes.LogLikelihood
 surpyval.bayes.Posterior
+surpyval.bayes.PredictiveComparison
+surpyval.bayes.PredictiveCriterion
+surpyval.bayes.compare
 surpyval.bayes.log_likelihood_fn
 surpyval.bayes.prior
 surpyval.bayes.prior.DistributionPrior
@@ -419,6 +423,8 @@ surpyval.recurrent.GoodnessOfFitResult
 surpyval.recurrent.HPP
 surpyval.recurrent.InflectionS
 surpyval.recurrent.InterventionTestResult
+surpyval.recurrent.JelinskiMoranda
+surpyval.recurrent.JelinskiMorandaModel
 surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.MCFDiffResult
@@ -501,7 +507,9 @@ surpyval.torch.SUPPORTED
 surpyval.torch.Targets
 surpyval.torch.constrain
 surpyval.torch.nll
+surpyval.torch.sf
 surpyval.torch.targets
+surpyval.torch.to_surpyval
 surpyval.trend_logrank
 surpyval.univariate.competing_risks.CompetingRisks
 surpyval.univariate.competing_risks.CompetingRisksProportionalHazards

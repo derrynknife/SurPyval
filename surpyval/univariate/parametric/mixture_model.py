@@ -46,7 +46,7 @@ from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
-from surpyval.utils.units import axis_label, takes_unit
+from surpyval.utils.units import axis_label, normalise_unit, takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
@@ -513,6 +513,132 @@ class MixtureModel(
         return type(self).from_params(
             self.dist, values, w, w_logits=w_logits, unit=self.unit
         )
+
+    def rescale_time(self, factor: float, *, unit: Any = None) -> MixtureModel:
+        r"""
+        The mixture on another clock: the same life with its time divided
+        by ``factor``, whose survival function is
+        :math:`R(\text{factor}\,t)`, as ``Parametric.rescale_time`` is for
+        one distribution: each component is moved to the new clock (its
+        times divided by ``factor``, its rates multiplied by it, the log
+        of a time less ``log(factor)``, its shapes kept) and the weights
+        are kept.
+
+        The fit comes across as it is: the covariance by the delta method
+        (exact), the data in the new unit, ``maximum``, and the
+        log-likelihood, which rises by ``log(factor)`` for each exact
+        observation. A mixture with no data (restored from a dict, or
+        built from parameters) keeps its covariance but has no
+        log-likelihood: its ``neg_ll``, ``aic`` and ``bic`` refuse, saying
+        so.
+
+        Parameters
+        ----------
+        factor : float
+            The time on the model's clock for each unit of time on the new
+            one, a finite number above 0: the fraction of the time a unit
+            operates, or the number of the model's units in the new unit
+            (24 hours in a day).
+        unit : str, optional
+            The unit label of the new mixture; without it the mixture's
+            own is kept (right for a duty cycle); give it when ``factor``
+            changes the unit.
+
+        Returns
+        -------
+        MixtureModel
+            A mixture of the same distribution, ``m`` and weights.
+
+        Raises
+        ------
+        ValueError
+            Where ``factor`` is not a finite number above 0, for an
+            unfitted mixture, and for a component distribution whose time
+            cannot be rescaled, saying what to do instead.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> slow = wmm.rescale_time(0.5)
+        >>> (slow.params / wmm.params).round(6)
+        array([[2., 1.],
+               [2., 1.]])
+        >>> bool(abs(slow.sf(20.0) - wmm.sf(10.0)) < 1e-12)
+        True
+        """
+        from ._rescale_time import (
+            NO_LIKELIHOOD,
+            checked_factor,
+            density_count,
+            moved,
+            time_roles,
+        )
+
+        d = checked_factor(factor)
+        roles = time_roles(self.dist)
+        if self.params is None or self.w is None:
+            raise ValueError(
+                "an unfitted mixture has no model to rescale: fit it "
+                "first, or build one with MixtureModel.from_params"
+            )
+        new_unit = self.unit if unit is None else normalise_unit(unit)
+        out = type(self).from_dict(self.to_dict())
+        old = onp.asarray(self.params, dtype=float)
+        rows, slopes = zip(*(moved(row, roles, d) for row in old))
+        out.params = onp.array(rows)
+        theta_cov = out.__dict__.get("_theta_cov")
+        if theta_cov is not None:
+            jac = onp.ones(len(theta_cov))
+            jac[self.m - 1 :] = self._search_slopes(
+                old, out.params, onp.array(slopes)
+            )
+            out._theta_cov = theta_cov * onp.outer(jac, jac)
+        out._em_method = self._em_method
+        out._exact_m_step = self._exact_m_step
+        out.unit = new_unit
+        data = self.data
+        if data is not None:
+            out.data = SurpyvalData(
+                x=onp.asarray(data.x, dtype=float) / d,
+                c=data.c,
+                n=data.n,
+                t=onp.asarray(data.t, dtype=float) / d,
+            )
+            out._truncated = bool(onp.isfinite(out.data.t).any())
+            if out._neg_ll is not None:
+                count = density_count(data.x, data.c, data.n)
+                out._neg_ll = float(out._neg_ll) - count * float(onp.log(d))
+        elif out._neg_ll is not None:
+            out._neg_ll = None
+            out._no_likelihood_reason = NO_LIKELIHOOD
+        return out
+
+    def _search_slopes(
+        self, old: npt.NDArray, new: npt.NDArray, slopes: npt.NDArray
+    ) -> npt.NDArray:
+        """The derivative of each parameter's search coordinate (see
+        :meth:`_pack`) on the new clock with respect to its old one, the
+        components' rows in turn: ``slope`` (the parameter's own) times
+        the ratio of the coordinate's derivatives at the new and the old
+        value. 1 for a parameter searched as the log of its distance from
+        a bound of 0 and scaled, or for one shifted without bounds."""
+        out = []
+        for row_old, row_new, row_slope in zip(old, new, slopes):
+            for p, q, s, (lo, hi) in zip(
+                row_old, row_new, row_slope, self.dist.bounds
+            ):
+                if lo is not None and hi is not None:
+                    ratio = ((p - lo) * (hi - p)) / ((q - lo) * (hi - q))
+                elif lo is not None:
+                    ratio = (p - lo) / (q - lo)
+                elif hi is not None:
+                    ratio = (hi - p) / (hi - q)
+                else:
+                    ratio = 1.0
+                out.append(s * ratio)
+        return onp.asarray(out, dtype=float)
 
     def _checked_weights(
         self, w: npt.ArrayLike | None, w_logits: npt.ArrayLike | None

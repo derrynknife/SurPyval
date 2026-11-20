@@ -508,6 +508,63 @@ converted.
     assert model.unit == "hrs"
     assert surv.from_dict(model.to_dict()).unit == "hrs"
 
+Rescaling a model's time
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A label is not converted, but a model's time can be:
+``model.rescale_time(factor)`` is the model whose survival function is
+:math:`R(\text{factor}\,t)`, the same life on another clock. A pump that
+runs a quarter of the time ages a quarter of an hour in each hour of the
+calendar, so its life on the calendar is ``rescale_time(0.25)`` of its
+life in operating hours; a life fitted in hours is, in days,
+``rescale_time(24, unit="days")``. Without ``unit`` the model keeps its
+label, which is right for a duty cycle (calendar hours are still hours).
+
+.. jupyter-execute::
+
+    x = [410, 620, 790, 950, 1100, 1300, 1550, 1900]
+    pump = surv.Weibull.fit(x, unit="hours")      # operating hours
+    calendar = pump.rescale_time(0.25)             # runs 25% of the time
+    print(calendar.params, calendar.unit)
+    print(calendar.sf(4000), pump.sf(1000))
+
+The rescaled model is the fit to the data in the new unit (principle 6 of
+:doc:`Design Principles`), found without refitting. Each parameter moves
+by its role: a time (a scale, a location, an end of the support, the offset
+``gamma``) is divided by ``factor``, a rate multiplied by it, the log of a
+time (the LogNormal's ``mu``) less ``log(factor)``, and a shape, ``lfp_p``
+and ``f0`` kept. The covariance follows by the delta method, exactly, so a
+shape's standard error is unchanged and a time's divided by ``factor``;
+the data move to the new unit with it, so every bound -- Wald,
+likelihood-ratio, bootstrap, pivotal -- is the refit's; and the
+log-likelihood rises by ``log(factor)`` for each exact observation, a
+density per unit of time (every other contribution is a probability). A
+model without its data (built from parameters, or restored from a dict
+saved without it) keeps its Wald bounds, but its ``neg_ll``, ``aic`` and
+``bic`` refuse, as moving them needs the count of exact observations.
+
+``MixtureModel`` moves each component and keeps the weights; the point
+masses ``NeverOccurs`` and ``InstantlyOccurs`` are the same on every
+clock. Three kinds of distribution refuse, saying what to do: a
+distribution of counts (a count has no unit of time), the ``Beta``, whose
+support (0, 1) becomes (0, 1 / factor) (the ``Beta4`` with ends 0 and
+``1 / factor`` is that model), and a ``CustomDistribution``, which does
+not say which of its parameters are times (define it on the new clock).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import numpy as _np
+
+    assert calendar.unit == "hours"
+    _np.testing.assert_allclose(calendar.params, pump.params * [4, 1])
+    assert abs(calendar.sf(4000) - pump.sf(1000)) < 1e-14
+    _days = pump.rescale_time(24, unit="days")
+    _np.testing.assert_allclose(
+        _days.standard_errors(), pump.standard_errors() * [1 / 24, 1]
+    )
+
 Plots
 ~~~~~
 
