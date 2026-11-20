@@ -93,6 +93,18 @@ Design decisions made while working on the open issues, with the reason for each
 | The cumulative hazard (and the effective age) is integrated on each side of the lag, by the 15-point rule on each piece. | proposed | The lagged path has a kink there, its slope a jump; one rule across it loses accuracy. | done |
 | A lag on the value of a path infinite at age 0 is refused: the logarithmic and Lloyd-Lipow paths when the fitter is built, a path of one's own at the fit when the average item's path is not finite at 0. | principle 2 | Before the lag the hazard follows the value at age 0. | done |
 
+### Joint models: a weight on the accumulated exposure (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `weight=` on `JointPH` (default `None`): `("exponential", scale)` or `("window", width)` on the cumulative link's area, `int_0^t w(t - s) m(s) ds`. Fixed by the user, not estimated; weights are compared by `aic()`. With no weight the plain link's code runs, so its numbers are unchanged. | maintainer (the option), proposed (details) | The plain area counts old exposure like new. As the lag, a scale or a width is a choice of mechanism; the likelihood has a kink in a window's width at every item's age. | done |
+| A weight without the cumulative link is refused, naming the link to add. `JointAFT` has no `weight=` (it has no cumulative link). The weight is on the area only: other links beside it are unweighted. | principle 2 | There is no area to weight. | done |
+| The weighted area is by quadrature for every path, one design (no closed forms for a line or a quadratic): a window by the plain area's rule over `(max(t - width, 0), t)`; an exponential weight over the last 30 scales in three pieces ending 100%, 50%, 20% and 0% of that span back, 15-point Gauss-Legendre each, the oldest piece by the plain area's rule (clustered at age 0) where it starts at age 0. | proposed | Against 30-digit integrals over ages from 0.01 to 1000 scales: 4e-11 of the area for line, quadratic, exponential and power paths, 3e-9 for a logarithmic path (the plain area's own accuracy there). One rule on `(t - 30 scale, t)`, or the substitution `u = exp(-(t - s)/scale)`, reached only 1e-6 to 1e-8. Three times the plain link's path evaluations. | done |
+| With a window the cumulative hazard is split at `lag + width` (and at the lag), by the lag's split rule. An exponential weight needs no split. | proposed | The windowed area's slope jumps where the window stops reaching back to age 0. | done |
+| With a lag the weighted area is followed `lag` later: the weighted area at `max(t - lag, 0)`. | proposed | As every link under a lag: the path held at its age-0 value until the lag has passed. | done |
+| `compare_links` keeps the fitter's weight on the candidates with the cumulative link, and fits the others without. | proposed | The weight belongs to that link; refusing the comparison would lose the question "is faded exposure better than the level?". | done |
+| A weighted model saves `"weight"` and needs schema 5. | proposed | A 0.28 reader would ignore the entry and predict from the plain area. | done |
+
 ### Joint models: the slope link and paths whose slope is unbounded at age 0 (20 Nov 2026)
 
 | Decision | By | Reason | Status |

@@ -30,7 +30,7 @@ from surpyval.degradation import (
     PowerPath,
 )
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
-from surpyval.tests.univariate.joint._fleet import simulate_links
+from surpyval.tests.univariate.joint._fleet import line_area, simulate_links
 from surpyval.tests.univariate.joint.test_joint_extensions import KINDS
 from surpyval.univariate.joint._likelihood import (
     JointArrays,
@@ -271,12 +271,12 @@ def _simpson(f, lo, hi, lag=0.0):
     return total
 
 
-def _brute_force_neg_ll(model, data, lag=0.0):
+def _brute_force_neg_ll(model, data, lag=0.0, weight=None):
     """The negative log-likelihood of ``data`` by a dense grid over the
     random effects (161 points a dimension, 7 sds each way) and Simpson's
     rule in age (2001 points), from the model's parameters alone, the
-    line's slope and area written out: no quadrature or code of the
-    model's."""
+    line's slope and area written out (the area weighted by ``weight``,
+    ``_fleet.line_area``): no quadrature or code of the model's."""
     p = dict(zip(model.parameter_names, model.params))
     v0, v1, r = p["sd_a"] ** 2, p["sd_b"] ** 2, p["corr_a_b"]
     D = np.array([[v0, r * np.sqrt(v0 * v1)], [r * np.sqrt(v0 * v1), v1]])
@@ -315,8 +315,8 @@ def _brute_force_neg_ll(model, data, lag=0.0):
                     (t > lag) if lag > 0 else 1.0
                 )
             if "cumulative_effect" in p:
-                eta = eta + p["cumulative_effect"] * (
-                    m0[:, None] * u + m1[:, None] * u**2 / 2
+                eta = eta + p["cumulative_effect"] * line_area(
+                    m0[:, None], m1[:, None], u, weight
                 )
             return h0 * np.exp(eta)
 
