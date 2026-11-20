@@ -1392,8 +1392,20 @@ def _search_equivalence(model, data):
     return [Search(fun, u, d.size, held=held)]
 
 
+def _search_excess_hazard(model, data):
+    """The excess hazard likelihood, rate table and all, in the natural
+    log-rates and the coefficients (each in its covariate's units)."""
+    if data is None:
+        return None
+    from surpyval.univariate.relative.excess_hazard import search_space
+
+    fun, u, n_obs, floor = search_space(model, data)
+    return [Search(fun, u, n_obs, floor=floor)]
+
+
 SEARCHES: dict[str, Callable] = {
     "EquivalenceModel": _search_equivalence,
+    "ExcessHazard": _search_excess_hazard,
     "JointModel": _search_joint,
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,

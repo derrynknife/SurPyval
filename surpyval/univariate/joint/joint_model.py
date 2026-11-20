@@ -62,6 +62,12 @@ _LINK_WORDS = {
     "cumulative": "cumulative area",
 }
 
+#: Each survival part in words, for the printout.
+_SURVIVAL_WORDS = {
+    "PH": "proportional hazards",
+    "AFT": "accelerated failure time",
+}
+
 #: The formula of each built-in path model, by its name, for the
 #: printout; a path model of one's own may give its ``formula``.
 FORMULAS = {
@@ -230,7 +236,8 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
     beta, gamma = theta["beta"], theta["gamma"]
     zeta = anp.reshape(theta["zeta"], (layout.n_links,))
     alpha = theta["alpha"] * anp.exp(
-        (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c)) / beta
+        (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
+        / _per_scale(layout, beta)
     )
     parts.append(anp.stack([theta["sigma"], alpha, beta]))
     if layout.hazard.all():
@@ -243,10 +250,18 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
     return anp.concatenate(parts)
 
 
+def _per_scale(layout: Layout, beta: Any) -> Any:
+    """What a shift of the log hazard (proportional hazards) or of the
+    log ageing rate (accelerated) is divided by to move ``log alpha``:
+    ``beta`` and 1."""
+    return 1.0 if layout.survival == "AFT" else beta
+
+
 def _reference_shift(zeta: Any, layout: Layout, r: float, c: float) -> Any:
-    """The log hazard between the marker's reference ``r`` and the
-    centre ``c`` of the internal hazard: the value's effect times ``r -
-    c``, and 0 where the hazard does not follow the value."""
+    """The log hazard (the log ageing rate, accelerated) between the
+    marker's reference ``r`` and the centre ``c`` of the internal hazard:
+    the value's effect times ``r - c``, and 0 where the hazard does not
+    follow the value."""
     if "value" not in layout.links:
         return 0.0
     return zeta[layout.links.index("value")] * (r - c)
@@ -304,7 +319,7 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         "alpha": alpha_r
         * anp.exp(
             -(anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
-            / beta
+            / _per_scale(layout, beta)
         ),
         "beta": beta,
         "gamma": gamma,
@@ -346,7 +361,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     """
     A fitted joint model of a marker and a lifetime, returned by the
     :func:`~surpyval.univariate.joint.joint_ph.JointPH` fitters, such as
-    ``WeibullJointPH``.
+    ``WeibullJointPH``, and the
+    :func:`~surpyval.univariate.joint.joint_aft.JointAFT` fitters, such as
+    ``WeibullJointAFT`` (``survival`` says which).
 
     Each item's marker follows the degradation path model (``LinearPath``
     for ``WeibullJointPH``; any ``PathModel``) with parameters of its
@@ -370,6 +387,24 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     0 (``cumulative_effect`` times :math:`\\int_0^t m(s) ds`), in place
     of the value or beside it; the baseline is then at a slope and an
     area of 0.
+
+    In an accelerated model (``survival == "AFT"``) the marker speeds up
+    the item's ageing in place of multiplying its hazard: by age
+    :math:`t` the item has used up the effective age
+
+    .. math::
+        A_i(t) = \\int_0^t \\exp\\left(\\gamma' z_i + \\zeta
+        \\left(m(s; \\theta_i) - r\\right)\\right) ds, \\qquad
+        S_i(t) = \\exp\\left(-\\left(A_i(t) / \\alpha\\right)^\\beta
+        \\right),
+
+    so time at a high reading uses up life faster, and that life is not
+    given back when the reading falls. The parameters have the same names;
+    an effect is then the log of how many times faster the item ages per
+    unit of the marker or the covariate (with the slope link,
+    ``slope_effect`` times :math:`m'(s)` in the exponent), and with a
+    marker that never changes the model is the proportional hazards one
+    with every effect divided by ``beta``.
 
     ``params`` holds, in the order of ``parameter_names``: each path
     parameter's mean (by the path model's own names: ``a``, ``b``, ...)
@@ -435,6 +470,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: current value), ``"slope"`` (its rate of change), ``"cumulative"``
     #: (the area under it from age 0), one or more.
     link: tuple = ("value",)
+    #: The survival part: ``"PH"`` (the marker multiplies the hazard,
+    #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
+    #: ``JointAFT``).
+    survival: str = "PH"
     #: The marker value at which ``alpha`` is reported (``None`` where
     #: the hazard does not follow the value).
     marker_reference: float | None
@@ -456,8 +495,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def kind(self) -> str:
-        return "Joint (Weibull proportional hazards, {})".format(
-            ", ".join(_LINK_WORDS[link] for link in self.link)
+        return "Joint (Weibull {}, {})".format(
+            _SURVIVAL_WORDS[self.survival],
+            ", ".join(_LINK_WORDS[link] for link in self.link),
         )
 
     # -- the parts -------------------------------------------------------
@@ -494,6 +534,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ).reshape(len(names), len(kept)),
             np.array([cov in hazard for cov in kept], dtype=bool),
             tuple(self.link),
+            self.survival,
         )
 
     def _likelihood_model(self) -> Model:
@@ -574,8 +615,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ("spread between items", spread),
             ("noise", [i]),
             (
-                "survival: {} PH, alpha at {}".format(
-                    self.dist.name, ", ".join(at[link] for link in self.link)
+                "survival: {} {}, alpha at {}".format(
+                    self.dist.name,
+                    self.survival,
+                    ", ".join(at[link] for link in self.link),
                 ),
                 list(range(i + 1, i + 3 + p)),
             ),
@@ -597,7 +640,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         part (the Weibull ``alpha`` -- the heading says at which marker
         value -- and ``beta``, and the covariate coefficients) and the
         link (``marker_effect``). ``exp(coef)`` is the hazard ratio of
-        one unit of a covariate or of the marker. The intervals of the
+        one unit of a covariate or of the marker; in an accelerated model
+        (``survival == "AFT"``) it is how many times faster the item ages
+        for that unit (its life divided by that). The intervals of the
         positive parameters (the sds, ``alpha``, ``beta``) are on the log
         scale and those of the correlations on Fisher's ``atanh`` scale,
         so each stays in its parameter's range.
@@ -673,14 +718,23 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
+        if self.survival == "AFT":
+            survival = (
+                f"{self.dist.name} accelerated failure time, ageing sped "
+                f"up by the marker's {followed}"
+            )
+        else:
+            survival = (
+                f"{self.dist.name} proportional hazards in the marker's "
+                f"{followed}"
+            )
         out = (
             "Joint SurPyval Model"
             "\n===================="
             f"\nMarker path         : {self.path_model.name}, "
             f"{path_formula(self.path_model)}; varying between items: "
             f"{', '.join(self.varying)}"
-            f"\nSurvival            : {self.dist.name} proportional hazards "
-            f"in the marker's {followed}"
+            f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : maximum {self.maximum}"
@@ -1304,6 +1358,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "links": links,
             "varying": list(self.varying),
             "link": list(self.link),
+            "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
             "feature_names": list(self.feature_names),
@@ -1405,6 +1460,21 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.hazard_covariates = None if hazard is None else list(hazard)
         # saved before the hazard could follow anything but the value
         out.link = tuple(model_dict.get("link") or ("value",))
+        # saved before the accelerated survival part: proportional hazards
+        survival = model_dict.get("survival") or "PH"
+        if survival not in _SURVIVAL_WORDS:
+            raise ValueError(
+                "A joint model's survival part is 'PH' (proportional "
+                "hazards) or 'AFT' (accelerated); the dict names "
+                f"{survival!r}."
+            )
+        if survival == "AFT" and "cumulative" in out.link:
+            raise ValueError(
+                "An accelerated joint model does not follow the area under "
+                "the marker (its effective age already accumulates it); the "
+                "dict's link is " + repr(list(out.link)) + "."
+            )
+        out.survival = survival
         reference = model_dict["marker_reference"]
         out.marker_reference = None if reference is None else float(reference)
         out._centre = float(model_dict["centre"])

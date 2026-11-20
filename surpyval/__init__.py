@@ -221,6 +221,8 @@ _LAZY = {
             "ProportionalOdds",
             "ProportionalOddsFitter",
             "ProportionalOddsModel",
+            "QuantileRegression",
+            "QuantileRegressionModel",
             "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",
@@ -271,7 +273,13 @@ _LAZY = {
         "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
-        ("JointModel", "JointPH", "WeibullJointPH"),
+        (
+            "JointAFT",
+            "JointModel",
+            "JointPH",
+            "WeibullJointAFT",
+            "WeibullJointPH",
+        ),
         "surpyval.univariate.joint",
     ),
     # Landmark analysis and dynamic prediction
@@ -294,6 +302,12 @@ _LAZY = {
             "WeibullEquivalence",
         ),
         "surpyval.univariate.equivalence",
+    ),
+    # Relative survival: net survival and excess hazards beyond a
+    # population's own rates (a rate table)
+    **dict.fromkeys(
+        ("ExcessHazard", "RateTable", "RelativeSurvival"),
+        "surpyval.univariate.relative",
     ),
     # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
     # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
@@ -382,6 +396,11 @@ _LAZY = {
             "compare_concordance",
             "concordance_estimate",
             "concordance_index",
+            "dynamic_auc",
+            "dynamic_brier",
+            "dynamic_calibration",
+            "DynamicAccuracy",
+            "DynamicCalibration",
             "integrated_brier_score",
             "PredictionScores",
             "score_predictions",
@@ -520,12 +539,17 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        DynamicAccuracy,
+        DynamicCalibration,
         PredictionScores,
         auc_td,
         brier_score,
         compare_concordance,
         concordance_estimate,
         concordance_index,
+        dynamic_auc,
+        dynamic_brier,
+        dynamic_calibration,
         integrated_brier_score,
         score_predictions,
         survival_probability,
@@ -588,8 +612,10 @@ if TYPE_CHECKING:
         WeibullEquivalence,
     )
     from surpyval.univariate.joint import (
+        JointAFT,
         JointModel,
         JointPH,
+        WeibullJointAFT,
         WeibullJointPH,
     )
     from surpyval.univariate.landmark import (
@@ -607,6 +633,11 @@ if TYPE_CHECKING:
         pseudo_survival,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
+    from surpyval.univariate.relative import (
+        ExcessHazard,
+        RateTable,
+        RelativeSurvival,
+    )
     from surpyval.univariate.regression.distributional import (
         Distributional,
         DistributionalFitter,

@@ -875,18 +875,18 @@ def test_plain_model_rejects_Z():
         model.sf(300.0, Z=[1.0])
 
 
-def test_adt_analytic_bounds_not_implemented():
+def test_adt_analytic_bounds():
     x, y, i, Z = adt_data()
     model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
-    # the analytic (generated-regressor) correction is not derived for the
-    # covariate life fit
-    with pytest.raises(NotImplementedError):
-        model.cb(50.0, Z=[1.0])
-    with pytest.raises(NotImplementedError):
-        model.life_parameter_covariance()
-    # the first-stage regression bounds are still available on the life model
-    band = model.life_model.cb(50.0, [1.0], on="sf")
-    assert band.shape[-1] == 2
+    # the generated-regressor correction of the covariate life fit
+    band = model.cb(130.0, Z=[1.0])
+    assert band.shape == (2,)
+    assert band[0] <= float(model.sf(130.0, Z=[1.0])) <= band[1]
+    cov = model.life_parameter_covariance()
+    assert cov.shape == (3, 3)
+    # the first-stage-only regression bounds are still on the life model
+    plain = model.life_model.cb(130.0, [1.0], on="sf")
+    assert plain.shape[-1] == 2
 
 
 def test_adt_bootstrap_bounds():

@@ -83,9 +83,12 @@ Worked classifications:
 | KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
 | WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| QuantileRegression (censored quantile regression: a coefficient vector per quantile of the log time, Peng-Huang or Portnoy) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | IntervalCoxPH (Cox PH for interval-censored data: NPMLE baseline on the Turnbull intervals, fitted jointly with the coefficients) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
+| RelativeSurvival (net survival beyond a rate table's population hazards: Pohar Perme, Ederer II) | univariate | single_event | single (the cause not recorded) | terminal | none | continuous | nonparametric |
+| ExcessHazard (population hazard plus `lambda_0(t) exp(beta'Z)`, piecewise-constant baseline) | univariate | single_event | single (the cause not recorded) | terminal | with | continuous | parametric |
 | ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
@@ -156,7 +159,8 @@ single / terminal / parametric, with standard errors, bounds and AIC.
 The joint models (`JointPH`, `WeibullJointPH`) model the measurements and the
 failure times *together*: each item's marker follows a degradation path with
 random effects, and the hazard is Weibull proportional hazards in the path's
-current value. Their event-time part classifies as univariate / single_event /
+current value (or, in `JointAFT` / `WeibullJointAFT`, the path speeds up the
+item's ageing: an accelerated failure time part on the Weibull). Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
 truncation; one item's dynamic prediction given its readings so far is

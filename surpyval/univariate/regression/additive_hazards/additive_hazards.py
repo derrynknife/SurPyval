@@ -43,7 +43,7 @@ risk model", Biometrika 81, 61-71.
 from __future__ import annotations
 
 from copy import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -70,6 +70,7 @@ from surpyval.utils.validation import no_covariance_error
 
 from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
+from .._penalised import PenalisedModelMixin
 from .._prediction import (
     STEP_QF_TOL,
     ConditionalSurvivalMixin,
@@ -154,7 +155,94 @@ def _aliased(
     return aliased_columns(A, Z.shape[0], constant_columns(Z), spread)
 
 
+class _Sums(NamedTuple):
+    """The risk-set sums of Lin and Ying's estimating equations: the
+    distinct exit times and each row's place among them, the number at
+    risk ``S0`` and the risk-set covariate means ``Zbar`` at each, the
+    widths of the intervals between them, ``A`` and ``b`` (the estimate
+    solves ``A beta = b``), and the events, per row and per time."""
+
+    unique_x: npt.NDArray
+    bucket: npt.NDArray
+    S0: npt.NDArray
+    Zbar: npt.NDArray
+    widths: npt.NDArray
+    A: npt.NDArray
+    b: npt.NDArray
+    w_event: npt.NDArray
+    d_at: npt.NDArray
+
+
+def _estimating_equations(
+    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, Z: npt.NDArray
+) -> _Sums:
+    """The sums of Lin and Ying's estimating equations on the checked
+    rows (:func:`_validate`)."""
+    p = Z.shape[1]
+    # Group observations by their exit time. The risk-set sums S0/S1/S2
+    # at each unique time are reverse cumulative sums of the per-time
+    # totals (all subjects with exit time >= u_j are at risk at u_j).
+    unique_x = np.unique(x)
+    m = unique_x.size
+    bucket = np.searchsorted(unique_x, x)
+
+    nZ = n[:, None] * Z
+    nZZ = n[:, None, None] * (Z[:, :, None] * Z[:, None, :])
+
+    S0_at = np.bincount(bucket, weights=n, minlength=m)
+    S1_at = np.zeros((m, p))
+    np.add.at(S1_at, bucket, nZ)
+    S2_at = np.zeros((m, p, p))
+    np.add.at(S2_at, bucket, nZZ)
+
+    S0 = np.cumsum(S0_at[::-1])[::-1]
+    S1 = np.cumsum(S1_at[::-1], axis=0)[::-1]
+    S2 = np.cumsum(S2_at[::-1], axis=0)[::-1]
+    Zbar = S1 / S0[:, None]
+
+    # A = integral over t of V(t) dt, with V(t) the risk-set covariate
+    # scatter about its mean. V and the risk set are constant on each
+    # interval (u_{j-1}, u_j], so the integral is a width-weighted sum
+    # (lower limit 0).
+    widths = np.diff(np.concatenate([[0.0], unique_x]))
+    V = S2 - (S1[:, :, None] * S1[:, None, :]) / S0[:, None, None]
+    A = (V * widths[:, None, None]).sum(axis=0)
+
+    # b = sum over events of (Z_event - Zbar(t_event)); events aggregated
+    # per unique time so ties share one Zbar.
+    is_event = c == 0
+    w_event = n * is_event
+    d_at = np.bincount(bucket, weights=w_event, minlength=m)
+    E1_at = np.zeros((m, p))
+    np.add.at(E1_at, bucket, w_event[:, None] * Z)
+    b = (E1_at - d_at[:, None] * Zbar).sum(axis=0)
+    return _Sums(unique_x, bucket, S0, Zbar, widths, A, b, w_event, d_at)
+
+
+def _baseline(
+    sums: _Sums, kept: npt.NDArray, beta_k: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The baseline at the coefficients ``beta_k`` (of the columns
+    ``kept``): its increments ``d / S0``, the cumulative hazard ``H0`` on
+    the grid of exit times and the covariate-mean drift there."""
+    # Baseline cumulative hazard on the event-time grid: the Breslow-type
+    # step sum minus the accumulated covariate-mean drift.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        dLambda = np.where(sums.S0 > 0, sums.d_at / sums.S0, 0.0)
+    Lambda = np.cumsum(dLambda)
+    G = np.cumsum(sums.Zbar[:, kept] * sums.widths[:, None], axis=0)
+    H0 = Lambda - G @ beta_k
+    # The covariate-mean drift beta'Zbar(t) is a rate, constant on each
+    # interval (u_{j-1}, u_j] of the risk-set grid; Hf integrates it
+    # continuously between grid times. Reading H0 as a step (the drift
+    # accrued only at the grid times) made predictions between event
+    # times depend on how the covariates were centred.
+    drift = sums.Zbar[:, kept] @ beta_k
+    return dLambda, H0, drift
+
+
 class AdditiveHazardsModel(
+    PenalisedModelMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
@@ -232,6 +320,10 @@ class AdditiveHazardsModel(
     #: printout shows and ``to_dict`` stores.
     kind: str
     parameterization: str
+    #: The unit of time a penalised fit (``fit_penalised``) penalised the
+    #: coefficients in: the count-weighted mean follow-up. ``None`` for the
+    #: unpenalised fit.
+    time_scale: float | None = None
 
     def __init__(self) -> None:
         self.kind = "Additive Hazards"
@@ -273,6 +365,8 @@ class AdditiveHazardsModel(
         )
         for name, p in zip(self.parameter_names, self.beta):
             out += f"   {name}  :  {p}\n"
+        if self.penalty is not None:
+            out += self._penalty_printout().lstrip("\n") + "\n"
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -309,6 +403,9 @@ class AdditiveHazardsModel(
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
         if self.drift is not None:
             out["drift"] = np.asarray(self.drift, dtype=float).tolist()
+        out.update(self._penalty_entry())
+        if self.time_scale is not None:
+            out["time_scale"] = float(self.time_scale)
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -348,6 +445,9 @@ class AdditiveHazardsModel(
             out.p_values = np.array(model_dict["p_values"], dtype=float)
         if "drift" in model_dict:
             out.drift = np.array(model_dict["drift"], dtype=float)
+        out._restore_penalty(model_dict)
+        if "time_scale" in model_dict:
+            out.time_scale = float(model_dict["time_scale"])
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -640,7 +740,9 @@ class AdditiveHazardsModel(
         return self._require_covariance()
 
     def _require_covariance(self) -> npt.NDArray:
-        """The covariance, refused for a model built by with_params."""
+        """The covariance, refused for a penalised fit and for a model
+        built by with_params."""
+        self._refuse_if_penalised()
         if self._covariance is None:
             raise no_covariance_error(
                 "it was built from coefficients with with_params; use the "
@@ -872,44 +974,9 @@ class AdditiveHazards_(FitterRepr):
         """
         x, c, n, Z = _validate(x, Z, c, n)
         p = Z.shape[1]
-
-        # Group observations by their exit time. The risk-set sums S0/S1/S2
-        # at each unique time are reverse cumulative sums of the per-time
-        # totals (all subjects with exit time >= u_j are at risk at u_j).
-        unique_x = np.unique(x)
-        m = unique_x.size
-        bucket = np.searchsorted(unique_x, x)
-
-        nZ = n[:, None] * Z
-        nZZ = n[:, None, None] * (Z[:, :, None] * Z[:, None, :])
-
-        S0_at = np.bincount(bucket, weights=n, minlength=m)
-        S1_at = np.zeros((m, p))
-        np.add.at(S1_at, bucket, nZ)
-        S2_at = np.zeros((m, p, p))
-        np.add.at(S2_at, bucket, nZZ)
-
-        S0 = np.cumsum(S0_at[::-1])[::-1]
-        S1 = np.cumsum(S1_at[::-1], axis=0)[::-1]
-        S2 = np.cumsum(S2_at[::-1], axis=0)[::-1]
-        Zbar = S1 / S0[:, None]
-
-        # A = integral over t of V(t) dt, with V(t) the risk-set covariate
-        # scatter about its mean. V and the risk set are constant on each
-        # interval (u_{j-1}, u_j], so the integral is a width-weighted sum
-        # (lower limit 0).
-        widths = np.diff(np.concatenate([[0.0], unique_x]))
-        V = S2 - (S1[:, :, None] * S1[:, None, :]) / S0[:, None, None]
-        A = (V * widths[:, None, None]).sum(axis=0)
-
-        # b = sum over events of (Z_event - Zbar(t_event)); events aggregated
-        # per unique time so ties share one Zbar.
-        is_event = c == 0
-        w_event = n * is_event
-        d_at = np.bincount(bucket, weights=w_event, minlength=m)
-        E1_at = np.zeros((m, p))
-        np.add.at(E1_at, bucket, w_event[:, None] * Z)
-        b = (E1_at - d_at[:, None] * Zbar).sum(axis=0)
+        sums = _estimating_equations(x, c, n, Z)
+        unique_x, bucket, Zbar = sums.unique_x, sums.bucket, sums.Zbar
+        A, b, w_event = sums.A, sums.b, sums.w_event
 
         # A coefficient the data cannot determine is aliased (#476): the
         # estimating equations are solved for the other columns, which is
@@ -942,19 +1009,7 @@ class AdditiveHazards_(FitterRepr):
         cov = np.full((p, p), np.nan)
         cov[np.ix_(kept, kept)] = cov_k
 
-        # Baseline cumulative hazard on the event-time grid: the Breslow-type
-        # step sum minus the accumulated covariate-mean drift.
-        with np.errstate(invalid="ignore", divide="ignore"):
-            dLambda = np.where(S0 > 0, d_at / S0, 0.0)
-        Lambda = np.cumsum(dLambda)
-        G = np.cumsum(Zbar[:, kept] * widths[:, None], axis=0)
-        H0 = Lambda - G @ beta_k
-        # The covariate-mean drift beta'Zbar(t) is a rate, constant on each
-        # interval (u_{j-1}, u_j] of the risk-set grid; Hf integrates it
-        # continuously between grid times. Reading H0 as a step (the drift
-        # accrued only at the grid times) made predictions between event
-        # times depend on how the covariates were centred.
-        drift = Zbar[:, kept] @ beta_k
+        dLambda, H0, drift = _baseline(sums, kept, beta_k)
 
         model = AdditiveHazardsModel()
         model.beta = copy(beta)
@@ -970,6 +1025,165 @@ class AdditiveHazards_(FitterRepr):
         model._b = b
         # The rows fitted, for ``concordance`` (#512).
         model._fit_data = (x, c, n, Z)
+        return model
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+    ) -> AdditiveHazardsModel:
+        """
+        Fit the Lin and Ying model with a ridge, lasso or elastic-net
+        penalty on the coefficients: for many covariates, or correlated
+        ones.
+
+        Lin and Ying's estimating equation, ``A beta = b``, is the
+        gradient of the quadratic loss
+        :math:`L(\\beta) = \\tfrac12 \\beta' A \\beta - b' \\beta`, so
+        the penalised fit minimises
+
+        .. math::
+            \\frac{1}{N} L(\\beta) + \\sum_j \\lambda_j \\left(
+            \\frac{1 - a}{2} \\tau s_j^2 \\beta_j^2 + a s_j |\\beta_j|
+            \\right),
+
+        with :math:`N` the number of units (the sum of ``n``), :math:`s_j`
+        the standard deviation of covariate ``j`` (1 with
+        ``standardise=False``), :math:`\\lambda_j` the ``penalizer`` and
+        :math:`a` the ``l1_ratio``. This is the penalised fit of
+        Gorst-Rasmussen and Scheike (2012), which R's ``ahaz::ahazpen``
+        computes for the lasso: the same as the penalised fits of the
+        other models, with the loss in place of the negative
+        log-likelihood. With no penalty it is the fit of :meth:`fit`.
+
+        A coefficient here is a rate (an excess hazard per unit of time),
+        so a penalty on its size depends on the unit of time. The lasso
+        part does not: the loss and the L1 penalty both scale with the
+        unit, so a fit in days is the fit in years, its coefficients
+        divided by 365.25. The ridge part would, so it is put on the
+        coefficients in the unit :math:`\\tau` (``model.time_scale``), the
+        count-weighted mean of ``x``: a fit in days is then the fit in
+        years for every ``l1_ratio``.
+
+        The model predicts as the fit's does, but has no covariance,
+        standard errors or p-values: penalised estimates are biased
+        towards 0 by design, and intervals from them would not have their
+        stated coverage; those calls raise an error that says so
+        (``summary()`` shows them as ``nan``). There is no likelihood, so
+        no ``aic`` or ``bic`` either, as for :meth:`fit`.
+
+        Parameters
+        ----------
+        x, Z, c, n : array_like
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves a coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default) penalises the coefficients of the
+            covariates divided by their standard deviations (count-
+            weighted, divisor ``N``), so the penalty does not depend on
+            their units; the coefficients are reported on the covariates'
+            own scale either way.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : None
+            Weights are refused: :meth:`fit` takes none either.
+
+        Returns
+        -------
+        AdditiveHazardsModel
+            The fitted model, with ``penalty`` (the ``penalizer`` per
+            column, ``l1_ratio``, ``standardise``, the columns' ``scale``
+            and the effective degrees of freedom) and ``time_scale``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AdditiveHazards
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.normal(size=(300, 4))
+        >>> x = rng.exponential(1 / (0.2 + 0.05 * Z[:, 0] + 0.05))
+        >>> model = AdditiveHazards.fit_penalised(
+        ...     x, Z, penalizer=0.1, l1_ratio=1
+        ... )
+        >>> model.beta.round(4)
+        array([0.0167, 0.    , 0.    , 0.    ])
+        """
+        from .._penalised import (
+            PenalisedObjective,
+            penalised_fit,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        x, c, n, Z = _validate(x, Z, c, n)
+        p = Z.shape[1]
+        sums = _estimating_equations(x, c, n, Z)
+        # The coefficients are rates: penalised in the unit of the mean
+        # follow-up, the fit does not depend on the unit of time.
+        tau = float(n @ x / n.sum())
+        if not tau > 0:
+            tau = 1.0
+
+        def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+            # The loss on the covariates divided by their scale and the
+            # times by tau, over N.
+            A_s = sums.A / (tau * np.outer(scale, scale)) / N
+            b_s = sums.b / scale / N
+            return PenalisedObjective(
+                lambda v: float(0.5 * v @ A_s @ v - b_s @ v),
+                lambda v: A_s @ v - b_s,
+                lambda v: A_s,
+                np.zeros(p),
+            )
+
+        fit = penalised_fit(
+            build,
+            Z,
+            n,
+            np.arange(p),
+            penalizer,
+            l1_ratio,
+            standardise,
+            tol,
+        )
+        res = fit.result
+        if not res.verified:
+            from surpyval.utils.no_maximum import warn_unverified
+
+            warn_unverified("The penalised additive hazards fit")
+        beta = fit.coefficients / tau
+        dLambda, H0, drift = _baseline(sums, np.arange(p), beta)
+
+        model = AdditiveHazardsModel()
+        model.beta = beta.copy()
+        model.params = beta.copy()
+        model._covariance = None
+        model._se = np.full(p, np.nan)
+        model.p_values = np.full(p, np.nan)
+        model.x = sums.unique_x
+        model.h0 = dLambda
+        model.H0 = H0
+        model.drift = drift
+        model._A = sums.A
+        model._b = sums.b
+        model._fit_data = (x, c, n, Z)
+        model.penalty = fit.penalty
+        model.time_scale = tau
+        model.maximum = "verified" if res.verified else "unverified"
         return model
 
     @takes_unit

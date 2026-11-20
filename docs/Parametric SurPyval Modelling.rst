@@ -133,10 +133,10 @@ Every distribution is an object in the ``surpyval`` namespace
      - no
      -
    * - ``Hypoexponential``
-     - ``lambda_1``, ..., ``lambda_m``
+     - ``lambda_1``, ..., ``lambda_m`` (``stages=m``)
      - :math:`(0, \infty)`
-     - built with ``from_params`` only
-     -
+     - yes / yes
+     - no
      -
    * - ``CustomDistribution``
      - your own
@@ -152,8 +152,7 @@ the last digit, the same checks and refusals, and wherever SurPyval asks
 which distribution a model has (``fit_best``, ``AcceleratedLife``, the
 diagnostics), it is taken as the ``Normal`` or ``LogNormal``.
 ``dist.canonical_name`` gives that name (``sp.Gauss.canonical_name`` is
-``"Normal"``). Every distribution in the table except the
-``Hypoexponential`` also accepts ``lfp=True``. The discrete lifetimes
+``"Normal"``). Every distribution in the table also accepts ``lfp=True``. The discrete lifetimes
 (``Geometric``, ``DiscreteWeibull``, ``NegativeBinomial``, ``BetaGeometric``,
 ``Discretize`` and ``Poisson``) and the per-demand and degenerate models
 (``Bernoulli``, ``FixedEventProbability``, ``Binomial``, ``ExactEventTime``,
@@ -354,13 +353,12 @@ exactly one up to ``gamma = 5``.
 
     assert np.all(shifted.sf([4., 5.]) == 1)
 
-Some distributions exist *only* in this form. The ``Hypoexponential`` is the
-lifetime of something that must pass through several independent,
-memoryless stages in turn: a load-sharing group whose failure rate changes as
-members fail, or a warm-standby system. Each stage lasts an exponential time
-with its own rate, and the lifetime is their sum. Because the number of
-stages is up to you, it takes any number of rates, and there is no ``fit``:
-you construct it from rates you know (see :doc:`univariate/hypoexponential`).
+The ``Hypoexponential`` is often built this way. It is the lifetime of
+something that must pass through several independent, memoryless stages in
+turn: a load-sharing group whose failure rate changes as members fail, or a
+warm-standby system. Each stage lasts an exponential time with its own rate,
+and the lifetime is their sum. Because the number of stages is up to you, it
+takes any number of rates (see :doc:`univariate/hypoexponential`).
 
 .. jupyter-execute::
 
@@ -380,15 +378,50 @@ you construct it from rates you know (see :doc:`univariate/hypoexponential`).
     assert np.isclose(standby.mean(), 3)
 
 The mean is the sum of the stage means, :math:`1/0.5 + 1/1.5 + 1/3 = 3`, as
-it should be. The rates must be distinct: as two rates approach each other the
-closed form becomes numerically unstable, and SurPyval raises an error. When
-every stage has the same rate the sum is an Erlang distribution, which is a
-``Gamma`` with an integer shape:
+it should be. Rates may repeat. When every stage has the same rate the sum is
+an Erlang distribution, which is a ``Gamma`` with an integer shape:
 
 .. jupyter-execute::
 
     erlang = surv.Gamma.from_params([3, 1.0])   # three stages, each with rate 1
     print("R at 1, 2 and 5:", erlang.sf([1., 2., 5.]))
+    same = Hypoexponential.from_params([1.0, 1.0, 1.0])
+    print("R at 1, 2 and 5:", same.sf([1., 2., 5.]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(same.sf([1., 2., 5.]), erlang.sf([1., 2., 5.]))
+
+When the rates are not known they can be estimated from data. The number of
+stages is your choice, given as ``stages``; the rates are then fitted like
+any other distribution's parameters, with any censoring or truncation.
+Compare fits with different numbers of stages by their AIC. Here 300 units of
+a two-stage chain are followed until time 12:
+
+.. jupyter-execute::
+
+    lives = Hypoexponential.random(300, 0.2, 1.0, random_state=7)
+    observed = np.minimum(lives, 12)
+    censored = (lives > 12).astype(int)
+    two = Hypoexponential.fit(observed, censored, stages=2)
+    print(two)
+    print("AIC, one stage:", surv.Exponential.fit(observed, censored).aic())
+    print("AIC, two stages:", two.aic())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert two.maximum == "verified"
+    assert two.aic() < surv.Exponential.fit(observed, censored).aic()
+    assert np.all(np.diff(two.params) >= 0)
+
+The rates are reported slowest stage first: the order of the stages does not
+change their sum. A fit with more stages than the data support has a rate
+that runs to infinity -- a stage that takes no time -- and warns, saying to
+fit fewer.
 
 Random samples
 ^^^^^^^^^^^^^^

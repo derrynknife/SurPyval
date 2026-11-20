@@ -90,6 +90,7 @@ from .proportional_odds import (
     ProportionalOddsModel,
     WeibullPO,
 )
+from .quantile import QuantileRegression, QuantileRegressionModel
 from .royston_parmar_regression import (
     RoystonParmarPH,
     RoystonParmarPO,
@@ -136,6 +137,9 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
+    # Censored quantile regression (Peng-Huang, Portnoy)
+    "QuantileRegression",
+    "QuantileRegressionModel",
     # Additive hazards — non-parametric (Aalen), semi-parametric
     # (Lin-Ying) and parametric
     "AH",

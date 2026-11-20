@@ -69,6 +69,10 @@ class JointPHFitter(FitterRepr):
 
     #: The ``repr`` (#614)
     fitter_kind = "joint model fitter"
+    #: The survival part: the marker multiplies the hazard (``"PH"``), or
+    #: speeds up the item's ageing (``"AFT"``, :class:`JointAFTFitter
+    #: <surpyval.univariate.joint.joint_aft.JointAFTFitter>`).
+    survival = "PH"
 
     def __init__(
         self,
@@ -84,7 +88,8 @@ class JointPHFitter(FitterRepr):
             name = getattr(distribution, "name", type(distribution).__name__)
             raise ValueError(
                 "The joint models have a Weibull baseline for now: "
-                f"JointPH(Weibull, path_model), or WeibullJointPH; got {name}."
+                f"Joint{self.survival}(Weibull, path_model), or "
+                f"WeibullJoint{self.survival}; got {name}."
             )
         if not isinstance(path_model, PathModel):
             raise ValueError(
@@ -157,9 +162,9 @@ class JointPHFitter(FitterRepr):
         self.varying = tuple(n for n in names if n in varying)
         plain = "".join(ch for ch in path_model.name if ch.isalnum())
         self.name = (
-            f"{distribution.name}JointPH"
+            f"{distribution.name}Joint{self.survival}"
             if path_model is LinearPath
-            else f"{distribution.name}{plain}JointPH"
+            else f"{distribution.name}{plain}Joint{self.survival}"
         )
 
     def _repr_details(self) -> list[str]:
@@ -206,7 +211,11 @@ class JointPHFitter(FitterRepr):
         rest common -- read with normal noise; its hazard is Weibull
         proportional hazards in the path's current, noise-free value (or
         its slope or the area under it: the fitter's ``link``) and its
-        covariates. The varying parameters are integrated out of each
+        covariates. A :func:`~surpyval.univariate.joint.joint_aft.JointAFT`
+        fitter's (``WeibullJointAFT``) has the accelerated survival part
+        in their place: the path and the covariates speed up the item's
+        ageing, and its survival is the Weibull's at the age it has used
+        up. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
         the log-likelihood stops moving), and the likelihood is maximised
@@ -896,6 +905,7 @@ def _fit(
         ).reshape(len(path_names), p),
         np.array([cov in hazard for cov in kept_names], dtype=bool),
         fitter.link,
+        fitter.survival,
     )
     model = Model(layout, PathFunction(path_model, fitter.link), centre)
     # Starting values: each item's path alone, their spread, then the
@@ -1022,6 +1032,7 @@ def _fit(
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
     out.link = tuple(fitter.link)
+    out.survival = fitter.survival
     out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
     out._zbar = zbar
@@ -1173,7 +1184,10 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     the model's parameters; the model's point ``u`` in that space; and
     the number of items. For the checks that a fit's answer is a
     maximum (``tests/conformance``)."""
-    fitter = JointPH(model.dist, model.path_model, model.varying, model.link)
+    from .joint_aft import JointAFT
+
+    factory = JointAFT if model.survival == "AFT" else JointPH
+    fitter = factory(model.dist, model.path_model, model.varying, model.link)
     records, counts, names = _records(
         data["x"],
         data.get("c"),
