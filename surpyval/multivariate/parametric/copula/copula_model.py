@@ -7,6 +7,7 @@ from typing import Any
 import numpy as onp
 import numpy.typing as npt
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
@@ -45,7 +46,9 @@ _CB_ON = ("sf", "R", "ff", "F")
 _CB_METHODS = ("wald",)
 
 
-class CopulaModel(SerialisableMixin, MultivariateDistribution):
+class CopulaModel(
+    ParameterBoundsMixin, SerialisableMixin, MultivariateDistribution
+):
     """A fitted bivariate copula glued to two univariate margins.
 
     Attributes

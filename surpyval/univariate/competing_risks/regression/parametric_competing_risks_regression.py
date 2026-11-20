@@ -50,6 +50,7 @@ import numpy.typing as npt
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -160,7 +161,9 @@ def _cause_inits(init: Any, causes: list) -> dict:
     return {k: init for k in causes}
 
 
-class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
+class ParametricCompetingRisksRegression(
+    ParameterBoundsMixin, DiagnoseMixin, SerialisableMixin
+):
     """
     A parametric competing-risks regression: one parametric regression
     model per cause, each of that cause's hazard given the covariates,
@@ -765,6 +768,13 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
             f"{k}: {name}"
             for k in self.causes
             for name in self.models[k].covariance_names
+        ]
+
+    def _declared_bounds(self) -> list:
+        """Each cause's own ranges, in the order of
+        :attr:`covariance_names`."""
+        return [
+            b for k in self.causes for b in self.models[k].parameter_bounds
         ]
 
     def _estimates(self) -> npt.NDArray:

@@ -98,7 +98,9 @@ likelihood is the integral over its varying parameters
 :math:`d_i` 1 for a failure and 0 for a censoring. The fit maximises the sum
 of the :math:`\log L_i`, each integral by adaptive Gauss--Hermite
 quadrature: a product grid of 7 points a dimension (49 for two varying
-parameters, 343 for three, the most that may vary), centred at each item's
+parameters, 343 for three; see :ref:`how the integral is done
+<joint-integration>` for four and five, the most that may vary), centred
+at each item's
 most likely parameters and scaled by how sure its readings make them (the
 Gauss--Newton curvature, from the path's Jacobian: exact for a path linear
 in its parameters). The nodes are held fixed while the parameters are
@@ -129,6 +131,69 @@ of that, :math:`\int (S(L_i \mid \theta) - S(R_i \mid \theta))
 likelihood of every kind of item agrees with an independent dense-grid
 integral over the random effects to within 1e-5 an item
 (``tests/univariate/joint/test_joint_extensions.py``).
+
+.. _joint-integration:
+
+How the integral is done
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each item's likelihood is an average over the path parameters it could
+have (its own level, its own rate, ...), and that average is a sum over a
+grid of 7 values of each, placed where that item's readings and lifetime
+say its parameters are. The grid grows quickly with the number of varying
+parameters: 7 nodes for one, 49 for two, 343 for three, 2,401 for four and
+16,807 for five, for every item at every step of the search. Up to five
+may vary.
+
+``integration=`` on ``fit`` (and ``fit_from_df``) chooses the nodes:
+
+- ``"grid"``: the full grid. The default, whatever the number of varying
+  parameters: the more accurate choice.
+- ``"pruned"``: the grid without the nodes whose weight is negligible --
+  its far corners, where several parameters are extreme at once. The rule
+  is fixed: the lowest-weight nodes are left out, as many as hold less
+  than 1e-9 of the grid's weight between them (nodes of equal weight
+  together), whatever the data. That is none of the nodes for up to three
+  parameters, 80 of 2,401 for four and 1,392 of 16,807 for five. An
+  option, never the default: it trades a little accuracy for a little
+  speed, and in practice saves little (below).
+
+The model says which it used (``model.integration``, and the
+``Integration`` line of its printout), keeps it when saved, and predicts
+on the same kind of grid. A model saved before the choice existed reads as
+``"grid"``.
+
+.. code:: python
+
+    from surpyval import JointPH, Weibull
+
+    fitter = JointPH(Weibull, cubic)            # a, b, c and d all vary
+    model = fitter.fit(data)                    # the full grid: 2,401 nodes an item
+    model.integration                           # 'grid'
+    pruned = fitter.fit(data, integration="pruned")
+
+The pruned grid is a small saving that costs no accuracy: 3% fewer nodes
+with four varying parameters and 8% fewer with five (one evaluation of the
+likelihood and its gradient is 1% and 6% quicker). Where the integrand is
+exactly normal (no marker effect, a path linear in its parameters) both
+grids reproduce the closed form in four and five dimensions, the pruned one
+short by the weight it leaves out, 3e-10 and 8e-10 of an item's likelihood.
+With a marker effect the two log-likelihoods differ by that much again on
+items read often, and by up to 7e-7 an item in the hardest case tried (five
+varying parameters, a reading every 0.7 years with noise five times the
+usual, a marker effect of 2); a fleet of 60 items fitted on each grid gave
+estimates within 1e-6 of a standard error of each other
+(``tests/univariate/joint/test_joint_integration.py``).
+
+Two things to expect with four or five varying parameters. The fit takes
+minutes where two or three take seconds -- the fleet of 60 items took two
+to five minutes -- and most of that is the search over the ten or fifteen
+variances and correlations of the items' spread, not the grid. And the
+7 points themselves are less exact where items have few, noisy readings
+and the marker effect is strong: against 11 points a dimension the
+log-likelihood of such a fleet was off by up to 5e-5 an item (it was
+within 4e-10 an item on a fleet read often). That is the grid's own
+error, the same on the full grid and the pruned one.
 
 The data: readings on the item records
 --------------------------------------
@@ -908,10 +973,47 @@ without them, saying which: a logarithmic path without the slope, and a
 Lloyd-Lipow path, which also has no finite area from age 0, can take only
 the value, so there is nothing to compare and it is refused.
 
+A reading that acts later: a lag
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every link so far acts at once: the hazard at age :math:`t` follows the
+path at :math:`t`. Some mechanisms have a lead time -- debris in the oil
+now says what the bearing will do some hundreds of hours on. ``lag=``
+shifts every link by a fixed time, in the lifetimes' unit:
+``JointPH(Weibull, link="value", lag=200.0)`` makes the hazard at age
+:math:`t` follow the path at :math:`\max(t - 200, 0)`. Until the lag
+has passed the path is held at its age-0 value: the value link follows
+the value at age 0, and the slope and the area are 0 there. The
+cumulative hazard is integrated on each side of the lag (where the
+lagged path has a kink, and the slope link a jump), so the likelihood
+keeps its accuracy. ``JointAFT`` takes ``lag=`` the same way. With
+``lag=0`` (the default) the model is the one without a lag, number for
+number. The fitted model keeps its ``lag``, prints it, saves it and
+predicts with it.
+
+The lag is fixed, not estimated: the likelihood has a kink in it at every
+item's age, so it is not smooth in the lag. Choose it from what you know
+of the mechanism, or fit the lags you have in mind and compare them by
+AIC (the same data and the same number of parameters):
+
+.. code-block:: python
+
+    fits = {lag: JointPH(Weibull, lag=lag).fit(data) for lag in (0.0, 0.25, 0.5)}
+    {lag: model.aic() for lag, model in fits.items()}
+
+Expect the data to say little about a lag when the marker is close to a
+straight line: the line ``L`` earlier is the line now less ``b L``, which
+the marker's effect and the baseline largely absorb. On 300 simulated
+items whose hazard followed the line half a year earlier, the AICs of
+lags 0, 0.25 and 0.5 were within 0.6 of each other. A path that is
+infinite at age 0 (logarithmic, Lloyd-Lipow) cannot lag its value, and is
+refused.
+
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
-the same curvature ``c``. At most three may vary (the quadrature's grid is
-7 points in each). A path model fitted to a curve it cannot follow biases
+the same curvature ``c``. At most five may vary (the quadrature's grid is
+7 points in each, the full grid by default: see :ref:`how the
+integral is done <joint-integration>`). A path model fitted to a curve it cannot follow biases
 the joint model, as it does a degradation model: choose it as you would
 there (see :doc:`Degradation Analysis`).
 
@@ -1416,7 +1518,7 @@ What it does and does not do
 The joint model (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
-  default), with up to three of its parameters varying between items
+  default), with up to five of its parameters varying between items
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``) and the rest common;
 - a Weibull proportional hazards survival part (``JointPH(Weibull,

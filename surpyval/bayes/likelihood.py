@@ -351,3 +351,87 @@ def log_likelihood_fn(
 
     refuse_weighted_data(data, "log_likelihood_fn", BAYES_WHY, BAYES_INSTEAD)
     return LogLikelihood(dist, data, offset=offset, lfp=lfp, zi=zi)
+
+
+def log_posterior_and_grad(
+    data: SurpyvalData,
+    dist: Any,
+    prior: Any = None,
+    *,
+    offset: bool = False,
+    lfp: bool = False,
+    zi: bool = False,
+    fixed: dict[str, float] | None = None,
+) -> Any:
+    """
+    The log-posterior of a Bayesian fit and its gradient at one point, for
+    a gradient-based sampler: ``f(z) -> (value, gradient)``.
+
+    ``z`` is the free parameters on their unconstrained scale (the log of
+    a positive parameter, the logit of a proportion), in the order of
+    ``f.free_names``. The value is the posterior ``fit_bayes`` uses (the
+    log prior on that scale, its log-Jacobian included, plus this
+    module's log-likelihood) to rounding; the data are checked and split
+    once, here, so a call does no checking. See :mod:`surpyval.bayes._lean`
+    for what a sampler may assume.
+
+    Parameters
+    ----------
+    data : SurpyvalData
+        The data, any censoring and truncation.
+    dist : ParametricFitter
+        A distribution ``fit_bayes`` takes.
+    prior : optional
+        What ``fit_bayes`` takes as ``priors`` (a dict, a joint prior), or
+        a ``BoundPriors`` already bound to this fit.
+    offset, lfp, zi, fixed
+        As for ``fit_bayes``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> from surpyval.bayes.likelihood import log_posterior_and_grad
+    >>> data = sp.SurpyvalData(x=[2.1, 3.4, 4.05, 5.0], c=[0, 0, 0, 1])
+    >>> f = log_posterior_and_grad(data, sp.Weibull,
+    ...                            {"beta": sp.prior.between(1, 5)})
+    >>> f.free_names
+    ['alpha', 'beta']
+    >>> value, gradient = f(np.log([4.0, 2.0]))
+    >>> round(value, 4), gradient.round(4)
+    (-6.6897, array([1.1716, 1.7445]))
+    """
+    from surpyval.bayes._lean import LogPosterior
+    from surpyval.bayes.fitting import (
+        _check_dist,
+        _validate_data,
+        bayes_data,
+        build_bound,
+    )
+    from surpyval.bayes.prior import BoundPriors
+
+    _check_dist(dist, "auto")
+    if getattr(dist, "discrete", False):
+        raise ValueError(
+            f"log_posterior_and_grad covers the continuous distributions; "
+            f"{dist.name} is fitted in closed form (fit_bayes with a Beta "
+            "prior)."
+        )
+    data = bayes_data("log_posterior_and_grad", data)
+    _validate_data(dist, data, offset, zi)
+    if isinstance(prior, BoundPriors):
+        bound = prior
+        if (bound.offset, bound.lfp, bound.zi) != (offset, lfp, zi):
+            raise ValueError(
+                "The BoundPriors were bound with offset, lfp and zi = "
+                f"{bound.offset}, {bound.lfp}, {bound.zi}; pass the same "
+                "here, or pass the priors themselves."
+            )
+    else:
+        bound = build_bound(dist, data, prior, offset, lfp, zi, fixed)
+    if bound.d == 0:
+        raise ValueError(
+            "Every parameter is fixed, so there is nothing to sample: use "
+            f"{dist.name}.from_params(...)."
+        )
+    return LogPosterior(dist, data, bound)

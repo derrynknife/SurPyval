@@ -5,6 +5,92 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
+  makes the hazard at age ``t`` follow the marker's path at
+  ``max(t - 200, 0)``: a reading acts that long later. Every link is
+  shifted; before the lag the path is held at its age-0 value (the slope
+  and the area are 0 there). The cumulative hazard is integrated on each
+  side of the lag. The lag is fixed, not estimated; compare lags by
+  ``aic()``. The model keeps ``lag``, shows it in ``repr`` and
+  ``summary()``, saves it and predicts with it; ``lag=0`` (the default)
+  is the model as before, number for number. A lag on the value of a path
+  infinite at age 0 is refused. Checked against R's ``JM`` with a lag on
+  the PBC trial. See "A reading that acts later" in :doc:`Joint Models`.
+
+- **Competing-risks random survival forests.** ``RandomSurvivalForest.fit``
+  (and ``fit_from_df``, with ``e_col``) takes the cause of each failure as
+  ``e``, with ``split`` and ``event`` as for the tree, and grows every tree
+  as a competing-risks tree for every cause in the data. ``cif(x, Z,
+  event)`` averages the trees' leaf incidences, ``total_cif`` sums the
+  causes and ``sf`` is the all-cause survival. ``oob_log_likelihood()``
+  scores each out-of-bag failure by the ensemble's sub-density of its own
+  cause (the competing-risks likelihood), and ``oob_log_likelihood(event=)``
+  and ``feature_importances(event=)`` restrict the score to one cause's
+  cause-specific likelihood, so a feature that changes only one cause's
+  risk shows up for that cause alone. ``mortality(x, Z, event=)`` and
+  ``score(x, Z, c, e=, event=)`` give a cause's mortality and its
+  concordance. Forests save and load with their causes; without ``e``
+  nothing changes. See :doc:`surpyval.ml`.
+
+- **The level of a degradation process given that the unit has not
+  failed.** ``level_at(t, y0=, t0=, given_survival=True)`` of a
+  ``WienerProcessModel`` or ``GammaProcessModel`` is the distribution of
+  the level at ``t`` of a unit that has not reached the threshold since
+  ``t0``: what an inspection finds on a unit still working. For a gamma
+  process it is the increase truncated at the threshold; for a Wiener
+  process the normal level less its reflection in the threshold (the
+  method of images), which also leaves out the paths that crossed and
+  came back. It has ``sf``, ``ff``, ``df``, ``qf`` (closed form for the
+  gamma process, a bisection for the Wiener process), ``random``,
+  ``mean`` and ``to_dict`` (with ``given_survival`` and ``threshold``),
+  and works with stress as ``level_at`` does. A reading at or past the
+  threshold is refused with ``given_survival=True``. The default,
+  ``given_survival=False``, is unchanged: the level of every path. See
+  :doc:`Degradation Modelling with SurPyval`.
+
+- **Shared frailty for repairable systems.** ``frailty="gamma"`` (or
+  ``"lognormal"``) on ``CrowAMSAA.fit``, ``Duane.fit``, ``CoxLewis.fit``
+  and ``ProportionalIntensityNHPP.fit`` (and their ``fit_from_df`` and
+  ``fit_from_recurrent_data``) gives each unit an unobserved factor on
+  its intensity, for a fleet whose units differ by more than a Poisson
+  process (or their covariates) allows; ``cluster=`` names units that
+  share one. The frailty's variance ``theta`` is estimated with the
+  intensity (the gamma frailty by its closed-form marginal likelihood,
+  the log-normal by quadrature), and the fit is a
+  ``surpyval.recurrent.SharedFrailtyModel``: ``cif`` / ``iif`` / ``mcf``
+  for the population or for a unit of given frailty, with delta-method
+  bounds; Wald and profile-likelihood ``param_cb``; ``frailty_test()``,
+  the likelihood-ratio test of ``theta = 0`` (a 50:50 mixture of 0 and
+  chi-square(1)); ``frailties()``, each cluster's predicted frailty with
+  an interval; and ``forecast`` (also ``surpyval.forecast``, which takes
+  ``cluster=`` for it), whose prediction intervals carry the frailty
+  (negative binomial counts for the gamma frailty). Where ``theta`` is
+  estimated at 0 the fit warns and is the plain one. It takes delayed
+  entry and observation windows; counts in intervals, right truncation,
+  ``how="MSE"`` and fewer than two clusters are refused, saying what to
+  use. Checked against quadrature of each cluster's frailty integral, R's
+  ``MASS::glm.nb`` and simulated fleets. See :doc:`Recurrent Event
+  Modelling with SurPyval`.
+- **Competing-risks survival trees.** ``SurvivalTree.fit`` (and
+  ``fit_from_df``, with ``e_col``) takes the cause of each failure as
+  ``e``. The tree then chooses cuts that tell the causes apart --
+  ``split="cause-specific"`` (the default), the sum over the causes of the
+  squared cause-specific log-rank statistics, or ``split="gray"``, Gray's
+  two-sample statistic for one nominated cause's cumulative incidence
+  (``event=``) -- fits a competing-risks model in each leaf (the
+  Aalen-Johansen estimate for ``kind="non-parametric"``, one Weibull or
+  Exponential per cause otherwise), and predicts each cause's cumulative
+  incidence at given covariates with ``cif(x, Z, event)``, their sum with
+  ``total_cif`` and the all-cause ``sf``, ``ff``, ``Hf``, ``hf`` and
+  ``df``. A cause with no failure in a leaf has zero incidence there,
+  which ``print(tree)`` says. A tree of depth 0 is the plain
+  competing-risks fit; with one cause the cause-specific rule makes the
+  plain log-rank tree's cuts. Exact and right-censored times with delayed
+  entry are taken; left and interval censoring, right truncation,
+  ``selection="ctree"`` and ``min_split_gain`` are refused with causes,
+  each saying what to use. Trees save and load with their causes. Without
+  ``e`` nothing changes. See :doc:`surpyval.ml`.
+
 - **Relative survival: net survival and excess hazards beyond a
   population's own rates.** Where units have the event for reasons
   besides the one studied, and the cause of each event is not recorded,
@@ -101,6 +187,30 @@ v0.29 (unreleased)
   likelihood-ratio bounds on each cause's net survival covered 92.5% to
   96%. Both need the fitted data: a model restored with ``from_dict``
   refuses them, saying to refit or use ``method="wald"``.
+- **Joint models: four and five path parameters varying between items,
+  and ``integration=``.** A joint model averages each item's likelihood
+  over the path parameters it could have, on a grid of 7 values of each:
+  49 nodes for two, 343 for three, and until now no more. ``varying=``
+  now takes up to five names (2,401 nodes an item for four, 16,807 for
+  five), for paths whose shape differs item by item in more than three
+  ways; a sixth is refused, saying what to hold common. The fits take
+  ``integration="grid"`` (the full grid) or ``"pruned"`` (the grid
+  without its lowest-weight nodes, the far corners that hold less than
+  1e-9 of its weight between them: 80 of the 2,401 and 1,392 of the
+  16,807; none in up to three dimensions). The default is the full grid,
+  whatever the number of varying parameters -- fits with up to three are
+  unchanged to the last digit -- and ``"pruned"`` is an option. The model keeps the
+  choice as ``integration``, prints it, saves and restores it (a model
+  saved before reads as ``"grid"``), and predicts on the same kind of
+  grid. With a normal integrand (no marker effect) both grids reproduce
+  the closed form in four and five dimensions to 1e-9 an item, and with
+  a marker effect the pruned log-likelihood is within 1e-6 an item of the
+  full grid's (3e-10 an item on a fleet read often; estimates of a fleet
+  of 60 within 1e-6 of a standard error). A fit with four varying
+  parameters takes minutes, not seconds, on either grid: the saving in
+  nodes is 3% (8% for five), and the search over the spread's variances
+  and correlations is most of the time. See "How the integral is done"
+  in :doc:`Joint Models`.
 - **Joint models: the links compared in one call.** Each joint model
   fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
   fits the fitter's model (its baseline, path model and varying path
@@ -237,9 +347,60 @@ v0.29 (unreleased)
   ``"time unit"`` standing in for one not given. The printout shows it
   on an ``Effect units`` line. A label only: nothing is converted, and
   the fit is unchanged.
+- **A fast log-posterior and gradient for samplers.**
+  ``surpyval.bayes.likelihood.log_posterior_and_grad(data, dist, priors)``
+  returns ``f(z) -> (value, gradient)`` at one point of the free
+  parameters' unconstrained scale: the posterior ``fit_bayes`` uses (to
+  rounding), for every distribution and form it takes, every kind of
+  censoring and truncation and every kind of prior, with the data checked
+  and split once rather than on every call. The gradient is by automatic
+  differentiation, and written out by hand for the Weibull, Exponential,
+  Normal, LogNormal and Gamma; a Weibull with 1,000 rows takes about 35
+  microseconds a call (``scripts/bench_log_posterior.py``). It is the
+  groundwork for a gradient-based sampler; ``fit_bayes`` is unchanged.
+
+- **Each parameter's range, public.** Every fitted model with
+  ``with_params`` -- the parametric, mixture and Royston-Parmar models,
+  the regressions (parametric, additive hazards, proportional odds,
+  interval-censored Cox), the parametric competing-risks models, the
+  recurrence, renewal and proportional intensity models, the joint
+  frailty model, the Wiener and gamma degradation processes, the
+  panel-data multi-state models -- and the copulas gives
+  ``model.parameter_bounds``: one ``(low, high)`` pair per entry of the
+  vector ``with_params`` takes (the order of ``covariance_names``),
+  ``None`` for an unbounded end. A draw inside the ranges is not refused
+  for being out of range, so a parameter can be drawn on the log or logit
+  scale its range calls for instead of found by trial. Joint constraints
+  (a mixture's weights summing to 1, a Uniform's ``a < b``, a
+  Royston-Parmar spline that does not fall) are stated in its docstring.
+- **Public homes for two names.** ``surpyval.univariate.joint`` is now a
+  public namespace (``DynamicPrediction``, ``JointModel``,
+  ``LinkComparison``, the joint fitters and factories), and
+  ``conditional_gaps`` -- the time to the next failure from a virtual age,
+  drawn from a uniform -- is ``surpyval.recurrent.conditional_gaps``. See
+  :doc:`Deprecation Policy`.
 
 **Changed.**
 
+- **A mixture's residual life is drawn to the last bits, about ten times
+  faster.** The renewal models' draws of the life left at an age
+  (``conditional_gaps``, used by their simulations) inverted a
+  ``MixtureModel``'s quantile function wherever the cumulative hazard to
+  reach was below 20, which loses about ``eps * exp(H)`` of the age found
+  (1e-12 to 2e-11 relative at ``u = 1e-6``) and was itself a root search
+  costing some 1.5 ms a draw. A mixture's draws now take Newton's steps on
+  its cumulative hazard throughout, from a bound found from its
+  components: the age found is the root to 1e-13 relative (checked
+  against 50-digit references for two- and three-component Weibull and
+  log-normal mixtures, at ages from 0 to the 0.999 quantile and ``u``
+  from 1e-9 to 1 - 1e-9), in about 0.15 ms. *Intentional numerical
+  change:* seeded simulations with a mixture lifetime change in the last
+  digits. Draws for every other lifetime are unchanged, bit for bit,
+  except below.
+- A residual-life draw from a lifetime whose cumulative hazard levels
+  off below the amount to reach (a limited-failure population) is
+  ``inf``, an event that never comes, where beyond a cumulative hazard
+  of 20 it came back NaN.
 - **The slope link refuses paths whose slope is infinite at age 0.**
   ``JointPH`` and ``JointAFT`` with ``link="slope"`` (alone or in a list)
   refuse a logarithmic path (slope ``b / t``) and a Lloyd-Lipow path
@@ -462,6 +623,14 @@ v0.29 (unreleased)
   ``tl2_col``): each warns, gives the same numbers, and is removed in
   v0.30.
 
+**Fixed.**
+
+- ``RenewalModel.with_params`` refuses a lifetime (or ARI baseline)
+  parameter at or outside its range, and any value that is not finite,
+  naming each and saying to draw inside ``parameter_bounds``. An ARI
+  model took a negative scale or shape without a word and predicted
+  ``nan``.
+
 **Documentation.**
 
 - The coverage quoted for the bootstrap bounds of limited-failure and
@@ -474,6 +643,19 @@ v0.29 (unreleased)
   at 1. 500 refits in place of 200 give the same, so the default
   ``n_boot`` stays; the study is ``scripts/studies/lfp_zi_bootstrap/draws.py``.
   Nothing computed changes.
+
+- The coverage of the delta-method bounds on state occupation
+  probabilities of ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (``cb``) is measured, for common
+  states and for one occupied 1% to 5% of the time
+  (``scripts/studies/multistate_occupancy``; :doc:`Multi-State Models`
+  gives the figures). At 300 and 1000 units the default bounds hold their
+  level throughout; at 100 units, with 10 to 35 observed moves out of the
+  rare state, those involving it are two to four points short. A logit
+  scale and a bootstrap by parameter draws were measured beside them and
+  neither does better where it matters, so the default
+  (``bound_type="exp"``) stays and nothing computed changes. A cut-down
+  version of the study joins the calibration suite.
 
 v0.28 (14 November 2026)
 ------------------------

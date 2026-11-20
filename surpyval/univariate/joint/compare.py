@@ -167,7 +167,9 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
                 f"{links!r}."
             )
     fitters = [
-        JointPH(fitter.dist, fitter.path_model, fitter.varying, link)
+        JointPH(
+            fitter.dist, fitter.path_model, fitter.varying, link, fitter.lag
+        )
         for link in chosen
     ]
     seen: dict[tuple, int] = {}
@@ -346,6 +348,31 @@ class LinkComparison:
     best : JointModel or None
         The simplest ranked fit within 2 of the lowest ``metric``
         (``None`` where no fit is a verified maximum).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+    >>> rng = np.random.default_rng(3)
+    >>> items = []
+    >>> for k in range(40):
+    ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+    ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+    ...     end = min(life, 120.0)
+    ...     ages = np.arange(0.0, end, 10.0)
+    ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+    ...     outcome = "observed" if life < 120 else "right_censored"
+    ...     items.append(
+    ...         ItemLifetime(k, **{outcome: end},
+    ...                      markers=dict(zip(ages, y)))
+    ...     )
+    >>> comparison = WeibullJointPH.compare_links(
+    ...     SurpyvalData.from_items(items), links=["value", "slope"]
+    ... )
+    >>> sorted(comparison.models), comparison.metric
+    (['slope', 'value'], 'aic')
+    >>> comparison.best.link
+    ('value',)
     """
 
     def __init__(

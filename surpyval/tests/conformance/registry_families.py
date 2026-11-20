@@ -20,15 +20,18 @@ import surpyval as sp
 from surpyval import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry_fixtures import (
+    X_CR,
     X_DISC,
     X_REG,
     X_STRESS,
     X_UNI,
     Z_AH,
+    Z_CR,
     Z_REG,
     Z_STRESS,
     Z_STRESS2,
     ah_data,
+    cr_data,
     discrete_data,
     grouped_reg_data,
     ic_reg_data,
@@ -123,6 +126,13 @@ PROPERTIES: dict[str, str] = {
         "a data-bounded estimate starts at its initial value before the "
         "first time and holds (or is NaN) after the last, for every "
         "function alike"
+    ),
+    # test_surviving_level.py, for the cases of SURVIVING_LEVEL.
+    "surviving_level": (
+        "level_at(t, y0=, t0=, given_survival=True) has all its mass below "
+        "the threshold, its qf inverts its ff, its draws are reproducible "
+        "under random_state, and far from the threshold it is level_at's "
+        "unconditioned level"
     ),
     # test_derivatives.py, for the cases of DIFFERENTIATED.
     "derivatives": (
@@ -277,6 +287,14 @@ DIFFERENTIATED = frozenset(
         "surpyval.degradation.DegradationModel",
         "surpyval.JointModel",
         "surpyval.ExcessHazard",
+    }
+)
+# The process models, whose level_at takes given_survival: the level of a
+# unit that has not reached the threshold.
+SURVIVING_LEVEL = frozenset(
+    {
+        "surpyval.degradation.WienerProcessModel",
+        "surpyval.degradation.GammaProcessModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -521,6 +539,10 @@ class Case:
         if prop == "derivatives" and (
             self.model_class not in DIFFERENTIATED
             or self.name in NOT_DIFFERENTIATED
+        ):
+            return False
+        if prop == "surviving_level" and (
+            self.model_class not in SURVIVING_LEVEL
         ):
             return False
         if prop == "aliasing_constant" and not self.intercept:
@@ -1478,11 +1500,65 @@ def _trees():
             "aliasing": _NO_COEFFICIENTS,
         },
     )
+
+    def tree_with_causes(kind):
+        return Case(
+            name=f"SurvivalTree[causes, {kind}]",
+            fitters=(),
+            model_class="surpyval.ml.SurvivalTree",
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=_seeded(_fit(ml.SurvivalTree, kind=kind)),
+            functions=("sf", "ff", "Hf", "hf", "df"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            jump_functions=("hf", "df") if kind == "non-parametric" else (),
+            exclude={
+                "aliasing": _NO_COEFFICIENTS,
+                **(
+                    {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
+                    if kind == "non-parametric"
+                    else {}
+                ),
+            },
+        )
+
+    forest_with_causes = Case(
+        name="RandomSurvivalForest[causes]",
+        fitters=(),
+        model_class="surpyval.ml.RandomSurvivalForest",
+        interface=CAUSES_REGRESSION,
+        data=functools.partial(cr_data, True),
+        fit=_seeded(_fit(ml.RandomSurvivalForest, n_trees=3)),
+        functions=("sf", "ff", "Hf", "hf", "df"),
+        event_functions=("cif",),
+        events=("a", "b"),
+        x=X_CR,
+        Z=Z_CR,
+        rows=("x", "Z", "e", "n"),
+        covariates="Z",
+        slow=REFIT_PROPERTIES,
+        exclude={
+            "row_order": forest.exclude["row_order"],
+            "counts": forest.exclude["counts"],
+            "df_hf_sf": forest.exclude["df_hf_sf"],
+            "Hf_sf": forest.exclude["Hf_sf"],
+            "aliasing": _NO_COEFFICIENTS,
+        },
+    )
+
     return [
         tree("weibull"),
         tree("exponential"),
         tree("non-parametric"),
+        tree_with_causes("non-parametric"),
+        tree_with_causes("weibull"),
         forest,
+        forest_with_causes,
     ]
 
 

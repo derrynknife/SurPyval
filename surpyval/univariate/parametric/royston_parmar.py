@@ -1,5 +1,7 @@
 import numpy.typing as npt
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
+
 """
 Royston-Parmar flexible parametric survival models.
 
@@ -241,7 +243,9 @@ def _lowest_slope(knots: np.ndarray, gamma: np.ndarray) -> tuple[float, float]:
     return lowest, where
 
 
-class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
+class RoystonParmarModel(
+    ParameterBoundsMixin, InformationCriteriaMixin, SerialisableMixin
+):
     """A fitted Royston-Parmar flexible parametric model.
 
     Carries the spline ``knots``, the coefficients ``params`` (``gamma``), the
@@ -313,6 +317,11 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         ['gamma_0', 'gamma_1', 'gamma_2']
         """
         return list(self.parameter_names)
+
+    def _declared_bounds(self) -> list:
+        """Each spline coefficient is unbounded on its own (the spline
+        must not fall, a joint constraint ``with_params`` checks)."""
+        return [(None, None)] * len(self.parameter_names)
 
     def _estimates(self) -> np.ndarray:
         """The fitted coefficients in the order of

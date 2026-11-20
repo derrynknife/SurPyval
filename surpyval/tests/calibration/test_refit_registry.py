@@ -1591,6 +1591,21 @@ EXCLUDED: dict[str, str] = {
     "check the grouped-data likelihood rather than the interval one; its "
     "coefficients' coverage on simulated interval-censored data is "
     "calibration/test_coverage_interval_cox.py's",
+    "CoxPH[interval]": "its fixture is interval censored and fitted by "
+    "the full likelihood (CoxNPMLEModel), and the regression plans draw "
+    "exact and right-censored times, which CoxPH fits by its partial "
+    "likelihood (planned above as CoxPH): the route would not be checked. "
+    "With one cause it is IntervalCoxPH's fit "
+    "(tests/univariate/regression/test_cox_npmle.py), whose coverage on "
+    "simulated interval-censored data is "
+    "calibration/test_coverage_interval_cox.py's",
+    "CoxPH[interval, causes]": "its fixture is interval censored with "
+    "causes and fitted by the full likelihood (CoxNPMLEModel), and the "
+    "competing-risks plans draw exact and right-censored times, which "
+    "CoxPH fits by its partial likelihood: the route would not be "
+    "checked. Its coefficients' coverage on simulated interval-censored "
+    "data with causes and delayed entry is "
+    "calibration/test_coverage_cox_npmle.py's",
     "FineGray[strata]": "the competing-risks simulator draws every unit "
     "from one baseline and one censoring distribution; recovery and "
     "coverage of the stratified fit are checked by its own study "
@@ -1653,6 +1668,9 @@ EXCLUDED: dict[str, str] = {
     "SurvivalTree[exponential]": _ML,
     "SurvivalTree[non-parametric]": _ML,
     "RandomSurvivalForest": _ML,
+    "SurvivalTree[causes, weibull]": _ML,
+    "SurvivalTree[causes, non-parametric]": _ML,
+    "RandomSurvivalForest[causes]": _ML,
     "AdditiveHazards": "documented: the Lin-Ying cumulative hazard need "
     "not be monotone, and the fixture's sf exceeds 1 (1.054 at t = 1 at "
     "the row (0, -0.8)) even where beta'Z >= 0: not a distribution to "
@@ -1690,6 +1708,22 @@ EXCLUDED: dict[str, str] = {
         "panels is calibration/test_coverage_multistate_panel.py, and the "
         "models' special cases are in tests/multistate/test_panel.py",
     ),
+    **dict.fromkeys(
+        (
+            "CrowAMSAA[frailty=gamma]",
+            "CoxLewis[frailty=gamma]",
+            "Duane[frailty=lognormal]",
+            "ProportionalIntensityNHPP[frailty=gamma]",
+            "ProportionalIntensityNHPP[frailty=lognormal]",
+        ),
+        "a fleet whose units each have a frailty, which a model draw does "
+        "not give (the model has no simulator): its own study, "
+        "calibration/test_coverage_shared_frailty.py, simulates fleets "
+        "from the definition and checks the parameters' bias and "
+        "coverage, the bands, the forecast interval and the size of the "
+        "test of no frailty; recovery with covariates is in "
+        "recurrent/test_shared_frailty.py",
+    ),
     "JointFrailty": "recurrent events and a terminal event per unit, "
     "which a model draw of one function does not give: its own study, "
     "calibration/test_coverage_joint_frailty.py, simulates units with "
@@ -1706,6 +1740,9 @@ EXCLUDED: dict[str, str] = {
         "from this link is in univariate/joint/test_joint_links.py"
         for _link in ("slope", "cumulative", "value+slope")
     },
+    "WeibullJointPH[lag]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of a fleet simulated with "
+    "a lag is in univariate/joint/test_joint_lag.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "

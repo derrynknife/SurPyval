@@ -204,7 +204,26 @@ def _model_at(link, beta):
     return out
 
 
-def _brute_force_neg_ll(model, data):
+def _simpson(f, lo, hi, lag=0.0):
+    """``int_lo^hi f(s) ds`` by Simpson's rule with 2001 points, on each
+    side of ``lag`` where it is inside ``(lo, hi)``, where a lagged
+    marker has a kink; ``f`` takes an array of ages and gives ``(..,
+    ages)``. The piece after ``lag`` starts just past it, so a slope that
+    starts there is taken from the right."""
+    total = 0.0
+    cuts = [lo] + ([lag] if lo < lag < hi else []) + [hi]
+    for k, (a, b) in enumerate(zip(cuts[:-1], cuts[1:])):
+        s = np.linspace(a, b, 2001)
+        w = np.ones(s.size)
+        w[1:-1:2], w[2:-1:2] = 4, 2
+        at = s.copy()
+        if k > 0:
+            at[0] = np.nextafter(a, np.inf)
+        total = total + f(at) @ w * (s[1] - s[0]) / 3
+    return total
+
+
+def _brute_force_neg_ll(model, data, lag=0.0):
     """The negative log-likelihood of ``data`` by a dense grid over the
     random effects (161 points a dimension, 7 sds each way) and Simpson's
     rule in age (2001 points) for the effective age, from the model's
@@ -236,20 +255,21 @@ def _brute_force_neg_ll(model, data):
 
         def rate(t, m0=m0, m1=m1, site=site):
             t = np.atleast_1d(t)[None, :]
+            # the line lag later, held at its age-0 value until then
+            u = np.maximum(t - lag, 0.0)
             eta = p["site"] * site
             if "marker_effect" in p:
                 eta = eta + p["marker_effect"] * (
-                    m0[:, None] + m1[:, None] * t - model.marker_reference
+                    m0[:, None] + m1[:, None] * u - model.marker_reference
                 )
             if "slope_effect" in p:
-                eta = eta + p["slope_effect"] * m1[:, None]
+                eta = eta + p["slope_effect"] * m1[:, None] * (
+                    (t > lag) if lag > 0 else 1.0
+                )
             return np.exp(eta) * np.ones_like(t)
 
         def age(t, rate=rate):
-            s = np.linspace(0, t, 2001)
-            w = np.ones(s.size)
-            w[1:-1:2], w[2:-1:2] = 4, 2
-            return rate(s) @ w * (s[1] - s[0]) / 3
+            return _simpson(rate, 0.0, t, lag)
 
         def survival(t, age=age):
             if not np.isfinite(t):

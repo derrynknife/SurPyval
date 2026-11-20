@@ -34,6 +34,8 @@ from ._likelihood import (
     Layout,
     Model,
     PathFunction,
+    check_integration,
+    check_lag,
     neg_ll,
     place,
 )
@@ -85,6 +87,48 @@ def cannot_follow(path_model: Any, links: Any) -> list[str]:
         for link in links
         if (name, link) in _CANNOT_FOLLOW
     ]
+
+
+#: The built-in paths whose value at age 0 is infinite, so the hazard
+#: cannot follow their value with a lag (before the lag it follows the
+#: value at age 0).
+_INFINITE_AT_ZERO = {
+    "Lloyd-Lipow": "The Lloyd-Lipow path a - b / t",
+    "Logarithmic": "The Logarithmic path a + b ln(t)",
+}
+
+
+def _check_lag_at_zero(path_model: Any, links: Any, lag: float) -> None:
+    """Refuse a lag on the value of a path whose value at age 0 is
+    infinite: before the lag the hazard follows the value at age 0."""
+    name = str(getattr(getattr(path_model, "base", path_model), "name", ""))
+    if lag > 0 and "value" in links and name in _INFINITE_AT_ZERO:
+        raise ValueError(
+            f"{_INFINITE_AT_ZERO[name]} is infinite at age 0, and with a "
+            "lag the hazard follows the value at age 0 until the lag has "
+            "passed, so it cannot follow this path's value with a lag. "
+            "Use lag=0, or a path that is finite at age 0, such as "
+            "LinearPath, ExponentialPath or PowerPath."
+        )
+
+
+def _check_start_at_zero(fitter: Any, mu: npt.NDArray) -> None:
+    """Refuse a lag on the value of a path (of one's own) whose value at
+    age 0 is not finite at the average item's parameters ``mu``."""
+    if fitter.lag <= 0 or "value" not in fitter.link:
+        return
+    with np.errstate(all="ignore"):
+        at_zero = np.asarray(
+            fitter.path_model.path(0.0, *np.asarray(mu, dtype=float)),
+            dtype=float,
+        )
+    if not np.all(np.isfinite(at_zero)):
+        raise ValueError(
+            f"The {fitter.path_model.name} path is not finite at age 0 for "
+            "the average item (the readings put it there), and with a lag "
+            "the hazard follows the value at age 0 until the lag has "
+            "passed. Use lag=0, or a path that is finite at age 0."
+        )
 
 
 def _instead(path_model: Any, survival: str, refused: Any) -> str:
@@ -164,6 +208,7 @@ class JointPHFitter(FitterRepr):
         path_model: Any,
         varying: Any = None,
         link: Any = "value",
+        lag: float = 0.0,
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -187,8 +232,10 @@ class JointPHFitter(FitterRepr):
                 raise ValueError(
                     f"The {path_model.name} path has {len(names)} "
                     f"parameters; at most {MAX_VARYING} can vary between "
-                    "items (the quadrature is a grid of 7 points in each): "
-                    "choose them with varying=(...)."
+                    "items (the quadrature is a grid of 7 points in each, "
+                    "too many beyond that; a Laplace method for more is "
+                    f"planned): choose up to {MAX_VARYING} with "
+                    "varying=(...), the rest common to all items."
                 )
             varying = tuple(names)
         if isinstance(varying, str):
@@ -204,8 +251,10 @@ class JointPHFitter(FitterRepr):
         if len(varying) > MAX_VARYING:
             raise ValueError(
                 f"At most {MAX_VARYING} path parameters can vary between "
-                "items (the quadrature is a grid of 7 points in each); "
-                f"got {len(varying)}."
+                "items (the quadrature is a grid of 7 points in each, too "
+                "many beyond that; a Laplace method for more is planned); "
+                f"got {len(varying)}: name up to {MAX_VARYING} in "
+                "varying=(...), the rest common to all items."
             )
         try:
             links = [link] if isinstance(link, str) else list(link)
@@ -246,6 +295,8 @@ class JointPHFitter(FitterRepr):
                 "also names of the joint model's other parameters; rename "
                 "them in the path model."
             )
+        self.lag = check_lag(lag)
+        _check_lag_at_zero(path_model, self.link, self.lag)
         self.dist = distribution
         self.path_model = path_model
         # in the path's order
@@ -269,6 +320,8 @@ class JointPHFitter(FitterRepr):
             out.append("varying: " + ", ".join(self.varying))
         if self.link != ("value",):
             out.append("link: " + ", ".join(self.link))
+        if self.lag > 0:
+            out.append(f"lag: {self.lag:g}")
         return out
 
     @dataframe_covariates
@@ -291,6 +344,7 @@ class JointPHFitter(FitterRepr):
         i: npt.ArrayLike | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        integration: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -309,7 +363,8 @@ class JointPHFitter(FitterRepr):
         up. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
-        the log-likelihood stops moving), and the likelihood is maximised
+        the log-likelihood stops moving; ``integration`` says on which
+        nodes), and the likelihood is maximised
         with autograd's gradient; the covariance is the inverse of its
         Hessian. The fit starts from the path fitted to each item alone,
         the spread of those fits, and a survival fit with each item's
@@ -387,6 +442,17 @@ class JointPHFitter(FitterRepr):
             link's effect is per (``effect_units``: a
             ``cumulative_effect`` is per ``(mm/s)·years``, say). A label
             only: nothing is converted.
+        integration : {"grid", "pruned"}, optional
+            The nodes each item's likelihood is integrated on, over its
+            varying path parameters: ``"grid"``, the full grid of 7
+            points in each (49 nodes for two, 343 for three, 2,401 for
+            four, 16,807 for five), or ``"pruned"``, that grid without
+            its lowest-weight nodes, those that hold less than 1e-9 of
+            its weight between them (2,321 nodes for four, 15,415 for
+            five; none are left out for up to three). Default the full
+            grid, the more accurate; ``"pruned"`` is an option. The
+            model keeps it as ``integration``, and its predictions use
+            the same.
 
         Returns
         -------
@@ -413,7 +479,10 @@ class JointPHFitter(FitterRepr):
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
         >>> model.maximum
         'verified'
+        >>> model.integration
+        'grid'
         """
+        integration = check_integration(integration, len(self.varying))
         reference = None
         if marker_reference is not None:
             try:
@@ -442,7 +511,9 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
-        model = _fit(self, records, counts, names, reference, parts)
+        model = _fit(
+            self, records, counts, names, reference, parts, integration
+        )
         model.marker_unit = marker_unit
         return model
 
@@ -576,6 +647,7 @@ class JointPHFitter(FitterRepr):
         i_col: str | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        integration: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -597,7 +669,8 @@ class JointPHFitter(FitterRepr):
         the items by unit. ``m`` and ``markers_col`` are two ways of
         giving the readings: give one. ``marker_unit`` is the unit the
         readings are in, as for :meth:`fit` (from ``m``'s own unit where
-        it has one).
+        it has one). ``integration`` is the nodes of each item's
+        integral, ``"grid"`` or ``"pruned"``, as for :meth:`fit`.
 
         Examples
         --------
@@ -685,6 +758,7 @@ class JointPHFitter(FitterRepr):
                 i=None if i_col is None else list(df[i_col]),
                 m=m,
                 marker_unit=marker_unit,
+                integration=integration,
             )
 
 
@@ -693,6 +767,7 @@ def JointPH(
     path_model: Any = None,
     varying: Any = None,
     link: Any = "value",
+    lag: float = 0.0,
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -712,7 +787,9 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them (at most three).
+        items. Default all of them (at most five; with four or five
+        each item's integral is on a pruned grid by default, see
+        ``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -721,6 +798,17 @@ def JointPH(
         risk follows the accumulated exposure), or a list of them, each
         with an effect of its own (``marker_effect``, ``slope_effect``,
         ``cumulative_effect``).
+    lag : float, optional
+        How long after the marker the hazard follows it, in the
+        lifetimes' unit of time (default 0: at once). With ``lag=200``
+        the hazard at age ``t`` follows the path at ``t - 200``, so a
+        reading today says what the risk will be 200 hours on. Before
+        the lag has passed the hazard follows the path held at its age-0
+        value: the value at age 0, a slope of 0 and an area of 0 (every
+        link at ``max(t - lag, 0)``, the slope 0 before the lag). The lag
+        is fixed, not estimated: the likelihood is not smooth in it. To
+        choose one, fit each lag you have in mind and compare them by
+        ``aic()`` (the same data, the same number of parameters).
 
     Returns
     -------
@@ -740,12 +828,14 @@ def JointPH(
     >>> JointPH(Weibull, link=["value", "slope"])
     ... # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., link: value, slope)
+    >>> JointPH(Weibull, lag=200.0)  # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., lag: 200)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying, link)
+    return JointPHFitter(distribution, path_model, varying, link, lag)
 
 
 # -- the data ----------------------------------------------------------------
@@ -978,6 +1068,7 @@ def _fit(
     names: list,
     reference: float | None,
     parts: tuple,
+    integration: str = "grid",
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each); ``parts`` is
     ``(shifts, hazard)``, which covariates enter which part
@@ -1035,7 +1126,12 @@ def _fit(
         fitter.link,
         fitter.survival,
     )
-    model = Model(layout, PathFunction(path_model, fitter.link), centre)
+    model = Model(
+        layout,
+        PathFunction(path_model, fitter.link, fitter.lag),
+        centre,
+        integration,
+    )
     # Starting values: each item's path alone, their spread (or, where
     # given, another link's fit of the same data: compare_links), then
     # the survival part on each item's predicted path
@@ -1043,6 +1139,7 @@ def _fit(
     if theta is None:
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_power(fitter, theta["mu"], "the readings put")
+    _check_start_at_zero(fitter, theta["mu"])
     theta = survival_start(model, arrays, theta)
     u = layout.pack(theta)
     total = float(np.sum(counts))
@@ -1165,6 +1262,7 @@ def _fit(
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
     out.link = tuple(fitter.link)
+    out.lag = fitter.lag
     out.survival = fitter.survival
     out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
@@ -1182,6 +1280,7 @@ def _fit(
     }
     out.k = len(estimated)
     out.maximum = "verified" if verified else "unverified"
+    out.integration = integration
     out.n_items = total
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
@@ -1343,7 +1442,9 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     from .joint_aft import JointAFT
 
     factory = JointAFT if model.survival == "AFT" else JointPH
-    fitter = factory(model.dist, model.path_model, model.varying, model.link)
+    fitter = factory(
+        model.dist, model.path_model, model.varying, model.link, model.lag
+    )
     records, counts, names = _records(
         data["x"],
         data.get("c"),

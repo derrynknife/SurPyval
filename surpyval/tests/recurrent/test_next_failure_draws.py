@@ -599,3 +599,27 @@ def test_a_draw_is_cheap(capsys):
                 f"{1e3 * (done - drawn):.2f} ms for 1000 units"
             )
         assert done - start < 10.0
+
+
+@pytest.mark.parametrize(
+    "bad, name",
+    [
+        ([0.4, -1.0, 1.8], "alpha"),
+        ([0.4, 20.0, 0.0], "beta"),
+        ([0.4, np.nan, 1.8], "alpha"),
+        ([1.5, 20.0, 1.8], "rho"),
+    ],
+)
+def test_ari_with_params_refuses_values_outside_the_ranges(bad, name):
+    # ARI's fit_from_parameters does not check its baseline, so with_params
+    # used to build a model at a negative scale that predicted nan.
+    model = ARI.fit_from_parameters([20.0, 1.8], 0.4, m=1)
+    with pytest.raises(ValueError, match=f"{name} = .*parameter_bounds"):
+        model.with_params(bad)
+
+
+def test_renewal_with_params_takes_the_ends_of_the_restoration_range():
+    model = ARI.fit_from_parameters([20.0, 1.8], 0.4, m=1)
+    assert model.parameter_bounds == [(0.0, 1.0), (0.0, None), (0.0, None)]
+    for rho in (0.0, 1.0):
+        assert model.with_params([rho, 20.0, 1.8]).rho == rho

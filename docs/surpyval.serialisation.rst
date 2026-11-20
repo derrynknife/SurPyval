@@ -451,6 +451,10 @@ with its own ``schema``.
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
      - --
+   * - ``SharedFrailtyModel``
+     - ``"model": "SharedFrailtyModel"``
+     - ``baseline``, ``family``, ``how``, ``params``, ``n_covariates``, ``regression``, ``held``, ``covariance``, ``cluster_ids``, ``cluster_events``, ``cluster_exposure``, ``maximum``
+     - ``feature_names``
    * - ``JointFrailtyModel``
      - ``"model": "JointFrailtyModel"``
      - ``family``, ``time_scale``, ``params``, ``n_covariates``, ``held``, ``covariance``, ``frailty_ids``, ``frailty_values``, ``maximum``
@@ -509,7 +513,7 @@ with its own ``schema``.
      - --
    * - ``JointModel``
      - ``"model": "JointModel"``
-     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
+     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``integration``, ``_neg_ll``, ``maximum``, ``covariance``
      - --
    * - ``EquivalenceModel``
      - ``"model": "EquivalenceModel"``
