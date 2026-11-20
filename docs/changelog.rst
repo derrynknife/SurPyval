@@ -160,6 +160,30 @@ v0.29 (unreleased)
   likelihood-ratio bounds on each cause's net survival covered 92.5% to
   96%. Both need the fitted data: a model restored with ``from_dict``
   refuses them, saying to refit or use ``method="wald"``.
+- **Joint models: four and five path parameters varying between items,
+  and ``integration=``.** A joint model averages each item's likelihood
+  over the path parameters it could have, on a grid of 7 values of each:
+  49 nodes for two, 343 for three, and until now no more. ``varying=``
+  now takes up to five names (2,401 nodes an item for four, 16,807 for
+  five), for paths whose shape differs item by item in more than three
+  ways; a sixth is refused, saying what to hold common. The fits take
+  ``integration="grid"`` (the full grid) or ``"pruned"`` (the grid
+  without its lowest-weight nodes, the far corners that hold less than
+  1e-9 of its weight between them: 80 of the 2,401 and 1,392 of the
+  16,807; none in up to three dimensions). The default is the full grid
+  up to three varying parameters -- those fits are unchanged to the last
+  digit -- and the pruned one for four and five. The model keeps the
+  choice as ``integration``, prints it, saves and restores it (a model
+  saved before reads as ``"grid"``), and predicts on the same kind of
+  grid. With a normal integrand (no marker effect) both grids reproduce
+  the closed form in four and five dimensions to 1e-9 an item, and with
+  a marker effect the pruned log-likelihood is within 1e-6 an item of the
+  full grid's (3e-10 an item on a fleet read often; estimates of a fleet
+  of 60 within 1e-6 of a standard error). A fit with four varying
+  parameters takes minutes, not seconds, on either grid: the saving in
+  nodes is 3% (8% for five), and the search over the spread's variances
+  and correlations is most of the time. See "How the integral is done"
+  in :doc:`Joint Models`.
 - **Joint models: the links compared in one call.** Each joint model
   fitter has ``compare_links(data, links=None, metric="aic", ...)``: it
   fits the fitter's model (its baseline, path model and varying path
