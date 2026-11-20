@@ -591,6 +591,9 @@ def _build(name):
         "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
         ),
+        "jelinski_moranda": lambda: surpyval.JelinskiMoranda.fit(
+            np.array([3.0, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99])
+        ),
         "degradation": _degradation,
         "induced_failure_distribution": lambda: _degradation().induced_life(
             n_samples=500, random_state=3
@@ -682,6 +685,7 @@ CASES = [
     "recurrent_cox_pwp_gap",
     "recurrent_cox_wei_lin_weissfeld",
     "renewal",
+    "jelinski_moranda",
     "degradation",
     "induced_failure_distribution",
     "wiener_process",
