@@ -115,6 +115,7 @@ surpyval.LifeAtCovariates
 surpyval.LifeAtUsage
 surpyval.LikelihoodContour
 surpyval.LikelihoodContourPlot
+surpyval.LittlewoodVerrall
 surpyval.LogLogistic
 surpyval.LogLogisticDistributional
 surpyval.LogLogisticEquivalence
@@ -428,6 +429,8 @@ surpyval.recurrent.JelinskiMoranda
 surpyval.recurrent.JelinskiMorandaModel
 surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
+surpyval.recurrent.LittlewoodVerrall
+surpyval.recurrent.LittlewoodVerrallModel
 surpyval.recurrent.MCFDiffResult
 surpyval.recurrent.MusaOkumoto
 surpyval.recurrent.NonParametricCounting

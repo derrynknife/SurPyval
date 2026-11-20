@@ -144,6 +144,8 @@ RULES = {
 COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1), mtbf=(0.0, np.inf, 0))
 # The faults a finite-fault process has left fall as the testing goes on
 COUNTING_RULES["remaining_faults"] = (0.0, np.inf, -1)
+# The chance of running a further time without a failure
+COUNTING_RULES["next_failure_sf"] = (0.0, 1.0, -1)
 # The totals over the causes of a cause-specific intensity model
 COUNTING_RULES.update(
     total_cif=COUNTING_RULES["cif"],

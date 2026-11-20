@@ -70,6 +70,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
+    scattered_campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -1439,6 +1440,29 @@ def _recurrent():
                 "in closed form"
             },
             rtol=1e-9,
+        )
+    )
+    out.append(
+        Case(
+            name="LittlewoodVerrall",
+            fitters=("surpyval.recurrent.LittlewoodVerrall",),
+            model_class="surpyval.recurrent.LittlewoodVerrallModel",
+            interface=COUNTING,
+            data=scattered_campaign_data,
+            fit=_fit(rc.LittlewoodVerrall),
+            # (of the time ahead of the last failure, not of the age)
+            functions=("next_failure_sf",),
+            # Gaps with no scatter at all: no finite alpha (refused)
+            starve=lambda d: rc.LittlewoodVerrall.fit(
+                np.cumsum(5.0 + np.arange(30.0))
+            ),
+            x=X_REC,
+            rows=("x", "c"),
+            paths={
+                "fit_from_df": lambda d: rc.LittlewoodVerrall.fit_from_df(
+                    pd.DataFrame(d), x_col="x", c_col="c"
+                )
+            },
         )
     )
     out.append(
@@ -3503,6 +3527,12 @@ _REMAINING_FAULTS = dict.fromkeys(
 # Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
 # Wald and bootstrap bounds are refused with the reason.
 _LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
+# Littlewood-Verrall: the delta method for each parameter (alpha also
+# has a likelihood-ratio bound, checked in its own tests: the sweep is of
+# one method for every parameter, and the others have none).
+_LITTLEWOOD_VERRALL_BOUNDS = (
+    Bound("param_cb", kind="param", kwargs={"method": "wald"}, in_range=False),
+)
 _JELINSKI_MORANDA_BOUNDS = (
     Bound("param_cb", kind="param", **_LR_ONLY),
     Bound("remaining_faults_cb", kind="summary", query=((),), **_LR_ONLY),
@@ -3518,6 +3548,7 @@ def _bounds(case):
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
+        "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
         "PanelCountRegression": _panel_count_bounds(True),
         "QuantileRegressionModel": _QUANTILE_REGRESSION_BOUNDS,
@@ -4481,7 +4512,8 @@ def _with_convergence(case):
     exclude = case.exclude
     if case.name in ("LogNormal", "LogNormal[zi]"):
         exclude = {**exclude, "convergence[initial guess]": _START_IS_MAXIMUM}
-    return replace(case, starve=_starve(case), exclude=exclude)
+    # (a case may bring its own starved refit)
+    return replace(case, starve=case.starve or _starve(case), exclude=exclude)
 
 
 CASES = [_with_convergence(c) for c in CASES]

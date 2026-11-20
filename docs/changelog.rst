@@ -21,6 +21,26 @@ v0.29 (unreleased)
   SurPyval 0.28 refuses rather than misread. See "Which path parameters
   are correlated" in :doc:`Joint Models`.
 
+- **The Littlewood-Verrall software reliability model.**
+  ``surpyval.recurrent.LittlewoodVerrall`` (also at the top level) fits
+  one test campaign's times between failures: each is exponential with a
+  rate that is itself gamma, with shape ``alpha`` and rate ``psi(i) =
+  beta0 + beta1 i`` (``psi="quadratic"`` for ``i**2``), so reliability
+  grows on average but a fix may make things worse. It is fitted by
+  maximum likelihood on the gaps' Pareto likelihood, with the end of
+  testing after the last failure as a ``c=1`` row. The fitted
+  ``LittlewoodVerrallModel`` gives the distribution of the time to the
+  next failure (``next_failure_sf``, ``next_failure_qf``,
+  ``next_failure_mean``, refused where ``alpha <= 1`` makes it
+  infinite) and of the rate now (``current_rate``, ``current_rate_qf``),
+  ``random``, ``aic()``, ``covariance()`` and ``param_cb`` (a
+  likelihood-ratio bound for ``alpha``, whose upper end can be ``inf``;
+  Wald bounds for all three). Gaps no more scattered than exponential
+  times have no finite ``alpha``: the fit is refused, saying so and what
+  to fit instead. It can be one of the models of
+  ``compare_predictions``. See "When a fix may not help" in
+  :doc:`Software Reliability Growth`.
+
 - **The Rayleigh defect model, for defects by development phase.**
   ``surpyval.recurrent.RayleighDefects`` (also at the top level) is a
   Poisson process with :math:`\Lambda(t) = K (1 - e^{-t^2 / (2 c^2)})`:

@@ -1450,6 +1450,17 @@ def _search_excess_hazard(model, data):
     return [Search(fun, u, n_obs, floor=floor)]
 
 
+def _search_gaps(model):
+    """The Littlewood-Verrall likelihood where it was searched: in the
+    logs of alpha and of psi at the first gap and at the next."""
+    data = model._data
+    return Search(
+        lambda u: -data.log_likelihood(*np.exp(np.asarray(u, dtype=float))),
+        np.asarray(model._u, dtype=float),
+        float(model.n),
+    )
+
+
 SEARCHES: dict[str, Callable] = {
     "EquivalenceModel": _search_equivalence,
     "ExcessHazard": _search_excess_hazard,
@@ -1498,6 +1509,7 @@ SEARCHES: dict[str, Callable] = {
     # case is in NOT_DIFFERENTIABLE; its own tests compare the estimate
     # with a search over every whole number).
     "JelinskiMorandaModel": lambda model, data: (),
+    "LittlewoodVerrallModel": lambda model, data: [_search_gaps(model)],
 }
 
 
