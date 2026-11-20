@@ -103,6 +103,10 @@ NOT_DIFFERENTIABLE = {
         "where the likelihood is not differentiable"
     ),
     "Binomial": "the number of trials is an integer parameter",
+    "JelinskiMoranda": (
+        "the number of faults is a whole number: the fit is the best of "
+        "them, found exactly, with the rate in closed form"
+    ),
     "FixedEventProbability": (
         "a closed-form share of events, of a distribution with no hazard "
         "for the general likelihood to read"

@@ -26,7 +26,6 @@ from .regression import (
     ProportionalIntensityNHPP,
     WeiLinWeissfeld,
 )
-from .shared_frailty import SharedFrailtyModel
 from .renewal import (
     ARA,
     ARI,
@@ -35,4 +34,6 @@ from .renewal import (
     RenewalModel,
 )
 from .renewal.renewal_model import conditional_gaps
+from .shared_frailty import SharedFrailtyModel
+from .software import JelinskiMoranda, JelinskiMorandaModel
 from .tests import TrendTestResult, laplace, mil_hdbk_189c
