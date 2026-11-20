@@ -24,4 +24,5 @@ from .renewal import (
     GeneralizedRenewal,
     RenewalModel,
 )
+from .renewal.renewal_model import conditional_gaps
 from .tests import TrendTestResult, laplace, mil_hdbk_189c

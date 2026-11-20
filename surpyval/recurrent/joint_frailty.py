@@ -48,6 +48,7 @@ from scipy.optimize import minimize
 from scipy.special import roots_legendre
 from scipy.stats import chi2
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
     check_alpha_ci,
@@ -1527,7 +1528,9 @@ class JointFrailty(FitterRepr):
 # ---------------------------------------------------------------------------
 # The model
 # ---------------------------------------------------------------------------
-class JointFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
+class JointFrailtyModel(
+    ParameterBoundsMixin, SerialisableMixin, LikelihoodInferenceMixin
+):
     """
     A fitted joint frailty model of recurrent events and a terminal event
     (see :data:`JointFrailty`).
