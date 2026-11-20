@@ -5,6 +5,23 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **WAIC and leave-one-out cross-validation for Bayesian fits.**
+  ``model.waic()`` and ``model.loo()`` of a ``BayesianParametric`` estimate
+  the expected log predictive density of a new observation, with its
+  standard error and the effective number of parameters, and
+  ``surpyval.bayes.compare(fits, criterion="loo")`` (or ``"waic"``) ranks
+  fits to the same data by it, with the standard error of each
+  difference from the paired rows. Every row counts through its own
+  likelihood term (censored, interval, truncated) and a count ``n`` is
+  ``n`` units. Conjugate fits are in closed form; grid and Laplace fits
+  use the grid's quadrature, with each row's share of its leave-one-out
+  posterior at the grid's edge; fits from draws use Pareto-smoothed
+  importance sampling, with each row's Pareto ``k``. Each warns, counting
+  the rows, where its estimate is unreliable. ``LogLikelihood.pointwise``
+  gives each row's log-likelihood. Checked against refitting without each
+  unit, closed forms and ArviZ. See "Comparing fits: WAIC and
+  leave-one-out" in :doc:`Bayesian Fitting with SurPyval`.
+
 - **A model on another clock.** ``model.rescale_time(factor)`` gives the
   model whose survival function is ``R(factor * t)``: a life in operating
   time put on the calendar (``factor=0.25`` for a unit that runs a quarter

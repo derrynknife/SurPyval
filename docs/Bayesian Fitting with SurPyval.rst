@@ -234,6 +234,70 @@ Units that were running at the last update and are still running (or have
 since failed) are the same units: pass the current records with
 ``replace=True``, so that no unit counts twice.
 
+Comparing fits: WAIC and leave-one-out
+--------------------------------------
+
+Which belief predicts the seals better: wear-out (the shape about 2),
+random failures (an Exponential), or early failures (a shape below 1)?
+AIC compares maximum-likelihood fits and ignores the priors. For Bayesian
+fits the question is how well each predicts a seal it has not seen,
+averaged over its posterior: the *expected log predictive density*
+(``elpd``), estimated by leaving out each unit in turn (``loo()``) or by
+WAIC (``waic()``). Higher is better; ``ic`` is ``-2 elpd``, on AIC's
+scale.
+
+.. jupyter-execute::
+
+    random = sp.Exponential.fit_bayes(
+        x, c, priors={"failure_rate": sp.prior.between(1e-6, 1e-3)})
+    early = sp.Weibull.fit_bayes(
+        x, c, priors={"beta": sp.prior.around(0.8, between=(0.5, 1.2))})
+    comparison = sp.bayes.compare(
+        {"wear-out": model, "random": random, "early": early})
+    comparison
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = comparison.table
+    assert comparison.best == "wear-out"
+    assert round(_t["random"]["elpd_diff"], 1) == -0.9, _t
+    assert round(_t["random"]["se_diff"], 1) == 0.7, _t
+    assert round(_t["early"]["elpd_diff"], 1) == -1.5, _t
+
+Wear-out comes first, but by less than one and a half standard errors of
+the difference from random failures: three failures cannot tell the two
+apart. Read ``se_diff``, not ``se``: each fit's own standard error is
+large (the three failures and 37 survivors predict very differently),
+but the fits are scored on the same seals, and the paired difference
+cancels most of it.
+
+Every row counts through its own likelihood term (a survivor's
+probability of surviving, an interval's probability, a truncated row's
+term over the probability of its window), and a row with count ``n`` is
+``n`` units. Each fit is scored from its one posterior, without
+refitting, by :math:`p(y_i \mid y_{-i}) = 1 / E[1 / p(y_i \mid \theta)]`:
+
+- a conjugate fit in closed form, exactly;
+- a grid or Laplace fit by the grid's quadrature. ``edge`` is each row's
+  share of its leave-one-out posterior in the grid's outermost cells, and
+  ``loo()`` warns above 0.001: without that row the data say much less,
+  and the grid, laid for the full posterior, may not hold it;
+- draws from another sampler (``from_draws``) by Pareto-smoothed
+  importance sampling (Vehtari, Gelman and Gabry, 2017; Vehtari, Simpson,
+  Gelman, Yao and Gabry, 2024), as R's ``loo`` and ArviZ do, taking the
+  draws as independent. ``pareto_k`` is each row's diagnostic, and
+  ``loo()`` warns, counting the rows, above
+  :math:`\min(1 - 1/\log_{10} S, 0.7)` for :math:`S` draws.
+
+WAIC is :math:`\mathrm{lppd} - p_\mathrm{WAIC}`, with
+:math:`p_\mathrm{WAIC}` the posterior variance of each row's
+log-likelihood; it warns when a row's term is above 0.4, where it is
+unreliable and ``loo()`` is the better estimate. The standard errors are
+:math:`\sqrt{N}` times the standard deviation of the units' values (with
+divisor :math:`N - 1`, as R's ``loo``).
+
 Priors: the helpers, and their dangers
 --------------------------------------
 

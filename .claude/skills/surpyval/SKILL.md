@@ -371,6 +371,7 @@ sp.KaplanMeier.fit(x, c, w=w).cb(5)   # also NelsonAalen, the regressions, CoxPH
 # Bayesian fit: priors in sp.prior, credible intervals via cri, not cb
 b = sp.Weibull.fit_bayes(x, c, priors={"beta": sp.prior.around(2, between=(1.5, 3))})
 b.param_cri("beta"); b.cri(5); b.quantile_cri(0.1)   # on="sf" by default for cri
+b.loo(); b.waic()   # compare Bayesian fits: sp.bayes.compare({"a": b, ...}), not aic
 
 # Distributional regression: covariates on every parameter (shape too)
 df = pd.DataFrame({"t": x, "c": c, "load": Z[:, 0]})
