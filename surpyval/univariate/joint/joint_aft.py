@@ -36,6 +36,7 @@ class JointAFTFitter(JointPHFitter):
         path_model: Any,
         varying: Any = None,
         link: Any = "value",
+        lag: float = 0.0,
     ) -> None:
         try:
             named = [link] if isinstance(link, str) else list(link)
@@ -50,7 +51,7 @@ class JointAFTFitter(JointPHFitter):
                 "or JointPH(..., link='cumulative') for a hazard that "
                 "follows the area."
             )
-        super().__init__(distribution, path_model, varying, link)
+        super().__init__(distribution, path_model, varying, link, lag)
 
     def _repr_details(self) -> list[str]:
         out = super()._repr_details()
@@ -62,6 +63,7 @@ def JointAFT(
     path_model: Any = None,
     varying: Any = None,
     link: Any = "value",
+    lag: float = 0.0,
 ) -> JointAFTFitter:
     """
     An accelerated joint model fitter of a marker and a lifetime: the
@@ -103,6 +105,12 @@ def JointAFT(
         or both, each with an effect of its own (``marker_effect``,
         ``slope_effect``). ``"cumulative"`` is refused: the effective
         age already accumulates the marker.
+    lag : float, optional
+        How long after the marker it sets the ageing rate, in the
+        lifetimes' unit of time (default 0: at once): the rate at age
+        ``t`` follows the path at ``max(t - lag, 0)`` (the slope 0 before
+        the lag), as for :func:`~surpyval.univariate.joint.joint_ph.JointPH`.
+        Fixed, not estimated; compare lags by ``aic()``.
 
     Returns
     -------
@@ -123,4 +131,4 @@ def JointAFT(
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointAFTFitter(distribution, path_model, varying, link)
+    return JointAFTFitter(distribution, path_model, varying, link, lag)

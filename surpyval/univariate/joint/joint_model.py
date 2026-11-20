@@ -41,6 +41,7 @@ from ._likelihood import (
     _at,
     _path_params,
     adaptive_nodes,
+    check_lag,
     continued_modes,
     log_integrals,
     log_integrand,
@@ -392,7 +393,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     (``slope_effect`` times :math:`m'(t)`) or the area under it from age
     0 (``cumulative_effect`` times :math:`\\int_0^t m(s) ds`), in place
     of the value or beside it; the baseline is then at a slope and an
-    area of 0.
+    area of 0. With a ``lag`` above 0 the hazard at age :math:`t` follows
+    each of these at :math:`\\max(t - \\mathrm{lag}, 0)` (the path held at
+    its age-0 value until the lag has passed, so the slope is 0 there):
+    a reading acts ``lag`` later.
 
     In an accelerated model (``survival == "AFT"``) the marker speeds up
     the item's ageing in place of multiplying its hazard: by age
@@ -476,6 +480,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: current value), ``"slope"`` (its rate of change), ``"cumulative"``
     #: (the area under it from age 0), one or more.
     link: tuple = ("value",)
+    #: How long after the marker the hazard follows it, in the lifetimes'
+    #: unit of time (0: at once): the hazard at age ``t`` follows the
+    #: path at ``max(t - lag, 0)``. Fixed by the fit's fitter, not
+    #: estimated.
+    lag: float = 0.0
     #: The survival part: ``"PH"`` (the marker multiplies the hazard,
     #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
     #: ``JointAFT``).
@@ -583,7 +592,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def _likelihood_model(self) -> Model:
         return Model(
             self._layout,
-            PathFunction(self.path_model, tuple(self.link)),
+            PathFunction(self.path_model, tuple(self.link), self.lag),
             self._centre,
         )
 
@@ -666,7 +675,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 list(range(i + 1, i + 3 + p)),
             ),
             (
-                "link: " + ", ".join(_LINK_WORDS[link] for link in self.link),
+                "link: "
+                + ", ".join(_LINK_WORDS[link] for link in self.link)
+                + (f", lag {self.lag:g}" if self.lag > 0 else ""),
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
         ]
@@ -761,6 +772,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
+        if self.lag > 0:
+            followed += f", {self.lag:g} earlier (lag)"
         if self.survival == "AFT":
             survival = (
                 f"{self.dist.name} accelerated failure time, ageing sped "
@@ -1405,6 +1418,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "links": links,
             "varying": list(self.varying),
             "link": list(self.link),
+            **({} if self.lag == 0 else {"lag": float(self.lag)}),
             "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -1512,6 +1526,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.hazard_covariates = None if hazard is None else list(hazard)
         # saved before the hazard could follow anything but the value
         out.link = tuple(model_dict.get("link") or ("value",))
+        # saved before the lag, or with none: at once
+        out.lag = check_lag(model_dict.get("lag", 0.0))
         # saved before the accelerated survival part: proportional hazards
         survival = model_dict.get("survival") or "PH"
         if survival not in _SURVIVAL_WORDS:

@@ -872,6 +872,42 @@ without them, saying which: a logarithmic path without the slope, and a
 Lloyd-Lipow path, which also has no finite area from age 0, can take only
 the value, so there is nothing to compare and it is refused.
 
+A reading that acts later: a lag
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every link so far acts at once: the hazard at age :math:`t` follows the
+path at :math:`t`. Some mechanisms have a lead time -- debris in the oil
+now says what the bearing will do some hundreds of hours on. ``lag=``
+shifts every link by a fixed time, in the lifetimes' unit:
+``JointPH(Weibull, link="value", lag=200.0)`` makes the hazard at age
+:math:`t` follow the path at :math:`\max(t - 200, 0)`. Until the lag
+has passed the path is held at its age-0 value: the value link follows
+the value at age 0, and the slope and the area are 0 there. The
+cumulative hazard is integrated on each side of the lag (where the
+lagged path has a kink, and the slope link a jump), so the likelihood
+keeps its accuracy. ``JointAFT`` takes ``lag=`` the same way. With
+``lag=0`` (the default) the model is the one without a lag, number for
+number. The fitted model keeps its ``lag``, prints it, saves it and
+predicts with it.
+
+The lag is fixed, not estimated: the likelihood has a kink in it at every
+item's age, so it is not smooth in the lag. Choose it from what you know
+of the mechanism, or fit the lags you have in mind and compare them by
+AIC (the same data and the same number of parameters):
+
+.. code-block:: python
+
+    fits = {lag: JointPH(Weibull, lag=lag).fit(data) for lag in (0.0, 0.25, 0.5)}
+    {lag: model.aic() for lag, model in fits.items()}
+
+Expect the data to say little about a lag when the marker is close to a
+straight line: the line ``L`` earlier is the line now less ``b L``, which
+the marker's effect and the baseline largely absorb. On 300 simulated
+items whose hazard followed the line half a year earlier, the AICs of
+lags 0, 0.25 and 0.5 were within 0.6 of each other. A path that is
+infinite at age 0 (logarithmic, Lloyd-Lipow) cannot lag its value, and is
+refused.
+
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
 the same curvature ``c``. At most three may vary (the quadrature's grid is

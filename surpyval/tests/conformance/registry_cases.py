@@ -1939,8 +1939,9 @@ def _joint():
     running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
-    the area under it, or its value and slope together; or the marker's
-    value speeds up the item's ageing (``WeibullJointAFT``)."""
+    the area under it, or its value and slope together, or its value 90
+    days earlier (a lag); or the marker's value speeds up the item's
+    ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -1951,6 +1952,7 @@ def _joint():
         "WeibullJointPH[value+slope]": sp.JointPH(
             sp.Weibull, link=["value", "slope"]
         ),
+        "WeibullJointPH[lag]": sp.JointPH(sp.Weibull, lag=90.0),
     }
     out = []
     for name, fitter in fitters.items():
@@ -1993,6 +1995,15 @@ def _joint():
                 "JointModel.predict(...).random(size) draws for one item",
                 "row_independence": "one item a call (Z is its covariate "
                 "vector), so there are no rows to mix up",
+                **(
+                    {
+                        "units": "the lag is a fixed age (90 days): in "
+                        "another unit the same model is JointPH(Weibull, "
+                        "lag=90 * k)"
+                    }
+                    if name.endswith("[lag]")
+                    else {}
+                ),
             },
         )
         out.append(

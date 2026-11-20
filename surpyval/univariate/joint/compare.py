@@ -91,7 +91,9 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
                 f"{links!r}."
             )
     fitters = [
-        JointPH(fitter.dist, fitter.path_model, fitter.varying, link)
+        JointPH(
+            fitter.dist, fitter.path_model, fitter.varying, link, fitter.lag
+        )
         for link in chosen
     ]
     seen: dict[tuple, int] = {}

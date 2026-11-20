@@ -213,24 +213,121 @@ class LinkPath:
         return x[:, None] * np.einsum("k,mkp->mp", AREA_W, J)
 
 
+class LaggedPath:
+    """What the hazard follows of a marker's path ``lag`` later (a path
+    model, or a :class:`LinkPath`, as ``inner``): at age ``x`` the
+    inner path at ``max(x - lag, 0)``. The lagged path is the path held
+    at its age-0 value until ``lag``, so its value there is the path's
+    at age 0 and its slope and the area under it are 0 (``held_at_zero``
+    is ``False`` for the value, ``True`` for the slope and the area)."""
+
+    def __init__(self, inner: Any, lag: float, held_at_zero: bool) -> None:
+        self.inner = inner
+        self.lag = float(lag)
+        self.held_at_zero = held_at_zero
+        self.name = f"{inner.name} ({lag:g} earlier)"
+        self.parameter_names = list(inner.parameter_names)
+
+    def _ages(self, x: Any) -> tuple:
+        """The inner path's ages, and where ``x`` is past the lag."""
+        x = np.asarray(x, dtype=float)
+        past = x > self.lag
+        if self.held_at_zero:
+            # 0 before the lag, whatever the inner path is at age 0
+            return np.where(past, x - self.lag, 1.0), past
+        return np.maximum(x - self.lag, 0.0), past
+
+    def path(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        with np.errstate(all="ignore"):
+            out = np.asarray(self.inner.path(ages, *params), dtype=float)
+        return np.where(past, out, 0.0) if self.held_at_zero else out
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        P = np.stack(
+            [
+                np.broadcast_to(np.asarray(v, float), ages.shape)
+                for v in params
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.inner, ages, P)
+        return np.where(past[..., None], J, 0.0) if self.held_at_zero else J
+
+
+def lag_rule(
+    lo: npt.NDArray, hi: npt.NDArray, lag: float
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The ages ``(N, 2 GL_POINTS)`` and log weights of the rule for
+    ``int_lo^hi f(s) ds`` (``0 <= lo < hi``, finite) when the hazard
+    follows the marker ``lag`` later: the interval split at ``lag``,
+    where the lagged path has a kink (its slope a jump), and each piece
+    by the cumulative hazard's own rule, ``s = a + (b - a) w^4`` and
+    15-point Gauss-Legendre in ``w``. A piece of no width has weights
+    ``-inf``."""
+    lo = np.asarray(lo, dtype=float)
+    hi = np.asarray(hi, dtype=float)
+    cut = np.clip(lag, lo, hi)
+    ages, logw = [], []
+    with np.errstate(divide="ignore"):
+        for a, b in ((lo, cut), (cut, hi)):
+            width = b - a
+            ages.append(a[:, None] + width[:, None] * GL_U[None, :])
+            logw.append(
+                np.log(width)[:, None]
+                + (GL_LOGW + 3 * np.log(GL_NODES))[None, :]
+            )
+    return np.concatenate(ages, axis=1), np.concatenate(logw, axis=1)
+
+
+def check_lag(lag: Any) -> float:
+    """``lag`` as a float, refused unless it is one finite number of 0
+    or more."""
+    try:
+        value = float(lag)
+    except (TypeError, ValueError):
+        value = np.nan
+    if np.ndim(lag) or not np.isfinite(value) or value < 0:
+        raise ValueError(
+            "'lag' is how long after a reading the hazard follows it (the "
+            "hazard at age t follows the marker's path at t - lag, and at "
+            "age 0 before the lag), one finite number of 0 or more in the "
+            f"lifetimes' unit of time; got {lag!r}."
+        )
+    return value
+
+
 class PathFunction:
     """``path(params, x)`` of a path model for autograd: ``params``
     ``(..., p)`` and ``x`` ``(...)`` of one shape, its derivatives the
     path model's Jacobian and, for the second, central differences of
     that. ``terms`` holds what the hazard follows, one ``(link, path,
     function)`` for each of ``links``: the path itself (``"value"``),
-    or its :class:`LinkPath`."""
+    or its :class:`LinkPath`; with a ``lag`` above 0, each of those
+    ``lag`` later (:class:`LaggedPath`). The readings are always of the
+    path itself (``values``)."""
 
-    def __init__(self, path_model: Any, links: tuple = ("value",)) -> None:
+    def __init__(
+        self, path_model: Any, links: tuple = ("value",), lag: float = 0.0
+    ) -> None:
         self.model = path_model
         self.values, self.jac = _differentiable(path_model)
         self.links = tuple(links)
+        self.lag = float(lag)
         self.terms: list = []
         for link in self.links:
-            if link == "value":
+            followed = (
+                path_model if link == "value" else LinkPath(path_model, link)
+            )
+            if self.lag > 0:
+                followed = LaggedPath(followed, self.lag, link != "value")
+                self.terms.append(
+                    (link, followed, _differentiable(followed)[0])
+                )
+            elif link == "value":
                 self.terms.append((link, path_model, self.values))
             else:
-                followed = LinkPath(path_model, link)
                 self.terms.append(
                     (link, followed, _differentiable(followed)[0])
                 )
@@ -652,6 +749,12 @@ def log_cumhaz(
     ``t_i`` is 0)."""
     positive = t > 0
     safe = np.where(positive, t, 1.0)
+    if path.lag > 0:
+        # from age 0, split at the lag
+        out = log_cumhaz_between(
+            theta, path, params, arrays, np.zeros(safe.size), safe, centre
+        )
+        return anp.where(positive[:, None], out, -anp.inf)
     eta = predictor(theta, path, params, safe[:, None] * GL_U[None, :], centre)
     beta = theta["beta"]
     inner = logsumexp(
@@ -685,9 +788,13 @@ def log_cumhaz_between(
     ``(lo, hi]`` directly, with ``s = lo + (hi - lo) w^4``, by the same
     15-point Gauss-Legendre in ``w`` (with ``lo = 0`` this is the
     cumulative hazard's own rule), so a narrow interval late in life
-    loses no precision to a difference of two cumulative hazards."""
+    loses no precision to a difference of two cumulative hazards. With
+    a lag, split there (:func:`lag_rule`)."""
     width = hi - lo
-    s = lo[:, None] + width[:, None] * GL_U[None, :]
+    if path.lag > 0:
+        s, logw = lag_rule(lo, hi, path.lag)
+    else:
+        s = lo[:, None] + width[:, None] * GL_U[None, :]
     eta = predictor(theta, path, params, s, centre)
     alpha, beta = theta["alpha"], theta["beta"]
     lin = anp.dot(arrays.Z, theta["gamma"])
@@ -698,6 +805,8 @@ def log_cumhaz_between(
         + lin[:, None, None]
         + eta
     )
+    if path.lag > 0:
+        return logsumexp(logw[:, None, :] + log_h, axis=-1)
     inner = logsumexp(GL_LOGW + 3 * np.log(GL_NODES) + log_h, axis=-1)
     return np.log(width)[:, None] + inner
 
@@ -852,26 +961,47 @@ def _mode_objective(
             from ._aft import mode_terms
 
             life = mode_terms(
-                theta, arrays, d, t, upper, followed, log_effect, weighted
+                theta,
+                arrays,
+                d,
+                t,
+                upper,
+                followed,
+                log_effect,
+                weighted,
+                lag=path.lag,
             )
             f, g, H = f + life[0], g + life[1], H + life[2]
         else:
             # the lifetime: an event flag d at age t, survival to t
             positive = t > 0
             safe = np.where(positive, t, 1.0)
-            s_ages = safe[:, None] * GL_U[None, :]
-            terms = followed(s_ages)
             beta = float(theta["beta"])
             lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
-            log_lam = (
-                (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
-                    :, None
-                ]
-                + np.log(beta)
-                + GL_LOGW
-                + (4 * beta - 1) * np.log(GL_NODES)
-                + log_effect(terms)
-            )
+            if path.lag > 0:
+                # from age 0, split at the lag (as log_cumhaz)
+                s_ages, logw = lag_rule(np.zeros(safe.size), safe, path.lag)
+                terms = followed(s_ages)
+                alpha = float(theta["alpha"])
+                log_lam = (
+                    (lin + np.log(beta / alpha))[:, None]
+                    + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                    + logw
+                    + log_effect(terms)
+                )
+            else:
+                s_ages = safe[:, None] * GL_U[None, :]
+                terms = followed(s_ages)
+                log_lam = (
+                    (
+                        lin
+                        + beta * (np.log(safe) - np.log(float(theta["alpha"])))
+                    )[:, None]
+                    + np.log(beta)
+                    + GL_LOGW
+                    + (4 * beta - 1) * np.log(GL_NODES)
+                    + log_effect(terms)
+                )
             lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
             f = f + lam.sum(axis=1)
             grad, curve = weighted(lam, terms)
@@ -885,16 +1015,28 @@ def _mode_objective(
                 rows, lo, hi = _between(t, upper)
                 if rows.any():
                     width = hi - lo
-                    s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
-                    terms = followed(s_ages)
                     alpha = float(theta["alpha"])
-                    log_lam = (
-                        (lin + np.log(width) + np.log(beta / alpha))[:, None]
-                        + (beta - 1) * (np.log(s_ages) - np.log(alpha))
-                        + GL_LOGW
-                        + 3 * np.log(GL_NODES)
-                        + log_effect(terms)
-                    )
+                    if path.lag > 0:
+                        s_ages, logw = lag_rule(lo, hi, path.lag)
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(beta / alpha))[:, None]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + logw
+                            + log_effect(terms)
+                        )
+                    else:
+                        s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(width) + np.log(beta / alpha))[
+                                :, None
+                            ]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + GL_LOGW
+                            + 3 * np.log(GL_NODES)
+                            + log_effect(terms)
+                        )
                     lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
                     delta = np.where(rows, lam.sum(axis=1), 1.0)
                     g_delta, _ = weighted(lam, terms)
