@@ -1433,6 +1433,11 @@ def _recurrent():
                     pd.DataFrame(d), x_col="x", c_col="c"
                 )
             },
+            exclude={
+                "convergence": "no search to starve: the number of faults "
+                "is the best whole number, found exactly, and the rate is "
+                "in closed form"
+            },
             rtol=1e-9,
         )
     )
