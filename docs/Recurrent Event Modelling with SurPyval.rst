@@ -1181,6 +1181,99 @@ parameters as exact, so with little data it is somewhat too narrow.
     )
     assert _cover >= 0.9, _cover
 
+Units that differ: a shared frailty
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Poisson process fitted to a fleet says that every unit has the same
+intensity, so that their counts differ only by chance. Units of one kind
+usually differ by more than that: some simply fail more often, for reasons
+no covariate records. Fitting the plain model to such a fleet gets the
+average intensity about right, but its standard errors and its forecast
+intervals are too narrow.
+
+``frailty="gamma"`` (or ``"lognormal"``) on ``CrowAMSAA.fit``, ``Duane.fit``,
+``CoxLewis.fit`` and ``ProportionalIntensityNHPP.fit`` gives each unit an
+unobserved factor ``u`` on its intensity, :math:`u \lambda(t)`, drawn from a
+distribution with mean 1 and variance ``theta`` (for the log-normal,
+``log u`` is normal with variance ``theta``). ``theta`` is estimated with the
+intensity's parameters; ``theta = 0`` is the model without frailty. Six
+pumps watched for 60 hours, with between 1 and 11 failures each:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as surv
+    from surpyval.recurrent import CrowAMSAA
+
+    counts = np.array([1, 1, 2, 3, 8, 11])
+    x_f = np.concatenate(
+        [np.r_[60 * (np.arange(n) + 0.5) / n, 60] for n in counts]
+    )
+    i_f = np.repeat(np.arange(1, 7), counts + 1)
+    c_f = (x_f == 60).astype(int)
+
+    plain = CrowAMSAA.fit(x_f, i_f, c_f)
+    frail = CrowAMSAA.fit(x_f, i_f, c_f, frailty="gamma")
+    print(frail)
+    print(frail.frailty_test())
+    print("standard error of alpha:",
+          plain.standard_errors()[0].round(2), "without,",
+          frail.standard_errors()[0].round(2), "with the frailty")
+
+``frailty_test()`` is the likelihood-ratio test of ``theta = 0``: do the units
+differ by more than Poisson counts would? (``theta = 0`` is on the edge of
+its range, so the p-value is half the usual chi-square tail.) Where the
+estimate is 0 the fit warns, and is the plain fit.
+
+``frailties()`` gives each unit's predicted frailty: its observed count over
+its expected one, shrunk towards 1, with an interval. ``cif``, ``iif`` and
+``mcf`` are for the population by default and for a unit of known frailty
+with ``frailty=``:
+
+.. jupyter-execute::
+
+    table = frail.frailties()
+    print(table.round(2))
+    print("expected failures by 60 hours: a typical unit",
+          frail.mcf(60).round(2), "; pump 6",
+          frail.mcf(60, frailty=table["frailty"][6]).round(2))
+
+The forecast of a frailty model carries that spread. With ``age`` left out it
+forecasts the fitted units, each with the frailty its own history suggests;
+with ``age`` it forecasts new units, whose frailties are unknown (their
+counts are then negative binomial for the gamma frailty, not Poisson):
+
+.. jupyter-execute::
+
+    print(frail.forecast(horizon=30))
+    new = frail.forecast(horizon=60, age=[0.0])
+    old = surv.forecast(plain, horizon=60, age=[0.0])
+    print("one new pump's failures in 60 hours:",
+          new.lower, "to", new.upper, "; the plain fit says",
+          old.lower, "to", old.upper)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert frail.maximum == "verified" and frail.theta > 0.3
+    assert frail.frailty_test()["p"].iloc[0] < 0.01
+    assert frail.standard_errors()[0] > plain.standard_errors()[0]
+    assert table["frailty"][6] > 2 and table["frailty"][1] < 0.5
+    assert new.upper[0] > old.upper[0]
+
+Units that share a frailty (the pumps of one site) are named with
+``cluster``: ``{unit: cluster}``, or one label per row. The fit needs at
+least two clusters and the time of every failure (counts between inspections
+are fitted by ``PanelCountRegression``), without right truncation, by maximum
+likelihood. Bounds are the delta method's (``cif_cb``, ``iif_cb``,
+``mcf_cb``) and, for a parameter, Wald or profile likelihood
+(``param_cb(name, method="lr")``). The plain fits' residual diagnostics and
+``diagnose()`` assume Poisson counts and are not offered on the frailty fit;
+compare the two fits with ``frailty_test()`` and ``aic()``. The forecast
+interval takes the fitted parameters as exact, as the Poisson one does. See
+:doc:`counting/shared_frailty`.
+
 Inference and model checking
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

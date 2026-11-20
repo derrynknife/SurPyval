@@ -16,6 +16,7 @@ from .regression import (
     ProportionalIntensityNHPP,
     WeiLinWeissfeld,
 )
+from .shared_frailty import SharedFrailtyModel
 from .renewal import (
     ARA,
     ARI,

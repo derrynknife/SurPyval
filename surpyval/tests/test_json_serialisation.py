@@ -540,6 +540,12 @@ def _build(name):
                 random_state=1,
             )
         ),
+        "shared_frailty": lambda: CrowAMSAA.fit(
+            _frailty_fleet(),
+            np.repeat(np.arange(6), [2, 2, 3, 4, 9, 12]),
+            (_frailty_fleet() == 60).astype(int),
+            frailty="gamma",
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
@@ -662,6 +668,7 @@ CASES = [
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
     "joint_frailty",
+    "shared_frailty",
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",
@@ -688,6 +695,13 @@ CASES = [
     "joint",
     "bayesian",
 ]
+
+
+def _frailty_fleet():
+    """The ages of six units' 1 to 11 failures, each watched to 60."""
+    return np.concatenate(
+        [np.r_[60 * (np.arange(n) + 0.5) / n, 60] for n in (1, 1, 2, 3, 8, 11)]
+    )
 
 
 class _LazyModels(dict):
