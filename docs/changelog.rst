@@ -5,6 +5,18 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
+  makes the hazard at age ``t`` follow the marker's path at
+  ``max(t - 200, 0)``: a reading acts that long later. Every link is
+  shifted; before the lag the path is held at its age-0 value (the slope
+  and the area are 0 there). The cumulative hazard is integrated on each
+  side of the lag. The lag is fixed, not estimated; compare lags by
+  ``aic()``. The model keeps ``lag``, shows it in ``repr`` and
+  ``summary()``, saves it and predicts with it; ``lag=0`` (the default)
+  is the model as before, number for number. A lag on the value of a path
+  infinite at age 0 is refused. Checked against R's ``JM`` with a lag on
+  the PBC trial. See "A reading that acts later" in :doc:`Joint Models`.
+
 - **Competing-risks random survival forests.** ``RandomSurvivalForest.fit``
   (and ``fit_from_df``, with ``e_col``) takes the cause of each failure as
   ``e``, with ``split`` and ``event`` as for the tree, and grows every tree

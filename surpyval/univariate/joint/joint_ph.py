@@ -35,6 +35,7 @@ from ._likelihood import (
     Model,
     PathFunction,
     check_integration,
+    check_lag,
     neg_ll,
     place,
 )
@@ -86,6 +87,48 @@ def cannot_follow(path_model: Any, links: Any) -> list[str]:
         for link in links
         if (name, link) in _CANNOT_FOLLOW
     ]
+
+
+#: The built-in paths whose value at age 0 is infinite, so the hazard
+#: cannot follow their value with a lag (before the lag it follows the
+#: value at age 0).
+_INFINITE_AT_ZERO = {
+    "Lloyd-Lipow": "The Lloyd-Lipow path a - b / t",
+    "Logarithmic": "The Logarithmic path a + b ln(t)",
+}
+
+
+def _check_lag_at_zero(path_model: Any, links: Any, lag: float) -> None:
+    """Refuse a lag on the value of a path whose value at age 0 is
+    infinite: before the lag the hazard follows the value at age 0."""
+    name = str(getattr(getattr(path_model, "base", path_model), "name", ""))
+    if lag > 0 and "value" in links and name in _INFINITE_AT_ZERO:
+        raise ValueError(
+            f"{_INFINITE_AT_ZERO[name]} is infinite at age 0, and with a "
+            "lag the hazard follows the value at age 0 until the lag has "
+            "passed, so it cannot follow this path's value with a lag. "
+            "Use lag=0, or a path that is finite at age 0, such as "
+            "LinearPath, ExponentialPath or PowerPath."
+        )
+
+
+def _check_start_at_zero(fitter: Any, mu: npt.NDArray) -> None:
+    """Refuse a lag on the value of a path (of one's own) whose value at
+    age 0 is not finite at the average item's parameters ``mu``."""
+    if fitter.lag <= 0 or "value" not in fitter.link:
+        return
+    with np.errstate(all="ignore"):
+        at_zero = np.asarray(
+            fitter.path_model.path(0.0, *np.asarray(mu, dtype=float)),
+            dtype=float,
+        )
+    if not np.all(np.isfinite(at_zero)):
+        raise ValueError(
+            f"The {fitter.path_model.name} path is not finite at age 0 for "
+            "the average item (the readings put it there), and with a lag "
+            "the hazard follows the value at age 0 until the lag has "
+            "passed. Use lag=0, or a path that is finite at age 0."
+        )
 
 
 def _instead(path_model: Any, survival: str, refused: Any) -> str:
@@ -162,6 +205,7 @@ class JointPHFitter(FitterRepr):
         path_model: Any,
         varying: Any = None,
         link: Any = "value",
+        lag: float = 0.0,
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -248,6 +292,8 @@ class JointPHFitter(FitterRepr):
                 "also names of the joint model's other parameters; rename "
                 "them in the path model."
             )
+        self.lag = check_lag(lag)
+        _check_lag_at_zero(path_model, self.link, self.lag)
         self.dist = distribution
         self.path_model = path_model
         # in the path's order
@@ -271,6 +317,8 @@ class JointPHFitter(FitterRepr):
             out.append("varying: " + ", ".join(self.varying))
         if self.link != ("value",):
             out.append("link: " + ", ".join(self.link))
+        if self.lag > 0:
+            out.append(f"lag: {self.lag:g}")
         return out
 
     @dataframe_covariates
@@ -697,6 +745,7 @@ def JointPH(
     path_model: Any = None,
     varying: Any = None,
     link: Any = "value",
+    lag: float = 0.0,
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -727,6 +776,17 @@ def JointPH(
         risk follows the accumulated exposure), or a list of them, each
         with an effect of its own (``marker_effect``, ``slope_effect``,
         ``cumulative_effect``).
+    lag : float, optional
+        How long after the marker the hazard follows it, in the
+        lifetimes' unit of time (default 0: at once). With ``lag=200``
+        the hazard at age ``t`` follows the path at ``t - 200``, so a
+        reading today says what the risk will be 200 hours on. Before
+        the lag has passed the hazard follows the path held at its age-0
+        value: the value at age 0, a slope of 0 and an area of 0 (every
+        link at ``max(t - lag, 0)``, the slope 0 before the lag). The lag
+        is fixed, not estimated: the likelihood is not smooth in it. To
+        choose one, fit each lag you have in mind and compare them by
+        ``aic()`` (the same data, the same number of parameters).
 
     Returns
     -------
@@ -746,12 +806,14 @@ def JointPH(
     >>> JointPH(Weibull, link=["value", "slope"])
     ... # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., link: value, slope)
+    >>> JointPH(Weibull, lag=200.0)  # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., lag: 200)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying, link)
+    return JointPHFitter(distribution, path_model, varying, link, lag)
 
 
 # -- the data ----------------------------------------------------------------
@@ -1043,12 +1105,16 @@ def _fit(
         fitter.survival,
     )
     model = Model(
-        layout, PathFunction(path_model, fitter.link), centre, integration
+        layout,
+        PathFunction(path_model, fitter.link, fitter.lag),
+        centre,
+        integration,
     )
     # Starting values: each item's path alone, their spread, then the
     # survival part on each item's predicted path
     theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_power(fitter, theta["mu"], "the readings put")
+    _check_start_at_zero(fitter, theta["mu"])
     theta = survival_start(model, arrays, theta)
     u = layout.pack(theta)
     total = float(np.sum(counts))
@@ -1171,6 +1237,7 @@ def _fit(
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
     out.link = tuple(fitter.link)
+    out.lag = fitter.lag
     out.survival = fitter.survival
     out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
@@ -1327,7 +1394,9 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     from .joint_aft import JointAFT
 
     factory = JointAFT if model.survival == "AFT" else JointPH
-    fitter = factory(model.dist, model.path_model, model.varying, model.link)
+    fitter = factory(
+        model.dist, model.path_model, model.varying, model.link, model.lag
+    )
     records, counts, names = _records(
         data["x"],
         data.get("c"),

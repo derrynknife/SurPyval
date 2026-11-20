@@ -55,6 +55,15 @@ Design decisions made while working on the open issues, with the reason for each
 | With `e`, left- and interval-censored rows, right truncation, `selection="ctree"` and a non-zero `min_split_gain` are refused, each saying what to use. | principle 2 | The cause-aware splits are risk-set statistics; the conditional-inference tests and the likelihood gain are of a single event. The leaf models take interval censoring, so a later change may add it. | gap |
 | The forest does not take causes yet. | proposed | Part of the work in two steps: the tree first. | done (next table) |
 
+### Joint models: a lag (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `lag=` on `JointPH` and `JointAFT` (default 0): the hazard (or ageing rate) at age `t` follows every link at `max(t - lag, 0)`; before the lag the path is held at its age-0 value, so the value link follows the value at age 0 and the slope and the area are 0. `lag=0` builds the model without a lag through the same code, so its numbers are unchanged. | proposed | As R's `JM` (`lag=`), except its slope before the lag is the path's rate at age 0: a path held still has no slope. | done |
+| The lag is fixed by the user, not estimated; lags are compared by `aic()` (documented, no `compare_links(lags=...)`). | proposed | The likelihood has a kink in the lag at every item's age. On a near-straight marker the data say little about the lag (a 300-item fleet simulated with 0.5 years: AIC within 0.6 for 0, 0.25 and 0.5), so a search would be unstable. | done |
+| The cumulative hazard (and the effective age) is integrated on each side of the lag, by the 15-point rule on each piece. | proposed | The lagged path has a kink there, its slope a jump; one rule across it loses accuracy. | done |
+| A lag on the value of a path infinite at age 0 is refused: the logarithmic and Lloyd-Lipow paths when the fitter is built, a path of one's own at the fit when the average item's path is not finite at 0. | principle 2 | Before the lag the hazard follows the value at age 0. | done |
+
 ### Joint models: the slope link and paths whose slope is unbounded at age 0 (20 Nov 2026)
 
 | Decision | By | Reason | Status |
