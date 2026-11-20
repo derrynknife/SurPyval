@@ -22,6 +22,7 @@ from surpyval.ml.forest.tree import (
     covariate_matrix,
     drop_missing_covariate_rows,
     feature_labels,
+    parse_causes,
     parse_kind,
     query_layout,
     resolve_random_state,
@@ -30,7 +31,9 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+    to_native,
 )
+from surpyval.univariate.competing_risks.labels import label_from_native
 from surpyval.univariate.regression.regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -72,12 +75,33 @@ def _warn_zero_probability(
         )
     warnings.warn(
         "; ".join(parts) + ". With few trees a row can land only in "
-        "leaves too steep or narrow to cover it: grow more trees "
-        "(n_trees), or use kind='exponential', whose leaves give every "
-        "time a density.",
+        "leaves too steep or narrow to cover it, or, with causes, only in "
+        "leaves with no failure from its cause (a rare cause): grow more "
+        "trees (n_trees), or use kind='exponential', whose leaves give "
+        "every time a density.",
         UserWarning,
         stacklevel=caller_stacklevel(),
     )
+
+
+def _cause_outcomes(
+    x: ArrayLike, c: ArrayLike, e: Any, event: Any
+) -> tuple[NDArray, NDArray]:
+    """The outcomes of one cause for Harrell's index (Wolbers et al.,
+    2014): a failure from ``event`` is the event; a failure from another
+    cause never fails from it, so it is censored at infinity (later than
+    every time); a censored row stays censored where it was."""
+    x = np.asarray(x, dtype=float)
+    c = np.asarray(c)
+    labels = list(e)
+    if len(labels) != x.size or c.size != x.size:
+        raise ValueError(
+            f"x, c and e must have one value per row; got {x.size}, "
+            f"{c.size} and {len(labels)}."
+        )
+    mine = np.array([v == event for v in labels], dtype=bool) & (c == 0)
+    other = (c == 0) & ~mine
+    return np.where(other, np.inf, x), np.where(mine, 0, 1)
 
 
 def _check_n_jobs(n_jobs: Any) -> None:
@@ -116,7 +140,24 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     (``None`` when fitted from an array); its trees' split descriptions
     and :meth:`feature_importances` use them, and its predictions accept
     a DataFrame ``Z``, read by those names.
+
+    Grown with the cause of each failure (``e``), every tree is a
+    competing-risks tree (see
+    :class:`~surpyval.ml.forest.tree.SurvivalTree`), grown for every cause
+    of the forest's data whether or not its bootstrap sample has it:
+    :meth:`cif` is the average of the trees' leaf incidences of a cause,
+    :meth:`total_cif` their sum, ``sf`` the average all-cause survival, and
+    the out-of-bag score and importances judge the cause of each failure
+    (:meth:`oob_log_likelihood`).
     """
+
+    #: The causes of failure of a forest grown with ``e``, in their sorted
+    #: order; ``None`` for a forest grown without causes.
+    causes: "list | None" = None
+    #: The split rule of a forest grown with causes, and the cause it was
+    #: nominated for (``None``: every cause); ``None`` without causes.
+    split: "str | None" = None
+    event: Any = None
 
     def __init__(
         self,
@@ -135,6 +176,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         feature_names: list[str] | None = None,
         min_split_gain: float | str = 0.0,
         n_jobs: int = 1,
+        split: str | None = None,
+        event: Any = None,
     ) -> None:
         _check_n_jobs(n_jobs)
         self.selection = parse_selection(selection, alpha_split)
@@ -159,6 +202,18 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         self.min_split_gain = parse_min_split_gain(
             min_split_gain, kind.lower().replace("_", "-")
         )
+        # The causes are found and checked once, on every row: each tree is
+        # grown for all of them, though its bootstrap sample may miss one.
+        parsed = parse_causes(
+            self.data,
+            self.selection,
+            self.min_split_gain,
+            split,
+            event,
+            model="forest",
+        )
+        if parsed is not None:
+            self.causes, self.split, self.event = parsed
 
         # With random_state=None every draw is from numpy's global stream,
         # in the order it always was: the bootstraps, then each tree's
@@ -211,6 +266,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 random_state=tree_states[i],
                 feature_names=self.feature_names,
                 min_split_gain=self.min_split_gain,
+                split=self.split,
+                event=self.event,
+                causes=self.causes,
             )
             for i in range(self.n_trees)
         )
@@ -240,6 +298,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         min_split_gain: float | str = 0.0,
         random_state: Any = None,
         n_jobs: int = 1,
+        e: ArrayLike | None = None,
+        split: str | None = None,
+        event: Any = None,
     ) -> "RandomSurvivalForest":
         """
         Fit a random survival forest.
@@ -329,6 +390,21 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             NumPy's global state (worker processes do not share it), so
             ``np.random.seed`` still reproduces the forest for that
             ``n_jobs``, but not the ``n_jobs=1`` forest.
+        e : array_like, optional
+            The cause of each failure, with a missing value (``None``,
+            ``NaN``) for a right-censored row, as
+            ``SurvivalTree.fit`` takes it: every tree is then a
+            competing-risks tree, grown for every cause in ``e``, and the
+            same data and options are refused as there (left and interval
+            censoring, right truncation, ``selection="ctree"``, a non-zero
+            ``min_split_gain``). ``c`` may be left out: a row with a cause
+            failed, one without is right censored.
+        split : str, optional
+            With ``e``, the trees' split rule: ``"cause-specific"`` (the
+            default) or ``"gray"``; see ``SurvivalTree.fit``.
+        event : optional
+            With ``e``, the cause the splits target: required by
+            ``split="gray"``; ``None`` (the default) is every cause.
 
         Returns
         -------
@@ -364,11 +440,57 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ... )
         >>> bool(np.array_equal(a.sf(5, Z[:3]), b.sf(5, Z[:3])))
         True
+
+        With the cause of each failure, each cause's cumulative incidence
+        at given covariates, and an out-of-bag score that judges the
+        causes:
+
+        >>> t_a = rng.exponential(np.where(Z[:, 0] > 0.5, 2.0, 10.0))
+        >>> t_b = rng.exponential(10.0, 200)
+        >>> xe = np.minimum(np.minimum(t_a, t_b), 8.0)
+        >>> e = np.where(t_a < t_b, "a", "b").astype(object)
+        >>> e[xe == 8.0] = None
+        >>> cr = RandomSurvivalForest.fit(
+        ...     xe, Z, e=e, n_trees=20, max_depth=2, kind="exponential",
+        ...     random_state=0,
+        ... )
+        >>> cr.causes
+        ['a', 'b']
+        >>> cr.cif(5.0, [[0.2, 0.5], [0.8, 0.5]], "a").round(2)
+        array([0.39, 0.78])
+
+        Only the first feature changes the risk of cause ``"a"``, and
+        neither changes that of ``"b"``; the importances restricted to
+        each cause say so:
+
+        >>> cr.feature_importances(event="a", random_state=0).round(2)
+        Z0    0.17
+        Z1   -0.01
+        Name: importance, dtype: float64
+        >>> cr.feature_importances(event="b", random_state=0).round(2)
+        Z0   -0.01
+        Z1   -0.01
+        Name: importance, dtype: float64
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
+        if e is not None and c is None and xl is None and xr is None:
+            # A row with a cause failed; one without is right censored
+            from surpyval.utils.data_formats import is_missing_event
+
+            labels: Any = e
+            c = [1 if is_missing_event(v) else 0 for v in labels]
         data = SurpyvalData(
-            x, c, n, t, xl=xl, xr=xr, tl=tl, tr=tr, group_and_sort=False
+            x,
+            c,
+            n,
+            t,
+            xl=xl,
+            xr=xr,
+            tl=tl,
+            tr=tr,
+            group_and_sort=False,
+            e=e,
         )
         Z, feature_names = covariate_matrix(Z)
         return cls(
@@ -387,6 +509,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             feature_names,
             min_split_gain,
             n_jobs,
+            split=split,
+            event=event,
         )
 
     def sf(
@@ -505,14 +629,79 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         """Cumulative hazard averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("Hf", x, Z, grid)
 
+    def _check_event(self, event: Any, method: str = "cif") -> None:
+        if self.causes is None:
+            raise ValueError(
+                f"This forest was grown without causes, so {method} has no "
+                "cause to take: grow it with e (fit(..., e=...)), or leave "
+                "event out."
+            )
+        if event is None:
+            raise ValueError(
+                f"cif needs the cause: pass event, one of {self.causes} "
+                "(total_cif gives every cause's together)."
+            )
+        if event not in self.causes:
+            from surpyval.utils.validation import unknown_cause_error
+
+            raise unknown_cause_error(event, self.causes)
+
+    def cif(
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        event: Any,
+        *,
+        grid: bool = False,
+    ) -> NDArray:
+        """
+        Cumulative incidence of cause ``event`` at ``x``, averaged over the
+        trees: the probability of having failed from that cause by ``x``,
+        with the other causes acting. ``Z``, ``grid`` and the result are as
+        for :meth:`sf`. Only for a forest grown with causes (``e``).
+        """
+        self._check_event(event)
+        return self._apply_model_function_to_trees(
+            "cif", x, Z, grid, event=event
+        )
+
+    def total_cif(
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: bool = False,
+    ) -> NDArray:
+        """
+        The sum of every cause's cumulative incidence at ``x`` (the
+        probability of having failed from any cause), as for :meth:`cif`.
+        """
+        if self.causes is None:
+            self._check_event(None, "total_cif")
+        assert self.causes is not None
+        out = self.cif(x, Z, self.causes[0], grid=grid)
+        for label in self.causes[1:]:
+            out = out + self.cif(x, Z, label, grid=grid)
+        return out
+
     def mortality(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        event: Any = None,
     ) -> ArrayLike:
         """
-        The ensemble mortality of each covariate vector: its cumulative
-        hazard summed over the times ``x`` (the risk score used by
-        :meth:`score`).
+        The ensemble mortality of each covariate vector: its all-cause
+        cumulative hazard summed over the times ``x`` (the risk score used
+        by :meth:`score`). With ``event`` (a forest grown with causes),
+        the cause's cumulative incidence summed over ``x`` instead, Ishwaran
+        et al.'s (2014) cause-specific mortality: the expected time lost
+        to the cause, in steps of the grid.
         """
+        if event is not None:
+            self._check_event(event, "mortality")
+            values = self.cif(x, Z, event, grid=True)
+            return np.atleast_2d(values).sum(1)
         mortality = np.atleast_2d(self.Hf(x, Z, grid=True)).sum(1)
         return np.clip(mortality, 0, np.finfo(np.float64).max)
 
@@ -522,9 +711,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         grid: bool = False,
+        event: Any = None,
     ) -> NDArray:
-        # The times flat; the result gets their shape back (on its last
-        # axis for a grid), so a scalar time gives a scalar.
+        # ``event``: the cause, for "cif". The times flat; the result gets
+        # their shape back (on its last axis for a grid), so a scalar time
+        # gives a scalar.
         x, restore = flatten_query(x)
         if isinstance(Z, pd.DataFrame):
             # Read by the fitted names (or expanded by the formula)
@@ -555,7 +746,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             paired = np.zeros(x.size, dtype=np.float64)
             for tree in self.trees:
                 paired += tree.apply_model_function(
-                    function_name, x, Z, grid=False
+                    function_name, x, Z, grid=False, event=event
                 )
             return restore(paired / self.n_trees)
 
@@ -563,7 +754,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         # (n_rows, x.size) grid
         res = np.zeros((Z.shape[0], x.size), dtype=np.float64)
         for tree in self.trees:
-            res += tree.apply_model_function(function_name, x, Z, grid=True)
+            res += tree.apply_model_function(
+                function_name, x, Z, grid=True, event=event
+            )
         res = res / self.n_trees
         if layout == "single" or layout == "row":
             return restore(res[0])
@@ -578,8 +771,19 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         c: ArrayLike,
         tie_tol: float = 1e-8,
         ties: str = "therneau",
+        *,
+        e: ArrayLike | None = None,
+        event: Any = None,
     ) -> float:
         """Harrell's concordance index of the forest's mortality scores.
+
+        The index is of the all-cause event: ``c`` is 0 for a failure from
+        any cause. With ``e`` (each row's cause, as at fitting) and
+        ``event``, it is the concordance of cause ``event``'s mortality
+        (its cumulative incidence summed over ``x``, see :meth:`mortality`)
+        with the failures from that cause, a failure from another cause
+        counting as later than every failure from ``event`` (Wolbers et
+        al., 2014): it never fails from it.
 
         The index is :func:`surpyval.metrics.concordance_index`, with its
         tie conventions: by default (``ties="therneau"``, as R's
@@ -592,7 +796,20 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         the index, undefined: the index is NaN, not a number computed by
         comparing the NaN score as though it were one.
         """
-        scores: ArrayLike = self.mortality(x, Z)
+        if (e is None) != (event is None):
+            raise ValueError(
+                "A concordance of one cause needs both e (each row's cause) "
+                "and event (the cause scored); pass both, or neither for "
+                "the all-cause index."
+            )
+        if event is not None:
+            self._check_event(event, "score")
+            scores: ArrayLike = self.mortality(x, Z, event)
+            if np.isnan(scores).any():
+                return float("nan")
+            x_k, c_k = _cause_outcomes(x, c, e, event)
+            return concordance_index(x_k, c_k, scores, tie_tol, ties)
+        scores = self.mortality(x, Z)
         if np.isnan(scores).any():
             return float("nan")
         return concordance_index(x, c, scores, tie_tol, ties)
@@ -629,7 +846,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
-        return oob, RowTerms(self.data), time_origin(self.data), n_oob
+        terms = RowTerms(self.data, self.causes)
+        return oob, terms, time_origin(self.data), n_oob
 
     def _oob_rows_log_likelihood(
         self,
@@ -639,6 +857,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         n_oob: NDArray,
         curves: dict,
         permute: tuple[int, Any] | None = None,
+        event: int | None = None,
     ) -> NDArray:
         # Each row's log-likelihood under the trees that left it out. With
         # ``permute=(j, rng)``, feature j is first shuffled among each
@@ -662,10 +881,20 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 origin,
                 numerator,
                 denominator,
+                event,
             )
         return row_log_likelihood(numerator, denominator, n_oob)
 
-    def oob_log_likelihood(self) -> float:
+    def _event_code(self, event: Any) -> int | None:
+        """The position of ``event`` among the causes (``None`` for the
+        all-cause score), checked."""
+        if event is None:
+            return None
+        self._check_event(event, "the out-of-bag score")
+        assert self.causes is not None
+        return self.causes.index(event)
+
+    def oob_log_likelihood(self, event: Any = None) -> float:
         r"""The mean out-of-bag log-likelihood per observation.
 
         Each row of the training data is scored by the ensemble of the
@@ -709,6 +938,32 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         failures, or a step leaf); grow more trees, or use
         ``kind="exponential"``, whose leaves give every time a density.
 
+        A forest grown with causes (``e``) is scored by the competing-risks
+        likelihood: a failure from cause :math:`k` at :math:`x` contributes
+        the cause's sub-density :math:`f_k(x)`, the slope of the ensemble's
+        cumulative incidence :math:`F_k` of that cause there (the average
+        of the trees' leaf sub-densities), so the score judges the cause of
+        each failure as well as its time; a censored row contributes the
+        all-cause :math:`S(x)`, and delayed entry divides by
+        :math:`S(t_l)`. An Aalen-Johansen leaf is read continuously as
+        above, each cause's incidence joined linearly between the
+        all-cause drops. With ``event``, the score is restricted to that
+        cause: the cause-specific likelihood, in which a failure from
+        ``event`` contributes the cause's net density
+        :math:`h_k(x) S_k(x)` and every other row (a censoring, or a
+        failure from another cause) its net survival :math:`S_k(x)`, with
+        delayed entry dividing by :math:`S_k(t_l)`; it judges the
+        predictions of that cause's hazard only, and for one parametric
+        tree the causes' restricted scores add up to the full one. See
+        :mod:`~surpyval.ml.forest.oob`.
+
+        Parameters
+        ----------
+        event : optional
+            For a forest grown with causes, the cause to restrict the score
+            to; ``None`` (the default) is the full competing-risks
+            likelihood (or, without causes, the plain one).
+
         Returns
         -------
         float
@@ -718,7 +973,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ------
         ValueError
             On a forest restored with ``from_dict``, which keeps neither
-            the training data nor the bootstrap samples.
+            the training data nor the bootstrap samples; or for an
+            ``event`` the forest was not grown with.
 
         Examples
         --------
@@ -736,13 +992,16 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         >>> round(forest.oob_log_likelihood(), 3)
         -2.518
         """
+        code = self._event_code(event)
         oob, terms, origin, n_oob = self._oob_setup()
-        ll = self._oob_rows_log_likelihood(oob, terms, origin, n_oob, {})
+        ll = self._oob_rows_log_likelihood(
+            oob, terms, origin, n_oob, {}, event=code
+        )
         _warn_zero_probability(ll, "the mean is -inf")
         return weighted_mean(ll, terms.n)
 
     def feature_importances(
-        self, n_repeats: int = 5, random_state: Any = None
+        self, n_repeats: int = 5, random_state: Any = None, event: Any = None
     ) -> NDArray:
         r"""Permutation importance of each feature, by out-of-bag
         log-likelihood.
@@ -766,6 +1025,13 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         with one warning giving the counts. Grow more trees, or use
         ``kind="exponential"``, so that every row is scored.
 
+        For a forest grown with causes the score is the competing-risks
+        out-of-bag log-likelihood, so a feature's importance is what it
+        adds to predicting the time and the cause of failure; with
+        ``event``, the score restricted to that cause (see
+        :meth:`oob_log_likelihood`), so the importance is what the feature
+        adds to predicting that cause's hazard.
+
         Parameters
         ----------
         n_repeats : int, optional
@@ -775,6 +1041,10 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             Seeds the shuffles. ``None`` (the default) draws from NumPy's
             global random state, so ``np.random.seed`` reproduces it; a
             seed or ``Generator`` gives its own stream.
+        event : optional
+            For a forest grown with causes, the cause whose restricted
+            score is used; ``None`` (the default) is the full
+            competing-risks score (or, without causes, the plain one).
 
         Returns
         -------
@@ -815,10 +1085,13 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             raise ValueError(
                 f"n_repeats must be a positive integer, got {n_repeats!r}"
             )
+        code = self._event_code(event)
         rng = as_generator(random_state)
         oob, terms, origin, n_oob = self._oob_setup()
         curves: dict = {}
-        ll0 = self._oob_rows_log_likelihood(oob, terms, origin, n_oob, curves)
+        ll0 = self._oob_rows_log_likelihood(
+            oob, terms, origin, n_oob, curves, event=code
+        )
         # The rows scored before the shuffle, and the shuffles' scorings
         # of them lost to a zero probability (#533).
         finite0 = np.isfinite(ll0)
@@ -828,7 +1101,13 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             drops = []
             for _ in range(int(n_repeats)):
                 ll = self._oob_rows_log_likelihood(
-                    oob, terms, origin, n_oob, curves, permute=(j, rng)
+                    oob,
+                    terms,
+                    origin,
+                    n_oob,
+                    curves,
+                    permute=(j, rng),
+                    event=code,
                 )
                 keep = finite0 & np.isfinite(ll)
                 lost += int((finite0 & ~keep).sum())
@@ -863,7 +1142,13 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         return (
             f"RandomSurvivalForest(kind={self.kind!r}, "
             f"n_trees={self.n_trees}, selection={self.selection!r}, "
-            f"features={self.feature_labels})"
+            + (
+                ""
+                if self.causes is None
+                else f"causes={self.causes!r}, split={self.split!r}, "
+                + ("" if self.event is None else f"event={self.event!r}, ")
+            )
+            + f"features={self.feature_labels})"
         )
 
     def to_dict(self) -> dict:
@@ -880,6 +1165,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             "min_split_gain": self.min_split_gain,
             "trees": [tree.to_dict() for tree in self.trees],
         }
+        if self.causes is not None:
+            out["causes"] = to_native(list(self.causes))
+            out["split"] = self.split
+            if self.event is not None:
+                out["event"] = to_native(self.event)
         serialise_covariate_meta(self, out)
         # The trees are finished dictionaries already (#549)
         return stamp_schema(out, stamped=True)
@@ -898,6 +1188,12 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         forest.selection = model_dict.get("selection", "greedy")
         forest.alpha_split = model_dict.get("alpha_split", 0.05)
         forest.min_split_gain = model_dict.get("min_split_gain", 0.0)
+        if "causes" in model_dict:
+            forest.causes = [
+                label_from_native(k) for k in model_dict["causes"]
+            ]
+            forest.split = model_dict["split"]
+            forest.event = label_from_native(model_dict.get("event"))
         # A restored forest predicts but is not re-fittable; it holds no data.
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]

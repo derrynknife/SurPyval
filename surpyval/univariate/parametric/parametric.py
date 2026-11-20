@@ -18,6 +18,7 @@ from scipy.special import ndtri as z
 
 import surpyval as surv
 from surpyval import ParametricDistribution
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     WEIGHTED_MODEL_SCHEMA,
@@ -582,6 +583,7 @@ def _check_drawn_extras(extras: dict) -> None:
 
 
 class Parametric(
+    ParameterBoundsMixin,
     LikelihoodRatioMixin,
     InformationCriteriaMixin,
     DiagnoseMixin,
@@ -1209,6 +1211,16 @@ class Parametric(
         if "p" in state and "lfp_p" not in state:
             state["lfp_p"] = state.pop("p")
         self.__dict__.update(state)
+
+    def _declared_bounds(self) -> list:
+        """The range of each entry of :meth:`_estimates`: the
+        distribution's, then ``(0, 1)`` for ``lfp_p`` and ``f0``."""
+        bounds = list(self.dist.bounds)
+        if self.lfp:
+            bounds.append((0, 1))
+        if self.zi:
+            bounds.append((0, 1))
+        return bounds
 
     def _estimates(self) -> npt.NDArray:
         """The model's parameters in the order of :attr:`covariance_names`:

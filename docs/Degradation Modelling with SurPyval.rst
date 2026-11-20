@@ -1980,6 +1980,30 @@ what an inspection would read.
     for t in (100.0, 200.0, 250.0):
         assert np.isclose(wear.level_at(t).sf(100.0), wear.ff(t), atol=1e-12)
 
+**The level of a unit still working.** An inspection that finds a unit
+working already knows it has not failed. ``level_at(t, given_survival=True)``
+is the level of such a unit: the paths that reached the threshold before
+``t`` are left out, so all of its mass is below the threshold. For a gamma
+process that is the wear truncated at the threshold. For a Wiener process it
+is the normal level less its mirror image in the threshold, which removes the
+paths that crossed and came back as well as those still above (the method of
+images), renormalised by the chance of no crossing. It has the same
+``sf``, ``ff``, ``df``, ``qf``, ``random`` and ``mean``, and takes ``y0`` and
+``t0`` as before. Far from the threshold it is the plain level; near it, the
+difference is the point.
+
+.. jupyter-execute::
+
+    from surpyval.degradation import WienerProcessModel
+
+    gauge = WienerProcessModel(mu=0.5, sigma=2.0, threshold=100.0)
+    every = gauge.level_at(180.0, y0=10.0, t0=20.0)
+    working = gauge.level_at(180.0, y0=10.0, t0=20.0, given_survival=True)
+    print("P(not failed by 180 h)      :", round(float(gauge.sf(160.0, y0=10.0)), 3))
+    print("P(past 90), every path      :", round(float(every.sf(90.0)), 3))
+    print("P(past 90), a working unit  :", round(float(working.sf(90.0)), 3))
+    print("median level, working unit  :", round(float(working.qf(0.5)), 1))
+
 **Parameter uncertainty.** A fitted model's ``covariance()`` describes how well
 the data pin down its parameters. ``with_params(values)`` builds the same model
 (threshold, starting level, stress reference) at other parameter values, given

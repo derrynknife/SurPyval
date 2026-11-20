@@ -29,9 +29,11 @@ item's likelihood is the integral over its varying parameters
           phi(theta_V; mu_V + Delta_V z_i, D) d theta_V,
 
 evaluated by adaptive Gauss-Hermite quadrature: a product grid
-(7 points a dimension) centred at the mode of the integrand and scaled
-by its curvature there (Gauss-Newton: the path's Jacobian, which is the
-exact curvature for a path linear in its parameters). The nodes are
+(7 points a dimension; with four or five varying parameters by default
+without the nodes whose weight is negligible, :func:`gh_grid`) centred
+at the mode of the integrand and scaled by its curvature there
+(Gauss-Newton: the path's Jacobian, which is the exact curvature for a
+path linear in its parameters). The nodes are
 placed in the space of the varying parameters themselves and held fixed
 while the parameters are searched, so the path is evaluated at fixed
 nodes (any path model works, and autograd differentiates the rest),
@@ -81,26 +83,85 @@ from autograd.scipy.special import logsumexp
 
 #: Gauss-Hermite points a dimension: in the fit (adaptive; 2-3 fail on
 #: sparse data), and in a prediction (by the number of varying path
-#: parameters: 15, 15, then 9 for three).
+#: parameters: 15, 15, then 9 for three and 7 for four and five).
 GH_FIT = 7
-GH_PREDICT = {1: 15, 2: 15, 3: 9}
+GH_PREDICT = {1: 15, 2: 15, 3: 9, 4: 7, 5: 7}
 #: Gauss-Legendre points of the cumulative hazard.
 GL_POINTS = 15
-#: The most path parameters that may vary: a full grid has 7^q nodes.
-MAX_VARYING = 3
+#: The most path parameters that may vary: a full grid has 7^q nodes
+#: (2,401 for four, 16,807 for five).
+MAX_VARYING = 5
+#: How the integral over the varying parameters is done: on the full
+#: product grid (``"grid"``), or on it without the nodes of negligible
+#: weight (``"pruned"``). The default is always the full grid, the more
+#: accurate one; pruning is an option the caller chooses.
+INTEGRATIONS = ("grid", "pruned")
+#: The pruned grid leaves out the lowest-weight nodes of the product
+#: grid, as many as have less than this share of the grid's total weight
+#: between them (nodes of equal weight are kept or left out together).
+PRUNE_SHARE = 1e-9
 
 
-def gh_grid(dim: int, points: int) -> tuple[npt.NDArray, npt.NDArray]:
+def gh_grid(
+    dim: int, points: int, prune: bool = False
+) -> tuple[npt.NDArray, npt.NDArray]:
     """The ``dim``-dimensional product Gauss-Hermite grid: nodes
     ``(K, dim)`` and log weights ``(K,)`` for ``int exp(-|z|^2) f(z)
-    dz``."""
+    dz``.
+
+    With ``prune`` the nodes of negligible weight are left out: the
+    lowest-weight nodes, as many as together hold less than
+    ``PRUNE_SHARE`` (1e-9) of the grid's total weight, nodes of equal
+    weight kept or left out together (so the grid keeps its symmetries).
+    They are the corners, where several coordinates are extreme at once:
+    none of 7 points in up to three dimensions, 80 of the 2,401 nodes
+    in four and 1,392 of the 16,807 in five. The rule depends on ``dim``
+    and ``points`` only, never on the data. The kept nodes are in the
+    full grid's order and
+    their weights are not rescaled."""
     x, w = np.polynomial.hermite.hermgauss(points)
     grids = np.meshgrid(*([x] * dim), indexing="ij")
     z = np.stack([g.ravel() for g in grids], axis=-1)
     logw = np.zeros(z.shape[0])
     for g in np.meshgrid(*([np.log(w)] * dim), indexing="ij"):
         logw = logw + g.ravel()
+    if prune:
+        keep = _heavy_enough(logw)
+        z, logw = z[keep], logw[keep]
     return z, logw
+
+
+def _heavy_enough(logw: npt.NDArray) -> npt.NDArray:
+    """The mask of the nodes a pruned grid keeps (:func:`gh_grid`)."""
+    share = np.exp(logw - np.max(logw))
+    share = share / share.sum()
+    ordered = np.sort(share)
+    # the nodes that could go one at a time, lightest first
+    below = int(np.searchsorted(np.cumsum(ordered), PRUNE_SHARE, "left"))
+    if below == 0:
+        return np.ones(share.size, dtype=bool)
+    if below == share.size:  # pragma: no cover - PRUNE_SHARE < 1
+        below -= 1
+    # ... but every node as heavy as the first one kept stays (a tie is
+    # equal to a few ulps: the same product in another order)
+    return share >= ordered[below] * (1.0 - 1e-9)
+
+
+def check_integration(integration: Any, q: int) -> str:
+    """The name of the integration over ``q`` varying parameters:
+    ``integration`` itself where it is given, else the default for
+    ``q``."""
+    if integration is None:
+        return "grid"
+    if not isinstance(integration, str) or integration not in INTEGRATIONS:
+        raise ValueError(
+            "'integration' is how each item's likelihood is integrated "
+            "over its varying path parameters: 'grid' (the full grid of "
+            f"{GH_FIT} points in each) or 'pruned' (the grid without the "
+            "nodes of negligible weight), or leave it out for the "
+            f"default; got {integration!r}."
+        )
+    return integration
 
 
 def _gl_grid() -> tuple[npt.NDArray, npt.NDArray]:
@@ -1189,13 +1250,15 @@ def continued_modes(
 
 
 def adaptive_nodes(
-    mode: npt.NDArray, root: npt.NDArray, points: int
+    mode: npt.NDArray, root: npt.NDArray, points: int, prune: bool = False
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """The nodes ``(N, K, q)`` of each item's adaptive grid and their log
     weights ``(N, K)``, the change of variables included: ``int f db ~
-    sum_k exp(logw_k) f(b_k)``."""
+    sum_k exp(logw_k) f(b_k)``. ``prune``: without the nodes of
+    negligible weight (:func:`gh_grid`), so ``K`` is below ``points **
+    q``; nothing downstream needs a full product."""
     q = mode.shape[1]
-    z, logw = gh_grid(q, points)
+    z, logw = gh_grid(q, points, prune)
     nodes = mode[:, None, :] + np.sqrt(2.0) * np.einsum("nij,kj->nki", root, z)
     log_det = q * 0.5 * np.log(2.0) + np.sum(
         np.log(np.diagonal(root, axis1=1, axis2=2)), axis=1
@@ -1212,11 +1275,24 @@ def adaptive_nodes(
 @dataclass
 class Model:
     """What the likelihood needs besides the parameters: the layout, the
-    path, and the marker's centre ``c`` in the hazard."""
+    path, the marker's centre ``c`` in the hazard, and how the integral
+    over the varying parameters is done (``INTEGRATIONS``)."""
 
     layout: Layout
     path: PathFunction
     centre: float
+    integration: str = "grid"
+
+    @property
+    def prune(self) -> bool:
+        return self.integration == "pruned"
+
+    def prediction_nodes(self, mode: npt.NDArray, root: npt.NDArray) -> tuple:
+        """The adaptive nodes of a prediction (``GH_PREDICT`` points a
+        dimension, pruned as the fit's were)."""
+        return adaptive_nodes(
+            mode, root, GH_PREDICT[self.layout.q], self.prune
+        )
 
 
 def log_integrals(
@@ -1287,7 +1363,7 @@ def place(
         start=lik_start,
         upper=arrays.U,
     )
-    nodes = adaptive_nodes(mode, root, GH_FIT)
+    nodes = adaptive_nodes(mode, root, GH_FIT, model.prune)
     entry = None
     entered = arrays.truncated
     e_mode = None
@@ -1305,7 +1381,7 @@ def place(
             start=entry_start,
             upper=sub.Rt,
         )
-        entry = adaptive_nodes(e_mode, e_root, GH_FIT)
+        entry = adaptive_nodes(e_mode, e_root, GH_FIT, model.prune)
     return (nodes, entry), (mode, e_mode)
 
 

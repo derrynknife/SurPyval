@@ -8,6 +8,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval import plotting
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
@@ -93,6 +94,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    ParameterBoundsMixin,
     AtCovariatesMixin,
     PenalisedModelMixin,
     ConditionalSurvivalMixin,

@@ -33,14 +33,14 @@ from surpyval.utils.validation import (
 
 from ._likelihood import (
     EFFECTS,
-    GH_PREDICT,
+    GH_FIT,
+    INTEGRATIONS,
     JointArrays,
     Layout,
     Model,
     PathFunction,
     _at,
     _path_params,
-    adaptive_nodes,
     check_lag,
     continued_modes,
     log_integrals,
@@ -67,6 +67,15 @@ _LINK_WORDS = {
 _SURVIVAL_WORDS = {
     "PH": "proportional hazards",
     "AFT": "accelerated failure time",
+}
+
+#: Each integration in words, for the printout.
+_INTEGRATION_WORDS = {
+    "grid": f"adaptive Gauss-Hermite, full grid ({GH_FIT} points a dimension)",
+    "pruned": (
+        f"adaptive Gauss-Hermite, pruned grid ({GH_FIT} points a "
+        "dimension, without the nodes of negligible weight)"
+    ),
 }
 
 #: The formula of each built-in path model, by its name, for the
@@ -496,6 +505,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     k: int
     #: What the fit reached (``surpyval.utils.no_maximum``).
     maximum: str = "unknown"
+    #: How each item's likelihood was integrated over its varying path
+    #: parameters, in the fit and in this model's predictions: ``"grid"``
+    #: (adaptive Gauss-Hermite on the full grid of 7 points in each) or
+    #: ``"pruned"`` (the same grid without the nodes of negligible
+    #: weight: the default with four or five varying parameters).
+    integration: str = "grid"
     #: The numbers of items, failures and readings fitted (count
     #: weighted).
     n_items: float = 0.0
@@ -594,6 +609,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             self._layout,
             PathFunction(self.path_model, tuple(self.link), self.lag),
             self._centre,
+            self.integration,
         )
 
     @property
@@ -794,6 +810,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : maximum {self.maximum}"
+            f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
             "\nEffect units        : "
         )
         out += "; ".join(
@@ -993,7 +1010,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, many, times, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            nodes = model.prediction_nodes(mode, root)
             log_I = log_integrals(
                 theta, model, many, nodes, times, np.zeros(M), readings=True
             )
@@ -1027,7 +1044,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, one, t, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            nodes = model.prediction_nodes(mode, root)
             log_g = np.asarray(
                 log_integrand(
                     theta, model, one, nodes, t, np.zeros(1), readings=True
@@ -1130,7 +1147,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         mode, root = continued_modes(
             theta, model.layout, model.path, many, times, self._centre
         )
-        nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+        nodes = model.prediction_nodes(mode, root)
         zero = np.zeros(M)
 
         def f(params: Any) -> Any:
@@ -1449,6 +1466,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 if self.marker_unit is None
                 else {"marker_unit": self.marker_unit}
             ),
+            "integration": self.integration,
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
@@ -1552,6 +1570,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.n_readings = float(model_dict.get("n_readings", 0.0))
         # saved before the marker's unit was kept: unknown
         out.marker_unit = model_dict.get("marker_unit")
+        # saved before the integration had a choice: the full grid
+        integration = model_dict.get("integration") or "grid"
+        if integration not in INTEGRATIONS:
+            raise ValueError(
+                "A joint model's integration is 'grid' or 'pruned'; the "
+                f"dict names {integration!r}."
+            )
+        out.integration = integration
         out._neg_ll = float(model_dict["_neg_ll"])
         out.k = int(np.sum(~np.isnan(out.params)))
         out.maximum = restored_maximum(model_dict)

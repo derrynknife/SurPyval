@@ -75,6 +75,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     destructive_data,
     equivalence_data,
     exact_event_data,
+    frailty_recurrent_data,
     joint_data,
     joint_frailty_data,
     lfp_count_data,
@@ -1652,6 +1653,83 @@ def _recurrent():
             explicit_seed=True,
         )
     )
+    # The Poisson processes with a shared frailty (``frailty=``): each
+    # item its own cluster.
+    shared = "surpyval.recurrent.SharedFrailtyModel"
+    for name, family in (
+        ("CrowAMSAA", "gamma"),
+        ("CoxLewis", "gamma"),
+        ("Duane", "lognormal"),
+    ):
+        fitter = getattr(rc, name)
+        out.append(
+            Case(
+                name=f"{name}[frailty={family}]",
+                fitters=(f"surpyval.recurrent.{name}",),
+                model_class=shared,
+                interface=COUNTING,
+                data=frailty_recurrent_data,
+                fit=_fit(fitter, frailty=family),
+                functions=("cif", "iif", "mcf"),
+                x=X_REC,
+                rows=("x", "i", "c", "n"),
+                paths={
+                    "fit_from_recurrent_data": _recurrent_data_path(
+                        fitter, frailty=family
+                    ),
+                    "fit_from_df": lambda d, f=fitter, fam=family: (
+                        f.fit_from_df(
+                            pd.DataFrame(
+                                {k: d[k] for k in ("x", "i", "c", "n")}
+                            ),
+                            "x",
+                            "i",
+                            "c",
+                            "n",
+                            frailty=fam,
+                        )
+                    ),
+                },
+            )
+        )
+    for family in ("gamma", "lognormal"):
+        out.append(
+            Case(
+                name=f"ProportionalIntensityNHPP[frailty={family}]",
+                fitters=("surpyval.recurrent.ProportionalIntensityNHPP",),
+                model_class=shared,
+                interface=COUNTING_REGRESSION,
+                data=functools.partial(frailty_recurrent_data, True),
+                fit=_fit(rc.ProportionalIntensityNHPP, frailty=family),
+                functions=("cif", "iif", "mcf"),
+                x=X_REC,
+                Z=Z_REC,
+                paths={
+                    "fit_from_df": lambda d, fam=family: (
+                        rc.ProportionalIntensityNHPP.fit_from_df(
+                            pd.DataFrame(
+                                {
+                                    **{k: d[k] for k in ("x", "i", "c", "n")},
+                                    "z": np.asarray(d["Z"])[:, 0],
+                                }
+                            ),
+                            "x",
+                            ["z"],
+                            "i",
+                            "c",
+                            "n",
+                            frailty=fam,
+                        )
+                    ),
+                },
+                rows=("x", "Z", "i", "c", "n"),
+                covariates="Z",
+                drops_missing_covariate=False,
+                coefficients=lambda m: m.coeffs,
+                # The Duane scale b absorbs a constant.
+                intercept=True,
+            )
+        )
     # A count above one is refused on an observed recurrent event (the
     # xicn convention: several events at one instant are not a count).
     no_counts = {
@@ -2712,6 +2790,9 @@ def _df_paths():
         paths[f"SurvivalTree[causes, {kind}]"] = _seeded(
             _col_df(ml.SurvivalTree, ("x", "e", "n"), kind=kind)
         )
+    paths["RandomSurvivalForest[causes]"] = _seeded(
+        _col_df(ml.RandomSurvivalForest, ("x", "e", "n"), n_trees=3)
+    )
     paths["RandomSurvivalForest"] = _seeded(
         _col_df(ml.RandomSurvivalForest, ("x", "c", "n"), n_trees=3)
     )
@@ -3456,6 +3537,22 @@ def _bounds(case):
         # way), so its interval is open at both ends at 95% and 99%; until
         # 0.28 the search reported finite ends far out (-1.6e31, 9.3e6)
         # after minutes (DECISIONS.md, 13 Nov 2026).
+        "SharedFrailtyModel": (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mcf_cb", point="mcf"),
+            _PARAM_CB,
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "lr"},
+                label="param_cb[lr]",
+                wald=False,
+                nan_ok=True,
+                rtol=1e-3,
+                slow=True,
+            ),
+        ),
         "JointFrailtyModel": (
             Bound("cif_cb", point="cif"),
             Bound("iif_cb", point="iif"),
@@ -4190,6 +4287,8 @@ def _starve(case):
         )
     if cls == "JointFrailtyModel":
         return _far_start(case, lambda m: _scaled_start(m.params))
+    if cls == "SharedFrailtyModel":
+        return _far_start(case, lambda m: _scaled_start(m.params))
     if cls == "CauseSpecificNHPP":
         return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
     if cls == "CauseSpecificProportionalIntensity":
@@ -4281,6 +4380,9 @@ for _kind in ("non-parametric", "weibull"):
         "SurvivalTree[weibull]"
     ]
 _NO_STARVE["RandomSurvivalForest"] = _NO_STARVE["SurvivalTree[weibull]"]
+_NO_STARVE["RandomSurvivalForest[causes]"] = _NO_STARVE[
+    "SurvivalTree[weibull]"
+]
 
 
 # Fits whose initial guess is already the maximum, so returning it is right.
