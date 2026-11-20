@@ -5,6 +5,22 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **The level of a degradation process given that the unit has not
+  failed.** ``level_at(t, y0=, t0=, given_survival=True)`` of a
+  ``WienerProcessModel`` or ``GammaProcessModel`` is the distribution of
+  the level at ``t`` of a unit that has not reached the threshold since
+  ``t0``: what an inspection finds on a unit still working. For a gamma
+  process it is the increase truncated at the threshold; for a Wiener
+  process the normal level less its reflection in the threshold (the
+  method of images), which also leaves out the paths that crossed and
+  came back. It has ``sf``, ``ff``, ``df``, ``qf`` (closed form for the
+  gamma process, a bisection for the Wiener process), ``random``,
+  ``mean`` and ``to_dict`` (with ``given_survival`` and ``threshold``),
+  and works with stress as ``level_at`` does. A reading at or past the
+  threshold is refused with ``given_survival=True``. The default,
+  ``given_survival=False``, is unchanged: the level of every path. See
+  :doc:`Degradation Modelling with SurPyval`.
+
 - **Shared frailty for repairable systems.** ``frailty="gamma"`` (or
   ``"lognormal"``) on ``CrowAMSAA.fit``, ``Duane.fit``, ``CoxLewis.fit``
   and ``ProportionalIntensityNHPP.fit`` (and their ``fit_from_df`` and
