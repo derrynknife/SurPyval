@@ -46,20 +46,31 @@ def link_label(link: Any) -> str:
     return " + ".join(link)
 
 
-def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list]:
-    """The fitters to compare, one per link, and the default links left
-    out because the path cannot take them."""
-    from .joint_ph import JointPH
+def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
+    """The fitters to compare, one per link; the default links left out
+    because the path cannot take them, and why."""
+    from .joint_ph import JointPH, cannot_follow
 
     left_out: list[str] = []
+    reasons: list[str] = []
     if links is None:
-        base = getattr(fitter.path_model, "base", fitter.path_model)
-        chosen: list[Any] = list(DEFAULT_LINKS)
-        if base.name == "Lloyd-Lipow":
-            left_out = [
-                link_label(link) for link in chosen if "cumulative" in link
-            ]
-            chosen = [link for link in chosen if "cumulative" not in link]
+        path = fitter.path_model
+        chosen: list[Any] = []
+        for link in DEFAULT_LINKS:
+            why = cannot_follow(path, link)
+            if why:
+                left_out.append(link_label(link))
+                reasons += [r for r in why if r not in reasons]
+            else:
+                chosen.append(link)
+        if len(chosen) < 2:
+            raise ValueError(
+                f"The {path.name} path can give the hazard only the "
+                f"{' and '.join(link_label(c) for c in chosen)} link to "
+                f"follow ({'; '.join(reasons)}), so there is nothing to "
+                "compare: fit that link on its own, or compare the links "
+                "with another path."
+            )
     else:
         if isinstance(links, str):
             raise ValueError(
@@ -92,7 +103,7 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list]:
                 "each once."
             )
         seen[candidate.link] = k
-    return fitters, left_out
+    return fitters, left_out, reasons
 
 
 def _reason(error: Exception) -> str:
@@ -117,12 +128,11 @@ def compare_links(
         METRICS,
         "It is the criterion the links are ranked by (lower is better).",
     )
-    fitters, left_out = _candidates(fitter, links)
+    fitters, left_out, reasons = _candidates(fitter, links)
     if left_out:
         warnings.warn(
-            f"The {fitter.path_model.name} path has no finite area from "
-            "age 0, so the hazard cannot follow its cumulative: "
-            f"{len(left_out)} link(s) were left out of the comparison "
+            "; ".join(reasons)
+            + f": {len(left_out)} link(s) were left out of the comparison "
             f"({', '.join(left_out)}).",
             stacklevel=3,
         )

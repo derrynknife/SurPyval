@@ -14,6 +14,7 @@ JM on the PBC trial is in ``tests/reference/test_joint_links.py``.
 
 import functools
 import pickle
+import re
 import warnings
 from typing import Any
 
@@ -21,8 +22,13 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import JointModel, JointPH, Weibull, WeibullJointPH
-from surpyval.degradation import LinkedPathModel, LloydLipowPath
+from surpyval import JointAFT, JointModel, JointPH, Weibull, WeibullJointPH
+from surpyval.degradation import (
+    LinkedPathModel,
+    LloydLipowPath,
+    LogarithmicPath,
+    PowerPath,
+)
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
 from surpyval.tests.univariate.joint._fleet import simulate_links
 from surpyval.tests.univariate.joint.test_joint_extensions import KINDS
@@ -34,7 +40,7 @@ from surpyval.univariate.joint._likelihood import (
     log_cumhaz,
     log_event,
 )
-from surpyval.univariate.joint.joint_ph import search_space
+from surpyval.univariate.joint.joint_ph import _check_power, search_space
 
 X = np.array([0.3, 1.0, 2.5, 7.0])
 THETA = [1.3, 0.4, 0.2]
@@ -610,7 +616,113 @@ def test_a_path_with_no_finite_area_cannot_be_accumulated():
             LinkedPathModel(LloydLipowPath, {"b": "log"}),
             link=["value", "cumulative"],
         )
-    JointPH(Weibull, LloydLipowPath, link="slope")
+
+
+@pytest.mark.parametrize(
+    "path, formula",
+    [
+        (LogarithmicPath, r"slope b / t, unbounded at age 0"),
+        (LloydLipowPath, r"slope b / t\^2, unbounded at age 0"),
+        (LinkedPathModel(LogarithmicPath, {"b": "log"}), r"slope b / t,"),
+    ],
+)
+@pytest.mark.parametrize("link", ["slope", ["value", "slope"]])
+@pytest.mark.parametrize("factory", [JointPH, JointAFT])
+def test_a_path_whose_slope_is_unbounded_at_0_cannot_be_followed(
+    path, formula, link, factory
+):
+    with pytest.raises(ValueError, match=formula) as refusal:
+        factory(Weibull, path, link=link)
+    message = str(refusal.value)
+    assert "cannot follow its slope" in message
+    assert "would be infinite" in message
+    assert "LinearPath, QuadraticPath or ExponentialPath" in message
+    # what to use instead: the links the path can take
+    if path is LloydLipowPath:
+        assert "Use link='value', or for the slope link" in message
+    elif factory is JointAFT:
+        assert "ageing rate" in message
+        assert "Use link='value', or for the slope link" in message
+    else:
+        assert "Use link='value' or 'cumulative', or" in message
+    # the value (and for a logarithmic path the area) are still taken
+    factory(Weibull, path, link="value")
+
+
+def test_a_path_with_neither_slope_nor_area_says_both():
+    with pytest.raises(ValueError) as refusal:
+        JointPH(Weibull, LloydLipowPath, link=["slope", "cumulative"])
+    message = str(refusal.value)
+    assert "no finite area" in message
+    assert "unbounded at age 0" in message
+    assert "Use link='value', or for the slope link" in message
+
+
+def _power_fleet(power, n=60, seed=3):
+    """``n`` items whose readings follow ``a t^power`` (``a`` about 3,
+    the power with sd 0.05) from age 0.1, every quarter year, with noise
+    of 5% (multiplied, so every reading is positive, as a power path
+    needs), Weibull lifetimes (ages in years) and a third of them
+    censored."""
+    rng = np.random.default_rng(seed)
+    x = 3.0 * rng.weibull(2.0, n) + 0.2
+    c = (rng.random(n) < 1 / 3).astype(int)
+    markers = []
+    for life in x:
+        a = 3.0 + rng.normal(0.0, 0.3)
+        b = power + rng.normal(0.0, 0.05)
+        ages = np.arange(0.1, life, 0.25)
+        markers.append(
+            {
+                float(age): float(a * age**b * np.exp(rng.normal(0, 0.05)))
+                for age in ages
+            }
+        )
+    return x, c, markers
+
+
+@pytest.mark.parametrize("factory", [JointPH, JointAFT])
+def test_a_power_below_1_has_a_slope_that_cannot_be_followed(factory):
+    x, c, markers = _power_fleet(0.5)
+    with pytest.raises(ValueError, match="power b below 1") as refusal:
+        factory(Weibull, PowerPath, link="slope").fit(
+            x=x, c=c, markers=markers
+        )
+    message = str(refusal.value)
+    found = re.search(
+        r"the readings put the average item's power at b = ([0-9.]+),", message
+    )
+    assert found and abs(float(found.group(1)) - 0.5) < 0.05
+    assert "LinearPath, QuadraticPath or ExponentialPath" in message
+    if factory is JointAFT:
+        assert "Use link='value', or for the slope link" in message
+    else:
+        assert "Use link='value' or 'cumulative', or" in message
+
+
+def test_a_power_above_1_has_a_slope_that_can_be_followed():
+    x, c, markers = _power_fleet(1.5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = JointPH(Weibull, PowerPath, link="slope").fit(
+            x=x, c=c, markers=markers
+        )
+    est = dict(zip(model.parameter_names, model.params))
+    assert est["b"] > 1.0
+    assert np.isfinite(est["slope_effect"])
+
+
+def test_a_power_on_a_log_link_is_judged_on_its_own_scale():
+    fitter = JointPH(
+        Weibull, LinkedPathModel(PowerPath, {"b": "log"}), link="slope"
+    )
+    with pytest.raises(ValueError, match="b = 0.8,"):
+        _check_power(fitter, np.array([3.0, np.log(0.8)]), "the fit puts")
+    _check_power(fitter, np.array([3.0, np.log(1.2)]), "the fit puts")
+    # only the slope link is judged
+    _check_power(
+        JointPH(Weibull, PowerPath), np.array([3.0, 0.5]), "the fit puts"
+    )
 
 
 def test_a_covariate_named_as_an_effect_is_refused():

@@ -628,6 +628,16 @@ Three things to know:
   area is of the marker itself, from age 0: for the exposure *above* a
   level -- the hours above a rated temperature, say -- subtract that level
   from the readings first.
+- **Paths whose slope starts infinite.** The cumulative hazard runs from
+  age 0, so the slope link needs a path whose slope is finite there. A
+  logarithmic path (slope :math:`b / t`) and a Lloyd-Lipow path (slope
+  :math:`b / t^2`) are refused with the slope link when the fitter is
+  built, and a power path :math:`a t^b` is refused by the fit when its
+  average item's power is below 1 (slope :math:`a b t^{b - 1}`): near age
+  0 the failure rate would be infinite for every item whose slope has the
+  sign of its effect. Each refusal names the links the path can take
+  instead, and paths whose slope is finite at 0 (a line, a quadratic, an
+  exponential).
 - **The units.** A slope's and an area's effects depend on the unit of
   age: a ``slope_effect`` per mm/s a *day* is 365 times one per mm/s a
   *year*. Ages in years (or a rate per year) keep them readable.
@@ -841,8 +851,10 @@ Each candidate is fitted as its own ``fit`` would fit it, to the same
 parameters. A fit that is not a verified maximum is shown in the table as
 ``set aside`` and is neither ranked nor tested, and a link that cannot be
 fitted is listed with the reason (``links.failed``); each is said in one
-warning. A Lloyd-Lipow path, which has no finite area from age 0, is
-compared without the area.
+warning. A path that cannot take some of the default links is compared
+without them, saying which: a logarithmic path without the slope, and a
+Lloyd-Lipow path, which also has no finite area from age 0, can take only
+the value, so there is nothing to compare and it is refused.
 
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
