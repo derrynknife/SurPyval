@@ -15,6 +15,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-20
 
+### Competing-risks survival trees: the split rule and the leaves (20 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A tree grown with `e` splits by default on the sum over the causes of the squared cause-specific log-rank statistics (`split="cause-specific"`); `split="gray"` (Gray's two-sample statistic for one nominated cause, `event=`) is the alternative. | proposed | The cause-specific statistics are asymptotically independent under no effect, so the sum is the chi-squared statistic of "the cut changes no cause's hazard", and squaring stops a cut that raises one cause and lowers another from cancelling (as Ishwaran et al.'s composite of signed statistics can). With one cause it is the plain log-rank rule, so a one-cause tree makes the plain tree's cuts. Gray's statistic targets the incidence but costs a full test per cut and refuses delayed entry. | done |
+| The nominated cause is `event=` (as `FineGray.fit` and `gray_test` name it), and `cif(x, Z, event)` takes the cause as the other competing-risks regressions' `cif` does. | principle 1 | One name for the same thing across the package. | done |
+| Non-parametric leaves are `CompetingRisks` with `how="Kaplan-Meier"`, so a leaf's `sf` is one less the sum of its cumulative incidences. | proposed | The default Nelson-Aalen `sf` does not add up with the incidences (the CIFs use the Kaplan-Meier survival); a tree's `sf` and `total_cif` should agree. | done |
+| A parametric leaf fits each cause on its own, as a plain leaf of the kind is fitted (the closed-form maximum where it applies), assembled with `ParametricCompetingRisks.from_fitted`. A depth-0 tree is that model; its maximum agrees with `ParametricCompetingRisks.fit`'s to about 1e-6 relative and has a log-likelihood no lower. | proposed | The leaf fits stay those of the plain tree; the difference is the optimiser's tolerance. | done |
+| `min_leaf_failures` counts every failure; for a parametric kind each child must also keep that many failures of each cause the node has at least twice as many of. A rarer cause may fall wholly to one side; the other child then gives it zero incidence, and `describe()` says so. | proposed | A parametric leaf fits every cause separately, so it needs failures of each; requiring them of a cause too rare to give both children any would stop every split. The Aalen-Johansen leaf needs no minimum per cause. | done |
+| With `e`, left- and interval-censored rows, right truncation, `selection="ctree"` and a non-zero `min_split_gain` are refused, each saying what to use. | principle 2 | The cause-aware splits are risk-set statistics; the conditional-inference tests and the likelihood gain are of a single event. The leaf models take interval censoring, so a later change may add it. | gap |
+| The forest does not take causes yet. | proposed | Part of the work in two steps: the tree first. | gap |
+
 ### Joint models: the slope link and paths whose slope is unbounded at age 0 (20 Nov 2026)
 
 | Decision | By | Reason | Status |

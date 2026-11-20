@@ -5,6 +5,26 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Competing-risks survival trees.** ``SurvivalTree.fit`` (and
+  ``fit_from_df``, with ``e_col``) takes the cause of each failure as
+  ``e``. The tree then chooses cuts that tell the causes apart --
+  ``split="cause-specific"`` (the default), the sum over the causes of the
+  squared cause-specific log-rank statistics, or ``split="gray"``, Gray's
+  two-sample statistic for one nominated cause's cumulative incidence
+  (``event=``) -- fits a competing-risks model in each leaf (the
+  Aalen-Johansen estimate for ``kind="non-parametric"``, one Weibull or
+  Exponential per cause otherwise), and predicts each cause's cumulative
+  incidence at given covariates with ``cif(x, Z, event)``, their sum with
+  ``total_cif`` and the all-cause ``sf``, ``ff``, ``Hf``, ``hf`` and
+  ``df``. A cause with no failure in a leaf has zero incidence there,
+  which ``print(tree)`` says. A tree of depth 0 is the plain
+  competing-risks fit; with one cause the cause-specific rule makes the
+  plain log-rank tree's cuts. Exact and right-censored times with delayed
+  entry are taken; left and interval censoring, right truncation,
+  ``selection="ctree"`` and ``min_split_gain`` are refused with causes,
+  each saying what to use. Trees save and load with their causes. Without
+  ``e`` nothing changes. See :doc:`surpyval.ml`.
+
 - **Relative survival: net survival and excess hazards beyond a
   population's own rates.** Where units have the event for reasons
   besides the one studied, and the cause of each event is not recorded,
@@ -240,9 +260,39 @@ v0.29 (unreleased)
   ``"time unit"`` standing in for one not given. The printout shows it
   on an ``Effect units`` line. A label only: nothing is converted, and
   the fit is unchanged.
+- **A fast log-posterior and gradient for samplers.**
+  ``surpyval.bayes.likelihood.log_posterior_and_grad(data, dist, priors)``
+  returns ``f(z) -> (value, gradient)`` at one point of the free
+  parameters' unconstrained scale: the posterior ``fit_bayes`` uses (to
+  rounding), for every distribution and form it takes, every kind of
+  censoring and truncation and every kind of prior, with the data checked
+  and split once rather than on every call. The gradient is by automatic
+  differentiation, and written out by hand for the Weibull, Exponential,
+  Normal, LogNormal and Gamma; a Weibull with 1,000 rows takes about 35
+  microseconds a call (``scripts/bench_log_posterior.py``). It is the
+  groundwork for a gradient-based sampler; ``fit_bayes`` is unchanged.
 
 **Changed.**
 
+- **A mixture's residual life is drawn to the last bits, about ten times
+  faster.** The renewal models' draws of the life left at an age
+  (``conditional_gaps``, used by their simulations) inverted a
+  ``MixtureModel``'s quantile function wherever the cumulative hazard to
+  reach was below 20, which loses about ``eps * exp(H)`` of the age found
+  (1e-12 to 2e-11 relative at ``u = 1e-6``) and was itself a root search
+  costing some 1.5 ms a draw. A mixture's draws now take Newton's steps on
+  its cumulative hazard throughout, from a bound found from its
+  components: the age found is the root to 1e-13 relative (checked
+  against 50-digit references for two- and three-component Weibull and
+  log-normal mixtures, at ages from 0 to the 0.999 quantile and ``u``
+  from 1e-9 to 1 - 1e-9), in about 0.15 ms. *Intentional numerical
+  change:* seeded simulations with a mixture lifetime change in the last
+  digits. Draws for every other lifetime are unchanged, bit for bit,
+  except below.
+- A residual-life draw from a lifetime whose cumulative hazard levels
+  off below the amount to reach (a limited-failure population) is
+  ``inf``, an event that never comes, where beyond a cumulative hazard
+  of 20 it came back NaN.
 - **The slope link refuses paths whose slope is infinite at age 0.**
   ``JointPH`` and ``JointAFT`` with ``link="slope"`` (alone or in a list)
   refuse a logarithmic path (slope ``b / t``) and a Lloyd-Lipow path
