@@ -257,7 +257,11 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # counted equally. And by a joint
 # model with more than three varying path parameters: a v0.28 reader has
 # no prediction grid for four or five, and would fail with a KeyError at
-# its first prediction rather than refuse at the load.
+# its first prediction rather than refuse at the load. And by a joint
+# model whose varying path parameters are not all correlated
+# (``"random_effects"`` other than ``"full"``): a v0.28 reader would
+# ignore the entry and read the parameters after the sds as a
+# correlation of every pair, misplacing every one after them.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 5
 
@@ -293,8 +297,9 @@ _SCHEMA_MEASUREMENTS = 4
 # The schema of a joint model with the accelerated survival part
 # (``"survival": "AFT"``), fitted in two stages (``"how":
 # "two-stage"``), with a lag (``"lag"`` above 0), with a weight on its
-# accumulated exposure (``"weight"``) or with more than three varying
-# path parameters: v0.29's schema 5.
+# accumulated exposure (``"weight"``), with more than three varying path
+# parameters or with some of them uncorrelated (``"random_effects"``
+# other than ``"full"``): v0.29's schema 5.
 _SCHEMA_ACCELERATED_JOINT = 5
 
 # The most path parameters a v0.28 joint model may vary between items.
@@ -828,8 +833,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 def _is_schema_5_joint(d: dict) -> bool:
     """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
     with the accelerated survival part, fitted in two stages, with a
-    lag, with a weight on its accumulated exposure or with more than
-    three varying path parameters. Each needs schema 5."""
+    lag, with a weight on its accumulated exposure, with more than three
+    varying path parameters or with a covariance structure other than the
+    full one (some correlations held at 0, so fewer parameters than a
+    v0.28 reader takes). Each needs schema 5."""
     if d.get("model") != "JointModel":
         return False
     return (
@@ -838,6 +845,7 @@ def _is_schema_5_joint(d: dict) -> bool:
         or (d.get("lag") or 0) > 0
         or d.get("weight") is not None
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
+        or (d.get("random_effects") or "full") != "full"
     )
 
 

@@ -196,7 +196,47 @@ variances and correlations of the items' spread, not the grid. And the
 and the marker effect is strong: against 11 points a dimension the
 log-likelihood of such a fleet was off by up to 5e-5 an item (it was
 within 4e-10 an item on a fleet read often). That is the grid's own
-error, the same on the full grid and the pruned one.
+error, the same on the full grid and the pruned one. Fewer correlations
+(next) make that search smaller.
+
+Which path parameters are correlated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default every pair of varying parameters is correlated between items:
+an item that starts high may rise faster, or slower, and the fit
+estimates by how much (``corr_a_b``). That is one correlation for two
+varying parameters, three for three, six for four and ten for five, and a
+fleet of tens of items cannot pin down ten. ``random_effects=`` on the
+fitter says which are correlated:
+
+- ``"full"``: every pair (the default; the model as it always was).
+- ``"diagonal"``: none. Each varying parameter varies between items
+  independently of the others.
+- blocks of names, such as ``[("a", "b"), ("c",)]``: those in a block are
+  correlated with each other and with none outside it. Every varying
+  parameter is in exactly one block; a name that is not a varying
+  parameter, or one named twice or left out, is refused, saying which.
+
+.. code:: python
+
+    from surpyval import JointPH, Weibull
+    from surpyval.degradation import QuadraticPath
+
+    independent = JointPH(Weibull, random_effects="diagonal").fit(data)
+    independent.parameter_names[:4]       # ['a', 'b', 'sd_a', 'sd_b']
+    blocks = JointPH(Weibull, QuadraticPath, random_effects=[("a", "b"), ("c",)])
+
+A correlation left out is 0, not estimated: it has no entry in
+``params``, in ``summary()`` or in the saved model, and ``aic()`` counts
+the parameters that are estimated. The structures nest -- the full one
+holds every other with some correlations at 0 -- so they compare on the
+same data by ``aic()`` or by the likelihood ratio. The model keeps the
+structure as ``random_effects_structure`` (``"full"``, ``"diagonal"``,
+or the blocks as a tuple of tuples of names), and its printout and the
+summary's heading of the spread say it. A model with a structure other
+than the full one saves as schema 5, which SurPyval 0.28 refuses rather
+than read its parameters as a full one's; a model saved before the
+choice existed reads as ``"full"``.
 
 The data: readings on the item records
 --------------------------------------
@@ -1778,7 +1818,8 @@ The joint model (#891) is the standard one. It has:
 - one marker, following any degradation path model (a straight line by
   default), with up to five of its parameters varying between items
   (multivariate normal on their natural scale, or on a log scale with a
-  ``LinkedPathModel``) and the rest common;
+  ``LinkedPathModel``; every pair correlated, none, or blocks of them,
+  ``random_effects=``) and the rest common;
 - a Weibull proportional hazards survival part (``JointPH(Weibull,
   path_model)``; ``WeibullJointPH`` is the line; other baselines are
   refused) in the path's current value, its slope, the area under it, or
