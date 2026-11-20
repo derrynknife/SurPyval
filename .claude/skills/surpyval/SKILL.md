@@ -314,6 +314,7 @@ silently wrong numbers, not errors.
 | **Landmarking** | `sp.landmark`, `sp.LandmarkCox`, `sp.landmark_kaplan_meier` | Dynamic prediction (the chance of the event by `s + w` for a unit event-free at `s`, given `Z(s)`) without a model of the covariates' paths: `landmark(life, at, horizon)` gives the units at risk at each landmark with covariates as known then (a `SurpyvalData`, stacked over landmarks); `LandmarkCox.fit(life, at=[...], horizon=w)` a Cox model or supermodel (stratified or pooled baseline, effects polynomial in the landmark) with robust standard errors clustered on the unit; `predict(s, Z)`, `cb`, `table`, `beta(s)` |
 | **Multivariate** | `surpyval.multivariate` | Bivariate copulas: `Clayton`, `Frank`, `Gumbel`, `Joe`, `AMH`, `Gaussian`, `StudentT`, `Independence` (with rotations). `MultivariateSurpyvalData`: x/c/n/t with D >= 2 columns and optional axis `names`; the model decides what the columns mean and says how many it takes (`n_axes`; copulas 2) |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
+| **Relative survival** | `sp.RateTable`, `sp.RelativeSurvival`, `sp.ExcessHazard` | Survival beyond a population's own hazards, read from a rate table (`RateTable(rates, ages, years=)`, a dict of rates per stratum; `from_df`): net survival by Pohar Perme (default) or Ederer II (`RelativeSurvival.fit(x, c, rate_table=, age=, year=, stratum=, method=)`; `sf`/`ff`/`Hf`, `cb` with `bound_type="log"` or `"normal"`, `table`), and excess hazard regression `lambda_P(t) + lambda_0(t) exp(beta'Z)` with a piecewise-constant baseline (`ExcessHazard.fit(x, Z, c, rate_table=, age=, breaks=)`; `summary`, `param_cb`, `cb`, net `sf`/`hf`/`qf`/`random`, `observed_sf`). Exact and right-censored rows only; net survival can exceed 1 |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `score_predictions` (standard errors, model comparisons), `survival_probability`; `e=`/`cause=` score one cause's predicted CIF with competing risks; dynamic predictions made at an age (joint models, `LandmarkCox`, age-only baselines): `dynamic_auc` / `dynamic_brier` / `dynamic_calibration(model_or_dict, data, at=, horizon=, cross_validate=k)` |
 | **Trees and forests** | `surpyval.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
 
@@ -426,6 +427,21 @@ pr = sp.pooled_rate([12, 4, 0, 9, 21], [8000, 5200, 1900, 4100, 9800],
                     alpha_ci=0.1)  # kind="probability" for events / trials
 pr.average; pr.predictive          # the mean across sources; a new source
 pr.sources; pr.heterogeneity; pr.update(2, 1000)  # shrunk; own data
+# Relative survival: net survival beyond a population's own rates (a rate
+# table by attained age, and calendar year and stratum where given; ages,
+# years, times and rates in one unit). The cause of death is not needed.
+ages = np.arange(111)
+table = sp.RateTable({"F": 4e-5 * np.exp(0.09 * ages),
+                      "M": 7e-5 * np.exp(0.09 * ages)}, ages=ages)
+rr = np.random.default_rng(2); age = rr.uniform(50, 80, 300)
+sex = rr.choice(["F", "M"], 300); trt = rr.binomial(1, 0.5, 300)
+yrs = np.minimum(rr.exponential(1 / (0.2 * np.exp(-0.5 * trt))), 8.0)
+ns = sp.RelativeSurvival.fit(yrs, yrs == 8.0, rate_table=table, age=age,
+                             stratum=sex)   # method="ederer2" for Ederer II
+ns.sf(5); ns.cb(5, alpha_ci=0.1); ns.table   # net survival is not cut at 1
+eh = sp.ExcessHazard.fit(yrs, trt, c=yrs == 8.0, rate_table=table, age=age,
+                         stratum=sex, breaks=2)  # lambda_P + lambda_0 e^(bZ)
+eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
 ```
 
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and

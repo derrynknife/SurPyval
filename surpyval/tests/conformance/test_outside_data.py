@@ -73,6 +73,7 @@ RULES = {
     # A dynamic prediction from its landmark s: 1 (sf) before s, NaN past
     # the horizon s + w it was fitted to.
     "LandmarkCox": "nan",
+    "RelativeSurvival": "hold",
 }
 # Parametric cases that look data-bounded on their fixture but are not,
 # each with the reason: defined by a formula everywhere, they are flat
@@ -93,8 +94,9 @@ START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
 # Estimates whose hazard acts from time 0, not only at the event times: an
 # additive hazards model's covariate effect is a constant added hazard, so
 # before the first observed time it is already the fitted model, and it
-# starts at time 0.
-STARTS_AT_ZERO = frozenset({"AdditiveHazards"})
+# starts at time 0; so does net survival, whose expected part accrues from
+# time 0.
+STARTS_AT_ZERO = frozenset({"AdditiveHazards", "RelativeSurvival"})
 # The data-bounded cases without ``set_support``, each with the reason.
 _SEMI = "semi-parametric: the explicit support is for the non-parametric "
 _SEMI += "estimates only"
@@ -117,6 +119,8 @@ WITHOUT_SET_SUPPORT = {
     "data",
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
+    "RelativeSurvival": "net survival's expected part accrues from time 0, "
+    "not from the first follow-up time: not given set_support yet",
     "PanelCountMCF": "a mean function known only at the inspection times "
     "(interval-counted data): not given set_support yet",
     "PanelCountRegression": "semi-parametric: a baseline mean function known "

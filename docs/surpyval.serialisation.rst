@@ -435,6 +435,18 @@ with its own ``schema``.
      - ``"model": "PanelCountRegression"``
      - ``how``, ``x``, ``i``, ``n``, ``Z``, ``params``
      - --
+   * - ``RelativeSurvival``
+     - ``"model": "RelativeSurvival"``
+     - ``method``, ``x``, ``at_risk``, ``events``, ``n_units``, ``observed``, ``expected``, ``variance``
+     - --
+   * - ``ExcessHazard``
+     - ``"model": "ExcessHazard"``
+     - ``params``, ``parameter_names``, ``breaks``, ``aliased``, ``k``, ``_neg_ll``, ``ic_n``, ``covariance``, ``rate_table``, ``maximum``
+     - --
+   * - ``RateTable``
+     - ``"model": "RateTable"``
+     - ``ages``, ``years``, ``strata``, ``rates``
+     - --
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``

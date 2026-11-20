@@ -53,6 +53,7 @@ surpyval.EquivalenceFitter
 surpyval.EquivalenceModel
 surpyval.EventHistoryData
 surpyval.ExactEventTime
+surpyval.ExcessHazard
 surpyval.ExpoWeibull
 surpyval.Exponential
 surpyval.ExponentialAFT
@@ -188,7 +189,9 @@ surpyval.PseudoRegressionResult
 surpyval.QuantileRegression
 surpyval.QuantileRegressionModel
 surpyval.RandomEffect
+surpyval.RateTable
 surpyval.Rayleigh
+surpyval.RelativeSurvival
 surpyval.RoystonParmar
 surpyval.RoystonParmarModel
 surpyval.RoystonParmarPH

@@ -42,6 +42,18 @@ every combination of censoring and truncation.
    univariate/fleming_harrington
    univariate/turnbull
 
+Relative Survival
+-----------------
+
+Net survival beyond a population's own hazards, read from a rate table:
+Pohar Perme's estimator and Ederer II, and the excess hazard regression
+beside them. See :doc:`Relative Survival` for the guide.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/relative_survival
+
 Plotting
 --------
 

@@ -5,6 +5,36 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Relative survival: net survival and excess hazards beyond a
+  population's own rates.** Where units have the event for reasons
+  besides the one studied, and the cause of each event is not recorded,
+  ``surpyval.RelativeSurvival`` estimates *net survival* -- the survival
+  were the excess hazard the only one -- against the hazards of the
+  units' own population, held in a ``surpyval.RateTable`` (rates by
+  attained age, and optionally calendar year and a stratum such as sex;
+  each unit's age and the calendar advance along its follow-up, and its
+  expected cumulative hazard is integrated exactly across the bands).
+  ``method="pohar-perme"`` (the default) is Pohar Perme's estimator,
+  consistent for net survival whatever the excess hazard depends on;
+  ``method="ederer2"`` the Ederer II relative survival ratio. Both give
+  ``sf``, ``ff``, ``Hf``, pointwise bounds (``cb``, on the log scale by
+  default or the plain one), a ``table`` of the estimate at each time and
+  strict-JSON ``to_dict`` / ``from_dict``. ``surpyval.ExcessHazard`` fits
+  the excess hazard regression of Estève et al. (1990),
+  :math:`\lambda_P(t) + \lambda_0(t) e^{\beta' Z}`, additive on the
+  hazard scale, by maximum likelihood: a piecewise-constant baseline
+  excess hazard (one interval by default; ``breaks`` gives more), excess
+  hazard ratios with Wald bounds and a ``summary``, the net ``sf``,
+  ``hf``, ``qf`` and ``random`` of a unit, ``observed_sf`` for its
+  all-cause survival, and aliasing and "No finite maximum" as the other
+  regressions have them. Both take exact and right-censored times with
+  counts, from arrays or ``fit_from_df``; delayed entry and interval
+  censoring are refused. Checked against hand-worked values, the
+  Nelson-Aalen estimate (no background hazard), an independent
+  likelihood, and simulations in which Pohar Perme recovers net survival
+  where Ederer II does not. Net survival can rise, and exceed 1, where
+  fewer units fail than the population rates expect; it is reported as
+  it is. See :doc:`Relative Survival`.
 - **Censored quantile regression.** ``QuantileRegression`` models the
   quantiles of the time to an event directly, ``log Q(tau | Z) = b0(tau) +
   b(tau)'Z`` with coefficients of their own at every level, so a

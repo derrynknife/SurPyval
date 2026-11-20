@@ -70,7 +70,12 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
-from surpyval.tests.conformance.registry_fixtures import ms_data, panel_data
+from surpyval.tests.conformance.registry_fixtures import (
+    ms_data,
+    panel_data,
+    relative_data,
+    relative_reg_data,
+)
 
 # -- data ---------------------------------------------------------------------
 
@@ -551,6 +556,13 @@ def _build(name):
             [1, 0, 2, 1, 2, 0, 2, 1, 0, 1],
             i=[1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
         ),
+        "relative_survival": lambda: surpyval.RelativeSurvival.fit(
+            **relative_data()
+        ),
+        "excess_hazard": lambda: surpyval.ExcessHazard.fit(
+            **relative_reg_data()
+        ),
+        "rate_table": lambda: surpyval.RateTable([0.01, 0.03], ages=[0, 2]),
         "parametric_recurrence": lambda: CrowAMSAA.fit(
             np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
         ),
@@ -653,6 +665,9 @@ CASES = [
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",
+    "relative_survival",
+    "excess_hazard",
+    "rate_table",
     "parametric_recurrence",
     "proportional_intensity",
     "recurrent_cox_andersen_gill",

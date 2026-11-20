@@ -276,6 +276,7 @@ DIFFERENTIATED = frozenset(
         "surpyval.multivariate.CopulaModel",
         "surpyval.degradation.DegradationModel",
         "surpyval.JointModel",
+        "surpyval.ExcessHazard",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -297,6 +298,10 @@ NOT_DIFFERENTIATED = {
 # whose fit is not a likelihood maximisation excludes it with the reason).
 NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.NonParametric": "a product-limit or self-consistency estimate",
+    "surpyval.RelativeSurvival": (
+        "a non-parametric estimate: an observed cumulative hazard less an "
+        "expected one"
+    ),
     "surpyval.NeverOccurs": "a fixed model, not fitted",
     "surpyval.InstantlyOccurs": "a fixed model, not fitted",
     "surpyval.AdditiveHazardsModel": (
