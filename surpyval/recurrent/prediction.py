@@ -42,6 +42,9 @@ DEFAULT_START = 10
 
 def _fitter_name(fitter: Any) -> str:
     """The public name of a fitter (``GoelOkumoto``), for the table."""
+    if hasattr(fitter, "to_spec") and hasattr(fitter, "base"):
+        # A model on another clock: "EffortClock(GoelOkumoto)"
+        return fitter._repr_name()
     return type(fitter).__name__.rstrip("_")
 
 

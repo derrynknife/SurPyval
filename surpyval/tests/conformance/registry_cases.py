@@ -1386,12 +1386,22 @@ _GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
 _GROWTH += ("RayleighDefects",)
 _LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
 _LEVELS_OFF += ("RayleighDefects",)
+# A growth model on another clock: testing effort that eased off (hours
+# in each third of the test), and a detection rate that changed at 20
+_ON_A_CLOCK = {
+    "EffortClock": lambda: rc.EffortClock(
+        rc.GoelOkumoto, ([20.0, 40.0, 60.0], [200.0, 240.0, 160.0])
+    ),
+    "ChangePoint": lambda: rc.ChangePoint(rc.GoelOkumoto, tau=20.0),
+}
+_GROWTH += tuple(_ON_A_CLOCK)
+_LEVELS_OFF += tuple(_ON_A_CLOCK)
 
 
 def _recurrent():
     out = []
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
-        fitter = getattr(rc, name)
+        fitter = _ON_A_CLOCK.get(name, lambda: getattr(rc, name))()
         paths = {"fit_from_recurrent_data": _recurrent_data_path(fitter)}
         paths["from_params"] = lambda d, f=fitter: f.from_params(
             f.fit(**d).params
@@ -3495,7 +3505,7 @@ _LENGTH_OF_STAY = Bound(
 # models, and the Cox-Lewis fixture's falling intensity.
 _REMAINING_FAULTS = dict.fromkeys(
     ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "CoxLewis")
-    + ("RayleighDefects",),
+    + ("RayleighDefects", "EffortClock", "ChangePoint"),
     (Bound("remaining_faults_cb", point="remaining_faults"),),
 )
 

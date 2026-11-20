@@ -21,6 +21,7 @@ surpyval.BuckleyJamesModel
 surpyval.CauseSpecificMCF
 surpyval.CauseSpecificNHPP
 surpyval.CauseSpecificProportionalIntensity
+surpyval.ChangePoint
 surpyval.CoefficientPlot
 surpyval.CompetingRisks
 surpyval.CompetingRisksProportionalHazards
@@ -48,6 +49,7 @@ surpyval.DistributionalRegressionModel
 surpyval.Duane
 surpyval.DynamicAccuracy
 surpyval.DynamicCalibration
+surpyval.EffortClock
 surpyval.Equivalence
 surpyval.EquivalenceFitter
 surpyval.EquivalenceModel
@@ -413,10 +415,13 @@ surpyval.recurrent.AndersenGill
 surpyval.recurrent.CauseSpecificMCF
 surpyval.recurrent.CauseSpecificNHPP
 surpyval.recurrent.CauseSpecificProportionalIntensity
+surpyval.recurrent.ChangePoint
 surpyval.recurrent.CountingProcess
 surpyval.recurrent.CoxLewis
 surpyval.recurrent.CrowAMSAA
 surpyval.recurrent.Duane
+surpyval.recurrent.EffortClock
+surpyval.recurrent.EffortTable
 surpyval.recurrent.GeneralizedOneRenewal
 surpyval.recurrent.GeneralizedRenewal
 surpyval.recurrent.GoelOkumoto
@@ -442,7 +447,10 @@ surpyval.recurrent.RenewalModel
 surpyval.recurrent.SharedFrailtyModel
 surpyval.recurrent.TrendTestResult
 surpyval.recurrent.WeiLinWeissfeld
+surpyval.recurrent.WeibullEffort
 surpyval.recurrent.YamadaDelayedS
+surpyval.recurrent.change_point_cb
+surpyval.recurrent.change_point_test
 surpyval.recurrent.compare_predictions
 surpyval.recurrent.conditional_gaps
 surpyval.recurrent.intervention_test
