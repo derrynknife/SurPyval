@@ -34,6 +34,7 @@ from ._likelihood import (
     Layout,
     Model,
     PathFunction,
+    check_integration,
     neg_ll,
     place,
 )
@@ -184,8 +185,10 @@ class JointPHFitter(FitterRepr):
                 raise ValueError(
                     f"The {path_model.name} path has {len(names)} "
                     f"parameters; at most {MAX_VARYING} can vary between "
-                    "items (the quadrature is a grid of 7 points in each): "
-                    "choose them with varying=(...)."
+                    "items (the quadrature is a grid of 7 points in each, "
+                    "too many beyond that; a Laplace method for more is "
+                    f"planned): choose up to {MAX_VARYING} with "
+                    "varying=(...), the rest common to all items."
                 )
             varying = tuple(names)
         if isinstance(varying, str):
@@ -201,8 +204,10 @@ class JointPHFitter(FitterRepr):
         if len(varying) > MAX_VARYING:
             raise ValueError(
                 f"At most {MAX_VARYING} path parameters can vary between "
-                "items (the quadrature is a grid of 7 points in each); "
-                f"got {len(varying)}."
+                "items (the quadrature is a grid of 7 points in each, too "
+                "many beyond that; a Laplace method for more is planned); "
+                f"got {len(varying)}: name up to {MAX_VARYING} in "
+                "varying=(...), the rest common to all items."
             )
         try:
             links = [link] if isinstance(link, str) else list(link)
@@ -288,6 +293,7 @@ class JointPHFitter(FitterRepr):
         i: npt.ArrayLike | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        integration: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -306,7 +312,8 @@ class JointPHFitter(FitterRepr):
         up. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
-        the log-likelihood stops moving), and the likelihood is maximised
+        the log-likelihood stops moving; ``integration`` says on which
+        nodes), and the likelihood is maximised
         with autograd's gradient; the covariance is the inverse of its
         Hessian. The fit starts from the path fitted to each item alone,
         the spread of those fits, and a survival fit with each item's
@@ -384,6 +391,17 @@ class JointPHFitter(FitterRepr):
             link's effect is per (``effect_units``: a
             ``cumulative_effect`` is per ``(mm/s)·years``, say). A label
             only: nothing is converted.
+        integration : {"grid", "pruned"}, optional
+            The nodes each item's likelihood is integrated on, over its
+            varying path parameters: ``"grid"``, the full grid of 7
+            points in each (49 nodes for two, 343 for three, 2,401 for
+            four, 16,807 for five), or ``"pruned"``, that grid without
+            its lowest-weight nodes, those that hold less than 1e-9 of
+            its weight between them (2,321 nodes for four, 15,415 for
+            five; none are left out for up to three). Default the full
+            grid, the more accurate; ``"pruned"`` is an option. The
+            model keeps it as ``integration``, and its predictions use
+            the same.
 
         Returns
         -------
@@ -410,7 +428,10 @@ class JointPHFitter(FitterRepr):
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
         >>> model.maximum
         'verified'
+        >>> model.integration
+        'grid'
         """
+        integration = check_integration(integration, len(self.varying))
         reference = None
         if marker_reference is not None:
             try:
@@ -439,7 +460,9 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
-        model = _fit(self, records, counts, names, reference, parts)
+        model = _fit(
+            self, records, counts, names, reference, parts, integration
+        )
         model.marker_unit = marker_unit
         return model
 
@@ -554,6 +577,7 @@ class JointPHFitter(FitterRepr):
         i_col: str | None = None,
         m: Any = None,
         marker_unit: str | None = None,
+        integration: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -575,7 +599,8 @@ class JointPHFitter(FitterRepr):
         the items by unit. ``m`` and ``markers_col`` are two ways of
         giving the readings: give one. ``marker_unit`` is the unit the
         readings are in, as for :meth:`fit` (from ``m``'s own unit where
-        it has one).
+        it has one). ``integration`` is the nodes of each item's
+        integral, ``"grid"`` or ``"pruned"``, as for :meth:`fit`.
 
         Examples
         --------
@@ -663,6 +688,7 @@ class JointPHFitter(FitterRepr):
                 i=None if i_col is None else list(df[i_col]),
                 m=m,
                 marker_unit=marker_unit,
+                integration=integration,
             )
 
 
@@ -690,7 +716,9 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them (at most three).
+        items. Default all of them (at most five; with four or five
+        each item's integral is on a pruned grid by default, see
+        ``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -956,6 +984,7 @@ def _fit(
     names: list,
     reference: float | None,
     parts: tuple,
+    integration: str = "grid",
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each); ``parts`` is
     ``(shifts, hazard)``, which covariates enter which part
@@ -1013,7 +1042,9 @@ def _fit(
         fitter.link,
         fitter.survival,
     )
-    model = Model(layout, PathFunction(path_model, fitter.link), centre)
+    model = Model(
+        layout, PathFunction(path_model, fitter.link), centre, integration
+    )
     # Starting values: each item's path alone, their spread, then the
     # survival part on each item's predicted path
     theta = marker_start(model, ages, values, Z - zbar, counts)
@@ -1151,6 +1182,7 @@ def _fit(
     out._neg_ll = float(value)
     out.k = len(estimated)
     out.maximum = "verified" if verified else "unverified"
+    out.integration = integration
     out.n_items = total
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))

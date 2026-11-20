@@ -70,6 +70,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -401,6 +402,7 @@ def _check_maximum(
 # The fitted model
 # ---------------------------------------------------------------------------
 class IntervalCoxPHModel(
+    ParameterBoundsMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,

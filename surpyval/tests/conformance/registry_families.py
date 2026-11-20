@@ -127,6 +127,13 @@ PROPERTIES: dict[str, str] = {
         "first time and holds (or is NaN) after the last, for every "
         "function alike"
     ),
+    # test_surviving_level.py, for the cases of SURVIVING_LEVEL.
+    "surviving_level": (
+        "level_at(t, y0=, t0=, given_survival=True) has all its mass below "
+        "the threshold, its qf inverts its ff, its draws are reproducible "
+        "under random_state, and far from the threshold it is level_at's "
+        "unconditioned level"
+    ),
     # test_derivatives.py, for the cases of DIFFERENTIATED.
     "derivatives": (
         "the derivatives a fit or its inference takes (autograd's, or the "
@@ -280,6 +287,14 @@ DIFFERENTIATED = frozenset(
         "surpyval.degradation.DegradationModel",
         "surpyval.JointModel",
         "surpyval.ExcessHazard",
+    }
+)
+# The process models, whose level_at takes given_survival: the level of a
+# unit that has not reached the threshold.
+SURVIVING_LEVEL = frozenset(
+    {
+        "surpyval.degradation.WienerProcessModel",
+        "surpyval.degradation.GammaProcessModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -524,6 +539,10 @@ class Case:
         if prop == "derivatives" and (
             self.model_class not in DIFFERENTIATED
             or self.name in NOT_DIFFERENTIATED
+        ):
+            return False
+        if prop == "surviving_level" and (
+            self.model_class not in SURVIVING_LEVEL
         ):
             return False
         if prop == "aliasing_constant" and not self.intercept:

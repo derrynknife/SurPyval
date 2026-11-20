@@ -33,6 +33,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.multistate._base import check_bound_args, probability_bounds
 from surpyval.multistate._entry import refuses_surpyval_data
 from surpyval.multistate.transitions import TransitionMatrix
@@ -753,7 +754,7 @@ def _crude_start(data: _PanelData, scale: float) -> npt.NDArray:
 # ---------------------------------------------------------------------------
 # The models
 # ---------------------------------------------------------------------------
-class _PanelMultiStateBase(SerialisableMixin):
+class _PanelMultiStateBase(ParameterBoundsMixin, SerialisableMixin):
     """What the panel-data multi-state models share."""
 
     _regression = False
