@@ -451,6 +451,10 @@ with its own ``schema``.
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
      - --
+   * - ``SharedFrailtyModel``
+     - ``"model": "SharedFrailtyModel"``
+     - ``baseline``, ``family``, ``how``, ``params``, ``n_covariates``, ``regression``, ``held``, ``covariance``, ``cluster_ids``, ``cluster_events``, ``cluster_exposure``, ``maximum``
+     - ``feature_names``
    * - ``JointFrailtyModel``
      - ``"model": "JointFrailtyModel"``
      - ``family``, ``time_scale``, ``params``, ``n_covariates``, ``held``, ``covariance``, ``frailty_ids``, ``frailty_values``, ``maximum``

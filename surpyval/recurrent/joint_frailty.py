@@ -903,7 +903,7 @@ def _to_standard(
     return out
 
 
-def _minimise(search: _Search, start: npt.NDArray) -> Any:
+def _minimise(search: Any, start: npt.NDArray) -> Any:
     """BFGS on autograd's gradient, finite answers only."""
     jac = _ag_grad(search)
 
@@ -962,7 +962,7 @@ def _minimise(search: _Search, start: npt.NDArray) -> Any:
     return res
 
 
-def _is_maximum(search: _Search, u: npt.NDArray, n_obs: float) -> bool:
+def _is_maximum(search: Any, u: npt.NDArray, n_obs: float) -> bool:
     """A zero gradient (relative to the number of events) and a
     positive-definite Hessian of the negative log-likelihood."""
     with np.errstate(all="ignore"):
