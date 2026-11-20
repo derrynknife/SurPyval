@@ -461,6 +461,16 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     #: The ``repr``: ``Weibull: parametric fitter`` (#614).
     fitter_kind = "parametric fitter"
 
+    #: How each parameter moves when the model's time is rescaled
+    #: (``Parametric.rescale_time``), one role per parameter: ``"time"``
+    #: (divided by the factor), ``"rate"`` (multiplied by it),
+    #: ``"log_time"`` (less its log) or ``"shape"`` (kept). None where the
+    #: time cannot be rescaled, with the reason in ``_time_roles_refusal``.
+    #: A new distribution of time declares it; the conformance suite
+    #: (``test_rescale_time.py``) fails until it does or refuses.
+    _time_roles: tuple[str, ...] | None = None
+    _time_roles_refusal: str | None = None
+
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
         # base calls -- ``cs`` divides two ``sf``s, ``log_sf`` negates
