@@ -214,8 +214,10 @@ def test_a_path_whose_slope_is_unbounded_at_0_leaves_out_the_slope():
 
 
 def test_the_comparison_says_which_links_it_left_out(monkeypatch):
+    fitted = _alone("value")  # fitted before the stand-in replaces fit
+
     def stand_in(self, *args, **kwargs):
-        return _alone("value")
+        return fitted
 
     monkeypatch.setattr(JointPHFitter, "fit", stand_in)
     with pytest.warns(UserWarning) as caught:
