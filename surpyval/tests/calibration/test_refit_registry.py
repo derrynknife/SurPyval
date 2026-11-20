@@ -1180,6 +1180,15 @@ PLANS["Beta4"] = Plan(
     "with a and inherit their bias (1.5 and 1.2 sd at n = 300)",
 )
 PLANS["BetaGeometric"] = Plan(_uni_censored, 300, 100)
+PLANS["Hypoexponential"] = Plan(
+    _uni_censored,
+    300,
+    60,
+    note="the curve only: the fixture's two rates are equal (an Erlang), "
+    "and a fit reports its rates in order, slowest first, so each "
+    "estimate is the smaller or larger of two and biased away from a "
+    "common truth by construction",
+)
 for _name in ("Binomial", "Bernoulli", "FixedEventProbability"):
     PLANS[_name] = Plan(_uni_plain, 300, 100, params=_parametric_params)
 PLANS["ExactEventTime"] = Plan(_inspected, 300, 100, params=_parametric_params)
@@ -1561,6 +1570,14 @@ _ML = (
 )
 EXCLUDED: dict[str, str] = {
     **dict.fromkeys(
+        ("RelativeSurvival", "ExcessHazard"),
+        "the plans draw lifetimes from the model alone, and relative "
+        "survival data need each unit's population death time too, drawn "
+        "from its rate table: recovery and the bounds' coverage on such "
+        "data are checked by calibration/test_coverage_relative_survival.py "
+        "and tests/univariate/test_relative_survival.py",
+    ),
+    **dict.fromkeys(
         ("PanelCountMCF", "PanelCountRegression"),
         "no simulation from the model: the mean function is a step "
         "function with no shape beyond the inspection times and the model "
@@ -1619,7 +1636,17 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
-    "Hypoexponential": _NO_DATA,
+    **dict.fromkeys(
+        ("QuantileRegression", "QuantileRegression[portnoy]"),
+        "the quantile process fitted to the fixture's 30 rows is constant "
+        "over runs of levels, so each row's distribution is a step function "
+        "with jumps of up to 0.17: data drawn from it are tied at those "
+        "steps, a refit's steps fall beside the truth's, and the curve check, "
+        "read at the data's own times, sees a whole jump (0.09 at worst over "
+        "40 refits of 300, with the plan of BuckleyJames). Recovery of the "
+        "coefficient process from continuous data with known quantiles is "
+        "tested in tests/univariate/regression/test_quantile_regression.py",
+    ),
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,
     "SurvivalTree[weibull]": _ML,
@@ -1679,6 +1706,10 @@ EXCLUDED: dict[str, str] = {
         "from this link is in univariate/joint/test_joint_links.py"
         for _link in ("slope", "cumulative", "value+slope")
     },
+    "WeibullJointAFT": "a lifetime with marker readings along it, which a "
+    "model draw does not give: recovery of fleets simulated from the "
+    "accelerated model is in univariate/joint/test_joint_aft.py, and the "
+    "recovery study per path model in scripts/studies/joint_recovery",
 }
 
 

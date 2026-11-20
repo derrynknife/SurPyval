@@ -20,6 +20,14 @@ its running maximum (most of the time for a covariate row inside the data)
 the prediction is the estimate itself; the fitted baseline ``H0`` is the raw
 estimate at :math:`Z = 0`, as R's ``timereg`` reports it.
 
+``AdditiveHazards.fit_penalised`` adds a ridge, lasso or elastic-net
+penalty: Lin and Ying's estimating equation is the gradient of a quadratic
+loss, which takes the place of the negative log-likelihood of the other
+penalised fits (see the penalised regression section of
+:doc:`/Regression Modelling with SurPyval`). The coefficients are rates,
+so the penalty is put on them in the unit of the mean follow-up
+(``model.time_scale``), and the fit does not depend on the unit of time.
+
 .. autoclass:: surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_
    :members:
    :inherited-members:

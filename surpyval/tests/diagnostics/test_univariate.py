@@ -479,7 +479,8 @@ def test_no_finite_maximum_is_refused():
         (
             lambda: sp.Geometric.fit([1, 2, 3, 4, 2, 1]),
             NotImplementedError,
-            r"not built yet\. Compare discrete models with model\.aic\(\)",
+            r"does not check a discrete distribution \(Geometric\).*"
+            r"model\.aic\(\).*KaplanMeier\.fit",
         ),
     ],
 )

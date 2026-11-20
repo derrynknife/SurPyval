@@ -664,3 +664,47 @@ def panel_count_data(with_Z=False):
             :, None
         ]
     return d
+
+
+# ---------------------------------------------------------------------------
+# Relative survival (a rate table of population hazards beside the data)
+# ---------------------------------------------------------------------------
+def relative_rate_table():
+    """Population hazards by age band, calendar year and stratum (0, 1):
+    small beside the fixtures' own hazards, as a population's are beside
+    a disease's."""
+    import surpyval as sp
+
+    ages = np.array([0.0, 50.0, 60.0, 70.0, 80.0])
+    base = np.array([0.002, 0.006, 0.015, 0.035, 0.08])
+    rates = {
+        0: np.column_stack([base, 0.8 * base]),
+        1: np.column_stack([1.4 * base, 1.1 * base]),
+    }
+    return sp.RateTable(rates, ages, years=np.array([2000.0, 2010.0]))
+
+
+def _relative_columns(size):
+    """Each unit's age, calendar year and stratum at time 0."""
+    return {
+        "age": np.round(np.linspace(42.0, 78.0, size)[scramble(size)], 1),
+        "year": np.round(np.linspace(1998.0, 2016.0, size), 2),
+        "stratum": np.tile([0.0, 1.0], size // 2 + 1)[:size],
+    }
+
+
+def relative_data():
+    """``uni_data``'s 12 rows, each unit with its age, year and stratum, and
+    the rate table, for ``RelativeSurvival``."""
+    d = uni_data()
+    columns = _relative_columns(d["x"].size)
+    return {**d, **columns, "rate_table": relative_rate_table()}
+
+
+def relative_reg_data():
+    """``reg_data``'s 30 rows with each unit's age, year and stratum, the
+    rate table and a baseline excess hazard on two intervals (split at the
+    events' median), for ``ExcessHazard``."""
+    d = reg_data()
+    columns = _relative_columns(d["x"].size)
+    return {**d, **columns, "rate_table": relative_rate_table(), "breaks": 2}

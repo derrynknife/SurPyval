@@ -335,12 +335,14 @@ def test_prediction_argument_validation(model):
         model.predict_failure_time([-10.0, 20.0], [1.2, 1.4], Z=[Z_USE])
     with pytest.raises(ValueError, match="depends on stress"):
         model.induced_life()
-    for call in (
-        lambda: model.cb([100.0], Z=PROFILE),
-        lambda: model.life_parameter_covariance(),
-    ):
-        with pytest.raises(NotImplementedError, match="bootstrap"):
-            call()
+    if model.population_method == "reml":
+        # the analytic bound is derived for the profile least-squares clock
+        for call in (
+            lambda: model.cb([100.0], Z=PROFILE),
+            lambda: model.life_parameter_covariance(),
+        ):
+            with pytest.raises(NotImplementedError, match="bootstrap"):
+                call()
 
 
 def test_models_without_a_clock_refuse_its_arguments():

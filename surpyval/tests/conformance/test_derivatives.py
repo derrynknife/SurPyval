@@ -316,8 +316,20 @@ def _joint(case):
     return [(" (search space)", f, at, _autograd(f), model.neg_ll())]
 
 
+def _excess_hazard(case):
+    """The excess hazard likelihood in the natural log-rates and the
+    coefficients, by autograd (the fit's own derivatives, in the search
+    space a linear map of this one)."""
+    from surpyval.univariate.relative.excess_hazard import search_space
+
+    model = fitted(case)
+    f, at, _, _ = search_space(model, case.data())
+    return [(" (log-rates)", f, at, _autograd(f), model.neg_ll())]
+
+
 OBJECTIVES = {
     "surpyval.JointModel": _joint,
+    "surpyval.ExcessHazard": _excess_hazard,
     "surpyval.Parametric": lambda case: _parametric(fitted(case)),
     "surpyval.ParametricRegressionModel": lambda case: _regression(
         fitted(case)

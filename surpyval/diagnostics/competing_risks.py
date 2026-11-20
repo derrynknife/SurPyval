@@ -817,7 +817,12 @@ def _fg_form_panels(ctx: Context) -> list[Panel]:
 
 
 def _validate_fine_gray(model: Any) -> None:
+    from surpyval.univariate.regression._penalised import refuse_if_penalised
+
     for cause, fg in _fg_models(model).items():
+        # A penalised fit has no p-values; the message is the one its
+        # covariance gives.
+        refuse_if_penalised(fg)
         if getattr(fg, "_fit_data", None) is None:
             raise _restored(
                 "Fine-Gray model"

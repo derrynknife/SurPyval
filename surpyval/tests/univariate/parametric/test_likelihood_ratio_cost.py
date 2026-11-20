@@ -367,9 +367,9 @@ def test_609_an_answer_found_again_is_not_checked_again(monkeypatch):
     solves = []
     solve = likelihood_ratio._PsiBoundSearch.solve
 
-    def counted(self, *args):
+    def counted(self, *args, **kwargs):
         solves.append(1)
-        return solve(self, *args)
+        return solve(self, *args, **kwargs)
 
     monkeypatch.setattr(likelihood_ratio._PsiBoundSearch, "solve", counted)
     assert search.checks_out(-1.0, at) == done
@@ -408,3 +408,82 @@ def test_609_a_valley_at_its_limit_is_probed_once(monkeypatch):
     assert faces
     # One slice a face and side of the bound, not two
     assert len(faces) == len(set(faces))
+
+
+# ---------------------------------------------------------------------------
+# Edge valleys: checks that stop once they find the region going further,
+# and walks that share their steps across levels
+# ---------------------------------------------------------------------------
+def _weibull_sf8_search():
+    model = _fitted("Weibull")
+    free = [0, 1]
+    region = model._lr_region(free, CRIT_95)
+
+    def psi(theta):
+        return float(np.log(model.dist.sf(np.array([8.0]), *theta)[0]))
+
+    search = likelihood_ratio._PsiBoundSearch(
+        model, psi, free, CRIT_95, (-700.0, 700.0), region[0]
+    )
+    search.run(True, False, region[1], region[2])
+    return model, search
+
+
+def test_a_check_stops_where_the_region_goes_further(monkeypatch):
+    # A check that an answer is the extreme solves for the least deviance
+    # with psi a hair beyond it, from the estimate and from beside the
+    # answer. Where the first start finds a point of the region there,
+    # the answer is not the extreme, whatever the second finds: from
+    # beside a slice's extreme far down a NegativeBinomial's valley the
+    # second took 0.3 to 0.9 s, most of that band's time, for nothing.
+    model, search = _weibull_sf8_search()
+    at = next(u for p, u in search.reached if p == search.checked[-1.0])
+    search.checked.clear()
+    starts = []
+    start = model._lr_start
+
+    def counted(x0, box):
+        starts.append(1)
+        return start(x0, box)
+
+    monkeypatch.setattr(model, "_lr_start", counted)
+    # The extreme: both starts, neither inside the region
+    assert search.checks_out(-1.0, at) is not None
+    assert len(starts) == 2
+    # The estimate is not: the first start finds the region beyond it
+    starts.clear()
+    assert search.checks_out(-1.0, search.u_hat) is None
+    assert len(starts) == 1
+    assert search.beyond is not None
+
+
+def _profile_calls(model, call, monkeypatch):
+    """The profile likelihoods ``call(model)`` solves, and its result."""
+    calls = []
+    profile = parametric_module.Parametric._profile_neg_ll
+
+    def counted(self, *args, **kwargs):
+        calls.append(1)
+        return profile(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(parametric_module.Parametric, "_profile_neg_ll", counted)
+        out = call(model)
+    return len(calls), out
+
+
+def test_walks_at_two_levels_share_their_steps(monkeypatch):
+    # A walk out to a parameter's bound takes the same steps at every
+    # level, from the same path, until it brackets its crossing: the 99%
+    # walks solved again every point the 95% walks had. Those are taken
+    # as they were solved, so the 99% bounds are the ones a fresh model
+    # gives, to the bit, from fewer profile likelihoods.
+    def at_99(m):
+        return m.param_cb("beta", alpha_ci=0.01, method="lr")
+
+    fresh, alone = _profile_calls(_fitted("Weibull"), at_99, monkeypatch)
+    model = _fitted("Weibull")
+    model.param_cb("beta", method="lr")
+    after, got = _profile_calls(model, at_99, monkeypatch)
+    np.testing.assert_array_equal(got, alone)
+    assert after < fresh
