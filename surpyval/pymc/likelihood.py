@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import numpy as np
@@ -157,8 +158,7 @@ def _log_windows(
     depends on the parameters, so it is decided in the graph, with no
     gradient; and every form is evaluated, on the rows it does not serve,
     at the family's ``centre``, where it is finite."""
-    from pytensor.gradient import disconnected_grad as still
-
+    still = importlib.import_module("pytensor.gradient").disconnected_grad
     lo_in = np.isfinite(lo) & (lo > support[0])
     hi_in = np.isfinite(hi) & (hi < support[1])
     some = lo_in | hi_in
