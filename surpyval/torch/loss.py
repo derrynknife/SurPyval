@@ -278,6 +278,7 @@ def _mixture_parameters(
         )
     except RuntimeError:
         whole = None
+    target = rows
     if rows is None and whole is not None:
         rows = whole[0]
     if not all(within) or whole != (rows, components):
@@ -285,12 +286,13 @@ def _mixture_parameters(
             f"{name} {shape}"
             for name, shape in zip([*names, "mixture"], shapes)
         )
-        target = "" if rows is None else f" and the target {rows} rows"
+        of_target = "" if target is None else f" and the target {target} rows"
         raise ValueError(
             f"{what}: the mixture has {components} component"
             f"{'s' if components != 1 else ''} (the last axis of its "
-            f"logits){target}, and the shapes {given} do not fit them. In a "
-            f"mixture each parameter is ({rows or 'N'}, {components}), one "
+            f"logits){of_target}, and the shapes {given} do not fit them. "
+            f"In a mixture each parameter is ({target or 'N'}, "
+            f"{components}), one "
             f"value per row and component, ({components},) for one value "
             "per component shared by every row, or a scalar shared by "
             "all: for one value per row shared by the components use "
