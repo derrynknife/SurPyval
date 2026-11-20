@@ -356,6 +356,7 @@ Contents:
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Intervention Analysis with SurPyval
+   Software Reliability Growth
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval

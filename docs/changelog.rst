@@ -5,6 +5,25 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Remaining faults, mission reliability and the testing needed to reach
+  a target**, on every fitted Poisson process
+  (``ParametricRecurrenceModel``: the software reliability growth models,
+  and ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and ``HPP`` where the
+  question has an answer). ``remaining_faults(x)`` is the faults expected
+  to be left after testing to ``x`` (refused, with the reason, for a
+  process whose failures go on without limit);
+  ``time_to_intensity(target)`` and ``time_to_reliability(target, x)``
+  are the testing times at which the intensity has fallen to a target and
+  at which a mission of length ``x`` succeeds with a target probability
+  (refused where the fitted curve never gets there). Each has confidence
+  bounds: ``remaining_faults_cb``, ``next_failure_sf_cb`` (the bounds on
+  ``next_failure_sf``, which is the reliability over a mission),
+  ``time_to_intensity_cb`` and ``time_to_reliability_cb`` (the last two
+  by inverting the bounds on the curve, so an upper bound can be
+  ``inf``). A new guide, :doc:`Software Reliability Growth`, works
+  through the models, the answers and when not to trust them on the
+  Naval Tactical Data System failures.
+
 - **Software reliability growth models.** Four non-homogeneous Poisson
   processes for faults found and removed during testing, in
   ``surpyval.recurrent`` (and at the top level): ``GoelOkumoto``
