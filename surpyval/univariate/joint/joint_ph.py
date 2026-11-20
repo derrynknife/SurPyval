@@ -24,7 +24,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
-from surpyval.utils.units import takes_unit
+from surpyval.utils.units import normalise_unit, takes_unit
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
@@ -200,6 +200,7 @@ class JointPHFitter(FitterRepr):
         hazard_covariates: Any = None,
         i: npt.ArrayLike | None = None,
         m: Any = None,
+        marker_unit: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -287,6 +288,15 @@ class JointPHFitter(FitterRepr):
             The other name of ``markers``, as ``SurpyvalData(..., m=...)``
             calls the readings; the same in every way. Giving both is a
             TypeError.
+        marker_unit : str, optional
+            The unit the marker is read in (``"mm/s"``, ``"ppm"``), a
+            label kept as typed, as ``unit=`` is for the ages. Readings
+            given as a ``Measurements`` with a unit (``units=``) give it
+            themselves; a different one here is refused. The model keeps
+            it as ``marker_unit`` and, with ``unit``, names what each
+            link's effect is per (``effect_units``: a
+            ``cumulative_effect`` is per ``(mm/s)·years``, say). A label
+            only: nothing is converted.
 
         Returns
         -------
@@ -333,6 +343,7 @@ class JointPHFitter(FitterRepr):
                 f"this one follows its {' and '.join(self.link)} (alpha "
                 "is at a slope and an area of 0): leave it out."
             )
+        marker_unit = normalise_unit(marker_unit)
         markers = markers_by_row(markers, i, x)
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
         parts = covariate_parts(
@@ -341,7 +352,9 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
-        return _fit(self, records, counts, names, reference, parts)
+        model = _fit(self, records, counts, names, reference, parts)
+        model.marker_unit = marker_unit
+        return model
 
     def compare_links(
         self,
@@ -451,6 +464,7 @@ class JointPHFitter(FitterRepr):
         hazard_covariates: Any = None,
         i_col: str | None = None,
         m: Any = None,
+        marker_unit: str | None = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -470,7 +484,9 @@ class JointPHFitter(FitterRepr):
         m_col=...)``) and give it as ``m``, with ``i_col`` naming the
         column of each item's unit in ``df``; the readings are matched to
         the items by unit. ``m`` and ``markers_col`` are two ways of
-        giving the readings: give one.
+        giving the readings: give one. ``marker_unit`` is the unit the
+        readings are in, as for :meth:`fit` (from ``m``'s own unit where
+        it has one).
 
         Examples
         --------
@@ -557,6 +573,7 @@ class JointPHFitter(FitterRepr):
                 hazard_covariates=hazard_covariates,
                 i=None if i_col is None else list(df[i_col]),
                 m=m,
+                marker_unit=marker_unit,
             )
 
 

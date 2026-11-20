@@ -541,6 +541,37 @@ def test_summary_and_repr_say_the_link():
     )
 
 
+def test_each_effect_says_what_it_is_per():
+    # a value's effect is per unit of the marker, a slope's per unit of
+    # the marker per unit of age, an area's per unit of the marker times
+    # a unit of age
+    model = _model_at(("value", "slope", "cumulative"))
+    model.marker_unit, model.unit = "mm/s", "years"
+    assert model.effect_units == {
+        "marker_effect": "mm/s",
+        "slope_effect": "(mm/s)/years",
+        "cumulative_effect": "(mm/s)·years",
+    }
+    shown = repr(model)
+    assert (
+        "Effect units        : marker_effect per mm/s; slope_effect per "
+        "(mm/s)/years; cumulative_effect per (mm/s)·years"
+    ) in shown
+    model.marker_unit = "ppm"
+    assert model.effect_units["cumulative_effect"] == "ppm·years"
+    # either one unknown is named as such
+    model.marker_unit, model.unit = None, "h"
+    assert model.effect_units["slope_effect"] == "(marker unit)/h"
+    model.unit = None
+    assert model.effect_units["cumulative_effect"] == (
+        "(marker unit)·(time unit)"
+    )
+    # one entry per link, in the effects' order
+    assert list(_model_at(("cumulative",)).effect_units) == [
+        "cumulative_effect"
+    ]
+
+
 def test_the_fitter_says_its_link():
     assert "link" not in repr(JointPH(Weibull))
     assert repr(JointPH(Weibull, link="slope")).endswith("link: slope)")

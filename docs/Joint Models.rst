@@ -629,8 +629,14 @@ Three things to know:
   level -- the hours above a rated temperature, say -- subtract that level
   from the readings first.
 - **The units.** A slope's and an area's effects depend on the unit of
-  age: a ``slope_effect`` per mm/s a *day* is 365 times one per mm/s a
-  *year*. Ages in years (or a rate per year) keep them readable.
+  age as well as the marker's: a ``slope_effect`` per mm/s a *day* is 365
+  times one per mm/s a *year*, and a ``cumulative_effect`` per
+  (mm/s)·day is 365 times one per (mm/s)·year. Ages in years (or a rate
+  per year) keep them readable. Give both units -- ``unit=`` for the ages
+  and ``marker_unit=`` for the readings (a ``Measurements`` read with
+  ``units=`` gives its own) -- and the model says what each effect is per,
+  in ``effect_units`` and on its printout's ``Effect units`` line. They
+  are labels only: nothing is converted.
 - **What the data can tell apart.** For a straight line the slope is the
   item's rate ``b``, constant in age: its effect is found from how
   lifetimes differ *between* items with different rates, so it needs
@@ -722,7 +728,9 @@ debris so far multiplying the hazard by :math:`e^{0.3}`:
 .. jupyter-execute::
 
     worn = gearboxes(300, alpha=4.0, beta=1.5, cumulative=0.3)
-    by_area = JointPH(Weibull, link="cumulative").fit(worn, unit="years")
+    by_area = JointPH(Weibull, link="cumulative").fit(
+        worn, unit="years", marker_unit="ppm"
+    )
     by_area.summary()[["coef", "se(coef)", "exp(coef)"]].round(3).tail(3)
 
 .. jupyter-execute::
@@ -732,6 +740,14 @@ debris so far multiplying the hazard by :math:`e^{0.3}`:
     assert by_area.maximum == "verified"
     z = (by_area.params[-1] - 0.3) / by_area.standard_errors()[-1]
     assert abs(z) < 3
+    assert by_area.effect_units == {"cumulative_effect": "ppm·years"}
+
+With the units given, the model says what the effect is per: each
+ppm·year of debris so far multiplies the hazard by ``exp(coef)``.
+
+.. jupyter-execute::
+
+    by_area.effect_units
 
 A medical example: the Mayo Clinic trial in primary biliary cirrhosis
 (``load_pbc2``), 312 patients whose serum bilirubin was measured at each

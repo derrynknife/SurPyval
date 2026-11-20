@@ -347,6 +347,12 @@ def _cholesky(rows: list, q: int) -> Any:
     )
 
 
+def _in_brackets(label: str) -> str:
+    """``label`` as a factor of a compound unit: in brackets where it is
+    more than one word or symbol (``"(mm/s)"``, ``"(marker unit)"``)."""
+    return f"({label})" if any(ch in label for ch in " /*·^") else label
+
+
 def _finite_number(name: str, value: Any) -> float:
     try:
         out = float(value) if np.ndim(value) == 0 else None
@@ -486,6 +492,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     n_items: float = 0.0
     n_events: float = 0.0
     n_readings: float = 0.0
+    #: The unit the marker is read in (a label, as ``unit`` is the
+    #: ages'): from the readings' ``Measurements`` or ``marker_unit=`` at
+    #: the fit; None is unknown. With ``unit`` it names the unit of each
+    #: link's effect (``effect_units``).
+    marker_unit: str | None = None
     #: The marker's centre in the internal hazard (the mean reading) and
     #: the covariate means: predictions are computed there.
     _centre: float = 0.0
@@ -499,6 +510,38 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             _SURVIVAL_WORDS[self.survival],
             ", ".join(_LINK_WORDS[link] for link in self.link),
         )
+
+    @property
+    def effect_units(self) -> dict[str, str]:
+        """
+        What each link's effect is per, by its name: ``marker_effect`` per
+        unit of the marker, ``slope_effect`` per unit of the marker per
+        unit of age, and ``cumulative_effect`` per unit of the marker
+        times a unit of age (the area under the path). The labels are
+        ``marker_unit`` and ``unit``, as given; one not given is
+        ``"marker unit"`` or ``"time unit"``. A label of more than one
+        word or symbol is put in brackets in a compound unit.
+
+        Examples
+        --------
+        >>> from surpyval import JointModel
+        >>> model = JointModel()
+        >>> model.link = ("value", "cumulative")
+        >>> model.marker_unit, model.unit = "mm/s", "years"
+        >>> model.effect_units
+        {'marker_effect': 'mm/s', 'cumulative_effect': '(mm/s)·years'}
+        >>> model.unit = None
+        >>> model.effect_units["cumulative_effect"]
+        '(mm/s)·(time unit)'
+        """
+        marker = self.marker_unit or "marker unit"
+        age = getattr(self, "unit", None) or "time unit"
+        per = {
+            "value": marker,
+            "slope": f"{_in_brackets(marker)}/{_in_brackets(age)}",
+            "cumulative": f"{_in_brackets(marker)}·{_in_brackets(age)}",
+        }
+        return {EFFECTS[link]: per[link] for link in self.link}
 
     # -- the parts -------------------------------------------------------
 
@@ -738,6 +781,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : maximum {self.maximum}"
+            "\nEffect units        : "
+        )
+        out += "; ".join(
+            f"{name} per {per}" for name, per in self.effect_units.items()
         )
         table = self.summary()
         columns = {
@@ -1383,6 +1430,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "n_items": float(self.n_items),
             "n_events": float(self.n_events),
             "n_readings": float(self.n_readings),
+            **(
+                {}
+                if self.marker_unit is None
+                else {"marker_unit": self.marker_unit}
+            ),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
@@ -1482,6 +1534,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.n_items = float(model_dict.get("n_items", 0.0))
         out.n_events = float(model_dict.get("n_events", 0.0))
         out.n_readings = float(model_dict.get("n_readings", 0.0))
+        # saved before the marker's unit was kept: unknown
+        out.marker_unit = model_dict.get("marker_unit")
         out._neg_ll = float(model_dict["_neg_ll"])
         out.k = int(np.sum(~np.isnan(out.params)))
         out.maximum = restored_maximum(model_dict)

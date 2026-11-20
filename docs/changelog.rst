@@ -151,6 +151,19 @@ v0.29 (unreleased)
   are reported slowest stage first. Where the data need fewer stages a
   rate runs to infinity, and the fit warns "No finite maximum", saying to
   fit fewer. ``fit_bayes`` refuses it, pointing to ``fit``.
+- **Joint models: the unit of each link's effect.** A slope's or an
+  area's effect is per unit of the marker *and* per unit of age, so its
+  size means nothing without both. The joint fits take ``marker_unit=``
+  (the unit the readings are in, a label kept as typed, as ``unit=`` is
+  for the ages), and readings given as a ``Measurements`` with a unit
+  (``units="mm/s"``) supply it themselves; a different ``marker_unit``
+  beside them is refused. The model keeps it as ``marker_unit`` (saved by
+  ``to_dict``), and ``effect_units`` names what each effect is per --
+  ``marker_effect`` per ``mm/s``, ``slope_effect`` per ``(mm/s)/years``,
+  ``cumulative_effect`` per ``(mm/s)·years`` -- with ``"marker unit"`` or
+  ``"time unit"`` standing in for one not given. The printout shows it
+  on an ``Effect units`` line. A label only: nothing is converted, and
+  the fit is unchanged.
 
 **Changed.**
 
