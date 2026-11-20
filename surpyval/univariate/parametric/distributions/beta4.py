@@ -84,6 +84,10 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             The upper bound of the support
         """
 
+    # How the parameters move with the time (rescale_time): alpha and beta have
+    # no unit; the ends a and b are times.
+    _time_roles = ("shape", "shape", "time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

@@ -28,11 +28,16 @@ _SQRT2 = math.sqrt(2.0)
 
 @dataclass(frozen=True)
 class Family:
-    """The three log functions of one family, each ``f(pt, x, *params)``."""
+    """The three log functions of one family, each ``f(pt, x, *params)``,
+    and ``centre(pt, *params)``: a point inside the support where ``F``
+    and ``S`` are both strictly between 0 and 1 (and their logs have
+    finite derivatives) for any parameters, the stand-in at which a
+    window's bound is evaluated where the bound itself must not be."""
 
     log_df: Callable[..., Any]
     log_sf: Callable[..., Any]
     log_ff: Callable[..., Any]
+    centre: Callable[..., Any]
 
 
 def log1mexp(pt: Any, d: Any) -> Any:
@@ -77,6 +82,7 @@ WEIBULL = Family(
     log_ff=lambda pt, x, alpha, beta: log1mexp(
         pt, -_weibull_h(pt, x, alpha, beta)
     ),
+    centre=lambda pt, alpha, beta: alpha,
 )
 
 # Exponential: failure_rate
@@ -84,6 +90,7 @@ EXPONENTIAL = Family(
     log_df=lambda pt, x, rate: pt.log(rate) - rate * x,
     log_sf=lambda pt, x, rate: -rate * x,
     log_ff=lambda pt, x, rate: log1mexp(pt, -rate * x),
+    centre=lambda pt, rate: 1.0 / rate,
 )
 
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
@@ -93,6 +100,7 @@ RAYLEIGH = Family(
     ),
     log_sf=lambda pt, x, sigma: -(x**2) / (2.0 * sigma**2),
     log_ff=lambda pt, x, sigma: log1mexp(pt, -(x**2) / (2.0 * sigma**2)),
+    centre=lambda pt, sigma: sigma,
 )
 
 # Normal: mu, sigma
@@ -102,6 +110,7 @@ NORMAL = Family(
     ),
     log_sf=lambda pt, x, mu, sigma: _log_ndtr(pt, -(x - mu) / sigma),
     log_ff=lambda pt, x, mu, sigma: _log_ndtr(pt, (x - mu) / sigma),
+    centre=lambda pt, mu, sigma: mu,
 )
 
 # LogNormal: mu, sigma of log(x)
@@ -111,6 +120,7 @@ LOGNORMAL = Family(
     ),
     log_sf=lambda pt, x, mu, sigma: _log_ndtr(pt, -(pt.log(x) - mu) / sigma),
     log_ff=lambda pt, x, mu, sigma: _log_ndtr(pt, (pt.log(x) - mu) / sigma),
+    centre=lambda pt, mu, sigma: pt.exp(mu),
 )
 
 
@@ -137,6 +147,7 @@ GAMMA = Family(
     ),
     log_sf=lambda pt, x, alpha, beta: pt.log(_gamma_q(pt, alpha, beta * x)),
     log_ff=lambda pt, x, alpha, beta: pt.log(pt.gammainc(alpha, beta * x)),
+    centre=lambda pt, alpha, beta: alpha / beta,
 )
 
 
@@ -158,6 +169,7 @@ LOGLOGISTIC = Family(
     log_ff=lambda pt, x, alpha, beta: -pt.softplus(
         -_loglogistic_z(pt, x, alpha, beta)
     ),
+    centre=lambda pt, alpha, beta: alpha,
 )
 
 # Gumbel (smallest extreme value): mu, sigma; H = exp((x - mu) / sigma)
@@ -167,6 +179,7 @@ GUMBEL = Family(
     ),
     log_sf=lambda pt, x, mu, sigma: -pt.exp((x - mu) / sigma),
     log_ff=lambda pt, x, mu, sigma: log1mexp(pt, -pt.exp((x - mu) / sigma)),
+    centre=lambda pt, mu, sigma: mu,
 )
 
 # Logistic: mu, sigma
@@ -178,6 +191,7 @@ LOGISTIC = Family(
     ),
     log_sf=lambda pt, x, mu, sigma: -pt.softplus((x - mu) / sigma),
     log_ff=lambda pt, x, mu, sigma: -pt.softplus(-(x - mu) / sigma),
+    centre=lambda pt, mu, sigma: mu,
 )
 
 # By SurPyval's distribution name (``dist.name``).

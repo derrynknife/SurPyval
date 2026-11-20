@@ -5,6 +5,43 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **WAIC and leave-one-out cross-validation for Bayesian fits.**
+  ``model.waic()`` and ``model.loo()`` of a ``BayesianParametric`` estimate
+  the expected log predictive density of a new observation, with its
+  standard error and the effective number of parameters, and
+  ``surpyval.bayes.compare(fits, criterion="loo")`` (or ``"waic"``) ranks
+  fits to the same data by it, with the standard error of each
+  difference from the paired rows. Every row counts through its own
+  likelihood term (censored, interval, truncated) and a count ``n`` is
+  ``n`` units. Conjugate fits are in closed form; grid and Laplace fits
+  use the grid's quadrature, with each row's share of its leave-one-out
+  posterior at the grid's edge; fits from draws use Pareto-smoothed
+  importance sampling, with each row's Pareto ``k``. Each warns, counting
+  the rows, where its estimate is unreliable. ``LogLikelihood.pointwise``
+  gives each row's log-likelihood. Checked against refitting without each
+  unit, closed forms and ArviZ. See "Comparing fits: WAIC and
+  leave-one-out" in :doc:`Bayesian Fitting with SurPyval`.
+
+- **A model on another clock.** ``model.rescale_time(factor)`` gives the
+  model whose survival function is ``R(factor * t)``: a life in operating
+  time put on the calendar (``factor=0.25`` for a unit that runs a quarter
+  of the time), or a life in another unit (``factor=24`` from hours to
+  days, with ``unit="days"`` for the new label; without ``unit`` the label
+  is kept). Every parametric distribution of time has it, with an offset,
+  a limited-failure population and zero inflation, and so do
+  ``MixtureModel`` and the point masses. It is the fit to the data in the
+  new unit, found without refitting: a time parameter is divided by
+  ``factor``, a rate multiplied by it, the LogNormal's ``mu`` less
+  ``log(factor)``, and shapes, ``lfp_p`` and ``f0`` are kept; the
+  covariance follows by the delta method (exactly), the data move to the
+  new unit, so the likelihood-ratio, bootstrap and pivotal bounds are a
+  refit's, and the log-likelihood rises by ``log(factor)`` per exact
+  observation. A model without its data keeps its Wald bounds but refuses
+  ``neg_ll``, ``aic`` and ``bic``, saying why. The distributions of
+  counts, the ``Beta`` (use the ``Beta4``) and a ``CustomDistribution``
+  refuse, saying what to do. See "Rescaling a model's time" in
+  :doc:`Conventions`.
+
 - **Remaining faults, mission reliability and the testing needed to reach
   a target**, on every fitted Poisson process
   (``ParametricRecurrenceModel``: the software reliability growth models,
@@ -61,6 +98,21 @@ v0.29 (unreleased)
   dependency, not even an optional one: ``import surpyval`` does not import
   it, and the helpers ask you to install it when it is absent. There are no
   training loops or network architectures.
+
+- **Torch helpers: mixtures, survival curves out and a guide.**
+  ``nll(dist, target, params, mixture=logits)`` (and ``NLLLoss``) is the
+  likelihood of a mixture of ``K`` components of one family per row, the
+  model of Deep Survival Machines, for every kind of censoring and
+  truncation: ``(N, K)`` logits give the weights, each parameter is
+  ``(N, K)``, ``(K,)`` or a scalar, and ``constrain`` maps a network's
+  ``(N, K, k)`` outputs. In double precision it equals ``MixtureModel``'s
+  likelihood to 1e-10; with one component it is the loss without a
+  mixture. ``sf(dist, times, params, mixture=None)`` gives each row's
+  survival curve as an ``(N, T)`` tensor, for ``score_predictions`` and the
+  concordance index, and ``to_surpyval(dist, params, row=i)`` turns any
+  row into an ordinary SurPyval model (a ``MixtureModel`` for a mixture).
+  The new page :doc:`Torch with SurPyval` trains a mixture network and
+  scores it.
 
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
@@ -712,6 +764,13 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
+  ``censored_likelihood``) had a NaN gradient for a row whose truncation
+  or interval had a bound so far in a tail that the probability beyond
+  it rounds to 0 (a Weibull ``tl=1e-170``, say), though its value was
+  right; PyMC's sampler needs the gradient. Such a bound is now taken as
+  its limit, as ``fit`` takes it, and the gradient is finite.
 
 - ``RenewalModel.with_params`` refuses a lifetime (or ARI baseline)
   parameter at or outside its range, and any value that is not finite,
