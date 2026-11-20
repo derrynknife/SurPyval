@@ -64,6 +64,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "QuantileRegressionModel": (
+        "surpyval.univariate.regression.quantile.quantile_regression"
+    ),
     "CoxNPMLEModel": (
         "surpyval.univariate.regression.proportional_hazards.cox_npmle"
     ),
@@ -106,6 +109,9 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.competing_risks.nonparametric.competing_risks"
     ),
     "LandmarkCox": "surpyval.univariate.landmark.landmark_cox",
+    "RelativeSurvival": "surpyval.univariate.relative.net_survival",
+    "ExcessHazard": "surpyval.univariate.relative.excess_hazard",
+    "RateTable": "surpyval.univariate.relative.rate_table",
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
     "PanelMultiState": "surpyval.multistate.panel",

@@ -128,7 +128,10 @@ Outputs
    never increases; cumulative quantities never decrease. The documented
    exception is the parametric additive hazards models, whose survival can
    exceed 1 where :math:`h_0 + \beta'Z < 0` (#376); the Lin-Ying model
-   predicts with the running maximum of its estimate. A distribution's
+   predicts with the running maximum of its estimate. The other is net
+   survival (``RelativeSurvival``), a difference of hazards rather than a
+   probability: it rises, and can exceed 1, where fewer units fail than
+   the population rates expect, and is reported as it is. A distribution's
    functions are accurate to double
    precision wherever the value is representable, in the tails and at
    extreme parameters too.

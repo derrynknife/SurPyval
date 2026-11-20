@@ -605,6 +605,8 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
     ``where`` branch is evaluated at a safe argument, so neither puts a
     nan into the other's gradient.
     """
+    if not (isinstance(y, ArrayBox) or isinstance(a, ArrayBox)):
+        return _log_gamma_ratio_plain(y, a)
     z = y
     shifted = 0.0
     for _ in range(int(_ASYMPTOTIC_FROM)):
@@ -620,6 +622,32 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
     return (
         (z - 0.5) * anp.log1p(a / z)
         + a * anp.log(z + a)
+        - a
+        + _stirling_remainder(z + a)
+        - _stirling_remainder(z)
+        - shifted
+    )
+
+
+def _log_gamma_ratio_plain(y: Any, a: Any) -> Any:
+    """``log_gamma_ratio`` where nothing is traced: the same operations
+    in plain numpy, to the bit, stopping the shifts once every ``z`` is
+    at 10 or above (each later one leaves the values as they are).
+    autograd's ``where`` took most of a NegativeBinomial likelihood's
+    time, thirty calls of it an evaluation."""
+    z = y
+    shifted: Any = 0.0
+    for _ in range(int(_ASYMPTOTIC_FROM)):
+        below = np.less(z, _ASYMPTOTIC_FROM)
+        if not below.any():
+            break
+        z_safe = np.where(below, z, 1.0)
+        shifted = shifted + np.where(below, np.log1p(a / z_safe), 0.0)
+        z = np.where(below, z + 1.0, z)
+    z = np.where(np.less(z, _ASYMPTOTIC_FROM), _ASYMPTOTIC_FROM, z)
+    return (
+        (z - 0.5) * np.log1p(a / z)
+        + a * np.log(z + a)
         - a
         + _stirling_remainder(z + a)
         - _stirling_remainder(z)

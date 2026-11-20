@@ -1,6 +1,10 @@
 Bootstrap coverage of limited-failure (lfp) and zero-inflated (zi) fits:
 the package's parametric bootstrap against a case bootstrap.
 
+(These figures were measured before bootstrap bounds were read at the
+(n + 1) p-th refit, which widened every interval a little. The coverage
+under the current rule, and at 500 refits, is in draws_note.txt.)
+
 Run (5 November 2026): study.py 400, then summary.py. Replicate r of each
 design is the r-th data set drawn from the calibration study's seed
 (311-314), n = 100 units, so replicates 0-199 are the calibration data

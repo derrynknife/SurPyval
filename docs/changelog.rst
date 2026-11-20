@@ -5,6 +5,58 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Relative survival: net survival and excess hazards beyond a
+  population's own rates.** Where units have the event for reasons
+  besides the one studied, and the cause of each event is not recorded,
+  ``surpyval.RelativeSurvival`` estimates *net survival* -- the survival
+  were the excess hazard the only one -- against the hazards of the
+  units' own population, held in a ``surpyval.RateTable`` (rates by
+  attained age, and optionally calendar year and a stratum such as sex;
+  each unit's age and the calendar advance along its follow-up, and its
+  expected cumulative hazard is integrated exactly across the bands).
+  ``method="pohar-perme"`` (the default) is Pohar Perme's estimator,
+  consistent for net survival whatever the excess hazard depends on;
+  ``method="ederer2"`` the Ederer II relative survival ratio. Both give
+  ``sf``, ``ff``, ``Hf``, pointwise bounds (``cb``, on the log scale by
+  default or the plain one), a ``table`` of the estimate at each time and
+  strict-JSON ``to_dict`` / ``from_dict``. ``surpyval.ExcessHazard`` fits
+  the excess hazard regression of Estève et al. (1990),
+  :math:`\lambda_P(t) + \lambda_0(t) e^{\beta' Z}`, additive on the
+  hazard scale, by maximum likelihood: a piecewise-constant baseline
+  excess hazard (one interval by default; ``breaks`` gives more), excess
+  hazard ratios with Wald bounds and a ``summary``, the net ``sf``,
+  ``hf``, ``qf`` and ``random`` of a unit, ``observed_sf`` for its
+  all-cause survival, and aliasing and "No finite maximum" as the other
+  regressions have them. Both take exact and right-censored times with
+  counts, from arrays or ``fit_from_df``; delayed entry and interval
+  censoring are refused. Checked against hand-worked values, the
+  Nelson-Aalen estimate (no background hazard), an independent
+  likelihood, and simulations in which Pohar Perme recovers net survival
+  where Ederer II does not. Net survival can rise, and exceed 1, where
+  fewer units fail than the population rates expect; it is reported as
+  it is. See :doc:`Relative Survival`.
+- **Censored quantile regression.** ``QuantileRegression`` models the
+  quantiles of the time to an event directly, ``log Q(tau | Z) = b0(tau) +
+  b(tau)'Z`` with coefficients of their own at every level, so a
+  covariate's effect on the B10 life can differ from its effect on the
+  median, with no proportional hazards or accelerated failure time
+  assumption. Right-censored data are fitted by Peng and Huang's (2008)
+  martingale estimating equations (``method="peng-huang"``, the default)
+  or Portnoy's (2003) recursively reweighted quantile regression
+  (``method="portnoy"``), on a grid of levels (``step=0.01``), as R's
+  ``quantreg::crq`` fits them. The model's ``coefficients(tau)``,
+  ``taus`` / ``intercepts`` / ``coefs`` (the whole process) and
+  ``summary(tau)`` give the effects; ``qf(p, Z)`` the B-life of each
+  covariate row, and ``ff``, ``sf``, ``Hf`` the step distribution its
+  quantiles make (rearranged where two levels cross). Bounds are case
+  bootstrap percentile intervals: ``bootstrap_ci(tau)``,
+  ``summary(tau, n_boot=...)``, ``quantile_cb(p, Z, bound=...)`` and
+  ``cb(x, Z, on=...)``. ``fit_from_df`` takes columns or a formula;
+  ``to_dict`` / ``from_dict`` keep the data, so a restored model still
+  bootstraps. Checked against ordinary quantile regression (no censoring),
+  the Kaplan-Meier and Nelson-Aalen quantiles (no covariates) and the true
+  coefficients of simulated data. See "Semi-Parametric — Censored Quantile
+  Regression" in :doc:`Regression Modelling with SurPyval`.
 - **How good are dynamic predictions: accuracy at an age, over a window.**
   ``surpyval.metrics.dynamic_auc``, ``dynamic_brier`` and
   ``dynamic_calibration`` (also importable from ``surpyval``) score a
@@ -310,6 +362,39 @@ v0.29 (unreleased)
   transform, its delta-method scale and its inverse from one table. Some
   bounds and ``sf_diff`` statistics move in their last digit or two
   (within 1e-12 relative), from the order of the arithmetic.
+- **Likelihood-ratio bounds are taken exactly onto the region's
+  boundary.** The searches took a point up to 1e-6 of deviance outside
+  the likelihood region, or as far inside, as on its boundary, and the
+  bound was the function's value there. Each answer is now moved onto the
+  boundary from where its search ended (back onto it where it is
+  outside, then out along the function's gradient), so a bound is the
+  function's value at a point of the region. A Uniform's bands, which
+  stopped up to 3e-9 inside its region, are its extremes to rounding
+  (checked against the corners of the region, a triangle); a
+  NegativeBinomial's agree to 3e-12 with the extremes found slice by
+  slice (1e-11 where the extreme is its Poisson limit, approached only as
+  ``r -> inf``). Its 95% ``sf(8)`` lower bound, which was 3e-8 beyond the
+  extreme of that limit, is a point of the region 6e-8 short of it: down
+  that valley ``1 - p`` cannot be resolved in doubles finely enough to go
+  further. Where the step back onto the boundary would lose an
+  ExpoWeibull's narrowing valley, the answer is kept as found. Other
+  likelihood-ratio bounds move in their last digits.
+- **Faster likelihood-ratio bounds where the region runs down an edge
+  valley.** The check that a search's answer is the extreme stops at the
+  first of its two searches that finds the region going further (the one
+  from the estimate now goes first: the one from beside a slice's extreme
+  far down a NegativeBinomial's valley took up to 0.9 s to find nothing);
+  an answer from the probes down the valleys that checks out and is as
+  far out as every point of the region known is taken without the further
+  searches from the estimate and the walks' tips, which found the same
+  extreme; the walks out to a parameter's bounds at several levels solve
+  the steps they share once (each level's bounds are the same to the
+  bit); and the NegativeBinomial's likelihood evaluates its log-gamma
+  ratios in plain numpy where nothing is traced (18% faster an
+  evaluation, the same to the bit). The conformance registry's
+  likelihood-ratio sweeps take 58 s rather than 150 s for the
+  NegativeBinomial and 399 s rather than 549 s for the ExpoWeibull (one
+  process, the same machine).
 
 **Deprecated.**
 
@@ -319,6 +404,19 @@ v0.29 (unreleased)
   ``x_cols`` and ``tl_cols`` (use ``x_col`` and ``x2_col``, ``tl_col`` and
   ``tl2_col``): each warns, gives the same numbers, and is removed in
   v0.30.
+
+**Documentation.**
+
+- The coverage quoted for the bootstrap bounds of limited-failure and
+  zero-inflated models (``method="bootstrap"``) in
+  :doc:`Parametric SurPyval Modelling` is remeasured with the current
+  bootstrap (the old figures predated v0.27's reading of the bounds at
+  their levels): 90% intervals 88.8% on average, 95% ones 94.0%, at their
+  level for a limited failure population with ``lfp_p`` well below 1 and
+  one to three points short for a zero-inflated model and with ``lfp_p``
+  at 1. 500 refits in place of 200 give the same, so the default
+  ``n_boot`` stays; the study is ``scripts/studies/lfp_zi_bootstrap/draws.py``.
+  Nothing computed changes.
 
 v0.28 (14 November 2026)
 ------------------------
