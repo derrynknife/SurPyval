@@ -53,9 +53,12 @@ def test_growth_answers_coverage():
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # (a data set refused as showing no growth leaves nan
-            # bounds, which count as misses)
-            model = GoelOkumoto.fit(x, i, c=c)
+            try:
+                model = GoelOkumoto.fit(x, i, c=c)
+            except ValueError:
+                # refused as showing no growth: its bounds stay nan,
+                # which count as misses
+                continue
             bounds["remaining_faults_cb"][r] = model.remaining_faults_cb(T_END)
             bounds["next_failure_sf_cb"][r] = model.next_failure_sf_cb(
                 MISSION, age=[T_END]
