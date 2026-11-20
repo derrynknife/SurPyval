@@ -37,6 +37,21 @@ system as it was just before the failure ("as bad as old").
     counting/cox_lewis
     counting/crow_amsaa
 
+Software Reliability Growth Models
+----------------------------------
+
+Poisson processes for faults found and removed during testing: the
+intensity falls as the testing goes on. Fitted to failure times or to
+the failures counted in each period of testing.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/goel_okumoto
+    counting/yamada_delayed_s
+    counting/inflection_s
+    counting/musa_okumoto
+
 Fault-Count Models
 ------------------
 

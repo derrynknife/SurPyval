@@ -7,7 +7,8 @@ Data: 10 systems observed to T = 50 from a power-law (Crow-AMSAA) process
 with alpha = 10 and beta = 1.5 (about 11 events a system), simulated
 from the definition (``_montecarlo.simulate_nhpp``) rather than through the
 package's own simulator, so a fault there cannot cancel one in the fit.
-The log-linear (Cox-Lewis) process is checked the same way, and
+The log-linear (Cox-Lewis) process and two software reliability growth
+models (Goel-Okumoto, Musa-Okumoto) are checked the same way, and
 Duane's ``param_cb`` with times in hours, where its scale is about 3e-6. The
 intervention test's interval of the rate ratio is checked at the end.
 
@@ -25,6 +26,8 @@ from surpyval.recurrent import (
     CoxLewis,
     CrowAMSAA,
     Duane,
+    GoelOkumoto,
+    MusaOkumoto,
     intervention_test,
 )
 from surpyval.recurrent.intervention import _exact_bound, _Strata
@@ -56,6 +59,23 @@ PROCESSES = {
         lambda t: (np.exp(-1.0 + 0.02 * t) - np.exp(-1.0)) / 0.02,
         lambda n: (np.log(0.02 * n + np.exp(-1.0)) + 1.0) / 0.02,
         402,
+    ),
+    # The software reliability growth models: 12 faults a system, about
+    # 11 found by T = 50 (Goel-Okumoto), and a logarithmic Poisson
+    # process with about 14 failures a system.
+    "GoelOkumoto": (
+        GoelOkumoto,
+        [12.0, 0.05],
+        lambda t: -12.0 * np.expm1(-0.05 * t),
+        lambda n: -np.log1p(-n / 12.0) / 0.05,
+        403,
+    ),
+    "MusaOkumoto": (
+        MusaOkumoto,
+        [1.0, 0.15],
+        lambda t: np.log1p(0.15 * t) / 0.15,
+        lambda n: np.expm1(0.15 * n) / 0.15,
+        404,
     ),
 }
 

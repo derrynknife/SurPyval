@@ -5,6 +5,23 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **WAIC and leave-one-out cross-validation for Bayesian fits.**
+  ``model.waic()`` and ``model.loo()`` of a ``BayesianParametric`` estimate
+  the expected log predictive density of a new observation, with its
+  standard error and the effective number of parameters, and
+  ``surpyval.bayes.compare(fits, criterion="loo")`` (or ``"waic"``) ranks
+  fits to the same data by it, with the standard error of each
+  difference from the paired rows. Every row counts through its own
+  likelihood term (censored, interval, truncated) and a count ``n`` is
+  ``n`` units. Conjugate fits are in closed form; grid and Laplace fits
+  use the grid's quadrature, with each row's share of its leave-one-out
+  posterior at the grid's edge; fits from draws use Pareto-smoothed
+  importance sampling, with each row's Pareto ``k``. Each warns, counting
+  the rows, where its estimate is unreliable. ``LogLikelihood.pointwise``
+  gives each row's log-likelihood. Checked against refitting without each
+  unit, closed forms and ArviZ. See "Comparing fits: WAIC and
+  leave-one-out" in :doc:`Bayesian Fitting with SurPyval`.
+
 - **The Jelinski-Moranda software reliability model.**
   ``surpyval.recurrent.JelinskiMoranda`` (also at the top level) fits one
   test campaign's failure times, or the times between failures
@@ -43,6 +60,26 @@ v0.29 (unreleased)
   refuse, saying what to do. See "Rescaling a model's time" in
   :doc:`Conventions`.
 
+- **Software reliability growth models.** Four non-homogeneous Poisson
+  processes for faults found and removed during testing, in
+  ``surpyval.recurrent`` (and at the top level): ``GoelOkumoto``
+  (:math:`a (1 - e^{-b t})`), ``YamadaDelayedS``
+  (:math:`a (1 - (1 + b t) e^{-b t})`), ``InflectionS`` (Ohba's,
+  :math:`a (1 - e^{-b t}) / (1 + \psi e^{-b t})`) and ``MusaOkumoto``
+  (the logarithmic Poisson model,
+  :math:`\log(1 + \lambda_0 \theta t) / \theta`). Each fits failure
+  times of one system or several, or the failures counted in each period
+  of testing (``c=2`` rows of ``[start, end]`` with their counts ``n``),
+  by maximum likelihood or least squares, and returns the
+  ``ParametricRecurrenceModel`` the other intensity models do: ``cif``,
+  ``iif``, ``mtbf``, their bounds, ``param_cb``, ``next_failure_sf``,
+  ``trend_test``, ``aic``, simulation, saving and loading. Data that show
+  no reliability growth have no maximum-likelihood estimate (the
+  expected number of faults ``a`` runs to infinity), and the fit is
+  refused, saying what was seen and to fit ``HPP`` or ``CrowAMSAA``
+  instead. ``InflectionS`` takes ``psi`` down to -1, so a Goel-Okumoto
+  shape (``psi = 0``) is inside its range.
+
 - **Torch helpers (``surpyval.torch``): the censored and truncated
   likelihood as a PyTorch loss**, for people who train their own networks.
   ``targets(data)`` (or ``x=, c=, n=, tl=, ...``) turns lifetime data,
@@ -60,6 +97,21 @@ v0.29 (unreleased)
   dependency, not even an optional one: ``import surpyval`` does not import
   it, and the helpers ask you to install it when it is absent. There are no
   training loops or network architectures.
+
+- **Torch helpers: mixtures, survival curves out and a guide.**
+  ``nll(dist, target, params, mixture=logits)`` (and ``NLLLoss``) is the
+  likelihood of a mixture of ``K`` components of one family per row, the
+  model of Deep Survival Machines, for every kind of censoring and
+  truncation: ``(N, K)`` logits give the weights, each parameter is
+  ``(N, K)``, ``(K,)`` or a scalar, and ``constrain`` maps a network's
+  ``(N, K, k)`` outputs. In double precision it equals ``MixtureModel``'s
+  likelihood to 1e-10; with one component it is the loss without a
+  mixture. ``sf(dist, times, params, mixture=None)`` gives each row's
+  survival curve as an ``(N, T)`` tensor, for ``score_predictions`` and the
+  concordance index, and ``to_surpyval(dist, params, row=i)`` turns any
+  row into an ordinary SurPyval model (a ``MixtureModel`` for a mixture).
+  The new page :doc:`Torch with SurPyval` trains a mixture network and
+  scores it.
 
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at

@@ -150,7 +150,8 @@ so on.
        item that keeps failing, a patient with repeated admissions): the
        mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
-       (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
+       (Crow-AMSAA, Duane, Cox-Lewis), software reliability growth
+       (Goel-Okumoto, the S-shaped models, Musa-Okumoto), imperfect repair (Kijima, G1, ARA,
        ARI), trend tests, proportional-intensity regression (parametric,
        and the Andersen-Gill, Prentice-Williams-Peterson and
        Wei-Lin-Weissfeld models with robust standard errors), and whether
@@ -359,6 +360,7 @@ Contents:
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
    PyMC with SurPyval
+   Torch with SurPyval
 
 .. toctree::
    :maxdepth: 2
