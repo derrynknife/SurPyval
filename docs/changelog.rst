@@ -114,8 +114,29 @@ v0.29 (unreleased)
   ``likelihood_ratio_tests()`` tests each nested pair (``"value"``
   against ``"value + slope"``, ...) by twice the gain in
   log-likelihood; ``models`` holds every fit by its link's name, and
-  ``best`` / ``best_link`` the best. Each candidate is the fit of its own
-  link to the last digit. The data and options are those of ``fit``; a
+  ``best`` / ``best_link`` the best. Links less than 2 apart are no real
+  preference and the simpler is the best (fewer parameters, then the level
+  before the slope before the area), so by AIC a link one effect richer is
+  chosen only where the likelihood-ratio test of that effect rejects it at
+  the 4.55% level. The table also gives, for a link with another nested in
+  it, the likelihood-ratio test against that one (``lr_against``,
+  ``lr_p_value``) and each row in words (``reads_as``: "as good: no real
+  preference", "worse", "clearly worse", with what the test says);
+  ``verdict`` says the comparison in plain words ("Risk follows how fast
+  the marker is changing. Adding the level does not improve the fit. ..."),
+  and ``to_dict()`` gives the verdict, table and tests as strict JSON. The
+  value link is fitted first and the other links start from its path
+  estimates, about a third faster than fitting each alone; a fit from that
+  start that is not a verified maximum is made again from its own start,
+  so each candidate is the maximum its own fit finds (on the Mayo PBC
+  trial the table is that of the four links fitted one at a time). In
+  fleets of 300 items simulated under each link (200 each) the comparison
+  picked the true link 93% (value), 92.5% (slope) and 89.5% (area) of the
+  time, against a target of 90% within the Monte Carlo tolerance; under the
+  value link it chose the value with the slope 4.5% and the value with the
+  area 3.5% of the time, against the test's 4.55%
+  (``tests/calibration/test_link_selection_joint.py``). The data and
+  options are those of ``fit``; a
   ``marker_reference`` goes to the links that follow the value only. A fit
   that is not a verified maximum is shown but neither ranked nor tested,
   and a link that cannot be fitted is listed with the reason, each said in

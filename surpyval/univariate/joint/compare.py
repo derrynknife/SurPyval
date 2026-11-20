@@ -1,7 +1,7 @@
 """Comparing what the hazard follows: one joint model fitted with each
 link to the same data, ranked by an information criterion, with
-likelihood-ratio tests of the nested pairs (:class:`LinkComparison`, made
-by :meth:`JointPHFitter.compare_links
+likelihood-ratio tests of the nested pairs and the result said in words
+(:class:`LinkComparison`, made by :meth:`JointPHFitter.compare_links
 <surpyval.univariate.joint.joint_ph.JointPHFitter.compare_links>`)."""
 
 from __future__ import annotations
@@ -34,6 +34,39 @@ DEFAULT_LINKS: tuple[tuple[str, ...], ...] = (
 #: The criteria the links can be ranked by (lower is better).
 METRICS = ("aic", "aic_c", "bic")
 
+#: How each criterion is written in words.
+_METRIC_NAMES = {"aic": "AIC", "aic_c": "AICc", "bic": "BIC"}
+
+#: Two links whose criteria differ by less than this are "no real
+#: preference" (Burnham and Anderson 2002, section 2.6), and the simpler
+#: is chosen: the one with fewer parameters, then the level before the
+#: slope before the area. By AIC, a link one effect richer than another
+#: is then chosen only where twice its gain in log-likelihood exceeds 4:
+#: a likelihood-ratio test at the 4.55% level.
+NO_REAL_PREFERENCE = 2.0
+
+#: A link this far or further above the best is "clearly worse"
+#: (Burnham and Anderson: essentially no support from the data); between
+#: ``NO_REAL_PREFERENCE`` and this it is "worse".
+CLEARLY_WORSE = 10.0
+
+#: Below this, a likelihood-ratio test's p-value is read as "the extra
+#: effect adds to the fit".
+_TEST_LEVEL = 0.05
+
+#: What the hazard follows, in words: in a sentence, and as a noun.
+_FOLLOWS = {
+    "value": "the marker's level",
+    "slope": "how fast the marker is changing",
+    "cumulative": "the marker's accumulated exposure (the area under its "
+    "path)",
+}
+_NOUNS = {
+    "value": "the level",
+    "slope": "the rate of change",
+    "cumulative": "the accumulated exposure",
+}
+
 #: How far below the simpler link's log-likelihood (relative, with an
 #: absolute floor of the same) the richer one may be and still be taken
 #: as at its maximum: the adaptive quadrature's own error.
@@ -44,6 +77,49 @@ def link_label(link: Any) -> str:
     """The name of a link in the comparison: ``"value"``, ``"value +
     slope"``, ... (the links in their fixed order)."""
     return " + ".join(link)
+
+
+def _and(words: list[str]) -> str:
+    """``"a"``, ``"a and b"``, ``"a, b and c"``."""
+    if len(words) == 1:
+        return words[0]
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def _follows(link: Any) -> str:
+    """What a hazard with this link follows, in words."""
+    return _and([_FOLLOWS[term] for term in link])
+
+
+def _nouns(link: Any) -> str:
+    """The terms of a link as nouns: ``"the level and the rate of
+    change"``."""
+    return _and([_NOUNS[term] for term in link])
+
+
+def _p(p: float) -> str:
+    """A p-value as it is written in words."""
+    return "< 0.0001" if p < 1e-4 else f"{p:.2g}"
+
+
+def _plain(value: Any) -> Any:
+    """A table entry as strict JSON takes it: ``None`` for a number
+    that is not finite, Python's own int and float."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        return float(value) if np.isfinite(value) else None
+    return value
+
+
+def _order(link: Any) -> tuple:
+    """The links' order on a tie: the level before the slope before the
+    area, each alone before it is beside another."""
+    from .joint_ph import LINKS
+
+    return tuple(LINKS.index(term) for term in link)
 
 
 def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
@@ -113,6 +189,31 @@ def _reason(error: Exception) -> str:
     return first if len(first) <= 120 else first[:117] + "..."
 
 
+def _fit_one(
+    candidate: JointPHFitter, args: tuple, kwargs: dict, start: Any
+) -> tuple:
+    """``(model, warnings)``: the candidate's fit, its search started
+    from the path part ``start`` (another link's fit of the same data)
+    where given. A warm start that does not reach a verified maximum, or
+    raises, is set aside and the fit made again from its own start, so a
+    warm start never gives a worse answer than the fit alone. A
+    ``ValueError`` of the fit from its own start is raised."""
+    if start is not None:
+        candidate._path_start = start
+        try:
+            with collecting_warnings() as caught, quiet_maximum_warnings():
+                model = candidate.fit(*args, **kwargs)
+        except ValueError:
+            model = None
+        finally:
+            candidate._path_start = None
+        if model is not None and model.maximum == "verified":
+            return model, caught
+    with collecting_warnings() as caught, quiet_maximum_warnings():
+        model = candidate.fit(*args, **kwargs)
+    return model, caught
+
+
 def compare_links(
     fitter: JointPHFitter,
     args: tuple,
@@ -137,11 +238,16 @@ def compare_links(
             stacklevel=3,
         )
     reference = kwargs.get("marker_reference")
-    models: dict[str, JointModel] = {}
+    fitted: dict[str, JointModel] = {}
     failed: dict[str, str] = {}
     errors: list[Exception] = []
     said: dict[tuple, Any] = {}
-    for candidate in fitters:
+    # The value link first: its path estimates start the other fits (the
+    # path part changes little from link to link), or, without it, the
+    # first fit's.
+    queue = sorted(fitters, key=lambda f: f.link != ("value",))
+    start = None
+    for candidate in queue:
         label = link_label(candidate.link)
         own = dict(kwargs)
         if reference is not None and "value" not in candidate.link:
@@ -149,18 +255,19 @@ def compare_links(
             # hazard follows the value: the other links are fitted
             # without it.
             del own["marker_reference"]
-        with collecting_warnings() as caught, quiet_maximum_warnings():
-            try:
-                model = candidate.fit(*args, **own)
-            except ValueError as error:
-                failed[label] = _reason(error)
-                errors.append(error)
-                continue
-        models[label] = model
+        try:
+            model, caught = _fit_one(candidate, args, own, start)
+        except ValueError as error:
+            failed[label] = _reason(error)
+            errors.append(error)
+            continue
+        fitted[label] = model
+        if start is None and model.maximum == "verified":
+            start = getattr(model, "_path_start", None)
         for kept in caught:
             # A warning about the data comes from every fit: said once
             said.setdefault((str(kept.message), kept.category), kept)
-    if not models:
+    if not fitted:
         if len({str(e) for e in errors}) == 1:
             # The same for every link: about the data, as the fit says it
             raise errors[0]
@@ -172,6 +279,10 @@ def compare_links(
         warnings.warn_explicit(
             kept.message, kept.category, kept.filename, kept.lineno
         )
+    # in the order the links were given
+    order = [link_label(f.link) for f in fitters]
+    models = {label: fitted[label] for label in order if label in fitted}
+    failed = {label: failed[label] for label in order if label in failed}
     out = LinkComparison(models, failed, metric)
     if failed:
         warnings.warn(
@@ -201,17 +312,26 @@ def compare_links(
 class LinkComparison:
     """
     One joint model fitted with each of several links -- what the hazard
-    follows of the marker's path: its current value, its slope, the area
-    under it, or more than one -- to the same data, compared. Made by
-    :meth:`JointPHFitter.compare_links
+    follows of the marker's path: its current value (its level), its
+    slope (how fast it is changing), the area under it (the exposure it
+    has accumulated), or more than one -- to the same data, compared and
+    said in words. Made by :meth:`JointPHFitter.compare_links
     <surpyval.univariate.joint.joint_ph.JointPHFitter.compare_links>`,
     as in ``WeibullJointPH.compare_links(data)``.
 
     Every candidate has the fitter's baseline, path model and varying
     path parameters and is fitted to the same items and readings, so
     their log-likelihoods (of the readings and the lifetimes together)
-    and criteria compare directly. A fit that is not a verified maximum
-    is shown but neither ranked nor tested.
+    and criteria compare directly with each other -- not with a model of
+    the lifetimes alone. A fit that is not a verified maximum is shown
+    but neither ranked nor tested.
+
+    Links whose criteria differ by less than 2 are "no real preference",
+    and the simpler of them is the best: the one with fewer parameters,
+    then the level before the slope before the area. By AIC, a link one
+    effect richer than another is therefore the best only where the
+    likelihood-ratio test of the extra effect rejects it at the 4.55%
+    level (twice the gain in log-likelihood above 4).
 
     Attributes
     ----------
@@ -224,8 +344,8 @@ class LinkComparison:
         The criterion the links are ranked by: ``"aic"``, ``"aic_c"`` or
         ``"bic"`` (lower is better).
     best : JointModel or None
-        The ranked fit with the lowest ``metric`` (``None`` where no fit
-        is a verified maximum).
+        The simplest ranked fit within 2 of the lowest ``metric``
+        (``None`` where no fit is a verified maximum).
     """
 
     def __init__(
@@ -234,10 +354,7 @@ class LinkComparison:
         self.models: dict[str, JointModel] = dict(models)
         self.failed: dict[str, str] = dict(failed)
         self.metric = metric
-        ranked = self._ranked()
-        self.best: JointModel | None = (
-            min(ranked.values(), key=self._measure) if ranked else None
-        )
+        self.best: JointModel | None = self._choose()
 
     def _measure(self, model: JointModel) -> float:
         return float(getattr(model, self.metric)())
@@ -252,6 +369,24 @@ class LinkComparison:
             and np.isfinite(self._measure(model))
         }
 
+    def _choose(self) -> JointModel | None:
+        """The best: of the ranked fits within ``NO_REAL_PREFERENCE`` of
+        the lowest criterion, the one with the fewest parameters, then
+        the level first, then the lowest criterion."""
+        ranked = list(self._ranked().values())
+        if not ranked:
+            return None
+        lowest = min(self._measure(model) for model in ranked)
+        close = [
+            model
+            for model in ranked
+            if self._measure(model) - lowest < NO_REAL_PREFERENCE
+        ]
+        return min(
+            close,
+            key=lambda m: (int(m.k), _order(m.link), self._measure(m)),
+        )
+
     @property
     def best_link(self) -> tuple | None:
         """The link of the best fit, as its ``link`` (``("value",
@@ -263,35 +398,89 @@ class LinkComparison:
         """The name of the best fit's link (``"value + slope"``, ...)."""
         return None if self.best is None else link_label(self.best.link)
 
+    def _nested(self) -> dict[str, tuple[str, float]]:
+        """``{richer: (simpler, p_value)}``: for each ranked link with a
+        ranked link nested in it, the test of the one it is set against
+        in the table -- the best, where the best is nested in it, else
+        the nested link with the lowest criterion."""
+        tests = self.likelihood_ratio_tests()
+        tests = tests[np.isfinite(tests["p_value"].to_numpy(dtype=float))]
+        out: dict[str, tuple[str, float]] = {}
+        for richer, rows in tests.groupby("richer", sort=False):
+            simpler = list(rows["simpler"])
+            if self.best_label in simpler:
+                chosen = self.best_label
+            else:
+                chosen = min(
+                    simpler, key=lambda s: self._measure(self.models[s])
+                )
+            p = rows.loc[rows["simpler"] == chosen, "p_value"].iloc[0]
+            out[str(richer)] = (str(chosen), float(p))
+        return out
+
+    def _test_words(self, richer: str, simpler: str, p: float) -> str:
+        """What a likelihood-ratio test says, in words: ``"the level adds
+        nothing (test p = 0.53)"``."""
+        small = self.models[simpler].link
+        extra = [
+            term for term in self.models[richer].link if term not in small
+        ]
+        verb = "adds" if len(extra) == 1 else "add"
+        said = "to the fit" if p < _TEST_LEVEL else "nothing"
+        return f"{_nouns(extra)} {verb} {said} (test p = {_p(p)})"
+
     @property
     def table(self) -> pd.DataFrame:
         """
-        One row per link, best first, indexed by the link's name: the
-        number of parameters ``k``, the ``log_likelihood``, ``aic``,
-        ``aic_c`` and ``bic``; ``delta``, the link's ``metric`` less the
-        best's; ``weight``, each ranked link's share of
-        ``exp(-delta / 2)`` (the Akaike weights, ranked by AIC); the
-        fit's ``maximum``; and ``status``: ``"best"``, ``"ranked"``,
-        ``"set aside"`` (with the ``reason``) or ``"failed"`` (could not
-        be fitted, with the ``reason``).
+        One row per link, best first, then the other ranked links by
+        ``metric``, indexed by the link's name: the number of parameters
+        ``k``, the ``log_likelihood``, ``aic``, ``aic_c`` and ``bic``;
+        ``delta``, the link's ``metric`` less the best's (below 2 either
+        way is no real preference, and can be below 0 where the best was
+        chosen as the simpler); ``weight``, each ranked link's share of
+        ``exp(-delta / 2)`` (the Akaike weights, ranked by AIC);
+        ``lr_against`` and ``lr_p_value``, where a ranked link has another
+        nested in it, the likelihood-ratio test of its extra effects
+        against that one (the best where the best is nested in it, else
+        the nested link with the lowest criterion; every pair is in
+        :meth:`likelihood_ratio_tests`); the fit's ``maximum``;
+        ``status``: ``"best"``, ``"ranked"``, ``"set aside"`` (with the
+        ``reason``) or ``"failed"`` (could not be fitted, with the
+        ``reason``); and ``reads_as``, the row in words: ``"best"``, ``"as
+        good: no real preference"`` (within 2 of the best), ``"worse"``
+        (2 to 10 above), ``"clearly worse"`` (10 or more above), ``"set
+        aside"`` or ``"not fitted"``, then what its test says, such as
+        ``"the level adds nothing (test p = 0.53)"``.
         """
         import pandas as pd
 
         ranked = self._ranked()
+        nested = self._nested()
         best_value = np.nan if self.best is None else self._measure(self.best)
         records: list[dict[str, Any]] = []
         for label, model in self.models.items():
+            measure = self._measure(model)
+            delta = measure - best_value
             if model is self.best:
-                status, reason = "best", ""
+                status, reason, words = "best", "", "best"
             elif label in ranked:
                 status, reason = "ranked", ""
+                if delta < NO_REAL_PREFERENCE:
+                    words = "as good: no real preference"
+                elif delta < CLEARLY_WORSE:
+                    words = "worse"
+                else:
+                    words = "clearly worse"
             else:
-                status = "set aside"
+                status, words = "set aside", "set aside"
                 reason = (
                     "the fit is not a verified maximum"
                     if model.maximum != "verified"
                     else f"its {self.metric} is not finite"
                 )
+            against, p_value = nested.get(label, ("", np.nan))
+            if against:
+                words += "; " + self._test_words(label, against, p_value)
             records.append(
                 {
                     "link": label,
@@ -300,10 +489,14 @@ class LinkComparison:
                     "aic": float(model.aic()),
                     "aic_c": float(model.aic_c()),
                     "bic": float(model.bic()),
-                    "delta": self._measure(model) - best_value,
+                    "delta": delta,
+                    "lr_against": against,
+                    "lr_p_value": p_value,
                     "maximum": model.maximum,
                     "status": status,
+                    "reads_as": words,
                     "reason": reason,
+                    "_measure": measure,
                 }
             )
         for label, why in self.failed.items():
@@ -316,26 +509,115 @@ class LinkComparison:
                     "aic_c": np.nan,
                     "bic": np.nan,
                     "delta": np.nan,
+                    "lr_against": "",
+                    "lr_p_value": np.nan,
                     "maximum": "",
                     "status": "failed",
+                    "reads_as": "not fitted",
                     "reason": why,
+                    "_measure": np.nan,
                 }
             )
-        order = {"best": 0, "ranked": 0, "set aside": 1, "failed": 2}
+        order = {"best": 0, "ranked": 1, "set aside": 2, "failed": 3}
         records.sort(
             key=lambda r: (
                 order[r["status"]],
-                np.inf if np.isnan(r[self.metric]) else r[self.metric],
+                np.inf if np.isnan(r["_measure"]) else r["_measure"],
             )
         )
-        table = pd.DataFrame(records).set_index("link")
+        table = (
+            pd.DataFrame(records).set_index("link").drop(columns="_measure")
+        )
         weight = np.full(len(table), np.nan)
         ok = table["status"].isin(["best", "ranked"]).to_numpy()
         if ok.any():
-            relative = np.exp(-0.5 * table["delta"].to_numpy()[ok])
+            delta = table["delta"].to_numpy()[ok]
+            relative = np.exp(-0.5 * (delta - delta.min()))
             weight[ok] = relative / relative.sum()
         table.insert(table.columns.get_loc("delta") + 1, "weight", weight)
         return table
+
+    @property
+    def verdict(self) -> str:
+        """
+        The comparison in plain words: what the risk follows (the best
+        link), whether a richer link improves on it, which links the data
+        cannot tell from it, and how much worse the rest are. For
+        example: ``"Risk follows how fast the marker is changing. Adding
+        the level does not improve the fit. The remaining 3 links fit
+        clearly worse (AIC 13.4 or more higher)."``
+        """
+        if self.best is None:
+            return (
+                "No fit reached a verified maximum, so the comparison "
+                "cannot say which link the data support: fit each link on "
+                "its own (JointPH(..., link=...).fit) to see why."
+            )
+        name = _METRIC_NAMES[self.metric]
+        best = self.best
+        best_value = self._measure(best)
+        others = [
+            model for model in self._ranked().values() if model is not best
+        ]
+        others.sort(key=self._measure)
+        close = [
+            m
+            for m in others
+            if self._measure(m) - best_value < NO_REAL_PREFERENCE
+        ]
+        worse = others[len(close) :]
+        sentences = [f"Risk follows {_follows(best.link)}."]
+        for model in close:
+            if set(best.link) < set(model.link):
+                extra = [t for t in model.link if t not in best.link]
+                # a little lower, but not enough to prefer it
+                how = "clearly " if self._measure(model) < best_value else ""
+                sentences.append(
+                    f"Adding {_nouns(extra)} does not {how}improve the fit."
+                )
+            else:
+                gap = abs(self._measure(model) - best_value)
+                sentences.append(
+                    "The data cannot tell this from a risk that follows "
+                    f"{_follows(model.link)} ({name} differs by "
+                    f"{gap:.1f}: no real preference)."
+                )
+        test = self._nested().get(link_label(best.link))
+        if test is not None:
+            simpler, p = test
+            small = self.models[simpler].link
+            extra = [t for t in best.link if t not in small]
+            verb = "adds" if len(extra) == 1 else "add"
+            said = "to" if p < _TEST_LEVEL else "little to"
+            text = (
+                f"{_nouns(extra)} {verb} {said} what {_nouns(small)} alone "
+                f"explains (test p = {_p(p)})."
+            )
+            sentences.append(text[0].upper() + text[1:])
+        if worse:
+            gaps = [self._measure(m) - best_value for m in worse]
+            how = "clearly worse" if min(gaps) >= CLEARLY_WORSE else "worse"
+            if len(worse) == 1:
+                sentences.append(
+                    f"A risk that follows {_follows(worse[0].link)} fits "
+                    f"{how} ({name} {gaps[0]:.1f} higher)."
+                )
+            else:
+                rest = "remaining" if close else "other"
+                sentences.append(
+                    f"The {rest} {len(worse)} links fit {how} ({name} "
+                    f"{min(gaps):.1f} or more higher)."
+                )
+        left = [
+            label
+            for label, model in self.models.items()
+            if model is not best and all(model is not m for m in others)
+        ] + list(self.failed)
+        if left:
+            sentences.append(
+                f"Not compared: {', '.join(left)} (see the table's " "reason)."
+            )
+        return " ".join(sentences)
 
     def likelihood_ratio_tests(self) -> pd.DataFrame:
         """
@@ -399,15 +681,59 @@ class LinkComparison:
             ],
         )
 
+    def to_dict(self) -> dict:
+        """
+        The comparison as a dictionary that strict JSON takes: the
+        ``metric``, the ``best`` link's name and its ``best_link`` (a
+        list), the ``verdict``, the ``table`` (one dictionary a row, its
+        index as ``"link"``) and the ``likelihood_ratio_tests`` (one a
+        pair); a number that is not finite is ``None``. The fitted models
+        are not in it: save the best (or any) with its own ``to_dict``,
+        as ``comparison.best.to_dict()``.
+        """
+        table = self.table.reset_index()
+        tests = self.likelihood_ratio_tests()
+        return {
+            "metric": self.metric,
+            "best": self.best_label,
+            "best_link": None if self.best is None else list(self.best.link),
+            "verdict": self.verdict,
+            "table": [
+                {key: _plain(value) for key, value in row.items()}
+                for row in table.to_dict("records")
+            ],
+            "likelihood_ratio_tests": [
+                {key: _plain(value) for key, value in row.items()}
+                for row in tests.to_dict("records")
+            ],
+        }
+
     def __repr__(self) -> str:
+        import textwrap
+
         shown = self.table[
-            ["k", "log_likelihood", self.metric, "delta", "weight", "status"]
+            [
+                "k",
+                "log_likelihood",
+                self.metric,
+                "delta",
+                "weight",
+                "lr_p_value",
+                "status",
+            ]
         ]
+        verdict = textwrap.fill(
+            self.verdict,
+            width=79,
+            initial_indent="Verdict             : ",
+            subsequent_indent=" " * 22,
+        )
         out = (
             "Joint model link comparison"
             "\n==========================="
             f"\nRanked by           : {self.metric} (lower is better)"
             f"\nBest                : {self.best_label or 'none'}"
+            f"\n{verdict}"
             "\n" + shown.to_string(float_format=lambda v: f"{v:.6g}")
         )
         if self.failed:
