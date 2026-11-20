@@ -5,6 +5,22 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Which model predicts best.** ``surpyval.recurrent.compare_predictions(x,
+  models, start=10)`` compares models of one system's failures by their
+  one-step-ahead predictions (Abdel-Ghaly, Chan and Littlewood 1986): at
+  each failure every model is fitted to the failures before it and its
+  distribution of the time to the next is scored at the time that came.
+  The ``PredictionComparison`` it returns has each model's prequential
+  log-likelihood (and ``likelihood_ratio(a, b)``, step by step), the
+  u-plot's and y-plot's Kolmogorov distances with the direction of the
+  bias (``u_plot``, ``y_plot``), a ``summary()`` table, a ``verdict`` in
+  words and ``plot("u" | "y" | "ratio")``. It takes any of the
+  Poisson-process fitters and ``JelinskiMoranda``. A fit refused at some
+  step makes no prediction there: the step is kept with the reason, the
+  likelihoods are compared on the steps every model predicted, and the
+  table counts the failed steps. See "Which model predicts best?" in
+  :doc:`Software Reliability Growth`.
+
 - **The cheapest time to release.** ``release_time(test_cost, fix_cost,
   field_cost)`` on a fitted Poisson process (the software reliability
   growth models and the other intensity models) gives the testing time
