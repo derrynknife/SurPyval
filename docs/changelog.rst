@@ -145,6 +145,22 @@ v0.29 (unreleased)
   infinite at age 0 is refused. Checked against R's ``JM`` with a lag on
   the PBC trial. See "A reading that acts later" in :doc:`Joint Models`.
 
+- **Joint models: exposure that fades.** ``JointPH(Weibull,
+  link="cumulative", weight=("exponential", 0.5))`` makes the
+  accumulated exposure count for less the older it is (what was
+  accumulated ``u`` ago counts ``exp(-u / 0.5)``), and
+  ``weight=("window", 1.0)`` counts only the last 1.0 of it. The plain
+  cumulative link counts an hour of exposure ten years ago like one last
+  week. The scale and the width are in the lifetimes' unit of time and
+  fixed, not estimated; compare them by ``aic()``. A weight needs the
+  cumulative link and is refused without it. The model keeps ``weight``,
+  shows it in ``repr`` and ``summary()``, saves it (schema 5, which
+  SurPyval 0.28 and older refuse rather than predict as if all the
+  exposure counted) and predicts with it; with no weight the model is
+  as before, number for number, and a window wider than every age is the
+  plain cumulative link. See "Exposure that fades" in
+  :doc:`Joint Models`.
+
 - **Competing-risks random survival forests.** ``RandomSurvivalForest.fit``
   (and ``fit_from_df``, with ``e_col``) takes the cause of each failure as
   ``e``, with ``split`` and ``event`` as for the tree, and grows every tree

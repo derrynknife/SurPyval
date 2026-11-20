@@ -2046,8 +2046,9 @@ def _joint():
     markers=..., given=...)``: one covariate vector a call. The hazard
     follows the marker's current value (``WeibullJointPH``), its slope,
     the area under it, or its value and slope together, or its value 90
-    days earlier (a lag); or the marker's value speeds up the item's
-    ageing (``WeibullJointAFT``)."""
+    days earlier (a lag), or the area with exposure fading over 180 days
+    (a weight); or the marker's value speeds up the item's ageing
+    (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2059,6 +2060,9 @@ def _joint():
             sp.Weibull, link=["value", "slope"]
         ),
         "WeibullJointPH[lag]": sp.JointPH(sp.Weibull, lag=90.0),
+        "WeibullJointPH[weight]": sp.JointPH(
+            sp.Weibull, link="cumulative", weight=("exponential", 180.0)
+        ),
     }
     out = []
     for name, fitter in fitters.items():
@@ -2108,6 +2112,16 @@ def _joint():
                         "lag=90 * k)"
                     }
                     if name.endswith("[lag]")
+                    else {}
+                ),
+                **(
+                    {
+                        "units": "the weight's scale is a fixed time (180 "
+                        "days): in another unit the same model is "
+                        "JointPH(Weibull, link='cumulative', "
+                        "weight=('exponential', 180 * k))"
+                    }
+                    if name.endswith("[weight]")
                     else {}
                 ),
             },

@@ -291,6 +291,21 @@ def simulate_split(
     return items, np.column_stack([m0, m1]), np.column_stack([site, load])
 
 
+def line_area(m0, m1, u, weight=None):
+    """The area under the line ``m0 + m1 s`` over ``(0, u)`` in closed
+    form: all of it (``weight`` None), with what is ``v`` old counting
+    ``exp(-v / scale)`` (``("exponential", scale)``), or only the last
+    ``width`` of it (``("window", width)``)."""
+    if weight is None:
+        return m0 * u + m1 * u**2 / 2
+    kind, scale = weight
+    if kind == "window":
+        lo = np.maximum(u - scale, 0.0)
+        return m0 * (u - lo) + m1 * (u**2 - lo**2) / 2
+    grown = -np.expm1(-u / scale)
+    return m0 * scale * grown + m1 * (scale * u - scale**2 * grown)
+
+
 def simulate_links(
     n=300,
     seed=0,
@@ -304,6 +319,7 @@ def simulate_links(
     every=1 / 12,
     sd_noise=0.7,
     lag=0.0,
+    weight=None,
 ):
     """``n`` items with ages in years, followed for ``follow`` years and
     read monthly: each marker a line from 3.0 (sd 0.6) rising 1.0 a year
@@ -312,7 +328,8 @@ def simulate_links(
     the line above ``centre``, ``slope`` per unit a year of its rise,
     and ``cumulative`` per unit-year of the area under it from age 0,
     each ``lag`` years later (the line held at its age-0 value until
-    then: its slope 0). The lifetimes are by a trapezium rule on a fine
+    then: its slope 0), the area weighted by ``weight``
+    (:func:`line_area`). The lifetimes are by a trapezium rule on a fine
     grid of ages."""
     rng = np.random.default_rng(seed)
     sd0, sd1, r = 0.6, 0.5, 0.2
@@ -327,7 +344,7 @@ def simulate_links(
         eta = (
             value * (m0[k] + m1[k] * u - centre)
             + slope * m1[k] * ((t > lag) if lag > 0 else 1.0)
-            + cumulative * (m0[k] * u + m1[k] * u**2 / 2)
+            + cumulative * line_area(m0[k], m1[k], u, weight)
         )
         with np.errstate(all="ignore"):
             h = (

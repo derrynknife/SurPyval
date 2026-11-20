@@ -1012,6 +1012,56 @@ lags 0, 0.25 and 0.5 were within 0.6 of each other. A path that is
 infinite at age 0 (logarithmic, Lloyd-Lipow) cannot lag its value, and is
 refused.
 
+Exposure that fades: a weight on the accumulated exposure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``"cumulative"`` link follows the area under the path from age 0, so
+an hour of exposure ten years ago counts like one last week. Where
+damage heals, is repaired or washes out, that is wrong: recent exposure
+matters and old exposure does not. ``weight=`` says how much of the
+exposure still counts, by how long ago it was:
+
+.. math::
+    \int_0^t w(t - s)\, m(s)\, ds, \qquad
+    w(u) = e^{-u / \mathrm{scale}} \quad \text{or} \quad
+    w(u) = 1 \text{ for } u \le \mathrm{width},\ 0 \text{ beyond.}
+
+.. code-block:: python
+
+    # exposure fades: what was accumulated u ago counts exp(-u / 0.5)
+    faded = JointPH(Weibull, link="cumulative", weight=("exponential", 0.5))
+    # only the last year's exposure counts
+    recent = JointPH(Weibull, link="cumulative", weight=("window", 1.0))
+    plain = JointPH(Weibull, link="cumulative")
+    fits = {name: f.fit(data) for name, f in
+            {"faded": faded, "recent": recent, "all": plain}.items()}
+    {name: model.aic() for name, model in fits.items()}
+
+The scale and the width are in the lifetimes' unit of time. Like the lag
+they are fixed, not estimated: fit the ones you have in mind and compare
+them by AIC (the same data, the same number of parameters). A weight
+needs the cumulative link (alone or with others; the weight is on the
+area only) and is refused without it. ``cumulative_effect`` is still per
+unit of the marker times a unit of time (``effect_units``): with an
+exponential weight, a marker held at a level :math:`m` for much longer
+than the scale has a weighted area of :math:`m \times \mathrm{scale}`,
+so the weighted area is then the recent level in other units; with a
+window, the area is the mean level over the window times its width. A
+window wider than every age in the data is the plain cumulative link.
+With a ``lag`` the weighted exposure acts ``lag`` later. The fitted
+model keeps its ``weight``, prints it, saves it and predicts with it;
+``compare_links`` keeps it on the candidates that have the cumulative
+link.
+
+The weighted area is by quadrature for every path: a window by the plain
+area's 15-point rule over the window, an exponential weight over the
+last 30 scales in three pieces of 15 points (what is older counts less
+than :math:`10^{-13}`); both agree with the closed forms for line,
+quadratic and exponential paths to :math:`10^{-9}`. With a window the
+cumulative hazard is also integrated on each side of the age at which
+the window stops reaching back to age 0, where the weighted area has a
+kink.
+
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
 the same curvature ``c``. At most five may vary (the quadrature's grid is
