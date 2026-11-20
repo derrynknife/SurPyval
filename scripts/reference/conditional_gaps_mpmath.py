@@ -11,7 +11,11 @@ with mpmath at 50 significant digits:
   body to where ``H`` is about 700 (the survival is 1e-304 there, so
   ``-log sf`` from the summed survivals has long since failed);
 * ``ROOTS``: for a lifetime, a virtual age ``v`` and a uniform ``u``, the
-  age ``x`` with ``H(x) = H(v) - log(u)``.
+  age ``x`` with ``H(x) = H(v) - log(u)``;
+* ``MIXTURE_DRAWS`` (typed into
+  ``surpyval/tests/recurrent/test_conditional_gaps_mixture.py``): the
+  same roots for two- and three-component mixtures, at ages from new to
+  about the 0.999 quantile and uniforms from 1e-9 to 1 - 1e-9.
 
 Every time and parameter is a double; the references are at those
 doubles. Run from the repository root, with mpmath installed (it is not
@@ -87,6 +91,35 @@ def mixture(components: Any, weights: Any) -> Any:
 
 WEIBULL_MIX = mixture([weibull(60, 0.8), weibull(2000, 3.5)], [0.25, 0.75])
 LOGNORMAL_MIX = mixture([lognormal(1, 0.5), lognormal(3, 1.2)], [0.4, 0.6])
+WEIBULL_MIX3 = mixture(
+    [weibull(10, 0.5), weibull(300, 1.5), weibull(2000, 4.0)],
+    [0.1, 0.3, 0.6],
+)
+
+#: (name, mixture, ages): the ages are 0 and about the mixture's 0.1, 0.5
+#: and 0.999 quantiles.
+MIXTURE_DRAW_CASES = [
+    ("weibull2", WEIBULL_MIX, [0.0, 25.91, 1545.31, 3432.12]),
+    ("weibull3", WEIBULL_MIX3, [0.0, 39.16, 1307.02, 3180.7]),
+    ("lognormal2", LOGNORMAL_MIX, [0.0, 1.83, 6.92, 680.1]),
+]
+MIXTURE_DRAW_U = [1e-9, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1 - 1e-6, 1 - 1e-9]
+
+
+def bisected_root(H: Any, v: Any, u: Any) -> Any:
+    """The ``x`` with ``H(x) = H(v) - log(u)``, by bisection to 50 digits
+    (no derivative, so no starting point to choose)."""
+    target = H(mpf(v)) - log(mpf(u))
+    lo, hi = mpf(v), mpf(v) + max(abs(mpf(v)), 1)
+    while H(hi) < target:
+        lo, hi = hi, hi + 2 * (hi - mpf(v))
+    for _ in range(400):
+        mid = (lo + hi) / 2
+        if H(mid) < target:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 def root(H: Any, h: Any, v: Any, u: Any) -> Any:
@@ -135,6 +168,16 @@ def main() -> None:
                     name, v, u, float(root(H, h, v, u))
                 )
             )
+    print("]")
+    print("MIXTURE_DRAWS = [  # (name, v, u, x)")
+    for name, (H, _), ages in MIXTURE_DRAW_CASES:
+        for v in ages:
+            for u in MIXTURE_DRAW_U:
+                print(
+                    "    ({!r}, {!r}, {!r}, {!r}),".format(
+                        name, v, u, float(bisected_root(H, v, u))
+                    )
+                )
     print("]")
 
 
