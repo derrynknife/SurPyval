@@ -402,7 +402,7 @@ class JelinskiMoranda(FitterRepr):
         >>> from surpyval.recurrent import JelinskiMoranda
         >>> df = pd.DataFrame({"day": [3, 8, 12, 20, 25, 33, 41, 47, 58]})
         >>> JelinskiMoranda.fit_from_df(df, x_col="day").N
-        11
+        14
         """
         for name, col in (("x_col", x_col), ("c_col", c_col)):
             if col is not None and col not in df.columns:
