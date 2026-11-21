@@ -20,7 +20,7 @@ from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.item_history import missing_type
 from surpyval.utils.measurements import MeasurementsMixin
-from surpyval.utils.notation import Observations
+from surpyval.utils.notation import Items, Observations
 from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.warnings import (
     MaskedCauseWarning,
@@ -1916,11 +1916,11 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ``SurpyvalData.from_notation(data.to_notation())`` is the same
         data, and ``data.to_notation().text()`` writes it as text.
 
-        The notation holds times, censoring, counts and truncation only,
-        so data with anything else (covariates, event types, unit ids,
-        states, terminal flags, weights, readings, attributes,
-        time-varying covariates) is refused rather than dropped: use
-        :meth:`to_observations` or :meth:`to_dict` for it.
+        The notation holds times, censoring, counts, truncation, named
+        covariates and event types, so data with anything else (unnamed
+        covariates, unit ids, states, terminal flags, weights, readings,
+        attributes, time-varying covariates) is refused rather than
+        dropped: use :meth:`to_observations` or :meth:`to_dict` for it.
 
         Examples
         --------
@@ -1934,8 +1934,10 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         held = [
             what
             for what, value in (
-                ("covariates", self.Z),
-                ("event types", self.e),
+                (
+                    "unnamed covariates",
+                    self.Z if self.covariate_names is None else None,
+                ),
                 ("unit ids", self.ids),
                 ("states", self.s),
                 ("terminal flags", self.a),
@@ -1948,8 +1950,9 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ]
         if held:
             raise ValueError(
-                "The notation holds the times, censoring, counts and "
-                "truncation, and this data also has "
+                "The notation holds the times, censoring, counts, "
+                "truncation, named covariates and event types, and this "
+                "data also has "
                 + ", ".join(held)
                 + ", which it would drop: use data.to_observations() or "
                 "data.to_dict(), which keep them."
@@ -2855,7 +2858,7 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
             except TypeError:
                 return method(*args, **kwargs)
             if isinstance(
-                bound.arguments.get("x"), (SurpyvalData, Observations)
+                bound.arguments.get("x"), (SurpyvalData, Observations, Items)
             ):
                 raise TypeError(message)
             return method(*args, **kwargs)
@@ -2868,9 +2871,10 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
 
 def notation_as_data(x: Any) -> Any:
     """``x`` as a fit takes it: an
-    :class:`~surpyval.utils.notation.Observations` as its
-    ``surpyval_data()``, anything else as it is."""
-    return x.surpyval_data() if isinstance(x, Observations) else x
+    :class:`~surpyval.utils.notation.Observations` or
+    :class:`~surpyval.utils.notation.Items` as its ``surpyval_data()``,
+    anything else as it is."""
+    return x.surpyval_data() if isinstance(x, (Observations, Items)) else x
 
 
 def needs_data(*names: str) -> Callable[[F], F]:
@@ -2909,7 +2913,7 @@ def accepts_surpyval_data(method: F) -> F:
     argument, which is given the terminal flags ``data.a`` (and the unit
     ids as ``i``). An :class:`~surpyval.utils.notation.Observations` is
     taken as its ``surpyval_data()``: ``Weibull.fit(Observations.parse(
-    "10, 20+"))``."""
+    "10, 20+"))``, and so is an :class:`~surpyval.utils.notation.Items`."""
     signature = inspect.signature(method)
     params = list(signature.parameters)
     names = set(params)
@@ -2927,7 +2931,7 @@ def accepts_surpyval_data(method: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
         data = bound.arguments.get("x")
-        if isinstance(data, Observations):
+        if isinstance(data, (Observations, Items)):
             data = data.surpyval_data()
             bound.arguments["x"] = data
         if not isinstance(data, SurpyvalData):

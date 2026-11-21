@@ -571,6 +571,19 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   truncation only; data with more is refused, use `to_observations()`). Counts
   are whole numbers, times finite, `IC(5, inf)` is `RC(5)`, and windows follow
   SurpyvalData's rules.
+  Observations take `event_type=` and `covariates={name: value}` (→ `e`, named
+  `Z`; every observation the same names), left out of `text()`.
+  Histories: `Items([Item("P1", O(120), 3 * O(310), IC(400, 450), RC(1000)) /
+  Truncation(0), Item("P2", O(80), O(800, terminal=True), covariates={...})])`
+  (`RC` = end of watching, `/ Truncation(tl)` = late entry, `3 * O(x)` three
+  failures at once, `terminal=True` → `a = 1`); `.surpyval_data()` gives
+  SurpyvalData with `i`/`a` (the primary form; recurrent fits take the `Items`
+  as is), `.event_history_data()` only as a bridge. `readings={"vib": {0: 1.2}}`
+  → `Measurements` (one `{age: value}` series → `markers`);
+  `time_varying_covariates=StepSchedule.from_changepoints(...)` passed through.
+  Text: `Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")`, one line
+  per item. `EventHistoryData` is being phased out: build new data as
+  `SurpyvalData(..., i=..., a=...)` or `Items`.
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
 `sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never

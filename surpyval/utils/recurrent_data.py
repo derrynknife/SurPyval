@@ -51,6 +51,7 @@ from surpyval.utils.surpyval_data import (
     _distinct_states,
     lost_message,
     named_fit,
+    notation_as_data,
     terminal_flags,
     with_data_unit,
 )
@@ -78,6 +79,15 @@ _TAKE_GAPS = (
     "without covariates, and the proportional-intensity models' fit_tvc "
     "with them"
 )
+
+
+def _notation_as_data(bound: inspect.BoundArguments) -> Any:
+    """The fit's ``x``, an :class:`~surpyval.utils.notation.Items` (or
+    ``Observations``) turned into its ``surpyval_data()`` in ``bound``."""
+    data = notation_as_data(bound.arguments.get("x"))
+    if "x" in bound.arguments:
+        bound.arguments["x"] = data
+    return data
 
 
 def notes_text(model: Any) -> str:
@@ -110,11 +120,11 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
-        data = bound.arguments.get("x")
+        data = _notation_as_data(bound)
         if not isinstance(data, SurpyvalData) or data.ids is None:
             # Without units: the fit refuses it as it did before, saying
             # to give each row's unit.
-            return method(*args, **kwargs)
+            return method(*bound.args, **bound.kwargs)
         given = [
             name
             for name in _BESIDE + ("Z", "e")
@@ -660,9 +670,9 @@ def accepts_terminal_surpyval_data(method: F) -> F:
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
-        data = bound.arguments.get("x")
+        data = _notation_as_data(bound)
         if not isinstance(data, SurpyvalData):
-            return method(*args, **kwargs)
+            return method(*bound.args, **bound.kwargs)
         if data.ids is None:
             raise TypeError(
                 "The joint frailty model compares units, and the "
