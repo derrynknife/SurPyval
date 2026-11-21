@@ -11,7 +11,7 @@ from autograd.numpy.numpy_vjps import unbroadcast_f
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from autograd.tracer import getval, isbox
-from scipy.special import digamma, gammaincinv
+from scipy.special import digamma, gammainccinv, gammaincinv
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -680,6 +680,30 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
         """
         return gammaincinv(alpha, u) / beta
+
+    def isf(self, s: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = Q^{-1}(\alpha, s) / \beta
+
+        Examples
+        --------
+        >>> from surpyval import Gamma
+        >>> Gamma.isf([0.5, 1e-300], 2.5, 0.5)
+        array([   4.35146019, 1400.64058565])
+        """
+        # The upper tail's own inverse below 1/2, and the lower tail's
+        # (whose argument 1 - s is exact) above it
+        s = np.asarray(s, dtype=float)
+        upper = s < 0.5
+        x = np.where(
+            upper,
+            gammainccinv(alpha, np.where(upper, s, 0.25)),
+            self.qf(np.where(upper, 0.5, 1.0 - s), alpha, beta) * beta,
+        )
+        return x / beta
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
