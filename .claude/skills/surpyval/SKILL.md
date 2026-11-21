@@ -450,6 +450,9 @@ eh = sp.ExcessHazard.fit(yrs, trt, c=yrs == 8.0, rate_table=table, age=age,
 eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
 ```
 
+- **Plot the data:** `data.plot_lifetimes(ax=None, sort="end", max_rows=100)`
+  draws one line per unit (swimmer plot): late entry, failures, censoring,
+  intervals, counts, item rows, event types; returns the Axes.
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
   `fit_from_df(..., w_col=)` (not Cox's yet). Scaling `w` changes nothing.
   Refused with weights: `method="lr"`/`"bootstrap"` bounds, `band`,

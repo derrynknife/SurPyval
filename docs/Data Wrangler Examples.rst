@@ -155,6 +155,19 @@ If you have mixed interval and observed or censored data, the two columns can st
 
 (``SurpyvalData`` validates its input exactly as every fitter does; building one yourself is a quick way to check how SurPyval has read your data. Its rows are sorted, so the flags come back in order of time.)
 
+To see the data itself, ``data.plot_lifetimes()`` draws one line for each unit (a swimmer plot): a filled circle where it failed, an open triangle where it was still running (right censored) or had already failed (left censored), a bracket over an interval, and the line starting where the unit came under observation (late entry). A row standing for several items is labelled with its count, an item's several rows share a line, event types take colours, and ``max_rows`` (100 by default) limits a large dataset, saying how many lines were left out. It returns the Axes.
+
+.. jupyter-execute::
+
+    data = SurpyvalData.from_observations(
+        observed=[3, 5],
+        right_censored=[8],
+        left_censored=[2],
+        interval_censored=[[4, 6]],
+        observed_left_truncation=[0, 1],
+    )
+    ax = data.plot_lifetimes()
+
 
 One record per item
 -------------------

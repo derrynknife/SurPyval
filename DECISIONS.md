@@ -27,6 +27,14 @@ Design decisions made while working on the open issues, with the reason for each
 | Fitters take an `Observations` as `x` through `accepts_surpyval_data` (and `refuses_surpyval_data_with` refuses it alike); `life_table`, `fit_bayes`, the software-reliability fits and the PyMC helpers, which check for a `SurpyvalData` themselves, convert it with `notation_as_data`. | maintainer (plan) | One place to convert, so every entry point agrees. | done |
 | `to_observations()` carries `w`, `unit`, `attributes` and `m`; `from_observations` takes them (`<kind>_weights`, given for one kind needed for all, as covariates are; `<kind>_attributes`, a kind left out has none; `m`, which needs `<kind>_ids`). Data with terminal flags `a` (so any unit with several rows), states or time-varying covariates is refused, naming `to_dict()`. | proposed | `from_observations` is one item per entry, so a unit's several rows have no place in it; the rest fit its per-kind pattern. Rows come back grouped by kind (observed, right, left, interval), the lists' order. | done |
 | Fixed: `from_observations` with `<kind>_ids` and no covariates or event types sorted the rows after the ids were listed, so ids were paired with other items' times. The rows now keep the lists' order whenever ids, attributes or readings are attached. | principle 1 | A silently wrong pairing. | done |
+### Plotting the data: `plot_lifetimes` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SurpyvalData.plot_lifetimes(ax=None, sort="end", max_rows=100)` delegates to `surpyval.plotting.plot_lifetimes`, in the plot theme, returning the Axes and never showing. One line per unit (per row without item ids); an item's rows share a line. Lines start at left truncation, or at the window start (0, or the smallest time if negative). | proposed | The plotting module owns the theme; the method is the discoverable entry. | done |
+| `max_rows` keeps the first lines in the data's order (then sorts them), and the plot says how many were left out; `None` draws all. | proposed | Sorting first and cutting would drop only the longest lives, a biased picture. | done |
+
+---
 
 ## 2026-11-20
 
