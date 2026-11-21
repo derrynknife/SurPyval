@@ -209,6 +209,14 @@ right fitter. Their `params` is the repair parameter (`q` or
 
 ## Choosing a model — what to reach for and why
 
+**To choose step by step, follow the 24 yes/no questions in
+[references/choosing-a-model.md](references/choosing-a-model.md)**: the shape
+of the problem (1-5), writing each unit's record (6-11), and the question
+(12-24), where needing answers past the longest observation, a mean life, a
+B-life below the first failure or a smooth curve means parametric, and
+otherwise non-parametric. It ends with how to check the answer. The notes
+below say why each family exists.
+
 **First fork: what kind of process generated the data?** Getting this wrong gives
 silently wrong numbers, not errors.
 
@@ -295,7 +303,7 @@ silently wrong numbers, not errors.
 - **Proportional odds** — effects that fade over time (converging hazards).
 - **Accelerated life** (`sp.AcceleratedLife(sp.Weibull, sp.life_models.Power)`) —
   a life-stress relationship at a few controlled stress levels (at least two);
-  the life models are in `sp.life_models` (Arrhenius is `life_models.Exponential`). The life
+  the life models are in `sp.life_models` (Arrhenius is `life_models.Arrhenius`, temperature in kelvin). The life
   parameter (the Weibull's `alpha`) is replaced by the life model: it prints as
   `L(Z)`, and its slot in `params` is a placeholder 1, not a fitted value.
 
@@ -320,7 +328,7 @@ silently wrong numbers, not errors.
 | **Multivariate** | `surpyval.multivariate` | Bivariate copulas: `Clayton`, `Frank`, `Gumbel`, `Joe`, `AMH`, `Gaussian`, `StudentT`, `Independence` (with rotations). `MultivariateSurpyvalData`: x/c/n/t with D >= 2 columns and optional axis `names`; the model decides what the columns mean and says how many it takes (`n_axes`; copulas 2) |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Relative survival** | `sp.RateTable`, `sp.RelativeSurvival`, `sp.ExcessHazard` | Survival beyond a population's own hazards, read from a rate table (`RateTable(rates, ages, years=)`, a dict of rates per stratum; `from_df`): net survival by Pohar Perme (default) or Ederer II (`RelativeSurvival.fit(x, c, rate_table=, age=, year=, stratum=, method=)`; `sf`/`ff`/`Hf`, `cb` with `bound_type="log"` or `"normal"`, `table`), and excess hazard regression `lambda_P(t) + lambda_0(t) exp(beta'Z)` with a piecewise-constant baseline (`ExcessHazard.fit(x, Z, c, rate_table=, age=, breaks=)`; `summary`, `param_cb`, `cb`, net `sf`/`hf`/`qf`/`random`, `observed_sf`). Exact and right-censored rows only; net survival can exceed 1 |
-| **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `score_predictions` (standard errors, model comparisons), `survival_probability`; `e=`/`cause=` score one cause's predicted CIF with competing risks; dynamic predictions made at an age (joint models, `LandmarkCox`, age-only baselines): `dynamic_auc` / `dynamic_brier` / `dynamic_calibration(model_or_dict, data, at=, horizon=, cross_validate=k)` |
+| **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td` (each a number or `(times, values)` that carries `se`, `lower`, `upper`), `concordance_index` (carries `se`, `ci`), `score_predictions` (several metrics and models, with paired comparisons), `survival_probability`; `e=`/`cause=` score one cause's predicted CIF with competing risks; dynamic predictions made at an age (joint models, `LandmarkCox`, age-only baselines): `dynamic_auc` / `dynamic_brier` / `dynamic_calibration(model_or_dict, data, at=, horizon=, cross_validate=k)` |
 | **Trees and forests** | `surpyval.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`); `SurvivalTree.fit(..., e=causes)` / `RandomSurvivalForest.fit(..., e=causes)` grow competing-risks trees: `cif(x, Z, event)`, `total_cif`; the forest's `oob_log_likelihood(event=)`, `feature_importances(event=)` judge the causes |
 
 > `surpyval.beta.ml` is the old name of `surpyval.ml` (promoted in v0.27):

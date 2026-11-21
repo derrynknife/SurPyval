@@ -735,7 +735,11 @@ def _bootstrap_curves(
     from .degradation_analysis import DegradationAnalysis
 
     def refit(
-        xs: npt.NDArray, ys: npt.NDArray, ids: npt.NDArray, Zs: Any
+        xs: npt.NDArray,
+        ys: npt.NDArray,
+        ids: npt.NDArray,
+        Zs: Any,
+        censored: list,
     ) -> "tuple[npt.NDArray, Any] | None":
         # The resample's curve and what its life fit reached, or None
         # where the curve is not finite where the model's own is.
@@ -748,6 +752,8 @@ def _bootstrap_curves(
             distribution=model._distribution,
             how=model._how,
             Z=Zs,
+            running=model.running,
+            censored_units=censored or None,
             **clock_kwargs,
         )
         curve_fn = getattr(m, method_name)
@@ -761,6 +767,8 @@ def _bootstrap_curves(
 
     n_units = len(model.units)
     clock = bool(clock_kwargs)
+    # a unit given as censored stays so in every resample it is drawn in
+    marked = set(model.censored_units or ())
     curves = []
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
@@ -768,8 +776,10 @@ def _bootstrap_curves(
     with ignoring_warnings():
         for _ in range(n_boot):
             picks = rng.choice(n_units, size=n_units)
-            xs, ys, ids, Zs = [], [], [], []
+            xs, ys, ids, Zs, censored = [], [], [], [], []
             for new_id, idx in enumerate(picks):
+                if model.units[idx] in marked:
+                    censored.append(new_id)
                 mask = model.i == model.units[idx]
                 n_meas = int(mask.sum())
                 xs.append(model.x[mask])
@@ -785,6 +795,7 @@ def _bootstrap_curves(
                 np.concatenate(ys),
                 np.concatenate(ids),
                 None if Z is None else np.concatenate(Zs),
+                censored,
             )
             if found is not None:
                 curves.append(found[0])

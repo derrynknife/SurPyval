@@ -50,6 +50,9 @@ Where to start
 - New to SurPyval? Read the :doc:`Quickstart`. In ten minutes it fits a
   first model, shows why censoring matters, and gives a small example of
   every area of the package.
+- Not sure which model your data needs? :doc:`Choosing a Model` asks one
+  yes-or-no question at a time: the shape of the problem, how to write each
+  unit's record, and what you want to know, ending at the call to make.
 - New to survival data, or not sure whether your data is censored or
   truncated? Read :doc:`Types of Data`. Getting this right matters more than
   any choice of model. :doc:`Data Model` then lists every letter a row of
@@ -307,6 +310,7 @@ Contents:
    :caption: Quickstart & Intro
 
    Quickstart
+   Choosing a Model
    Survival Analysis from Scratch
    Types of Data
    Data Model

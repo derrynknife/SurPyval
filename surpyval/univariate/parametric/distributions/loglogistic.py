@@ -324,6 +324,22 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha * (u / (1 - u)) ** (1.0 / beta)
 
+    def isf(self, s: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \alpha \left( \frac{1 - s}{s} \right)^{1/\beta}
+
+        Examples
+        --------
+        >>> from surpyval import LogLogistic
+        >>> LogLogistic.isf([0.5, 1e-300], 10, 3)
+        array([1.e+001, 1.e+101])
+        """
+        with np.errstate(divide="ignore", over="ignore"):
+            return alpha * np.exp((np.log1p(-s) - np.log(s)) / beta)
+
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
