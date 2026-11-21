@@ -5,6 +5,27 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: competing failure modes.** ``JointPH`` fits
+  (``WeibullJointPH``) take the mode of each failure (a record's
+  ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With
+  two or more modes each has a Weibull baseline, hazard coefficients and
+  marker effects of its own (``"bearing: alpha"``, ``"bearing: beta"``,
+  ``"bearing: marker_effect"``, ...), so a reading can warn of one way
+  of failing and not of another, and an item that fails by one mode is
+  no longer at risk of the others. ``shared=["marker_effect"]`` (or
+  ``"beta"``, or a hazard covariate) gives the modes that parameter in
+  common, and ``model.likelihood_ratio_test(shared_model)`` tests the
+  two fits against each other. The model keeps ``causes``, ``shared``
+  and ``n_events_by_cause``, its ``summary()`` has a part for each mode,
+  and its ``sf``, ``cb`` and ``predict`` are of failing by any mode. A
+  failure found at an inspection (left or interval censored) is fitted
+  with its mode. Refused, saying what to do: a failure with no mode, a
+  mode on an item still running, a mode with fewer failures than
+  parameters of its own, ``JointAFT`` and ``how="two-stage"``. One mode,
+  or no event types, gives the same model as before, bit for bit. A
+  model with modes saves as schema 5. See "More than one way to fail"
+  in :doc:`Joint Models`.
+
 - **Copulas with non-parametric margins have standard errors and
   bounds.** A copula fitted with both margins ``KaplanMeier`` on complete
   data with no tied values (the maximum pseudo-likelihood estimate from
