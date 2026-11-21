@@ -744,6 +744,21 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **``DegradationAnalysis`` says which failure times are extrapolated, and
+  can censor units still running.** A unit short of the threshold at its
+  last reading, whose path crosses only after it, still fails at the
+  extrapolated crossing by default (the pseudo-failure-time method), and
+  now the summary counts these ("Extrapolated Units") and the model's
+  ``extrapolated`` marks them. New: ``running="censor"`` right censors such
+  units at their last reading instead, and ``censored_units=[...]``
+  censors the units named there (units known to be running, or that failed
+  another way short of the threshold); a listed unit whose path reaches the
+  threshold within its readings is refused, and so is a fit left with no
+  failure, naming ``running="extrapolate"``. The bootstrap bounds keep the
+  choice; ``to_dict`` saves it. Fits with the defaults are unchanged. See
+  "Units still running at the end of the test" in :doc:`Degradation
+  Modelling with SurPyval`.
+
 - **SurpyvalData is the form for several rows per unit; EventHistoryData is
   being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
   ``a``), which every recurrent fitter takes, and nothing new depends on

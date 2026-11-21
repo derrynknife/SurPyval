@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Degradation units still short of the threshold (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `DegradationAnalysis.fit` keeps taking a unit whose path crosses after its last reading as a failure at the extrapolated crossing by default (`running="extrapolate"`); `running="censor"` right censors it at its last reading where that reading is short of the threshold (both conditions: the crossing past the last reading and the reading on the good side). The summary counts "Extrapolated Units" (failure times past the unit's last reading) beside "Censored Units", and the model's `extrapolated` marks them. No warning by default. | proposed (principles 15 and 24) | The pseudo-failure-time method's literature (Meeker and Escobar 1998, section 13.7, "approximate degradation analysis") takes every unit's extrapolated crossing as its failure time: that is what lets a degradation test give a life from units that have not failed, and censoring discards the paths' information. Principle 24 keeps the default's results. A warning would fire on nearly every degradation fit (extrapolation is the method), so the summary says it instead. | done |
+| `censored_units=[...]` right censors the named units at their last reading, whatever `running` says: units known to be still running, and units that failed another way (a hard failure, a removal) while short of the threshold, whose failure by degradation was not seen, censored as a competing mode is. A listed unit whose path reaches the threshold by its last reading (or before its first) is refused, as it has failed by the threshold's definition; a label with no readings is refused; a fit left with no failure is refused, naming `running="extrapolate"`. A unit's censoring time is its last reading (a later "still running at" time is not taken). The life times and censoring of a `SurpyvalData` holding readings stay unread (documented): its running units go in `censored_units`. | proposed | The plan asked the builder to decide the failed-below-threshold case; for the threshold's life it is a competing failure mode. Reading a SurpyvalData's `c` would change the fits of existing calls, which the docs say ignore it. | done; open: a censoring time after the last reading |
+| The bootstrap bounds rerun the fit with the model's `running`, and a resampled copy of a listed unit is listed too. `to_dict` saves `extrapolated` always, and `running` / `censored_units` only where not the defaults; a dict saved earlier gets `extrapolated` from its readings (but a clock model's, whose times are on another clock: no summary line then). | proposed | The refits must make the model's choice; older dicts load unchanged. | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
