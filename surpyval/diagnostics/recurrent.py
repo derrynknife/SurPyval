@@ -803,7 +803,7 @@ def _validate(model: Any) -> None:
         raise ValueError(
             "diagnose() needs a model fitted from data, and this one has "
             "none: a model built from its parameters (from_params / "
-            "fit_from_parameters) or restored with from_dict / from_json "
+            "from_params) or restored with from_dict / from_json "
             "carries no data. Fit the model to the data and diagnose that "
             "fit."
         )

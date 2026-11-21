@@ -372,6 +372,23 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         """
         return a + u * (b - a)
 
+    def isf(self, s: Numeric, a: Boxable, b: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = b - s (b - a)
+
+        Examples
+        --------
+        >>> from surpyval import Uniform
+        >>> Uniform.isf([0.5, 1e-300], 0, 10)
+        array([ 5., 10.])
+        """
+        # from the nearer end: b - s (b - a) cancels as s nears 1
+        s = np.asarray(s, dtype=float)
+        return np.where(s < 0.5, b - s * (b - a), a + (1.0 - s) * (b - a))
+
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
