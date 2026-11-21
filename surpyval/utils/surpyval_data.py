@@ -2858,10 +2858,13 @@ _DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr", "w")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
+def refuses_surpyval_data_with(
+    message: str, argument: str = "x"
+) -> Callable[[F], F]:
     """A decorator for a ``fit`` whose arrays' rows mean something other
     than a :class:`SurpyvalData`'s rows (the panel models' visits): given
-    a ``SurpyvalData`` as its ``x``, it raises a ``TypeError`` with
+    a ``SurpyvalData`` (or an ``Observations`` or ``Items``) as its
+    ``argument`` (``x`` by default), it raises a ``TypeError`` with
     ``message``, which says what to pass instead. The wrapper keeps the
     message as ``_refuses_surpyval_data``."""
 
@@ -2875,7 +2878,8 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
             except TypeError:
                 return method(*args, **kwargs)
             if isinstance(
-                bound.arguments.get("x"), (SurpyvalData, Observations, Items)
+                bound.arguments.get(argument),
+                (SurpyvalData, Observations, Items),
             ):
                 raise TypeError(message)
             return method(*args, **kwargs)

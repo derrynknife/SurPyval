@@ -149,6 +149,8 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
         lost = _lost(data, names, layout, callable(fit_tvc))
         if lost:
             raise ValueError(_refusal(lost))
+        if "i" not in names:
+            _refuse_several_units(data)
         if data.Z is None and "Z" in names:
             parameter = signature.parameters["Z"]
             if parameter.default is inspect.Parameter.empty:
@@ -187,6 +189,20 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
 
     setattr(wrapper, "_accepts_recurrent_surpyval_data", True)
     return wrapper  # type: ignore[return-value]
+
+
+def _refuse_several_units(data: SurpyvalData) -> None:
+    """Refuse, for a fit of one unit's history (one test campaign, with
+    no ``i``), data whose rows are of more than one unit: their events
+    would be read as one unit's."""
+    units = list(dict.fromkeys(_id_array(data.ids).tolist()))
+    if len(units) > 1:
+        raise ValueError(
+            f"This fit is of one unit's history (one test campaign), and "
+            f"the SurpyvalData holds {len(units)} units ({named(units)}): "
+            "fit each unit on its own, from a SurpyvalData of that unit's "
+            "rows."
+        )
 
 
 def _refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
