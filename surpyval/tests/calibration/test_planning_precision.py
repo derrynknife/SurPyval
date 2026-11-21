@@ -21,9 +21,11 @@ from surpyval import life_models
 from surpyval.test_planning import (
     accelerated_test_plan,
     life_test_precision,
-    logrank_sample_size,
     sequential_demonstration_test,
     sequential_mtbf_test,
+)
+from surpyval.test_planning.comparison import (
+    _logrank_sample_size as logrank_sample_size,
 )
 from surpyval.tests.test_planning.test_sequential import (
     run_attribute,

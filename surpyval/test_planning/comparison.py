@@ -79,7 +79,7 @@ def _event_probabilities(
 
 
 @elementwise
-def logrank_events(
+def _logrank_events(
     hazard_ratio: float,
     power: float = 0.8,
     *,
@@ -142,7 +142,9 @@ def logrank_events(
     Detecting a halving of the hazard with 80% power at the 5% level
     takes 66 events (88 for 90% power), with equal groups:
 
-    >>> from surpyval.test_planning import logrank_events
+    >>> from surpyval.test_planning.comparison import (
+    ...     _logrank_events as logrank_events,
+    ... )
     >>> logrank_events(0.5)
     66
     >>> logrank_events(0.5, 0.9)
@@ -157,7 +159,7 @@ def logrank_events(
     return int(np.ceil(_events(hazard_ratio, z, ratio, method) - 1e-9))
 
 
-def logrank_sample_size(
+def _logrank_sample_size(
     hazard_ratio: float,
     event_probability: float | tuple[float, float],
     power: float = 0.8,
@@ -170,7 +172,7 @@ def logrank_sample_size(
     """The units in each group a log-rank test needs to detect a hazard
     ratio.
 
-    The events of :func:`logrank_events`, shared out in the ratio
+    The events of :func:`_logrank_events`, shared out in the ratio
     ``ratio`` and divided by each group's chance of having an event
     during the study: with ``n2`` units in the second group and
     ``ratio * n2`` in the first, the expected events are
@@ -213,7 +215,9 @@ def logrank_sample_size(
     A design expected to cut the failure rate by 30%, where 25% of the
     new units and 35% of the old would fail during the study:
 
-    >>> from surpyval.test_planning import logrank_sample_size
+    >>> from surpyval.test_planning.comparison import (
+    ...     _logrank_sample_size as logrank_sample_size,
+    ... )
     >>> logrank_sample_size(0.7, (0.25, 0.35))
     (412, 412)
     >>> logrank_sample_size(0.7, (0.25, 0.35), method="freedman")
@@ -233,7 +237,7 @@ def logrank_sample_size(
     )
 
 
-def logrank_power(
+def _logrank_power(
     hazard_ratio: float,
     n: tuple[int, int],
     event_probability: float | tuple[float, float],
@@ -247,7 +251,7 @@ def logrank_power(
 
     The power of the comparison planned: the expected events,
     ``n1 * p1 + n2 * p2``, put back in the formula of
-    :func:`logrank_events` and solved for the power. lifelines'
+    :func:`_logrank_events` and solved for the power. lifelines'
     ``power_under_cph`` with ``method="freedman"``.
 
     Parameters
@@ -283,7 +287,9 @@ def logrank_power(
     With 200 units in each group the comparison above has about a 50%
     chance of detecting the improvement:
 
-    >>> from surpyval.test_planning import logrank_power
+    >>> from surpyval.test_planning.comparison import (
+    ...     _logrank_power as logrank_power,
+    ... )
     >>> round(logrank_power(0.7, (200, 200), (0.25, 0.35)), 3)
     0.497
     """

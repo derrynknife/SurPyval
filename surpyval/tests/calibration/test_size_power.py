@@ -26,7 +26,9 @@ from scipy.stats import chi2, norm
 import surpyval as sp
 from surpyval.recurrent import CrowAMSAA, intervention_test
 from surpyval.recurrent.tests import laplace, mil_hdbk_189c
-from surpyval.test_planning import rate_ratio_power
+from surpyval.test_planning.rate_ratio import (
+    _rate_ratio_power as rate_ratio_power,
+)
 from surpyval.test_planning.rate_ratio import expected_power
 from surpyval.tests.calibration._montecarlo import (
     check_rate,

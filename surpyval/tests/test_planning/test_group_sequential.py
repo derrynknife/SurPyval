@@ -17,9 +17,11 @@ from surpyval.test_planning import (
     LogrankGroupSequentialDesign,
     boundary_crossing,
     group_sequential_design,
-    logrank_events,
     logrank_group_sequential,
-    logrank_sample_size,
+)
+from surpyval.test_planning.comparison import _logrank_events as logrank_events
+from surpyval.test_planning.comparison import (
+    _logrank_sample_size as logrank_sample_size,
 )
 
 ONE_SIDED: dict[str, Any] = {"alternative": "one-sided", "alpha_ci": 0.025}

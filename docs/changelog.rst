@@ -5,6 +5,22 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Test planning: one function per comparison design.**
+  ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
+  ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,
+  ``cure_logrank_design`` and ``rate_ratio_design``. Each takes the
+  design's power, size (``events``, or ``n`` with ``event_probability``)
+  and effect, and solves for the one left ``None``:
+  ``logrank_design(0.5, power=0.8).events`` is 66, and
+  ``logrank_design(0.7, n=(200, 200), event_probability=0.3).power`` is
+  0.497. The answer is a ``PowerCalculation``, which says what was
+  solved for (``solved_for``, ``value``) beside the power, events and
+  units, and saves with ``to_dict()``. Giving none or more than one
+  unknown is refused, naming them. New: the power from a number of
+  events, for the log-rank, Cox, non-inferiority and equivalence designs.
+  The numbers are those of the functions they replace, digit for digit.
+  See "Comparing two groups" in :doc:`Test Planning with SurPyval`.
+
 - **Combining, comparing, rescaling and resampling lifetime data.**
   ``SurpyvalData.concat([a, b, ...])`` (also ``a + b`` and ``sum([a,
   b])``) puts the rows of several datasets together, each keeping its
@@ -1007,6 +1023,20 @@ v0.29 (unreleased)
   process, the same machine).
 
 **Deprecated.**
+
+- The 21 test-planning functions that each solved one design for one
+  unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
+  ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,
+  ``noninferiority_events``, ``noninferiority_sample_size``,
+  ``noninferiority_power``, ``equivalence_events``,
+  ``equivalence_sample_size``, ``equivalence_power``,
+  ``rmst_sample_size``, ``rmst_power``, ``cure_logrank_sample_size``,
+  ``cure_logrank_events``, ``cure_logrank_power``, ``rate_ratio_power``,
+  ``rate_ratio_detectable`` and ``rate_ratio_exposure``. Each still
+  works, with a ``FutureWarning`` naming the design function call
+  that replaces it (``logrank_events(0.5)`` is
+  ``logrank_design(0.5, power=0.8).events``), and is removed in v0.30.
+  Note that the design functions take ``power`` with no default.
 
 - ``EquivalenceFitter.fit``'s keyword ``x1`` (use ``x``), ``tl`` as a
   pair per unit of both clocks' entry ages (give ``tl`` the main clock's
