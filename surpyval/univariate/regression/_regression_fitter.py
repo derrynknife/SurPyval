@@ -189,6 +189,10 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
         n_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
         *,
         priors: Any = None,
         chains: int = 4,
@@ -235,6 +239,16 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
             Z_cols=Z_cols,
             c_col=c_col,
             n_col=n_col,
+            **{
+                k: v
+                for k, v in (
+                    ("xl_col", xl_col),
+                    ("xr_col", xr_col),
+                    ("tl_col", tl_col),
+                    ("tr_col", tr_col),
+                )
+                if v is not None
+            },
             **columns,
         )
 

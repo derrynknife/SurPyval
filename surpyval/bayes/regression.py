@@ -760,7 +760,10 @@ class BayesianRegression(SerialisableMixin):
         """
         from scipy.optimize import brentq
 
+        from surpyval.utils.validation import warn_outside_unit_interval
+
         p = np.atleast_1d(np.asarray(p, dtype=float))
+        warn_outside_unit_interval(p)
         per_draw = self._draw_quantiles(p, Z)
         rows = covariate_rows(self._point._prepare_Z(Z), self._n_covariates())
         rows = np.broadcast_to(rows, (len(p), rows.shape[1]))
@@ -932,9 +935,12 @@ class BayesianRegression(SerialisableMixin):
         >>> bool(lo < hi)
         True
         """
+        from surpyval.utils.validation import warn_outside_unit_interval
+
         levels = _levels(alpha_ci, bound)
         shape = np.shape(p)
         flat = np.reshape(np.asarray(p, dtype=float), -1)
+        warn_outside_unit_interval(flat, "quantile_cri")
         per_draw = self._draw_quantiles(flat, Z)
         out = [
             np.reshape(np.quantile(per_draw, level, axis=0), shape)
