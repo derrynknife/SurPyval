@@ -1007,6 +1007,17 @@ def change_point_cb(model: Any, alpha_ci: float = 0.05) -> onp.ndarray:
     -------
     numpy.ndarray
         ``[earliest, latest]``.
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import (
+    ...     ChangePoint, GoelOkumoto, change_point_cb)
+    >>> truth = ChangePoint(GoelOkumoto, tau=30.0).from_params(
+    ...     [80, 0.01, 4.0])
+    >>> d = truth.time_terminated_simulation_data(100.0, random_state=1)
+    >>> model = ChangePoint(GoelOkumoto).fit(d.x, c=d.c)
+    >>> change_point_cb(model).round(1).tolist()
+    [28.9, 30.4]
     """
     check_alpha_ci(alpha_ci)
     info = _estimated(model, "change_point_cb")
