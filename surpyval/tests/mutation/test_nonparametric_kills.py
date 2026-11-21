@@ -152,7 +152,7 @@ def test_nelson_aalen_step_with_no_one_at_risk_keeps_its_value_quietly():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         R = nonp._nelson_aalen(r, d)
-        var = nonp.nelson_aalen_variance(r, d)
+        var = nonp._nelson_aalen_variance(r, d)
     assert_allclose(R, np.exp(-0.5) * np.ones(3))
     assert_allclose(var, [0.25, 0.25, 0.25])
 
