@@ -1,3 +1,5 @@
+from typing import Any as _Any
+
 from .accelerated_failure_time import (
     AFT,
     AFTFitter,
@@ -100,7 +102,45 @@ from .semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc_path import CovariatePath
 from .tvc_schedule import StepSchedule, StepValuedError
 
+# The distributional, mixture-cure and zero-inflated regressions' base
+# fitters and fitted models, and the pseudo-observation regression's
+# result: their home for type hints and ``isinstance`` since v0.29, when
+# they left the top level of ``surpyval``. Imported on first use, as
+# ``surpyval`` imports their fitters (``surpyval.univariate.pseudo``
+# imports competing risks, which imports this package).
+_ON_FIRST_USE = {
+    **dict.fromkeys(
+        (
+            "DistributionalFitter",
+            "DistributionalRegressionModel",
+            "MixtureCureFitter",
+            "MixtureCureModel",
+            "ZeroInflatedFitter",
+            "ZeroInflatedModel",
+        ),
+        "surpyval.univariate.regression.distributional",
+    ),
+    "PseudoRegressionResult": "surpyval.univariate.pseudo",
+}
+
+
+def __getattr__(name: str) -> _Any:
+    if name in _ON_FIRST_USE:
+        from importlib import import_module
+
+        value = getattr(import_module(_ON_FIRST_USE[name]), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_ON_FIRST_USE))
+
+
 __all__ = [
+    # The base fitters and fitted models reached on first use
+    *sorted(_ON_FIRST_USE),
     # The forest (coefficient) plot of any regression model
     "plot_coefficients",
     "CoefficientPlot",

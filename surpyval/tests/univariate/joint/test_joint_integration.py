@@ -29,8 +29,9 @@ import numpy as np
 import pytest
 from scipy.stats import multivariate_normal
 
-from surpyval import JointAFT, JointModel, JointPH, Weibull
+from surpyval import JointAFT, JointPH, Weibull
 from surpyval.degradation import PathModel, QuadraticPath
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint import _likelihood as lik
 from surpyval.univariate.joint.joint_model import parameter_names
 from surpyval.univariate.joint.joint_ph import search_space

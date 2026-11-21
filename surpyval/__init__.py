@@ -39,18 +39,10 @@ from surpyval.distribution import (
 )
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
-    IntervalLogRankResult,
     KaplanMeier,
-    LogRankResult,
-    MaxComboResult,
-    MaxStatResult,
     NelsonAalen,
     NonParametric,
-    NonParametricPlot,
-    PairwiseLogRankResult,
-    PermutationLogRankResult,
     PersonYears,
-    TrendLogRankResult,
     Turnbull,
     at_risk_table,
     interval_logrank,
@@ -77,7 +69,6 @@ from surpyval.univariate.parametric import (
     CustomDistribution,
     DiscreteWeibull,
     Discretize,
-    DiscretizedFitter,
     ExactEventTime,
     Exponential,
     ExpoWeibull,
@@ -91,7 +82,6 @@ from surpyval.univariate.parametric import (
     Hypoexponential,
     InstantlyOccurs,
     LikelihoodContour,
-    LikelihoodContourPlot,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -103,7 +93,6 @@ from surpyval.univariate.parametric import (
     Poisson,
     Rayleigh,
     RoystonParmar,
-    RoystonParmarModel,
     Uniform,
     Weibull,
     plot_likelihood_contour,
@@ -159,25 +148,15 @@ _LAZY = {
     **dict.fromkeys(
         (
             "AFT",
-            "AFTFitter",
             "AH",
             "AalenAdditive",
-            "AalenAdditiveModel",
             "AcceleratedLife",
             "AdditiveHazards",
-            "AdditiveHazardsFitter",
-            "AdditiveHazardsModel",
             "BuckleyJames",
-            "BuckleyJamesModel",
-            "CoefficientPlot",
             "PenaltyPath",
             "CovariatePath",
             "CoxFrailty",
-            "CoxFrailtyFitter",
-            "CoxFrailtyModel",
             "CoxMixedEffects",
-            "CoxMixedEffectsFitter",
-            "CoxMixedEffectsModel",
             "CoxPH",
             "ExponentialAFT",
             "ExponentialAH",
@@ -185,8 +164,6 @@ _LAZY = {
             "ExponentialPH",
             "ExponentialPO",
             "Frailty",
-            "FrailtyFitter",
-            "FrailtyModel",
             "GammaAFT",
             "GammaAH",
             "GammaFrailty",
@@ -212,22 +189,14 @@ _LAZY = {
             "NormalPO",
             "PH",
             "PO",
-            "ParameterSubstitutionFitter",
-            "ParametricRegressionModel",
             "IntervalCoxPH",
-            "IntervalCoxPHModel",
-            "CoxNPMLEModel",
             "ProportionalHazardsFitter",
             "ProportionalOdds",
-            "ProportionalOddsFitter",
-            "ProportionalOddsModel",
             "QuantileRegression",
-            "QuantileRegressionModel",
             "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",
             "RoystonParmarRegression",
-            "SemiParametricRegressionModel",
             "StepSchedule",
             "StepValuedError",
             "WeibullAFT",
@@ -243,8 +212,6 @@ _LAZY = {
     **dict.fromkeys(
         (
             "Distributional",
-            "DistributionalFitter",
-            "DistributionalRegressionModel",
             "ExponentialDistributional",
             "GammaDistributional",
             "GumbelDistributional",
@@ -258,8 +225,6 @@ _LAZY = {
             "LogLogisticMixtureCure",
             "LogNormalMixtureCure",
             "MixtureCure",
-            "MixtureCureFitter",
-            "MixtureCureModel",
             "WeibullMixtureCure",
             "ExponentialZeroInflated",
             "GammaZeroInflated",
@@ -267,15 +232,12 @@ _LAZY = {
             "LogNormalZeroInflated",
             "WeibullZeroInflated",
             "ZeroInflated",
-            "ZeroInflatedFitter",
-            "ZeroInflatedModel",
         ),
         "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
         (
             "JointAFT",
-            "JointModel",
             "JointPH",
             "WeibullJointAFT",
             "WeibullJointPH",
@@ -389,7 +351,6 @@ _LAZY = {
     ),
     **dict.fromkeys(
         (
-            "PseudoRegressionResult",
             "pseudo_cif",
             "pseudo_regression",
             "pseudo_regression_from_df",
@@ -431,24 +392,16 @@ __all__ = [
     # Non-parametric
     "FlemingHarrington",
     "KaplanMeier",
-    "LogRankResult",
     "NelsonAalen",
     "NonParametric",
-    "NonParametricPlot",
-    "PairwiseLogRankResult",
     "Turnbull",
     "logrank",
     "interval_logrank",
-    "IntervalLogRankResult",
     "pairwise_logrank",
     "maxcombo_logrank",
-    "MaxComboResult",
     "trend_logrank",
-    "TrendLogRankResult",
     "permutation_logrank",
-    "PermutationLogRankResult",
     "maxstat_logrank",
-    "MaxStatResult",
     "plot_nonparametric",
     "at_risk_table",
     "life_table",
@@ -467,7 +420,6 @@ __all__ = [
     "CustomDistribution",
     "DiscreteWeibull",
     "Discretize",
-    "DiscretizedFitter",
     "ExactEventTime",
     "Exponential",
     "ExpoWeibull",
@@ -491,12 +443,10 @@ __all__ = [
     "Poisson",
     "Rayleigh",
     "RoystonParmar",
-    "RoystonParmarModel",
     "Uniform",
     "Weibull",
     "weibayes",
     "LikelihoodContour",
-    "LikelihoodContourPlot",
     "plot_likelihood_contour",
     # Data
     "round_sig",
@@ -629,7 +579,6 @@ if TYPE_CHECKING:
     )
     from surpyval.univariate.joint import (
         JointAFT,
-        JointModel,
         JointPH,
         WeibullJointAFT,
         WeibullJointPH,
@@ -641,7 +590,6 @@ if TYPE_CHECKING:
     )
     from surpyval.univariate.pooled_rate import PooledRate, pooled_rate
     from surpyval.univariate.pseudo import (
-        PseudoRegressionResult,
         pseudo_cif,
         pseudo_regression,
         pseudo_regression_from_df,
@@ -651,8 +599,6 @@ if TYPE_CHECKING:
     from surpyval.univariate.regression import *  # noqa: F401,F403
     from surpyval.univariate.regression.distributional import (
         Distributional,
-        DistributionalFitter,
-        DistributionalRegressionModel,
         ExponentialDistributional,
         ExponentialMixtureCure,
         ExponentialZeroInflated,
@@ -668,15 +614,11 @@ if TYPE_CHECKING:
         LogNormalMixtureCure,
         LogNormalZeroInflated,
         MixtureCure,
-        MixtureCureFitter,
-        MixtureCureModel,
         NormalDistributional,
         WeibullDistributional,
         WeibullMixtureCure,
         WeibullZeroInflated,
         ZeroInflated,
-        ZeroInflatedFitter,
-        ZeroInflatedModel,
     )
     from surpyval.univariate.relative import (
         ExcessHazard,
@@ -729,6 +671,72 @@ _ELSEWHERE = {
     ),
 }
 
+# Base fitters, fitted models, results and plots, which a call returns
+# rather than a user types: deprecated at the top level in v0.29 (a
+# FutureWarning naming the subpackage; removed in v0.30), they stay in
+# their subpackages for type hints and ``isinstance``. The base fitters a
+# user builds a model with (``ProportionalHazardsFitter``) and
+# ``MixtureModel``, which a user constructs, stay here.
+_MOVED = {
+    **dict.fromkeys(
+        ("JointModel",),
+        "surpyval.univariate.joint",
+    ),
+    **dict.fromkeys(
+        (
+            "IntervalLogRankResult",
+            "LogRankResult",
+            "MaxComboResult",
+            "MaxStatResult",
+            "NonParametricPlot",
+            "PairwiseLogRankResult",
+            "PermutationLogRankResult",
+            "TrendLogRankResult",
+        ),
+        "surpyval.univariate.nonparametric",
+    ),
+    **dict.fromkeys(
+        (
+            "DiscretizedFitter",
+            "LikelihoodContourPlot",
+            "RoystonParmarModel",
+        ),
+        "surpyval.univariate.parametric",
+    ),
+    **dict.fromkeys(
+        (
+            "AFTFitter",
+            "AalenAdditiveModel",
+            "AdditiveHazardsFitter",
+            "AdditiveHazardsModel",
+            "BuckleyJamesModel",
+            "CoefficientPlot",
+            "CoxFrailtyFitter",
+            "CoxFrailtyModel",
+            "CoxMixedEffectsFitter",
+            "CoxMixedEffectsModel",
+            "CoxNPMLEModel",
+            "DistributionalFitter",
+            "DistributionalRegressionModel",
+            "FrailtyFitter",
+            "FrailtyModel",
+            "IntervalCoxPHModel",
+            "MixtureCureFitter",
+            "MixtureCureModel",
+            "ParameterSubstitutionFitter",
+            "ParametricRegressionModel",
+            "ProportionalOddsFitter",
+            "ProportionalOddsModel",
+            "PseudoRegressionResult",
+            "QuantileRegressionModel",
+            "SemiParametricRegressionModel",
+            "ZeroInflatedFitter",
+            "ZeroInflatedModel",
+        ),
+        "surpyval.univariate.regression",
+    ),
+}
+
 if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
     def __getattr__(name: str) -> Any:
@@ -747,6 +755,21 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
+        if name in _MOVED:
+            from surpyval.utils.deprecation import (
+                REMOVED_IN_NEXT,
+                renamed_name,
+            )
+
+            home = _MOVED[name]
+            return renamed_name(
+                "surpyval",
+                name,
+                f"{home}.{name}",
+                getattr(import_module(home), name),
+                REMOVED_IN_NEXT,
+                FutureWarning,
+            )
         if name == "concordance_estimate":
             # Deprecated in v0.29: surpyval.metrics warns as it hands it.
             return getattr(import_module("surpyval.metrics"), name)

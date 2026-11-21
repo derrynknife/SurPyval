@@ -8,7 +8,7 @@ in :doc:`../Non-Parametric SurPyval Modelling`.
 
 .. autofunction:: surpyval.plot_nonparametric
 
-.. autoclass:: surpyval.NonParametricPlot
+.. autoclass:: surpyval.univariate.nonparametric.NonParametricPlot
 
 The table's counts without the plot (no plotting library is loaded):
 

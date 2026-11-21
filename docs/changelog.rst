@@ -1150,6 +1150,23 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- 39 classes at the top level of ``surpyval`` that a call returns rather
+  than a user types: base fitters, fitted models, test results and plots.
+  They live in their subpackages, for type hints and ``isinstance``:
+  ``surpyval.univariate.regression`` (``AFTFitter``, ``AalenAdditiveModel``, ``AdditiveHazardsFitter``, ``AdditiveHazardsModel``, ``BuckleyJamesModel``, ``CoefficientPlot``, ``CoxFrailtyFitter``, ``CoxFrailtyModel``, ``CoxMixedEffectsFitter``, ``CoxMixedEffectsModel``, ``CoxNPMLEModel``, ``DistributionalFitter``, ``DistributionalRegressionModel``, ``FrailtyFitter``, ``FrailtyModel``, ``IntervalCoxPHModel``, ``MixtureCureFitter``, ``MixtureCureModel``, ``ParameterSubstitutionFitter``, ``ParametricRegressionModel``, ``ProportionalOddsFitter``, ``ProportionalOddsModel``, ``PseudoRegressionResult``, ``QuantileRegressionModel``, ``SemiParametricRegressionModel``, ``ZeroInflatedFitter``, ``ZeroInflatedModel``),
+  ``surpyval.univariate.nonparametric`` (``IntervalLogRankResult``, ``LogRankResult``, ``MaxComboResult``, ``MaxStatResult``, ``NonParametricPlot``, ``PairwiseLogRankResult``, ``PermutationLogRankResult``, ``TrendLogRankResult``),
+  ``surpyval.univariate.parametric`` (``DiscretizedFitter``, ``LikelihoodContourPlot``, ``RoystonParmarModel``) and
+  ``surpyval.univariate.joint`` (``JointModel``). ``surpyval.<name>``
+  gives the same class, with a ``FutureWarning`` naming its subpackage,
+  until v0.30; ``dir(surpyval)`` and ``from surpyval import *`` no longer
+  list them. The distributional, mixture-cure and zero-inflated
+  regressions' base fitters and models, and ``PseudoRegressionResult``,
+  are newly importable from ``surpyval.univariate.regression``. The
+  base fitters a model is built from by hand
+  (``ProportionalHazardsFitter``), ``MixtureModel``, and the two-clock
+  fits' ``EquivalenceFitter`` and ``EquivalenceModel`` stay at the top
+  level.
+
 - Internal steps that ``surpyval.univariate.nonparametric`` and
   ``surpyval.utils`` exposed as public names. From the non-parametric
   namespace: the lower-case estimators ``kaplan_meier``,

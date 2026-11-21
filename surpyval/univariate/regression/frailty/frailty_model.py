@@ -378,7 +378,7 @@ class _SharedFrailty(
 
         Examples
         --------
-        >>> from surpyval import FrailtyModel
+        >>> from surpyval.univariate.regression import FrailtyModel
         >>> model = FrailtyModel()
         >>> model.family, model.theta = "lognormal", 0.5
         >>> round(model.frailty_variance, 4)
@@ -397,7 +397,7 @@ class _SharedFrailty(
 
         Examples
         --------
-        >>> from surpyval import FrailtyModel
+        >>> from surpyval.univariate.regression import FrailtyModel
         >>> model = FrailtyModel()
         >>> model.theta = 0.5
         >>> model.kendall_tau

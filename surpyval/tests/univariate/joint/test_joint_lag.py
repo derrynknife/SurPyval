@@ -22,13 +22,14 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import JointAFT, JointModel, JointPH, Weibull
+from surpyval import JointAFT, JointPH, Weibull
 from surpyval.degradation import LloydLipowPath, LogarithmicPath
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
 from surpyval.serialisation import required_schema
 from surpyval.tests.univariate.joint import test_joint_aft as aft
 from surpyval.tests.univariate.joint import test_joint_links as links
 from surpyval.tests.univariate.joint._fleet import simulate_links
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint._likelihood import (
     LaggedPath,
     LinkPath,

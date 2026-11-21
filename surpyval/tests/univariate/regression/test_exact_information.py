@@ -37,7 +37,7 @@ FAMILIES = [
     name
     for name, case in CASE_BY_NAME.items()
     if name.endswith(("PH", "AFT", "PO", "AH"))
-    and case.model_class == "surpyval.ParametricRegressionModel"
+    and case.model_class == "surpyval.univariate.regression.ParametricRegressionModel"
 ]
 
 #: The comparisons with the numerical standard errors allow the

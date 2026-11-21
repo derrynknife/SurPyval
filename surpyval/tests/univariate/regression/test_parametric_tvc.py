@@ -24,12 +24,12 @@ from surpyval import (
     ExponentialPH,
     LogisticPO,
     NormalPH,
-    ParametricRegressionModel,
     Weibull,
     WeibullAH,
     WeibullPH,
     WeibullPO,
 )
+from surpyval.univariate.regression import ParametricRegressionModel
 
 TVC_FITTERS = {
     "WeibullPH": WeibullPH,

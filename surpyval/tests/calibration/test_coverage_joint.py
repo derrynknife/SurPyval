@@ -41,7 +41,7 @@ import warnings
 import numpy as np
 import pytest
 
-from surpyval import JointModel, SurpyvalData, WeibullJointPH
+from surpyval import SurpyvalData, WeibullJointPH
 from surpyval.tests.calibration._montecarlo import (
     check_bias,
     check_coverage,
@@ -51,6 +51,7 @@ from surpyval.tests.univariate.joint._fleet import (
     TRUTH,
     simulate_split,
 )
+from surpyval.univariate.joint import JointModel
 
 GAMMA, DELTA_B = 0.5, 0.6 / 365
 PARTS = dict(hazard_covariates=["site"], path_covariates={"b": ["load"]})

@@ -22,14 +22,14 @@ import pandas as pd
 import pytest
 
 import surpyval
-from surpyval import ItemLifetime, JointModel, SurpyvalData, WeibullJointPH
+from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
 from surpyval.tests.univariate.joint._fleet import (
     CENTRE,
     TRUTH,
     fleet,
     simulate_split,
 )
-from surpyval.univariate.joint import DynamicPrediction
+from surpyval.univariate.joint import DynamicPrediction, JointModel
 from surpyval.univariate.joint.joint_ph import search_space
 
 #: The split fleet's truth: ``site`` only in the hazard, ``load`` only in

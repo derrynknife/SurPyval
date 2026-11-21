@@ -320,8 +320,8 @@ def _log_linear(case):
         and case.data is reg_data
         and case.model_class
         in (
-            "surpyval.ParametricRegressionModel",
-            "surpyval.DistributionalRegressionModel",
+            "surpyval.univariate.regression.ParametricRegressionModel",
+            "surpyval.univariate.regression.DistributionalRegressionModel",
         )
         and not case.name.endswith("AH")
     )

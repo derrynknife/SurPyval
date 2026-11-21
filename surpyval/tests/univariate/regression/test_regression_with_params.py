@@ -22,6 +22,11 @@ from numpy.testing import assert_allclose
 
 import surpyval as sp
 from surpyval.datasets import load_rossi_static
+from surpyval.univariate.regression import (
+    AdditiveHazardsModel,
+    ParametricRegressionModel,
+    ProportionalOddsModel,
+)
 
 T = np.array([5.0, 20.0, 40.0, 52.0])
 
@@ -93,7 +98,7 @@ def test_rebuilt_model_refuses_what_needs_the_fit(rossi):
     assert other.maximum == "not applicable"
     assert "given parameters" in repr(other)
     # It saves and loads, without a covariance, and pickles
-    loaded = sp.ParametricRegressionModel.from_dict(other.to_dict())
+    loaded = ParametricRegressionModel.from_dict(other.to_dict())
     assert "covariance" not in other.to_dict()
     assert_allclose(loaded.sf(T, Z[0]), other.sf(T, Z[0]), rtol=1e-15)
     unpickled = pickle.loads(pickle.dumps(other))
@@ -305,13 +310,13 @@ def test_additive_hazards_refusals_and_chain(rossi):
     # It keeps what its baseline needs, so it rebuilds in turn
     again = other.with_params(model._estimates())
     assert_allclose(again.sf(T, Z[0]), model.sf(T, Z[0]), rtol=1e-12)
-    restored = sp.AdditiveHazardsModel.from_dict(model.to_dict())
+    restored = AdditiveHazardsModel.from_dict(model.to_dict())
     with pytest.raises(ValueError, match="restored from a dict"):
         restored.with_params(model._estimates())
     with pytest.raises(ValueError, match="covariance_names"):
         model.with_params([0.0, 0.0])
     # Saved without a covariance (nan), and loaded
-    loaded = sp.AdditiveHazardsModel.from_dict(other.to_dict())
+    loaded = AdditiveHazardsModel.from_dict(other.to_dict())
     assert_allclose(loaded.sf(T, Z[0]), other.sf(T, Z[0]), rtol=1e-15)
 
 
@@ -359,10 +364,10 @@ def test_proportional_odds_refusals(rossi):
         other.param_cb("coef_0")
     with pytest.raises(ValueError, match="with_params"):
         other.with_params(model._estimates())
-    restored = sp.ProportionalOddsModel.from_dict(model.to_dict())
+    restored = ProportionalOddsModel.from_dict(model.to_dict())
     with pytest.raises(ValueError, match="restored from a"):
         restored.with_params(model._estimates())
-    loaded = sp.ProportionalOddsModel.from_dict(other.to_dict())
+    loaded = ProportionalOddsModel.from_dict(other.to_dict())
     assert_allclose(loaded.sf(T, Z[0]), other.sf(T, Z[0]), rtol=1e-15)
 
 

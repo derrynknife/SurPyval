@@ -648,7 +648,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import JointModel
+        >>> from surpyval.univariate.joint import JointModel
         >>> model = JointModel()
         >>> model.link = ("value", "cumulative")
         >>> model.marker_unit, model.unit = "mm/s", "years"

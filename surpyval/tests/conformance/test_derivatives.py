@@ -328,19 +328,19 @@ def _excess_hazard(case):
 
 
 OBJECTIVES = {
-    "surpyval.JointModel": _joint,
+    "surpyval.univariate.joint.JointModel": _joint,
     "surpyval.ExcessHazard": _excess_hazard,
     "surpyval.Parametric": lambda case: _parametric(fitted(case)),
-    "surpyval.ParametricRegressionModel": lambda case: _regression(
+    "surpyval.univariate.regression.ParametricRegressionModel": lambda case: _regression(
         fitted(case)
     ),
-    "surpyval.DistributionalRegressionModel": lambda case: _regression(
+    "surpyval.univariate.regression.DistributionalRegressionModel": lambda case: _regression(
         fitted(case)
     ),
-    "surpyval.FrailtyModel": _spied,
+    "surpyval.univariate.regression.FrailtyModel": _spied,
     "surpyval.univariate.competing_risks.regression.fine_gray"
     ".FineGrayModel": _spied,
-    "surpyval.SemiParametricRegressionModel": lambda case: _cox(fitted(case)),
+    "surpyval.univariate.regression.SemiParametricRegressionModel": lambda case: _cox(fitted(case)),
     "surpyval.univariate.competing_risks.ParametricCompetingRisks": (
         lambda case: _competing_parametric(fitted(case))
     ),

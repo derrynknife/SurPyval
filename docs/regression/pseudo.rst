@@ -17,5 +17,5 @@ of the coefficients, is :doc:`../Pseudo-Observations`.
 
 .. autofunction:: surpyval.pseudo_regression_from_df
 
-.. autoclass:: surpyval.PseudoRegressionResult
+.. autoclass:: surpyval.univariate.regression.PseudoRegressionResult
     :members:

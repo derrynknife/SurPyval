@@ -11,7 +11,8 @@ import pytest
 from numpy.testing import assert_allclose
 
 import surpyval as sp
-from surpyval import IntervalCoxPH, IntervalCoxPHModel
+from surpyval import IntervalCoxPH
+from surpyval.univariate.regression import IntervalCoxPHModel
 
 
 def _simulated(seed=1, N=120, exact_share=0.2, tl=False):
