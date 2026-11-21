@@ -77,7 +77,6 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         for every kind of censoring and truncation."""
         return regression_neg_ll(self, data, *params)
 
-
     def fit_bayes(
         self,
         x: npt.ArrayLike,

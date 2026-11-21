@@ -2588,6 +2588,61 @@ def _bayes():
     ]
 
 
+def _bayes_regression_fit(d):
+    """A Bayesian Weibull proportional hazards fit: a prior on the shape,
+    the default on the coefficients, and the sampler's case's settings."""
+    return sp.WeibullPH.fit_bayes(
+        d["x"],
+        d["Z"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
+    )
+
+
+def _bayes_regression_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    model = sp.WeibullPH.fit_bayes_from_df(
+        df,
+        x_col="x",
+        Z_cols=cols,
+        c_col="c",
+        n_col="n",
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
+    )
+    return model
+
+
+#: A Bayesian regression's credible intervals (as the distributions':
+#: no ``mean_cri``, and the hazard's is not swept, for the reason given at
+#: ``_BAYES_BOUNDS``).
+_BAYES_REGRESSION_BOUNDS = (
+    Bound("cri", on=("sf", "ff", "Hf", "df"), wald=False),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound("param_cri", kind="param", wald=False),
+)
+
+
+def _bayes_regression():
+    return [
+        regression(
+            "WeibullPH[bayes]",
+            sp.WeibullPH,
+            fitters=("surpyval.bayes.BayesianRegression",),
+            model_class="surpyval.bayes.BayesianRegression",
+            fit=_bayes_regression_fit,
+            paths={"fit_from_df": _bayes_regression_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            exclude=dict(_BAYES_EXCLUDE),
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Landmark supermodels: dynamic prediction from a landmark s
 # ---------------------------------------------------------------------------
@@ -2813,6 +2868,7 @@ CASES: list[Case] = (
     + _landmark()
     + _panel_multistate()
     + _bayes()
+    + _bayes_regression()
     + _panel_count()
     + _relative()
 )
@@ -3604,6 +3660,7 @@ def _bounds(case):
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),

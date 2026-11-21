@@ -274,12 +274,14 @@ def _bind(mle: Any, priors: Any) -> tuple[BoundPriors, dict[str, str]]:
             f"failure time and accelerated life fitters; this is a "
             f"{mle.kind} model. Use fit for its maximum-likelihood fit."
         )
-    aliased = list(np.atleast_1d(getattr(mle, "aliased", ())))
-    if aliased:
+    aliased = np.atleast_1d(getattr(mle, "aliased", ())).astype(int)
+    if aliased.size:
+        names = list(mle.parameter_names)
+        which = ", ".join(names[mle.k_dist + j] for j in aliased.tolist())
         raise ValueError(
-            f"The data do not determine the coefficient of "
-            f"{', '.join(str(a) for a in aliased)} (its column is constant "
-            "or a combination of the others). Leave the column out."
+            f"The data do not determine {which} (the coefficient of a "
+            "column that is constant or a combination of the others). "
+            "Leave the column out."
         )
     spec = PriorSpec.parse(priors)
     for j in spec.joint:
@@ -296,8 +298,14 @@ def _bind(mle: Any, priors: Any) -> tuple[BoundPriors, dict[str, str]]:
     full = PriorSpec.parse({**spec.single, **defaults})
     full.joint = list(spec.joint)
     bound = BoundPriors(
-        full, mle.dist, names, list(mle.parameter_bounds), False, False,
-        False, fixed,
+        full,
+        mle.dist,
+        names,
+        list(mle.parameter_bounds),
+        False,
+        False,
+        False,
+        fixed,
     )
     said = {
         k: p.describe(bound.transforms[names.index(k)])
@@ -500,6 +508,7 @@ class BayesianRegression(SerialisableMixin):
         priors: PriorSpec,
         default_priors: dict[str, str],
         diagnostics: dict,
+        data: SurpyvalData | None = None,
     ) -> None:
         self.mle = mle
         self.posterior = posterior
@@ -509,7 +518,8 @@ class BayesianRegression(SerialisableMixin):
         self.model = mle.model
         self.dist = mle.dist
         self.kind = mle.kind
-        self.data = mle.data
+        # (a loaded maximum-likelihood fit holds no data: it comes apart)
+        self.data = mle.data if data is None else data
         self.fixed = dict(mle.fixed)
         self.k_dist = mle.k_dist
         self.k = mle.k
@@ -771,8 +781,63 @@ class BayesianRegression(SerialisableMixin):
             def gap(t: float, pi: float = pi, z: Any = z) -> float:
                 return float(self.ff(t, z)) - pi
 
-            out[i] = brentq(gap, lo, hi, xtol=0.0, rtol=1e-13)
+            out[i] = brentq(gap, lo, hi, xtol=1e-300, rtol=1e-13)
         return out
+
+    def random(
+        self, size: int, Z: Any, random_state: Any = None
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Lives drawn from the posterior predictive distribution at
+        covariates ``Z``: for each, a posterior draw (of those
+        :meth:`sf` averages over) at random, and a life from it, so the
+        draws follow :meth:`sf`.
+
+        Parameters
+        ----------
+        size : int
+            The number of lives at each covariate row.
+        Z : array like or DataFrame
+            The covariate rows.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed, by the one seed rule (``None``: numpy's global
+            stream).
+
+        Returns
+        -------
+        x : numpy.ndarray
+            The ``size`` lives of each row, row after row.
+        Z : numpy.ndarray
+            The covariate row of each life.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+        >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+        >>> model = sp.WeibullPH.fit_bayes(
+        ...     x, Z, chains=2, draws=200, warmup=200, random_state=1)
+        >>> lives, rows = model.random(5, [[0.0], [1.0]], random_state=3)
+        >>> lives.shape, rows.shape
+        ((10,), (10, 1))
+        """
+        from surpyval.utils.rng import as_generator
+
+        size = int(size)
+        rows = covariate_rows(self._point._prepare_Z(Z), self._n_covariates())
+        rows = np.repeat(rows, size, axis=0)
+        rng = as_generator(random_state)
+        draws = self._draws()
+        which = rng.integers(len(draws), size=len(rows))
+        u = rng.random(len(rows))
+        out = np.empty(len(rows))
+        with ignoring_warnings(), np.errstate(all="ignore"):
+            for k in np.unique(which):
+                at = which == k
+                model = self.mle.with_params(draws[k])
+                out[at] = np.asarray(model.qf(u[at], rows[at]), dtype=float)
+        return out, rows
 
     def _n_covariates(self) -> int:
         return int(np.shape(self.data.Z)[1])
@@ -839,9 +904,7 @@ class BayesianRegression(SerialisableMixin):
 
             flat = np.reshape(np.asarray(x, dtype=float), -1)
             out.append(
-                np.reshape(
-                    self._point._eval(at_level, flat, Z, below), shape
-                )
+                np.reshape(self._point._eval(at_level, flat, Z, below), shape)
             )
         return np.stack(out, axis=-1) if len(out) == 2 else out[0]
 
@@ -1071,7 +1134,7 @@ class BayesianRegression(SerialisableMixin):
     def to_dict(self) -> dict:
         """
         A strict-JSON dictionary of the model: the maximum-likelihood fit
-        (which holds the family, the data and the covariates' names), the
+        (which holds the family and the covariates' names), the data, the
         priors, the posterior's draws and the diagnostics.
         ``surpyval.from_dict`` reads it.
 
@@ -1101,6 +1164,7 @@ class BayesianRegression(SerialisableMixin):
             "priors": self.priors.to_dict(),
             "default_priors": dict(self.default_priors),
             "posterior": self.posterior.to_dict(),
+            "data": self.data.to_dict(),
             "diagnostics": _jsonable(diag),
             "surpyval_version": surpyval.__version__,
         }
@@ -1121,6 +1185,7 @@ class BayesianRegression(SerialisableMixin):
             PriorSpec.from_dict(model_dict["priors"]),
             model_dict.get("default_priors", {}),
             model_dict.get("diagnostics", {}),
+            data=SurpyvalData.from_dict(model_dict["data"]),
         )
         model.unit = model_dict.get("unit", model.unit)
         return model
