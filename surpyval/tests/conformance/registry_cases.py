@@ -2225,6 +2225,7 @@ def _joint():
                 times=("x", "markers"),
                 call_kwargs=dict(JOINT_ITEM),
                 call_times=("markers", "given"),
+                events=("a", "b") if causes else (),
             )
         )
     return out
