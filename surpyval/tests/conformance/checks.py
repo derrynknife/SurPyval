@@ -22,7 +22,11 @@ import numpy as np
 
 import surpyval
 from surpyval.serialisation import NON_FINITE_KEY, SCHEMA_VERSION
-from surpyval.tests.conformance.registry import predictions, scramble
+from surpyval.tests.conformance.registry import (
+    BIVARIATE,
+    predictions,
+    scramble,
+)
 
 # ---------------------------------------------------------------------------
 # Metamorphic rewrites of the data, and the comparison of two fits
@@ -37,6 +41,8 @@ def unit_power(case, key):
     fname = key.split("[")[0]
     if fname in case.jump_functions:
         return 0  # a jump is a probability, whatever the unit
+    if fname == "pdf" and case.interface == BIVARIATE:
+        return case.x.shape[1]  # a joint density: a unit per series
     return _POWER.get(fname, 0)
 
 
