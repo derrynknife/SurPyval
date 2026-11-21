@@ -611,6 +611,70 @@ What a fit of more than two series takes:
 
 The other families (Clayton, Frank, Gumbel, Joe, AMH) take two series.
 
+Vines: a family per pair
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Gaussian or Student-t copula gives every pair of series the same kind of
+dependence. A **vine** (a pair-copula construction) builds the copula of
+``D`` series from ``D (D - 1) / 2`` bivariate copulas arranged in trees:
+the first tree joins pairs of series, and each later tree joins two series
+given the ones between them. So one pair can fail together early (a
+Clayton copula's lower tail) and another late (a Gumbel's upper tail).
+``Vine.fit`` chooses the order of the series (by default the path with the
+strongest Kendall's taus between neighbours, ``structure="d"``; or a C-vine
+of root series, ``structure="c"``) and each pair-copula's family by AIC
+among the built-in families and rotations, then fits all the parameters by
+maximum likelihood:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Clayton, Frank, Gumbel, Vine
+
+    drawn = Vine.from_params(
+        [3.0, 2.0, 2.0],
+        [pump, motor, seal],
+        families=[[Clayton, Gumbel], [Frank]],
+    )
+    complete = drawn.random(1000, random_state=11)
+    vine = Vine.fit(complete, margins=three)
+    print(vine.copula)
+    for edge in vine.edges:
+        print(edge["pair"], "given", edge["given"], edge["family"],
+              edge["rotation"], np.round(edge["params"], 2))
+    gauss = Gaussian.fit(complete, margins=three)
+    print("AIC: vine %.1f, Gaussian %.1f" % (vine.aic(), gauss.aic()))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert vine.copula.order in ([0, 1, 2], [2, 1, 0])
+    assert vine.edges[1]["family"] == "Gumbel"
+    assert vine.aic() < gauss.aic() - 100
+
+The first pair's Clayton draws are best fitted by the survival (180 degree)
+Joe copula, which has the same lower-tail dependence; ``families=`` fixes
+the pair-copulas instead (one family for every pair, or a list per tree),
+``candidates=`` narrows the choice, and ``truncate=k`` keeps the first
+``k`` trees and makes the rest independence copulas.
+
+A vine's density, draws (``random``), ``aic``, standard errors and
+``param_cb`` are as for any copula model. What it does not have:
+
+- **Censoring and truncation.** A vine is fitted to fully observed rows: a
+  censored row's likelihood is an integral of the vine's density, which is
+  not computed. Censored rows are refused with their count; fit a Gaussian
+  or Student-t copula to them.
+- **The joint sf and CDF**, and so ``cb``: the vine has them only as
+  integrals of its density. They refuse, saying to estimate them from
+  draws (the proportion of ``model.random(n)`` in the region).
+- **Conditional distributions** other than that of the last series of the
+  order given all the others (``conditional_cdf``).
+- **The dependence matrices** (``kendall_tau()`` and the others) have the
+  pairs joined in the first tree; the other pairs are ``nan``, their
+  dependence spread over several pair-copulas (``edges`` gives each
+  pair-copula's own Kendall's tau).
+
 Rotated copulas
 ~~~~~~~~~~~~~~~
 

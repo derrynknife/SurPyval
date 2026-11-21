@@ -26,6 +26,24 @@ v0.29 (unreleased)
   With two series nothing changes. See "More than two lifetimes" in
   :doc:`Multivariate Modelling with SurPyval`.
 
+- **Vine copulas: a bivariate family per pair of series.**
+  ``surpyval.multivariate.Vine`` builds the copula of two or more series
+  from the bivariate copulas, a pair-copula per pair arranged in trees:
+  ``Vine.fit(x, margins=..., structure="d" | "c", families=, order=,
+  truncate=, candidates=)``. By default the order is the path (or the
+  roots) of strongest absolute Kendall's tau and each pair-copula's family
+  is chosen by AIC among the built-in families and rotations, tree by
+  tree; those estimates start a maximum likelihood fit of every parameter
+  (``how="IFM"`` or ``"MLE"``). The model has ``pdf``, ``random`` (the
+  inverse Rosenblatt transform), ``edges`` (each pair-copula's family,
+  parameters and Kendall's tau), ``aic``, standard errors, ``param_cb``,
+  ``to_dict`` and ``fit_from_df``; ``Vine.from_params`` builds one. With
+  two series it is the bivariate copula. Refused, saying what to use:
+  censored and truncated rows (the Gaussian and Student-t copulas take
+  censored rows), the joint ``sf``, ``cdf`` and ``cb`` (estimate them from
+  draws), and conditional distributions other than the last series given
+  the others. See "Vines" in :doc:`Multivariate Modelling with SurPyval`.
+
 - **The inverse survival function, ``isf``.** Every distribution
   (``Weibull.isf(s, alpha, beta)``) and every parametric model
   (``model.isf(s)``) gives the time at which the survival function is

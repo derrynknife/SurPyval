@@ -30,6 +30,7 @@ from .parametric import (
     Joe,
     MultivariateSurpyvalData,
     StudentT,
+    Vine,
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "Joe",
     "AMH",
     "StudentT",
+    "Vine",
 ]

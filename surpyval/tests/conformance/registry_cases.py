@@ -2119,6 +2119,42 @@ def _copulas_nd():
     return out
 
 
+# A vine of given pair-copulas on three series (its order and families
+# fixed, so that every refit of the fixture fits the same vine)
+_VINE = {
+    "order": [0, 1, 2],
+    "families": [[mv.Gaussian, mv.Clayton], [mv.Frank]],
+}
+
+
+def _vines():
+    def from_params(d):
+        m = mv.Vine.fit(**d, margins=[sp.Weibull] * 3, **_VINE)
+        return mv.Vine.from_params(m.params, margins=m.margins, **_VINE)
+
+    return [
+        Case(
+            name="VineCopula[D=3]",
+            fitters=("surpyval.multivariate.Vine",),
+            model_class="surpyval.multivariate.CopulaModel",
+            interface=BIVARIATE,
+            data=copula3_data,
+            fit=_fit(mv.Vine, margins=[sp.Weibull] * 3, **_VINE),
+            functions=("pdf",),
+            x=X_COP3,
+            rows=("x", "n"),
+            paths={"from_params": from_params},
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "bounds": "a vine has no joint sf or CDF to check (they "
+                "refuse, saying to estimate them from draws); its density "
+                "is checked against the Gaussian copula's in test_vine.py",
+            },
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Joint models of a marker and a lifetime (#891)
 # ---------------------------------------------------------------------------
@@ -2836,6 +2872,7 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _copulas_nd()
+    + _vines()
     + _joint()
     + _spline_regression()
     + _distributional()
@@ -3014,6 +3051,9 @@ def _df_paths():
         paths[case_name] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull] * 3, structure=structure
         )
+    paths["VineCopula[D=3]"] = _copula_df(
+        mv.Vine, margins=[sp.Weibull] * 3, **_VINE
+    )
     for case_name, name, rotation in _ROTATED_COPULAS:
         paths[case_name] = _copula_df(
             getattr(mv, name),
@@ -4323,9 +4363,15 @@ _FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
 _FAST_BOUNDS += ("Weibull[bayes]", "Exponential[bayes]")
 
 
+# The bounds of a case whose model's family has fewer than ``_bounds``
+# gives its class: a vine has no joint sf or CDF (they refuse, saying to
+# estimate them from draws), so no cb on them.
+_OWN_BOUNDS = {"VineCopula[D=3]": (_PARAM_CB,)}
+
+
 def _with_options(case):
     estimators, large_only, large = _estimators(case)
-    bounds = _bounds(case)
+    bounds = _OWN_BOUNDS.get(case.name) or _bounds(case)
     if case.name not in _FAST_BOUNDS:
         bounds = tuple(replace(b, slow=True) for b in bounds)
     slow = case.slow
