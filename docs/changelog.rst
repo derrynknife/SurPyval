@@ -5,6 +5,16 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **A notation for writing survival data as you'd describe it.**
+  ``surpyval.utils.notation``: ``O(10)`` failed at 10, ``RC(20)`` still
+  running at 20, ``LC(3)`` failed before 3, ``IC(5, 10)`` failed between 5
+  and 10; ``3 * O(10)`` three alike, and ``obs / Truncation(tl, tr)`` the
+  window ``(tl, tr]`` the unit was observed in (refused when the
+  observation lies outside it). ``Observations([...])`` collects them,
+  prints them as words, and gives ``xcnt()`` (one row per observation) or
+  ``surpyval_data()`` for any fitter; ``Observations.parse("3*10, 20+, <3,
+  [5, 10]")`` reads the same from text (``15-`` for left censored, too).
+
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
   varying path parameters as independent between items, and
