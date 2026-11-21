@@ -638,6 +638,7 @@ class Hypoexponential_(OptimisedFitMixin, ParametricFitter):
         on_d_is_0: bool = False,
         turnbull_estimator: str = "Fleming-Harrington",
         w: npt.ArrayLike | float | None = None,
+        hr: float | None = None,
         *,
         stages: int | None = None,
     ) -> Parametric:
@@ -664,7 +665,7 @@ class Hypoexponential_(OptimisedFitMixin, ParametricFitter):
         ----------
 
         x, c, n, t, how, offset, zi, lfp, tl, tr, xl, xr, fixed, \
-heuristic, init, rr, on_d_is_0, turnbull_estimator, w
+heuristic, init, rr, on_d_is_0, turnbull_estimator, w, hr
             As for ``Weibull.fit``; a rate in ``fixed`` is named
             ``lambda_1`` to ``lambda_m``, and ``init`` has one rate per stage.
         stages : int
@@ -712,6 +713,7 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w
             rr=rr,
             on_d_is_0=on_d_is_0,
             turnbull_estimator=turnbull_estimator,
+            hr=hr,
             stages=stages,
         )
 
@@ -729,6 +731,7 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w
         rr: str = "y",
         on_d_is_0: bool = False,
         turnbull_estimator: str = "Fleming-Harrington",
+        hr: float | None = None,
         *,
         stages: int | None = None,
     ) -> Parametric:
@@ -744,7 +747,7 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w
         surv_data : SurpyvalData
             Survival data in the SurpyvalData class.
         how, offset, zi, lfp, fixed, heuristic, init, rr, on_d_is_0, \
-turnbull_estimator, stages
+turnbull_estimator, hr, stages
             As for :meth:`fit`.
 
         Returns
@@ -789,6 +792,7 @@ turnbull_estimator, stages
             rr=rr,
             on_d_is_0=on_d_is_0,
             turnbull_estimator=turnbull_estimator,
+            hr=hr,
         )
         if not fixed:
             _slowest_first(model)

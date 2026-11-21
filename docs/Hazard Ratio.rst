@@ -72,6 +72,36 @@ Distributions that are probabilities of an event (``Bernoulli``,
 ``Binomial``, ``FixedEventProbability``, ``ExactEventTime``) refuse it:
 scale the probability itself, ``q`` becoming ``1 - (1 - q) ** hr``.
 
+Fitting with a known hazard ratio
+---------------------------------
+
+``fit(..., hr=)`` fits data that come from an environment with a known
+hazard ratio: the likelihood is the hazard-scaled model's, and the fitted
+model carries ``hr``. It is never estimated, since it is confounded with
+the scale (a Weibull fitted with ``hr = 2`` is the plain fit with its
+scale multiplied by :math:`2^{1/\beta}`). Maximum likelihood only.
+
+.. code-block:: python
+
+    >>> x = [10, 12, 15, 17, 20, 25, 31]
+    >>> plain = surv.Weibull.fit(x)
+    >>> hot = surv.Weibull.fit(x, hr=2.0)
+    >>> hot.hr, hot.params.round(3)
+    (2.0, array([26.451,  2.931]))
+    >>> round(float(plain.params[0] * 2 ** (1 / plain.params[1])), 3)
+    26.451
+
+The bounds hold ``hr`` fixed, as a known constant:
+
+- ``cb`` and ``quantile_cb`` with ``method="wald"`` (every ``on=``
+  target) and ``method="bootstrap"`` (each refit has the same ``hr``);
+- ``param_cb`` with every method, the likelihood-ratio bounds included
+  (the profile likelihood is the hazard-scaled model's);
+- refused, naming what to use instead: the likelihood-ratio bounds on a
+  function (``cb``/``quantile_cb`` with ``method="lr"``), and
+  ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and ``rmst`` (bound them from the
+  bootstrap refits, ``model.bootstrap(...).models``, which carry ``hr``).
+
 Saving
 ------
 

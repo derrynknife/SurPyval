@@ -21,7 +21,12 @@ v0.29 (unreleased)
   and saved as ``"hr"`` under schema 5, which SurPyval 0.28 refuses. With
   ``hr = 1`` every value and seeded draw is unchanged. Probability models
   (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
-  ``ExactEventTime``) refuse it. See :doc:`Hazard Ratio`.
+  ``ExactEventTime``) refuse it. ``fit(..., hr=)`` fits data with a known
+  hazard ratio (maximum likelihood; never estimated); its Wald and
+  bootstrap bounds and ``param_cb`` hold ``hr`` fixed, and the
+  likelihood-ratio bounds on a function and the bounds on the mean, mean
+  residual life and restricted mean refuse, saying to use the bootstrap
+  refits. See :doc:`Hazard Ratio`.
 
 - **The inverse survival function, ``isf``.** Every distribution
   (``Weibull.isf(s, alpha, beta)``) and every parametric model

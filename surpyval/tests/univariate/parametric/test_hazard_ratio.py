@@ -247,3 +247,116 @@ def test_draws_go_through_isf():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         assert np.isnan(model.qf(1.5)) and np.isnan(model.isf(-0.1))
+
+
+# -- fitting with a known hazard ratio, and its bounds --------------------
+
+FIT_RTOL = 1e-6  # two searches of the same likelihood, each to its tolerance
+
+
+def _censored_sample():
+    x = sp.Weibull.random(60, 10, 2.5, random_state=1)
+    c = (x > 14).astype(int)
+    return np.minimum(x, 14), c
+
+
+def _data_of_every_kind():
+    return sp.SurpyvalData(
+        x=[0.5, 2.0, 3.0, 4.0, [5.0, 6.0], [1.0, 7.0], 8.0, 9.0, 12.0],
+        c=[0, 0, 1, -1, 2, 2, 0, 1, 0],
+        n=[1, 2, 1, 1, 1, 1, 3, 2, 1],
+        t=[[0.1, np.inf]] * 4 + [[-np.inf, 20.0]] * 5,
+    )
+
+
+@pytest.mark.parametrize("hr", [0.3, 2.0])
+def test_likelihood_of_a_weibull_is_its_familys(hr):
+    data = _data_of_every_kind()
+    a, b = 10.0, 1.7
+    got = sp.Weibull._neg_ll_func(data, a, b, 0.0, 0.0, 1.0, hr=hr)
+    want = sp.Weibull._neg_ll_func(data, a * hr ** (-1 / b), b, 0.0, 0.0, 1.0)
+    np.testing.assert_allclose(got, want, rtol=1e-12)
+
+
+@pytest.mark.parametrize("hr", [0.3, 2.0])
+def test_likelihood_is_the_models_own(hr):
+    # every kind of observation, against the hazard-scaled model's own
+    # functions: the density, R, F and the windows of R
+    gamma, f0, p = 0.0, 0.1, 0.8
+    model = sp.Gamma.from_params([2.0, 0.4], f0=f0, lfp_p=p, hr=hr)
+    data = _data_of_every_kind()
+    got = sp.Gamma._log_likelihood(data, 2.0, 0.4, gamma, f0, p, hr=hr)
+    # the likelihood's terms as SurpyvalData sorts the rows (a censored
+    # row with a finite truncation is the interval it implies)
+    sf = model.sf
+    want = np.sum(data.n_o * np.log(model.df(data.x_o)))
+    want += np.sum(data.n_r * np.log(sf(data.x_r)))
+    want += np.sum(data.n_l * np.log(model.ff(data.x_l)))
+    want += np.sum(data.n_i * np.log(sf(data.x_il) - sf(data.x_ir)))
+    # a window open above holds the units that never fail too
+    tr = data.tr_unique
+    beyond = np.where(np.isfinite(tr), sf(np.where(np.isfinite(tr), tr, 1)), 0)
+    want -= np.sum(data.n_t_unique * np.log(sf(data.tl_unique) - beyond))
+    np.testing.assert_allclose(got, want, rtol=1e-12)
+
+
+def test_a_fit_with_hr_is_the_familys_fit():
+    x, c = _censored_sample()
+    plain = sp.Weibull.fit(x, c)
+    scaled = sp.Weibull.fit(x, c, hr=2.0)
+    assert scaled.hr == 2.0 and scaled.maximum == "verified"
+    alpha, beta = plain.params
+    np.testing.assert_allclose(
+        scaled.params, [alpha * 2 ** (1 / beta), beta], rtol=FIT_RTOL
+    )
+    np.testing.assert_allclose(scaled.neg_ll(), plain.neg_ll(), rtol=1e-10)
+    t = np.array([3.0, 8.0, 13.0])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        np.testing.assert_allclose(
+            scaled.cb(t, on=on), plain.cb(t, on=on), rtol=FIT_RTOL
+        )
+    np.testing.assert_allclose(
+        scaled.quantile_cb([0.1, 0.5]),
+        plain.quantile_cb([0.1, 0.5]),
+        rtol=FIT_RTOL,
+    )
+    # the shape's profile likelihood is the same
+    np.testing.assert_allclose(
+        scaled.param_cb("beta", method="lr"),
+        plain.param_cb("beta", method="lr"),
+        rtol=FIT_RTOL,
+    )
+    # the refits carry hr
+    boot = scaled.bootstrap(20, random_state=1)
+    assert all(m.hr == 2.0 for m in boot.models)
+    # saved with it, and bounded the same once restored
+    back = sp.from_dict(scaled.to_dict())
+    np.testing.assert_array_equal(back.cb(t), scaled.cb(t))
+
+
+def test_a_fit_with_hr_one_is_the_fit():
+    x, c = _censored_sample()
+    one = sp.Weibull.fit(x, c, hr=1)
+    plain = sp.Weibull.fit(x, c)
+    np.testing.assert_array_equal(one.params, plain.params)
+    np.testing.assert_array_equal(one.covariance(), plain.covariance())
+    assert one.to_dict() == plain.to_dict()
+
+
+def test_fits_with_hr_refuse_what_they_cannot_carry():
+    x, c = _censored_sample()
+    with pytest.raises(ValueError, match="how='MLE'"):
+        sp.Weibull.fit(x, c, how="MPP", hr=2.0)
+    model = sp.Weibull.fit(x, c, hr=2.0)
+    with pytest.raises(ValueError, match="method='wald'"):
+        model.cb([5.0], method="lr")
+    with pytest.raises(ValueError, match="method='wald'"):
+        model.quantile_cb(0.5, method="lr")
+    for call in (
+        lambda: model.mean_cb(),
+        lambda: model.mrl_cb([5.0]),
+        lambda: model.rmst_cb(10.0),
+        lambda: model.rmst(10.0),
+    ):
+        with pytest.raises(ValueError, match="bootstrap"):
+            call()
