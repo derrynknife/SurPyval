@@ -293,13 +293,13 @@ def test_df_with_a_support_is_zero_before_the_first_value():
 class TestBootstrapSettings:
     def _record(self, monkeypatch):
         calls = []
-        real = nonp.turnbull
+        real = nonp._turnbull
 
         def spy(*args, **kwargs):
             calls.append(kwargs)
             return real(*args, **kwargs)
 
-        monkeypatch.setattr(nonp, "turnbull", spy)
+        monkeypatch.setattr(nonp, "_turnbull", spy)
         return calls
 
     def test_resamples_use_fit_settings(self, monkeypatch):

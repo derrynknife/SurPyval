@@ -16,7 +16,10 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
-from surpyval.metrics import compare_concordance, concordance_estimate
+from surpyval.metrics import compare_concordance
+from surpyval.metrics.concordance import (
+    _concordance_estimate as concordance_estimate,
+)
 
 from ._data import fixture, reference, values
 

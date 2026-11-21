@@ -448,3 +448,16 @@ def test_552_numeric_counts_are_checked_as_numbers(monkeypatch):
         xcnt_handler([1.0, 2.0], n=np.array([1.0, np.nan]))
     with pytest.raises(ValueError, match="'n' cannot contain NaN"):
         xcnt_handler([1.0, 2.0], n=[1, None])
+
+
+def test_fractional_counts_say_they_are_estimates_not_observations():
+    # to_xrd gives Turnbull's expected counts for interval censored data,
+    # which from_xrd refuses: the message says why and what to do.
+    data = surv.SurpyvalData(x=[[1, 2], [2, 4], 3, [1, 5]], c=[2, 2, 0, 2])
+    x, r, d = data.to_xrd()
+    with pytest.raises(ValueError) as err:
+        surv.SurpyvalData.from_xrd(x, r, d)
+    message = str(err.value)
+    assert "fractional" in message
+    assert "estimates, not observations" in message
+    assert "Fit the original data instead" in message

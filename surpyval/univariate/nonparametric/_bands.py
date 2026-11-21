@@ -720,7 +720,7 @@ class BandsMixin:
                         n_b = rng.multinomial(N, probs)
                     keep = n_b > 0
                     if self.model == "Turnbull":
-                        fitted = nonp.turnbull(
+                        fitted = nonp._turnbull(
                             x_data[keep],
                             c_data[keep],
                             n_b[keep],
@@ -732,7 +732,7 @@ class BandsMixin:
                         x_b, r_b, d_b = xcnt_to_xrd(
                             x_data[keep], c_data[keep], n_b[keep], t_data[keep]
                         )
-                        R_b = nonp.FIT_FUNCS[self.model](r_b, d_b)
+                        R_b = nonp._FIT_FUNCS[self.model](r_b, d_b)
                     idx = np.searchsorted(x_b, x_eval, side="right") - 1
                     R_boot[b, :] = np.where(
                         idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]

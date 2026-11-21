@@ -40,7 +40,7 @@ import numpy.typing as npt
 from scipy.special import logsumexp, polygamma
 
 from surpyval.bayes.likelihood import LogLikelihood
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 #: The (point, row) evaluations of the log-likelihood held at once.
 _CHUNK = 2_000_000
@@ -432,7 +432,7 @@ def waic(model: Any) -> PredictiveCriterion:
             f"above {P_WAIC_LIMIT} (the posterior variance of their "
             "log-likelihood). Use loo(), whose diagnostics say which "
             "estimates to trust.",
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return res
 
@@ -473,7 +473,7 @@ def loo(model: Any) -> PredictiveCriterion:
                 "parameters a prior that holds them, or compare by draws "
                 "from a sampler (from_draws), whose Pareto k says how far "
                 "to trust each row.",
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return res
     S = len(points)
@@ -501,7 +501,7 @@ def loo(model: Any) -> PredictiveCriterion:
             "unreliable: those rows change the posterior a lot (often "
             "outliers). Check them, refit without each to find its value "
             "exactly, or, for k up to 0.7, give more draws.",
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return res
 
@@ -695,7 +695,11 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
         with collecting_warnings() as caught:
             results[name] = m.loo() if criterion == "loo" else m.waic()
         for w in caught:
-            warnings.warn(f"{name!r}: {w.message}", w.category, stacklevel=2)
+            warnings.warn(
+                f"{name!r}: {w.message}",
+                w.category,
+                stacklevel=caller_stacklevel(),
+            )
     ranked = sorted(results, key=lambda k: -results[k].elpd)
     best = ranked[0]
     top = results[best]

@@ -58,6 +58,10 @@ from surpyval.univariate.competing_risks._assembly import (
     wald_all_cause_bound,
     wald_cif_bound,
 )
+from surpyval.univariate.competing_risks._few_events import (
+    event_counts,
+    warn_few_events,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -70,12 +74,9 @@ from surpyval.univariate.competing_risks.rmtl import rmtl_result
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
-from surpyval.utils import (
-    check_e_and_x,
-    is_missing_event,
-    resolve_cr_censoring,
-    xcnt_handler,
-)
+from surpyval.utils import check_e_and_x, is_missing_event, xcnt_handler
+from surpyval.utils._value_method import value_method
+from surpyval.utils.data_formats import resolve_cr_censoring
 from surpyval.utils.dataframe import exact_or_range_frame, frame_column
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import standard_errors_of
@@ -765,6 +766,90 @@ class ParametricCompetingRisks(
         self._check_event(event)
         return self.cif(np.inf, event)
 
+    def eliminate(self, *events: Any) -> ParametricCompetingRisks:
+        """
+        The model with one or more causes removed: what the reliability
+        would be if those failure modes were designed out, the others
+        unchanged.
+
+        The causes left keep their fitted distributions, so the new
+        model's all-cause survival is the product of their net survivals,
+        :math:`S(t) = \\prod_{k \\notin E} S_k(t)`, and its cumulative
+        incidences, mean, bounds and draws are those of the causes left
+        competing among themselves. This assumes the causes are
+        independent: removing a cause leaves the others' hazards as they
+        were. The data cannot check that (Tsiatis 1975): a cause that
+        shares a weakness with the one removed would in truth change too.
+
+        For the non-parametric estimate, the same quantity is
+        ``exp(-sum(cr.Hf(x, k) for k in kept))`` from
+        :class:`~surpyval.univariate.competing_risks.CompetingRisks`, the
+        product of the kept causes' Nelson-Aalen net survivals, under the
+        same assumption.
+
+        Parameters
+        ----------
+        *events
+            The causes to remove, at least one, leaving at least one.
+
+        Returns
+        -------
+        ParametricCompetingRisks
+            The model of the causes left.
+
+        Raises
+        ------
+        ValueError
+            If no cause, an unknown cause, or every cause is given, or the
+            model was fitted to left- or interval-censored rows (its
+            causes' estimates are correlated, so the causes left cannot be
+            taken alone; refit without those rows, or treat the result
+            of ``from_fitted`` as ignoring that correlation).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(float(model.sf(2.0)), 6)  # exp(-0.4 * 2)
+        0.449329
+        >>> without_b = model.eliminate("b")
+        >>> without_b.causes
+        ['a']
+        >>> round(float(without_b.sf(2.0)), 6)  # exp(-0.1 * 2)
+        0.818731
+        """
+        if not events:
+            raise ValueError(
+                f"eliminate needs at least one cause to remove, one of "
+                f"{self.causes}."
+            )
+        for event in events:
+            self._check_event(event)
+        removed = set(events)
+        kept = {k: self.models[k] for k in self.causes if k not in removed}
+        if not kept:
+            raise ValueError(
+                f"eliminate would remove every cause ({self.causes}); leave "
+                "at least one."
+            )
+        if self._joint is not None:
+            raise ValueError(
+                "This model was fitted to left- or interval-censored rows, "
+                "with every cause at once: the causes' estimates are "
+                "correlated, and a found-failed row of a removed cause still "
+                "informs the others, so the causes left cannot be taken "
+                "alone. Refit without those rows, or build "
+                "ParametricCompetingRisks.from_fitted({k: model.models[k] "
+                "for k in kept}), whose bounds then ignore that correlation."
+            )
+        return type(self).from_fitted(kept)
+
     def random(
         self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
@@ -890,6 +975,7 @@ class ParametricCompetingRisks(
             [_cause_estimates(self.models[k]) for k in self.causes]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of every cause's fitted parameters, in the order of
@@ -965,6 +1051,7 @@ class ParametricCompetingRisks(
             )
         return cov
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """
         The standard errors of every cause's fitted parameters, the square
@@ -1963,6 +2050,15 @@ class ParametricCompetingRisks(
         """
         x, c, n, e, t = _validate(x, c, n, e, tl)
         truncated = tl is not None
+        failed = c != 1
+        warn_few_events(
+            event_counts(e, failed, n, ordered_labels(e[failed])),
+            "each such cause's distribution, and the cumulative incidence "
+            "and bounds built on it, rest on few failures. Check how wide "
+            "cb() is, give the cause a one-parameter distribution "
+            "(dist={cause: Exponential, ...}), or use the non-parametric "
+            "CompetingRisks.",
+        )
         if ((c == -1) | (c == 2)).any():
             return cls._fit_joint(x, c, n, e, t, dist, how)
 

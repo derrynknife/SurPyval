@@ -6,6 +6,7 @@ reliability target: test ``n`` units for a time, allow ``failures`` of
 them, and if no more fail, the design has demonstrated the target.
 """
 
+import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
@@ -50,6 +51,10 @@ class DemonstrationPlan:
         The chance that a design at the target passes.
     producer_risk : float
         The chance that a design at the good level fails.
+    unit_test_time : float or None
+        How long each unit's test runs, ``test_multiple`` times the
+        mission time, when :func:`demonstration_plan` was given
+        ``mission_time``; None otherwise.
 
     Examples
     --------
@@ -73,13 +78,14 @@ class DemonstrationPlan:
     failures: int
     consumer_risk: float
     producer_risk: float
+    unit_test_time: float | None = None
 
     def to_dict(self) -> dict:
         """The plan as a dict of native Python values, strict JSON:
         ``n``, ``test_multiple``, ``test_time``, ``failures``,
-        ``consumer_risk`` and ``producer_risk``, under ``"result":
-        "DemonstrationPlan"``. An infinite or missing number is ``None``,
-        recorded under ``"non_finite"``.
+        ``consumer_risk``, ``producer_risk`` and ``unit_test_time``,
+        under ``"result": "DemonstrationPlan"``. An infinite or missing
+        number is ``None``, recorded under ``"non_finite"``.
 
         Examples
         --------
@@ -99,9 +105,12 @@ class DemonstrationPlan:
         if self.n is not None:
             multiple = self.test_multiple
             missions = "mission" if multiple == 1.0 else "missions"
+            length = f"{multiple:.6g} {missions}"
+            if self.unit_test_time is not None:
+                length += f" ({self.unit_test_time:.6g} per unit)"
             lines += [
                 f"Units            : {self.n}",
-                f"Test length      : {multiple:.6g} {missions}",
+                f"Test length      : {length}",
             ]
         else:
             lines.append(f"Total test time  : {self.test_time:.6g}")
@@ -332,6 +341,82 @@ def demonstration_test_multiple(
     _check_shape(shape)
     per_test = demonstrated_reliability(n, failures, alpha_ci=alpha_ci)
     return float((np.log(per_test) / np.log(reliability)) ** (1.0 / shape))
+
+
+@elementwise
+def demonstration_test_time(
+    reliability: float,
+    n: int,
+    failures: int = 0,
+    *,
+    mission_time: float,
+    shape: float,
+    alpha_ci: float = 0.05,
+) -> float:
+    r"""How long each of ``n`` units must be tested to demonstrate a
+    reliability over a mission, the lifetime's Weibull shape known.
+
+    The extended success run (Weibayes, Abernethy's *New Weibull
+    Handbook*, ch. 6) in the units of ``mission_time``: the test length
+    of :func:`demonstration_test_multiple` times the mission. With no
+    failures allowed it is the closed form
+
+    .. math::
+
+        T = t_m \left(\frac{\ln \alpha}{n \ln R}\right)^{1/\beta},
+
+    the time by which a Weibull of shape :math:`\beta` whose reliability
+    over the mission :math:`t_m` is only :math:`R` would have let all
+    ``n`` units survive with a chance of :math:`\alpha`. With failures
+    allowed, the binomial (Clopper-Pearson) bound replaces
+    :math:`\alpha^{1/n}`, as in :func:`demonstrated_reliability`.
+
+    Any argument may be an array: the answer is then an array of the
+    arguments' broadcast shape.
+
+    Parameters
+    ----------
+    reliability : float
+        The reliability to demonstrate over one mission, in (0, 1).
+    n : int
+        The number of units to test, more than ``failures``.
+    failures : int, optional
+        The failures the test allows, by default 0.
+    mission_time : float
+        Keyword only: the length of the mission the reliability is over,
+        positive, in any unit of time.
+    shape : float
+        Keyword only: the Weibull shape of the lifetime.
+    alpha_ci : float, optional
+        Keyword only: the consumer's risk, by default 0.05 (95%
+        confidence).
+
+    Returns
+    -------
+    float
+        How long each unit is tested, in the units of ``mission_time``.
+
+    Raises
+    ------
+    ValueError
+        If an argument is out of range.
+
+    Examples
+    --------
+    Ten units, a believed wear-out shape of 2, to demonstrate 90%
+    reliability over 1000 hours at 90% confidence: each runs about 1478
+    hours with no failure:
+
+    >>> from surpyval.test_planning import demonstration_test_time
+    >>> round(demonstration_test_time(0.9, 10, mission_time=1000.0,
+    ...                               shape=2.0, alpha_ci=0.1))
+    1478
+    """
+    mission_time = check_positive(mission_time, "mission_time")
+    multiple = demonstration_test_multiple(
+        reliability, n, failures, shape=shape, alpha_ci=alpha_ci
+    )
+    return float(mission_time * multiple)
 
 
 @elementwise
@@ -603,6 +688,7 @@ def demonstration_plan(
     test_multiple: float = 1.0,
     shape: float | None = None,
     max_failures: int = 1000,
+    mission_time: float | None = None,
 ) -> DemonstrationPlan:
     """The smallest attribute test that demonstrates a reliability and
     that a good design passes.
@@ -648,12 +734,16 @@ def demonstration_plan(
     max_failures : int, optional
         Keyword only: the most failures a plan may allow, by default
         1000.
+    mission_time : float, optional
+        Keyword only: the length of the mission, positive, to report each
+        unit's test length in time as well as in missions
+        (``unit_test_time``).
 
     Returns
     -------
     DemonstrationPlan
         The plan: ``n``, ``test_multiple`` and ``failures``, and its
-        risks.
+        risks (and ``unit_test_time``, given ``mission_time``).
 
     Raises
     ------
@@ -681,6 +771,15 @@ def demonstration_plan(
     (128, 8)
     >>> round(plan.consumer_risk, 3), round(plan.producer_risk, 3)
     (0.097, 0.192)
+
+    Given the units, the test length is found instead: 20 units, for a
+    wear-out shape of 2 and a 1000-hour mission, each run about 2820
+    hours, allowing 8 failures:
+
+    >>> plan = demonstration_plan(0.9, 0.95, alpha_ci=0.1, n=20,
+    ...                           shape=2.0, mission_time=1000.0)
+    >>> round(plan.test_multiple, 3), round(plan.unit_test_time), plan.failures
+    (2.82, 2820, 8)
     """
     check_probability(reliability, "reliability")
     check_probability(good_reliability, "good_reliability")
@@ -694,6 +793,8 @@ def demonstration_plan(
             "than the target."
         )
     most = check_failures(max_failures)
+    if mission_time is not None:
+        mission_time = check_positive(mission_time, "mission_time")
     if n is not None:
         n = check_count(n)
         if shape is None:
@@ -702,18 +803,24 @@ def demonstration_plan(
                 "Weibull shape."
             )
         _check_shape(shape)
-        for failures in range(min(most, n - 1) + 1):
-            multiple = demonstration_test_multiple(
-                reliability, n, failures, shape=shape, alpha_ci=alpha_ci
-            )
-            plan = _attribute_plan(
-                reliability, good_reliability, n, failures, multiple, shape
-            )
-            if plan.producer_risk <= producer_risk:
-                return plan
+        args = (reliability, good_reliability, alpha_ci, shape, most)
+        plan, best = _plan_of_length(n, *args, producer_risk)
+        if plan is not None:
+            return _with_time(plan, mission_time)
+        enough = _enough_units(n, *args, producer_risk)
+        more = (
+            f"test more units ({enough} are enough)"
+            if enough is not None
+            else "test more units"
+        )
         raise ValueError(
-            f"No test of {n} units keeps both risks: test more units, or "
-            "allow a larger producer's risk."
+            f"No test of {n} units keeps both risks. The test length "
+            "(test_multiple) was searched for each number of failures "
+            f"allowed, from 0 to {min(most, n - 1)}: the lowest producer's "
+            f"risk any length reaches is {best.producer_risk:.3g}, allowing "
+            f"{best.failures} failures over {best.test_multiple:.4g} "
+            f"missions. To keep both risks, {more}, or allow a "
+            f"producer_risk of {best.producer_risk:.3g}."
         )
     _test_exponent(test_multiple, shape)
     for failures in range(most + 1):
@@ -733,11 +840,77 @@ def demonstration_plan(
             shape,
         )
         if plan.producer_risk <= producer_risk:
-            return plan
+            return _with_time(plan, mission_time)
     raise ValueError(
         f"No plan allowing at most {most} failures keeps both risks: the "
         "good reliability is too close to the target (raise max_failures, "
         "or allow larger risks)."
+    )
+
+
+def _plan_of_length(
+    n: int,
+    reliability: float,
+    good_reliability: float,
+    alpha_ci: float,
+    shape: float,
+    most: int,
+    producer_risk: float,
+) -> tuple[DemonstrationPlan | None, DemonstrationPlan]:
+    """The shortest test of ``n`` units that keeps both risks (None if
+    none does), and the plan with the lowest producer's risk searched."""
+    best: DemonstrationPlan | None = None
+    for failures in range(min(most, n - 1) + 1):
+        multiple = demonstration_test_multiple(
+            reliability, n, failures, shape=shape, alpha_ci=alpha_ci
+        )
+        plan = _attribute_plan(
+            reliability, good_reliability, n, failures, multiple, shape
+        )
+        if best is None or plan.producer_risk < best.producer_risk:
+            best = plan
+        if plan.producer_risk <= producer_risk:
+            return plan, best
+    assert best is not None
+    return None, best
+
+
+def _enough_units(
+    n: int,
+    reliability: float,
+    good_reliability: float,
+    alpha_ci: float,
+    shape: float,
+    most: int,
+    producer_risk: float,
+) -> int | None:
+    """A number of units, more than ``n``, whose test of some length keeps
+    both risks: the fewest of those a doubling and a bisection visit (the
+    risk is not exactly monotone in the units), or None if none up to
+    ``1024 n`` does."""
+    args = (reliability, good_reliability, alpha_ci, shape, most)
+    low, high = n, 2 * n
+    while _plan_of_length(high, *args, producer_risk)[0] is None:
+        if high >= 1024 * n:
+            return None
+        low, high = high, 2 * high
+    while high - low > 1:
+        middle = (low + high) // 2
+        if _plan_of_length(middle, *args, producer_risk)[0] is None:
+            low = middle
+        else:
+            high = middle
+    return high
+
+
+def _with_time(
+    plan: DemonstrationPlan, mission_time: float | None
+) -> DemonstrationPlan:
+    """``plan`` with each unit's test length in time, given the mission."""
+    if mission_time is None:
+        return plan
+    return dataclasses.replace(
+        plan, unit_test_time=float(plan.test_multiple or 0.0) * mission_time
     )
 
 

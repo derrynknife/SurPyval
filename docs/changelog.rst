@@ -26,6 +26,85 @@ v0.29 (unreleased)
   model with modes saves as schema 5. See "More than one way to fail"
   in :doc:`Joint Models`.
 
+- **Copulas with non-parametric margins have standard errors and
+  bounds.** A copula fitted with both margins ``KaplanMeier`` on complete
+  data with no tied values (the maximum pseudo-likelihood estimate from
+  the ranks) has ``covariance()``, ``standard_errors()`` and
+  ``param_cb()``: the rank-based covariance of Genest, Ghoudi and Rivest
+  (1995), which adds to the copula's score the change in it from each
+  margin's ranks being estimated. They raised a ``ValueError`` before.
+  Every fitted copula model also has the case bootstrap,
+  ``method="bootstrap"`` (with ``n_boot``, 200, and ``random_state``) on
+  ``covariance``, ``standard_errors``, ``param_cb`` and ``cb``: the units
+  are resampled, the margins and the copula fitted again, and the bounds
+  are the refits' percentile intervals. Where the rank-based covariance
+  does not apply (censored, truncated or tied data, a margin that is not
+  ``KaplanMeier``, or one parametric margin with one non-parametric) the
+  default call refuses, says which of these it is and names
+  ``method="bootstrap"``; ``cb`` on the joint ``sf`` or ``ff`` with a
+  non-parametric margin has the bootstrap only. New:
+  ``kendall_tau_cb()`` and ``spearman_rho_cb()``, bounds on the two rank
+  correlations the fitted copula implies (the parameter's bound carried
+  through the measure for a one-parameter family, a delta-method bound
+  on Fisher's z for the Student-t, or the bootstrap's). A model's
+  dictionary says how its covariance was worked out
+  (``"covariance_method"``: ``"information"``, ``"godambe"`` or
+  ``"rank"``). The warning of a Wald bound that does not exist now names
+  the bootstrap, where it said the copula models had no other bound.
+  Over 500 simulated samples of 100 and of 400 rows (Clayton, Gumbel,
+  Frank) the rank-based 90% intervals covered the true parameter 88.6% to
+  92.8% of the time and the 95% intervals 93.2% to 96.2%; the
+  bootstrap's, on 200 censored samples of 100 rows, 92.0% and 96.5% (the
+  parameter) and 85.5% and 96.5% (the joint survival at a point). See
+  "Standard errors and confidence bounds" in
+  :doc:`Multivariate Modelling with SurPyval`.
+
+- **Competing risks: what user tests found missing.**
+  ``FineGrayModel.cb(x, Z, on="cif")`` bounds a Fine-Gray model's
+  cumulative incidence (or one minus it, ``on="sf"``) by the case
+  bootstrap (``n_boot``, ``random_state``; clusters resampled whole,
+  strata and weights kept); ``method="wald"`` and ``"lr"`` refuse,
+  saying why and to use the bootstrap. ``ParametricCompetingRisks.eliminate(cause,
+  ...)`` gives the model with failure modes designed out, the causes left
+  keeping their fits (independent causes assumed, as documented), with
+  every function, ``mean`` and ``cb``. ``ParametricCompetingRisks.fit``
+  warns, once and with the counts, when a cause has fewer than 10
+  failures, and ``FineGray.fit`` when the cause of interest has fewer than
+  10 events per coefficient, each saying what to do. The Fine-Gray docs
+  name the cause argument ``event`` (they said ``cause``).
+
+- **Test planning: what user tests found missing.**
+  ``demonstration_test_time(reliability, n, failures, mission_time=,
+  shape=)`` gives each unit's extended (Weibayes) test length in time,
+  not only in missions: ten units, shape 2, to show 90% over 1000 hours
+  at 90% confidence run 1478 hours each. ``demonstration_plan`` takes
+  ``mission_time`` to report the test length it finds in time
+  (``unit_test_time``), and, given ``n``, its refusal now says the test
+  length was searched, the lowest producer's risk reached, and how many
+  units are enough. ``mean_ratio_design`` plans a comparison of two mean
+  lives (exponential, or Weibull with a known common shape) by the exact
+  F test, solving for the power, the events, the units or the detectable
+  ratio; ``logrank_design``'s documentation gives the mean-ratio to
+  hazard-ratio mapping. An ``AcceleratedTestPlan`` reports the
+  acceleration factor at each stress and ``use_test_time``, how long the
+  same units would have to run at the use stress for the same precision.
+  The sequential tests print their reject line beside the accept line.
+
+- **The inverse survival function, ``isf``.** Every distribution
+  (``Weibull.isf(s, alpha, beta)``) and every parametric model
+  (``model.isf(s)``) gives the time at which the survival function is
+  ``s``, scipy's name for it. It is ``qf(1 - s)`` without rounding ``1 -
+  s``, which ``qf`` cannot avoid: below ``s = 1.1e-16`` the quantile is
+  the end of the support, where ``isf`` keeps going (``isf(sf(t))`` gives
+  back ``t`` at a survival of 1e-300). It is in closed form for the
+  Weibull, exponential, Rayleigh, both Gumbels, logistic, log-logistic,
+  normal, lognormal, gamma, both betas, uniform and exponentiated Weibull;
+  the others solve ``log_sf(x) = log(s)`` (a discrete distribution: the
+  first point with ``sf(k) <= s``). A model's follows its offset, limited
+  failure population (``inf`` at or below ``1 - p``) and zero inflation
+  (0 at or above ``1 - f0``). ``tests/reference/test_tails.py`` checks it
+  against 50-digit references from ``s = 1`` to 1e-300.
+
 - **Test planning: one function per comparison design.**
   ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
   ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,
@@ -765,6 +844,79 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **Small traps from user tests.** ``from_params`` takes a plain number for
+  every one-parameter distribution (``Exponential.from_params(1 / 20000)``,
+  ``Rayleigh``, ``Poisson``, ...); a number, or a list of the wrong length,
+  for a distribution with more parameters is refused naming how many it
+  takes and their names ("Weibull takes 2 parameters (alpha, beta); got 1
+  number"), where it failed with "object of type 'float' has no len()".
+  A fitted model's ``distribution`` names its distribution (every model is a
+  ``Parametric``), and ``parameter_roles`` (on the distribution and the
+  model) says what each parameter does: Gamma's ``beta`` is a rate,
+  Weibull's a shape. A Turnbull estimate's printout says ``Curve :
+  Fleming-Harrington on Turnbull's expected counts``, not ``Estimator :
+  Fleming-Harrington``, which read as if that were the method. The data
+  line of a printout counts left and interval censored units among the
+  events ("60 units: 24 events (0 exact, 1 left censored, 23 interval
+  censored), 36 right censored"), where interval data read as "0 events".
+  ``from_xrd`` given fractional counts (such as ``to_xrd``'s Turnbull
+  expected counts) still refuses them, now saying they are estimates, not
+  observations, and to fit the original data. ``fit_best``'s warnings point
+  at the caller's line, and the one for a candidate set aside says in plain
+  words why and what to do; every other warning with a counted
+  ``stacklevel`` now points at the first line outside SurPyval too. The
+  competing-risks models' ``standard_errors``, ``covariance`` and ``phi``,
+  used as a value (``np.round(model.standard_errors, 4)``), raise a
+  ``TypeError`` saying to call them, where numpy's message did not say.
+
+- **One concordance, one Brier score, one AUC.** ``concordance_index``
+  now returns a ``ConcordanceResult``, a ``float`` (the index, the same
+  number as before) that carries its standard error ``se``, interval
+  ``ci``, pair counts and influence, and takes ``weighting=``, ``tau=``,
+  ``alpha_ci=`` and ``ci_method=`` (keyword only) for Uno's C to a
+  horizon. A regression model's ``concordance()`` returns the same,
+  with ``alpha_ci=`` and ``ci_method=``. ``brier_score`` and ``auc_td``
+  return a ``TimeScores``, the ``(times, values)`` pair they always
+  returned, and ``integrated_brier_score`` a ``Score``, a ``float``;
+  each carries the standard errors and the ends of the ``1 - alpha_ci``
+  intervals (``se``, ``lower``, ``upper``, from ``alpha_ci=``) that
+  ``score_predictions`` gives, and says why where there are none
+  (censoring weights from ``x_train`` and ``c_train``, or a missing
+  risk score). They work as numbers wherever the old results did
+  (``float``, arithmetic, comparisons, ``numpy``, ``json``, unpacking
+  ``times, bs = ...``); a ``ConcordanceResult`` now prints as its number,
+  and ``summary()`` gives the table its printout used to.
+  ``score_predictions`` stays the call for several metrics and models
+  and their paired comparisons.
+
+- **``DegradationAnalysis`` says which failure times are extrapolated, and
+  can censor units still running.** A unit short of the threshold at its
+  last reading, whose path crosses only after it, still fails at the
+  extrapolated crossing by default (the pseudo-failure-time method), and
+  now the summary counts these ("Extrapolated Units") and the model's
+  ``extrapolated`` marks them. New: ``running="censor"`` right censors such
+  units at their last reading instead, and ``censored_units=[...]``
+  censors the units named there (units known to be running, or that failed
+  another way short of the threshold); a listed unit whose path reaches the
+  threshold within its readings is refused, and so is a fit left with no
+  failure, naming ``running="extrapolate"``. The bootstrap bounds keep the
+  choice; ``to_dict`` saves it. Fits with the defaults are unchanged. See
+  "Units still running at the end of the test" in :doc:`Degradation
+  Modelling with SurPyval`.
+
+- **A non-parametric ``mean()``, ``mean_cb()`` and ``mrl(x)`` warn when
+  they stop at the data.** With ``tau`` left out they are the area under
+  the estimate up to the largest observed time (the restricted mean, as
+  before). Where units are still at risk past that time (the estimate
+  above zero there), the mean life is not determined by the data, and they
+  now say so: the warning gives the
+  largest time, the survival estimate there and the share of probability
+  past it, and names ``tau`` (``rmst(tau)`` for the bounds) and a
+  parametric fit. On ten units with seven running at 1500, ``mean()`` is
+  1300 with the estimate at 0.7. The values are unchanged; ``mean(tau=)``
+  and ``rmst`` do not warn. Every estimator (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull) behaves alike.
+
 - **SurpyvalData is the form for several rows per unit; EventHistoryData is
   being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
   ``a``), which every recurrent fitter takes, and nothing new depends on
@@ -1052,6 +1204,35 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- Internal steps that ``surpyval.univariate.nonparametric`` and
+  ``surpyval.utils`` exposed as public names. From the non-parametric
+  namespace: the lower-case estimators ``kaplan_meier``,
+  ``nelson_aalen``, ``fleming_harrington`` and ``turnbull`` (use the
+  fitters, ``KaplanMeier.fit`` and the rest), ``greenwood_variance``,
+  ``nelson_aalen_variance`` and ``fleming_harrington_variance`` (the
+  fitters' ``cb``), ``rank_adjust``, ``canonical_heuristic``,
+  ``FIT_FUNCS``, ``VAR_FUNCS`` and ``PLOTTING_METHODS``. From
+  ``surpyval.utils``: ``coerce_xcnt_x``, ``format_truncation``,
+  ``group_xcnt``, ``xcnt_sort`` and ``resolve_cr_censoring``, which
+  ``SurpyvalData`` runs. Each still works, with a ``FutureWarning``
+  saying what to use, and is removed in v0.30. ``surpyval.utils`` keeps
+  ``round_sig``, ``is_missing_event``, ``missing_events``,
+  ``normalise_unit`` and ``same_unit``, and ``surpyval.pymc`` all of its
+  names.
+
+- ``surpyval.metrics.concordance_estimate`` (and
+  ``surpyval.concordance_estimate``) is ``concordance_index``, which now
+  gives the standard error and interval (``alpha_ci=`` for ``alpha``),
+  and a regression model's ``concordance_estimate()`` is its
+  ``concordance()``. Each gives the same numbers, with a
+  ``FutureWarning``, and is removed in v0.30.
+
+- The renewal fitters' ``fit_from_parameters`` (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``) is ``from_params``, the
+  name every other family uses for a model built from given parameters.
+  The old name gives the same model, with a ``FutureWarning`` naming
+  ``from_params``, and is removed in v0.30.
+
 - The 21 test-planning functions that each solved one design for one
   unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
   ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,
@@ -1074,6 +1255,24 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- **The distribution functions keep their digits further into the
+  tails.** A Rayleigh's ``ff`` and ``Hf`` with a small ``sigma`` lost 1e-12
+  of their value where ``x**2`` went subnormal (now ``(x / sigma)**2 /
+  2``); a Beta's log density with a large shape lost 1e-11 to ``log(1 -
+  x)`` (now ``log1p``) and 3e-13 to scipy's ``betaln`` (now the
+  cancellation-free form the incomplete beta already used), and its
+  quantile below the smallest normal double 2e-10 at ``alpha = 1e-3``
+  (so seeded draws of such a Beta move in their last digits); a
+  normal or lognormal hazard between 1 and 100 standard deviations lost up
+  to 1e-13 to a difference of logs (now from ``erfcx``); and the log of a
+  gamma or beta probability within 0.1 of 1 is taken from its complement
+  (it lost up to 2e-13 between 0.9 and 0.999). The tails reference test
+  now holds each function to 1e-12 (from 1e-8), or 64 ulps of its
+  inputs' sensitivity where that is larger. The discrete distributions
+  at large parameters, and the gamma density at shape 1e3, are not yet
+  within it (errors up to 3e-9): they are listed in it as known failures
+  under #1300.
 
 - **``SurpyvalData.from_observations`` with ids paired ids with the wrong
   times** where the rows were sorted (any data without covariates or event
@@ -1109,6 +1308,24 @@ v0.29 (unreleased)
   event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
+
+- :doc:`Competing Risks SurPyval Modelling` named Gray's test's and
+  ``FineGray``'s cause argument ``cause``; it is ``event``. It now says the
+  Fine-Gray baseline (and ``phi``) is at covariates 0 unless fitted with
+  ``center=True``. :doc:`Regression Modelling with SurPyval` says Cox
+  coefficients are named ``coef_0``, ... for an array ``Z`` (pass a
+  ``DataFrame``, ``Z_cols`` or a ``formula`` to name them), and maps
+  ``fit_tvc``'s ``xl``, ``xr`` and ``c`` to R's start, stop and status.
+
+- **Choosing a Model**, a new page linked from the start of the
+  documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`
+  goes from the data to a model by yes-or-no questions, each with two
+  answers, in three stages (the shape of the problem, how to write each
+  unit's record, and what is asked), says how the need to extrapolate
+  decides between a parametric and a non-parametric model, and ends with
+  a table of situations and the calls that handle them. The bundled
+  agent skill follows the same questions
+  (``.claude/skills/surpyval/references/choosing-a-model.md``).
 
 - The coverage quoted for the bootstrap bounds of limited-failure and
   zero-inflated models (``method="bootstrap"``) in

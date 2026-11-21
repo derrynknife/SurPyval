@@ -13,7 +13,7 @@ import numpy as np
 
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -250,7 +250,7 @@ def compare_links(
             "; ".join(reasons)
             + f": {len(left_out)} link(s) were left out of the comparison "
             f"({', '.join(left_out)}).",
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     reference = kwargs.get("marker_reference")
     fitted: dict[str, JointModel] = {}
@@ -306,7 +306,7 @@ def compare_links(
             + "; ".join(f"{k} ({v})" for k, v in failed.items())
             + ". Fit one on its own (JointPH(..., link=...).fit) for the "
             "whole message.",
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     set_aside = [
         label for label, model in models.items() if model.maximum != "verified"
@@ -319,7 +319,7 @@ def compare_links(
             "nothing, so they are neither ranked nor tested. Best: "
             f"{out.best_label or 'none'}. Fit each on its own "
             "(JointPH(..., link=...).fit) to see why.",
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return out
 
