@@ -505,6 +505,12 @@ significantly affect tire life.
     model = CoxPH.fit(x=x, Z=Z, c=c)
     model
 
+``Z`` here is a ``DataFrame``, so the coefficients take its column names. Given
+a plain array, they are named ``coef_0``, ``coef_1``, ... in the order of its
+columns; to have them named, pass a ``DataFrame``, or use
+``CoxPH.fit_from_df(df, x_col=..., c_col=..., Z_cols=[...])`` or a
+``formula=``.
+
 We can immediately check which coefficients are statistically significant:
 
 .. jupyter-execute::
@@ -993,6 +999,10 @@ naming and the status column ``c`` follows surpyval's censoring convention —
 ``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
 (a covariate change or administrative end). A subject may have at most one
 ``c = 0`` row, it must be its last interval, and its intervals must not overlap.
+For R users: ``fit_tvc(i, xl, xr, c, Z)`` is ``coxph(Surv(start, stop,
+status) ~ Z, id = i)`` with ``xl`` as ``start``, ``xr`` as ``stop`` and
+``c = 1 - status`` (SurPyval's ``c = 1`` means censored, R's ``status = 1`` the
+event).
 The covariates are ``Z_cols`` (numeric columns) or, as in ``fit_from_df``, a
 ``formula=`` that codes categorical columns such as the ``"yes"`` / ``"no"``
 columns of ``load_rossi_time_varying()``.

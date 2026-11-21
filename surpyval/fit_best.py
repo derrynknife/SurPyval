@@ -33,7 +33,7 @@ from surpyval.utils.aliases import canonical_name
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 if TYPE_CHECKING:
     # Imported where it is used: ``import surpyval`` does not load pandas
@@ -535,16 +535,17 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         warnings.warn(
             f"fit_best skipped {len(failed)} candidate(s) that could not "
             "be fitted to these data: " + "; ".join(failed),
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
     if set_aside:
         chosen = "none" if model is None else labels[id(model)]
         warnings.warn(
-            f"fit_best set aside {', '.join(set_aside)}: {metric} assumes "
-            "a regular maximum of the likelihood, which these fits do not "
-            "have, so they are ranked only when no regular candidate "
-            f"fitted. Chosen: {chosen}.",
-            stacklevel=2,
+            f"fit_best set aside {', '.join(set_aside)}: without a "
+            f"proper best fit, the {metric} of a candidate set aside "
+            "cannot be compared with the others', so it is chosen only "
+            f"when no other candidate fits. Chosen: {chosen}. To use one "
+            "set aside, fit it on its own and check it with diagnose().",
+            stacklevel=caller_stacklevel(),
         )
     if model is None and n_fitted > 0:
         # Every candidate fitted but none has a finite value of the
@@ -663,7 +664,7 @@ def _warn_if_lifetimes_passed_over(
         "failed at time 0 (dead on arrival), fit a lifetime family with "
         "zi=True (e.g. Weibull.fit(x, zi=True)); otherwise correct those "
         "times.",
-        stacklevel=2,
+        stacklevel=caller_stacklevel(),
     )
 
 

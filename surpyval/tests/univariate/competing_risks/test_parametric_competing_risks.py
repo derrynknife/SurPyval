@@ -604,3 +604,15 @@ def test_a_cause_with_few_events_is_warned_of_once_with_its_count():
         warnings.simplefilter("always")
         ParametricCompetingRisks.fit(*_simulate(400, seed=5))
     assert not [w for w in caught if "fewer than 10" in str(w.message)]
+
+
+def test_standard_errors_used_as_a_value_say_to_call_it():
+    x, e, c = _simulate(300, 4)
+    model = ParametricCompetingRisks.fit(x, e, c=c)
+    with pytest.raises(TypeError, match=r"call it, standard_errors\(\)"):
+        np.round(model.standard_errors, 4)
+    with pytest.raises(TypeError, match=r"call it, covariance\(\)"):
+        model.covariance[0]
+    np.testing.assert_array_equal(
+        model.standard_errors(), np.sqrt(np.diag(model.covariance()))
+    )

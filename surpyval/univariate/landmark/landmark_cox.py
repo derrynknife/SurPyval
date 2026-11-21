@@ -753,13 +753,15 @@ class LandmarkCox(SerialisableMixin):
         horizon = s + self.window
         past = t > horizon * (1 + 1e-12)
         if past.any():
+            from surpyval.utils.warnings import caller_stacklevel
+
             warnings.warn(
                 "{} of the times asked for are past the horizon s + w = "
                 "{:g} the model was fitted to; their predictions are "
                 "nan. Fit with a longer 'window' to predict further "
                 "ahead.".format(int(past.sum()), horizon),
                 UserWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         tc = np.clip(np.where(np.isnan(t), s, t), s, horizon)
         if stratum is None:

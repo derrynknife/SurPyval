@@ -529,15 +529,7 @@ OUT_OF_SCOPE["surpyval.recurrent.conditional_gaps"] = (
 )
 for _fn in (
     "filliben",
-    "fleming_harrington",
-    "fleming_harrington_variance",
-    "greenwood_variance",
-    "kaplan_meier",
-    "nelson_aalen",
-    "nelson_aalen_variance",
     "plotting_positions",
-    "rank_adjust",
-    "turnbull",
 ):
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
@@ -588,9 +580,6 @@ for _fn in (
     "sequential_mtbf_test",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
-OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
-    _FUNCTION + " (reads a plotting-position heuristic's name)"
-)
 
 # The Bayesian fits' building blocks: the likelihood, the posterior and the
 # priors (the model, BayesianParametric, is registered).

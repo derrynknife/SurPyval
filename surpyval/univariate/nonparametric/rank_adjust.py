@@ -21,7 +21,7 @@ def rank_adjust(
     Times must be sorted. The censored items (``c == 1``) get no rank,
     and each failure after one is pushed up to its mean order number:
 
-    >>> from surpyval.univariate.nonparametric import rank_adjust
+    >>> from surpyval.univariate.nonparametric.rank_adjust import rank_adjust
     >>> rank_adjust([1, 2, 3, 4, 5], [0, 1, 0, 0, 1])
     array([1.  ,  nan, 2.25, 3.5 ,  nan])
     """

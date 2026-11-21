@@ -790,6 +790,31 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **Small traps from user tests.** ``from_params`` takes a plain number for
+  every one-parameter distribution (``Exponential.from_params(1 / 20000)``,
+  ``Rayleigh``, ``Poisson``, ...); a number, or a list of the wrong length,
+  for a distribution with more parameters is refused naming how many it
+  takes and their names ("Weibull takes 2 parameters (alpha, beta); got 1
+  number"), where it failed with "object of type 'float' has no len()".
+  A fitted model's ``distribution`` names its distribution (every model is a
+  ``Parametric``), and ``parameter_roles`` (on the distribution and the
+  model) says what each parameter does: Gamma's ``beta`` is a rate,
+  Weibull's a shape. A Turnbull estimate's printout says ``Curve :
+  Fleming-Harrington on Turnbull's expected counts``, not ``Estimator :
+  Fleming-Harrington``, which read as if that were the method. The data
+  line of a printout counts left and interval censored units among the
+  events ("60 units: 24 events (0 exact, 1 left censored, 23 interval
+  censored), 36 right censored"), where interval data read as "0 events".
+  ``from_xrd`` given fractional counts (such as ``to_xrd``'s Turnbull
+  expected counts) still refuses them, now saying they are estimates, not
+  observations, and to fit the original data. ``fit_best``'s warnings point
+  at the caller's line, and the one for a candidate set aside says in plain
+  words why and what to do; every other warning with a counted
+  ``stacklevel`` now points at the first line outside SurPyval too. The
+  competing-risks models' ``standard_errors``, ``covariance`` and ``phi``,
+  used as a value (``np.round(model.standard_errors, 4)``), raise a
+  ``TypeError`` saying to call them, where numpy's message did not say.
+
 - **One concordance, one Brier score, one AUC.** ``concordance_index``
   now returns a ``ConcordanceResult``, a ``float`` (the index, the same
   number as before) that carries its standard error ``se``, interval
@@ -1125,6 +1150,22 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- Internal steps that ``surpyval.univariate.nonparametric`` and
+  ``surpyval.utils`` exposed as public names. From the non-parametric
+  namespace: the lower-case estimators ``kaplan_meier``,
+  ``nelson_aalen``, ``fleming_harrington`` and ``turnbull`` (use the
+  fitters, ``KaplanMeier.fit`` and the rest), ``greenwood_variance``,
+  ``nelson_aalen_variance`` and ``fleming_harrington_variance`` (the
+  fitters' ``cb``), ``rank_adjust``, ``canonical_heuristic``,
+  ``FIT_FUNCS``, ``VAR_FUNCS`` and ``PLOTTING_METHODS``. From
+  ``surpyval.utils``: ``coerce_xcnt_x``, ``format_truncation``,
+  ``group_xcnt``, ``xcnt_sort`` and ``resolve_cr_censoring``, which
+  ``SurpyvalData`` runs. Each still works, with a ``FutureWarning``
+  saying what to use, and is removed in v0.30. ``surpyval.utils`` keeps
+  ``round_sig``, ``is_missing_event``, ``missing_events``,
+  ``normalise_unit`` and ``same_unit``, and ``surpyval.pymc`` all of its
+  names.
+
 - ``surpyval.metrics.concordance_estimate`` (and
   ``surpyval.concordance_estimate``) is ``concordance_index``, which now
   gives the standard error and interval (``alpha_ci=`` for ``alpha``),
@@ -1213,6 +1254,14 @@ v0.29 (unreleased)
   event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
+
+- :doc:`Competing Risks SurPyval Modelling` named Gray's test's and
+  ``FineGray``'s cause argument ``cause``; it is ``event``. It now says the
+  Fine-Gray baseline (and ``phi``) is at covariates 0 unless fitted with
+  ``center=True``. :doc:`Regression Modelling with SurPyval` says Cox
+  coefficients are named ``coef_0``, ... for an array ``Z`` (pass a
+  ``DataFrame``, ``Z_cols`` or a ``formula`` to name them), and maps
+  ``fit_tvc``'s ``xl``, ``xr`` and ``c`` to R's start, stop and status.
 
 - **Choosing a Model**, a new page linked from the start of the
   documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`
