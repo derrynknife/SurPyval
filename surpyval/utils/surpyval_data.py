@@ -1522,6 +1522,33 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             unit=self.unit,
         )
 
+    def plot_lifetimes(
+        self,
+        ax: Any = None,
+        sort: str = "end",
+        max_rows: int | None = 100,
+    ) -> Any:
+        """
+        Draw the data itself, one line for each unit (each row where there
+        are no item ids): where it came under observation, and how it
+        ended (failed, right, left or interval censored), with the counts
+        ``n`` labelled, an item's several rows on one line, event types in
+        colour and finite right truncation bounds marked. Returns the
+        Axes. See :func:`surpyval.plotting.plot_lifetimes`.
+
+        Examples
+        --------
+        >>> import matplotlib
+        >>> matplotlib.use("Agg")
+        >>> from surpyval import SurpyvalData
+        >>> ax = SurpyvalData([3, 7], c=[0, 1]).plot_lifetimes()
+        >>> ax.get_xlabel()
+        'Time'
+        """
+        from surpyval.plotting import plot_lifetimes
+
+        return plot_lifetimes(self, ax=ax, sort=sort, max_rows=max_rows)
+
     def _markers_by_row(self) -> list | None:
         """Each row's marker readings, ``{age: value}`` (``{}`` for an item
         with none), in the order of the rows; None where the data has

@@ -26,6 +26,14 @@ Design decisions made while working on the open issues, with the reason for each
 | `data.rescale_time(factor, unit=None)` divides every time by `factor` (`x`, `t`, step-schedule edges and periods, reading ages), with the model method's factor check and wording; a `CovariatePath` is refused. | principle 6 | The fit of the rescaled data is then the rescaled fit. | done |
 | `data.resample(random_state=None, size=None)` (the seed is `random_state`, the package's one name for it, not `seed`): units drawn with replacement, each equally likely; a row counted `n` is `n` units, an item's rows one unit. The result has a row for each row of a unit drawn, counted by the draws (an item drawn twice keeps its id, counted 2), so no ids are invented. An item whose rows have different counts is refused. | proposed | Conventions: "Random draws and seeds". Counting the draws keeps ids unique without renaming. | done |
 | `from_dataframe(..., attribute_cols=)` keeps the frame's row order: it used to sort the rows after reading the attributes. | principle 12 | Silently misaligned attributes. | done |
+### Plotting the data: `plot_lifetimes` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SurpyvalData.plot_lifetimes(ax=None, sort="end", max_rows=100)` delegates to `surpyval.plotting.plot_lifetimes`, in the plot theme, returning the Axes and never showing. One line per unit (per row without item ids); an item's rows share a line. Lines start at left truncation, or at the window start (0, or the smallest time if negative). | proposed | The plotting module owns the theme; the method is the discoverable entry. | done |
+| `max_rows` keeps the first lines in the data's order (then sorts them), and the plot says how many were left out; `None` draws all. | proposed | Sorting first and cutting would drop only the longest lives, a biased picture. | done |
+
+---
 
 ## 2026-11-20
 
