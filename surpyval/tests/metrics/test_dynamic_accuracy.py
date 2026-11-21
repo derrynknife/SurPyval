@@ -18,8 +18,8 @@ import json
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
-from pandas.testing import assert_frame_equal
 
 from surpyval import (
     ItemLifetime,
@@ -180,8 +180,8 @@ def test_ages_alone_rank_like_a_coin_toss_and_the_readings_do_better():
     narrow = dynamic_brier(models, data, at=200, horizon=180, alpha_ci=0.1)
     wide = dynamic_brier(models, data, at=200, horizon=180)
     rows = narrow.scores
-    assert np.all((rows["lower"] <= rows["estimate"]))
-    assert np.all((rows["estimate"] <= rows["upper"]))
+    assert np.all(rows["lower"] <= rows["estimate"])
+    assert np.all(rows["estimate"] <= rows["upper"])
     assert np.all(
         (wide.scores["upper"] - wide.scores["lower"])
         > (rows["upper"] - rows["lower"])
@@ -208,7 +208,7 @@ def test_cross_validation_refits_without_each_group():
         cross_validate=2,
         random_state=5,
     )
-    assert_frame_equal(a.scores, b.scores)
+    pd.testing.assert_frame_equal(a.scores, b.scores)
     assert a.cross_validate == 2
     assert "Cross-validated" in repr(a)
     # held out, the age-only fits differ between the groups, so its AUC
@@ -284,7 +284,7 @@ def test_units_without_a_prediction_are_left_out_with_a_warning():
         warnings.simplefilter("ignore")
         lc = LandmarkCox.fit(data, at=60, horizon=180)
     at_risk = int(np.sum(data.x > 60))
-    with pytest.warns(UserWarning, match="1 of {} at 60".format(at_risk)):
+    with pytest.warns(UserWarning, match=f"1 of {at_risk} at 60"):
         result = dynamic_brier(
             {"joint": joint, "landmark": lc}, data, at=60, horizon=180
         )
