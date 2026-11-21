@@ -119,13 +119,21 @@ def test_from_dict_refuses_another_class():
         MultivariateSurpyvalData.from_dict({"class": "SurpyvalData"})
 
 
-@pytest.mark.parametrize("family", [Clayton, Gaussian])
-def test_copulas_take_exactly_two_axes(family):
+def test_copulas_take_exactly_two_axes():
+    family = Clayton
     assert family.n_axes == 2
     with pytest.raises(ValueError, match=r"exactly 2 axes .*has 3 \(hours"):
         family.fit(_three(), margins=[sp.Weibull] * 3)
     with pytest.raises(ValueError, match="exactly 2 axes .*has 3"):
         family.fit(ROWS, margins=[sp.Weibull] * 3)
+
+
+def test_the_elliptical_copulas_take_three_axes():
+    # (the Gaussian and Student-t copulas of more than two series; their
+    # own tests are in test_elliptical_nd.py)
+    assert Gaussian.n_axes == 2
+    with pytest.raises(ValueError, match="3 series does not take truncated"):
+        Gaussian.fit(_three(), margins=[sp.Weibull] * 3)
 
 
 def test_copula_fit_of_the_data_object_equals_the_arrays():
