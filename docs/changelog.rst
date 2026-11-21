@@ -110,6 +110,37 @@ v0.29 (unreleased)
   ``inf``. ``Observations`` has ``==`` (the same observations in order) and
   a ``unit``, which reaches the data and the model.
 
+- **Event types, covariates, histories and readings in the notation.**
+  Every observation takes ``event_type=`` and ``covariates={name: value}``
+  (``O(10, event_type="bearing", covariates={"temp": 60})``), which become
+  the data's ``e`` and named ``Z``, as ``SurpyvalData.from_items`` maps
+  ``ItemLifetime`` records; observations that do not share the same
+  covariate names are refused, naming what is missing. ``to_notation()``
+  now keeps named covariates and event types. ``Item(id, *events,
+  covariates=, readings=, time_varying_covariates=)`` is one unit's
+  history (``Item("P1", O(120), O(310), RC(1000)) / Truncation(0)``: the
+  end of watching is ``RC``, late entry ``/ Truncation(tl)``,
+  ``3 * O(120)`` three failures at once, ``O(800, terminal=True)`` the
+  event that ended it, ``a = 1``), checked as an ``ItemHistory``.
+  ``Items([...])`` collects histories: ``surpyval_data()`` gives the
+  ``SurpyvalData`` with ``i`` and ``a``, the primary form, and
+  ``event_history_data()`` an ``EventHistoryData`` while that class
+  remains; the recurrent fitters, and every fitter that takes a
+  ``SurpyvalData``, take an ``Items`` as it is. ``readings={"vibration":
+  {0: 1.2}}`` become the data's ``Measurements`` (one unnamed ``{age:
+  value}`` series is the joint models' ``markers``), and a
+  ``StepSchedule`` or ``CovariatePath`` is passed through for the fits to
+  expand. ``Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")``
+  reads a history per line; covariates, event types, terminal flags and
+  readings stay in Python, and ``text()`` leaves them out.
+  ``data.to_notation()`` on data with item ids gives the ``Items`` (rows as
+  events, terminal flags, event types, fixed covariates, readings,
+  time-varying covariates and the window), with
+  ``data.to_notation().surpyval_data() == data``; what one history cannot
+  say (rows counting several units, covariates changing between a unit's
+  rows, gaps in watching, weights, states, attributes) is refused, naming
+  ``to_dict()``. ``SurpyvalData.from_notation`` takes an ``Items``.
+
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
   varying path parameters as independent between items, and
@@ -748,6 +779,13 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **SurpyvalData is the form for several rows per unit; EventHistoryData is
+  being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
+  ``a``), which every recurrent fitter takes, and nothing new depends on
+  ``EventHistoryData``. It keeps working, with no warning in this release;
+  a deprecation, naming the release that removes it, comes once
+  ``SurpyvalData`` does everything it does.
+
 - **The notation keeps SurpyvalData's rules, checked when an observation is
   built.** A count must be a whole number (``2.5 * O(10)`` is refused,
   pointing to weights ``w``); an infinite time is refused; an interval must
@@ -1074,6 +1112,15 @@ v0.29 (unreleased)
   naming each and saying to draw inside ``parameter_bounds``. An ARI
   model took a negative scale or shape without a word and predicted
   ``nan``.
+
+- ``JelinskiMoranda.fit`` and ``LittlewoodVerrall.fit`` given a
+  ``SurpyvalData`` (or the notation's ``Observations`` or ``Items``)
+  dropped what they have no place for without a word: the rows of
+  several units were read as one campaign, and covariates, event types,
+  truncation and weights were ignored. Each is now refused, saying what
+  to do (fit each unit on its own, or ``data.without(...)``); data of one
+  unit, or with no units, fits as before. ``WeibullEffort.fit`` given
+  event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
 

@@ -27,6 +27,7 @@ from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 from .growth_answers import NeverReached, last_time_above
 
@@ -457,8 +458,6 @@ class ReleaseTimeMixin:
         n_boot: int,
         random_state: Any,
     ) -> Any:
-        import warnings
-
         from surpyval.recurrent import diagnostics
 
         self._check_has_data("A bootstrap bound on the release time")
@@ -485,8 +484,7 @@ class ReleaseTimeMixin:
         times = np.full(n_boot, np.inf)
         for k in range(n_boot):
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     sim = diagnostics._simulate_windows(
                         rng, windows, mass, inv_cif
                     )

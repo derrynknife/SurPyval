@@ -316,9 +316,7 @@ def test_from_notation_reads_text_or_observations():
 
 def test_to_notation_refuses_what_it_would_drop():
     cases = {
-        "covariates": SurpyvalData([1, 2], Z=[[1], [2]]),
-        "event types": SurpyvalData([1, 2], e=["a", "b"]),
-        "unit ids": SurpyvalData([1, 2], i=["A", "B"]),
+        "unnamed covariates": SurpyvalData([1, 2], Z=[[1], [2]]),
         "weights": SurpyvalData([1, 2], w=[1, 2]),
     }
     for what, data in cases.items():
