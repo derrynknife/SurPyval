@@ -235,6 +235,7 @@ surpyval.ZeroInflatedModel
 surpyval.at_risk_table
 surpyval.auc_td
 surpyval.bayes.BayesianParametric
+surpyval.bayes.BayesianRegression
 surpyval.bayes.LogLikelihood
 surpyval.bayes.Posterior
 surpyval.bayes.PredictiveComparison

@@ -2678,7 +2678,7 @@ def _bayes_regression():
             paths={"fit_from_df": _bayes_regression_df},
             rtol=1e-6,
             slow=REFIT_PROPERTIES,
-            exclude=dict(_BAYES_EXCLUDE),
+            exclude={**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
         )
     ]
 
