@@ -138,8 +138,8 @@ def test_kaplan_meier_step_with_no_one_at_risk_keeps_its_value():
     r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        R = nonp.kaplan_meier(r, d)
-        var = nonp.greenwood_variance(r, d)
+        R = nonp._kaplan_meier(r, d)
+        var = nonp._greenwood_variance(r, d)
     assert_allclose(R, [0.5, 0.5, 0.5])
     assert_allclose(var, [0.5, 0.5, 0.5])
 
@@ -151,8 +151,8 @@ def test_nelson_aalen_step_with_no_one_at_risk_keeps_its_value_quietly():
     r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        R = nonp.nelson_aalen(r, d)
-        var = nonp.nelson_aalen_variance(r, d)
+        R = nonp._nelson_aalen(r, d)
+        var = nonp._nelson_aalen_variance(r, d)
     assert_allclose(R, np.exp(-0.5) * np.ones(3))
     assert_allclose(var, [0.25, 0.25, 0.25])
 

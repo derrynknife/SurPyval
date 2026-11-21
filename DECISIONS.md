@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Internals no longer public in `nonparametric` and `utils` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Deprecated (FutureWarning, removed in v0.30), each warning saying what to use: from `surpyval.univariate.nonparametric`, `FIT_FUNCS`, `VAR_FUNCS`, `PLOTTING_METHODS`, `canonical_heuristic`, `rank_adjust`, `greenwood_variance`, `nelson_aalen_variance`, `fleming_harrington_variance` and the lower-case estimators `kaplan_meier`, `nelson_aalen`, `fleming_harrington` and `turnbull`; from `surpyval.utils`, `coerce_xcnt_x`, `format_truncation`, `group_xcnt`, `xcnt_sort` and `resolve_cr_censoring`. The package uses them under underscored names (`_FIT_FUNCS`, `_turnbull`, ...), or from their defining modules. | proposed | Plumbing that would otherwise be frozen at 1.0. No documented recipe uses them: the lower-case estimators appear in the docs only as the fitters, so they are deprecated for `KaplanMeier.fit` and the rest, not kept as a functional form. | done |
+| Kept public: `surpyval.utils.round_sig`, `is_missing_event`, `missing_events`, `normalise_unit` and `same_unit`, and every name of `surpyval.pymc` (`PRIOR_FAMILIES` and `SUPPORTED` are the lists a user chooses from). | proposed | `same_unit` and `normalise_unit` are a documented recipe (Conventions) and RePyability calls `same_unit`; the missing-event helpers are the missing-value convention's; the pymc names are all in its documented workflow. | done |
+| The four estimator submodules share their names with the deprecated functions; the package attribute is now the deprecated function (through `__getattr__`), as the function shadowed the submodule before. | proposed | | done |
+
 ### Test planning: test lengths in time, two mean lives, what acceleration saves (21 Nov 2026)
 
 | Decision | By | Reason | Status |
