@@ -8,6 +8,8 @@
   - `EVERY=<days>` reads the pumps that often instead of every 30 days, tagged `_every<days>`: `linear` with `EVERY=180` was run both ways (`summary_linear_every180.json`, `summary_linear_every180_two_stage.json`) on 2026-11-20.
   - It resumes a killed run and uses at most 4 processes.
   - `GH=<points>` refits with that many quadrature points per dimension; `N=<pumps>` sets the fleet size. These are the diagnostic runs, tagged `_gh11` and `_n1200`.
+  - `cubic` is the study of four varying parameters: fleets of 100 items whose marker is a cubic in the age with every coefficient its own (`simulate(100, seed, q=4)` of `surpyval/tests/univariate/joint/test_joint_integration.py`), fitted with `marker_reference=3.6`. `INTEGRATION=<name>` fits with that integral (`fit(..., integration=...)`), tagged `_<name>`; `PROCESSES=<n>` sets the worker processes.
+- `laplace_few_readings.py`: fits fleets with `integration="grid"` and `integration="laplace"` as the readings thin out (the pumps read every 30 to 365 days; a quadratic's fleet read every 0.1 to 1 year) and writes `laplace_few_readings.json`: how far apart the two fits are, in standard errors. Run 2026-11-21; `docs/Joint Models.rst` ("Laplace's approximation") quotes it, and the fit's warning about items with few readings rests on it.
 - `table.py`: prints the per-parameter table (`table.txt`) from the summaries.
 - `beta_bias.py`: the small-sample bias of a plain Weibull shape estimate at the study's size, for comparison.
 

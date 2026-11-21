@@ -5,6 +5,7 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -26,7 +27,11 @@ from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import normalise_unit, takes_unit
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
+from surpyval.utils.warnings import (
+    caller_stacklevel,
+    ignoring_warnings,
+    warn_no_covariance,
+)
 
 from ._likelihood import (
     LINKS,
@@ -43,7 +48,12 @@ from ._likelihood import (
     neg_ll,
     place,
 )
-from ._markers import marker_start, survival_stage, survival_start
+from ._markers import (
+    marker_start,
+    settled_marker_start,
+    survival_stage,
+    survival_start,
+)
 from .compare import LinkComparison, compare_links
 from .joint_model import (
     HOWS,
@@ -236,15 +246,6 @@ class JointPHFitter(FitterRepr):
             )
         names = list(path_model.parameter_names)
         if varying is None:
-            if len(names) > MAX_VARYING:
-                raise ValueError(
-                    f"The {path_model.name} path has {len(names)} "
-                    f"parameters; at most {MAX_VARYING} can vary between "
-                    "items (the quadrature is a grid of 7 points in each, "
-                    "too many beyond that; a Laplace method for more is "
-                    f"planned): choose up to {MAX_VARYING} with "
-                    "varying=(...), the rest common to all items."
-                )
             varying = tuple(names)
         if isinstance(varying, str):
             varying = (varying,)
@@ -255,14 +256,6 @@ class JointPHFitter(FitterRepr):
                 "varying names the path parameters that vary between "
                 f"items, at least one, each once, of {names}; got "
                 f"{list(varying)}."
-            )
-        if len(varying) > MAX_VARYING:
-            raise ValueError(
-                f"At most {MAX_VARYING} path parameters can vary between "
-                "items (the quadrature is a grid of 7 points in each, too "
-                "many beyond that; a Laplace method for more is planned); "
-                f"got {len(varying)}: name up to {MAX_VARYING} in "
-                "varying=(...), the rest common to all items."
             )
         try:
             links = [link] if isinstance(link, str) else list(link)
@@ -492,17 +485,28 @@ class JointPHFitter(FitterRepr):
             each item's predicted path as a known covariate): fast, but
             its estimates are biased, its survival part's standard errors
             are understated and its marker part has none.
-        integration : {"grid", "pruned"}, optional
-            The nodes each item's likelihood is integrated on, over its
-            varying path parameters: ``"grid"``, the full grid of 7
-            points in each (49 nodes for two, 343 for three, 2,401 for
-            four, 16,807 for five), or ``"pruned"``, that grid without
-            its lowest-weight nodes, those that hold less than 1e-9 of
-            its weight between them (2,321 nodes for four, 15,415 for
-            five; none are left out for up to three). Default the full
-            grid, the more accurate; ``"pruned"`` is an option. The
-            model keeps it as ``integration``, and its predictions use
-            the same.
+        integration : {"grid", "pruned", "laplace"}, optional
+            How each item's likelihood is integrated over its varying
+            path parameters: ``"grid"``, on the full grid of 7 points in
+            each (49 nodes for two, 343 for three, 2,401 for four,
+            16,807 for five); ``"pruned"``, on that grid without its
+            lowest-weight nodes, those that hold less than 1e-9 of its
+            weight between them (2,321 nodes for four, 15,415 for five;
+            none are left out for up to three); or ``"laplace"``, by
+            Laplace's approximation, which has no grid: the integrand's
+            height at each item's most likely parameters and its
+            curvature there (``q^2 + q + 1`` evaluations for ``q``
+            varying parameters: 21 for four, 43 for six). Default the
+            full grid, the more accurate, up to five varying parameters,
+            and Laplace's approximation beyond, where a grid is too
+            large (it is refused there). Laplace's approximation is
+            exact where the integrand is normal and close where each
+            item has many readings; the fit warns where many items have
+            few, and it does not take truncated items. The model keeps
+            the choice as ``integration``; its predictions are on the
+            same kind of grid, a Laplace fit's on the full grid up to
+            five varying parameters and by Laplace's approximation
+            beyond.
 
         Returns
         -------
@@ -743,8 +747,8 @@ class JointPHFitter(FitterRepr):
         readings are in, as for :meth:`fit` (from ``m``'s own unit where
         it has one), and ``how`` the way to fit, as for :meth:`fit`
         (``"two-stage"`` for the quick, approximate estimate).
-        ``integration`` is the nodes of each item's integral, ``"grid"``
-        or ``"pruned"``, as for :meth:`fit`.
+        ``integration`` is how each item's integral is done, ``"grid"``,
+        ``"pruned"`` or ``"laplace"``, as for :meth:`fit`.
 
         Examples
         --------
@@ -864,9 +868,9 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them (at most five; with four or five
-        each item's integral is on a pruned grid by default, see
-        ``integration`` of :meth:`JointPHFitter.fit`).
+        items. Default all of them. Up to five, each item's integral
+        is on a grid by default; beyond five it is Laplace's
+        approximation (``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -1244,6 +1248,8 @@ def _fit(
     arrays = JointArrays.build(
         counts, T, d, L, Z - zbar, ages, values, U=U, Rt=Rt
     )
+    if integration == "laplace" and how == "MLE":
+        _check_laplace(arrays, len(fitter.varying))
     kept_names = [names[j] for j in kept]
     layout = Layout(
         len(path_names),
@@ -1268,6 +1274,12 @@ def _fit(
     # given, another link's fit of the same data: compare_links), then
     # the survival part on each item's predicted path
     theta = _given_path_start(fitter._path_start, layout)
+    given_start = theta is not None
+    if theta is None and layout.q > MAX_VARYING:
+        # many parameters an item: the items' own fits are too wild for
+        # their mean and covariance to start from
+        theta = settled_marker_start(model, arrays, ages, values)
+        given_start = True
     if theta is None:
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_power(fitter, theta["mu"], "the readings put")
@@ -1276,9 +1288,19 @@ def _fit(
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
     else:
-        u, value, cov_u, maximum = _maximise(
-            model, arrays, survival_start(model, arrays, theta)
-        )
+        try:
+            u, value, cov_u, maximum = _maximise(
+                model, arrays, survival_start(model, arrays, theta)
+            )
+        except _NoStart:
+            if given_start:
+                raise
+            # the likelihood is not finite at the start from the items'
+            # own fits: one more, from the settled start
+            theta = settled_marker_start(model, arrays, ages, values)
+            u, value, cov_u, maximum = _maximise(
+                model, arrays, survival_start(model, arrays, theta)
+            )
         _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
     estimated = np.asarray(
         reported_params(layout.unpack(u), layout, refs), dtype=float
@@ -1364,6 +1386,57 @@ def _fit(
     return out
 
 
+#: An item with at most this many readings has few for Laplace's
+#: approximation, and a fit warns where more than this share of the
+#: items have. From ``scripts/studies/joint_recovery/
+#: laplace_few_readings.py``: on fleets of pumps with noisy readings the
+#: Laplace fit's estimates were up to 0.08 standard errors from the full
+#: grid's where up to 9% of the pumps had so few, and 0.10 to 0.41 where
+#: 36% or more had (no fleet lay between).
+_FEW_READINGS = 3
+_FEW_SHARE = 0.2
+
+
+def _check_laplace(arrays: JointArrays, q: int) -> None:
+    """Refuse what Laplace's approximation is not for (truncated items),
+    and warn where it is weak: many items with few readings."""
+    on_a_grid = (
+        "use integration='grid' (or 'pruned')"
+        if q <= MAX_VARYING
+        else f"name up to {MAX_VARYING} path parameters in varying=(...) "
+        "and use integration='grid' (or 'pruned')"
+    )
+    truncated = int(np.sum(arrays.truncated))
+    if truncated:
+        raise ValueError(
+            "integration='laplace' does not take truncated items "
+            f"({truncated} here came under observation at an age, or are "
+            "in the data because they failed by one): the chance of an "
+            "item being in the data is an integral with no readings in "
+            "it, which Laplace's approximation is not accurate for; "
+            f"{on_a_grid}."
+        )
+    few = float(np.sum(arrays.w[arrays.n_read <= _FEW_READINGS]))
+    total = float(np.sum(arrays.w))
+    if few > _FEW_SHARE * total:
+        warnings.warn(
+            f"integration='laplace': {few:g} of the {total:g} items "
+            f"({few / total:.0%}) have at most {_FEW_READINGS} readings. "
+            "Laplace's approximation of an item's likelihood is off by a "
+            "term of the order of one over its number of readings, more "
+            "where the readings are noisy: on simulated fleets with "
+            f"more than {_FEW_SHARE:.0%} of the items read so few times "
+            "its estimates were 0.1 to 0.4 standard errors from the full "
+            "grid's (the marker's effect the most). To be sure of them, "
+            f"{on_a_grid}.",
+            stacklevel=caller_stacklevel(),
+        )
+
+
+class _NoStart(ValueError):
+    """The likelihood is not finite at a fit's starting values."""
+
+
 def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
     """The joint likelihood's maximum from the start ``theta``:
     ``(u, value, cov_u, maximum)``, the internal parameters, the negative
@@ -1392,15 +1465,21 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
 
     value, placed, starts = evaluated(u, (None, None))
     if placed is None:
-        raise ValueError(
+        raise _NoStart(
             "The joint fit could not start: the likelihood is not finite at "
             "its starting values (check the readings and the path model)."
         )
     u, value, placed, starts, converged = _descend(
         u, value, placed, starts, search, curvature, evaluated
     )
+
+    # the Hessian a maximum is checked by, and the covariance taken from
+    def laplace_curvature(v: npt.NDArray, at: tuple) -> npt.NDArray:
+        return _laplace_curvature(v, at, search, curvature, evaluated)
+
+    checked_curvature = laplace_curvature if model.laplace else curvature
     value, grad, cov_u, positive, flat = _check_maximum(
-        u, placed, search, curvature
+        u, placed, search, checked_curvature
     )
     # A search can stop short of the maximum on the flat shelf where the
     # items' spread nears a correlation of +-1 (the log-scale Cholesky
@@ -1430,7 +1509,9 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
                 curvature,
                 evaluated,
             )
-            checked = _check_maximum(retry[0], retry[2], search, curvature)
+            checked = _check_maximum(
+                retry[0], retry[2], search, checked_curvature
+            )
             sound = retry[4] and checked[3] and checked[4]
             lower = retry[1] < value - _ROUND_TOL * max(1.0, abs(value))
             if sound or lower:
@@ -1602,6 +1683,44 @@ def _check_maximum(
     return value, grad, cov_u, positive, flat
 
 
+#: The step of the differences of a Laplace fit's gradient, in standard
+#: errors of each parameter.
+_LAPLACE_STEP = 5e-3
+
+
+def _laplace_curvature(
+    u: npt.NDArray,
+    placed: tuple,
+    search: Any,
+    curvature: Any,
+    evaluated: Any,
+) -> npt.NDArray:
+    """The Hessian at ``u`` of the Laplace approximation's negative
+    log-likelihood: central differences of its gradient, each taken with
+    the stencils placed at the point it is taken at (``evaluated``), so
+    the modes' movement with the parameters is in it to every order. The
+    steps are ``_LAPLACE_STEP`` standard errors by the held stencils'
+    Hessian (``curvature``), which leaves the second-order terms of that
+    movement out and so is not itself the answer. ``nan`` where a
+    stencil cannot be placed."""
+    S = _whitening(curvature, u, placed)
+    modes_at = (placed[0].mode, None)
+    k = u.size
+    H = np.full((k, k), np.nan)
+    for j in range(k):
+        grads = []
+        for sign in (1.0, -1.0):
+            v = u + sign * _LAPLACE_STEP * S[:, j]
+            _, at, _ = evaluated(v, modes_at)
+            if at is None:
+                return np.full((k, k), np.nan)
+            with np.errstate(all="ignore"):
+                grads.append(search(v, at)[1])
+        H[:, j] = S.T @ (grads[0] - grads[1]) / (2.0 * _LAPLACE_STEP)
+    inverse = np.linalg.inv(S)
+    return inverse.T @ (0.5 * (H + H.T)) @ inverse
+
+
 def _uncorrelated(u: npt.NDArray, layout: Layout) -> npt.NDArray:
     """``u`` with the items' spread made uncorrelated, each varying
     parameter's sd kept."""
@@ -1628,6 +1747,19 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     the model's parameters; the model's point ``u`` in that space; and
     the number of items. For the checks that a fit's answer is a
     maximum (``tests/conformance``)."""
+    lik, arrays, u = likelihood_parts(model, **data)
+    placed, _ = place(u, lik, arrays, (None, None))
+
+    def f(v: Any) -> Any:
+        return neg_ll(v, lik, arrays, placed)
+
+    return f, u, float(np.sum(arrays.w))
+
+
+def likelihood_parts(model: JointModel, **data: Any) -> tuple:
+    """``(lik, arrays, u)``: what the likelihood of ``data`` (the fit's
+    arguments) is computed from (:func:`place`, :func:`neg_ll`) and the
+    model's point in the search's space."""
     from .joint_aft import JointAFT
 
     factory = JointAFT if model.survival == "AFT" else JointPH
@@ -1662,9 +1794,4 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     lik = model._likelihood_model()
     theta = model._theta()
     u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
-    placed, _ = place(u, lik, arrays, (None, None))
-
-    def f(v: Any) -> Any:
-        return neg_ll(v, lik, arrays, placed)
-
-    return f, u, float(np.sum(counts))
+    return lik, arrays, u
