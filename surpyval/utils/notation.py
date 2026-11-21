@@ -1559,6 +1559,124 @@ class Items:
                 out.setdefault(name, {})[item.id] = series
         return out
 
+    @classmethod
+    def _from_surpyval_data(cls, data: Any) -> Items:
+        """One :class:`Item` per unit of ``data`` (a ``SurpyvalData``
+        with ids), its rows as events; refused, naming what to use, where
+        the items would not give the same data back (see
+        ``SurpyvalData.to_notation``)."""
+        _ELSEWHERE = (
+            " Use data.to_dict() or data.to_dataframe(), which keep it."
+        )
+        held = [
+            what
+            for what, value in (
+                ("states", data.s),
+                ("weights", data.w),
+                ("attributes", data.attributes),
+            )
+            if value is not None
+        ]
+        if held:
+            raise ValueError(
+                "The notation's items have no place for the data's "
+                + ", ".join(held)
+                + "."
+                + _ELSEWHERE
+            )
+        if data.Z is not None and data.covariate_names is None:
+            raise ValueError(
+                "The notation names each covariate, and the data's are "
+                "unnamed: name them first (SurpyvalData(..., "
+                "covariate_names=[...]))." + _ELSEWHERE
+            )
+        m = data.m
+        if m is not None and any(u is not None for u in m.units.values()):
+            raise ValueError(
+                "The notation's readings have no place for the units the "
+                "measurements are read in." + _ELSEWHERE
+            )
+        x = np.asarray(data.x, dtype=float)
+        lo, hi = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
+        c = np.asarray(data.c).tolist()
+        n = np.asarray(data.n).tolist()
+        tl, tr = np.asarray(data.tl), np.asarray(data.tr)
+        a = None if data.a is None else np.asarray(data.a).tolist()
+        e = data.e
+        names = data.covariate_names
+        Z = None if data.Z is None else np.asarray(data.Z, dtype=float)
+        rows: dict = {}
+        for k, i in enumerate(data.ids):
+            rows.setdefault(i, []).append(k)
+        tvc = data.time_varying_covariates or {}
+        items = []
+        for i, ks in rows.items():
+            for k in ks:
+                if c[k] == 0 and n[k] != 1:
+                    raise ValueError(
+                        f"Unit {i!r} has a failure row counted {n[k]} "
+                        f"(x = {_fmt(lo[k])}): an item is one unit, so "
+                        "identical units counted on one row have no place "
+                        "in the notation's items. Use data.to_dict(), or "
+                        "give each unit its own id."
+                    )
+            events: list[SurvivalObservation] = []
+            for k in ks:
+                extra: dict[str, Any] = {}
+                if e is not None and e[k] is not None:
+                    extra["event_type"] = e[k]
+                if a is not None and a[k] == 1:
+                    extra["terminal"] = True
+                ev: SurvivalObservation
+                if c[k] == 2:
+                    ev = IntervalCensored(lo[k], hi[k], **extra)
+                else:
+                    kind = {0: "o", 1: "rc", -1: "lc"}[c[k]]
+                    ev = _POINTS[kind](lo[k], **extra)
+                if c[k] != 0 and n[k] != 1:
+                    ev = ev * n[k]
+                if events and c[k] == 0 and events[-1] == ev * events[-1].n:
+                    # A failure repeated at one age: one event counted
+                    events[-1] = ev * (events[-1].n + 1)
+                else:
+                    events.append(ev)
+            covariates = None
+            if Z is not None:
+                if not (Z[ks] == Z[ks[0]]).all():
+                    raise ValueError(
+                        f"Unit {i!r}'s covariates change between its rows, "
+                        "and an item's covariates are fixed: give the "
+                        "changes as time_varying_covariates (a "
+                        "StepSchedule)." + _ELSEWHERE
+                    )
+                covariates = dict(zip(names, Z[ks[0]].tolist()))
+            readings = None
+            if m is not None and i in m.ids:
+                got = m.for_unit(i)
+                readings = got[None] if list(got) == [None] else got
+            item = Item(
+                i,
+                *events,
+                covariates=covariates,
+                readings=readings,
+                time_varying_covariates=tvc.get(i),
+            )
+            first_tl, last_tr = float(tl[ks[0]]), float(tr[ks[0]])
+            if math.isfinite(first_tl) or math.isfinite(last_tr):
+                item = item / Truncation(first_tl, last_tr)
+            items.append(item)
+        out = cls(items, unit=data.unit)
+        if not data.equals(out.surpyval_data(), rtol=0):
+            raise ValueError(
+                "These items would not give the same data back: a unit's "
+                "rows hold what one history cannot say (a gap in "
+                "watching, a truncation that changes between its rows, "
+                "readings of a unit with no rows, a terminal flag on an "
+                "end of watching, or terminal flags on lifetimes)."
+                + _ELSEWHERE
+            )
+        return out
+
     def event_history_data(self) -> Any:
         """The histories as an
         :class:`~surpyval.utils.event_history_data.EventHistoryData`, a

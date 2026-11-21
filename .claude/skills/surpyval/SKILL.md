@@ -582,7 +582,8 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   → `Measurements` (one `{age: value}` series → `markers`);
   `time_varying_covariates=StepSchedule.from_changepoints(...)` passed through.
   Text: `Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")`, one line
-  per item. `EventHistoryData` is being phased out: build new data as
+  per item; `data.to_notation()` on data with ids gives the `Items` back
+  (`.surpyval_data() == data`, else refused). `EventHistoryData` is being phased out: build new data as
   `SurpyvalData(..., i=..., a=...)` or `Items`.
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call

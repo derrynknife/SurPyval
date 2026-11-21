@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `data.to_notation()` on data with ids gives `Items`, one `Item` per unit (rows as events, a failure repeated at one age merged into one counted event, `a = 1` as `terminal=True`, event types, the unit's fixed covariates, its readings, its time-varying covariates passed through, including a `CovariatePath`, and the first row's window), and checks `items.surpyval_data() == data` before returning. Anything that fails the check, or that a history has no place for (a failure row counted above 1, covariates that change between a unit's rows, unnamed covariates, gaps in watching, weights, states, attributes, measurement units), is refused, naming `to_dict()` / `to_dataframe()`. Without ids `to_notation()` still gives `Observations`. | maintainer (plan) / principle 2 | A round trip that is checked, not assumed; nothing dropped silently. | done |
+
 ### Event types, covariates, histories and readings in the notation (21 Nov 2026)
 
 | Decision | By | Reason | Status |

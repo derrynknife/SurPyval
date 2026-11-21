@@ -98,6 +98,13 @@ v0.29 (unreleased)
   expand. ``Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")``
   reads a history per line; covariates, event types, terminal flags and
   readings stay in Python, and ``text()`` leaves them out.
+  ``data.to_notation()`` on data with item ids gives the ``Items`` (rows as
+  events, terminal flags, event types, fixed covariates, readings,
+  time-varying covariates and the window), with
+  ``data.to_notation().surpyval_data() == data``; what one history cannot
+  say (rows counting several units, covariates changing between a unit's
+  rows, gaps in watching, weights, states, attributes) is refused, naming
+  ``to_dict()``. ``SurpyvalData.from_notation`` takes an ``Items``.
 
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the

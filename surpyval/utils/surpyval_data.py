@@ -1878,8 +1878,9 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
     def from_notation(cls, notation: Any, **kwargs: Any) -> SurpyvalData:
         """
         The data written in the notation of :mod:`surpyval.utils.notation`:
-        text (``"3*10, 20+, <3, [5, 10], 12 | (2, 50]"``) or an
-        :class:`~surpyval.utils.notation.Observations`. ``kwargs`` go to
+        text (``"3*10, 20+, <3, [5, 10], 12 | (2, 50]"``), an
+        :class:`~surpyval.utils.notation.Observations` or an
+        :class:`~surpyval.utils.notation.Items`. ``kwargs`` go to
         the constructor (``unit=``, for example). :meth:`to_notation` goes
         back.
 
@@ -1900,7 +1901,7 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
 
         if isinstance(notation, str):
             notation = Observations.parse(notation)
-        if not isinstance(notation, Observations):
+        if not isinstance(notation, (Observations, Items)):
             raise TypeError(
                 "from_notation takes the notation's text "
                 '("3*10, 20+, [5, 10]") or an Observations; got '
@@ -1916,11 +1917,23 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ``SurpyvalData.from_notation(data.to_notation())`` is the same
         data, and ``data.to_notation().text()`` writes it as text.
 
-        The notation holds times, censoring, counts, truncation, named
-        covariates and event types, so data with anything else (unnamed
-        covariates, unit ids, states, terminal flags, weights, readings,
-        attributes, time-varying covariates) is refused rather than
-        dropped: use :meth:`to_observations` or :meth:`to_dict` for it.
+        Data with item ids (``i``) is given as
+        :class:`~surpyval.utils.notation.Items`, one ``Item`` per unit:
+        its rows as events (a failure repeated at one age as one counted
+        event), its terminal flags (``terminal=True``), event types,
+        covariates (fixed over the unit), readings, time-varying
+        covariates (passed through) and window, so that
+        ``data.to_notation().surpyval_data() == data``. What one history
+        cannot say (rows counting several identical units, covariates that
+        change between a unit's rows, gaps in watching, weights, states,
+        attributes, measurement units) is refused, naming what to use.
+
+        Without ids the notation holds times, censoring, counts,
+        truncation, named covariates and event types, so data with
+        anything else (unnamed covariates, states, terminal flags,
+        weights, readings, attributes, time-varying covariates) is refused
+        rather than dropped: use :meth:`to_observations` or
+        :meth:`to_dict` for it.
 
         Examples
         --------
@@ -1928,9 +1941,14 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         >>> data = SurpyvalData([10, 20, 20], c=[0, 1, 1], tl=2)
         >>> print(data.to_notation().text())
         10 | (2, inf], 2*20+ | (2, inf]
+        >>> pumps = SurpyvalData(x=[120, 310, 1000], c=[0, 0, 1], i=["P1"] * 3)
+        >>> print(pumps.to_notation().text())
+        P1: 120, 310, 1000+
         """
-        from surpyval.utils.notation import Observations
+        from surpyval.utils.notation import Items, Observations
 
+        if self.ids is not None:
+            return Items._from_surpyval_data(self)
         held = [
             what
             for what, value in (
@@ -1938,7 +1956,6 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
                     "unnamed covariates",
                     self.Z if self.covariate_names is None else None,
                 ),
-                ("unit ids", self.ids),
                 ("states", self.s),
                 ("terminal flags", self.a),
                 ("weights", self.w),
