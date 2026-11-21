@@ -694,6 +694,10 @@ class Copula:
         ll = self._rows_loglik(params, dims)
         return -float(onp.sum(weights * ll))
 
+    #: Nelder-Mead's options in the copula's own search (``_search_theta``);
+    #: scipy's defaults for the bivariate families.
+    _search_options: dict | None = None
+
     def _rows_loglik(self, params: Any, dims: list) -> Any:
         """Each row's log-likelihood for the prepared dimensions ``dims``
         (a copula of more than two series has its own)."""
@@ -1292,7 +1296,12 @@ class Copula:
         # search reads inf and nan correctly, so numpy's warnings about
         # them are noise (they were 230 raw warnings from a Gumbel fit).
         with onp.errstate(all="ignore"):
-            res = minimize(obj, start, method="Nelder-Mead")
+            res = minimize(
+                obj,
+                start,
+                method="Nelder-Mead",
+                options=self._search_options,
+            )
         theta = onp.asarray(to_bounded(res.x), dtype=float)
         n_obs = float(onp.sum(data.n))
         if not onp.isfinite(res.fun):

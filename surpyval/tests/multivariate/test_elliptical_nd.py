@@ -304,7 +304,7 @@ def test_draws_have_the_models_rank_correlations(family):
         assert abs(kendalltau(X[:, i], X[:, j]).statistic - tau[i, j]) < 0.044
 
 
-# -- fits ----------------------------------------------------------------------
+# -- fits ---------------------------------------------------------------------
 def _censored_sample(model, size, seed):
     """Draws with right, left and interval censoring in every series."""
     rng = np.random.default_rng(seed)
@@ -392,7 +392,7 @@ def test_fit_from_df_and_data_object_agree_with_the_arrays():
     np.testing.assert_array_equal(data.params, arrays.params)
 
 
-# -- refusals -------------------------------------------------------------------
+# -- refusals -----------------------------------------------------------------
 def test_truncation_is_refused_for_more_than_two_series():
     X = _model().random(30, random_state=111)
     t = np.zeros(X.shape + (2,))
@@ -456,7 +456,7 @@ def test_a_correlation_matrix_is_read_as_the_pairs_correlations():
         Gaussian.from_params(R, margins, structure="exchangeable")
 
 
-# -- saving ---------------------------------------------------------------------
+# -- saving -------------------------------------------------------------------
 @pytest.mark.parametrize(
     "family, structure",
     [

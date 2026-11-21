@@ -796,7 +796,7 @@ class CopulaModel(
                     "so this copula model cannot be rebuilt."
                 )
             margins.append(surpyval.from_dict(m))
-        family = families[copula_name]
+        family: Any = families[copula_name]
         if many is None:
             family = family.rotated(model_dict.get("rotation", 0))
         model = cls(

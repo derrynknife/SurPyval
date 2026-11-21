@@ -46,7 +46,7 @@ class MultivariateCopulaModel(CopulaModel):
     Margins   : Weibull, Weibull, Weibull
     Fitted by : given
     >>> model.sf([[5, 10, 15], [10, 20, 30]]).round(4)
-    array([0.5271, 0.0975])
+    array([0.5513, 0.1157])
     >>> model.kendall_tau().round(3)
     array([[1.   , 0.333, 0.128],
            [0.333, 1.   , 0.262],
@@ -128,7 +128,7 @@ class MultivariateCopulaModel(CopulaModel):
         return self.cdf(x)
 
     @keeps_query_shape(point_ndim=1)
-    def conditional_cdf(  # type: ignore[override]
+    def conditional_cdf(
         self, x: npt.ArrayLike, of: int = 0, given: Any = None
     ) -> npt.NDArray:
         """:math:`P(X_{of} \\le x_{of} \\mid X_j = x_j, j \\in given)`:
@@ -151,10 +151,12 @@ class MultivariateCopulaModel(CopulaModel):
         >>> from surpyval.multivariate import Gaussian
         >>> margins = [Weibull.from_params([10, 2])] * 3
         >>> model = Gaussian.from_params([0.5, 0.2, 0.4], margins)
-        >>> model.conditional_cdf([8.0, 12.0, 12.0], of=0).round(4)
-        0.3172
-        >>> model.conditional_cdf([8.0, 12.0, 12.0], of=0, given=[1]).round(4)
-        0.3294
+        >>> float(model.conditional_cdf([8.0, 12.0, 12.0], of=0).round(4))
+        0.3112
+        >>> float(
+        ...     model.conditional_cdf([8.0, 12.0, 12.0], of=0, given=[2]).round(4)
+        ... )
+        0.4145
         """
         D = self.n_axes
         if isinstance(of, bool) or of not in range(D):

@@ -13,6 +13,9 @@ two and three censored series).
 The design, the seeds and the slack (0.01, ``_montecarlo``: with 200
 replications the band is the nominal 95% +- 5.6 points) were fixed before
 any run; the coverages the studies reach are printed (``-rP``).
+
+Study to run at consolidation: it was committed without having been run
+(the package-wide calibration run before the release runs it first).
 """
 
 import warnings

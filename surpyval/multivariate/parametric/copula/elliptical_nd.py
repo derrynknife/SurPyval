@@ -86,6 +86,11 @@ class EllipticalCopulaND(Copula):
 
     student = False
     exchangeable = False
+    # Nelder-Mead's default tolerances (1e-4 on the search's scale) left
+    # the correlations up to 2e-5 from the maximum, inside what the
+    # verification of a maximum accepts; a correlation matrix has many
+    # coordinates, so the search goes on to tighter ones.
+    _search_options = {"xatol": 1e-8, "fatol": 1e-10, "maxiter": 20000}
 
     def __init__(self, name: str, axes: int, structure: str) -> None:
         self.name = name
@@ -418,7 +423,7 @@ class EllipticalCopulaND(Copula):
         U = onp.clip(onp.asarray(U, dtype=float), _U_CLIP, 1 - _U_CLIP)
         return self._z(U, nu)
 
-    def cdf(self, U: Any, *params: Any) -> Any:  # type: ignore[override]
+    def cdf(self, U: Any, *params: Any) -> Any:
         """The copula at the points ``U`` (one row per point, a column
         per series)."""
         R, nu = self._split(params)
@@ -427,7 +432,7 @@ class EllipticalCopulaND(Copula):
             z, lambda v: rectangle(onp.full(v.shape, -onp.inf), v, R, nu)
         )
 
-    def _survival(self, U: Any, *params: Any) -> Any:  # type: ignore[override]
+    def _survival(self, U: Any, *params: Any) -> Any:
         """:math:`P(U_1 > u_1, \\dots, U_D > u_D)`."""
         R, nu = self._split(params)
         z = self._quantiles(U, nu)
@@ -435,7 +440,7 @@ class EllipticalCopulaND(Copula):
             z, lambda v: rectangle(v, onp.full(v.shape, onp.inf), R, nu)
         )
 
-    def pdf(self, U: Any, *params: Any) -> Any:  # type: ignore[override]
+    def pdf(self, U: Any, *params: Any) -> Any:
         """The copula's density at the points ``U``."""
         R, nu = self._split(params)
         return onp.exp(self._log_density(self._quantiles(U, nu), R, nu))
@@ -507,7 +512,7 @@ class EllipticalCopulaND(Copula):
 
     # -- fitting -------------------------------------------------------------
     @takes_unit
-    def fit(  # type: ignore[override]
+    def fit(
         self,
         x: npt.ArrayLike,
         c: npt.ArrayLike | None = None,
@@ -528,12 +533,14 @@ class EllipticalCopulaND(Copula):
         --------
         >>> from surpyval import Weibull
         >>> from surpyval.multivariate import Gaussian
-        >>> margins = [Weibull.from_params([10 * (d + 1), 2]) for d in range(3)]
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
         >>> truth = Gaussian.from_params([0.5, 0.2, 0.4], margins)
         >>> X = truth.random(300, random_state=0)
         >>> model = truth.copula.fit(X, margins=[Weibull] * 3)
         >>> model.params.round(2)
-        array([0.5 , 0.2 , 0.42])
+        array([0.52, 0.18, 0.39])
         """
         from surpyval.multivariate.parametric.data import (
             MultivariateSurpyvalData,
@@ -544,7 +551,7 @@ class EllipticalCopulaND(Copula):
                 f"The {self.name} copula is not rotated (it is radially "
                 "symmetric): leave out rotation."
             )
-        data = x
+        data: Any = x
         if not isinstance(x, MultivariateSurpyvalData):
             data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
             c = n = t = xl = xr = None
@@ -563,9 +570,7 @@ class EllipticalCopulaND(Copula):
         )
 
     @takes_unit
-    def from_params(  # type: ignore[override]
-        self, params: Any, margins: Any, rotation: int = 0
-    ) -> Any:
+    def from_params(self, params: Any, margins: Any, rotation: int = 0) -> Any:
         """The model of known parameters and margins; see
         ``Gaussian.from_params``.
 
@@ -573,7 +578,9 @@ class EllipticalCopulaND(Copula):
         --------
         >>> from surpyval import Weibull
         >>> from surpyval.multivariate import StudentT
-        >>> margins = [Weibull.from_params([10 * (d + 1), 2]) for d in range(3)]
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
         >>> model = StudentT.from_params([0.5, 0.2, 0.4, 6.0], margins)
         >>> model.copula.from_params([0.1, 0.1, 0.1, 3.0], margins).params
         array([0.1, 0.1, 0.1, 3. ])

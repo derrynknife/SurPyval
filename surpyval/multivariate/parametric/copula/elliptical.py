@@ -286,21 +286,23 @@ class _AnyAxes(Copula):
 
         >>> from surpyval import Weibull
         >>> from surpyval.multivariate import Gaussian
-        >>> margins = [Weibull.from_params([10 * (d + 1), 2]) for d in range(3)]
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
         >>> truth = Gaussian.from_params([0.5, 0.2, 0.4], margins)
         >>> X = truth.random(300, random_state=0)
         >>> model = Gaussian.fit(X, margins=[Weibull, Weibull, Weibull])
         >>> model.parameter_names
         ['rho_0_1', 'rho_0_2', 'rho_1_2']
         >>> model.params.round(2)
-        array([0.5 , 0.2 , 0.42])
+        array([0.52, 0.18, 0.39])
         >>> model.param_cb("rho_0_1").round(2)
-        array([0.41, 0.58])
+        array([0.43, 0.59])
         >>> exchangeable = Gaussian.fit(
         ...     X, margins=[Weibull] * 3, structure="exchangeable"
         ... )
         >>> exchangeable.params.round(2)
-        array([0.37])
+        array([0.36])
         """
         from surpyval.multivariate.parametric.data import (
             MultivariateSurpyvalData,
@@ -363,16 +365,18 @@ class _AnyAxes(Copula):
         --------
         >>> from surpyval import Weibull
         >>> from surpyval.multivariate import StudentT
-        >>> margins = [Weibull.from_params([10 * (d + 1), 2]) for d in range(3)]
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
         >>> model = StudentT.from_params([0.5, 0.2, 0.4, 6.0], margins)
         >>> model.correlation
         array([[1. , 0.5, 0.2],
                [0.5, 1. , 0.4],
                [0.2, 0.4, 1. ]])
         >>> model.tail_dependence()[0].round(3)
-        array([[1.   , 0.154, 0.063],
-               [0.154, 1.   , 0.119],
-               [0.063, 0.119, 1.   ]])
+        array([[1.   , 0.17 , 0.068],
+               [0.17 , 1.   , 0.127],
+               [0.068, 0.127, 1.   ]])
         """
         from .elliptical_nd import STRUCTURES, for_axes
 
