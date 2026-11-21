@@ -938,7 +938,8 @@ v0.29 (unreleased)
   2``); a Beta's log density with a large shape lost 1e-11 to ``log(1 -
   x)`` (now ``log1p``) and 3e-13 to scipy's ``betaln`` (now the
   cancellation-free form the incomplete beta already used), and its
-  quantile below the smallest normal double 2e-10 at ``alpha = 1e-3``; a
+  quantile below the smallest normal double 2e-10 at ``alpha = 1e-3``
+  (so seeded draws of such a Beta move in their last digits); a
   normal or lognormal hazard between 1 and 100 standard deviations lost up
   to 1e-13 to a difference of logs (now from ``erfcx``); and the log of a
   gamma or beta probability within 0.1 of 1 is taken from its complement
