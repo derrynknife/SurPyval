@@ -263,6 +263,21 @@ How close it is to the grid, measured
   standard errors within 0.3%. A fleet of 60 items with four varying
   parameters gave estimates within 0.001 standard errors and standard
   errors within 0.3%, in 9 seconds where the full grid took 555.
+- A recovery study of 200 such fleets of 100 items (four varying
+  parameters, all six correlations estimated, their truth 0;
+  ``scripts/studies/joint_recovery/study.py cubic`` with
+  ``INTEGRATION=laplace``, ``summary_cubic_laplace.json``) took about 45
+  seconds a fleet. 61 of the 200 fits had no standard errors: the
+  estimated correlation matrix ran to the edge of where a correlation
+  matrix can be (on one, its smallest eigenvalue was 2e-4), as six
+  correlations among 100 items can; three of them, fitted again with
+  ``random_effects="diagonal"``, reached a verified maximum with standard
+  errors. On the 139 that had them, the 95% intervals covered the truth
+  89% to 98% of the time (the path's coefficients 91% to 96%, the
+  marker's effect 94%), and the marker's effect was 2.7% high (Monte
+  Carlo error 1.2%), the Weibull's scale 1.4% high (0.6%) and one
+  correlation 0.07 low (0.03). These are of the fits that had standard
+  errors, not of all 200.
 - It degrades as the readings thin out and are noisy. The same pumps read
   every 90 days (at most 9 readings; 6% to 9% of the pumps with three or
   fewer): within 0.08 standard errors. Every 180 days (at most 5; 36% to

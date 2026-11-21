@@ -23,7 +23,10 @@ v0.29 (unreleased)
   On the recovery study's pumps (two varying parameters, read monthly)
   its estimates were within 0.02 standard errors of the full grid's, and
   on a fleet with four varying parameters within 0.001, in 9 seconds
-  where the full grid took 555. It is weaker where items have few, noisy
+  where the full grid took 555; a recovery study of 200 such fleets
+  covered the truth 89% to 98% of the time on the 139 whose fits had
+  standard errors (the other 61 put the six correlations at the edge of
+  a valid correlation matrix). It is weaker where items have few, noisy
   readings (0.10 to 0.18 standard errors off with at most five readings
   a pump, 0.23 to 0.41 with at most three): the fit warns, with the
   count, when more than 15% of the items have three readings or
