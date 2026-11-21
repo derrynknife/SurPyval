@@ -5575,7 +5575,7 @@ Concordance only measures ranking; pair it with the Brier score, which also
 checks that the predicted probabilities are right.
 
 A C from a test set of a few dozen subjects is itself uncertain.
-``concordance_estimate`` gives it a standard error and a confidence interval
+``concordance`` gives it a standard error and a confidence interval
 (R's ``survival::concordance`` variance), and ``weighting="uno"`` with a
 horizon ``tau`` gives Uno's C, which weights each pair against the censoring
 so that the answer does not depend on how long follow-up was. To ask whether
@@ -5587,9 +5587,9 @@ subjects:
 
     from surpyval.metrics import compare_concordance
 
-    print(cox.concordance_estimate(x_te, c_te, Z_te))
-    print(cox.concordance_estimate(x_te, c_te, Z_te, weighting="uno",
-                                   tau=float(np.median(x_te))))
+    print(cox.concordance(x_te, c_te, Z_te).summary())
+    print(cox.concordance(x_te, c_te, Z_te, weighting="uno",
+                          tau=float(np.median(x_te))).summary())
     compare_concordance(x_te, c_te, Z_te @ cox.beta, Z_te[:, 0] * cox.beta[0])
 
 Survival trees and random survival forests (beta)

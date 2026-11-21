@@ -124,6 +124,21 @@ class SequentialMTBFTest:
     115.1
     >>> test.decide(failures=2, test_time=800.0)
     'accept'
+
+    Printed, the test shows both boundaries, to run it from: it accepts
+    once the test time passes the first line, and rejects when a failure
+    comes by the second:
+
+    >>> test
+    Sequential MTBF Test
+    ====================
+    MTBF to show     : 100
+    Good MTBF        : 200
+    Accept at time   : 439.445 + 138.629 per failure
+    Reject by time   : -439.445 + 138.629 per failure
+    Truncated at     : 2012.8 test time, failure 15
+    Consumer's risk  : 0.128195
+    Producer's risk  : 0.102968
     """
 
     def __init__(
@@ -355,6 +370,9 @@ class SequentialMTBFTest:
             "Accept at time   : "
             f"{self.accept_time(0):.6g} + {self._step / self._slope:.6g} "
             "per failure",
+            "Reject by time   : "
+            f"{-self._log_reject / self._slope:.6g} + "
+            f"{self._step / self._slope:.6g} per failure",
         ]
         if self.max_time is not None:
             lines += [
@@ -656,6 +674,9 @@ class SequentialDemonstrationTest:
             f"Good reliability : {self.good_reliability:.6g}",
             "Accept failures  : "
             f"{self._log_accept / self._scale:.6g} + "
+            f"{self._per_unit:.6g} per unit",
+            "Reject failures  : "
+            f"{self._log_reject / self._scale:.6g} + "
             f"{self._per_unit:.6g} per unit",
         ]
         if self.max_units is not None:

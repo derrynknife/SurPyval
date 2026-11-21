@@ -234,3 +234,111 @@ def test_intervals_cover_at_the_nominal_rate():
             covered[metric] += row.lower <= truth <= row.upper
     for metric, k in covered.items():
         assert 0.904 <= k / reps <= 0.996, (metric, k / reps)
+
+
+# --- One Brier and one AUC: the plain functions carry the uncertainty ------
+
+
+def _scored(n=200, seed=3):
+    rng = np.random.default_rng(seed)
+    x = rng.weibull(1.5, n) * 10
+    c = (rng.random(n) < 0.3).astype(int)
+    r = rng.normal(size=n) - 0.1 * x
+    S = np.exp(-np.outer(np.exp(0.1 * r), [2.0, 5.0, 10.0]) / 10)
+    return x, c, r, S, [2.0, 5.0, 10.0]
+
+
+def test_brier_auc_and_ibs_carry_score_predictions_uncertainty():
+    from surpyval.metrics import (
+        Score,
+        TimeScores,
+        auc_td,
+        brier_score,
+        integrated_brier_score,
+        score_predictions,
+    )
+    from surpyval.metrics.validation import (
+        _auc_td,
+        _brier_score,
+        _integrated_brier_score,
+    )
+
+    x, c, r, S, times = _scored()
+    rows = score_predictions(x, c, S, times, alpha_ci=0.1).scores
+    for metric, result, old in (
+        ("brier", brier_score(x, c, S, times, alpha_ci=0.1), None),
+        ("auc", auc_td(x, c, 1 - S, times, alpha_ci=0.1), None),
+    ):
+        assert isinstance(result, TimeScores) and len(result) == 2
+        t, values = result
+        expect = rows[rows["metric"] == metric]
+        if metric == "brier":
+            np.testing.assert_array_equal(
+                values, expect["estimate"].to_numpy()
+            )
+        # (auc_td sums its terms in another order than score_predictions:
+        # its values are its own, checked against _auc_td below, and its
+        # uncertainty is score_predictions'.)
+        np.testing.assert_array_equal(result.se, expect["se"].to_numpy())
+        np.testing.assert_array_equal(result.lower, expect["lower"])
+        np.testing.assert_array_equal(result.upper, expect["upper"])
+    np.testing.assert_array_equal(
+        brier_score(x, c, S, times)[1], _brier_score(x, c, S, times)[1]
+    )
+    np.testing.assert_array_equal(
+        auc_td(x, c, r, times)[1], _auc_td(x, c, r, times)[1]
+    )
+    np.testing.assert_array_equal(
+        auc_td(x, c, 1 - S, times)[1], _auc_td(x, c, 1 - S, times)[1]
+    )
+    ibs = integrated_brier_score(x, c, S, times, alpha_ci=0.1)
+    assert isinstance(ibs, Score) and isinstance(ibs, float)
+    assert float(ibs) == _integrated_brier_score(x, c, S, times)
+    expect = rows[rows["metric"] == "ibs"]
+    assert ibs.se == expect["se"].iloc[0]
+    assert (ibs.lower, ibs.upper) == (
+        expect["lower"].iloc[0],
+        expect["upper"].iloc[0],
+    )
+
+
+def test_a_risk_score_auc_has_the_se_of_its_ranks():
+    from surpyval.metrics import auc_td, score_predictions
+
+    x, c, r, S, times = _scored(seed=5)
+    risk = np.exp(-r)  # any score, not a probability
+    by_risk = auc_td(x, c, risk, times)
+    by_s = score_predictions(x, c, S, times, metrics=("auc",)).scores
+    # the same order as 1 - S: the same AUC and standard error
+    same = auc_td(x, c, 1 - S, times)
+    np.testing.assert_allclose(same.se, by_s["se"].to_numpy(), rtol=0)
+    assert np.all(np.isfinite(by_risk.se))
+
+
+def test_scores_are_numbers_and_say_when_there_is_no_se():
+    import json
+    import pickle
+
+    from surpyval.metrics import auc_td, brier_score, integrated_brier_score
+
+    x, c, r, S, times = _scored()
+    ibs = integrated_brier_score(x, c, S, times)
+    value = float(ibs)
+    assert ibs * 2 == 2 * value and ibs < 1 and np.isclose(ibs, value)
+    assert repr(ibs) == repr(value) and json.loads(json.dumps(ibs)) == value
+    back = pickle.loads(pickle.dumps(ibs))
+    assert float(back) == value and back.se == ibs.se
+    result = brier_score(x, c, S, times)
+    back = pickle.loads(pickle.dumps(result))
+    np.testing.assert_array_equal(back.se, result.se)
+    np.testing.assert_array_equal(back[1], result[1])
+    trained = brier_score(x, c, S, times, x_train=x, c_train=c)
+    with pytest.raises(ValueError, match="x_train"):
+        trained.se
+    np.testing.assert_array_equal(trained[1], result[1])
+    with pytest.raises(ValueError, match="x_train"):
+        integrated_brier_score(x, c, S, times, x_train=x, c_train=c).lower
+    gappy = r.copy()
+    gappy[0] = np.nan
+    with pytest.raises(ValueError, match="missing"):
+        auc_td(x, c, gappy, times).upper
