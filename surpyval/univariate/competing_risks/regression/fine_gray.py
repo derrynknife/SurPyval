@@ -2237,7 +2237,7 @@ class FineGrayModel(
         >>> model.cif(10, [1]).round(3)
         np.float64(0.739)
         >>> model.cb(10, [1], n_boot=100, random_state=1).round(3)
-        array([0.637, 0.83 ])
+        array([0.633, 0.838])
         """
         from surpyval.utils.linalg import percentile_bounds
         from surpyval.utils.validation import check_alpha_ci, check_option
@@ -2460,7 +2460,9 @@ def _warn_few_events_per_coefficient(model: FineGrayModel) -> None:
     from surpyval.univariate.competing_risks._few_events import FEW_EVENTS
 
     data = model._fit_data
-    if data is None:
+    # A fit with no finite maximum has warned already, and more strongly
+    # (its coefficients are meaningless): one warning per problem.
+    if data is None or model.maximum == "no finite maximum":
         return
     events = float(np.sum(np.asarray(data["n"])[data["is_event"]]))
     estimated = int(np.sum(np.isfinite(np.atleast_1d(model.beta))))

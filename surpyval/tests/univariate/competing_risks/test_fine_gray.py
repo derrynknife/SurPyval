@@ -359,6 +359,9 @@ def test_746_fine_gray_competing_failures_stay_at_risk():
     Z[6] = [0.0, -2.0]
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+        # (6 events for 2 coefficients: the few-events warning is due,
+        # and is not what this checks)
+        warnings.filterwarnings("ignore", message=".*per coefficient")
         model = FineGray.fit(x, Z, e, event="a", center=True)
     assert model.maximum == "verified"
 
