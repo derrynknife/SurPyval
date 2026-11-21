@@ -999,6 +999,8 @@ class Copula:
         model._margins_estimated = tuple(
             how == "MLE" or hasattr(given, "fit") for given in margins
         )
+        # The margins as given, which a bootstrap refits with.
+        model._margin_specs = tuple(margins)
         return model
 
     def _warn_if_no_maximum(

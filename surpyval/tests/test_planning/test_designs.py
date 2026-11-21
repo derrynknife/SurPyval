@@ -334,3 +334,110 @@ def test_to_dict_is_strict_json_and_repr_says_what_was_solved():
     )
     d = json.loads(json.dumps(infinite.to_dict(), allow_nan=False))
     assert d["value"] is None
+
+
+# --- Two mean lives: the exact F test (user-test finding) ------------------
+
+
+def test_mean_ratio_one_failure_each_is_the_closed_form():
+    from surpyval.test_planning import mean_ratio_design
+
+    # With one failure in each group the ratio of the estimates is rho F(2,
+    # 2), whose cdf is x / (1 + x): the one-sided 5% critical value is 19
+    # and the power at rho is rho / (rho + 19).
+    for rho in (2.0, 5.0, 19.0, 60.0):
+        got = mean_ratio_design(rho, events=2, alternative="one-sided").power
+        assert got == pytest.approx(rho / (rho + 19.0), rel=1e-12)
+    # Two-sided: critical values 39 and 1/39.
+    rho = 10.0
+    expected = rho / (rho + 39.0) + (1.0 / 39.0) / (1.0 / 39.0 + rho)
+    assert mean_ratio_design(rho, events=2).power == pytest.approx(
+        expected, rel=1e-12
+    )
+
+
+def test_mean_ratio_power_is_the_simulated_rejection_rate():
+    from scipy import stats
+
+    from surpyval.test_planning import mean_ratio_design
+
+    # Complete exponential samples of 12 per group, means 1.8 and 1: the
+    # ratio of the sample means against the F critical values.
+    rng = np.random.default_rng(20261121)
+    d, rho, reps = 12, 1.8, 40000
+    first = rng.exponential(rho, size=(reps, d)).mean(axis=1)
+    second = rng.exponential(1.0, size=(reps, d)).mean(axis=1)
+    law = stats.f(2 * d, 2 * d)
+    ratio = first / second
+    rejected = (ratio > law.isf(0.025)) | (ratio < law.ppf(0.025))
+    planned = mean_ratio_design(rho, events=2 * d).power
+    se = np.sqrt(planned * (1 - planned) / reps)
+    assert abs(rejected.mean() - planned) < 4 * se
+
+
+def test_mean_ratio_events_round_trip_and_match_schoenfeld():
+    from surpyval.test_planning import mean_ratio_design
+
+    plan = mean_ratio_design(1.3, power=0.8)
+    assert plan.solved_for == "events" and plan.events == 458
+    assert mean_ratio_design(1.3, events=458).power >= 0.8
+    assert mean_ratio_design(1.3, events=456).power < 0.8
+    # In large samples, the log-rank events of the hazard ratio 1 / rho.
+    assert plan.events == pytest.approx(
+        logrank_design(1 / 1.3, power=0.8).events, rel=0.01
+    )
+    # The shape enters only as rho ** shape.
+    assert (
+        mean_ratio_design(1.3, shape=2.0, power=0.9).events
+        == mean_ratio_design(1.3**2, power=0.9).events
+    )
+    found = mean_ratio_design(shape=2.0, events=116, power=0.8).value
+    assert mean_ratio_design(found, shape=2.0, events=116).power == (
+        pytest.approx(0.8, abs=1e-9)
+    )
+    lower = mean_ratio_design(
+        events=116, power=0.8, direction="decrease"
+    ).value
+    assert lower < 1.0
+    units = mean_ratio_design(0.7, power=0.8, event_probability=(0.4, 0.5))
+    per_group = units.events // 2
+    assert units.n == (int(np.ceil(per_group / 0.4)), per_group * 2)
+    assert (
+        mean_ratio_design(0.7, n=units.n, event_probability=(0.4, 0.5)).power
+        >= 0.8 - 1e-3
+    )
+
+
+@pytest.mark.parametrize(
+    "call, words",
+    [
+        (lambda: tp.mean_ratio_design(1.0, power=0.8), "differ from 1"),
+        (lambda: tp.mean_ratio_design(1.3), "were all left as None"),
+        (
+            lambda: tp.mean_ratio_design(1.3, power=0.8, events=10, n=(5, 5)),
+            "not both",
+        ),
+        (lambda: tp.mean_ratio_design(1.3, n=(10, 10)), "event_probability"),
+        (
+            lambda: tp.mean_ratio_design(1.3, power=0.8, direction="increase"),
+            "direction",
+        ),
+        (lambda: tp.mean_ratio_design(1.3, power=0.8, shape=0), "shape"),
+        (
+            lambda: tp.mean_ratio_design(
+                power=0.8, n=(10, 10), event_probability=0.5
+            ),
+            "give the events",
+        ),
+    ],
+)
+def test_mean_ratio_refusals_say_what_to_do(call, words):
+    with pytest.raises(ValueError, match=words):
+        call()
+
+
+def test_mean_ratio_answer_saves_as_json():
+    plan = tp.mean_ratio_design(1.3, shape=2.0, power=0.8)
+    d = plan.to_dict()
+    assert json.loads(json.dumps(d, allow_nan=False)) == d
+    assert d["design"] == "mean_ratio" and d["value"] == 116

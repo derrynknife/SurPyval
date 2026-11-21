@@ -16,7 +16,7 @@ from surpyval.utils.validation import check_option
 # define the rank-based plotting-position formula F = (rank - A) / (N + B).
 # Imported from their defining modules rather than through the package
 # namespace. Each shares its name with the submodule that defines it, so
-# ``nonp.nelson_aalen`` is the function only once the package __init__
+# ``nonp._nelson_aalen`` is the function only once the package __init__
 # has bound it over the submodule -- and this dict is built at import
 # time, while that __init__ is still running. The other ``nonp.`` uses
 # below are inside functions, so they resolve after it has finished.
@@ -153,9 +153,9 @@ def plotting_positions(
 
     x, c, n, t = xcnt_handler(x, c, n, t)
 
-    heuristic = nonp.canonical_heuristic(heuristic)
+    heuristic = nonp._canonical_heuristic(heuristic)
     check_option(
-        "heuristic", heuristic, nonp.PLOTTING_METHODS, "Case does not matter."
+        "heuristic", heuristic, nonp._PLOTTING_METHODS, "Case does not matter."
     )
 
     if ((-1 in c) or (2 in c)) & (heuristic != "Turnbull"):
@@ -194,7 +194,7 @@ def plotting_positions(
         R = ESTIMATOR_FUNCS[heuristic](r, d)
         return x_e, r, d, 1 - R
     elif heuristic == "Turnbull":
-        out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
+        out = nonp._turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:
         # Reformat for plotting point style
         x_ = np.repeat(x, n)
@@ -209,7 +209,7 @@ def plotting_positions(
         x_ = x_[idx2]
         c = c[idx2]
 
-        ranks = nonp.rank_adjust(x_, c=c)
+        ranks = nonp._rank_adjust(x_, c=c)
         d = 1 - c
         r = np.linspace(N, 1, num=N)
 

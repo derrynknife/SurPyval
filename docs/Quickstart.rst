@@ -17,6 +17,8 @@ time to the event), what is the
 hazard, and so on. Once you know that pattern, and the way data is passed in
 (the ``x``, ``c``, ``n``, ``t`` arrays described in :doc:`Types of Data`, and
 the other letters of :doc:`Data Model`), every family of models in the package works the same way.
+Not sure which model you need? :doc:`Choosing a Model` takes you there one
+yes-or-no question at a time.
 
 Your first fit
 --------------
@@ -330,6 +332,8 @@ details, including what a restored model can and cannot do.
 Where to go next
 ----------------
 
+- :doc:`Choosing a Model` goes from your data to a model and its call, one
+  yes-or-no question at a time.
 - :doc:`Types of Data` explains observed, censored and truncated data, and why
   each needs different treatment.
 - :doc:`Data Model` is the reference for every letter of a row of data

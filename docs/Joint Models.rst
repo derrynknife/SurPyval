@@ -700,6 +700,122 @@ survival part a little wider: the inspections lose when, within 90 days,
 each pump failed. With arrays, an interval is a ``[lower, upper]`` row of
 ``x`` with ``c = 2`` (and ``fit_from_df`` takes ``xl_col`` and ``xr_col``).
 
+.. _joint-failure-modes:
+
+More than one way to fail: failure modes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Units fail in more than one way, and a reading usually speaks to only
+some of them: vibration warns of a bearing failure, not of a seal leak.
+Fitting every failure alike waters the reading's effect down, and
+treating the other failures as "still running" overstates the life.
+Give each failure its mode (``event_type`` on the record, ``e`` with
+arrays, ``e_col`` with a DataFrame) and the model has a hazard for each
+mode, with a Weibull baseline, coefficients and a marker effect of its
+own:
+
+.. math::
+
+    h_{ik}(t) = \frac{\beta_k}{\alpha_k}\left(\frac{t}{\alpha_k}
+    \right)^{\beta_k - 1} \exp\left(\gamma_k' z_i + \zeta_k
+    \left(m(t; \theta_i) - r\right)\right).
+
+An item fails by whichever mode comes first, and is then no longer at
+risk of the others; the marker part is one for all the modes. Here some
+of the pumps' failures are seal leaks, which come at random and have
+nothing to do with the vibration (made-up numbers):
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(7)
+
+
+    def pump_with_modes(k):
+        start = rng.normal(3.0, 0.6)
+        rate = rng.normal(1.0, 0.5) / 365
+        t = np.linspace(0, 6000, 60001)
+        h = (2 / 1500) * (t / 1500) * np.exp(0.9 * (start + rate * t - 4.0))
+        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+        bearing = np.interp(rng.exponential(), H, t)
+        seal = 2500 * rng.weibull(1.2)
+        life = min(bearing, seal)
+        end = min(life, 730.0)
+        ages = np.arange(0, end, 30.0)
+        readings = start + rate * ages + rng.normal(0, 0.7, ages.size)
+        if life > 730:
+            return ItemLifetime(f"M{k}", right_censored=end,
+                                markers=dict(zip(ages, readings)))
+        return ItemLifetime(
+            f"M{k}", observed=end, markers=dict(zip(ages, readings)),
+            event_type="bearing" if bearing < seal else "seal",
+        )
+
+
+    with_modes = SurpyvalData.from_items([pump_with_modes(k) for k in range(300)])
+    modes = WeibullJointPH.fit(with_modes, marker_reference=4.0, unit="days")
+    modes
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert modes.maximum == "verified"
+    assert modes.causes == ["bearing", "seal"]
+    est = dict(zip(modes.parameter_names, modes.params))
+    se = dict(zip(modes.parameter_names, modes.standard_errors()))
+    for name, truth in [("bearing: marker_effect", 0.9),
+                        ("seal: marker_effect", 0.0),
+                        ("bearing: beta", 2.0), ("seal: beta", 1.2)]:
+        assert abs(est[name] - truth) < 3 * se[name], name
+    assert abs(est["bearing: marker_effect"]) > 3 * se["bearing: marker_effect"]
+    assert abs(est["seal: marker_effect"]) < 2 * se["seal: marker_effect"]
+
+The parameters of each mode are named ``"<mode>: <name>"``, as
+``ParametricCompetingRisks`` names its causes', and the table has a part
+for each mode. The bearing's marker effect is close to the simulation's
+0.9; the seal's is within its standard error of 0: the vibration says
+nothing about the seals. ``modes.causes`` lists the modes and
+``modes.n_events_by_cause`` the failures of each. The model's ``sf`` (and
+``predict``) is the survival of every mode together, the chance the
+pump is still running.
+
+Should the modes have a parameter in common, name it in ``shared``:
+``"beta"``, a hazard covariate, or a link's effect. The fit with an
+effect shared is nested in the fit without, and the likelihood-ratio
+test of the two asks whether the reading speaks to the modes
+differently:
+
+.. jupyter-execute::
+
+    one_effect = WeibullJointPH.fit(
+        with_modes, marker_reference=4.0, shared=["marker_effect"]
+    )
+    test = modes.likelihood_ratio_test(one_effect)
+    print(one_effect.parameter_names[-5:])
+    print(round(test["statistic"], 2), test["df"], round(test["p_value"], 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert one_effect.maximum == "verified"
+    assert test["df"] == 1 and test["p_value"] < 0.05
+
+The test rejects one effect for both: the modes differ in what the
+vibration says about them.
+
+A failure found at an inspection (left or interval censored) needs its
+mode too; the likelihood is then the mode's hazard times the survival of
+every mode, integrated over the interval. What is refused, each saying
+what to do: a failure with no mode (a failure of unknown mode is not
+fitted yet), a mode on an item still running, a mode with fewer failures
+than it has parameters of its own (the message gives the counts),
+``"alpha"`` in ``shared``, the accelerated survival part (``JointAFT``)
+and the two-stage estimate. Data with one mode only, or with no event
+types, give the model of one kind of failure, exactly as before. Each
+mode adds its cumulative hazard to every item's likelihood, so a fit
+with two modes takes about twice as long.
+
 The marker reference
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1948,6 +2064,10 @@ The joint model (#891) is the standard one. It has:
   ``path_covariates``;
 - failures, right, left and interval censoring, with left and right
   truncation;
+- competing failure modes with the proportional hazards part (the
+  failures' event types): a baseline, coefficients and effects for each
+  mode, any of them shared (``shared=``), see :ref:`failure modes
+  <joint-failure-modes>`;
 - predictions for one item given its readings, with Wald (delta method)
   bounds, as arrays (``sf``, ``ff``, ``cb``) or as one item's dynamic
   prediction (``predict``: the hazard, remaining life, the smoothed and

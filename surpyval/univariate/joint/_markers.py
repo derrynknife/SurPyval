@@ -25,6 +25,7 @@ predicted path as known and so understates the uncertainty.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import autograd.numpy as anp
@@ -252,8 +253,53 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     the Weibull ``alpha`` and ``beta``, ``gamma`` and the marker's effect
     ``zeta`` -- from the fit with each item's path taken as its most
     likely one given its readings: its lifetime given that path, from
-    its entry age."""
-    return _plug_in_fit(model, arrays, theta)[0]
+    its entry age. With several causes (competing failure modes), each
+    cause's from that fit of its own failures, the other causes'
+    censored (an item found failed by another cause as still running
+    when last seen working), and a parameter the causes share at its
+    mean over them."""
+    layout = model.layout
+    if layout.n_causes == 1:
+        return _plug_in_fit(model, arrays, theta)[0]
+    single = Model(
+        replace(
+            layout,
+            n_causes=1,
+            shared_beta=False,
+            shared_hazard=None,
+            shared_links=None,
+        ),
+        model.path,
+        model.centre,
+        model.integration,
+    )
+    found = []
+    for k in range(layout.n_causes):
+        mine = arrays.e == k
+        other = ~mine & np.isfinite(arrays.U)
+        fields = {
+            name: getattr(arrays, name) for name in arrays.__dataclass_fields__
+        }
+        fields["d"] = np.where(mine, arrays.d, 0.0)
+        fields["U"] = np.where(other, np.inf, arrays.U)
+        fields["e"] = np.full(len(arrays.w), -1, dtype=int)
+        # found failed by another cause before it was ever seen working:
+        # nothing about this cause
+        own = JointArrays(**fields).take(~(other & (arrays.T <= 0)))
+        found.append(_plug_in_fit(single, own, theta)[0])
+    out = dict(found[0])
+    out["alpha"] = np.array([float(th["alpha"]) for th in found])
+    log_beta = np.log([float(th["beta"]) for th in found])
+    gamma = np.array([np.asarray(th["gamma"], dtype=float) for th in found])
+    zeta = np.array([np.asarray(th["zeta"], dtype=float) for th in found])
+    if layout.shared_beta:
+        log_beta[:] = log_beta.mean()
+    gamma[:, layout.shared_hazard] = gamma[:, layout.shared_hazard].mean(
+        axis=0
+    )
+    zeta[:, layout.shared_links] = zeta[:, layout.shared_links].mean(axis=0)
+    out["beta"], out["gamma"], out["zeta"] = np.exp(log_beta), gamma, zeta
+    return out
 
 
 def survival_stage(

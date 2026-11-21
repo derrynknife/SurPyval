@@ -65,17 +65,22 @@ _EPS_H = np.finfo(float).eps ** (1.0 / 3.0)
 # digits of its complement (up to all of them, #442), and one further away
 # keeps its relative precision to within 1e3 * eps.
 _COMPLEMENT = 1e-3
+# ... and the log of a probability whose complement is below this is
+# log1p of minus the complement, where log of the probability itself lost
+# up to eps / complement of its value (2e-13 at a complement of 1e-3).
+# Below it the loss is at most 10 eps.
+_LOG1P_FROM = 0.1
 _LN2 = float(np.log(2.0))
-# A probability is below _COMPLEMENT only where its complement, as scipy
+# A probability is below _LOG1P_FROM only where its complement, as scipy
 # computes it (to 1e-14), is above this.
-_NEAR_ONE = 0.99
+_NEAR_ONE = 0.89
 
 
 def _where_near_one(
     f: Callable, args: tuple, complement: npt.NDArray
 ) -> npt.NDArray:
     """``f(*args)`` where ``complement`` (f's complement, computed) is above
-    ``_NEAR_ONE``, and 1 elsewhere: where f is below ``_COMPLEMENT`` (the
+    ``_NEAR_ONE``, and 1 elsewhere: where f is below ``_LOG1P_FROM`` (the
     only place the callers use it, besides choosing a side) it is f, to
     the bit. Each incomplete function costs as much as its complement, and
     computing both everywhere doubled the cost of a censored fit."""
@@ -422,7 +427,7 @@ def _gammaincln_raw(a: Boxable, x: Boxable) -> Boxable:
     with np.errstate(divide="ignore"):
         # log1p(-Q) where P is near 1, and rounds to it (#442)
         out = np.where(
-            q < _COMPLEMENT, np.log1p(-np.minimum(q, _COMPLEMENT)), np.log(p)
+            q < _LOG1P_FROM, np.log1p(-np.minimum(q, _LOG1P_FROM)), np.log(p)
         )
     # P(a, x) underflows (or goes subnormal) for small x and for x far
     # below a large a, where a clipped log would stop at -708 (#443).
@@ -482,7 +487,7 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
     out = np.array(np.log(np.clip(q, _LOG_EPS, np.inf)), dtype=float)
     # log1p(-P) where Q is near 1, and rounds to it (#442)
     p = _where_near_one(_sc_gammainc, (a_arr, x_arr), q)
-    out = np.where(p < _COMPLEMENT, np.log1p(-np.minimum(p, _COMPLEMENT)), out)
+    out = np.where(p < _LOG1P_FROM, np.log1p(-np.minimum(p, _LOG1P_FROM)), out)
     # Q(a, x) underflows past ~1e-308 (x of ~700 for a small a), where
     # a clipped log would cap the Gamma cumulative hazard. There x >> a
     # and the asymptotic series
@@ -775,16 +780,16 @@ def _beta_series_log(
             break
     with np.errstate(divide="ignore"):
         log_x = np.log(x)
-    out = a * log_x + _log_beta_front(a, b) + np.log1p(a * total)
+    out = a * log_x + log_beta_front(a, b) + np.log1p(a * total)
     return np.where(done, out, np.nan)
 
 
-#: Below this multiple of min(1, b), ``_log_beta_front`` takes its Taylor
+#: Below this multiple of min(1, b), ``log_beta_front`` takes its Taylor
 #: series in ``a``: the terms after a^4 are below 1e-16 of it.
 _FRONT_SERIES = 1e-4
 
 
-def _log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+def log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
     r""":math:`\ln \Gamma(a + b) - \ln \Gamma(b) - \ln \Gamma(1 + a)`,
     to its own relative precision at a small ``a``, where it is of size
     ``a`` and the gammas' rounding (1e-18 in the Stirling remainders of
@@ -877,6 +882,9 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
     with np.errstate(divide="ignore"):
         log_p = np.array(np.log(p), dtype=float, ndmin=1)
         log_q = np.array(np.log(q), dtype=float, ndmin=1)
+    # The log of the side near 1 from its complement (``_LOG1P_FROM``)
+    log_p = np.where(q < _LOG1P_FROM, np.log1p(-np.minimum(q, 0.5)), log_p)
+    log_q = np.where(p < _LOG1P_FROM, np.log1p(-np.minimum(p, 0.5)), log_q)
     a_arr, b_arr, xs, p, q, inside, x_arr = (
         np.atleast_1d(v) for v in (a_arr, b_arr, xs, p, q, inside, x_arr)
     )

@@ -354,7 +354,7 @@ def test_a_fit_at_the_independence_bound_warns(family):
     with pytest.warns(RuntimeWarning) as caught:
         assert np.isnan(model.param_cb("theta")).all()
     message = str(caught[0].message)
-    assert "no profile-likelihood or bootstrap bound" in message
+    assert "`method='bootstrap'`" in message
     assert "independence end" in message
     # A family that covers the dependence fits without it
     with warnings.catch_warnings():
