@@ -209,6 +209,14 @@ right fitter. Their `params` is the repair parameter (`q` or
 
 ## Choosing a model — what to reach for and why
 
+**To choose step by step, follow the 24 yes/no questions in
+[references/choosing-a-model.md](references/choosing-a-model.md)**: the shape
+of the problem (1-5), writing each unit's record (6-11), and the question
+(12-24), where needing answers past the longest observation, a mean life, a
+B-life below the first failure or a smooth curve means parametric, and
+otherwise non-parametric. It ends with how to check the answer. The notes
+below say why each family exists.
+
 **First fork: what kind of process generated the data?** Getting this wrong gives
 silently wrong numbers, not errors.
 
@@ -295,7 +303,7 @@ silently wrong numbers, not errors.
 - **Proportional odds** — effects that fade over time (converging hazards).
 - **Accelerated life** (`sp.AcceleratedLife(sp.Weibull, sp.life_models.Power)`) —
   a life-stress relationship at a few controlled stress levels (at least two);
-  the life models are in `sp.life_models` (Arrhenius is `life_models.Exponential`). The life
+  the life models are in `sp.life_models` (Arrhenius is `life_models.Arrhenius`, temperature in kelvin). The life
   parameter (the Weibull's `alpha`) is replaced by the life model: it prints as
   `L(Z)`, and its slot in `params` is a placeholder 1, not a fitted value.
 

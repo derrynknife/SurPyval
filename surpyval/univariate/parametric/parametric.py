@@ -2667,6 +2667,75 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
+    def isf(self, s: npt.ArrayLike) -> npt.NDArray:
+        r"""
+        The inverse survival function: the time at which the survival
+        function is ``s`` (scipy's name), ``qf(1 - s)`` without rounding
+        ``1 - s``.
+
+        Parameters
+        ----------
+
+        s : array like or scalar
+            The survival probabilities, between 0 and 1.
+
+        Returns
+        -------
+
+        isf : scalar or numpy array
+            The times at which the model's survival function is ``s``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 3])
+        >>> model.isf(0.5)
+        np.float64(8.849970445005177)
+        >>> t = model.isf(1e-300)
+        >>> float(model.sf(t))
+        1e-300
+
+        Notes
+        -----
+        ``qf`` cannot reach far into the upper tail: ``1 - s`` rounds to 1
+        once ``s`` is below 1.1e-16, where ``qf`` gives the end of the
+        support. ``isf`` takes ``s`` itself, so ``isf(sf(t))`` gives back
+        ``t`` there. A limited failure population's survival never falls
+        below ``1 - p``: ``isf`` is ``inf`` at or below it. A
+        zero-inflated model's ``isf`` is 0 at or above ``1 - f0``, where
+        its ``qf`` is 0. A probability outside [0, 1] gives NaN, with a
+        warning.
+        """
+        if isinstance(s, (list, tuple)):
+            s = np.array(s, dtype=float)
+        if self._plain() and not self.dist.discrete:
+            # (+ 0.0: a -0.0 is 0.0, as qf makes it)
+            return _scalar(self.dist.isf(s, *self.params) + 0.0)
+        u = np.asarray(s, dtype=float)
+        scalar = u.ndim == 0
+        u = np.atleast_1d(u)
+        bad = warn_outside_unit_interval(u)
+        never = 1.0 - self.lfp_p
+        # sf = 1 - p + (p - f0) R(x - gamma) from 0 on
+        base = (u - never) / (self.lfp_p - self.f0)
+        inside = ~bad & (base > 0) & (base < 1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            q = self.gamma + self.dist.isf(
+                np.where(inside, base, 0.5), *self.params
+            )
+        q = np.where(~bad & (base <= 0), np.inf, q)
+        at_zero = (self.f0 > 0) or getattr(self.dist, "discrete", False)
+        if at_zero:
+            q = np.where(~bad & (u >= 1.0 - self.f0), 0.0, q)
+        else:
+            q = np.where(
+                ~bad & (base >= 1),
+                self.gamma + self.dist.isf(1.0, *self.params),
+                q,
+            )
+        q = np.asarray(np.where(bad, np.nan, q), dtype=float) + 0.0
+        return q[0] if scalar else q
+
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 

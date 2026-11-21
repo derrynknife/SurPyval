@@ -46,7 +46,7 @@ def _renewals(n_items=30, n_events=10, seed=0):
 
 def _kijima(q, seed=1):
     # Strong wear-out (beta = 3), 20 systems with 13 failures each.
-    truth = rc.GeneralizedRenewal.fit_from_parameters([10, 3], q)
+    truth = rc.GeneralizedRenewal.from_params([10, 3], q)
     d = truth.count_terminated_simulation_data(12, items=20, random_state=seed)
     return d.x, d.i, d.c
 
@@ -320,7 +320,7 @@ def test_a_model_without_data_has_no_tests():
     model = rc.GeneralizedRenewal.fit(x, dist=sp.Weibull)
     restored = RenewalModel.from_dict(model.to_dict())
     assert "Repair test : not available (no data)" in _text(restored)
-    given = rc.GeneralizedRenewal.fit_from_parameters([10, 2], 0.2)
+    given = rc.GeneralizedRenewal.from_params([10, 2], 0.2)
     assert "Restoration Factor  : 0.2" in repr(given)
     with pytest.raises(ValueError, match="Likelihood inference"):
         given.repair_test()

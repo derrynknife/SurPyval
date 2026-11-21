@@ -67,6 +67,7 @@ from surpyval.utils.shapes import (
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._aliasing import (
     aliased_columns,
@@ -144,9 +145,8 @@ def _merged_rows(
 def _percentile(draws: npt.NDArray, alpha_ci: float, bound: str) -> Any:
     """The percentile bootstrap bound of each column of ``draws`` (one
     resample a row), leaving out the ``nan`` resamples."""
-    with warnings.catch_warnings():
+    with ignoring_warnings(RuntimeWarning):
         # (a column with no resample left is nan, said by the caller)
-        warnings.simplefilter("ignore", RuntimeWarning)
         if bound == "lower":
             return bootstrap_quantile(draws, alpha_ci, nan_skip=True)
         if bound == "upper":
