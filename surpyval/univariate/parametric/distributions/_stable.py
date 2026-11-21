@@ -18,6 +18,8 @@ from collections.abc import Callable
 from typing import Any
 
 import autograd.numpy as np
+from autograd.extend import defvjp, primitive
+from scipy.special import erfcx as _sc_erfcx
 
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils import normal as norm
@@ -104,6 +106,21 @@ def softplus(z: Boxable) -> Boxable:
     return np.maximum(z, 0.0) + np.log1p(np.exp(-np.abs(z)))
 
 
+@primitive
+def _erfcx(v: Boxable) -> Boxable:
+    """The scaled complementary error function, ``exp(v^2) erfc(v)``."""
+    return _sc_erfcx(v)
+
+
+defvjp(
+    _erfcx,
+    lambda ans, v: lambda g: g * (2.0 * v * ans - 2.0 / np.sqrt(np.pi)),
+)
+
+#: Above this z the normal hazard is ``sqrt(2 / pi) / erfcx(z / sqrt 2)``.
+_Z_ERFCX = 1.0
+
+
 def normal_hazard(z: Boxable) -> Boxable:
     r"""
     The standard normal hazard :math:`\phi(z) / (1 - \Phi(z))`.
@@ -114,12 +131,19 @@ def normal_hazard(z: Boxable) -> Boxable:
     the asymptotic series of the inverse Mills ratio,
     :math:`z / (1 - z^{-2} + 3 z^{-4} - 15 z^{-6} + 105 z^{-8})`,
     whose next term (:math:`945 z^{-10}`) is below double precision
-    there.
+    there. Between :math:`z = 1` and 100 it is :math:`\sqrt{2 / \pi} /
+    \operatorname{erfcx}(z / \sqrt 2)`, which has no cancellation: the
+    difference of logs lost 1e-13 of it at z = 43.
     """
     big = z > _Z_MILLS
-    z_small = np.where(big, 0.0, z)
+    mid = (z > _Z_ERFCX) & ~big
+    z_small = np.where(big | mid, 0.0, z)
+    z_mid = np.where(mid, z, 2.0)
     z_big = np.where(big, z, _Z_MILLS)
     small = np.exp(norm.logpdf(z_small) - norm.logsf(z_small))
+    small = np.where(
+        mid, np.sqrt(2.0 / np.pi) / _erfcx(z_mid / np.sqrt(2.0)), small
+    )
     w = (1.0 / z_big) ** 2
     series = 1.0 - w * (1.0 - 3.0 * w * (1.0 - 5.0 * w * (1.0 - 7.0 * w)))
     return np.where(big, z_big / series, small)

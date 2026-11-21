@@ -198,6 +198,9 @@ def predict_records(
     )
     p_arr = None if p is None else np.atleast_1d(np.asarray(p, dtype=float))
     frames = []
+    # the same for every record without covariates: worked out (and any
+    # warning it gives, such as a non-parametric mean's) once
+    shared_mean = model.mean() if "mean" in wanted and Z is None else None
     for k, record in enumerate(records):
         age = _current_age(record) if given == "age" else None
         failed = given == "age" and age is None
@@ -222,7 +225,7 @@ def predict_records(
                 if length != len(values):
                     values = np.full(length, np.nan)
             else:
-                mean = model.mean() if Z is None else model.mean(row_Z(k))
+                mean = shared_mean if Z is None else model.mean(row_Z(k))
                 values = np.full(length, float(np.asarray(mean).ravel()[0]))
             columns[name] = values
         frame = pd.DataFrame(columns)

@@ -200,9 +200,11 @@ class DegradationModel(SerialisableMixin):
     c : ndarray
         Per-unit censor flags: 0 where the fitted path crosses the
         threshold at a positive time, 1 (right censored) where it never
-        reaches it, -1 (left censored: failed before its first
-        measurement) where the path is already past the threshold at
-        the first measurement, having crossed at or before time zero.
+        reaches it, or where a crossing past the unit's last reading was
+        censored there (``running="censor"`` or ``censored_units``), -1
+        (left censored: failed before its first measurement) where the
+        path is already past the threshold at the first measurement,
+        having crossed at or before time zero.
     life_model : Parametric
         The lifetime distribution fitted to the pseudo failure times.
     measurement_var : float
@@ -281,6 +283,19 @@ class DegradationModel(SerialisableMixin):
         ``Z`` then also takes a DataFrame and selects these columns by
         name. ``None`` for a model fitted from arrays, which refuses a
         DataFrame.
+    running : str
+        How a unit short of the threshold at its last reading, whose path
+        crosses after it, was counted: ``"extrapolate"`` (a failure at the
+        crossing) or ``"censor"`` (censored at its last reading); see
+        :meth:`DegradationAnalysis.fit`.
+    censored_units : list or None
+        The units given as ``censored_units`` to the fit (censored at
+        their last reading), or ``None``.
+    extrapolated : ndarray of bool or None
+        Per unit (aligned to ``units``): True where its failure time is
+        a crossing extrapolated past its last reading, not seen within
+        its readings. The summary counts them. ``None`` for a clock model
+        restored from a dictionary saved before the flag was kept.
 
     Examples
     --------
@@ -336,6 +351,9 @@ class DegradationModel(SerialisableMixin):
     gamma: npt.NDArray | None
     stress_ref: npt.NDArray | None
     Z_cols: list[str] | None
+    running: str
+    censored_units: list | None
+    extrapolated: npt.NDArray | None
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -367,6 +385,9 @@ class DegradationModel(SerialisableMixin):
         gamma: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         Z_cols: list[str] | None = None,
+        running: str = "extrapolate",
+        censored_units: list | None = None,
+        extrapolated: npt.ArrayLike | None = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -397,6 +418,15 @@ class DegradationModel(SerialisableMixin):
             None if stress_ref is None else np.atleast_1d(stress_ref).tolist()
         )
         self.Z_cols = None if Z_cols is None else list(Z_cols)
+        self.running = running
+        self.censored_units = (
+            None if censored_units is None else list(censored_units)
+        )
+        self.extrapolated = (
+            None
+            if extrapolated is None
+            else np.asarray(extrapolated, dtype=bool)
+        )
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     # -- serialisation -----------------------------------------------------
@@ -480,11 +510,26 @@ class DegradationModel(SerialisableMixin):
                     self.path_param_link_cov
                 ),
                 **self._clock_dict(),
+                **self._running_dict(),
                 # only for a model fitted with named covariates, so other
                 # dicts are unchanged (an older reader ignores the key)
                 **({} if self.Z_cols is None else {"Z_cols": self.Z_cols}),
             }
         )
+
+    def _running_dict(self) -> dict:
+        """How units short of the threshold were counted, for
+        :meth:`to_dict`: which units' failure times are extrapolated past
+        their last reading, and ``running`` and ``censored_units`` where
+        they are not the defaults (an older reader ignores the keys)."""
+        out: dict = {}
+        if self.extrapolated is not None:
+            out["extrapolated"] = self.extrapolated.tolist()
+        if self.running != "extrapolate":
+            out["running"] = self.running
+        if self.censored_units is not None:
+            out["censored_units"] = np.asarray(self.censored_units).tolist()
+        return out
 
     def _clock_dict(self) -> dict:
         """The clock's entries for :meth:`to_dict` (none for other models,
@@ -551,7 +596,15 @@ class DegradationModel(SerialisableMixin):
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
             Z_cols=model_dict.get("Z_cols"),
+            running=model_dict.get("running", "extrapolate"),
+            censored_units=model_dict.get("censored_units"),
+            extrapolated=model_dict.get("extrapolated"),
         )
+        if out.extrapolated is None and out.acceleration is None:
+            # saved before the flag was kept: a failure time past the
+            # unit's last reading (the clock's times are not the readings')
+            last = np.array([out.x[out.i == unit].max() for unit in out.units])
+            out.extrapolated = (out.c == 0) & (out.pseudo_failure_times > last)
         # Recorded so bootstrap bounds can rerun the pipeline. The fitter is
         # not serialised as such, but the restored life model carries it:
         # a regression life model keeps its regression fitter (e.g.
@@ -1876,6 +1929,14 @@ class DegradationModel(SerialisableMixin):
         plotting.style_legend(ax)
         return ax
 
+    def _extrapolated_repr(self) -> str:
+        """The units whose failure time is a crossing past their last
+        reading, for ``__repr__`` (nothing for a model restored from a
+        dict that does not say)."""
+        if self.extrapolated is None:
+            return ""
+        return f"\nExtrapolated Units  : {int(self.extrapolated.sum())}"
+
     def _left_censored_repr(self) -> str:
         """The units already failed at their first measurement, for
         ``__repr__`` (nothing when there are none)."""
@@ -1913,6 +1974,7 @@ class DegradationModel(SerialisableMixin):
             f"\nThreshold           : {self.threshold}"
             f"\nNumber of Units     : {len(self.units)}"
             f"\nCensored Units      : {int((self.c == 1).sum())}"
+            f"{self._extrapolated_repr()}"
             f"{self._left_censored_repr()}"
         )
 

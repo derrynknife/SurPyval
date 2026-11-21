@@ -3,7 +3,7 @@ Renewal Model
 
 The fitted-model object returned by the renewal / virtual-age fitters
 (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) and
-by their ``fit_from_parameters``. It holds the fitted lifetime
+by their ``from_params``. It holds the fitted lifetime
 distribution (``model``, a :doc:`Parametric <../univariate/parametric_class>`
 model; for ``ARI`` the baseline intensity model) and the restoration
 parameter (``q`` or ``rho``), and provides the simulation

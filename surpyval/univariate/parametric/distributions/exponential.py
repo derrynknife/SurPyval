@@ -388,6 +388,22 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log1p(-u) / failure_rate
 
+    def isf(self, s: Numeric, failure_rate: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = -\ln(s) / \lambda
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> Exponential.isf([0.5, 1e-300], 0.1)
+        array([   6.93147181, 6907.75527898])
+        """
+        with np.errstate(divide="ignore"):
+            return -np.log(s) / failure_rate
+
     def _mrl_inside(self, x: Any, failure_rate: float) -> Any:
         # Memoryless: the mean residual life is the mean at every age.
         return np.full(np.shape(x), 1.0 / failure_rate)

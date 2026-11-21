@@ -1430,6 +1430,48 @@ class NonParametric(
         s_last = float(np.ravel(self.sf(last))[-1])
         return s_last if s_last > 0 else None
 
+    def _warn_restricted_default(self, call: str, what: str = "mean") -> None:
+        """Warn that ``call`` (``mean()``, ``mean_cb()`` or ``mrl(x)``,
+        whose value is the restricted ``what``),
+        given no ``tau``, stopped at the largest observed time while
+        units were still at risk after it (the estimate there above
+        zero): its value is restricted to the data, not the mean life,
+        which the data do not identify.
+
+        With the at-risk counts known, it is units left at risk after the
+        last time that count, not the estimate: a Nelson-Aalen or
+        Fleming-Harrington curve stays above zero when every unit has
+        failed, and its area to the last failure leaves nothing out that
+        the data could tell."""
+        import warnings
+
+        from surpyval.utils.warnings import caller_stacklevel
+
+        last = float(np.max(self.x))
+        s_last = float(np.ravel(self.sf(last))[-1])
+        if not s_last > 0:
+            return
+        r = getattr(self, "r", None)
+        d = getattr(self, "d", None)
+        if r is not None and d is not None and np.size(r):
+            r_arr = np.asarray(r, dtype=float)
+            left = float(r_arr[-1] - np.asarray(d, dtype=float)[-1])
+            if not left > 1e-9 * float(np.max(r_arr)):
+                return
+        warnings.warn(
+            "{} is the restricted {} up to the largest observed time, "
+            "{:g}: the survival estimate there is still {:.4g}, so {:.3g}% "
+            "of the probability lies past the data, where the estimate is "
+            "not defined, and the unrestricted {} is not identified. Pass "
+            "tau to state the horizon (rmst(tau) gives the restricted mean "
+            "with its bounds), or fit a parametric model (for example "
+            "Weibull.fit) for the unrestricted one.".format(
+                call, what, last, s_last, 100 * s_last, what
+            ),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
     def mean(self, tau: float | None = None) -> float:
         r"""
         The (restricted) mean survival time: the area under the
@@ -1440,7 +1482,12 @@ class NonParametric(
         function does not reach zero and the unrestricted mean is
         undefined; the restricted mean up to tau (defaulting to the
         largest observed value) is reported instead, which is the
-        standard restricted mean survival time (RMST).
+        standard restricted mean survival time (RMST), as R's
+        ``survfit`` reports it. With ``tau`` left out, it warns then,
+        giving the survival estimate at the largest observed time (the
+        probability past the data that the area leaves out): pass ``tau``
+        to ask for the restricted mean, or fit a parametric model for the
+        mean life.
 
         Parameters
         ----------
@@ -1448,7 +1495,8 @@ class NonParametric(
         tau : scalar, optional
             The horizon up to which the survival function is
             integrated; must be non-negative. Defaults to the largest
-            observed value. A tau beyond the last observation is refused
+            observed value, with a warning where the estimate there is
+            above zero. A tau beyond the last observation is refused
             while the survival estimate there is above zero: the area past
             it is not estimable. Where the estimate has reached zero the
             area stops growing, and any tau is accepted.
@@ -1466,12 +1514,24 @@ class NonParametric(
         >>> model = KaplanMeier.fit(x)
         >>> model.mean()
         3.0000000000000004
+
+        With seven of ten units still running at 1500, the estimate stops
+        at 0.7 there. The area to 1500 is the restricted mean, asked for
+        by its horizon; ``mean()`` without one gives the same number and
+        warns that it is not the mean life:
+
+        >>> running = KaplanMeier.fit(
+        ...     [500, 800, 1200] + [1500] * 7, c=[0, 0, 0] + [1] * 7
+        ... )
+        >>> running.mean(tau=1500)
+        1300.0
         """
         if np.min(self.x) < 0:
             raise ValueError(
                 "Mean survival time requires non-negative observations"
             )
         if tau is None:
+            self._warn_restricted_default("mean()")
             tau = np.max(self.x)
         # A negative horizon used to come back as the (negative) width of
         # [0, tau], i.e. mean(tau=-1) was -1.
@@ -1518,8 +1578,9 @@ class NonParametric(
 
         tau : scalar, optional
             The horizon up to which the survival function is
-            integrated. Defaults to the largest observed value; a tau past
-            it is refused as ``mean`` refuses it.
+            integrated. Defaults to the largest observed value (with a
+            warning, as ``mean`` gives, where the estimate there is above
+            zero); a tau past it is refused as ``mean`` refuses it.
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
@@ -1539,6 +1600,10 @@ class NonParametric(
         array([3.36776153, 5.92390514])
         """
         check_alpha_ci(alpha_ci)
+        if tau is None:
+            # warned here, as mean() warns: rmst() names its horizon
+            self._warn_restricted_default("mean_cb()")
+            tau = float(np.max(self.x))
         r = self.rmst(tau=tau, alpha_ci=alpha_ci)
         return np.array([r["lower"], r["upper"]])
 
@@ -1756,8 +1821,9 @@ class NonParametric(
             The ages survived to.
         tau : scalar, optional
             The horizon, as for :meth:`mean`: the largest observed time by
-            default, and refused past it while the estimate there is above
-            zero.
+            default (with :meth:`mean`'s warning where the estimate there
+            is above zero), and refused past it while the estimate there is
+            above zero.
 
         Returns
         -------
@@ -1777,6 +1843,7 @@ class NonParametric(
         """
         t = np.atleast_1d(np.asarray(x, dtype=float))
         if tau is None:
+            self._warn_restricted_default("mrl(x)", "mean residual life")
             tau = float(np.max(self.x))
         total = self.mean(tau=tau)
         out = np.full(t.shape, np.nan)
