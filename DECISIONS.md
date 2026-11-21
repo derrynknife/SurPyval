@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### One concordance, one Brier score, one AUC (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `concordance_index` returns a `ConcordanceResult`, now a `float` subclass whose value is the index (Harrell's from the pair counts, the number it always gave; Uno's or a horizon from the weighted estimate) and which carries `se`, `ci` and the rest. It takes `weighting`, `tau`, `alpha_ci` and `ci_method`, keyword only. `concordance_estimate` (in `surpyval.metrics` and at the top level) and the models' `concordance_estimate()` are deprecated (FutureWarning, v0.30) for `concordance_index` and `concordance()`. | proposed | One function, the richer one, whose result is still used as a number. A float subclass keeps `float()`, arithmetic, comparisons, `numpy`, `json` and pickling working, so nothing that used the number breaks. The interval argument is `alpha_ci` (principle 21), not `concordance_estimate`'s `alpha`. | done |
+| A `ConcordanceResult`'s repr is its number; the old printout is `summary()`. | proposed | A number inside a list, a `DataFrame` or an f-string must look like one, and `concordance_index`'s doctests and users' printed output stay as they were. Users of `concordance_estimate`'s printout get it from `summary()`. | done |
+| `brier_score` and `auc_td` return `TimeScores`, a `tuple` subclass that is still `(times, values)`, and `integrated_brier_score` a `Score`, a `float` subclass. Each carries `se`, `lower` and `upper`, computed by `score_predictions` (equal to its standard errors and intervals bit for bit; the values stay the functions' own, which for the AUC differ from `score_predictions`' estimates in the last bits, about 1e-15, from the order of summation), with `alpha_ci=` keyword only. `score_predictions` stays the call for several metrics and models and their paired comparisons, and `brier_score`/`auc_td`/`integrated_brier_score` are not deprecated. | proposed | The issue's "keep the richer one; let its result act as a number". Computing the uncertainty costs about ten times the bare score (some 10 ms at 3,000 subjects), which is small next to fitting. | done |
+| No standard error where `score_predictions` has no influence function: censoring weights from `x_train` and `c_train`, or a missing risk score in `auc_td`. Reading `se`, `lower` or `upper` then raises a `ValueError` saying why and what to do; the values themselves are unchanged. | principle 2 | A missing bound is a refusal that says what to use, not a `nan`. | done (training-weight influence: gap) |
+| `auc_td` scores any risk score, not only `1 - S`: its uncertainty is `score_predictions`' on the scores' ranks within each horizon, scaled into (0, 1), which keep their order and ties, all the AUC and its influence function read. | proposed | Exact: tested equal to `score_predictions` on `1 - S`. | done |
+| A stratified Cox model's `concordance()` stays a plain number (the pooled C has no standard error); `alpha_ci`/`ci_method` other than the defaults are refused for it, as Uno's weighting already was. | proposed | | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
