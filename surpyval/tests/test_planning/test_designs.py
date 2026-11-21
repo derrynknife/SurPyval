@@ -7,6 +7,7 @@ and refuses to guess which quantity is wanted.
 
 import json
 import warnings
+from typing import Any
 
 import numpy as np
 import pytest
@@ -29,9 +30,9 @@ CURVES = (
     surpyval.Exponential.from_params([1 / 10]),
     surpyval.Exponential.from_params([1 / 6]),
 )
-CURE = dict(accrual_time=1.0, follow_up=3.0)
-RMST = dict(accrual_time=2.0, follow_up=4.0, dropout_rate=0.05)
-RATE = dict(rate=30 / 10000, exposure_before=10000)
+CURE: dict[str, Any] = dict(accrual_time=1.0, follow_up=3.0)
+RMST: dict[str, Any] = dict(accrual_time=2.0, follow_up=4.0, dropout_rate=0.05)
+RATE: dict[str, Any] = dict(rate=30 / 10000, exposure_before=10000)
 
 
 def old(name):

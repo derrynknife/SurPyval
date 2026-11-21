@@ -562,6 +562,16 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
             f"{kind}: build the dataset, SurpyvalData.from_items("
             f"{'items' if listed else '[item, ...]'}), and fit that."
         )
+    from surpyval.utils.notation import Item
+
+    if isinstance(record, Item):
+        raise TypeError(
+            f"x is {one}Item history{plural}: collect "
+            f"{'them' if listed else 'it'} as Items("
+            f"{'items' if listed else '[item, ...]'}), which a fit that "
+            "takes a SurpyvalData takes as it is (or "
+            "Items(...).surpyval_data())."
+        )
     if isinstance(record, ItemHistory):
         kind = f"x is {one}ItemHistory record{plural} (one item's history)"
         if recurrent:
