@@ -5,6 +5,19 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Accelerated life tests: what user tests found missing.** A parametric
+  regression's ``mean_cb(Z)`` bounds the mean life (an accelerated life
+  model's MTTF at a stress) by the delta method on its log, or by the
+  parametric bootstrap; ``method="lr"`` refuses, naming ``quantile_cb``.
+  An accelerated life model has ``activation_energy()`` (Arrhenius,
+  Eyring and their inverses: ``E_a`` in eV with its interval, beside
+  ``E_a / k_B`` in kelvin), which its printout now reports;
+  ``common_shape_test()``, the likelihood-ratio test of one shape at every
+  stress level against a shape for each (levels with fewer than two
+  failures left out, with a warning); and ``plot_life_stress(p=...)``, a
+  life (median, a B-life or the mean) against stress with its bounds and
+  the test levels and data marked.
+
 - **Joint models: competing failure modes.** ``JointPH`` fits
   (``WeibullJointPH``) take the mode of each failure (a record's
   ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With

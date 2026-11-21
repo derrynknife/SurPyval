@@ -701,3 +701,206 @@ def test_fits_with_entries_at_zero_reach_one_maximum(seed):
     repeated = fitter.fit(x[rows], s[rows], c=c[rows], tl=tl[rows])
     counted = fitter.fit(x, s, c=c, tl=tl, n=np.full(x.size, 2))
     np.testing.assert_allclose(counted.params, repeated.params, rtol=1e-7)
+
+
+# --- User-test findings: MTTF bounds, activation energy, common shape,
+# --- life against stress -------------------------------------------------
+
+
+def _arrhenius_fit(seed=3, levels=(358.15, 378.15, 398.15), each=20):
+    rng = np.random.default_rng(seed)
+    T = np.repeat(levels, each)
+    life = 1e-6 * np.exp(0.7 / 8.617333262e-5 / T)
+    x = life * rng.weibull(2.0, T.size)
+    return (
+        x,
+        T,
+        surpyval.AcceleratedLife(
+            surpyval.Weibull, surpyval.life_models.Arrhenius
+        ).fit(x, Z=T),
+    )
+
+
+def test_mean_cb_is_the_closed_form_mean_with_its_delta_method_bound():
+    from scipy.special import gamma
+    from scipy.stats import norm
+
+    np.random.seed(1)
+    stress = np.repeat([20.0, 30.0, 40.0], 40)
+    x = surpyval.Weibull.random(120, 10, 3) * (100.0 / stress)
+    model = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.Power
+    ).fit(x, Z=stress)
+    _, shape, a, n = model.params
+    mttf = a * 10.0**n * gamma(1 + 1 / shape)
+    params, center, cov = model._wald_state(False, None, "wald")
+    rows = np.asarray(model._centred(np.array([[10.0]]), center), float)
+    assert model._mean_at(rows, params)[0] == pytest.approx(mttf, rel=1e-9)
+
+    # The delta method on log(mean), by hand from the closed form's
+    # gradient by central differences.
+    def log_mean(q):
+        return np.log(model._mean_at(rows, q)[0])
+
+    step = 1e-5 * np.maximum(np.abs(params), 1.0)
+    grad = np.array(
+        [
+            (log_mean(params + e) - log_mean(params - e)) / (2 * e[i])
+            for i, e in enumerate(np.diag(step))
+        ]
+    )
+    se = np.sqrt(grad @ cov @ grad)
+    z = norm.ppf(0.975)
+    expected = mttf * np.exp([-z * se, z * se])
+    np.testing.assert_allclose(model.mean_cb(10.0), expected, rtol=1e-6)
+    # The tester's workaround, the restricted mean to a far horizon.
+    np.testing.assert_allclose(
+        model.mean_cb(10.0), model.rmst_cb(1e5, [[10.0]]), rtol=1e-4
+    )
+    two = model.mean_cb([10.0, 20.0])
+    assert two.shape == (2, 2) and two[0, 0] > two[1, 0]
+    assert model.mean_cb(10.0, bound="lower") == pytest.approx(
+        model.mean_cb(10.0, alpha_ci=0.1)[0], rel=1e-12
+    )
+    with pytest.raises(ValueError, match="quantile_cb"):
+        model.mean_cb(10.0, method="lr")
+    boot = model.mean_cb(10.0, method="bootstrap", n_boot=30, random_state=2)
+    assert boot.shape == (2,) and boot[0] < mttf < boot[1]
+
+
+def test_activation_energy_is_a_times_boltzmanns_constant():
+    from surpyval.univariate.regression._accelerated_analysis import (
+        BOLTZMANN_EV,
+    )
+
+    _, _, model = _arrhenius_fit()
+    energy = model.activation_energy()
+    a = model.params[model.parameter_names.index("a")]
+    assert BOLTZMANN_EV == pytest.approx(8.617333262e-5, rel=1e-10)
+    assert energy["kelvin"] == a
+    assert energy["activation_energy"] == a * BOLTZMANN_EV
+    np.testing.assert_allclose(
+        [energy["kelvin_lower"], energy["kelvin_upper"]],
+        model.param_cb("a"),
+    )
+    assert energy["lower"] == energy["kelvin_lower"] * BOLTZMANN_EV
+    assert "Activation energy   : 0.6178 eV" in repr(model)
+    lr = model.activation_energy(method="lr")
+    assert lr["lower"] < lr["activation_energy"] < lr["upper"]
+    power = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.Power
+    ).fit([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], Z=[10.0, 10.0, 10.0, 20, 20, 20])
+    with pytest.raises(ValueError, match="no activation energy"):
+        power.activation_energy()
+    assert "Activation energy" not in repr(power)
+
+
+def test_activation_energy_of_the_inverse_models_takes_the_sign():
+    x, T, _ = _arrhenius_fit()
+    inverse = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.InverseExponential
+    ).fit(x, Z=T)
+    direct = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.Arrhenius
+    ).fit(x, Z=T)
+    assert inverse.activation_energy()["activation_energy"] == pytest.approx(
+        direct.activation_energy()["activation_energy"], rel=1e-5
+    )
+
+
+def test_common_shape_test_against_its_likelihoods_written_out():
+    from scipy import optimize, stats
+
+    x, T, model = _arrhenius_fit()
+    test = model.common_shape_test()
+    levels = np.unique(T)
+
+    def neg_ll(log_alpha, beta, xs):
+        alpha = np.exp(log_alpha)
+        return -np.sum(stats.weibull_min.logpdf(xs, beta, scale=alpha))
+
+    separate = 0.0
+    for level in levels:
+        xs = x[T == level]
+        found = optimize.minimize(
+            lambda q: neg_ll(q[0], np.exp(q[1]), xs),
+            [np.log(xs.mean()), 0.5],
+            method="Nelder-Mead",
+            options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 10000},
+        )
+        separate += found.fun
+
+    def common(q):
+        beta = np.exp(q[0])
+        return sum(
+            neg_ll(q[1 + j], beta, x[T == lv]) for j, lv in enumerate(levels)
+        )
+
+    start = [0.5] + [np.log(x[T == lv].mean()) for lv in levels]
+    found = optimize.minimize(
+        common,
+        start,
+        method="Nelder-Mead",
+        options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 40000},
+    )
+    statistic = 2 * (found.fun - separate)
+    assert test["statistic"] == pytest.approx(statistic, abs=1e-5)
+    assert test["df"] == 2
+    assert test["p_value"] == pytest.approx(stats.chi2.sf(statistic, 2), 1e-4)
+    assert test["common_shape"] == pytest.approx(np.exp(found.x[0]), 1e-5)
+
+
+def test_common_shape_test_leaves_out_a_level_with_one_failure():
+    x, T, _ = _arrhenius_fit()
+    c = np.zeros(T.size, int)
+    low = np.flatnonzero(T == 358.15)
+    c[low[1:]] = 1  # one failure at the lowest level
+    x = np.where(c == 1, np.minimum(x, 1e12), x)
+    model = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.Arrhenius
+    ).fit(x, Z=T, c=c)
+    with pytest.warns(UserWarning, match=r"358.15: 1"):
+        test = model.common_shape_test()
+    assert test["df"] == 1 and test["left_out"] == {(358.15,): 1}
+    ph = surpyval.WeibullPH.fit(x, T.reshape(-1, 1), c=c)
+    with pytest.raises(ValueError, match="accelerated life model"):
+        ph.common_shape_test()
+
+
+def test_plot_life_stress_draws_the_life_its_bounds_and_the_levels():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    _, _, model = _arrhenius_fit()
+    fig, ax = plt.subplots()
+    out = model.plot_life_stress(p=0.1, stresses=[313.15], ax=ax)
+    assert out is ax and ax.get_ylabel() == "B10 life"
+    line = ax.get_lines()[0]
+    grid, life = line.get_data()
+    assert grid.min() == pytest.approx(313.15)
+    np.testing.assert_allclose(
+        life, model.qf(np.full(grid.size, 0.1), grid.reshape(-1, 1))
+    )
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    model.plot_life_stress(p=None, ax=ax, points=False)
+    assert ax.get_ylabel() == "Mean life"
+    plt.close(fig)
+    with pytest.raises(ValueError, match="column"):
+        model.plot_life_stress(column=3)
+
+
+def test_mean_cb_of_a_survival_that_levels_off_is_infinite():
+    # A cured fraction: the survival never falls below it, the mean life
+    # is infinite, and so are its bounds (as mean() says).
+    rng = np.random.default_rng(7)
+    Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+    cured = rng.uniform(size=200) < 0.3
+    t = np.where(cured, np.inf, 5.0 * rng.weibull(1.5, 200))
+    cens = rng.uniform(0, 20, 200)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+    model = surpyval.MixtureCure(surpyval.Weibull).fit(x, Z, c=c)
+    bounds = model.mean_cb([1.0])
+    assert np.all(np.isinf(bounds))
