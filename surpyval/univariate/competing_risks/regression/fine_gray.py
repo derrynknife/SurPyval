@@ -2192,7 +2192,8 @@ class FineGrayModel(
         Z : array_like
             One covariate vector, or one row per time, as for :meth:`cif`.
         on : ('cif', 'sf'), str, optional
-            The function bounded, by default ``"cif"``.
+            The function bounded, by default ``"cif"`` (``"R"`` is
+            ``"sf"``, as elsewhere).
         alpha_ci : float, optional
             The significance level, by default 0.05.
         bound : ('two-sided', 'lower', 'upper'), str, optional
@@ -2242,7 +2243,8 @@ class FineGrayModel(
         from surpyval.utils.linalg import percentile_bounds
         from surpyval.utils.validation import check_alpha_ci, check_option
 
-        check_option("on", on, ("cif", "sf"))
+        check_option("on", on, ("cif", "sf", "R"))
+        on = "sf" if on == "R" else on
         check_option("bound", bound, ("two-sided", "lower", "upper"))
         check_alpha_ci(alpha_ci)
         if method == "wald":
