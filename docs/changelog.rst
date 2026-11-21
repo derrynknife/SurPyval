@@ -20,6 +20,107 @@ v0.29 (unreleased)
   (0 at or above ``1 - f0``). ``tests/reference/test_tails.py`` checks it
   against 50-digit references from ``s = 1`` to 1e-300.
 
+- **Test planning: one function per comparison design.**
+  ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
+  ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,
+  ``cure_logrank_design`` and ``rate_ratio_design``. Each takes the
+  design's power, size (``events``, or ``n`` with ``event_probability``)
+  and effect, and solves for the one left ``None``:
+  ``logrank_design(0.5, power=0.8).events`` is 66, and
+  ``logrank_design(0.7, n=(200, 200), event_probability=0.3).power`` is
+  0.497. The answer is a ``PowerCalculation``, which says what was
+  solved for (``solved_for``, ``value``) beside the power, events and
+  units, and saves with ``to_dict()``. Giving none or more than one
+  unknown is refused, naming them. New: the power from a number of
+  events, for the log-rank, Cox, non-inferiority and equivalence designs.
+  The numbers are those of the functions they replace, digit for digit.
+  See "Comparing two groups" in :doc:`Test Planning with SurPyval`.
+
+- **Combining, comparing, rescaling and resampling lifetime data.**
+  ``SurpyvalData.concat([a, b, ...])`` (also ``a + b`` and ``sum([a,
+  b])``) puts the rows of several datasets together, each keeping its
+  counts, weights, event types, states, terminal flags, truncation,
+  attributes, time-varying covariates and readings, sorted as the
+  constructor sorts. Refused, saying what to do: different units,
+  different covariates, ids (or states, or time-varying covariates) on
+  some datasets only, failures without event types beside typed ones,
+  and an item id in more than one dataset (rename the ids first).
+  ``data == other`` and ``data.equals(other, rtol=1e-9)`` compare two
+  datasets (``EventHistoryData`` too); a dataset is no longer hashable.
+  ``SurpyvalData.from_dataframe(data.to_dataframe())`` is the data again
+  with no column arguments: the names ``to_dataframe`` writes are
+  recognised, and it records in ``df.attrs`` which columns are
+  covariates and attributes, and the unit. ``data.rescale_time(factor,
+  unit=None)`` divides every time (``x``, the truncation, step-schedule
+  edges, reading ages) by ``factor``, as ``Parametric.rescale_time``
+  moves a model, so the fit of the rescaled data is the rescaled fit.
+  ``data.resample(random_state=None, size=None)`` draws units with
+  replacement for a bootstrap: a row counted ``n`` is ``n`` units and an
+  item's rows move together, each unit drawn counted by the times it was
+  drawn.
+
+- **A plot of the data itself.** ``SurpyvalData.plot_lifetimes(ax=None,
+  sort="end", max_rows=100)`` (and ``surpyval.plotting.plot_lifetimes``)
+  draws one line for each unit, the swimmer plot lifelines calls
+  ``plot_lifetimes``: late entry where the line starts, a filled mark for
+  a failure, an open triangle for a censored end, a bracket over an
+  interval, finite right truncation bounds, counts labelled, an item's
+  rows on one line, event types in colour with a legend, and a note of
+  how many lines ``max_rows`` left out. It returns the Axes.
+- **A notation for writing survival data as you'd describe it.**
+  ``surpyval.utils.notation``: ``O(10)`` failed at 10, ``RC(20)`` still
+  running at 20, ``LC(3)`` failed before 3, ``IC(5, 10)`` failed between 5
+  and 10; ``3 * O(10)`` three alike, and ``obs / Truncation(tl, tr)`` the
+  window ``(tl, tr]`` the unit was observed in (refused when the
+  observation lies outside it). ``Observations([...])`` collects them,
+  prints them as words, and gives ``xcnt()`` (one row per observation) or
+  ``surpyval_data()`` for any fitter; ``Observations.parse("3*10, 20+, <3,
+  [5, 10]")`` reads the same from text (``15-`` for left censored, too).
+
+- **The notation and SurpyvalData convert both ways, and fitters take it as
+  it is.** ``Weibull.fit(Observations.parse("10, 20+"))`` (every fitter that
+  takes a ``SurpyvalData``, and ``life_table``, ``fit_bayes``, the software
+  reliability models and the PyMC likelihood).
+  ``SurpyvalData.from_notation(text or observations, **kwargs)`` and
+  ``data.to_notation()`` (times, censoring, counts and truncation; data with
+  covariates, event types, ids, states, weights, readings or attributes is
+  refused, naming ``to_observations()`` or ``to_dict()``).
+  ``Observations.text()`` writes text that ``parse`` reads back as the same
+  observations; text takes a window after a bar (``"12 | (2, 50]"``) and
+  ``inf``. ``Observations`` has ``==`` (the same observations in order) and
+  a ``unit``, which reaches the data and the model.
+
+- **Event types, covariates, histories and readings in the notation.**
+  Every observation takes ``event_type=`` and ``covariates={name: value}``
+  (``O(10, event_type="bearing", covariates={"temp": 60})``), which become
+  the data's ``e`` and named ``Z``, as ``SurpyvalData.from_items`` maps
+  ``ItemLifetime`` records; observations that do not share the same
+  covariate names are refused, naming what is missing. ``to_notation()``
+  now keeps named covariates and event types. ``Item(id, *events,
+  covariates=, readings=, time_varying_covariates=)`` is one unit's
+  history (``Item("P1", O(120), O(310), RC(1000)) / Truncation(0)``: the
+  end of watching is ``RC``, late entry ``/ Truncation(tl)``,
+  ``3 * O(120)`` three failures at once, ``O(800, terminal=True)`` the
+  event that ended it, ``a = 1``), checked as an ``ItemHistory``.
+  ``Items([...])`` collects histories: ``surpyval_data()`` gives the
+  ``SurpyvalData`` with ``i`` and ``a``, the primary form, and
+  ``event_history_data()`` an ``EventHistoryData`` while that class
+  remains; the recurrent fitters, and every fitter that takes a
+  ``SurpyvalData``, take an ``Items`` as it is. ``readings={"vibration":
+  {0: 1.2}}`` become the data's ``Measurements`` (one unnamed ``{age:
+  value}`` series is the joint models' ``markers``), and a
+  ``StepSchedule`` or ``CovariatePath`` is passed through for the fits to
+  expand. ``Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")``
+  reads a history per line; covariates, event types, terminal flags and
+  readings stay in Python, and ``text()`` leaves them out.
+  ``data.to_notation()`` on data with item ids gives the ``Items`` (rows as
+  events, terminal flags, event types, fixed covariates, readings,
+  time-varying covariates and the window), with
+  ``data.to_notation().surpyval_data() == data``; what one history cannot
+  say (rows counting several units, covariates changing between a unit's
+  rows, gaps in watching, weights, states, attributes) is refused, naming
+  ``to_dict()``. ``SurpyvalData.from_notation`` takes an ``Items``.
+
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
   varying path parameters as independent between items, and
@@ -658,6 +759,28 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **SurpyvalData is the form for several rows per unit; EventHistoryData is
+  being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
+  ``a``), which every recurrent fitter takes, and nothing new depends on
+  ``EventHistoryData``. It keeps working, with no warning in this release;
+  a deprecation, naming the release that removes it, comes once
+  ``SurpyvalData`` does everything it does.
+
+- **The notation keeps SurpyvalData's rules, checked when an observation is
+  built.** A count must be a whole number (``2.5 * O(10)`` is refused,
+  pointing to weights ``w``); an infinite time is refused; an interval must
+  lie inside its window (``tl <= lower``, ``upper <= tr``; before, any
+  overlap was taken, and SurpyvalData then refused the same row); a
+  suspension must be strictly before its window's right edge; an interval
+  open at one end is one-sided censoring (``IC(5, inf)`` is ``RC(5)``), as
+  SurpyvalData reads it. The printout says "1 unit".
+
+- **``SurpyvalData.to_observations()`` carries weights, the unit,
+  attributes and readings**, which ``from_observations`` now takes
+  (``<kind>_weights``, ``<kind>_attributes``, ``m``), and refuses data with
+  terminal flags ``a`` or time-varying covariates, naming ``to_dict()``,
+  rather than drop them.
+
 - **A mixture's residual life is drawn to the last bits, about ten times
   faster.** The renewal models' draws of the life left at an age
   (``conditional_gaps``, used by their simulations) inverted a
@@ -923,6 +1046,20 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- The 21 test-planning functions that each solved one design for one
+  unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
+  ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,
+  ``noninferiority_events``, ``noninferiority_sample_size``,
+  ``noninferiority_power``, ``equivalence_events``,
+  ``equivalence_sample_size``, ``equivalence_power``,
+  ``rmst_sample_size``, ``rmst_power``, ``cure_logrank_sample_size``,
+  ``cure_logrank_events``, ``cure_logrank_power``, ``rate_ratio_power``,
+  ``rate_ratio_detectable`` and ``rate_ratio_exposure``. Each still
+  works, with a ``FutureWarning`` naming the design function call
+  that replaces it (``logrank_events(0.5)`` is
+  ``logrank_design(0.5, power=0.8).events``), and is removed in v0.30.
+  Note that the design functions take ``power`` with no default.
+
 - ``EquivalenceFitter.fit``'s keyword ``x1`` (use ``x``), ``tl`` as a
   pair per unit of both clocks' entry ages (give ``tl`` the main clock's
   and ``SecondaryClock(x2, tl=...)`` the second's), and ``fit_from_df``'s
@@ -950,6 +1087,17 @@ v0.29 (unreleased)
   within it (errors up to 3e-9): they are listed in it as known failures
   under #1300.
 
+- **``SurpyvalData.from_observations`` with ids paired ids with the wrong
+  times** where the rows were sorted (any data without covariates or event
+  types): ``observed=[5, 1], observed_ids=["a", "b"]`` gave "a" the time 1.
+  The rows now stay in the order of the lists.
+- ``SurpyvalData.from_dataframe(..., attribute_cols=...)`` without ids,
+  event types or covariates sorted the rows after reading the
+  attributes, so a row could carry another row's attributes; the rows
+  now stay in the frame's order. Slicing data without ids
+  (``data[rows]``) now keeps the time-varying covariates of the rows
+  kept, renumbered, rather than dropping them.
+
 - The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
   ``censored_likelihood``) had a NaN gradient for a row whose truncation
   or interval had a bound so far in a tail that the probability beyond
@@ -962,6 +1110,15 @@ v0.29 (unreleased)
   naming each and saying to draw inside ``parameter_bounds``. An ARI
   model took a negative scale or shape without a word and predicted
   ``nan``.
+
+- ``JelinskiMoranda.fit`` and ``LittlewoodVerrall.fit`` given a
+  ``SurpyvalData`` (or the notation's ``Observations`` or ``Items``)
+  dropped what they have no place for without a word: the rows of
+  several units were read as one campaign, and covariates, event types,
+  truncation and weights were ignored. Each is now refused, saying what
+  to do (fit each unit on its own, or ``data.without(...)``); data of one
+  unit, or with no units, fits as before. ``WeibullEffort.fit`` given
+  event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
 

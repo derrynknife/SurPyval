@@ -5,6 +5,7 @@ import numpy.typing as npt
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.warnings import ignoring_warnings
 
 from .software_growth import GrowthNHPPFitter, half_time
 
@@ -103,14 +104,11 @@ class InflectionS(GrowthNHPPFitter):
         return np.where(reached, t, np.inf)
 
     def _limit_log_likelihoods(self, data: Any) -> list[float]:
-        import warnings
-
         from .cox_lewis import CoxLewis
         from .software_growth import _power_law_limit
 
         limits = [_power_law_limit(data.split_for_nhpp_likelihood(), 1)]
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             rising = CoxLewis.fit_from_recurrent_data(data)  # type: ignore
         if rising.params[1] > 0:
             limits.append(-float(rising._neg_ll(rising.params)))

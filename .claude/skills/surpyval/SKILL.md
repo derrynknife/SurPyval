@@ -450,6 +450,9 @@ eh = sp.ExcessHazard.fit(yrs, trt, c=yrs == 8.0, rate_table=table, age=age,
 eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
 ```
 
+- **Plot the data:** `data.plot_lifetimes(ax=None, sort="end", max_rows=100)`
+  draws one line per unit (swimmer plot): late entry, failures, censoring,
+  intervals, counts, item rows, event types; returns the Axes.
 - **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
   `fit_from_df(..., w_col=)` (not Cox's yet). Scaling `w` changes nothing.
   Refused with weights: `method="lr"`/`"bootstrap"` bounds, `band`,
@@ -552,6 +555,36 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   converters `fs_to_xcnt`, `xcnt_to_xrd`, ...). The log-rank test is `sp.logrank`.
 - `SurpyvalData` — the internal container fitters build from xcnt input; you rarely
   need it directly, but `Model.fit_from_surpyval_data(data)` exists on the fitters.
+  Whole-dataset operations: `SurpyvalData.concat([a, b])` / `a + b` (refuses
+  shared ids, different units or covariates), `a == b` / `a.equals(b, rtol=)`,
+  `SurpyvalData.from_dataframe(data.to_dataframe())` (no column arguments),
+  `data.rescale_time(24, unit="days")` (as the model method), and
+  `data.resample(random_state=1)` (bootstrap of units: counts `n` expand, an
+  item's rows move together; drawn units counted by their draws).
+- `surpyval.utils.notation` — small datasets written as described:
+  `Observations.parse("3*10, 20+, <3, [5, 10], 12 | (2, 50]")` (failed at, still
+  running at, failed before, failed between, a count, a window `(tl, tr]`), or
+  `Observations([3 * O(10), RC(20), IC(5, 10) / Truncation(0, 40)])`. Any fitter
+  that takes a `SurpyvalData` takes it as it is: `sp.Weibull.fit(obs)`.
+  `obs.text()` writes text `parse` reads back; `SurpyvalData.from_notation(text
+  or obs)` and `data.to_notation()` convert (times, censoring, counts and
+  truncation only; data with more is refused, use `to_observations()`). Counts
+  are whole numbers, times finite, `IC(5, inf)` is `RC(5)`, and windows follow
+  SurpyvalData's rules.
+  Observations take `event_type=` and `covariates={name: value}` (→ `e`, named
+  `Z`; every observation the same names), left out of `text()`.
+  Histories: `Items([Item("P1", O(120), 3 * O(310), IC(400, 450), RC(1000)) /
+  Truncation(0), Item("P2", O(80), O(800, terminal=True), covariates={...})])`
+  (`RC` = end of watching, `/ Truncation(tl)` = late entry, `3 * O(x)` three
+  failures at once, `terminal=True` → `a = 1`); `.surpyval_data()` gives
+  SurpyvalData with `i`/`a` (the primary form; recurrent fits take the `Items`
+  as is), `.event_history_data()` only as a bridge. `readings={"vib": {0: 1.2}}`
+  → `Measurements` (one `{age: value}` series → `markers`);
+  `time_varying_covariates=StepSchedule.from_changepoints(...)` passed through.
+  Text: `Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")`, one line
+  per item; `data.to_notation()` on data with ids gives the `Items` back
+  (`.surpyval_data() == data`, else refused). `EventHistoryData` is being phased out: build new data as
+  `SurpyvalData(..., i=..., a=...)` or `Items`.
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
 `sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never

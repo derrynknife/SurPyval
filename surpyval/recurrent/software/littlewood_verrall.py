@@ -27,7 +27,6 @@ of the limit.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -52,9 +51,11 @@ from surpyval.utils.no_maximum import (
     restored_maximum,
     warn_unverified,
 )
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 from .jelinski_moranda import _campaign, _from_data
 
@@ -185,8 +186,9 @@ class _Gaps:
 
 def _read(x: Any, c: Any, gaps: bool) -> tuple:
     """The gaps and the time tested since the last failure."""
+    x = notation_as_data(x)
     if isinstance(x, SurpyvalData):
-        x, c = _from_data(x, c)
+        x, c = _from_data(x, c, "Littlewood-Verrall")
     try:
         _, failures, end = _campaign(x, c, gaps)
     except ValueError as error:
@@ -258,6 +260,7 @@ class LittlewoodVerrall(FitterRepr):
     parameter_names = ["alpha", "beta0", "beta1"]
 
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: ArrayLike,
@@ -265,7 +268,7 @@ class LittlewoodVerrall(FitterRepr):
         *,
         gaps: bool = False,
         psi: str = "linear",
-    ) -> "LittlewoodVerrallModel":
+    ) -> LittlewoodVerrallModel:
         """
         Fit the model to one test campaign by maximum likelihood.
 
@@ -346,7 +349,7 @@ class LittlewoodVerrall(FitterRepr):
         *,
         gaps: bool = False,
         psi: str = "linear",
-    ) -> "LittlewoodVerrallModel":
+    ) -> LittlewoodVerrallModel:
         """
         Fit the model to one campaign held in a ``pandas.DataFrame``:
         ``x_col`` the column of failure times (or of times between
@@ -365,7 +368,7 @@ class LittlewoodVerrall(FitterRepr):
     @takes_unit
     def from_params(
         self, params: ArrayLike, n: int = 0, psi: str = "linear"
-    ) -> "LittlewoodVerrallModel":
+    ) -> LittlewoodVerrallModel:
         """
         The model at given parameters, without data.
 
@@ -541,7 +544,7 @@ class LittlewoodVerrallModel(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "LittlewoodVerrallModel":
+    def from_dict(cls, model_dict: dict) -> LittlewoodVerrallModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 
@@ -870,8 +873,7 @@ class LittlewoodVerrallModel(SerialisableMixin):
         floor = self.log_likelihood - drop
 
         def gap(log_alpha: float) -> float:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 best, _ = data.search(alpha=float(np.exp(log_alpha)))
             return -float(best.fun) - floor
 

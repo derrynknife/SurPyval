@@ -25,7 +25,6 @@ whose ``fit`` returns the ``ParametricRecurrenceModel`` the others do.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as np
@@ -39,6 +38,8 @@ from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.rng import as_generator
+from surpyval.utils.surpyval_data import refuses_surpyval_data_with
+from surpyval.utils.warnings import ignoring_warnings
 
 from .hpp import HPP
 from .nhpp_fitter import NHPPFitter
@@ -163,6 +164,15 @@ class EffortTable:
         }
 
 
+#: WeibullEffort.fit given event data: its rows are periods of effort.
+_NOT_EVENT_DATA = (
+    "WeibullEffort.fit takes a table of testing effort, not event data: "
+    "ends, the end time of each period, and amounts, the effort spent in "
+    "it (as EffortTable(ends, amounts)). To fit failures on an effort "
+    "clock, fit the events with EffortClock(base, effort).fit(data)."
+)
+
+
 class WeibullEffort:
     """
     A Weibull-type curve of cumulative testing effort, ``W(t) = N (1 -
@@ -194,7 +204,8 @@ class WeibullEffort:
         self.N, self.beta, self.m = float(N), float(beta), float(m)
 
     @classmethod
-    def fit(cls, ends: ArrayLike, amounts: ArrayLike) -> "WeibullEffort":
+    @refuses_surpyval_data_with(_NOT_EVENT_DATA, argument="ends")
+    def fit(cls, ends: ArrayLike, amounts: ArrayLike) -> WeibullEffort:
         """The curve through a table of effort by period (as
         :class:`EffortTable`'s), by least squares on the cumulative
         effort at the periods' ends."""
@@ -207,8 +218,7 @@ class WeibullEffort:
                 -onp.exp(log_beta) * (t / span) ** onp.exp(log_m)
             )
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             fitted, _ = curve_fit(
                 curve,
                 table.ends,
@@ -932,8 +942,7 @@ def _base_start(base: Any, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
 
 
 def _plain_fit(base: Any, data: Any) -> Any:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         return base.fit_from_recurrent_data(data)
 
 

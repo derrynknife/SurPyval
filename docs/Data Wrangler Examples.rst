@@ -77,6 +77,101 @@ Again, this can be extended to left censored data as well:
 
     model = surv.Weibull.fit(data)
 
+The notation in :mod:`surpyval.utils.notation` reads that text directly, and gives a way of writing small datasets in code the way you would describe them. ``Observations.parse`` takes entries separated by commas, semicolons or new lines: ``10`` failed at 10, ``20+`` still running at 20, ``<3`` or ``3-`` failed before 3, ``[5, 10]`` failed between 5 and 10, and ``3*10`` three units alike:
+
+.. jupyter-execute::
+
+    from surpyval.utils.notation import Observations
+
+    data = Observations.parse("1, 2, 3+, 5, 6, 8, 10, 3+, 5+, 15-, 16-, 17-")
+    model = surv.Weibull.fit(data.surpyval_data())
+    model
+
+In code, each observation is one object: ``O`` (failed at), ``RC`` (still running at), ``LC`` (failed before) and ``IC`` (failed between). ``n * obs`` is ``n`` units alike, and ``obs / Truncation(tl, tr)`` says the unit was only observed within ``(tl, tr]`` (late entry at ``tl``); dividing a whole ``Observations`` by a ``Truncation`` gives every observation without a window of its own that window. An observation outside its window is refused, and the printout reads as words:
+
+.. jupyter-execute::
+
+    from surpyval.utils.notation import IC, LC, RC, O, Truncation
+
+    data = Observations([
+        3 * O(10), RC(20), LC(3),
+        IC(5, 10) / Truncation(0, 40),
+    ])
+    print(data)
+    print(data.xcnt())
+
+``xcnt()`` gives the arrays (one row per observation, ``tl``/``tr`` of ``-inf``/``inf`` where there is no truncation) and ``surpyval_data()`` the :class:`~surpyval.SurpyvalData` every fitter takes; a fitter also takes the ``Observations`` as it is. The rules are those of ``SurpyvalData``, checked when each observation is built: a count is a whole number, a time is finite, a point lies in its window ``(tl, tr]`` (a suspension strictly before ``tr``), an interval lies inside it (``tl <= lower``, ``upper <= tr``), and an interval open at one end is one-sided censoring (``IC(5, inf)`` is ``RC(5)``).
+
+In text, a window follows its entry after a bar, ``12 | (2, 50]`` (``inf`` for an open side), and ``text()`` writes the observations back as text that ``parse`` reads as the same ones. ``SurpyvalData.from_notation`` takes the text or the ``Observations``, and ``data.to_notation()`` goes back:
+
+.. jupyter-execute::
+
+    data = Observations.parse("3*10, 20+, [5, 10] | (2, 40], 12 | (2, inf]", unit="hours")
+    model = surv.Weibull.fit(data)
+    print(model.unit)
+    back = surv.SurpyvalData.from_notation(data).to_notation()
+    print(back.text())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert surv.SurpyvalData.from_notation(back.text(), unit="hours").to_notation() == back
+
+Each observation can also say what failed and describe its unit: ``event_type=`` (a failure mode or cause, for the competing-risks models; never on a suspension) and ``covariates={name: value}``, which become the data's event types ``e`` and its named covariates ``Z``. Every observation needs the same covariate names, and a set that does not is refused, saying which names are missing. The text form leaves these out, so it stays readable; they stay in Python:
+
+.. jupyter-execute::
+
+    obs = Observations([
+        O(410, event_type="bearing", covariates={"temp": 60}),
+        O(520, event_type="seal", covariates={"temp": 75}),
+        2 * RC(800, covariates={"temp": 60}),
+    ])
+    data = obs.surpyval_data()
+    print(data.covariate_names, data.Z.ravel(), data.e)
+    print(obs.text())
+
+A unit watched over several events, a repairable item, is an ``Item``: its id, then its events. ``RC`` is the end of watching (its age when last seen; at most one, after every event), ``Item(...) / Truncation(tl)`` is late entry, ``3 * O(120)`` is three failures at the same age, ``IC(a, b)`` a failure found between two inspections, and ``O(800, terminal=True)`` the event that ended the history for good (``a = 1``: scrapped or written off). The item's fixed covariates go on the item, ``covariates={...}``. ``Items`` collects them, and ``surpyval_data()`` gives the :class:`~surpyval.SurpyvalData` with each row's unit ``i`` and terminal flag ``a``, the form every recurrent fitter takes (and takes the ``Items`` as it is):
+
+.. jupyter-execute::
+
+    from surpyval.utils.notation import Item, Items
+
+    fleet = Items([
+        Item("P1", O(120), O(310), IC(400, 450), RC(1000)) / Truncation(0),
+        Item("P2", 3 * O(200), O(900, terminal=True)),
+    ], unit="hours")
+    print(fleet.surpyval_data())
+    surv.recurrent.CrowAMSAA.fit(fleet)
+
+A history can be written as one line of text, its id, a colon and its events in the same grammar, with the item's window last after a bar; ``text()`` writes it back (covariates, event types, terminal flags and readings stay in Python):
+
+.. jupyter-execute::
+
+    fleet = Items.parse("""
+        P1: 120, 310, [400, 450], 1000+ | (0, inf]
+        P2: 3*200, 900
+    """)
+    print(fleet.text())
+
+Readings taken on an item over its life go in ``readings``: ``{name: {age: value}}`` for named measurements, or one ``{age: value}`` series, which the joint models read as their ``markers``. They become the data's :class:`~surpyval.utils.measurements.Measurements`. Covariates that change over the item's life are given as a ``StepSchedule`` (or ``CovariatePath``) in ``time_varying_covariates``, and passed through as they are: the fits expand them into stretches themselves.
+
+.. jupyter-execute::
+
+    from surpyval import StepSchedule
+
+    pumps = Items([
+        Item("A", O(100), readings={"vibration": {0: 1.2, 50: 1.9}},
+             time_varying_covariates=StepSchedule.from_changepoints([0, 50], [0.0, 1.0])),
+        Item("B", RC(120), readings={"vibration": {0: 1.0, 60: 1.1}},
+             time_varying_covariates=StepSchedule.from_changepoints([0], [0.0])),
+    ])
+    data = pumps.surpyval_data()
+    print(data.m)
+    print(data.time_varying_covariates)
+
+``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is being phased out, and ``fleet.event_history_data()`` gives one only for code that still needs it.
+
 Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
 
 .. jupyter-execute::
@@ -113,6 +208,19 @@ If you have mixed interval and observed or censored data, the two columns can st
     print(model.params)
 
 (``SurpyvalData`` validates its input exactly as every fitter does; building one yourself is a quick way to check how SurPyval has read your data. Its rows are sorted, so the flags come back in order of time.)
+
+To see the data itself, ``data.plot_lifetimes()`` draws one line for each unit (a swimmer plot): a filled circle where it failed, an open triangle where it was still running (right censored) or had already failed (left censored), a bracket over an interval, and the line starting where the unit came under observation (late entry). A row standing for several items is labelled with its count, an item's several rows share a line, event types take colours, and ``max_rows`` (100 by default) limits a large dataset, saying how many lines were left out. It returns the Axes.
+
+.. jupyter-execute::
+
+    data = SurpyvalData.from_observations(
+        observed=[3, 5],
+        right_censored=[8],
+        left_censored=[2],
+        interval_censored=[[4, 6]],
+        observed_left_truncation=[0, 1],
+    )
+    ax = data.plot_lifetimes()
 
 
 One record per item
@@ -390,6 +498,41 @@ hand-built ``xcnt`` form — the fitted parameters agree exactly:
     :hide-output:
 
     assert np.allclose(from_lists.params, hand.params, rtol=1e-12)
+
+
+Combining, comparing, rescaling and resampling
+-----------------------------------------------
+
+Two batches of data become one with ``SurpyvalData.concat([a, b, ...])``
+or ``a + b``. Everything each row has comes across (counts, weights,
+event types, truncation, attributes, readings), and the rows are sorted
+as the constructor sorts them. Datasets in different units, with
+different covariates, or sharing an item id are refused, each saying
+what to do: an id is one item, so rename the ids first where two sources
+used the same ones. ``==`` compares two datasets exactly and
+``equals(other, rtol=...)`` to a tolerance. ``to_dataframe()`` and
+``from_dataframe()`` with no column arguments are a round trip.
+``rescale_time(factor, unit=...)`` puts the data on another clock (24
+from hours to days, 0.25 for a quarter duty cycle), as the model method
+of the same name does, so a fit of the rescaled data is the rescaled
+fit. ``resample(random_state=...)`` draws the units with replacement for
+a bootstrap: a row counted ``n`` is ``n`` units, and an item's rows move
+together.
+
+.. jupyter-execute::
+
+    site_a = SurpyvalData([120, 310, 400, 1000], c=[0, 0, 0, 1],
+                          i=["A1", "A2", "A3", "A4"], unit="hours")
+    site_b = SurpyvalData([200, 650], c=[0, 1], i=["B1", "B2"], unit="hours")
+    fleet = site_a + site_b
+    print(fleet.ids)
+    print(SurpyvalData.from_dataframe(fleet.to_dataframe()) == fleet)
+
+    days = fleet.rescale_time(24, unit="days")
+    print(days.x)
+
+    boot = fleet.resample(random_state=1)
+    print(boot.ids, boot.n)
 
 
 Truncation, four ways

@@ -20,6 +20,7 @@ from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.item_history import missing_type
 from surpyval.utils.measurements import MeasurementsMixin
+from surpyval.utils.notation import Items, Observations
 from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.warnings import (
     MaskedCauseWarning,
@@ -616,6 +617,15 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         left_censored_ids: Any = None,
         interval_censored_ids: Any = None,
         unit: Any = None,
+        observed_weights: ArrayLike | Number | None = None,
+        right_censored_weights: ArrayLike | Number | None = None,
+        left_censored_weights: ArrayLike | Number | None = None,
+        interval_censored_weights: ArrayLike | Number | None = None,
+        observed_attributes: list | None = None,
+        right_censored_attributes: list | None = None,
+        left_censored_attributes: list | None = None,
+        interval_censored_attributes: list | None = None,
+        m: Any = None,
         **unknown: Any,
     ) -> SurpyvalData:
         """
@@ -684,6 +694,19 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             them: ``data.item(id)`` and ``select(ids=...)`` then find them.
         unit : str, optional
             The unit of the times, kept with the data.
+        <kind>_weights : array like, optional
+            Each item's sampling, propensity or censoring weight (a
+            positive number; see ``w`` in :class:`SurpyvalData`): one for
+            every item of the kind or one per item; given for one kind,
+            needed for every kind with items.
+        <kind>_attributes : list of dict, optional
+            What describes each item without being fitted (``{name:
+            value}``, or None for an item with none), one per item; a kind
+            left out has none.
+        m : Measurements or dict, optional
+            Readings taken on the items over their lives (``m`` in
+            :class:`SurpyvalData`), linked to the items by their ids, so
+            ``<kind>_ids`` are needed.
 
         Returns
         -------
@@ -787,6 +810,18 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             "left_censored": left_censored_ids,
             "interval_censored": interval_censored_ids,
         }
+        weights = {
+            "observed": observed_weights,
+            "right_censored": right_censored_weights,
+            "left_censored": left_censored_weights,
+            "interval_censored": interval_censored_weights,
+        }
+        attributes = {
+            "observed": observed_attributes,
+            "right_censored": right_censored_attributes,
+            "left_censored": left_censored_attributes,
+            "interval_censored": interval_censored_attributes,
+        }
         shared: dict[str, Any] = {
             "left": left_truncation,
             "right": right_truncation,
@@ -806,7 +841,7 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
                     "bound per item in the same order."
                 )
 
-        per_item = [
+        per_item: list[tuple[str, str, Any]] = [
             (name.rsplit("_", 2)[0], name, v) for name, v in own.items()
         ]
         per_item += [(k, f"{k}_counts", v) for k, v in counts.items()]
@@ -815,6 +850,8 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             (k, f"{k}_event_types", v) for k, v in event_types.items()
         ]
         per_item += [(k, f"{k}_ids", v) for k, v in ids.items()]
+        per_item += [(k, f"{k}_weights", v) for k, v in weights.items()]
+        per_item += [(k, f"{k}_attributes", v) for k, v in attributes.items()]
         for kind, name, values in per_item:
             if values is not None and lists[kind] is None:
                 raise ValueError(
@@ -827,6 +864,8 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         Zs: dict[str, np.ndarray] = {}
         es: list = []
         id_parts: list = []
+        w_parts: dict[str, np.ndarray] = {}
+        attribute_parts: list = []
         typed: dict[str, bool] = {}
         for kind, flag in _OBSERVATION_KINDS:
             times = _observation_times(kind, lists[kind])
@@ -864,6 +903,16 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
                 id_parts.append([kind_ids[k] for k in np.flatnonzero(keep)])
             elif len(times[keep]):
                 id_parts.append(None)
+            if weights[kind] is not None:
+                from surpyval.utils.weights import check_weights
+
+                w_parts[kind] = check_weights(weights[kind], len(times))[keep]
+            kind_attributes = _kind_attributes(
+                f"{kind}_attributes", attributes[kind], len(times)
+            )
+            attribute_parts += [
+                a for a, kept in zip(kind_attributes, keep) if kept
+            ]
             times = times[keep]
             xs.append(times if flag == 2 else np.column_stack([times, times]))
             cs.append(np.full(len(times), flag))
@@ -893,10 +942,37 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
 
             item_ids = [item_id(i) for part in id_parts for i in part]
             check_item_ids(item_ids, "item (identical items are its counts)")
-        Z = _stack_covariates(
-            Zs,
-            {kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)},
-        )
+        sizes = {
+            kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)
+        }
+        Z = _stack_covariates(Zs, sizes)
+        w = None
+        if w_parts:
+            missing = [
+                k for k, size in sizes.items() if size and k not in w_parts
+            ]
+            if missing:
+                raise ValueError(
+                    "Weights were given for "
+                    + ", ".join(sorted(w_parts))
+                    + " but not for "
+                    + ", ".join(missing)
+                    + ": every item needs its weight, so give "
+                    + ", ".join(f"'{kind}_weights'" for kind in missing)
+                    + " too (1 for an item that stands for itself)."
+                )
+            w = np.concatenate(
+                [w_parts.get(k, np.empty(0)) for k, _ in _OBSERVATION_KINDS]
+            )
+        if m is not None and item_ids is None:
+            raise ValueError(
+                "m (the readings) is linked to the items by their ids: give "
+                "'<kind>_ids' for every kind with entries."
+            )
+        has_attributes = any(a is not None for a in attribute_parts)
+        # The rows stay in the order of the lists (ids, attributes and
+        # weights are matched to them by position), so they are grouped
+        # and sorted only where nothing is attached to each row.
         data = cls(
             x,
             np.concatenate(cs),
@@ -907,9 +983,13 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             e=e,
             covariate_names=covariate_names,
             unit=unit,
+            w=w,
+            i=item_ids,
+            m=m,
+            group_and_sort=not has_attributes,
         )
-        if item_ids is not None:
-            data.ids = item_ids
+        if has_attributes:
+            data.attributes = attribute_parts
         return data
 
     @classmethod
@@ -942,6 +1022,13 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ..., the ``fit`` argument with ``_col``). The rows stay in the
         frame's order where ids, event types, states or covariates are
         given.
+
+        With no column arguments, a frame :meth:`to_dataframe` wrote is
+        read by the names it writes (``id``, ``x`` or ``xl`` and ``xr``,
+        ``c``, ``n``, ``w``, ``tl``, ``tr``, ``s``, ``e``, ``a``), with
+        the covariates, attributes and unit it records in ``df.attrs``:
+        ``SurpyvalData.from_dataframe(data.to_dataframe())`` is the data
+        again.
 
         Parameters
         ----------
@@ -1066,11 +1153,12 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         >>> data.c, data.n_items
         (array([0, 0, 1, 0]), 3)
         """
-        from surpyval.utils.data_frames import lifetime_from_frame
+        from surpyval.utils.data_frames import (
+            lifetime_from_frame,
+            recognised_columns,
+        )
 
-        data = lifetime_from_frame(
-            cls,
-            df,
+        columns = dict(
             x_col=x_col,
             xl_col=xl_col,
             xr_col=xr_col,
@@ -1083,11 +1171,22 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             e_col=e_col,
             Z_cols=Z_cols,
             attribute_cols=attribute_cols,
-            unit=unit,
             w_col=w_col,
             s_col=s_col,
             a_col=a_col,
         )
+        unnamed = False
+        if all(v is None for v in columns.values()):
+            # The frame to_dataframe() wrote, read by its column names
+            found = recognised_columns(df)
+            columns.update(found["columns"])
+            unnamed = found["unnamed"]
+            if unit is None:
+                unit = found["unit"]
+        data = lifetime_from_frame(cls, df, unit=unit, **columns)
+        if unnamed:
+            # Covariates without names, written as Z0, Z1, ...
+            data.covariate_names = None
         if m is not None:
             data.m = m
         return data
@@ -1100,10 +1199,14 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         finite), ``s`` (where it has states), ``e`` (where it has event
         types), the covariates by name (``Z0``, ``Z1``, ... where
         unnamed) and the attributes.
-        ``SurpyvalData.from_dataframe(data.to_dataframe(), x_col="x",
-        c_col="c", n_col="n", i_col="id", s_col="s", ...)`` is the same
-        data. Time-varying covariates have no place in it, and are
-        refused.
+        ``SurpyvalData.from_dataframe(data.to_dataframe())`` is the same
+        data (but for its measurements, which have no place in a row):
+        the frame's ``attrs`` record which columns are covariates and
+        which attributes, and the unit. A frame that lost them (written
+        to a file and read back) is read by its column names alone, the
+        covariates named ``Z0``, ``Z1``, ... and nothing else besides;
+        name the columns otherwise. Time-varying covariates have no place
+        in it, and are refused.
 
         Examples
         --------
@@ -1499,6 +1602,33 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             unit=self.unit,
         )
 
+    def plot_lifetimes(
+        self,
+        ax: Any = None,
+        sort: str = "end",
+        max_rows: int | None = 100,
+    ) -> Any:
+        """
+        Draw the data itself, one line for each unit (each row where there
+        are no item ids): where it came under observation, and how it
+        ended (failed, right, left or interval censored), with the counts
+        ``n`` labelled, an item's several rows on one line, event types in
+        colour and finite right truncation bounds marked. Returns the
+        Axes. See :func:`surpyval.plotting.plot_lifetimes`.
+
+        Examples
+        --------
+        >>> import matplotlib
+        >>> matplotlib.use("Agg")
+        >>> from surpyval import SurpyvalData
+        >>> ax = SurpyvalData([3, 7], c=[0, 1]).plot_lifetimes()
+        >>> ax.get_xlabel()
+        'Time'
+        """
+        from surpyval.plotting import plot_lifetimes
+
+        return plot_lifetimes(self, ax=ax, sort=sort, max_rows=max_rows)
+
     def _markers_by_row(self) -> list | None:
         """Each row's marker readings, ``{age: value}`` (``{}`` for an item
         with none), in the order of the rows; None where the data has
@@ -1660,8 +1790,15 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         side on which anything is truncated (``-inf`` or ``inf`` for an item
         with no bound), and its ``"<kind>_covariates"`` where the data has
         covariates (with ``"covariate_names"`` where they are named), its
-        ``"<kind>_event_types"`` and ``"<kind>_ids"`` where the data has
-        them. ``np.repeat(times, counts)`` gives one entry per item.
+        ``"<kind>_event_types"``, ``"<kind>_ids"``, ``"<kind>_weights"``
+        and ``"<kind>_attributes"`` where the data has them, with
+        ``"unit"`` and the readings ``"m"`` where it has them.
+        ``np.repeat(times, counts)`` gives one entry per item.
+
+        Data that the lists cannot hold is refused, saying what keeps it:
+        states ``s``, terminal flags ``a`` (and units with several rows,
+        which always have them) and time-varying covariates; use
+        :meth:`to_dict` (or :meth:`to_dataframe`).
 
         Examples
         --------
@@ -1676,12 +1813,23 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         >>> data.to_observations()["observed_left_truncation"]
         array([500.,   0.])
         """
+        cannot = []
         if self.s is not None:
+            cannot.append("the state s of each row")
+        if self.a is not None:
+            cannot.append(
+                "the terminal flags a (each unit's rows and whether its "
+                "history ended)"
+            )
+        if self.time_varying_covariates is not None:
+            cannot.append("the time-varying covariates")
+        if cannot:
             raise ValueError(
                 "to_observations lists the times by kind of observation, "
-                "and from_observations has no place for the state s of "
-                "each row: use data.to_dataframe() or data.to_dict(), "
-                "which keep the states."
+                "one item each, and from_observations has no place for "
+                + " or ".join(cannot)
+                + ": use data.to_dict() (or data.to_dataframe()), which "
+                "keeps them."
             )
         counts = self.n.astype(int)
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
@@ -1698,6 +1846,7 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         extra: dict[str, Any] = {}
         for kind, flag in _OBSERVATION_KINDS:
             mask = self.c == flag
+            rows = np.flatnonzero(mask)
             lists[kind] = (x[mask] if flag == 2 else x[mask, 0]).astype(float)
             if (counts != 1).any():
                 extra[f"{kind}_counts"] = counts[mask]
@@ -1710,12 +1859,122 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             if self.e is not None and kind != "right_censored":
                 extra[f"{kind}_event_types"] = list(self.e[mask])
             if self.ids is not None:
-                extra[f"{kind}_ids"] = [
-                    self.ids[k] for k in np.flatnonzero(mask)
+                extra[f"{kind}_ids"] = [self.ids[k] for k in rows]
+            if self.w is not None:
+                extra[f"{kind}_weights"] = self.w[mask].astype(float)
+            if self.attributes is not None:
+                extra[f"{kind}_attributes"] = [
+                    self.attributes[k] for k in rows
                 ]
         if self.covariate_names is not None:
             extra["covariate_names"] = list(self.covariate_names)
+        if self.unit is not None:
+            extra["unit"] = self.unit
+        if self.m is not None:
+            extra["m"] = self.m
         return {**lists, **extra}
+
+    @classmethod
+    def from_notation(cls, notation: Any, **kwargs: Any) -> SurpyvalData:
+        """
+        The data written in the notation of :mod:`surpyval.utils.notation`:
+        text (``"3*10, 20+, <3, [5, 10], 12 | (2, 50]"``), an
+        :class:`~surpyval.utils.notation.Observations` or an
+        :class:`~surpyval.utils.notation.Items`. ``kwargs`` go to
+        the constructor (``unit=``, for example). :meth:`to_notation` goes
+        back.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData.from_notation("3*10, 20+, [5, 10]")
+        >>> data.x
+        array([[ 5., 10.],
+               [10., 10.],
+               [20., 20.]])
+        >>> data.c, data.n
+        (array([2, 0, 1]), array([1, 3, 1]))
+        >>> data.to_notation().text()
+        '[5, 10], 3*10, 20+'
+        """
+        from surpyval.utils.notation import Observations
+
+        if isinstance(notation, str):
+            notation = Observations.parse(notation)
+        if not isinstance(notation, (Observations, Items)):
+            raise TypeError(
+                "from_notation takes the notation's text "
+                '("3*10, 20+, [5, 10]") or an Observations; got '
+                f"{type(notation).__name__}. For arrays use "
+                "SurpyvalData(x, c, n, ...)."
+            )
+        return notation.surpyval_data(**kwargs)
+
+    def to_notation(self) -> Any:
+        """
+        The data as :class:`~surpyval.utils.notation.Observations`, one
+        observation per row with its count and window, and the unit:
+        ``SurpyvalData.from_notation(data.to_notation())`` is the same
+        data, and ``data.to_notation().text()`` writes it as text.
+
+        Data with item ids (``i``) is given as
+        :class:`~surpyval.utils.notation.Items`, one ``Item`` per unit:
+        its rows as events (a failure repeated at one age as one counted
+        event), its terminal flags (``terminal=True``), event types,
+        covariates (fixed over the unit), readings, time-varying
+        covariates (passed through) and window, so that
+        ``data.to_notation().surpyval_data() == data``. What one history
+        cannot say (rows counting several identical units, covariates that
+        change between a unit's rows, gaps in watching, weights, states,
+        attributes, measurement units) is refused, naming what to use.
+
+        Without ids the notation holds times, censoring, counts,
+        truncation, named covariates and event types, so data with
+        anything else (unnamed covariates, states, terminal flags,
+        weights, readings, attributes, time-varying covariates) is refused
+        rather than dropped: use :meth:`to_observations` or
+        :meth:`to_dict` for it.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData([10, 20, 20], c=[0, 1, 1], tl=2)
+        >>> print(data.to_notation().text())
+        10 | (2, inf], 2*20+ | (2, inf]
+        >>> pumps = SurpyvalData(x=[120, 310, 1000], c=[0, 0, 1], i=["P1"] * 3)
+        >>> print(pumps.to_notation().text())
+        P1: 120, 310, 1000+
+        """
+        from surpyval.utils.notation import Items, Observations
+
+        if self.ids is not None:
+            return Items._from_surpyval_data(self)
+        held = [
+            what
+            for what, value in (
+                (
+                    "unnamed covariates",
+                    self.Z if self.covariate_names is None else None,
+                ),
+                ("states", self.s),
+                ("terminal flags", self.a),
+                ("weights", self.w),
+                ("readings", self.m),
+                ("attributes", self.attributes),
+                ("time-varying covariates", self.time_varying_covariates),
+            )
+            if value is not None
+        ]
+        if held:
+            raise ValueError(
+                "The notation holds the times, censoring, counts, "
+                "truncation, named covariates and event types, and this "
+                "data also has "
+                + ", ".join(held)
+                + ", which it would drop: use data.to_observations() or "
+                "data.to_dict(), which keep them."
+            )
+        return Observations._from_surpyval_data(self)
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
@@ -1827,34 +2086,39 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
                 "The index selects no rows; a SurpyvalData needs at least "
                 "one."
             )
+        # By row number, so a tuple id or type stays one value (#928)
+        return self._take(np.atleast_1d(np.arange(len(self.x))[index]))
+
+    def _take(
+        self,
+        rows: np.ndarray,
+        *,
+        x: np.ndarray | None = None,
+        t: np.ndarray | None = None,
+        n: np.ndarray | None = None,
+    ) -> SurpyvalData:
+        """The data of the rows ``rows`` (row numbers, in that order),
+        everything per row following them; ``x``, ``t`` or ``n``, where
+        given, are the new rows' values (already in the order of
+        ``rows``)."""
+        rows = np.asarray(rows, dtype=int)
         # A scalar index on interval-censored (2-D) data used to flatten
         # one [xl, xr] row into two 1-D observations and crash the type
         # split; keep the row structure instead (#282).
-        if self.x.ndim == 2:
-            x_idx = np.atleast_2d(self.x[index])
-        else:
-            x_idx = np.atleast_1d(self.x[index])
+        x_idx = self.x[rows] if x is None else np.asarray(x)
         out = SurpyvalData(
             x_idx,
-            np.atleast_1d(self.c[index]),
-            np.atleast_1d(self.n[index]),
-            np.atleast_2d(self.t[index]),
+            self.c[rows],
+            self.n[rows] if n is None else np.asarray(n),
+            self.t[rows] if t is None else np.asarray(t),
             handle=False,
-            w=None if self.w is None else np.atleast_1d(self.w[index]),
+            w=None if self.w is None else self.w[rows],
         )
         # Carry the covariates through (slicing used to silently return
         # Z=None, losing alignment, #282).
         if getattr(self, "Z", None) is not None:
-            Z_arr = np.asarray(self.Z)
-            Z_idx = Z_arr[index]
-            if Z_arr.ndim == 2:
-                Z_idx = np.atleast_2d(Z_idx)
-            else:
-                Z_idx = np.atleast_1d(Z_idx)
-            out.add_covariates(Z_idx)
+            out.add_covariates(np.asarray(self.Z)[rows])
             out.covariate_names = self.covariate_names
-        # By row number, so a tuple id or type stays one value (#928)
-        rows = np.atleast_1d(np.arange(len(self.x))[index])
         if self.e is not None:
             out.e = self.e[rows]
         if self.s is not None:
@@ -1869,10 +2133,17 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             out.attributes = [self.attributes[r] for r in rows]
         out.unit = self.unit
         if self.time_varying_covariates is not None:
-            kept = out.ids if out.ids is not None else []
-            out.time_varying_covariates = {
-                i: self.time_varying_covariates[i] for i in kept
-            }
+            if self.ids is not None:
+                out.time_varying_covariates = {
+                    i: self.time_varying_covariates[i]
+                    for i in dict.fromkeys(out.ids or [])
+                }
+            else:
+                # Keyed by row: the rows kept, numbered afresh
+                out.time_varying_covariates = {
+                    new: self.time_varying_covariates[int(old)]
+                    for new, old in enumerate(rows)
+                }
         if self.m is not None and not self.m._plain:
             # Named measurements: the readings of the units kept
             out._m = self.m._for_units(out.ids)
@@ -1883,6 +2154,212 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             keys = out.ids if out.ids is not None else range(len(rows))
             out.markers = {k: by_row[r] for k, r in zip(keys, rows)}
         return out
+
+    @classmethod
+    def concat(cls, datasets: Any) -> SurpyvalData:
+        """
+        The rows of several datasets as one: ``SurpyvalData.concat([a, b,
+        c])``, also ``a + b`` (and ``sum([a, b, c])``). Each dataset keeps
+        what it has: its counts, weights ``w``, event types ``e``, states,
+        terminal flags ``a``, truncation, attributes, time-varying
+        covariates and measurements ``m``. The rows are then grouped and
+        sorted as the constructor does (kept in order where the data has
+        ids, event types, covariates, states or attributes).
+
+        Refused, saying what to do: datasets in different units (or one
+        with a unit and one without), with different covariates (by name
+        and order), some with item ids and some without (and likewise
+        states and time-varying covariates), failures without event types
+        beside data with them, and an item id in more than one dataset
+        (an id is one item, so their rows would become one history: rename
+        the ids first). Weighted and unweighted datasets combine, the
+        unweighted rows at weight 1.
+
+        Parameters
+        ----------
+        datasets : list of SurpyvalData
+            The datasets, at least one.
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> a = SurpyvalData([10, 20, 30], c=[0, 0, 1], unit="hours")
+        >>> b = SurpyvalData([20, 25], unit="hours")
+        >>> both = SurpyvalData.concat([a, b])
+        >>> both.x, both.n, both.unit
+        (array([10., 20., 25., 30.]), array([1, 2, 1, 1]), 'hours')
+        >>> (a + b).equals(both)
+        True
+
+        Two fleets that share an id are refused:
+
+        >>> p = SurpyvalData([5, 8], i=["P1", "P2"])
+        >>> q = SurpyvalData([6], i=["P2"])
+        >>> p + q  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: 1 item id is in more than one dataset ('P2'; in ...
+        """
+        from surpyval.utils.data_ops import concat
+
+        return concat(datasets)
+
+    def __add__(self, other: object) -> SurpyvalData:
+        if not isinstance(other, SurpyvalData):
+            return NotImplemented
+        return SurpyvalData.concat([self, other])
+
+    def __radd__(self, other: object) -> SurpyvalData:
+        # sum([a, b, c]) starts from 0
+        if isinstance(other, int) and not isinstance(other, bool):
+            if other == 0:
+                return self
+        return NotImplemented
+
+    def equals(self, other: Any, rtol: float = 1e-9) -> bool:
+        """
+        Whether ``other`` is the same data: a ``SurpyvalData`` with the
+        same rows (``x``, ``c``, ``n``, the truncation ``t``, weights,
+        covariates and their names, event types, states, terminal flags,
+        ids and attributes, in the same order), the same unit (``"h"`` is
+        ``"hours"``), time-varying covariates and measurements. Numbers
+        are compared to the relative tolerance ``rtol`` (blanks equal to
+        blanks); ``data == other`` is the same with ``rtol=0``. Whether a
+        terminal flag was given or inferred (``a_inferred``) is not
+        compared: the flags are.
+
+        Parameters
+        ----------
+        other : SurpyvalData
+            The data to compare with; anything else is not equal.
+        rtol : float, default 1e-9
+            The relative tolerance, a number at or above 0.
+
+        Returns
+        -------
+        bool
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> a = SurpyvalData([1, 2, 3], c=[0, 1, 0], unit="h")
+        >>> a == SurpyvalData([1, 2, 3], c=[0, 1, 0], unit="hours")
+        True
+        >>> a.equals(SurpyvalData([1, 2, 3 + 1e-12], c=[0, 1, 0], unit="h"))
+        True
+        >>> a == SurpyvalData([1, 2, 3], unit="h")
+        False
+        """
+        from surpyval.utils.data_ops import LIFETIME_FIELDS, same_data
+
+        return same_data(self, other, LIFETIME_FIELDS, rtol)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SurpyvalData):
+            return NotImplemented
+        return self.equals(other, rtol=0)
+
+    # Equal by contents: not hashable, as a Measurements or a schedule
+    __hash__ = None  # type: ignore[assignment]
+
+    def rescale_time(self, factor: float, unit: Any = None) -> SurpyvalData:
+        """
+        The data on another clock: every time divided by ``factor``, as
+        :meth:`Parametric.rescale_time
+        <surpyval.univariate.parametric.parametric.Parametric.rescale_time>`
+        moves a model, so a fit of the rescaled data is the rescaled fit.
+        ``x`` (and each interval's bounds), the truncation ``t``, the
+        edges of step-schedule time-varying covariates and the ages of
+        the measurements' readings move; counts, weights, covariates,
+        event types, states, flags, ids and attributes do not.
+
+        Parameters
+        ----------
+        factor : float
+            The time on the data's clock for each unit of time on the new
+            one, a finite number above 0: the fraction of the time a unit
+            operates (0.25 for a quarter duty cycle), or the number of the
+            data's units in the new unit (24 from hours to days).
+        unit : str, optional
+            The unit label of the new data; without it the data's own is
+            kept (right for a duty cycle). It is a label: nothing is
+            checked against ``factor``.
+
+        Returns
+        -------
+        SurpyvalData
+            New data; this one is unchanged.
+
+        Raises
+        ------
+        ValueError
+            Where ``factor`` is not a finite number above 0, and for
+            time-varying covariates given as a ``CovariatePath`` (a
+            function of time that cannot be moved from outside).
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData, Weibull
+        >>> hours = SurpyvalData([24, 48, 96], c=[0, 0, 1], unit="hours")
+        >>> days = hours.rescale_time(24, unit="days")
+        >>> days.x, days.unit
+        (array([1., 2., 4.]), 'days')
+        >>> fit = Weibull.fit(hours).rescale_time(24, unit="days")
+        >>> bool(abs(Weibull.fit(days).alpha / fit.alpha - 1) < 1e-6)
+        True
+        """
+        from surpyval.utils.data_ops import rescale_time
+
+        return rescale_time(self, factor, unit)
+
+    def resample(
+        self, random_state: Any = None, size: int | None = None
+    ) -> SurpyvalData:
+        """
+        A bootstrap sample: units drawn from the data with replacement,
+        each equally likely. A row counted ``n`` is ``n`` units, and with
+        ids (``i``) an item's rows are one unit and move together (an id
+        whose rows count ``k`` is ``k`` units). Each unit keeps everything
+        it has (its times, truncation, weight, covariates, event types,
+        states, flags, attributes, readings).
+
+        Returns new data with a row for each row of a unit drawn at least
+        once, in the data's order, counted by how many times it was drawn
+        (an item drawn twice keeps its id, its rows counted 2); the units
+        never drawn are left out. ``data.resample(...).n.sum()`` is
+        ``size`` units without ids (``size`` times the rows of each item
+        with them).
+
+        Parameters
+        ----------
+        random_state : None, int or numpy.random.Generator, optional
+            The seed, as for every draw (see "Random draws and seeds" in
+            :doc:`/Conventions`): an int gives the same sample every time.
+        size : int, optional
+            How many units to draw; the number of units in the data by
+            default.
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData([1, 2, 3, 4], c=[0, 0, 1, 0], n=[2, 1, 1, 1])
+        >>> boot = data.resample(random_state=1)
+        >>> int(boot.n.sum())
+        5
+        >>> boot == data.resample(random_state=1)
+        True
+        """
+        from surpyval.utils.data_ops import resample
+
+        return resample(self, random_state, size)
 
     def __len__(self) -> int:
         return len(self.x)
@@ -2329,6 +2806,26 @@ def _stack_covariates(
     )
 
 
+def _kind_attributes(name: str, value: Any, k: int) -> list:
+    """A kind's attributes, ``name``: one ``{name: value}`` (or None) per
+    item; ``k`` Nones where it was not given."""
+    if value is None:
+        return [None] * k
+    listed = [value] if isinstance(value, dict) else list(value)
+    if len(listed) != k:
+        raise ValueError(
+            f"'{name}' must hold one dict (or None) per item ({k}, in the "
+            f"order of its list); got {len(listed)}."
+        )
+    wrong = [a for a in listed if a is not None and not isinstance(a, dict)]
+    if wrong:
+        raise ValueError(
+            f"'{name}' holds a dict of each item's attributes ({{name: "
+            f"value}}), or None for an item with none; got {wrong[0]!r}."
+        )
+    return [None if a is None else dict(a) for a in listed]
+
+
 def _truncation_bounds(
     name: str, bound: Any, k: int, none: float
 ) -> np.ndarray:
@@ -2361,10 +2858,13 @@ _DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr", "w")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
+def refuses_surpyval_data_with(
+    message: str, argument: str = "x"
+) -> Callable[[F], F]:
     """A decorator for a ``fit`` whose arrays' rows mean something other
     than a :class:`SurpyvalData`'s rows (the panel models' visits): given
-    a ``SurpyvalData`` as its ``x``, it raises a ``TypeError`` with
+    a ``SurpyvalData`` (or an ``Observations`` or ``Items``) as its
+    ``argument`` (``x`` by default), it raises a ``TypeError`` with
     ``message``, which says what to pass instead. The wrapper keeps the
     message as ``_refuses_surpyval_data``."""
 
@@ -2377,7 +2877,10 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
                 bound = signature.bind_partial(*args, **kwargs)
             except TypeError:
                 return method(*args, **kwargs)
-            if isinstance(bound.arguments.get("x"), SurpyvalData):
+            if isinstance(
+                bound.arguments.get(argument),
+                (SurpyvalData, Observations, Items),
+            ):
                 raise TypeError(message)
             return method(*args, **kwargs)
 
@@ -2385,6 +2888,14 @@ def refuses_surpyval_data_with(message: str) -> Callable[[F], F]:
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def notation_as_data(x: Any) -> Any:
+    """``x`` as a fit takes it: an
+    :class:`~surpyval.utils.notation.Observations` or
+    :class:`~surpyval.utils.notation.Items` as its ``surpyval_data()``,
+    anything else as it is."""
+    return x.surpyval_data() if isinstance(x, (Observations, Items)) else x
 
 
 def needs_data(*names: str) -> Callable[[F], F]:
@@ -2421,7 +2932,9 @@ def accepts_surpyval_data(method: F) -> F:
     several rows (stretches or repeated events) is refused, naming
     ``fit_tvc`` or the recurrent models, except by a fit with an ``a``
     argument, which is given the terminal flags ``data.a`` (and the unit
-    ids as ``i``)."""
+    ids as ``i``). An :class:`~surpyval.utils.notation.Observations` is
+    taken as its ``surpyval_data()``: ``Weibull.fit(Observations.parse(
+    "10, 20+"))``, and so is an :class:`~surpyval.utils.notation.Items`."""
     signature = inspect.signature(method)
     params = list(signature.parameters)
     names = set(params)
@@ -2439,6 +2952,9 @@ def accepts_surpyval_data(method: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
         data = bound.arguments.get("x")
+        if isinstance(data, (Observations, Items)):
+            data = data.surpyval_data()
+            bound.arguments["x"] = data
         if not isinstance(data, SurpyvalData):
             return method(*args, **kwargs)
         given = _given_beside_data(bound.arguments, data)
