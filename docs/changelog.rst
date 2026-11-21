@@ -3504,6 +3504,7 @@ are all optional. What can look different:
   Wald p-values on the robust standard errors, the ``p`` column of
   ``summary(robust=True)``.
 
+
 - **Robust is all or none on the parametric regressions.** In 0.26
   ``summary(robust=True)`` showed robust (sandwich) standard errors while
   ``cb``, ``param_cb`` and ``p_values`` kept the model-based covariance,
@@ -3519,6 +3520,7 @@ are all optional. What can look different:
   and a ``fit_tvc`` model. Without ``robust=True`` nothing changes: every
   bound and ``p_values`` stay model-based (with weights ``w`` that
   covariance is already the robust one).
+
 
 - **``hess_inv`` is always the inverse Hessian.** In 0.26 a parametric
   model fitted with weights ``w`` (``Weibull.fit(x, c, w=w)`` and the
@@ -3575,6 +3577,7 @@ are all optional. What can look different:
   difference is (a factor of :math:`\sqrt{N / (N - 1)}`), and how to
   reproduce a lifelines fit. No change in behaviour.
 
+
 - Penalised Cox on start-stop data counts subjects, not rows:
   ``CoxPH.fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` divide
   the partial likelihood by the number of subjects and standardise the
@@ -3584,6 +3587,7 @@ are all optional. What can look different:
   start-stop rows was ``CoxPH.fit_penalised(stop, Z, tl=start)``, which
   counts rows (as glmnet); with no ids it still does, unchanged, and the
   guide now points start-stop data to ``fit_tvc_penalised``.
+
 
 - Refusals no longer send users to issue numbers: the ``diagnose()``
   refusals of models whose checks are not built yet, and a few other
@@ -3651,6 +3655,7 @@ are all optional. What can look different:
   - ``CompetingRisks.plot(stacked, ax)``: every other ``plot`` takes the
     axes first, so ``plot(ax)`` drew stacked curves on new axes. Pass
     ``stacked`` by name.
+
 
 - ``AalenAdditive.fit(..., coef_penalty=)`` (and ``fit_from_df``) is now
   ``penalizer=``, the name every other penalised fit uses; the model's
@@ -4309,6 +4314,7 @@ are all optional. What can look different:
   says what each code means in words any field uses (0 is the observed
   event, such as a failure, a death or a relapse) and how to convert a
   status column in which 1 marks the event. Wording only.
+
 
 - New page: :doc:`Survival Analysis from Scratch`, for readers who have
   never met censoring. It explains time-to-event data, why the times cannot
@@ -14446,6 +14452,7 @@ v0.8.0 (27 July 2021)
 - Changed ``random()`` in ``Parametric`` so that lfp or zi models can be simulated!
 - Improved the way surpyval fails
 - Substantial docs updates.
+
 
 v0.7.0 (19 July 2021)
 ---------------------

@@ -2224,6 +2224,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `constrain` also takes `(N, K, k)`: a mixture's components' raw outputs, each parameter `(N, K)`. | proposed | The mixture's parameters come from one layer, reshaped. A four-axis input is still refused. | done |
 | The page "Torch with SurPyval" shows its code with output pasted from one run (torch 2.15, CPU) and says so; the docs build does not run it. | maintainer | The docs build has no torch. | done |
 
+
 ### Software reliability growth models (20 Nov 2026)
 
 | Decision | By | Reason | Status |
