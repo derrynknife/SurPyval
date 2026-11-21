@@ -895,6 +895,11 @@ def _estimator_params():
 def _check_model(case, model):
     """test_bounds' checks: valid values, monotone in time, at each
     covariate row (as one vector for every time)."""
+    if case.interface == "bivariate" and "cdf" not in case.functions:
+        # (a vine has no joint CDF or sf: its density)
+        values = np.asarray(model.pdf(case.x), float)
+        check_valid("pdf", values, (0.0, np.inf, 0))
+        return
     if case.interface == "bivariate":
         X = case.x[:5]  # each coordinate rises along these
         check_valid("cdf", np.asarray(model.cdf(X), float), (0.0, 1.0, 1))
