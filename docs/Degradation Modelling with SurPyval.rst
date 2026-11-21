@@ -231,6 +231,7 @@ the path has parameters (``df + 1``). Units read at 13 times whose
 measurement holds near 2 until age 4 and then rises, failing at 12:
 
 .. jupyter-execute::
+    :stderr:
 
     from surpyval.degradation import SplinePath
 
@@ -263,8 +264,13 @@ measurement holds near 2 until age 4 and then rises, failing at 12:
     assert (straight.pseudo_failure_times > bent.pseudo_failure_times).all()
     assert bent.measurement_var < 0.1 * straight.measurement_var
 
-The line is held down by the flat years and reaches the threshold later
-than the units will. The crossing time is the first time after 0 at which
+The spline's fit warns that the units' spread is not determined in
+every direction: eight units do not tell apart the covariance of four
+path parameters, and these units differ only in their start and their
+climb, so the bends' spread is estimated as 0. The paths and the
+crossing times do not rest on it; the bounds drawn from the population
+do. The line is held down by the flat years and reaches the threshold
+later than the units will. The crossing time is the first time after 0 at which
 the spline reaches the threshold, found numerically; past the last knot
 the curve is extended as a straight line, so a threshold far beyond the
 measurements rests on the last piece's slope. A spline is not among the
