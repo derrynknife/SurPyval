@@ -444,7 +444,7 @@ def test_poisson_data_that_meet_the_assumptions_pass():
 # -- the imperfect-repair models ----------------------------------------------
 @pytest.fixture(scope="module")
 def kijima_half():
-    sim = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+    sim = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
     data = sim.time_terminated_simulation_data(100.0, items=10, random_state=1)
     return _quiet_fit(GeneralizedRenewal, data)
 
@@ -666,7 +666,7 @@ def test_a_model_without_data_refuses(mettas):
     for bare in (
         CrowAMSAA.from_params(model.params),
         sp.from_dict(model.to_dict()),
-        GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5),
+        GeneralizedRenewal.from_params([10.0, 2.0], 0.5),
         sp.from_dict(GeneralizedRenewal.fit(*mettas).to_dict()),
     ):
         with pytest.raises(ValueError, match="needs a model fitted from data"):

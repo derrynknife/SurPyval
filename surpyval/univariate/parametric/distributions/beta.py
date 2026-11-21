@@ -3,7 +3,7 @@ from __future__ import annotations
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import betaln as abetaln
-from scipy.special import betaincinv, betaln, digamma
+from scipy.special import betaincinv, digamma
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -11,12 +11,14 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.autograd_gamma_compat import _log_beta_front
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.autograd_gamma_compat import betaln_accurate
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .beta4 import _power_log
+from .beta4 import _power_log, _power_log1m
 
 
 def _log_beta(alpha: Boxable, beta: Boxable) -> Boxable:
@@ -26,7 +28,7 @@ def _log_beta(alpha: Boxable, beta: Boxable) -> Boxable:
     return np.where(
         beta == 1.0,
         -np.log(alpha),
-        np.where(alpha == 1.0, -np.log(beta), abetaln(alpha, beta)),
+        np.where(alpha == 1.0, -np.log(beta), betaln_accurate(alpha, beta)),
     )
 
 
@@ -320,10 +322,39 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         # The next term is a relative (b - 1) a x / (a + 1), so the first
         # order is exact to double precision below x (|b| + 1) of 1e-17.
         with np.errstate(divide="ignore"):
-            log_x = (np.log(u) + np.log(alpha) + betaln(alpha, beta)) / alpha
+            # log(a B(a, b)) to its own precision (log a + betaln lost
+            # 2e-13 of it at a = 1e-3, b = 1e3, which / a is 2e-10 of x)
+            front = _log_beta_front(
+                np.asarray(alpha, dtype=float), np.asarray(beta, dtype=float)
+            )
+            log_x = (np.log(u) - front) / alpha
         small = np.exp(log_x)
         exact = small * (np.abs(beta) + 1.0) < 1e-17
         return np.where(exact | ~(x > np.finfo(float).tiny), small, x)
+
+    def isf(self, s: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        Below ``s = 1/2`` it is one less the quantile at ``s`` of the Beta
+        with the shapes swapped (the law of ``1 - X``), and ``qf(1 - s)``
+        above it.
+
+        Examples
+        --------
+        >>> from surpyval import Beta
+        >>> Beta.isf([0.5, 1e-300], 2, 3)
+        array([0.38572757, 1.        ])
+        """
+        s = np.asarray(s, dtype=float)
+        upper = s < 0.5
+        # 1 - X is Beta(beta, alpha): its lower quantile at s, whose small
+        # values qf keeps (scipy's betainccinv gave NaN at s = 1e-300)
+        return np.where(
+            upper,
+            1.0 - self.qf(np.where(upper, s, 0.25), beta, alpha),
+            self.qf(np.where(upper, 0.5, 1.0 - s), alpha, beta),
+        )
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -435,7 +466,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x = np.asarray(x, dtype=float)
         return (
             _power_log(alpha - 1.0, x)
-            + _power_log(beta - 1.0, 1.0 - x)
+            + _power_log1m(beta - 1.0, x)
             - _log_beta(alpha, beta)
         )
 

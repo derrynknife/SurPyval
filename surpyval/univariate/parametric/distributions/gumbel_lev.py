@@ -324,6 +324,23 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return mu - sigma * np.log(-np.log(u))
 
+    def isf(self, s: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \mu - \sigma \ln(-\ln(1 - s))
+
+        Examples
+        --------
+        >>> from surpyval import GumbelLEV
+        >>> GumbelLEV.isf([0.5, 1e-300], 5, 2)
+        array([   5.73302584, 1386.5510558 ])
+        """
+        # -log1p(-s): exact for a small s, where 1 - s rounds to 1
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return mu - sigma * np.log(-np.log1p(-s))
+
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 

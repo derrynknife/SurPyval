@@ -8,6 +8,7 @@ failures are applied in ``registry.py``.
 
 import functools
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -71,7 +72,6 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
-    scattered_campaign_data,
     copula3_data,
     copula_data,
     cr_data,
@@ -97,6 +97,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     relative_data,
     relative_reg_data,
+    scattered_campaign_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -1339,6 +1340,21 @@ def _recurrent_data_path(fitter, **fixed):
     return run
 
 
+def _renewal_from_params_path(fitter, **fixed):
+    """The fit's parameters and restoration given back to ``from_params``
+    (with the fit's memory or Kijima type)."""
+
+    def run(d):
+        fitted = fitter.fit(**d, **fixed)
+        return fitter.from_params(
+            fitted.to_dict()["params"],
+            fitted.to_dict()["restoration"],
+            **fixed,
+        )
+
+    return run
+
+
 def _recurrent_tvc_path(fitter, marks=False):
     """The fixture's event rows as start-stop rows, each from the item's
     previous row (0 for its first) with the item's covariates, fitted by
@@ -1385,9 +1401,19 @@ def _timed_draw(m, s):
 
 
 # The software reliability growth models, fitted to data with growth
-_GROWTH = ("GoelOkumoto", "YamadaDelayedS", "InflectionS", "MusaOkumoto")
+_GROWTH: tuple[str, ...] = (
+    "GoelOkumoto",
+    "YamadaDelayedS",
+    "InflectionS",
+    "MusaOkumoto",
+)
 _GROWTH += ("RayleighDefects",)
-_LEVELS_OFF = ("CoxLewis", "GoelOkumoto", "YamadaDelayedS", "InflectionS")
+_LEVELS_OFF: tuple[str, ...] = (
+    "CoxLewis",
+    "GoelOkumoto",
+    "YamadaDelayedS",
+    "InflectionS",
+)
 _LEVELS_OFF += ("RayleighDefects",)
 # A growth model on another clock: testing effort that eased off (hours
 # in each third of the test), and a detection rate that changed at 20
@@ -1612,7 +1638,8 @@ def _recurrent():
                 paths={
                     "fit_from_recurrent_data": _recurrent_data_path(
                         fitter, **kw
-                    )
+                    ),
+                    "from_params": _renewal_from_params_path(fitter, **kw),
                 },
                 draw=lambda m, s: m.mcf(X_REC, items=5, random_state=s),
                 explicit_seed=True,
@@ -3592,7 +3619,7 @@ _REMAINING_FAULTS = dict.fromkeys(
 
 # Jelinski-Moranda: likelihood-ratio sets (of a whole number, for N);
 # Wald and bootstrap bounds are refused with the reason.
-_LR_ONLY = {"kwargs": {"method": "lr"}, "wald": False}
+_LR_ONLY: dict[str, Any] = {"kwargs": {"method": "lr"}, "wald": False}
 # Littlewood-Verrall: the delta method for each parameter (alpha also
 # has a likelihood-ratio bound, checked in its own tests: the sweep is of
 # one method for every parameter, and the others have none).
