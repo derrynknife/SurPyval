@@ -798,8 +798,6 @@ bends ``s_k`` are common to all items: for a spline, ``varying``
 defaults to ``("level", "rate")``, where every other path's default is
 all of its parameters.
 
-__KNEE_STUDY__
-
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
