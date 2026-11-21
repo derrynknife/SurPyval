@@ -411,8 +411,8 @@ def test_measure_bound_is_the_parameters_carried_through(fits, measure):
         assert bounds[0] < value < bounds[1]
         for side, i in (("lower", 0), ("upper", 1)):
             one = getattr(model, measure + "_cb")(alpha_ci=0.025, bound=side)
-            assert one.shape == (1,)
-            np.testing.assert_allclose(one[0], expected[i], rtol=1e-12)
+            assert np.shape(one) == ()
+            np.testing.assert_allclose(one, expected[i], rtol=1e-12)
 
 
 def test_measure_bound_where_the_measure_falls_with_the_parameter():
@@ -426,7 +426,7 @@ def test_measure_bound_where_the_measure_falls_with_the_parameter():
     theta_lo, theta_hi = model.param_cb("theta")
     assert lo == pytest.approx(model.copula.kendall_tau(theta_hi), rel=1e-12)
     assert hi == pytest.approx(model.copula.kendall_tau(theta_lo), rel=1e-12)
-    assert model.kendall_tau_cb(alpha_ci=0.025, bound="lower")[0] == (
+    assert model.kendall_tau_cb(alpha_ci=0.025, bound="lower") == (
         pytest.approx(lo, rel=1e-12)
     )
 
@@ -452,9 +452,7 @@ def test_measure_bound_of_two_parameters_and_of_none():
     assert lo < tau < hi
     independent = Independence.fit(x, margins=KM)
     np.testing.assert_array_equal(independent.kendall_tau_cb(), [0.0, 0.0])
-    np.testing.assert_array_equal(
-        independent.spearman_rho_cb(bound="upper"), [0.0]
-    )
+    assert independent.spearman_rho_cb(bound="upper") == 0.0
     with pytest.raises(ValueError, match="'method'"):
         model.kendall_tau_cb(method="lr")
 

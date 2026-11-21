@@ -879,7 +879,7 @@ class CopulaModel(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
-    ) -> npt.NDArray:
+    ) -> Any:
         """
         Confidence bound(s) on Kendall's tau of the fitted copula
         (:meth:`kendall_tau`).
@@ -911,8 +911,9 @@ class CopulaModel(
 
         Returns
         -------
-        numpy array
-            ``[lower, upper]`` for a two-sided bound, else the one bound.
+        numpy array or float
+            ``[lower, upper]`` for a two-sided bound, else the one bound
+            as a number.
 
         Examples
         --------
@@ -938,7 +939,7 @@ class CopulaModel(
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
-    ) -> npt.NDArray:
+    ) -> Any:
         """
         Confidence bound(s) on Spearman's rho of the fitted copula
         (:meth:`spearman_rho`), formed as :meth:`kendall_tau_cb` forms
@@ -962,6 +963,23 @@ class CopulaModel(
         )
 
     def _measure_cb(
+        self,
+        measure: str,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: Any,
+        random_state: Any,
+    ) -> Any:
+        # [lower, upper], or the one bound as a number (as mean_cb's)
+        ends = onp.atleast_1d(
+            self._measure_ends(
+                measure, alpha_ci, bound, method, n_boot, random_state
+            )
+        ).astype(float)
+        return ends if bound == "two-sided" else ends[0]
+
+    def _measure_ends(
         self,
         measure: str,
         alpha_ci: float,

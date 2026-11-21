@@ -2093,6 +2093,12 @@ def _copulas():
             rows=("x",),
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
+            exclude={
+                "counts": "the fixture is the rank-based covariance's case, "
+                "complete rows with no counts (a count above 1 is a tie, "
+                "which it refuses); the parametric-margin copulas check "
+                "counts",
+            },
         )
     )
     return out
@@ -2994,6 +3000,14 @@ def _df_paths():
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
+    # (its fixture has no counts: the rows alone)
+    paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
+        mv.Clayton.fit_from_df(
+            _frame(d, ("x",))[0],
+            x_cols=["x0", "x1"],
+            margins=[sp.KaplanMeier, sp.KaplanMeier],
+        )
+    )
     return paths
 
 
@@ -3623,14 +3637,12 @@ def _copula_bounds(case):
         Bound("cb", on=("ff",), label="cb[ff, bootstrap]", **boot),
         Bound("param_cb", kind="param", label="param_cb[bootstrap]", **boot),
     )
-    # The rank correlations' bounds: none to sweep for the
-    # independence copula, whose measures are 0 with no parameter.
-    measures: tuple = ()
-    if case.name != "IndependenceCopula":
-        measures = tuple(
-            Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
-            for m in ("kendall_tau_cb", "spearman_rho_cb")
-        )
+    # The rank correlations' bounds (the independence copula's are its
+    # measures, 0, at every level).
+    measures = tuple(
+        Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
+        for m in ("kendall_tau_cb", "spearman_rho_cb")
+    )
     if "margins=KaplanMeier" in case.name:
         # Rank-based margins: the Wald bound on the parameter from the
         # pseudo-likelihood's covariance; a joint probability has the
@@ -4298,6 +4310,10 @@ def _estimators(case):
         return {"how": ("MLE", "two-stage")}, {}, None
     if name == "CauseSpecificNHPP":
         return {"how": ("MLE", "MSE")}, {}, None
+    if "margins=KaplanMeier" in case.name:
+        # A step margin has no parameters for one joint search to
+        # re-estimate: how="MLE" refuses it, saying to use "IFM".
+        return {"how": ("IFM",)}, {}, None
     if case.model_class == "surpyval.multivariate.CopulaModel":
         return {"how": ("IFM", "MLE")}, {}, _copula_sample
     if name == "DegradationAnalysis[linear]":
