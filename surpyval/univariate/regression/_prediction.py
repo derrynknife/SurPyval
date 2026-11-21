@@ -806,19 +806,41 @@ class RestrictedMeanMixin:
                 self._mean_scale(r_ok, params, start), dtype=float
             )
 
-        def integrand(s: float) -> npt.NDArray:
-            if s >= 1.0:
-                return np.zeros(r_ok.shape[0])
-            t = start + median * s / (1.0 - s)
-            with np.errstate(all="ignore"):
-                S = np.asarray(self.model.sf(t, r_ok, *params), dtype=float)
-            return median * S / (1.0 - s) ** 2
-
+        # A survival that levels off above 0 (a cured fraction, a hazard
+        # that dies away) has an infinite mean: where S is still above
+        # 1e-12 at a million typical lives, the row's mean is inf.
         with np.errstate(all="ignore"):
-            value, _ = quad_vec(
-                integrand, 0.0, 1.0, epsabs=0.0, epsrel=1e-10, norm="max"
+            far = np.asarray(
+                self.model.sf(start + 1e6 * median, r_ok, *params),
+                dtype=float,
             )
-        out[ok] = start + value
+        finite = ~(far > 1e-12) & np.isfinite(median)
+        values = np.full(r_ok.shape[0], np.inf)
+        if finite.any():
+            r_fin, m_fin = r_ok[finite], median[finite]
+
+            def integrand(s: float) -> npt.NDArray:
+                if s >= 1.0:
+                    return np.zeros(r_fin.shape[0])
+                t = start + m_fin * s / (1.0 - s)
+                with np.errstate(all="ignore"):
+                    S = np.asarray(
+                        self.model.sf(t, r_fin, *params), dtype=float
+                    )
+                return m_fin * S / (1.0 - s) ** 2
+
+            with np.errstate(all="ignore"):
+                value, _ = quad_vec(
+                    integrand,
+                    0.0,
+                    1.0,
+                    epsabs=0.0,
+                    epsrel=1e-10,
+                    norm="max",
+                    limit=500,
+                )
+            values[finite] = start + value
+        out[ok] = values
         return out
 
     def _mean_scale(

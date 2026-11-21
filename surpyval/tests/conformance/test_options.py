@@ -386,7 +386,8 @@ def _estimate(case, spec, fname, event):
             k = list(model.distribution.parameter_names).index(name)
             out.append(model.parameters_at(row)[0, k])
         else:
-            out.append(model.mean())
+            # (a regression's mean_cb is at the covariates of its query)
+            out.append(model.mean(*args))
     return np.asarray(out, float)
 
 

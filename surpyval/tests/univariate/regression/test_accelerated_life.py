@@ -890,3 +890,17 @@ def test_plot_life_stress_draws_the_life_its_bounds_and_the_levels():
     plt.close(fig)
     with pytest.raises(ValueError, match="column"):
         model.plot_life_stress(column=3)
+
+
+def test_mean_cb_of_a_survival_that_levels_off_is_infinite():
+    # A cured fraction: the survival never falls below it, the mean life
+    # is infinite, and so are its bounds (as mean() says).
+    rng = np.random.default_rng(7)
+    Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+    cured = rng.uniform(size=200) < 0.3
+    t = np.where(cured, np.inf, 5.0 * rng.weibull(1.5, 200))
+    cens = rng.uniform(0, 20, 200)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+    model = surpyval.MixtureCure(surpyval.Weibull).fit(x, Z, c=c)
+    bounds = model.mean_cb([1.0])
+    assert np.all(np.isinf(bounds))
