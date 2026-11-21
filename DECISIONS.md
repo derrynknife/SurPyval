@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Test planning: test lengths in time, two mean lives, what acceleration saves (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new function, `demonstration_test_time(reliability, n, failures=0, *, mission_time, shape, alpha_ci)`, the Weibayes test length in the mission's unit of time (`mission_time` times `demonstration_test_multiple`), rather than a `mission_time` option on `demonstration_test_multiple`, whose name says it answers in missions. `demonstration_plan(..., mission_time=)` fills the plan's new `unit_test_time` (None without it). | proposed | One name, one unit of answer. Checked against the closed form `t_m (ln a / (n ln R))^(1/beta)` (1478 h for the user test's case, by hand 1479 from rounded intermediate values). | done |
+| With failures allowed the test length stays the binomial (Clopper-Pearson) extended success run, not the chi-squared Weibayes bound on `sum t^beta`. | proposed | The package's demonstration tests are attribute tests of units run without replacement; the chi-squared form is the constant-rate test of `mtbf_test_time` on the transformed time. Equal with no failures. | done |
+| `demonstration_plan` given `n` already searched the test length; its refusal now says so, gives the lowest producer's risk any length reaches (and at how many failures and missions), and a number of units that is enough, found by doubling and bisection from `n` (the producer's risk is not exactly monotone in `n`, so it is "enough", not "the fewest"). | principle 2 | The old message told the user to test more units without saying the length had been tried. | done |
+| `mean_ratio_design(mean_ratio, *, shape=1.0, power, events, n, event_probability, alpha_ci, alternative, direction)`: the exact F test of two exponential means, or Weibull scales at a known common shape (`t^beta` is exponential), `theta1_hat / theta2_hat ~ rho^beta F(2 d1, 2 d2)`; events found equal in each group. The effect is named `mean_ratio`, not `ratio`, which in the other designs is the allocation. | proposed | It answers "detect a 30% difference in mean life" directly; checked against F(2, 2)'s closed form, a seeded simulation (40,000 replicates) and Schoenfeld's log-rank events with HR `rho^-beta` (458 against 457 for 1.3, exponential). The shape is assumed known; estimating it is not counted (said in the docstring). | done |
+| `AcceleratedTestPlan` gains `acceleration_factors` (`L(use) / L(stress)`) and `use_test_time`: the time-censored test of the same units at the use stress with the same precision (`life_test_length`), infinite only if no length short of running every unit out reaches it. | proposed | The equivalent test time at the use stress the user had to compute by hand (2483 h for the 40-unit voltage plan). | done |
+| The sequential tests' repr shows the reject line (`Reject by time` for MTBF, `Reject failures` for the attribute test) beside the accept line. | proposed | Both lines are needed to run the test in the field. | done |
+
 ### One concordance, one Brier score, one AUC (21 Nov 2026)
 
 | Decision | By | Reason | Status |
