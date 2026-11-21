@@ -38,15 +38,21 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
-from surpyval.test_planning import comparison as _comparison
-from surpyval.test_planning import rate_ratio as _rates
-from surpyval.test_planning import sample_size as _sizes
+from surpyval.test_planning import comparison as _comparison_module
+from surpyval.test_planning import rate_ratio as _rates_module
+from surpyval.test_planning import sample_size as _sizes_module
 from surpyval.test_planning._checks import (
     check_count,
     check_probability,
     elementwise,
 )
 from surpyval.test_planning._serialise import result_dict
+
+# The functions of one unknown that the designs call, checked where they
+# are called (an argument left None here is never one of theirs).
+_comparison: Any = _comparison_module
+_rates: Any = _rates_module
+_sizes: Any = _sizes_module
 
 
 @dataclass(frozen=True, repr=False)
@@ -222,13 +228,13 @@ def _no_direction(design: str, direction: Any, unknown: str, name: str) -> Any:
 
 @elementwise
 def _logrank_power_from_events(
-    hazard_ratio: float,
-    events: int,
+    hazard_ratio: Any,
+    events: Any,
     *,
-    alpha_ci: float,
-    ratio: float,
-    method: str,
-    alternative: str,
+    alpha_ci: Any,
+    ratio: Any,
+    method: Any,
+    alternative: Any,
 ) -> float:
     hazard_ratio = _comparison._check_hazard_ratio(hazard_ratio)
     events = check_count(events, "events")
@@ -240,14 +246,14 @@ def _logrank_power_from_events(
 
 @elementwise
 def _cox_power_from_events(
-    hazard_ratio: float,
-    events: int,
+    hazard_ratio: Any,
+    events: Any,
     *,
-    sd: float | None,
-    proportion: float | None,
-    r_squared: float,
-    alpha_ci: float,
-    alternative: str,
+    sd: Any,
+    proportion: Any,
+    r_squared: Any,
+    alpha_ci: Any,
+    alternative: Any,
 ) -> float:
     hazard_ratio = _comparison._check_hazard_ratio(hazard_ratio)
     events = check_count(events, "events")
@@ -260,15 +266,15 @@ def _cox_power_from_events(
 
 @elementwise
 def _cox_detectable_from_events(
-    events: int,
-    power: float,
+    events: Any,
+    power: Any,
     *,
-    sd: float | None,
-    proportion: float | None,
-    r_squared: float,
-    alpha_ci: float,
-    alternative: str,
-    direction: str,
+    sd: Any,
+    proportion: Any,
+    r_squared: Any,
+    alpha_ci: Any,
+    alternative: Any,
+    direction: Any,
 ) -> float:
     events = check_count(events, "events")
     power = check_probability(power, "power")
@@ -283,12 +289,12 @@ def _cox_detectable_from_events(
 
 @elementwise
 def _noninferiority_power_from_events(
-    margin: float,
-    events: int,
+    margin: Any,
+    events: Any,
     *,
-    hazard_ratio: float,
-    alpha_ci: float,
-    ratio: float,
+    hazard_ratio: Any,
+    alpha_ci: Any,
+    ratio: Any,
 ) -> float:
     margin, hazard_ratio = _sizes._check_margin_above(margin, hazard_ratio)
     events = check_count(events, "events")
@@ -302,11 +308,11 @@ def _noninferiority_power_from_events(
 
 def _equivalence_power_from_events(
     margin: Any,
-    events: int,
+    events: Any,
     *,
-    hazard_ratio: float,
-    alpha_ci: float,
-    ratio: float,
+    hazard_ratio: Any,
+    alpha_ci: Any,
+    ratio: Any,
 ) -> float:
     lower, upper, theta = _sizes._equivalence_margins(margin, hazard_ratio)
     events = check_count(events, "events")
@@ -432,7 +438,7 @@ def logrank_design(
         "method": method,
         "alternative": alternative,
     }
-    common = {"alpha_ci": alpha_ci, "method": method}
+    common: dict[str, Any] = {"alpha_ci": alpha_ci, "method": method}
     common["alternative"] = alternative
     if unknown == "power":
         if n is not None:
@@ -587,7 +593,7 @@ def cox_design(
     }
     if unknown != "hazard_ratio":
         inputs = {"hazard_ratio": hazard_ratio, **inputs}
-    common = {
+    common: dict[str, Any] = {
         "sd": sd,
         "proportion": proportion,
         "r_squared": r_squared,
@@ -656,7 +662,10 @@ def _margin_design(
         "alpha_ci": alpha_ci,
         "ratio": ratio,
     }
-    common = {"hazard_ratio": hazard_ratio, "alpha_ci": alpha_ci}
+    common: dict[str, Any] = {
+        "hazard_ratio": hazard_ratio,
+        "alpha_ci": alpha_ci,
+    }
     private = {
         "noninferiority": (
             _sizes._noninferiority_power,
@@ -969,7 +978,7 @@ def rmst_design(
         "ratio": ratio,
         "alternative": alternative,
     }
-    common = {
+    common: dict[str, Any] = {
         "accrual_time": accrual_time,
         "follow_up": follow_up,
         "dropout_rate": dropout_rate,
@@ -1081,7 +1090,7 @@ def cure_logrank_design(
         "ratio": ratio,
         "alternative": alternative,
     }
-    common = {
+    common: dict[str, Any] = {
         "latency_hazard_ratio": latency_hazard_ratio,
         "follow_up": follow_up,
         "accrual_time": accrual_time,
@@ -1184,7 +1193,7 @@ def rate_ratio_design(
         "rate_ratio_design(0.5, rate=0.003, exposure_before=10000, power=0.8)",
     )
     _no_direction("rate_ratio", direction, unknown, "ratio")
-    common = {"alpha_ci": alpha_ci, "alternative": alternative}
+    common: dict[str, Any] = {"alpha_ci": alpha_ci, "alternative": alternative}
     common["method"] = method
     inputs = {
         "rate": rate,
