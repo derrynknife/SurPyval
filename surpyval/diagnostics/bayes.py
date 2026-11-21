@@ -4,9 +4,9 @@ A :class:`~surpyval.bayes.model.BayesianParametric` model --
 ``Weibull.fit_bayes(x, c, n, t, priors=...)`` by the grid, the Laplace
 approximation, a closed form or the sampler, or
 ``BayesianParametric.from_draws`` with its data -- is checked for whether
-the distribution reproduces the data, whether the prior and the data disagree, and whether the posterior was
-computed accurately. The checks are listed in :data:`BAYES` at the
-bottom.
+the distribution reproduces the data, whether the prior and the data
+disagree, and whether the posterior was computed accurately. The checks
+are listed in :data:`BAYES` at the bottom.
 
 The checks
 ----------

@@ -588,7 +588,7 @@ def _build(name):
         "recurrent_cox_wei_lin_weissfeld": lambda: _recurrent_cox(
             WeiLinWeissfeld
         ),
-        "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
+        "renewal": lambda: GeneralizedRenewal.from_params(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
         ),
         "effort_clock": lambda: surpyval.EffortClock(

@@ -22,7 +22,11 @@ from surpyval.recurrent.renewal.renewal_model import (
     conditional_gaps,
     event_positions,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    RenamedAttribute,
+    ambiguous_item_ids,
+)
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -550,7 +554,12 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
 
-    def fit_from_parameters(
+    #: The old name of :meth:`from_params` (deprecated in v0.29).
+    fit_from_parameters = RenamedAttribute(
+        "from_params", REMOVED_IN_NEXT, FutureWarning
+    )
+
+    def from_params(
         self, params: ArrayLike, q: float, dist: Any = Weibull
     ) -> RenewalModel:
         """
@@ -578,7 +587,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         >>> from surpyval import Weibull
         >>> from surpyval.recurrent import GeneralizedOneRenewal
         >>>
-        >>> model = GeneralizedOneRenewal.fit_from_parameters(
+        >>> model = GeneralizedOneRenewal.from_params(
         ...     [10, 2],
         ...     0.2,
         ...     dist=Weibull

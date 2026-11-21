@@ -145,7 +145,8 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.sf(x, 3)
         array([0.94595947, 0.8007374 , 0.60653066, 0.41111229, 0.24935221])
         """
-        return np.exp(-(x**2) / (2 * sigma**2))
+        # (x / sigma)**2, not x**2 / sigma**2: x**2 underflows first
+        return np.exp(-0.5 * (x / sigma) ** 2)
 
     def ff(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
@@ -178,7 +179,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.ff(x, 3)
         array([0.05404053, 0.1992626 , 0.39346934, 0.58888771, 0.75064779])
         """
-        return -np.expm1(-(x**2) / (2 * sigma**2))
+        return -np.expm1(-0.5 * (x / sigma) ** 2)
 
     def df(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
@@ -276,7 +277,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.Hf(x, 3)
         array([0.05555556, 0.22222222, 0.5       , 0.88888889, 1.38888889])
         """
-        return x**2 / (2 * sigma**2)
+        return 0.5 * (x / sigma) ** 2
 
     def qf(self, u: Numeric, sigma: Boxable) -> Boxable:
         r"""
@@ -312,6 +313,22 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         # quantile to 0, below u = 1e-16 (#447). u = 1 is inf.
         with np.errstate(divide="ignore"):
             return sigma * np.sqrt(-2.0 * np.log1p(-u))
+
+    def isf(self, s: Numeric, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \sigma \sqrt{-2 \ln s}
+
+        Examples
+        --------
+        >>> from surpyval import Rayleigh
+        >>> Rayleigh.isf([0.5, 1e-300], 3)
+        array([  3.53223007, 111.50766567])
+        """
+        with np.errstate(divide="ignore"):
+            return sigma * np.sqrt(-2.0 * np.log(s))
 
     def mean(self, sigma: Boxable) -> Boxable:
         r"""

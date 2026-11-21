@@ -53,7 +53,7 @@ def require_data(model: Any, what: str) -> None:
     Raise an informative ``ValueError`` when ``model`` carries no data.
 
     Only a model fitted from data keeps it: one built from parameters
-    (``from_params`` / ``fit_from_parameters``) never had any, and one
+    (``from_params``) never had any, and one
     restored with ``from_dict`` / ``from_json`` does not store it. Every
     method that reads the fitted data (residuals, trend tests, goodness of
     fit, plots against the data) calls this first, so none of them fails
@@ -62,7 +62,7 @@ def require_data(model: Any, what: str) -> None:
     if getattr(model, "data", None) is None:
         raise ValueError(
             "{} requires a model fitted from data; models built from "
-            "parameters (from_params / fit_from_parameters) or restored "
+            "parameters (from_params) or restored "
             "with from_dict / from_json carry no data.".format(what)
         )
 
@@ -75,7 +75,7 @@ class LikelihoodInferenceMixin:
     natural parameter space), ``_mle`` (the fitted parameter vector in that
     same space) and ``_n_obs`` (BIC's sample size, from
     :func:`bic_sample_size`). Models built with
-    ``fit_from_parameters`` (or by a non-likelihood method such as MSE) carry
+    ``from_params`` (or by a non-likelihood method such as MSE) carry
     no likelihood and these methods raise.
 
     This is shared by every fitted recurrent model that has a likelihood: the
@@ -180,8 +180,8 @@ class LikelihoodInferenceMixin:
                 )
             else:
                 reason = (
-                    "models built from parameters (from_params or "
-                    "fit_from_parameters) or restored with from_dict / "
+                    "models built from parameters (from_params) or "
+                    "restored with from_dict / "
                     "from_json carry no data, so no likelihood."
                 )
             raise ValueError(

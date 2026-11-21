@@ -46,6 +46,21 @@ v0.29 (unreleased)
   agree within Monte Carlo error. See "More than three parameters: the
   sampler" in :doc:`Bayesian Fitting with SurPyval`.
 
+- **The inverse survival function, ``isf``.** Every distribution
+  (``Weibull.isf(s, alpha, beta)``) and every parametric model
+  (``model.isf(s)``) gives the time at which the survival function is
+  ``s``, scipy's name for it. It is ``qf(1 - s)`` without rounding ``1 -
+  s``, which ``qf`` cannot avoid: below ``s = 1.1e-16`` the quantile is
+  the end of the support, where ``isf`` keeps going (``isf(sf(t))`` gives
+  back ``t`` at a survival of 1e-300). It is in closed form for the
+  Weibull, exponential, Rayleigh, both Gumbels, logistic, log-logistic,
+  normal, lognormal, gamma, both betas, uniform and exponentiated Weibull;
+  the others solve ``log_sf(x) = log(s)`` (a discrete distribution: the
+  first point with ``sf(k) <= s``). A model's follows its offset, limited
+  failure population (``inf`` at or below ``1 - p``) and zero inflation
+  (0 at or above ``1 - f0``). ``tests/reference/test_tails.py`` checks it
+  against 50-digit references from ``s = 1`` to 1e-300.
+
 - **Test planning: one function per comparison design.**
   ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
   ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,
@@ -785,6 +800,34 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **``DegradationAnalysis`` says which failure times are extrapolated, and
+  can censor units still running.** A unit short of the threshold at its
+  last reading, whose path crosses only after it, still fails at the
+  extrapolated crossing by default (the pseudo-failure-time method), and
+  now the summary counts these ("Extrapolated Units") and the model's
+  ``extrapolated`` marks them. New: ``running="censor"`` right censors such
+  units at their last reading instead, and ``censored_units=[...]``
+  censors the units named there (units known to be running, or that failed
+  another way short of the threshold); a listed unit whose path reaches the
+  threshold within its readings is refused, and so is a fit left with no
+  failure, naming ``running="extrapolate"``. The bootstrap bounds keep the
+  choice; ``to_dict`` saves it. Fits with the defaults are unchanged. See
+  "Units still running at the end of the test" in :doc:`Degradation
+  Modelling with SurPyval`.
+
+- **A non-parametric ``mean()``, ``mean_cb()`` and ``mrl(x)`` warn when
+  they stop at the data.** With ``tau`` left out they are the area under
+  the estimate up to the largest observed time (the restricted mean, as
+  before). Where units are still at risk past that time (the estimate
+  above zero there), the mean life is not determined by the data, and they
+  now say so: the warning gives the
+  largest time, the survival estimate there and the share of probability
+  past it, and names ``tau`` (``rmst(tau)`` for the bounds) and a
+  parametric fit. On ten units with seven running at 1500, ``mean()`` is
+  1300 with the estimate at 0.7. The values are unchanged; ``mean(tau=)``
+  and ``rmst`` do not warn. Every estimator (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull) behaves alike.
+
 - **SurpyvalData is the form for several rows per unit; EventHistoryData is
   being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
   ``a``), which every recurrent fitter takes, and nothing new depends on
@@ -1072,6 +1115,12 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- The renewal fitters' ``fit_from_parameters`` (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``) is ``from_params``, the
+  name every other family uses for a model built from given parameters.
+  The old name gives the same model, with a ``FutureWarning`` naming
+  ``from_params``, and is removed in v0.30.
+
 - The 21 test-planning functions that each solved one design for one
   unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
   ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,
@@ -1094,6 +1143,24 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- **The distribution functions keep their digits further into the
+  tails.** A Rayleigh's ``ff`` and ``Hf`` with a small ``sigma`` lost 1e-12
+  of their value where ``x**2`` went subnormal (now ``(x / sigma)**2 /
+  2``); a Beta's log density with a large shape lost 1e-11 to ``log(1 -
+  x)`` (now ``log1p``) and 3e-13 to scipy's ``betaln`` (now the
+  cancellation-free form the incomplete beta already used), and its
+  quantile below the smallest normal double 2e-10 at ``alpha = 1e-3``
+  (so seeded draws of such a Beta move in their last digits); a
+  normal or lognormal hazard between 1 and 100 standard deviations lost up
+  to 1e-13 to a difference of logs (now from ``erfcx``); and the log of a
+  gamma or beta probability within 0.1 of 1 is taken from its complement
+  (it lost up to 2e-13 between 0.9 and 0.999). The tails reference test
+  now holds each function to 1e-12 (from 1e-8), or 64 ulps of its
+  inputs' sensitivity where that is larger. The discrete distributions
+  at large parameters, and the gamma density at shape 1e3, are not yet
+  within it (errors up to 3e-9): they are listed in it as known failures
+  under #1300.
 
 - **``SurpyvalData.from_observations`` with ids paired ids with the wrong
   times** where the rows were sorted (any data without covariates or event
@@ -1129,6 +1196,16 @@ v0.29 (unreleased)
   event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
+
+- **Choosing a Model**, a new page linked from the start of the
+  documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`
+  goes from the data to a model by yes-or-no questions, each with two
+  answers, in three stages (the shape of the problem, how to write each
+  unit's record, and what is asked), says how the need to extrapolate
+  decides between a parametric and a non-parametric model, and ends with
+  a table of situations and the calls that handle them. The bundled
+  agent skill follows the same questions
+  (``.claude/skills/surpyval/references/choosing-a-model.md``).
 
 - The coverage quoted for the bootstrap bounds of limited-failure and
   zero-inflated models (``method="bootstrap"``) in
