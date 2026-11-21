@@ -355,6 +355,8 @@ surpyval.metrics.ConcordanceResult
 surpyval.metrics.DynamicAccuracy
 surpyval.metrics.DynamicCalibration
 surpyval.metrics.PredictionScores
+surpyval.metrics.Score
+surpyval.metrics.TimeScores
 surpyval.metrics.auc_td
 surpyval.metrics.brier_score
 surpyval.metrics.compare_concordance
