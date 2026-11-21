@@ -1089,6 +1089,16 @@ v0.29 (unreleased)
 
 **Documentation.**
 
+- **Choosing a Model**, a new page linked from the start of the
+  documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`
+  goes from the data to a model by yes-or-no questions, each with two
+  answers, in three stages (the shape of the problem, how to write each
+  unit's record, and what is asked), says how the need to extrapolate
+  decides between a parametric and a non-parametric model, and ends with
+  a table of situations and the calls that handle them. The bundled
+  agent skill follows the same questions
+  (``.claude/skills/surpyval/references/choosing-a-model.md``).
+
 - The coverage quoted for the bootstrap bounds of limited-failure and
   zero-inflated models (``method="bootstrap"``) in
   :doc:`Parametric SurPyval Modelling` is remeasured with the current

@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Choosing a Model: a yes/no flow in the docs and the skill (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The guide from data to model (`docs/Choosing a Model.rst`, and the skill's `references/choosing-a-model.md` with the same numbered questions) asks only yes/no questions, each with exactly two answers; a choice of more than two is split into successive questions. `test_skill.py` checks the two answers of every question and that the page asks the same numbers. | maintainer (21 Nov 2026) | A reader answers one question at a time; three-way splits were hard to follow. | done |
+| Extrapolation decides parametric against non-parametric: answers past the longest observation, a mean life, a B-life below the first failure or a smooth curve to predict from need a parametric model; otherwise non-parametric. How far to trust an extrapolation is the analyst's judgement, and SurPyval does not warn when a parametric model is asked about a time past the data. | maintainer (21 Nov 2026) | A non-parametric estimate stops at the longest observation; a parametric one extrapolates through its assumed shape, which `diagnose()` checks against the data. | done |
+| With few failures (under about 20) the guide advises likelihood-ratio bounds (`method="lr"`); the default stays Wald. | maintainer (21 Nov 2026) | Advice, not a changed default. | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
