@@ -43,11 +43,8 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
-from surpyval.utils import (
-    check_c_and_e,
-    is_missing_event,
-    resolve_cr_censoring,
-)
+from surpyval.utils import check_c_and_e, is_missing_event
+from surpyval.utils.data_formats import resolve_cr_censoring
 from surpyval.utils.linalg import safe_quadform
 from surpyval.utils.validation import (
     check_option,

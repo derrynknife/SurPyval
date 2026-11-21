@@ -18,6 +18,74 @@ v0.29 (unreleased)
   life (median, a B-life or the mean) against stress with its bounds and
   the test levels and data marked.
 
+- **Joint models: competing failure modes.** ``JointPH`` fits
+  (``WeibullJointPH``) take the mode of each failure (a record's
+  ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With
+  two or more modes each has a Weibull baseline, hazard coefficients and
+  marker effects of its own (``"bearing: alpha"``, ``"bearing: beta"``,
+  ``"bearing: marker_effect"``, ...), so a reading can warn of one way
+  of failing and not of another, and an item that fails by one mode is
+  no longer at risk of the others. ``shared=["marker_effect"]`` (or
+  ``"beta"``, or a hazard covariate) gives the modes that parameter in
+  common, and ``model.likelihood_ratio_test(shared_model)`` tests the
+  two fits against each other. The model keeps ``causes``, ``shared``
+  and ``n_events_by_cause``, its ``summary()`` has a part for each mode,
+  and its ``sf``, ``cb`` and ``predict`` are of failing by any mode. A
+  failure found at an inspection (left or interval censored) is fitted
+  with its mode. Refused, saying what to do: a failure with no mode, a
+  mode on an item still running, a mode with fewer failures than
+  parameters of its own, ``JointAFT`` and ``how="two-stage"``. One mode,
+  or no event types, gives the same model as before, bit for bit. A
+  model with modes saves as schema 5. See "More than one way to fail"
+  in :doc:`Joint Models`.
+
+- **Copulas with non-parametric margins have standard errors and
+  bounds.** A copula fitted with both margins ``KaplanMeier`` on complete
+  data with no tied values (the maximum pseudo-likelihood estimate from
+  the ranks) has ``covariance()``, ``standard_errors()`` and
+  ``param_cb()``: the rank-based covariance of Genest, Ghoudi and Rivest
+  (1995), which adds to the copula's score the change in it from each
+  margin's ranks being estimated. They raised a ``ValueError`` before.
+  Every fitted copula model also has the case bootstrap,
+  ``method="bootstrap"`` (with ``n_boot``, 200, and ``random_state``) on
+  ``covariance``, ``standard_errors``, ``param_cb`` and ``cb``: the units
+  are resampled, the margins and the copula fitted again, and the bounds
+  are the refits' percentile intervals. Where the rank-based covariance
+  does not apply (censored, truncated or tied data, a margin that is not
+  ``KaplanMeier``, or one parametric margin with one non-parametric) the
+  default call refuses, says which of these it is and names
+  ``method="bootstrap"``; ``cb`` on the joint ``sf`` or ``ff`` with a
+  non-parametric margin has the bootstrap only. New:
+  ``kendall_tau_cb()`` and ``spearman_rho_cb()``, bounds on the two rank
+  correlations the fitted copula implies (the parameter's bound carried
+  through the measure for a one-parameter family, a delta-method bound
+  on Fisher's z for the Student-t, or the bootstrap's). A model's
+  dictionary says how its covariance was worked out
+  (``"covariance_method"``: ``"information"``, ``"godambe"`` or
+  ``"rank"``). The warning of a Wald bound that does not exist now names
+  the bootstrap, where it said the copula models had no other bound.
+  Over 500 simulated samples of 100 and of 400 rows (Clayton, Gumbel,
+  Frank) the rank-based 90% intervals covered the true parameter 88.6% to
+  92.8% of the time and the 95% intervals 93.2% to 96.2%; the
+  bootstrap's, on 200 censored samples of 100 rows, 92.0% and 96.5% (the
+  parameter) and 85.5% and 96.5% (the joint survival at a point). See
+  "Standard errors and confidence bounds" in
+  :doc:`Multivariate Modelling with SurPyval`.
+
+- **Competing risks: what user tests found missing.**
+  ``FineGrayModel.cb(x, Z, on="cif")`` bounds a Fine-Gray model's
+  cumulative incidence (or one minus it, ``on="sf"``) by the case
+  bootstrap (``n_boot``, ``random_state``; clusters resampled whole,
+  strata and weights kept); ``method="wald"`` and ``"lr"`` refuse,
+  saying why and to use the bootstrap. ``ParametricCompetingRisks.eliminate(cause,
+  ...)`` gives the model with failure modes designed out, the causes left
+  keeping their fits (independent causes assumed, as documented), with
+  every function, ``mean`` and ``cb``. ``ParametricCompetingRisks.fit``
+  warns, once and with the counts, when a cause has fewer than 10
+  failures, and ``FineGray.fit`` when the cause of interest has fewer than
+  10 events per coefficient, each saying what to do. The Fine-Gray docs
+  name the cause argument ``event`` (they said ``cause``).
+
 - **Test planning: what user tests found missing.**
   ``demonstration_test_time(reliability, n, failures, mission_time=,
   shape=)`` gives each unit's extended (Weibayes) test length in time,
@@ -789,6 +857,31 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **Small traps from user tests.** ``from_params`` takes a plain number for
+  every one-parameter distribution (``Exponential.from_params(1 / 20000)``,
+  ``Rayleigh``, ``Poisson``, ...); a number, or a list of the wrong length,
+  for a distribution with more parameters is refused naming how many it
+  takes and their names ("Weibull takes 2 parameters (alpha, beta); got 1
+  number"), where it failed with "object of type 'float' has no len()".
+  A fitted model's ``distribution`` names its distribution (every model is a
+  ``Parametric``), and ``parameter_roles`` (on the distribution and the
+  model) says what each parameter does: Gamma's ``beta`` is a rate,
+  Weibull's a shape. A Turnbull estimate's printout says ``Curve :
+  Fleming-Harrington on Turnbull's expected counts``, not ``Estimator :
+  Fleming-Harrington``, which read as if that were the method. The data
+  line of a printout counts left and interval censored units among the
+  events ("60 units: 24 events (0 exact, 1 left censored, 23 interval
+  censored), 36 right censored"), where interval data read as "0 events".
+  ``from_xrd`` given fractional counts (such as ``to_xrd``'s Turnbull
+  expected counts) still refuses them, now saying they are estimates, not
+  observations, and to fit the original data. ``fit_best``'s warnings point
+  at the caller's line, and the one for a candidate set aside says in plain
+  words why and what to do; every other warning with a counted
+  ``stacklevel`` now points at the first line outside SurPyval too. The
+  competing-risks models' ``standard_errors``, ``covariance`` and ``phi``,
+  used as a value (``np.round(model.standard_errors, 4)``), raise a
+  ``TypeError`` saying to call them, where numpy's message did not say.
+
 - **One concordance, one Brier score, one AUC.** ``concordance_index``
   now returns a ``ConcordanceResult``, a ``float`` (the index, the same
   number as before) that carries its standard error ``se``, interval
@@ -1124,6 +1217,22 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- Internal steps that ``surpyval.univariate.nonparametric`` and
+  ``surpyval.utils`` exposed as public names. From the non-parametric
+  namespace: the lower-case estimators ``kaplan_meier``,
+  ``nelson_aalen``, ``fleming_harrington`` and ``turnbull`` (use the
+  fitters, ``KaplanMeier.fit`` and the rest), ``greenwood_variance``,
+  ``nelson_aalen_variance`` and ``fleming_harrington_variance`` (the
+  fitters' ``cb``), ``rank_adjust``, ``canonical_heuristic``,
+  ``FIT_FUNCS``, ``VAR_FUNCS`` and ``PLOTTING_METHODS``. From
+  ``surpyval.utils``: ``coerce_xcnt_x``, ``format_truncation``,
+  ``group_xcnt``, ``xcnt_sort`` and ``resolve_cr_censoring``, which
+  ``SurpyvalData`` runs. Each still works, with a ``FutureWarning``
+  saying what to use, and is removed in v0.30. ``surpyval.utils`` keeps
+  ``round_sig``, ``is_missing_event``, ``missing_events``,
+  ``normalise_unit`` and ``same_unit``, and ``surpyval.pymc`` all of its
+  names.
+
 - ``surpyval.metrics.concordance_estimate`` (and
   ``surpyval.concordance_estimate``) is ``concordance_index``, which now
   gives the standard error and interval (``alpha_ci=`` for ``alpha``),
@@ -1212,6 +1321,14 @@ v0.29 (unreleased)
   event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
+
+- :doc:`Competing Risks SurPyval Modelling` named Gray's test's and
+  ``FineGray``'s cause argument ``cause``; it is ``event``. It now says the
+  Fine-Gray baseline (and ``phi``) is at covariates 0 unless fitted with
+  ``center=True``. :doc:`Regression Modelling with SurPyval` says Cox
+  coefficients are named ``coef_0``, ... for an array ``Z`` (pass a
+  ``DataFrame``, ``Z_cols`` or a ``formula`` to name them), and maps
+  ``fit_tvc``'s ``xl``, ``xr`` and ``c`` to R's start, stop and status.
 
 - **Choosing a Model**, a new page linked from the start of the
   documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`

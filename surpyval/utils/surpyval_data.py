@@ -2014,7 +2014,7 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
                 or (2 in self.c)
                 or (-1 in self.c)
             ):
-                data = surpyval.univariate.nonparametric.turnbull(
+                data = surpyval.univariate.nonparametric._turnbull(
                     self.x, self.c, self.n, self.t, estimator=estimator
                 )
                 xrd = data["x"], data["r"], data["d"]

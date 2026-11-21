@@ -57,7 +57,7 @@ from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 __all__ = ["PanelCountMCF", "PanelCountRegression"]
 
@@ -680,7 +680,7 @@ def _warn_unconverged(what: str) -> None:
         "how='pseudo', whose estimate is exact, or check the data for "
         "units with very many inspections.".format(what, _EM_MAXITER),
         PanelCountConvergenceWarning,
-        stacklevel=3,
+        stacklevel=caller_stacklevel(),
     )
 
 
@@ -1629,7 +1629,7 @@ class PanelCountRegression(SerialisableMixin):
                     "pseudo-likelihood" if how == "pseudo" else "likelihood"
                 ),
                 PanelCountConvergenceWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return out
 
@@ -1782,7 +1782,7 @@ class PanelCountRegression(SerialisableMixin):
                 "are left out of the bounds; with so few units the "
                 "bootstrap bounds are rough.".format(failed, n_boot),
                 UserWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         out = (betas, base)
         if key[1] is not None:
