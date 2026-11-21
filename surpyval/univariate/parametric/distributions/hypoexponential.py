@@ -557,6 +557,7 @@ class Hypoexponential_(OptimisedFitMixin, ParametricFitter):
         gamma: Boxable | None = None,
         lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
+        hr: Boxable | None = None,
     ) -> Parametric:
         r"""
 
@@ -611,7 +612,7 @@ class Hypoexponential_(OptimisedFitMixin, ParametricFitter):
         """
         rates = _validate_rates(params)
         return ParametricFitter.from_params(
-            self._for_params(rates), rates, gamma, lfp_p, f0
+            self._for_params(rates), rates, gamma, lfp_p, f0, hr
         )
 
     @takes_unit

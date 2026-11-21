@@ -81,6 +81,7 @@ def reject_structural_params(
     gamma: Any = None,
     lfp_p: Any = None,
     f0: Any = None,
+    hr: Any = None,
 ) -> None:
     """Raise for structural arguments a closed-form distribution has no
     meaning for.
@@ -100,6 +101,13 @@ def reject_structural_params(
                 f"closed-form estimator with no offset, limited failure "
                 f"population or zero inflation."
             )
+    if hr is not None:
+        raise ValueError(
+            f"{dist_name} does not support 'hr': it is a probability of an "
+            "event, not a life with a hazard to scale. Scale the "
+            "probability itself: an event probability q becomes "
+            "1 - (1 - q) ** hr."
+        )
 
 
 # What each distribution function is outside the support of a continuous
@@ -1367,6 +1375,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         gamma: Any = None,
         lfp_p: Any = None,
         f0: Any = None,
+        hr: Any = None,
     ) -> Any:
         r"""
 
@@ -1393,6 +1402,14 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             The proportion of the population that will die or fail at time 0.
             If used it must be a value between 0 and 1. If None will assume 0,
             i.e. no proportion of the population will die or fail at time 0.
+
+        hr : scalar, optional
+            The hazard ratio, a finite number above 0: the model's hazard
+            is ``hr`` times the hazard it would have without it, at every
+            age, so its survival is that model's raised to the power
+            ``hr``. It applies outermost, over ``gamma``, ``lfp_p`` and
+            ``f0`` (a mass ``f0`` at 0 becomes ``1 - (1 - f0) ** hr``). If
+            None, 1: the model as it is. See :doc:`/Hazard Ratio`.
 
         Returns
         -------
@@ -1489,6 +1506,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         model.gamma = gamma
         model.lfp_p = p
         model.f0 = f0
+        if hr is not None:
+            from ._hazard_ratio import checked_hr
+
+            model.hr = checked_hr(hr)
         model.params = np.array(params)
         self._set_support(model, offset)
 

@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### The hazard ratio `hr` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A hazard ratio is a model option, `hr` on `from_params` (and on `fit`, with it known), beside `gamma`, `lfp_p` and `f0`; not a wrapper class. | maintainer (21 Nov) | It is what the model is, as an offset is; a wrapper would lose `with_params`, saving and the bounds. | done |
+| `hr` applies outermost: `Hf = hr * H0`, `sf = exp(-hr * H0)`, `ff = -expm1(-hr * H0)`, `hf = hr * h0` (a discrete model's `1 - (1 - h0) ** hr`), `df = hr * h0 * sf`, a zero-inflation mass `1 - (1 - f0) ** hr`, where `H0`, `h0` are the model's with its offset, LFP and ZI. The work is in `parametric/_hazard_ratio.py`, from the same model with `hr = 1`; `Parametric` keeps its own paths for `hr = 1`, so every value and seeded draw there is unchanged to the last bit (a hash over 17 models against `dev`). | maintainer (outermost), proposed (layout) | `R ** (1 - b) * R ** b = R` for every model, which common-cause groups need. | done |
+| `qf(p)` and `isf(s)` find the base model's time at `log R0 = log(1 - p) / hr` (or `log(s) / hr`): by its `isf(exp(log R0))` below `R0 = 1/2`, and by its `qf(-expm1(log R0))` above. A discrete model's point is checked against its own `sf` (one step either way). | proposed | `isf(exp(log1p(-p) / hr))` alone gives `qf(1e-20) = 0` for an exponential, as `1 - R0` rounds to 0; the complement keeps those digits. The base's `R0 ** (1 / hr)` is rounded, so `isf(sf(k))` could be one point off. | done |
+| A Weibull or exponential with `hr` and no LFP is its own family (scale `alpha * hr ** (-1 / beta)`, rate `hr * lambda`; an offset and `f0` carry across): `mean`, `moment`, `var`, `entropy`, `mrl` and the restricted mean are that model's. Other distributions integrate `sf` (adaptive quadrature, `epsrel` 1e-11) for the mean, moments, variance, mean residual life and restricted mean; the entropy, a discrete model's moments and an LFP's defective moments are refused, naming what to use. | maintainer (closed forms), proposed (the rest) | Exact where the family allows it; the integrals are the model's own definitions. | done |
+| `to_dict` writes `"hr"` only where it is not 1; such a dict is stamped schema 5 (`serialisation._has_hazard_ratio`), which 0.28 refuses. `hr` is a class attribute defaulting to 1, so an older pickle loads with none. It is in `extras` where not 1, so `with_params` and the bootstrap keep it; `with_params(hr=)` sets it on any model. | principle 20, the `random_effects` precedent | An older reader would load the model without its hazard ratio. | done |
+| The probability models (`Bernoulli`, `Binomial`, `FixedEventProbability`, `ExactEventTime`) refuse `hr`, saying to scale the probability, `1 - (1 - q) ** hr`. | proposed | They are probabilities of an event, not lives with a hazard. | done |
+
 ### A non-parametric mean that stops at the data says so (21 Nov 2026)
 
 | Decision | By | Reason | Status |

@@ -5,6 +5,24 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **A hazard ratio, ``hr``, on every parametric model.**
+  ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of
+  the Weibull at every age: its survival is the model's raised to ``hr``.
+  It applies over the offset, limited failure population and zero
+  inflation (a mass ``f0`` at 0 becomes ``1 - (1 - f0) ** hr``), so the
+  models at ``hr = 1 - b`` and ``hr = b`` together make the model. Every
+  function follows from the cumulative hazard, precise in both tails;
+  ``qf`` and draws go through ``isf``. A Weibull's and an exponential's
+  moments, entropy, mean residual life and restricted mean stay in closed
+  form (the Weibull at scale ``alpha * hr ** (-1 / beta)``, the
+  exponential at rate ``hr * lambda``); other distributions integrate.
+  ``hr`` is known, not a parameter: it is in ``extras`` and
+  ``with_params(..., hr=)``, kept by ``rescale_time``, printed, pickled,
+  and saved as ``"hr"`` under schema 5, which SurPyval 0.28 refuses. With
+  ``hr = 1`` every value and seeded draw is unchanged. Probability models
+  (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+  ``ExactEventTime``) refuse it. See :doc:`Hazard Ratio`.
+
 - **The inverse survival function, ``isf``.** Every distribution
   (``Weibull.isf(s, alpha, beta)``) and every parametric model
   (``model.isf(s)``) gives the time at which the survival function is
