@@ -85,6 +85,17 @@ class AcceleratedTestPlan:
         ``[estimate / R, estimate * R]``.
     alpha_ci : float
         The significance level of that interval.
+    acceleration_factors : tuple of float
+        How many times shorter the planned life is at each test stress
+        than at the use stress, ``L(use_stress) / L(stress)``: an hour at
+        that stress ages a unit as much as so many hours at the use
+        stress.
+    use_test_time : float
+        How long a time-censored life test of the same number of units at
+        the use stress would have to run to estimate the quantile as
+        precisely (:func:`surpyval.test_planning.life_test_length`):
+        what the acceleration saves. Infinite where no length reaches it
+        short of running every unit to failure.
 
     Examples
     --------
@@ -97,6 +108,10 @@ class AcceleratedTestPlan:
     ...     units=(20, 10, 10), censor_time=1000.0)
     >>> plan.units, [round(f, 1) for f in plan.expected_failures]
     ((20, 10, 10), [11.1, 9.8, 10.0])
+    >>> [round(a) for a in plan.acceleration_factors]
+    [9, 20, 36]
+    >>> round(plan.use_test_time)
+    2198
     """
 
     distribution: str
@@ -114,6 +129,8 @@ class AcceleratedTestPlan:
     standard_error: float
     precision: float
     alpha_ci: float
+    acceleration_factors: tuple[float, ...]
+    use_test_time: float
 
     def to_dict(self) -> dict:
         """The plan as a dict of native Python values, strict JSON: every
@@ -215,16 +232,23 @@ class AcceleratedTestPlan:
             f"Model            : {self.distribution}, "
             f"{self.life_model}({params}), {shape}={self.shape:.6g}",
             f"Censor time      : {self.censor_time:.6g}",
-            "Stress    Units  Expected failures",
+            "Stress    Units  Expected failures  Acceleration",
         ]
-        for stress, units, failures in zip(
-            self.stresses, self.units, self.expected_failures
+        for stress, units, failures, factor in zip(
+            self.stresses,
+            self.units,
+            self.expected_failures,
+            self.acceleration_factors,
         ):
-            lines.append(f"{stress:<9.6g} {units:<6d} {failures:.3g}")
+            lines.append(
+                f"{stress:<9.6g} {units:<6d} {failures:<18.3g} {factor:.4g}"
+            )
         lines += [
             f"Estimating       : B{100 * self.p:.6g} at {self.use_stress:.6g}"
             f" = {self.estimate:.6g}",
             f"Precision factor : {self.precision:.6g} ({level} interval)",
+            f"At use stress    : {self.use_test_time:.6g} test time for "
+            f"{sum(self.units)} units, the same precision",
         ]
         return "\n".join(lines)
 
@@ -384,6 +408,8 @@ def _finish(
     log_quantile = model.log_life(model.use_stress) + model.sigma * float(
         info.ppf(model.family, p)
     )
+    precision = float(np.exp(z * error))
+    use_log_life = model.log_life(model.use_stress)
     return AcceleratedTestPlan(
         distribution=model.distribution,
         life_model=model.life_model.name,
@@ -400,9 +426,44 @@ def _finish(
         p=p,
         estimate=float(np.exp(log_quantile)),
         standard_error=error,
-        precision=float(np.exp(z * error)),
+        precision=precision,
         alpha_ci=float(alpha_ci),
+        acceleration_factors=tuple(
+            float(np.exp(use_log_life - model.log_life(s))) for s in stresses
+        ),
+        use_test_time=_use_test_time(model, n, precision, p, alpha_ci),
     )
+
+
+def _use_test_time(
+    model: _Model, n: int, precision: float, p: float, alpha_ci: float
+) -> float:
+    """How long ``n`` units tested at the use stress take to estimate the
+    ``p`` quantile there to ``precision``; infinite where only running
+    every unit to failure would."""
+    import surpyval
+    from surpyval.test_planning.estimation import life_test_length
+
+    location = model.log_life(model.use_stress)
+    params = (
+        (float(np.exp(location)), model.shape)
+        if model.family == "sev"
+        else (location, model.shape)
+    )
+    try:
+        plan = life_test_length(
+            getattr(surpyval, model.distribution),
+            params,
+            n,
+            precision * (1.0 + 1e-12),
+            p=p,
+            alpha_ci=alpha_ci,
+        )
+    except ValueError:
+        return float("inf")
+    if plan.censor_time is None:
+        return float("inf")
+    return float(plan.censor_time)
 
 
 def accelerated_test_precision(

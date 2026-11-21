@@ -193,3 +193,32 @@ def test_the_plans_print_what_to_run():
 def test_plans_are_checked(call, match):
     with pytest.raises(ValueError, match=match):
         call()
+
+
+def test_given_the_units_the_plan_reports_the_test_in_time():
+    plan = demonstration_plan(
+        0.9, 0.95, alpha_ci=0.1, n=20, shape=2.0, mission_time=1000.0
+    )
+    assert plan.unit_test_time == pytest.approx(
+        1000.0 * plan.test_multiple, rel=1e-14
+    )
+    assert "per unit)" in repr(plan)
+    assert demonstration_plan(0.9, 0.95, alpha_ci=0.1).unit_test_time is None
+
+
+def test_too_few_units_say_the_length_was_searched_and_what_would_do():
+    with pytest.raises(ValueError) as caught:
+        demonstration_plan(
+            0.9, 0.95, alpha_ci=0.1, producer_risk=0.2, n=10, shape=2.0
+        )
+    text = str(caught.value)
+    assert "test_multiple" in text and "0.261" in text
+    assert "13 are enough" in text and "producer_risk of 0.261" in text
+    plan = demonstration_plan(
+        0.9, 0.95, alpha_ci=0.1, producer_risk=0.2, n=13, shape=2.0
+    )
+    assert plan.producer_risk <= 0.2 and plan.consumer_risk <= 0.1 + 1e-12
+    relaxed = demonstration_plan(
+        0.9, 0.95, alpha_ci=0.1, producer_risk=0.262, n=10, shape=2.0
+    )
+    assert relaxed.producer_risk <= 0.262

@@ -10,10 +10,10 @@ operations. The tie conventions, Therneau's (the default, as R's
 of the pairwise definitions (see :func:`concordance_index`), which the
 tests keep as the oracle.
 
-:func:`concordance_estimate` adds Uno's inverse-probability-of-censoring
-weighted index, truncation at a horizon ``tau``, and the
-infinitesimal-jackknife standard error R's ``survival::concordance``
-reports;
+:func:`concordance_index` gives Harrell's or Uno's
+inverse-probability-of-censoring weighted index, truncated at a horizon
+``tau`` if asked, with the infinitesimal-jackknife standard error R's
+``survival::concordance`` reports;
 :func:`compare_concordance` compares two scores on the same subjects.
 """
 
@@ -33,7 +33,6 @@ __all__ = [
     "ConcordanceComparison",
     "ConcordanceResult",
     "compare_concordance",
-    "concordance_estimate",
     "concordance_index",
 ]
 
@@ -140,101 +139,16 @@ def _count_after(keys: npt.NDArray, limits: npt.NDArray) -> npt.NDArray:
     return counts
 
 
-def concordance_index(
+def _harrell_value(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
     tie_tol: float = 1e-8,
     ties: str = "therneau",
 ) -> float:
-    r"""Harrell's concordance index (C) of risk scores against right-censored
-    outcomes.
-
-    A pair of subjects is *usable* when the one with the earlier time had
-    the event; it is *concordant* when that subject also has the higher
-    risk. C is the proportion of usable pairs that are concordant: 1 is a
-    perfect ranking, 0.5 is chance. It measures discrimination only (a
-    model can rank perfectly and still be miscalibrated; see
-    :func:`brier_score`).
-
-    Parameters
-    ----------
-    x : array_like
-        Observed times.
-    c : array_like
-        Censoring flags: ``0`` event, ``1`` right censored. Left and
-        interval censoring are not supported.
-    risk : array_like
-        Risk scores, *higher meaning an earlier event*: a hazard ratio or
-        linear predictor, a cumulative hazard, ``1 - sf`` at a horizon. To
-        score predicted times or survival probabilities (higher meaning a
-        later event), pass their negative.
-    tie_tol : float, optional
-        Two scores within ``tie_tol`` of each other (or within a relative
-        ``1e-9``, as :func:`math.isclose`) are tied. Default ``1e-8``.
-    ties : {"therneau", "harrell"}, optional
-        How a pair of events at the same time counts. ``"therneau"`` (the
-        default, as R's ``survival::concordance`` and lifelines): it is not
-        usable, since neither subject outlived the other. ``"harrell"``
-        (Harrell's original definition): it is usable, and counts 1 if the
-        scores are tied, else 0.5. Every other pair is treated the same
-        way by both (see Notes).
-
-    Returns
-    -------
-    float
-        The concordance index; ``nan`` if a time is missing.
-
-    Raises
-    ------
-    ValueError
-        If the arrays differ in length, a score is missing (NaN), a flag
-        is not 0 or 1, ``ties`` is not one of the conventions, or no pair
-        is usable (every event is tied with, or later than, every other
-        subject's time).
-
-    Notes
-    -----
-    Each pair is scored by the pairwise definition this function
-    reproduces exactly (#276):
-
-    - times ``x_i < x_j`` with an event at ``x_i`` (whatever ``c_j``):
-      1 if ``risk_i > risk_j``, 0.5 if the scores are tied, else 0;
-    - equal times, both events: not usable under ``ties="therneau"``;
-      under ``ties="harrell"`` usable, 1 if the scores are tied, else 0.5;
-    - equal times, one event and one censored: usable (the censored
-      subject outlived the event), 1 if the event has the higher score,
-      0.5 on a tie, else 0;
-    - equal times, both censored, or an earlier censored time: not usable.
-
-    The default is R's (``survival::concordance``, Therneau) and
-    lifelines' (``lifelines.utils.concordance_index``, which scores
-    predicted *times*, so its value for ``-risk`` is this one). The two
-    conventions agree on data without tied event times.
-
-    The pairs are counted in :math:`O(n \log^2 n)` array operations, not
-    one by one: 50,000 subjects take a fraction of a second.
-
-    Examples
-    --------
-    >>> from surpyval.metrics import concordance_index
-    >>> x = [1.0, 2.0, 3.0, 4.0, 5.0]
-    >>> c = [0, 0, 1, 0, 0]
-    >>> risk = [0.9, 0.5, 0.7, 0.6, 0.2]
-    >>> concordance_index(x, c, risk)
-    0.75
-
-    Two deaths at the same time are a pair only under Harrell's
-    convention:
-
-    >>> x = [1.0, 1.0, 2.0, 3.0]
-    >>> c = [0, 0, 0, 1]
-    >>> risk = [0.9, 0.5, 0.7, 0.2]
-    >>> concordance_index(x, c, risk)
-    0.8
-    >>> concordance_index(x, c, risk, ties="harrell")
-    0.75
-    """
+    """Harrell's C from the pair counts (:func:`concordance_counts`):
+    the value :func:`concordance_index` reports, ``nan`` if a time is
+    missing."""
     counts = concordance_counts(x, c, risk, tie_tol, ties)
     if counts is None:
         return float("nan")
@@ -604,9 +518,10 @@ def _finite(v: Any) -> float | None:
     return v if np.isfinite(v) else None
 
 
-class ConcordanceResult:
+class ConcordanceResult(float):
     r"""A concordance index with its standard error and confidence
-    interval, from :func:`concordance_estimate`.
+    interval, from :func:`concordance_index`: a ``float``, the index,
+    that carries them.
 
     Attributes
     ----------
@@ -645,12 +560,15 @@ class ConcordanceResult:
 
     Examples
     --------
-    >>> from surpyval.metrics import concordance_estimate
-    >>> res = concordance_estimate([1, 2, 3, 4, 5], [0, 0, 1, 0, 0],
+    >>> from surpyval.metrics import concordance_index
+    >>> res = concordance_index([1, 2, 3, 4, 5], [0, 0, 1, 0, 0],
     ...                   [0.9, 0.5, 0.7, 0.6, 0.2])
     >>> round(res.estimate, 4), round(res.se, 4)
     (0.75, 0.2119)
     """
+
+    def __new__(cls, estimate: float, *args: Any, **kwargs: Any) -> Any:
+        return super().__new__(cls, estimate)
 
     def __init__(
         self,
@@ -679,10 +597,18 @@ class ConcordanceResult:
         self.pairs = float(pairs)
         self.influence = influence
 
-    def __float__(self) -> float:
-        return self.estimate
-
     def __repr__(self) -> str:
+        return float.__repr__(self)
+
+    def __str__(self) -> str:
+        return float.__repr__(self)
+
+    def __reduce__(self) -> Any:
+        return (_restore_result, (float(self), self.__dict__))
+
+    def summary(self) -> str:
+        """The index, its standard error, interval, horizon and count of
+        subjects, as text."""
         name = {"harrell": "Harrell's C", "uno": "Uno's C"}[self.weighting]
         level = round(100 * (1 - self.alpha), 6)
         out = (
@@ -719,7 +645,7 @@ class ConcordanceResult:
         }
 
 
-def concordance_estimate(
+def _concordance_estimate(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
@@ -828,7 +754,9 @@ def concordance_estimate(
 
     Examples
     --------
-    >>> from surpyval.metrics import concordance_estimate
+    >>> from surpyval.metrics.concordance import (
+    ...     _concordance_estimate as concordance_estimate,
+    ... )
     >>> x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     >>> c = [0, 1, 0, 1, 0, 0]
     >>> risk = [0.9, 0.5, 0.7, 0.6, 0.2, 0.4]
@@ -978,6 +906,13 @@ class ConcordanceComparison:
         }
 
 
+def _restore_result(value: float, state: dict) -> ConcordanceResult:
+    """A pickled :class:`ConcordanceResult`, rebuilt."""
+    result = ConcordanceResult.__new__(ConcordanceResult, value)
+    result.__dict__.update(state)
+    return result
+
+
 def compare_concordance(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
@@ -995,7 +930,7 @@ def compare_concordance(
     standard error of their difference is not that of two independent
     estimates: it comes from the subjects' influences on both,
     :math:`\operatorname{var}(C_a - C_b) = \sum_i (d_{a,i} - d_{b,i})^2`
-    (see :func:`concordance_estimate`). The test is ``z = (C_a - C_b) / se``
+    (see :func:`concordance_index`). The test is ``z = (C_a - C_b) / se``
     against the standard normal, as R's
     ``concordance(fit_a, fit_b)`` with the contrast ``c(1, -1)``.
 
@@ -1010,10 +945,10 @@ def compare_concordance(
     risk_b : array_like
         The second model's risk scores, on the same subjects.
     weighting : {"harrell", "uno"}, optional
-        The pair weights, as in :func:`concordance_estimate`. Default
+        The pair weights, as in :func:`concordance_index`. Default
         ``"harrell"``.
     tau : float, optional
-        The horizon of the pairs counted, as in :func:`concordance_estimate`.
+        The horizon of the pairs counted, as in :func:`concordance_index`.
     alpha : float, optional
         Significance level of the interval. Default ``0.05``.
     tie_tol : float, optional
@@ -1030,7 +965,7 @@ def compare_concordance(
     Raises
     ------
     ValueError
-        As :func:`concordance_estimate`, for either score; or if a time is
+        As :func:`concordance_index`, for either score; or if a time is
         missing.
 
     Examples
@@ -1048,10 +983,168 @@ def compare_concordance(
             "'x' has missing (NaN) times: drop those subjects (from 'c', "
             "'risk_a' and 'risk_b' too) to compare the scores"
         )
-    a = concordance_estimate(
+    a = _concordance_estimate(
         x, c, risk_a, weighting, tau, alpha, tie_tol, ties
     )
-    b = concordance_estimate(
+    b = _concordance_estimate(
         x, c, risk_b, weighting, tau, alpha, tie_tol, ties
     )
     return ConcordanceComparison(a, b, alpha)
+
+
+def concordance_index(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    risk: npt.ArrayLike,
+    tie_tol: float = 1e-8,
+    ties: str = "therneau",
+    *,
+    weighting: str = "harrell",
+    tau: float | None = None,
+    alpha_ci: float = 0.05,
+    ci_method: str = "normal",
+) -> ConcordanceResult:
+    r"""Harrell's concordance index (C) of risk scores against right-censored
+    outcomes.
+
+    A pair of subjects is *usable* when the one with the earlier time had
+    the event; it is *concordant* when that subject also has the higher
+    risk. C is the proportion of usable pairs that are concordant: 1 is a
+    perfect ranking, 0.5 is chance. It measures discrimination only (a
+    model can rank perfectly and still be miscalibrated; see
+    :func:`brier_score`).
+
+    Parameters
+    ----------
+    x : array_like
+        Observed times.
+    c : array_like
+        Censoring flags: ``0`` event, ``1`` right censored. Left and
+        interval censoring are not supported.
+    risk : array_like
+        Risk scores, *higher meaning an earlier event*: a hazard ratio or
+        linear predictor, a cumulative hazard, ``1 - sf`` at a horizon. To
+        score predicted times or survival probabilities (higher meaning a
+        later event), pass their negative.
+    tie_tol : float, optional
+        Two scores within ``tie_tol`` of each other (or within a relative
+        ``1e-9``, as :func:`math.isclose`) are tied. Default ``1e-8``.
+    ties : {"therneau", "harrell"}, optional
+        How a pair of events at the same time counts. ``"therneau"`` (the
+        default, as R's ``survival::concordance`` and lifelines): it is not
+        usable, since neither subject outlived the other. ``"harrell"``
+        (Harrell's original definition): it is usable, and counts 1 if the
+        scores are tied, else 0.5. Every other pair is treated the same
+        way by both (see Notes).
+
+    weighting : {"harrell", "uno"}, optional
+        Keyword only. ``"harrell"`` (default): every usable pair weighs 1.
+        ``"uno"``: each weighs ``1 / G(t-)^2``, ``G`` the Kaplan-Meier
+        estimate of the censoring at the pair's earlier time (Uno's C, R's
+        ``timewt = "n/G2"``).
+    tau : float, optional
+        Keyword only: count only the pairs whose earlier time (the event)
+        is at most ``tau`` (R's ``ymax``). Default ``None``, every pair.
+    alpha_ci : float, optional
+        Keyword only: the significance level of the interval. Default
+        ``0.05``.
+    ci_method : {"normal", "logit"}, optional
+        Keyword only: the scale of the interval. ``"normal"`` (default),
+        ``C -/+ z se``; ``"logit"``, ``logit(C) -/+ z se / (C (1 - C))``
+        mapped back, which stays inside (0, 1).
+
+    Returns
+    -------
+    ConcordanceResult
+        The concordance index, a ``float`` (``float(result)``, arithmetic
+        and comparisons use it as a number; ``nan`` if a time is missing),
+        carrying its infinitesimal-jackknife standard error ``se`` (R's
+        ``sqrt(concordance(...)$var)``), the interval ``ci``, the weighted
+        pair counts and each subject's influence. ``summary()`` gives them
+        as text.
+
+    Raises
+    ------
+    ValueError
+        If the arrays differ in length, a score is missing (NaN), a flag
+        is not 0 or 1, ``ties`` is not one of the conventions, or no pair
+        is usable (every event is tied with, or later than, every other
+        subject's time).
+
+    Notes
+    -----
+    Each pair is scored by the pairwise definition this function
+    reproduces exactly (#276):
+
+    - times ``x_i < x_j`` with an event at ``x_i`` (whatever ``c_j``):
+      1 if ``risk_i > risk_j``, 0.5 if the scores are tied, else 0;
+    - equal times, both events: not usable under ``ties="therneau"``;
+      under ``ties="harrell"`` usable, 1 if the scores are tied, else 0.5;
+    - equal times, one event and one censored: usable (the censored
+      subject outlived the event), 1 if the event has the higher score,
+      0.5 on a tie, else 0;
+    - equal times, both censored, or an earlier censored time: not usable.
+
+    The default is R's (``survival::concordance``, Therneau) and
+    lifelines' (``lifelines.utils.concordance_index``, which scores
+    predicted *times*, so its value for ``-risk`` is this one). The two
+    conventions agree on data without tied event times.
+
+    The pairs are counted in :math:`O(n \log^2 n)` array operations, not
+    one by one: 50,000 subjects take a fraction of a second.
+
+    Examples
+    --------
+    >>> from surpyval.metrics import concordance_index
+    >>> x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    >>> c = [0, 0, 1, 0, 0]
+    >>> risk = [0.9, 0.5, 0.7, 0.6, 0.2]
+    >>> res = concordance_index(x, c, risk)
+    >>> res
+    0.75
+    >>> round(res.se, 4)
+    0.2119
+
+    Two deaths at the same time are a pair only under Harrell's
+    convention:
+
+    >>> x = [1.0, 1.0, 2.0, 3.0]
+    >>> c = [0, 0, 0, 1]
+    >>> risk = [0.9, 0.5, 0.7, 0.2]
+    >>> concordance_index(x, c, risk)
+    0.8
+    >>> concordance_index(x, c, risk, ties="harrell")
+    0.75
+
+    Uno's weighting, to a horizon:
+
+    >>> x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    >>> c = [0, 1, 0, 1, 0, 0]
+    >>> risk = [0.9, 0.5, 0.7, 0.6, 0.2, 0.4]
+    >>> res = concordance_index(x, c, risk, weighting="uno", tau=5)
+    >>> round(res, 4), round(res.se, 4)
+    (0.7337, 0.2602)
+    """
+    if weighting != "harrell" or tau is not None:
+        return _concordance_estimate(
+            x, c, risk, weighting, tau, alpha_ci, tie_tol, ties, ci_method
+        )
+    # Harrell's C is the pair counts' ratio, as it always was; the
+    # standard error is the jackknife's.
+    value = _harrell_value(x, c, risk, tie_tol, ties)
+    full = _concordance_estimate(
+        x, c, risk, weighting, tau, alpha_ci, tie_tol, ties, ci_method
+    )
+    return ConcordanceResult(
+        value,
+        full.se,
+        full.alpha,
+        full.weighting,
+        full.tau,
+        full.ties,
+        full.n,
+        full.concordant,
+        full.pairs,
+        full.influence,
+        full.ci_method,
+    )
