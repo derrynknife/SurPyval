@@ -48,7 +48,7 @@ from surpyval.serialisation import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
 
@@ -307,7 +307,7 @@ class JelinskiMoranda(FitterRepr):
         c: ArrayLike | None = None,
         *,
         gaps: bool = False,
-    ) -> "JelinskiMorandaModel":
+    ) -> JelinskiMorandaModel:
         """
         Fit the model to one test campaign by maximum likelihood.
 
@@ -351,6 +351,7 @@ class JelinskiMoranda(FitterRepr):
         >>> model.N, round(model.phi, 5)
         (12, 0.02414)
         """
+        x = notation_as_data(x)
         if isinstance(x, SurpyvalData):
             x, c = _from_data(x, c)
         stats, failures, T = _campaign(x, c, gaps)
@@ -378,7 +379,7 @@ class JelinskiMoranda(FitterRepr):
         c_col: str | None = None,
         *,
         gaps: bool = False,
-    ) -> "JelinskiMorandaModel":
+    ) -> JelinskiMorandaModel:
         """
         Fit the model to one campaign held in a ``pandas.DataFrame``.
 
@@ -416,7 +417,7 @@ class JelinskiMoranda(FitterRepr):
     @takes_unit
     def from_params(
         self, params: ArrayLike, n: int = 0
-    ) -> "JelinskiMorandaModel":
+    ) -> JelinskiMorandaModel:
         """
         The model at given parameters, without data.
 
@@ -439,7 +440,7 @@ class JelinskiMoranda(FitterRepr):
         values = np.asarray(params, dtype=float)
         if values.shape != (2,):
             raise ValueError(
-                "params must be [N, phi]; got shape {}".format(values.shape)
+                f"params must be [N, phi]; got shape {values.shape}"
             )
         N, phi = float(values[0]), float(values[1])
         if not (N >= 1 and N == np.floor(N) and np.isfinite(N)):
@@ -602,7 +603,7 @@ class JelinskiMorandaModel(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "JelinskiMorandaModel":
+    def from_dict(cls, model_dict: dict) -> JelinskiMorandaModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 

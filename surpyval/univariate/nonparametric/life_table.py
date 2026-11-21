@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 
 from .nonparametric import NonParametric
 
@@ -225,6 +225,7 @@ def _data(
             "without the weights (life_table(x, c, n, tl)) for the table "
             "of the units themselves.",
         )
+    x = notation_as_data(x)
     if isinstance(x, NonParametric):
         d = getattr(x, "data", None)
         if not isinstance(d, dict) or "x" not in d:

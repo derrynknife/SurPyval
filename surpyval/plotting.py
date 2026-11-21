@@ -42,6 +42,7 @@ __all__ = [
     "style_axes",
     "style_legend",
     "observed_and_fitted",
+    "plot_lifetimes",
     "rc_params",
 ]
 
@@ -215,6 +216,218 @@ def observed_and_fitted(
             label=band_label,
         )
     return line
+
+
+def plot_lifetimes(
+    data: Any,
+    ax: Any = None,
+    sort: str = "end",
+    max_rows: int | None = 100,
+) -> Any:
+    """Draw the data itself: one horizontal line for each unit (or for each
+    row, where the data has no item ids), the kind of chart lifelines calls
+    ``plot_lifetimes`` and clinical work a swimmer plot. Returns the Axes
+    (nothing is shown).
+
+    A line runs from where the unit came under observation (its left
+    truncation, or the window start, 0) to its last time. An exact failure
+    is a filled circle at the end, a right censored time an open triangle
+    pointing on, a left censored time an open triangle pointing back, with
+    its line from the window start, and an interval censored time a bracket
+    over the interval. A finite right truncation bound is a grey bar. A row
+    standing for ``n`` items is labelled ``n x``. Where the data has item
+    ids, rows of one item share a line with each event marked; where it has
+    event types, the marks take the palette's colours, with a legend.
+
+    Parameters
+    ----------
+    data : SurpyvalData
+        The data to draw.
+    ax : matplotlib Axes, optional
+        Where to draw; a new one by default.
+    sort : {"end", "start", "duration", "data"}
+        The order of the lines, top to bottom: by last time, by start, by
+        length of observation, or as the data is held.
+    max_rows : int or None
+        The most lines to draw (the first ``max_rows`` in the data's
+        order); None draws all. Lines left out are counted on the plot.
+
+    Examples
+    --------
+    >>> import matplotlib
+    >>> matplotlib.use("Agg")
+    >>> from surpyval import SurpyvalData
+    >>> data = SurpyvalData([3, 7, 9], c=[0, 1, 0], tl=[0, 2, 1])
+    >>> ax = data.plot_lifetimes()
+    >>> len(ax.get_yticks())
+    3
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.lines import Line2D
+
+    if sort not in ("end", "start", "duration", "data"):
+        raise ValueError(
+            f"sort must be 'end', 'start', 'duration' or 'data', not "
+            f"{sort!r}. Pass one of those, 'data' keeping the data's order."
+        )
+    if max_rows is not None and max_rows < 1:
+        raise ValueError(
+            f"max_rows must be 1 or more, or None for every line, not "
+            f"{max_rows!r}."
+        )
+    if ax is None:
+        _, ax = plt.subplots()
+
+    x = np.asarray(data.x, dtype=float)
+    c = np.asarray(data.c)
+    n = np.asarray(data.n)
+    t = np.asarray(data.t, dtype=float)
+    k = len(c)
+    lo, hi = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
+    finite = np.concatenate([lo[np.isfinite(lo)], hi[np.isfinite(hi)]])
+    floor = min(0.0, float(finite.min())) if len(finite) else 0.0
+    ceiling = float(finite.max()) if len(finite) else 1.0
+    hi = np.where(np.isfinite(hi), hi, ceiling)
+    lo = np.where(np.isfinite(lo), lo, floor)
+    start = np.where(np.isfinite(t[:, 0]), t[:, 0], floor)
+    tr = t[:, 1]
+    e = None if data.e is None else list(data.e)
+    ids = data.ids
+
+    # Rows of the same item share a line, in order of first appearance.
+    if ids is None:
+        lines = [[r] for r in range(k)]
+    else:
+        order: dict = {}
+        for r, key in enumerate(ids):
+            order.setdefault(key, []).append(r)
+        lines = list(order.values())
+    total = len(lines)
+    left_out = 0
+    if max_rows is not None and total > max_rows:
+        left_out = total - max_rows
+        lines = lines[:max_rows]
+    first = np.array([start[rows].min() for rows in lines])
+    last = np.array([hi[rows].max() for rows in lines])
+    keys = {
+        "end": last,
+        "start": first,
+        "duration": last - first,
+        "data": np.arange(len(lines)),
+    }[sort]
+    lines = [lines[j] for j in np.argsort(keys, kind="stable")]
+
+    types = [] if e is None else list(data.event_types)
+    palette = PALETTE if theme_enabled() else ("C0", "C1", "C2", "C3", "C4")
+    colour = {
+        label: palette[j % len(palette)] for j, label in enumerate(types)
+    }
+    plain = INK["secondary"] if theme_enabled() else "k"
+    grey = INK["muted"] if theme_enabled() else "grey"
+    used: set = set()
+    pad = 0.012 * (ceiling - floor or 1.0)
+
+    for y, rows in enumerate(lines):
+        ax.plot(
+            [start[rows].min(), max(hi[rows].max(), start[rows].min())],
+            [y, y],
+            color=grey,
+            lw=1.2,
+            solid_capstyle="butt",
+            zorder=1,
+        )
+        for r in rows:
+            label = e[r] if e is not None and e[r] is not None else None
+            col = colour.get(label, plain)
+            kind = int(c[r])
+            if kind == 0:
+                ax.plot(hi[r], y, "o", color=col, ms=6, zorder=3)
+                used.add("observed")
+            elif kind == 1:
+                ax.plot(hi[r], y, ">", mfc="white", mec=col, ms=6, zorder=3)
+                used.add("right censored")
+            elif kind == -1:
+                ax.plot(hi[r], y, "<", mfc="white", mec=col, ms=6, zorder=3)
+                used.add("left censored")
+            else:
+                ax.plot([lo[r], hi[r]], [y, y], color=col, lw=4, zorder=2)
+                ax.plot(
+                    [lo[r], hi[r]], [y, y], "|", color=col, ms=10, zorder=3
+                )
+                used.add("interval censored")
+            if np.isfinite(tr[r]):
+                ax.plot(tr[r], y, "|", color=grey, ms=12, mew=2, zorder=2)
+                used.add("right truncation")
+            if n[r] > 1:
+                ax.text(
+                    hi[r] + pad,
+                    y,
+                    f"{int(n[r])} x",
+                    va="center",
+                    fontsize=8,
+                    color=plain,
+                )
+
+    marks = {
+        "observed": ("o", "failed", True),
+        "right censored": (">", "right censored", False),
+        "left censored": ("<", "left censored", False),
+        "interval censored": ("|", "interval censored", True),
+        "right truncation": ("|", "right truncation bound", True),
+    }
+    handles = []
+    for name, (marker, text, filled) in marks.items():
+        if name in used:
+            handles.append(
+                Line2D(
+                    [],
+                    [],
+                    ls="",
+                    marker=marker,
+                    color=grey if name == "right truncation" else plain,
+                    mfc=plain if filled else "white",
+                    mec=grey if name == "right truncation" else plain,
+                    ms=10 if marker == "|" else 6,
+                    label=text,
+                )
+            )
+    for label in types:
+        handles.append(
+            Line2D([], [], ls="", marker="s", color=colour[label], label=label)
+        )
+    if handles:
+        style_legend(ax, handles=handles, loc="best", fontsize=8)
+
+    ax.set_ylim(len(lines) - 0.5, -0.5)
+    shown_ids = ids is not None and len(lines) <= 40
+    if shown_ids:
+        ax.set_yticks(range(len(lines)))
+        ax.set_yticklabels([str(ids[rows[0]]) for rows in lines])
+    elif len(lines) > 40:
+        ax.set_yticks([])
+    else:
+        ax.set_yticks(range(len(lines)))
+        ax.set_yticklabels([str(y + 1) for y in range(len(lines))])
+    ax.set_ylabel("Unit" if ids is not None else "Row")
+    unit = getattr(data, "unit", None)
+    ax.set_xlabel(f"Time ({unit})" if unit else "Time")
+    if left_out:
+        ax.text(
+            0.99,
+            0.01,
+            f"Showing {len(lines)} of {total} "
+            f"{'units' if ids is not None else 'rows'}; {left_out} left out "
+            "(raise max_rows to draw them)",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color=plain,
+        )
+    style_axes(ax)
+    ax.grid(False, axis="y")
+    return ax
 
 
 def rc_params() -> dict[str, Any]:
