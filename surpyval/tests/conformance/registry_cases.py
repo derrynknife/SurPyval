@@ -70,7 +70,6 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
-    scattered_campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -95,6 +94,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     relative_data,
     relative_reg_data,
+    scattered_campaign_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -2050,6 +2050,24 @@ def _copulas():
                 explicit_seed=True,
             )
         )
+    # Non-parametric margins: the maximum pseudo-likelihood estimate from
+    # the ranks, on complete data with no counts.
+    semi = _fit(mv.Clayton, margins=[sp.KaplanMeier, sp.KaplanMeier])
+    out.append(
+        Case(
+            name="ClaytonCopula[margins=KaplanMeier]",
+            fitters=("surpyval.multivariate.Clayton",),
+            model_class="surpyval.multivariate.CopulaModel",
+            interface=BIVARIATE,
+            data=lambda: {"x": copula_data()["x"]},
+            fit=semi,
+            functions=("sf", "cdf"),
+            x=X_COP,
+            rows=("x",),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+        )
+    )
     return out
 
 
@@ -3563,6 +3581,45 @@ _JELINSKI_MORANDA_BOUNDS = (
 )
 
 
+def _copula_bounds(case):
+    # The joint sf and the joint CDF are not complements: one sweep
+    # each, so that cb_transform does not read one as 1 - the other
+    # (#540). The fixture's AMH estimate is on its bound, theta = 1
+    # (the data's Kendall's tau is past the family's 1/3), where no
+    # Wald bound exists: NaN, with a warning, as documented.
+    nan_ok = case.name == "AMHCopula"
+    # The case bootstrap (percentiles of refits to resampled units):
+    # the calls with one n_boot and seed share one set of refits.
+    boot = dict(kwargs={"method": "bootstrap", **_BOOT}, wald=False, slow=True)
+    bootstrap = (
+        Bound("cb", on=("sf",), label="cb[bootstrap]", **boot),
+        Bound("cb", on=("ff",), label="cb[ff, bootstrap]", **boot),
+        Bound("param_cb", kind="param", label="param_cb[bootstrap]", **boot),
+    )
+    # The rank correlations' bounds: none to sweep for the
+    # independence copula, whose measures are 0 with no parameter.
+    measures: tuple = ()
+    if case.name != "IndependenceCopula":
+        measures = tuple(
+            Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
+            for m in ("kendall_tau_cb", "spearman_rho_cb")
+        )
+    if "margins=KaplanMeier" in case.name:
+        # Rank-based margins: the Wald bound on the parameter from the
+        # pseudo-likelihood's covariance; a joint probability has the
+        # bootstrap only (a step margin has no covariance).
+        return (_PARAM_CB,) + measures + bootstrap
+    return (
+        (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
+        )
+        + measures
+        + bootstrap
+    )
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
@@ -4075,17 +4132,7 @@ def _bounds(case):
             ),
         )
     if cls == "CopulaModel":
-        # The joint sf and the joint CDF are not complements: one sweep
-        # each, so that cb_transform does not read one as 1 - the other
-        # (#540). The fixture's AMH estimate is on its bound, theta = 1
-        # (the data's Kendall's tau is past the family's 1/3), where no
-        # Wald bound exists: NaN, with a warning, as documented.
-        nan_ok = case.name == "AMHCopula"
-        return (
-            Bound("cb", on=("sf",), nan_ok=nan_ok),
-            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
-            replace(_PARAM_CB, nan_ok=nan_ok),
-        )
+        return _copula_bounds(case)
     return ()
 
 
