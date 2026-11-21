@@ -5,6 +5,39 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Copulas with non-parametric margins have standard errors and
+  bounds.** A copula fitted with both margins ``KaplanMeier`` on complete
+  data with no tied values (the maximum pseudo-likelihood estimate from
+  the ranks) has ``covariance()``, ``standard_errors()`` and
+  ``param_cb()``: the rank-based covariance of Genest, Ghoudi and Rivest
+  (1995), which adds to the copula's score the change in it from each
+  margin's ranks being estimated. They raised a ``ValueError`` before.
+  Every fitted copula model also has the case bootstrap,
+  ``method="bootstrap"`` (with ``n_boot``, 200, and ``random_state``) on
+  ``covariance``, ``standard_errors``, ``param_cb`` and ``cb``: the units
+  are resampled, the margins and the copula fitted again, and the bounds
+  are the refits' percentile intervals. Where the rank-based covariance
+  does not apply (censored, truncated or tied data, a margin that is not
+  ``KaplanMeier``, or one parametric margin with one non-parametric) the
+  default call refuses, says which of these it is and names
+  ``method="bootstrap"``; ``cb`` on the joint ``sf`` or ``ff`` with a
+  non-parametric margin has the bootstrap only. New:
+  ``kendall_tau_cb()`` and ``spearman_rho_cb()``, bounds on the two rank
+  correlations the fitted copula implies (the parameter's bound carried
+  through the measure for a one-parameter family, a delta-method bound
+  on Fisher's z for the Student-t, or the bootstrap's). A model's
+  dictionary says how its covariance was worked out
+  (``"covariance_method"``: ``"information"``, ``"godambe"`` or
+  ``"rank"``). The warning of a Wald bound that does not exist now names
+  the bootstrap, where it said the copula models had no other bound.
+  Over 500 simulated samples of 100 and of 400 rows (Clayton, Gumbel,
+  Frank) the rank-based 90% intervals covered the true parameter 88.6% to
+  92.8% of the time and the 95% intervals 93.2% to 96.2%; the
+  bootstrap's, on 200 censored samples of 100 rows, 92.0% and 96.5% (the
+  parameter) and 85.5% and 96.5% (the joint survival at a point). See
+  "Standard errors and confidence bounds" in
+  :doc:`Multivariate Modelling with SurPyval`.
+
 - **Competing risks: what user tests found missing.**
   ``FineGrayModel.cb(x, Z, on="cif")`` bounds a Fine-Gray model's
   cumulative incidence (or one minus it, ``on="sf"``) by the case
