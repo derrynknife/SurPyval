@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import ndtri
 
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.fitters.closed_form import (
@@ -323,6 +324,25 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
         return norm.ppf(u, mu, sigma)
+
+    def isf(self, s: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \mu - \sigma \Phi^{-1}(s)
+
+        Examples
+        --------
+        >>> from surpyval import Normal
+        >>> Normal.isf([0.5, 1e-300], 5, 2)
+        array([ 5.       , 79.0941926])
+        """
+        # ndtri of the smaller side, whose argument is exact
+        s = np.asarray(s, dtype=float)
+        with np.errstate(divide="ignore"):
+            z = np.where(s <= 0.5, -ndtri(s), ndtri(1.0 - s))
+        return mu + sigma * z
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

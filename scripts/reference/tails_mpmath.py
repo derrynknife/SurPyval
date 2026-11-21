@@ -20,7 +20,10 @@ The grid, per parameter set:
 * for the discrete distributions, integer times found the same way and
   ``k`` of 1e6 and 1e12 ("large k");
 * ``qf`` at 0, 1e-300, 1e-100 ("p tiny"), 1e-30, 1e-8 ("p small"), 0.5,
-  1 - 1e-8, the double just below 1 ("p near 1") and 1.
+  1 - 1e-8, the double just below 1 ("p near 1") and 1;
+* ``isf``, the time at which the survival function is ``s``, at the same
+  points in ``s`` (1e-300 and 1e-100 "s tiny" ...), with ``s`` exact:
+  the upper tail, which ``qf`` cannot reach once ``1 - s`` rounds to 1.
 
 Each time is rounded to a double and the reference is the value *at that
 double*, so the only error left in SurPyval's value is its own. Times
@@ -97,6 +100,20 @@ QF_POINTS = [
     ("p near 1", 1 - 1e-8),
     ("p near 1", 0.9999999999999999),
     ("p edge", 1.0),
+]
+
+# ``isf`` (the time at which sf is s) at these s: the upper tail's own
+# side, which qf cannot reach once 1 - s rounds to 1.
+ISF_POINTS = [
+    ("s edge", 1.0),
+    ("s near 1", 0.9999999999999999),
+    ("s near 1", 1 - 1e-8),
+    ("s centre", 0.5),
+    ("s small", 1e-8),
+    ("s small", 1e-30),
+    ("s tiny", 1e-100),
+    ("s tiny", 1e-300),
+    ("s edge", 0.0),
 ]
 
 LARGE_K = (10**6, 10**12)
@@ -1088,19 +1105,42 @@ def _qf_entries(spec, p):
     return out
 
 
-def _continuous_qf(spec, p, u):
+def _isf_entries(spec, p):
+    """``isf`` at each of ``ISF_POINTS``: the quantile at ``u = 1 - s``,
+    with ``s`` itself given exactly as the complement."""
+    out = []
+    for regime, s in ISF_POINTS:
+        if spec.discrete:
+            entry = None if s == 1.0 else _discrete_qf(spec, p, 1 - s, s)
+        else:
+            entry = _continuous_qf(spec, p, 1 - s, s)
+        if entry is not None:
+            out.append((regime, s) + entry)
+    return out
+
+
+def _continuous_qf(spec, p, u, complement=None):
+    """The quantile at ``u`` and its sensitivity; with ``complement``, at
+    the probability whose complement is exactly ``complement`` (for
+    ``isf``; ``u`` is then not used)."""
     lo, hi = spec.support(*p)
+    if complement is not None:
+        u = {1.0: 0.0, 0.0: 1.0}.get(complement, 0.5)  # (edges only)
     if u == 0.0:
         return lo, mpf(0)
     if u == 1.0:
         return hi, mpf(0)
-    um = mpf(u)
-    uc = 1 - um
+    if complement is None:
+        um = mpf(u)
+        uc = 1 - um
+    else:
+        uc = mpf(complement)
+        um = 1 - uc
     x = spec.quantile(p, um, uc)
     if not _finite(x) or x in (lo, hi):
         return x, mpf(0)
     # sensitivity through the implicit function F(x) = u
-    side = "left" if u <= 0.5 else "right"
+    side = "left" if um <= 0.5 else "right"
     with mp.workdps(mp.dps + spec.extra_dps):
         sf, ff, df = spec.core(x, *p)
     if df == 0 or not _finite(df):
@@ -1116,20 +1156,20 @@ def _continuous_qf(spec, p, u):
     return x, s
 
 
-def _discrete_qf(spec, p, u):
-    if u == 0.0:
+def _discrete_qf(spec, p, u, s=None):
+    if u == 0.0 and s is None:
         # inf{k : F(k) >= 0} is not a support point; conventions differ
         return None
     last = spec.last(*p) if spec.last else None
-    uc = 1 - mpf(u)
-    if u == 1.0:
+    uc = 1 - mpf(u) if s is None else mpf(s)
+    if uc == 0:
         return (mpf(last) if last is not None else INF), mpf(0)
     k = spec.smallest_k(p, lambda k: spec.sf(k, p) <= uc)
     if k is None:
         return None
     # leave out a probability within rounding of a step of the CDF, where
     # the answer depends on the last bit of F
-    margin = mpf(10) ** -9 * min(mpf(u), uc)
+    margin = mpf(10) ** -9 * min(mpf(u) if s is None else 1 - uc, uc)
     if abs(spec.sf(k, p) - uc) < margin:
         return None
     if k > spec.first and abs(spec.sf(k - 1, p) - uc) < margin:
@@ -1168,6 +1208,7 @@ def _case(spec, params, rng, checks):
         vals.append([_enc(base[k]) for k in FUNCTIONS])
         sens.append([_enc_s(s[k]) for k in FUNCTIONS])
     qf = _qf_entries(spec, p)
+    isf = _isf_entries(spec, p)
     return {
         "dist": spec.name,
         "params": [float(v) for v in params],
@@ -1180,6 +1221,12 @@ def _case(spec, params, rng, checks):
             "regime": [e[0] for e in qf],
             "value": [_enc(e[2]) for e in qf],
             "sens": [_enc_s(e[3]) for e in qf],
+        },
+        "isf": {
+            "s": [e[1] for e in isf],
+            "regime": [e[0] for e in isf],
+            "value": [_enc(e[2]) for e in isf],
+            "sens": [_enc_s(e[3]) for e in isf],
         },
     }
 
@@ -1210,6 +1257,7 @@ def build(only=None):
             "targets": [list(t) for t in TARGETS],
             "large_k": list(LARGE_K),
             "qf_points": [list(q) for q in QF_POINTS],
+            "isf_points": [list(q) for q in ISF_POINTS],
             "sensitivity": "sum over the time (or probability) and the "
             "parameters of |d f / d log(theta)|, central differences with "
             "relative step 1e-20; 0 where the value is exact (an edge)",
