@@ -75,7 +75,7 @@ more than the truth, as in practice you do not know how many), trained on
     import torch
     import surpyval as sp
     import surpyval.torch as spt
-    from surpyval.metrics import concordance_estimate, score_predictions
+    from surpyval.metrics import concordance_index, score_predictions
 
     # Simulated data: two failure modes, whose mix depends on the first
     # covariate, and an early mode whose scale depends on the second.
@@ -129,7 +129,7 @@ more than the truth, as in practice you do not know how many), trained on
         S = spt.sf(sp.Weibull, times, params, mixture=logits).numpy()
     scores = score_predictions(x[test], c[test], S, times)
     print(scores.scores.round(3).to_string(index=False))
-    print(concordance_estimate(x[test], c[test], 1 - S[:, 2]))
+    print(concordance_index(x[test], c[test], 1 - S[:, 2]).summary())
 
     # Any row as an ordinary SurPyval model.
     unit = spt.to_surpyval(sp.Weibull, params, row=0, mixture=logits)
@@ -191,7 +191,7 @@ What each step does:
   :func:`~surpyval.metrics.score_predictions` gives the Brier score at
   each time, the integrated Brier score and the time-dependent AUC, each
   with its standard error and interval, and
-  :func:`~surpyval.metrics.concordance_estimate` Harrell's C of the risk
+  :func:`~surpyval.metrics.concordance_index` Harrell's C of the risk
   ``1 - S(t)`` at a horizon, with its interval.
 - :func:`~surpyval.torch.to_surpyval` turns the first held-out unit's
   prediction into a :class:`~surpyval.MixtureModel` (for a single

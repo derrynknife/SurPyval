@@ -776,6 +776,41 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **One concordance, one Brier score, one AUC.** ``concordance_index``
+  now returns a ``ConcordanceResult``, a ``float`` (the index, the same
+  number as before) that carries its standard error ``se``, interval
+  ``ci``, pair counts and influence, and takes ``weighting=``, ``tau=``,
+  ``alpha_ci=`` and ``ci_method=`` (keyword only) for Uno's C to a
+  horizon. A regression model's ``concordance()`` returns the same,
+  with ``alpha_ci=`` and ``ci_method=``. ``brier_score`` and ``auc_td``
+  return a ``TimeScores``, the ``(times, values)`` pair they always
+  returned, and ``integrated_brier_score`` a ``Score``, a ``float``;
+  each carries the standard errors and the ends of the ``1 - alpha_ci``
+  intervals (``se``, ``lower``, ``upper``, from ``alpha_ci=``) that
+  ``score_predictions`` gives, and says why where there are none
+  (censoring weights from ``x_train`` and ``c_train``, or a missing
+  risk score). They work as numbers wherever the old results did
+  (``float``, arithmetic, comparisons, ``numpy``, ``json``, unpacking
+  ``times, bs = ...``); a ``ConcordanceResult`` now prints as its number,
+  and ``summary()`` gives the table its printout used to.
+  ``score_predictions`` stays the call for several metrics and models
+  and their paired comparisons.
+
+- **``DegradationAnalysis`` says which failure times are extrapolated, and
+  can censor units still running.** A unit short of the threshold at its
+  last reading, whose path crosses only after it, still fails at the
+  extrapolated crossing by default (the pseudo-failure-time method), and
+  now the summary counts these ("Extrapolated Units") and the model's
+  ``extrapolated`` marks them. New: ``running="censor"`` right censors such
+  units at their last reading instead, and ``censored_units=[...]``
+  censors the units named there (units known to be running, or that failed
+  another way short of the threshold); a listed unit whose path reaches the
+  threshold within its readings is refused, and so is a fit left with no
+  failure, naming ``running="extrapolate"``. The bootstrap bounds keep the
+  choice; ``to_dict`` saves it. Fits with the defaults are unchanged. See
+  "Units still running at the end of the test" in :doc:`Degradation
+  Modelling with SurPyval`.
+
 - **A non-parametric ``mean()``, ``mean_cb()`` and ``mrl(x)`` warn when
   they stop at the data.** With ``tau`` left out they are the area under
   the estimate up to the largest observed time (the restricted mean, as
@@ -1075,6 +1110,13 @@ v0.29 (unreleased)
   process, the same machine).
 
 **Deprecated.**
+
+- ``surpyval.metrics.concordance_estimate`` (and
+  ``surpyval.concordance_estimate``) is ``concordance_index``, which now
+  gives the standard error and interval (``alpha_ci=`` for ``alpha``),
+  and a regression model's ``concordance_estimate()`` is its
+  ``concordance()``. Each gives the same numbers, with a
+  ``FutureWarning``, and is removed in v0.30.
 
 - The renewal fitters' ``fit_from_parameters`` (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``) is ``from_params``, the
