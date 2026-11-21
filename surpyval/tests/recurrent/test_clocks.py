@@ -20,6 +20,7 @@ import warnings
 
 import numpy as np
 import pytest
+from scipy.optimize import minimize
 
 import surpyval as sp
 from surpyval.recurrent import (
@@ -350,22 +351,46 @@ def test_a_constant_rate_that_changes_is_its_closed_form():
     assert fitted == pytest.approx(closed, rel=1e-9)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="The fit's parameters are 1.0e-5 and 2.0e-5 (relative) from "
-    "the closed form, and its expected failures by the end 1.6e-5 from "
-    "the failures seen, outside the 1e-5 and 1e-6 this test set before "
-    "it was run (the likelihood is as high to 1e-9, checked above): "
-    "the precision of the intensity models' shared likelihood search "
-    "(the growth models' tests compare a fit with its likelihood "
-    "equations at 2e-4). Left failing, for the maintainer to choose: "
-    "this family's 2e-4 here, or a finer search.",
-)
 def test_a_constant_rate_that_changes_fits_to_its_closed_form():
     before, after, rate, later = _two_rates()
     model = ChangePoint(HPP, tau=30.0).fit(X, c=C)
     np.testing.assert_allclose(model.params, [rate, later / rate], rtol=1e-5)
     assert model.cif(X[-1]) == pytest.approx(before + after, rel=1e-6)
+    assert model.maximum == "verified"
+
+
+def test_a_constant_rate_that_changes_on_several_systems_is_exact():
+    """Systems that start late (``tl``) and end before or after ``tau``:
+    the failures over the time observed on each side. No search finds a
+    higher likelihood."""
+    x = [3.0, 8.0, 15.0, 25.0, 40.0, 12.0, 19.0, 33.0, 50.0, 7.0, 22.0]
+    i = [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3]
+    c = [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1]
+    tl = [0.0] * 5 + [10.0] * 4 + [0.0] * 2
+    tau = 20.0
+    # Failures 3 + 2 + 1 before tau, over 20 + 10 + 20 observed there;
+    # 1 + 1 + 0 after, over 20 + 30 + 2
+    rate = 6 / 50.0
+    later = 2 / 52.0
+    model = ChangePoint(HPP, tau=tau).fit(x, i=i, c=c, tl=tl)
+    np.testing.assert_allclose(model.params, [rate, later / rate], rtol=1e-13)
+    searched = minimize(
+        lambda u: model._neg_ll(np.exp(u)),
+        np.log(model.params) + 0.1,
+        method="Nelder-Mead",
+        options={"xatol": 1e-10, "fatol": 1e-14},
+    )
+    # To rounding: the two agree to the last bits
+    assert model._neg_ll(model.params) <= searched.fun + 1e-12
+
+
+def test_a_constant_rate_that_changes_from_counts_is_searched():
+    """Counts in periods have no closed form split at ``tau`` (a period
+    may straddle it): searched, to the counts' rates where none does."""
+    x = [[0.0, 10.0], [10.0, 20.0], [20.0, 40.0], [40.0, 60.0]]
+    model = ChangePoint(HPP, tau=20.0).fit(x, c=[2] * 4, n=[4, 6, 3, 1])
+    np.testing.assert_allclose(model.params, [0.5, 0.2], rtol=1e-3)
+    assert "closed-form" not in str(model.res.message)
 
 
 # The NTDS failures (the guide's data): steady to day 105, then few
