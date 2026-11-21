@@ -78,6 +78,168 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         return regression_neg_ll(self, data, *params)
 
 
+    def fit_bayes(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        *,
+        priors: Any = None,
+        fixed: dict[str, float] | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        chains: int = 4,
+        draws: int = 1000,
+        warmup: int = 1000,
+        random_state: Any = None,
+        n_jobs: int | None = None,
+        **options: Any,
+    ) -> Any:
+        """
+        Fit the regression by Bayes' rule: priors on the coefficients and
+        on the baseline's parameters times the likelihood ``fit`` uses,
+        sampled by SurPyval's No-U-Turn sampler. For the proportional
+        hazards, accelerated failure time and accelerated life fitters.
+
+        Parameters
+        ----------
+        x, Z, c, n, t, tl, tr
+            The data, as for ``fit``: any censoring and truncation, and
+            one row of covariates per row of ``x``.
+        priors : dict, optional
+            A prior for each parameter it names: a coefficient by its
+            name (``coef_0``, or the covariate's column for
+            ``fit_bayes_from_df``), a baseline parameter by its own
+            (``beta``), or an accelerated life model's parameter
+            (``a``). Each is what ``Weibull.fit_bayes`` takes for a
+            parameter: ``surpyval.prior.around(value, between=(low,
+            high))``, ``surpyval.prior.between(low, high)``, a SurPyval
+            distribution such as ``surpyval.Normal.from_params([0.5,
+            0.2])``, or ``surpyval.prior.fixed(value)``. A coefficient of
+            ``exp(beta'Z)`` with no prior gets ``Normal(0, 2.5 / sd)``,
+            ``sd`` its covariate's standard deviation in the data; any
+            other parameter with none is flat on its unconstrained
+            scale, allowed where the data determine it. The defaults
+            used are in the result's ``default_priors`` and summary.
+        fixed : dict, optional
+            Parameters held at a value, as for ``fit``.
+        chains, draws, warmup : int, optional
+            The sampler's chains (4), and each chain's kept draws (1000)
+            and warm-up iterations (1000).
+        random_state : int or numpy.random.Generator, optional
+            The sampler's seed, by the one seed rule.
+        n_jobs : int, optional
+            Chains run at once (one by default); the draws do not depend
+            on it.
+
+        Returns
+        -------
+        surpyval.bayes.BayesianRegression
+            ``param_cri(name)``, ``sf``/``ff``/``qf`` and ``cri`` at
+            covariates ``Z``, ``compare()``, and the sampler's
+            convergence checks in ``diagnostics`` (a failed check warns
+            and ``ok`` is False).
+
+        Not taken, each refused with what to use: weights ``w``, a
+        penalty, time-varying covariates, and the other regression
+        families.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> rng = np.random.default_rng(1)
+        >>> Z = rng.normal(size=(40, 1))
+        >>> x = sp.Weibull.random(40, 50.0, 2.0, random_state=2)
+        >>> x = x * np.exp(-0.25 * Z[:, 0])
+        >>> model = sp.WeibullPH.fit_bayes(
+        ...     x, Z, priors={"coef_0": sp.Normal.from_params([0.5, 0.2])},
+        ...     chains=2, draws=300, warmup=300, random_state=1)
+        >>> type(model).__name__
+        'BayesianRegression'
+        >>> model.param_cri("coef_0").shape
+        (2,)
+        """
+        from surpyval.bayes.regression import fit as _fit
+
+        return _fit(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            t,
+            priors=priors,
+            fixed=fixed,
+            tl=tl,
+            tr=tr,
+            chains=chains,
+            draws=draws,
+            warmup=warmup,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            **options,
+        )
+
+    def fit_bayes_from_df(
+        self,
+        df: Any,
+        x_col: str | None = None,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        *,
+        priors: Any = None,
+        chains: int = 4,
+        draws: int = 1000,
+        warmup: int = 1000,
+        random_state: Any = None,
+        n_jobs: int | None = None,
+        **columns: Any,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on the columns of a DataFrame, named as
+        ``fit_from_df`` names them (``tl_col``, ``tr_col``, ``xl_col``,
+        ``xr_col``, ``formula`` and ``fixed`` too). A coefficient is then
+        named by its covariate's column, in ``priors`` and in the result,
+        whose functions take a DataFrame with those columns.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> rng = np.random.default_rng(1)
+        >>> df = pd.DataFrame({"load": rng.normal(size=40)})
+        >>> df["hours"] = sp.Weibull.random(40, 50.0, 2.0, random_state=2)
+        >>> model = sp.WeibullPH.fit_bayes_from_df(
+        ...     df, x_col="hours", Z_cols=["load"],
+        ...     priors={"load": sp.Normal.from_params([0.0, 0.5])},
+        ...     chains=2, draws=200, warmup=200, random_state=1)
+        >>> model.parameter_names
+        ['alpha', 'beta', 'load']
+        """
+        from surpyval.bayes.regression import fit_from_df as _fit_from_df
+
+        return _fit_from_df(
+            self,
+            df,
+            priors=priors,
+            chains=chains,
+            draws=draws,
+            warmup=warmup,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            x_col=x_col,
+            Z_cols=Z_cols,
+            c_col=c_col,
+            n_col=n_col,
+            **columns,
+        )
+
+
 def _exp_link(pmap: dict[str, int]) -> LogLinearPhi:
     """The covariate link ``exp(beta'Z)`` with the parameter map
     ``pmap``."""
