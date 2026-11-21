@@ -153,9 +153,8 @@ class MultivariateCopulaModel(CopulaModel):
         >>> model = Gaussian.from_params([0.5, 0.2, 0.4], margins)
         >>> float(model.conditional_cdf([8.0, 12.0, 12.0], of=0).round(4))
         0.3112
-        >>> float(
-        ...     model.conditional_cdf([8.0, 12.0, 12.0], of=0, given=[2]).round(4)
-        ... )
+        >>> x = [8.0, 12.0, 12.0]
+        >>> float(model.conditional_cdf(x, of=0, given=[2]).round(4))
         0.4145
         """
         D = self.n_axes
