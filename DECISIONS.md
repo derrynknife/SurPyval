@@ -24,6 +24,12 @@ Design decisions made while working on the open issues, with the reason for each
 | The tails reference (`tests/reference/test_tails.py`, `scripts/reference/tails_mpmath.py`) gains `isf` at `s` = 1, 1 - 1.1e-16, 1 - 1e-8, 0.5, 1e-8, 1e-30, 1e-100, 1e-300 and 0, and its tolerance goes from 1e-8 to 1e-12 (or 64 ulps of the inputs' sensitivity, as before). The 90 groups that do not meet it (Poisson, Binomial, NegativeBinomial, BetaGeometric and DiscreteWeibull at large parameters; the gamma density and hazard at shape 1e3, 5.7e-12 where the sensitivity floor is 4.1e-12) are strict xfails naming SurPyval#1300. Every `isf` group passes at 1e-13. | maintainer (21 Nov: near machine precision for every function far into both tails) | Tightening is not loosening: the old 1e-8 hid errors of 1e-9 to 1e-12. | done; open: #1300 |
 | The log of a gamma or beta probability within 0.1 of 1 is `log1p` of minus its complement (`_LOG1P_FROM`, was 1e-3), and the complement is computed where the probability is above 0.89 (was 0.99). | proposed | `log` of a probability near 1 loses `eps / complement` of its value: 2e-13 at 1e-3, at most 10 eps from 0.1. The extra complement costs one incomplete function only between 0.89 and 0.99. | done |
 
+### The renewal fitters' `from_params` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA` and `ARI` build a model from parameters with `from_params`, the same signature as before; `fit_from_parameters` reads as `from_params` with a `FutureWarning` (a `RenamedAttribute`, which now takes a warning category) until v0.30. The renewal cases of the conformance registry gain a `from_params` path, so `test_paths` checks it against `fit`. | principle 14 | Every other family names this `from_params`; a `FutureWarning`, as every part of the pre-1.0 simplification uses, so users see it outside `__main__`. RePyability calls neither name (checked on its `dev`). | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
