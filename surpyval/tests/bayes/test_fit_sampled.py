@@ -300,3 +300,21 @@ def test_refusals_say_what_to_do():
 def test_the_grid_is_still_the_default_up_to_three_parameters():
     x, c = censored_weibull()
     assert sp.Weibull.fit_bayes(x, c, priors=BETA).method == "grid"
+
+
+def test_a_change_of_time_unit_rescales_the_posterior():
+    """Times in another unit give the same posterior, rescaled: within
+    Monte Carlo error, not to the last digit (the conformance suite's
+    ``units`` property is excluded for the sampler, as rounding in the
+    rescaled log-posterior changes the trajectories). Each parameter's
+    posterior mean, in the first unit, within 4 standard errors of the
+    difference of two independent estimates."""
+    x, c = censored_weibull()
+    kw = dict(priors=BETA, method="nuts", random_state=459016)
+    hours = sp.Weibull.fit_bayes(x, c, **kw)
+    minutes = sp.Weibull.fit_bayes(60.0 * x, c, **kw)
+    assert hours.ok and minutes.ok
+    for name, k in (("alpha", 60.0), ("beta", 1.0)):
+        a, b = chains_of(hours, name), chains_of(minutes, name) / k
+        se = math.sqrt(a.var() / cv.ess_bulk(a) + b.var() / cv.ess_bulk(b))
+        assert abs(a.mean() - b.mean()) <= 4 * se, (name, a.mean(), b.mean())

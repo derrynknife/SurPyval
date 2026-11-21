@@ -2498,6 +2498,16 @@ _BAYES_SAMPLER = dict(
 )
 
 
+#: Why a sampled fit's ``units`` property is not checked here.
+_SAMPLED_UNITS = (
+    "a sampler's draws rescale with the unit in distribution, not to the "
+    "last digit: rounding in the rescaled log-posterior changes the "
+    "trajectories (tests/bayes/test_fit_sampled.py::"
+    "test_a_change_of_time_unit_rescales_the_posterior checks it within "
+    "Monte Carlo error)"
+)
+
+
 def _bayes_exponential(d):
     """The closed form: a Gamma prior on the rate whose second parameter
     is a time (``prior_time``, rescaled with the data)."""
@@ -2598,7 +2608,10 @@ def _bayes():
                 **_BAYES_SAMPLER,
             ),
             rtol=1e-6,
-            **common,
+            **{
+                **common,
+                "exclude": {**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
+            },
         ),
         Case(
             name="Exponential[bayes]",
