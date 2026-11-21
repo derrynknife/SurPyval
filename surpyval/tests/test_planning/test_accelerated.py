@@ -420,3 +420,74 @@ def test_the_plan_prints_the_test():
 def test_plans_are_checked(call, match):
     with pytest.raises(ValueError, match=match):
         call()
+
+
+# --- What the acceleration saves (user-test finding) ----------------------
+
+
+def test_the_acceleration_factors_are_the_life_ratios():
+    plan = accelerated_test_precision(
+        **VOLTAGE,
+        use_stress=10.0,
+        stresses=(30.0, 45.0, 60.0),
+        units=(20, 10, 10),
+        censor_time=1000.0,
+    )
+    # Life 1e6 V^-2: the factor at V against 10 is (V / 10)^2.
+    np.testing.assert_allclose(
+        plan.acceleration_factors, [9.0, 20.25, 36.0], rtol=1e-12
+    )
+    thermal = accelerated_test_plan(
+        **THERMAL,
+        use_stress=323.15,
+        high_stress=423.15,
+        n=30,
+        censor_time=500.0,
+    )
+    a = THERMAL["life_params"]["a"]
+    expected = [np.exp(a * (1.0 / 323.15 - 1.0 / s)) for s in thermal.stresses]
+    np.testing.assert_allclose(
+        thermal.acceleration_factors, expected, rtol=1e-12
+    )
+
+
+@pytest.mark.parametrize("setup", ["voltage", "thermal"])
+def test_the_use_stress_test_reaches_the_same_precision(setup):
+    from surpyval.test_planning import life_test_length, life_test_precision
+
+    if setup == "voltage":
+        plan = accelerated_test_plan(
+            **VOLTAGE,
+            use_stress=10.0,
+            high_stress=60.0,
+            n=40,
+            censor_time=1000.0,
+        )
+        params = (1e6 * 10.0**-2.0, 2.0)
+        distribution = surpyval.Weibull
+    else:
+        plan = accelerated_test_plan(
+            **THERMAL,
+            use_stress=323.15,
+            high_stress=423.15,
+            n=30,
+            censor_time=500.0,
+        )
+        b, a = THERMAL["life_params"]["b"], THERMAL["life_params"]["a"]
+        params = (np.log(b) + a / 323.15, 0.6)
+        distribution = surpyval.LogNormal
+    n = sum(plan.units)
+    at_use = life_test_precision(
+        distribution,
+        params,
+        n,
+        censor_time=plan.use_test_time,
+        p=plan.p,
+    )
+    assert at_use.precision == pytest.approx(plan.precision, rel=1e-6)
+    assert plan.use_test_time > plan.censor_time
+    if setup == "voltage":  # the 2483 hours the test planner found by hand
+        assert round(plan.use_test_time) == 2483
+        direct = life_test_length(distribution, params, n, plan.precision)
+        assert direct.censor_time == pytest.approx(plan.use_test_time, 1e-9)
+    assert "At use stress" in repr(plan)

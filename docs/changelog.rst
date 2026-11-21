@@ -5,6 +5,23 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Test planning: what user tests found missing.**
+  ``demonstration_test_time(reliability, n, failures, mission_time=,
+  shape=)`` gives each unit's extended (Weibayes) test length in time,
+  not only in missions: ten units, shape 2, to show 90% over 1000 hours
+  at 90% confidence run 1478 hours each. ``demonstration_plan`` takes
+  ``mission_time`` to report the test length it finds in time
+  (``unit_test_time``), and, given ``n``, its refusal now says the test
+  length was searched, the lowest producer's risk reached, and how many
+  units are enough. ``mean_ratio_design`` plans a comparison of two mean
+  lives (exponential, or Weibull with a known common shape) by the exact
+  F test, solving for the power, the events, the units or the detectable
+  ratio; ``logrank_design``'s documentation gives the mean-ratio to
+  hazard-ratio mapping. An ``AcceleratedTestPlan`` reports the
+  acceleration factor at each stress and ``use_test_time``, how long the
+  same units would have to run at the use stress for the same precision.
+  The sequential tests print their reject line beside the accept line.
+
 - **Test planning: one function per comparison design.**
   ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
   ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,

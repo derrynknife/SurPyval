@@ -5,7 +5,8 @@ Test planning: designing reliability tests before they are run.
   design meets a reliability or MTBF target. Attribute (pass/fail) tests:
   :func:`demonstration_sample_size`, :func:`demonstrated_reliability`
   (the Clopper-Pearson bound; with no failures,
-  :func:`surpyval.success_run`), :func:`demonstration_test_multiple` and
+  :func:`surpyval.success_run`), :func:`demonstration_test_multiple`
+  (in missions), :func:`demonstration_test_time` (in time) and
   :func:`demonstration_pass_probability`, with extended (Weibayes) tests
   that trade units for test time when the Weibull shape is known.
   Constant-failure-rate (chi-squared) tests: :func:`mtbf_test_time`,
@@ -34,6 +35,8 @@ Test planning: designing reliability tests before they are run.
   (:func:`noninferiority_design`, :func:`equivalence_design`); a
   difference in restricted mean survival time (:func:`rmst_design`); a
   log-rank test when some units are cured (:func:`cure_logrank_design`);
+  a ratio of two mean lives, exponential or Weibull with a known common
+  shape, by the exact F test (:func:`mean_ratio_design`);
   and a change in a failure rate at an intervention, by the exact test
   of :func:`surpyval.recurrent.intervention_test`
   (:func:`rate_ratio_design`).
@@ -76,6 +79,7 @@ from surpyval.test_planning.designs import (
     cure_logrank_design,
     equivalence_design,
     logrank_design,
+    mean_ratio_design,
     noninferiority_design,
     rate_ratio_design,
     rmst_design,
@@ -88,6 +92,7 @@ from surpyval.test_planning.demonstration import (
     demonstration_plan,
     demonstration_sample_size,
     demonstration_test_multiple,
+    demonstration_test_time,
     mtbf_demonstration_plan,
     mtbf_pass_probability,
     mtbf_test_time,
@@ -122,6 +127,7 @@ __all__ = [
     "demonstration_plan",
     "demonstration_sample_size",
     "demonstration_test_multiple",
+    "demonstration_test_time",
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
@@ -146,6 +152,7 @@ __all__ = [
     "cure_logrank_design",
     "equivalence_design",
     "logrank_design",
+    "mean_ratio_design",
     "noninferiority_design",
     "rate_ratio_design",
     "rmst_design",
