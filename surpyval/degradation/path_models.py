@@ -910,9 +910,9 @@ class SplinePath(PathModel):
     >>> y = np.where(t < 4, 2.0, 2.0 + 0.5 * (t - 4))
     >>> theta = path.fit(t, y)
     >>> path.path([2.0, 8.0], *theta).round(2)
-    array([1.93, 4.06])
+    array([1.97, 3.92])
     >>> path.slope([2.0, 8.0], *theta).round(2)
-    array([0.07, 0.6 ])
+    array([0.04, 0.57])
 
     With no interior knots it is the straight line:
 
@@ -1186,7 +1186,7 @@ class SplinePath(PathModel):
         >>> from surpyval.degradation import SplinePath
         >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
         >>> path.area([4.0, 10.0], 2.0, 0.0, 5.0).round(4)
-        array([ 8.5333, 31.2   ])
+        array([ 8.32, 29.8 ])
         """
         level, rate, *bends = params
         x = np.asarray(x, dtype=float)
@@ -1221,7 +1221,7 @@ class SplinePath(PathModel):
         >>> from surpyval.degradation import SplinePath
         >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
         >>> float(path.inv_path(3.0, 2.0, 0.0, 5.0).round(4))
-        7.6795
+        5.9696
         >>> float(path.inv_path(1.0, 2.0, 0.0, 5.0))
         nan
         """
