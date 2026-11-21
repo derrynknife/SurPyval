@@ -107,9 +107,7 @@ def summarise(results):
         ),
         bend_spread_at_zero=int(sum(spread)),
     )
-    common_truth = {
-        k: v for k, v in TRUTH.items() if k not in ("sd_s1",)
-    }
+    common_truth = {k: v for k, v in TRUTH.items() if k not in ("sd_s1",)}
     for name, truth in (("varying", TRUTH), ("common", common_truth)):
         fits = [r[name] for r in good]
         out[name] = dict(

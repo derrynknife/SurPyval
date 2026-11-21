@@ -839,7 +839,9 @@ the readings' noise at any reading age -- one warning names it and says
 to leave it out of ``varying``: the data show no difference between items
 in it, and the common-bend model is the same fit with one parameter
 fewer. (With the spread held at 0 the likelihood is the common-bend
-model's.)
+model's.) On such data the larger fit can stop short of the common-bend
+fit's likelihood, and says so (its maximum is unverified, #1334): take
+the common-bend fit.
 
 How often a bend's spread can be told at a fleet's size is the question
 of a simulation study (``scripts/studies/joint_recovery/shape_study.py``:
