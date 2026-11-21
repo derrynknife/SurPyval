@@ -798,6 +798,39 @@ bends ``s_k`` are common to all items: for a spline, ``varying``
 defaults to ``("level", "rate")``, where every other path's default is
 all of its parameters.
 
+Items that bend differently: varying bends
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Where the items turn at different paces (a sharper knee on some pumps
+than on others), the bends can vary between items too: name them in
+``varying``, ``JointPH(Weibull, SplinePath.natural(df=3),
+varying=("level", "rate", "s1", "s2"))``. The default structure is then a
+block of ``level`` and ``rate``, correlated with each other, and each
+bend on its own: a bend's spread is told from the readings after the
+knot where its piece starts, and an item's correlations with it would
+need many more items to tell apart (``random_effects="full"`` asks for
+them). Each varying parameter adds a dimension to every item's integral
+(``integration="pruned"`` is the default from four), so such a fit takes
+minutes. Compare it with the common-bend fit of the same data by
+``aic()``.
+
+Two checks keep the fit to what the readings can tell. A varying bend is
+refused where the items' median number of readings after the knot its
+piece starts at is below the number of varying parameters (the message
+gives the counts, and says to leave the bend out of ``varying`` or to use
+knots the readings reach well past). And where a bend's estimated spread
+is at its lower bound, 0 -- it moves no item's marker by as much as 1% of
+the readings' noise at any reading age -- one warning names it and says
+to leave it out of ``varying``: the data show no difference between items
+in it, and the common-bend model is the same fit with one parameter
+fewer. (With the spread held at 0 the likelihood is the common-bend
+model's.)
+
+How often a bend's spread can be told at a fleet's size is the question
+of a simulation study (``scripts/studies/joint_recovery/shape_study.py``:
+200 fleets of 150 pumps read monthly, the bend's sd 1.0 about 3.0, fitted
+both ways), written and not yet run; its results will be quoted here.
+
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

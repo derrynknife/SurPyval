@@ -373,6 +373,18 @@ v0.29 (unreleased)
   spline. See "A reading that bends" in :doc:`Joint Models` and "A path
   with no formula" in :doc:`Degradation Modelling with SurPyval`.
 
+- **Joint models: spline bends that vary between items.** A spline
+  path's bends may be named in ``varying``
+  (``JointPH(Weibull, SplinePath.natural(df=3), varying=("level", "rate",
+  "s1", "s2"))``), so that one item's knee can be sharper or earlier than
+  another's. The default ``random_effects`` is then a block of ``level``
+  and ``rate`` and each bend on its own. A varying bend is refused where
+  the items' median number of readings after its knot is below the
+  number of varying parameters, with the counts, and a bend whose
+  estimated spread is at 0 is warned of, naming it and saying to leave it
+  out of ``varying``. See "Items that bend differently" in
+  :doc:`Joint Models`.
+
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
   ``max(t - 200, 0)``: a reading acts that long later. Every link is

@@ -420,3 +420,16 @@ def test_a_bend_spread_at_its_lower_bound_is_warned_of(bend_varying):
     assert len(flat) == 1, (model.params[k], caught)
     assert "'s1'" in flat[0]
     assert "Leave it out of varying" in flat[0]
+
+
+def test_the_two_spline_fits_compare_by_aic(placed, bend_varying):
+    """The fit with the bend varying has one more parameter (its sd) than
+    the common-bend fit of the same data, and ranks beside it by
+    ``aic()``; it saves its structure."""
+    model, _ = bend_varying
+    assert model.k == placed.k + 1
+    assert np.isfinite(model.aic()) and np.isfinite(placed.aic())
+    assert model.neg_ll() <= placed.neg_ll() + 1e-6
+    restored = surpyval.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert restored.random_effects_structure == (("level", "rate"), ("s1",))
+    assert np.array_equal(restored.params, model.params)

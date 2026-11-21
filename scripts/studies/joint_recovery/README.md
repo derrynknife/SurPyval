@@ -9,6 +9,7 @@
   - It resumes a killed run and uses at most 4 processes.
   - `GH=<points>` refits with that many quadrature points per dimension; `N=<pumps>` sets the fleet size. These are the diagnostic runs, tagged `_gh11` and `_n1200`.
 - `knee_study.py [reps]`: the spline path's study. Fleets whose marker stays flat for a year and then climbs (a knee), each fitted with `JointPH(Weibull, SplinePath(knots=[365], boundary=(0, 730)), varying=("level", "rate"))` and with `LinearPath` on the same data; bias and coverage of each parameter, and the error of each model's dynamic predictions (the marker at 450 days and survival to 540) for pumps still running at 450 days. The design and seeds (1000 to 1199) were fixed before the first run. It resumes a killed run; `PROCS=<n>` sets the processes (default 2). Writes `results_knee.jsonl` and `summary_knee.json`.
+- `shape_study.py [reps]`: a spline bend that varies between pumps (sd 1.0 about 3.0; 200 fleets of 150 pumps, seeds 2000 to 2199), each fleet fitted with the bend common and with it varying: bias and coverage, how often `aic()` prefers the varying bend, and how often its spread is warned of as 0. Design fixed before any run; to run at consolidation. Writes `results_shape.jsonl` and `summary_shape.json`.
 - `table.py`: prints the per-parameter table (`table.txt`) from the summaries.
 - `beta_bias.py`: the small-sample bias of a plain Weibull shape estimate at the study's size, for comparison.
 

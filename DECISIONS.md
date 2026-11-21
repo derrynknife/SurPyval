@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Spline paths: bends that vary between items (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| With a spline bend in `varying`, `random_effects` defaults to a block of `level` and `rate` and each bend on its own (`SplinePath.default_random_effects`); the fitters' default became `None`, "the path's default", which is `"full"` for every other path. | plan / principle 24 | A bend's spread is told only from readings past its knot; its correlations with the level and rate would need many more items. Asked for by `random_effects="full"`. | done |
+| A varying bend is refused where the items' median number of readings after the knot its piece starts at (`lo` for `s1`) is below the number of varying parameters. | proposed | The plan wanted the rule fixed from the study; the study could not be run on the build machine (overloaded; owner's instruction of 21 Nov to run studies at consolidation), so the rule is the counting one the part-1 refusal uses, applied to the readings that see the bend. Revisit with the study's results. | open |
+| A varying bend whose estimated sd moves no item's marker by 1% of the noise sd at any reading age is warned of as at its lower bound, 0, naming it and saying to leave it out of `varying`. | proposed | A variance's lower bound is reached as a vanishing sd, not a hard edge; 1% of the noise is invisible in the readings. Only the spline's bends are checked, so no other model's warnings change. | done |
+| Starts: no extra shrinkage of the per-item fits. | proposed | The start of the items' spread already subtracts each item's sampling variance from the spread of their own fits (`marker_start`), which is the shrinkage the plan asked for; a 3-dimensional fit of 150 items from it reached a verified maximum. | done |
+| The study (`scripts/studies/joint_recovery/shape_study.py`: 200 fleets, seeds 2000 to 2199, 150 pumps, bend sd 1.0, fitted with the bend common and varying) was written with its design fixed and is to run at consolidation. | principle 17 | — | open |
+
 ### Spline paths: `SplinePath` (21 Nov 2026)
 
 | Decision | By | Reason | Status |
