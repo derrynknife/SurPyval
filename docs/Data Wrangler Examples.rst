@@ -77,6 +77,31 @@ Again, this can be extended to left censored data as well:
 
     model = surv.Weibull.fit(data)
 
+The notation in :mod:`surpyval.utils.notation` reads that text directly, and gives a way of writing small datasets in code the way you would describe them. ``Observations.parse`` takes entries separated by commas, semicolons or new lines: ``10`` failed at 10, ``20+`` still running at 20, ``<3`` or ``3-`` failed before 3, ``[5, 10]`` failed between 5 and 10, and ``3*10`` three units alike:
+
+.. jupyter-execute::
+
+    from surpyval.utils.notation import Observations
+
+    data = Observations.parse("1, 2, 3+, 5, 6, 8, 10, 3+, 5+, 15-, 16-, 17-")
+    model = surv.Weibull.fit(data.surpyval_data())
+    model
+
+In code, each observation is one object: ``O`` (failed at), ``RC`` (still running at), ``LC`` (failed before) and ``IC`` (failed between). ``n * obs`` is ``n`` units alike, and ``obs / Truncation(tl, tr)`` says the unit was only observed within ``(tl, tr]`` (late entry at ``tl``); dividing a whole ``Observations`` by a ``Truncation`` gives every observation without a window of its own that window. An observation outside its window is refused, and the printout reads as words:
+
+.. jupyter-execute::
+
+    from surpyval.utils.notation import IC, LC, RC, O, Truncation
+
+    data = Observations([
+        3 * O(10), RC(20), LC(3),
+        IC(5, 10) / Truncation(0, 40),
+    ])
+    print(data)
+    print(data.xcnt())
+
+``xcnt()`` gives the arrays (one row per observation, ``tl``/``tr`` of ``-inf``/``inf`` where there is no truncation) and ``surpyval_data()`` the :class:`~surpyval.SurpyvalData` every fitter takes.
+
 Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
 
 .. jupyter-execute::
