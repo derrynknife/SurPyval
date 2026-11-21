@@ -5,6 +5,14 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **A plot of the data itself.** ``SurpyvalData.plot_lifetimes(ax=None,
+  sort="end", max_rows=100)`` (and ``surpyval.plotting.plot_lifetimes``)
+  draws one line for each unit, the swimmer plot lifelines calls
+  ``plot_lifetimes``: late entry where the line starts, a filled mark for
+  a failure, an open triangle for a censored end, a bracket over an
+  interval, finite right truncation bounds, counts labelled, an item's
+  rows on one line, event types in colour with a legend, and a note of
+  how many lines ``max_rows`` left out. It returns the Axes.
 - **A notation for writing survival data as you'd describe it.**
   ``surpyval.utils.notation``: ``O(10)`` failed at 10, ``RC(20)`` still
   running at 20, ``LC(3)`` failed before 3, ``IC(5, 10)`` failed between 5

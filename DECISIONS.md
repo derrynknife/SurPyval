@@ -13,6 +13,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-21
+
+### Plotting the data: `plot_lifetimes` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SurpyvalData.plot_lifetimes(ax=None, sort="end", max_rows=100)` delegates to `surpyval.plotting.plot_lifetimes`, in the plot theme, returning the Axes and never showing. One line per unit (per row without item ids); an item's rows share a line. Lines start at left truncation, or at the window start (0, or the smallest time if negative). | proposed | The plotting module owns the theme; the method is the discoverable entry. | done |
+| `max_rows` keeps the first lines in the data's order (then sorts them), and the plot says how many were left out; `None` draws all. | proposed | Sorting first and cutting would drop only the longest lives, a biased picture. | done |
+
+---
+
 ## 2026-11-20
 
 ### Joint models: which varying path parameters are correlated (20 Nov 2026)
