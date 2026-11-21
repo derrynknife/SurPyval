@@ -465,16 +465,26 @@ any quantile above 0.44) is undefined, and surpyval says so rather than guessing
 .. jupyter-execute::
 
     print('median:', model.median)
-    print('mean up to 10:', round(model.mean(), 4))
+    print('mean up to 10:', round(model.mean(tau=10), 4))
 
-The ``mean()`` is the area under the curve up to the largest observation, i.e. the restricted
-mean over the first 10 units (see `Restricted mean survival time`_).
+The mean is the area under the curve, and here it can only be taken up to the largest observation:
+``mean(tau=10)`` is the restricted mean over the first 10 units (see `Restricted mean survival
+time`_), not the mean life, which these data do not determine (it could be anything past it). With
+``tau`` left out, ``mean()`` gives the same area and warns, naming the survival estimate at the
+largest observation (0.5556 here, the probability the area leaves out); so do ``mean_cb()`` and
+``mrl(x)``. Give ``tau`` to ask for the restricted mean, or fit a parametric model for the mean
+life. Where no unit is left at risk after the last time, the area is the mean of the estimate and
+nothing warns.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert round(model.R[-1], 4) == 0.5556, model.R
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        assert model.mean() == model.mean(tau=10)
+    assert "0.5556" in str(_caught[0].message), _caught
     assert np.isnan(model.median)
     assert np.isnan(model.qf(0.45)) and not np.isnan(model.qf(0.44))
 

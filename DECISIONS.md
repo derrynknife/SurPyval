@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### A non-parametric mean that stops at the data says so (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A non-parametric `mean()` with no `tau` stays the area under the estimate to the largest observed time (the restricted mean, as R's `survfit` prints it), and warns where the estimate there is above zero: the warning gives that time, the survival there and the percentage of probability past it, and names `tau` / `rmst(tau)` and a parametric fit. `mean_cb()` and `mrl(x)` with no `tau` warn alike (their value is that area too). With `tau` given, and from `rmst`, nothing warns: the restricted mean was asked for by name. No warning where no unit is at risk after the last time, judged by the at-risk and event counts where the model has them (by the estimate reaching zero otherwise): a Nelson-Aalen or Fleming-Harrington curve never reaches zero, even when every unit has failed. | proposed (principle 22; the plan's "keep a deliberate convention, but warn") | The convention was deliberate and documented (the `mean` docstring and the guide call it the RMST, defaulting to the largest observation), and principle 24 keeps a default's results from moving; refusing would break every call that relies on it. A warning is enough for the reader who took the number for the mean life. One `UserWarning`, from the one helper, for every estimator (all share `NonParametric.mean`); a separate warning class was not added. | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |

@@ -744,6 +744,19 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **A non-parametric ``mean()``, ``mean_cb()`` and ``mrl(x)`` warn when
+  they stop at the data.** With ``tau`` left out they are the area under
+  the estimate up to the largest observed time (the restricted mean, as
+  before). Where units are still at risk past that time (the estimate
+  above zero there), the mean life is not determined by the data, and they
+  now say so: the warning gives the
+  largest time, the survival estimate there and the share of probability
+  past it, and names ``tau`` (``rmst(tau)`` for the bounds) and a
+  parametric fit. On ten units with seven running at 1500, ``mean()`` is
+  1300 with the estimate at 0.7. The values are unchanged; ``mean(tau=)``
+  and ``rmst`` do not warn. Every estimator (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull) behaves alike.
+
 - **SurpyvalData is the form for several rows per unit; EventHistoryData is
   being phased out.** New code builds a ``SurpyvalData`` with ``i`` (and
   ``a``), which every recurrent fitter takes, and nothing new depends on
