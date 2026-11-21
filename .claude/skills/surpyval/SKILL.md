@@ -561,6 +561,16 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   `data.rescale_time(24, unit="days")` (as the model method), and
   `data.resample(random_state=1)` (bootstrap of units: counts `n` expand, an
   item's rows move together; drawn units counted by their draws).
+- `surpyval.utils.notation` — small datasets written as described:
+  `Observations.parse("3*10, 20+, <3, [5, 10], 12 | (2, 50]")` (failed at, still
+  running at, failed before, failed between, a count, a window `(tl, tr]`), or
+  `Observations([3 * O(10), RC(20), IC(5, 10) / Truncation(0, 40)])`. Any fitter
+  that takes a `SurpyvalData` takes it as it is: `sp.Weibull.fit(obs)`.
+  `obs.text()` writes text `parse` reads back; `SurpyvalData.from_notation(text
+  or obs)` and `data.to_notation()` convert (times, censoring, counts and
+  truncation only; data with more is refused, use `to_observations()`). Counts
+  are whole numbers, times finite, `IC(5, inf)` is `RC(5)`, and windows follow
+  SurpyvalData's rules.
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
 `sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never

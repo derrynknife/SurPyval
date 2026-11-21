@@ -15,6 +15,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### The notation and SurpyvalData agree, and convert both ways (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The notation keeps SurpyvalData's rules, checked when an observation is built, with SurpyvalData's reasons: a count is a whole number, 1 or more (a fraction points to `w`); a time is finite; a point lies in `(tl, tr]` and a suspension strictly before `tr`; an interval lies inside its window (`tl <= lower`, `upper <= tr`), not merely overlapping it. | maintainer (plan) / principle 2 | Two data rules for one data model would let the notation build what `SurpyvalData` then refuses, far from where it was typed. | done |
+| `IC(a, inf)` is `RC(a)` and `IC(-inf, b)` is `LC(b)` (the constructor returns the one-sided observation); `IC(-inf, inf)` is refused. | proposed | SurpyvalData's convention (a `[v, inf]` row is right censored), so `xcnt()`, `surpyval_data()`, `==` and `text()` all agree; refusing would make the notation stricter than the data it feeds. | done |
+| Text grammar: `inf`/`-inf` are numbers, and a window follows an entry after a bar, `12 \| (2, 50]`. `text()` writes one canonical form (`3*10`, `20+`, `<3`, `[5, 10]`), every time in full (`repr`), so `parse(obs.text()) == obs` exactly. | proposed | Readable, and the same `(tl, tr]` the docs use for a window; the bar keeps the window apart from an interval's brackets. | done |
+| `Observations.__eq__` is order-sensitive and compares the unit; `Observations` is unhashable (it is a list). `Observations` gains an optional `unit` (kept by `+`, `/` and slices; two different units are refused when joined), so `to_notation()` does not drop the data's unit. `text()` does not write the unit. | proposed | A sequence's equality; the unit has no place in the `Surv` shorthand. | done |
+| `data.to_notation()` refuses data holding anything the notation cannot write (covariates, event types, ids, states, terminal flags, weights, readings, attributes, time-varying covariates), naming `to_observations()` / `to_dict()`. | principle 2 | Nothing dropped silently; the later notation work for covariates, event types, histories and readings lifts these one by one. | done |
+| Fitters take an `Observations` as `x` through `accepts_surpyval_data` (and `refuses_surpyval_data_with` refuses it alike); `life_table`, `fit_bayes`, the software-reliability fits and the PyMC helpers, which check for a `SurpyvalData` themselves, convert it with `notation_as_data`. | maintainer (plan) | One place to convert, so every entry point agrees. | done |
+| `to_observations()` carries `w`, `unit`, `attributes` and `m`; `from_observations` takes them (`<kind>_weights`, given for one kind needed for all, as covariates are; `<kind>_attributes`, a kind left out has none; `m`, which needs `<kind>_ids`). Data with terminal flags `a` (so any unit with several rows), states or time-varying covariates is refused, naming `to_dict()`. | proposed | `from_observations` is one item per entry, so a unit's several rows have no place in it; the rest fit its per-kind pattern. Rows come back grouped by kind (observed, right, left, interval), the lists' order. | done |
+| Fixed: `from_observations` with `<kind>_ids` and no covariates or event types sorted the rows after the ids were listed, so ids were paired with other items' times. The rows now keep the lists' order whenever ids, attributes or readings are attached. | principle 1 | A silently wrong pairing. | done |
 ### Combining, comparing, rescaling and resampling lifetime data (21 Nov 2026)
 
 | Decision | By | Reason | Status |

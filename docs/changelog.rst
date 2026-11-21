@@ -46,6 +46,19 @@ v0.29 (unreleased)
   ``surpyval_data()`` for any fitter; ``Observations.parse("3*10, 20+, <3,
   [5, 10]")`` reads the same from text (``15-`` for left censored, too).
 
+- **The notation and SurpyvalData convert both ways, and fitters take it as
+  it is.** ``Weibull.fit(Observations.parse("10, 20+"))`` (every fitter that
+  takes a ``SurpyvalData``, and ``life_table``, ``fit_bayes``, the software
+  reliability models and the PyMC likelihood).
+  ``SurpyvalData.from_notation(text or observations, **kwargs)`` and
+  ``data.to_notation()`` (times, censoring, counts and truncation; data with
+  covariates, event types, ids, states, weights, readings or attributes is
+  refused, naming ``to_observations()`` or ``to_dict()``).
+  ``Observations.text()`` writes text that ``parse`` reads back as the same
+  observations; text takes a window after a bar (``"12 | (2, 50]"``) and
+  ``inf``. ``Observations`` has ``==`` (the same observations in order) and
+  a ``unit``, which reaches the data and the model.
+
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
   varying path parameters as independent between items, and
@@ -684,6 +697,21 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **The notation keeps SurpyvalData's rules, checked when an observation is
+  built.** A count must be a whole number (``2.5 * O(10)`` is refused,
+  pointing to weights ``w``); an infinite time is refused; an interval must
+  lie inside its window (``tl <= lower``, ``upper <= tr``; before, any
+  overlap was taken, and SurpyvalData then refused the same row); a
+  suspension must be strictly before its window's right edge; an interval
+  open at one end is one-sided censoring (``IC(5, inf)`` is ``RC(5)``), as
+  SurpyvalData reads it. The printout says "1 unit".
+
+- **``SurpyvalData.to_observations()`` carries weights, the unit,
+  attributes and readings**, which ``from_observations`` now takes
+  (``<kind>_weights``, ``<kind>_attributes``, ``m``), and refuses data with
+  terminal flags ``a`` or time-varying covariates, naming ``to_dict()``,
+  rather than drop them.
+
 - **A mixture's residual life is drawn to the last bits, about ten times
   faster.** The renewal models' draws of the life left at an age
   (``conditional_gaps``, used by their simulations) inverted a
@@ -958,6 +986,10 @@ v0.29 (unreleased)
 
 **Fixed.**
 
+- **``SurpyvalData.from_observations`` with ids paired ids with the wrong
+  times** where the rows were sorted (any data without covariates or event
+  types): ``observed=[5, 1], observed_ids=["a", "b"]`` gave "a" the time 1.
+  The rows now stay in the order of the lists.
 - ``SurpyvalData.from_dataframe(..., attribute_cols=...)`` without ids,
   event types or covariates sorted the rows after reading the
   attributes, so a row could carry another row's attributes; the rows
