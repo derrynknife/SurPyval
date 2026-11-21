@@ -1491,7 +1491,11 @@ PLANS["CauseSpecificProportionalIntensity"] = Plan(
 )
 
 # Degradation: n is the number of units.
-for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
+for _name in (
+    "DegradationAnalysis[linear]",
+    "DegradationAnalysis[power]",
+    "DegradationAnalysis[spline]",
+):
     PLANS[_name] = Plan(
         _paths,
         40,

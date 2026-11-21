@@ -1908,9 +1908,9 @@ def _readings_paths(fitter, **kw):
 
 
 def _degradation():
-    def da(path):
+    def da(path, label=None):
         return Case(
-            name=f"DegradationAnalysis[{path}]",
+            name=f"DegradationAnalysis[{label or path}]",
             fitters=(
                 ("surpyval.degradation.DegradationAnalysis",)
                 if path == "linear"
@@ -1936,7 +1936,9 @@ def _degradation():
             exclude={"counts": "degradation readings carry no counts"},
         )
 
+    # the spline with one knot the fit places from the readings
     out = [da("linear"), da("power")]
+    out.append(da(dg.SplinePath.natural(df=2), "spline"))
     for name in ("WienerProcess", "GammaProcess"):
         fitter = getattr(dg, name)
         out.append(
