@@ -121,7 +121,8 @@ When every unit has a record, go to stage 3.
 
 - Non-parametric (`KaplanMeier`, `NelsonAalen`, `Turnbull`) describes only
   what was seen and stops at the longest observation; its mean is only the
-  area up to that point (report it as `rmst(tau)`, the restricted mean).
+  area up to that point. `mean()` gives that area and warns when units are
+  still at risk there; report it as `rmst(tau)`, the restricted mean.
 - Parametric assumes a shape, and so can extrapolate (a mean life, a B1 life,
   survival at a time no unit reached).
 - Check the shape against the non-parametric estimate with `diagnose()`.

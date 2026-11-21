@@ -284,7 +284,10 @@ Questions 17 and 18 decide this, and the reason is extrapolation.
 - A **non-parametric** estimate (Kaplan-Meier, Nelson-Aalen, Turnbull)
   describes only what was seen. It stops at the longest observation: past
   it there is no estimate, and its mean is only the area up to that point
-  (the restricted mean, ``rmst(tau)``), not the mean life.
+  (the restricted mean), not the mean life. ``mean()`` gives that area,
+  and warns with the survival left at the longest observation when units
+  are still at risk there; ask for ``rmst(tau)`` to state the restricted
+  mean by name.
 - A **parametric** distribution assumes a shape, and the shape is what
   lets it answer beyond the data: a mean life, a B1 life below the first
   failure, the survival at a time no unit reached.
