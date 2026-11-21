@@ -131,7 +131,7 @@ def _covariate_variance(
 
 
 @elementwise
-def cox_events(
+def _cox_events(
     hazard_ratio: float,
     power: float = 0.8,
     *,
@@ -204,7 +204,9 @@ def cox_events(
     A hazard ratio of 1.5 per standard deviation of a measurement takes 48
     events; if the other covariates explain 30% of its variance, 69:
 
-    >>> from surpyval.test_planning import cox_events
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cox_events as cox_events,
+    ... )
     >>> cox_events(1.5, sd=1.0)
     48
     >>> cox_events(1.5, sd=1.0, r_squared=0.3)
@@ -221,7 +223,7 @@ def cox_events(
 
 
 @elementwise
-def cox_sample_size(
+def _cox_sample_size(
     hazard_ratio: float,
     event_probability: float,
     power: float = 0.8,
@@ -234,7 +236,7 @@ def cox_sample_size(
 ) -> int:
     """The units a Cox model needs to detect a covariate's hazard ratio.
 
-    The events of :func:`cox_events`, unrounded, divided by the chance
+    The events of :func:`_cox_events`, unrounded, divided by the chance
     that a unit has an event during the study, rounded up: R
     ``powerSurvEpi``'s ``ssizeEpiCont`` (continuous covariate) and
     ``ssizeEpi`` (two levels, with no other covariates' adjustment
@@ -250,7 +252,7 @@ def cox_sample_size(
     power : float, optional
         The chance of detecting it, by default 0.8.
     sd, proportion, r_squared, alpha_ci, alternative
-        Keyword only: as for :func:`cox_events`.
+        Keyword only: as for :func:`_cox_events`.
 
     Returns
     -------
@@ -270,7 +272,9 @@ def cox_sample_size(
     at 5% with power 0.806: 107 units.
 
     >>> import numpy as np
-    >>> from surpyval.test_planning import cox_sample_size
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cox_sample_size as cox_sample_size,
+    ... )
     >>> cox_sample_size(np.exp(1.0), 0.738, 0.806, sd=0.3126,
     ...                 r_squared=0.1837, alternative="one-sided")
     107
@@ -285,7 +289,7 @@ def cox_sample_size(
 
 
 @elementwise
-def cox_power(
+def _cox_power(
     hazard_ratio: float,
     n: int,
     event_probability: float,
@@ -299,7 +303,7 @@ def cox_power(
     r"""The chance that a Cox model detects a covariate's hazard ratio,
     given the units.
 
-    The formula of :func:`cox_events` solved for the power, with the
+    The formula of :func:`_cox_events` solved for the power, with the
     expected events ``n * event_probability``:
     :math:`\Phi(\sqrt{d \sigma^2 (1 - R^2)} |\ln \text{HR}| -
     z_{1 - \alpha / 2})` (R ``powerSurvEpi``'s ``powerEpiCont``).
@@ -314,7 +318,7 @@ def cox_power(
     event_probability : float
         The chance that a unit has an event during the study.
     sd, proportion, r_squared, alpha_ci, alternative
-        Keyword only: as for :func:`cox_events`.
+        Keyword only: as for :func:`_cox_events`.
 
     Returns
     -------
@@ -329,7 +333,9 @@ def cox_power(
     Examples
     --------
     >>> import numpy as np
-    >>> from surpyval.test_planning import cox_power
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cox_power as cox_power,
+    ... )
     >>> round(cox_power(np.exp(1.0), 107, 0.738, sd=0.3126,
     ...                 r_squared=0.1837, alternative="one-sided"), 3)
     0.806
@@ -344,7 +350,7 @@ def cox_power(
 
 
 @elementwise
-def cox_detectable(
+def _cox_detectable(
     n: int,
     event_probability: float,
     power: float = 0.8,
@@ -359,7 +365,7 @@ def cox_detectable(
     """The smallest hazard ratio per unit of a covariate that a Cox model
     detects with the power given.
 
-    The formula of :func:`cox_events` solved for the hazard ratio.
+    The formula of :func:`_cox_events` solved for the hazard ratio.
 
     Parameters
     ----------
@@ -370,7 +376,7 @@ def cox_detectable(
     power : float, optional
         The chance of detecting it, by default 0.8.
     sd, proportion, r_squared, alpha_ci, alternative
-        Keyword only: as for :func:`cox_events`.
+        Keyword only: as for :func:`_cox_events`.
     direction : str, optional
         Keyword only: ``"increase"`` (the default), the hazard ratio
         above 1, or ``"decrease"``, the one below.
@@ -390,7 +396,9 @@ def cox_detectable(
     200 units of which 30% have an event detect a hazard ratio of about
     1.44 per standard deviation:
 
-    >>> from surpyval.test_planning import cox_detectable
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cox_detectable as cox_detectable,
+    ... )
     >>> round(cox_detectable(200, 0.3, sd=1.0), 3)
     1.436
     """
@@ -426,7 +434,7 @@ def _share(ratio: float) -> float:
 
 
 @elementwise
-def noninferiority_events(
+def _noninferiority_events(
     margin: float,
     power: float = 0.8,
     *,
@@ -493,7 +501,9 @@ def noninferiority_events(
     Showing that a cheaper part raises the hazard by no more than 30%,
     when it is in fact as good:
 
-    >>> from surpyval.test_planning import noninferiority_events
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _noninferiority_events as noninferiority_events,
+    ... )
     >>> noninferiority_events(1.3)
     457
     >>> noninferiority_events(1.3, hazard_ratio=0.9)
@@ -529,7 +539,7 @@ def _check_pair_n(n: Any) -> tuple[int, int]:
     return check_count(sizes[0], "n"), check_count(sizes[1], "n")
 
 
-def noninferiority_sample_size(
+def _noninferiority_sample_size(
     margin: float,
     event_probability: float | tuple[float, float],
     power: float = 0.8,
@@ -541,7 +551,7 @@ def noninferiority_sample_size(
     """The units in each group needed to show that a hazard ratio is below
     a margin.
 
-    The events of :func:`noninferiority_events`, unrounded, shared out in
+    The events of :func:`_noninferiority_events`, unrounded, shared out in
     the ratio ``ratio`` and divided by each group's chance of an event
     during the study, as :func:`~surpyval.test_planning.logrank_sample_size`
     does.
@@ -557,7 +567,7 @@ def noninferiority_sample_size(
     power : float, optional
         The chance of showing it, by default 0.8.
     hazard_ratio, alpha_ci, ratio
-        Keyword only: as for :func:`noninferiority_events`.
+        Keyword only: as for :func:`_noninferiority_events`.
 
     Returns
     -------
@@ -571,7 +581,9 @@ def noninferiority_sample_size(
 
     Examples
     --------
-    >>> from surpyval.test_planning import noninferiority_sample_size
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _noninferiority_sample_size as noninferiority_sample_size,
+    ... )
     >>> noninferiority_sample_size(1.3, 0.4)
     (571, 571)
     """
@@ -586,7 +598,7 @@ def noninferiority_sample_size(
     return _per_second(events, ratio, first, second)
 
 
-def noninferiority_power(
+def _noninferiority_power(
     margin: float,
     n: tuple[int, int],
     event_probability: float | tuple[float, float],
@@ -612,7 +624,7 @@ def noninferiority_power(
         The chance that a unit has an event during the study: one for
         both groups, or a pair.
     hazard_ratio, alpha_ci
-        Keyword only: as for :func:`noninferiority_events`.
+        Keyword only: as for :func:`_noninferiority_events`.
 
     Returns
     -------
@@ -626,7 +638,9 @@ def noninferiority_power(
 
     Examples
     --------
-    >>> from surpyval.test_planning import noninferiority_power
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _noninferiority_power as noninferiority_power,
+    ... )
     >>> round(noninferiority_power(1.3, (571, 571), 0.4), 3)
     0.801
     """
@@ -700,7 +714,7 @@ def _equivalence_events_unrounded(
     return float(optimize.brentq(gap, start, high, xtol=1e-10, rtol=1e-14))
 
 
-def equivalence_events(
+def _equivalence_events(
     margin: float | tuple[float, float],
     power: float = 0.8,
     *,
@@ -760,7 +774,9 @@ def equivalence_events(
 
     Examples
     --------
-    >>> from surpyval.test_planning import equivalence_events
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _equivalence_events as equivalence_events,
+    ... )
     >>> equivalence_events(1.25)
     845
     >>> equivalence_events(1.25, alpha_ci=0.1)
@@ -777,7 +793,7 @@ def equivalence_events(
     return int(np.ceil(events - 1e-9))
 
 
-def equivalence_sample_size(
+def _equivalence_sample_size(
     margin: float | tuple[float, float],
     event_probability: float | tuple[float, float],
     power: float = 0.8,
@@ -789,7 +805,7 @@ def equivalence_sample_size(
     """The units in each group needed to show that a hazard ratio is
     between two margins.
 
-    The events of :func:`equivalence_events`, unrounded, shared out in the
+    The events of :func:`_equivalence_events`, unrounded, shared out in the
     ratio ``ratio`` and divided by each group's chance of an event during
     the study.
 
@@ -803,7 +819,7 @@ def equivalence_sample_size(
     power : float, optional
         The chance of showing it, by default 0.8.
     hazard_ratio, alpha_ci, ratio
-        Keyword only: as for :func:`equivalence_events`.
+        Keyword only: as for :func:`_equivalence_events`.
 
     Returns
     -------
@@ -817,7 +833,9 @@ def equivalence_sample_size(
 
     Examples
     --------
-    >>> from surpyval.test_planning import equivalence_sample_size
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _equivalence_sample_size as equivalence_sample_size,
+    ... )
     >>> equivalence_sample_size(1.25, 0.5, alpha_ci=0.1)
     (688, 688)
     """
@@ -833,7 +851,7 @@ def equivalence_sample_size(
     return _per_second(events, ratio, first, second)
 
 
-def equivalence_power(
+def _equivalence_power(
     margin: float | tuple[float, float],
     n: tuple[int, int],
     event_probability: float | tuple[float, float],
@@ -844,7 +862,7 @@ def equivalence_power(
     """The chance of showing that a hazard ratio is between two margins,
     given the units in each group.
 
-    The power of :func:`equivalence_events`, with the expected events
+    The power of :func:`_equivalence_events`, with the expected events
     ``n1 * p1 + n2 * p2``.
 
     Parameters
@@ -857,7 +875,7 @@ def equivalence_power(
         The chance that a unit has an event during the study: one for
         both groups, or a pair.
     hazard_ratio, alpha_ci
-        Keyword only: as for :func:`equivalence_events`.
+        Keyword only: as for :func:`_equivalence_events`.
 
     Returns
     -------
@@ -871,7 +889,9 @@ def equivalence_power(
 
     Examples
     --------
-    >>> from surpyval.test_planning import equivalence_power
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _equivalence_power as equivalence_power,
+    ... )
     >>> round(equivalence_power(1.25, (688, 688), 0.5, alpha_ci=0.1), 3)
     0.8
     """
@@ -1057,7 +1077,7 @@ def _rmst_setup(
     return difference, var_1, var_2
 
 
-def rmst_sample_size(
+def _rmst_sample_size(
     survival: tuple[SurvivalCurve, SurvivalCurve],
     tau: float,
     power: float = 0.8,
@@ -1153,7 +1173,9 @@ def rmst_sample_size(
     5 years, units entering over 2 years and followed for 4 more:
 
     >>> import surpyval
-    >>> from surpyval.test_planning import rmst_sample_size
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _rmst_sample_size as rmst_sample_size,
+    ... )
     >>> curves = (surpyval.Exponential.from_params([1 / 10]),
     ...           surpyval.Exponential.from_params([1 / 6]))
     >>> rmst_sample_size(curves, 5.0, accrual_time=2.0, follow_up=4.0)
@@ -1173,7 +1195,7 @@ def rmst_sample_size(
     )
 
 
-def rmst_power(
+def _rmst_power(
     survival: tuple[SurvivalCurve, SurvivalCurve],
     tau: float,
     n: tuple[int, int],
@@ -1189,19 +1211,19 @@ def rmst_power(
 
     :math:`\Phi(|\Delta| / \sqrt{\sigma_1^2 / n_1 + \sigma_2^2 / n_2} -
     z_{1 - \alpha / 2})`, with the variances of
-    :func:`rmst_sample_size`.
+    :func:`_rmst_sample_size`.
 
     Parameters
     ----------
     survival : (curve, curve)
         The survival curves expected in the first group and in the
-        second, as for :func:`rmst_sample_size`.
+        second, as for :func:`_rmst_sample_size`.
     tau : float
         The horizon of the RMST.
     n : (int, int)
         The units in the first group and in the second.
     accrual_time, follow_up, dropout_rate, alpha_ci, alternative
-        Keyword only: as for :func:`rmst_sample_size`.
+        Keyword only: as for :func:`_rmst_sample_size`.
 
     Returns
     -------
@@ -1216,7 +1238,9 @@ def rmst_power(
     Examples
     --------
     >>> import surpyval
-    >>> from surpyval.test_planning import rmst_power
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _rmst_power as rmst_power,
+    ... )
     >>> curves = (surpyval.Exponential.from_params([1 / 10]),
     ...           surpyval.Exponential.from_params([1 / 6]))
     >>> round(rmst_power(curves, 5.0, (152, 152), accrual_time=2.0,
@@ -1376,7 +1400,7 @@ def _cure_total(
     return z**2 * variance / mean**2
 
 
-def cure_logrank_sample_size(
+def _cure_logrank_sample_size(
     cured: float | tuple[float, float],
     latency: Any,
     power: float = 0.8,
@@ -1464,7 +1488,9 @@ def cure_logrank_sample_size(
     for 3 more:
 
     >>> import surpyval
-    >>> from surpyval.test_planning import cure_logrank_sample_size
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cure_logrank_sample_size as cure_logrank_sample_size,
+    ... )
     >>> latency = surpyval.Weibull.from_params([2.0, 1.2])
     >>> cure_logrank_sample_size((0.45, 0.30), latency, accrual_time=1.0,
     ...                          follow_up=3.0)
@@ -1490,7 +1516,7 @@ def cure_logrank_sample_size(
     )
 
 
-def cure_logrank_events(
+def _cure_logrank_events(
     cured: float | tuple[float, float],
     latency: Any,
     power: float = 0.8,
@@ -1506,18 +1532,18 @@ def cure_logrank_events(
     """The events a log-rank test needs when some units are cured.
 
     The expected events, in both groups, at the units of
-    :func:`cure_logrank_sample_size` (unrounded): the number to wait for
+    :func:`_cure_logrank_sample_size` (unrounded): the number to wait for
     in a study that runs until a count of events. Unlike Schoenfeld's,
     it depends on the follow-up, as the hazard ratio drifts with time.
 
     Parameters
     ----------
     cured, latency, power
-        As for :func:`cure_logrank_sample_size`.
+        As for :func:`_cure_logrank_sample_size`.
     latency_hazard_ratio, follow_up, accrual_time, dropout_rate
-        Keyword only: as for :func:`cure_logrank_sample_size`.
+        Keyword only: as for :func:`_cure_logrank_sample_size`.
     alpha_ci, ratio, alternative
-        Keyword only: as for :func:`cure_logrank_sample_size`.
+        Keyword only: as for :func:`_cure_logrank_sample_size`.
 
     Returns
     -------
@@ -1532,7 +1558,9 @@ def cure_logrank_events(
     Examples
     --------
     >>> import surpyval
-    >>> from surpyval.test_planning import cure_logrank_events
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cure_logrank_events as cure_logrank_events,
+    ... )
     >>> latency = surpyval.Weibull.from_params([2.0, 1.2])
     >>> cure_logrank_events((0.45, 0.30), latency, accrual_time=1.0,
     ...                     follow_up=3.0)
@@ -1556,7 +1584,7 @@ def cure_logrank_events(
     return int(np.ceil(events - 1e-9))
 
 
-def cure_logrank_power(
+def _cure_logrank_power(
     cured: float | tuple[float, float],
     latency: Any,
     n: tuple[int, int],
@@ -1572,19 +1600,19 @@ def cure_logrank_power(
     units are cured, given the units in each group.
 
     :math:`\Phi(\sqrt{n} |\mu| / \sigma - z_{1 - \alpha / 2})`, with the
-    mean and variance of :func:`cure_logrank_sample_size` at the groups'
+    mean and variance of :func:`_cure_logrank_sample_size` at the groups'
     shares of the ``n1 + n2`` units.
 
     Parameters
     ----------
     cured, latency
-        As for :func:`cure_logrank_sample_size`.
+        As for :func:`_cure_logrank_sample_size`.
     n : (int, int)
         The units in the first group and in the second.
     latency_hazard_ratio, follow_up, accrual_time, dropout_rate
-        Keyword only: as for :func:`cure_logrank_sample_size`.
+        Keyword only: as for :func:`_cure_logrank_sample_size`.
     alpha_ci, alternative
-        Keyword only: as for :func:`cure_logrank_sample_size`.
+        Keyword only: as for :func:`_cure_logrank_sample_size`.
 
     Returns
     -------
@@ -1599,7 +1627,9 @@ def cure_logrank_power(
     Examples
     --------
     >>> import surpyval
-    >>> from surpyval.test_planning import cure_logrank_power
+    >>> from surpyval.test_planning.sample_size import (
+    ...     _cure_logrank_power as cure_logrank_power,
+    ... )
     >>> latency = surpyval.Weibull.from_params([2.0, 1.2])
     >>> round(cure_logrank_power((0.45, 0.30), latency, (247, 247),
     ...                          accrual_time=1.0, follow_up=3.0), 3)

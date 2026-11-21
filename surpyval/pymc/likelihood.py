@@ -10,7 +10,7 @@ import numpy as np
 from surpyval.pymc._logp import FAMILIES, Family, log1mexp
 from surpyval.pymc._optional import pymc, pytensor_assert, pytensor_tensor
 from surpyval.utils.aliases import canonical_name
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 
 SUPPORTED = tuple(FAMILIES)
 
@@ -46,6 +46,7 @@ def as_surpyval_data(
     arrays keep their order (``group_and_sort=False``), so a parameter
     given per row lines up with the rows as passed."""
     given = [k for k in _DATA_ARGS if arrays.get(k) is not None]
+    data = notation_as_data(data)
     if isinstance(data, SurpyvalData):
         if given:
             raise TypeError(

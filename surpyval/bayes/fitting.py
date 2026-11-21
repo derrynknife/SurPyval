@@ -24,7 +24,7 @@ from surpyval.bayes.engines.grid import (
 )
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.prior import BoundPriors, PriorSpec, quantity_at
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.warnings import ignoring_warnings
 
 METHODS = ("auto", "grid", "conjugate", "laplace")
@@ -128,6 +128,7 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
         refuse_weighted_data,
     )
 
+    x = notation_as_data(x)
     if isinstance(x, SurpyvalData):
         given = [k for k, v in arrays.items() if v is not None]
         if given:

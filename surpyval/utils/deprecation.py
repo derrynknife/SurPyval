@@ -237,15 +237,17 @@ def renamed_name(
     new: str,
     value: Any,
     removed_in: str = REMOVED_IN,
+    category: type[Warning] = DeprecationWarning,
 ) -> Any:
     """``value``, reached by its old name ``old`` in the namespace ``where``
-    (a module's ``__getattr__``), with a DeprecationWarning naming ``new``
-    and pointing at the line that used the old name. ``value`` is the
-    renamed object itself, so ``isinstance`` checks against the old name
-    keep working until it is removed."""
+    (a module's ``__getattr__``), with a warning of ``category`` (a
+    DeprecationWarning, or a FutureWarning where users must see it wherever
+    the call is made) naming ``new`` and pointing at the line that used the
+    old name. ``value`` is the renamed object itself, so ``isinstance``
+    checks against the old name keep working until it is removed."""
     warnings.warn(
         _message(where, old, new, removed_in),
-        DeprecationWarning,
+        category,
         stacklevel=3,
     )
     return value
