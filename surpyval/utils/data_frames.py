@@ -14,6 +14,7 @@ spreadsheet's status column (1 or True where the item failed) is
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import numpy as np
@@ -330,6 +331,7 @@ def lifetime_from_frame(
     a = None
     if a_col is not None:
         a = [_plain(v) for v in frame_column(df, a_col, "a_col")]
+    attributes = _attributes(df, attribute_cols)
     data = cls(
         x,
         c,
@@ -343,8 +345,9 @@ def lifetime_from_frame(
         w=w,
         s=states,
         a=a,
+        # The attributes are put back by row, so the rows stay in order
+        group_and_sort=attributes is None,
     )
-    attributes = _attributes(df, attribute_cols)
     if attributes is not None:
         data.attributes = attributes
     canonical = normalise_unit(unit)
@@ -394,15 +397,24 @@ def lifetime_to_frame(data: Any) -> Any:
         columns["e"] = list(data.e)
     if getattr(data, "a", None) is not None:
         columns["a"] = np.asarray(data.a)
-    _covariate_columns(columns, data)
-    _attribute_columns(columns, getattr(data, "attributes", None))
-    return pd.DataFrame(columns)
+    covariates = _covariate_columns(columns, data)
+    attributes = _attribute_columns(columns, getattr(data, "attributes", None))
+    frame = pd.DataFrame(columns)
+    # What the column names alone do not say, for from_dataframe(frame)
+    # (pandas keeps attrs through most operations, not through a file)
+    frame.attrs[FRAME_KEY] = {
+        "covariates": covariates,
+        "covariate_names": getattr(data, "covariate_names", None),
+        "attributes": attributes,
+        "unit": getattr(data, "unit", None),
+    }
+    return frame
 
 
-def _covariate_columns(columns: dict, data: Any) -> None:
+def _covariate_columns(columns: dict, data: Any) -> list | None:
     Z = getattr(data, "Z", None)
     if Z is None:
-        return
+        return None
     Z = np.asarray(Z, dtype=float)
     Z = Z[:, None] if Z.ndim == 1 else Z
     names = getattr(data, "covariate_names", None) or [
@@ -410,16 +422,97 @@ def _covariate_columns(columns: dict, data: Any) -> None:
     ]
     for j, name in enumerate(names):
         columns[name] = Z[:, j]
+    return [str(name) for name in names]
 
 
-def _attribute_columns(columns: dict, attributes: Any) -> None:
+def _attribute_columns(columns: dict, attributes: Any) -> list | None:
     if not attributes:
-        return
+        return None
     names = list(dict.fromkeys(k for row in attributes if row for k in row))
     for name in names:
         columns[name] = [
             None if row is None else row.get(name) for row in attributes
         ]
+    return [str(name) for name in names]
+
+
+# The key of what ``to_dataframe`` records in the frame's ``attrs``
+FRAME_KEY = "surpyval"
+# The columns ``SurpyvalData.to_dataframe`` writes, by the argument of
+# ``from_dataframe`` each fills
+FRAME_COLUMNS = {
+    "i_col": "id",
+    "x_col": "x",
+    "xl_col": "xl",
+    "xr_col": "xr",
+    "c_col": "c",
+    "n_col": "n",
+    "w_col": "w",
+    "tl_col": "tl",
+    "tr_col": "tr",
+    "s_col": "s",
+    "e_col": "e",
+    "a_col": "a",
+}
+
+
+def recognised_columns(df: Any) -> dict:
+    """The ``from_dataframe`` column arguments of a frame
+    ``SurpyvalData.to_dataframe`` wrote, read from its column names (and
+    the covariates, attributes and unit it recorded in ``df.attrs``);
+    refused where the frame has no times or a column that is not one it
+    writes."""
+    df = require_frame(df)
+    columns = [str(c) for c in df.columns]
+    recorded = getattr(df, "attrs", {}).get(FRAME_KEY) or {}
+    covariates = recorded.get("covariates")
+    attributes = recorded.get("attributes")
+    # A covariate or attribute may have one of the names (a covariate 'a')
+    taken = set(covariates or []) | set(attributes or [])
+    found: dict[str, Any] = {
+        arg: name
+        for arg, name in FRAME_COLUMNS.items()
+        if name in columns and name not in taken
+    }
+    if "x_col" not in found and not ("xl_col" in found and "xr_col" in found):
+        raise ValueError(
+            "Give the times: from_dataframe(df, x_col=..., c_col=..., "
+            "...), or xl_col and xr_col. With no column arguments it reads "
+            "the columns to_dataframe() writes (x, or xl and xr; c, n, id, "
+            "tl, tr, w, s, e, a), and this frame has no 'x' (or 'xl' and "
+            f"'xr') column; its columns are {columns!r}."
+        )
+    if "x_col" in found:
+        found.pop("xl_col", None)
+        found.pop("xr_col", None)
+    rest = [c for c in columns if c not in found.values()]
+    unnamed = recorded.get("covariate_names", ...) is None
+    if not recorded:
+        # Without the record (a frame read from a file): Z0, Z1, ... are
+        # the unnamed covariates to_dataframe writes
+        covariates = [c for c in rest if re.fullmatch(r"Z\d+", c)] or None
+        unnamed = True
+    known = set(covariates or []) | set(attributes or [])
+    unknown = [c for c in rest if c not in known]
+    if unknown:
+        raise ValueError(
+            "from_dataframe(df) with no column arguments reads the columns "
+            "to_dataframe() writes, and this frame has "
+            + ", ".join(repr(c) for c in unknown)
+            + " besides, which may be covariates or attributes: name them, "
+            "from_dataframe(df, x_col=..., Z_cols=[...], "
+            "attribute_cols=[...], ...), or keep the frame's attrs (which "
+            "to_dataframe() fills and a file loses)."
+        )
+    if covariates:
+        found["Z_cols"] = list(covariates)
+    if attributes:
+        found["attribute_cols"] = list(attributes)
+    return {
+        "columns": found,
+        "unit": recorded.get("unit"),
+        "unnamed": bool(covariates) and unnamed,
+    }
 
 
 def history_from_frame(

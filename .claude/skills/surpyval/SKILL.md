@@ -552,6 +552,12 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   converters `fs_to_xcnt`, `xcnt_to_xrd`, ...). The log-rank test is `sp.logrank`.
 - `SurpyvalData` — the internal container fitters build from xcnt input; you rarely
   need it directly, but `Model.fit_from_surpyval_data(data)` exists on the fitters.
+  Whole-dataset operations: `SurpyvalData.concat([a, b])` / `a + b` (refuses
+  shared ids, different units or covariates), `a == b` / `a.equals(b, rtol=)`,
+  `SurpyvalData.from_dataframe(data.to_dataframe())` (no column arguments),
+  `data.rescale_time(24, unit="days")` (as the model method), and
+  `data.resample(random_state=1)` (bootstrap of units: counts `n` expand, an
+  item's rows move together; drawn units counted by their draws).
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
 `sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never
