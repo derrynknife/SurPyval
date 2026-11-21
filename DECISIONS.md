@@ -23,6 +23,12 @@ Design decisions made while working on the open issues, with the reason for each
 | Extrapolation decides parametric against non-parametric: answers past the longest observation, a mean life, a B-life below the first failure or a smooth curve to predict from need a parametric model; otherwise non-parametric. How far to trust an extrapolation is the analyst's judgement, and SurPyval does not warn when a parametric model is asked about a time past the data. | maintainer (21 Nov 2026) | A non-parametric estimate stops at the longest observation; a parametric one extrapolates through its assumed shape, which `diagnose()` checks against the data. | done |
 | With few failures (under about 20) the guide advises likelihood-ratio bounds (`method="lr"`); the default stays Wald. | maintainer (21 Nov 2026) | Advice, not a changed default. | done |
 
+### The renewal fitters' `from_params` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA` and `ARI` build a model from parameters with `from_params`, the same signature as before; `fit_from_parameters` reads as `from_params` with a `FutureWarning` (a `RenamedAttribute`, which now takes a warning category) until v0.30. The renewal cases of the conformance registry gain a `from_params` path, so `test_paths` checks it against `fit`. | principle 14 | Every other family names this `from_params`; a `FutureWarning`, as every part of the pre-1.0 simplification uses, so users see it outside `__main__`. RePyability calls neither name (checked on its `dev`). | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
