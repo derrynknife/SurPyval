@@ -26,23 +26,21 @@ from surpyval.tests._helpers import json_round_trip
 
 def _make(name):
     if name == "GR-i":
-        return GeneralizedRenewal.fit_from_parameters(
+        return GeneralizedRenewal.from_params(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
         )
     if name == "GR-ii":
-        return GeneralizedRenewal.fit_from_parameters(
+        return GeneralizedRenewal.from_params(
             [50.0, 2.0], 0.3, kijima="ii", dist=Weibull
         )
     if name == "G1R":
-        return GeneralizedOneRenewal.fit_from_parameters(
+        return GeneralizedOneRenewal.from_params(
             [50.0, 2.0], 0.2, dist=Weibull
         )
     if name == "ARA":
-        return ARA.fit_from_parameters([50.0, 2.0], 0.4, m=2, dist=Weibull)
+        return ARA.from_params([50.0, 2.0], 0.4, m=2, dist=Weibull)
     if name == "ARI":
-        return ARI.fit_from_parameters(
-            [60.0, 2.0], 0.3, m=1, baseline=CrowAMSAA
-        )
+        return ARI.from_params([60.0, 2.0], 0.3, m=1, baseline=CrowAMSAA)
     raise ValueError(name)
 
 
@@ -64,7 +62,7 @@ def test_renewal_round_trip(name):
 
 def test_renewal_kijima_type_preserved():
     for kijima in ("i", "ii"):
-        model = GeneralizedRenewal.fit_from_parameters(
+        model = GeneralizedRenewal.from_params(
             [50.0, 2.0], 0.3, kijima=kijima, dist=Weibull
         )
         restored = RenewalModel.from_dict(model.to_dict())
@@ -72,7 +70,7 @@ def test_renewal_kijima_type_preserved():
 
 
 def test_renewal_memory_preserved():
-    model = ARA.fit_from_parameters([50.0, 2.0], 0.4, m=3, dist=Weibull)
+    model = ARA.from_params([50.0, 2.0], 0.4, m=3, dist=Weibull)
     restored = RenewalModel.from_dict(model.to_dict())
     assert restored.m == 3
 
@@ -105,7 +103,7 @@ def test_renewal_rejects_non_distribution_attribute():
     # The stored distribution name must resolve to a genuine
     # distribution fitter: an untrusted dict must not be able to pull
     # arbitrary surpyval attributes through the lookup -- issue #206.
-    model = GeneralizedRenewal.fit_from_parameters(
+    model = GeneralizedRenewal.from_params(
         [50.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
     d = model.to_dict()

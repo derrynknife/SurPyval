@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### The renewal fitters' `from_params` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA` and `ARI` build a model from parameters with `from_params`, the same signature as before; `fit_from_parameters` reads as `from_params` with a `FutureWarning` (a `RenamedAttribute`, which now takes a warning category) until v0.30. The renewal cases of the conformance registry gain a `from_params` path, so `test_paths` checks it against `fit`. | principle 14 | Every other family names this `from_params`; a `FutureWarning`, as every part of the pre-1.0 simplification uses, so users see it outside `__main__`. RePyability calls neither name (checked on its `dev`). | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
