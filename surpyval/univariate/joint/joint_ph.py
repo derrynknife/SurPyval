@@ -5,6 +5,7 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import numpy as np
@@ -235,6 +236,10 @@ class JointPHFitter(FitterRepr):
                 f"PathModel of your own; got {path_model!r}."
             )
         names = list(path_model.parameter_names)
+        if varying is None and hasattr(path_model, "default_varying"):
+            # a path that says which of its parameters differ between
+            # items (a spline: its level and rate, the bends common)
+            varying = tuple(path_model.default_varying)
         if varying is None:
             if len(names) > MAX_VARYING:
                 raise ValueError(
@@ -866,7 +871,8 @@ def JointPH(
         effects, multivariate normal); the others are common to all
         items. Default all of them (at most five; with four or five
         each item's integral is on a pruned grid by default, see
-        ``integration`` of :meth:`JointPHFitter.fit`).
+        ``integration`` of :meth:`JointPHFitter.fit`); for a
+        ``SplinePath``, its ``level`` and ``rate``.
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -1184,6 +1190,29 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return aliased_columns(gram, len(Z), constant)
 
 
+def _with_placed_path(fitter: JointPHFitter, records: list) -> JointPHFitter:
+    """``fitter``, or a copy of it whose path has its knots placed from
+    the records' reading ages: for a path made of joined pieces (a
+    ``SplinePath``), which also refuses more knots than the items'
+    readings support."""
+    path: Any = fitter.path_model
+    base = getattr(path, "base", path)
+    if not hasattr(base, "placed"):
+        return fitter
+    ages = [list((r.markers or {}).keys()) for r in records]
+    pooled = np.array([a for item in ages for a in item], dtype=float)
+    placed = base.placed(pooled)
+    placed.check_readings([len(item) for item in ages])
+    if placed is base:
+        return fitter
+    out = copy.copy(fitter)
+    if base is path:
+        out.path_model = placed
+    else:
+        out.path_model = type(path)(placed, dict(path.links))
+    return out
+
+
 def _fit(
     fitter: JointPHFitter,
     records: list,
@@ -1198,6 +1227,7 @@ def _fit(
     (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
     enter which part
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`)."""
+    fitter = _with_placed_path(fitter, records)
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts

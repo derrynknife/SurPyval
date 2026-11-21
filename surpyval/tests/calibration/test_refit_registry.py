@@ -1758,6 +1758,10 @@ EXCLUDED: dict[str, str] = {
     "a weight on the accumulated exposure is in "
     "univariate/joint/test_joint_weight.py and "
     "calibration/test_coverage_joint_weight.py",
+    "WeibullJointPH[spline]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated on a "
+    "spline path is in univariate/joint/test_joint_spline.py and the "
+    "study scripts/studies/joint_recovery/knee_study.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "

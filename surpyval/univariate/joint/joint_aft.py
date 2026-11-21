@@ -107,7 +107,8 @@ def JointAFT(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them (at most five).
+        items. Default all of them (at most five); for a
+        ``SplinePath``, its ``level`` and ``rate``.
     link : str or sequence of str, optional
         What of the marker's path sets the ageing rate: ``"value"`` (the
         default: its current value) or ``"slope"`` (its rate of change),

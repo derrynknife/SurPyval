@@ -70,7 +70,6 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
-    scattered_campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -95,6 +94,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     relative_data,
     relative_reg_data,
+    scattered_campaign_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -2099,8 +2099,10 @@ def _joint():
     the area under it, or its value and slope together, or its value 90
     days earlier (a lag), or the area with exposure fading over 180 days
     (a weight), or its value with the line's start and rate uncorrelated
-    between items (``random_effects="diagonal"``); or the marker's value
-    speeds up the item's ageing (``WeibullJointAFT``)."""
+    between items (``random_effects="diagonal"``), or the value of a
+    spline path with one knot placed from the readings, its bend common
+    to all items (``[spline]``); or the marker's value speeds up the
+    item's ageing (``WeibullJointAFT``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2117,6 +2119,11 @@ def _joint():
         ),
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
+        ),
+        "WeibullJointPH[spline]": sp.JointPH(
+            sp.Weibull,
+            dg.SplinePath.natural(df=2),
+            varying=("level", "rate"),
         ),
     }
     out = []

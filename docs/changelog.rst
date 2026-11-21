@@ -320,6 +320,28 @@ v0.29 (unreleased)
   The new page :doc:`Torch with SurPyval` trains a mixture network and
   scores it.
 
+- **Spline paths: a reading that bends where the data say it bends.**
+  ``surpyval.degradation.SplinePath`` is a new path shape for
+  ``DegradationAnalysis`` and the joint models: a natural cubic spline,
+  ``level + rate t`` plus one bend ``s_k`` after each knot, a straight
+  line outside its boundary knots. ``SplinePath(knots=[...],
+  boundary=(lo, hi))`` takes the knots; ``SplinePath.natural(df=3)`` has
+  them placed by the fit, at quantiles of the reading ages (as R's
+  ``ns(t, 3)``), and the fitted model's ``path_model`` records them. In
+  ``JointPH(Weibull, SplinePath.natural(df=3))`` the fleet's mean curve
+  is the spline and each item has a level and a rate of its own (the
+  spline's default ``varying``; the bends are common). The value, slope
+  and cumulative links all work (the slope and the area in closed form),
+  and the hazard's integrals over age are taken piece by piece between
+  the knots. With no interior knots the path is ``LinearPath`` and the
+  fits are the same to the last digit. A spline with more parameters than
+  the items' median number of readings is refused, with the counts and
+  the number of knots the readings support. Saved models keep the knots
+  (``"path_model"`` is then a dictionary, stamped schema 5, which older
+  releases refuse rather than misread). ``path="best"`` does not try a
+  spline. See "A reading that bends" in :doc:`Joint Models` and "A path
+  with no formula" in :doc:`Degradation Modelling with SurPyval`.
+
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
   ``max(t - 200, 0)``: a reading acts that long later. Every link is
@@ -1016,6 +1038,12 @@ v0.29 (unreleased)
 
 **Fixed.**
 
+- **A joint model's ``cb`` failed where a path parameter was common to
+  all items** (``JointPH(Weibull, QuadraticPath, varying=("a", "b"))``,
+  say): the bound differentiates the prediction through the common
+  parameters' means in forward mode, for which the path had no rule, and
+  raised ``NotImplementedError``. It now gives the delta-method bound, as
+  for a path whose parameters all vary.
 - **``SurpyvalData.from_observations`` with ids paired ids with the wrong
   times** where the rows were sorted (any data without covariates or event
   types): ``observed=[5, 1], observed_ids=["a", "b"]`` gave "a" the time 1.
