@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Combining, comparing, rescaling and resampling lifetime data (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SurpyvalData.concat([a, b, ...])`, `a + b` and `sum([a, b])` combine datasets through the constructor, so the rows are checked and sorted as any data is. An item id in more than one dataset is refused, naming the ids: rename them first (or `update` for the same items seen again). | maintainer | Joining two items' rows into one history silently would be wrong data. | done |
+| Also refused, each saying what to do: different units (or a unit on one only: label it with `rescale_time(1, unit=...)`), different covariates by name and order, ids, states or time-varying covariates on some datasets only, and failures without event types beside typed data (suspensions without types combine). Weighted and unweighted data combine, the unweighted rows at weight 1; attributes, terminal flags (re-inferred where they were inferred) and measurements carry across. | proposed | Each refused case has no single right reading; weight 1 is what an unweighted row means. | done |
+| `data == other` compares exactly (`equals(other, rtol=0)`); `equals(other, rtol=1e-9)` to a relative tolerance, blanks equal to blanks. Compared: every per-row array and label, the unit (by `same_unit`), time-varying covariates and measurements; not `a_inferred` (how a flag was given). The same on `EventHistoryData`. Both are unhashable (`__hash__ = None`), as `Measurements` and `StepSchedule` are. | proposed | The item records and `Measurements` compare by contents; a dataset that compared by identity could not be checked after a round trip. | done |
+| `from_dataframe(df)` with no column arguments reads the names `to_dataframe` writes. `to_dataframe` records the covariate and attribute columns and the unit in `df.attrs["surpyval"]`; without that record (a frame from a file) `Z0`, `Z1`, ... are unnamed covariates and any other column is refused, asking for `Z_cols`/`attribute_cols`. | proposed | A column besides the known ones may be a covariate or an attribute; guessing would fit a label or drop a covariate. | done |
+| `data.rescale_time(factor, unit=None)` divides every time by `factor` (`x`, `t`, step-schedule edges and periods, reading ages), with the model method's factor check and wording; a `CovariatePath` is refused. | principle 6 | The fit of the rescaled data is then the rescaled fit. | done |
+| `data.resample(random_state=None, size=None)` (the seed is `random_state`, the package's one name for it, not `seed`): units drawn with replacement, each equally likely; a row counted `n` is `n` units, an item's rows one unit. The result has a row for each row of a unit drawn, counted by the draws (an item drawn twice keeps its id, counted 2), so no ids are invented. An item whose rows have different counts is refused. | proposed | Conventions: "Random draws and seeds". Counting the draws keeps ids unique without renaming. | done |
+| `from_dataframe(..., attribute_cols=)` keeps the frame's row order: it used to sort the rows after reading the attributes. | principle 12 | Silently misaligned attributes. | done |
 ### Plotting the data: `plot_lifetimes` (21 Nov 2026)
 
 | Decision | By | Reason | Status |

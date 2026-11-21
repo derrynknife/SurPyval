@@ -430,6 +430,41 @@ hand-built ``xcnt`` form — the fitted parameters agree exactly:
     assert np.allclose(from_lists.params, hand.params, rtol=1e-12)
 
 
+Combining, comparing, rescaling and resampling
+-----------------------------------------------
+
+Two batches of data become one with ``SurpyvalData.concat([a, b, ...])``
+or ``a + b``. Everything each row has comes across (counts, weights,
+event types, truncation, attributes, readings), and the rows are sorted
+as the constructor sorts them. Datasets in different units, with
+different covariates, or sharing an item id are refused, each saying
+what to do: an id is one item, so rename the ids first where two sources
+used the same ones. ``==`` compares two datasets exactly and
+``equals(other, rtol=...)`` to a tolerance. ``to_dataframe()`` and
+``from_dataframe()`` with no column arguments are a round trip.
+``rescale_time(factor, unit=...)`` puts the data on another clock (24
+from hours to days, 0.25 for a quarter duty cycle), as the model method
+of the same name does, so a fit of the rescaled data is the rescaled
+fit. ``resample(random_state=...)`` draws the units with replacement for
+a bootstrap: a row counted ``n`` is ``n`` units, and an item's rows move
+together.
+
+.. jupyter-execute::
+
+    site_a = SurpyvalData([120, 310, 400, 1000], c=[0, 0, 0, 1],
+                          i=["A1", "A2", "A3", "A4"], unit="hours")
+    site_b = SurpyvalData([200, 650], c=[0, 1], i=["B1", "B2"], unit="hours")
+    fleet = site_a + site_b
+    print(fleet.ids)
+    print(SurpyvalData.from_dataframe(fleet.to_dataframe()) == fleet)
+
+    days = fleet.rescale_time(24, unit="days")
+    print(days.x)
+
+    boot = fleet.resample(random_state=1)
+    print(boot.ids, boot.n)
+
+
 Truncation, four ways
 ---------------------
 

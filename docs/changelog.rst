@@ -5,6 +5,29 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Combining, comparing, rescaling and resampling lifetime data.**
+  ``SurpyvalData.concat([a, b, ...])`` (also ``a + b`` and ``sum([a,
+  b])``) puts the rows of several datasets together, each keeping its
+  counts, weights, event types, states, terminal flags, truncation,
+  attributes, time-varying covariates and readings, sorted as the
+  constructor sorts. Refused, saying what to do: different units,
+  different covariates, ids (or states, or time-varying covariates) on
+  some datasets only, failures without event types beside typed ones,
+  and an item id in more than one dataset (rename the ids first).
+  ``data == other`` and ``data.equals(other, rtol=1e-9)`` compare two
+  datasets (``EventHistoryData`` too); a dataset is no longer hashable.
+  ``SurpyvalData.from_dataframe(data.to_dataframe())`` is the data again
+  with no column arguments: the names ``to_dataframe`` writes are
+  recognised, and it records in ``df.attrs`` which columns are
+  covariates and attributes, and the unit. ``data.rescale_time(factor,
+  unit=None)`` divides every time (``x``, the truncation, step-schedule
+  edges, reading ages) by ``factor``, as ``Parametric.rescale_time``
+  moves a model, so the fit of the rescaled data is the rescaled fit.
+  ``data.resample(random_state=None, size=None)`` draws units with
+  replacement for a bootstrap: a row counted ``n`` is ``n`` units and an
+  item's rows move together, each unit drawn counted by the times it was
+  drawn.
+
 - **A plot of the data itself.** ``SurpyvalData.plot_lifetimes(ax=None,
   sort="end", max_rows=100)`` (and ``surpyval.plotting.plot_lifetimes``)
   draws one line for each unit, the swimmer plot lifelines calls
@@ -934,6 +957,13 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- ``SurpyvalData.from_dataframe(..., attribute_cols=...)`` without ids,
+  event types or covariates sorted the rows after reading the
+  attributes, so a row could carry another row's attributes; the rows
+  now stay in the frame's order. Slicing data without ids
+  (``data[rows]``) now keeps the time-varying covariates of the rows
+  kept, renumbered, rather than dropping them.
 
 - The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
   ``censored_likelihood``) had a NaN gradient for a row whose truncation
