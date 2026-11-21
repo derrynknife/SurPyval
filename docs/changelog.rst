@@ -5,6 +5,21 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **The inverse survival function, ``isf``.** Every distribution
+  (``Weibull.isf(s, alpha, beta)``) and every parametric model
+  (``model.isf(s)``) gives the time at which the survival function is
+  ``s``, scipy's name for it. It is ``qf(1 - s)`` without rounding ``1 -
+  s``, which ``qf`` cannot avoid: below ``s = 1.1e-16`` the quantile is
+  the end of the support, where ``isf`` keeps going (``isf(sf(t))`` gives
+  back ``t`` at a survival of 1e-300). It is in closed form for the
+  Weibull, exponential, Rayleigh, both Gumbels, logistic, log-logistic,
+  normal, lognormal, gamma, both betas, uniform and exponentiated Weibull;
+  the others solve ``log_sf(x) = log(s)`` (a discrete distribution: the
+  first point with ``sf(k) <= s``). A model's follows its offset, limited
+  failure population (``inf`` at or below ``1 - p``) and zero inflation
+  (0 at or above ``1 - f0``). ``tests/reference/test_tails.py`` checks it
+  against 50-digit references from ``s = 1`` to 1e-300.
+
 - **Joint models: which varying path parameters are correlated.**
   ``JointPH(..., random_effects="diagonal")`` (and ``JointAFT``) fits the
   varying path parameters as independent between items, and
@@ -916,6 +931,23 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- **The distribution functions keep their digits further into the
+  tails.** A Rayleigh's ``ff`` and ``Hf`` with a small ``sigma`` lost 1e-12
+  of their value where ``x**2`` went subnormal (now ``(x / sigma)**2 /
+  2``); a Beta's log density with a large shape lost 1e-11 to ``log(1 -
+  x)`` (now ``log1p``) and 3e-13 to scipy's ``betaln`` (now the
+  cancellation-free form the incomplete beta already used), and its
+  quantile below the smallest normal double 2e-10 at ``alpha = 1e-3``; a
+  normal or lognormal hazard between 1 and 100 standard deviations lost up
+  to 1e-13 to a difference of logs (now from ``erfcx``); and the log of a
+  gamma or beta probability within 0.1 of 1 is taken from its complement
+  (it lost up to 2e-13 between 0.9 and 0.999). The tails reference test
+  now holds each function to 1e-12 (from 1e-8), or 64 ulps of its
+  inputs' sensitivity where that is larger. The discrete distributions
+  at large parameters, and the gamma density at shape 1e3, are not yet
+  within it (errors up to 3e-9): they are listed in it as known failures
+  under #1300.
 
 - The PyMC helpers' likelihood (``surpyval.pymc.log_likelihood`` and
   ``censored_likelihood``) had a NaN gradient for a row whose truncation
