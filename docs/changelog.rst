@@ -36,7 +36,11 @@ v0.29 (unreleased)
   given, or estimated by profile likelihood from one system's failure
   times, with ``change_point_cb`` for its likelihood-ratio bounds and
   ``change_point_test`` for the test of no change by parametric
-  bootstrap (the chi-squared table does not apply). Both return the
+  bootstrap (the chi-squared table does not apply).
+  ``ChangePoint(HPP, tau)`` is fitted exactly, as ``HPP`` is (the
+  failures over the time observed on each side of ``tau``), from exact
+  failure times; counts in periods and right-truncated data are
+  searched. Both return the
   ``ParametricRecurrenceModel`` the models do, with every answer in time
   (``remaining_faults``, ``time_to_intensity``, ``release_time``, the
   bounds), save and load, and can be given to ``compare_predictions``.

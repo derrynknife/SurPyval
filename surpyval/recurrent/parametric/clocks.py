@@ -40,6 +40,7 @@ from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.rng import as_generator
 
+from .hpp import HPP
 from .nhpp_fitter import NHPPFitter
 from .software_growth import (
     LIMIT_MARGIN,
@@ -614,6 +615,49 @@ class ChangePoint(_ClockFitter):
     def _default_start(self, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
         return onp.append(_base_start(self.base, data, x_unique, mcf_hat), 1.0)
 
+    def _closed_form_mle(self, data: Any) -> onp.ndarray | None:
+        """The exact MLE of ``ChangePoint(HPP, tau)``, as ``HPP`` has its
+        own: on each side of ``tau`` the failures over the time observed
+        there,
+
+        .. math::
+            \\hat\\lambda = \\frac{n_{\\le\\tau}}{E_{\\le\\tau}}, \\qquad
+            \\hat\\rho = \\frac{n_{>\\tau} / E_{>\\tau}}{\\hat\\lambda},
+
+        the likelihood being ``n log(lambda) + n_> log(rho) - lambda
+        (E_<= + rho E_>)``. The search agreed with it to only about 1e-5.
+        ``None`` for any other base model, and for counts in periods or
+        right truncation, whose terms do not split at ``tau`` this way
+        (they are searched)."""
+        if not isinstance(self.base, type(HPP)):
+            return None
+        s = data.split_for_nhpp_likelihood()
+        if any(
+            onp.size(s[k]) for k in ("x_left", "x_i_l", "sel_to", "gap_to")
+        ):
+            return None
+        tau = self._tau()
+        ends = (s["x_o"], s["x_right"])
+        starts = (s["x_o_prev"], s["x_right_prev"])
+
+        def exposure(part: Any) -> float:
+            return float(
+                sum(
+                    onp.sum(part(onp.asarray(b, dtype=float)))
+                    - onp.sum(part(onp.asarray(a, dtype=float)))
+                    for a, b in zip(starts, ends)
+                )
+            )
+
+        before = exposure(lambda t: onp.minimum(t, tau))
+        after = exposure(lambda t: onp.maximum(t - tau, 0.0))
+        n_after = int(onp.sum(onp.asarray(s["x_o"]) > tau))
+        n_before = onp.size(s["x_o"]) - n_after
+        if not (n_before and n_after and before > 0 and after > 0):
+            return None
+        rate = n_before / before
+        return onp.array([rate, (n_after / after) / rate])
+
     def _limit_log_likelihood(self, data: Any, ratio: float) -> float:
         """The greatest log-likelihood of the limit of the model at the
         edge of its parameters: the base model's limit, ``c u**p``, on
@@ -963,6 +1007,17 @@ def change_point_cb(model: Any, alpha_ci: float = 0.05) -> onp.ndarray:
     -------
     numpy.ndarray
         ``[earliest, latest]``.
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import (
+    ...     ChangePoint, GoelOkumoto, change_point_cb)
+    >>> truth = ChangePoint(GoelOkumoto, tau=30.0).from_params(
+    ...     [80, 0.01, 4.0])
+    >>> d = truth.time_terminated_simulation_data(100.0, random_state=1)
+    >>> model = ChangePoint(GoelOkumoto).fit(d.x, c=d.c)
+    >>> change_point_cb(model).round(1).tolist()
+    [28.9, 30.4]
     """
     check_alpha_ci(alpha_ci)
     info = _estimated(model, "change_point_cb")
