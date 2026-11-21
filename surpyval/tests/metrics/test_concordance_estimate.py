@@ -20,10 +20,14 @@ import pytest
 
 import surpyval as sp
 from surpyval.metrics import (
+    ConcordanceResult,
     compare_concordance,
-    concordance_estimate,
     concordance_index,
 )
+from surpyval.metrics.concordance import (
+    _concordance_estimate as concordance_estimate,
+)
+from surpyval.metrics.concordance import _harrell_value
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 
 
@@ -237,7 +241,7 @@ def test_results_are_strict_json():
     assert d["estimate"] == pytest.approx(one.estimate)
     assert d["tau"] == 5.0 and d["weighting"] == "uno"
     assert float(one) == one.estimate
-    assert "Uno's C" in repr(one)
+    assert "Uno's C" in one.summary()
     two = compare_concordance(x, c, s, s[::-1])
     d = json.loads(json.dumps(two.to_dict(), allow_nan=False))
     assert d["difference"] == pytest.approx(two.difference)
@@ -337,3 +341,74 @@ def test_model_estimate_refusals():
     z_missing[0, 0] = np.nan
     with pytest.raises(ValueError, match="covariate is missing"):
         plain.concordance_estimate(x, c, z_missing)
+
+
+# --- One concordance: the index carries its standard error ----------------
+
+
+@pytest.mark.parametrize("ties", ["therneau", "harrell"])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_concordance_index_is_the_old_number_with_the_old_se(seed, ties):
+    x, c, z = _data(80, seed=seed)
+    s = z[:, 0] - 0.3 * z[:, 1]
+    res = concordance_index(x, c, s, ties=ties)
+    assert isinstance(res, ConcordanceResult) and isinstance(res, float)
+    assert float(res) == _harrell_value(x, c, s, 1e-8, ties)
+    old = concordance_estimate(x, c, s, ties=ties)
+    assert res.se == old.se
+    assert res.ci == _interval_of(float(res), old.se)
+    uno = concordance_index(x, c, s, weighting="uno", tau=12.0, ties=ties)
+    old = concordance_estimate(x, c, s, weighting="uno", tau=12.0, ties=ties)
+    assert (float(uno), uno.se, uno.ci) == (old.estimate, old.se, old.ci)
+
+
+def _interval_of(estimate, se):
+    from surpyval.metrics.concordance import _interval
+
+    return _interval(estimate, se, 0.05, "normal")
+
+
+def test_the_index_is_used_as_a_number():
+    import json
+    import pickle
+
+    x, c, z = _data(60, seed=4)
+    res = concordance_index(x, c, z[:, 0], alpha_ci=0.1, ci_method="logit")
+    value = res.estimate
+    assert float(res) == value and res + 0 == value and res * 2 == 2 * value
+    assert res > value - 1e-3 and np.isclose(res, value)
+    assert repr(res) == repr(value) and str(res) == str(value)
+    assert json.loads(json.dumps(res)) == value
+    back = pickle.loads(pickle.dumps(res))
+    assert float(back) == value and back.se == res.se and back.ci == res.ci
+    assert res.alpha == 0.1 and res.ci_method == "logit"
+    assert "Std. error" in res.summary()
+    missing = concordance_index([1.0, np.nan, 3.0], [0, 0, 1], [3, 2, 1])
+    assert np.isnan(missing) and np.isnan(missing.se)
+
+
+def test_concordance_estimate_is_deprecated_for_concordance_index():
+    import warnings
+
+    import surpyval.metrics as metrics
+
+    x, c, z = _data(60, seed=5)
+    for namespace in (metrics, sp):
+        with pytest.warns(FutureWarning, match="concordance_index") as w:
+            old = getattr(namespace, "concordance_estimate")
+        assert "v0.30" in str(w[0].message)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            res = old(x, c, z[:, 0], weighting="uno", alpha=0.1)
+        new = concordance_index(x, c, z[:, 0], weighting="uno", alpha_ci=0.1)
+        assert (res.estimate, res.se, res.ci) == (new.estimate, new.se, new.ci)
+    model = sp.CoxPH.fit(x, z, c)
+    with pytest.warns(FutureWarning, match="use 'concordance'"):
+        old = model.concordance_estimate(alpha=0.1)
+    new = model.concordance(alpha_ci=0.1)
+    assert (old.se, old.ci) == (new.se, new.ci)
+    assert old.estimate == pytest.approx(float(new), abs=1e-12)
+    strata = np.tile(["a", "b"], x.size // 2)
+    stratified = sp.CoxPH.fit(x, z, c, strata=strata)
+    with pytest.raises(ValueError, match="stratified"):
+        stratified.concordance(alpha_ci=0.1)

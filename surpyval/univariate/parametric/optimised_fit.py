@@ -25,6 +25,7 @@ from surpyval.utils.surpyval_data import (
     refuses_what_fit_cannot_take,
 )
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._fit_inputs import FitInputsMixin, normalise_how
 from .fitters import bounds_convert
@@ -438,12 +439,12 @@ class OptimisedFitMixin(FitInputsMixin):
              alpha: 10.0
               beta: 3.670796510564323
         >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
-        ...             heuristic='Turnbull')
+        ...             heuristic='Turnbull')  # doctest: +ELLIPSIS
         Parametric SurPyval Model
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
-        Data                : 100 units: 0 events, 100 interval censored
+        Data                : 100 units: 100 events (0 exact, 100 interval ...)
         Parameters          :
              alpha: 9.834445729732789
               beta: 3.2602770099790424
@@ -873,7 +874,7 @@ turnbull_estimator
             unverified = False
             maximum = "no finite maximum"
         if warning is not None and not maximum_warnings_quiet():
-            warnings.warn(warning, stacklevel=3)
+            warnings.warn(warning, stacklevel=caller_stacklevel())
         if unverified:
             warn_unverified("The maximum-likelihood search", reason)
         # Only maximum likelihood seeks a maximum of the likelihood

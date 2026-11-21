@@ -163,7 +163,7 @@ def test_weighted_interval_censored_data_plot_on_weighted_turnbull():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from surpyval.univariate.nonparametric import turnbull
+    from surpyval.univariate.nonparametric.turnbull import turnbull
 
     data = weighted_reference_data()
     x, w = data["x"], data["w"]

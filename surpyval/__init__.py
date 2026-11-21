@@ -403,7 +403,6 @@ _LAZY = {
             "auc_td",
             "brier_score",
             "compare_concordance",
-            "concordance_estimate",
             "concordance_index",
             "dynamic_auc",
             "dynamic_brier",
@@ -554,7 +553,6 @@ if TYPE_CHECKING:
         auc_td,
         brier_score,
         compare_concordance,
-        concordance_estimate,
         concordance_index,
         dynamic_auc,
         dynamic_brier,
@@ -749,6 +747,9 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
+        if name == "concordance_estimate":
+            # Deprecated in v0.29: surpyval.metrics warns as it hands it.
+            return getattr(import_module("surpyval.metrics"), name)
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",
