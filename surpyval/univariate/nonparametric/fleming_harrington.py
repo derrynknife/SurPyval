@@ -267,7 +267,9 @@ def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     the Nelson-Aalen one (0.8187, 0.7225, 0.3965):
 
     >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric.fleming_harrington import fleming_harrington
+    >>> from surpyval.univariate.nonparametric.fleming_harrington import (
+    ...     fleming_harrington,
+    ... )
     >>> r = np.array([10, 8, 5])
     >>> d = np.array([2, 1, 3])
     >>> fleming_harrington(r, d).round(4)
