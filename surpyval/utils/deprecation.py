@@ -330,7 +330,8 @@ class RenamedAttribute:
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
     attribute). A name deprecated in v0.29 passes
-    ``removed_in=REMOVED_IN_NEXT``.
+    ``removed_in=REMOVED_IN_NEXT``; ``category=FutureWarning`` warns where
+    Python would hide a DeprecationWarning (code outside ``__main__``).
 
     Examples
     --------
@@ -348,10 +349,16 @@ class RenamedAttribute:
     use 'log_likelihood'.
     """
 
-    def __init__(self, new: str, removed_in: str = REMOVED_IN) -> None:
+    def __init__(
+        self,
+        new: str,
+        removed_in: str = REMOVED_IN,
+        category: type[Warning] = DeprecationWarning,
+    ) -> None:
         self.new = new
         self.old = ""
         self.removed_in = removed_in
+        self.category = category
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.old = name
@@ -362,7 +369,7 @@ class RenamedAttribute:
             "'{}'.".format(
                 owner.__name__, self.old, self.removed_in, self.new
             ),
-            DeprecationWarning,
+            self.category,
             stacklevel=3,
         )
 

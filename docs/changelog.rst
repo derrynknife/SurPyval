@@ -908,6 +908,12 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- The renewal fitters' ``fit_from_parameters`` (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``) is ``from_params``, the
+  name every other family uses for a model built from given parameters.
+  The old name gives the same model, with a ``FutureWarning`` naming
+  ``from_params``, and is removed in v0.30.
+
 - ``EquivalenceFitter.fit``'s keyword ``x1`` (use ``x``), ``tl`` as a
   pair per unit of both clocks' entry ages (give ``tl`` the main clock's
   and ``SecondaryClock(x2, tl=...)`` the second's), and ``fit_from_df``'s

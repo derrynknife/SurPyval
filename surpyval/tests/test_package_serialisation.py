@@ -202,7 +202,7 @@ def test_mcf_dispatch():
 def test_renewal_dispatch():
     from surpyval.recurrent import GeneralizedRenewal
 
-    model = GeneralizedRenewal.fit_from_parameters(
+    model = GeneralizedRenewal.from_params(
         [50.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
     restored = surpyval.from_dict(json_round_trip(model.to_dict()))
