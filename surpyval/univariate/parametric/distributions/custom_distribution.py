@@ -19,6 +19,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import caller_stacklevel
 
 # The quantiles at which CustomDistribution.moment splits its integrals,
 # so each piece is on the distribution's own scale.
@@ -272,7 +273,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
                 f"model saved from the earlier '{name}' is now restored "
                 "with this distribution's cumulative hazard.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         _REGISTRY[name] = self
 

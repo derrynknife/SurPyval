@@ -893,3 +893,20 @@ def test_a_weighted_fit_has_no_model_based_covariance():
     np.testing.assert_array_equal(restored.covariance(), model.covariance())
     with pytest.raises(WeightedRefusal):
         restored.covariance(robust=False)
+
+
+def test_methods_used_as_values_say_to_call_them():
+    # np.round(fg.standard_errors, 4) failed with numpy's "unsupported
+    # operand type(s) for *: 'method' and 'float'".
+    x, Z, e, c = _simulate_fine_gray(400, 3)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
+    for name in ("standard_errors", "covariance"):
+        with pytest.raises(TypeError, match=rf"call it, {name}\(\)"):
+            np.round(getattr(m, name), 4)
+    with pytest.raises(TypeError, match=r"call it, phi\(\)"):
+        m.phi * 2
+    # called, they are what they were
+    se = m.standard_errors()
+    np.testing.assert_array_equal(se, np.sqrt(np.diag(m.covariance())))
+    assert m.standard_errors(robust=False).shape == se.shape
+    assert np.isclose(m.phi(np.zeros(2)), 1.0)

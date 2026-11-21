@@ -71,6 +71,7 @@ from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import check_e_and_x, is_missing_event, xcnt_handler
+from surpyval.utils._value_method import value_method
 from surpyval.utils.data_formats import resolve_cr_censoring
 from surpyval.utils.dataframe import exact_or_range_frame, frame_column
 from surpyval.utils.deprecation import positional_option
@@ -886,6 +887,7 @@ class ParametricCompetingRisks(
             [_cause_estimates(self.models[k]) for k in self.causes]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of every cause's fitted parameters, in the order of
@@ -961,6 +963,7 @@ class ParametricCompetingRisks(
             )
         return cov
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """
         The standard errors of every cause's fitted parameters, the square

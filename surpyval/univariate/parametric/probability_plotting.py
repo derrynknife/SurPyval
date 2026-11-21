@@ -20,6 +20,7 @@ from surpyval.univariate.nonparametric import (
 )
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.utils.numeric import _round_vals
+from surpyval.utils.warnings import caller_stacklevel
 
 
 def adjust_heuristic(
@@ -35,7 +36,7 @@ def adjust_heuristic(
         if heuristic != "Turnbull":
             warnings.warn(
                 "Interval censored data, heuristic changed to Turnbull",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             heuristic = "Turnbull"
 
@@ -43,7 +44,7 @@ def adjust_heuristic(
         if heuristic != "Turnbull":
             warnings.warn(
                 "Truncated censored data, heuristic changed to Turnbull",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             heuristic = "Turnbull"
 

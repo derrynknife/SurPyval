@@ -5,6 +5,23 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Test planning: what user tests found missing.**
+  ``demonstration_test_time(reliability, n, failures, mission_time=,
+  shape=)`` gives each unit's extended (Weibayes) test length in time,
+  not only in missions: ten units, shape 2, to show 90% over 1000 hours
+  at 90% confidence run 1478 hours each. ``demonstration_plan`` takes
+  ``mission_time`` to report the test length it finds in time
+  (``unit_test_time``), and, given ``n``, its refusal now says the test
+  length was searched, the lowest producer's risk reached, and how many
+  units are enough. ``mean_ratio_design`` plans a comparison of two mean
+  lives (exponential, or Weibull with a known common shape) by the exact
+  F test, solving for the power, the events, the units or the detectable
+  ratio; ``logrank_design``'s documentation gives the mean-ratio to
+  hazard-ratio mapping. An ``AcceleratedTestPlan`` reports the
+  acceleration factor at each stress and ``use_test_time``, how long the
+  same units would have to run at the use stress for the same precision.
+  The sequential tests print their reject line beside the accept line.
+
 - **The inverse survival function, ``isf``.** Every distribution
   (``Weibull.isf(s, alpha, beta)``) and every parametric model
   (``model.isf(s)``) gives the time at which the survival function is
@@ -759,6 +776,31 @@ v0.29 (unreleased)
 
 **Changed.**
 
+- **Small traps from user tests.** ``from_params`` takes a plain number for
+  every one-parameter distribution (``Exponential.from_params(1 / 20000)``,
+  ``Rayleigh``, ``Poisson``, ...); a number, or a list of the wrong length,
+  for a distribution with more parameters is refused naming how many it
+  takes and their names ("Weibull takes 2 parameters (alpha, beta); got 1
+  number"), where it failed with "object of type 'float' has no len()".
+  A fitted model's ``distribution`` names its distribution (every model is a
+  ``Parametric``), and ``parameter_roles`` (on the distribution and the
+  model) says what each parameter does: Gamma's ``beta`` is a rate,
+  Weibull's a shape. A Turnbull estimate's printout says ``Curve :
+  Fleming-Harrington on Turnbull's expected counts``, not ``Estimator :
+  Fleming-Harrington``, which read as if that were the method. The data
+  line of a printout counts left and interval censored units among the
+  events ("60 units: 24 events (0 exact, 1 left censored, 23 interval
+  censored), 36 right censored"), where interval data read as "0 events".
+  ``from_xrd`` given fractional counts (such as ``to_xrd``'s Turnbull
+  expected counts) still refuses them, now saying they are estimates, not
+  observations, and to fit the original data. ``fit_best``'s warnings point
+  at the caller's line, and the one for a candidate set aside says in plain
+  words why and what to do; every other warning with a counted
+  ``stacklevel`` now points at the first line outside SurPyval too. The
+  competing-risks models' ``standard_errors``, ``covariance`` and ``phi``,
+  used as a value (``np.round(model.standard_errors, 4)``), raise a
+  ``TypeError`` saying to call them, where numpy's message did not say.
+
 - **One concordance, one Brier score, one AUC.** ``concordance_index``
   now returns a ``ConcordanceResult``, a ``float`` (the index, the same
   number as before) that carries its standard error ``se``, interval
@@ -1198,6 +1240,14 @@ v0.29 (unreleased)
   event data now refuses it, naming ``EffortClock``.
 
 **Documentation.**
+
+- :doc:`Competing Risks SurPyval Modelling` named Gray's test's and
+  ``FineGray``'s cause argument ``cause``; it is ``event``. It now says the
+  Fine-Gray baseline (and ``phi``) is at covariates 0 unless fitted with
+  ``center=True``. :doc:`Regression Modelling with SurPyval` says Cox
+  coefficients are named ``coef_0``, ... for an array ``Z`` (pass a
+  ``DataFrame``, ``Z_cols`` or a ``formula`` to name them), and maps
+  ``fit_tvc``'s ``xl``, ``xr`` and ``c`` to R's start, stop and status.
 
 - **Choosing a Model**, a new page linked from the start of the
   documentation and from the :doc:`Quickstart`: :doc:`Choosing a Model`

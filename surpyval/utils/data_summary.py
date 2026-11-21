@@ -66,7 +66,10 @@ def data_summary(
     str
         For example ``"60 units: 9 events at 7 unique times, 51 right
         censored"``. The events are always listed; the other kinds only
-        when there are some. Truncation follows after a semicolon.
+        when there are some. Left and interval censored units had their
+        event at a time not known exactly, so they are counted among the
+        events, which are then split into the exact and the censored.
+        Truncation follows after a semicolon.
 
     Examples
     --------
@@ -74,26 +77,41 @@ def data_summary(
     >>> data_summary([0, 0, 1], n=[5, 4, 51], x=[3.0, 7.0, 10.0])
     '60 units: 9 events at 2 unique times, 51 right censored'
     >>> data_summary([0, 2, 0], tl=[0, 0, 1], lower=0)
-    '3 units: 2 events, 1 interval censored; 1 left truncated'
+    '3 units: 3 events (2 exact, 1 interval censored); 1 left truncated'
+    >>> data_summary([-1, 2, 2])
+    '3 units: 3 events (0 exact, 1 left censored, 2 interval censored)'
     """
     c = np.asarray(c).ravel()
     n = np.ones_like(c) if n is None else np.asarray(n).ravel()
     total = int(np.sum(n))
-    parts = []
-    for flag, singular, plural in _CENSORING:
-        k = int(np.sum(n[c == flag]))
-        if k > 0 or flag == 0:
-            part = _count(k, singular, plural)
-            if flag == 0 and x is not None and k > 0:
-                times = np.asarray(x, dtype=float)
-                if times.ndim == 2:
-                    times = times[:, 0]
-                times = times.ravel()
-                event = (c == flag) & (n > 0)
-                if times.shape == c.shape:
-                    m = len(np.unique(times[event]))
-                    part += f" at {_count(m, 'unique time', 'unique times')}"
-            parts.append(part)
+    counts = {flag: int(np.sum(n[c == flag])) for flag, _, _ in _CENSORING}
+    at = ""
+    if x is not None and counts[0] > 0:
+        times = np.asarray(x, dtype=float)
+        if times.ndim == 2:
+            times = times[:, 0]
+        times = times.ravel()
+        event = (c == 0) & (n > 0)
+        if times.shape == c.shape:
+            m = len(np.unique(times[event]))
+            at = f" at {_count(m, 'unique time', 'unique times')}"
+    # A left or interval censored unit had its event too, only not at a
+    # known time: it is counted among the events, so that interval data
+    # do not read as "0 events" (#508).
+    inexact = [
+        _count(counts[flag], singular, plural)
+        for flag, singular, plural in _CENSORING
+        if flag in (-1, 2) and counts[flag] > 0
+    ]
+    if inexact:
+        k = counts[0] + counts[-1] + counts[2]
+        split = ", ".join([f"{counts[0]} exact{at}"] + inexact)
+        events = f"{_count(k, 'event', 'events')} ({split})"
+    else:
+        events = _count(counts[0], "event", "events") + at
+    parts = [events]
+    if counts[1] > 0:
+        parts.append(f"{counts[1]} right censored")
     out = f"{_count(total, 'unit', 'units')}: " + ", ".join(parts)
     truncated = []
     if tl is not None:

@@ -110,6 +110,7 @@ from surpyval.univariate.regression.regression_data import (
     named_covariates,
 )
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils._value_method import value_method
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import (
     call_fit,
@@ -1770,6 +1771,7 @@ class FineGrayModel(
         "absorbs, or a linear combination of the others"
     )
 
+    @value_method
     def covariance(self, robust: bool = ROBUST_BY_DEFAULT) -> npt.NDArray:
         """The coefficients' covariance (a ``nan`` row and column for an
         aliased coefficient). It was ``cov`` before v0.23.
@@ -1832,6 +1834,7 @@ class FineGrayModel(
             )
         return self._model_covariance
 
+    @value_method
     def standard_errors(self, robust: bool = ROBUST_BY_DEFAULT) -> npt.NDArray:
         """The coefficients' standard errors, the square roots of the
         diagonal of :meth:`covariance`: the robust ones by default, the
@@ -2064,6 +2067,7 @@ class FineGrayModel(
         out._restore_penalty(model_dict)
         return out
 
+    @value_method
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
         """The subdistribution hazard multiplier
         :math:`e^{\\beta' (Z - \\text{center})}`, relative to a unit at

@@ -287,7 +287,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
-        Estimator        : Kaplan-Meier
+        Curve            : Kaplan-Meier on Turnbull's expected counts
         Data             : 6 units: 6 events at 5 unique times
         """
         if w is not None and self.how == "Turnbull":

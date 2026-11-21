@@ -497,6 +497,7 @@ surpyval.test_planning.demonstration_pass_probability
 surpyval.test_planning.demonstration_plan
 surpyval.test_planning.demonstration_sample_size
 surpyval.test_planning.demonstration_test_multiple
+surpyval.test_planning.demonstration_test_time
 surpyval.test_planning.equivalence_design
 surpyval.test_planning.equivalence_events
 surpyval.test_planning.equivalence_power
@@ -510,6 +511,7 @@ surpyval.test_planning.logrank_events
 surpyval.test_planning.logrank_group_sequential
 surpyval.test_planning.logrank_power
 surpyval.test_planning.logrank_sample_size
+surpyval.test_planning.mean_ratio_design
 surpyval.test_planning.mtbf_demonstration_plan
 surpyval.test_planning.mtbf_pass_probability
 surpyval.test_planning.mtbf_test_time
