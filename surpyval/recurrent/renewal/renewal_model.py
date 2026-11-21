@@ -2275,10 +2275,15 @@ class RenewalModel(
             tol=tol,
             max_events=max_events,
         )
+        from surpyval.utils.warnings import caller_stacklevel
+
         if run.stalled:
-            warnings.warn(STALLED_WARNING, stacklevel=3)
+            warnings.warn(STALLED_WARNING, stacklevel=caller_stacklevel())
         if run.hit_max_events:
-            warnings.warn(MAX_EVENTS_WARNING.format(max_events), stacklevel=3)
+            warnings.warn(
+                MAX_EVENTS_WARNING.format(max_events),
+                stacklevel=caller_stacklevel(),
+            )
         failed = run.c == 0
         sequence = run.i[failed]
         return rows[sequence], sequence % items, run.x[failed]

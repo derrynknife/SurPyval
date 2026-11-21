@@ -101,7 +101,7 @@ from surpyval.utils.validation import (
     check_option,
     unknown_cause_error,
 )
-from surpyval.utils.warnings import warn_no_covariance
+from surpyval.utils.warnings import caller_stacklevel, warn_no_covariance
 
 _NAME = "CauseSpecificProportionalIntensity"
 
@@ -782,7 +782,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
                 "towards no type, so the types' intensities are "
                 "underestimated by those failures; give their types if "
                 "they are known.",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         event_types = ordered_labels(marks[failed])
         if not event_types:

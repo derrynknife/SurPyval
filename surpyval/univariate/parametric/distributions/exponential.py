@@ -18,6 +18,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._stable import log1mexp, on_support, positive_or_one
 
@@ -553,7 +554,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             warnings.warn(
                 "Some Infinite values encountered in plotting points and have \
                 been ignored.",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             y_pp = y_pp[mask]
             x_pp = x_pp[mask]
