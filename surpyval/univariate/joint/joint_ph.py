@@ -29,6 +29,7 @@ from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
 from ._likelihood import (
+    EFFECTS,
     LINKS,
     MAX_VARYING,
     JointArrays,
@@ -52,6 +53,7 @@ from .joint_model import (
     parameter_names,
     path_formula,
     reported_params,
+    shareable,
     structure_words,
 )
 
@@ -373,6 +375,8 @@ class JointPHFitter(FitterRepr):
         marker_unit: str | None = None,
         how: str = "MLE",
         integration: str | None = None,
+        e: npt.ArrayLike | None = None,
+        shared: Any = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -503,6 +507,33 @@ class JointPHFitter(FitterRepr):
             grid, the more accurate; ``"pruned"`` is an option. The
             model keeps it as ``integration``, and its predictions use
             the same.
+        e : array_like, optional
+            The failure mode (event type, or cause) of each failure, any
+            labels; ``None`` for an item still running. A SurpyvalData's
+            event types (``ItemLifetime(..., event_type=...)``) are
+            these. With two or more modes the model is of competing
+            failure modes: each has a Weibull baseline, hazard
+            coefficients and marker effects of its own
+            (``"<mode>: alpha"``, ``"<mode>: beta"``, ``"<mode>:
+            marker_effect"``, ...), so a reading may predict one way of
+            failing and not another, and an item that fails by one mode
+            is no longer at risk of the others; the marker part is one
+            for all. The model's ``sf`` is the survival of every mode
+            together. An item found failed (left or interval censored)
+            needs its mode too. With one mode, or none given, the model
+            is that of one kind of failure. Proportional hazards and
+            ``how="MLE"`` only: a ``JointAFT`` fitter and the two-stage
+            estimate refuse event types.
+        shared : list of str, optional
+            With failure modes: the survival parameters the modes have
+            in common, one parameter each under its plain name:
+            ``"beta"`` (the baselines' shape), a hazard covariate, or a
+            link's effect (``"marker_effect"``, ``"slope_effect"``,
+            ``"cumulative_effect"``). Default none: every mode has its
+            own. The fit with an effect shared is nested in the fit
+            without, so the likelihood-ratio test of the two
+            (``model.likelihood_ratio_test(shared_model)``) asks whether
+            the reading speaks to the modes differently.
 
         Returns
         -------
@@ -536,6 +567,34 @@ class JointPHFitter(FitterRepr):
         ... )
         >>> quick.how, quick.maximum
         ('two-stage', 'not applicable')
+
+        Two failure modes, the marker a warning of the first only (a
+        wear-out mode the reading follows, and a random one it does
+        not):
+
+        >>> rng = np.random.default_rng(11)
+        >>> items = []
+        >>> for k in range(120):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     worn = 110 * rng.weibull(2.5) * np.exp(-0.4 * (start - 2))
+        ...     other = 250 * rng.weibull(1.0)
+        ...     end = min(worn, other, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     if end < 120:
+        ...         outcome = {"observed": end}
+        ...         mode = "bearing" if worn < other else "seal"
+        ...     else:
+        ...         outcome, mode = {"right_censored": end}, None
+        ...     items.append(
+        ...         ItemLifetime(k, **outcome, event_type=mode,
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> modes = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> modes.causes
+        ['bearing', 'seal']
+        >>> modes.parameter_names[-3:]
+        ['seal: alpha', 'seal: beta', 'seal: marker_effect']
         """
         check_option(
             "how",
@@ -573,8 +632,18 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
+        causes = _causes(self, e, records, counts, how)
         model = _fit(
-            self, records, counts, names, reference, parts, integration, how
+            self,
+            records,
+            counts,
+            names,
+            reference,
+            parts,
+            integration,
+            how,
+            causes,
+            _check_shared(shared, causes, parts[1], self.link),
         )
         model.marker_unit = marker_unit
         return model
@@ -720,6 +789,8 @@ class JointPHFitter(FitterRepr):
         marker_unit: str | None = None,
         how: str = "MLE",
         integration: str | None = None,
+        e_col: str | None = None,
+        shared: Any = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -744,7 +815,10 @@ class JointPHFitter(FitterRepr):
         it has one), and ``how`` the way to fit, as for :meth:`fit`
         (``"two-stage"`` for the quick, approximate estimate).
         ``integration`` is the nodes of each item's integral, ``"grid"``
-        or ``"pruned"``, as for :meth:`fit`.
+        or ``"pruned"``, as for :meth:`fit`. ``e_col`` names the column of
+        each failure's mode (missing for an item still running), for a
+        model of competing failure modes, and ``shared`` the survival
+        parameters the modes have in common, as for :meth:`fit`.
 
         Examples
         --------
@@ -786,6 +860,7 @@ class JointPHFitter(FitterRepr):
             xl_col=xl_col,
             xr_col=xr_col,
             Z_cols=Z_cols,
+            e_col=e_col,
         )
         if m is not None and markers_col is not None:
             raise TypeError(
@@ -834,6 +909,8 @@ class JointPHFitter(FitterRepr):
                 marker_unit=marker_unit,
                 how=how,
                 integration=integration,
+                e=None if e_col is None else _labels(df[e_col]),
+                shared=shared,
             )
 
 
@@ -1094,6 +1171,153 @@ def _records(
     return records, np.array(counts, dtype=float), names
 
 
+def _labels(e: Any) -> npt.NDArray:
+    """``e`` as an object array of labels, a missing one (``None``,
+    ``nan``, pandas' ``NA``) as ``None``; a tuple label kept whole."""
+    values = list(e)
+    out = np.empty(len(values), dtype=object)
+    for k, value in enumerate(values):
+        missing = value is None
+        if not missing and not isinstance(value, (str, tuple)):
+            try:
+                missing = bool(value != value)
+            except (TypeError, ValueError):
+                missing = True
+        out[k] = None if missing else value
+    return out
+
+
+def _causes(
+    fitter: Any, e: Any, records: list, counts: npt.NDArray, how: str
+) -> tuple | None:
+    """``(causes, index)``: the failure modes of ``e``, in order, and
+    each record's (its index among them, -1 for an item still running);
+    ``None`` where no event types are given, or one mode only (the model
+    of one kind of failure). What the fit of several modes cannot take
+    is refused: a failure with no mode, a mode on an item still running,
+    the accelerated survival part and the two-stage estimate."""
+    from surpyval.univariate.competing_risks.labels import ordered_labels
+
+    if e is None:
+        return None
+    if np.ndim(e) != 1:
+        raise ValueError(
+            "'e' is the failure mode (event type) of each item's failure, "
+            "one label per item (None for an item still running); got "
+            f"{np.ndim(e)} dimension(s)."
+        )
+    labels = _labels(e)
+    rows = max(int(r.id) for r in records) + 1
+    if len(labels) < rows:
+        raise ValueError(
+            f"'e' must hold one failure mode per item; got {len(labels)}."
+        )
+    mine = [labels[int(r.id)] for r in records]
+    causes = ordered_labels(mine)
+    if len(causes) < 2:
+        return None
+    running = [r.outcome == "right_censored" for r in records]
+    labelled = sum(
+        w
+        for w, label, r in zip(counts, mine, running)
+        if r and label is not None
+    )
+    if labelled:
+        raise ValueError(
+            f"{labelled:g} item(s) still running (right censored) have a "
+            "failure mode in 'e'. An item that has not failed has none: "
+            "set their 'e' to None."
+        )
+    unknown = sum(
+        w
+        for w, label, r in zip(counts, mine, running)
+        if not r and label is None
+    )
+    if unknown:
+        raise ValueError(
+            f"{unknown:g} failure(s) have no failure mode in 'e' "
+            f"(the others are {causes!r}). A failure of unknown mode is "
+            "not fitted yet: give each failure's mode, or leave 'e' out "
+            "to fit every failure as one kind."
+        )
+    if fitter.survival == "AFT":
+        raise ValueError(
+            "An accelerated joint model (JointAFT) takes no failure modes "
+            f"('e' has {causes!r}) for now: fit them with the proportional "
+            "hazards one, JointPH (WeibullJointPH), or leave 'e' out to "
+            "fit every failure as one kind."
+        )
+    if how == "two-stage":
+        raise ValueError(
+            "The two-stage estimate takes no failure modes ('e' has "
+            f"{causes!r}) for now: fit them with how='MLE', or leave 'e' "
+            "out to fit every failure as one kind."
+        )
+    index = np.array(
+        [-1 if label is None else causes.index(label) for label in mine],
+        dtype=int,
+    )
+    return causes, index
+
+
+def _check_shared(
+    shared: Any, causes: tuple | None, hazard: list, links: tuple
+) -> tuple:
+    """``shared`` as a tuple of names, refused unless each is a survival
+    parameter the failure modes can have in common."""
+    if shared is None:
+        return ()
+    names = [shared] if isinstance(shared, str) else list(shared)
+    if not names:
+        return ()
+    if causes is None:
+        raise ValueError(
+            "'shared' names the survival parameters that failure modes "
+            "have in common, and this fit has fewer than two modes (no "
+            "'e', or one mode in it): leave 'shared' out."
+        )
+    allowed = shareable(list(hazard), links)
+    if "alpha" in names:
+        raise ValueError(
+            "'shared' cannot hold 'alpha': each failure mode has its own "
+            "scale (two modes with one alpha and one beta would be "
+            f"equally likely at every age). It can hold {allowed!r}."
+        )
+    wrong = [name for name in names if name not in allowed]
+    twice = sorted({name for name in names if names.count(name) > 1})
+    if wrong or twice:
+        raise ValueError(
+            "'shared' names the survival parameters the failure modes "
+            f"have in common, each once, from {allowed!r}; got "
+            f"{wrong + twice!r}."
+        )
+    return tuple(name for name in allowed if name in names)
+
+
+def _check_cause_counts(
+    causes: list, index: npt.NDArray, counts: npt.NDArray, own: list
+) -> dict:
+    """The failures of each mode, ``{mode: count}``; refused where a
+    mode has fewer failures than parameters of its own (``own``)."""
+    found = {
+        cause: float(np.sum(counts[index == k]))
+        for k, cause in enumerate(causes)
+    }
+    short = {cause: n for cause, n in found.items() if n < len(own)}
+    if short:
+        listed = ", ".join(f"{c!r}: {n:g}" for c, n in short.items())
+        raise ValueError(
+            "Each failure mode needs at least as many failures as it has "
+            f"parameters of its own ({len(own)}: {', '.join(own)}); the "
+            f"data have {listed} (every mode: "
+            + ", ".join(f"{c!r}: {n:g}" for c, n in found.items())
+            + "). Merge a rare mode into another in 'e', share parameters "
+            "between the modes (shared=), or leave 'e' out to fit every "
+            "failure as one kind."
+        )
+    return found
+
+
 def _lifetimes(records: list) -> tuple:
     """``(T, d, U, L, Rt)`` of the records: the age each left observation
     (the lower end of an interval: a left censored item's entry age, else
@@ -1193,15 +1417,20 @@ def _fit(
     parts: tuple,
     integration: str = "grid",
     how: str = "MLE",
+    causes: tuple | None = None,
+    shared: tuple = (),
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each), by ``how``
     (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
     enter which part
-    (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`)."""
+    (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
+    ``causes`` is :func:`_causes`' (the failure modes and each record's)
+    and ``shared`` the survival parameters they have in common."""
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts
     p_all = len(names)
+    cause_names = None if causes is None else list(causes[0])
     every = parameter_names(
         path_names,
         list(fitter.varying),
@@ -1210,6 +1439,8 @@ def _fit(
         hazard,
         fitter.link,
         fitter.random_effects,
+        cause_names,
+        shared,
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -1242,9 +1473,34 @@ def _fit(
     reference = centre if reference is None else reference
     refs = (centre, zbar, reference)
     arrays = JointArrays.build(
-        counts, T, d, L, Z - zbar, ages, values, U=U, Rt=Rt
+        counts,
+        T,
+        d,
+        L,
+        Z - zbar,
+        ages,
+        values,
+        U=U,
+        Rt=Rt,
+        e=None if causes is None else causes[1],
     )
     kept_names = [names[j] for j in kept]
+    by_cause = None
+    cause_layout: dict = {}
+    if causes is not None and cause_names is not None:
+        kept_hazard = [cov for cov in kept_names if cov in hazard]
+        own = [
+            name
+            for name in ["alpha", *shareable(kept_hazard, fitter.link)]
+            if name not in shared
+        ]
+        by_cause = _check_cause_counts(cause_names, causes[1], counts, own)
+        cause_layout = {
+            "n_causes": len(cause_names),
+            "shared_beta": "beta" in shared,
+            "shared_hazard": [cov in shared for cov in kept_names],
+            "shared_links": [EFFECTS[k] in shared for k in fitter.link],
+        }
     layout = Layout(
         len(path_names),
         p,
@@ -1257,6 +1513,7 @@ def _fit(
         fitter.link,
         fitter.survival,
         block_labels(fitter.random_effects, fitter.varying),
+        **cause_layout,
     )
     model = Model(
         layout,
@@ -1306,6 +1563,8 @@ def _fit(
         hazard,
         fitter.link,
         fitter.random_effects,
+        cause_names,
+        shared,
     )
     kept_names = parameter_names(
         path_names,
@@ -1315,6 +1574,8 @@ def _fit(
         [c for c in hazard if c in kept_names],
         fitter.link,
         fitter.random_effects,
+        cause_names,
+        shared,
     )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -1340,6 +1601,9 @@ def _fit(
     out.lag = fitter.lag
     out.weight = fitter.weight
     out.survival = fitter.survival
+    out.causes = cause_names
+    out.shared = tuple(shared)
+    out.n_events_by_cause = by_cause
     out.marker_reference = float(reference) if "value" in fitter.link else None
     out._centre = centre
     out._zbar = zbar
@@ -1657,7 +1921,19 @@ def search_space(model: JointModel, **data: Any) -> tuple:
         fitter, records, counts, len(names)
     )
     Z = Z_all[:, model._kept] - model._zbar
-    arrays = JointArrays.build(counts, T, d, L, Z, ages, values, U=U, Rt=Rt)
+    causes = _causes(fitter, data.get("e"), records, counts, "MLE")
+    arrays = JointArrays.build(
+        counts,
+        T,
+        d,
+        L,
+        Z,
+        ages,
+        values,
+        U=U,
+        Rt=Rt,
+        e=None if causes is None else causes[1],
+    )
     layout = model._layout
     lik = model._likelihood_model()
     theta = model._theta()
