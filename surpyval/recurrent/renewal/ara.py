@@ -26,7 +26,11 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
     rows_by_position,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    RenamedAttribute,
+    ambiguous_item_ids,
+)
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -496,7 +500,12 @@ class ARA(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
-    def fit_from_parameters(
+    #: The old name of :meth:`from_params` (deprecated in v0.29).
+    fit_from_parameters = RenamedAttribute(
+        "from_params", REMOVED_IN_NEXT, FutureWarning
+    )
+
+    def from_params(
         self,
         params: ArrayLike,
         rho: float,

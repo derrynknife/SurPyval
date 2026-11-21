@@ -1601,7 +1601,7 @@ available as ``model.model`` (an ordinary SurPyval distribution, with ``sf``,
 ``model.kijima_type`` the Kijima type. As with the intensity models, ``init``
 (the restoration factor followed by the distribution's parameters) starts the
 search from your own values instead of the built-in starts, and
-``GeneralizedRenewal.fit_from_parameters(params, q, kijima=..., dist=...)``
+``GeneralizedRenewal.from_params(params, q, kijima=..., dist=...)``
 builds a model from known values for simulation; ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` have the same method (``ARI``'s takes ``baseline=``).
 
@@ -1869,7 +1869,7 @@ other renewal models, plus the ``m`` argument, and both report a repair
 efficiency ``rho`` between 0 (as-bad-as-old) and 1 (as-good-as-new).
 
 To see whether the fit can recover a known answer, we build an ARA model with
-known parameters using ``fit_from_parameters`` — Weibull lifetimes with
+known parameters using ``from_params`` — Weibull lifetimes with
 :math:`\alpha = 10` and :math:`\beta = 3`, repair efficiency
 :math:`\rho = 0.5` and memory :math:`m = 2` — and simulate eight systems
 watched for 40 hours:
@@ -1880,7 +1880,7 @@ watched for 40 hours:
     from surpyval.recurrent import ARA
     import numpy as np
 
-    ara_true = ARA.fit_from_parameters([10.0, 3.0], 0.5, m=2, dist=Weibull)
+    ara_true = ARA.from_params([10.0, 3.0], 0.5, m=2, dist=Weibull)
     sim = ara_true.time_terminated_simulation_data(40, items=8, random_state=3)
     x, i, c = sim.x, sim.i, sim.c
     print("simulated failures:", int((c == 0).sum()))
@@ -1936,7 +1936,7 @@ power-law baseline (:math:`\beta = 2.5`) and fit it back:
 
     from surpyval.recurrent import ARI, CrowAMSAA
 
-    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, baseline=CrowAMSAA)
+    ari_true = ARI.from_params([10.0, 2.5], 0.6, m=1, baseline=CrowAMSAA)
     sim_ari = ari_true.time_terminated_simulation_data(40, items=10, random_state=7)
 
     ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, baseline=CrowAMSAA, m=1)

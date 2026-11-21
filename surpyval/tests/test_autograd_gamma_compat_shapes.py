@@ -5,6 +5,7 @@ import autograd.numpy as anp
 import numpy as np
 import pytest
 from autograd import grad, hessian
+from scipy.special import gammaincc
 
 from surpyval.utils.autograd_gamma_compat import (
     betainc,
@@ -105,7 +106,7 @@ def _logs(agc, a, b, x, u):
 
 
 def test_the_complement_is_computed_where_it_is_used(monkeypatch):
-    # log Q(a, x) used P(a, x) only where P < 1e-3 (log1p(-P)), but both
+    # log Q(a, x) used P(a, x) only where P is small (log1p(-P)), but both
     # were computed everywhere, each as costly as the other: 37% of a
     # censored Gamma fit at 1e5 rows. Now the other side is computed only
     # where it can be that small, and every value is the same to the bit
@@ -129,7 +130,11 @@ def test_the_complement_is_computed_where_it_is_used(monkeypatch):
     monkeypatch.setattr(agc, "_sc_gammainc", counted)
     x = np.linspace(0.5, 20.0, 1000)
     agc._gammainccln_raw(2.5, x)
-    assert sum(sizes) < 10
+    # P is computed only where Q is above _NEAR_ONE (0.89: the log of Q is
+    # log1p(-P) where P is below 0.1), 18 of the 1000 points here
+    near = int(np.sum(gammaincc(2.5, x) > agc._NEAR_ONE))
+    assert near == 18
+    assert sum(sizes) == near
 
 
 @pytest.mark.parametrize("func", [gammainc, gammaincln, gammainccln])
