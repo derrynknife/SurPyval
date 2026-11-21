@@ -706,7 +706,8 @@ reading's unit) bends the curve after its knot. With no knots at all
 fit is ``LinearPath``'s to the last digit.
 
 A fleet of 150 pumps whose vibration stays near 3 mm/s for a year and
-then climbs:
+then climbs, fitted with one knot at the year, where the readings are
+known to turn:
 
 .. jupyter-execute::
 
@@ -732,7 +733,8 @@ then climbs:
 
 
     bent = SurpyvalData.from_items([knee(k) for k in range(150)])
-    spline = JointPH(Weibull, SplinePath.natural(df=3), varying=("level", "rate"))
+    turn = SplinePath(knots=[365.0], boundary=(0.0, 730.0))
+    spline = JointPH(Weibull, turn, varying=("level", "rate"))
     spline = spline.fit(bent, marker_reference=4.0)
     line = JointPH(Weibull, LinearPath).fit(bent, marker_reference=4.0)
     print(spline.path_model)
@@ -743,7 +745,7 @@ then climbs:
     :hide-output:
 
     assert spline.maximum == "verified"
-    assert spline.parameter_names[:4] == ["level", "rate", "s1", "s2"]
+    assert spline.parameter_names[:3] == ["level", "rate", "s1"]
     assert line.aic() - spline.aic() > 50
 
 ``aic()`` compares the two fits of the same data: the line is far behind.
@@ -775,10 +777,23 @@ past the turn, whose vibration has started to climb:
     )
     assert abs(by_spline.marker(450.0) - truth_450) < 0.25
 
-The pump's vibration is truly 3.51 mm/s at 450 days and 4.59 at 630. The
-line cannot turn with the readings, so it reads the level late and
-projects it low, and its survival is too hopeful just when a warning
-matters.
+The pump's vibration is truly 3.51 mm/s at 450 days and 4.59 at 630.
+Both fits read the level at 450 days about right, but the line cannot
+turn with the readings: it projects 3.84 at 630, where the spline
+projects 4.5. The chances of reaching 630 days are close here (0.734
+and 0.737): each fit's baseline hazard has absorbed its own picture of
+the fleet's path, so the line's error shows first in the marker it
+forecasts.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s, _l = by_spline, by_line
+    assert round(float(_l.marker(630.0)), 2) == 3.84, _l.marker(630.0)
+    assert round(float(_s.marker(630.0)), 1) == 4.5, _s.marker(630.0)
+    assert round(float(_l.sf(630.0)), 3) == 0.734, _l.sf(630.0)
+    assert round(float(_s.sf(630.0)), 3) == 0.737, _s.sf(630.0)
 
 Choosing the knots: more knots follow more turns and need more readings.
 A spline with more parameters than the items' median number of readings

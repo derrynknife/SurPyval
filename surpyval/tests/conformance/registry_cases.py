@@ -1338,6 +1338,21 @@ def _recurrent_data_path(fitter, **fixed):
     return run
 
 
+def _renewal_from_params_path(fitter, **fixed):
+    """The fit's parameters and restoration given back to ``from_params``
+    (with the fit's memory or Kijima type)."""
+
+    def run(d):
+        fitted = fitter.fit(**d, **fixed)
+        return fitter.from_params(
+            fitted.to_dict()["params"],
+            fitted.to_dict()["restoration"],
+            **fixed,
+        )
+
+    return run
+
+
 def _recurrent_tvc_path(fitter, marks=False):
     """The fixture's event rows as start-stop rows, each from the item's
     previous row (0 for its first) with the item's covariates, fitted by
@@ -1621,7 +1636,8 @@ def _recurrent():
                 paths={
                     "fit_from_recurrent_data": _recurrent_data_path(
                         fitter, **kw
-                    )
+                    ),
+                    "from_params": _renewal_from_params_path(fitter, **kw),
                 },
                 draw=lambda m, s: m.mcf(X_REC, items=5, random_state=s),
                 explicit_seed=True,
@@ -2063,6 +2079,30 @@ def _copulas():
                 explicit_seed=True,
             )
         )
+    # Non-parametric margins: the maximum pseudo-likelihood estimate from
+    # the ranks, on complete data with no counts.
+    semi = _fit(mv.Clayton, margins=[sp.KaplanMeier, sp.KaplanMeier])
+    out.append(
+        Case(
+            name="ClaytonCopula[margins=KaplanMeier]",
+            fitters=("surpyval.multivariate.Clayton",),
+            model_class="surpyval.multivariate.CopulaModel",
+            interface=BIVARIATE,
+            data=lambda: {"x": copula_data()["x"]},
+            fit=semi,
+            functions=("sf", "cdf"),
+            x=X_COP,
+            rows=("x",),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "counts": "the fixture is the rank-based covariance's case, "
+                "complete rows with no counts (a count above 1 is a tie, "
+                "which it refuses); the parametric-margin copulas check "
+                "counts",
+            },
+        )
+    )
     return out
 
 
@@ -2969,6 +3009,14 @@ def _df_paths():
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
+    # (its fixture has no counts: the rows alone)
+    paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
+        mv.Clayton.fit_from_df(
+            _frame(d, ("x",))[0],
+            x_cols=["x0", "x1"],
+            margins=[sp.KaplanMeier, sp.KaplanMeier],
+        )
+    )
     return paths
 
 
@@ -3583,6 +3631,43 @@ _JELINSKI_MORANDA_BOUNDS = (
 )
 
 
+def _copula_bounds(case):
+    # The joint sf and the joint CDF are not complements: one sweep
+    # each, so that cb_transform does not read one as 1 - the other
+    # (#540). The fixture's AMH estimate is on its bound, theta = 1
+    # (the data's Kendall's tau is past the family's 1/3), where no
+    # Wald bound exists: NaN, with a warning, as documented.
+    nan_ok = case.name == "AMHCopula"
+    # The case bootstrap (percentiles of refits to resampled units):
+    # the calls with one n_boot and seed share one set of refits.
+    boot = dict(kwargs={"method": "bootstrap", **_BOOT}, wald=False, slow=True)
+    bootstrap = (
+        Bound("cb", on=("sf",), label="cb[bootstrap]", **boot),
+        Bound("cb", on=("ff",), label="cb[ff, bootstrap]", **boot),
+        Bound("param_cb", kind="param", label="param_cb[bootstrap]", **boot),
+    )
+    # The rank correlations' bounds (the independence copula's are its
+    # measures, 0, at every level).
+    measures = tuple(
+        Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
+        for m in ("kendall_tau_cb", "spearman_rho_cb")
+    )
+    if "margins=KaplanMeier" in case.name:
+        # Rank-based margins: the Wald bound on the parameter from the
+        # pseudo-likelihood's covariance; a joint probability has the
+        # bootstrap only (a step margin has no covariance).
+        return (_PARAM_CB,) + measures + bootstrap
+    return (
+        (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
+        )
+        + measures
+        + bootstrap
+    )
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
@@ -3644,6 +3729,17 @@ def _bounds(case):
                 "cb",
                 on=("sf", "ff"),
                 label="cb[all-cause]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+        ),
+        # Fine-Gray's cumulative incidence: the case bootstrap
+        # (percentiles); Wald and likelihood-ratio bounds refuse, saying
+        # why.
+        "FineGrayModel": (
+            Bound(
+                "cb",
+                on=("cif", "sf"),
                 kwargs={"n_boot": 40, "random_state": 0},
                 wald=False,
             ),
@@ -4095,17 +4191,7 @@ def _bounds(case):
             ),
         )
     if cls == "CopulaModel":
-        # The joint sf and the joint CDF are not complements: one sweep
-        # each, so that cb_transform does not read one as 1 - the other
-        # (#540). The fixture's AMH estimate is on its bound, theta = 1
-        # (the data's Kendall's tau is past the family's 1/3), where no
-        # Wald bound exists: NaN, with a warning, as documented.
-        nan_ok = case.name == "AMHCopula"
-        return (
-            Bound("cb", on=("sf",), nan_ok=nan_ok),
-            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
-            replace(_PARAM_CB, nan_ok=nan_ok),
-        )
+        return _copula_bounds(case)
     return ()
 
 
@@ -4244,6 +4330,10 @@ def _estimators(case):
         return {"how": ("MLE", "two-stage")}, {}, None
     if name == "CauseSpecificNHPP":
         return {"how": ("MLE", "MSE")}, {}, None
+    if "margins=KaplanMeier" in case.name:
+        # A step margin has no parameters for one joint search to
+        # re-estimate: how="MLE" refuses it, saying to use "IFM".
+        return {"how": ("IFM",)}, {}, None
     if case.model_class == "surpyval.multivariate.CopulaModel":
         return {"how": ("IFM", "MLE")}, {}, _copula_sample
     if name == "DegradationAnalysis[linear]":

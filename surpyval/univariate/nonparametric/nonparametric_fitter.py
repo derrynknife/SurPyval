@@ -39,7 +39,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         out.x = np.asarray(x)
         out.r = np.asarray(r)
         out.d = np.asarray(d)
-        out.R = nonp.FIT_FUNCS[estimator](r, d)
+        out.R = nonp._FIT_FUNCS[estimator](r, d)
         out.model = self.how
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
@@ -54,7 +54,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # Variance of the cumulative hazard estimate using the formula
         # appropriate to the estimator, e.g. Greenwood's formula for
         # Kaplan-Meier. See VAR_FUNCS for each.
-        return nonp.VAR_FUNCS[estimator](
+        return nonp._VAR_FUNCS[estimator](
             np.asarray(r, dtype=float), np.asarray(d, dtype=float)
         )
 
@@ -287,7 +287,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
-        Estimator        : Kaplan-Meier
+        Curve            : Kaplan-Meier on Turnbull's expected counts
         Data             : 6 units: 6 events at 5 unique times
         """
         if w is not None and self.how == "Turnbull":

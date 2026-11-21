@@ -11,6 +11,8 @@ importable here is internal and may change without notice.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
@@ -30,26 +32,32 @@ from surpyval.utils.data_formats import (
     _truncation_bound,
     _whole_number_array,
     _zero_coded,
-    coerce_xcnt_x,
-    format_truncation,
+)
+from surpyval.utils.data_formats import coerce_xcnt_x as _coerce_xcnt_x
+from surpyval.utils.data_formats import format_truncation as _format_truncation
+from surpyval.utils.data_formats import (
     fs_to_xcnt,
     fs_to_xrd,
     fsl_to_xcnt,
     fsli_handler,
     fsli_to_xcnt,
-    group_xcnt,
+)
+from surpyval.utils.data_formats import group_xcnt as _group_xcnt
+from surpyval.utils.data_formats import (
     is_missing_event,
     missing_events,
     refuse_time_values,
-    resolve_cr_censoring,
+)
+from surpyval.utils.data_formats import (
+    resolve_cr_censoring as _resolve_cr_censoring,
+)
+from surpyval.utils.data_formats import (
     validate_float_array,
     xcn_to_fs,
     xcnt_handler,
-    xcnt_sort,
-    xcnt_to_xrd,
-    xrd_handler,
-    xrd_to_xcnt,
 )
+from surpyval.utils.data_formats import xcnt_sort as _xcnt_sort
+from surpyval.utils.data_formats import xcnt_to_xrd, xrd_handler, xrd_to_xcnt
 from surpyval.utils.numeric import (
     _round_vals,
     ffill_or_zero,
@@ -90,13 +98,8 @@ __all__ = [
     "xcnt_to_xrd",
     "xrd_to_xcnt",
     "round_sig",
-    "xcnt_sort",
-    "group_xcnt",
-    "coerce_xcnt_x",
-    "format_truncation",
     "is_missing_event",
     "missing_events",
-    "resolve_cr_censoring",
     "normalise_unit",
     "same_unit",
 ]
@@ -188,7 +191,7 @@ def validate_fine_gray_inputs(
     kept."""
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
-    e, c = resolve_cr_censoring(e, c)
+    e, c = _resolve_cr_censoring(e, c)
     from surpyval.univariate.regression.regression_data import (
         semi_parametric_inputs,
     )
@@ -233,3 +236,35 @@ def validate_fine_gray_inputs(
     if tl is not None:
         out += (tl_a,)
     return out + tuple(np.asarray(a) for a in label_kept)
+
+
+#: The data handlers' internal steps, public until v0.29 (each still
+#: reachable here, with a FutureWarning, until v0.30). Each has no public
+#: replacement: ``SurpyvalData`` (or ``xcnt_handler``) runs them.
+_INTERNAL = {
+    "coerce_xcnt_x": "SurpyvalData(x, c, n, t), which checks the times",
+    "format_truncation": "SurpyvalData(x, c, n, t, tl=, tr=), which "
+    "formats the truncation",
+    "group_xcnt": "SurpyvalData(x, c, n, t).to_xcnt() (xcnt_handler), "
+    "which groups and sorts the rows",
+    "xcnt_sort": "SurpyvalData(x, c, n, t).to_xcnt() (xcnt_handler), "
+    "which groups and sorts the rows",
+    "resolve_cr_censoring": "SurpyvalData(x, c, e=e), which reads a "
+    "missing event as a censored row",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _INTERNAL:
+        from surpyval.utils import data_formats
+        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+
+        return renamed_name(
+            "surpyval.utils",
+            name,
+            _INTERNAL[name],
+            getattr(data_formats, name),
+            REMOVED_IN_NEXT,
+            FutureWarning,
+        )
+    raise AttributeError(f"module 'surpyval.utils' has no attribute {name!r}")

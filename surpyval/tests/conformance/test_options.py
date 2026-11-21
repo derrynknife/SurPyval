@@ -377,7 +377,12 @@ def _estimate(case, spec, fname, event):
             out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "sojourn_cb":
             out.append(model.mean_sojourn(*args))
-        elif spec.method in ("remaining_faults_cb", "current_rate_cb"):
+        elif spec.method in (
+            "remaining_faults_cb",
+            "current_rate_cb",
+            "kendall_tau_cb",
+            "spearman_rho_cb",
+        ):
             out.append(getattr(model, spec.method.removesuffix("_cb"))())
         elif spec.method == "mtbf_cb":
             out.append(model.mtbf())
@@ -401,6 +406,8 @@ def value_range(case, spec, fname):
     if spec.kind == "function":
         counting = case.interface.startswith("counting")
         lower, upper, _ = (COUNTING_RULES if counting else RULES)[fname]
+    elif spec.method in ("kendall_tau_cb", "spearman_rho_cb"):
+        lower, upper = -1.0, 1.0
     elif spec.kind in ("rul", "summary"):
         lower, upper = 0.0, np.inf
     else:

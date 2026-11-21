@@ -253,9 +253,7 @@ def _data_less_models():
         "PI-NHPP restored": type(pi_nhpp).from_dict(pi_nhpp.to_dict()),
         "PI-HPP restored": type(pi_hpp).from_dict(pi_hpp.to_dict()),
         "G1 restored": RenewalModel.from_dict(g1.to_dict()),
-        "GRP fit_from_parameters": GeneralizedRenewal.fit_from_parameters(
-            [10, 2], 0.3
-        ),
+        "GRP from_params": GeneralizedRenewal.from_params([10, 2], 0.3),
     }
 
 

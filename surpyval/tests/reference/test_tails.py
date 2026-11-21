@@ -7,8 +7,10 @@ univariate distribution, the true ``sf``, ``ff``, ``df``, ``hf``, ``Hf``,
 ``log_sf``, ``log_ff`` and ``log_df`` on a grid of extreme parameters
 (shapes 1e-3 to 1e3, scales 1e-6 to 1e6, locations +-1e6) and times (the
 support edges, and the times where the CDF or the survival function is
-1e-300 ... 0.5 and 1e-400), and the true ``qf`` at probabilities from
-1e-300 to the double just below 1. The generator's docstring lists the
+1e-300 ... 0.5 and 1e-400), the true ``qf`` at probabilities from
+1e-300 to the double just below 1, and the true ``isf`` (the time at
+which the survival function is ``s``) at ``s`` from 1e-300 to the double
+just below 1. The generator's docstring lists the
 grid and the distributions it leaves out, and why.
 
 Each value is checked against these rules:
@@ -19,7 +21,7 @@ Each value is checked against these rules:
 * where the true value is infinite or exactly 0 (an edge of the support),
   or beyond the largest double, the same infinity or 0;
 * where it is a normal double, a relative error of at most ``RTOL`` =
-  1e-8 -- or, where the function is ill-conditioned, an absolute error of
+  1e-12 -- or, where the function is ill-conditioned, an absolute error of
   at most 64 ulps of its inputs' sensitivity: the generator stores
   ``s = sum_i |d f / d log(theta_i)|`` over the time and the parameters,
   and ``eps * s`` is what the rounding of the arguments alone costs any
@@ -29,8 +31,8 @@ Each value is checked against these rules:
   meaningful, and only those are checked;
 * where it is below the normal range (smaller than 2.2e-308, down to
   values that underflow to 0), 0 or a subnormal of the same sign;
-* ``qf`` of a discrete distribution exactly (the generator leaves out a
-  probability within 1e-9 of a step of the CDF).
+* ``qf`` and ``isf`` of a discrete distribution exactly (the generator
+  leaves out a probability within 1e-9 of a step of the CDF).
 
 The points are grouped by (distribution, function, regime), so one bug
 is one test: a group fails if any of its points does, and its message
@@ -51,7 +53,7 @@ import surpyval.univariate.parametric.distributions as distributions
 from ._data import _load
 
 SOURCE = "tails_mpmath"
-RTOL = 1e-8
+RTOL = 1e-12
 ULPS = 64
 EPS = np.finfo(float).eps
 TINY = np.finfo(float).tiny
@@ -60,7 +62,104 @@ NOT_NEGATIVE = {"sf", "ff", "df", "hf", "Hf"}
 NOT_POSITIVE = {"log_sf", "log_ff"}
 
 # (distribution, function, regime) groups known to fail, by issue.
-_BY_ISSUE: dict[str, tuple[str, list[tuple[str, str, str]]]] = {}
+_BY_ISSUE: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
+    "#1300": (
+        "the discrete distributions at large parameters, and the gamma "
+        "density at shape 1e3, are not yet within 1e-12",
+        [
+            ("BetaGeometric", "Hf", "lower edge"),
+            ("BetaGeometric", "df", "deep right"),
+            ("BetaGeometric", "ff", "lower edge"),
+            ("BetaGeometric", "log_df", "lower edge"),
+            ("BetaGeometric", "log_ff", "lower edge"),
+            ("BetaGeometric", "log_ff", "right"),
+            ("BetaGeometric", "log_sf", "lower edge"),
+            ("BetaGeometric", "sf", "right"),
+            ("Binomial", "Hf", "deep left"),
+            ("Binomial", "Hf", "deep right"),
+            ("Binomial", "Hf", "left"),
+            ("Binomial", "Hf", "right"),
+            ("Binomial", "hf", "beyond right"),
+            ("Binomial", "hf", "centre"),
+            ("Binomial", "hf", "deep left"),
+            ("Binomial", "hf", "deep right"),
+            ("Binomial", "hf", "left"),
+            ("Binomial", "hf", "right"),
+            ("Binomial", "log_df", "beyond right"),
+            ("Binomial", "log_df", "centre"),
+            ("Binomial", "log_df", "deep left"),
+            ("Binomial", "log_df", "deep right"),
+            ("Binomial", "log_df", "left"),
+            ("Binomial", "log_df", "right"),
+            ("Binomial", "log_ff", "deep left"),
+            ("Binomial", "log_ff", "deep right"),
+            ("Binomial", "log_ff", "left"),
+            ("Binomial", "log_ff", "right"),
+            ("Binomial", "log_sf", "deep left"),
+            ("Binomial", "log_sf", "deep right"),
+            ("Binomial", "log_sf", "left"),
+            ("Binomial", "log_sf", "right"),
+            ("DiscreteWeibull", "log_df", "lower edge"),
+            ("Gamma", "df", "centre"),
+            ("Gamma", "df", "left"),
+            ("Gamma", "df", "right"),
+            ("Gamma", "hf", "centre"),
+            ("Gamma", "hf", "left"),
+            ("NegativeBinomial", "Hf", "deep right"),
+            ("NegativeBinomial", "Hf", "large k"),
+            ("NegativeBinomial", "Hf", "right"),
+            ("NegativeBinomial", "df", "centre"),
+            ("NegativeBinomial", "hf", "beyond right"),
+            ("NegativeBinomial", "hf", "centre"),
+            ("NegativeBinomial", "hf", "deep right"),
+            ("NegativeBinomial", "hf", "large k"),
+            ("NegativeBinomial", "hf", "right"),
+            ("NegativeBinomial", "log_ff", "deep right"),
+            ("NegativeBinomial", "log_ff", "large k"),
+            ("NegativeBinomial", "log_ff", "right"),
+            ("NegativeBinomial", "log_sf", "deep right"),
+            ("NegativeBinomial", "log_sf", "large k"),
+            ("NegativeBinomial", "log_sf", "right"),
+            ("NegativeBinomial", "sf", "deep right"),
+            ("NegativeBinomial", "sf", "large k"),
+            ("NegativeBinomial", "sf", "right"),
+            ("Poisson", "Hf", "beyond right"),
+            ("Poisson", "Hf", "deep left"),
+            ("Poisson", "Hf", "deep right"),
+            ("Poisson", "Hf", "left"),
+            ("Poisson", "Hf", "right"),
+            ("Poisson", "df", "centre"),
+            ("Poisson", "df", "deep left"),
+            ("Poisson", "df", "deep right"),
+            ("Poisson", "df", "large k"),
+            ("Poisson", "df", "left"),
+            ("Poisson", "df", "right"),
+            ("Poisson", "hf", "centre"),
+            ("Poisson", "hf", "deep left"),
+            ("Poisson", "hf", "large k"),
+            ("Poisson", "hf", "left"),
+            ("Poisson", "hf", "right"),
+            ("Poisson", "log_df", "beyond right"),
+            ("Poisson", "log_df", "centre"),
+            ("Poisson", "log_df", "deep left"),
+            ("Poisson", "log_df", "deep right"),
+            ("Poisson", "log_df", "large k"),
+            ("Poisson", "log_df", "left"),
+            ("Poisson", "log_df", "right"),
+            ("Poisson", "log_ff", "deep left"),
+            ("Poisson", "log_ff", "deep right"),
+            ("Poisson", "log_ff", "left"),
+            ("Poisson", "log_ff", "right"),
+            ("Poisson", "log_sf", "beyond right"),
+            ("Poisson", "log_sf", "deep left"),
+            ("Poisson", "log_sf", "deep right"),
+            ("Poisson", "log_sf", "left"),
+            ("Poisson", "log_sf", "right"),
+            ("Poisson", "sf", "deep right"),
+            ("Poisson", "sf", "right"),
+        ],
+    ),
+}
 KNOWN_FAILURES: dict[tuple[str, str, str], str] = {
     group: f"{num}: {why}"
     for num, (why, groups) in _BY_ISSUE.items()
@@ -87,8 +186,9 @@ def _groups():
         for i, regime in enumerate(case["regime"]):
             for fn in _functions():
                 groups[(case["dist"], fn, regime)].append((c, i))
-        for i, regime in enumerate(case["qf"]["regime"]):
-            groups[(case["dist"], "qf", regime)].append((c, i))
+        for inverse in ("qf", "isf"):
+            for i, regime in enumerate(case[inverse]["regime"]):
+                groups[(case["dist"], inverse, regime)].append((c, i))
     return groups
 
 
@@ -102,7 +202,9 @@ def _package(c, fn):
     case = _content()["cases"][c]
     dist = getattr(distributions, case["dist"])
     params = case["params"]
-    points = case["qf"]["u"] if fn == "qf" else case["x"]
+    points = {"qf": case["qf"]["u"], "isf": case["isf"]["s"]}.get(
+        fn, case["x"]
+    )
     x = np.asarray(points, dtype=float)
     method = getattr(dist, fn)
 
@@ -171,16 +273,19 @@ def check_group(key):
     for c, i in GROUPS[key]:
         case = _content()["cases"][c]
         got = _package(c, fn)[i]
-        if fn == "qf":
-            true_text = case["qf"]["value"][i]
-            sens_text = case["qf"]["sens"][i]
-            where = "u={!r}".format(case["qf"]["u"][i])
+        if fn in ("qf", "isf"):
+            true_text = case[fn]["value"][i]
+            sens_text = case[fn]["sens"][i]
+            arg = "u" if fn == "qf" else "s"
+            where = "{}={!r}".format(arg, case[fn][arg][i])
         else:
             j = _functions().index(fn)
             true_text = case["values"][i][j]
             sens_text = case["sens"][i][j]
             where = "x={!r}".format(case["x"][i])
-        discrete_qf = fn == "qf" and getattr(distributions, dist).discrete
+        discrete_qf = (
+            fn in ("qf", "isf") and getattr(distributions, dist).discrete
+        )
         problem = _problem(fn, got, true_text, sens_text, discrete_qf)
         if problem is None:
             continue
@@ -261,3 +366,4 @@ def test_reference_file_records_its_provenance():
         assert len(case["regime"]) == len(case["values"]) == n
         assert len(case["sens"]) == n
         assert len(case["qf"]["u"]) == len(case["qf"]["value"])
+        assert len(case["isf"]["s"]) == len(case["isf"]["value"])

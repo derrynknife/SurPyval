@@ -12,6 +12,8 @@
 build
 dist
 references
+# ...but not the bundled skill's reference files
+!.claude/skills/surpyval/references/
 docs/_build
 surpyval-env
 .python-version

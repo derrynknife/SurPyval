@@ -1142,7 +1142,7 @@ class RenewalModel(
     #: Set by the fitter for the ARA/ARI families (memory); absent otherwise.
     m: Any
     #: How the parameters were obtained: ``"MLE"`` for a fit, otherwise
-    #: given (``fit_from_parameters``). Kept through serialisation.
+    #: given (``from_params``). Kept through serialisation.
     how: str = "from_params"
 
     def __init__(
@@ -1290,7 +1290,7 @@ class RenewalModel(
             # layout did not change when ARI's argument became
             # ``baseline``, #507).
             baseline = intensity_dist_by_name(model_dict["dist"])
-            return fitter.fit_from_parameters(
+            return fitter.from_params(
                 params, restoration, m=model_dict["m"], baseline=baseline
             )
 
@@ -1308,18 +1308,18 @@ class RenewalModel(
                 "Unknown distribution {!r}".format(model_dict["dist"])
             )
         if family == "GeneralizedRenewal":
-            return fitter.fit_from_parameters(
+            return fitter.from_params(
                 params,
                 restoration,
                 kijima=model_dict["kijima_type"],
                 dist=dist,
             )
         if family == "ARA":
-            return fitter.fit_from_parameters(
+            return fitter.from_params(
                 params, restoration, m=model_dict["m"], dist=dist
             )
         # GeneralizedOneRenewal
-        return fitter.fit_from_parameters(params, restoration, dist=dist)
+        return fitter.from_params(params, restoration, dist=dist)
 
     def _new_batch_sampler(self, n: int) -> Callable:
         return self._sampler_factory(self, n)
@@ -1343,7 +1343,7 @@ class RenewalModel(
         Examples
         --------
         >>> from surpyval.recurrent import ARA
-        >>> ARA.fit_from_parameters([10.0, 2.0], 0.4, m=2).covariance_names
+        >>> ARA.from_params([10.0, 2.0], 0.4, m=2).covariance_names
         ['rho', 'alpha', 'beta']
         """
         return list(self.parameter_names)
@@ -1364,14 +1364,14 @@ class RenewalModel(
         params : array_like
             A flat vector in the order of :attr:`covariance_names`, the
             restoration parameter first, as a draw from :meth:`covariance`
-            comes. The values are checked as ``fit_from_parameters``
+            comes. The values are checked as ``from_params``
             checks them (a ``q`` below 0 for the generalized renewal
             process, a ``rho`` outside [0, 1], is refused).
 
         Returns
         -------
         RenewalModel
-            A model built from parameters, as ``fit_from_parameters``
+            A model built from parameters, as ``from_params``
             builds it: it has no data, covariance or fitted likelihood,
             since those belong to the fit of the original parameters, so
             data-based methods (bounds, ``repair_test``, prediction for
@@ -1382,7 +1382,7 @@ class RenewalModel(
         --------
         >>> import numpy as np
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters(
+        >>> model = GeneralizedRenewal.from_params(
         ...     [10.0, 2.0], 0.5, kijima="ii")
         >>> other = model.with_params([0.2, 12.0, 2.5])
         >>> other.q, other.kijima_type, other.model.params
@@ -1409,22 +1409,22 @@ class RenewalModel(
         dist_params = values[1:].tolist()
         out: RenewalModel
         if family == "ARI":
-            out = fitter.fit_from_parameters(
+            out = fitter.from_params(
                 dist_params, restoration, m=self.m, baseline=self.model.dist
             )
         elif family == "GeneralizedRenewal":
-            out = fitter.fit_from_parameters(
+            out = fitter.from_params(
                 dist_params,
                 restoration,
                 kijima=self.kijima_type,
                 dist=self.model.dist,
             )
         elif family == "ARA":
-            out = fitter.fit_from_parameters(
+            out = fitter.from_params(
                 dist_params, restoration, m=self.m, dist=self.model.dist
             )
         else:
-            out = fitter.fit_from_parameters(
+            out = fitter.from_params(
                 dist_params, restoration, dist=self.model.dist
             )
         unit = getattr(self, "unit", None)
@@ -1732,7 +1732,7 @@ class RenewalModel(
         --------
         >>> import numpy as np
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> model.unit_states(age=[0.0, 4.0])
            time  failures  since_failure  virtual_age
         0   0.0         0            0.0          0.0
@@ -1801,7 +1801,7 @@ class RenewalModel(
         run to 12 has the virtual age :math:`0.5 \\times 10 + 2 = 7`:
 
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> state = model.states(failures=[[4.0, 10.0]], now=[12.0])
         >>> state.age, state.failure_count
         (array([7.]), array([2]))
@@ -1883,7 +1883,7 @@ class RenewalModel(
         the virtual age 2, and after running 3 more it is at 5:
 
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> state = model.advance(model.states(age=[0.0]), 4.0)
         >>> state.after_repair, state.age
         (array([2.]), array([2.]))
@@ -2002,7 +2002,7 @@ class RenewalModel(
         one that has run 6 hours since new, :math:`e^{-(1.1^2 - 0.6^2)}`:
 
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> model.next_failure_sf(5.0, age=[0.0, 6.0]).round(4)
         array([0.7788, 0.4274])
 
@@ -2036,7 +2036,7 @@ class RenewalModel(
         Examples
         --------
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> model.next_failure_hf(0.0, age=[0.0, 5.0]).round(4)
         array([0. , 0.1])
         """
@@ -2115,7 +2115,7 @@ class RenewalModel(
         new, :math:`10\\sqrt{0.36 + \\log 2} - 6`:
 
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> model.next_failure_qf(0.5, age=[0.0, 6.0]).round(4)
         array([8.3255, 4.2614])
         >>> model.next_failure_sf(model.next_failure_qf(0.5, age=[6.0]),
@@ -2177,7 +2177,7 @@ class RenewalModel(
         --------
         >>> import numpy as np
         >>> from surpyval.recurrent import GeneralizedRenewal
-        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model = GeneralizedRenewal.from_params([10.0, 2.0], 0.5)
         >>> model.next_failure_random(3, age=[0.0, 6.0],
         ...                           random_state=1).round(3)
         array([[ 8.468, 17.335,  3.946],
@@ -2275,10 +2275,15 @@ class RenewalModel(
             tol=tol,
             max_events=max_events,
         )
+        from surpyval.utils.warnings import caller_stacklevel
+
         if run.stalled:
-            warnings.warn(STALLED_WARNING, stacklevel=3)
+            warnings.warn(STALLED_WARNING, stacklevel=caller_stacklevel())
         if run.hit_max_events:
-            warnings.warn(MAX_EVENTS_WARNING.format(max_events), stacklevel=3)
+            warnings.warn(
+                MAX_EVENTS_WARNING.format(max_events),
+                stacklevel=caller_stacklevel(),
+            )
         failed = run.c == 0
         sequence = run.i[failed]
         return rows[sequence], sequence % items, run.x[failed]

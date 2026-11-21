@@ -22,7 +22,7 @@ from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
-from ..nonparametric import canonical_heuristic
+from ..nonparametric import _canonical_heuristic as canonical_heuristic
 from ..nonparametric import plotting_positions as pp
 from .fitters import offset_step
 from .parametric import Parametric
