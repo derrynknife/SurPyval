@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import Any
 
+from ._heuristics import PLOTTING_METHODS as _PLOTTING_METHODS
+from ._heuristics import canonical_heuristic as _canonical_heuristic
 from .at_risk import at_risk_table
 from .filliben import filliben
 from .fleming_harrington import (
@@ -50,58 +52,6 @@ _VAR_FUNCS: dict[str, Callable[..., Any]] = {
     "Kaplan-Meier": _greenwood_variance,
     "Fleming-Harrington": _fleming_harrington_variance,
 }
-
-_PLOTTING_METHODS = [
-    "Blom",
-    "Median",
-    "ECDF",
-    "ECDF_Adj",
-    "Modal",
-    "Midpoint",
-    "Mean",
-    "Weibull",
-    "Benard",
-    "Beard",
-    "Hazen",
-    "Gringorten",
-    "None",
-    "Tukey",
-    "DPW",
-    "Fleming-Harrington",
-    "Kaplan-Meier",
-    "Nelson-Aalen",
-    "Filliben",
-    "Larsen",
-    "Turnbull",
-]
-
-#: Heuristic names, written in any case, that mean a listed one: Benard's
-#: approximation is often spelled "Bernard".
-_HEURISTIC_ALIASES = {"bernard": "Benard"}
-
-
-def _canonical_heuristic(heuristic: Any) -> Any:
-    """The plotting heuristic as ``_PLOTTING_METHODS`` spells it, whatever
-    its case, as ``how=`` is read (0.24 review); ``'Bernard'`` is
-    ``'Benard'``. Anything that is not a known name is returned as given,
-    for the check that refuses it to name it.
-
-    Examples
-    --------
-    >>> from surpyval.univariate.nonparametric import _canonical_heuristic
-    >>> _canonical_heuristic("blom"), _canonical_heuristic("BERNARD")
-    ('Blom', 'Benard')
-    """
-    if not isinstance(heuristic, str):
-        return heuristic
-    key = heuristic.lower()
-    if key in _HEURISTIC_ALIASES:
-        return _HEURISTIC_ALIASES[key]
-    for name in _PLOTTING_METHODS:
-        if name.lower() == key:
-            return name
-    return heuristic
-
 
 # The submodules of the same names as the functions above (``kaplan_meier``
 # and the rest): the package's attribute is the deprecated function, not
