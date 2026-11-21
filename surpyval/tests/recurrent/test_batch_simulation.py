@@ -115,13 +115,13 @@ def _cases():
     # Unannotated: mypy reads the singleton fitters as classes.
     return {
         "kijima-i": (
-            GeneralizedRenewal.fit_from_parameters(
+            GeneralizedRenewal.from_params(
                 [ALPHA, BETA], 0.5, kijima="i", dist=Weibull
             ),
             _kijima("i", 0.5),
         ),
         "kijima-ii": (
-            GeneralizedRenewal.fit_from_parameters(
+            GeneralizedRenewal.from_params(
                 [ALPHA, BETA], 0.7, kijima="ii", dist=Weibull
             ),
             _kijima("ii", 0.7),
@@ -129,35 +129,31 @@ def _cases():
         # q = 1: the virtual age grows without bound, so H passes the point
         # where the quantile function is used and the root finder takes over.
         "kijima-i-long": (
-            GeneralizedRenewal.fit_from_parameters(
+            GeneralizedRenewal.from_params(
                 [ALPHA, BETA], 1.0, kijima="i", dist=Weibull
             ),
             _kijima("i", 1.0),
         ),
         "g1": (
-            GeneralizedOneRenewal.fit_from_parameters(
+            GeneralizedOneRenewal.from_params(
                 [ALPHA, BETA], 0.2, dist=Weibull
             ),
             _g1(0.2),
         ),
         "ara-m2": (
-            ARA.fit_from_parameters([ALPHA, BETA], rho=0.4, m=2, dist=Weibull),
+            ARA.from_params([ALPHA, BETA], rho=0.4, m=2, dist=Weibull),
             _ara(0.4, 2),
         ),
         "ara-inf": (
-            ARA.fit_from_parameters(
-                [ALPHA, BETA], rho=0.4, m=np.inf, dist=Weibull
-            ),
+            ARA.from_params([ALPHA, BETA], rho=0.4, m=np.inf, dist=Weibull),
             _ara(0.4, np.inf),
         ),
         "ari-m1": (
-            ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA),
+            ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA),
             _ari(20.0, 1.5, 0.5, 1),
         ),
         "ari-inf": (
-            ARI.fit_from_parameters(
-                [20.0, 1.5], 0.5, m=np.inf, baseline=CrowAMSAA
-            ),
+            ARI.from_params([20.0, 1.5], 0.5, m=np.inf, baseline=CrowAMSAA),
             _ari(20.0, 1.5, 0.5, np.inf),
         ),
     }
@@ -259,7 +255,7 @@ def test_a_restored_renewal_model_simulates():
     # A model rebuilt from its dict gets its sampler back from its fitter.
     from surpyval.recurrent import RenewalModel
 
-    model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.2)
+    model = GeneralizedRenewal.from_params([10.0, 2.0], 0.2)
     restored = RenewalModel.from_dict(model.to_dict())
     grid = np.array([5.0, 20.0])
     assert np.array_equal(

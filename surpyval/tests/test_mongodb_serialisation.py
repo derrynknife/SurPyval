@@ -273,7 +273,7 @@ def _fit_proportional_intensity():
 
 
 def _fit_renewal():
-    return GeneralizedRenewal.fit_from_parameters(
+    return GeneralizedRenewal.from_params(
         [50.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
 

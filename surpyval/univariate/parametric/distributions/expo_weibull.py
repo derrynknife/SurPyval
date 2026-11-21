@@ -844,6 +844,38 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             far = ~np.isfinite(q) | (q == 0)
             return np.where(far, np.exp(np.log(alpha) + log_t / beta), q)
 
+    def isf(
+        self, s: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \alpha \left( -\ln\left(1 - (1 - s)^{1/\mu}\right)
+            \right)^{1/\beta}
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.isf([0.5, 1e-300], 10, 2, 1.5)
+        array([  9.97068498, 262.9032128 ])
+        """
+        # F = (1 - e^-t)^mu with t = (x / alpha)^beta, so 1 - e^-t is
+        # (1 - s)^(1 / mu) = exp(log1p(-s) / mu) and e^-t its complement,
+        # -expm1 of it, exact for a small s; above s = 1/2, qf(1 - s).
+        s = np.asarray(s, dtype=float)
+        upper = s < 0.5
+        su = np.where(upper, s, 0.25)
+        with np.errstate(divide="ignore"):
+            t = -np.log(-np.expm1(np.log1p(-su) / mu))
+        with np.errstate(over="ignore"):
+            tail = alpha * t ** (1.0 / beta)
+        return np.where(
+            upper,
+            tail,
+            self.qf(np.where(upper, 0.5, 1.0 - s), alpha, beta, mu),
+        )
+
     def log_df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
     ) -> Boxable:
