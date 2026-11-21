@@ -158,9 +158,7 @@ class MultivariateCopulaModel(CopulaModel):
         """
         D = self.n_axes
         if isinstance(of, bool) or of not in range(D):
-            raise ValueError(
-                f"of must be a series, 0 to {D - 1}, got {of!r}."
-            )
+            raise ValueError(f"of must be a series, 0 to {D - 1}, got {of!r}.")
         others = [d for d in range(D) if d != of]
         given = others if given is None else list(onp.atleast_1d(given))
         if (

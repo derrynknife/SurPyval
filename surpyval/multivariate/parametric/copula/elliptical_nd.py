@@ -110,9 +110,7 @@ class EllipticalCopulaND(Copula):
         self.dependence_limits = {}
 
     def __repr__(self) -> str:
-        return (
-            f"{self.name} copula of {self.n_axes} series ({self.structure})"
-        )
+        return f"{self.name} copula of {self.n_axes} series ({self.structure})"
 
     def _model_cls(self) -> Any:
         from ._nd_model import MultivariateCopulaModel
@@ -587,9 +585,7 @@ class EllipticalCopulaND(Copula):
             )
         params = self._check_params(params)
         margins = _check_margins(margins, self.n_axes, fitted_only=True)
-        return self._model_cls()(
-            self, params, margins, data=None, how="given"
-        )
+        return self._model_cls()(self, params, margins, data=None, how="given")
 
     def _warn_if_perfectly_dependent(
         self, data: Any, theta: npt.NDArray

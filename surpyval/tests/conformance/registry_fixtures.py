@@ -541,6 +541,33 @@ X_COP = np.array(
 )
 
 
+def copula3_data():
+    """Three positively dependent series (the two of ``copula_data`` and
+    a third whose order is theirs with next-but-one neighbours
+    swapped)."""
+    u = (np.arange(1, 21) - 0.3) / 20.4
+    swap = np.arange(20) ^ 1
+    swap2 = np.arange(20) ^ 2
+    x1 = 10.0 * (-np.log1p(-u)) ** 0.5
+    x2 = 5.0 * (-np.log1p(-u[swap])) ** (1 / 1.4)
+    x3 = 20.0 * (-np.log1p(-u[swap2])) ** (1 / 2.5)
+    n = np.ones(20, int)
+    n[[3, 8]] = 2
+    return {"x": np.round(np.column_stack([x1, x2, x3]), 3), "n": n}
+
+
+X_COP3 = np.array(
+    [
+        [2.0, 1.0, 8.0],
+        [5.0, 2.0, 12.0],
+        [8.0, 3.0, 15.0],
+        [10.0, 5.0, 18.0],
+        [14.0, 7.0, 25.0],
+        [3.0, 6.0, 10.0],
+    ]
+)
+
+
 # Multi-state: an illness-death model with recovery, as spells
 _MS_UNITS = [
     # (spells as (tl, x, state, entered), count, covariate)

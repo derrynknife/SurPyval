@@ -5,6 +5,27 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Copulas of more than two lifetimes: Gaussian and Student-t.**
+  ``Gaussian.fit`` and ``StudentT.fit`` take data with any number of axes
+  ``D`` of two or more (they refused three). With more than two the
+  copula has a correlation matrix: ``structure="unstructured"`` (the
+  default; a correlation per pair of series, ``rho_i_j``) or
+  ``"exchangeable"`` (one ``rho``), searched in coordinates that keep the
+  matrix positive definite, with the Student-t's ``nu``. The model is a
+  ``CopulaModel`` whose points are ``(x_1, ..., x_D)`` rows: ``sf``,
+  ``cdf``, ``pdf``, ``random``, ``correlation``, ``conditional_cdf(x, of,
+  given)`` (one series given others), matrices of ``kendall_tau``,
+  ``spearman_rho`` and ``tail_dependence``, ``covariance``,
+  ``standard_errors``, ``param_cb``, ``cb`` on the joint survival and
+  CDF, ``aic``/``bic`` and ``to_dict``. ``from_params`` takes the pairs'
+  correlations or a correlation matrix. Each series of a row keeps its
+  own right, left or interval censoring: the likelihood of a row with one
+  or two censored series is in closed form and with three a deterministic
+  integral accurate to about 1e-9. Refused, saying what to do: rows with
+  four or more censored series, and truncation, for more than two series.
+  With two series nothing changes. See "More than two lifetimes" in
+  :doc:`Multivariate Modelling with SurPyval`.
+
 - **Test planning: one function per comparison design.**
   ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
   ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,

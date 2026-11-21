@@ -61,7 +61,7 @@ _LATTICE_N = 4093
 _LATTICE_Z = (1, 1210, 1542, 1785, 942, 736)
 #: The most coordinates :func:`rectangle` integrates (a t rectangle has
 #: one dimension more, its mixing scale).
-MAX_AXES = len(_LATTICE_Z) + 1
+MAX_AXES = len(_LATTICE_Z) + 2
 
 
 @functools.lru_cache(maxsize=None)
