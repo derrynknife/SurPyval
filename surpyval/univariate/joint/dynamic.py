@@ -195,7 +195,7 @@ class DynamicPrediction:
             frac = (f_lo - target) / (f_lo - f_hi)
         frac = np.where(np.isfinite(frac), np.clip(frac, 0.0, 1.0), 0.5)
         t = lo + frac * (hi - lo)
-        active = ~never
+        active = np.asarray(~never)
         for _ in range(_STEPS):
             if not active.any():
                 break
