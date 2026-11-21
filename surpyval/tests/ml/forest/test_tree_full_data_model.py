@@ -136,7 +136,7 @@ def test_exponential_mle_matches_exponential_fit(case):
     data = _all_data_cases()[case]
     theta0 = _exp_theta0(data)
     ll = _exp_max_ll(data, (theta0 - 15.0, theta0 + 15.0))
-    lam_surpyval = float(Exponential.fit_from_surpyval_data(data).params[0])
+    lam_surpyval = float(Exponential._fit_from_surpyval_data(data).params[0])
     # the attained likelihood is at least surpyval's (same likelihood)
     from surpyval.ml.forest.deviance_split import (
         _exp_neg_ll,
@@ -157,7 +157,7 @@ def test_weibull_mle_matches_weibull_fit(case):
     box = ((log_alpha0 - 15.0, log_alpha0 + 15.0), _LOG_BETA_BOUNDS)
     _, theta = _wei_max_ll(data, box, np.array([log_alpha0, 0.0]))
     alpha, beta = np.exp(theta)
-    a_sp, b_sp = Weibull.fit_from_surpyval_data(data).params
+    a_sp, b_sp = Weibull._fit_from_surpyval_data(data).params
     assert np.isclose(alpha, a_sp, rtol=1e-2)
     assert np.isclose(beta, b_sp, rtol=1e-2)
 

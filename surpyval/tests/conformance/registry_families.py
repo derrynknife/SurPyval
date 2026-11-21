@@ -791,12 +791,12 @@ def _parametric_paths(fitter, **fixed):
 
     def from_surpyval_data(d):
         data = sp.SurpyvalData(d["x"], d["c"], d["n"])
-        return fitter.fit_from_surpyval_data(data, **fixed)
+        return fitter.fit(data, **fixed)
 
     return {
         "fit_from_df": from_df,
         "from_params": from_params,
-        "fit_from_surpyval_data": from_surpyval_data,
+        "fit(data)": from_surpyval_data,
     }
 
 

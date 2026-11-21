@@ -10,7 +10,6 @@ constant *factor* per unit time. ``CoxLewis.fit`` returns a
    :no-value:
 
    .. automethod:: surpyval.recurrent.parametric.cox_lewis.CoxLewis.fit
-   .. automethod:: surpyval.recurrent.parametric.cox_lewis.CoxLewis.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.parametric.cox_lewis.CoxLewis.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.cox_lewis.CoxLewis.from_params
    .. automethod:: surpyval.recurrent.parametric.cox_lewis.CoxLewis.cif

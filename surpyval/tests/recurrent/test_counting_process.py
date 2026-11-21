@@ -66,7 +66,7 @@ def _toy_recurrent_data():
 def test_proportional_intensity_rejects_non_counting_process(bad_dist):
     data = _toy_recurrent_data()
     with pytest.raises(TypeError):
-        ProportionalIntensityNHPP.fit_from_recurrent_data(
+        ProportionalIntensityNHPP._fit_from_recurrent_data(
             data, baseline=bad_dist
         )
 
@@ -77,7 +77,9 @@ def test_proportional_intensity_accepts_counting_process():
     # about ``dist`` is raised (any downstream numerical error is unrelated).
     data = _toy_recurrent_data()
     try:
-        ProportionalIntensityNHPP.fit_from_recurrent_data(data, baseline=Duane)
+        ProportionalIntensityNHPP._fit_from_recurrent_data(
+            data, baseline=Duane
+        )
     except TypeError as e:  # pragma: no cover - guard must not trigger
         pytest.fail(f"valid CountingProcess was rejected: {e}")
     except Exception:

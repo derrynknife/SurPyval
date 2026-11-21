@@ -130,7 +130,7 @@ def test_nonparametric_rejects_left_censoring():
         np.ones(3),
     )
     with pytest.raises(ValueError, match="left-censored"):
-        NonParametricCounting.fit_from_recurrent_data(data)
+        NonParametricCounting._fit_from_recurrent_data(data)
 
 
 def test_nonparametric_rejects_interval_censoring():
@@ -141,7 +141,7 @@ def test_nonparametric_rejects_interval_censoring():
         np.ones(3),
     )
     with pytest.raises(ValueError, match="interval-censored"):
-        NonParametricCounting.fit_from_recurrent_data(data)
+        NonParametricCounting._fit_from_recurrent_data(data)
 
 
 def test_cause_specific_mcf_rejects_unsupported():

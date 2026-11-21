@@ -109,7 +109,7 @@ class InflectionS(GrowthNHPPFitter):
 
         limits = [_power_law_limit(data.split_for_nhpp_likelihood(), 1)]
         with ignoring_warnings():
-            rising = CoxLewis.fit_from_recurrent_data(data)  # type: ignore
+            rising = CoxLewis._fit_from_recurrent_data(data)  # type: ignore
         if rising.params[1] > 0:
             limits.append(-float(rising._neg_ll(rising.params)))
         return limits

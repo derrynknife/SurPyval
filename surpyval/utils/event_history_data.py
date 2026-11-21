@@ -2183,7 +2183,7 @@ def _refuse_what_fit_cannot_take(
 
 
 def refuses_unmodelled_data(method: F) -> F:
-    """Refuse, in a ``fit_from_recurrent_data``, data that holds what the
+    """Refuse, in a ``_fit_from_recurrent_data``, data that holds what the
     fitter's ``fit`` has no argument for -- covariates (``Z``), event
     types (``e``) -- or what no model uses yet (time-varying covariates,
     #905; states, #887), as ``fit(data)`` does (#959): fitting it as if

@@ -23,7 +23,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -265,8 +265,10 @@ class HPP(CountingProcess):
             start = float(np.log(events / watched))
         return start if np.isfinite(start) else 0.0
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: EventHistoryData,
         how: str = "MLE",
@@ -449,7 +451,7 @@ class HPP(CountingProcess):
             as_recurrent_data=True,
             windows=windows,
         )
-        return self.fit_from_recurrent_data(data, init=init)
+        return self._fit_from_recurrent_data(data, init=init)
 
     @takes_unit
     def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:

@@ -244,11 +244,11 @@ def _plain():
     "fit",
     [
         lambda d: sp.Weibull.fit(d),
-        lambda d: sp.Weibull.fit_from_surpyval_data(d),
+        lambda d: sp.Weibull._fit_from_surpyval_data(d),
         lambda d: sp.KaplanMeier.fit(d),
         lambda d: sp.fit_best(d),
     ],
-    ids=["Weibull", "fit_from_surpyval_data", "KaplanMeier", "fit_best"],
+    ids=["Weibull", "_fit_from_surpyval_data", "KaplanMeier", "fit_best"],
 )
 def test_other_fits_refuse_markers_naming_the_fix(fit):
     with pytest.raises(ValueError, match=_REFUSED):

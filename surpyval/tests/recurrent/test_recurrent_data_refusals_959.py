@@ -1,4 +1,4 @@
-"""#959: ``fit_from_recurrent_data`` refuses what ``fit(data)`` refuses --
+"""#959: ``_fit_from_recurrent_data`` refuses what ``fit(data)`` refuses --
 covariates a fitter has no ``Z`` for, event types it has no ``e`` for --
 rather than dropping the covariates or pooling the failure modes."""
 
@@ -29,7 +29,7 @@ FITTERS = sorted(
     name
     for name in dir(R)
     if not name.startswith("_")
-    and hasattr(getattr(R, name), "fit_from_recurrent_data")
+    and hasattr(getattr(R, name), "_fit_from_recurrent_data")
     and hasattr(getattr(R, name), "fit")
 )
 
@@ -56,7 +56,7 @@ def test_both_ways_of_fitting_take_the_same_data(name, kind):
     fitter = getattr(R, name)
     data = DATA[kind]
     via_fit = _outcome(lambda: fitter.fit(data))
-    via_data = _outcome(lambda: fitter.fit_from_recurrent_data(data))
+    via_data = _outcome(lambda: fitter._fit_from_recurrent_data(data))
     assert via_fit[0] == via_data[0], (via_fit, via_data)
     if via_fit[0] == "fitted":
         if via_fit[1] is not None:
@@ -75,20 +75,20 @@ def test_nothing_is_dropped(name):
         holds = {"covariates": {"Z"}, "event types": {"e"}}.get(
             kind, {"Z", "e"}
         )
-        outcome = _outcome(lambda: fitter.fit_from_recurrent_data(data))
+        outcome = _outcome(lambda: fitter._fit_from_recurrent_data(data))
         if not holds <= takes:
             assert outcome[0] in (ValueError, TypeError), (kind, outcome)
 
 
 def test_the_issue_example():
     with pytest.raises(ValueError, match="takes no covariates") as err:
-        R.CrowAMSAA.fit_from_recurrent_data(DATA["covariates"])
+        R.CrowAMSAA._fit_from_recurrent_data(DATA["covariates"])
     assert "data.without('covariates')" in str(err.value)
     with pytest.raises(ValueError, match="takes no event types") as err:
-        R.CrowAMSAA.fit_from_recurrent_data(DATA["event types"])
+        R.CrowAMSAA._fit_from_recurrent_data(DATA["event types"])
     assert "data.for_event_type(t)" in str(err.value)
     # Left out on purpose, it fits.
-    plain = R.CrowAMSAA.fit_from_recurrent_data(
+    plain = R.CrowAMSAA._fit_from_recurrent_data(
         DATA["both"].without("covariates", "event_types")
     )
     assert np.isfinite(plain.params).all()
@@ -96,14 +96,14 @@ def test_the_issue_example():
 
 def test_cause_specific_mcf_does_not_drop_covariates():
     with pytest.raises(ValueError, match="takes no covariates"):
-        R.CauseSpecificMCF.fit_from_recurrent_data(DATA["both"])
+        R.CauseSpecificMCF._fit_from_recurrent_data(DATA["both"])
 
 
 def test_proportional_intensity_given_event_types_and_no_covariates():
     # Was a raw AttributeError ('NoneType' object has no attribute 'shape').
     for fitter in (R.ProportionalIntensityHPP, R.ProportionalIntensityNHPP):
         with pytest.raises(TypeError, match="needs covariates"):
-            fitter.fit_from_recurrent_data(DATA["event types"])
+            fitter._fit_from_recurrent_data(DATA["event types"])
 
 
 def test_proportional_intensity_starts_from_its_baseline_fit():

@@ -53,6 +53,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
     normalise_how,
 )
+from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     accepts_surpyval_data,
@@ -699,7 +700,7 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w
         surv_data = SurpyvalData(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr, w=w
         )
-        return self.fit_from_surpyval_data(
+        return self._fit_from_surpyval_data(
             surv_data,
             how=how,
             offset=offset,
@@ -714,8 +715,10 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w
             stages=stages,
         )
 
+    fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+
     @refuses_what_fit_cannot_take
-    def fit_from_surpyval_data(
+    def _fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
         how: str = "MLE",
@@ -756,7 +759,7 @@ turnbull_estimator, stages
         --------
         >>> from surpyval import Hypoexponential, SurpyvalData
         >>> x = Hypoexponential.random(500, 0.5, 2.0, random_state=3)
-        >>> model = Hypoexponential.fit_from_surpyval_data(
+        >>> model = Hypoexponential.fit(
         ...     SurpyvalData(x), stages=2)
         >>> model.params.round(3)
         array([0.504, 1.827])
@@ -775,7 +778,7 @@ turnbull_estimator, stages
                 )
             stages = self.k
         fitter = self._for_stages(_stage_count(stages))
-        model = OptimisedFitMixin.fit_from_surpyval_data(
+        model = OptimisedFitMixin._fit_from_surpyval_data(
             fitter,
             surv_data,
             how=how,

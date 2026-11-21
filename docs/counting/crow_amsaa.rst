@@ -14,7 +14,6 @@ given parameters.
    :no-value:
 
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.fit
-   .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.from_params
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.cif

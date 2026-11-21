@@ -236,7 +236,7 @@ def _level_params(dist: Any, level_data: SurpyvalData) -> npt.NDArray:
         k: "raise" if v == "warn" else v for k, v in np.geterr().items()
     }
     with np.errstate(**raising), quiet_maximum_warnings():
-        model = dist.fit_from_surpyval_data(level_data)
+        model = dist._fit_from_surpyval_data(level_data)
     params = np.asarray(model.params, dtype=float)
     if getattr(model, "maximum", "verified") not in (
         "verified",
@@ -837,7 +837,9 @@ class ParameterSubstitutionFitter(HazardIdentitiesMixin, RegressionFitter):
 
             # How do I make this work when there is only one failure per
             # stress?
-            base_line_dist_init = self.dist.fit_from_surpyval_data(data).params
+            base_line_dist_init = self.dist._fit_from_surpyval_data(
+                data
+            ).params
 
             for s in np.unique(data.Z, axis=0):
                 mask = (data.Z == s).all(axis=1)
@@ -909,7 +911,7 @@ class ParameterSubstitutionFitter(HazardIdentitiesMixin, RegressionFitter):
         init = np.array(init) if user_init else default_init()
 
         if self.baseline != []:
-            baseline_model = self.dist.fit_from_surpyval_data(data)
+            baseline_model = self.dist._fit_from_surpyval_data(data)
             baseline_fixed = {
                 k: baseline_model.params[baseline_model.param_map[k]]
                 for k in self.baseline

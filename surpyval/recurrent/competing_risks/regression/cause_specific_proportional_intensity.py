@@ -78,7 +78,7 @@ from surpyval.utils.dataframe import (
     refuse_recurrent_column_names,
     regression_fit_from_df,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -355,9 +355,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         out.feature_names = models[event_types[0]].feature_names
         return out
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @classmethod
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         cls,
         data: Any,
         baseline: Any = Duane,
@@ -398,7 +400,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         ...      "a", "a", "b", None]
         >>> harsh = [0] * 5 + [1] * 9
         >>> data = handle_xicn(x, i, c, e=e, Z=harsh)
-        >>> model = CauseSpecificProportionalIntensity.fit_from_recurrent_data(
+        >>> model = CauseSpecificProportionalIntensity.fit(
         ...     data, baseline=HPP
         ... )
         >>> model.event_types
@@ -451,7 +453,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
                     tl=ctl,
                     Z=np.array([Z_of[item] for item in ci]),
                 )
-                models[cause] = fitter.fit_from_recurrent_data(
+                models[cause] = fitter._fit_from_recurrent_data(
                     cause_data, init=init, **options
                 )
         warn_collected(aliased, "in the fit of each event type")
@@ -575,7 +577,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         (array([0.0167]), array([0.9163]))
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, Z=Z, e=e)
-        return cls.fit_from_recurrent_data(data, baseline=baseline, init=init)
+        return cls._fit_from_recurrent_data(data, baseline=baseline, init=init)
 
     @classmethod
     @ambiguous_item_ids(

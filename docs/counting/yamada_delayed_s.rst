@@ -13,7 +13,6 @@ that show no reliability growth are refused.
    :no-value:
 
    .. automethod:: surpyval.recurrent.parametric.yamada_delayed_s.YamadaDelayedS.fit
-   .. automethod:: surpyval.recurrent.parametric.yamada_delayed_s.YamadaDelayedS.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.parametric.yamada_delayed_s.YamadaDelayedS.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.yamada_delayed_s.YamadaDelayedS.from_params
    .. automethod:: surpyval.recurrent.parametric.yamada_delayed_s.YamadaDelayedS.cif

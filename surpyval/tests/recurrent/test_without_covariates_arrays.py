@@ -368,10 +368,10 @@ def test_fit_is_the_same(monkeypatch):
         i += [f"m{k}"] * (len(times) + 1)
         Z += [[rng.normal(), float(k % 2)]] * (len(times) + 1)
     data = handle_xicn(np.array(x), np.array(i), np.array(c), Z=np.array(Z))
-    new = ProportionalIntensityNHPP.fit_from_recurrent_data(data)
+    new = ProportionalIntensityNHPP._fit_from_recurrent_data(data)
     with monkeypatch.context() as patch:
         patch.setattr(history_reshape, "without_covariates", lambda data: None)
-        old = ProportionalIntensityNHPP.fit_from_recurrent_data(data)
+        old = ProportionalIntensityNHPP._fit_from_recurrent_data(data)
     assert np.array_equal(new.params, old.params)
     assert new.log_likelihood == old.log_likelihood
 
@@ -400,6 +400,6 @@ def test_start_where_the_records_refuse(case, dist):
     start = ProportionalIntensityNHPP._baseline_start(data, dist)
     free = history_reshape.covariates_dropped(data)
     assert free.Z is None and data.Z is not None
-    expected = dist.fit_from_recurrent_data(free).params
+    expected = dist._fit_from_recurrent_data(free).params
     assert np.array_equal(start, expected)
     assert not np.array_equal(start, np.ones(len(start)))

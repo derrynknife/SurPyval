@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### One way to fit a data object: `fit(data)` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `fit_from_surpyval_data` (the parametric distributions, through `OptimisedFitMixin` and `Hypoexponential`) and `fit_from_recurrent_data` (every recurrent fitter) are deprecated (FutureWarning, removed in v0.30) for `fit(data)`; the work is in `_fit_from_surpyval_data` / `_fit_from_recurrent_data`, which `fit` calls, and the old names run it with the warning (`deprecation.fit_entry`, a `RenamedAttribute` whose message says "call fit(data)"), so a fit is the same to the last digit. The conformance suite's data path is now `fit(data)`. | principle 1 | Every `fit` takes a `SurpyvalData` (or `EventHistoryData`); three entry points made users ask which was right. `fit` already takes every option the old methods took, but `HPP`'s `how` and `ProportionalIntensityHPP`'s `dist`, which the old methods accepted and ignored. RePyability calls neither name (checked on its `dev`). | done |
+| The internal baselines' methods of the same name (`CuredDistribution`, `ZeroInflatedDistribution`, `SplineBaseline`) are renamed without a deprecation. | proposed | Their classes are not public (no namespace exports them); the regression fitters call them. | done |
+
 ### Internals no longer public in `nonparametric` and `utils` (21 Nov 2026)
 
 | Decision | By | Reason | Status |

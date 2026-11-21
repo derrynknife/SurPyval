@@ -1333,7 +1333,7 @@ def _panel_multistate():
 def _recurrent_data_path(fitter, **fixed):
     def run(d):
         data = sp.handle_xicn(d["x"], d["i"], d["c"], d["n"])
-        return fitter.fit_from_recurrent_data(data, **fixed)
+        return fitter.fit(data, **fixed)
 
     return run
 
@@ -1429,7 +1429,7 @@ def _recurrent():
     out = []
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis", *_GROWTH):
         fitter = _ON_A_CLOCK.get(name, lambda: getattr(rc, name))()
-        paths = {"fit_from_recurrent_data": _recurrent_data_path(fitter)}
+        paths = {"fit(data)": _recurrent_data_path(fitter)}
         paths["from_params"] = lambda d, f=fitter: f.from_params(
             f.fit(**d).params
         )
@@ -1523,9 +1523,7 @@ def _recurrent():
             x=X_REC,
             rows=("x", "i", "c", "n"),
             paths={
-                "fit_from_recurrent_data": _recurrent_data_path(
-                    rc.NonParametricCounting
-                )
+                "fit(data)": _recurrent_data_path(rc.NonParametricCounting)
             },
             rtol=1e-9,
         )
@@ -1634,9 +1632,7 @@ def _recurrent():
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths={
-                    "fit_from_recurrent_data": _recurrent_data_path(
-                        fitter, **kw
-                    ),
+                    "fit(data)": _recurrent_data_path(fitter, **kw),
                     "from_params": _renewal_from_params_path(fitter, **kw),
                 },
                 draw=lambda m, s: m.mcf(X_REC, items=5, random_state=s),
@@ -1780,9 +1776,7 @@ def _recurrent():
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths={
-                    "fit_from_recurrent_data": _recurrent_data_path(
-                        fitter, frailty=family
-                    ),
+                    "fit(data)": _recurrent_data_path(fitter, frailty=family),
                     "fit_from_df": lambda d, f=fitter, fam=family: (
                         f.fit_from_df(
                             pd.DataFrame(

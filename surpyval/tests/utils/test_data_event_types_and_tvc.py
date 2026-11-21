@@ -200,4 +200,4 @@ def test_what_fit_tvc_cannot_take_is_refused():
     with pytest.raises(ValueError, match="time-varying covariates"):
         sp.Weibull.fit(TVC)
     with pytest.raises(ValueError, match="time-varying covariates"):
-        sp.Weibull.fit_from_surpyval_data(TVC)
+        sp.Weibull._fit_from_surpyval_data(TVC)

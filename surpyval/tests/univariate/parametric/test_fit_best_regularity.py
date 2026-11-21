@@ -162,7 +162,7 @@ def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
         raise ValueError("Gamma cannot be fitted here.\nx:\n" + "1.0 " * 500)
 
     # fit_best fits each candidate to its one SurpyvalData
-    monkeypatch.setattr(sp.Gamma, "fit_from_surpyval_data", refuse)
+    monkeypatch.setattr(sp.Gamma, "_fit_from_surpyval_data", refuse)
     model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
     assert model.dist.name == "Weibull"
     (skipped,) = (m for m in messages if m.startswith("fit_best skipped"))
