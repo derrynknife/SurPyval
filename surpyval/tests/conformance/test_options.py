@@ -941,8 +941,11 @@ def _agreement_params():
 def _summary(case, model):
     """The functions the estimators are compared on: probabilities
     absolutely, a cumulative intensity relatively."""
-    if case.interface == "bivariate":
+    if case.interface == "bivariate" and "cdf" in case.functions:
         return {"cdf": np.asarray(model.cdf(case.x), float)}, False
+    if case.interface == "bivariate":
+        # (a vine has no joint CDF: its density, relatively)
+        return {"pdf": np.asarray(model.pdf(case.x), float)}, True
     if "sf" in case.functions:
         return {
             "sf": np.asarray(call(case, model, "sf", case.x), float)
