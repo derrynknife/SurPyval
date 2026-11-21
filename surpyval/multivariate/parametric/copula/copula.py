@@ -691,8 +691,21 @@ class Copula:
 
     def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
         """The copula-stage negative log-likelihood (used by the fit)."""
-        ll = self._pair_loglik(params, dims[0], dims[1])
+        ll = self._rows_loglik(params, dims)
         return -float(onp.sum(weights * ll))
+
+    def _rows_loglik(self, params: Any, dims: list) -> Any:
+        """Each row's log-likelihood for the prepared dimensions ``dims``
+        (a copula of more than two series has its own)."""
+        return self._pair_loglik(params, dims[0], dims[1])
+
+    def _model_cls(self) -> Any:
+        """The class of the model a fit of this family returns."""
+        from surpyval.multivariate.parametric.copula.copula_model import (
+            CopulaModel,
+        )
+
+        return CopulaModel
 
     @takes_unit
     def fit_from_df(
@@ -907,9 +920,6 @@ class Copula:
                 xr=xr,
                 init=init,
             )
-        from surpyval.multivariate.parametric.copula.copula_model import (
-            CopulaModel,
-        )
         from surpyval.multivariate.parametric.data import (
             MultivariateSurpyvalData,
             check_axes,
@@ -935,7 +945,12 @@ class Copula:
             data = x
         else:
             data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
-        check_axes(f"A {self.name} copula", data, self.n_axes, "two series")
+        check_axes(
+            f"A {self.name} copula",
+            data,
+            self.n_axes,
+            "two series" if self.n_axes == 2 else f"{self.n_axes} series",
+        )
         margins = _check_margins(margins, data.D, fitted_only=False)
 
         check_option("how", how, ("IFM", "MLE"))
@@ -990,7 +1005,7 @@ class Copula:
                     if hasattr(given, "fit")
                 ]
             )
-        model = CopulaModel(
+        model = self._model_cls()(
             self, theta, margin_models, data=data, how=how, k=k
         )
         model.maximum = maximum

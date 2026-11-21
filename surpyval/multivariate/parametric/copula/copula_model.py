@@ -621,8 +621,13 @@ class CopulaModel(
         check_option("bound", bound, BOUNDS)
         check_option("method", method, _CB_METHODS)
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
-        if x.shape[1] != 2:
-            raise ValueError("x must have two columns (one per dimension)")
+        if x.shape[1] != len(self.margins):
+            raise ValueError(
+                "x must have two columns (one per dimension)"
+                if len(self.margins) == 2
+                else f"x must have {len(self.margins)} columns (one per "
+                f"series), got {x.shape[1]}."
+            )
         if x.shape[0] == 0:
             return onp.empty((0, 2) if bound == "two-sided" else (0,))
         cov = self._joint_covariance()
@@ -768,7 +773,15 @@ class CopulaModel(
                 StudentT,
             )
         }
+        from ._nd_model import restored_family
+
         copula_name = model_dict["copula"]
+        many = restored_family(model_dict)
+        if many is not None:
+            # (a copula of more than two series, and its model class)
+            families[copula_name] = many
+            if not issubclass(cls, many._model_cls()):
+                cls = many._model_cls()
         if copula_name not in families:
             raise ValueError(
                 f"Unknown copula family {copula_name!r}; expected one of "
@@ -783,7 +796,9 @@ class CopulaModel(
                     "so this copula model cannot be rebuilt."
                 )
             margins.append(surpyval.from_dict(m))
-        family = families[copula_name].rotated(model_dict.get("rotation", 0))
+        family = families[copula_name]
+        if many is None:
+            family = family.rotated(model_dict.get("rotation", 0))
         model = cls(
             family,
             model_dict["params"],
