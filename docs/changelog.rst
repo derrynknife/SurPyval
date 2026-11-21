@@ -5,6 +5,20 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Competing risks: what user tests found missing.**
+  ``FineGrayModel.cb(x, Z, on="cif")`` bounds a Fine-Gray model's
+  cumulative incidence (or one minus it, ``on="sf"``) by the case
+  bootstrap (``n_boot``, ``random_state``; clusters resampled whole,
+  strata and weights kept); ``method="wald"`` and ``"lr"`` refuse,
+  saying why and to use the bootstrap. ``ParametricCompetingRisks.eliminate(cause,
+  ...)`` gives the model with failure modes designed out, the causes left
+  keeping their fits (independent causes assumed, as documented), with
+  every function, ``mean`` and ``cb``. ``ParametricCompetingRisks.fit``
+  warns, once and with the counts, when a cause has fewer than 10
+  failures, and ``FineGray.fit`` when the cause of interest has fewer than
+  10 events per coefficient, each saying what to do. The Fine-Gray docs
+  name the cause argument ``event`` (they said ``cause``).
+
 - **Test planning: what user tests found missing.**
   ``demonstration_test_time(reliability, n, failures, mission_time=,
   shape=)`` gives each unit's extended (Weibayes) test length in time,

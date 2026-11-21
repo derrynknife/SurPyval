@@ -636,6 +636,37 @@ units that fail, as ``Parametric.mean`` does.
     _area = quad(lambda t: float(pmodel.sf(t)), 0, np.inf, limit=200)[0]
     assert np.isclose(_area, pmodel.mean(), rtol=1e-8)
 
+Eliminating a failure mode
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+"If a design change removed the shocks, how long would the units last?"
+``eliminate(cause)`` returns the model of the causes left, each with its
+fitted distribution, so its ``sf``, ``mean``, ``qf``, ``cif`` and ``cb``
+answer for the units with that failure mode designed out. Its all-cause
+survival is the product of the kept causes' net survivals, which assumes
+the causes act independently: removing one leaves the others' hazards as
+they were. The data cannot check that, so it is an assumption to state
+with the answer.
+
+.. jupyter-execute::
+
+    no_shock = pmodel.eliminate("shock")
+    print("MTTF without shocks : %.2f" % no_shock.mean())
+    print("B10 without shocks  : %.2f" % no_shock.qf(0.1))
+    print(np.round(no_shock.cb([50.0, 100.0], on="sf"), 3))
+
+For the non-parametric estimate the same quantity is the product of the
+kept causes' Nelson-Aalen net survivals,
+``np.exp(-sum(model.Hf(t, k) for k in kept))``, under the same assumption.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert no_shock.causes == ["wear"]
+    assert np.isclose(no_shock.mean(), pmodel.models["wear"].mean(), rtol=1e-6)
+    assert np.isclose(no_shock.qf(0.1), pmodel.qf(0.1, event="wear"))
+
 How sure are these numbers? Bands and parameter uncertainty
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1487,10 +1518,38 @@ means (``model.center``, and ``phi`` is relative to them).
     _last = np.max(x[(e == 1) & (c == 0)])
     assert round(_last, 1) == 5.6, _last
 
+``cb`` bounds the cumulative incidence (``on="cif"``) or one minus it
+(``on="sf"``) by the case bootstrap: the units are resampled, the model
+refitted to each resample, and the bounds are the percentiles of the refits'
+incidences, so they carry the coefficients', the baseline's and the
+censoring weights' uncertainty together. Here the 95% bounds at
+:math:`Z = (1, 0)` contain the true incidence at each time. There is no
+Wald or likelihood-ratio bound: ``method="wald"`` and ``"lr"`` refuse and
+say to use the bootstrap.
+
+.. jupyter-execute::
+
+    times = np.array([0.5, 1.0, 2.0])
+    z = np.array([1.0, 0.0])
+    bounds = model.cb(times, z, n_boot=100, random_state=1)
+    truth = 1 - (1 - p * (1 - np.exp(-times))) ** np.exp(z @ beta)
+    print(np.round(model.cif(times, z), 3))
+    print(np.round(bounds, 3))
+    print(np.round(truth, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((bounds[:, 0] < truth) & (truth < bounds[:, 1])), bounds
+
 Things to watch:
 
 - ``event`` must be given when the data contain more than one cause, and it
   must be one that is observed; with a single cause it may be omitted.
+- With fewer than ten events of the cause per coefficient the fit warns,
+  with the counts: the coefficients, p-values and bounds then rest on few
+  events (Peduzzi et al.'s rule of ten events per variable).
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.

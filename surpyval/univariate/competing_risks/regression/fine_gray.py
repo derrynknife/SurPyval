@@ -2154,6 +2154,222 @@ class FineGrayModel(
         :meth:`cif`."""
         return 1.0 - self.cif(x, Z, stratum=stratum)
 
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        on: str = "cif",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        n_boot: int = 200,
+        random_state: Any = None,
+        stratum: Any = None,
+    ) -> npt.NDArray:
+        """
+        Pointwise confidence bounds on the cumulative incidence of the
+        cause of interest (``on="cif"``, the default) or on one minus it
+        (``on="sf"``), at times ``x`` for the covariates ``Z`` (as
+        :meth:`cif` takes them).
+
+        ``method="bootstrap"`` (the default, and the only one): the
+        percentile interval of the cumulative incidence over ``n_boot``
+        case-bootstrap refits. The units are resampled with replacement
+        (a row counted ``n`` is ``n`` units; a fit with ``cluster`` draws
+        whole clusters), each keeping its time, cause, covariates,
+        weight and stratum, and the model is refitted to each resample,
+        so the bounds carry the uncertainty of the coefficients, the
+        baseline and the estimated censoring weights together. The
+        quantiles are the ``(n + 1) p``-th smallest refits, as every
+        SurPyval bootstrap reads them.
+
+        ``method="wald"`` refuses: a delta-method bound needs the
+        variance of the baseline subdistribution hazard with the
+        influence of the estimated censoring weights on it, which is not
+        built. ``method="lr"`` refuses: the baseline has no likelihood
+        to profile.
+
+        Parameters
+        ----------
+        x : array_like
+            Times.
+        Z : array_like
+            One covariate vector, or one row per time, as for :meth:`cif`.
+        on : ('cif', 'sf'), str, optional
+            The function bounded, by default ``"cif"`` (``"R"`` is
+            ``"sf"``, as elsewhere).
+        alpha_ci : float, optional
+            The significance level, by default 0.05.
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            By default ``"two-sided"``, which adds a last axis
+            ``[lower, upper]``.
+        method : str, optional
+            ``"bootstrap"``, the default.
+        n_boot : int, optional
+            The number of refits, by default 200.
+        random_state : optional
+            The seed of the resamples, as every SurPyval draw takes it.
+        stratum : optional
+            The stratum, for a stratified model (as for :meth:`cif`).
+
+        Returns
+        -------
+        ndarray
+            The bounds, in the shape of ``x`` (with a last axis of 2 for a
+            two-sided bound).
+
+        Raises
+        ------
+        ValueError
+            For ``method="wald"`` or ``"lr"`` (saying why, and to use the
+            bootstrap), an option out of range, or a model that cannot be
+            refitted: one restored with ``from_dict`` (it keeps no rows)
+            or a penalised fit (refit and bound it yourself).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.univariate.competing_risks import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> t_c = rng.uniform(0, 20, 200)
+        >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
+        >>> first = np.where(t_a < t_b, "a", "b")
+        >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
+        >>> model = FineGray.fit(x, Z, e, event="a")
+        >>> model.cif(10, [1]).round(3)
+        np.float64(0.739)
+        >>> model.cb(10, [1], n_boot=100, random_state=1).round(3)
+        array([0.633, 0.838])
+        """
+        from surpyval.utils.linalg import percentile_bounds
+        from surpyval.utils.validation import check_alpha_ci, check_option
+
+        check_option("on", on, ("cif", "sf", "R"))
+        on = "sf" if on == "R" else on
+        check_option("bound", bound, ("two-sided", "lower", "upper"))
+        check_alpha_ci(alpha_ci)
+        if method == "wald":
+            raise ValueError(
+                "FineGray has no Wald bound on its cumulative incidence: "
+                "the delta method needs the variance of the baseline "
+                "subdistribution hazard, with the influence of the "
+                "estimated censoring weights on it, which is not built. "
+                "Use method='bootstrap' (the default)."
+            )
+        if method == "lr":
+            raise ValueError(
+                "FineGray has no likelihood-ratio bound on its cumulative "
+                "incidence: its baseline is estimated without a likelihood "
+                "to profile. Use method='bootstrap' (the default)."
+            )
+        check_option("method", method, ("bootstrap", "wald", "lr"))
+        x_arr = np.asarray(x, dtype=float)
+        point = np.asarray(self.cif(x_arr, Z, stratum=stratum), dtype=float)
+        draws = self._bootstrap_cif(x_arr, Z, stratum, n_boot, random_state)
+        if on == "sf":
+            draws = 1.0 - draws
+            point = 1.0 - point
+        out = np.asarray(percentile_bounds(draws, alpha_ci, bound))
+        nan = np.isnan(point.ravel())
+        out = np.where(nan[:, None] if out.ndim == 2 else nan, np.nan, out)
+        result = out.reshape(point.shape + out.shape[1:])
+        return result[()] if result.ndim == 0 else result
+
+    def _bootstrap_cif(
+        self,
+        x: npt.NDArray,
+        Z: npt.ArrayLike,
+        stratum: Any,
+        n_boot: Any,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The cumulative incidence at ``x`` (flattened) of each of
+        ``n_boot`` case-bootstrap refits, one refit a row; a refit that
+        fails is left out, with one warning."""
+        from surpyval.univariate.regression._bootstrap import check_n_boot
+        from surpyval.utils.no_maximum import warn_bootstrap_refits
+        from surpyval.utils.rng import as_generator
+        from surpyval.utils.warnings import ignoring_warnings
+
+        n_boot = check_n_boot(n_boot)
+        if self._fit_data is None:
+            raise ValueError(
+                "This FineGray model was restored with from_dict, which "
+                "keeps no data rows: refit it to bound its cumulative "
+                "incidence by the bootstrap."
+            )
+        if self.penalty is not None:
+            raise ValueError(
+                "cb does not bound a penalised FineGray fit: the bootstrap "
+                "would have to choose the penalty again on each resample. "
+                "Bound the unpenalised fit, or resample and refit with "
+                "fit_penalised yourself."
+            )
+        data = self._fit_data
+        rows = named_covariates(Z, self.feature_names)
+        code = None
+        if self.is_stratified:
+            self._baseline(stratum)  # checks the label
+            assert self.strata_labels is not None
+            code = next(
+                i
+                for i, label in enumerate(self.strata_labels)
+                if _same_label(label, stratum)
+            )
+        rng = as_generator(random_state)
+        counts = np.asarray(data["n"], dtype=int)
+        cause = "event"
+        e = np.full(counts.size, None, dtype=object)
+        e[np.asarray(data["is_competing"], dtype=bool)] = "other"
+        e[np.asarray(data["is_event"], dtype=bool)] = cause
+        cluster = data.get("cluster")
+        draws, failed = [], 0
+        for _ in range(n_boot):
+            n_new = _resampled_counts(counts, cluster, rng)
+            keep = n_new > 0
+            try:
+                with ignoring_warnings():
+                    refit = FineGray.fit(
+                        data["x"][keep],
+                        np.asarray(data["Z"], dtype=float)[keep],
+                        e[keep],
+                        c=data["c"][keep],
+                        n=n_new[keep],
+                        event=cause,
+                        center=True,
+                        w=None if data["w"] is None else data["w"][keep],
+                        strata=(
+                            None
+                            if data["strata"] is None
+                            else data["strata"][keep]
+                        ),
+                        strata_censoring=self.strata_censoring or "within",
+                    )
+                    value = refit.cif(
+                        x.ravel(),
+                        rows,
+                        stratum=(
+                            None if code is None else _code_of(refit, code)
+                        ),
+                    )
+            except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+                failed += 1
+                continue
+            draws.append(np.asarray(value, dtype=float).ravel())
+        if failed:
+            warn_bootstrap_refits(
+                n_boot,
+                failed=failed,
+                advice="the bounds are from the refits that succeeded; "
+                "treat them as rough, or use more data",
+            )
+        if not draws:
+            return np.full((1, x.size), np.nan)
+        return np.vstack(draws)
+
     def __repr__(self) -> str:
         lines = [
             "Fine-Gray Subdistribution Hazard Model",
@@ -2209,6 +2425,66 @@ class FineGrayModel(
                 "standard errors)"
             )
         return "\n".join(lines)
+
+
+def _resampled_counts(
+    counts: npt.NDArray, cluster: npt.NDArray | None, rng: Any
+) -> npt.NDArray:
+    """Each row's count in one case-bootstrap resample: the ``sum(counts)``
+    units drawn with replacement (a row counted ``n`` is ``n`` units), or,
+    with clusters, the clusters drawn with replacement, each bringing
+    all its rows."""
+    if cluster is None:
+        # Drawn by unit, so that a row counted n resamples as n rows do.
+        ends = np.cumsum(counts)
+        units = int(ends[-1])
+        drawn = np.searchsorted(
+            ends, rng.integers(0, units, size=units), side="right"
+        )
+        return np.bincount(drawn, minlength=counts.size)
+    codes = np.asarray(cluster, dtype=int)
+    clusters = int(codes.max()) + 1
+    times = np.bincount(
+        rng.integers(0, clusters, size=clusters), minlength=clusters
+    )
+    return counts * times[codes]
+
+
+def _code_of(refit: FineGrayModel, code: int) -> Any:
+    """The label a refit gives the stratum coded ``code`` in the fit (a
+    refit's strata are the codes its resample has)."""
+    assert refit.strata_labels is not None
+    for label in refit.strata_labels:
+        if int(label) == code:
+            return label
+    raise ValueError(f"The resample has no units of stratum {code}.")
+
+
+def _warn_few_events_per_coefficient(model: FineGrayModel) -> None:
+    """Warn where the cause of interest has fewer than ``FEW_EVENTS``
+    events per estimated coefficient (Peduzzi et al., 1995)."""
+    from surpyval.univariate.competing_risks._few_events import FEW_EVENTS
+
+    data = model._fit_data
+    # A fit with no finite maximum has warned already, and more strongly
+    # (its coefficients are meaningless): one warning per problem.
+    if data is None or model.maximum == "no finite maximum":
+        return
+    events = float(np.sum(np.asarray(data["n"])[data["is_event"]]))
+    estimated = int(np.sum(np.isfinite(np.atleast_1d(model.beta))))
+    if estimated == 0 or events >= FEW_EVENTS * estimated:
+        return
+    plural = "" if estimated == 1 else "s"
+    warnings.warn(
+        f"The cause of interest {model.cause!r} has {events:g} events for "
+        f"{estimated} coefficient{plural}, fewer than {FEW_EVENTS} per "
+        "coefficient: the coefficients, their p-values and the cumulative "
+        "incidence rest on few events and may be unstable, and Wald "
+        "intervals undercover. Use fewer covariates, a penalised fit "
+        "(FineGray.fit_penalised), or read them as rough.",
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 class FineGray_(FitterRepr):
@@ -2502,6 +2778,7 @@ class FineGray_(FitterRepr):
         maximum = _warn_if_monotone([fit])
         model = FineGrayModel(fit)
         model.maximum = maximum
+        _warn_few_events_per_coefficient(model)
         return model
 
     @dataframe_covariates

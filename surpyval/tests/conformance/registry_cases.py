@@ -3655,6 +3655,17 @@ def _bounds(case):
                 wald=False,
             ),
         ),
+        # Fine-Gray's cumulative incidence: the case bootstrap
+        # (percentiles); Wald and likelihood-ratio bounds refuse, saying
+        # why.
+        "FineGrayModel": (
+            Bound(
+                "cb",
+                on=("cif", "sf"),
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+        ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         # Net survival's pointwise bounds on each scale; neither is cut at
         # 1 (net survival can exceed it), nor the "normal" one at 0, where
