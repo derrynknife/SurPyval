@@ -543,10 +543,10 @@ class TestVarianceAlignment:
             **TURNBULL_MIXED_CENSORING, turnbull_estimator=estimator
         )
         np.testing.assert_allclose(
-            nonp.FIT_FUNCS[estimator](model.r, model.d), model.R, atol=1e-12
+            nonp._FIT_FUNCS[estimator](model.r, model.d), model.R, atol=1e-12
         )
         np.testing.assert_allclose(
-            nonp.VAR_FUNCS[estimator](model.r, model.d),
+            nonp._VAR_FUNCS[estimator](model.r, model.d),
             model.greenwood,
             equal_nan=True,
         )
@@ -639,7 +639,7 @@ class TestTurnbullEstimatorOption:
             if call == "fit":
                 Turnbull.fit(xl=[0, 1], xr=[2, 3], turnbull_estimator="foo")
             elif call == "function":
-                nonp.turnbull(
+                nonp._turnbull(
                     np.array([1.0, 2.0]),
                     np.array([0, 0]),
                     np.array([1, 1]),
@@ -981,7 +981,7 @@ def test_620_emicm_is_kept_by_the_model():
     assert default.to_dict()["algorithm"] == "EMICM"
     # bootstrap_cb refits each resample with the EM-ICM
     calls = []
-    original = nonp.turnbull
+    original = nonp._turnbull
 
     def spy(*args, **kwargs):
         calls.append(kwargs.get("algorithm"))
@@ -989,7 +989,7 @@ def test_620_emicm_is_kept_by_the_model():
 
     import unittest.mock
 
-    with unittest.mock.patch.object(nonp, "turnbull", spy):
+    with unittest.mock.patch.object(nonp, "_turnbull", spy):
         restored.bootstrap_cb([5.0], n_boot=3, random_state=0)
     assert calls == ["EMICM"] * 3
 

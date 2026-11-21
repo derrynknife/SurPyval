@@ -5,8 +5,11 @@ from typing import Any, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils import coerce_xcnt_x, format_truncation
-from surpyval.utils.data_formats import refuse_boolean_censoring
+from surpyval.utils.data_formats import (
+    coerce_xcnt_x,
+    format_truncation,
+    refuse_boolean_censoring,
+)
 
 from .event_history_data import EventHistoryData
 
@@ -655,7 +658,7 @@ def _xicn_marks(
     """
     if e is None:
         return None
-    from surpyval.utils import resolve_cr_censoring
+    from surpyval.utils.data_formats import resolve_cr_censoring
 
     # One mark per row (a tuple mark is not split into a column), and
     # every "no attributed cause" marker (None, NaN, pandas NA) turned

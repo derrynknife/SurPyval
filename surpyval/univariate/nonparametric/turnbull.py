@@ -1077,7 +1077,7 @@ def turnbull(
     Examples
     --------
     >>> from surpyval.utils.data_formats import xcnt_handler
-    >>> from surpyval.univariate.nonparametric import turnbull
+    >>> from surpyval.univariate.nonparametric.turnbull import turnbull
     >>> x, c, n, t = xcnt_handler(xl=[1, 2, 3, 1, 9], xr=[5, 3, 6, 8, 10])
     >>> out = turnbull(x, c, n, t)
     >>> out["x"]

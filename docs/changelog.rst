@@ -1031,6 +1031,22 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- Internal steps that ``surpyval.univariate.nonparametric`` and
+  ``surpyval.utils`` exposed as public names. From the non-parametric
+  namespace: the lower-case estimators ``kaplan_meier``,
+  ``nelson_aalen``, ``fleming_harrington`` and ``turnbull`` (use the
+  fitters, ``KaplanMeier.fit`` and the rest), ``greenwood_variance``,
+  ``nelson_aalen_variance`` and ``fleming_harrington_variance`` (the
+  fitters' ``cb``), ``rank_adjust``, ``canonical_heuristic``,
+  ``FIT_FUNCS``, ``VAR_FUNCS`` and ``PLOTTING_METHODS``. From
+  ``surpyval.utils``: ``coerce_xcnt_x``, ``format_truncation``,
+  ``group_xcnt``, ``xcnt_sort`` and ``resolve_cr_censoring``, which
+  ``SurpyvalData`` runs. Each still works, with a ``FutureWarning``
+  saying what to use, and is removed in v0.30. ``surpyval.utils`` keeps
+  ``round_sig``, ``is_missing_event``, ``missing_events``,
+  ``normalise_unit`` and ``same_unit``, and ``surpyval.pymc`` all of its
+  names.
+
 - The 21 test-planning functions that each solved one design for one
   unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
   ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,
