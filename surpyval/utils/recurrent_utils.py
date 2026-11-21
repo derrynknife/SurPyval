@@ -195,7 +195,7 @@ def validate_restoration(
     open_lower: bool = False,
 ) -> None:
     """
-    Check a repair / restoration parameter given to ``fit_from_parameters``
+    Check a repair / restoration parameter given to ``from_params``
     against the range its model is defined on (the fitters already search
     only inside it). Outside it the virtual ages go negative (a Kijima
     ``q < 0``, an ARA ``rho > 1``) or the G1 scale ``(1 + q) ** j`` stops

@@ -475,7 +475,6 @@ for _fn in (
     "auc_td",
     "brier_score",
     "compare_concordance",
-    "concordance_estimate",
     "concordance_index",
     "dynamic_auc",
     "dynamic_brier",

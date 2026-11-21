@@ -54,7 +54,7 @@ def test_g1_renewal_rejects_distribution_with_negative_support():
         GeneralizedOneRenewal.fit(x, dist=Normal)
 
     with pytest.raises(ValueError, match="non-negative lifetime"):
-        GeneralizedOneRenewal.fit_from_parameters([10, 2], 0.2, dist=Normal)
+        GeneralizedOneRenewal.from_params([10, 2], 0.2, dist=Normal)
 
 
 @pytest.mark.parametrize("model", [GeneralizedOneRenewal, GeneralizedRenewal])
@@ -146,9 +146,7 @@ def test_count_terminated_simulation_data_is_recurrent_data():
     # aggregated MCF, with events+1 exact events per item.
     from surpyval.utils.event_history_data import EventHistoryData
 
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], q=0.2, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], q=0.2, dist=Weibull)
     data = model.count_terminated_simulation_data(8, items=20, random_state=0)
     assert isinstance(data, EventHistoryData)
     assert len(data.x) == 20 * (8 + 1)
@@ -159,7 +157,7 @@ def test_count_terminated_simulation_data_is_recurrent_data():
 def test_simulated_data_round_trips_through_fit():
     # Simulating from a known model and refitting recovers it in the right
     # neighbourhood (this is now possible because the simulator yields events).
-    truth = ARA.fit_from_parameters([10.0, 2.0], rho=0.5, m=2, dist=Weibull)
+    truth = ARA.from_params([10.0, 2.0], rho=0.5, m=2, dist=Weibull)
     data = truth.count_terminated_simulation_data(
         events=8, items=400, random_state=0
     )
@@ -171,9 +169,7 @@ def test_simulated_data_round_trips_through_fit():
 def test_time_terminated_simulation_data_is_censored_at_T():
     from surpyval.utils.event_history_data import EventHistoryData
 
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], q=0.2, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], q=0.2, dist=Weibull)
     data = model.time_terminated_simulation_data(
         T=60, items=20, random_state=2
     )
@@ -199,9 +195,7 @@ def test_time_terminated_tol_stops_decaying_sequence():
     # A G1 process with q < 0 has geometrically shrinking interarrival times,
     # so its cumulative time converges below any large T. The tol early-exit
     # must catch this and the simulation must terminate (not hang).
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], q=-0.6, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], q=-0.6, dist=Weibull)
     np.random.seed(0)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -225,9 +219,7 @@ def test_time_terminated_max_events_backstop():
 def test_time_terminated_reaching_sequence_does_not_warn():
     # A well-behaved process that comfortably reaches T must not trip either
     # the tol or max_events early-exit (no false positives).
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], q=0.2, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], q=0.2, dist=Weibull)
     np.random.seed(2)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -239,9 +231,7 @@ def test_time_terminated_reaching_sequence_does_not_warn():
 def test_simulation_seed_is_reproducible():
     # An explicit seed gives a reproducible stream independent of global state;
     # a different seed gives a different result.
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], q=0.2, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], q=0.2, dist=Weibull)
     xs = np.array([1, 2, 3, 4, 5])
     a = model.count_terminated_simulation(9, 500, random_state=42).mcf(xs)
     b = model.count_terminated_simulation(9, 500, random_state=42).mcf(xs)
@@ -269,7 +259,7 @@ def test_seed_none_defers_to_global_rng():
 )
 def test_renewal_mcf_convenience(model_cls):
     # mcf(x) estimates a sensible, non-decreasing MCF by simulation.
-    model = model_cls.fit_from_parameters([5.0, 1.5], 0.2, dist=Weibull)
+    model = model_cls.from_params([5.0, 1.5], 0.2, dist=Weibull)
     xs = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     mcf = model.mcf(xs, items=2000, random_state=1)
     assert mcf.shape == xs.shape
@@ -279,9 +269,7 @@ def test_renewal_mcf_convenience(model_cls):
 
 def test_plot_requires_fitted_data():
     # plot needs the empirical MCF, so a from-parameters model cannot plot.
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], 0.2, dist=Weibull
-    )
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], 0.2, dist=Weibull)
     with pytest.raises(ValueError, match="requires a model fitted from data"):
         model.plot()
 
@@ -319,10 +307,8 @@ def test_renewal_standard_errors_interior_optimum():
 
 
 def test_inference_requires_fit_from_data():
-    # fit_from_parameters carries no likelihood, so inference must raise.
-    model = GeneralizedOneRenewal.fit_from_parameters(
-        [5.0, 1.5], 0.2, dist=Weibull
-    )
+    # from_params carries no likelihood, so inference must raise.
+    model = GeneralizedOneRenewal.from_params([5.0, 1.5], 0.2, dist=Weibull)
     with pytest.raises(ValueError, match="fitted from data"):
         model.log_likelihood
     for name in ("aic", "bic"):
