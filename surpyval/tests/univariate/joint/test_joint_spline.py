@@ -1,6 +1,7 @@
 """Joint models on a spline path (``SplinePath``): the fleet's mean
 curve a natural cubic spline, each item its own level and rate."""
 
+import copy
 import json
 import pickle
 import warnings
@@ -321,3 +322,101 @@ def test_a_bound_with_a_path_parameter_common_to_all_items(straight):
     centre = np.log(-np.log(estimate))
     lower = np.exp(-np.exp(centre + 1.959963984540054 * se))
     np.testing.assert_allclose(bounds[:, 0], lower, rtol=1e-4)
+
+
+def test_varying_bends_default_to_their_own_blocks():
+    """With a bend varying, the default structure is a block of the level
+    and rate and each bend on its own; with only the level and rate, every
+    pair, as for any other path."""
+    path = SplinePath.natural(df=3)
+    both = JointPH(Weibull, path, varying=("level", "rate", "s1", "s2"))
+    assert both.random_effects == (("level", "rate"), ("s1",), ("s2",))
+    assert JointPH(Weibull, path).random_effects == "full"
+    one = JointPH(Weibull, path, varying=("level", "s2"))
+    assert one.random_effects == (("level",), ("s2",)) or (
+        one.random_effects == "diagonal"
+    )
+    asked = JointPH(
+        Weibull, path, varying=("level", "rate", "s1"), random_effects="full"
+    )
+    assert asked.random_effects == "full"
+    assert JointPH(Weibull, QuadraticPath).random_effects == "full"
+    assert JointAFT(Weibull, path, varying=("rate", "s1")).random_effects in (
+        "diagonal",
+        (("rate",), ("s1",)),
+    )
+
+
+def test_a_bend_the_readings_do_not_reach_cannot_vary():
+    """A unit's own ``s2`` acts only after the first interior knot, so the
+    units' median number of readings there must reach the number of
+    varying parameters."""
+    items = [
+        ItemLifetime(
+            k,
+            observed=230.0 + 5 * k,
+            markers={
+                age: 1.0 + 0.002 * age + 0.01 * ((k * 7 + j) % 5)
+                for j, age in enumerate(np.arange(0.0, 230.0 + 5 * k, 30.0))
+            },
+        )
+        for k in range(12)
+    ]
+    data = SurpyvalData.from_items(items)
+    path = SplinePath(knots=[200.0, 400.0], boundary=(0.0, 520.0))
+    with pytest.raises(ValueError) as refusal:
+        JointPH(Weibull, path, varying=("level", "rate", "s2")).fit(data)
+    message = str(refusal.value)
+    assert "The bend 's2' varies between units" in message
+    assert "after age 200" in message
+    assert "12 unit(s) have a median of 2 reading(s) there" in message
+    assert "the 3 varying parameters" in message
+    assert "Leave 's2' out of varying" in message
+
+
+@pytest.fixture(scope="module")
+def bend_varying(straight):
+    """The straight-line fixture fitted with the bend varying too, and the
+    warnings the fit gave: the lines have no bend, so no spread in it."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = JointPH(
+            Weibull,
+            SplinePath.natural(df=2),
+            varying=("level", "rate", "s1"),
+        ).fit(**straight)
+    return model, [str(w.message) for w in caught]
+
+
+def test_with_the_bend_spread_at_zero_it_is_the_common_bend_model(
+    straight, placed, bend_varying
+):
+    """The likelihood with the bend varying, its spread held at (nearly)
+    0 and every other parameter at the common-bend fit's, is the
+    common-bend fit's likelihood."""
+    from surpyval.univariate.joint.joint_ph import search_space
+
+    model, _ = bend_varying
+    assert model.random_effects_structure == (("level", "rate"), ("s1",))
+    common = dict(zip(placed.parameter_names, placed.params))
+    params = np.array(
+        [
+            common.get(name, 1e-7) if name != "sd_s1" else 1e-7
+            for name in model.parameter_names
+        ]
+    )
+    assert set(model.parameter_names) - set(common) == {"sd_s1"}
+    held = copy.copy(model)
+    held.params = params
+    f1, u1, _ = search_space(placed, **straight)
+    f2, u2, _ = search_space(held, **straight)
+    assert float(f2(u2)) == pytest.approx(float(f1(u1)), rel=1e-9)
+
+
+def test_a_bend_spread_at_its_lower_bound_is_warned_of(bend_varying):
+    model, caught = bend_varying
+    k = model.parameter_names.index("sd_s1")
+    flat = [w for w in caught if "lower bound, 0" in w]
+    assert len(flat) == 1, (model.params[k], caught)
+    assert "'s1'" in flat[0]
+    assert "Leave it out of varying" in flat[0]
