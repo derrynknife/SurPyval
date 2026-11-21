@@ -1044,6 +1044,12 @@ v0.29 (unreleased)
 
 **Deprecated.**
 
+- The renewal fitters' ``fit_from_parameters`` (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``) is ``from_params``, the
+  name every other family uses for a model built from given parameters.
+  The old name gives the same model, with a ``FutureWarning`` naming
+  ``from_params``, and is removed in v0.30.
+
 - The 21 test-planning functions that each solved one design for one
   unknown: ``logrank_events``, ``logrank_sample_size``, ``logrank_power``,
   ``cox_events``, ``cox_sample_size``, ``cox_power``, ``cox_detectable``,

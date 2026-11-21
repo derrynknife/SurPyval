@@ -34,18 +34,16 @@ FAMILIES = {
 
 def _truth(fitter, options, restoration):
     if fitter is ARI:
-        return ARI.fit_from_parameters(
+        return ARI.from_params(
             [20.0, 1.8], restoration, m=options["m"], baseline=CrowAMSAA
         )
     if fitter is GeneralizedRenewal:
-        return fitter.fit_from_parameters(
+        return fitter.from_params(
             [20.0, 1.8], restoration, kijima=options["kijima"]
         )
     if fitter is ARA:
-        return fitter.fit_from_parameters(
-            [20.0, 1.8], restoration, m=options["m"]
-        )
-    return fitter.fit_from_parameters([20.0, 1.8], restoration)
+        return fitter.from_params([20.0, 1.8], restoration, m=options["m"])
+    return fitter.from_params([20.0, 1.8], restoration)
 
 
 def _fitted(key):
@@ -212,7 +210,7 @@ def test_615_forecast_simulates_each_unit_from_its_state(key):
 def test_615_new_units_and_limits():
     # Units given by their ages: no failure yet. A unit at or past its
     # limit contributes nothing; one with 2 left counts 2 hours only.
-    model = GeneralizedRenewal.fit_from_parameters([20.0, 1.8], 0.4)
+    model = GeneralizedRenewal.from_params([20.0, 1.8], 0.4)
     table = model.unit_states(age=[0.0, 10.0])
     assert table["virtual_age"].tolist() == [0.0, 10.0]
     result = sp.forecast(
@@ -241,7 +239,7 @@ def test_615_new_units_and_limits():
 
 
 def test_615_renewal_forecast_input_errors():
-    model = GeneralizedRenewal.fit_from_parameters([20.0, 1.8], 0.4)
+    model = GeneralizedRenewal.from_params([20.0, 1.8], 0.4)
     with pytest.raises(ValueError, match="requires a model fitted"):
         sp.forecast(model, horizon=1.0)
     with pytest.raises(ValueError, match="n is not taken"):
