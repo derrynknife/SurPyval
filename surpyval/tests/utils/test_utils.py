@@ -5,13 +5,15 @@ import pytest
 
 from surpyval.utils import (
     fsli_handler,
-    group_xcnt,
     is_missing_event,
-    resolve_cr_censoring,
     xcn_to_fs,
     xcnt_handler,
-    xcnt_sort,
     xrd_handler,
+)
+from surpyval.utils.data_formats import (
+    group_xcnt,
+    resolve_cr_censoring,
+    xcnt_sort,
 )
 
 

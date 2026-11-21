@@ -1,11 +1,12 @@
 """The bundled Claude Code skill's code runs (#491).
 
-``.claude/skills/surpyval/SKILL.md`` is what an assistant copies into a
-user's code, so it drifted silently: a removed keyword (``alpha=`` for
-``alpha_ci=``), removed classes, a withdrawn warning. Every ``python``
-block in it is run here, in order, in one namespace, with SurPyval's
-deprecation and removal errors raised, and a few of its claims are checked
-against the package.
+``.claude/skills/surpyval/SKILL.md`` (and its ``references/``) is what an
+assistant copies into a user's code, so it drifted silently: a removed
+keyword (``alpha=`` for ``alpha_ci=``), removed classes, a withdrawn
+warning. Every ``python`` block in it is run here, in order, in one
+namespace, with SurPyval's deprecation and removal errors raised, and a
+few of its claims are checked against the package. Each reference file's
+blocks run the same way, in a namespace of their own.
 """
 
 import pathlib
@@ -26,13 +27,15 @@ SKILL = (
     / "SKILL.md"
 )
 
+REFERENCES = sorted((SKILL.parent / "references").glob("*.md"))
+
 pytestmark = pytest.mark.skipif(
     not SKILL.exists(), reason="the skill ships with the repository only"
 )
 
 
-def _blocks():
-    text = SKILL.read_text()
+def _blocks(path=SKILL):
+    text = path.read_text()
     return re.findall(r"```python\n(.*?)```", text, flags=re.S)
 
 
@@ -40,18 +43,61 @@ def test_skill_has_code():
     assert len(_blocks()) >= 4
 
 
-def test_every_code_block_runs():
+def _run_blocks(path):
     namespace: dict = {}
-    for k, block in enumerate(_blocks()):
+    for k, block in enumerate(_blocks(path)):
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
             try:
-                exec(compile(block, f"SKILL.md block {k}", "exec"), namespace)
+                exec(
+                    compile(block, f"{path.name} block {k}", "exec"), namespace
+                )
             except Exception as error:  # pragma: no cover - the report
-                pytest.fail(f"SKILL.md block {k} failed: {error!r}\n{block}")
+                pytest.fail(
+                    f"{path.name} block {k} failed: {error!r}\n{block}"
+                )
     import matplotlib.pyplot as plt
 
     plt.close("all")
+    return namespace
+
+
+def test_every_code_block_runs():
+    _run_blocks(SKILL)
+
+
+@pytest.mark.parametrize("path", REFERENCES, ids=lambda p: p.name)
+def test_every_reference_code_block_runs(path):
+    assert _blocks(path), f"{path.name} has no python block"
+    _run_blocks(path)
+
+
+def test_skill_links_each_reference():
+    text = SKILL.read_text()
+    for path in REFERENCES:
+        assert f"references/{path.name}" in text, path.name
+
+
+def test_choosing_a_model_flow_is_yes_or_no():
+    # Every question of the flow has exactly two answers, Yes and No, and
+    # the docs page asks the same numbered questions.
+    path = SKILL.parent / "references" / "choosing-a-model.md"
+    text = path.read_text()
+    questions = re.findall(
+        r"^\s*(\d+)\. \*\*(.+?)\*\*", text, flags=re.M | re.S
+    )
+    numbers = [int(k) for k, _ in questions]
+    assert numbers == list(range(1, len(numbers) + 1)), numbers
+    blocks = re.split(r"^\s*\d+\. \*\*", text, flags=re.M)[1:]
+    for k, block in enumerate(blocks, start=1):
+        block = block.split("\n## ")[0]
+        answers = re.findall(r"^\s*- (Yes|No)\b", block, flags=re.M)
+        assert answers == ["Yes", "No"], (k, answers)
+    docs = SKILL.parents[3] / "docs" / "Choosing a Model.rst"
+    if docs.exists():
+        flow = docs.read_text().split("Stage 1: the shape of the problem")[1]
+        page = re.findall(r"^\s*(\d+)\. \*\*", flow, flags=re.M)
+        assert [int(k) for k in page] == numbers, page
 
 
 def test_regression_example_recovers_its_coefficient():

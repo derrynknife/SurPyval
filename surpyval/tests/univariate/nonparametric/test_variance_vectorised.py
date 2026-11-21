@@ -10,11 +10,13 @@ count, and 0 / 0 with no one at risk.
 import numpy as np
 import pytest
 
-from surpyval.univariate.nonparametric import (
+from surpyval.univariate.nonparametric.fleming_harrington import _snap
+from surpyval.univariate.nonparametric.kaplan_meier import (
     greenwood_variance,
+)
+from surpyval.univariate.nonparametric.nelson_aalen import (
     nelson_aalen_variance,
 )
-from surpyval.univariate.nonparametric.fleming_harrington import _snap
 
 
 def _greenwood_loop(r, d):

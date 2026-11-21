@@ -917,7 +917,7 @@ class CompetingRisks(SerialisableMixin):
 
         model = nonp.NonParametric()
         model.x, model.r, model.d = self.x, self.r, d
-        model.R = nonp.FIT_FUNCS[how](self.r, d)
+        model.R = nonp._FIT_FUNCS[how](self.r, d)
         model.model = how
         model.F = 1 - model.R
         with np.errstate(all="ignore"):

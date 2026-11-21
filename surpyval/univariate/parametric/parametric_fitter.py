@@ -247,7 +247,7 @@ def _as_array(value: Any) -> Any:
 
 # The distribution functions of a time ``x`` (and ``qf`` of a probability)
 # that ``_array_inputs`` wraps.
-_QUERY_FUNCTIONS = tuple(_OUTSIDE_SUPPORT) + ("qf",)
+_QUERY_FUNCTIONS = tuple(_OUTSIDE_SUPPORT) + ("qf", "isf")
 
 # Each function's limit as x goes to infinity, where every distribution
 # has the same one (its value past an upper support edge): all but the
@@ -297,7 +297,8 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     has checked them itself (``Parametric.qf`` and ``random``).
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
-    is_qf = fn.__name__ == "qf"
+    # ``isf`` takes a probability too, and is checked as ``qf`` is
+    is_qf = fn.__name__ in ("qf", "isf")
     inside = getattr(fn, "_inside", None)
 
     @functools.wraps(fn)
@@ -373,6 +374,156 @@ def _log1mexp(d: Any) -> Any:
     return np.where(
         small, np.log(-np.expm1(-d_small)), np.log1p(-np.exp(-d_large))
     )
+
+
+# What each distribution's parameters do, in the order of its
+# ``parameter_names`` (``ParametricFitter.parameter_roles``): one letter
+# can mean different things, Gamma's ``beta`` is a rate where Weibull's
+# is a shape.
+_PARAMETER_ROLES: dict[str, tuple[str, ...]] = {
+    "Bernoulli": ("probability",),
+    "Beta": ("shape", "shape"),
+    "Beta4": ("shape", "shape", "lower bound", "upper bound"),
+    "BetaGeometric": ("shape", "shape"),
+    "Binomial": ("number of trials", "probability"),
+    "DiscreteWeibull": ("probability of surviving the first step", "shape"),
+    "ExactEventTime": ("event time",),
+    "ExpoWeibull": ("scale", "shape", "shape (exponent)"),
+    "Exponential": ("rate",),
+    "FixedEventProbability": ("probability",),
+    "Gamma": ("shape", "rate"),
+    "Geometric": ("probability",),
+    "Gumbel": ("location", "scale"),
+    "GumbelLEV": ("location", "scale"),
+    "LogLogistic": ("scale", "shape"),
+    "LogNormal": ("location of log(x)", "scale of log(x)"),
+    "Logistic": ("location", "scale"),
+    "NegativeBinomial": ("shape", "probability"),
+    "Normal": ("location", "scale"),
+    "Poisson": ("rate",),
+    "Rayleigh": ("scale",),
+    "Uniform": ("lower bound", "upper bound"),
+    "Weibull": ("scale", "shape"),
+}
+
+
+def _isf_continuous(dist: Any, s: npt.NDArray, params: tuple) -> npt.NDArray:
+    """The time at which a continuous distribution's survival is ``s``,
+    for ``s`` in [0, 1], where the distribution has no closed form.
+
+    At ``s >= 1/2`` it is ``qf(1 - s)``, whose argument is exact there.
+    Below, it solves ``log_sf(x) = log(s)`` (so ``s`` keeps its digits
+    down to the smallest double): a bracket from the median, widened by
+    doubling, then Newton's steps with ``d log_sf / dx = -hf``, each kept
+    inside the bracket (a bisection where it would leave it, geometric
+    while the bracket spans more than a factor of 2). It stops where a
+    step is within 2 eps of the point, or the bracket within 4 eps.
+    """
+    out = onp.full(s.shape, onp.nan)
+    lo_edge, hi_edge = dist._support_edges(*params)
+    upper = s >= 0.5
+    if onp.any(upper):
+        out[upper] = dist.qf(1.0 - s[upper], *params)
+    out[s == 0.0] = hi_edge
+    todo = (s > 0.0) & (s < 0.5)
+    if not onp.any(todo):
+        return out
+    target = onp.log(s[todo])
+    lo = onp.broadcast_to(
+        onp.asarray(dist.qf(0.5, *params), dtype=float), target.shape
+    ).copy()
+    width = onp.asarray(dist.qf(0.75, *params), dtype=float) - lo
+    width = onp.where(width > 0, width, onp.maximum(onp.abs(lo), 1.0))
+
+    def g(x: npt.NDArray) -> npt.NDArray:
+        return onp.asarray(dist.log_sf(x, *params), dtype=float) - target
+
+    if onp.isfinite(hi_edge):
+        hi = onp.full(target.shape, hi_edge)
+    else:
+        hi = lo + width
+        big = float(onp.finfo(float).max)
+        for _ in range(2100):
+            more = g(hi) > 0
+            if not onp.any(more):
+                break
+            lo = onp.where(more, hi, lo)
+            width = onp.where(more, 2.0 * width, width)
+            hi = onp.where(more, onp.minimum(lo + width, big), hi)
+            if onp.all(~more | (lo >= big)):
+                break
+    beyond = g(hi) > 0  # past the largest double: the time is inf
+    eps = float(onp.finfo(float).eps)
+    x = hi.copy()
+    for _ in range(200):
+        gx = g(x)
+        lo = onp.where(gx > 0, x, lo)
+        hi = onp.where(gx > 0, hi, x)
+        h = onp.asarray(dist.hf(x, *params), dtype=float)
+        with onp.errstate(all="ignore"):
+            step = gx / h
+            newton = x + step
+            mid = onp.where(
+                (lo > 0) & (hi > 2.0 * lo),
+                onp.sqrt(lo) * onp.sqrt(hi),
+                lo + 0.5 * (hi - lo),
+            )
+        inside = onp.isfinite(newton) & (newton > lo) & (newton < hi)
+        nxt = onp.where(inside, newton, mid)
+        done = (
+            (gx == 0)
+            | (onp.abs(nxt - x) <= 2.0 * eps * onp.abs(x))
+            | (hi - lo <= 4.0 * eps * onp.maximum(onp.abs(hi), onp.abs(lo)))
+        )
+        x = onp.where(done, x, nxt)
+        if onp.all(done):
+            break
+    out[todo] = onp.where(beyond, onp.inf, x)
+    return out
+
+
+def _isf_discrete(dist: Any, s: npt.NDArray, params: tuple) -> npt.NDArray:
+    """The smallest point ``k`` of a discrete distribution's support with
+    ``sf(k) <= s``, compared as ``log_sf(k) <= log(s)`` so that a tiny
+    ``s`` keeps its digits: a bracket from the support's start widened by
+    doubling, then a bisection on the integers."""
+    out = onp.full(s.shape, onp.nan)
+    lo_edge, hi_edge = (float(v) for v in dist.support)
+    out[s >= 1.0] = lo_edge
+    # the last point of the support, as qf(1) (a Binomial's n)
+    out[s == 0.0] = onp.asarray(dist.qf(1.0, *params), dtype=float)
+    todo = (s > 0.0) & (s < 1.0)
+    if not onp.any(todo):
+        return out
+    target = onp.log(s[todo])
+
+    def reached(k: npt.NDArray) -> npt.NDArray:
+        return onp.asarray(dist.log_sf(k, *params), dtype=float) <= target
+
+    lo = onp.full(target.shape, lo_edge - 1.0)  # sf = 1 > s there
+    hi = onp.full(target.shape, lo_edge)
+    width = onp.ones(target.shape)
+    for _ in range(1100):
+        more = ~reached(hi)
+        if onp.isfinite(hi_edge):
+            more = more & (hi < hi_edge)
+        if not onp.any(more):
+            break
+        lo = onp.where(more, hi, lo)
+        hi = onp.where(more, hi + width, hi)
+        width = onp.where(more, 2.0 * width, width)
+        if onp.isfinite(hi_edge):
+            hi = onp.minimum(hi, hi_edge)
+    for _ in range(1100):
+        wide = hi - lo > 1
+        if not onp.any(wide):
+            break
+        mid = onp.floor(lo + 0.5 * (hi - lo))
+        ok = reached(mid)
+        hi = onp.where(wide & ok, mid, hi)
+        lo = onp.where(wide & ~ok, mid, lo)
+    out[todo] = hi
+    return out
 
 
 DEFAULT_Y_TICKS = [
@@ -556,6 +707,32 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self.name
 
+    @property
+    def parameter_roles(self) -> dict[str, str]:
+        """
+        What each parameter does, by name, in the order of
+        ``parameter_names``: ``"shape"``, ``"scale"``, ``"rate"``,
+        ``"location"``, ``"probability"``, ... The same letter can mean
+        different things: Gamma's ``beta`` is a rate (its mean is
+        ``alpha / beta``), Weibull's ``beta`` a shape. A distribution
+        without a recorded role (a custom one) gives ``"parameter"``.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.Gamma.parameter_roles
+        {'alpha': 'shape', 'beta': 'rate'}
+        >>> sp.Weibull.parameter_roles
+        {'alpha': 'scale', 'beta': 'shape'}
+        """
+        if self.canonical_name == "Hypoexponential":
+            return {name: "rate" for name in self.parameter_names}
+        roles = _PARAMETER_ROLES.get(self.canonical_name, ())
+        return {
+            name: roles[i] if i < len(roles) else "parameter"
+            for i, name in enumerate(self.parameter_names)
+        }
+
     def __init__(
         self,
         name: str,
@@ -629,6 +806,36 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         U = uniform_draws(size, random_state)
         return self.qf(U, *params)
+
+    def isf(self, s: Numeric, *params: Any) -> Any:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s`` (scipy's name), ``qf(1 - s)`` without rounding
+        ``1 - s``.
+
+        Far in the upper tail ``qf`` cannot be asked for the time: ``1 -
+        s`` rounds to 1 once ``s`` is below 1.1e-16. ``isf`` takes ``s``
+        itself, so ``isf(sf(t))`` gives back ``t`` deep in the tail. A
+        distribution with a closed form has its own; the others solve
+        ``log_sf(x) = log(s)`` (a discrete one: the smallest point of its
+        support with ``sf(k) <= s``). ``isf(1)`` is the start of the
+        support and ``isf(0)`` its end.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull, Gamma
+        >>> Weibull.isf(1e-300, 10, 2).round(4)
+        np.float64(262.8261)
+        >>> t = Gamma.isf(1e-200, 2.5, 0.5)
+        >>> float(Gamma.sf(t, 2.5, 0.5))
+        1e-200
+        """
+        s = onp.asarray(s, dtype=float)
+        out = (_isf_discrete if self.discrete else _isf_continuous)(
+            self, onp.atleast_1d(s), params
+        )
+        return out.reshape(s.shape)[()]
+
+    isf = _array_inputs(isf)
 
     def log_df(self, x: npt.NDArray, *params: Any) -> Any:
         r"""Log of the density, :math:`\ln f(x) = \ln h(x) - H(x)` (the
@@ -1210,6 +1417,36 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
+    def _given_params(self, params: Any) -> np.ndarray:
+        """
+        The parameters given to ``from_params`` as a 1-D float array.
+
+        A plain number is taken for a one-parameter distribution
+        (``Exponential.from_params(0.01)``); for more parameters it is
+        refused, naming how many are needed, as is a list of the wrong
+        length.
+        """
+        names = ", ".join(self.parameter_names)
+        # The dtype given is kept (integers stay integers, as they always
+        # have in ``params`` and ``to_dict``).
+        arr = np.asarray(params)
+        if arr.ndim == 0:
+            if self.k == 1:
+                return arr.reshape(1)
+            raise ValueError(
+                f"{self.name} takes {self.k} parameters ({names}); got 1 "
+                f"number. Pass all {self.k} as a list, e.g. "
+                f"{self.name}.from_params([{names}])."
+            )
+        arr = arr.ravel()
+        if arr.size != self.k:
+            raise ValueError(
+                f"{self.name} takes {self.k} parameter"
+                f"{'s' if self.k != 1 else ''} ({names}); got {arr.size}: "
+                f"{arr.tolist()}. Pass exactly {self.k}, in that order."
+            )
+        return arr
+
     @takes_unit
     def from_params(
         self,
@@ -1225,8 +1462,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Parameters
         ----------
 
-        params : array like
-            array of the parameters of the distribution.
+        params : array like or number
+            The parameters of the distribution, in the order of its
+            ``parameter_names``. A distribution with one parameter
+            (``Exponential``, ``Rayleigh``, ...) also takes a plain number.
 
         gamma : scalar, optional
             offset value for the distribution. If not provided will fit a
@@ -1274,9 +1513,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
              alpha: 10
               beta: 4
         """
-        if self.k != len(params):
-            detail = f"Must have {self.k} params for {self.name} distribution"
-            raise ValueError(detail)
+        params = self._given_params(params)
 
         # A proportion outside [0, 1], or a zero-inflation fraction at or
         # above the proportion that ever fails, is not a distribution:

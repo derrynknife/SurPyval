@@ -81,21 +81,15 @@ turns every ``random_state`` or ``seed`` argument into a generator with:
 
 .. autofunction:: surpyval.utils.rng.as_generator
 
-Lower-level helpers in ``surpyval.utils``, used by the handlers above:
-
-.. autofunction:: surpyval.utils.xcnt_sort
-
-.. autofunction:: surpyval.utils.group_xcnt
-
-.. autofunction:: surpyval.utils.coerce_xcnt_x
-
-.. autofunction:: surpyval.utils.format_truncation
+Helpers in ``surpyval.utils`` for the missing-event convention (see
+:doc:`Conventions`). The handlers' internal steps (``xcnt_sort``,
+``group_xcnt``, ``coerce_xcnt_x``, ``format_truncation`` and
+``resolve_cr_censoring``) were public until v0.29; ``SurpyvalData`` runs
+them:
 
 .. autofunction:: surpyval.utils.is_missing_event
 
 .. autofunction:: surpyval.utils.missing_events
-
-.. autofunction:: surpyval.utils.resolve_cr_censoring
 
 The functions above documented as ``surpyval.utils.<name>`` are what that
 namespace promises (its ``__all__``). It also holds the input validators the fitters call
