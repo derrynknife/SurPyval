@@ -70,7 +70,6 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
-    scattered_campaign_data,
     copula_data,
     cr_data,
     cure_data,
@@ -95,6 +94,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     relative_data,
     relative_reg_data,
+    scattered_campaign_data,
     scramble,
     uni_data,
     uni_exact_data,
@@ -2451,6 +2451,26 @@ def _bayes_weibull(d):
     )
 
 
+def _bayes_weibull_sampled(d):
+    """The sampler, with the same priors as the grid's case: two short
+    chains from a fixed seed, so the fit is the same on every call."""
+    return sp.Weibull.fit_bayes(
+        d["x"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **_BAYES_SAMPLER,
+    )
+
+
+#: The sampled case's settings: enough draws to pass the sampler's own
+#: convergence checks on the fixture (they are not what is under test
+#: here; tests/bayes/test_sampler.py and test_fit_sampled.py are).
+_BAYES_SAMPLER = dict(
+    method="nuts", chains=2, draws=600, warmup=400, random_state=4590
+)
+
+
 def _bayes_exponential(d):
     """The closed form: a Gamma prior on the rate whose second parameter
     is a time (``prior_time``, rescaled with the data)."""
@@ -2466,17 +2486,18 @@ def _bayes_exponential(d):
     )
 
 
-def _bayes_paths(fit, fitter, priors):
+def _bayes_paths(fit, fitter, priors, **options):
     def from_df(d):
         df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
         return fitter.fit_bayes_from_df(
-            df, x_col="x", c_col="c", n_col="n", priors=priors(d)
+            df, x_col="x", c_col="c", n_col="n", priors=priors(d), **options
         )
 
     def from_data(d):
         return fitter.fit_bayes(
             sp.SurpyvalData(x=d["x"], c=d.get("c"), n=d.get("n")),
             priors=priors(d),
+            **options,
         )
 
     # (fit_from_df: the DataFrame path, fit_bayes_from_df)
@@ -2535,6 +2556,20 @@ def _bayes():
             data=uni_data,
             fit=_bayes_weibull,
             paths=_bayes_paths(_bayes_weibull, sp.Weibull, weibull_priors),
+            rtol=1e-6,
+            **common,
+        ),
+        Case(
+            name="Weibull[bayes-nuts]",
+            fitters=(),
+            data=uni_data,
+            fit=_bayes_weibull_sampled,
+            paths=_bayes_paths(
+                _bayes_weibull_sampled,
+                sp.Weibull,
+                weibull_priors,
+                **_BAYES_SAMPLER,
+            ),
             rtol=1e-6,
             **common,
         ),

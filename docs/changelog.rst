@@ -5,6 +5,26 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Bayesian fits with more than three free parameters: SurPyval's own
+  sampler.** ``fit_bayes(method="nuts")`` draws the posterior with a
+  No-U-Turn sampler written in SurPyval (multinomial sampling, a diagonal
+  mass matrix, Stan's windowed warm-up; no PyMC or Stan needed), and
+  ``method="auto"`` uses it where a fit has more than three free
+  parameters, which was refused before (an offset with a limited-failure
+  proportion, for example). The grid stays the default up to three, and
+  its results are unchanged. New arguments: ``chains=4``, ``draws=1000``,
+  ``warmup=1000``, ``random_state`` and ``n_jobs`` (seeded draws do not
+  depend on it). Every sampled fit is checked: rank-normalised split
+  R-hat (at most 1.01), bulk and tail effective sample size (at least 100
+  a chain), divergences and tree depth, all in ``model.diagnostics``; a
+  failed check gives one warning with the parameter and the number,
+  ``model.ok`` is False, and ``diagnose()`` lists them
+  (``sampler_convergence``). ``surpyval.bayes.convergence`` has ``rhat``,
+  ``ess_bulk`` and ``ess_tail`` for any draws (they equal ArviZ's to
+  1e-10). Against the closed forms and the grid, the sampled posteriors
+  agree within Monte Carlo error. See "More than three parameters: the
+  sampler" in :doc:`Bayesian Fitting with SurPyval`.
+
 - **Test planning: one function per comparison design.**
   ``surpyval.test_planning`` has ``logrank_design``, ``cox_design``,
   ``noninferiority_design``, ``equivalence_design``, ``rmst_design``,
