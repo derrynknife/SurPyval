@@ -3946,6 +3946,14 @@ def _bounds(case):
                 query=((_rmst_tau(case), np.asarray(case.Z, float)[:1]),),
                 label="rmst_cb[wald]",
             ),
+            # The mean life at the first covariate row
+            Bound(
+                "mean_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[wald]",
+            ),
         )
         if case.name not in _REGRESSION_LR_X:
             return wald
@@ -3988,6 +3996,13 @@ def _bounds(case):
                 "quantile_cb",
                 point="qf",
                 label="quantile_cb[bootstrap]",
+                **boot,
+            ),
+            Bound(
+                "mean_cb",
+                kind="summary",
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[bootstrap]",
                 **boot,
             ),
         )

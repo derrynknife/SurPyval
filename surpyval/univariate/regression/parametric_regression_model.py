@@ -32,6 +32,7 @@ from surpyval.utils.validation import (
 )
 from surpyval.utils.warnings import ignoring_warnings
 
+from ._accelerated_analysis import AcceleratedLifeAnalysisMixin
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
 from ._inference import InferenceMixin
@@ -94,6 +95,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    AcceleratedLifeAnalysisMixin,
     ParameterBoundsMixin,
     AtCovariatesMixin,
     PenalisedModelMixin,
@@ -1183,6 +1185,7 @@ class ParametricRegressionModel(
             out += "\nLife model          : Wald 95% intervals\n" + block(
                 "life model"
             )
+            out += self._activation_line()
         if "coefficients" in parts:
             meaning = self._exp_meaning()
             out += "\nCoefficients        : {}Wald 95% intervals\n".format(

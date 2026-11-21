@@ -37,6 +37,7 @@ class Eyring_(LifeModel):
     kelvin_stress_columns = (0,)
     warns_below_kelvin = False
     phi_takes_rows = True
+    activation_parameter = ("a", 1.0)
 
     def __init__(self) -> None:
         super().__init__(
@@ -87,6 +88,7 @@ class InverseEyring_(LifeModel):
     positive_stress_columns = (0,)
     kelvin_stress_columns = (0,)
     phi_takes_rows = True
+    activation_parameter = ("a", -1.0)
 
     def __init__(self) -> None:
         super().__init__(
