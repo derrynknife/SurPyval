@@ -771,7 +771,8 @@ def test_repr_names_the_estimator():
     assert repr(_fit()) == head + "Model            : Kaplan-Meier" + data
     assert repr(sp.Turnbull.fit(X, c=C)) == (
         head + "Model            : Turnbull\n"
-        "Estimator        : Fleming-Harrington" + data
+        "Curve            : Fleming-Harrington on Turnbull's expected "
+        "counts" + data
     )
 
 

@@ -42,6 +42,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
+from surpyval.utils.warnings import caller_stacklevel
 
 from . import _links
 from .fitter import DistributionalFitter, uniform_draws
@@ -684,7 +685,7 @@ class MixtureCureModel(DistributionalRegressionModel):
                 "Use a quantile, qf(p, Z, susceptible=True), "
                 "instead.".format(int(onp.sum(onp.isposinf(out))), out.size),
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return float(out[0]) if out.size == 1 else out
 

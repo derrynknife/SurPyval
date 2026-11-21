@@ -1072,7 +1072,7 @@ Reach for it when the clinical or engineering question is "how many fail of this
 cause", not "how fast".
 
 Pass the observed times ``x``, the per-observation cause label ``e``, the group
-label, and the ``cause`` of interest; optional ``n`` gives row counts.
+label, and the cause of interest as ``event``; optional ``n`` gives row counts.
 Censored rows follow the same rules as for the model classes (see
 `Competing-risks data format`_): a missing cause (``None`` or ``NaN``) marks a
 censored row, and an optional ``c`` must agree with it.
@@ -1363,9 +1363,18 @@ Fine-Gray Sub-distribution Hazards
 The Fine-Gray model estimates the effect of covariates directly on the
 cumulative incidence function of a chosen cause, using an
 inverse-probability-of-censoring-weighted subdistribution risk set. ``e`` is
-the per-observation cause label (``None`` for a censored row) and ``cause``
+the per-observation cause label (``None`` for a censored row) and ``event``
 selects the cause of interest. ``Z`` is the covariate matrix, one row per
 observation.
+
+The baseline, and so ``phi(Z)``, is that of a unit with every covariate at 0,
+unless the model is fitted with ``center=True``, which puts it at the
+covariate means (``model.center``). With a covariate such as a temperature in
+°C, ``phi`` at 50 is the multiplier relative to 0 °C: fit with
+``center=True``, or compare two units as ``phi(Z1) / phi(Z0)``.
+``standard_errors(robust=...)``, ``covariance(...)`` and ``phi(Z)`` are
+methods, called for their values, where ``beta`` and ``coefficients`` are
+arrays.
 
 Here we simulate two-cause data whose cause-1 incidence follows a Fine-Gray
 model with coefficients :math:`(0.7, -0.4)`, apply right-censoring, and recover
@@ -1480,7 +1489,7 @@ means (``model.center``, and ``phi`` is relative to them).
 
 Things to watch:
 
-- ``cause`` must be given when the data contain more than one cause, and it
+- ``event`` must be given when the data contain more than one cause, and it
   must be one that is observed; with a single cause it may be omitted.
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);

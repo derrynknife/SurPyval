@@ -57,7 +57,7 @@ from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .._aliasing import (
     aliased_columns,
@@ -1097,7 +1097,7 @@ class ZeroInflatedModel(DistributionalRegressionModel):
                     int(onp.sum(onp.isposinf(out))), out.size
                 ),
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         if not susceptible:
             out = (1.0 - f0) * out

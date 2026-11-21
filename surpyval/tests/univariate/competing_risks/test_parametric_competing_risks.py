@@ -531,3 +531,15 @@ def test_571_left_truncation_recovers_the_causes():
     # A unit cannot fail before it is seen.
     with pytest.raises(ValueError):
         ParametricCompetingRisks.fit(x, e, c=c, tl=x + 1)
+
+
+def test_standard_errors_used_as_a_value_say_to_call_it():
+    x, e, c = _simulate(300, 4)
+    model = ParametricCompetingRisks.fit(x, e, c=c)
+    with pytest.raises(TypeError, match=r"call it, standard_errors\(\)"):
+        np.round(model.standard_errors, 4)
+    with pytest.raises(TypeError, match=r"call it, covariance\(\)"):
+        model.covariance[0]
+    np.testing.assert_array_equal(
+        model.standard_errors(), np.sqrt(np.diag(model.covariance()))
+    )

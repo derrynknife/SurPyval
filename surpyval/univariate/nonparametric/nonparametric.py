@@ -241,9 +241,15 @@ class NonParametric(
 
         if hasattr(self, "data"):
             if "estimator" in self.data:
-                out += "\nEstimator        : {turnbull}".format(
-                    turnbull=self.data["estimator"]
-                )
+                # Turnbull's EM gives expected counts of failures and units
+                # at risk; ``turnbull_estimator`` is the estimator the
+                # curve is then worked out from with those counts. It read
+                # "Estimator : Fleming-Harrington", as if that, not
+                # Turnbull, were the method.
+                out += (
+                    "\nCurve            : {estimator} on Turnbull's "
+                    "expected counts"
+                ).format(estimator=self.data["estimator"])
         data_line = self._data_repr()
         if data_line:
             out += "\nData             : " + data_line

@@ -76,6 +76,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils._value_method import value_method
 from surpyval.utils.dataframe import exact_or_range_frame, frame_column
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import standard_errors_of
@@ -890,6 +891,7 @@ class ParametricCompetingRisks(
             [_cause_estimates(self.models[k]) for k in self.causes]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of every cause's fitted parameters, in the order of
@@ -965,6 +967,7 @@ class ParametricCompetingRisks(
             )
         return cov
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """
         The standard errors of every cause's fitted parameters, the square

@@ -19,6 +19,7 @@ import numpy.typing as npt
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 from .kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -1533,7 +1534,7 @@ class TVCEvaluationMixin:
                 "along the path.".format(
                     sf_end, at, "residual " if g is not None else ""
                 ),
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return np.inf
         if np.isnan(value):
@@ -1544,7 +1545,7 @@ class TVCEvaluationMixin:
                 "hazard is negative there), so the area it takes off the "
                 "mean does not converge; nan is returned. The mean "
                 "residual life (given=) avoids the times before 0.",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return float(value)
 

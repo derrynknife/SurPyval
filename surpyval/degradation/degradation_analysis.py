@@ -653,7 +653,7 @@ class DegradationAnalysis_(FitterRepr):
             warnings.warn(
                 "The REML optimisation did not report convergence; the "
                 "population path-parameter estimates may be inaccurate",
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return reml_mean, reml_cov, reml_var
 
@@ -726,7 +726,7 @@ class DegradationAnalysis_(FitterRepr):
                 "crossed it at or before time zero); these units are "
                 "treated as failed by then: left censored at their first "
                 "measurement time".format(units[started].tolist(), threshold),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         never = ~(events | started)
         if never.any():
@@ -736,7 +736,7 @@ class DegradationAnalysis_(FitterRepr):
                 "censored at their last observed time".format(
                     units[never].tolist(), threshold
                 ),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
         first_time = np.array(
@@ -1010,7 +1010,7 @@ class DegradationAnalysis_(FitterRepr):
                 warnings.warn(
                     "The mixed-model estimate of the stress coefficients did "
                     "not report convergence; gamma may be inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
 
         tau = np.empty_like(x_arr)
@@ -1097,7 +1097,7 @@ class DegradationAnalysis_(FitterRepr):
                     "population did not report convergence; "
                     "path_param_fixed and path_param_link_cov may be "
                     "inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
         return gamma, link_cov, sigma2
 

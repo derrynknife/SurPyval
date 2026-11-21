@@ -46,7 +46,7 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 _SIDES = ("two-sided", "lower", "upper")
 #: The most times qf's root bracket is widened before it gives up (each
@@ -1143,7 +1143,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             f"qf({u:g}) is NaN: {reason}. Check the fit (summary(), "
             "diagnostics) or quote the posterior B-life from "
             "quantile_cri.",
-            stacklevel=4,
+            stacklevel=caller_stacklevel(),
         )
         return float("nan")
 
@@ -1277,7 +1277,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 f"The mean life of a new unit is infinite: the posterior "
                 f"gives probability {mass:.3g} to parameters whose mean is "
                 f"infinite. Quote a B-life (qf, quantile_cri) instead.",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return float("inf")
         return float(w[~bad] @ m[~bad] / w[~bad].sum())
@@ -2166,7 +2166,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 + "; ".join(msgs)
                 + ". Neither is taken as right: check the prior "
                 "(prior.check) and the data, and compare() the two.",
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
     def summary(self, alpha_ci: float = 0.05) -> str:
