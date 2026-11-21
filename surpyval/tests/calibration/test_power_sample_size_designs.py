@@ -29,17 +29,31 @@ import numpy as np
 from scipy.stats import norm
 
 import surpyval as sp
-from surpyval.test_planning import (
-    cox_power,
-    cox_sample_size,
-    cure_logrank_power,
-    cure_logrank_sample_size,
-    equivalence_power,
-    equivalence_sample_size,
-    noninferiority_power,
-    noninferiority_sample_size,
-    rmst_power,
-    rmst_sample_size,
+from surpyval.test_planning.sample_size import _cox_power as cox_power
+from surpyval.test_planning.sample_size import (
+    _cox_sample_size as cox_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_power as cure_logrank_power,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_sample_size as cure_logrank_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _equivalence_power as equivalence_power,
+)
+from surpyval.test_planning.sample_size import (
+    _equivalence_sample_size as equivalence_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_power as noninferiority_power,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_sample_size as noninferiority_sample_size,
+)
+from surpyval.test_planning.sample_size import _rmst_power as rmst_power
+from surpyval.test_planning.sample_size import (
+    _rmst_sample_size as rmst_sample_size,
 )
 from surpyval.tests.calibration._montecarlo import check_rate
 

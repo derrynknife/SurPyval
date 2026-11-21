@@ -15,6 +15,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Test planning: one function per design (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Each comparison design is one function that takes its power, its size (`events`, or `n` with `event_probability`; the exposure after, for a rate ratio) and its effect, and solves for the one left `None`: `logrank_design`, `cox_design`, `noninferiority_design`, `equivalence_design`, `rmst_design`, `cure_logrank_design`, `rate_ratio_design`. None, or more than one, left `None` is refused, naming them; so are `n` with `events`, `n` without `event_probability`, `ratio` with `n` (the units give it), and `direction` when the effect is not the unknown. Solving for the size gives the events, and the units too where `event_probability` is given. | proposed | One equation, one name (R's `power.*` pattern). The old functions were the same equation solved for different unknowns. | done |
+| The names end in `_design`, not the bare `logrank`, `cox`, ... | principle 21 | `surpyval.logrank` is the log-rank test; the same name in `test_planning` for the plan of it would give one name two meanings. `_design` reads as `group_sequential_design` does. | done |
+| `power` has no default (it was 0.8 in the old functions). | proposed | A default would make the power the unknown never found by default and hide which argument is solved for; R's `power.*` functions take none. | done |
+| The answer is a `PowerCalculation` (`design`, `solved_for`, `value`, `power`, `n`, `events`, `inputs`, `to_dict()`), not a bare number. | proposed | It says what was solved for, as the issue asked, and keeps the other quantities beside it. Array arguments (where the old function took them) give arrays in it. | done |
+| New: the power from a number of events, for the log-rank, Cox (and its detectable hazard ratio), non-inferiority and equivalence designs, whose information is the events. Not for the RMST (no events) or the cure design (its events depend on the curves). | proposed | `events=` is the size these designs are planned in; the formulas are the old ones with the events given. | done |
+| The 21 old functions are reachable from `surpyval.test_planning` with a `FutureWarning` naming the replacing call, until v0.30 (`REMOVED_IN_NEXT`); a `FutureWarning`, as every part of this simplification uses, so a user calling it from a module sees it; their bodies stay as the private functions the design functions call, so the numbers are the same to the last digit (tested for each). | principle (deprecation policy) | The policy's notice for a public name. | done |
+| The class and builder pairs (`DemonstrationPlan` and `demonstration_plan`, `GroupSequentialDesign` and `group_sequential_design`, `SequentialMTBFTest` and `sequential_mtbf_test`, ...) are kept as they are. | proposed | They are not two ways to build one thing: the class is the result type the function returns (needed for `isinstance`, `from_dict` and the docs), and its constructor takes the solved boundaries, not planning values. The function is the one way to make one. | done |
+| RePyability uses none of the replaced names (checked on its `dev`). | proposed | | done |
+
 ### The notation and SurpyvalData agree, and convert both ways (21 Nov 2026)
 
 | Decision | By | Reason | Status |

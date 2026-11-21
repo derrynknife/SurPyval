@@ -25,25 +25,18 @@ Test planning: designing reliability tests before they are run.
   that estimate a quantile at the use stress most precisely:
   :func:`accelerated_test_plan` (optimum and compromise plans) and
   :func:`accelerated_test_precision` for a test of your own.
-- **Comparing two groups** (#880): the events, units and power of a
-  log-rank test of a hazard ratio: :func:`logrank_events`,
-  :func:`logrank_sample_size` and :func:`logrank_power`.
-- **Comparing two failure rates**: the power of the exact test of a
-  change in a failure rate at an intervention, the smallest change an
-  exposure can detect, and the exposure needed to detect one:
-  :func:`rate_ratio_power`, :func:`rate_ratio_detectable` and
-  :func:`rate_ratio_exposure` (the test is
-  :func:`surpyval.recurrent.intervention_test`).
-- **Sample size beyond the plain log-rank test**: a Cox model's
-  coefficient for a continuous or adjusted covariate
-  (:func:`cox_events`, :func:`cox_sample_size`, :func:`cox_power`,
-  :func:`cox_detectable`); non-inferiority and equivalence of a hazard
-  ratio (:func:`noninferiority_events`, :func:`equivalence_events` and
-  their ``_sample_size`` and ``_power``); a difference in restricted mean
-  survival time (:func:`rmst_sample_size`, :func:`rmst_power`); and a
-  log-rank test when some units are cured
-  (:func:`cure_logrank_sample_size`, :func:`cure_logrank_events`,
-  :func:`cure_logrank_power`).
+- **Power and sample size, one function per design**: give every
+  quantity of the design but one, and the one left ``None`` is solved
+  for, in a :class:`PowerCalculation` that says which it was. A
+  log-rank test of a hazard ratio (:func:`logrank_design`); a Cox
+  model's coefficient for a continuous or adjusted covariate
+  (:func:`cox_design`); non-inferiority and equivalence of a hazard ratio
+  (:func:`noninferiority_design`, :func:`equivalence_design`); a
+  difference in restricted mean survival time (:func:`rmst_design`); a
+  log-rank test when some units are cured (:func:`cure_logrank_design`);
+  and a change in a failure rate at an intervention, by the exact test
+  of :func:`surpyval.recurrent.intervention_test`
+  (:func:`rate_ratio_design`).
 - **Group-sequential designs**: a comparison looked at a few planned
   times, stopping early for efficacy or futility while keeping its
   level: :func:`group_sequential_design` (any normal test statistic),
@@ -65,17 +58,27 @@ Examples
 59
 >>> round(mtbf_test_time(1000.0, failures=1))
 4744
+>>> from surpyval.test_planning import logrank_design
+>>> logrank_design(0.5, power=0.8).events
+66
 """
+
+from typing import Any
 
 from surpyval.test_planning.accelerated import (
     AcceleratedTestPlan,
     accelerated_test_plan,
     accelerated_test_precision,
 )
-from surpyval.test_planning.comparison import (
-    logrank_events,
-    logrank_power,
-    logrank_sample_size,
+from surpyval.test_planning.designs import (
+    PowerCalculation,
+    cox_design,
+    cure_logrank_design,
+    equivalence_design,
+    logrank_design,
+    noninferiority_design,
+    rate_ratio_design,
+    rmst_design,
 )
 from surpyval.test_planning.demonstration import (
     DemonstrationPlan,
@@ -102,28 +105,6 @@ from surpyval.test_planning.group_sequential import (
     boundary_crossing,
     group_sequential_design,
     logrank_group_sequential,
-)
-from surpyval.test_planning.rate_ratio import (
-    rate_ratio_detectable,
-    rate_ratio_exposure,
-    rate_ratio_power,
-)
-from surpyval.test_planning.sample_size import (
-    cox_detectable,
-    cox_events,
-    cox_power,
-    cox_sample_size,
-    cure_logrank_events,
-    cure_logrank_power,
-    cure_logrank_sample_size,
-    equivalence_events,
-    equivalence_power,
-    equivalence_sample_size,
-    noninferiority_events,
-    noninferiority_power,
-    noninferiority_sample_size,
-    rmst_power,
-    rmst_sample_size,
 )
 from surpyval.test_planning.sequential import (
     SequentialDemonstrationTest,
@@ -159,34 +140,133 @@ __all__ = [
     "AcceleratedTestPlan",
     "accelerated_test_plan",
     "accelerated_test_precision",
-    # Comparing two groups (#880)
-    "logrank_events",
-    "logrank_power",
-    "logrank_sample_size",
-    # Comparing two failure rates
-    "rate_ratio_detectable",
-    "rate_ratio_exposure",
-    "rate_ratio_power",
+    # Power and sample size: one function per design
+    "PowerCalculation",
+    "cox_design",
+    "cure_logrank_design",
+    "equivalence_design",
+    "logrank_design",
+    "noninferiority_design",
+    "rate_ratio_design",
+    "rmst_design",
     # Group-sequential designs
     "GroupSequentialDesign",
     "LogrankGroupSequentialDesign",
     "boundary_crossing",
     "group_sequential_design",
     "logrank_group_sequential",
-    # Sample size beyond the plain log-rank test
-    "cox_detectable",
-    "cox_events",
-    "cox_power",
-    "cox_sample_size",
-    "cure_logrank_events",
-    "cure_logrank_power",
-    "cure_logrank_sample_size",
-    "equivalence_events",
-    "equivalence_power",
-    "equivalence_sample_size",
-    "noninferiority_events",
-    "noninferiority_power",
-    "noninferiority_sample_size",
-    "rmst_power",
-    "rmst_sample_size",
 ]
+
+# The power and sample-size functions of one design each, replaced in
+# v0.29 by the design's one function (each still reachable, with a
+# FutureWarning naming the call that replaces it, until v0.30).
+_REPLACED = {
+    "logrank_events": (
+        "comparison",
+        "logrank_design(hazard_ratio, power=...).events",
+    ),
+    "logrank_sample_size": (
+        "comparison",
+        "logrank_design(hazard_ratio, power=..., event_probability=...).n",
+    ),
+    "logrank_power": (
+        "comparison",
+        "logrank_design(hazard_ratio, n=..., event_probability=...).power",
+    ),
+    "cox_events": (
+        "sample_size",
+        "cox_design(hazard_ratio, power=..., sd=...).events",
+    ),
+    "cox_sample_size": (
+        "sample_size",
+        "cox_design(hazard_ratio, power=..., event_probability=..., sd=...).n",
+    ),
+    "cox_power": (
+        "sample_size",
+        "cox_design(hazard_ratio, n=..., event_probability=..., sd=...).power",
+    ),
+    "cox_detectable": (
+        "sample_size",
+        "cox_design(power=..., n=..., event_probability=..., sd=...).value",
+    ),
+    "noninferiority_events": (
+        "sample_size",
+        "noninferiority_design(margin, power=...).events",
+    ),
+    "noninferiority_sample_size": (
+        "sample_size",
+        "noninferiority_design(margin, power=..., event_probability=...).n",
+    ),
+    "noninferiority_power": (
+        "sample_size",
+        "noninferiority_design(margin, n=..., event_probability=...).power",
+    ),
+    "equivalence_events": (
+        "sample_size",
+        "equivalence_design(margin, power=...).events",
+    ),
+    "equivalence_sample_size": (
+        "sample_size",
+        "equivalence_design(margin, power=..., event_probability=...).n",
+    ),
+    "equivalence_power": (
+        "sample_size",
+        "equivalence_design(margin, n=..., event_probability=...).power",
+    ),
+    "rmst_sample_size": (
+        "sample_size",
+        "rmst_design(survival, tau, power=...).n",
+    ),
+    "rmst_power": ("sample_size", "rmst_design(survival, tau, n=...).power"),
+    "cure_logrank_sample_size": (
+        "sample_size",
+        "cure_logrank_design(cured, latency, power=..., follow_up=...).n",
+    ),
+    "cure_logrank_events": (
+        "sample_size",
+        "cure_logrank_design(cured, latency, power=..., follow_up=...).events",
+    ),
+    "cure_logrank_power": (
+        "sample_size",
+        "cure_logrank_design(cured, latency, n=..., follow_up=...).power",
+    ),
+    "rate_ratio_power": (
+        "rate_ratio",
+        "rate_ratio_design(ratio, rate=..., exposure_before=..., "
+        "exposure_after=...).power",
+    ),
+    "rate_ratio_detectable": (
+        "rate_ratio",
+        "rate_ratio_design(rate=..., exposure_before=..., exposure_after=..., "
+        "power=...).value",
+    ),
+    "rate_ratio_exposure": (
+        "rate_ratio",
+        "rate_ratio_design(ratio, rate=..., exposure_before=..., "
+        "power=...).value",
+    ),
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _REPLACED:
+        import importlib
+
+        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+
+        module, new = _REPLACED[name]
+        value = getattr(
+            importlib.import_module(f"surpyval.test_planning.{module}"),
+            f"_{name}",
+        )
+        return renamed_name(
+            "surpyval.test_planning",
+            name,
+            new,
+            value,
+            REMOVED_IN_NEXT,
+            FutureWarning,
+        )
+    raise AttributeError(
+        f"module 'surpyval.test_planning' has no attribute {name!r}"
+    )

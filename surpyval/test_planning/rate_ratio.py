@@ -153,7 +153,7 @@ def _check_method(method: str) -> bool:
 
 
 @elementwise
-def rate_ratio_power(
+def _rate_ratio_power(
     ratio: float,
     rate: float,
     exposure_before: float,
@@ -214,7 +214,9 @@ def rate_ratio_power(
     Had the change halved the rate, 5000 hours after it would detect that
     about a third of the time, and 20000 hours about 70% of the time:
 
-    >>> from surpyval.test_planning import rate_ratio_power
+    >>> from surpyval.test_planning.rate_ratio import (
+    ...     _rate_ratio_power as rate_ratio_power,
+    ... )
     >>> round(rate_ratio_power(0.5, 30 / 10000, 10000, 5000), 3)
     0.356
     >>> round(rate_ratio_power(0.5, 30 / 10000, 10000, 20000), 3)
@@ -281,7 +283,7 @@ def detectable_ratio(
 
 
 @elementwise
-def rate_ratio_detectable(
+def _rate_ratio_detectable(
     rate: float,
     exposure_before: float,
     exposure_after: float,
@@ -296,7 +298,7 @@ def rate_ratio_detectable(
     test detects with a given power.
 
     The ratio, nearest 1, of the rate after an intervention to the rate
-    before that :func:`rate_ratio_power` detects with probability
+    before that :func:`_rate_ratio_power` detects with probability
     ``power``: for a decrease, the smallest reduction the exposure can
     reliably show is ``1 - ratio``. Found by root-finding on the exact
     power.
@@ -344,7 +346,9 @@ def rate_ratio_detectable(
     reduction of about 74% would be detected reliably; 20000 hours after
     would detect one of about 55%:
 
-    >>> from surpyval.test_planning import rate_ratio_detectable
+    >>> from surpyval.test_planning.rate_ratio import (
+    ...     _rate_ratio_detectable as rate_ratio_detectable,
+    ... )
     >>> round(rate_ratio_detectable(30 / 10000, 10000, 5000), 3)
     0.263
     >>> round(rate_ratio_detectable(30 / 10000, 10000, 20000), 3)
@@ -440,7 +444,7 @@ def exposure_multiple(
 
 
 @elementwise
-def rate_ratio_exposure(
+def _rate_ratio_exposure(
     ratio: float,
     rate: float,
     exposure_before: float,
@@ -454,7 +458,7 @@ def rate_ratio_exposure(
     needs to detect a change in a failure rate.
 
     The exposure after the intervention (in all, not in addition to any
-    already seen) at which :func:`rate_ratio_power` reaches ``power`` for
+    already seen) at which :func:`_rate_ratio_power` reaches ``power`` for
     the change ``ratio``, the exposure before being fixed. Found by
     root-finding on the exact power; the power of a discrete test is not
     quite monotone in the exposure, so the answer is the exposure at
@@ -505,7 +509,9 @@ def rate_ratio_exposure(
     takes about 41000 hours after the change, and a one-sided test
     about 19000:
 
-    >>> from surpyval.test_planning import rate_ratio_exposure
+    >>> from surpyval.test_planning.rate_ratio import (
+    ...     _rate_ratio_exposure as rate_ratio_exposure,
+    ... )
     >>> round(rate_ratio_exposure(0.5, 30 / 10000, 10000), -2)
     41200.0
     >>> round(
