@@ -102,3 +102,18 @@ def test_what_from_observations_cannot_hold_is_refused_with_what_to_use():
     )
     with pytest.raises(ValueError, match="time-varying covariates.*to_dict"):
         tvc.to_observations()
+
+
+def test_round_trips_are_equal_by_surpyval_datas_own_equality():
+    # rows of one kind each, so the lists' order is the data's order
+    data = SurpyvalData(
+        [1, 3, 5], c=[0, 0, 0], w=[0.5, 2, 1], i=["a", "b", "c"], unit="h"
+    )
+    assert _round_trip(data) == data
+    # a slice (through _take) round trips as well
+    part = data[[0, 2]]
+    assert _round_trip(part) == part
+    plain = SurpyvalData([10, 20, [5, 9]], c=[0, 1, 2], n=[2, 1, 1], tl=1)
+    assert SurpyvalData.from_notation(plain.to_notation()) == plain
+    assert plain.to_notation() != plain  # no clash between the two ==
+    assert (plain == plain.to_notation()) is False

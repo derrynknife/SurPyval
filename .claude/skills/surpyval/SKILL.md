@@ -555,6 +555,12 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   converters `fs_to_xcnt`, `xcnt_to_xrd`, ...). The log-rank test is `sp.logrank`.
 - `SurpyvalData` — the internal container fitters build from xcnt input; you rarely
   need it directly, but `Model.fit_from_surpyval_data(data)` exists on the fitters.
+  Whole-dataset operations: `SurpyvalData.concat([a, b])` / `a + b` (refuses
+  shared ids, different units or covariates), `a == b` / `a.equals(b, rtol=)`,
+  `SurpyvalData.from_dataframe(data.to_dataframe())` (no column arguments),
+  `data.rescale_time(24, unit="days")` (as the model method), and
+  `data.resample(random_state=1)` (bootstrap of units: counts `n` expand, an
+  item's rows move together; drawn units counted by their draws).
 - `surpyval.utils.notation` — small datasets written as described:
   `Observations.parse("3*10, 20+, <3, [5, 10], 12 | (2, 50]")` (failed at, still
   running at, failed before, failed between, a count, a window `(tl, tr]`), or
