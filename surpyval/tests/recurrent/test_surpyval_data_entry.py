@@ -182,7 +182,8 @@ def test_cause_specific_proportional_intensity():
 def test_every_recurrent_fit_takes_a_surpyval_data():
     # The checklist: every public recurrent fitter with a fit has the
     # entry. CountingProcess is the abstract base of the intensity
-    # fitters (no fit of its own).
+    # fitters (no fit of its own). ChangePoint and EffortClock are
+    # fitter classes, made with a base model (ChangePoint(GoelOkumoto)).
     fitters = {
         name: getattr(rc, name)
         for name in dir(rc)
@@ -195,24 +196,36 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
         "CauseSpecificMCF",
         "CauseSpecificNHPP",
         "CauseSpecificProportionalIntensity",
+        "ChangePoint",
         "CoxLewis",
         "CrowAMSAA",
         "Duane",
+        "EffortClock",
         "GeneralizedOneRenewal",
         "GeneralizedRenewal",
+        "GoelOkumoto",
         "HPP",
+        "InflectionS",
+        "JelinskiMoranda",
         "JointFrailty",
+        "LittlewoodVerrall",
+        "MusaOkumoto",
         "NonParametricCounting",
         "PanelCountMCF",
         "PanelCountRegression",
         "PrenticeWilliamsPeterson",
         "ProportionalIntensityHPP",
         "ProportionalIntensityNHPP",
+        "RayleighDefects",
         "WeiLinWeissfeld",
+        "WeibullEffort",
+        "YamadaDelayedS",
     }
     # The panel-count models take counts found at inspections, which have
-    # no rows in a SurpyvalData: they refuse one, in words.
-    refusing = {"PanelCountMCF", "PanelCountRegression"}
+    # no rows in a SurpyvalData: they refuse one, in words. WeibullEffort
+    # fits a curve to a table of testing effort by period (ends,
+    # amounts), not events: it refuses one too, naming EffortClock.
+    refusing = {"PanelCountMCF", "PanelCountRegression", "WeibullEffort"}
 
     def marked(f, flag):
         while f is not None:
@@ -227,6 +240,108 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
             assert not marked(fitter.fit, "_accepts_recurrent_surpyval_data")
         else:
             assert marked(fitter.fit, "_accepts_recurrent_surpyval_data"), name
+
+
+# --- the software-reliability models ---------------------------------------
+
+SOFTWARE = (
+    "GoelOkumoto",
+    "MusaOkumoto",
+    "InflectionS",
+    "YamadaDelayedS",
+    "RayleighDefects",
+)
+
+
+@pytest.mark.parametrize("name", SOFTWARE)
+def test_software_growth_models(name):
+    d = _arrays()
+    fitter = getattr(rc, name)
+    data = _data(d)
+    got = fitter.fit(data)
+    ref = fitter.fit(d["x"], i=d["i"], c=d["c"], n=d["n"])
+    _same(got, ref)
+    np.testing.assert_array_equal(got.params, ref.params)
+    np.testing.assert_array_equal(got.cif(X_QUERY), ref.cif(X_QUERY))
+    # The notation's Items: its SurpyvalData.
+    _same(fitter.fit(data.to_notation()), ref)
+
+
+@pytest.mark.parametrize(
+    "make",
+    (
+        lambda: rc.ChangePoint(rc.GoelOkumoto, tau=30.0),
+        lambda: rc.EffortClock(
+            rc.GoelOkumoto, ([20.0, 40.0, 60.0], [10.0, 30.0, 20.0])
+        ),
+    ),
+    ids=("ChangePoint", "EffortClock"),
+)
+def test_clock_models(make):
+    d = _arrays()
+    data = _data(d)
+    got = make().fit(data)
+    ref = make().fit(d["x"], i=d["i"], c=d["c"], n=d["n"])
+    _same(got, ref)
+    np.testing.assert_array_equal(got.params, ref.params)
+    _same(make().fit(data.to_notation()), ref)
+
+
+def _campaign_times():
+    gaps = rc.LittlewoodVerrall.from_params([3.0, 10.0, 2.0]).random(
+        80, random_state=1
+    )
+    return np.cumsum(gaps), [0] * 79 + [1]
+
+
+@pytest.mark.parametrize("name", ("JelinskiMoranda", "LittlewoodVerrall"))
+def test_one_campaign_models(name):
+    # One test campaign: a SurpyvalData of one unit, or with no units, is
+    # the arrays; so are the notation's Items and Observations.
+    fitter = getattr(rc, name)
+    t, c = _campaign_times()
+    ref = fitter.fit(t, c=c)
+    for data in (
+        SurpyvalData(x=t, c=c),
+        SurpyvalData(x=t, c=c, i=[7] * t.size),
+    ):
+        _same(fitter.fit(data), ref)
+        _same(fitter.fit(data.to_notation()), ref)
+
+
+@pytest.mark.parametrize("name", ("JelinskiMoranda", "LittlewoodVerrall"))
+def test_one_campaign_models_refuse_what_they_cannot_take(name):
+    # Refused, not dropped: several units (read as one campaign before),
+    # covariates, event types, truncation and weights.
+    fitter = getattr(rc, name)
+    t, c = _campaign_times()
+    n = t.size
+    with pytest.raises(ValueError, match="holds 2 units") as info:
+        fitter.fit(
+            SurpyvalData(x=np.r_[t[:40], t[:40]], i=[1] * 40 + [2] * 40)
+        )
+    assert "fit each unit on its own" in str(info.value)
+    model = name.replace("Moranda", "-Moranda").replace("Verrall", "-Verrall")
+    for kw, said in (
+        (dict(Z=[[1.0]] * n), "data.without('covariates')"),
+        (dict(e=["a"] * (n - 1) + [None]), "data.without('event_types')"),
+        (dict(tr=[1e9] * n), "data.without('truncation')"),
+    ):
+        with pytest.raises(ValueError, match=f"The {model} model") as info:
+            fitter.fit(SurpyvalData(x=t, c=c, **kw))
+        assert said in str(info.value)
+        with pytest.raises(ValueError, match="This fit takes no"):
+            fitter.fit(SurpyvalData(x=t, c=c, i=[1] * n, **kw))
+    with pytest.raises(ValueError, match="no recurrent model takes weights"):
+        fitter.fit(SurpyvalData(x=t, c=c, w=[2.0] * n))
+
+
+def test_weibull_effort_refuses_event_data():
+    data = SurpyvalData(x=[2, 5, 9], c=[0, 0, 1], i=[1, 1, 1])
+    with pytest.raises(TypeError, match="not event data") as info:
+        rc.WeibullEffort.fit(data, [1.0, 2.0, 3.0])
+    assert "EffortClock(base, effort).fit(data)" in str(info.value)
+    assert rc.WeibullEffort.fit([2, 4, 6, 8, 10], [8, 20, 24, 18, 9]).N > 0
 
 
 # --- the joint frailty model reads a as its terminal event -----------------

@@ -1078,6 +1078,15 @@ v0.29 (unreleased)
   model took a negative scale or shape without a word and predicted
   ``nan``.
 
+- ``JelinskiMoranda.fit`` and ``LittlewoodVerrall.fit`` given a
+  ``SurpyvalData`` (or the notation's ``Observations`` or ``Items``)
+  dropped what they have no place for without a word: the rows of
+  several units were read as one campaign, and covariates, event types,
+  truncation and weights were ignored. Each is now refused, saying what
+  to do (fit each unit on its own, or ``data.without(...)``); data of one
+  unit, or with no units, fits as before. ``WeibullEffort.fit`` given
+  event data now refuses it, naming ``EffortClock``.
+
 **Documentation.**
 
 - The coverage quoted for the bootstrap bounds of limited-failure and
