@@ -15,9 +15,11 @@ import warnings
 
 import autograd.numpy as np
 
-from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.nonparametric._heuristics import (
     canonical_heuristic,
+)
+from surpyval.univariate.nonparametric.plotting_positions import (
+    plotting_positions,
 )
 from surpyval.utils.numeric import _round_vals
 from surpyval.utils.warnings import caller_stacklevel
