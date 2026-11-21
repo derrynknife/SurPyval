@@ -518,7 +518,9 @@ def joint_causes_data():
     a wear failure whose Weibull PH hazard follows the line's current
     value and a random failure that does not (a Weibull of shape 1.2,
     its quantiles in an order of their own), censored at 730; ``e`` is
-    the mode of each failure (None for an item still running)."""
+    the mode of each failure, ``"a"`` the wear and ``"b"`` the random
+    one as every fixture's causes are named (None for an item still
+    running)."""
     from scipy.special import ndtri
 
     size = 80
@@ -549,9 +551,7 @@ def joint_causes_data():
         y = level[k] + rate[k] * ages + 0.5 * np.sin(1.3 * k + 0.7 * ages)
         x.append(end)
         c.append(0 if life < 730.0 else 1)
-        e.append(
-            None if life >= 730.0 else ("wear" if wear < random else "random")
-        )
+        e.append(None if life >= 730.0 else ("a" if wear < random else "b"))
         markers.append(dict(zip(ages.tolist(), np.round(y, 3).tolist())))
     n = np.ones(size, int)
     n[[3, 17, 30]] = 2
