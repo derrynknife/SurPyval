@@ -1389,12 +1389,13 @@ def _fit(
 #: An item with at most this many readings has few for Laplace's
 #: approximation, and a fit warns where more than this share of the
 #: items have. From ``scripts/studies/joint_recovery/
-#: laplace_few_readings.py``: on fleets of pumps with noisy readings the
-#: Laplace fit's estimates were up to 0.08 standard errors from the full
-#: grid's where up to 9% of the pumps had so few, and 0.10 to 0.41 where
-#: 36% or more had (no fleet lay between).
+#: laplace_few_readings.py``'s confirming run, its design and rule fixed
+#: before it ran: of 20 fleets of pumps with noisy readings, 9% to 36% of
+#: them read three times or fewer, every fleet with up to 15% so read was
+#: within 0.074 of the full grid's standard errors, and the first one over
+#: 0.1 had 16% (0.101).
 _FEW_READINGS = 3
-_FEW_SHARE = 0.2
+_FEW_SHARE = 0.15
 
 
 def _check_laplace(arrays: JointArrays, q: int) -> None:
@@ -1426,8 +1427,9 @@ def _check_laplace(arrays: JointArrays, q: int) -> None:
             "term of the order of one over its number of readings, more "
             "where the readings are noisy: on simulated fleets with "
             f"more than {_FEW_SHARE:.0%} of the items read so few times "
-            "its estimates were 0.1 to 0.4 standard errors from the full "
-            "grid's (the marker's effect the most). To be sure of them, "
+            "its estimates were up to 0.22 standard errors from the full "
+            "grid's (0.4 with every item read so few times; the marker's "
+            "effect the most). To be sure of them, "
             f"{on_a_grid}.",
             stacklevel=caller_stacklevel(),
         )

@@ -26,8 +26,8 @@ v0.29 (unreleased)
   where the full grid took 555. It is weaker where items have few, noisy
   readings (0.10 to 0.18 standard errors off with at most five readings
   a pump, 0.23 to 0.41 with at most three): the fit warns, with the
-  count, when more than a fifth of the items have three readings or
-  fewer, saying to use a grid or fewer ``varying`` names. It refuses
+  count, when more than 15% of the items have three readings or
+  fewer (the share from a study whose rule was fixed before it ran), saying to use a grid or fewer ``varying`` names. It refuses
   truncated items, saying to use a grid. A Laplace fit predicts on the
   full grid up to five varying parameters and by Laplace's approximation
   beyond. Beyond five the fit also starts from the marker's own mixed

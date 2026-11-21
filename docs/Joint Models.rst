@@ -273,8 +273,13 @@ How close it is to the grid, measured
   varying parameters and less than a third of the pumps' noise stayed within 0.005
   standard errors with at most 4 readings an item.
 
-So the fit warns, with the count, when more than a fifth of the items have
-three readings or fewer, and says to use a grid (with up to five varying
+A second run, its design and its rule for the warning fixed before it ran,
+read 20 more fleets of the pumps every 100 to 160 days (9% to 36% of the
+pumps with three readings or fewer): every fleet with up to 15% so read
+was within 0.074 standard errors, and from 16% fleets were off by up to
+0.164 (five of the fourteen beyond 15% were over 0.1). So the fit warns, with
+the count, when more than 15% of the items have three readings or fewer,
+and says to use a grid (with up to five varying
 parameters) or to let fewer parameters vary. Two more things it does not
 do. It does not take truncated items (late entry, or in the data only
 because they failed by an age): the chance of an item being in the data is
