@@ -25,7 +25,6 @@ it would swamp. Both are counted in one warning.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +33,7 @@ import numpy.typing as npt
 
 from surpyval.utils.no_maximum import warn_bootstrap_refits
 from surpyval.utils.rng import as_generator
+from surpyval.utils.warnings import ignoring_warnings
 
 #: What a refit that raises is counted as failing with.
 REFIT_ERRORS = (
@@ -63,17 +63,13 @@ class Refits:
     failed: int
 
     def warn(self) -> None:
-        with warnings.catch_warnings():
-            # (A warning is given once per place; this one's counts
-            # differ by bootstrap.)
-            warnings.simplefilter("always")
-            warn_bootstrap_refits(
-                self.n_boot,
-                no_maximum=self.no_maximum,
-                unverified=self.unverified,
-                failed=self.failed,
-                advice=_ADVICE,
-            )
+        warn_bootstrap_refits(
+            self.n_boot,
+            no_maximum=self.no_maximum,
+            unverified=self.unverified,
+            failed=self.failed,
+            advice=_ADVICE,
+        )
 
     def vectors(self) -> npt.NDArray:
         """Every parameter of each refit (the copula's, then each
@@ -143,8 +139,7 @@ def refits(model: Any, n_boot: int, random_state: Any) -> Refits:
             xr=data.xr[keep],
         )
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 fit = model.copula.fit(
                     resample, margins=specs, how=model.method, init=init
                 )

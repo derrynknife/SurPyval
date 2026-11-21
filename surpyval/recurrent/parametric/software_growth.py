@@ -14,13 +14,13 @@ fitters here say so, rather than return wherever a search stopped.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize_scalar
 
 from surpyval.utils.event_history_data import EventHistoryData
+from surpyval.utils.warnings import ignoring_warnings
 
 from .nhpp_fitter import NHPPFitter, nhpp_log_likelihood
 
@@ -225,8 +225,7 @@ def _power_law_limit(s: dict, p: int) -> float:
     start = np.log(events / np.sum(_power_gain(lo, hi, p)))
     if not (np.size(s["sel_to"]) or np.size(s["gap_to"])):
         return log_likelihood(start)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         res = minimize_scalar(
             lambda u: -log_likelihood(u),
             bracket=(start - 1.0, start + 1.0),

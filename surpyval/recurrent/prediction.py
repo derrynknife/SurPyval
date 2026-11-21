@@ -25,7 +25,6 @@ the time that came falls in it.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -34,6 +33,7 @@ from scipy.stats import kstwo
 
 from surpyval import plotting
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 #: The first prediction is made from this many failures unless ``start``
 #: says otherwise.
@@ -339,7 +339,7 @@ class PredictionComparison:
                 ratio = (
                     "more than a million"
                     if gap > np.log(1e6)
-                    else "{:.3g}".format(np.exp(gap))
+                    else f"{np.exp(gap):.3g}"
                 )
                 lines.append(
                     "{} predicted best over the {} predictions every "
@@ -628,8 +628,7 @@ def compare_predictions(
     for name, fitter in zip(names, fitters):
         for k, i in enumerate(steps):
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     model = fitter.fit(times[:i])
             except ValueError as refusal:
                 status[name].append(str(refusal).split(": ", 1)[0] + ".")

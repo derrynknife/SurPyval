@@ -83,6 +83,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._bootstrap import bound_method, check_n_boot
@@ -1253,8 +1254,7 @@ class CoxNPMLEModel(
         for b in range(n_boot):
             sample = rows.subset(rng.multinomial(units, prob))
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     with np.errstate(all="ignore"):
                         refit = _refit(self, sample)
             except (ValueError, np.linalg.LinAlgError, ArithmeticError):
@@ -1446,8 +1446,7 @@ class CoxNPMLEModel(
             shape = point.shape + ((2,) if bound == "two-sided" else ())
             return np.full(shape, np.nan)
         arr = np.array(draws)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
+        with ignoring_warnings(RuntimeWarning):
             if bound == "two-sided":
                 lo = np.nanquantile(arr, alpha_ci / 2, axis=0)
                 hi = np.nanquantile(arr, 1 - alpha_ci / 2, axis=0)

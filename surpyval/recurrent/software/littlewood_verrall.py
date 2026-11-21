@@ -27,7 +27,6 @@ of the limit.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -52,9 +51,11 @@ from surpyval.utils.no_maximum import (
     restored_maximum,
     warn_unverified,
 )
+from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 from .jelinski_moranda import _campaign, _from_data
 
@@ -187,7 +188,7 @@ def _read(x: Any, c: Any, gaps: bool) -> tuple:
     """The gaps and the time tested since the last failure."""
     x = notation_as_data(x)
     if isinstance(x, SurpyvalData):
-        x, c = _from_data(x, c)
+        x, c = _from_data(x, c, "Littlewood-Verrall")
     try:
         _, failures, end = _campaign(x, c, gaps)
     except ValueError as error:
@@ -259,6 +260,7 @@ class LittlewoodVerrall(FitterRepr):
     parameter_names = ["alpha", "beta0", "beta1"]
 
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: ArrayLike,
@@ -871,8 +873,7 @@ class LittlewoodVerrallModel(SerialisableMixin):
         floor = self.log_likelihood - drop
 
         def gap(log_alpha: float) -> float:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 best, _ = data.search(alpha=float(np.exp(log_alpha)))
             return -float(best.fun) - floor
 

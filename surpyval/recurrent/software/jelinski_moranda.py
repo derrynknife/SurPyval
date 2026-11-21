@@ -48,6 +48,10 @@ from surpyval.serialisation import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.recurrent_data import (
+    _refuse_what_no_recurrent_fit_takes,
+    accepts_recurrent_surpyval_data,
+)
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
@@ -145,13 +149,40 @@ class _Campaign:
         return int(hi)
 
 
-def _from_data(data: SurpyvalData, c: Any) -> tuple:
+def _from_data(
+    data: SurpyvalData, c: Any, model: str = "Jelinski-Moranda"
+) -> tuple:
     """The times and censoring flags of a campaign given as a
-    ``SurpyvalData``."""
+    ``SurpyvalData`` without units; what ``model`` has no place for is
+    refused, not dropped."""
     if c is not None:
         raise TypeError(
             "x is a SurpyvalData, which holds the data: leave out 'c' "
             "(or pass arrays rather than a SurpyvalData)."
+        )
+    _refuse_what_no_recurrent_fit_takes(data)
+    held = [
+        (what, name)
+        for what, name, has in (
+            ("covariates", "covariates", data.Z is not None),
+            ("event types", "event_types", data.e is not None),
+            (
+                "truncation",
+                "truncation",
+                bool(np.isfinite(data.tl).any() or np.isfinite(data.tr).any()),
+            ),
+        )
+        if has
+    ]
+    if held:
+        raise ValueError(
+            f"The {model} model takes one campaign's failure times "
+            "and the end of testing; the SurpyvalData holds "
+            + " and ".join(what for what, _ in held)
+            + ", which it has no place for. To fit without them, use "
+            + "data.without("
+            + ", ".join(repr(name) for _, name in held)
+            + ")."
         )
     x = np.asarray(data.x, dtype=float)
     if x.ndim != 1 or np.any(np.asarray(data.n) != 1):
@@ -301,6 +332,7 @@ class JelinskiMoranda(FitterRepr):
     parameter_names = ["N", "phi"]
 
     @takes_unit
+    @accepts_recurrent_surpyval_data
     def fit(
         self,
         x: ArrayLike,

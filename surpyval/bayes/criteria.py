@@ -40,6 +40,7 @@ import numpy.typing as npt
 from scipy.special import logsumexp, polygamma
 
 from surpyval.bayes.likelihood import LogLikelihood
+from surpyval.utils.warnings import collecting_warnings
 
 #: The (point, row) evaluations of the log-likelihood held at once.
 _CHUNK = 2_000_000
@@ -691,8 +692,7 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
             )
     results = {}
     for name, m in named.items():
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught:
             results[name] = m.loo() if criterion == "loo" else m.waic()
         for w in caught:
             warnings.warn(f"{name!r}: {w.message}", w.category, stacklevel=2)
