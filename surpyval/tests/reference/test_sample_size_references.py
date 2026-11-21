@@ -34,15 +34,19 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from surpyval.test_planning import (
-    cox_events,
-    cox_power,
-    cox_sample_size,
-    cure_logrank_power,
-    noninferiority_events,
-    rmst_power,
-)
 from surpyval.test_planning import sample_size as module
+from surpyval.test_planning.sample_size import _cox_events as cox_events
+from surpyval.test_planning.sample_size import _cox_power as cox_power
+from surpyval.test_planning.sample_size import (
+    _cox_sample_size as cox_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_power as cure_logrank_power,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_events as noninferiority_events,
+)
+from surpyval.test_planning.sample_size import _rmst_power as rmst_power
 
 from ._data import reference
 

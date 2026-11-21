@@ -13,25 +13,47 @@ import pytest
 from scipy import integrate, stats
 
 import surpyval as sp
-from surpyval.test_planning import (
-    cox_detectable,
-    cox_events,
-    cox_power,
-    cox_sample_size,
-    cure_logrank_events,
-    cure_logrank_power,
-    cure_logrank_sample_size,
-    equivalence_events,
-    equivalence_power,
-    equivalence_sample_size,
-    logrank_events,
-    noninferiority_events,
-    noninferiority_power,
-    noninferiority_sample_size,
-    rmst_power,
-    rmst_sample_size,
+from surpyval.test_planning.comparison import _logrank_events as logrank_events
+from surpyval.test_planning.sample_size import (
+    _cox_detectable as cox_detectable,
+)
+from surpyval.test_planning.sample_size import _cox_events as cox_events
+from surpyval.test_planning.sample_size import _cox_power as cox_power
+from surpyval.test_planning.sample_size import (
+    _cox_sample_size as cox_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_events as cure_logrank_events,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_power as cure_logrank_power,
+)
+from surpyval.test_planning.sample_size import (
+    _cure_logrank_sample_size as cure_logrank_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _equivalence_events as equivalence_events,
+)
+from surpyval.test_planning.sample_size import (
+    _equivalence_power as equivalence_power,
+)
+from surpyval.test_planning.sample_size import (
+    _equivalence_sample_size as equivalence_sample_size,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_events as noninferiority_events,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_power as noninferiority_power,
+)
+from surpyval.test_planning.sample_size import (
+    _noninferiority_sample_size as noninferiority_sample_size,
 )
 from surpyval.test_planning.sample_size import _rmst_moments
+from surpyval.test_planning.sample_size import _rmst_power as rmst_power
+from surpyval.test_planning.sample_size import (
+    _rmst_sample_size as rmst_sample_size,
+)
 
 Z = stats.norm.ppf
 
