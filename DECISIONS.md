@@ -23,6 +23,12 @@ Design decisions made while working on the open issues, with the reason for each
 | `censored_units=[...]` right censors the named units at their last reading, whatever `running` says: units known to be still running, and units that failed another way (a hard failure, a removal) while short of the threshold, whose failure by degradation was not seen, censored as a competing mode is. A listed unit whose path reaches the threshold by its last reading (or before its first) is refused, as it has failed by the threshold's definition; a label with no readings is refused; a fit left with no failure is refused, naming `running="extrapolate"`. A unit's censoring time is its last reading (a later "still running at" time is not taken). The life times and censoring of a `SurpyvalData` holding readings stay unread (documented): its running units go in `censored_units`. | proposed | The plan asked the builder to decide the failed-below-threshold case; for the threshold's life it is a competing failure mode. Reading a SurpyvalData's `c` would change the fits of existing calls, which the docs say ignore it. | done; open: a censoring time after the last reading |
 | The bootstrap bounds rerun the fit with the model's `running`, and a resampled copy of a listed unit is listed too. `to_dict` saves `extrapolated` always, and `running` / `censored_units` only where not the defaults; a dict saved earlier gets `extrapolated` from its readings (but a clock model's, whose times are on another clock: no summary line then). | proposed | The refits must make the model's choice; older dicts load unchanged. | done |
 
+### The renewal fitters' `from_params` (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA` and `ARI` build a model from parameters with `from_params`, the same signature as before; `fit_from_parameters` reads as `from_params` with a `FutureWarning` (a `RenamedAttribute`, which now takes a warning category) until v0.30. The renewal cases of the conformance registry gain a `from_params` path, so `test_paths` checks it against `fit`. | principle 14 | Every other family names this `from_params`; a `FutureWarning`, as every part of the pre-1.0 simplification uses, so users see it outside `__main__`. RePyability calls neither name (checked on its `dev`). | done |
+
 ### SurpyvalData with item ids converts to the notation's Items (21 Nov 2026)
 
 | Decision | By | Reason | Status |
