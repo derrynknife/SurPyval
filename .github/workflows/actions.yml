@@ -94,9 +94,9 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     # 8 minutes on the 0.26 release run, installation included; in one
-    # process it passed 20 minutes at 94% on the 0.29 release run, so it
-    # now runs in a process per core.
-    timeout-minutes: 30
+    # process it passed 20 minutes at 94% on the 0.29 release run, and in
+    # a process per core it took 29 minutes there.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 

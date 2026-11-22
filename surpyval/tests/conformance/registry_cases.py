@@ -2816,7 +2816,26 @@ def _bayes_regression():
             paths={"fit_from_df": _bayes_regression_df},
             rtol=1e-6,
             slow=REFIT_PROPERTIES,
-            exclude={**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
+            exclude={
+                **_BAYES_EXCLUDE,
+                "units": _SAMPLED_UNITS,
+                "covariate_scale": "a sampler's draws rescale with a "
+                "covariate in distribution, not to the last digit (its "
+                "default prior scales with the covariate's sd, "
+                "tests/bayes/test_fit_regression.py), as for a time unit: "
+                + _SAMPLED_UNITS,
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+                "counts": "a sampler's draws for counts and for repeated "
+                "rows agree in distribution, not to the last digit: the "
+                "likelihoods differ by rounding (n times a row's term "
+                "against n terms), which changes the trajectories",
+            },
         )
     ]
 

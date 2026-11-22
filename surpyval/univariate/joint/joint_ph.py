@@ -1871,9 +1871,18 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
                 u, _, placed, starts, converged = retry
                 value, grad, cov_u, positive, flat = checked
     verified = converged and positive and flat and np.all(np.isfinite(u))
+    runaway = _runaway_hazard_coefficients(objective, u, placed, layout)
+    if verified and runaway:
+        verified = False
     if not verified:
         reason = None
-        if not converged:
+        if runaway:
+            reason = (
+                "the likelihood still rises along the hazard coefficient(s) "
+                f"{runaway}: a covariate may separate the items that failed "
+                "from those that did not"
+            )
+        elif not converged:
             reason = "the rounds of placing the nodes did not settle"
         elif not positive:
             reason = "the Hessian is not positive definite there"
@@ -2001,6 +2010,33 @@ def _descend(
             converged = True
             break
     return u, value, placed, starts, converged
+
+
+def _runaway_hazard_coefficients(
+    objective: Any, u: npt.NDArray, placed: tuple, layout: Any
+) -> list:
+    """The hazard covariates (by column) along whose coefficient the
+    likelihood has no finite maximum near ``u`` (a level of a covariate
+    with no failures runs its coefficient off to infinity): Newton's test
+    along each coefficient's profile
+    (:func:`~surpyval.univariate.parametric.fitters.runaway.runaway_coefficients`),
+    with the nodes held where the fit placed them. Empty for a model of
+    failure modes (whose coefficients are laid out per mode) or one with
+    no hazard covariates."""
+    if getattr(layout, "n_causes", 1) != 1 or not layout.n_hazard:
+        return []
+    from surpyval.univariate.parametric.fitters.runaway import (
+        runaway_coefficients,
+    )
+
+    positions = layout.hazard_positions()
+    with ignoring_warnings(), np.errstate(all="ignore"):
+        found = runaway_coefficients(
+            lambda v: objective(v, placed),
+            u,
+            [pos for pos, _ in positions],
+        )
+    return [positions[k][1] for k in found]
 
 
 def _check_maximum(

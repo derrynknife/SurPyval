@@ -254,9 +254,12 @@ class MultivariateCopulaModel(CopulaModel):
         family is saved under a name of its own, which a SurPyval older
         than v0.29 does not know and refuses.
         """
-        out = super().to_dict()
-        out.update(self.copula._saved())
-        return out
+        return super().to_dict()
+
+    def _saved_family(self) -> dict:
+        # (before the schema is stamped, so the document is the one the
+        # stamp read)
+        return dict(self.copula._saved())
 
 
 def restored_family(model_dict: dict) -> Any:

@@ -184,19 +184,27 @@ def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
 
 
 def _mle(fitter: Any, how: Any) -> Any:
-    """The maximum-likelihood fit, quietly; its refusal is this fit's,
-    with the reason."""
+    """The maximum-likelihood fit, quietly but for the rows it drops (a
+    missing covariate value), which this fit drops too and says so; its
+    refusal is this fit's, with the reason."""
     from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
     try:
-        with ignoring_warnings(), quiet_maximum_warnings():
-            with np.errstate(all="ignore"):
-                return how()
+        with collecting_warnings() as caught:
+            with quiet_maximum_warnings(), np.errstate(all="ignore"):
+                model = how()
     except ValueError as e:
         raise ValueError(
             "fit_bayes starts from the maximum-likelihood fit, which "
             f"refuses these data: {e}"
         ) from None
+    for w in caught:
+        if str(w.message).startswith("Dropped "):
+            warnings.warn(
+                str(w.message), w.category, stacklevel=caller_stacklevel()
+            )
+    return model
 
 
 def fit(
@@ -1196,8 +1204,7 @@ class BayesianRegression(SerialisableMixin):
         import surpyval
 
         require_model_tag(model_dict, cls.model_tag, "a Bayesian regression")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             mle = surpyval.from_dict(model_dict["mle"])
         model = cls(
             mle,
