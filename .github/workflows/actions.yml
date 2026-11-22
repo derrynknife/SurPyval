@@ -493,6 +493,38 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_joint_weight.py
+          # The studies added in 0.29, out of the rest group: with them
+          # it ran past 120 minutes at 48% on the 0.29 release run.
+          - group: joint-causes
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_causes.py
+          - group: joint-lag-links
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_lag.py
+              surpyval/tests/calibration/test_link_selection_joint.py
+          - group: copula-nd-cox-npmle
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_copula_nd.py
+              surpyval/tests/calibration/test_coverage_cox_npmle.py
+          - group: growth-frailty
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_change_point_size.py
+              surpyval/tests/calibration/test_coverage_growth_answers.py
+              surpyval/tests/calibration/test_coverage_shared_frailty.py
+          - group: relative-survival-metrics
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_relative_survival.py
+              surpyval/tests/calibration/test_metric_bias.py
           # 31 minutes on the 0.26 release run; the 0.29 release run
           # stopped it at 60, with the studies the 0.29 models brought.
           - group: rest
@@ -528,6 +560,16 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_zero_inflated.py
               --ignore=surpyval/tests/calibration/test_coverage_mixture_cure.py
               --ignore=surpyval/tests/calibration/test_coverage_equivalence.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_causes.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_lag.py
+              --ignore=surpyval/tests/calibration/test_link_selection_joint.py
+              --ignore=surpyval/tests/calibration/test_coverage_copula_nd.py
+              --ignore=surpyval/tests/calibration/test_coverage_cox_npmle.py
+              --ignore=surpyval/tests/calibration/test_change_point_size.py
+              --ignore=surpyval/tests/calibration/test_coverage_growth_answers.py
+              --ignore=surpyval/tests/calibration/test_coverage_shared_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_relative_survival.py
+              --ignore=surpyval/tests/calibration/test_metric_bias.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
