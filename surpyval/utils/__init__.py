@@ -257,14 +257,14 @@ _INTERNAL = {
 def __getattr__(name: str) -> Any:
     if name in _INTERNAL:
         from surpyval.utils import data_formats
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
 
         return renamed_name(
             "surpyval.utils",
             name,
             _INTERNAL[name],
             getattr(data_formats, name),
-            REMOVED_IN_NEXT,
+            REMOVED_IN,
             FutureWarning,
         )
     raise AttributeError(f"module 'surpyval.utils' has no attribute {name!r}")

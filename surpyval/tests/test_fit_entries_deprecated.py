@@ -18,7 +18,7 @@ import surpyval as sp
 from surpyval import SurpyvalData
 from surpyval import recurrent as rc
 from surpyval.tests.conformance.registry_fixtures import recurrent_data
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.deprecation import REMOVED_IN, RenamedAttribute
 from surpyval.utils.recurrent_utils import handle_xicn
 
 OLD_NAMES = ("fit_from_surpyval_data", "fit_from_recurrent_data")
@@ -74,7 +74,7 @@ def test_the_old_name_warns_and_names_fit(fitter, old):
         method = getattr(fitter, old)
     message = str(caught[0].message)
     assert f".{old} is deprecated" in message
-    assert f"v{REMOVED_IN_NEXT}" in message
+    assert f"v{REMOVED_IN}" in message
     assert "call fit(data)" in message
     assert method == getattr(fitter, "_" + old)
 

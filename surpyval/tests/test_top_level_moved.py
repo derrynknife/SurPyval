@@ -14,7 +14,7 @@ import warnings
 import pytest
 
 import surpyval as sp
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 
 MOVED = sorted(sp._MOVED.items())
 
@@ -31,7 +31,7 @@ def test_each_is_in_its_subpackage_and_warns_at_the_top(name, home):
     assert top is there
     message = str(caught[0].message)
     assert f"'{name}' is deprecated" in message
-    assert f"v{REMOVED_IN_NEXT}" in message
+    assert f"v{REMOVED_IN}" in message
     assert f"'{home}.{name}'" in message
     assert name not in sp.__all__
     assert name not in dir(sp)

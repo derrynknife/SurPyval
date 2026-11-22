@@ -25,7 +25,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.28"
+__version__ = "0.29"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -756,10 +756,7 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
         if name in _MOVED:
-            from surpyval.utils.deprecation import (
-                REMOVED_IN_NEXT,
-                renamed_name,
-            )
+            from surpyval.utils.deprecation import REMOVED_IN, renamed_name
 
             home = _MOVED[name]
             return renamed_name(
@@ -767,7 +764,7 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
                 name,
                 f"{home}.{name}",
                 getattr(import_module(home), name),
-                REMOVED_IN_NEXT,
+                REMOVED_IN,
                 FutureWarning,
             )
         if name == "concordance_estimate":

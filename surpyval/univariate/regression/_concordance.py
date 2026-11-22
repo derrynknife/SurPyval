@@ -16,14 +16,14 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.metrics.concordance import ConcordanceResult, concordance_index
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 
 
 def _warn_estimate(owner: str) -> None:
     """The deprecation of a model's ``concordance_estimate``."""
     warnings.warn(
         f"{owner}.concordance_estimate is deprecated and will be removed in "
-        f"v{REMOVED_IN_NEXT}; use 'concordance', which gives the standard "
+        f"v{REMOVED_IN}; use 'concordance', which gives the standard "
         "error and interval (alpha_ci= for alpha).",
         FutureWarning,
         stacklevel=3,

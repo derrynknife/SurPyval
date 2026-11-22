@@ -14,7 +14,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
 from surpyval.utils.deprecation import (
-    REMOVED_IN_NEXT,
+    REMOVED_IN,
     RenamedAttribute,
     ambiguous_item_ids,
     fit_entry,
@@ -824,7 +824,7 @@ class ARI(RenewalFitMixin):
 
     #: The old name of :meth:`from_params` (deprecated in v0.29).
     fit_from_parameters = RenamedAttribute(
-        "from_params", REMOVED_IN_NEXT, FutureWarning
+        "from_params", REMOVED_IN, FutureWarning
     )
 
     def from_params(
