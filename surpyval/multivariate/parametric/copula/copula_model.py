@@ -997,7 +997,17 @@ class CopulaModel(
         check_option("bound", bound, BOUNDS)
         check_option("method", method, _CB_METHODS)
         at = getattr(self.copula, measure)
-        estimate = float(at(*self.params))
+        value = onp.asarray(at(*self.params), dtype=float)
+        if value.ndim:
+            raise ValueError(
+                f"{measure}_cb bounds the {measure} of a copula of two "
+                f"series; this model's {measure}() is a matrix, one for "
+                f"each pair of its {value.shape[0]} series. For a bound on "
+                "one pair's dependence, use param_cb on that pair's "
+                "parameter, or fit the pair alone as a bivariate copula "
+                f"and use its {measure}_cb."
+            )
+        estimate = float(value)
         size = 2 if bound == "two-sided" else 1
         if self.params.size == 0:
             return onp.full(size, estimate)

@@ -1591,6 +1591,9 @@ for _name in ("GaussianCopula[D=3]", "GaussianCopula[D=3,exchangeable]"):
     PLANS[_name] = Plan(
         _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
     )
+PLANS["VineCopula[D=3]"] = Plan(
+    _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
+)
 PLANS["StudentTCopula[D=3]"] = Plan(
     _copula,
     300,

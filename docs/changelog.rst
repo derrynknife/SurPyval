@@ -26,6 +26,25 @@ v0.29 (unreleased)
   With two series nothing changes. See "More than two lifetimes" in
   :doc:`Multivariate Modelling with SurPyval`.
 
+- **Vine copulas: a bivariate family per pair of series.**
+  ``surpyval.multivariate.Vine`` builds the copula of two or more series
+  from the bivariate copulas, a pair-copula per pair arranged in trees:
+  ``Vine.fit(x, margins=..., structure="d" | "c", families=, order=,
+  truncate=, candidates=)``. By default the order is the path (or the
+  roots) of strongest absolute Kendall's tau and each pair-copula's family
+  is chosen by AIC among the built-in families and rotations, tree by
+  tree; those estimates start a maximum likelihood fit of every parameter
+  (``how="IFM"`` or ``"MLE"``). The model has ``pdf``, ``random`` (the
+  inverse Rosenblatt transform), ``edges`` (each pair-copula's family,
+  parameters and Kendall's tau), ``aic``, standard errors, ``param_cb``,
+  ``to_dict`` and ``fit_from_df``; ``Vine.from_params`` builds one. With
+  two series it is the bivariate copula. Refused, saying what to use:
+  censored and truncated rows (the Gaussian and Student-t copulas take
+  censored rows), the joint ``sf``, ``cdf`` and ``cb`` (estimate them from
+  draws), ``kendall_tau_cb`` and ``spearman_rho_cb`` (a vine's measures
+  are a matrix, one per pair: bound a pair's parameter with
+  ``param_cb``), and conditional distributions other than the last series given
+  the others. See "Vines" in :doc:`Multivariate Modelling with SurPyval`.
 - **A hazard ratio, ``hr``, on every parametric model.**
   ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of
   the Weibull at every age: its survival is the model's raised to ``hr``.

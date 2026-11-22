@@ -9,6 +9,7 @@ from .copula import (
     Independence,
     Joe,
     StudentT,
+    Vine,
 )
 from .data import MultivariateSurpyvalData
 
@@ -24,4 +25,5 @@ __all__ = [
     "Joe",
     "AMH",
     "StudentT",
+    "Vine",
 ]
