@@ -85,6 +85,11 @@ NOT_SWEPT = {
     "its closed form and the seeded bootstrap in "
     "recurrent/test_release_time.py, and coverage in calibration/"
     "test_coverage_growth_answers.py",
+    "concordance": "a validation metric of the model's risk scores on "
+    "data, with its own standard error and interval, not a bound on a "
+    "function of the model; checked against R's survival and lifelines "
+    "in reference/test_concordance_references.py and in "
+    "metrics/test_concordance_estimate.py",
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
@@ -205,6 +210,13 @@ def _level(spec, alpha):
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
+    if type(model).__name__ == "BayesianRegression":
+        # the posterior medians of the distribution's parameters, then of
+        # the coefficients
+        names = list(model.parameter_names)
+        k = len(model.dist.parameter_names)
+        supports = list(model.dist.bounds) + [(None, None)] * (len(names) - k)
+        return names, np.asarray(model.params, float), supports
     if hasattr(model, "_parameter_bounds"):
         names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
@@ -249,11 +261,11 @@ def _parameters(model):
     names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
-    if model.lfp:
+    if getattr(model, "lfp", False):  # (not a regression's)
         names.append("lfp_p")
         values.append(model.lfp_p)
         supports.append((0, 1))
-    if model.zi:
+    if getattr(model, "zi", False):
         names.append("f0")
         values.append(model.f0)
         supports.append((0, 1))
@@ -491,12 +503,27 @@ def _percentile(spec):
     return "n_boot" in spec.kwargs
 
 
+def _of_a_skewed_mean(case, spec):
+    # A Bayesian regression's sf is the predictive, the mean of the
+    # draws' sf, and its credible interval's ends are their quantiles: in
+    # the far tail, where a few draws carry most of the mean, the mean is
+    # above the upper quantile (on this case's last query time, 1.0e-4
+    # against an 80% interval's upper end of 3.3e-5). Its ordering, levels
+    # and transforms are checked by the other sweeps.
+    return case.model_class.endswith("BayesianRegression") and (
+        spec.method == "cri"
+    )
+
+
 # A percentile bootstrap interval need not contain the estimate (its ends
 # are quantiles of the refits, which a biased estimator shifts), so the
 # bootstraps are left out of containment and closure.
 @pytest.mark.parametrize(
     "case, spec",
-    _bound_params("cb_contains", where=lambda c, s: not _percentile(s)),
+    _bound_params(
+        "cb_contains",
+        where=lambda c, s: not _percentile(s) and not _of_a_skewed_mean(c, s),
+    ),
 )
 def test_bounds_contain_the_estimate(case, spec):
     skip_without_finite_maximum(case)
@@ -1108,12 +1135,16 @@ def _level_name(sigs):
     return out + _default_is("alpha_ci", 0.05)(sigs)
 
 
-def _first_argument(methods, name):
+def _first_argument(methods, name, own=()):
+    # ``own``: documented exceptions, "Class.method" with no such argument.
     def check(sigs):
         return [
             f"{o}.{m}({ps[0].name}, ...)"
             for o, m, ps in sigs
-            if m in methods and ps and ps[0].name not in (name, "args")
+            if m in methods
+            and ps
+            and ps[0].name not in (name, "args")
+            and f"{o}.{m}" not in own
         ]
 
     return check
@@ -1141,6 +1172,8 @@ def _how(sigs):
     # concave with an exact baseline (recorded in DECISIONS.md).
     own = {
         "Copula": "IFM",
+        # (a vine of pair-copulas, likewise)
+        "VineFitter": "IFM",
         "CompetingRisks": "Nelson-Aalen",
         "PanelCountRegression": "pseudo",
     }
@@ -1180,6 +1213,9 @@ CONVENTIONS = {
                 "CompetingRisks": "cif",
                 # its regression counterpart, likewise
                 "ParametricCompetingRisksRegression": "cif",
+                # and the Fine-Gray model, a regression on one cause's
+                # cumulative incidence
+                "FineGrayModel": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
@@ -1202,7 +1238,11 @@ CONVENTIONS = {
     ),
     "time": (
         "the times are the first argument, x",
-        _first_argument(_TIME_FUNCTIONS, "x"),
+        # (the Jelinski-Moranda model's MTBF is the one at the end of
+        # testing, mtbf(): it takes no times)
+        _first_argument(
+            _TIME_FUNCTIONS, "x", own=("JelinskiMorandaModel.mtbf_cb",)
+        ),
     ),
     "quantile": (
         "the probabilities of qf are the first argument, p",
