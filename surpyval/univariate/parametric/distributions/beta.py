@@ -11,11 +11,13 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils.autograd_gamma_compat import _log_beta_front
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
-from surpyval.utils.autograd_gamma_compat import betaln_accurate
+from surpyval.utils.autograd_gamma_compat import (
+    betaln_accurate,
+    log_beta_front,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .beta4 import _power_log, _power_log1m
@@ -324,7 +326,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         with np.errstate(divide="ignore"):
             # log(a B(a, b)) to its own precision (log a + betaln lost
             # 2e-13 of it at a = 1e-3, b = 1e3, which / a is 2e-10 of x)
-            front = _log_beta_front(
+            front = log_beta_front(
                 np.asarray(alpha, dtype=float), np.asarray(beta, dtype=float)
             )
             log_x = (np.log(u) - front) / alpha

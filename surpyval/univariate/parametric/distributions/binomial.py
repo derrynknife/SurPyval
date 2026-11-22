@@ -734,6 +734,7 @@ class Binomial_(DiscreteParametricFitter):
         gamma: Boxable | None = None,
         lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
+        hr: Boxable | None = None,
     ) -> Parametric:
         r"""
 
@@ -764,13 +765,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> model.mean()
         np.float64(1.5)
         """
-        reject_structural_params(self.name, gamma, lfp_p, f0)
-        params_arr = np.atleast_1d(np.asarray(params, dtype=float))
-
-        if params_arr.shape[0] != 2:
-            raise ValueError("Binomial distribution requires '[n, p]' params")
-
-        n, prob = params_arr
+        reject_structural_params(self.name, gamma, lfp_p, f0, hr)
+        n, prob = self._given_params(params)
 
         if np.mod(n, 1) != 0:
             raise ValueError("'n' must be an integer number of trials")

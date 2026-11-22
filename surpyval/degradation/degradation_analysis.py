@@ -55,7 +55,12 @@ from .degradation_model import (  # noqa: F401
     _is_regression_fitter,
     _path_at,
 )
-from .path_models import PATH_MODELS, PathModel, get_path_model
+from .path_models import (
+    PATH_MODELS,
+    PathModel,
+    SplinePath,
+    get_path_model,
+)
 from .population import reml_estimate, reml_estimate_nonlinear
 from .rul import InducedFailureDistribution, RULPrediction  # noqa: F401
 from .step_stress import (
@@ -348,6 +353,16 @@ class DegradationAnalysis_(FitterRepr):
             )
         else:
             path_model = get_path_model(path)
+        if isinstance(path_model, SplinePath) and not path_model.is_placed:
+            if acceleration == "clock":
+                raise ValueError(
+                    "With acceleration='clock' the path is fitted on the "
+                    "reference-stress time, which is not known before the "
+                    "fit, so a spline's knots cannot be placed from the "
+                    "measurement times: give them in that time, "
+                    "SplinePath(knots=[...], boundary=(lo, hi))."
+                )
+            path_model = path_model.placed(x_arr)
 
         # Stage-3 accelerated degradation: stress speeds up every unit's
         # clock, and the path is fitted on the reference-stress time.
@@ -696,7 +711,7 @@ class DegradationAnalysis_(FitterRepr):
             warnings.warn(
                 "The REML optimisation did not report convergence; the "
                 "population path-parameter estimates may be inaccurate",
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return reml_mean, reml_cov, reml_var
 
@@ -776,7 +791,7 @@ class DegradationAnalysis_(FitterRepr):
                 "crossed it at or before time zero); these units are "
                 "treated as failed by then: left censored at their first "
                 "measurement time".format(units[started].tolist(), threshold),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         never = ~(events | started)
         if never.any():
@@ -786,7 +801,7 @@ class DegradationAnalysis_(FitterRepr):
                 "censored at their last observed time".format(
                     units[never].tolist(), threshold
                 ),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
         first_time = np.array(
@@ -1141,7 +1156,7 @@ class DegradationAnalysis_(FitterRepr):
                 warnings.warn(
                     "The mixed-model estimate of the stress coefficients did "
                     "not report convergence; gamma may be inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
 
         tau = np.empty_like(x_arr)
@@ -1228,7 +1243,7 @@ class DegradationAnalysis_(FitterRepr):
                     "population did not report convergence; "
                     "path_param_fixed and path_param_link_cov may be "
                     "inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
         return gamma, link_cov, sigma2
 

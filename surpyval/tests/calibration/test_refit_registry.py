@@ -1080,6 +1080,15 @@ def _copula_grid(case, truth, data):
     return np.array([[a, b] for a in q[:, 0] for b in q[:, 1]])
 
 
+def _copula_grid_nd(case, truth, data):
+    # Triples of the margins' quartiles and median (a copula of three
+    # series).
+    q = np.quantile(data["x"], [0.25, 0.5, 0.75], axis=0)
+    return np.array(
+        [[a, b, c] for a in q[:, 0] for b in q[:, 1] for c in q[:, 2]]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Curves and grids by interface
 # ---------------------------------------------------------------------------
@@ -1434,6 +1443,10 @@ for _name in (
     "InflectionS",
     "MusaOkumoto",
     "RayleighDefects",
+    # Goel-Okumoto on another clock (testing effort, a change at tau):
+    # the fitted model's own simulation runs on its clock
+    "EffortClock",
+    "ChangePoint",
 ):
     PLANS[_name] = Plan(
         _recurrent_own, 40, 100, params=lambda m: np.asarray(m.params)
@@ -1491,7 +1504,11 @@ PLANS["CauseSpecificProportionalIntensity"] = Plan(
 )
 
 # Degradation: n is the number of units.
-for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
+for _name in (
+    "DegradationAnalysis[linear]",
+    "DegradationAnalysis[power]",
+    "DegradationAnalysis[spline]",
+):
     PLANS[_name] = Plan(
         _paths,
         40,
@@ -1569,6 +1586,18 @@ PLANS["StudentTCopula"] = Plan(
     params=_copula_params_except("nu"),
     grid=_copula_grid,
     note=_COPULA_EDGE.format("nu", "1.3e14", "the Gaussian limit (nu -> inf)"),
+)
+for _name in ("GaussianCopula[D=3]", "GaussianCopula[D=3,exchangeable]"):
+    PLANS[_name] = Plan(
+        _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
+    )
+PLANS["StudentTCopula[D=3]"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params_except("nu"),
+    grid=_copula_grid_nd,
+    note=_COPULA_EDGE.format("nu", "6.5e14", "the Gaussian limit (nu -> inf)"),
 )
 
 
@@ -1758,10 +1787,41 @@ EXCLUDED: dict[str, str] = {
     "a weight on the accumulated exposure is in "
     "univariate/joint/test_joint_weight.py and "
     "calibration/test_coverage_joint_weight.py",
+    "WeibullJointPH[spline]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated on a "
+    "spline path is in univariate/joint/test_joint_spline.py and the "
+    "study scripts/studies/joint_recovery/knee_study.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "
     "recovery study per path model in scripts/studies/joint_recovery",
+    "WeibullJointPH[diagonal]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of a fleet simulated with "
+    "the line's start and rate uncorrelated is in "
+    "univariate/joint/test_joint_random_effects.py",
+    "WeibullJointPH[causes]": "a lifetime with marker readings along it "
+    "and a failure mode, which a model draw does not give: recovery of a "
+    "fleet simulated with two modes is in "
+    "univariate/joint/test_joint_causes.py, and the parameters' bias and "
+    "coverage in calibration/test_coverage_joint_causes.py",
+    "JelinskiMoranda": "one test campaign a fit, with no simulator on the "
+    "model, and a campaign that shows no growth has no finite estimate of "
+    "N (the fit refuses it), which the plans count as a failed refit: "
+    "recovery from 600 simulated campaigns (the coverage of N's bounds and "
+    "the median estimate, refusals counted) is "
+    "recurrent/test_jelinski_moranda.py's",
+    "LittlewoodVerrall": "one test campaign a fit, and gaps no more "
+    "scattered than exponential times have no estimate of alpha (the fit "
+    "refuses them), which the plans count as a failed refit: recovery "
+    "from campaigns simulated by the model's random() is "
+    "recurrent/test_littlewood_verrall.py's",
+    "ClaytonCopula[margins=KaplanMeier]": "its margins are Kaplan-Meier "
+    "steps on the fixture's rows, so data drawn from it are tied at those "
+    "steps, and its rank-based covariance refuses ties; the margins have "
+    "no parameters to recover. The rank-based estimate's "
+    "coverage on continuous data, and the case bootstrap's on censored "
+    "data with Kaplan-Meier margins, are "
+    "calibration/test_coverage_copula.py's",
 }
 
 

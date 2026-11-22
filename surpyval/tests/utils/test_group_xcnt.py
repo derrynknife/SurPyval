@@ -13,7 +13,10 @@ from collections import defaultdict
 import numpy as np
 import pytest
 
-from surpyval.utils import group_xcnt, xcnt_sort
+from surpyval.utils.data_formats import (
+    group_xcnt,
+    xcnt_sort,
+)
 
 INF = np.inf
 

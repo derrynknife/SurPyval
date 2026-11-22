@@ -18,6 +18,8 @@ Demonstration tests
 
 .. autofunction:: surpyval.test_planning.demonstration_test_multiple
 
+.. autofunction:: surpyval.test_planning.demonstration_test_time
+
 .. autofunction:: surpyval.test_planning.demonstration_pass_probability
 
 .. autofunction:: surpyval.test_planning.mtbf_test_time
@@ -92,6 +94,8 @@ intervention (:func:`surpyval.recurrent.intervention_test`).
 .. autofunction:: surpyval.test_planning.cure_logrank_design
 
 .. autofunction:: surpyval.test_planning.rate_ratio_design
+
+.. autofunction:: surpyval.test_planning.mean_ratio_design
 
 .. autoclass:: surpyval.test_planning.PowerCalculation
    :members: to_dict

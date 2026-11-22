@@ -142,8 +142,8 @@ def log_age_between(
     """``log int_lo^hi psi(s) ds`` at the nodes ``(N, K)``, the age used
     up over ``(lo_i, hi_i]``, for ``0 <= lo < hi`` (finite); with a lag,
     split there (:func:`~._likelihood.lag_rule`)."""
-    if path.lag > 0:
-        s, logw = lag_rule(lo, hi, path.lag)
+    if path.cuts:
+        s, logw = lag_rule(lo, hi, path.cuts)
         log_psi = _log_rate(theta, path, params, arrays, s, centre)
         return logsumexp(logw[:, None, :] + log_psi, axis=-1)
     width = hi - lo
@@ -240,7 +240,7 @@ def mode_terms(
     followed: Any,
     log_effect: Any,
     weighted: Any,
-    lag: float = 0.0,
+    lag: Any = 0.0,
 ) -> tuple:
     """The lifetime's part of ``-log`` the integrand at one point of the
     varying parameters per row, its gradient and its (Gauss-Newton)
@@ -270,7 +270,7 @@ def mode_terms(
     def age(lo: npt.NDArray, width: npt.NDArray) -> tuple:
         """The age used up over ``(lo, lo + width]``, its gradient and
         ``S``."""
-        if lag > 0:
+        if np.any(np.asarray(lag) > 0):
             s, logw = lag_rule(lo, lo + width, lag)
             terms = followed(s)
             log_lam = lin[:, None] + logw + log_effect(terms)

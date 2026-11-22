@@ -78,7 +78,7 @@ def make_robust(model: Any) -> None:
         f0 = rest.pop() if zi else f0_hat
         p = rest.pop() if lfp else p_hat
         core = [th[i] for i in range(n_core)]
-        return dist._log_likelihood(d, *core, gamma, f0, p)
+        return dist._log_likelihood(d, *core, gamma, f0, p, hr=model.hr)
 
     scores = row_scores(loglik, data, np.asarray(theta, dtype=float))
     weights = data.likelihood_weights

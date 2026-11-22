@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 from scipy.special import gammaincc, gammaln
 
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 #: Terms of a discrete distribution's tail sum taken directly before the
 #: sum is taken as the mean less its head instead.
@@ -111,7 +111,7 @@ def continuous_mrl(dist: Any, x: np.ndarray, *params: Any) -> np.ndarray:
                 len(unsettled), len(x), unsettled[0]
             ),
             RuntimeWarning,
-            stacklevel=4,
+            stacklevel=caller_stacklevel(),
         )
     return out
 

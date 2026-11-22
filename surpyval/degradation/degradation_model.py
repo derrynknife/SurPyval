@@ -40,6 +40,7 @@ from surpyval.utils.validation import (
     check_option,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._bounds import (
     analytic_cb,
@@ -1016,7 +1017,7 @@ class DegradationModel(SerialisableMixin):
                 "reaches the threshold {}; returning nan".format(
                     self.threshold
                 ),
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return float("nan")
         if clock is not None:

@@ -46,6 +46,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.warnings import caller_stacklevel
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -518,7 +520,7 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
                 "from every resample.".format(
                     left_out, n_boot, what, n_boot - left_out
                 ),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
     def bootstrap_ci(

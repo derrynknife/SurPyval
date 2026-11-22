@@ -2,7 +2,9 @@
 
 A fitted :class:`CopulaModel` has the copula's parameters and its two
 margins' parameters. Their covariance is the inverse of the information,
-in one of two forms, by how the model was fitted:
+in one of two forms, by how the model was fitted (a fit whose margins
+are both empirical CDFs has the rank-based form at the end of this
+docstring instead):
 
 - ``how="MLE"`` (one joint search): the inverse of the Hessian of the joint
   negative log-likelihood in every parameter the search estimated, the
@@ -45,6 +47,26 @@ and every parameter of a margin the fit did not estimate (one passed to an
 IFM fit already fitted): each has a zero row and column. A parameter on a
 bound of its space (an AMH ``theta`` of 1) has no Wald variance: its row
 and column are ``nan``, and the rest are conditional on it.
+
+**Rank-based margins.** With both margins the empirical CDF of complete
+data (``KaplanMeier`` margins, no censoring, truncation, counts or ties)
+the copula's parameters maximise the pseudo-likelihood of the scaled
+ranks ``U_i = R_i / (n + 1)``, and their covariance is Genest, Ghoudi and
+Rivest's (1995, "A semiparametric estimation procedure of dependence
+parameters in multivariate families of distributions", Biometrika 82,
+proposition 2.1): with ``s = d log c / d theta`` the score of a row,
+``B = -mean(d s / d theta)`` and, for each margin ``j``,
+
+    ``W_ji = mean_k[ 1(U_ji <= U_jk) d s / d u_j (U_k) ]``
+
+(the change in the score from the ranks of margin ``j`` being
+estimated), ``Sigma = cov(s_i + W_1i + W_2i)`` and the covariance is
+``B^-1 Sigma B^-T / n`` (:func:`pseudo_likelihood_covariance`). The
+derivatives are central differences of the copula's log density, in the
+parameters as above and in each ``u`` by ``eps**(1/3)`` of its distance
+from the nearer end of ``(0, 1)``, the scale the densities vary on there.
+The margins are step functions with no parameters, so the covariance is
+of the copula's parameters alone.
 """
 
 from __future__ import annotations
@@ -57,7 +79,7 @@ import numpy.typing as npt
 
 from surpyval.utils.linalg import curvature_scales, scale_free_hessian
 
-from .copula import _ff_where_finite, _is_nonparametric
+from .copula import _LOG_FLOOR, _ff_where_finite, _is_nonparametric
 
 #: The finite-difference scale of every derivative here.
 _H = onp.finfo(float).eps ** (1.0 / 3.0)
@@ -258,7 +280,7 @@ def _copula_rows(
     ]
     with onp.errstate(all="ignore"):
         return onp.asarray(
-            layout.copula._pair_loglik(theta, dims[0], dims[1]), dtype=float
+            layout.copula._rows_loglik(theta, dims), dtype=float
         )
 
 
@@ -445,3 +467,122 @@ def jacobian(
     ``scale``, its standard error, where given): one column per entry."""
     step = layout.steps(scale)
     return _row_scores(func, layout.values, entries, step)
+
+
+# -- rank-based margins ---------------------------------------------------
+def rank_pseudo_observations(
+    model: Any,
+) -> tuple[npt.NDArray, npt.NDArray] | str:
+    """The pseudo-observations ``(u, v)`` of a fit whose covariance is the
+    rank-based one (see the module docstring), or the reason, as text,
+    that it is not: a margin that is parametric or was passed already
+    fitted, incomplete data, tied values, or margins that are not the
+    empirical CDF."""
+    data = model.data
+    if not all(_is_nonparametric(m) for m in model.margins):
+        return (
+            "one margin is parametric and the other is not, which the "
+            "rank-based variance does not cover"
+        )
+    if not all(model._margins_estimated):
+        return (
+            "a non-parametric margin was passed already fitted, so its "
+            "ranks are not those of the data the copula was fitted to"
+        )
+    counts = onp.asarray(data.n)
+    if (onp.asarray(data.c) != 0).any():
+        return "the data are censored"
+    if onp.isfinite(onp.asarray(data.t, dtype=float)).any():
+        return "the data are truncated"
+    if (counts != 1).any():
+        return "the data have counts `n` other than 1 (tied rows)"
+    x = onp.asarray(data.x, dtype=float)
+    n_rows = x.shape[0]
+    out = []
+    for d in range(2):
+        column = x[:, d]
+        if onp.unique(column).size != n_rows:
+            tied = n_rows - onp.unique(column).size
+            return (
+                f"series {d} has tied values ({tied} of its {n_rows} rows "
+                "repeat an earlier value), and ranks with ties are not the "
+                "ranks of a continuous margin"
+            )
+        ranks = onp.empty(n_rows)
+        ranks[onp.argsort(column)] = onp.arange(1, n_rows + 1)
+        u = model.copula._prepare_dim(model.margins[d], *data.dimension(d))[
+            "u"
+        ]
+        if not onp.allclose(u, ranks / (n_rows + 1.0), rtol=0, atol=1e-9):
+            return (
+                f"margin {d} is not the empirical CDF of its series (fit "
+                "`KaplanMeier` margins for the ranks)"
+            )
+        out.append(ranks / (n_rows + 1.0))
+    return out[0], out[1]
+
+
+def pseudo_likelihood_covariance(
+    layout: ParameterLayout, u: npt.NDArray, v: npt.NDArray
+) -> tuple[npt.NDArray, bool]:
+    """``(covariance, ok)``: Genest, Ghoudi and Rivest's covariance of the
+    copula parameters that maximise the pseudo-likelihood of the scaled
+    ranks ``u`` and ``v`` (see the module docstring), and whether it could
+    be formed (where not, the estimated block is ``nan``). ``layout`` is
+    of a model with no parametric margin: the copula's parameters alone."""
+    copula = layout.copula
+    size = layout.size
+    cov = onp.zeros((size, size))
+    boundary = layout.on_bound()
+    free = onp.flatnonzero(~boundary)
+    cov[boundary, :] = onp.nan
+    cov[:, boundary] = onp.nan
+    if free.size == 0:
+        return cov, True
+    n_rows = u.size
+
+    def log_density(
+        vector: npt.NDArray, uu: npt.NDArray = u, vv: npt.NDArray = v
+    ) -> npt.NDArray:
+        with onp.errstate(all="ignore"):
+            density = onp.asarray(copula.pdf(uu, vv, *vector), dtype=float)
+            return onp.log(onp.clip(density, _LOG_FLOOR, None))
+
+    weights = onp.ones(n_rows)
+    f = _neg_ll_in(log_density, layout.values, free, weights)
+    scale = onp.full(size, onp.nan)
+    scale[free] = curvature_scales(f, layout.values[free])
+    step = layout.steps(scale)
+    hessian = scale_free_hessian(
+        f, layout.values[free], fallback_step=step[free]
+    )
+    inverse = _scaled_inverse(hessian, step[free])
+
+    def scores(uu: npt.NDArray, vv: npt.NDArray) -> npt.NDArray:
+        return _row_scores(
+            lambda vector: log_density(vector, uu, vv),
+            layout.values,
+            free,
+            step,
+        )
+
+    influence = scores(u, v)
+    for axis, w in enumerate((u, v)):
+        h = _H * onp.minimum(w, 1.0 - w)
+        up, down = w + h, w - h
+        if axis == 0:
+            change = scores(up, v) - scores(down, v)
+        else:
+            change = scores(u, up) - scores(u, down)
+        slope = change / (2.0 * h)[:, None]
+        # W_i: the mean of the slopes of the rows ranked at or above i
+        order = onp.argsort(w)
+        above = onp.cumsum(slope[order][::-1], axis=0)[::-1] / n_rows
+        influence[order] += above
+    if inverse is None or not onp.all(onp.isfinite(influence)):
+        cov[onp.ix_(free, free)] = onp.nan
+        return cov, False
+    sigma = onp.atleast_2d(onp.cov(influence, rowvar=False, ddof=1))
+    # B = hessian / n, so B^-1 Sigma B^-T / n = n H^-1 Sigma H^-T
+    cov[onp.ix_(free, free)] = n_rows * inverse @ sigma @ inverse.T
+    return cov, True

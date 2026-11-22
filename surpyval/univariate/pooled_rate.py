@@ -23,6 +23,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.validation import alpha_ci_error
+from surpyval.utils.warnings import caller_stacklevel
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -980,7 +981,9 @@ class PooledRate:
             )
             out._sources = sources
             warnings.warn(
-                "pooled_rate: " + out.message, UserWarning, stacklevel=3
+                "pooled_rate: " + out.message,
+                UserWarning,
+                stacklevel=caller_stacklevel(),
             )
             return out
 
