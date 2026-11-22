@@ -10,7 +10,17 @@ with JointAFT.
     python scripts/studies/joint_recovery/study.py <path> [reps]
 
     path: linear, exp, quad, loglink, aft_linear, aft_exp, aft_quad,
-    aft_loglink
+    aft_loglink, cubic
+
+``cubic`` is the study of four varying parameters: fleets of 100 items
+whose marker is a cubic in the age (years) with every coefficient its
+own, read every 0.1 years to failure or 3 years (the fleets of
+``surpyval/tests/univariate/joint/test_joint_integration.py``:
+``simulate(100, seed, q=4)``), fitted with marker_reference=3.6.
+
+INTEGRATION=<name> fits with that integral (``fit(...,
+integration=...)``; the default is the fit's own); tagged _<name>.
+PROCESSES=<n> uses that many worker processes (4 unless given).
 
 EVERY=<days> reads the pumps that often (the study's is 30); tagged
 _every<days>.
@@ -66,6 +76,28 @@ if EVERY != 30:
 HOW = os.environ.get("HOW", "MLE")
 if HOW != "MLE":
     TAG += "_" + HOW.replace("-", "_")
+#: How each item's integral is done (None: the fit's default); tagged.
+INTEGRATION = os.environ.get("INTEGRATION")
+if INTEGRATION is not None:
+    TAG += f"_{INTEGRATION}"
+PROCESSES = int(os.environ.get("PROCESSES", "4"))
+#: The cubic study's fleet size and the marker the hazard is quoted at.
+CUBIC_N, CUBIC_CENTRE = 100, 3.6
+
+
+def cubic_setup():
+    """``(truth, fitter)`` of the four-parameter study."""
+    from surpyval import JointPH, Weibull
+    from surpyval.tests.univariate.joint import test_joint_integration as t
+
+    names = list(t.CUBIC.parameter_names)
+    truth = dict(zip(names, t.MEANS[:4].tolist()))
+    truth.update({f"sd_{n}": float(s) for n, s in zip(names, t.SDS[:4])})
+    truth.update({f"corr_{a}_{b}": 0.0 for a in names for b in names})
+    truth.update(
+        sd_noise=t.NOISE, alpha=t.ALPHA, beta=t.BETA, marker_effect=t.EFFECT
+    )
+    return truth, JointPH(Weibull, t.CUBIC)
 
 
 def setup():
@@ -79,6 +111,9 @@ def setup():
     )
 
     Joint = JointAFT if AFT else JointPH
+    if PATH == "cubic":
+        truth, fitter = cubic_setup()
+        return truth, None, fitter
     if PATH == "exp":
         truth = dict(
             a=3.0, b=0.0008, sd_a=0.4, sd_b=0.0003, sd_noise=0.3, corr_a_b=0.0
@@ -141,17 +176,29 @@ def one(seed):
         lk.GH_FIT = int(GH)
 
     truth, spec, fitter = setup()
-    data = simulate_path(
-        *spec,
-        n=N,
-        seed=seed,
-        every=EVERY,
-        effect=EFFECT,
-        survival="AFT" if AFT else "PH",
-    )
+    options = {} if INTEGRATION is None else {"integration": INTEGRATION}
+    if PATH == "cubic":
+        from surpyval.tests.univariate.joint import test_joint_integration
+
+        arrays = test_joint_integration.simulate(CUBIC_N, seed, q=4)
+        options.update(arrays, marker_reference=CUBIC_CENTRE)
+        data = None
+    else:
+        data = simulate_path(
+            *spec,
+            n=N,
+            seed=seed,
+            every=EVERY,
+            effect=EFFECT,
+            survival="AFT" if AFT else "PH",
+        )
+        options.update(marker_reference=4.0)
     t0 = time.time()
     try:
-        m = fitter.fit(data, marker_reference=4.0, how=HOW)
+        if data is None:
+            m = fitter.fit(how=HOW, **options)
+        else:
+            m = fitter.fit(data, how=HOW, **options)
         out = dict(
             seed=seed,
             ok=True,
@@ -243,7 +290,7 @@ if __name__ == "__main__":
                     done[r["seed"]] = r
     todo = [s for s in range(SEED0, SEED0 + REPS) if s not in done]
     start = time.time()
-    with Pool(4) as pool, open(log, "a") as f:
+    with Pool(PROCESSES) as pool, open(log, "a") as f:
         for r in pool.imap_unordered(one, todo):
             done[r["seed"]] = r
             f.write(json.dumps(r) + "\n")
