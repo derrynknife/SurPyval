@@ -658,7 +658,7 @@ def _full_mean(
         nr, nv = np.linalg.norm(r), np.linalg.norm(v)
         new = d2
         if nv > 0:
-            alpha = min(-nr / nv, -1.0)
+            alpha = min(-float(nr / nv), -1.0)
             trial = np.maximum(delta - 2 * alpha * r + alpha**2 * v, 0.0)
             trial, _ = _em_map(trial, R, parts)
             if _full_loglik(panel, trial, w_unit, parts) >= _full_loglik(

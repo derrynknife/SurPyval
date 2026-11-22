@@ -507,9 +507,13 @@ def _method_options(model: Any) -> dict:
     the MPP, MPS, MSE or MOM estimate by the spread of a different
     estimator, centred by the share of its refits below the estimate."""
     how = getattr(model, "method", "MLE")
+    out: dict[str, Any] = {}
+    if getattr(model, "hr", 1.0) != 1:
+        # A known hazard ratio is the model's: each refit has it too
+        out["hr"] = model.hr
     if how not in ("MPP", "MPS", "MSE", "MOM"):
-        return {}
-    out: dict[str, Any] = {"how": how}
+        return out
+    out["how"] = how
     info = getattr(model, "fitting_info", None) or {}
     if how == "MPP":
         for key in ("heuristic", "rr", "on_d_is_0", "turnbull_estimator"):

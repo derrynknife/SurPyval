@@ -79,6 +79,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     exact_event_data,
     frailty_recurrent_data,
     growth_data,
+    joint_causes_data,
     joint_data,
     joint_frailty_data,
     lfp_count_data,
@@ -2113,7 +2114,16 @@ def _joint_coefficients(model):
     """A joint model's covariate coefficients: the hazard's, then each path
     parameter's shifts of its mean (a row each)."""
     names, params = model.parameter_names, np.asarray(model.params, float)
-    rows = [model.feature_names] + [
+    # with failure modes, each mode's hazard coefficients (a row each)
+    hazards = (
+        [model.feature_names]
+        if model.causes is None
+        else [
+            [f"{cause}: {f}" for f in model.feature_names]
+            for cause in model.causes
+        ]
+    )
+    rows = hazards + [
         [f"{a}_{f}" for f in model.feature_names]
         for a in model.path_model.parameter_names
     ]
@@ -2133,12 +2143,22 @@ def _joint_readings_paths(fitter):
 
     def from_arrays(d):
         ids, m = readings(d)
-        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        return fitter.fit(
+            d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m, e=d.get("e")
+        )
 
     def from_data(d):
         ids, m = readings(d)
         return fitter.fit(
-            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+            sp.SurpyvalData(
+                d["x"],
+                c=d["c"],
+                n=d["n"],
+                Z=d["Z"],
+                i=ids,
+                m=m,
+                e=d.get("e"),
+            )
         )
 
     return {"fit(measurements)": from_arrays, "fit(data)": from_data}
@@ -2155,7 +2175,9 @@ def _joint():
     between items (``random_effects="diagonal"``), or the value of a
     spline path with one knot placed from the readings, its bend common
     to all items (``[spline]``); or the marker's value speeds up the
-    item's ageing (``WeibullJointAFT``)."""
+    item's ageing (``WeibullJointAFT``); or the items fail by one of two
+    failure modes, each with a baseline, a coefficient and an effect of
+    its own (``[causes]``: the fit of data with event types ``e``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2178,16 +2200,18 @@ def _joint():
             dg.SplinePath.natural(df=2),
             varying=("level", "rate"),
         ),
+        "WeibullJointPH[causes]": sp.WeibullJointPH,
     }
     out = []
     for name, fitter in fitters.items():
+        causes = name.endswith("[causes]")
         case = regression(
             name,
             fitter,
             # the links are ways of calling the one public factory
             fitters=(f"surpyval.{name}",) if "[" not in name else (),
             model_class="surpyval.JointModel",
-            data=joint_data,
+            data=joint_causes_data if causes else joint_data,
             x=X_JOINT,
             Z=np.ones((X_JOINT.size, 1)),
             functions=("sf", "ff"),
@@ -2201,6 +2225,7 @@ def _joint():
                             "n": d["n"],
                             "z0": np.asarray(d["Z"])[:, 0],
                             "markers": list(d["markers"]),
+                            **({"e": d["e"]} if "e" in d else {}),
                         }
                     ),
                     x_col="x",
@@ -2208,10 +2233,11 @@ def _joint():
                     c_col="c",
                     n_col="n",
                     Z_cols=["z0"],
+                    e_col="e" if "e" in d else None,
                 ),
                 **_joint_readings_paths(fitter),
             },
-            rows=("x", "Z", "c", "n", "markers"),
+            rows=("x", "Z", "c", "n", "markers") + (("e",) if causes else ()),
             coefficients=_joint_coefficients,
             intercept=True,
             draw=None,
@@ -2247,6 +2273,7 @@ def _joint():
                 times=("x", "markers"),
                 call_kwargs=dict(JOINT_ITEM),
                 call_times=("markers", "given"),
+                events=("a", "b") if causes else (),
             )
         )
     return out

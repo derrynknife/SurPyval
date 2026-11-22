@@ -138,7 +138,7 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        _refuse_what_no_recurrent_fit_takes(data)
+        refuse_what_no_recurrent_fit_takes(data)
         owner = bound.arguments.get(params[0]) if params else None
         fit_tvc = (
             getattr(owner, "fit_tvc", None)
@@ -205,7 +205,7 @@ def _refuse_several_units(data: SurpyvalData) -> None:
         )
 
 
-def _refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
+def refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
     """Refuse data that no recurrent fit takes: in more than one state,
     with measurements, weights or step time-varying covariates from
     records."""
@@ -707,7 +707,7 @@ def accepts_terminal_surpyval_data(method: F) -> F:
                 + " (give the covariates, entry times and terminal flags "
                 "a in the data, or pass arrays rather than a SurpyvalData)."
             )
-        _refuse_what_no_recurrent_fit_takes(data)
+        refuse_what_no_recurrent_fit_takes(data)
         layout = _Layout(data)
         lost = _joint_lost(data, layout)
         if lost:

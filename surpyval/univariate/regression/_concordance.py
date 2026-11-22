@@ -272,9 +272,9 @@ class ConcordanceMixin:
                 "risk scores are undefined: drop those rows from x, c and "
                 "Z".format(int(np.isnan(risk).sum()), risk.size)
             )
-        from surpyval.metrics.concordance import _concordance_estimate
+        from surpyval.metrics.concordance import concordance_with_se
 
-        return _concordance_estimate(
+        return concordance_with_se(
             x_arr, c_arr, risk, weighting, tau, alpha, tie_tol, ties, ci_method
         )
 

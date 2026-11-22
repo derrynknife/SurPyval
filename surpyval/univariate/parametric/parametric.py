@@ -67,6 +67,7 @@ from surpyval.utils.validation import (
 )
 from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
+from . import _hazard_ratio as _hr
 from ._likelihood_ratio import (
     _LN_MAX,
     _LN_TINY,
@@ -675,6 +676,11 @@ class Parametric(
     #: (1 without ``lfp=True``). It was ``p`` before v0.23 (#608).
     lfp_p: float
     f0: float
+    #: The hazard ratio: the model's hazard is ``hr`` times the hazard it
+    #: would have without it, at every age (1: none). It is known, never
+    #: estimated (see :mod:`._hazard_ratio`). A class attribute, so a
+    #: model pickled before it existed has 1.
+    hr: float = 1.0
     support: tuple[float, float]
     # The inverse Hessian of the (weighted) negative log-likelihood, the
     # distribution's block (documented under Attributes above). Never the
@@ -837,6 +843,11 @@ class Parametric(
         if zi:
             out.f0 = model_dict["f0"]
 
+        # Saved only where it is not 1, under schema 5, which SurPyval
+        # 0.28 refuses rather than read the model without it.
+        if model_dict.get("hr") is not None:
+            out.hr = _hr.checked_hr(model_dict["hr"])
+
         # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
         # rows are named here, not in a numpy error later (#663).
         # "hess_inv" is the inverse Hessian, except in a weighted model
@@ -995,6 +1006,10 @@ class Parametric(
             out["gamma"] = to_native(self.gamma)
         else:
             out["gamma"] = 0.0
+        if self.hr != 1:
+            # Schema 5 (``serialisation``): an older reader would load the
+            # model without its hazard ratio.
+            out["hr"] = to_native(self.hr)
 
         if getattr(self, "hess_inv", None) is not None:
             # The inverse Hessian, as the attribute; with weights it is not
@@ -1152,13 +1167,15 @@ class Parametric(
     @property
     def extras(self) -> dict[str, float]:
         """
-        The offset, limited-failure proportion and zero-inflation fraction
-        the model carries, as the keywords of ``from_params``.
+        The offset, limited-failure proportion, zero-inflation fraction
+        and hazard ratio the model carries, as the keywords of
+        ``from_params``.
 
         Only the ones the model has are included: ``"gamma"`` for an offset
         model, ``"lfp_p"`` for a limited-failure-population model (it was
-        ``"p"`` before v0.23, #608) and ``"f0"`` for a zero-inflated one; a
-        plain model gives an empty dict. So
+        ``"p"`` before v0.23, #608), ``"f0"`` for a zero-inflated one and
+        ``"hr"`` for one with a hazard ratio other than 1; a plain model
+        gives an empty dict. So
         ``dist.from_params(params, **model.extras)`` rebuilds the model with
         other parameters, which :meth:`with_params` does. The dict is a
         copy; changing it does not change the model.
@@ -1187,6 +1204,8 @@ class Parametric(
             out["lfp_p"] = float(self.lfp_p)
         if self.zi:
             out["f0"] = float(self.f0)
+        if self.hr != 1:
+            out["hr"] = float(self.hr)
         return out
 
     @property
@@ -1278,6 +1297,7 @@ class Parametric(
         *,
         lfp_p: float | None = None,
         f0: float | None = None,
+        hr: float | None = None,
     ) -> Parametric:
         """
         The same model with other parameters.
@@ -1313,6 +1333,10 @@ class Parametric(
             ``w``); with the full vector it is the vector's.
         f0 : float, optional
             The zero-inflation fraction, likewise.
+        hr : float, optional
+            The hazard ratio, which any model may be given (it is known,
+            not estimated, so it is never in ``params``). Without it the
+            model's own is kept.
 
         Returns
         -------
@@ -1381,6 +1405,8 @@ class Parametric(
                 f"{onp.shape(params)}"
             )
         extras = self.extras
+        if hr is not None:
+            extras["hr"] = _hr.checked_hr(hr)
         given = {"gamma": gamma, "lfp_p": lfp_p, "f0": f0}
         full = n_full > n_core and size == n_full
         for key, value in given.items():
@@ -1722,6 +1748,8 @@ class Parametric(
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
+            if self.hr != 1:
+                out += f"\nHazard ratio (hr)   : {self.hr}"
             if self.weighted:
                 out += (
                     "\nWeights             : effective sample size "
@@ -2211,7 +2239,12 @@ class Parametric(
         model's transforms do, and the transforms -- identities here, but
         five passes over the query on a large array -- are skipped
         (#642)."""
-        return bool(self.gamma == 0 and self.lfp_p == 1 and self.f0 == 0)
+        return bool(
+            self.gamma == 0
+            and self.lfp_p == 1
+            and self.f0 == 0
+            and self.hr == 1
+        )
 
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -2246,6 +2279,8 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = _query_array(x)
+        if self.hr != 1:
+            return _hr.sf(self, x)
         if self._plain():
             # (+ 0.0: a -0.0 is 0.0, as the transforms made it)
             return _scalar(self.dist.sf(x, *self.params) + 0.0)
@@ -2297,6 +2332,8 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = _query_array(x)
+        if self.hr != 1:
+            return _hr.ff(self, x)
         if self._plain():
             return _scalar(self.dist.ff(x, *self.params) + 0.0)
         xg = x - self.gamma  # type: ignore[operator]
@@ -2371,6 +2408,8 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = _query_array(x)
+        if self.hr != 1:
+            return _hr.df(self, x, continuous)
         if self._plain():
             return _scalar(self.dist.df(x, *self.params))
         xg = x - self.gamma  # type: ignore[operator]
@@ -2440,6 +2479,8 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = _query_array(x)
+        if self.hr != 1:
+            return _hr.hf(self, x)
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
@@ -2521,6 +2562,8 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = _query_array(x)
+        if self.hr != 1:
+            return _hr.Hf(self, x)
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
@@ -2600,6 +2643,8 @@ class Parametric(
         once, here: a model without them gives its distribution's own
         ``qf`` at no further cost (with a -0.0 as 0.0) (#769).
         """
+        if self.hr != 1:
+            return _hr.qf(self, p)
         if isinstance(p, ArrayBox):
             return self._qf_checked(p)
         if isinstance(p, list):
@@ -2743,6 +2788,8 @@ class Parametric(
         its ``qf`` is 0. A probability outside [0, 1] gives NaN, with a
         warning.
         """
+        if self.hr != 1:
+            return _hr.isf(self, s)
         if isinstance(s, (list, tuple)):
             s = np.array(s, dtype=float)
         if self._plain() and not self.dist.discrete:
@@ -2851,7 +2898,7 @@ class Parametric(
             H_given = np.asarray(self.Hf(given_arr), dtype=float)
             H_end = np.asarray(self.Hf(x_arr + given_arr), dtype=float)
             cs = np.where(np.isinf(H_given), np.nan, np.exp(H_given - H_end))
-            if (self.lfp_p == 1) and (self.f0 == 0):
+            if (self.lfp_p == 1) and (self.f0 == 0) and (self.hr == 1):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
                 # cancels in the far tail (the memoryless Exponential).
@@ -2945,8 +2992,11 @@ class Parametric(
         True
         """
         truncated = (a is not None) or (b is not None)
-        if truncated and (self.offset or self.lfp or self.zi):
+        if truncated and (self.offset or self.lfp or self.zi or self.hr != 1):
             return self._random_truncated(size, a, b, random_state)
+        if self.hr != 1:
+            # qf(u) with the hazard ratio, through isf
+            return np.reshape(self.qf(uniform_draws(size, random_state)), size)
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             if (a is None) and (b is None):
@@ -3162,6 +3212,8 @@ class Parametric(
         """
         if tau is not None:
             return float(self._rmst_values(self._rmst_taus(tau, "mean"))[0])
+        if self.hr != 1:
+            return _hr.mean(self, defective)
         if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails, so E[T] is infinite (#404).
             return np.inf
@@ -3219,6 +3271,8 @@ class Parametric(
         limited-failure model is not a variance conditional on failure
         (fit without ``lfp`` for that).
         """
+        if self.hr != 1:
+            return _hr.var(self, defective)
         if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails: Var(T) is infinite (#404).
             return np.inf
@@ -3277,6 +3331,8 @@ class Parametric(
         ``defective=True`` gives the same expression, in which the cured
         fraction ``1 - p`` contributes nothing.
         """
+        if self.hr != 1:
+            return _hr.moment(self, n, defective)
         if self.lfp_p < 1 and n >= 1 and not defective:
             # A fraction 1 - p never fails: E[T^n] is infinite (#404).
             return np.inf
@@ -3323,6 +3379,8 @@ class Parametric(
         failure* of a limited-failure model equals the entropy of the same
         model fitted without ``lfp``.
         """
+        if self.hr != 1:
+            return _hr.entropy(self)
         if self.lfp_p == 1 and self.f0 == 0:
             return self.dist.entropy(*self.params)
         raise ValueError(
@@ -3477,6 +3535,7 @@ class Parametric(
         array([0.67916426, 0.18042915])
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("cb", method)
         t = np.atleast_1d(x)
         if self._is_pivotal(method):
             check_option("bound", bound, BOUNDS)
@@ -3640,6 +3699,7 @@ class Parametric(
         mean.
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("quantile_cb", method)
         probs = np.atleast_1d(np.asarray(p, dtype=float))
         pivotal = self._is_pivotal(method)
         if pivotal:
@@ -3752,6 +3812,7 @@ class Parametric(
         mean; :meth:`quantile_cb` bounds a quantile.
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("mean_cb")
         self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
@@ -3828,6 +3889,8 @@ class Parametric(
         mrl_cb : confidence bounds on it.
         """
         t = np.atleast_1d(np.asarray(x, dtype=float))
+        if self.hr != 1:
+            return _hr.mrl(self, t)
         if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T - x | T > x] is infinite
             # wherever there are survivors, which is everywhere.
@@ -3901,6 +3964,7 @@ class Parametric(
         array([3.316, 5.375])
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("mrl_cb")
         self._check_summary_cb(alpha_ci, bound, "mrl_cb")
         t = np.atleast_1d(np.asarray(x, dtype=float))
         value = np.asarray(self.mrl(t), dtype=float)
@@ -4006,6 +4070,8 @@ class Parametric(
 
     def _rmst_values(self, taus: Any) -> npt.NDArray:
         """The restricted means at ``taus`` at the fitted parameters."""
+        if self.hr != 1:
+            return _hr.rmst(self, taus)
         return self._rmst_of(taus, self.params, self.lfp_p, self.f0)
 
     @staticmethod
@@ -4131,6 +4197,7 @@ class Parametric(
         surpyval.rmst_diff : compare the RMST of two groups.
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("rmst")
         if tau is None:
             tau = self._rmst_default_tau("rmst")
         t = self._rmst_taus(tau)
@@ -4218,6 +4285,7 @@ class Parametric(
         array([5.906, 7.178])
         """
         check_alpha_ci(alpha_ci)
+        self._refuse_hr_bound("rmst_cb")
         self._check_summary_cb(alpha_ci, bound, "rmst_cb")
         if tau is None:
             tau = self._rmst_default_tau("rmst_cb")
@@ -4374,6 +4442,35 @@ class Parametric(
             raise refuse_lr()
         if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
+
+    def _refuse_hr_bound(self, what: str, method: Any = None) -> None:
+        """Refuse, saying what to use, a bound a model with a hazard ratio
+        does not carry it into: the likelihood-ratio and pivotal bounds
+        on a function (``cb``, ``quantile_cb``), and every bound on the
+        mean, mean residual life and restricted mean (``method`` None).
+        Its Wald and bootstrap bounds hold ``hr`` fixed, and ``param_cb``
+        has every method."""
+        if self.hr == 1:
+            return
+        if method is not None:
+            m = str(method).lower()
+            if m in ("wald", "bootstrap") or not (
+                self._is_pivotal(method)
+                or m in ("lr", "likelihood", "likelihood-ratio", "profile")
+            ):
+                return
+            raise ValueError(
+                f"{what}(method='{method}') is not available for a model "
+                f"with a hazard ratio (hr = {self.hr:g}): use "
+                "method='wald' or method='bootstrap', which hold hr fixed, "
+                "or param_cb for the parameters' likelihood-ratio bounds."
+            )
+        raise ValueError(
+            f"{what} is not available for a model with a hazard ratio (hr "
+            f"= {self.hr:g}): bound it from the bootstrap refits, which "
+            "carry hr, as numpy.quantile([m.mean() for m in "
+            "model.bootstrap(1000).models], [0.025, 0.975]) for the mean."
+        )
 
     @staticmethod
     def _is_pivotal(method: Any) -> bool:
@@ -4568,16 +4665,22 @@ class Parametric(
                 ctx.phi_hat,
                 (type(self.dist), "quantile"),
             )
-            dens = (p_lfp - f0) * np.asarray(
-                self.dist.df(t_eval - self.gamma, *core), dtype=float
-            )
+            if self.hr != 1:
+                dens = np.asarray(
+                    self.df(t_eval, continuous=True), dtype=float
+                )
+            else:
+                dens = (p_lfp - f0) * np.asarray(
+                    self.dist.df(t_eval - self.gamma, *core), dtype=float
+                )
             grad = -jac / dens[:, None]
             var = np.einsum("ij,jk,ik->i", grad, ctx.cov, grad)
         # A probability within a zero-inflated model's mass at 0 has the
         # quantile 0 whatever the parameters near the estimate (the atom
         # is below the continuous part): its bound is [0, 0], with no
         # density to divide by and nothing to warn about (#663).
-        at_zero = (np.asarray(p, dtype=float) <= f0) & bool(self.zi)
+        mass = _hr.zero_mass(self) if self.hr != 1 else f0
+        at_zero = (np.asarray(p, dtype=float) <= mass) & bool(self.zi)
         var = np.where(finite & ~at_zero, var, 0.0)
         return self._summary_wald(
             t, var, self._summary_scale(), alpha_ci, bound, "qf"
@@ -4738,7 +4841,7 @@ class Parametric(
         f0 = phi[i] if self.zi else 0.0
         return core, p, f0
 
-    def _cb_full_sf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+    def _cb_full_sf0(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """Survival function including the LFP and zero-inflation mass.
 
         Points below the (offset) support are clamped *before* the base sf is
@@ -4761,7 +4864,7 @@ class Parametric(
             out = np.where(x < 0, 1.0, out)
         return out
 
-    def _cb_full_ff(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+    def _cb_full_ff0(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """``1 - _cb_full_sf``, from the base ``ff``, so that it is
         accurate where it is small (in the left tail, where ``1 - sf``
         is not): ``f0 + (p - f0) F``."""
@@ -4954,7 +5057,7 @@ class Parametric(
         # cb method expects (it flips it for sf).
         return R_cb[..., ::-1] if bound == "two-sided" else R_cb
 
-    def _cb_full_Hf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+    def _cb_full_Hf0(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """The cumulative hazard, ``-log _cb_full_sf``: the distribution's
         own ``Hf`` for a plain model (finite far past where its survival
         underflows), plus ``-log(1 - f0)`` for a zero-inflated one; else
@@ -4973,9 +5076,29 @@ class Parametric(
             # Zero inflation alone: -log(1 - f0) + H from 0 on, finite
             # where sf underflows, as ``Hf`` (#710).
             return np.where(x < 0, 0.0, -np.log1p(-f0) + H)
-        F = self._cb_full_ff(x, phi, ctx)
-        R = self._cb_full_sf(x, phi, ctx)
+        F = self._cb_full_ff0(x, phi, ctx)
+        R = self._cb_full_sf0(x, phi, ctx)
         return np.where(F < 0.5, -np.log1p(-F), -np.log(R))
+
+    def _cb_full_sf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """The model's survival at the parameters ``phi``: with a
+        hazard ratio, ``exp(-hr H0)`` (``hr`` is known: held fixed)."""
+        if self.hr == 1:
+            return self._cb_full_sf0(x, phi, ctx)
+        return np.exp(-self.hr * self._cb_full_Hf0(x, phi, ctx))
+
+    def _cb_full_ff(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """``1 - _cb_full_sf``, accurate where it is small: with a
+        hazard ratio, ``-expm1(-hr H0)``."""
+        if self.hr == 1:
+            return self._cb_full_ff0(x, phi, ctx)
+        return -np.expm1(-self.hr * self._cb_full_Hf0(x, phi, ctx))
+
+    def _cb_full_Hf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """The model's cumulative hazard at ``phi``, ``hr H0``."""
+        if self.hr == 1:
+            return self._cb_full_Hf0(x, phi, ctx)
+        return self.hr * self._cb_full_Hf0(x, phi, ctx)
 
     def _cb_Hf_bound(
         self, t: Any, ctx: Any, alpha_ci: float, bound: str
@@ -5056,14 +5179,61 @@ class Parametric(
         # Evaluated just inside the support there (and then replaced), so
         # a negative argument cannot put a nan in the Jacobian (#256).
         xg = np.where(below, s0 + 1e-10, xg)
+        # A zero-inflated model's point mass at 0: its density there is
+        # the mass f0 and its hazard f0 / sf(0-) = f0, as ``df`` and ``hf``.
+        atom = (t == 0) & bool(self.zi and self.f0 != 0)
+
+        if self.hr != 1 and self.dist.discrete:
+            raise ValueError(
+                f"cb(on='{on}') of a discrete model with a hazard ratio is "
+                "not available: bound sf with cb(on='sf'), whose steps "
+                "give the probability at each point."
+            )
+        func_at = self._cb_rate_functions(t, xg, below, atom, ctx, on)
+        if self.hr != 1:
+            func_at = self._cb_rate_scaled(func_at, t, atom, ctx, on)
+        g_hat = func_at(slice(None))(ctx.phi_hat)
+        return self._cb_rate_finish(
+            func_at, g_hat, t, atom, ctx, (alpha_ci, bound, on)
+        )
+
+    def _cb_rate_scaled(
+        self, func_at: Any, t: Any, atom: Any, ctx: Any, on: str
+    ) -> Callable[..., Any]:
+        """``_cb_rate_functions`` with the hazard ratio: the hazard ``hr
+        h0``, the density ``hr h0 R`` and a point mass at 0 of ``1 - (1 -
+        f0) ** hr``; ``func_at`` gives ``h0``."""
+        hr = self.hr
+
+        def scaled_at(idx: Any) -> Callable[..., Any]:
+            ti, atom_i = (np.atleast_1d(a)[idx] for a in (t, atom))
+            h0 = func_at(idx)
+
+            def g(phi: npt.NDArray) -> Any:
+                f0 = self._cb_unpack(phi, ctx)[2]
+                mass = -np.expm1(hr * np.log1p(-f0))
+                rate = hr * h0(phi)
+                if on == "df":
+                    rate = rate * self._cb_full_sf(ti, phi, ctx)
+                return np.where(atom_i, mass, rate)
+
+            return g
+
+        return scaled_at
+
+    def _cb_rate_functions(
+        self, t: Any, xg: Any, below: Any, atom: Any, ctx: Any, on: str
+    ) -> Callable[..., Any]:
+        """For :meth:`_cb_rate_bound`: ``func_at(idx)``, the function of
+        the parameters whose value is the rate at ``t[idx]`` (with a
+        hazard ratio, the hazard without it)."""
         # A continuous model's hazard is the distribution's own, accurate
         # far in the tail, where df / sf is 0 / 0 (#652). Zero inflation
         # cancels from it (from 0 on, as ``hf``); a limited failure
         # population's survival stays above 1 - p.
         own_hazard = not (self.dist.discrete or self.lfp)
-        # A zero-inflated model's point mass at 0: its density there is
-        # the mass f0 and its hazard f0 / sf(0-) = f0, as ``df`` and ``hf``.
-        atom = (t == 0) & bool(self.zi and self.f0 != 0)
+        if self.hr != 1:
+            on = "hf"
 
         def func_at(idx: Any) -> Callable[..., Any]:
             ti, xgi, below_i, atom_i = (
@@ -5092,12 +5262,26 @@ class Parametric(
 
             def ratio(phi: npt.NDArray) -> Any:
                 f0 = self._cb_unpack(phi, ctx)[2]
-                rate = density(phi) / self._cb_full_sf(t_sf, phi, ctx)
+                rate = density(phi) / self._cb_full_sf0(t_sf, phi, ctx)
                 return np.where(atom_i, f0, rate)
 
             return ratio
 
-        g_hat = func_at(slice(None))(ctx.phi_hat)
+        return func_at
+
+    def _cb_rate_finish(
+        self,
+        func_at: Any,
+        g_hat: Any,
+        t: Any,
+        atom: Any,
+        ctx: Any,
+        how: tuple,
+    ) -> Any:
+        """The rest of :meth:`_cb_rate_bound`, from ``func_at`` and the
+        rate ``g_hat`` at the estimate; ``how`` is ``(alpha_ci, bound,
+        on)``."""
+        alpha_ci, bound, on = how
         var = self._cb_delta_var_each(func_at, ctx, np.size(t))
         # A rate of 0 is bounded by 0 (below), whatever its variance.
         var = np.where(g_hat == 0.0, 0.0, var)
