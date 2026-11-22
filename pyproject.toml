@@ -85,6 +85,8 @@ where = ["."]
 "surpyval.tests.utils" = ["terminal_flag_baseline.json"]
 # The frozen list of public names (test_public_surface.py)
 "surpyval.tests" = ["public_surface.txt"]
+# The reference values from ArviZ that test_criteria.py reads
+"surpyval.tests.bayes" = ["arviz_loo.json"]
 
 # pytest
 [tool.pytest.ini_options]
