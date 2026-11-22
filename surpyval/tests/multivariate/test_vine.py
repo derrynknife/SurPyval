@@ -280,6 +280,9 @@ def test_what_a_vine_does_not_compute_is_refused_with_what_to_do():
             call(pts)
     with pytest.raises(ValueError, match="last series"):
         model.conditional_cdf(pts, of=0)
+    for call in (model.kendall_tau_cb, model.spearman_rho_cb):
+        with pytest.raises(ValueError, match="param_cb"):
+            call()
     with pytest.raises(ValueError, match="not a vine"):
         Gaussian.from_params([0.5, 0.2, 0.4], _margins()).edges
 

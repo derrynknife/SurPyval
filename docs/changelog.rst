@@ -41,7 +41,9 @@ v0.29 (unreleased)
   two series it is the bivariate copula. Refused, saying what to use:
   censored and truncated rows (the Gaussian and Student-t copulas take
   censored rows), the joint ``sf``, ``cdf`` and ``cb`` (estimate them from
-  draws), and conditional distributions other than the last series given
+  draws), ``kendall_tau_cb`` and ``spearman_rho_cb`` (a vine's measures
+  are a matrix, one per pair: bound a pair's parameter with
+  ``param_cb``), and conditional distributions other than the last series given
   the others. See "Vines" in :doc:`Multivariate Modelling with SurPyval`.
 - **A hazard ratio, ``hr``, on every parametric model.**
   ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of

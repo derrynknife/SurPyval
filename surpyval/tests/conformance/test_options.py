@@ -453,6 +453,12 @@ def test_every_uncertainty_method_is_swept(case):
             # refused for a process whose failures go on without limit,
             # saying so and what to ask instead
             continue
+        if name in ("kendall_tau_cb", "spearman_rho_cb") and np.ndim(
+            getattr(model, name.removesuffix("_cb"))()
+        ):
+            # refused where the measure is a matrix (a vine's, one for
+            # each pair), saying to bound a pair's parameter instead
+            continue
         if name == "rmtl" and getattr(model, "estimator", "") == "NPMLE":
             # refused for interval-censored rows (the time lost depends on
             # where in each window the mass lies), saying what to use
