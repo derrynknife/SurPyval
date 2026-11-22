@@ -611,7 +611,7 @@ def _no_higher_off_the_ends(model, surv_data, reported, held, free):
         start[i] = hi - 0.1 * (hi - lo) if near_hi else lo + 0.1 * (hi - lo)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        refit = model.dist.fit_from_surpyval_data(
+        refit = model.dist._fit_from_surpyval_data(
             surv_data,
             offset=model.offset,
             lfp=model.lfp,

@@ -17,6 +17,7 @@ from surpyval.utils.deprecation import (
     REMOVED_IN_NEXT,
     RenamedAttribute,
     ambiguous_item_ids,
+    fit_entry,
 )
 
 if TYPE_CHECKING:
@@ -429,7 +430,7 @@ class ARI(RenewalFitMixin):
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same baseline
         intensity and memory; used by the Cramer-von Mises bootstrap."""
-        return self.fit_from_recurrent_data(
+        return self._fit_from_recurrent_data(
             data, baseline=model.model.dist, m=model.m
         )
 
@@ -551,8 +552,10 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         baseline: Any = CrowAMSAA,
@@ -637,7 +640,7 @@ class ARI(RenewalFitMixin):
         """
         try:
             base_params = np.asarray(
-                baseline.fit_from_recurrent_data(data).params, dtype=float
+                baseline._fit_from_recurrent_data(data).params, dtype=float
             )
             if not np.all(np.isfinite(base_params)):
                 raise ValueError
@@ -741,7 +744,7 @@ class ARI(RenewalFitMixin):
         # failed deep inside the fit (#495).
         validate_intensity_model(baseline, type(self).__name__)
         data = handle_xicn(x, i, c, n, tl=tl)
-        return self.fit_from_recurrent_data(data, baseline, m, init=init)
+        return self._fit_from_recurrent_data(data, baseline, m, init=init)
 
     @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n", "tl", "tr")

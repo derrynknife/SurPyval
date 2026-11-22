@@ -260,11 +260,11 @@ def test_time_varying_covariates_are_kept_and_refused_by_every_fit():
     with pytest.raises(
         ValueError, match=r"time-varying covariates \(no model uses them yet\)"
     ):
-        rc.CrowAMSAA.fit_from_recurrent_data(data)
+        rc.CrowAMSAA._fit_from_recurrent_data(data)
     with pytest.raises(
         ValueError, match=r"time-varying covariates \(no model uses them yet\)"
     ):
-        rc.NonParametricCounting.fit_from_recurrent_data(data)
+        rc.NonParametricCounting._fit_from_recurrent_data(data)
 
 
 # -- event types -----------------------------------------------------------
@@ -444,7 +444,7 @@ def test_states_are_changes_with_censoring_and_round_trip():
         ("interval_censored", "failed"),
     ]
     assert data.to_items() == items
-    for fit in (rc.CrowAMSAA.fit, rc.CrowAMSAA.fit_from_recurrent_data):
+    for fit in (rc.CrowAMSAA.fit, rc.CrowAMSAA._fit_from_recurrent_data):
         with pytest.raises(
             ValueError,
             match=r"states \(no model uses them yet\).*without\('states'\)",

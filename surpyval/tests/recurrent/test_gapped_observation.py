@@ -156,7 +156,7 @@ def test_renewal_models_reject_gapped_data(fitter, kwargs):
         np.array([3.0, 7.0, 10.0]), np.array([1, 1, 1]), windows={1: [(0, 15)]}
     )
     with pytest.raises(ValueError, match="gapped"):
-        fitter.fit_from_recurrent_data(data, **kwargs)
+        fitter._fit_from_recurrent_data(data, **kwargs)
 
 
 # --- malformed window specifications are rejected ---------------------------

@@ -198,10 +198,10 @@ def test_steady_effort_fits_as_the_calendar_model():
     effort: half the calendar model's. The same maximised likelihood."""
     truth = GoelOkumoto.from_params([80.0, 0.03])
     d = truth.time_terminated_simulation_data(100.0, random_state=EFFORT_SEED)
-    plain = GoelOkumoto.fit_from_recurrent_data(d)
+    plain = GoelOkumoto._fit_from_recurrent_data(d)
     doubled = EffortClock(
         GoelOkumoto, ([50.0, 100.0], [100.0, 100.0])
-    ).fit_from_recurrent_data(d)
+    )._fit_from_recurrent_data(d)
     np.testing.assert_allclose(
         doubled.params, plain.params * [1.0, 0.5], rtol=1e-4
     )
@@ -248,11 +248,11 @@ def test_effort_recovery_from_simulated_data():
     d = clock.from_params(truth).time_terminated_simulation_data(
         100.0, random_state=EFFORT_SEED
     )
-    model = clock.fit_from_recurrent_data(d)
+    model = clock._fit_from_recurrent_data(d)
     assert model.maximum == "verified"
     z = (model.params - truth) / model.standard_errors()
     assert np.all(np.abs(z) < 3.0), z
-    assert model.aic() < GoelOkumoto.fit_from_recurrent_data(d).aic()
+    assert model.aic() < GoelOkumoto._fit_from_recurrent_data(d).aic()
 
 
 def test_effort_fit_refusals():
@@ -474,11 +474,11 @@ def changed_data():
 
 @pytest.fixture(scope="module")
 def estimated(changed_data):
-    return ChangePoint(GoelOkumoto).fit_from_recurrent_data(changed_data)
+    return ChangePoint(GoelOkumoto)._fit_from_recurrent_data(changed_data)
 
 
 def test_change_point_recovery_with_tau_given(changed_data):
-    model = ChangePoint(GoelOkumoto, tau=40.0).fit_from_recurrent_data(
+    model = ChangePoint(GoelOkumoto, tau=40.0)._fit_from_recurrent_data(
         changed_data
     )
     assert model.maximum == "verified"
@@ -500,7 +500,7 @@ def test_change_point_recovery_with_tau_estimated(changed_data, estimated):
     # no worse than the fit at the true time
     best = -estimated._neg_ll(estimated.params)
     assert best >= info["log_likelihood"].max() - 1e-6
-    at_truth = ChangePoint(GoelOkumoto, tau=40.0).fit_from_recurrent_data(
+    at_truth = ChangePoint(GoelOkumoto, tau=40.0)._fit_from_recurrent_data(
         changed_data
     )
     assert best >= -at_truth._neg_ll(at_truth.params) - 1e-6
@@ -515,7 +515,7 @@ def test_the_profile_is_the_fit_at_each_time(changed_data, estimated):
             warnings.simplefilter("ignore")
             fit = ChangePoint(
                 GoelOkumoto, tau=float(info["candidates"][k])
-            ).fit_from_recurrent_data(changed_data)
+            )._fit_from_recurrent_data(changed_data)
         assert info["log_likelihood"][k] == pytest.approx(
             -fit._neg_ll(fit.params), abs=1e-5
         )
@@ -545,8 +545,8 @@ def test_a_change_with_no_growth_overall():
     truth = ChangePoint(GoelOkumoto, tau=40.0).from_params([80.0, 0.006, 4.0])
     d = truth.time_terminated_simulation_data(100.0, random_state=CHANGE_SEED)
     with pytest.raises(ValueError, match="no reliability growth"):
-        GoelOkumoto.fit_from_recurrent_data(d)
-    model = ChangePoint(GoelOkumoto).fit_from_recurrent_data(d)
+        GoelOkumoto._fit_from_recurrent_data(d)
+    model = ChangePoint(GoelOkumoto)._fit_from_recurrent_data(d)
     assert model.change_point["no_change_log_likelihood"] is None
     assert model.params[-1] > 1.0
     with pytest.raises(ValueError, match="no fit without a change"):
@@ -617,8 +617,8 @@ def test_a_change_of_units_rescales_the_clock_with_the_data():
 def _clock_fits(changed_data):
     table = EffortTable([40.0, 200.0], [40.0, 640.0])
     return [
-        EffortClock(GoelOkumoto, table).fit_from_recurrent_data(changed_data),
-        ChangePoint(GoelOkumoto, tau=40.0).fit_from_recurrent_data(
+        EffortClock(GoelOkumoto, table)._fit_from_recurrent_data(changed_data),
+        ChangePoint(GoelOkumoto, tau=40.0)._fit_from_recurrent_data(
             changed_data
         ),
     ]

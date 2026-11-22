@@ -315,7 +315,7 @@ _INTENSITY_MODELS = "CrowAMSAA, Duane or CoxLewis"
 def _is_intensity_model(dist: object) -> bool:
     return all(
         hasattr(dist, a)
-        for a in ("iif", "cif", "from_params", "fit_from_recurrent_data")
+        for a in ("iif", "cif", "from_params", "_fit_from_recurrent_data")
     )
 
 
@@ -1329,7 +1329,7 @@ def handle_xicn(
     """
     Validate recurrent-event data given as arrays and assemble it into a
     :class:`~surpyval.utils.event_history_data.EventHistoryData`, the
-    object every recurrent fitter's ``fit_from_recurrent_data`` takes.
+    object every recurrent fitter's ``_fit_from_recurrent_data`` takes.
 
     Each row is one event (or the right-censored end of observation) of
     the item named in ``i``, at time ``x`` measured from the start of that

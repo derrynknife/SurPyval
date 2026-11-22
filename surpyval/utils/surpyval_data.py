@@ -3317,7 +3317,7 @@ def _not_taken_yet(data: SurpyvalData) -> list:
 
 
 def refuses_what_fit_cannot_take(method: F) -> F:
-    """Refuse, in a ``fit_from_surpyval_data``, data that holds event
+    """Refuse, in a ``_fit_from_surpyval_data``, data that holds event
     types or time-varying covariates, which it would otherwise ignore."""
 
     @functools.wraps(method)

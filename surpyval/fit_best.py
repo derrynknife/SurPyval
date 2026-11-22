@@ -453,7 +453,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     fits: list[tuple[str, Callable[[], Any], bool]] = [
         (
             dist.name,
-            partial(dist.fit_from_surpyval_data, surv_data),
+            partial(dist._fit_from_surpyval_data, surv_data),
             not _non_regular(dist),
         )
         for dist in candidates

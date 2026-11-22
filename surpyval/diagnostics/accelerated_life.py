@@ -234,7 +234,7 @@ def _separate(ctx: Context) -> dict:
         for i in _levels(ctx)["tested"]:
             sub = model.data[_levels(ctx)["index"] == i]
             fit = _quiet(
-                lambda sub=sub: model.distribution.fit_from_surpyval_data(
+                lambda sub=sub: model.distribution._fit_from_surpyval_data(
                     sub, fixed=dist_fixed or None
                 )
             )

@@ -604,7 +604,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             grp["exit"], grp["term_c"], None, None, group_and_sort=False
         )
         with numpy.errstate(all="ignore"):
-            ps = self.dist.fit_from_surpyval_data(init_data).params
+            ps = self.dist._fit_from_surpyval_data(init_data).params
         start = numpy.asarray(
             transform(numpy.array([*ps, *numpy.zeros(p)])), dtype=float
         )
@@ -737,7 +737,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         init_data = SurpyvalData(
             grp["exit"], grp["term_c"], None, None, group_and_sort=False
         )
-        ps = self.dist.fit_from_surpyval_data(init_data).params
+        ps = self.dist._fit_from_surpyval_data(init_data).params
         init = np.array([*ps, *np.zeros(p)])
 
         bounds = (*self.bounds, *(((None, None),) * p))

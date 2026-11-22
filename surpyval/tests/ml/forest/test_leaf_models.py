@@ -28,7 +28,7 @@ def _leaf_data(seed, size=40):
 def test_leaf_is_the_full_fit(seed, kind, dist):
     data = _leaf_data(seed)
     leaf = TerminalNode(data, kind)
-    full = dist.fit_from_surpyval_data(data)
+    full = dist._fit_from_surpyval_data(data)
     np.testing.assert_allclose(leaf.model.params, full.params, rtol=1e-4)
     # The leaf's is the maximum: no lower than the optimiser's
     # (gamma, f0, p) = (0, 0, 1): no offset, zero-inflation or cure
@@ -46,13 +46,13 @@ def test_leaves_are_not_refitted():
         x=x, Z=Z, c=c, n_trees=3, kind="weibull", random_state=1
     )
     refitted = []
-    fit = Weibull.fit_from_surpyval_data
+    fit = Weibull._fit_from_surpyval_data
 
     def spy(data, *args, **kwargs):
         refitted.append(np.unique(data.x[data.c == 0]).size)
         return fit(data, *args, **kwargs)
 
-    with mock.patch.object(Weibull, "fit_from_surpyval_data", spy):
+    with mock.patch.object(Weibull, "_fit_from_surpyval_data", spy):
         forest.sf(np.array([1.0]), Z)
     # Only the leaves Weibull.fit refuses at once (one failure time, #462)
     # reach it, on their way to the exponential.
@@ -76,7 +76,7 @@ def test_steep_leaf_keeps_its_shape():
     rng = np.random.default_rng(4)
     data = SurpyvalData(10.0 + rng.uniform(0, 0.05, 12), np.zeros(12, int))
     leaf = TerminalNode(data, "weibull")
-    full = Weibull.fit_from_surpyval_data(data)
+    full = Weibull._fit_from_surpyval_data(data)
     assert full.params[1] > 100
     np.testing.assert_allclose(leaf.model.params, full.params, rtol=1e-4)
 

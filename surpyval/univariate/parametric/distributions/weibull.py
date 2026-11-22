@@ -100,7 +100,7 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
             # offset (``_offset_seed``). The plot's own offset fit, whose
             # offset was then replaced, was not one distribution (#622).
             return self._offset_seed(data)
-        mpp_model = self.fit_from_surpyval_data(
+        mpp_model = self._fit_from_surpyval_data(
             data, how="MPP", heuristic="Nelson-Aalen"
         )
         return np.asarray(mpp_model.params, dtype=float)

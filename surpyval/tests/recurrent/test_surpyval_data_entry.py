@@ -956,6 +956,6 @@ def test_event_history_data_entry_unchanged():
         rc.CrowAMSAA.fit(history),
         rc.CrowAMSAA.fit(d["x"], i=d["i"], c=d["c"]),
     )
-    model = rc.CrowAMSAA.fit_from_recurrent_data(history)
+    model = rc.CrowAMSAA._fit_from_recurrent_data(history)
     _same(model, rc.CrowAMSAA.fit(d["x"], i=d["i"], c=d["c"]))
     assert model.notes == ()

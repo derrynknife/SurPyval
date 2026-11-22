@@ -250,7 +250,7 @@ def test_g1_likelihood_matches_loop(seed, dist):
 def test_renewal_residuals_unchanged():
     # The time-rescaling residuals use the same vectorised virtual ages.
     data = _fleet(0)
-    ara = ARA.fit_from_recurrent_data(data, m=2)
+    ara = ARA._fit_from_recurrent_data(data, m=2)
     _, idx = np.unique(data.i, return_index=True)
     ages = np.concatenate(
         [
@@ -265,7 +265,7 @@ def test_renewal_residuals_unchanged():
         ARA._rescaled_increments(ara, data), expected
     )
 
-    g1 = GeneralizedOneRenewal.fit_from_recurrent_data(data)
+    g1 = GeneralizedOneRenewal._fit_from_recurrent_data(data)
     scaled = np.concatenate(
         [
             np.asarray(arr, dtype=float) / (1.0 + g1.q) ** np.arange(len(arr))

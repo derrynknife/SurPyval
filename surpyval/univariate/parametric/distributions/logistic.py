@@ -76,7 +76,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         return np.asarray(
-            self.fit_from_surpyval_data(data, how="MPP").params, dtype=float
+            self._fit_from_surpyval_data(data, how="MPP").params, dtype=float
         )
 
     def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:

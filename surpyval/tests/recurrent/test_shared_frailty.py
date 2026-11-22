@@ -508,7 +508,7 @@ def test_entry_points_agree(fleet):
     data = surpyval.handle_xicn(rows["x"], rows["i"], rows["c"], tl=rows["tl"])
     for other in (
         CrowAMSAA.fit(data, frailty="gamma"),
-        CrowAMSAA.fit_from_recurrent_data(data, frailty="gamma"),
+        CrowAMSAA._fit_from_recurrent_data(data, frailty="gamma"),
         CrowAMSAA.fit_from_df(
             pd.DataFrame(rows), "x", "i", "c", tl_col="tl", frailty="gamma"
         ),

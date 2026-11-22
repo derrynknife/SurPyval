@@ -97,7 +97,7 @@ def test_event_types_and_time_varying_covariates_are_kept_but_not_fitted_yet():
     with pytest.raises(ValueError, match="no event types"):
         sp.Weibull.fit(data)
     with pytest.raises(ValueError, match="event types"):
-        sp.Weibull.fit_from_surpyval_data(data)
+        sp.Weibull._fit_from_surpyval_data(data)
 
 
 def test_to_items_of_plain_data_numbers_the_rows():

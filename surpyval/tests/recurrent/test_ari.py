@@ -211,7 +211,7 @@ def test_fit_scales_to_many_items():
     # 250 items took 19 seconds under the per-event loop.
     truth = ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(8, items=250, random_state=5)
-    model = ARI.fit_from_recurrent_data(data, baseline=CrowAMSAA, m=1)
+    model = ARI._fit_from_recurrent_data(data, baseline=CrowAMSAA, m=1)
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.model.params).all()
 
@@ -230,7 +230,7 @@ def test_ari_refuses_a_lifetime_distribution_clearly(dist):
     message = str(err.value)
     assert "CrowAMSAA" in message and "ARA" in message
     with pytest.raises(ValueError, match="baseline intensity model"):
-        ARI.fit_from_recurrent_data(handle_xicn(X, I), baseline=dist)
+        ARI._fit_from_recurrent_data(handle_xicn(X, I), baseline=dist)
     with pytest.raises(ValueError, match="baseline intensity model"):
         ARI.from_params([10.0, 2.0], 0.5, baseline=dist)
 
@@ -268,7 +268,7 @@ def test_ari_still_takes_every_intensity_model(dist):
 
 
 @pytest.mark.parametrize(
-    "method", ["fit", "fit_from_recurrent_data", "fit_from_df"]
+    "method", ["fit", "_fit_from_recurrent_data", "fit_from_df"]
 )
 def test_ari_takes_its_baseline_as_baseline(method):
     # In ARA, GeneralizedRenewal and GeneralizedOneRenewal `dist` is a
@@ -280,8 +280,8 @@ def test_ari_takes_its_baseline_as_baseline(method):
     def call(**kw):
         if method == "fit":
             return ARI.fit(X, I, m=1, **kw)
-        if method == "fit_from_recurrent_data":
-            return ARI.fit_from_recurrent_data(handle_xicn(X, I), m=1, **kw)
+        if method == "_fit_from_recurrent_data":
+            return ARI._fit_from_recurrent_data(handle_xicn(X, I), m=1, **kw)
         df = pd.DataFrame({"x": X, "i": I})
         return ARI.fit_from_df(df, x_col="x", i_col="i", m=1, **kw)
 
@@ -305,7 +305,7 @@ def test_ari_from_params_takes_baseline():
 def test_ari_signatures_name_the_baseline():
     import inspect
 
-    for method in ("fit", "fit_from_recurrent_data", "from_params"):
+    for method in ("fit", "_fit_from_recurrent_data", "from_params"):
         params = inspect.signature(getattr(ARI, method)).parameters
         assert "baseline" in params and "dist" not in params, method
         assert params["baseline"].default is CrowAMSAA

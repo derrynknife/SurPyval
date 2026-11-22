@@ -139,7 +139,7 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
                 surv_data.x - 1.0, surv_data.c, surv_data.n, surv_data.t - 1.0
             )
             with ignoring_warnings():
-                limit = Poisson.fit_from_surpyval_data(shifted, lfp=lfp)
+                limit = Poisson._fit_from_surpyval_data(shifted, lfp=lfp)
         except ValueError:
             return super()._warn_if_at_limit(surv_data, results, zi, lfp)
         margin = 1e-9 * max(1.0, abs(limit._neg_ll))

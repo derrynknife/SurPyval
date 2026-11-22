@@ -76,7 +76,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         else:
             heuristic = "Nelson-Aalen"
         return np.asarray(
-            self.fit_from_surpyval_data(
+            self._fit_from_surpyval_data(
                 data, how="MPP", heuristic=heuristic
             ).params,
             dtype=float,

@@ -22,7 +22,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -329,7 +329,7 @@ class ProportionalIntensityHPP(
             parameter estimates.
         """
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
-        return self.fit_from_recurrent_data(data, init=init)
+        return self._fit_from_recurrent_data(data, init=init)
 
     @dataframe_covariates
     @takes_unit
@@ -607,8 +607,10 @@ class ProportionalIntensityHPP(
         out._fitter_dist = None
         return out
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any = None,

@@ -53,7 +53,7 @@ def main() -> None:
     for label, dist, params, forms in cases:
         data = _data(dist, params, rng)
         f = log_posterior_and_grad(data, dist, None, **forms)
-        model = dist.fit_from_surpyval_data(data, **forms)
+        model = dist._fit_from_surpyval_data(data, **forms)
         theta = [*np.atleast_1d(model.params)]
         if forms.get("lfp"):
             theta.append(float(model.lfp_p))

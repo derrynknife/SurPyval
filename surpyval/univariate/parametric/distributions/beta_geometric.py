@@ -107,7 +107,7 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
             return False
         try:
             with ignoring_warnings():
-                limit = Geometric.fit_from_surpyval_data(
+                limit = Geometric._fit_from_surpyval_data(
                     surv_data, zi=zi, lfp=lfp
                 )
         except ValueError:

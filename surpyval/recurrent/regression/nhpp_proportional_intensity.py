@@ -20,7 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -187,7 +187,7 @@ class ProportionalIntensityNHPP(
                     free = data.without("covariates")
                 except Exception:
                     free = covariates_dropped(data)
-                base = dist.fit_from_recurrent_data(free)
+                base = dist._fit_from_recurrent_data(free)
             start = np.asarray(base.params, dtype=float)
         except Exception:
             return fallback
@@ -200,9 +200,11 @@ class ProportionalIntensityNHPP(
                 return fallback
         return start
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @removed_arguments("0.25", dist="'baseline'")
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         baseline: Any = Duane,
@@ -523,7 +525,7 @@ class ProportionalIntensityNHPP(
                 "the mapping.",
             )
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
-        return self.fit_from_recurrent_data(
+        return self._fit_from_recurrent_data(
             data, baseline, init, frailty, cluster
         )
 

@@ -568,7 +568,7 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
 - `surpyval.utils` — data-format handlers (`xcnt_handler`, `fsli_handler`,
   converters `fs_to_xcnt`, `xcnt_to_xrd`, ...). The log-rank test is `sp.logrank`.
 - `SurpyvalData` — the internal container fitters build from xcnt input; you rarely
-  need it directly, but `Model.fit_from_surpyval_data(data)` exists on the fitters.
+  need it directly, but every `fit` takes one: `Model.fit(data)`.
   Whole-dataset operations: `SurpyvalData.concat([a, b])` / `a + b` (refuses
   shared ids, different units or covariates), `a == b` / `a.equals(b, rtol=)`,
   `SurpyvalData.from_dataframe(data.to_dataframe())` (no column arguments),

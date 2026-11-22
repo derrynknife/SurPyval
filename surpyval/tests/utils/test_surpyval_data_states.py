@@ -557,7 +557,7 @@ def test_fits_that_are_not_multi_state_refuse_several_states():
     for fit in (
         sp.Weibull.fit,
         sp.KaplanMeier.fit,
-        sp.Weibull.fit_from_surpyval_data,
+        sp.Weibull._fit_from_surpyval_data,
     ):
         with pytest.raises(
             ValueError,

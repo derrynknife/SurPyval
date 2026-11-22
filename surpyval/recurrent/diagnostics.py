@@ -540,7 +540,7 @@ def cramer_von_mises(
         sim_data = _simulate_windows(
             rng, windows, mass, lambda item: model.inv_cif
         )
-        refit = model.dist.fit_from_recurrent_data(sim_data)
+        refit = model.dist._fit_from_recurrent_data(sim_data)
         return sim_data, refit.cif
 
     return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, random_state)
@@ -586,7 +586,7 @@ def cramer_von_mises_regression(
         from surpyval.univariate.regression._aliasing import collect_aliased
 
         with collect_aliased():
-            refit = model._fitter.fit_from_recurrent_data(
+            refit = model._fitter._fit_from_recurrent_data(
                 sim_data, model._fitter_dist
             )
         refit_cif = {

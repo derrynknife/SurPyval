@@ -1206,10 +1206,10 @@ def test_fit_refusals():
     data = surpyval.handle_xicn(d["x"], d["i"], d["c"], e=d["e"])
     # (the data wrapper's own refusal, a TypeError as on every fitter)
     with pytest.raises((TypeError, ValueError), match="covariates"):
-        CSPI.fit_from_recurrent_data(data, baseline=HPP)
+        CSPI._fit_from_recurrent_data(data, baseline=HPP)
     data = surpyval.handle_xicn(d["x"], d["i"], d["c"], Z=d["Z"])
     with pytest.raises(ValueError, match="event-type marks"):
-        CSPI.fit_from_recurrent_data(data, baseline=HPP)
+        CSPI._fit_from_recurrent_data(data, baseline=HPP)
     # Covariates that change within an item belong to fit_tvc
     changing = np.array(d["Z"], dtype=float)
     changing[1] = 1.0

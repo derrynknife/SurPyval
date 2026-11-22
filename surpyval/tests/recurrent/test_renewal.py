@@ -162,14 +162,14 @@ def test_renewal_rejects_negative_times():
     from surpyval import EventHistoryData
 
     with pytest.raises(ValueError, match="cannot be negative"):
-        GeneralizedRenewal.fit_from_recurrent_data(
+        GeneralizedRenewal._fit_from_recurrent_data(
             EventHistoryData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
         )
     # With one they count from the entry, as new there (#615): a negative
     # time after a negative entry is a positive age (with a warning that a
     # negative entry age is probably a data error, #664).
     with pytest.warns(UserWarning, match="negative age"):
-        entered = GeneralizedRenewal.fit_from_recurrent_data(
+        entered = GeneralizedRenewal._fit_from_recurrent_data(
             handle_xicn([-1.0, 2.0, 3.0, 5.0], [1] * 4, [0, 0, 0, 1], tl=-2.0)
         )
     assert np.allclose(entered.data.x, [1.0, 4.0, 5.0, 7.0])
@@ -835,10 +835,10 @@ def test_795_kijima_ii_run_off_reaches_ara_inf():
     data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        kijima = GeneralizedRenewal.fit_from_recurrent_data(
+        kijima = GeneralizedRenewal._fit_from_recurrent_data(
             data, ExpoWeibull, "ii"
         )
-        ara = ARA.fit_from_recurrent_data(data, ExpoWeibull, np.inf)
+        ara = ARA._fit_from_recurrent_data(data, ExpoWeibull, np.inf)
     assert kijima.maximum == ara.maximum == "no finite maximum"
     assert kijima.log_likelihood >= ara.log_likelihood - 1e-3
     assert kijima.params[0] == pytest.approx(1 - ara.params[0], abs=2e-3)
