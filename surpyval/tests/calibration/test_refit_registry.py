@@ -1591,8 +1591,24 @@ for _name in ("GaussianCopula[D=3]", "GaussianCopula[D=3,exchangeable]"):
     PLANS[_name] = Plan(
         _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
     )
+
+
+def _vine_curve(case, model, grid):
+    # A vine has no joint sf or CDF (refused, saying to estimate them from
+    # draws): the curve is the conditional CDF of the last series given
+    # the others, which it does compute.
+    return np.asarray(model.conditional_cdf(grid, of=2), dtype=float)
+
+
 PLANS["VineCopula[D=3]"] = Plan(
-    _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
+    _copula,
+    300,
+    60,
+    params=_copula_params,
+    curve=_vine_curve,
+    grid=_copula_grid_nd,
+    note="the curve is the conditional CDF of the last series given the "
+    "others: a vine has no joint sf or CDF",
 )
 PLANS["StudentTCopula[D=3]"] = Plan(
     _copula,
