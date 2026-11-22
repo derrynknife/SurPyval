@@ -49,14 +49,14 @@ def __getattr__(name: str) -> Any:
     if name == "concordance_estimate":
         from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
 
-        from .concordance import _concordance_estimate
+        from .concordance import concordance_with_se
 
         return renamed_name(
             "surpyval.metrics",
             name,
             "concordance_index(x, c, risk, weighting=..., tau=..., "
             "alpha_ci=...)",
-            _concordance_estimate,
+            concordance_with_se,
             REMOVED_IN_NEXT,
             FutureWarning,
         )

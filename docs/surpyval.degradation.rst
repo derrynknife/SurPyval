@@ -42,13 +42,18 @@ instance (``path=LinearPath``); the instances ``LinearPath``,
 and ``PATH_MODELS`` maps each accepted name (``"linear"``,
 ``"quadratic"``, ``"exponential"``, ``"offset-exponential"``,
 ``"power"``, ``"logarithmic"``, ``"lloyd-lipow"``, ``"gompertz"``,
-``"michaelis-menten"``) to its instance. Subclass ``PathModel`` for a
-new shape.
+``"michaelis-menten"``) to its instance. ``SplinePath`` is a class: it
+is made with its knots (``SplinePath(knots=[...], boundary=(lo, hi))``,
+or ``SplinePath.natural(df=3)``, whose knots a fit places). Subclass
+``PathModel`` for a new shape.
 
 .. autoclass:: surpyval.degradation.path_models.PathModel
    :members:
 
 .. autoclass:: surpyval.degradation.path_models.LinearPath_
+   :members:
+
+.. autoclass:: surpyval.degradation.path_models.SplinePath
    :members:
 
 .. autoclass:: surpyval.degradation.path_models.QuadraticPath_

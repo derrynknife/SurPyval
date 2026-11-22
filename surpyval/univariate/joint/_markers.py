@@ -136,6 +136,112 @@ def marker_start(
     }
 
 
+#: The most rounds of :func:`settled_marker_start`, and the relative
+#: change of every spread and of the noise below which it stops.
+_SETTLE_ROUNDS = 50
+_SETTLE_TOL = 1e-3
+
+
+def settled_marker_start(
+    model: Model,
+    arrays: JointArrays,
+    ages: list,
+    values: list,
+) -> dict:
+    """A start for the marker part that does not rest on the mean and
+    covariance of the items' own fits, which a few wild ones spoil (a
+    path of many parameters fitted to an item with barely as many
+    readings): their median and their median absolute deviation (as a
+    standard deviation, uncorrelated), then rounds of the marker's own
+    mixed model, with no lifetimes, by expectation-maximisation: each
+    item's most likely varying parameters given its readings and the
+    current population (:func:`modes`) with their covariance there, from
+    which the means and the covariates' shifts of the varying parameters
+    (least squares), their spread and the noise are taken again. A
+    common parameter stays at its median."""
+    layout = model.layout
+    path_model = model.path.model
+    _, fits, _, sigma2 = per_item_fits(path_model, ages, values)
+    V = list(layout.varying)
+    w = arrays.w
+    Z = arrays.Z
+    mu = np.median(fits, axis=0)
+    mad = 1.4826 * np.median(np.abs(fits - mu), axis=0)
+    size = np.where(mad > 0, mad, np.maximum(np.abs(mu), 1.0) * 1e-2)[V]
+    theta = {
+        "mu": mu,
+        "Delta": np.zeros((layout.P, layout.p)),
+        "L": np.diag(size),
+        "sigma": float(np.sqrt(sigma2)),
+        "alpha": 1.0,
+        "beta": 1.0,
+        "gamma": np.zeros(layout.p),
+        "zeta": np.zeros(layout.n_links),
+    }
+    zero = np.zeros(len(w))
+    total = float(np.sum(w))
+    n_read = float(np.sum(w * arrays.n_read))
+    for _ in range(_SETTLE_ROUNDS):
+        try:
+            with np.errstate(all="ignore"):
+                b, root = modes(
+                    theta, layout, model.path, arrays, zero, zero, model.centre
+                )
+        except np.linalg.LinAlgError:
+            break
+        cov = np.einsum("nij,nkj->nik", root, root)
+        new_mu = np.array(theta["mu"], dtype=float)
+        new_Delta = np.array(theta["Delta"], dtype=float)
+        fitted = np.zeros_like(b)
+        for k, j in enumerate(V):
+            cols = np.flatnonzero(layout.shifts[j])
+            X = np.column_stack([np.ones(len(w)), Z[:, cols]])
+            root_w = np.sqrt(w)
+            coef, *_ = np.linalg.lstsq(
+                X * root_w[:, None], b[:, k] * root_w, rcond=None
+            )
+            new_mu[j] = coef[0]
+            new_Delta[j, cols] = coef[1:]
+            fitted[:, k] = X @ coef
+        resid = b - fitted
+        D = (
+            np.einsum("n,ni,nj->ij", w, resid, resid)
+            + np.einsum("n,nij->ij", w, cov)
+        ) / total
+        params = np.asarray(
+            _path_params(theta, layout, Z, b[:, None, :]), dtype=float
+        )[:, 0, :]
+        P_all = np.broadcast_to(
+            params[:, None, :], arrays.ages.shape + (layout.P,)
+        )
+        with np.errstate(all="ignore"):
+            m = path_model.path(arrays.ages, *np.moveaxis(P_all, -1, 0))
+            J = path_jacobian(path_model, arrays.ages, np.array(P_all))[..., V]
+        r = np.where(arrays.mask, arrays.values - m, 0.0)
+        J = np.where(arrays.mask[..., None], J, 0.0)
+        ss = np.sum(r**2, axis=1) + np.einsum("nri,nij,nrj->n", J, cov, J)
+        new_sigma = float(np.sqrt(np.sum(w * ss) / n_read))
+        scale = np.sqrt(np.maximum(np.diag(D), 1e-300))
+        D = psd_floor(D / np.outer(scale, scale), 1e-2, 1e-2)
+        D = np.where(layout.correlated, D * np.outer(scale, scale), 0.0)
+        if not (np.all(np.isfinite(D)) and np.isfinite(new_sigma)):
+            break
+        old = np.sqrt(np.sum(np.asarray(theta["L"]) ** 2, axis=1))
+        moved = max(
+            float(np.max(np.abs(scale / old - 1.0))),
+            abs(new_sigma / theta["sigma"] - 1.0),
+        )
+        theta.update(
+            mu=new_mu,
+            Delta=new_Delta,
+            L=np.linalg.cholesky(D),
+            sigma=new_sigma,
+        )
+        if moved < _SETTLE_TOL:
+            break
+    return {key: theta[key] for key in ("mu", "Delta", "L", "sigma")}
+
+
 #: The gradient of the plug-in likelihood, in standard errors of each
 #: parameter, below which stage two of the two-stage fit is taken as at its
 #: maximum: a step of at most this many standard errors is left.

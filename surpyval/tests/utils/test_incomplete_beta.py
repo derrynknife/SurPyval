@@ -86,13 +86,13 @@ def test_the_front_factor_series_meets_the_gammas():
     b = np.array([0.5, 3.0, 50.0])
     a = 0.99e-4 * np.minimum(1.0, b)
     np.testing.assert_allclose(
-        ag._log_beta_front(a, b),
+        ag.log_beta_front(a, b),
         ag.log_gamma_ratio(b, a) - ag._lngamma1p(a),
         rtol=1e-9,
     )
-    assert abs(ag._log_beta_front(np.array([1e-5]), np.array([1.0]))) < 1e-20
+    assert abs(ag.log_beta_front(np.array([1e-5]), np.array([1.0]))) < 1e-20
     np.testing.assert_allclose(
-        ag._log_beta_front(np.full(3, 1e-300), b),
+        ag.log_beta_front(np.full(3, 1e-300), b),
         1e-300 * (ag._sc_digamma(b) + ag._EULER),
         rtol=1e-15,
     )

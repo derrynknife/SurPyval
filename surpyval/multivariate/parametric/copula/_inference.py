@@ -280,7 +280,7 @@ def _copula_rows(
     ]
     with onp.errstate(all="ignore"):
         return onp.asarray(
-            layout.copula._pair_loglik(theta, dims[0], dims[1]), dtype=float
+            layout.copula._rows_loglik(theta, dims), dtype=float
         )
 
 

@@ -22,6 +22,8 @@ from scipy.stats import multivariate_normal
 from surpyval.multivariate.parametric.copula.copula import _U_CLIP, Copula
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
+from surpyval.utils.units import takes_unit
+from surpyval.utils.validation import check_option
 
 # The fit's start is kept this far inside (-1, 1): a start of rho = +-1
 # (from a Kendall's tau of +-1) has no tanh-scale value to search from.
@@ -218,7 +220,175 @@ def _warn_if_rho_at_bound(
     return True
 
 
-class GaussianCopula(Copula):
+class _AnyAxes(Copula):
+    """``fit`` and ``from_params`` of an elliptical family, which takes
+    two or more series: two as the bivariate family, more as the family
+    of ``elliptical_nd.py``."""
+
+    @takes_unit
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        t: "npt.ArrayLike | None" = None,
+        margins: Any = None,
+        how: str = "IFM",
+        xl: "npt.ArrayLike | None" = None,
+        xr: "npt.ArrayLike | None" = None,
+        init: "npt.ArrayLike | None" = None,
+        rotation: int = 0,
+        structure: str = "unstructured",
+    ) -> Any:
+        """Fit the copula and its margins to data of two or more series.
+
+        With two series this is the bivariate fit (see
+        :meth:`Copula.fit <surpyval.multivariate.Copula.fit>`, whose
+        arguments these are). With three or more, the copula is that of
+        a multivariate normal (or t) vector with a correlation matrix,
+        and the model returned has a value per series at every point.
+
+        Parameters
+        ----------
+        x, c, n, t, xl, xr
+            Multivariate survival data, or a ``MultivariateSurpyvalData``
+            as ``x``, with ``D >= 2`` axes. Each series of a row has its
+            own censoring code. With more than two series, truncation
+            (``t``) and rows with more than three censored series are
+            refused (their likelihood is not computed), saying what to
+            do.
+        margins : sequence of length D
+            A distribution to fit, or a fitted model, per series.
+        how : {"IFM", "MLE"}
+            The margins first and then the copula (the default), or all
+            the parameters jointly.
+        init : array like, optional
+            Starting values of the copula's parameters.
+        rotation : int, optional
+            Not for these families (they are radially symmetric).
+        structure : {"unstructured", "exchangeable"}, optional
+            The correlation matrix of more than two series: a
+            correlation per pair of series (``rho_i_j``; the default), or
+            one ``rho`` for every pair. With two series the two are the
+            same model.
+
+        Returns
+        -------
+        CopulaModel
+            For more than two series, a ``CopulaModel`` whose points are
+            ``(x_1, ..., x_D)`` rows, with ``correlation`` (the matrix),
+            ``conditional_cdf(x, of, given)`` and matrices of the
+            dependence measures.
+
+        Examples
+        --------
+        Three components whose lives depend on each other:
+
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Gaussian
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
+        >>> truth = Gaussian.from_params([0.5, 0.2, 0.4], margins)
+        >>> X = truth.random(300, random_state=0)
+        >>> model = Gaussian.fit(X, margins=[Weibull, Weibull, Weibull])
+        >>> model.parameter_names
+        ['rho_0_1', 'rho_0_2', 'rho_1_2']
+        >>> model.params.round(2)
+        array([0.52, 0.18, 0.39])
+        >>> model.param_cb("rho_0_1").round(2)
+        array([0.43, 0.59])
+        >>> exchangeable = Gaussian.fit(
+        ...     X, margins=[Weibull] * 3, structure="exchangeable"
+        ... )
+        >>> exchangeable.params.round(2)
+        array([0.36])
+        """
+        from surpyval.multivariate.parametric.data import (
+            MultivariateSurpyvalData,
+        )
+
+        from .elliptical_nd import STRUCTURES, for_axes
+
+        check_option("structure", structure, STRUCTURES)
+        if isinstance(x, MultivariateSurpyvalData):
+            axes = x.D
+        else:
+            axes = MultivariateSurpyvalData._as_2d(x).shape[1]
+        family: Any = self
+        if axes > 2:
+            family = for_axes(self.name, axes, structure)
+        fit = Copula.fit if axes <= 2 else type(family).fit
+        return fit(
+            family,
+            x,
+            c=c,
+            n=n,
+            t=t,
+            margins=margins,
+            how=how,
+            xl=xl,
+            xr=xr,
+            init=init,
+            rotation=rotation,
+        )
+
+    @takes_unit
+    def from_params(
+        self,
+        params: Any,
+        margins: Any,
+        rotation: int = 0,
+        structure: str = "unstructured",
+    ) -> Any:
+        """The model of known parameters and margins, without fitting.
+
+        Parameters
+        ----------
+        params : array like
+            The copula's parameters. For two margins, ``[rho]`` (and
+            ``nu`` for the Student-t). For ``D > 2`` margins, the
+            correlation of each pair of series in the order ``(0, 1),
+            (0, 2), ..., (1, 2), ...`` (one ``rho`` if
+            ``structure="exchangeable"``), then the Student-t's ``nu``;
+            or a ``D`` by ``D`` correlation matrix (``(matrix, nu)`` for
+            the Student-t). Correlations that do not make a
+            positive-definite matrix are refused.
+        margins : sequence of fitted models
+            One per series, each with ``ff`` and ``df``.
+        rotation : int, optional
+            Not for these families.
+        structure : {"unstructured", "exchangeable"}, optional
+            The correlation matrix of more than two series.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import StudentT
+        >>> margins = [
+        ...     Weibull.from_params([10 * (d + 1), 2]) for d in range(3)
+        ... ]
+        >>> model = StudentT.from_params([0.5, 0.2, 0.4, 6.0], margins)
+        >>> model.correlation
+        array([[1. , 0.5, 0.2],
+               [0.5, 1. , 0.4],
+               [0.2, 0.4, 1. ]])
+        >>> model.tail_dependence()[0].round(3)
+        array([[1.   , 0.17 , 0.068],
+               [0.17 , 1.   , 0.127],
+               [0.068, 0.127, 1.   ]])
+        """
+        from .elliptical_nd import STRUCTURES, for_axes
+
+        check_option("structure", structure, STRUCTURES)
+        if isinstance(margins, (list, tuple)) and len(margins) > 2:
+            return for_axes(self.name, len(margins), structure).from_params(
+                params, margins, rotation=rotation
+            )
+        return Copula.from_params(self, params, margins, rotation=rotation)
+
+
+class GaussianCopula(_AnyAxes):
     """Gaussian copula, ``rho in (-1, 1)`` (no tail dependence).
 
     Every function is accurate for any ``|rho| < 1``: the formulas are
@@ -432,7 +602,7 @@ def _log_t_constant(nu: float) -> float:
     return float(onp.log(nu / 2.0) - 2.0 * onp.log(poch(nu / 2.0, 0.5)))
 
 
-class StudentTCopula(Copula):
+class StudentTCopula(_AnyAxes):
     """Student-t copula: correlation ``rho in (-1, 1)`` and degrees of
     freedom ``nu > 0`` (symmetric tail dependence).
 

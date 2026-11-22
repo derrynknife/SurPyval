@@ -102,6 +102,7 @@ _INTEGRATION_WORDS = {
         f"adaptive Gauss-Hermite, pruned grid ({GH_FIT} points a "
         "dimension, without the nodes of negligible weight)"
     ),
+    "laplace": "Laplace's approximation (no grid)",
 }
 
 #: The formula of each built-in path model, by its name, for the
@@ -723,9 +724,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     how: str = "MLE"
     #: How each item's likelihood was integrated over its varying path
     #: parameters, in the fit and in this model's predictions: ``"grid"``
-    #: (adaptive Gauss-Hermite on the full grid of 7 points in each) or
+    #: (adaptive Gauss-Hermite on the full grid of 7 points in each),
     #: ``"pruned"`` (the same grid without the nodes of negligible
-    #: weight: the default with four or five varying parameters).
+    #: weight) or ``"laplace"`` (Laplace's approximation, with no grid:
+    #: the default beyond five varying parameters; its predictions are
+    #: on the grid up to five).
     integration: str = "grid"
     #: Which varying path parameters are correlated between items:
     #: ``"full"`` (every pair), ``"diagonal"`` (none) or a tuple of blocks
@@ -1347,7 +1350,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             return ""
         counts = self.n_events_by_cause or {}
         return "\nFailure modes       : " + ", ".join(
-            "{} ({:g} failures)".format(cause, counts.get(cause, np.nan))
+            f"{cause} ({counts.get(cause, np.nan):g} failures)"
             for cause in self.causes
         )
 
@@ -1540,7 +1543,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, many, times, self._centre
             )
-            nodes = model.prediction_nodes(mode, root)
+            nodes = model.prediction_nodes(mode, root, theta, many, times)
             log_I = log_integrals(
                 theta, model, many, nodes, times, np.zeros(M), readings=True
             )
@@ -1574,17 +1577,24 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, one, t, self._centre
             )
-            nodes = model.prediction_nodes(mode, root)
-            log_g = np.asarray(
-                log_integrand(
-                    theta, model, one, nodes, t, np.zeros(1), readings=True
-                ),
-                dtype=float,
-            )[0]
-            weights = np.exp(log_g - np.max(log_g))
-            weights = weights / weights.sum()
+            nodes = model.prediction_nodes(mode, root, theta, one, t)
+            if isinstance(nodes, tuple):
+                log_g = np.asarray(
+                    log_integrand(
+                        theta, model, one, nodes, t, np.zeros(1), readings=True
+                    ),
+                    dtype=float,
+                )[0]
+                weights = np.exp(log_g - np.max(log_g))
+                weights = weights / weights.sum()
+                points = nodes[0]
+            else:
+                # Laplace: the moments over the normal it stands on
+                from ._laplace import sigma_points
+
+                points, weights = sigma_points(nodes)
             params = np.asarray(
-                _path_params(theta, model.layout, one.Z, nodes[0]),
+                _path_params(theta, model.layout, one.Z, points),
                 dtype=float,
             )
             x = np.asarray(x, dtype=float)
@@ -1677,7 +1687,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         mode, root = continued_modes(
             theta, model.layout, model.path, many, times, self._centre
         )
-        nodes = model.prediction_nodes(mode, root)
+        nodes = model.prediction_nodes(mode, root, theta, many, times)
         zero = np.zeros(M)
 
         def f(params: Any) -> Any:
@@ -1959,7 +1969,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             path = path.base
         key = path_model_key(path)
         # by its class: an unpickled built-in path is a copy of it
-        if type(PATH_MODELS.get(key)) is not type(path):
+        if not isinstance(key, dict) and type(
+            PATH_MODELS.get(key)
+        ) is not type(path):
             raise NotImplementedError(
                 f"The {path.name!r} path model is not a built-in "
                 "one, so it cannot be rebuilt from a name: keep the model "
@@ -2070,7 +2082,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         True
         """
         import surpyval
-        from surpyval.degradation.path_models import PATH_MODELS
+        from surpyval.degradation.path_models import (
+            PATH_MODELS,
+            get_path_model,
+        )
 
         require_model_tag(model_dict, "JointModel", "a joint model")
         if model_dict["distribution"] != "Weibull":
@@ -2079,14 +2094,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 f"{model_dict['distribution']!r}."
             )
         key = model_dict["path_model"]
-        if key not in PATH_MODELS:
+        if not isinstance(key, dict) and key not in PATH_MODELS:
             raise ValueError(
                 f"Unknown path model {key!r}; the built-in ones are "
-                f"{sorted(PATH_MODELS)}."
+                f"{sorted(PATH_MODELS)}, and a spline is saved as its "
+                "SplinePath.to_dict()."
             )
         out = cls()
         out.dist = surpyval.Weibull
-        out.path_model = PATH_MODELS[key]
+        out.path_model = get_path_model(key)
         if model_dict.get("links"):
             from surpyval.degradation.stress import (
                 LinkedPathModel,
@@ -2152,8 +2168,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         integration = model_dict.get("integration") or "grid"
         if integration not in INTEGRATIONS:
             raise ValueError(
-                "A joint model's integration is 'grid' or 'pruned'; the "
-                f"dict names {integration!r}."
+                "A joint model's integration is 'grid', 'pruned' or "
+                f"'laplace'; the dict names {integration!r}."
             )
         out.integration = integration
         # saved before the structure had a choice (or full): every pair

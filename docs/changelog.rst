@@ -18,6 +18,142 @@ v0.29 (unreleased)
   life (median, a B-life or the mean) against stress with its bounds and
   the test levels and data marked.
 
+- **Bayesian regression: priors on coefficients.** The proportional
+  hazards, accelerated failure time and accelerated life fitters have
+  ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``
+  (``sp.WeibullPH.fit_bayes``, ``sp.AFT(dist).fit_bayes``,
+  ``sp.AcceleratedLife(dist, life_model).fit_bayes``): priors on the
+  coefficients (by name, ``coef_0`` or the column's), on the baseline's
+  parameters and on a life model's, with the fitter's own likelihood
+  (any censoring and truncation), sampled by SurPyval's No-U-Turn sampler
+  and checked for convergence. The result, a
+  ``surpyval.bayes.BayesianRegression``, gives the posterior predictive
+  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``qf`` at covariates, the
+  credible intervals ``cri``, ``quantile_cri`` and ``param_cri``,
+  ``compare()``, ``summary()``, and saves (``to_dict``, pickle). A
+  coefficient of ``exp(beta'Z)`` with no prior gets ``Normal(0, 2.5 /
+  sd)``, ``sd`` its covariate's standard deviation, stated in the result.
+  Weights, penalties, time-varying covariates, ``CoxPH`` and the other
+  regression families are refused, saying what to use. Against a closed
+  form (an exponential model with a binary covariate and flat priors) the
+  posterior agrees within Monte Carlo error. See "Regression: a prior on
+  an effect" in :doc:`Bayesian Fitting with SurPyval`.
+
+- **Bayesian fits with more than three free parameters: SurPyval's own
+  sampler.** ``fit_bayes(method="nuts")`` draws the posterior with a
+  No-U-Turn sampler written in SurPyval (multinomial sampling, a diagonal
+  mass matrix, Stan's windowed warm-up; no PyMC or Stan needed), and
+  ``method="auto"`` uses it where a fit has more than three free
+  parameters, which was refused before (an offset with a limited-failure
+  proportion, for example). The grid stays the default up to three, and
+  its results are unchanged. New arguments: ``chains=4``, ``draws=1000``,
+  ``warmup=1000``, ``random_state`` and ``n_jobs`` (seeded draws do not
+  depend on it). Every sampled fit is checked: rank-normalised split
+  R-hat (at most 1.01), bulk and tail effective sample size (at least 100
+  a chain), divergences and tree depth, all in ``model.diagnostics``; a
+  failed check gives one warning with the parameter and the number,
+  ``model.ok`` is False, and ``diagnose()`` lists them
+  (``sampler_convergence``). ``surpyval.bayes.convergence`` has ``rhat``,
+  ``ess_bulk`` and ``ess_tail`` for any draws (they equal ArviZ's to
+  1e-10). Against the closed forms and the grid, the sampled posteriors
+  agree within Monte Carlo error. See "More than three parameters: the
+  sampler" in :doc:`Bayesian Fitting with SurPyval`.
+- **Copulas of more than two lifetimes: Gaussian and Student-t.**
+  ``Gaussian.fit`` and ``StudentT.fit`` take data with any number of axes
+  ``D`` of two or more (they refused three). With more than two the
+  copula has a correlation matrix: ``structure="unstructured"`` (the
+  default; a correlation per pair of series, ``rho_i_j``) or
+  ``"exchangeable"`` (one ``rho``), searched in coordinates that keep the
+  matrix positive definite, with the Student-t's ``nu``. The model is a
+  ``CopulaModel`` whose points are ``(x_1, ..., x_D)`` rows: ``sf``,
+  ``cdf``, ``pdf``, ``random``, ``correlation``, ``conditional_cdf(x, of,
+  given)`` (one series given others), matrices of ``kendall_tau``,
+  ``spearman_rho`` and ``tail_dependence``, ``covariance``,
+  ``standard_errors``, ``param_cb``, ``cb`` on the joint survival and
+  CDF, ``aic``/``bic`` and ``to_dict``. ``from_params`` takes the pairs'
+  correlations or a correlation matrix. Each series of a row keeps its
+  own right, left or interval censoring: the likelihood of a row with one
+  or two censored series is in closed form and with three a deterministic
+  integral accurate to about 1e-9. Refused, saying what to do: rows with
+  four or more censored series, and truncation, for more than two series.
+  With two series nothing changes. See "More than two lifetimes" in
+  :doc:`Multivariate Modelling with SurPyval`.
+
+- **Vine copulas: a bivariate family per pair of series.**
+  ``surpyval.multivariate.Vine`` builds the copula of two or more series
+  from the bivariate copulas, a pair-copula per pair arranged in trees:
+  ``Vine.fit(x, margins=..., structure="d" | "c", families=, order=,
+  truncate=, candidates=)``. By default the order is the path (or the
+  roots) of strongest absolute Kendall's tau and each pair-copula's family
+  is chosen by AIC among the built-in families and rotations, tree by
+  tree; those estimates start a maximum likelihood fit of every parameter
+  (``how="IFM"`` or ``"MLE"``). The model has ``pdf``, ``random`` (the
+  inverse Rosenblatt transform), ``edges`` (each pair-copula's family,
+  parameters and Kendall's tau), ``aic``, standard errors, ``param_cb``,
+  ``to_dict`` and ``fit_from_df``; ``Vine.from_params`` builds one. With
+  two series it is the bivariate copula. Refused, saying what to use:
+  censored and truncated rows (the Gaussian and Student-t copulas take
+  censored rows), the joint ``sf``, ``cdf`` and ``cb`` (estimate them from
+  draws), ``kendall_tau_cb`` and ``spearman_rho_cb`` (a vine's measures
+  are a matrix, one per pair: bound a pair's parameter with
+  ``param_cb``), and conditional distributions other than the last series given
+  the others. See "Vines" in :doc:`Multivariate Modelling with SurPyval`.
+- **A hazard ratio, ``hr``, on every parametric model.**
+  ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of
+  the Weibull at every age: its survival is the model's raised to ``hr``.
+  It applies over the offset, limited failure population and zero
+  inflation (a mass ``f0`` at 0 becomes ``1 - (1 - f0) ** hr``), so the
+  models at ``hr = 1 - b`` and ``hr = b`` together make the model. Every
+  function follows from the cumulative hazard, precise in both tails;
+  ``qf`` and draws go through ``isf``. A Weibull's and an exponential's
+  moments, entropy, mean residual life and restricted mean stay in closed
+  form (the Weibull at scale ``alpha * hr ** (-1 / beta)``, the
+  exponential at rate ``hr * lambda``); other distributions integrate.
+  ``hr`` is known, not a parameter: it is in ``extras`` and
+  ``with_params(..., hr=)``, kept by ``rescale_time``, printed, pickled,
+  and saved as ``"hr"`` under schema 5, which SurPyval 0.28 refuses. With
+  ``hr = 1`` every value and seeded draw is unchanged. Probability models
+  (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+  ``ExactEventTime``) refuse it. ``fit(..., hr=)`` fits data with a known
+  hazard ratio (maximum likelihood; never estimated); its Wald and
+  bootstrap bounds and ``param_cb`` hold ``hr`` fixed, and the
+  likelihood-ratio bounds on a function and the bounds on the mean, mean
+  residual life and restricted mean refuse, saying to use the bootstrap
+  refits. See :doc:`Hazard Ratio`.
+- **Joint models: any number of path parameters varying between items,
+  by Laplace's approximation (``integration="laplace"``).** A grid of 7
+  values of each varying parameter stops at five (16,807 nodes an item);
+  a sixth was refused. The fits now take ``integration="laplace"``:
+  each item's integral from the integrand's height at the item's most
+  likely parameters and its curvature there, ``q^2 + q + 1`` evaluations
+  for ``q`` varying parameters (21 for four, 43 for six) and no grid. It
+  is the default beyond five, where ``"grid"`` and ``"pruned"`` are
+  refused saying so, and an option below; up to five the default is
+  still the full grid, and those fits are unchanged. The fit maximises
+  the approximated likelihood exactly (its gradient follows each item's
+  most likely parameters as they move, and the standard errors come from
+  differences of that gradient), and the model says ``integration ==
+  "laplace"``, prints it, saves and restores it. With no marker effect
+  it reproduces the closed form to 1e-8 an item, in six dimensions too.
+  On the recovery study's pumps (two varying parameters, read monthly)
+  its estimates were within 0.02 standard errors of the full grid's, and
+  on a fleet with four varying parameters within 0.001, in 9 seconds
+  where the full grid took 555; a recovery study of 200 such fleets
+  covered the truth 89% to 98% of the time on the 139 whose fits had
+  standard errors (the other 61 put the six correlations at the edge of
+  a valid correlation matrix). It is weaker where items have few, noisy
+  readings (0.10 to 0.18 standard errors off with at most five readings
+  a pump, 0.23 to 0.41 with at most three): the fit warns, with the
+  count, when more than 15% of the items have three readings or
+  fewer (the share from a study whose rule was fixed before it ran), saying to use a grid or fewer ``varying`` names. It refuses
+  truncated items, saying to use a grid. A Laplace fit predicts on the
+  full grid up to five varying parameters and by Laplace's approximation
+  beyond. Beyond five the fit also starts from the marker's own mixed
+  model, settled first, since each item's own fitted path is too wild to
+  start from; with up to five that start is tried only where the usual
+  one could not be used ("The joint fit could not start"), so no fit
+  that ran before changes. See "Laplace's approximation" in :doc:`Joint
+  Models`.
 - **Joint models: competing failure modes.** ``JointPH`` fits
   (``WeibullJointPH``) take the mode of each failure (a record's
   ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With
@@ -463,6 +599,40 @@ v0.29 (unreleased)
   row into an ordinary SurPyval model (a ``MixtureModel`` for a mixture).
   The new page :doc:`Torch with SurPyval` trains a mixture network and
   scores it.
+
+- **Spline paths: a reading that bends where the data say it bends.**
+  ``surpyval.degradation.SplinePath`` is a new path shape for
+  ``DegradationAnalysis`` and the joint models: a natural cubic spline,
+  ``level + rate t`` plus one bend ``s_k`` after each knot, a straight
+  line outside its boundary knots. ``SplinePath(knots=[...],
+  boundary=(lo, hi))`` takes the knots; ``SplinePath.natural(df=3)`` has
+  them placed by the fit, at quantiles of the reading ages (as R's
+  ``ns(t, 3)``), and the fitted model's ``path_model`` records them. In
+  ``JointPH(Weibull, SplinePath.natural(df=3))`` the fleet's mean curve
+  is the spline and each item has a level and a rate of its own (the
+  spline's default ``varying``; the bends are common). The value, slope
+  and cumulative links all work (the slope and the area in closed form),
+  and the hazard's integrals over age are taken piece by piece between
+  the knots. With no interior knots the path is ``LinearPath`` and the
+  fits are the same to the last digit. A spline with more parameters than
+  the items' median number of readings is refused, with the counts and
+  the number of knots the readings support. Saved models keep the knots
+  (``"path_model"`` is then a dictionary, stamped schema 5, which older
+  releases refuse rather than misread). ``path="best"`` does not try a
+  spline. See "A reading that bends" in :doc:`Joint Models` and "A path
+  with no formula" in :doc:`Degradation Modelling with SurPyval`.
+
+- **Joint models: spline bends that vary between items.** A spline
+  path's bends may be named in ``varying``
+  (``JointPH(Weibull, SplinePath.natural(df=3), varying=("level", "rate",
+  "s1", "s2"))``), so that one item's knee can be sharper or earlier than
+  another's. The default ``random_effects`` is then a block of ``level``
+  and ``rate`` and each bend on its own. A varying bend is refused where
+  the items' median number of readings after its knot is below the
+  number of varying parameters, with the counts, and a bend whose
+  estimated spread is at 0 is warned of, naming it and saying to leave it
+  out of ``varying``. See "Items that bend differently" in
+  :doc:`Joint Models`.
 
 - **Joint models: a lag.** ``JointPH(..., lag=200.0)`` (and ``JointAFT``)
   makes the hazard at age ``t`` follow the marker's path at
@@ -1268,6 +1438,13 @@ v0.29 (unreleased)
   v0.30.
 
 **Fixed.**
+
+- **A joint model's ``cb`` failed where a path parameter was common to
+  all items** (``JointPH(Weibull, QuadraticPath, varying=("a", "b"))``,
+  say): the bound differentiates the prediction through the common
+  parameters' means in forward mode, for which the path had no rule, and
+  raised ``NotImplementedError``. It now gives the delta-method bound, as
+  for a path whose parameters all vary.
 
 - **The distribution functions keep their digits further into the
   tails.** A Rayleigh's ``ff`` and ``Hf`` with a small ``sigma`` lost 1e-12

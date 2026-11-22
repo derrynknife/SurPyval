@@ -298,6 +298,108 @@ unreliable and ``loo()`` is the better estimate. The standard errors are
 :math:`\sqrt{N}` times the standard deviation of the units' values (with
 divisor :math:`N - 1`, as R's ``loo``).
 
+More than three parameters: the sampler
+---------------------------------------
+
+The grid is exact and needs no seed, but its points multiply with every
+parameter, so it stops at three free ones. A model with more (an offset
+and a limited-failure proportion on a Weibull, say) is fitted by
+SurPyval's own sampler, the No-U-Turn sampler, with no other package
+needed. ``method="auto"`` chooses it above three free parameters, and
+``method="nuts"`` asks for it with fewer:
+
+.. code-block:: python
+
+    model = sp.Weibull.fit_bayes(
+        x, c, offset=True, lfp=True,
+        priors={
+            "gamma": sp.prior.around(500, between=(100, 900)),
+            "beta": sp.prior.around(2, between=(1.5, 3)),
+            "lfp_p": sp.prior.between(0.5, 0.99),
+        },
+        random_state=1,
+    )
+    model.method                    # 'nuts'
+    model.ok                        # the convergence checks passed
+    model.diagnostics["rhat"]       # by parameter; also ess_bulk, ess_tail
+
+The result is the same kind of model, with the same functions and
+credible intervals. Three things differ from the grid:
+
+- **It is random.** The posterior is a set of draws (four chains of 1,000
+  by default, after 1,000 warm-up iterations each: ``chains``, ``draws``,
+  ``warmup``), so two runs differ in the third digit or so. Give
+  ``random_state`` for a result that can be reproduced; the draws do not
+  depend on ``n_jobs``, the number of chains run at once.
+- **It is checked, not proved.** After sampling, each parameter's draws
+  are tested: the chains must agree (rank-normalised split R-hat at most
+  1.01) and hold enough independent information (bulk and tail effective
+  sample size of at least 100 a chain), and no iteration may diverge or
+  reach the largest tree depth. A failed check gives one warning naming
+  the parameter and the number, ``model.ok`` is False, and the summary
+  says ``NOT CONVERGED``. The usual cures, in order: more ``warmup`` and
+  ``draws``; a stronger prior on a parameter the data say little about;
+  fixing a parameter the data cannot tell apart from another. Do not
+  use a fit that fails. ``model.diagnose()`` lists the checks.
+- **A flat prior needs more care.** The grid refuses a posterior that
+  does not fall away from its peak (one with no finite mass, which a flat
+  prior can leave where the data do not bound a parameter). The sampler
+  cannot see that directly: such a posterior shows up as chains that
+  disagree or diverge. With more than three free parameters, give a prior
+  to every parameter the data do not clearly determine.
+
+Use the grid where it applies (it is the default there): it is exact,
+has no seed, and gives the evidence (``log_evidence``), which a sampled
+fit does not. A sampled fit compares by ``loo()`` and ``waic()``.
+
+Regression: a prior on an effect
+--------------------------------
+
+Small accelerated tests are where a prior on an effect matters most. A
+power-law life model says the life falls as the voltage to a power
+``n``; past tests of the same insulation put ``n`` near -2, give or take
+0.5. Fifteen units at three voltages, and the life at the use voltage of
+10 with its credible interval:
+
+.. code-block:: python
+
+    from surpyval.life_models import Power
+
+    fitter = sp.AcceleratedLife(sp.Weibull, Power)
+    model = fitter.fit_bayes(
+        x, Z=voltage,
+        priors={"n": sp.Normal.from_params([-2.0, 0.5]),
+                "beta": sp.prior.around(2, between=(1.2, 4))},
+        random_state=1,
+    )
+    model.param_cri("n")                 # the exponent's credible interval
+    model.sf(100.0, [[10.0]])            # reliability at use, predictive
+    model.quantile_cri(0.1, [[10.0]])    # the B10 at use, with its interval
+
+The proportional hazards and accelerated failure time fitters take the
+same: ``sp.WeibullPH.fit_bayes(x, Z, c, priors={"coef_0": ...})``, a
+coefficient by its name (``coef_0``, or its column's with
+``fit_bayes_from_df``). The result is a
+:class:`~surpyval.bayes.BayesianRegression`: ``sf``, ``ff``, ``df``,
+``hf``, ``Hf`` and ``qf`` at covariates are the posterior predictive
+(the uncertainty in the parameters averaged in), ``cri(x, Z, on=...)``,
+``quantile_cri`` and ``param_cri`` the credible intervals, and
+``compare()`` sets each prior, the maximum-likelihood estimate and the
+posterior side by side. It is fitted by the sampler above and checked
+the same way.
+
+A coefficient of ``exp(beta'Z)`` that is given no prior gets
+``Normal(0, 2.5 / sd)``, ``sd`` its covariate's standard deviation in the
+data: a change of 2.5 in the log hazard (or the log life) for one
+standard deviation of the covariate is one prior standard deviation,
+which is weak, and the same whatever the covariate's unit. The summary
+and ``model.default_priors`` say which priors were chosen this way. Any
+other parameter with no prior is flat on its unconstrained scale, as for
+a distribution, and refused where the data do not determine it. Not
+covered, and refused with what to use: weights, penalties (a prior on a
+coefficient is the Bayesian penalty), time-varying covariates, the
+semi-parametric Cox model and the other regression families.
+
 Priors: the helpers, and their dangers
 --------------------------------------
 
@@ -425,6 +527,22 @@ value's share, rescaled to (0, 1), is the probability at which that
 value's own quantile function gives the life. The draws follow the
 distribution that ``sf``, ``ff`` and ``qf`` describe, and the same seed
 gives the same lives.
+
+**The sampler.** ``method="nuts"`` draws from the same posterior on the
+unconstrained scale with the No-U-Turn sampler in its multinomial form
+(Hoffman and Gelman 2014; Betancourt 2017): each iteration follows the
+posterior's gradient along a path that doubles in length until it turns
+back, and takes its next point from the path with probability
+proportional to the density. Warm-up adapts the step size (dual averaging
+to a mean acceptance of 0.8) and a diagonal mass matrix (in windows that
+double in length, as Stan does), and is thrown away. Each chain starts
+near the posterior's peak, at a point scattered within two approximate
+standard deviations of it. The convergence statistics are those of
+Vehtari et al. (2021), on each parameter's own scale: split R-hat of the
+rank-normalised draws (the larger of the draws' and the folded draws'),
+and the bulk and tail effective sample sizes from the chains'
+autocorrelations. They are in ``surpyval.bayes.convergence`` (``rhat``,
+``ess_bulk``, ``ess_tail``) for draws from anywhere.
 
 The posterior itself is ``model.posterior``: ``draws(k, random_state)``,
 ``to_dataframe()``, ``density(points)`` (exact for the grid), and

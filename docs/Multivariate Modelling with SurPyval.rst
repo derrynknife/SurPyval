@@ -151,10 +151,12 @@ are ``N`` by ``D``, ``t`` is ``N`` by ``D`` by 2 and ``n`` is one count per
 row. Data with one value per row is a ``SurpyvalData``, and is refused here.
 
 The data does not say what its columns are; the **model** does. A copula
-reads them as two correlated series (the two bearings of a shaft). Each
+reads them as correlated series (the two bearings of a shaft). Each
 fitter says how many axes it takes in ``n_axes`` and refuses data with any
-other number, so a copula refuses three series plainly, rather than fit two
-of them.
+other number: the Clayton, Frank, Gumbel, Joe and AMH copulas take two
+series and refuse three plainly, rather than fit two of them. The Gaussian
+and Student-t copulas take two or more (see "More than two lifetimes"
+below).
 
 One life read on two clocks is not multivariate data. A part that wears
 on a main clock (hours) and a subordinate one (starts, landings) has one
@@ -506,6 +508,172 @@ behind the Clayton copula's AIC of 34160 (the AMH by 490, the Joe by 1930).
 
     assert amh.params[0] == 1.0, amh.params
     assert min(joe.aic(), amh.aic()) > fits["Clayton"].aic() + 400
+
+More than two lifetimes
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A system of three or more components whose lives depend on each other
+needs a copula of that many series. ``Gaussian.fit`` and ``StudentT.fit``
+take data with any number of axes ``D`` of two or more. With more than two,
+the copula is that of a multivariate normal (or t) vector with a
+**correlation matrix**: one correlation per pair of series, named
+``rho_i_j`` for series ``i < j``.
+
+.. jupyter-execute::
+
+    pump = surv.Weibull.from_params([900.0, 1.8])
+    motor = surv.Weibull.from_params([1500.0, 2.5])
+    seal = surv.LogNormal.from_params([6.5, 0.6])
+    truth3 = Gaussian.from_params([0.6, 0.3, 0.5], margins=[pump, motor, seal])
+    lives = truth3.random(400, random_state=7)
+
+    # The test ends at 1200 hours: whatever still runs is right censored.
+    c3 = (lives > 1200.0).astype(int)
+    x3 = np.minimum(lives, 1200.0)
+    three = [surv.Weibull, surv.Weibull, surv.LogNormal]
+    fit3 = Gaussian.fit(x3, c=c3, margins=three)
+    print(fit3.parameter_names)
+    print(np.round(fit3.correlation, 3))
+    print("standard errors:", np.round(fit3.standard_errors(), 3))
+    print("95% bound on rho_0_1:", np.round(fit3.param_cb("rho_0_1"), 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fit3.parameter_names == ["rho_0_1", "rho_0_2", "rho_1_2"]
+    assert np.all(np.abs(fit3.params - [0.6, 0.3, 0.5]) < 3 * fit3.standard_errors())
+    assert int((c3.sum(axis=1) == 3).sum()) == 15
+
+Each series of a row has its own censoring code, as for two series: here 15
+units outlasted the test in all three components, and others in one or two.
+The model's points have a value per series. The chance that all three
+components survive a 500 hour mission, with its confidence bound, against
+what independent components would give:
+
+.. jupyter-execute::
+
+    mission = [500.0, 500.0, 500.0]
+    print("all three survive: %.4f" % fit3.sf(mission))
+    print("95%% bound: %s" % np.round(fit3.cb(mission), 4))
+    print("if independent: %.4f" % np.prod([m.sf(500.0) for m in fit3.margins]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(float(fit3.sf(mission)) - 0.4866) < 5e-4
+    assert abs(np.prod([m.sf(500.0) for m in fit3.margins]) - 0.4129) < 5e-4
+
+``conditional_cdf(x, of, given)`` is the distribution of one series given
+the values of others (all the others, unless ``given`` names some): the
+chance that the pump has failed by 400 hours when the motor and the seal
+both failed at 800, and when only the motor is known to have:
+
+.. jupyter-execute::
+
+    print("%.4f" % fit3.conditional_cdf([400.0, 800.0, 800.0], of=0))
+    print("%.4f" % fit3.conditional_cdf([400.0, 800.0, 800.0], of=0, given=[1]))
+
+``kendall_tau()``, ``spearman_rho()`` and ``tail_dependence()`` are matrices
+with an entry per pair. ``structure="exchangeable"`` fits one ``rho`` shared
+by every pair (identical components in one environment), which the AIC
+compares with the unstructured matrix:
+
+.. jupyter-execute::
+
+    same = Gaussian.fit(x3, c=c3, margins=three, structure="exchangeable")
+    print("rho = %.3f; AIC %.1f against %.1f" % (
+        same.params[0], same.aic(), fit3.aic()))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert same.aic() > fit3.aic() + 10
+
+What a fit of more than two series takes:
+
+- **Censoring.** Right, left and interval censoring per series, in rows
+  with up to three censored series. A row's likelihood is the density of its
+  observed values times the probability, given them, that the censored ones
+  lie in their ranges: a closed form for one or two censored series, and a
+  deterministic numerical integral (accurate to about :math:`10^{-9}`) for
+  three. Rows with four or more censored series are refused, with their
+  count: that integral is not computed accurately enough to fit with.
+- **Truncation** is refused for more than two series (fit the series in
+  pairs).
+- **Bounds.** Standard errors, ``param_cb`` (Wald, on Fisher's z scale for a
+  correlation) and ``cb`` on the joint survival and CDF, as for two series.
+- **Joint probabilities** of four to eight series (seven for the Student-t)
+  are integrated on a fixed lattice, the same on every call, to about
+  :math:`10^{-4}`.
+
+The other families (Clayton, Frank, Gumbel, Joe, AMH) take two series.
+
+Vines: a family per pair
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Gaussian or Student-t copula gives every pair of series the same kind of
+dependence. A **vine** (a pair-copula construction) builds the copula of
+``D`` series from ``D (D - 1) / 2`` bivariate copulas arranged in trees:
+the first tree joins pairs of series, and each later tree joins two series
+given the ones between them. So one pair can fail together early (a
+Clayton copula's lower tail) and another late (a Gumbel's upper tail).
+``Vine.fit`` chooses the order of the series (by default the path with the
+strongest Kendall's taus between neighbours, ``structure="d"``; or a C-vine
+of root series, ``structure="c"``) and each pair-copula's family by AIC
+among the built-in families and rotations, then fits all the parameters by
+maximum likelihood:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Clayton, Frank, Gumbel, Vine
+
+    drawn = Vine.from_params(
+        [3.0, 2.0, 2.0],
+        [pump, motor, seal],
+        families=[[Clayton, Gumbel], [Frank]],
+    )
+    complete = drawn.random(1000, random_state=11)
+    vine = Vine.fit(complete, margins=three)
+    print(vine.copula)
+    for edge in vine.edges:
+        print(edge["pair"], "given", edge["given"], edge["family"],
+              edge["rotation"], np.round(edge["params"], 2))
+    gauss = Gaussian.fit(complete, margins=three)
+    print("AIC: vine %.1f, Gaussian %.1f" % (vine.aic(), gauss.aic()))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert vine.copula.order in ([0, 1, 2], [2, 1, 0])
+    assert vine.edges[1]["family"] == "Gumbel"
+    assert vine.aic() < gauss.aic() - 100
+
+The first pair's Clayton draws are best fitted by the survival (180 degree)
+Joe copula, which has the same lower-tail dependence; ``families=`` fixes
+the pair-copulas instead (one family for every pair, or a list per tree),
+``candidates=`` narrows the choice, and ``truncate=k`` keeps the first
+``k`` trees and makes the rest independence copulas.
+
+A vine's density, draws (``random``), ``aic``, standard errors and
+``param_cb`` are as for any copula model. What it does not have:
+
+- **Censoring and truncation.** A vine is fitted to fully observed rows: a
+  censored row's likelihood is an integral of the vine's density, which is
+  not computed. Censored rows are refused with their count; fit a Gaussian
+  or Student-t copula to them.
+- **The joint sf and CDF**, and so ``cb``: the vine has them only as
+  integrals of its density. They refuse, saying to estimate them from
+  draws (the proportion of ``model.random(n)`` in the region).
+- **Conditional distributions** other than that of the last series of the
+  order given all the others (``conditional_cdf``).
+- **The dependence matrices** (``kendall_tau()`` and the others) have the
+  pairs joined in the first tree; the other pairs are ``nan``, their
+  dependence spread over several pair-copulas (``edges`` gives each
+  pair-copula's own Kendall's tau).
 
 Rotated copulas
 ~~~~~~~~~~~~~~~
