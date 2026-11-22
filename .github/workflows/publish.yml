@@ -15,10 +15,11 @@ name: Publish to PyPI
 #    this workflow starts no second run: GitHub starts no workflow for events
 #    made with a workflow's own token, so nothing is published twice.
 #
-# Either way, publishing runs no tests. The one automated test is the full
-# run on the release pull request into ``main`` (actions.yml); publishing
-# accepts that run and checks it: the commit must be the merge of a pull
-# request into ``main`` whose run passed, every job of it, or nothing is
+# Either way, publishing runs no tests. The one automated test is the run on
+# the release pull request into ``main`` (actions.yml); publishing checks it:
+# the commit must be the merge of a pull request into ``main`` every job of
+# whose run passed on the code released -- at its head, or at an earlier
+# head whose tree differs from it only in .github/ -- or nothing is
 # published.
 #
 # Authentication uses PyPI Trusted Publishing (OIDC) -- no API token is stored
@@ -63,6 +64,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # (the earlier heads of the release pull request, to compare)
+          fetch-depth: 0
 
       # A run by hand: it releases the head of main, as a version that
       # has neither a tag nor a PyPI release yet.
@@ -90,11 +94,16 @@ jobs:
             exit 1
           fi
 
-      # The commit is the merge of the release pull request; its head
-      # commit carries the full run's checks. Each job's latest attempt
-      # must have succeeded -- a skipped job is not a pass -- and the run
-      # must include the test suite.
-      - name: Check the release pull request's full run passed
+      # The commit is the merge of the release pull request. Every job of
+      # the release run must have passed on the code being released: for
+      # each job of the latest run at the pull request's head, its most
+      # recent result (a success or a failure; a cancelled or skipped
+      # attempt is no result) on the pull request, from a run at the head
+      # or at an earlier head whose tree is identical to the head's
+      # outside .github/ (CI configuration: workflows and the calibration
+      # grouping), must be a success. A job new or renamed at the head can
+      # only have passed at the head. Each job's evidence is logged.
+      - name: Check the release pull request's jobs passed on this code
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -112,29 +121,59 @@ jobs:
             echo "$GITHUB_SHA is not the merge of a pull request into main" >&2
             exit 1
           fi
-          HEAD=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" \
+            --jq '[.head.sha, .head.ref, .created_at] | @tsv' > pr.tsv
+          read -r HEAD REF CREATED < pr.tsv
+          # The release pull request's runs of actions.yml since it opened
           gh api --paginate \
-            "repos/$GITHUB_REPOSITORY/commits/$HEAD/check-runs?per_page=100" \
-            --jq '.check_runs[] | select(.app.slug == "github-actions")
-                  | [.name, .id, .status, (.conclusion // "")] | @tsv' \
-            > runs.tsv
-          python - "$PR" <<'PY'
+            "repos/$GITHUB_REPOSITORY/actions/workflows/actions.yml/runs?event=pull_request&branch=$REF&per_page=100" \
+            --jq ".workflow_runs[] | select(.created_at >= \"$CREATED\")
+                  | [.id, .head_sha] | @tsv" > runs.tsv
+          : > jobs.tsv
+          while read -r RUN SHA; do
+            git cat-file -e "$SHA^{commit}" 2>/dev/null || continue
+            if [ "$SHA" = "$HEAD" ]; then
+              same=head
+            elif git diff --quiet "$SHA" "$HEAD" -- . ':(exclude).github'; then
+              same=same
+            else
+              continue
+            fi
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/jobs?filter=all&per_page=100" \
+              --jq ".jobs[] | [.name, .status, (.conclusion // \"\"),
+                     (.completed_at // \"\"), \"$RUN\", (.run_attempt|tostring),
+                     \"$SHA\", \"$same\"] | @tsv" >> jobs.tsv
+          done < runs.tsv
+          gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/actions.yml/runs?event=pull_request&head_sha=$HEAD&per_page=100" \
+            --jq '.workflow_runs[] | [.id, .created_at] | @tsv' \
+            | sort -k2 | tail -1 | cut -f1 > latest_run.txt
+          python - "$PR" "$(cat latest_run.txt)" <<'PY'
           import sys
 
-          latest = {}
-          for line in open("runs.tsv"):
-              name, run_id, status, conclusion = line.rstrip("\n").split("\t")
-              if name not in latest or int(run_id) > latest[name][0]:
-                  latest[name] = (int(run_id), status, conclusion)
-          bad = {n: (s, c) for n, (_, s, c) in latest.items()
-                 if not (s == "completed" and c == "success")}
-          suite = [n for n in latest if n.startswith("surpyval_ci")]
-          pr = sys.argv[1]
-          if not suite:
+          pr, latest_run = sys.argv[1], sys.argv[2]
+          rows = [line.rstrip("\n").split("\t") for line in open("jobs.tsv")]
+          required = sorted({r[0] for r in rows if r[4] == latest_run})
+          if not required:
+              sys.exit(f"pull request #{pr} has no run at its head")
+          if not any(n.startswith("surpyval_ci") for n in required):
               sys.exit(f"pull request #{pr} has no test-suite run")
+          bad = []
+          for name in required:
+              results = [r for r in rows if r[0] == name
+                         and r[1] == "completed" and r[2] in ("success", "failure")]
+              if not results:
+                  bad.append(f"{name}: no result on this code")
+                  continue
+              last = max(results, key=lambda r: r[3])
+              where = "the head" if last[7] == "head" else f"{last[6][:8]} (same code)"
+              print(f"{last[2]:8} {name} -- run {last[4]} attempt {last[5]} at {where}")
+              if last[2] != "success":
+                  bad.append(f"{name}: {last[2]}")
           if bad:
-              sys.exit(f"pull request #{pr}'s full run did not pass: {bad}")
-          print(f"pull request #{pr}: {len(latest)} jobs passed")
+              sys.exit(f"pull request #{pr}: not every job passed on this code: {bad}")
+          print(f"pull request #{pr}: {len(required)} jobs passed on this code")
           PY
 
       - name: Set-up Python

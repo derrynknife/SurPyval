@@ -508,15 +508,16 @@ jobs:
               surpyval/tests/calibration/test_link_selection_joint.py
           # Two of these studies (the censored Gaussian of three series,
           # and the Cox NPMLE with interval censoring and delayed entry)
-          # ran past the 45-minute per-test limit on the 0.29 release run.
+          # lost their workers on the 0.29 release run (four at once ran
+          # short of memory, it seems): each runs on fewer.
           - group: copula-nd
-            workers: auto
+            workers: '2'
             test-timeout: 5400
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_copula_nd.py
           - group: cox-npmle
-            workers: auto
+            workers: '1'
             test-timeout: 5400
             job-timeout: 120
             args: >-
