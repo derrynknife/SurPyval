@@ -78,6 +78,12 @@ class LifeModel(FitterRepr, ABC):
     #: each as its log, and the fit searches it on the log scale over its
     #: whole range (#634).
     log_scale_parameters: "tuple[str, ...]" = ()
+    #: For a thermally activated model, the parameter that is the
+    #: activation energy over Boltzmann's constant, ``E_a / k_B`` in
+    #: kelvin, and its sign (``-1`` where the parameter is ``-E_a / k_B``,
+    #: as in the models written for the rate); ``None`` for the others.
+    #: ``ParametricRegressionModel.activation_energy`` reads it.
+    activation_parameter: "tuple[str, float] | None" = None
 
     def __init__(
         self,

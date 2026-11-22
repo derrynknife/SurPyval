@@ -2986,6 +2986,24 @@ estimates the activation energy directly:
     _lo, _hi = model_arr.param_cb('a') * k
     assert _lo < 0.7 < _hi
 
+``activation_energy()`` does the conversion, with Boltzmann's constant
+exact in the SI (:math:`8.617333262 \times 10^{-5}` eV/K), and gives the
+interval of ``param_cb('a')`` by any of its methods; the printed model
+reports it too:
+
+.. jupyter-execute::
+
+    energy = model_arr.activation_energy()
+    print('Ea = %.3f eV, 95%% interval %.3f to %.3f eV'
+          % (energy['activation_energy'], energy['lower'], energy['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert energy['lower'] < 0.7 < energy['upper']
+    assert 'Activation energy' in repr(model_arr)
+
 .. jupyter-execute::
 
     # Power law — a common choice for voltage or load acceleration
@@ -3059,6 +3077,39 @@ decision.
     assert len(x_al) == 60 and x_al.max() <= 6000
     assert np.all((band[:, 0] <= _true_sf + 1e-9)
                   & (_true_sf <= band[:, 1] + 1e-9))
+
+The mean life (MTTF) at the use stress has its bounds too, ``mean_cb``, by
+the delta method on the log of the mean (or ``method="bootstrap"``); the
+true MTTF, about 70,800 hours, is inside them. ``common_shape_test()``
+checks the assumption that the shape is the same at every stress: each
+level is fitted with its own shape, and all of them with one, and the
+likelihood ratio is :math:`\chi^2` with two degrees of freedom for three
+levels; here it finds no evidence against a common shape (p about 0.18).
+``plot_life_stress`` draws a life (the median by default, a B-life with
+``p=``, or the mean with ``p=None``) against stress with its bounds, the
+test stresses marked with their failures and censored units:
+
+.. jupyter-execute::
+
+    from scipy.special import gamma
+
+    print('MTTF at 55°C : %.0f h' % model_arr.mean(use),
+          model_arr.mean_cb(use).round(0))
+    shape_test = model_arr.common_shape_test()
+    print('common shape : statistic %.2f on %d df, p = %.2f'
+          % (shape_test['statistic'], shape_test['df'],
+             shape_test['p_value']))
+    model_arr.plot_life_stress(p=0.1, stresses=[use])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _mttf = 1.4e-6 * np.exp(Ea / (k * use)) * gamma(1 + 1 / 2.5)
+    assert round(_mttf, -2) == 70800, _mttf
+    _lo, _hi = model_arr.mean_cb(use)
+    assert _lo < _mttf < _hi
+    assert shape_test['df'] == 2 and round(shape_test['p_value'], 2) == 0.18
 
 The band is the Wald (delta-method) band, which assumes the reliability is
 near linear in the parameters over their uncertainty, an assumption that

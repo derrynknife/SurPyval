@@ -85,6 +85,11 @@ NOT_SWEPT = {
     "its closed form and the seeded bootstrap in "
     "recurrent/test_release_time.py, and coverage in calibration/"
     "test_coverage_growth_answers.py",
+    "activation_energy": "the life model's parameter's param_cb (swept) "
+    "scaled by Boltzmann's constant, refused for a life model that is not "
+    "thermally activated; checked in regression/test_accelerated_life.py",
+    "plot_life_stress": "draws the bounds of the life at each stress, "
+    "mean_cb and quantile_cb's (swept)",
     "concordance": "a validation metric of the model's risk scores on "
     "data, with its own standard error and interval, not a bound on a "
     "function of the model; checked against R's survival and lifelines "
@@ -403,7 +408,8 @@ def _estimate(case, spec, fname, event):
             k = list(model.distribution.parameter_names).index(name)
             out.append(model.parameters_at(row)[0, k])
         else:
-            out.append(model.mean())
+            # (a regression's mean_cb is at the covariates of its query)
+            out.append(model.mean(*args))
     return np.asarray(out, float)
 
 
