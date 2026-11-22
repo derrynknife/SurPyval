@@ -63,7 +63,7 @@ def test_2d_query_keeps_its_shape(case):
     for fname, event in calls(case):
         x = query(case, fname)[:4]
         if case.interface == "bivariate" and fname != "qf":
-            grid, shape = x.reshape(2, 2, 2), (2, 2)
+            grid, shape = x.reshape(2, 2, x.shape[-1]), (2, 2)
         else:
             grid = x.reshape(2, -1)
             shape = grid.shape
@@ -87,7 +87,7 @@ def test_empty_query(case):
             got = call_native(case, model, fname, x, Z, event)
         else:
             if case.interface == "bivariate" and fname != "qf":
-                x = np.empty((0, 2))
+                x = np.empty((0, case.x.shape[1]))
             got = call_native(case, model, fname, x, event=event)
         assert np.shape(got) == (0,), (fname, np.shape(got))
 

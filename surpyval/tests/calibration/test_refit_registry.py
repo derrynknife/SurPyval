@@ -1080,6 +1080,15 @@ def _copula_grid(case, truth, data):
     return np.array([[a, b] for a in q[:, 0] for b in q[:, 1]])
 
 
+def _copula_grid_nd(case, truth, data):
+    # Triples of the margins' quartiles and median (a copula of three
+    # series).
+    q = np.quantile(data["x"], [0.25, 0.5, 0.75], axis=0)
+    return np.array(
+        [[a, b, c] for a in q[:, 0] for b in q[:, 1] for c in q[:, 2]]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Curves and grids by interface
 # ---------------------------------------------------------------------------
@@ -1577,6 +1586,18 @@ PLANS["StudentTCopula"] = Plan(
     params=_copula_params_except("nu"),
     grid=_copula_grid,
     note=_COPULA_EDGE.format("nu", "1.3e14", "the Gaussian limit (nu -> inf)"),
+)
+for _name in ("GaussianCopula[D=3]", "GaussianCopula[D=3,exchangeable]"):
+    PLANS[_name] = Plan(
+        _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
+    )
+PLANS["StudentTCopula[D=3]"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params_except("nu"),
+    grid=_copula_grid_nd,
+    note=_COPULA_EDGE.format("nu", "6.5e14", "the Gaussian limit (nu -> inf)"),
 )
 
 

@@ -51,6 +51,7 @@ from surpyval.tests.conformance.registry_families import (
 from surpyval.tests.conformance.registry_fixtures import (
     JOINT_ITEM,
     X_COP,
+    X_COP3,
     X_CR,
     X_DESTR,
     X_JF,
@@ -71,6 +72,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
+    copula3_data,
     copula_data,
     cr_data,
     cure_data,
@@ -2107,6 +2109,43 @@ def _copulas():
     return out
 
 
+# Copulas of more than two series: (case name, family, structure)
+_COPULAS_ND = (
+    ("GaussianCopula[D=3]", "Gaussian", "unstructured"),
+    ("GaussianCopula[D=3,exchangeable]", "Gaussian", "exchangeable"),
+    ("StudentTCopula[D=3]", "StudentT", "unstructured"),
+)
+
+
+def _copulas_nd():
+    out = []
+    for case_name, name, structure in _COPULAS_ND:
+        fitter = getattr(mv, name)
+        options = {"structure": structure}
+
+        def from_params(d, f=fitter, o=options):
+            m = f.fit(**d, margins=[sp.Weibull] * 3, **o)
+            return f.from_params(m.params, margins=m.margins, **o)
+
+        out.append(
+            Case(
+                name=case_name,
+                fitters=(f"surpyval.multivariate.{name}",),
+                model_class="surpyval.multivariate.CopulaModel",
+                interface=BIVARIATE,
+                data=copula3_data,
+                fit=_fit(fitter, margins=[sp.Weibull] * 3, **options),
+                functions=("sf", "cdf", "pdf"),
+                x=X_COP3,
+                rows=("x", "n"),
+                paths={"from_params": from_params},
+                draw=lambda m, s: m.random(15, random_state=s),
+                explicit_seed=True,
+            )
+        )
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Joint models of a marker and a lifetime (#891)
 # ---------------------------------------------------------------------------
@@ -2856,6 +2895,7 @@ CASES: list[Case] = (
     + _recurrent()
     + _degradation()
     + _copulas()
+    + _copulas_nd()
     + _joint()
     + _spline_regression()
     + _distributional()
@@ -3029,6 +3069,10 @@ def _df_paths():
     for name in _COPULA_FAMILIES:
         paths[f"{name}Copula"] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
+        )
+    for case_name, name, structure in _COPULAS_ND:
+        paths[case_name] = _copula_df(
+            getattr(mv, name), margins=[sp.Weibull] * 3, structure=structure
         )
     for case_name, name, rotation in _ROTATED_COPULAS:
         paths[case_name] = _copula_df(
