@@ -493,8 +493,11 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_joint_weight.py
+          # 31 minutes on the 0.26 release run; the 0.29 release run
+          # stopped it at 60, with the studies the 0.29 models brought.
           - group: rest
             workers: auto
+            job-timeout: 120
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
               --ignore=surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
