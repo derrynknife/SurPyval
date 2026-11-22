@@ -843,7 +843,7 @@ class BayesianRegression(SerialisableMixin):
         return out, rows
 
     def _n_covariates(self) -> int:
-        return int(np.shape(self.data.Z)[1])
+        return int(np.asarray(self.data.Z).shape[1])
 
     # ------------------------------------------------------------------
     # Credible intervals

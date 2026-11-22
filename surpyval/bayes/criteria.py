@@ -187,8 +187,6 @@ class PredictiveCriterion:
     p : float
         The effective number of parameters: ``p_waic``, or ``p_loo``
         (``lppd - elpd``).
-    ic : float
-        ``-2 * elpd``, on the scale of AIC (lower is better).
     lppd : float
         The log pointwise predictive density of the data themselves.
     pointwise : numpy.ndarray
@@ -267,7 +265,7 @@ class PredictiveCriterion:
 
     @property
     def ic(self) -> float:
-        """``-2 * elpd``, on the scale of AIC."""
+        """``-2 * elpd``, on the scale of AIC (lower is better)."""
         return -2.0 * self.elpd
 
     @property
