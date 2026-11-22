@@ -512,6 +512,59 @@ def joint_data():
     }
 
 
+def joint_causes_data():
+    """80 items of a joint model with two failure modes: the marker and
+    covariate of :func:`joint_data`'s items, each failing by the first of
+    a wear failure whose Weibull PH hazard follows the line's current
+    value and a random failure that does not (a Weibull of shape 1.2,
+    its quantiles in an order of their own), censored at 730; ``e`` is
+    the mode of each failure, ``"a"`` the wear and ``"b"`` the random
+    one as every fixture's causes are named (None for an item still
+    running)."""
+    from scipy.special import ndtri
+
+    size = 80
+    u = (scramble(size) + 0.5) / size
+    v = np.argsort(np.argsort(np.sin(2.7 * np.arange(size) + 1.0))) + 0.5
+    v = v / size
+    level = 3.0 + 0.6 * ndtri(u)
+    rate = (1.0 + 0.5 * ndtri(v)) / 365
+    z = (np.arange(size) % 2).astype(float)
+    order = np.argsort(np.argsort(np.sin(1.9 * np.arange(size) + 0.3)))
+    E = -np.log1p(-(order + 0.5) / size)
+    other = np.argsort(np.argsort(np.sin(3.1 * np.arange(size) + 2.0)))
+    E2 = -np.log1p(-(other + 0.5) / size)
+    t = np.linspace(0.0, 4000.0, 8001)
+    x, c, e, markers = [], [], [], []
+    for k in range(size):
+        h = (
+            (2 / 900)
+            * (t / 900)
+            * np.exp(0.9 * (level[k] + rate[k] * t - 4.0) + 0.4 * z[k])
+        )
+        H = np.r_[0.0, np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))]
+        wear = float(np.interp(E[k], H, t))
+        random = 1100.0 * (E2[k] * np.exp(0.3 * z[k])) ** (1 / 1.2)
+        life = min(wear, random)
+        end = round(min(life, 730.0), 2)
+        ages = np.arange(0.0, end, 60.0)
+        y = level[k] + rate[k] * ages + 0.5 * np.sin(1.3 * k + 0.7 * ages)
+        x.append(end)
+        c.append(0 if life < 730.0 else 1)
+        e.append(None if life >= 730.0 else ("a" if wear < random else "b"))
+        markers.append(dict(zip(ages.tolist(), np.round(y, 3).tolist())))
+    n = np.ones(size, int)
+    n[[3, 17, 30]] = 2
+    return {
+        "x": np.array(x),
+        "c": np.array(c),
+        "n": n,
+        "Z": z[:, None],
+        "markers": markers,
+        "e": np.array(e, dtype=object),
+    }
+
+
 #: The joint model's query: an item read four times, still running at
 #: 400 (``JOINT_ITEM``), at ages before and after that.
 X_JOINT = np.array([100.0, 300.0, 450.0, 600.0, 900.0, 1200.0])
@@ -538,6 +591,33 @@ def copula_data():
 
 X_COP = np.array(
     [[2.0, 1.0], [5.0, 2.0], [8.0, 3.0], [10.0, 5.0], [14.0, 7.0], [3.0, 6.0]]
+)
+
+
+def copula3_data():
+    """Three positively dependent series (the two of ``copula_data`` and
+    a third whose order is theirs with next-but-one neighbours
+    swapped)."""
+    u = (np.arange(1, 21) - 0.3) / 20.4
+    swap = np.arange(20) ^ 1
+    swap2 = np.arange(20) ^ 2
+    x1 = 10.0 * (-np.log1p(-u)) ** 0.5
+    x2 = 5.0 * (-np.log1p(-u[swap])) ** (1 / 1.4)
+    x3 = 20.0 * (-np.log1p(-u[swap2])) ** (1 / 2.5)
+    n = np.ones(20, int)
+    n[[3, 8]] = 2
+    return {"x": np.round(np.column_stack([x1, x2, x3]), 3), "n": n}
+
+
+X_COP3 = np.array(
+    [
+        [2.0, 1.0, 8.0],
+        [5.0, 2.0, 12.0],
+        [8.0, 3.0, 15.0],
+        [10.0, 5.0, 18.0],
+        [14.0, 7.0, 25.0],
+        [3.0, 6.0, 10.0],
+    ]
 )
 
 

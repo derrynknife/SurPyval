@@ -27,9 +27,20 @@ from surpyval.bayes.prior import BoundPriors, PriorSpec, quantity_at
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.warnings import ignoring_warnings
 
-METHODS = ("auto", "grid", "conjugate", "laplace")
-#: Families whose support moves with their parameters, which the grid
-#: does not take in this version.
+METHODS = ("auto", "grid", "conjugate", "laplace", "nuts")
+#: The most free parameters the grid takes; above it ``method="auto"``
+#: is the sampler.
+GRID_MAX_FREE = 3
+#: The sampler's settings where none are given.
+SAMPLER_DEFAULTS = {
+    "chains": 4,
+    "draws": 1000,
+    "warmup": 1000,
+    "random_state": None,
+    "n_jobs": None,
+}
+#: Families whose support moves with their parameters, which neither the
+#: grid nor the sampler takes in this version.
 _MOVING_SUPPORT = ("Uniform", "Beta4")
 
 
@@ -87,13 +98,13 @@ def _check_dist(dist: Any, method: str) -> None:
     if dist.name in _MOVING_SUPPORT:
         raise ValueError(
             f"fit_bayes does not take {dist.name} in this version: its "
-            "support moves with its parameters, which the grid does not "
-            "hold. Use a distribution with a fixed support."
+            "support moves with its parameters, which neither the grid "
+            "nor the sampler holds. Use a distribution with a fixed "
+            "support."
         )
     if method not in METHODS:
         raise ValueError(
-            f"method must be one of {', '.join(METHODS)}; got {method!r}. "
-            "(A sampler for more than three free parameters is planned.)"
+            f"method must be one of {', '.join(METHODS)}; got {method!r}."
         )
 
 
@@ -342,6 +353,11 @@ def fit(
     method: str = "auto",
     points: int | None = None,
     unit: Any = None,
+    chains: int = 4,
+    draws: int = 1000,
+    warmup: int = 1000,
+    random_state: Any = None,
+    n_jobs: int | None = None,
 ) -> Any:
     """The Bayesian fit; see ``ParametricFitter.fit_bayes``."""
     from surpyval.utils.units import normalise_unit, same_unit
@@ -373,7 +389,14 @@ def fit(
             "Every parameter is fixed, so there is nothing to fit: use "
             f"{dist.name}.from_params(...)."
         )
-    model = _posterior(dist, data, bound, method, points)
+    sampler = {
+        "chains": chains,
+        "draws": draws,
+        "warmup": warmup,
+        "random_state": random_state,
+        "n_jobs": n_jobs,
+    }
+    model = _posterior(dist, data, bound, method, points, sampler)
     model.unit = canonical if canonical is not None else held
     model.diagnostics["seconds"] = time.perf_counter() - started
     model._warn_conflicts()
@@ -406,10 +429,14 @@ def _posterior(
     bound: BoundPriors,
     method: str,
     points: int | None,
+    sampler: dict | None = None,
 ) -> Any:
+    from surpyval.bayes.engines.nuts import check_settings
     from surpyval.bayes.model import BayesianParametric
 
     points = _check_points(points)
+    sampler = {**SAMPLER_DEFAULTS, **(sampler or {})}
+    check_settings(sampler["chains"], sampler["draws"], sampler["warmup"])
     offset, lfp, zi = bound.offset, bound.lfp, bound.zi
     case = None
     if data is not None and method in ("auto", "conjugate"):
@@ -432,18 +459,29 @@ def _posterior(
         res = conjugate.solve(case, dist, bound, data)
         return BayesianParametric._from_conjugate(dist, data, bound, res)
 
-    if bound.d > 3:
+    nuts = method == "nuts" or (method == "auto" and bound.d > GRID_MAX_FREE)
+    if nuts and data is None:
+        raise ValueError(
+            f"This prior has {bound.d} free parameters "
+            f"({', '.join(bound.free_names)}); a prior alone is worked "
+            f"out on the grid, which takes 1 to {GRID_MAX_FREE}. Fix some "
+            "with fixed= or prior.fixed()."
+        )
+    if bound.d > GRID_MAX_FREE and not nuts:
         raise ValueError(
             f"This fit has {bound.d} free parameters "
-            f"({', '.join(bound.free_names)}); the grid takes 1 to 3. Fix "
-            "some with fixed= or prior.fixed(), or use posterior draws "
-            "from another sampler (log_likelihood_fn gives SurPyval's "
-            "likelihood)."
+            f"({', '.join(bound.free_names)}); method={method!r} takes 1 "
+            f"to {GRID_MAX_FREE}. Use method='nuts' (the sampler, which "
+            "method='auto' chooses here), or fix some with fixed= or "
+            "prior.fixed()."
         )
 
     pooled = None if data is None else _pooled(data, bound)
     if pooled is not None and bound.has_flat:
         _check_flat(dist, pooled, bound)
+    if nuts:
+        assert data is not None
+        return _sampled(dist, data, bound, pooled, sampler)
     ll = None if data is None else LogLikelihood(dist, data, offset, lfp, zi)
 
     def log_post(phi: npt.NDArray) -> npt.NDArray:
@@ -454,6 +492,40 @@ def _posterior(
                 out = out + ll(bound.full_theta(phi))
         return np.where(np.isnan(out), -np.inf, out)
 
+    starts, mle = _data_starts(dist, data, bound, pooled)
+    starts += _other_starts(dist, data, bound, mle, bool(starts))
+    if not starts:
+        raise _no_start(bound)
+    try:
+        mode, cov, _ = find_mode(log_post, starts)
+        chosen = "laplace" if method == "laplace" else "grid"
+        if chosen == "grid":
+            result = run_grid(
+                log_post,
+                mode,
+                cov,
+                check_summary(dist, bound),
+                points=points,
+                flat_names=bound.improper_names,
+            )
+        else:
+            result = laplace_grid(mode, cov, points)
+    except GridError as e:
+        raise ValueError(str(e)) from None
+    return BayesianParametric._from_grid(
+        dist, data, bound, result, chosen, log_post, mle
+    )
+
+
+def _data_starts(
+    dist: Any,
+    data: SurpyvalData | None,
+    bound: BoundPriors,
+    pooled: SurpyvalData | None,
+) -> tuple[list, Any]:
+    """Starting points from the maximum-likelihood fit (of the data, or
+    of the data with a power prior's old data), and that fit."""
+    offset, lfp, zi = bound.offset, bound.lfp, bound.zi
     starts = []
     mle = None
     if data is not None:
@@ -474,37 +546,157 @@ def _posterior(
             )[0]
             if np.all(np.isfinite(phi0)):
                 starts.append(phi0)
+    return starts, mle
+
+
+def _other_starts(
+    dist: Any,
+    data: SurpyvalData | None,
+    bound: BoundPriors,
+    mle: Any,
+    have: bool,
+) -> list:
+    """The priors' centre, and the fallback start where the
+    maximum-likelihood fit gave none."""
+    starts = []
     centre = bound.centre()
     if centre is not None:
         starts.append(centre)
-    if data is not None and (mle is None or not starts):
+    if data is not None and (mle is None or not (have or starts)):
         fallback = _fallback_start(dist, data, bound)
         if fallback is not None:
             starts.append(fallback)
+    return starts
+
+
+def _no_start(bound: BoundPriors) -> ValueError:
+    return ValueError(
+        "No starting point: the maximum-likelihood fit failed and the "
+        "priors do not say where the parameters are. Give priors for "
+        f"{', '.join(bound.free_names)}."
+    )
+
+
+def _sampled(
+    dist: Any,
+    data: SurpyvalData,
+    bound: BoundPriors,
+    pooled: SurpyvalData | None,
+    sampler: dict,
+) -> Any:
+    """The posterior by the No-U-Turn sampler: chains started around the
+    posterior's peak, checked for convergence."""
+    from surpyval.bayes import convergence
+    from surpyval.bayes._lean import LogPosterior
+    from surpyval.bayes.engines import nuts
+    from surpyval.bayes.model import BayesianParametric
+    from surpyval.utils.rng import as_generator
+
+    f = LogPosterior(dist, data, bound)
+    starts, mle = _data_starts(dist, data, bound, pooled)
+    starts += _other_starts(dist, data, bound, mle, bool(starts))
+    starts = [s for s in starts if np.isfinite(f(s)[0])]
     if not starts:
-        raise ValueError(
-            "No starting point: the maximum-likelihood fit failed and the "
-            "priors do not say where the parameters are. Give priors for "
-            f"{', '.join(bound.free_names)}."
-        )
+        raise _no_start(bound)
+    mode, spread = peak(f, starts)
+    rng, chain_seed = as_generator(sampler["random_state"]).spawn(2)
+    chains = sampler["chains"]
+    z0 = scattered(f, mode, spread, chains, rng)
     try:
-        mode, cov, _ = find_mode(log_post, starts)
-        chosen = "laplace" if method == "laplace" else "grid"
-        if chosen == "grid":
-            result = run_grid(
-                log_post,
-                mode,
-                cov,
-                check_summary(dist, bound),
-                points=points,
-                flat_names=bound.improper_names,
-            )
-        else:
-            result = laplace_grid(mode, cov, points)
-    except GridError as e:
+        out = nuts.sample(
+            f,
+            z0,
+            draws=sampler["draws"],
+            warmup=sampler["warmup"],
+            random_state=chain_seed,
+            n_jobs=sampler["n_jobs"],
+            inv_metric=spread**2,
+        )
+    except nuts.SamplerError as e:
         raise ValueError(str(e)) from None
-    return BayesianParametric._from_grid(
-        dist, data, bound, result, chosen, log_post, mle
+    shape = out["draws"].shape
+    natural = bound.full_theta(out["draws"].reshape(-1, shape[2]))
+    summary = convergence.summarise(
+        natural[:, bound.free_idx].reshape(shape),
+        bound.free_names,
+        out["divergent"],
+        out["depth"],
+        nuts.MAX_TREE_DEPTH,
+    )
+    problems = convergence.check(summary, chains, sampler["draws"])
+    model = BayesianParametric._from_sampler(
+        dist, data, bound, out, summary, problems, sampler, mle
+    )
+    warn_not_converged(problems, bound.free_names)
+    return model
+
+
+def peak(f: Any, starts: list) -> tuple[npt.NDArray, npt.NDArray]:
+    """The highest point a quasi-Newton search finds from ``starts`` of a
+    log density with a gradient ``f``, and a spread per parameter there
+    (from the search's inverse Hessian; 1 where it gives none, and kept
+    between 1e-3 and 10 so a poor estimate cannot stall warm-up, which
+    adapts it anyway)."""
+    from scipy import optimize
+
+    def neg(z: npt.NDArray) -> tuple[float, npt.NDArray]:
+        v, g = f(z)
+        return (-v, -g) if np.isfinite(v) else (1e300, np.zeros(len(z)))
+
+    best = None
+    for s in starts:
+        with np.errstate(all="ignore"):
+            res = optimize.minimize(neg, s, jac=True, method="BFGS")
+        if np.all(np.isfinite(res.x)) and (best is None or res.fun < best.fun):
+            best = res
+    d = len(starts[0])
+    if best is None or best.fun >= 1e300:
+        return np.asarray(starts[0], dtype=float), np.ones(d)
+    spread = np.sqrt(np.abs(np.diag(np.atleast_2d(best.hess_inv))))
+    spread = np.where(np.isfinite(spread) & (spread > 0), spread, 1.0)
+    return best.x, np.clip(spread, 1e-3, 10.0)
+
+
+def scattered(
+    f: Any,
+    mode: npt.NDArray,
+    spread: npt.NDArray,
+    chains: int,
+    rng: np.random.Generator,
+) -> npt.NDArray:
+    """A start for each chain: uniform within two spreads of the peak on
+    every parameter (so the chains begin apart, which R-hat needs), drawn
+    again where the density there is not finite, and the peak itself
+    after 100 tries."""
+    out = np.empty((chains, len(mode)))
+    for k in range(chains):
+        out[k] = mode
+        for _ in range(100):
+            z = mode + spread * rng.uniform(-2.0, 2.0, len(mode))
+            if np.isfinite(f(z)[0]):
+                out[k] = z
+                break
+    return out
+
+
+def warn_not_converged(problems: list[str], names: list[str]) -> None:
+    """One warning for a sampler's failed checks: what failed, with the
+    parameters and numbers, and what to do."""
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    if not problems:
+        return
+    warnings.warn(
+        "The sampler's draws did not pass their convergence checks: "
+        + "; ".join(problems)
+        + ". The results may be wrong (model.ok is False; the numbers are "
+        "in model.diagnostics). Run longer (warmup=, draws=), give a "
+        f"stronger prior where the data say little ({', '.join(names)}), "
+        "or fix a parameter the data cannot tell apart from another "
+        "(fixed=).",
+        stacklevel=caller_stacklevel(),
     )
 
 

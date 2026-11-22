@@ -645,7 +645,7 @@ class ConcordanceResult(float):
         }
 
 
-def _concordance_estimate(
+def concordance_with_se(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
@@ -755,7 +755,7 @@ def _concordance_estimate(
     Examples
     --------
     >>> from surpyval.metrics.concordance import (
-    ...     _concordance_estimate as concordance_estimate,
+    ...     concordance_with_se as concordance_estimate,
     ... )
     >>> x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     >>> c = [0, 1, 0, 1, 0, 0]
@@ -983,12 +983,8 @@ def compare_concordance(
             "'x' has missing (NaN) times: drop those subjects (from 'c', "
             "'risk_a' and 'risk_b' too) to compare the scores"
         )
-    a = _concordance_estimate(
-        x, c, risk_a, weighting, tau, alpha, tie_tol, ties
-    )
-    b = _concordance_estimate(
-        x, c, risk_b, weighting, tau, alpha, tie_tol, ties
-    )
+    a = concordance_with_se(x, c, risk_a, weighting, tau, alpha, tie_tol, ties)
+    b = concordance_with_se(x, c, risk_b, weighting, tau, alpha, tie_tol, ties)
     return ConcordanceComparison(a, b, alpha)
 
 
@@ -1126,13 +1122,13 @@ def concordance_index(
     (0.7337, 0.2602)
     """
     if weighting != "harrell" or tau is not None:
-        return _concordance_estimate(
+        return concordance_with_se(
             x, c, risk, weighting, tau, alpha_ci, tie_tol, ties, ci_method
         )
     # Harrell's C is the pair counts' ratio, as it always was; the
     # standard error is the jackknife's.
     value = _harrell_value(x, c, risk, tie_tol, ties)
-    full = _concordance_estimate(
+    full = concordance_with_se(
         x, c, risk, weighting, tau, alpha_ci, tie_tol, ties, ci_method
     )
     return ConcordanceResult(

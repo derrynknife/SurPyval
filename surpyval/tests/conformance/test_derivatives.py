@@ -427,7 +427,12 @@ _H = 1e-4
 
 
 def _is_copula(case):
-    return case.model_class == "surpyval.multivariate.CopulaModel"
+    # (the bivariate families' h-functions; a copula of more series has
+    # none of its own)
+    return (
+        case.model_class == "surpyval.multivariate.CopulaModel"
+        and case.x.shape[1] == 2
+    )
 
 
 @pytest.mark.parametrize("case", cases_for("derivatives", where=_is_copula))

@@ -533,6 +533,79 @@ def test_571_left_truncation_recovers_the_causes():
         ParametricCompetingRisks.fit(x, e, c=c, tl=x + 1)
 
 
+# --- Eliminating a cause; causes with few events (user-test findings) -----
+
+
+def test_eliminating_a_cause_leaves_the_others_competing():
+    model = ParametricCompetingRisks.from_fitted(
+        {
+            "a": Exponential.from_params([0.1]),
+            "b": Exponential.from_params([0.3]),
+            "c": Exponential.from_params([0.2]),
+        }
+    )
+    t = np.array([0.5, 2.0, 7.0])
+    left = model.eliminate("b")
+    assert left.causes == ["a", "c"]
+    np.testing.assert_allclose(left.sf(t), np.exp(-0.3 * t), rtol=1e-12)
+    # CIF of a among a and c: 0.1 / 0.3 (1 - exp(-0.3 t)).
+    np.testing.assert_allclose(
+        left.cif(t, "a"), (1 - np.exp(-0.3 * t)) / 3, rtol=1e-8
+    )
+    only = model.eliminate("b", "c")
+    np.testing.assert_allclose(only.sf(t), np.exp(-0.1 * t), rtol=1e-12)
+    assert only.mean() == pytest.approx(10.0, rel=1e-6)
+    with pytest.raises(ValueError, match="at least one"):
+        model.eliminate()
+    with pytest.raises(ValueError, match="every cause"):
+        model.eliminate("a", "b", "c")
+    with pytest.raises(ValueError, match="'d'"):
+        model.eliminate("d")
+
+
+def test_eliminating_a_cause_of_a_fit_keeps_its_bounds():
+    x, e, c = _simulate(400, seed=5)
+    model = ParametricCompetingRisks.fit(x, e, c=c)
+    left = model.eliminate(2)
+    t = [10.0, 30.0]
+    np.testing.assert_allclose(left.sf(t), model.sf(t, event=1))
+    np.testing.assert_allclose(
+        left.cb(t, on="sf"), model.cb(t, event=1, on="sf")
+    )
+
+
+def test_eliminating_a_cause_of_a_joint_fit_is_refused():
+    x = [[2, 2], [2, 4], [4, 6], [5, 5], [6, 8], [7, 7], [8, 10], [9, 9]]
+    e = ["a", "b", "a", "b", "a", "a", "b", None]
+    c = [-1, 2, 2, 0, 2, 0, 2, 1]
+    with pytest.warns(UserWarning, match="fewer than 10 events"):
+        joint = ParametricCompetingRisks.fit(x, e, c=c, dist=Exponential)
+    with pytest.raises(ValueError, match="correlated"):
+        joint.eliminate("b")
+
+
+def test_a_cause_with_few_events_is_warned_of_once_with_its_count():
+    import warnings
+
+    x, e, c = _simulate(400, seed=5)
+    e = e.copy()
+    # Keep 6 failures of cause 2; censor the rest of them.
+    twos = np.flatnonzero(e == 2)
+    e[twos[6:]] = None
+    c = np.where(e == None, 1, 0)  # noqa: E711
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ParametricCompetingRisks.fit(x, e, c=c)
+    few = [w for w in caught if "fewer than 10 events" in str(w.message)]
+    assert len(few) == 1
+    assert "(2: 6)" in str(few[0].message)
+    assert "Exponential" in str(few[0].message)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ParametricCompetingRisks.fit(*_simulate(400, seed=5))
+    assert not [w for w in caught if "fewer than 10" in str(w.message)]
+
+
 def test_standard_errors_used_as_a_value_say_to_call_it():
     x, e, c = _simulate(300, 4)
     model = ParametricCompetingRisks.fit(x, e, c=c)

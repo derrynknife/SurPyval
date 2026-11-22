@@ -359,6 +359,9 @@ def test_746_fine_gray_competing_failures_stay_at_risk():
     Z[6] = [0.0, -2.0]
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+        # (6 events for 2 coefficients: the few-events warning is due,
+        # and is not what this checks)
+        warnings.filterwarnings("ignore", message=".*per coefficient")
         model = FineGray.fit(x, Z, e, event="a", center=True)
     assert model.maximum == "verified"
 
@@ -893,6 +896,96 @@ def test_a_weighted_fit_has_no_model_based_covariance():
     np.testing.assert_array_equal(restored.covariance(), model.covariance())
     with pytest.raises(WeightedRefusal):
         restored.covariance(robust=False)
+
+
+# --- Bounds on the cumulative incidence (user-test finding) ---------------
+
+
+def _bootstrap_fixture():
+    x, Z, e, c = _simulate_fine_gray(150, seed=11)
+    return x, Z, e, c, FineGray.fit(x, Z, e, c=c, event=1)
+
+
+def test_cb_bootstrap_is_the_percentiles_of_refits():
+    from surpyval.utils.linalg import percentile_bounds
+
+    x, Z, e, c, model = _bootstrap_fixture()
+    t = np.array([0.5, 1.0, 2.0])
+    row = np.array([0.2, -0.3])
+    got = model.cb(t, row, n_boot=30, random_state=4)
+    # The same resamples drawn and refitted here.
+    draws = model._bootstrap_cif(t, row, None, 30, 4)
+    np.testing.assert_allclose(got, percentile_bounds(draws, 0.05))
+    point = model.cif(t, row)
+    assert got.shape == (3, 2)
+    assert np.all(got[:, 0] <= point) and np.all(point <= got[:, 1])
+    # The same seed, the same bounds; sf is one minus cif, its ends swapped.
+    again = model.cb(t, row, n_boot=30, random_state=4)
+    np.testing.assert_array_equal(got, again)
+    sf = model.cb(t, row, on="sf", n_boot=30, random_state=4)
+    np.testing.assert_allclose(sf, 1.0 - got[:, ::-1], atol=1e-15)
+    lower = model.cb(t, row, bound="lower", n_boot=30, random_state=4)
+    assert lower.shape == (3,)
+    assert np.ndim(model.cb(1.0, row, n_boot=10, random_state=4)) == 1
+
+
+def test_cb_resamples_counted_rows_as_repeated_rows():
+    x, Z, e, c, _ = _bootstrap_fixture()
+    n = np.ones(x.size, int)
+    n[:20] = 2
+    counted = FineGray.fit(x, Z, e, c=c, n=n, event=1)
+    rows = np.r_[np.arange(x.size), np.arange(20)]
+    rows = rows[np.argsort(rows, kind="stable")]
+    repeated = FineGray.fit(x[rows], Z[rows], e[rows], c=c[rows], event=1)
+    a = counted.cb([1.0, 2.0], [0.0, 0.0], n_boot=20, random_state=2)
+    b = repeated.cb([1.0, 2.0], [0.0, 0.0], n_boot=20, random_state=2)
+    np.testing.assert_allclose(a, b, rtol=1e-8)
+
+
+def test_cb_refusals_say_what_to_use():
+    _, _, _, _, model = _bootstrap_fixture()
+    for method in ("wald", "lr"):
+        with pytest.raises(ValueError, match="method='bootstrap'"):
+            model.cb(1.0, [0.0, 0.0], method=method)
+    with pytest.raises(ValueError, match="on"):
+        model.cb(1.0, [0.0, 0.0], on="hf")
+    restored = type(model).from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="refit"):
+        restored.cb(1.0, [0.0, 0.0], n_boot=5)
+
+
+def test_cb_on_stratified_and_clustered_fits():
+    x, Z, e, c, _ = _bootstrap_fixture()
+    strata = np.arange(x.size) % 2
+    stratified = FineGray.fit(x, Z, e, c=c, event=1, strata=strata)
+    bounds = stratified.cb(
+        [1.0, 2.0], [0.0, 0.0], stratum=1, n_boot=20, random_state=0
+    )
+    point = stratified.cif([1.0, 2.0], [0.0, 0.0], stratum=1)
+    assert np.all(bounds[:, 0] <= point) and np.all(point <= bounds[:, 1])
+    clustered = FineGray.fit(
+        x, Z, e, c=c, event=1, cluster=np.arange(x.size) // 3
+    )
+    wide = clustered.cb([1.0], [0.0, 0.0], n_boot=20, random_state=0)
+    assert wide.shape == (1, 2) and wide[0, 0] < wide[0, 1]
+
+
+def test_few_events_per_coefficient_are_warned_of_once():
+    x, Z, e, c = _simulate_fine_gray(60, seed=3)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = FineGray.fit(x[:40], Z[:40], e[:40], c=c[:40], event=1)
+    events = int(np.sum(e[:40] == 1))
+    few = [w for w in caught if "per coefficient" in str(w.message)]
+    assert events < 20 and len(few) == 1
+    assert f"has {events} events for 2 coefficients" in str(few[0].message)
+    assert "fit_penalised" in str(few[0].message)
+    assert model.cause == 1
+    x, Z, e, c = _simulate_fine_gray(400, seed=3)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        FineGray.fit(x, Z, e, c=c, event=1)
+    assert not [w for w in caught if "per coefficient" in str(w.message)]
 
 
 def test_methods_used_as_values_say_to_call_them():

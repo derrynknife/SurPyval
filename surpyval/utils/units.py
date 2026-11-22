@@ -65,7 +65,7 @@ def _registry() -> Any:
         raise ImportError(
             "unit= needs pint, which SurPyval depends on: pip install pint"
         ) from err
-    registry = pint.UnitRegistry(on_redefinition="ignore")
+    registry: Any = pint.UnitRegistry(on_redefinition="ignore")
     for definition in _COUNTS:
         registry.define(definition)
     return registry

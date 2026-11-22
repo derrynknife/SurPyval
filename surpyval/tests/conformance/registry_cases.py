@@ -51,6 +51,7 @@ from surpyval.tests.conformance.registry_families import (
 from surpyval.tests.conformance.registry_fixtures import (
     JOINT_ITEM,
     X_COP,
+    X_COP3,
     X_CR,
     X_DESTR,
     X_JF,
@@ -71,6 +72,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     beta_geometric_data,
     binary_data,
     campaign_data,
+    copula3_data,
     copula_data,
     cr_data,
     cure_data,
@@ -79,6 +81,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     exact_event_data,
     frailty_recurrent_data,
     growth_data,
+    joint_causes_data,
     joint_data,
     joint_frailty_data,
     lfp_count_data,
@@ -1929,9 +1932,9 @@ def _readings_paths(fitter, **kw):
 
 
 def _degradation():
-    def da(path):
+    def da(path, label=None):
         return Case(
-            name=f"DegradationAnalysis[{path}]",
+            name=f"DegradationAnalysis[{label or path}]",
             fitters=(
                 ("surpyval.degradation.DegradationAnalysis",)
                 if path == "linear"
@@ -1957,7 +1960,9 @@ def _degradation():
             exclude={"counts": "degradation readings carry no counts"},
         )
 
+    # the spline with one knot the fit places from the readings
     out = [da("linear"), da("power")]
+    out.append(da(dg.SplinePath.natural(df=2), "spline"))
     for name in ("WienerProcess", "GammaProcess"):
         fitter = getattr(dg, name)
         out.append(
@@ -2071,7 +2076,104 @@ def _copulas():
                 explicit_seed=True,
             )
         )
+    # Non-parametric margins: the maximum pseudo-likelihood estimate from
+    # the ranks, on complete data with no counts.
+    semi = _fit(mv.Clayton, margins=[sp.KaplanMeier, sp.KaplanMeier])
+    out.append(
+        Case(
+            name="ClaytonCopula[margins=KaplanMeier]",
+            fitters=("surpyval.multivariate.Clayton",),
+            model_class="surpyval.multivariate.CopulaModel",
+            interface=BIVARIATE,
+            data=lambda: {"x": copula_data()["x"]},
+            fit=semi,
+            functions=("sf", "cdf"),
+            x=X_COP,
+            rows=("x",),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "counts": "the fixture is the rank-based covariance's case, "
+                "complete rows with no counts (a count above 1 is a tie, "
+                "which it refuses); the parametric-margin copulas check "
+                "counts",
+            },
+        )
+    )
     return out
+
+
+# Copulas of more than two series: (case name, family, structure)
+_COPULAS_ND = (
+    ("GaussianCopula[D=3]", "Gaussian", "unstructured"),
+    ("GaussianCopula[D=3,exchangeable]", "Gaussian", "exchangeable"),
+    ("StudentTCopula[D=3]", "StudentT", "unstructured"),
+)
+
+
+def _copulas_nd():
+    out = []
+    for case_name, name, structure in _COPULAS_ND:
+        fitter = getattr(mv, name)
+        options = {"structure": structure}
+
+        def from_params(d, f=fitter, o=options):
+            m = f.fit(**d, margins=[sp.Weibull] * 3, **o)
+            return f.from_params(m.params, margins=m.margins, **o)
+
+        out.append(
+            Case(
+                name=case_name,
+                fitters=(f"surpyval.multivariate.{name}",),
+                model_class="surpyval.multivariate.CopulaModel",
+                interface=BIVARIATE,
+                data=copula3_data,
+                fit=_fit(fitter, margins=[sp.Weibull] * 3, **options),
+                functions=("sf", "cdf", "pdf"),
+                x=X_COP3,
+                rows=("x", "n"),
+                paths={"from_params": from_params},
+                draw=lambda m, s: m.random(15, random_state=s),
+                explicit_seed=True,
+            )
+        )
+    return out
+
+
+# A vine of given pair-copulas on three series (its order and families
+# fixed, so that every refit of the fixture fits the same vine)
+_VINE = {
+    "order": [0, 1, 2],
+    "families": [[mv.Gaussian, mv.Clayton], [mv.Frank]],
+}
+
+
+def _vines():
+    def from_params(d):
+        m = mv.Vine.fit(**d, margins=[sp.Weibull] * 3, **_VINE)
+        return mv.Vine.from_params(m.params, margins=m.margins, **_VINE)
+
+    return [
+        Case(
+            name="VineCopula[D=3]",
+            fitters=("surpyval.multivariate.Vine",),
+            model_class="surpyval.multivariate.CopulaModel",
+            interface=BIVARIATE,
+            data=copula3_data,
+            fit=_fit(mv.Vine, margins=[sp.Weibull] * 3, **_VINE),
+            functions=("pdf",),
+            x=X_COP3,
+            rows=("x", "n"),
+            paths={"from_params": from_params},
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "bounds": "a vine has no joint sf or CDF to check (they "
+                "refuse, saying to estimate them from draws); its density "
+                "is checked against the Gaussian copula's in test_vine.py",
+            },
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -2081,7 +2183,16 @@ def _joint_coefficients(model):
     """A joint model's covariate coefficients: the hazard's, then each path
     parameter's shifts of its mean (a row each)."""
     names, params = model.parameter_names, np.asarray(model.params, float)
-    rows = [model.feature_names] + [
+    # with failure modes, each mode's hazard coefficients (a row each)
+    hazards = (
+        [model.feature_names]
+        if model.causes is None
+        else [
+            [f"{cause}: {f}" for f in model.feature_names]
+            for cause in model.causes
+        ]
+    )
+    rows = hazards + [
         [f"{a}_{f}" for f in model.feature_names]
         for a in model.path_model.parameter_names
     ]
@@ -2101,12 +2212,22 @@ def _joint_readings_paths(fitter):
 
     def from_arrays(d):
         ids, m = readings(d)
-        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        return fitter.fit(
+            d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m, e=d.get("e")
+        )
 
     def from_data(d):
         ids, m = readings(d)
         return fitter.fit(
-            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+            sp.SurpyvalData(
+                d["x"],
+                c=d["c"],
+                n=d["n"],
+                Z=d["Z"],
+                i=ids,
+                m=m,
+                e=d.get("e"),
+            )
         )
 
     return {"fit(measurements)": from_arrays, "fit(data)": from_data}
@@ -2120,8 +2241,12 @@ def _joint():
     the area under it, or its value and slope together, or its value 90
     days earlier (a lag), or the area with exposure fading over 180 days
     (a weight), or its value with the line's start and rate uncorrelated
-    between items (``random_effects="diagonal"``); or the marker's value
-    speeds up the item's ageing (``WeibullJointAFT``)."""
+    between items (``random_effects="diagonal"``), or the value of a
+    spline path with one knot placed from the readings, its bend common
+    to all items (``[spline]``); or the marker's value speeds up the
+    item's ageing (``WeibullJointAFT``); or the items fail by one of two
+    failure modes, each with a baseline, a coefficient and an effect of
+    its own (``[causes]``: the fit of data with event types ``e``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2139,16 +2264,23 @@ def _joint():
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
         ),
+        "WeibullJointPH[spline]": sp.JointPH(
+            sp.Weibull,
+            dg.SplinePath.natural(df=2),
+            varying=("level", "rate"),
+        ),
+        "WeibullJointPH[causes]": sp.WeibullJointPH,
     }
     out = []
     for name, fitter in fitters.items():
+        causes = name.endswith("[causes]")
         case = regression(
             name,
             fitter,
             # the links are ways of calling the one public factory
             fitters=(f"surpyval.{name}",) if "[" not in name else (),
             model_class="surpyval.JointModel",
-            data=joint_data,
+            data=joint_causes_data if causes else joint_data,
             x=X_JOINT,
             Z=np.ones((X_JOINT.size, 1)),
             functions=("sf", "ff"),
@@ -2162,6 +2294,7 @@ def _joint():
                             "n": d["n"],
                             "z0": np.asarray(d["Z"])[:, 0],
                             "markers": list(d["markers"]),
+                            **({"e": d["e"]} if "e" in d else {}),
                         }
                     ),
                     x_col="x",
@@ -2169,10 +2302,11 @@ def _joint():
                     c_col="c",
                     n_col="n",
                     Z_cols=["z0"],
+                    e_col="e" if "e" in d else None,
                 ),
                 **_joint_readings_paths(fitter),
             },
-            rows=("x", "Z", "c", "n", "markers"),
+            rows=("x", "Z", "c", "n", "markers") + (("e",) if causes else ()),
             coefficients=_joint_coefficients,
             intercept=True,
             draw=None,
@@ -2208,6 +2342,7 @@ def _joint():
                 times=("x", "markers"),
                 call_kwargs=dict(JOINT_ITEM),
                 call_times=("markers", "given"),
+                events=("a", "b") if causes else (),
             )
         )
     return out
@@ -2472,6 +2607,36 @@ def _bayes_weibull(d):
     )
 
 
+def _bayes_weibull_sampled(d):
+    """The sampler, with the same priors as the grid's case: two short
+    chains from a fixed seed, so the fit is the same on every call."""
+    return sp.Weibull.fit_bayes(
+        d["x"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **_BAYES_SAMPLER,
+    )
+
+
+#: The sampled case's settings: enough draws to pass the sampler's own
+#: convergence checks on the fixture (they are not what is under test
+#: here; tests/bayes/test_sampler.py and test_fit_sampled.py are).
+_BAYES_SAMPLER = dict(
+    method="nuts", chains=2, draws=600, warmup=400, random_state=4590
+)
+
+
+#: Why a sampled fit's ``units`` property is not checked here.
+_SAMPLED_UNITS = (
+    "a sampler's draws rescale with the unit in distribution, not to the "
+    "last digit: rounding in the rescaled log-posterior changes the "
+    "trajectories (tests/bayes/test_fit_sampled.py::"
+    "test_a_change_of_time_unit_rescales_the_posterior checks it within "
+    "Monte Carlo error)"
+)
+
+
 def _bayes_exponential(d):
     """The closed form: a Gamma prior on the rate whose second parameter
     is a time (``prior_time``, rescaled with the data)."""
@@ -2487,17 +2652,18 @@ def _bayes_exponential(d):
     )
 
 
-def _bayes_paths(fit, fitter, priors):
+def _bayes_paths(fit, fitter, priors, **options):
     def from_df(d):
         df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
         return fitter.fit_bayes_from_df(
-            df, x_col="x", c_col="c", n_col="n", priors=priors(d)
+            df, x_col="x", c_col="c", n_col="n", priors=priors(d), **options
         )
 
     def from_data(d):
         return fitter.fit_bayes(
             sp.SurpyvalData(x=d["x"], c=d.get("c"), n=d.get("n")),
             priors=priors(d),
+            **options,
         )
 
     # (fit_from_df: the DataFrame path, fit_bayes_from_df)
@@ -2560,6 +2726,23 @@ def _bayes():
             **common,
         ),
         Case(
+            name="Weibull[bayes-nuts]",
+            fitters=(),
+            data=uni_data,
+            fit=_bayes_weibull_sampled,
+            paths=_bayes_paths(
+                _bayes_weibull_sampled,
+                sp.Weibull,
+                weibull_priors,
+                **_BAYES_SAMPLER,
+            ),
+            rtol=1e-6,
+            **{
+                **common,
+                "exclude": {**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
+            },
+        ),
+        Case(
             name="Exponential[bayes]",
             fitters=(),
             data=exponential_data,
@@ -2571,6 +2754,61 @@ def _bayes():
             rtol=1e-9,
             **common,
         ),
+    ]
+
+
+def _bayes_regression_fit(d):
+    """A Bayesian Weibull proportional hazards fit: a prior on the shape,
+    the default on the coefficients, and the sampler's case's settings."""
+    return sp.WeibullPH.fit_bayes(
+        d["x"],
+        d["Z"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
+    )
+
+
+def _bayes_regression_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    model = sp.WeibullPH.fit_bayes_from_df(
+        df,
+        x_col="x",
+        Z_cols=cols,
+        c_col="c",
+        n_col="n",
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
+    )
+    return model
+
+
+#: A Bayesian regression's credible intervals (as the distributions':
+#: no ``mean_cri``, and the hazard's is not swept, for the reason given at
+#: ``_BAYES_BOUNDS``).
+_BAYES_REGRESSION_BOUNDS = (
+    Bound("cri", on=("sf", "ff", "Hf", "df"), wald=False),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound("param_cri", kind="param", wald=False),
+)
+
+
+def _bayes_regression():
+    return [
+        regression(
+            "WeibullPH[bayes]",
+            sp.WeibullPH,
+            fitters=("surpyval.bayes.BayesianRegression",),
+            model_class="surpyval.bayes.BayesianRegression",
+            fit=_bayes_regression_fit,
+            paths={"fit_from_df": _bayes_regression_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            exclude={**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
+        )
     ]
 
 
@@ -2790,6 +3028,8 @@ CASES: list[Case] = (
     + _recurrent()
     + _degradation()
     + _copulas()
+    + _copulas_nd()
+    + _vines()
     + _joint()
     + _spline_regression()
     + _distributional()
@@ -2799,6 +3039,7 @@ CASES: list[Case] = (
     + _landmark()
     + _panel_multistate()
     + _bayes()
+    + _bayes_regression()
     + _panel_count()
     + _relative()
 )
@@ -2964,12 +3205,27 @@ def _df_paths():
         paths[f"{name}Copula"] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
         )
+    for case_name, name, structure in _COPULAS_ND:
+        paths[case_name] = _copula_df(
+            getattr(mv, name), margins=[sp.Weibull] * 3, structure=structure
+        )
+    paths["VineCopula[D=3]"] = _copula_df(
+        mv.Vine, margins=[sp.Weibull] * 3, **_VINE
+    )
     for case_name, name, rotation in _ROTATED_COPULAS:
         paths[case_name] = _copula_df(
             getattr(mv, name),
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
+    # (its fixture has no counts: the rows alone)
+    paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
+        mv.Clayton.fit_from_df(
+            _frame(d, ("x",))[0],
+            x_cols=["x0", "x1"],
+            margins=[sp.KaplanMeier, sp.KaplanMeier],
+        )
+    )
     return paths
 
 
@@ -3584,12 +3840,50 @@ _JELINSKI_MORANDA_BOUNDS = (
 )
 
 
+def _copula_bounds(case):
+    # The joint sf and the joint CDF are not complements: one sweep
+    # each, so that cb_transform does not read one as 1 - the other
+    # (#540). The fixture's AMH estimate is on its bound, theta = 1
+    # (the data's Kendall's tau is past the family's 1/3), where no
+    # Wald bound exists: NaN, with a warning, as documented.
+    nan_ok = case.name == "AMHCopula"
+    # The case bootstrap (percentiles of refits to resampled units):
+    # the calls with one n_boot and seed share one set of refits.
+    boot = dict(kwargs={"method": "bootstrap", **_BOOT}, wald=False, slow=True)
+    bootstrap = (
+        Bound("cb", on=("sf",), label="cb[bootstrap]", **boot),
+        Bound("cb", on=("ff",), label="cb[ff, bootstrap]", **boot),
+        Bound("param_cb", kind="param", label="param_cb[bootstrap]", **boot),
+    )
+    # The rank correlations' bounds (the independence copula's are its
+    # measures, 0, at every level).
+    measures = tuple(
+        Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
+        for m in ("kendall_tau_cb", "spearman_rho_cb")
+    )
+    if "margins=KaplanMeier" in case.name:
+        # Rank-based margins: the Wald bound on the parameter from the
+        # pseudo-likelihood's covariance; a joint probability has the
+        # bootstrap only (a step margin has no covariance).
+        return (_PARAM_CB,) + measures + bootstrap
+    return (
+        (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
+        )
+        + measures
+        + bootstrap
+    )
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
@@ -3645,6 +3939,17 @@ def _bounds(case):
                 "cb",
                 on=("sf", "ff"),
                 label="cb[all-cause]",
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+        ),
+        # Fine-Gray's cumulative incidence: the case bootstrap
+        # (percentiles); Wald and likelihood-ratio bounds refuse, saying
+        # why.
+        "FineGrayModel": (
+            Bound(
+                "cb",
+                on=("cif", "sf"),
                 kwargs={"n_boot": 40, "random_state": 0},
                 wald=False,
             ),
@@ -4096,17 +4401,7 @@ def _bounds(case):
             ),
         )
     if cls == "CopulaModel":
-        # The joint sf and the joint CDF are not complements: one sweep
-        # each, so that cb_transform does not read one as 1 - the other
-        # (#540). The fixture's AMH estimate is on its bound, theta = 1
-        # (the data's Kendall's tau is past the family's 1/3), where no
-        # Wald bound exists: NaN, with a warning, as documented.
-        nan_ok = case.name == "AMHCopula"
-        return (
-            Bound("cb", on=("sf",), nan_ok=nan_ok),
-            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
-            replace(_PARAM_CB, nan_ok=nan_ok),
-        )
+        return _copula_bounds(case)
     return ()
 
 
@@ -4245,6 +4540,10 @@ def _estimators(case):
         return {"how": ("MLE", "two-stage")}, {}, None
     if name == "CauseSpecificNHPP":
         return {"how": ("MLE", "MSE")}, {}, None
+    if "margins=KaplanMeier" in case.name:
+        # A step margin has no parameters for one joint search to
+        # re-estimate: how="MLE" refuses it, saying to use "IFM".
+        return {"how": ("IFM",)}, {}, None
     if case.model_class == "surpyval.multivariate.CopulaModel":
         return {"how": ("IFM", "MLE")}, {}, _copula_sample
     if name == "DegradationAnalysis[linear]":
@@ -4273,9 +4572,15 @@ _FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
 _FAST_BOUNDS += ("Weibull[bayes]", "Exponential[bayes]")
 
 
+# The bounds of a case whose model's family has fewer than ``_bounds``
+# gives its class: a vine has no joint sf or CDF (they refuse, saying to
+# estimate them from draws), so no cb on them.
+_OWN_BOUNDS = {"VineCopula[D=3]": (_PARAM_CB,)}
+
+
 def _with_options(case):
     estimators, large_only, large = _estimators(case)
-    bounds = _bounds(case)
+    bounds = _OWN_BOUNDS.get(case.name) or _bounds(case)
     if case.name not in _FAST_BOUNDS:
         bounds = tuple(replace(b, slow=True) for b in bounds)
     slow = case.slow

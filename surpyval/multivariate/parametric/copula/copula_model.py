@@ -14,7 +14,9 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
+from surpyval.univariate.regression._bootstrap import check_n_boot
 from surpyval.utils.linalg import (
+    percentile_bounds,
     sf_link_bound,
     wald_bound_on_support,
     warn_wald_undefined,
@@ -29,12 +31,20 @@ from surpyval.utils.validation import (
 )
 from surpyval.utils.warnings import warn_no_covariance
 
-from ._inference import ParameterLayout, jacobian, joint_covariance
+from . import _bootstrap
+from ._inference import (
+    ParameterLayout,
+    jacobian,
+    joint_covariance,
+    pseudo_likelihood_covariance,
+    rank_pseudo_observations,
+)
 
-#: The advice of a copula model's undefined Wald bound: it has no other.
+#: The advice of a copula model's undefined Wald bound: the bootstrap
+#: (the copula models have no profile-likelihood bound).
 _NO_OTHER_BOUND = (
-    "the copula models have no profile-likelihood or bootstrap bound to "
-    "fall back on"
+    "use the case bootstrap, `method='bootstrap'` (the copula models "
+    "have no profile-likelihood bound)"
 )
 
 # Margin probabilities are kept strictly inside (0, 1), as in copula.py.
@@ -42,8 +52,11 @@ _U_CLIP = 1e-10
 # The joint functions ``cb`` bounds ('R' and 'F' are the aliases of 'sf'
 # and 'ff', as for the univariate models).
 _CB_ON = ("sf", "R", "ff", "F")
-# A Wald bound's methods: the delta method alone, for now.
-_CB_METHODS = ("wald",)
+# The bounds' methods: the Wald (delta-method) bound from the covariance,
+# and the percentile interval of the case bootstrap.
+_CB_METHODS = ("wald", "bootstrap")
+# The dependence measures with a bound.
+_MEASURES = {"kendall_tau": "Kendall's tau", "spearman_rho": "Spearman's rho"}
 
 
 class CopulaModel(
@@ -122,6 +135,15 @@ class CopulaModel(
         # ``covariance``): computed on first use, or restored by
         # ``from_dict``.
         self._covariance: npt.NDArray | None = None
+        # How it was worked out: "information" (the joint Hessian),
+        # "godambe" (the two stages' sandwich) or "rank" (the
+        # pseudo-likelihood's, for empirical-CDF margins).
+        self._covariance_method: str | None = None
+        # The margins as the fit was given them (fitters, or models
+        # already fitted), which the bootstrap refits with. Set by the fit.
+        self._margin_specs: tuple | None = None
+        # The last seeded bootstrap's refits (see ``_refits``).
+        self._kept_refits: tuple | None = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -360,19 +382,58 @@ class CopulaModel(
                 "the model for its standard errors and bounds"
             )
         if any(not hasattr(m, "dist") for m in self.margins):
-            raise no_covariance_error(
-                "a non-parametric margin makes the fit the semi-parametric "
-                "pseudo-likelihood estimator, whose rank-based variance "
-                "(Genest, Ghoudi and Rivest 1995) SurPyval does not "
-                "compute; fit parametric margins for Wald bounds"
+            ranks = rank_pseudo_observations(self)
+            if isinstance(ranks, str):
+                raise ValueError(
+                    "The model has no analytic parameter covariance: with a "
+                    "non-parametric margin the fit is the semi-parametric "
+                    "pseudo-likelihood estimator, whose rank-based variance "
+                    "(Genest, Ghoudi and Rivest 1995) needs complete, "
+                    "untied data and both margins the empirical CDF, and "
+                    f"{ranks}. Use the case bootstrap, `method='bootstrap'` "
+                    "(on `covariance`, `standard_errors`, `param_cb` and "
+                    "`cb`)."
+                )
+            cov, _ = pseudo_likelihood_covariance(
+                self._parameter_layout(), *ranks
             )
-        cov, _ = joint_covariance(
-            self._parameter_layout(), self.data, self.method
-        )
+            self._covariance_method = "rank"
+        else:
+            cov, _ = joint_covariance(
+                self._parameter_layout(), self.data, self.method
+            )
+            self._covariance_method = (
+                "information" if self.method == "MLE" else "godambe"
+            )
         self._covariance = cov
         return cov
 
-    def covariance(self, margins: bool = False) -> npt.NDArray:
+    def _refits(self, n_boot: Any, random_state: Any) -> _bootstrap.Refits:
+        """The case-bootstrap refits (warned of). Those of the last
+        integer seed are kept, so the bounds on several quantities from
+        one seed refit once."""
+        key = (check_n_boot(n_boot), random_state)
+        seeded = isinstance(random_state, (int, onp.integer)) and not (
+            isinstance(random_state, bool)
+        )
+        if seeded and self._kept_refits is not None:
+            kept_key, fits = self._kept_refits
+            if kept_key == key:
+                fits.warn()
+                return fits
+        fits = _bootstrap.refits(self, key[0], random_state)
+        if seeded:
+            self._kept_refits = (key, fits)
+        fits.warn()
+        return fits
+
+    def covariance(
+        self,
+        margins: bool = False,
+        method: str | None = None,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
         """
         The covariance of the fitted copula parameters, in the order of
         ``parameter_names``; with ``margins=True``, of every parameter of
@@ -409,14 +470,41 @@ class CopulaModel(
         information cannot be evaluated or inverted the estimated block
         is ``nan``, with a warning.
 
+        A fit with both margins ``KaplanMeier`` on complete data with no
+        tied values (no censoring, truncation or counts) is the
+        maximum pseudo-likelihood estimate from the ranks, and its
+        covariance is Genest, Ghoudi and Rivest's (1995): with :math:`s`
+        the copula's score at the scaled ranks :math:`U_i = R_i / (n +
+        1)`, :math:`B = -\\overline{\\partial s / \\partial \\theta}`
+        and :math:`W_{ji}` the sum over the rows :math:`k` ranked at or
+        above :math:`i` in margin :math:`j` of :math:`\\partial s /
+        \\partial u_j (U_k)`, divided by :math:`n`, it is :math:`B^{-1}
+        \\operatorname{cov}(s_i + W_{1i} + W_{2i}) B^{-T} / n`. The
+        margins have no parameters, so it is the copula's alone.
+
+        ``method="bootstrap"`` gives the sample covariance of the fits to
+        ``n_boot`` resamples of the units instead (the case bootstrap:
+        the margins and the copula are fitted again on each), for any
+        fitted model.
+
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one restored from a dictionary saved without it,
-        or one fitted with a non-parametric margin.
+        or, without ``method="bootstrap"``, a fit with a non-parametric
+        margin that is not the rank-based one above (censored, truncated
+        or tied data, a margin that is not ``KaplanMeier``, or one
+        parametric margin).
 
         Parameters
         ----------
         margins : bool, optional
             Include the margins' parameters. Default ``False``.
+        method : str, optional
+            ``None`` (the default), the covariance of the fit as above, or
+            ``"bootstrap"``.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
 
         Examples
         --------
@@ -433,20 +521,38 @@ class CopulaModel(
         >>> model.covariance(margins=True).shape
         (5, 5)
         """
+        if method is not None:
+            check_option(
+                "method",
+                method,
+                ("bootstrap",),
+                "Leave it out (None) for the covariance of the fit itself.",
+            )
+        n_cop = len(self.parameter_names)
+        if method == "bootstrap":
+            cov = self._refits(n_boot, random_state).covariance()
+            return onp.array(cov if margins else cov[:n_cop, :n_cop])
         cov = self._joint_covariance()
         # (A parameter on a bound has no variance by design.)
         if onp.isnan(
             onp.diag(cov)[~self._parameter_layout().on_bound()]
         ).any():
             warn_no_covariance()
-        n_cop = len(self.parameter_names)
         return onp.array(cov if margins else cov[:n_cop, :n_cop])
 
-    def standard_errors(self, margins: bool = False) -> npt.NDArray:
+    def standard_errors(
+        self,
+        margins: bool = False,
+        method: str | None = None,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
         """
         Standard errors of the fitted copula parameters (with
         ``margins=True``, of every parameter of the model): the square
-        roots of the diagonal of :meth:`covariance`, in its order.
+        roots of the diagonal of :meth:`covariance`, in its order, with
+        its ``method``, ``n_boot`` and ``random_state``
+        (``method="bootstrap"`` for the case bootstrap's).
 
         Examples
         --------
@@ -462,7 +568,16 @@ class CopulaModel(
         array([0.2215])
         """
         with onp.errstate(invalid="ignore"):
-            return onp.sqrt(onp.diag(self.covariance(margins=margins)))
+            return onp.sqrt(
+                onp.diag(
+                    self.covariance(
+                        margins=margins,
+                        method=method,
+                        n_boot=n_boot,
+                        random_state=random_state,
+                    )
+                )
+            )
 
     def param_cb(
         self,
@@ -470,12 +585,16 @@ class CopulaModel(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a copula parameter.
 
         The Wald bound from :meth:`covariance` (the joint information for
-        ``how="MLE"``, the Godambe information for ``how="IFM"``), formed
+        ``how="MLE"``, the Godambe information for ``how="IFM"``, the
+        rank-based covariance for ``KaplanMeier`` margins on complete
+        data), formed
         on a scale on which the parameter's space is the whole line, as
         the univariate and regression models' are, so the bound stays
         inside it: the log of the distance from the bound for a parameter
@@ -487,6 +606,13 @@ class CopulaModel(
         bound of its space, or its variance is not positive -- it is
         ``nan``, with a warning.
 
+        ``method="bootstrap"`` gives the percentile interval of the
+        parameter over the fits to ``n_boot`` resamples of the units (the
+        case bootstrap: margins and copula fitted again on each). It
+        needs no covariance, so it is the bound of a fit with a
+        non-parametric margin on censored, truncated or tied data, or
+        with one parametric margin, where the Wald bound is refused.
+
         Parameters
         ----------
         name : str
@@ -496,7 +622,11 @@ class CopulaModel(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"``, the only method (the default).
+            ``"wald"`` (the default) or ``"bootstrap"``.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
 
         Returns
         -------
@@ -527,14 +657,19 @@ class CopulaModel(
                 )
             )
         i = names.index(name)
+        if method == "bootstrap":
+            fits = self._refits(n_boot, random_state)
+            return onp.atleast_1d(
+                percentile_bounds(fits.vectors()[:, i], alpha_ci, bound)
+            )
         var = float(self._joint_covariance()[i, i])
         if onp.isnan(var) and self._parameter_layout().on_bound()[i]:
             # Its place on the bound, not a variance, is why there is no
             # bound: the warning says so.
             var = 0.0
         lower, upper = self.copula.bounds[i]
-        # The copula models have the Wald bound only (#664): the default
-        # advice, a profile-likelihood or bootstrap interval, is not here.
+        # The copula models have no profile-likelihood bound (#664): the
+        # advice is the bootstrap.
         advice = _NO_OTHER_BOUND
         if self.copula._at_independence(self.params)[i]:
             advice += (
@@ -562,6 +697,8 @@ class CopulaModel(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bounds on the joint survival ``sf`` or the joint CDF
@@ -578,6 +715,13 @@ class CopulaModel(
         not positive definite, or a parameter is on a bound of its space)
         the bound is ``nan``, with a warning.
 
+        ``method="bootstrap"`` gives the percentile interval of the
+        probability over the fits to ``n_boot`` resamples of the units
+        (the case bootstrap: margins and copula fitted again on each). A
+        fit with a non-parametric margin has this bound only: a step
+        margin has no parameter covariance to carry into a delta method,
+        so ``method="wald"`` is refused there.
+
         Parameters
         ----------
         x : array like
@@ -591,8 +735,12 @@ class CopulaModel(
             The significance level: 0.05 (the default) gives a 95% bound.
         bound : {'two-sided', 'upper', 'lower'}, optional
             Defaults to two-sided.
-        method : {'wald'}, optional
-            The delta method, the only method (the default).
+        method : {'wald', 'bootstrap'}, optional
+            The delta method (the default) or the case bootstrap.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
 
         Returns
         -------
@@ -621,13 +769,36 @@ class CopulaModel(
         check_option("bound", bound, BOUNDS)
         check_option("method", method, _CB_METHODS)
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
-        if x.shape[1] != 2:
-            raise ValueError("x must have two columns (one per dimension)")
+        if x.shape[1] != len(self.margins):
+            raise ValueError(
+                "x must have two columns (one per dimension)"
+                if len(self.margins) == 2
+                else f"x must have {len(self.margins)} columns (one per "
+                f"series), got {x.shape[1]}."
+            )
         if x.shape[0] == 0:
             return onp.empty((0, 2) if bound == "two-sided" else (0,))
+        joint = "sf" if on in ("sf", "R") else "ff"
+        if method == "bootstrap":
+            fits = self._refits(n_boot, random_state)
+            draws = onp.array(
+                [
+                    m._joint_at(x, joint, m.params, m.margins)[0]
+                    for m in fits.models
+                ]
+            ).reshape(len(fits.models), x.shape[0])
+            return onp.asarray(percentile_bounds(draws, alpha_ci, bound))
+        if self.k is not None and any(
+            not hasattr(m, "dist") for m in self.margins
+        ):
+            raise ValueError(
+                f"The Wald bound on the joint {joint} carries every "
+                "margin's parameter covariance into a delta method, and a "
+                "non-parametric margin is a step function with none. Use "
+                "the case bootstrap, `cb(x, method='bootstrap')`."
+            )
         cov = self._joint_covariance()
         layout = self._parameter_layout()
-        joint = "sf" if on in ("sf", "R") else "ff"
 
         def value(vector: npt.NDArray) -> npt.NDArray:
             parts = layout.build(vector)
@@ -705,6 +876,193 @@ class CopulaModel(
             survival = onp.asarray(copula._survival(u, v, *params), float)
             return value, s1 + s2 - survival
 
+    # -- bounds on the dependence measures ---------------------------------
+    def kendall_tau_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> Any:
+        """
+        Confidence bound(s) on Kendall's tau of the fitted copula
+        (:meth:`kendall_tau`).
+
+        The measure is a function of the copula's parameters alone. For a
+        family with one parameter it is monotone in it, so the bound is
+        the parameter's (:meth:`param_cb`, with the same ``method``)
+        carried through the measure: it stays in the family's range of
+        the measure. For a family with more (the Student-t) the Wald
+        bound is the delta method's from :meth:`covariance`, formed on
+        Fisher's z, which keeps it in ``(-1, 1)``, and
+        ``method="bootstrap"`` gives the percentile interval of the
+        measure over the case bootstrap's refits. A model with no
+        dependence parameter (the independence copula) has the measure
+        itself as its bound.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        method : str, optional
+            ``"wald"`` (the default) or ``"bootstrap"``.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
+
+        Returns
+        -------
+        numpy array or float
+            ``[lower, upper]`` for a two-sided bound, else the one bound
+            as a number.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
+        >>> model.kendall_tau_cb().round(3)
+        array([0.487, 0.581])
+        """
+        return self._measure_cb(
+            "kendall_tau", alpha_ci, bound, method, n_boot, random_state
+        )
+
+    def spearman_rho_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> Any:
+        """
+        Confidence bound(s) on Spearman's rho of the fitted copula
+        (:meth:`spearman_rho`), formed as :meth:`kendall_tau_cb` forms
+        Kendall's tau's, with the same arguments.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
+        >>> model.spearman_rho_cb().round(3)
+        array([0.667, 0.768])
+        """
+        return self._measure_cb(
+            "spearman_rho", alpha_ci, bound, method, n_boot, random_state
+        )
+
+    def _measure_cb(
+        self,
+        measure: str,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: Any,
+        random_state: Any,
+    ) -> Any:
+        # [lower, upper], or the one bound as a number (as mean_cb's)
+        ends = onp.atleast_1d(
+            self._measure_ends(
+                measure, alpha_ci, bound, method, n_boot, random_state
+            )
+        ).astype(float)
+        return ends if bound == "two-sided" else ends[0]
+
+    def _measure_ends(
+        self,
+        measure: str,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: Any,
+        random_state: Any,
+    ) -> npt.NDArray:
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        check_option("method", method, _CB_METHODS)
+        at = getattr(self.copula, measure)
+        value = onp.asarray(at(*self.params), dtype=float)
+        if value.ndim:
+            raise ValueError(
+                f"{measure}_cb bounds the {measure} of a copula of two "
+                f"series; this model's {measure}() is a matrix, one for "
+                f"each pair of its {value.shape[0]} series. For a bound on "
+                "one pair's dependence, use param_cb on that pair's "
+                "parameter, or fit the pair alone as a bivariate copula "
+                f"and use its {measure}_cb."
+            )
+        estimate = float(value)
+        size = 2 if bound == "two-sided" else 1
+        if self.params.size == 0:
+            return onp.full(size, estimate)
+        if self.params.size == 1:
+            # Monotone in the one parameter: its bounds, carried through
+            # (the lower one from the parameter's upper where the measure
+            # falls as the parameter rises, as for a rotation by 90).
+            name = self.parameter_names[0]
+            kw = {
+                "method": method,
+                "n_boot": n_boot,
+                "random_state": random_state,
+            }
+            if bound == "two-sided":
+                at_ends = self.param_cb(name, alpha_ci, **kw)
+            else:
+                at_ends = onp.array(
+                    [
+                        self.param_cb(name, alpha_ci, side, **kw)[0]
+                        for side in ("lower", "upper")
+                    ]
+                )
+            if not onp.all(onp.isfinite(at_ends)):
+                return onp.full(size, onp.nan)
+            ends = onp.sort([float(at(float(end))) for end in at_ends])
+            if bound == "two-sided":
+                return ends
+            return ends[:1] if bound == "lower" else ends[1:]
+        if method == "bootstrap":
+            fits = self._refits(n_boot, random_state)
+            draws = onp.array([float(at(*m.params)) for m in fits.models])
+            return onp.atleast_1d(percentile_bounds(draws, alpha_ci, bound))
+        cov = self._joint_covariance()
+        n_cop = self.params.size
+        layout = self._parameter_layout()
+        entries = onp.flatnonzero(onp.diag(cov)[:n_cop] != 0)
+        with onp.errstate(all="ignore"):
+            gradient = jacobian(
+                lambda vector: onp.array([float(at(*vector[:n_cop]))]),
+                layout,
+                entries,
+                onp.sqrt(onp.abs(onp.diag(cov))),
+            )[0]
+        var = float(gradient @ cov[onp.ix_(entries, entries)] @ gradient)
+        return wald_bound_on_support(
+            estimate,
+            var,
+            -1.0,
+            1.0,
+            alpha_ci,
+            bound,
+            _MEASURES[measure],
+            advice=_NO_OTHER_BOUND,
+        )
+
     # -- serialisation ----------------------------------------------------
     def to_dict(self) -> dict:
         """
@@ -713,7 +1071,14 @@ class CopulaModel(
         The data is not stored, but for a fitted model the negative
         log-likelihood, parameter count and BIC's sample size are, so the
         restored model still reports ``neg_ll``/``aic``/``bic``. Restore
-        with :meth:`from_dict` or ``surpyval.from_dict``.
+        with :meth:`from_dict` or ``surpyval.from_dict``. The parameter
+        covariance is stored where the fit has one, under
+        ``"covariance"``, with how it was worked out under
+        ``"covariance_method"``: ``"information"`` (the joint Hessian of
+        ``how="MLE"``), ``"godambe"`` (the two stages' sandwich of
+        ``how="IFM"``) or ``"rank"`` (the pseudo-likelihood's, for
+        ``KaplanMeier`` margins on complete data). A bootstrap's refits
+        are not stored: they need the data.
         """
         margins = []
         for m in self.margins:
@@ -737,6 +1102,8 @@ class CopulaModel(
             # The key every model's dict stores it under (#605): the
             # restored model keeps its standard errors and bounds.
             out["covariance"] = covariance.tolist()
+            # How it was worked out: "information", "godambe" or "rank".
+            out["covariance_method"] = self._covariance_method
         return stamp_schema(out)
 
     def _saved_covariance(self) -> npt.NDArray | None:
@@ -768,7 +1135,15 @@ class CopulaModel(
                 StudentT,
             )
         }
+        from ._nd_model import restored_family
+
         copula_name = model_dict["copula"]
+        many = restored_family(model_dict)
+        if many is not None:
+            # (a copula of more than two series, and its model class)
+            families[copula_name] = many
+            if not issubclass(cls, many._model_cls()):
+                cls = many._model_cls()
         if copula_name not in families:
             raise ValueError(
                 f"Unknown copula family {copula_name!r}; expected one of "
@@ -783,7 +1158,9 @@ class CopulaModel(
                     "so this copula model cannot be rebuilt."
                 )
             margins.append(surpyval.from_dict(m))
-        family = families[copula_name].rotated(model_dict.get("rotation", 0))
+        family: Any = families[copula_name]
+        if many is None:
+            family = family.rotated(model_dict.get("rotation", 0))
         model = cls(
             family,
             model_dict["params"],
@@ -798,6 +1175,11 @@ class CopulaModel(
             model._covariance = onp.array(
                 model_dict["covariance"], dtype=float
             ).reshape(size, size)
+            # (A dict written before the key has a parametric fit's.)
+            model._covariance_method = model_dict.get(
+                "covariance_method",
+                "information" if model.method == "MLE" else "godambe",
+            )
         # Dicts written before the likelihood was stored have none; such a
         # model (like a ``from_params`` one) has no likelihood to report.
         # "neg_ll" is the key of a dict written before v0.23.

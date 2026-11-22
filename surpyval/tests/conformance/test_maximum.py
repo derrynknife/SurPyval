@@ -1502,6 +1502,8 @@ SEARCHES: dict[str, Callable] = {
     # (each cause's own proportional-intensity model, as above)
     "CauseSpecificProportionalIntensity": _search_cause_specific_nhpp,
     "CopulaModel": _search_copula,
+    # (a copula of more than two series)
+    "MultivariateCopulaModel": _search_copula,
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,
     "DestructiveDegradationModel": _search_destructive,
