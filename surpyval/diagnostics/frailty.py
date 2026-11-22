@@ -1,10 +1,10 @@
 """``diagnose()`` for the shared-frailty models (#872).
 
 Two families, one module: :data:`PARAMETRIC_FAMILY` for a
-:class:`~surpyval.FrailtyModel` (``WeibullFrailty``, ...,
+:class:`~surpyval.univariate.regression.FrailtyModel` (``WeibullFrailty``, ...,
 ``Frailty(dist, family=...)``) and :data:`COX_FAMILY` for a
-:class:`~surpyval.CoxFrailtyModel` (``CoxFrailty``). A shared-frailty
-model is a proportional hazards model *given the frailty*,
+:class:`~surpyval.univariate.regression.CoxFrailtyModel` (``CoxFrailty``). A
+shared-frailty model is a proportional hazards model *given the frailty*,
 
 .. math::
     h(t \\mid Z, u) = u \\, h_0(t) \\, e^{\\beta' Z},
@@ -21,12 +21,14 @@ The checks
 ``frailty_variance`` (both models)
     The likelihood-ratio test of ``theta = 0``, no frailty: twice the
     frailty fit's log-likelihood less that of the same model without the
-    frailty fitted to the same rows. For a :class:`~surpyval.FrailtyModel`
+    frailty fitted to the same rows. For a
+    :class:`~surpyval.univariate.regression.FrailtyModel`
     that null model is the parametric proportional hazards fit of the
     same baseline, ``<Dist>PH.fit(x, Z, c, n)`` (``PH(dist).fit`` for a
     baseline that is not built in; ``<Dist>.fit(x, c, n)`` without
     covariates), whose likelihood is the frailty model's at ``theta =
-    0``. For a :class:`~surpyval.CoxFrailtyModel` it is the Cox partial
+    0``. For a :class:`~surpyval.univariate.regression.CoxFrailtyModel` it is
+    the Cox partial
     likelihood of ``CoxPH.fit(x, Z, c, n, tie_method=...)`` on the same
     rows, which ``CoxFrailty.fit`` computes as it fits (and stores as
     ``log_likelihood_no_frailty``), against the integrated ("I-")
@@ -90,7 +92,8 @@ log-normal's adaptive Gauss-Hermite quadrature,
 the larger from the smaller's maximum, so that the statistic is never
 negative.
 
-A :class:`~surpyval.CoxFrailtyModel` does not keep the group of each row
+A :class:`~surpyval.univariate.regression.CoxFrailtyModel` does not keep the
+group of each row
 it was fitted to, so its conditional model (proportional hazards and
 functional form given the frailties) cannot be checked, and the Cox
 family's checks of ``CoxPH`` refitted to the rows would test the marginal
@@ -204,7 +207,8 @@ def frailty_fitter_name(model: Any, family: str | None = None) -> str:
 
     Examples
     --------
-    >>> from surpyval import FrailtyModel, Weibull
+    >>> from surpyval import Weibull
+    >>> from surpyval.univariate.regression import FrailtyModel
     >>> from surpyval.diagnostics.frailty import frailty_fitter_name
     >>> model = FrailtyModel()
     >>> model.dist = Weibull
@@ -226,7 +230,8 @@ def null_fitter_name(model: Any) -> str:
 
     Examples
     --------
-    >>> from surpyval import FrailtyModel, Weibull
+    >>> from surpyval import Weibull
+    >>> from surpyval.univariate.regression import FrailtyModel
     >>> from surpyval.diagnostics.frailty import null_fitter_name
     >>> model = FrailtyModel()
     >>> model.dist = Weibull

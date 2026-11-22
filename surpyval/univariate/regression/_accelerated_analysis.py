@@ -3,8 +3,9 @@ answers beside its predictions: the activation energy of a thermally
 activated life model in electronvolts, whether the shape is common to the
 stress levels, and the life against stress drawn with its bounds.
 
-The host is a :class:`~surpyval.ParametricRegressionModel`; every method
-refuses a model that is not an accelerated life model, saying which
+The host is a
+:class:`~surpyval.univariate.regression.ParametricRegressionModel`; every
+method refuses a model that is not an accelerated life model, saying which
 model each needs.
 """
 

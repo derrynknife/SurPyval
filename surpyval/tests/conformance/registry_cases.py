@@ -319,7 +319,7 @@ def _univariate():
             start=1,
             fitters=(
                 "surpyval.Discretize",
-                "surpyval.DiscretizedFitter",
+                "surpyval.univariate.parametric.DiscretizedFitter",
             ),
         )
     )
@@ -464,7 +464,7 @@ def _univariate():
         Case(
             name="RoystonParmar",
             fitters=("surpyval.RoystonParmar",),
-            model_class="surpyval.RoystonParmarModel",
+            model_class="surpyval.univariate.parametric.RoystonParmarModel",
             interface=UNIVARIATE,
             data=uni_data,
             fit=_fit(sp.RoystonParmar),
@@ -756,7 +756,7 @@ def _competing_risks():
         Case(
             name="CoxPH[interval, causes]",
             fitters=(),
-            model_class="surpyval.CoxNPMLEModel",
+            model_class="surpyval.univariate.regression.CoxNPMLEModel",
             interface=CAUSES_REGRESSION,
             data=cox_icr_data,
             fit=_fit(sp.CoxPH),
@@ -2279,7 +2279,7 @@ def _joint():
             fitter,
             # the links are ways of calling the one public factory
             fitters=(f"surpyval.{name}",) if "[" not in name else (),
-            model_class="surpyval.JointModel",
+            model_class="surpyval.univariate.joint.JointModel",
             data=joint_causes_data if causes else joint_data,
             x=X_JOINT,
             Z=np.ones((X_JOINT.size, 1)),
@@ -2395,12 +2395,15 @@ def _distributional():
             regression(
                 name,
                 getattr(sp, name),
-                model_class="surpyval.DistributionalRegressionModel",
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
                 fitters=(f"surpyval.{name}",)
                 + (
                     (
                         "surpyval.Distributional",
-                        "surpyval.DistributionalFitter",
+                        "surpyval.univariate.regression.DistributionalFitter",
                     )
                     if base == "Weibull"
                     else ()
@@ -2456,13 +2459,16 @@ def _mixture_cure():
                 # A MixtureCureModel is a DistributionalRegressionModel:
                 # declared as one, so every table keyed by the model's
                 # class applies to it.
-                model_class="surpyval.DistributionalRegressionModel",
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
                 fitters=(f"surpyval.{name}",)
                 + (
                     (
                         "surpyval.MixtureCure",
-                        "surpyval.MixtureCureFitter",
-                        "surpyval.MixtureCureModel",
+                        "surpyval.univariate.regression.MixtureCureFitter",
+                        "surpyval.univariate.regression.MixtureCureModel",
                     )
                     if base == "Weibull"
                     else ()
@@ -2490,13 +2496,16 @@ def _zero_inflated():
                 # A ZeroInflatedModel is a DistributionalRegressionModel:
                 # declared as one, so every table keyed by the model's
                 # class applies to it.
-                model_class="surpyval.DistributionalRegressionModel",
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
                 fitters=(f"surpyval.{name}",)
                 + (
                     (
                         "surpyval.ZeroInflated",
-                        "surpyval.ZeroInflatedFitter",
-                        "surpyval.ZeroInflatedModel",
+                        "surpyval.univariate.regression.ZeroInflatedFitter",
+                        "surpyval.univariate.regression.ZeroInflatedModel",
                     )
                     if base == "Weibull"
                     else ()
@@ -4226,7 +4235,9 @@ def _bounds(case):
     if cls == "DistributionalRegressionModel":
         # The parametric regressions' bounds, and each row's parameter
         regression = replace(
-            case, model_class="surpyval.ParametricRegressionModel"
+            case,
+            model_class="surpyval.univariate.regression."
+            "ParametricRegressionModel",
         )
         return _bounds(regression) + _parameter_bounds(case)
     if cls == "ParametricRegressionModel":

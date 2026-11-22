@@ -39,11 +39,12 @@ import pytest
 from autograd import value_and_grad
 from scipy.stats import multivariate_normal
 
-from surpyval import JointAFT, JointModel, JointPH, Weibull
+from surpyval import JointAFT, JointPH, Weibull
 from surpyval.degradation import LinearPath, QuadraticPath
 from surpyval.tests.univariate.joint import _fleet
 from surpyval.tests.univariate.joint import _laplace_fleet as knots
 from surpyval.tests.univariate.joint import test_joint_integration as grids
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint import _laplace as lap
 from surpyval.univariate.joint import _likelihood as lik
 from surpyval.univariate.joint import joint_ph

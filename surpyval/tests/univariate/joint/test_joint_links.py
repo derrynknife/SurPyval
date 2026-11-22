@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import JointAFT, JointModel, JointPH, Weibull, WeibullJointPH
+from surpyval import JointAFT, JointPH, Weibull, WeibullJointPH
 from surpyval.degradation import (
     LinkedPathModel,
     LloydLipowPath,
@@ -32,6 +32,7 @@ from surpyval.degradation import (
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
 from surpyval.tests.univariate.joint._fleet import line_area, simulate_links
 from surpyval.tests.univariate.joint.test_joint_extensions import KINDS
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint._likelihood import (
     JointArrays,
     Layout,

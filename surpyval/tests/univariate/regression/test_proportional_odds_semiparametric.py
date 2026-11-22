@@ -17,6 +17,7 @@ import pytest
 from scipy.optimize import minimize
 
 import surpyval as sp
+from surpyval.univariate.regression import ProportionalOddsModel
 from surpyval.univariate.regression.proportional_odds.proportional_odds import (  # noqa: E501
     _inner,
     _POLikelihood,
@@ -322,7 +323,7 @@ def test_summary_param_cb_and_frame_entry_points_agree():
     np.testing.assert_allclose(framed.beta, model.beta, rtol=1e-12)
     assert list(framed.summary().index) == ["a", "b"]
     assert "survival odds ratio" in repr(framed)
-    restored = sp.ProportionalOddsModel.from_json(framed.to_json())
+    restored = ProportionalOddsModel.from_json(framed.to_json())
     np.testing.assert_array_equal(restored.sf(x, df), framed.sf(x, df))
     np.testing.assert_array_equal(restored.covariance(), framed.covariance())
 
@@ -440,7 +441,7 @@ def test_617_param_cb_lr_options_restored_and_aliased():
     assert lower.shape == (1,) and lower[0] == two[0]
     with pytest.raises(ValueError, match="method"):
         model.param_cb("coef_1", method="bootstrap")
-    restored = sp.ProportionalOddsModel.from_dict(model.to_dict())
+    restored = ProportionalOddsModel.from_dict(model.to_dict())
     with pytest.raises(ValueError, match="data"):
         restored.param_cb("coef_1", method="lr")
     # A constant column is aliased: no interval, as Wald gives none.

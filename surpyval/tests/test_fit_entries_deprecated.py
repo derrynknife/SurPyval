@@ -140,9 +140,11 @@ def _recurrent(with_Z=False, with_e=False):
         (rc.CauseSpecificNHPP, {}, False, True),
         (rc.CauseSpecificProportionalIntensity, {}, True, True),
     ],
-    ids=lambda v: getattr(v, "__name__", type(v).__name__)
-    if not isinstance(v, (dict, bool))
-    else None,
+    ids=lambda v: (
+        getattr(v, "__name__", type(v).__name__)
+        if not isinstance(v, (dict, bool))
+        else None
+    ),
 )
 def test_the_old_recurrent_call_is_fit_of_the_data(fitter, kw, with_Z, with_e):
     data = _recurrent(with_Z, with_e)

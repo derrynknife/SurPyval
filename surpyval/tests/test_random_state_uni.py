@@ -51,7 +51,7 @@ _UNIVARIATE = [
         "surpyval.InstantlyOccurs",
         "surpyval.NonParametric",
         "surpyval.MixtureModel",
-        "surpyval.RoystonParmarModel",
+        "surpyval.univariate.parametric.RoystonParmarModel",
     )
 ]
 

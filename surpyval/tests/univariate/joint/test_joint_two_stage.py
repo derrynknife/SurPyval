@@ -20,9 +20,9 @@ import pandas as pd
 import pytest
 
 import surpyval
-from surpyval import JointModel, WeibullJointAFT, WeibullJointPH
+from surpyval import WeibullJointAFT, WeibullJointPH
 from surpyval.tests.univariate.joint._fleet import fleet, simulate_aft
-from surpyval.univariate.joint import DynamicPrediction, joint_ph
+from surpyval.univariate.joint import DynamicPrediction, JointModel, joint_ph
 from surpyval.univariate.joint._markers import _plug_in_fit, survival_stage
 
 #: A pump still running at 200 days with four readings.

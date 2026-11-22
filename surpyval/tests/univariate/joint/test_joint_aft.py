@@ -25,7 +25,6 @@ import pytest
 import surpyval
 from surpyval import (
     JointAFT,
-    JointModel,
     JointPH,
     SurpyvalData,
     Weibull,
@@ -37,7 +36,7 @@ from surpyval.degradation import PathModel
 from surpyval.degradation.path_models import PATH_MODELS
 from surpyval.tests.univariate.joint._fleet import simulate_aft
 from surpyval.tests.univariate.joint.test_joint_links import YEARS
-from surpyval.univariate.joint import _aft
+from surpyval.univariate.joint import JointModel, _aft
 from surpyval.univariate.joint._likelihood import (
     JointArrays,
     PathFunction,

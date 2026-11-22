@@ -30,7 +30,7 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import JointAFT, JointModel, JointPH, Weibull, WeibullJointPH
+from surpyval import JointAFT, JointPH, Weibull, WeibullJointPH
 from surpyval.degradation import QuadraticPath
 from surpyval.serialisation import required_schema
 from surpyval.tests.univariate.joint._fleet import CENTRE, TRUTH, fleet
@@ -43,6 +43,7 @@ from surpyval.tests.univariate.joint.test_joint_integration import (
     SDS,
     simulate,
 )
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint._likelihood import (
     Layout,
     block_labels,

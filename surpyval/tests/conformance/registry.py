@@ -323,14 +323,14 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.univariate.parametric.ParametricFitter": _BASE,
     "surpyval.univariate.parametric.OptimisedFitMixin": _BASE,
     "surpyval.univariate.parametric.DiscreteParametricFitter": _BASE,
-    "surpyval.AFTFitter": _BASE,
+    "surpyval.univariate.regression.AFTFitter": _BASE,
     "surpyval.ProportionalHazardsFitter": _BASE,
-    "surpyval.ProportionalOddsFitter": _BASE,
-    "surpyval.AdditiveHazardsFitter": _BASE,
-    "surpyval.FrailtyFitter": _BASE,
-    "surpyval.CoxFrailtyFitter": _BASE,
-    "surpyval.CoxMixedEffectsFitter": _BASE,
-    "surpyval.ParameterSubstitutionFitter": _BASE,
+    "surpyval.univariate.regression.ProportionalOddsFitter": _BASE,
+    "surpyval.univariate.regression.AdditiveHazardsFitter": _BASE,
+    "surpyval.univariate.regression.FrailtyFitter": _BASE,
+    "surpyval.univariate.regression.CoxFrailtyFitter": _BASE,
+    "surpyval.univariate.regression.CoxMixedEffectsFitter": _BASE,
+    "surpyval.univariate.regression.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
     "surpyval.multivariate.Copula": _BASE,
@@ -362,30 +362,30 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.CovariatePath": _DATA,
     "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",
-    "surpyval.LogRankResult": _RESULT,
-    "surpyval.IntervalLogRankResult": _RESULT,
-    "surpyval.PairwiseLogRankResult": _RESULT,
-    "surpyval.MaxComboResult": _RESULT,
-    "surpyval.TrendLogRankResult": _RESULT,
-    "surpyval.PermutationLogRankResult": _RESULT,
-    "surpyval.MaxStatResult": _RESULT,
+    "surpyval.univariate.nonparametric.LogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.IntervalLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.PairwiseLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.MaxComboResult": _RESULT,
+    "surpyval.univariate.nonparametric.TrendLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.PermutationLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.MaxStatResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
     "surpyval.DynamicAccuracy": _RESULT,
     "surpyval.DynamicCalibration": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
-    "surpyval.PseudoRegressionResult": _RESULT,
+    "surpyval.univariate.regression.PseudoRegressionResult": _RESULT,
     "surpyval.PooledRate": (
         "what pooled_rate estimated (a population of rates from counts "
         "and exposures, covered by tests/univariate/test_pooled_rate.py), "
         "not a model of times"
     ),
     "surpyval.AdjustedCurves": _RESULT,
-    "surpyval.NonParametricPlot": (
+    "surpyval.univariate.nonparametric.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
-    "surpyval.CoefficientPlot": (
+    "surpyval.univariate.regression.CoefficientPlot": (
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
     "surpyval.univariate.regression.CoefficientPlot": (
@@ -406,7 +406,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     ),
     "surpyval.LikelihoodContour": _RESULT,
     "surpyval.univariate.parametric.ParametricBootstrap": _RESULT,
-    "surpyval.LikelihoodContourPlot": (
+    "surpyval.univariate.parametric.LikelihoodContourPlot": (
         "what plot_likelihood_contour drew (a figure and its contours), "
         "not a model"
     ),

@@ -16,6 +16,7 @@ from scipy.integrate import trapezoid
 from scipy.special import expit
 
 import surpyval as sp
+from surpyval.univariate.regression import MixtureCureFitter
 
 
 def _simulate(seed, n, plateau=(300.0, 500.0)):
@@ -478,7 +479,7 @@ def test_refusals():
     with pytest.raises(ValueError, match="give incidence only"):
         sp.MixtureCure(sp.Weibull, links={"lfp_p": "probit"})
     with pytest.raises(ValueError, match="built by MixtureCure"):
-        sp.MixtureCureFitter(sp.Weibull)
+        MixtureCureFitter(sp.Weibull)
     with pytest.raises(ValueError, match="links\\['alpha'\\] = 'logit'"):
         sp.MixtureCure(sp.Weibull, links={"alpha": "logit"})
     x, c, Z = _simulate(26, 200)

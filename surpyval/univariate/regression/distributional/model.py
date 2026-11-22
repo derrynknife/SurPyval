@@ -1027,7 +1027,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import DistributionalRegressionModel
+        >>> from surpyval.univariate.regression import (
+        ...     DistributionalRegressionModel,
+        ... )
         >>> from surpyval import WeibullDistributional
         >>> rng = np.random.default_rng(3)
         >>> load = rng.uniform(0, 1, 300)

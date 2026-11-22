@@ -23,7 +23,6 @@ import pytest
 import surpyval
 from surpyval import (
     ItemLifetime,
-    JointModel,
     JointPH,
     LogNormal,
     SurpyvalData,
@@ -45,6 +44,7 @@ from surpyval.tests.univariate.joint._fleet import (
     simulate,
     simulate_path,
 )
+from surpyval.univariate.joint import JointModel
 
 
 def _truth(model, **extra):

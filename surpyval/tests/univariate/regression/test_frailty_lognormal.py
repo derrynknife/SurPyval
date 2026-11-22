@@ -18,6 +18,7 @@ import surpyval as sp
 from surpyval import Exponential, Frailty, Weibull
 from surpyval.datasets import load_kidney
 from surpyval.tests.reference._data import reference
+from surpyval.univariate.regression import FrailtyModel
 from surpyval.univariate.regression.frailty.families import (
     N_NODES,
     kendall_tau,
@@ -284,7 +285,7 @@ def test_no_frailty_in_the_data_reduces_to_the_ph_fit():
 
 
 def test_variance_measures_compare_the_families():
-    m = sp.FrailtyModel()
+    m = FrailtyModel()
     m.family, m.theta = "lognormal", 0.4
     assert m.frailty_variance == pytest.approx(np.expm1(0.4))
     m.family = "gamma"

@@ -13,4 +13,4 @@ two designs on one plot). Worked examples are in
 .. autoclass:: surpyval.LikelihoodContour
    :members:
 
-.. autoclass:: surpyval.LikelihoodContourPlot
+.. autoclass:: surpyval.univariate.parametric.LikelihoodContourPlot

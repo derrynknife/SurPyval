@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-21
 
+### Result, model, base-fitter and plot classes off the top level (21 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| 39 top-level classes that a call returns rather than a user types are deprecated at the top level (FutureWarning naming the subpackage, removed in v0.30; `surpyval._MOVED` and the package `__getattr__`), and left out of `__all__` and `dir(surpyval)`. Kept: `ProportionalHazardsFitter` (the docs build a custom model from it), `MixtureModel` (constructed by users), and `EquivalenceFitter` / `EquivalenceModel`, whose module is in no public subpackage. | proposed (the selection, by the rule of the plan: kept if a user constructs or fits it directly) | `dir(surpyval)` and tab completion list what a user calls. No size rule for the top level is written into the design principles: that question is the maintainer's. | done |
+| The six distributional, mixture-cure and zero-inflated base fitters and models, and `PseudoRegressionResult`, which had no public home but the top level, are added to `surpyval.univariate.regression.__all__` (imported on first use). | proposed | A class kept for type hints needs a public, frozen home before it leaves the top level. | done |
+| `ProportionalOddsFitter` moves with the other base fitters although RePyability's tests construct it (`ProportionalOddsFitter(Weibull)`): the documented builder is `PO(Weibull)`, and the old access keeps working with the warning. | proposed | RePyability's code imports `JointModel` and `SemiParametricRegressionModel` from the top level, which keeps working; its public-interface test needs the subpackage imports. | done |
 ### One way to fit a data object: `fit(data)` (21 Nov 2026)
 
 | Decision | By | Reason | Status |
