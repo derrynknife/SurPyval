@@ -101,7 +101,8 @@ likelihood is the integral over its varying parameters
 of the :math:`\log L_i`, each integral by adaptive Gauss--Hermite
 quadrature: a product grid of 7 points a dimension (49 for two varying
 parameters, 343 for three; see :ref:`how the integral is done
-<joint-integration>` for four and five, the most that may vary), centred
+<joint-integration>` for four and five, and for more, where there is no
+grid), centred
 at each item's
 most likely parameters and scaled by how sure its readings make them (the
 Gauss--Newton curvature, from the path's Jacobian: exact for a path linear
@@ -145,13 +146,14 @@ have (its own level, its own rate, ...), and that average is a sum over a
 grid of 7 values of each, placed where that item's readings and lifetime
 say its parameters are. The grid grows quickly with the number of varying
 parameters: 7 nodes for one, 49 for two, 343 for three, 2,401 for four and
-16,807 for five, for every item at every step of the search. Up to five
-may vary.
+16,807 for five, for every item at every step of the search. A sixth
+would make it 117,649, so beyond five there is no grid: the integral is
+Laplace's approximation.
 
-``integration=`` on ``fit`` (and ``fit_from_df``) chooses the nodes:
+``integration=`` on ``fit`` (and ``fit_from_df``) chooses how:
 
-- ``"grid"``: the full grid. The default, whatever the number of varying
-  parameters: the more accurate choice.
+- ``"grid"``: the full grid. The default up to five varying parameters:
+  the more accurate choice.
 - ``"pruned"``: the grid without the nodes whose weight is negligible --
   its far corners, where several parameters are extreme at once. The rule
   is fixed: the lowest-weight nodes are left out, as many as hold less
@@ -160,11 +162,15 @@ may vary.
   parameters, 80 of 2,401 for four and 1,392 of 16,807 for five. An
   option, never the default: it trades a little accuracy for a little
   speed, and in practice saves little (below).
+- ``"laplace"``: Laplace's approximation, with no grid. The default
+  beyond five varying parameters, where a grid is refused, and an option
+  below (:ref:`below <joint-laplace>`).
 
 The model says which it used (``model.integration``, and the
 ``Integration`` line of its printout), keeps it when saved, and predicts
-on the same kind of grid. A model saved before the choice existed reads as
-``"grid"``.
+on the same kind of grid (a Laplace fit predicts on the full grid up to
+five varying parameters, and by Laplace's approximation beyond). A model
+saved before the choice existed reads as ``"grid"``.
 
 .. code:: python
 
@@ -198,6 +204,115 @@ log-likelihood of such a fleet was off by up to 5e-5 an item (it was
 within 4e-10 an item on a fleet read often). That is the grid's own
 error, the same on the full grid and the pruned one. Fewer correlations
 (next) make that search smaller.
+
+.. _joint-laplace:
+
+Laplace's approximation
+^^^^^^^^^^^^^^^^^^^^^^^
+
+A grid samples each item's integrand at many points. Laplace's
+approximation uses only where it peaks: the integrand's height at the
+item's most likely parameters :math:`\hat b_i`, and how sharply it falls
+away from them,
+
+.. math::
+
+    \log L_i \approx g_i(\hat b_i) + \frac{q}{2} \log 2\pi
+    - \frac{1}{2} \log \det\bigl(-g_i''(\hat b_i)\bigr),
+
+with :math:`g_i` the log of the integrand and :math:`q` the number of
+varying parameters. That is the integral of the normal curve that matches
+the integrand at its peak, so it is exact where the integrand is normal (a
+path linear in its parameters and no marker effect), and off by a term of
+the order of one over the item's number of readings otherwise (Tierney and
+Kadane 1986; for joint models, Rizopoulos, Verbeke and Lesaffre 2009). The
+curvature is the integrand's own, by differences on :math:`q^2 + q + 1`
+points around the peak: 21 evaluations an item for four varying parameters
+where the grid takes 2,401, and 43 for six, where there is no grid.
+
+.. code:: python
+
+    model = JointPH(Weibull, cubic).fit(data, integration="laplace")
+    model.integration                           # 'laplace'
+
+    # six varying parameters: Laplace's approximation without asking
+    JointPH(Weibull, six_bumps).fit(data).integration    # 'laplace'
+
+The fit maximises the approximated likelihood exactly: each item's peak
+moves as the parameters change, and the gradient the search follows and
+the curvature the standard errors come from both account for that (the
+gradient through the implicit-function theorem, the curvature by
+differences of that gradient with every peak found again). A fit by
+Laplace's approximation has ``aic()``, ``bic()`` and ``neg_ll()`` like any
+other, of the approximated likelihood: compare models fitted the same way.
+
+How close it is to the grid, measured
+(``tests/univariate/joint/test_joint_laplace.py`` and
+``scripts/studies/joint_recovery/laplace_few_readings.py``):
+
+- With no marker effect it reproduces the closed form to 1e-8 an item in
+  two, three, four and six dimensions.
+- With a marker effect, at the simulation's truth, its log-likelihood was
+  within about 1e-6 an item of an 11-point grid's on fleets read every 0.1
+  years
+  (up to 31 readings an item), and within 5e-4 an item read every 0.5
+  years with three times the noise (up to 7 readings).
+- Fitted to the recovery study's pumps (300 a fleet, two varying
+  parameters, read monthly: up to 25 readings), its estimates were within
+  0.02 standard errors of the full grid's on each of five fleets, and its
+  standard errors within 0.3%. A fleet of 60 items with four varying
+  parameters gave estimates within 0.001 standard errors and standard
+  errors within 0.3%, in 9 seconds where the full grid took 555.
+- A recovery study of 200 such fleets of 100 items (four varying
+  parameters, all six correlations estimated, their truth 0;
+  ``scripts/studies/joint_recovery/study.py cubic`` with
+  ``INTEGRATION=laplace``, ``summary_cubic_laplace.json``) took about 45
+  seconds a fleet. 61 of the 200 fits had no standard errors: the
+  estimated correlation matrix ran to the edge of where a correlation
+  matrix can be (on one, its smallest eigenvalue was 2e-4), as six
+  correlations among 100 items can; three of them, fitted again with
+  ``random_effects="diagonal"``, reached a verified maximum with standard
+  errors. On the 139 that had them, the 95% intervals covered the truth
+  89% to 98% of the time (the path's coefficients 91% to 96%, the
+  marker's effect 94%), and the marker's effect was 2.7% high (Monte
+  Carlo error 1.2%), the Weibull's scale 1.4% high (0.6%) and one
+  correlation 0.07 low (0.03). These are of the fits that had standard
+  errors, not of all 200.
+- It degrades as the readings thin out and are noisy. The same pumps read
+  every 90 days (at most 9 readings; 6% to 9% of the pumps with three or
+  fewer): within 0.08 standard errors. Every 180 days (at most 5; 36% to
+  42% with three or fewer): 0.10 to 0.18. Once a year (at most 3): 0.23 to
+  0.41, and one fit of five did not reach a verified maximum. The
+  difference is largest in the marker's effect. Where the readings are
+  precise it holds up with few: fleets of a quadratic path with three
+  varying parameters and less than a third of the pumps' noise stayed within 0.005
+  standard errors with at most 4 readings an item.
+
+A second run, its design and its rule for the warning fixed before it ran,
+read 20 more fleets of the pumps every 100 to 160 days (9% to 36% of the
+pumps with three readings or fewer): every fleet with up to 15% so read
+was within 0.074 standard errors, and from 16% fleets were off by up to
+0.164 (five of the fourteen beyond 15% were over 0.1). So the fit warns, with
+the count, when more than 15% of the items have three readings or fewer,
+and says to use a grid (with up to five varying
+parameters) or to let fewer parameters vary. Two more things it does not
+do. It does not take truncated items (late entry, or in the data only
+because they failed by an age): the chance of an item being in the data is
+an integral with no readings in it, which the approximation is not
+accurate for, so the fit refuses and says to use a grid. And beyond five
+varying parameters its predictions are also by Laplace's approximation
+(each integral at its own peak), so the survival of an item with few
+readings or none is approximate there; up to five they are on the full
+grid.
+
+Beyond five varying parameters the fit starts differently too. The start
+from each item's own fitted path fails where a path has many parameters
+and an item barely as many readings, so the items' fits are summarised by
+their median and spread, and the marker's own mixed model is settled
+first. A fleet of 120 items with six varying parameters (a marker that is
+a sum of six smooth bumps along the age, the height of each an item's own,
+uncorrelated) was recovered within 3 standard errors in about three
+minutes.
 
 Which path parameters are correlated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1220,9 +1335,9 @@ kink.
 
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
-the same curvature ``c``. At most five may vary (the quadrature's grid is
-7 points in each, the full grid by default: see :ref:`how the
-integral is done <joint-integration>`). A path model fitted to a curve it cannot follow biases
+the same curvature ``c``. Up to five varying parameters are integrated on
+a grid of 7 points in each, and more by Laplace's approximation (see
+:ref:`how the integral is done <joint-integration>`). A path model fitted to a curve it cannot follow biases
 the joint model, as it does a degradation model: choose it as you would
 there (see :doc:`Degradation Analysis`).
 
@@ -1932,7 +2047,8 @@ What it does and does not do
 The joint model (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
-  default), with up to five of its parameters varying between items
+  default), with any number of its parameters varying between items
+  (on a grid up to five, by Laplace's approximation beyond)
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``; every pair correlated, none, or blocks of them,
   ``random_effects=``) and the rest common;

@@ -32,9 +32,10 @@ item's likelihood is the integral over its varying parameters
           phi(theta_V; mu_V + Delta_V z_i, D) d theta_V,
 
 evaluated by adaptive Gauss-Hermite quadrature: a product grid
-(7 points a dimension; with four or five varying parameters by default
-without the nodes whose weight is negligible, :func:`gh_grid`) centred
-at the mode of the integrand and scaled by its curvature there
+(7 points a dimension; on request without the nodes whose weight is
+negligible, :func:`gh_grid`; beyond five varying parameters there is no
+grid, and the integral is Laplace's approximation, :mod:`._laplace`)
+centred at the mode of the integrand and scaled by its curvature there
 (Gauss-Newton: the path's Jacobian, which is the exact curvature for a
 path linear in its parameters). The nodes are
 placed in the space of the varying parameters themselves and held fixed
@@ -91,14 +92,18 @@ GH_FIT = 7
 GH_PREDICT = {1: 15, 2: 15, 3: 9, 4: 7, 5: 7}
 #: Gauss-Legendre points of the cumulative hazard.
 GL_POINTS = 15
-#: The most path parameters that may vary: a full grid has 7^q nodes
-#: (2,401 for four, 16,807 for five).
+#: The most path parameters that may vary on a grid: a full grid has
+#: 7^q nodes (2,401 for four, 16,807 for five). Beyond it the integral
+#: is Laplace's approximation (:mod:`._laplace`).
 MAX_VARYING = 5
 #: How the integral over the varying parameters is done: on the full
-#: product grid (``"grid"``), or on it without the nodes of negligible
-#: weight (``"pruned"``). The default is always the full grid, the more
-#: accurate one; pruning is an option the caller chooses.
-INTEGRATIONS = ("grid", "pruned")
+#: product grid (``"grid"``), on it without the nodes of negligible
+#: weight (``"pruned"``), or by Laplace's approximation (``"laplace"``:
+#: no grid). The default is the full grid, the more accurate one,
+#: wherever there is one (up to ``MAX_VARYING`` varying parameters), and
+#: Laplace's approximation beyond; the others are options the caller
+#: chooses.
+INTEGRATIONS = ("grid", "pruned", "laplace")
 #: The pruned grid leaves out the lowest-weight nodes of the product
 #: grid, as many as have less than this share of the grid's total weight
 #: between them (nodes of equal weight are kept or left out together).
@@ -155,14 +160,24 @@ def check_integration(integration: Any, q: int) -> str:
     ``integration`` itself where it is given, else the default for
     ``q``."""
     if integration is None:
-        return "grid"
+        return "grid" if q <= MAX_VARYING else "laplace"
     if not isinstance(integration, str) or integration not in INTEGRATIONS:
         raise ValueError(
             "'integration' is how each item's likelihood is integrated "
             "over its varying path parameters: 'grid' (the full grid of "
-            f"{GH_FIT} points in each) or 'pruned' (the grid without the "
-            "nodes of negligible weight), or leave it out for the "
+            f"{GH_FIT} points in each), 'pruned' (the grid without the "
+            "nodes of negligible weight) or 'laplace' (Laplace's "
+            "approximation, with no grid), or leave it out for the "
             f"default; got {integration!r}."
+        )
+    if integration != "laplace" and q > MAX_VARYING:
+        raise ValueError(
+            f"integration={integration!r} is a grid of {GH_FIT} points in "
+            f"each varying path parameter, too many beyond {MAX_VARYING} "
+            f"of them ({GH_FIT}^{q} nodes an item for the {q} here): use "
+            "integration='laplace' (the default for this many), or name "
+            f"up to {MAX_VARYING} in varying=(...), the rest common to "
+            "all items."
         )
     return integration
 
@@ -1992,11 +2007,34 @@ class Model:
     def prune(self) -> bool:
         return self.integration == "pruned"
 
-    def prediction_nodes(self, mode: npt.NDArray, root: npt.NDArray) -> tuple:
-        """The adaptive nodes of a prediction (``GH_PREDICT`` points a
-        dimension, pruned as the fit's were)."""
-        return adaptive_nodes(
-            mode, root, GH_PREDICT[self.layout.q], self.prune
+    @property
+    def laplace(self) -> bool:
+        return self.integration == "laplace"
+
+    def prediction_nodes(
+        self,
+        mode: npt.NDArray,
+        root: npt.NDArray,
+        theta: dict,
+        arrays: JointArrays,
+        t: npt.NDArray,
+    ) -> Any:
+        """The nodes of a prediction's integrals, of items still running
+        at the ages ``t`` with their readings (their ``mode`` and
+        ``root`` at ``theta``, :func:`continued_modes`'): the adaptive
+        grid (``GH_PREDICT`` points a dimension, pruned as the fit's
+        were) wherever there is one, a Laplace fit's too (one item's
+        grid is cheap, and exact for an item with few readings or
+        none); beyond ``MAX_VARYING`` varying parameters, Laplace's
+        stencil (:mod:`._laplace`)."""
+        if self.layout.q in GH_PREDICT:
+            return adaptive_nodes(
+                mode, root, GH_PREDICT[self.layout.q], self.prune
+            )
+        from ._laplace import laplace_nodes
+
+        return laplace_nodes(
+            theta, self, arrays, mode, root, t, np.zeros(len(t))
         )
 
 
@@ -2013,7 +2051,15 @@ def log_integrals(
     """``log int p(y | theta)^readings h(t | theta)^d S(t | theta)
     phi(theta_V) d theta_V`` of each item, by the fixed nodes ``(b,
     logw)``; with ``upper``, a row with a finite one has ``S(t) -
-    S(upper)`` (it failed in ``(t, upper]``) in place of ``S(t)``."""
+    S(upper)`` (it failed in ``(t, upper]``) in place of ``S(t)``. Nodes
+    that are a Laplace stencil give Laplace's approximation
+    (:func:`._laplace.log_integrals`)."""
+    if not isinstance(nodes, tuple):
+        from . import _laplace
+
+        return _laplace.log_integrals(
+            theta, model, arrays, nodes, t, d, readings, upper
+        )
     return logsumexp(
         log_integrand(theta, model, arrays, nodes, t, d, readings, upper),
         axis=1,
@@ -2081,6 +2127,26 @@ def place(
         start=lik_start,
         upper=arrays.U,
     )
+    if model.laplace:
+        if arrays.truncated.any():
+            raise ValueError(
+                "Laplace's approximation does not take truncated items "
+                "(the fit refuses them): use integration='grid'."
+            )
+        from ._laplace import laplace_nodes
+
+        stencils = laplace_nodes(
+            theta,
+            model,
+            arrays,
+            mode,
+            root,
+            arrays.T,
+            arrays.d,
+            True,
+            arrays.U,
+        )
+        return (stencils, None), (mode, None)
     nodes = adaptive_nodes(mode, root, GH_FIT, model.prune)
     entry = None
     entered = arrays.truncated

@@ -5,6 +5,40 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Joint models: any number of path parameters varying between items,
+  by Laplace's approximation (``integration="laplace"``).** A grid of 7
+  values of each varying parameter stops at five (16,807 nodes an item);
+  a sixth was refused. The fits now take ``integration="laplace"``:
+  each item's integral from the integrand's height at the item's most
+  likely parameters and its curvature there, ``q^2 + q + 1`` evaluations
+  for ``q`` varying parameters (21 for four, 43 for six) and no grid. It
+  is the default beyond five, where ``"grid"`` and ``"pruned"`` are
+  refused saying so, and an option below; up to five the default is
+  still the full grid, and those fits are unchanged. The fit maximises
+  the approximated likelihood exactly (its gradient follows each item's
+  most likely parameters as they move, and the standard errors come from
+  differences of that gradient), and the model says ``integration ==
+  "laplace"``, prints it, saves and restores it. With no marker effect
+  it reproduces the closed form to 1e-8 an item, in six dimensions too.
+  On the recovery study's pumps (two varying parameters, read monthly)
+  its estimates were within 0.02 standard errors of the full grid's, and
+  on a fleet with four varying parameters within 0.001, in 9 seconds
+  where the full grid took 555; a recovery study of 200 such fleets
+  covered the truth 89% to 98% of the time on the 139 whose fits had
+  standard errors (the other 61 put the six correlations at the edge of
+  a valid correlation matrix). It is weaker where items have few, noisy
+  readings (0.10 to 0.18 standard errors off with at most five readings
+  a pump, 0.23 to 0.41 with at most three): the fit warns, with the
+  count, when more than 15% of the items have three readings or
+  fewer (the share from a study whose rule was fixed before it ran), saying to use a grid or fewer ``varying`` names. It refuses
+  truncated items, saying to use a grid. A Laplace fit predicts on the
+  full grid up to five varying parameters and by Laplace's approximation
+  beyond. Beyond five the fit also starts from the marker's own mixed
+  model, settled first, since each item's own fitted path is too wild to
+  start from; with up to five that start is tried only where the usual
+  one could not be used ("The joint fit could not start"), so no fit
+  that ran before changes. See "Laplace's approximation" in :doc:`Joint
+  Models`.
 - **Joint models: competing failure modes.** ``JointPH`` fits
   (``WeibullJointPH``) take the mode of each failure (a record's
   ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With
