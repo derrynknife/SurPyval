@@ -96,6 +96,13 @@ def test_lazy_names_are_the_packages_names() -> None:
         "Power",
         "PowerExponential",
     }
+    # and the result, model and base-fitter classes taken off the top
+    # level (surpyval._MOVED), which warn there
+    moved |= {
+        k
+        for k, v in surpyval._MOVED.items()
+        if v == "surpyval.univariate.regression"
+    }
     assert exported | moved == set(regression.__all__)
     assert not exported & moved
     for name, module in lazy.items():
