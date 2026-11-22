@@ -85,6 +85,11 @@ NOT_SWEPT = {
     "its closed form and the seeded bootstrap in "
     "recurrent/test_release_time.py, and coverage in calibration/"
     "test_coverage_growth_answers.py",
+    "activation_energy": "the life model's parameter's param_cb (swept) "
+    "scaled by Boltzmann's constant, refused for a life model that is not "
+    "thermally activated; checked in regression/test_accelerated_life.py",
+    "plot_life_stress": "draws the bounds of the life at each stress, "
+    "mean_cb and quantile_cb's (swept)",
     "concordance": "a validation metric of the model's risk scores on "
     "data, with its own standard error and interval, not a bound on a "
     "function of the model; checked against R's survival and lifelines "
