@@ -84,7 +84,7 @@ from surpyval.test_planning.rate_ratio import (
 from surpyval.utils.data_formats import refuse_time_values
 from surpyval.utils.recurrent_utils import item_label, number_text
 from surpyval.utils.validation import check_alpha_ci, check_option
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 ALTERNATIVES = ("two-sided", "decrease", "increase")
 MODELS = ("hpp", "power-law")
@@ -1680,7 +1680,7 @@ def intervention_test(
             "The power-law likelihood has no finite maximum in the shape on "
             "these data (all the failures close together, or too few): no "
             "comparison was made. Use model='hpp'.",
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
     return InterventionTestResult(
         model=model,

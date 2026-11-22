@@ -342,6 +342,7 @@ Contents:
 
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
+   Hazard Ratio
    Bayesian Fitting with SurPyval
    Pooling Rates Across Sources
    Regression Modelling with SurPyval

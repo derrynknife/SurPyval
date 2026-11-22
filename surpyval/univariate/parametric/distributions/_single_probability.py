@@ -159,6 +159,7 @@ class SingleProbabilityMixin:
         gamma: Boxable | None = None,
         lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
+        hr: Boxable | None = None,
     ) -> Parametric:
         """Create a model from its event probability.
 
@@ -172,7 +173,7 @@ class SingleProbabilityMixin:
             model has an offset, limited failure population or zero
             inflation. The probability is ``params``.
         """
-        reject_structural_params(self.name, gamma, lfp_p, f0)
+        reject_structural_params(self.name, gamma, lfp_p, f0, hr)
         prob = float(np.squeeze(np.asarray(params)))
 
         if prob > 1:

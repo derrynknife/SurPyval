@@ -41,6 +41,7 @@ _SLOW_AT_129 = frozenset(
         "WeibullJointPH[slope]",
         "WeibullJointPH[cumulative]",
         "WeibullJointPH[value+slope]",
+        "WeibullJointPH[spline]",
         "WeibullJointAFT",
     }
 )

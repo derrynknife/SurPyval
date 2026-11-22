@@ -292,3 +292,20 @@ def test_the_tests_print_their_risks():
 def test_sequential_tests_are_checked(call, match):
     with pytest.raises(ValueError, match=match):
         call()
+
+
+def test_the_tests_print_both_boundaries():
+    test = sequential_mtbf_test(250.0, 500.0, alpha_ci=0.1, producer_risk=0.1)
+    text = repr(test)
+    assert "Accept at time   : 1098.61 + 346.574 per failure" in text
+    assert "Reject by time   : -1098.61 + 346.574 per failure" in text
+    # The printed line is the one reject_time follows.
+    assert test.reject_time(5) == pytest.approx(-1098.61 + 5 * 346.574, 1e-5)
+    attribute = sequential_demonstration_test(
+        0.9, 0.97, alpha_ci=0.1, producer_risk=0.1
+    )
+    text = repr(attribute)
+    assert "Reject failures  : 1.71809 + 0.0585682 per unit" in text
+    assert attribute.reject_failures(30) == int(
+        np.ceil(1.71809 + 30 * 0.0585682)
+    )

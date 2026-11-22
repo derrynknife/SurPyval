@@ -42,7 +42,7 @@ from surpyval.utils.linalg import psd_project, safe_inv
 from surpyval.utils.readings_entry import readings_column, takes_readings
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option, option_error
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, named
 
 from ._clock import stress_row
 from ._measurements import validate_xy
@@ -55,7 +55,12 @@ from .degradation_model import (  # noqa: F401
     _is_regression_fitter,
     _path_at,
 )
-from .path_models import PATH_MODELS, PathModel, get_path_model
+from .path_models import (
+    PATH_MODELS,
+    PathModel,
+    SplinePath,
+    get_path_model,
+)
 from .population import reml_estimate, reml_estimate_nonlinear
 from .rul import InducedFailureDistribution, RULPrediction  # noqa: F401
 from .step_stress import (
@@ -124,7 +129,11 @@ class DegradationAnalysis_(FitterRepr):
     at their first measurement -- the path crossed at or before time zero
     -- have failed by then and are left censored at their first
     measurement time (with a warning). The side of the threshold that
-    counts as failed is read from the units whose paths cross it.
+    counts as failed is read from the units whose paths cross it. A unit
+    whose path crosses only after its last reading fails at the
+    extrapolated crossing by default (counted as "Extrapolated Units"),
+    or is right censored at that reading with ``running="censor"`` or
+    when listed in ``censored_units``.
 
     Examples
     --------
@@ -145,6 +154,7 @@ class DegradationAnalysis_(FitterRepr):
     Threshold           : 150.0
     Number of Units     : 4
     Censored Units      : 0
+    Extrapolated Units  : 0
     Life Distribution   : Weibull
     Parameters          :
          alpha: 441.47...
@@ -172,6 +182,8 @@ class DegradationAnalysis_(FitterRepr):
         links: dict[str, str] | None = None,
         acceleration: str | None = None,
         stress_ref: npt.ArrayLike | None = None,
+        running: str = "extrapolate",
+        censored_units: npt.ArrayLike | None = None,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model.
@@ -293,6 +305,29 @@ class DegradationAnalysis_(FitterRepr):
             The reference stress for ``acceleration="clock"`` (usually the
             use condition), one row. Defaults to the mean stress over the
             measurement intervals.
+        running : {"extrapolate", "censor"}, optional
+            What a unit still short of the threshold at its last reading,
+            whose fitted path crosses only after that reading, counts as
+            in the life fit. ``"extrapolate"`` (default): a failure at the
+            extrapolated crossing, its pseudo failure time, as the
+            pseudo-failure-time method takes every unit (Meeker and
+            Escobar, 1998, section 13.7); the model's
+            ``extrapolated`` marks these units and its summary counts
+            them. ``"censor"``: right censored at its last reading, so
+            the life fit uses only what was seen of it; a crossing within
+            a unit's readings is a failure there either way. The
+            extrapolation uses the paths' information, censoring does
+            not (use it when the extrapolation is in doubt, a path model
+            that may not hold past the readings).
+        censored_units : array like, optional
+            Units right censored at their last reading whatever
+            ``running`` says: units known to be still running whose
+            paths cross only after their last reading, and units that
+            failed another way (a hard failure, removal) while short of
+            the threshold, whose failure at the threshold was never
+            seen. A unit listed here whose fitted path reaches the
+            threshold by its last reading has failed by the threshold's
+            definition, and is refused.
 
         Returns
         -------
@@ -304,7 +339,9 @@ class DegradationAnalysis_(FitterRepr):
         threshold = self._check_fit_arguments(
             threshold, population_method, i_arr, acceleration, stress_ref
         )
+        check_option("running", running, ("extrapolate", "censor"))
         units = np.unique(i_arr)
+        marked = self._marked_units(censored_units, units)
         is_best = isinstance(path, str) and path.lower() == "best"
         if acceleration == "clock":
             self._check_clock_arguments(Z, links, is_best, distribution, x_arr)
@@ -316,6 +353,16 @@ class DegradationAnalysis_(FitterRepr):
             )
         else:
             path_model = get_path_model(path)
+        if isinstance(path_model, SplinePath) and not path_model.is_placed:
+            if acceleration == "clock":
+                raise ValueError(
+                    "With acceleration='clock' the path is fitted on the "
+                    "reference-stress time, which is not known before the "
+                    "fit, so a spline's knots cannot be placed from the "
+                    "measurement times: give them in that time, "
+                    "SplinePath(knots=[...], boundary=(lo, hi))."
+                )
+            path_model = path_model.placed(x_arr)
 
         # Stage-3 accelerated degradation: stress speeds up every unit's
         # clock, and the path is fitted on the reference-stress time.
@@ -429,8 +476,16 @@ class DegradationAnalysis_(FitterRepr):
                 measurement_var = link_var
         self._warn_reml_boundary(reml_diagnostics, link_diagnostics)
 
-        pseudo_failure_times, c = self._censor_units(
-            fits, path_model, threshold, y_arr, x_path, i_arr, units
+        pseudo_failure_times, c, extrapolated = self._censor_units(
+            fits,
+            path_model,
+            threshold,
+            y_arr,
+            x_path,
+            i_arr,
+            units,
+            running,
+            marked,
         )
         life_model = self._fit_life_model(
             distribution, how, pseudo_failure_times, c, Z_units, refit
@@ -461,6 +516,9 @@ class DegradationAnalysis_(FitterRepr):
             acceleration=acceleration,
             gamma=gamma,
             stress_ref=z_ref,
+            running=running,
+            censored_units=units[marked].tolist() if marked.any() else None,
+            extrapolated=extrapolated,
         )
         # Recorded so the bootstrap confidence bounds can rerun the pipeline
         # (with the selected path model held fixed) on resampled units.
@@ -653,7 +711,7 @@ class DegradationAnalysis_(FitterRepr):
             warnings.warn(
                 "The REML optimisation did not report convergence; the "
                 "population path-parameter estimates may be inaccurate",
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return reml_mean, reml_cov, reml_var
 
@@ -690,13 +748,20 @@ class DegradationAnalysis_(FitterRepr):
         x_path: npt.NDArray,
         i_arr: npt.NDArray,
         units: npt.NDArray,
-    ) -> tuple[npt.NDArray, npt.NDArray]:
-        """``(pseudo_failure_times, c)``: each unit's time and censoring.
+        running: str,
+        marked: npt.NDArray,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+        """``(pseudo_failure_times, c, extrapolated)``: each unit's time,
+        censoring, and whether its failure time is a crossing past its
+        last reading.
 
         A unit whose path crosses the threshold at a positive time fails
         there; one already past it at its first measurement is left
         censored there, and one that never reaches it right censored at
-        its last time (each with a warning).
+        its last time (each with a warning). A unit whose crossing is
+        past its last reading is right censored at that reading when it
+        is ``marked`` (``censored_units``), or with ``running="censor"``
+        when its last reading is short of the threshold.
         """
         pseudo = fits.pseudo
         events = np.isfinite(pseudo) & (pseudo > 0)
@@ -726,7 +791,7 @@ class DegradationAnalysis_(FitterRepr):
                 "crossed it at or before time zero); these units are "
                 "treated as failed by then: left censored at their first "
                 "measurement time".format(units[started].tolist(), threshold),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         never = ~(events | started)
         if never.any():
@@ -736,7 +801,7 @@ class DegradationAnalysis_(FitterRepr):
                 "censored at their last observed time".format(
                     units[never].tolist(), threshold
                 ),
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
         first_time = np.array(
@@ -749,7 +814,88 @@ class DegradationAnalysis_(FitterRepr):
             events, pseudo, np.where(started, first_time, fits.last_time)
         )
         c = np.where(events, 0, np.where(started, -1, 1))
-        return pseudo_failure_times, c
+
+        beyond = events & (pseudo > fits.last_time)
+        contradicted = marked & ((events & ~beyond) | started)
+        if contradicted.any():
+            raise ValueError(
+                "censored_units lists unit(s) {} whose fitted paths reach "
+                "the threshold {} by their last reading, so by the "
+                "threshold they have failed (crossings at {}). Leave them "
+                "out of censored_units, or check the threshold and the "
+                "path model.".format(
+                    units[contradicted].tolist(),
+                    threshold,
+                    np.round(pseudo_failure_times[contradicted], 6).tolist(),
+                )
+            )
+        to_censor = marked & beyond
+        if running == "censor" and beyond.any():
+            side = _failure_side(
+                path_model,
+                fits.path_params[events],
+                pseudo[events],
+                threshold,
+                y_arr,
+            )
+            last_reading = np.array(
+                [
+                    y_unit[np.argmax(x_unit)]
+                    for x_unit, y_unit in zip(fits.x_by_unit, fits.y_by_unit)
+                ]
+            )
+            to_censor |= beyond & (side * (last_reading - threshold) < 0)
+        if to_censor.any():
+            if not (events & ~to_censor).any():
+                raise ValueError(
+                    "Every unit whose fitted path reaches the threshold {} "
+                    "does so only after its last reading, and all {} are "
+                    "censored there ({}), so no failure time is left to "
+                    "fit the life distribution to. Use "
+                    "running='extrapolate' to take their extrapolated "
+                    "crossings as failure times, or follow some units to "
+                    "the threshold.".format(
+                        threshold,
+                        int(to_censor.sum()),
+                        (
+                            "censored_units"
+                            if running == "extrapolate"
+                            else "running='censor'"
+                        ),
+                    )
+                )
+            pseudo_failure_times = np.where(
+                to_censor, fits.last_time, pseudo_failure_times
+            )
+            c = np.where(to_censor, 1, c)
+        return pseudo_failure_times, c, beyond & ~to_censor
+
+    @staticmethod
+    def _marked_units(
+        censored_units: npt.ArrayLike | None, units: npt.NDArray
+    ) -> npt.NDArray:
+        """Which of ``units`` ``censored_units`` lists (all False when
+        it is None); a label with no readings is refused."""
+        marked = np.zeros(len(units), dtype=bool)
+        if censored_units is None:
+            return marked
+        listed = np.atleast_1d(np.asarray(censored_units, dtype=object))
+        known = {unit: idx for idx, unit in enumerate(units.tolist())}
+        missing = []
+        for label in listed.tolist():
+            idx = known.get(label)
+            if idx is None:
+                missing.append(label)
+            else:
+                marked[idx] = True
+        if missing:
+            raise ValueError(
+                "censored_units lists {} with no readings: give the labels "
+                "the units have in i (the units are {}).".format(
+                    missing, named(units.tolist())
+                )
+            )
+        return marked
 
     @staticmethod
     def _fit_life_model(
@@ -1010,7 +1156,7 @@ class DegradationAnalysis_(FitterRepr):
                 warnings.warn(
                     "The mixed-model estimate of the stress coefficients did "
                     "not report convergence; gamma may be inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
 
         tau = np.empty_like(x_arr)
@@ -1097,7 +1243,7 @@ class DegradationAnalysis_(FitterRepr):
                     "population did not report convergence; "
                     "path_param_fixed and path_param_link_cov may be "
                     "inaccurate",
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
         return gamma, link_cov, sigma2
 
@@ -1227,8 +1373,8 @@ class DegradationAnalysis_(FitterRepr):
         **fit_kwargs
             Remaining arguments passed to :meth:`fit`: ``threshold``
             (required), and optionally ``path``, ``distribution``,
-            ``how``, ``population_method``, ``links``, ``acceleration``
-            and ``stress_ref``.
+            ``how``, ``population_method``, ``links``, ``acceleration``,
+            ``stress_ref``, ``running`` and ``censored_units``.
 
         Returns
         -------

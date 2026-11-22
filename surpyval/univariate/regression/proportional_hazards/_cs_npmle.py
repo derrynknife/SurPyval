@@ -260,7 +260,7 @@ def build(
         allowed_p[k, last[fin]] = True
         lower_p[k, last[fin]] = bounds[first[fin]]
 
-    keep = allowed_p.any(axis=0)
+    keep = np.asarray(allowed_p.any(axis=0))
     if np.any(to_end):
         keep[M - 1] = True
     kept = np.flatnonzero(keep)

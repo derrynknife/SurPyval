@@ -168,7 +168,8 @@ current value (or, in `JointAFT` / `WeibullJointAFT`, the path speeds up the
 item's ageing: an accelerated failure time part on the Weibull). Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
-truncation; one item's dynamic prediction given its readings so far is
+truncation, and with the failures' event types a hazard for each failure
+mode (competing risks: single becomes multiple); one item's dynamic prediction given its readings so far is
 `JointModel.predict`. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
 predictions without a model of the covariates' paths: a Cox model of the
 units at risk at each landmark, by their covariates known then; it

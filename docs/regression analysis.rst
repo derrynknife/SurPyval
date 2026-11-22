@@ -626,7 +626,7 @@ with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conve
     assert (_ev * (_ev - 1) // 2).sum() == 28
 
 **How sure is C, and Uno's version.** A C computed from a sample is an estimate, and the
-question that follows is how far it could move with another sample. ``concordance_estimate``
+question that follows is how far it could move with another sample. ``concordance``
 gives it a standard error and a confidence interval, as R's ``survival::concordance``
 reports its ``var``: the *infinitesimal jackknife* asks how much :math:`C` changes when one
 subject's weight is nudged, and adds up the squares of those changes. With :math:`N_i` the
@@ -672,8 +672,8 @@ and standard errors (``timewt = "n"`` for Harrell, ``"n/G2"`` for Uno) to roundi
     lung["censored"] = 1 - lung["status"]
     cox = sp.CoxPH.fit_from_df(lung, x_col="time", c_col="censored",
                                Z_cols=["age", "sex", "ph.ecog"])
-    harrell = cox.concordance_estimate()
-    uno = cox.concordance_estimate(weighting="uno", tau=500)
+    harrell = cox.concordance()
+    uno = cox.concordance(weighting="uno", tau=500)
     print("Harrell: %.4f (SE %.4f)" % (harrell.estimate, harrell.se))
     print("Uno, tau = 500 days: %.4f (SE %.4f)" % (uno.estimate, uno.se))
 

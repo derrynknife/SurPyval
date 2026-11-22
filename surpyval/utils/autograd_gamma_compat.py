@@ -780,16 +780,16 @@ def _beta_series_log(
             break
     with np.errstate(divide="ignore"):
         log_x = np.log(x)
-    out = a * log_x + _log_beta_front(a, b) + np.log1p(a * total)
+    out = a * log_x + log_beta_front(a, b) + np.log1p(a * total)
     return np.where(done, out, np.nan)
 
 
-#: Below this multiple of min(1, b), ``_log_beta_front`` takes its Taylor
+#: Below this multiple of min(1, b), ``log_beta_front`` takes its Taylor
 #: series in ``a``: the terms after a^4 are below 1e-16 of it.
 _FRONT_SERIES = 1e-4
 
 
-def _log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+def log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
     r""":math:`\ln \Gamma(a + b) - \ln \Gamma(b) - \ln \Gamma(1 + a)`,
     to its own relative precision at a small ``a``, where it is of size
     ``a`` and the gammas' rounding (1e-18 in the Stirling remainders of

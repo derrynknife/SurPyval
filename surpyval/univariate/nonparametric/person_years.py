@@ -20,6 +20,7 @@ import numpy.typing as npt
 
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import alpha_ci_error
+from surpyval.utils.warnings import caller_stacklevel
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -367,7 +368,7 @@ def person_years(
                 off_events + float(events.sum()),
                 ", ".join(d["name"] for d in scales),
             ),
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
     return PersonYears(
         table=table,
