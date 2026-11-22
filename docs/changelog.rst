@@ -23,46 +23,6 @@ deprecated none). The names deprecated in this release (see
   life (median, a B-life or the mean) against stress with its bounds and
   the test levels and data marked.
 
-- **Bayesian regression: priors on coefficients.** The proportional
-  hazards, accelerated failure time and accelerated life fitters have
-  ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``
-  (``sp.WeibullPH.fit_bayes``, ``sp.AFT(dist).fit_bayes``,
-  ``sp.AcceleratedLife(dist, life_model).fit_bayes``): priors on the
-  coefficients (by name, ``coef_0`` or the column's), on the baseline's
-  parameters and on a life model's, with the fitter's own likelihood
-  (any censoring and truncation), sampled by SurPyval's No-U-Turn sampler
-  and checked for convergence. The result, a
-  ``surpyval.bayes.BayesianRegression``, gives the posterior predictive
-  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``qf`` at covariates, the
-  credible intervals ``cri``, ``quantile_cri`` and ``param_cri``,
-  ``compare()``, ``summary()``, and saves (``to_dict``, pickle). A
-  coefficient of ``exp(beta'Z)`` with no prior gets ``Normal(0, 2.5 /
-  sd)``, ``sd`` its covariate's standard deviation, stated in the result.
-  Weights, penalties, time-varying covariates, ``CoxPH`` and the other
-  regression families are refused, saying what to use. Against a closed
-  form (an exponential model with a binary covariate and flat priors) the
-  posterior agrees within Monte Carlo error. See "Regression: a prior on
-  an effect" in :doc:`Bayesian Fitting with SurPyval`.
-
-- **Bayesian fits with more than three free parameters: SurPyval's own
-  sampler.** ``fit_bayes(method="nuts")`` draws the posterior with a
-  No-U-Turn sampler written in SurPyval (multinomial sampling, a diagonal
-  mass matrix, Stan's windowed warm-up; no PyMC or Stan needed), and
-  ``method="auto"`` uses it where a fit has more than three free
-  parameters, which was refused before (an offset with a limited-failure
-  proportion, for example). The grid stays the default up to three, and
-  its results are unchanged. New arguments: ``chains=4``, ``draws=1000``,
-  ``warmup=1000``, ``random_state`` and ``n_jobs`` (seeded draws do not
-  depend on it). Every sampled fit is checked: rank-normalised split
-  R-hat (at most 1.01), bulk and tail effective sample size (at least 100
-  a chain), divergences and tree depth, all in ``model.diagnostics``; a
-  failed check gives one warning with the parameter and the number,
-  ``model.ok`` is False, and ``diagnose()`` lists them
-  (``sampler_convergence``). ``surpyval.bayes.convergence`` has ``rhat``,
-  ``ess_bulk`` and ``ess_tail`` for any draws (they equal ArviZ's to
-  1e-10). Against the closed forms and the grid, the sampled posteriors
-  agree within Monte Carlo error. See "More than three parameters: the
-  sampler" in :doc:`Bayesian Fitting with SurPyval`.
 - **Copulas of more than two lifetimes: Gaussian and Student-t.**
   ``Gaussian.fit`` and ``StudentT.fit`` take data with any number of axes
   ``D`` of two or more (they refused three). With more than two the
