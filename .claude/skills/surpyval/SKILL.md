@@ -382,10 +382,6 @@ b.param_cri("beta"); b.cri(5); b.quantile_cri(0.1)   # on="sf" by default for cr
 b.loo(); b.waic()   # compare Bayesian fits: sp.bayes.compare({"a": b, ...}), not aic
 # > 3 free parameters (e.g. offset=True, lfp=True): sampled (method="nuts", chosen by
 # "auto"); pass random_state=, then check b.ok and b.diagnostics["rhat"] before use
-# Regression (PH, AFT, AcceleratedLife fitters): priors on coefficients by name
-br = sp.WeibullPH.fit_bayes(x, Z, c, priors={"coef_0": sp.Normal.from_params([0.5, 0.2])},
-                            random_state=1)   # unnamed coefs: Normal(0, 2.5/sd), stated
-br.param_cri("coef_0"); br.sf(5, [[1.0]]); br.quantile_cri(0.1, [[1.0]])
 
 # Distributional regression: covariates on every parameter (shape too)
 df = pd.DataFrame({"t": x, "c": c, "load": Z[:, 0]})

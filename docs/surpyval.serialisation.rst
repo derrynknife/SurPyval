@@ -531,10 +531,6 @@ with its own ``schema``.
      - ``"model": "BayesianParametric"``
      - ``distribution``, ``offset``, ``lfp``, ``zi``, ``fixed``, ``method``, ``priors``, ``data``, ``posterior``, ``log_evidence``, ``diagnostics``, ``exact``, ``surpyval_version``
      - --
-   * - ``BayesianRegression``
-     - ``"model": "BayesianRegression"``
-     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
-     - --
 
 
 Readers and helpers

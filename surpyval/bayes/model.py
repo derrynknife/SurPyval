@@ -2836,7 +2836,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
     return out
 
 
-def _how_computed(model: Any) -> str:
+def _how_computed(model: BayesianParametric) -> str:
     d = model.diagnostics
     if model.method == "conjugate":
         return f"Computed exactly in closed form ({d.get('case', '')})."

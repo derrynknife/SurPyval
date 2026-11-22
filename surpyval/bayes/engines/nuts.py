@@ -439,56 +439,6 @@ def _run_chain(
     }
 
 
-class Affine:
-    """A log density seen through ``z = centre + L u``: ``f`` as a
-    function of ``u``, with its gradient there (``L' grad``). Sampling
-    ``u`` and mapping the draws back with :meth:`back` draws ``z`` from
-    ``f`` (the map's Jacobian is a constant). With ``L`` a factor of the
-    posterior's covariance near its peak, ``u`` is roughly a standard
-    normal, whatever the correlations among ``z`` (an intercept and a
-    slope, say), which a diagonal mass matrix cannot see."""
-
-    def __init__(self, f: LogDensity, centre: npt.ArrayLike, L: npt.ArrayLike):
-        self.f = f
-        self.centre = np.asarray(centre, dtype=float)
-        self.L = np.asarray(L, dtype=float)
-
-    def __call__(self, u: npt.NDArray) -> tuple[float, npt.NDArray]:
-        value, grad = self.f(self.centre + self.L @ u)
-        return value, self.L.T @ grad
-
-    def back(self, u: npt.ArrayLike) -> npt.NDArray:
-        """``z`` for draws ``u`` (the last axis is the parameters)."""
-        return self.centre + np.asarray(u, dtype=float) @ self.L.T
-
-
-def curvature_factor(
-    f: LogDensity, mode: npt.ArrayLike, spread: npt.ArrayLike
-) -> npt.NDArray:
-    """A factor ``L`` of the covariance of the normal approximation at
-    ``mode`` (``L L'`` is the inverse of minus the Hessian there, the
-    Hessian by central differences of the gradient with steps of 1e-4
-    ``spread``). Where that is not positive definite or not finite,
-    ``diag(spread)``."""
-    mode = np.asarray(mode, dtype=float)
-    spread = np.asarray(spread, dtype=float)
-    d = len(mode)
-    H = np.empty((d, d))
-    with np.errstate(all="ignore"):
-        for j in range(d):
-            step = np.zeros(d)
-            step[j] = 1e-4 * spread[j]
-            H[:, j] = (f(mode + step)[1] - f(mode - step)[1]) / (2 * step[j])
-    H = -0.5 * (H + H.T)
-    try:
-        if not np.all(np.isfinite(H)):
-            raise np.linalg.LinAlgError
-        L = np.linalg.cholesky(np.linalg.inv(H))
-    except np.linalg.LinAlgError:
-        return np.diag(spread)
-    return L if np.all(np.isfinite(L)) else np.diag(spread)
-
-
 def _whole(value: Any, name: str, least: int) -> int:
     ok = not isinstance(value, (bool, np.bool_)) and isinstance(
         value, (int, np.integer)
