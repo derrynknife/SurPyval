@@ -109,7 +109,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.aliases import canonical_name
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.linalg import (
     cb_link,
     sf_link_bound,
@@ -834,7 +834,7 @@ class EquivalenceFitter:
         then ``k``."""
         return [*self.dist.parameter_names, "k"]
 
-    @renamed_arguments(removed_in=REMOVED_IN_NEXT, x1="x")
+    @renamed_arguments(removed_in=REMOVED_IN, x1="x")
     @takes_unit
     def fit(
         self,
@@ -979,7 +979,7 @@ class EquivalenceFitter:
             warnings.warn(
                 "EquivalenceFitter.fit: tl as a pair per unit (main clock, "
                 "second clock) is deprecated and will be removed in "
-                f"v{REMOVED_IN_NEXT}; {_PAIR_ENTRY_ADVICE}.",
+                f"v{REMOVED_IN}; {_PAIR_ENTRY_ADVICE}.",
                 DeprecationWarning,
                 stacklevel=caller_stacklevel(),
             )
@@ -1067,7 +1067,7 @@ class EquivalenceFitter:
             warnings.warn(
                 "EquivalenceFitter.fit_from_df: x_cols and tl_cols (both "
                 "clocks' columns in one list) are deprecated and will be "
-                f"removed in v{REMOVED_IN_NEXT}; use x_col and x2_col, and "
+                f"removed in v{REMOVED_IN}; use x_col and x2_col, and "
                 "tl_col and tl2_col.",
                 DeprecationWarning,
                 stacklevel=caller_stacklevel(),

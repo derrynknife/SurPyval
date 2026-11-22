@@ -112,7 +112,7 @@ _INTERNAL = {
 
 def __getattr__(name: str) -> Any:
     if name in _INTERNAL:
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
 
         private, new = _INTERNAL[name]
         return renamed_name(
@@ -120,7 +120,7 @@ def __getattr__(name: str) -> Any:
             name,
             new,
             globals()[private],
-            REMOVED_IN_NEXT,
+            REMOVED_IN,
             FutureWarning,
         )
     raise AttributeError(

@@ -1,7 +1,12 @@
 Changelog
 ==
-v0.29 (unreleased)
-------------------
+v0.29 (22 November 2026)
+------------------------
+
+**Upgrading from 0.28.** No name is removed in this release (0.28
+deprecated none). The names deprecated in this release (see
+*Deprecated*) still work, with a ``FutureWarning`` or
+``DeprecationWarning`` naming the replacement, and are removed in v0.30.
 
 **Added.**
 
@@ -1285,8 +1290,6 @@ v0.29 (unreleased)
   with more than three varying parameters. A joint model with no lag and
   at most three varying parameters keeps its schema.
 
-**Changed.**
-
 - ``FineGray``, ``CompetingRisksProportionalHazards`` and
   ``ParametricCompetingRisksRegression`` refuse left- and
   interval-censored rows with a message naming what takes them
@@ -1460,6 +1463,9 @@ v0.29 (unreleased)
   ``x_cols`` and ``tl_cols`` (use ``x_col`` and ``x2_col``, ``tl_col`` and
   ``tl2_col``): each warns, gives the same numbers, and is removed in
   v0.30.
+
+- Development: ``REMOVED_IN`` is ``"0.30"`` (for the names deprecated
+  in 0.29, which now pass it) and ``REMOVED_IN_NEXT`` ``"0.31"``.
 
 **Fixed.**
 

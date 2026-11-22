@@ -259,7 +259,7 @@ def __getattr__(name: str) -> Any:
     if name in _REPLACED:
         import importlib
 
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
 
         module, new = _REPLACED[name]
         value = getattr(
@@ -271,7 +271,7 @@ def __getattr__(name: str) -> Any:
             name,
             new,
             value,
-            REMOVED_IN_NEXT,
+            REMOVED_IN,
             FutureWarning,
         )
     raise AttributeError(

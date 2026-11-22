@@ -47,7 +47,7 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     if name == "concordance_estimate":
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_name
+        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
 
         from .concordance import concordance_with_se
 
@@ -57,7 +57,7 @@ def __getattr__(name: str) -> Any:
             "concordance_index(x, c, risk, weighting=..., tau=..., "
             "alpha_ci=...)",
             concordance_with_se,
-            REMOVED_IN_NEXT,
+            REMOVED_IN,
             FutureWarning,
         )
     raise AttributeError(

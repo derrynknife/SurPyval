@@ -4,8 +4,8 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.28 is removed in
-v0.29. This module holds the shapes such a rename takes (each with the
+one and points at the caller's line: a name renamed in v0.29 is removed in
+v0.30. This module holds the shapes such a rename takes (each with the
 rename it was written for):
 
 - :func:`renamed_arguments`, an argument of a function or method;
@@ -22,7 +22,7 @@ rename it was written for):
   ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
   flags as ids.
 
-A name deprecated in v0.29 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.30 is accepted until :data:`REMOVED_IN_NEXT`.
 
 A few deprecations are given a longer window, chosen by the maintainer:
 they are listed, each with the release that removes it, in
@@ -72,13 +72,14 @@ __all__ = [
     "ambiguous_item_ids",
 ]
 
-#: The release in which the names deprecated in v0.28 stop being
-#: accepted. (Those deprecated in v0.27, and ``check_ph``, deprecated in
-#: v0.26 with a longer window, were removed in v0.28.)
-REMOVED_IN = "0.29"
+#: The release in which the names deprecated in v0.29 stop being
+#: accepted. (v0.28 deprecated none; those deprecated in v0.27, and
+#: ``check_ph``, deprecated in v0.26 with a longer window, were removed in
+#: v0.28.)
+REMOVED_IN = "0.30"
 
-#: The release in which the names deprecated in v0.29 stop being accepted.
-REMOVED_IN_NEXT = "0.30"
+#: The release in which the names deprecated in v0.30 stop being accepted.
+REMOVED_IN_NEXT = "0.31"
 
 #: The deprecations with a longer window than one release, by name, each
 #: with the release that removes it. ``test_removed_arguments`` fails once
@@ -264,8 +265,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.28,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.29.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.29,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.30.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -294,7 +295,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.29;
+    describe: 'names' is deprecated and will be removed in v0.30;
     use 'labels'.
     """
 
@@ -332,7 +333,7 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.29 passes
+    attribute). A name deprecated in v0.30 passes
     ``removed_in=REMOVED_IN_NEXT``; ``category=FutureWarning`` warns where
     Python would hide a DeprecationWarning (code outside ``__main__``).
     ``advice`` replaces the warning's "use '<new>'" where the new name is
@@ -352,7 +353,7 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.29;
+    Model.loglik is deprecated and will be removed in v0.30;
     use 'log_likelihood'.
     """
 
@@ -425,7 +426,7 @@ def fit_entry(new: str) -> RenamedAttribute:
     v0.30; call fit(data).
     """
     return RenamedAttribute(
-        new, REMOVED_IN_NEXT, FutureWarning, advice="call fit(data)"
+        new, REMOVED_IN, FutureWarning, advice="call fit(data)"
     )
 
 
