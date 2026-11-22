@@ -24,6 +24,8 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.warnings import caller_stacklevel
+
 
 class WeightedCox:
     """The weighted partial likelihood of right censored, left truncated
@@ -473,7 +475,7 @@ def fit_weighted_cox(
             "survivors, so the likelihood has no finite maximum. The "
             "coefficients and their standard errors are not reliable.",
             UserWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     cov_k = robust_covariance(lik, beta_k, bread, labels)
     if off.size:

@@ -83,7 +83,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
 )
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._bootstrap import bound_method, check_n_boot
@@ -537,7 +537,7 @@ def _warn_tau(tau: float) -> None:
         "does: its curves are those of units known to fail by then, and "
         f"are nan after {tau:g}. Fit a parametric model to extrapolate.",
         UserWarning,
-        stacklevel=4,
+        stacklevel=caller_stacklevel(),
     )
 
 

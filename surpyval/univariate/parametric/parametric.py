@@ -1077,7 +1077,9 @@ class Parametric(
     def parameter_names(self) -> list[str]:
         """
         The names of ``params``, entry by entry: the distribution's
-        ``parameter_names``. An offset ``gamma``, limited-failure
+        ``parameter_names``; :attr:`parameter_roles` says what each does
+        (Gamma's ``beta`` is a rate, Weibull's a shape). An offset
+        ``gamma``, limited-failure
         proportion ``lfp_p`` and zero-inflation fraction ``f0`` are not in
         ``params`` and not named here (see :attr:`extras`). The rows of
         :meth:`covariance` are named by :attr:`covariance_names`, which
@@ -1090,6 +1092,41 @@ class Parametric(
         ['alpha', 'beta']
         """
         return list(self.dist.parameter_names)
+
+    @property
+    def parameter_roles(self) -> dict[str, str]:
+        """
+        What each of ``params`` does, by name: ``"shape"``, ``"scale"``,
+        ``"rate"``, ``"location"``, ... (the distribution's
+        ``parameter_roles``). The same letter can mean different things:
+        Gamma's ``beta`` is a rate, Weibull's ``beta`` a shape.
+
+        Examples
+        --------
+        >>> from surpyval import Gamma
+        >>> Gamma.from_params([2, 0.5]).parameter_roles
+        {'alpha': 'shape', 'beta': 'rate'}
+        """
+        return {
+            name: self.dist.parameter_roles.get(name, "parameter")
+            for name in self.parameter_names
+        }
+
+    @property
+    def distribution(self) -> str:
+        """
+        The name of the fitted distribution (``"Weibull"``, ``"Gamma"``,
+        ...), for code that branches on it: every fitted model is a
+        ``Parametric``, whatever its distribution. The distribution
+        object itself is ``dist``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.from_params([100, 2]).distribution
+        'Weibull'
+        """
+        return self.dist.name
 
     @property
     def covariance_names(self) -> list[str]:

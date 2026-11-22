@@ -836,9 +836,11 @@ def _is_schema_5_joint(d: dict) -> bool:
     """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
     with the accelerated survival part, fitted in two stages, with a
     lag, with a weight on its accumulated exposure, with more than three
-    varying path parameters or with a covariance structure other than the
+    varying path parameters, with a covariance structure other than the
     full one (some correlations held at 0, so fewer parameters than a
-    v0.28 reader takes). Each needs schema 5."""
+    v0.28 reader takes) or with failure modes (``"causes"``: a baseline
+    and effects for each, where a v0.28 reader takes one). Each needs
+    schema 5."""
     if d.get("model") != "JointModel":
         return False
     return (
@@ -848,6 +850,7 @@ def _is_schema_5_joint(d: dict) -> bool:
         or d.get("weight") is not None
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
         or (d.get("random_effects") or "full") != "full"
+        or d.get("causes") is not None
     )
 
 

@@ -501,7 +501,7 @@ class AdditiveHazardsFitter(
             "the hazard positive by construction.".format(
                 x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
             ),
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
         return True
 

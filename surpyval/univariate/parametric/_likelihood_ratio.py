@@ -2379,7 +2379,7 @@ class LikelihoodRatioMixin:
                         "parameter's space); nan is returned for it. "
                         "method='wald' gives a bound in its place.",
                         RuntimeWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                     return value
                 warnings.warn(
@@ -2388,7 +2388,7 @@ class LikelihoodRatioMixin:
                     "critical value, or was not finite); nan is returned "
                     "for it. method='wald' gives a bound in its place.",
                     RuntimeWarning,
-                    stacklevel=4,
+                    stacklevel=caller_stacklevel(),
                 )
             return value
 
@@ -2621,7 +2621,7 @@ class LikelihoodRatioMixin:
                 "optimiser failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         return shape(lower, upper)
 
@@ -2800,7 +2800,7 @@ class LikelihoodRatioMixin:
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
                 # _cb_lr -> cb -> the query-shape wrapper -> the caller
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
 
         if falling:

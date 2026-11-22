@@ -88,6 +88,7 @@ from surpyval.univariate.regression.regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+from surpyval.utils._value_method import value_method
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
@@ -786,6 +787,7 @@ class ParametricCompetingRisksRegression(
             ]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of the parameter estimates, named by
@@ -798,6 +800,7 @@ class ParametricCompetingRisksRegression(
             [self.models[k].covariance() for k in self.causes]
         )
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """The standard errors of the estimates, the square roots of the
         diagonal of :meth:`covariance`."""

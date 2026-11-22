@@ -26,7 +26,9 @@ def greenwood_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     and three of the last five at the third:
 
     >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric import greenwood_variance
+    >>> from surpyval.univariate.nonparametric.kaplan_meier import (
+    ...     greenwood_variance,
+    ... )
     >>> r = np.array([10, 8, 5])
     >>> d = np.array([2, 1, 3])
     >>> greenwood_variance(r, d).round(4)
@@ -94,7 +96,7 @@ def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     Examples
     --------
     >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric import kaplan_meier
+    >>> from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
     >>> r = np.array([10, 8, 5])
     >>> d = np.array([2, 1, 3])
     >>> kaplan_meier(r, d).round(4)

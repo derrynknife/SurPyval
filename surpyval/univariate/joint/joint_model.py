@@ -16,6 +16,7 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+    to_native,
 )
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -42,6 +43,7 @@ from ._likelihood import (
     _at,
     _path_params,
     block_labels,
+    cause_thetas,
     check_lag,
     check_random_effects,
     check_weight,
@@ -211,6 +213,8 @@ def parameter_names(
     hazard: list[str] | None = None,
     links: tuple = ("value",),
     random_effects: Any = "full",
+    causes: Any = None,
+    shared: Any = (),
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
@@ -222,7 +226,15 @@ def parameter_names(
     of ``links``, what of the path the hazard follows (``marker_effect``
     of its value, ``slope_effect``, ``cumulative_effect``). ``shifts``
     and ``hazard`` (as :func:`covariate_parts` gives them) say which
-    covariates enter which part; default every one in both."""
+    covariates enter which part; default every one in both.
+
+    With ``causes`` (competing failure modes) the survival part is each
+    cause's own, ``"<cause>: alpha"``, ``"<cause>: beta"``, its hazard
+    coefficients and effects, cause by cause (named as
+    ``ParametricCompetingRisks`` names its causes' parameters), then the
+    parameters of ``shared`` (``"beta"``, a hazard covariate or an
+    effect), which the causes have in common, one each under its plain
+    name."""
     if shifts is None:
         shifts = {name: list(covariates) for name in path_names}
     if hazard is None:
@@ -239,7 +251,86 @@ def parameter_names(
         if j > i and label[i] == label[j]
     ]
     effects = [EFFECTS[link] for link in links]
+    if causes is not None:
+        every = ["alpha", "beta", *hazard, *effects]
+        common = [name for name in every[1:] if name in shared]
+        own = [name for name in every if name not in common]
+        out += ["sd_noise"]
+        out += [f"{cause}: {name}" for cause in causes for name in own]
+        return out + common
     return out + ["sd_noise", "alpha", "beta", *hazard, *effects]
+
+
+def shareable(hazard: list[str], links: tuple) -> list[str]:
+    """What the causes of a joint model may share (``shared=``): the
+    Weibull ``beta``, a hazard covariate's coefficient, and a link's
+    effect."""
+    return ["beta", *hazard, *[EFFECTS[link] for link in links]]
+
+
+def _reported_alpha(th: dict, layout: Layout, refs: tuple) -> Any:
+    """``alpha`` at the covariates' 0 and the marker's reference, of the
+    internal ``th`` (one cause's)."""
+    c, zbar, r = refs
+    zeta = anp.reshape(th["zeta"], (layout.n_links,))
+    return th["alpha"] * anp.exp(
+        (
+            anp.dot(th["gamma"], np.asarray(zbar, dtype=float))
+            - _reference_shift(zeta, layout, r, c)
+        )
+        / _per_scale(layout, th["beta"])
+    )
+
+
+def _reported_causes(theta: dict, layout: Layout, refs: tuple) -> Any:
+    """The survival part of the reported parameters with several causes
+    (in the order of :attr:`Layout.cause_slots`)."""
+    cols = np.flatnonzero(layout.hazard)
+    each = []
+    for th in cause_thetas(theta, layout):
+        zeta = anp.reshape(th["zeta"], (layout.n_links,))
+        each.append(
+            [_reported_alpha(th, layout, refs), th["beta"]]
+            + [th["gamma"][k] for k in cols]
+            + [zeta[j] for j in range(layout.n_links)]
+        )
+    slots = layout.cause_slots
+    out = []
+    for j in range(layout.n_survival):
+        k, col = np.argwhere(slots == j)[0]
+        out.append(each[k][col])
+    return anp.stack(out)
+
+
+def _internal_causes(block: Any, layout: Layout, refs: tuple) -> dict:
+    """``alpha``, ``beta``, ``gamma`` and ``zeta`` of every cause from
+    the survival part ``block`` of the reported parameters, the inverse
+    of :func:`_reported_causes`."""
+    c, zbar, r = refs
+    zbar = np.asarray(zbar, dtype=float)
+    slots = layout.cause_slots
+    n_hazard = layout.n_hazard
+    alphas, betas, gammas, zetas = [], [], [], []
+    for k in range(layout.n_causes):
+        v = block[slots[k]]
+        gamma = layout._gamma(v[2 : 2 + n_hazard])
+        zeta = v[2 + n_hazard :]
+        alphas.append(
+            v[0]
+            * anp.exp(
+                -(anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
+                / _per_scale(layout, v[1])
+            )
+        )
+        betas.append(v[1])
+        gammas.append(gamma)
+        zetas.append(zeta)
+    return {
+        "alpha": anp.stack(alphas),
+        "beta": anp.stack(betas),
+        "gamma": anp.stack(gammas),
+        "zeta": anp.stack(zetas),
+    }
 
 
 def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
@@ -273,6 +364,10 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         ]
         if corr:
             parts.append(anp.stack(corr))
+    if layout.n_causes > 1:
+        parts.append(anp.reshape(theta["sigma"], (1,)))
+        parts.append(_reported_causes(theta, layout, refs))
+        return anp.concatenate(parts)
     beta, gamma = theta["beta"], theta["gamma"]
     zeta = anp.reshape(theta["zeta"], (layout.n_links,))
     alpha = theta["alpha"] * anp.exp(
@@ -352,6 +447,16 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         L = _cholesky(rows, q)
     else:
         L = anp.zeros((0, 0))
+    if layout.n_causes > 1:
+        return {
+            "mu": anp.stack(mus),
+            "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
+            "L": L,
+            "sigma": params[i],
+            **_internal_causes(
+                params[i + 1 : i + 1 + layout.n_survival], layout, refs
+            ),
+        }
     sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
     n_hazard = layout.n_hazard
     gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
@@ -473,6 +578,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     or :math:`w(u) = 1` for :math:`u` up to the width and 0 beyond
     (``("window", width)``).
 
+    A model fitted to failures with their modes (event types; ``causes``
+    lists them) has a hazard of this form for each failure mode
+    :math:`k`, with its own :math:`\\alpha_k`, :math:`\\beta_k`,
+    :math:`\\gamma_k` and :math:`\\zeta_k` (named ``"<cause>: alpha"``
+    and so on; those in ``shared`` are common to the modes), and one
+    marker part. An item fails by the first mode to occur, so its
+    survival, which ``sf``, ``cb`` and ``predict`` give, is that of every
+    mode together, :math:`\\exp(-\\sum_k H_{ik}(t))`.
+
     In an accelerated model (``survival == "AFT"``) the marker speeds up
     the item's ageing in place of multiplying its hazard: by age
     :math:`t` the item has used up the effective age
@@ -582,6 +696,19 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
     #: ``JointAFT``).
     survival: str = "PH"
+    #: The failure modes (causes) of a model fitted to failures with
+    #: event types (``e``), in the order of its parameters: each has a
+    #: Weibull baseline, hazard coefficients and effects of its own,
+    #: named ``"<cause>: <name>"``. ``None`` for a model of one kind of
+    #: failure.
+    causes: list | None = None
+    #: The survival parameters the causes have in common (the fit's
+    #: ``shared``): ``"beta"``, hazard covariates and effects, each one
+    #: parameter under its plain name.
+    shared: tuple = ()
+    #: The failures of each cause, ``{cause: count}`` (count weighted);
+    #: ``None`` for a model of one kind of failure.
+    n_events_by_cause: dict | None = None
     #: The marker value at which ``alpha`` is reported (``None`` where
     #: the hazard does not follow the value).
     marker_reference: float | None
@@ -703,6 +830,48 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             tuple(self.link),
             self.survival,
             block_labels(self.random_effects_structure, self.varying),
+            **self._cause_layout(kept),
+        )
+
+    def _cause_layout(self, kept: list) -> dict:
+        """The layout's entries for the causes (none for a model of one
+        kind of failure)."""
+        if self.causes is None:
+            return {}
+        return {
+            "n_causes": len(self.causes),
+            "shared_beta": "beta" in self.shared,
+            "shared_hazard": [cov in self.shared for cov in kept],
+            "shared_links": [EFFECTS[k] in self.shared for k in self.link],
+        }
+
+    def _names(self) -> list[str]:
+        """The parameters' names as the model's own description gives
+        them (every covariate, aliased ones too)."""
+        shifts, hazard = self._covariate_parts()
+        return parameter_names(
+            list(self.path_model.parameter_names),
+            list(self.varying),
+            list(self.feature_names),
+            shifts,
+            hazard,
+            tuple(self.link),
+            self.random_effects_structure,
+            self.causes,
+            self.shared,
+        )
+
+    def _scale(self) -> float:
+        """A typical age: the Weibull ``alpha`` (the smallest of the
+        causes')."""
+        names = list(self.parameter_names)
+        if self.causes is None:
+            return float(self.params[names.index("alpha")])
+        return float(
+            min(
+                self.params[names.index(f"{cause}: alpha")]
+                for cause in self.causes
+            )
         )
 
     def _likelihood_model(self) -> Model:
@@ -774,6 +943,123 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         self._refuse_two_stage(name)
         super()._refuse_ic(name)
 
+    def likelihood_ratio_test(self, nested: JointModel) -> dict:
+        """
+        The likelihood-ratio test of this model against one nested in
+        it, fitted to the same data: twice the gain in the
+        log-likelihood, chi-squared on the difference in the number of
+        parameters when the nested model holds. With failure modes, the
+        fit with a parameter shared between the modes (``shared=``) is
+        nested in the fit without: the test asks whether the modes
+        differ in it, such as whether the marker speaks to one way of
+        failing more than to another.
+
+        That ``nested`` is nested in this model is the caller's claim;
+        what can be checked is: both are joint fits by maximum
+        likelihood of the same numbers of items, failures and readings,
+        with the same path and survival part, and ``nested`` has fewer
+        parameters and no higher a log-likelihood.
+
+        Parameters
+        ----------
+        nested : JointModel
+            The simpler fit of the same data.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``, the last the nested model's.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(11)
+        >>> items = []
+        >>> for k in range(120):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     worn = 110 * rng.weibull(2.5) * np.exp(-0.4 * (start - 2))
+        ...     other = 250 * rng.weibull(1.0)
+        ...     end = min(worn, other, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     if end < 120:
+        ...         outcome = {"observed": end}
+        ...         mode = "bearing" if worn < other else "seal"
+        ...     else:
+        ...         outcome, mode = {"right_censored": end}, None
+        ...     items.append(
+        ...         ItemLifetime(k, **outcome, event_type=mode,
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> data = SurpyvalData.from_items(items)
+        >>> each = WeibullJointPH.fit(data)
+        >>> one = WeibullJointPH.fit(data, shared=["marker_effect"])
+        >>> test = each.likelihood_ratio_test(one)
+        >>> test["df"], bool(0 <= test["p_value"] <= 1)
+        (1, True)
+        """
+        from scipy.stats import chi2
+
+        if not isinstance(nested, JointModel):
+            raise ValueError(
+                "'nested' is the simpler joint model fitted to the same "
+                f"data; got {type(nested).__name__}."
+            )
+        for model in (self, nested):
+            model._refuse_two_stage("likelihood-ratio test")
+        same = (
+            "n_items",
+            "n_events",
+            "n_readings",
+            "survival",
+            "link",
+            "lag",
+            "weight",
+            "varying",
+        )
+        differ = [
+            name
+            for name in same
+            if getattr(self, name) != getattr(nested, name)
+        ] + (
+            ["path_model"]
+            if type(self.path_model) is not type(nested.path_model)
+            else []
+        )
+        if differ:
+            raise ValueError(
+                "A likelihood-ratio test compares two fits of the same "
+                "data with the same path, links and survival part; these "
+                f"differ in {differ!r}."
+            )
+        df = int(self.k) - int(nested.k)
+        if df < 1:
+            raise ValueError(
+                "'nested' is the simpler model, with fewer parameters "
+                f"than this one; it has {nested.k} and this one {self.k}. "
+                "Call the richer model's likelihood_ratio_test with the "
+                "simpler one."
+            )
+        ll, ll_null = -self.neg_ll(), -nested.neg_ll()
+        gain = ll - ll_null
+        if gain < -1e-6 * max(1.0, abs(ll)):
+            raise ValueError(
+                "The nested model has a higher log-likelihood "
+                f"({ll_null:.6g}) than this one ({ll:.6g}), so it is not "
+                "nested in it or this fit did not reach its maximum "
+                "(check both models' 'maximum')."
+            )
+        statistic = max(2.0 * gain, 0.0)
+        return {
+            "statistic": float(statistic),
+            "df": df,
+            "p_value": float(chi2.sf(statistic, df)),
+            "log_likelihood": float(ll),
+            "log_likelihood_null": float(ll_null),
+        }
+
     def _ic_sample_size_from_data(self) -> float:
         return ic_sample_size(
             [0, 1], [self.n_events, self.n_items - self.n_events]
@@ -803,6 +1089,22 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         one, two = "", ""
         if self.how == "two-stage":
             one, two = f" ({_STAGE_ONE})", f" ({_STAGE_TWO})"
+        if self.causes is not None:
+            return [
+                (
+                    "path: {} ({})".format(
+                        self.path_model.name, path_formula(self.path_model)
+                    ),
+                    path,
+                ),
+                (
+                    "spread between items"
+                    + _structure_words(self.random_effects_structure),
+                    spread,
+                ),
+                ("noise", [i]),
+                *self._cause_parts(hazard, at),
+            ]
         return [
             (
                 "path: {} ({}){}".format(
@@ -835,6 +1137,69 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
         ]
+
+    def _cause_parts(self, hazard: list, at: dict) -> list:
+        """The survival part's headings and positions with several
+        causes: each cause's baseline and coefficients, then its
+        effects, then what the causes share."""
+        names = list(self.parameter_names)
+        effects = [EFFECTS[link] for link in self.link]
+        link_words = (
+            ", ".join(_LINK_WORDS[link] for link in self.link)
+            + (f", lag {self.lag:g}" if self.lag > 0 else "")
+            + _weight_words(self.weight)
+        )
+        out = []
+        for cause in self.causes or []:
+            own = [f"{cause}: {name}" for name in ["alpha", "beta", *hazard]]
+            out.append(
+                (
+                    "survival, {}: {} {}, alpha at {}".format(
+                        cause,
+                        self.dist.name,
+                        self.survival,
+                        ", ".join(at[link] for link in self.link),
+                    ),
+                    [names.index(name) for name in own if name in names],
+                )
+            )
+            own = [f"{cause}: {name}" for name in effects]
+            out.append(
+                (
+                    f"link, {cause}: {link_words}",
+                    [names.index(name) for name in own if name in names],
+                )
+            )
+        common = [
+            name for name in ["beta", *hazard, *effects] if name in names
+        ]
+        out.append(
+            (
+                "shared by the failure modes",
+                [names.index(name) for name in common],
+            )
+        )
+        return out
+
+    def _kinds(self, parts: list) -> tuple[set, set, set]:
+        """The positions of the positive parameters, of those with a
+        hazard ratio (coefficients and effects) and of the
+        correlations."""
+        n_sd = len(self.varying)
+        positive = set(parts[2][1]) | set(parts[1][1][:n_sd])
+        corr = set(parts[1][1][n_sd:])
+        if self.causes is None:
+            survival = parts[3][1]
+            hazard = set(survival[2:]) | set(parts[4][1])
+            return positive | set(survival[:2]), hazard, corr
+        names = list(self.parameter_names)
+        baseline = {
+            j
+            for j, name in enumerate(names)
+            if name == "beta" or str(name).endswith((": alpha", ": beta"))
+        }
+        hazard = {j for _, where in parts[3:] for j in where} - baseline
+        return positive | baseline, hazard, corr
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
@@ -897,12 +1262,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         q = norm.ppf(1 - alpha_ci / 2)
         level = f"{100 * (1 - alpha_ci):g}%"
         parts = self._parts()
-        survival = parts[3][1]
-        hazard = set(survival[2:]) | set(parts[4][1])
-        positive = set(parts[2][1]) | set(survival[:2])
-        n_sd = len(self.varying)
-        positive |= set(parts[1][1][:n_sd])
-        corr = set(parts[1][1][n_sd:])
+        positive, hazard, corr = self._kinds(parts)
         rows, index = [], []
         for heading, positions in parts:
             for j in positions:
@@ -954,6 +1314,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
+            f"{self._cause_line()}"
             f"\nFit                 : {self._fit_line()}"
             f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
             "\nEffect units        : "
@@ -978,6 +1339,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 format_table(rows, list(columns.values())),
             )
         return out
+
+    def _cause_line(self) -> str:
+        """The printout's line of the failure modes (none for a model
+        of one kind of failure)."""
+        if self.causes is None:
+            return ""
+        counts = self.n_events_by_cause or {}
+        return "\nFailure modes       : " + ", ".join(
+            "{} ({:g} failures)".format(cause, counts.get(cause, np.nan))
+            for cause in self.causes
+        )
 
     def _fit_line(self) -> str:
         """What the printout's ``Fit`` line says."""
@@ -1646,6 +2018,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                     )
                 }
             ),
+            **self._causes_entry(),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
             **({} if self.how == "MLE" else {"how": self.how}),
@@ -1653,6 +2026,20 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance).tolist()
         return stamp_schema(out)
+
+    def _causes_entry(self) -> dict:
+        """What :meth:`to_dict` saves of the causes (nothing for a model
+        of one kind of failure, whose dict is as it was)."""
+        if self.causes is None:
+            return {}
+        counts = self.n_events_by_cause or {}
+        return {
+            "causes": to_native(list(self.causes)),
+            "shared": list(self.shared),
+            "n_events_by_cause": [
+                float(counts.get(cause, np.nan)) for cause in self.causes
+            ],
+        }
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> JointModel:
@@ -1792,17 +2179,36 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError(
                 "The dict's 'parameter_names' and 'params' differ in length."
             )
-        if out.random_effects_structure != "full":
-            shifts, hazard = out._covariate_parts()
-            expected = parameter_names(
-                list(out.path_model.parameter_names),
-                out.varying,
-                out.feature_names,
-                shifts,
-                hazard,
-                out.link,
-                out.random_effects_structure,
+        # saved before the failure modes, or with one kind of failure
+        causes = model_dict.get("causes")
+        if causes is not None:
+            from surpyval.univariate.competing_risks.labels import (
+                label_from_native,
             )
+
+            out.causes = [label_from_native(k) for k in causes]
+            out.shared = tuple(model_dict.get("shared") or ())
+            counts = model_dict.get("n_events_by_cause")
+            if counts is not None:
+                out.n_events_by_cause = {
+                    cause: np.nan if count is None else float(count)
+                    for cause, count in zip(out.causes, counts)
+                }
+            if len(out.causes) < 2 or survival != "PH":
+                raise ValueError(
+                    "A joint model with failure modes ('causes') has two "
+                    "or more and the proportional hazards survival part; "
+                    f"the dict has {out.causes!r} and {survival!r}."
+                )
+            expected = out._names()
+            if expected != out.parameter_names:
+                raise ValueError(
+                    "The dict's 'parameter_names' are not those of its "
+                    f"'causes' ({out.causes!r}) and 'shared' "
+                    f"({list(out.shared)!r}): expected {expected!r}."
+                )
+        if out.random_effects_structure != "full":
+            expected = out._names()
             if expected != out.parameter_names:
                 saved = _saved_structure(out.random_effects_structure)
                 raise ValueError(

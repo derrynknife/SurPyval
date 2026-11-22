@@ -36,17 +36,19 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy import stats
+from scipy import optimize, stats
 
 from surpyval.test_planning import comparison as _comparison_module
 from surpyval.test_planning import rate_ratio as _rates_module
 from surpyval.test_planning import sample_size as _sizes_module
 from surpyval.test_planning._checks import (
     check_count,
+    check_positive,
     check_probability,
     elementwise,
 )
 from surpyval.test_planning._serialise import result_dict
+from surpyval.utils.validation import check_option
 
 # The functions of one unknown that the designs call, checked where they
 # are called (an argument left None here is never one of theirs).
@@ -65,11 +67,11 @@ class PowerCalculation:
     design : str
         The design's function: ``"logrank"``, ``"cox"``,
         ``"noninferiority"``, ``"equivalence"``, ``"rmst"``,
-        ``"cure_logrank"`` or ``"rate_ratio"``.
+        ``"cure_logrank"``, ``"rate_ratio"`` or ``"mean_ratio"``.
     solved_for : str
         The argument that was left ``None`` and found: ``"power"``,
-        ``"events"``, ``"n"``, ``"hazard_ratio"``, ``"ratio"`` or
-        ``"exposure_after"``.
+        ``"events"``, ``"n"``, ``"hazard_ratio"``, ``"ratio"``,
+        ``"exposure_after"`` or ``"mean_ratio"``.
     value : int, float, tuple or ndarray
         The quantity solved for (an array where the design's arguments
         were arrays).
@@ -356,6 +358,14 @@ def logrank_design(
     divided by each group's chance of an event during the study; the
     power at given units uses their expected events,
     ``n1 * p1 + n2 * p2``.
+
+    A difference planned as a ratio of mean lives maps to a hazard ratio
+    only through the shape: for exponential lives a mean life ``r`` times
+    as long is a hazard ratio of ``1 / r``, and for Weibull lives with a
+    common shape ``beta``, ``r ** -beta`` (a 30% longer mean life is
+    ``1 / 1.3`` for exponential lives, ``1.3 ** -2`` for a shape of 2).
+    Where the shape is known, :func:`mean_ratio_design` plans the exact
+    test of the means themselves.
 
     Parameters
     ----------
@@ -1232,3 +1242,325 @@ def rate_ratio_design(
         {**values, **inputs},
     )
     return result
+
+
+# --- Two means (or scales at a common shape): the exact F test -----------
+
+
+def _check_mean_ratio(mean_ratio: Any) -> float:
+    mean_ratio = float(check_positive(mean_ratio, "mean_ratio"))
+    if mean_ratio == 1.0:
+        raise ValueError(
+            "mean_ratio must differ from 1: no test can detect a "
+            "difference of none."
+        )
+    return mean_ratio
+
+
+def _f_power(
+    mean_ratio: float,
+    first: float,
+    second: float,
+    shape: float,
+    alpha_ci: float,
+    alternative: str,
+) -> float:
+    """The power of the F test of two scales with ``first`` and
+    ``second`` events: the ratio of the estimated scales to the power
+    ``shape`` is ``mean_ratio ** shape`` times an F(2 first, 2 second)
+    variate."""
+    check_option("alternative", alternative, _comparison.ALTERNATIVES)
+    law = stats.f(2.0 * first, 2.0 * second)
+    q = mean_ratio**shape
+    if alternative == "two-sided":
+        upper = law.isf(alpha_ci / 2.0)
+        lower = law.ppf(alpha_ci / 2.0)
+        return float(law.sf(upper / q) + law.cdf(lower / q))
+    if q > 1.0:
+        return float(law.sf(law.isf(alpha_ci) / q))
+    return float(law.cdf(law.ppf(alpha_ci) / q))
+
+
+def _check_shape_value(shape: Any) -> float:
+    return float(check_positive(shape, "shape"))
+
+
+@elementwise
+def _mean_ratio_power_from_events(
+    mean_ratio: Any,
+    events: Any,
+    *,
+    shape: Any,
+    alpha_ci: Any,
+    alternative: Any,
+) -> float:
+    mean_ratio = _check_mean_ratio(mean_ratio)
+    events = check_count(events, "events", minimum=2)
+    shape = _check_shape_value(shape)
+    half = events / 2.0
+    return _f_power(mean_ratio, half, half, shape, alpha_ci, alternative)
+
+
+@elementwise
+def _mean_ratio_events(
+    mean_ratio: Any,
+    power: Any,
+    *,
+    shape: Any,
+    alpha_ci: Any,
+    alternative: Any,
+) -> int:
+    """The fewest events, the same number in each group, whose F test
+    has ``power``: twice the events per group."""
+    mean_ratio = _check_mean_ratio(mean_ratio)
+    power = check_probability(power, "power")
+    shape = _check_shape_value(shape)
+
+    def short(d: int) -> bool:
+        found = _f_power(mean_ratio, d, d, shape, alpha_ci, alternative)
+        return found < power
+
+    low, high = 1, 1
+    while short(high):
+        if high > 10**9:
+            raise ValueError(
+                "mean_ratio_design: no number of events up to 1e9 in each "
+                f"group reaches a power of {power!r} at a mean_ratio of "
+                f"{mean_ratio!r}; plan a larger difference."
+            )
+        low, high = high + 1, 2 * high
+    while low < high:
+        middle = (low + high) // 2
+        if short(middle):
+            low = middle + 1
+        else:
+            high = middle
+    return 2 * int(low)
+
+
+@elementwise
+def _mean_ratio_detectable(
+    events: Any,
+    power: Any,
+    *,
+    shape: Any,
+    alpha_ci: Any,
+    alternative: Any,
+    direction: Any,
+) -> float:
+    events = check_count(events, "events", minimum=2)
+    power = check_probability(power, "power")
+    shape = _check_shape_value(shape)
+    _sizes.check_option("direction", direction, _sizes.DIRECTIONS)
+    sign = 1.0 if direction == "increase" else -1.0
+    half = events / 2.0
+
+    def gap(log_ratio: float) -> float:
+        ratio = float(np.exp(sign * log_ratio))
+        return _f_power(ratio, half, half, shape, alpha_ci, alternative) - (
+            power
+        )
+
+    high = 1.0
+    while gap(high) < 0.0:
+        high *= 2.0
+    log_ratio = optimize.brentq(gap, 1e-12, high, xtol=1e-14, rtol=1e-12)
+    return float(np.exp(sign * log_ratio))
+
+
+def mean_ratio_design(
+    mean_ratio: float | None = None,
+    *,
+    shape: float = 1.0,
+    power: float | None = None,
+    events: int | None = None,
+    n: tuple[int, int] | None = None,
+    event_probability: float | tuple[float, float] | None = None,
+    alpha_ci: float = 0.05,
+    alternative: str = "two-sided",
+    direction: str | None = None,
+) -> PowerCalculation:
+    r"""The power, events, units or detectable ratio of a comparison of
+    two groups' mean lives, exponential or Weibull with a known common
+    shape.
+
+    Of ``mean_ratio``, ``power`` and the size (``events``, or ``n`` with
+    ``event_probability``), exactly one is left None and found.
+
+    With a common Weibull shape :math:`\beta` the ratio of the mean lives
+    is the ratio of the scales, :math:`\rho = \eta_1 / \eta_2`, and
+    :math:`t^\beta` is exponential with mean :math:`\eta^\beta`. With
+    :math:`d_1` and :math:`d_2` failures, each group's estimate
+    :math:`\hat\theta_i = \sum t^\beta / d_i` (total time on test, every
+    unit's running time to the power :math:`\beta`, over the failures)
+    has :math:`2 d_i \hat\theta_i / \theta_i \sim \chi^2_{2 d_i}`, so
+    :math:`\hat\theta_1 / \hat\theta_2 \sim \rho^\beta F(2 d_1, 2 d_2)`
+    (Epstein and Sobel 1953; Lawless, *Statistical Models and Methods for
+    Lifetime Data*, 2003, section 3.5): the test rejects equal means when
+    the ratio falls outside the F distribution's ``alpha_ci`` tails, and
+    its power is exact for tests stopped at a number of failures (Type
+    II), close for tests stopped at a time. The events are found the same
+    in each group (twice that in all), the units from each group's chance
+    of a failure during the test.
+
+    The log-rank test of the same difference (:func:`logrank_design`)
+    needs nothing assumed about the shape: under the common shape the
+    hazard ratio of the first group to the second is
+    :math:`\rho^{-\beta}` (``1 / mean_ratio`` for exponential lives), and
+    in large samples it needs the same events as this test. Knowing the
+    shape is what this design assumes; one estimated from the data costs
+    events this design does not count.
+
+    Parameters
+    ----------
+    mean_ratio : float, optional
+        The mean life of the first group over the second's (their scale
+        ratio at the common shape): positive, and not 1. None to find the
+        smallest detectable one.
+    shape : float, optional
+        Keyword only: the common Weibull shape, known; by default 1
+        (exponential lives).
+    power : float, optional
+        Keyword only: the chance of detecting the difference; None to
+        find it.
+    events : int, optional
+        Keyword only: the failures, in both groups together, half in
+        each.
+    n : (int, int), optional
+        Keyword only: the units in the first group and in the second
+        (with ``event_probability``); their expected failures,
+        ``n * event_probability``, are each group's.
+    event_probability : float or (float, float), optional
+        Keyword only: the chance that a unit fails during the test, one
+        for both groups or a pair. Needed with ``n``; given when solving
+        for the size, the units are found too.
+    alpha_ci : float, optional
+        Keyword only: the significance level, by default 0.05.
+    alternative : str, optional
+        Keyword only: ``"two-sided"`` (the default) or ``"one-sided"``
+        (in the direction of ``mean_ratio``).
+    direction : str, optional
+        Keyword only, when finding ``mean_ratio``: ``"increase"`` (the
+        default, a ratio above 1) or ``"decrease"``.
+
+    Returns
+    -------
+    PowerCalculation
+        ``solved_for`` is ``"mean_ratio"``, ``"power"``, ``"events"`` (no
+        ``event_probability``) or ``"n"`` (the events found too).
+        ``mean_ratio``, ``power`` and ``events`` may be arrays, answered
+        element by element, unless ``n`` is given.
+
+    Raises
+    ------
+    ValueError
+        If not exactly one of them is left None, both ``n`` and
+        ``events`` are given, ``n`` comes without ``event_probability``,
+        ``direction`` is given when the ratio is not being found, or an
+        argument is out of range.
+
+    Examples
+    --------
+    Detecting a 30% longer mean life with 80% power at the 5% level, for
+    exponential lives, takes 458 failures (229 in each group); the
+    log-rank test of the hazard ratio ``1 / 1.3`` plans 457 by
+    Schoenfeld's approximation. For a wear-out shape of 2, about a
+    quarter of them:
+
+    >>> from surpyval.test_planning import logrank_design, mean_ratio_design
+    >>> mean_ratio_design(1.3, power=0.8).events
+    458
+    >>> logrank_design(1 / 1.3, power=0.8).events
+    457
+    >>> mean_ratio_design(1.3, shape=2.0, power=0.8).events
+    116
+    >>> mean_ratio_design(1.3, shape=2.0, power=0.8,
+    ...                   event_probability=0.5).n
+    (116, 116)
+    >>> round(mean_ratio_design(1.3, shape=2.0, n=(100, 100),
+    ...                         event_probability=0.5).power, 3)
+    0.742
+
+    The smallest ratio 116 failures detect with that power:
+
+    >>> round(mean_ratio_design(shape=2.0, events=116, power=0.8).value, 3)
+    1.298
+    """
+    size = _size("mean_ratio", n, events)
+    unknown = _unknown(
+        "mean_ratio",
+        {"mean_ratio": mean_ratio, "power": power, "n or events": size},
+        "mean_ratio_design(1.3, power=0.8)",
+    )
+    _no_direction("mean_ratio", direction, unknown, "mean_ratio")
+    common: dict[str, Any] = {"shape": shape, "alpha_ci": alpha_ci}
+    common["alternative"] = alternative
+    inputs = {
+        "mean_ratio": mean_ratio,
+        **common,
+        "event_probability": event_probability,
+        "direction": direction,
+    }
+    if n is not None:
+        _need_probability("mean_ratio", event_probability)
+        first, second = _expected_failures(n, event_probability)
+    if unknown == "power":
+        if n is None:
+            found = _mean_ratio_power_from_events(mean_ratio, events, **common)
+        else:
+            _check_shape_value(shape)
+            found = _f_power(
+                _check_mean_ratio(mean_ratio),
+                first,
+                second,
+                float(shape),
+                alpha_ci,
+                alternative,
+            )
+        return PowerCalculation(
+            "mean_ratio", "power", found, found, n, events, inputs
+        )
+    if unknown == "mean_ratio":
+        way = "increase" if direction is None else direction
+        if n is not None:
+            raise ValueError(
+                "mean_ratio_design: to find the detectable mean_ratio, give "
+                "the events (in both groups together) rather than n."
+            )
+        found = _mean_ratio_detectable(events, power, direction=way, **common)
+        return PowerCalculation(
+            "mean_ratio",
+            "mean_ratio",
+            found,
+            power,
+            None,
+            events,
+            {**inputs, "mean_ratio": found},
+        )
+    events = _mean_ratio_events(mean_ratio, power, **common)
+    if event_probability is None:
+        return PowerCalculation(
+            "mean_ratio", "events", events, power, None, events, inputs
+        )
+    p1, p2 = _comparison._event_probabilities(event_probability)
+    per_group = int(events) // 2
+    units = (
+        int(np.ceil(per_group / p1 - 1e-9)),
+        int(np.ceil(per_group / p2 - 1e-9)),
+    )
+    return PowerCalculation(
+        "mean_ratio", "n", units, power, units, events, inputs
+    )
+
+
+def _expected_failures(n: Any, event_probability: Any) -> tuple[float, float]:
+    """Each group's expected failures, ``n * event_probability``."""
+    pair = tuple(np.ravel(n))
+    if len(pair) != 2:
+        raise ValueError(
+            "mean_ratio_design: n must be the units in the first group and "
+            f"in the second, a pair, got {n!r}."
+        )
+    n1, n2 = (check_count(v, "n") for v in pair)
+    p1, p2 = _comparison._event_probabilities(event_probability)
+    return n1 * p1, n2 * p2

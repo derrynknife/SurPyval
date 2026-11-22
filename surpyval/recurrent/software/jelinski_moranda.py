@@ -49,8 +49,8 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.recurrent_data import (
-    _refuse_what_no_recurrent_fit_takes,
     accepts_recurrent_surpyval_data,
+    refuse_what_no_recurrent_fit_takes,
 )
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.units import takes_unit
@@ -160,7 +160,7 @@ def _from_data(
             "x is a SurpyvalData, which holds the data: leave out 'c' "
             "(or pass arrays rather than a SurpyvalData)."
         )
-    _refuse_what_no_recurrent_fit_takes(data)
+    refuse_what_no_recurrent_fit_takes(data)
     held = [
         (what, name)
         for what, name, has in (

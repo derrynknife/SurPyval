@@ -179,9 +179,7 @@ class DynamicPrediction:
         sf``, whose derivative is ``-hf``, kept inside the bracket
         (bisection where a step leaves it)."""
         u = self.age
-        alpha = float(
-            self.model.params[self.model.parameter_names.index("alpha")]
-        )
+        alpha = self.model._scale()
         grid = u + alpha * _GRID
         log_sf, _ = self._log_sf_hf(grid)
         # the first grid age at or below each target
@@ -197,7 +195,7 @@ class DynamicPrediction:
             frac = (f_lo - target) / (f_lo - f_hi)
         frac = np.where(np.isfinite(frac), np.clip(frac, 0.0, 1.0), 0.5)
         t = lo + frac * (hi - lo)
-        active = ~never
+        active = np.asarray(~never)
         for _ in range(_STEPS):
             if not active.any():
                 break
@@ -366,10 +364,7 @@ class DynamicPrediction:
                 end = q
                 break
         if not np.isfinite(end):
-            alpha = float(
-                self.model.params[self.model.parameter_names.index("alpha")]
-            )
-            end = self.age + 10.0 * alpha
+            end = self.age + 10.0 * self.model._scale()
         return np.linspace(self.age, end, size)
 
     def to_dict(

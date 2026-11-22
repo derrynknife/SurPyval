@@ -384,6 +384,37 @@ def _log1mexp(d: Any) -> Any:
     )
 
 
+# What each distribution's parameters do, in the order of its
+# ``parameter_names`` (``ParametricFitter.parameter_roles``): one letter
+# can mean different things, Gamma's ``beta`` is a rate where Weibull's
+# is a shape.
+_PARAMETER_ROLES: dict[str, tuple[str, ...]] = {
+    "Bernoulli": ("probability",),
+    "Beta": ("shape", "shape"),
+    "Beta4": ("shape", "shape", "lower bound", "upper bound"),
+    "BetaGeometric": ("shape", "shape"),
+    "Binomial": ("number of trials", "probability"),
+    "DiscreteWeibull": ("probability of surviving the first step", "shape"),
+    "ExactEventTime": ("event time",),
+    "ExpoWeibull": ("scale", "shape", "shape (exponent)"),
+    "Exponential": ("rate",),
+    "FixedEventProbability": ("probability",),
+    "Gamma": ("shape", "rate"),
+    "Geometric": ("probability",),
+    "Gumbel": ("location", "scale"),
+    "GumbelLEV": ("location", "scale"),
+    "LogLogistic": ("scale", "shape"),
+    "LogNormal": ("location of log(x)", "scale of log(x)"),
+    "Logistic": ("location", "scale"),
+    "NegativeBinomial": ("shape", "probability"),
+    "Normal": ("location", "scale"),
+    "Poisson": ("rate",),
+    "Rayleigh": ("scale",),
+    "Uniform": ("lower bound", "upper bound"),
+    "Weibull": ("scale", "shape"),
+}
+
+
 def _isf_continuous(dist: Any, s: npt.NDArray, params: tuple) -> npt.NDArray:
     """The time at which a continuous distribution's survival is ``s``,
     for ``s`` in [0, 1], where the distribution has no closed form.
@@ -683,6 +714,32 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         ('Normal', 'Weibull')
         """
         return self.name
+
+    @property
+    def parameter_roles(self) -> dict[str, str]:
+        """
+        What each parameter does, by name, in the order of
+        ``parameter_names``: ``"shape"``, ``"scale"``, ``"rate"``,
+        ``"location"``, ``"probability"``, ... The same letter can mean
+        different things: Gamma's ``beta`` is a rate (its mean is
+        ``alpha / beta``), Weibull's ``beta`` a shape. A distribution
+        without a recorded role (a custom one) gives ``"parameter"``.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.Gamma.parameter_roles
+        {'alpha': 'shape', 'beta': 'rate'}
+        >>> sp.Weibull.parameter_roles
+        {'alpha': 'scale', 'beta': 'shape'}
+        """
+        if self.canonical_name == "Hypoexponential":
+            return {name: "rate" for name in self.parameter_names}
+        roles = _PARAMETER_ROLES.get(self.canonical_name, ())
+        return {
+            name: roles[i] if i < len(roles) else "parameter"
+            for i, name in enumerate(self.parameter_names)
+        }
 
     def __init__(
         self,
@@ -1501,6 +1558,36 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
+    def _given_params(self, params: Any) -> np.ndarray:
+        """
+        The parameters given to ``from_params`` as a 1-D float array.
+
+        A plain number is taken for a one-parameter distribution
+        (``Exponential.from_params(0.01)``); for more parameters it is
+        refused, naming how many are needed, as is a list of the wrong
+        length.
+        """
+        names = ", ".join(self.parameter_names)
+        # The dtype given is kept (integers stay integers, as they always
+        # have in ``params`` and ``to_dict``).
+        arr = np.asarray(params)
+        if arr.ndim == 0:
+            if self.k == 1:
+                return arr.reshape(1)
+            raise ValueError(
+                f"{self.name} takes {self.k} parameters ({names}); got 1 "
+                f"number. Pass all {self.k} as a list, e.g. "
+                f"{self.name}.from_params([{names}])."
+            )
+        arr = arr.ravel()
+        if arr.size != self.k:
+            raise ValueError(
+                f"{self.name} takes {self.k} parameter"
+                f"{'s' if self.k != 1 else ''} ({names}); got {arr.size}: "
+                f"{arr.tolist()}. Pass exactly {self.k}, in that order."
+            )
+        return arr
+
     @takes_unit
     def from_params(
         self,
@@ -1517,8 +1604,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Parameters
         ----------
 
-        params : array like
-            array of the parameters of the distribution.
+        params : array like or number
+            The parameters of the distribution, in the order of its
+            ``parameter_names``. A distribution with one parameter
+            (``Exponential``, ``Rayleigh``, ...) also takes a plain number.
 
         gamma : scalar, optional
             offset value for the distribution. If not provided will fit a
@@ -1574,9 +1663,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
              alpha: 10
               beta: 4
         """
-        if self.k != len(params):
-            detail = f"Must have {self.k} params for {self.name} distribution"
-            raise ValueError(detail)
+        params = self._given_params(params)
 
         # A proportion outside [0, 1], or a zero-inflation fraction at or
         # above the proportion that ever fails, is not a distribution:

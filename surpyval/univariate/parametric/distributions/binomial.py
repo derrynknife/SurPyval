@@ -766,12 +766,7 @@ class Binomial_(DiscreteParametricFitter):
         np.float64(1.5)
         """
         reject_structural_params(self.name, gamma, lfp_p, f0, hr)
-        params_arr = np.atleast_1d(np.asarray(params, dtype=float))
-
-        if params_arr.shape[0] != 2:
-            raise ValueError("Binomial distribution requires '[n, p]' params")
-
-        n, prob = params_arr
+        n, prob = self._given_params(params)
 
         if np.mod(n, 1) != 0:
             raise ValueError("'n' must be an integer number of trials")
