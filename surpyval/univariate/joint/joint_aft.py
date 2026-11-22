@@ -37,7 +37,7 @@ class JointAFTFitter(JointPHFitter):
         varying: Any = None,
         link: Any = "value",
         lag: float = 0.0,
-        random_effects: Any = None,
+        random_effects: Any = "full",
     ) -> None:
         try:
             named = [link] if isinstance(link, str) else list(link)
@@ -72,7 +72,7 @@ def JointAFT(
     varying: Any = None,
     link: Any = "value",
     lag: float = 0.0,
-    random_effects: Any = None,
+    random_effects: Any = "full",
 ) -> JointAFTFitter:
     """
     An accelerated joint model fitter of a marker and a lifetime: the
@@ -124,9 +124,7 @@ def JointAFT(
         Fixed, not estimated; compare lags by ``aic()``.
     random_effects : str or sequence, optional
         Which of the varying path parameters are correlated between
-        items: ``"full"`` (the default, every pair; for a spline's
-        varying bends, a block of ``level`` and ``rate`` and each bend on
-        its own), ``"diagonal"``
+        items: ``"full"`` (the default, every pair), ``"diagonal"``
         (none) or blocks of names, such as ``[("a", "b"), ("c",)]``, as
         for :func:`~surpyval.univariate.joint.joint_ph.JointPH`.
 

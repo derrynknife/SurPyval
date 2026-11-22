@@ -927,32 +927,6 @@ class SplinePath(PathModel):
     #: common to the fleet.
     default_varying = ("level", "rate")
 
-    def default_random_effects(self, varying: Any) -> Any:
-        """
-        The joint model's default ``random_effects`` for the varying
-        parameters ``varying``: ``"full"`` where only ``level`` and
-        ``rate`` vary, and where a bend varies too, a block of ``level``
-        and ``rate`` (correlated) and each bend on its own. A bend's
-        spread is told from the readings past its knot alone, too few to
-        estimate its correlations with the others as well; ask for them
-        with ``random_effects="full"``.
-
-        Examples
-        --------
-        >>> from surpyval.degradation import SplinePath
-        >>> path = SplinePath.natural(df=3)
-        >>> path.default_random_effects(("level", "rate"))
-        'full'
-        >>> path.default_random_effects(("level", "rate", "s1", "s2"))
-        [('level', 'rate'), ('s1',), ('s2',)]
-        """
-        varying = list(varying)
-        pair = tuple(v for v in varying if v in ("level", "rate"))
-        bends = [v for v in varying if v not in pair]
-        if not bends:
-            return "full"
-        return ([pair] if pair else []) + [(b,) for b in bends]
-
     def __init__(self, knots: Any = (), boundary: Any = None) -> None:
         self.df: int | None = None
         self.knots: tuple[float, ...] | None = _spline_knots(knots)
@@ -1097,56 +1071,6 @@ class SplinePath(PathModel):
                 f"have a median of {median:g} each: too few to tell the "
                 f"curve's bends from noise. With these readings, {fix}."
             )
-
-    def check_varying(self, ages: list, varying: Any) -> None:
-        """
-        Refuse bends that vary between units where the readings cannot
-        tell their spread: ``ages`` is each unit's reading ages and
-        ``varying`` the parameters that vary. A bend ``s_k`` acts only
-        after the knot where its :math:`N_k` starts (``lo`` for ``s1``,
-        the interior knot before it for the others), so a unit's own
-        ``s_k`` is seen only in its readings after it; the units' median
-        number of readings there must reach the number of varying
-        parameters, as many as each unit has effects of its own.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval.degradation import SplinePath
-        >>> path = SplinePath(knots=[3.0, 7.0], boundary=(0.0, 10.0))
-        >>> ages = [np.arange(0.0, 11.0)] * 5
-        >>> path.check_varying(ages, ("level", "rate", "s2"))
-        >>> short = [np.arange(0.0, 5.0)] * 5
-        >>> path.check_varying(short, ("level", "rate", "s2"))
-        ... # doctest: +ELLIPSIS
-        Traceback (most recent call last):
-            ...
-        ValueError: The bend 's2' varies between units, ...
-        """
-        bends = [v for v in varying if v in self.parameter_names[2:]]
-        if not bends:
-            return
-        lo, span, inner = self._require_placed()
-        starts = np.concatenate([[lo], lo + span * inner])
-        n = len(tuple(varying))
-        for bend in bends:
-            start = float(starts[self.parameter_names.index(bend) - 2])
-            after = np.array(
-                [np.sum(np.asarray(a, dtype=float) > start) for a in ages],
-                dtype=float,
-            )
-            median = float(np.median(after)) if after.size else 0.0
-            if median < n:
-                raise ValueError(
-                    f"The bend {bend!r} varies between units, which is "
-                    f"seen only in readings after age {start:g}, where "
-                    f"its piece starts, and the {after.size} unit(s) have "
-                    f"a median of {median:g} reading(s) there: fewer than "
-                    f"the {n} varying parameters each unit has of its "
-                    f"own, too few to tell the bend's spread. Leave "
-                    f"{bend!r} out of varying (it is then common to all "
-                    "units), or use knots the readings reach well past."
-                )
 
     @property
     def breaks(self) -> tuple[float, ...]:
