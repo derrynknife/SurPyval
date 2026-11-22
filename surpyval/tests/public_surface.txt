@@ -391,6 +391,7 @@ surpyval.multivariate.Independence
 surpyval.multivariate.Joe
 surpyval.multivariate.MultivariateSurpyvalData
 surpyval.multivariate.StudentT
+surpyval.multivariate.Vine
 surpyval.pairwise_logrank
 surpyval.penalty_path
 surpyval.permutation_logrank

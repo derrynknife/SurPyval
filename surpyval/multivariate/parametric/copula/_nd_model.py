@@ -69,6 +69,19 @@ class MultivariateCopulaModel(CopulaModel):
             )
         return self.copula.correlation(*self.params)
 
+    @property
+    def edges(self) -> list:
+        """A vine's pair-copulas, edge by edge (tree by tree): each a
+        dictionary of its ``tree``, the ``pair`` of series it joins, the
+        series it is ``given``, its ``family`` and ``rotation``, its
+        ``params`` and its ``kendall_tau``."""
+        if not hasattr(self.copula, "describe"):
+            raise ValueError(
+                f"The {self.copula.name} copula is not a vine, so it has no "
+                "edges; correlation gives its correlation matrix."
+            )
+        return self.copula.describe(self.params)
+
     # -- internal ---------------------------------------------------------
     def _columns(self, x: npt.ArrayLike) -> npt.NDArray:
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
@@ -206,6 +219,16 @@ class MultivariateCopulaModel(CopulaModel):
         return X.reshape(shape + (self.n_axes,))
 
     # -- bounds -----------------------------------------------------------
+    def cb(self, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
+        """Confidence bounds on the joint ``sf`` or ``ff``, as
+        :meth:`CopulaModel.cb`. A vine has neither, so it refuses, saying
+        what to use, whatever else the model has."""
+        if hasattr(self.copula, "_no_joint_probability"):
+            raise self.copula._no_joint_probability(
+                "its joint survival function or CDF, so no bound on them"
+            )
+        return super().cb(x, *args, **kwargs)
+
     def _joint_at(
         self,
         x: npt.NDArray,
@@ -248,4 +271,8 @@ def restored_family(model_dict: dict) -> Any:
             int(model_dict["axes"]),
             model_dict.get("structure", "unstructured"),
         )
+    if name == "Vine":
+        from .vine import restored
+
+        return restored(model_dict)
     return None
