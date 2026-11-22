@@ -14,7 +14,9 @@ import numpy as np
 import pytest
 
 from surpyval import LogNormal, Weibull
-from surpyval.utils import group_xcnt
+from surpyval.utils.data_formats import (
+    group_xcnt,
+)
 
 # ``xcnt_handler`` looks ``group_xcnt`` up in its own module.
 data_formats = importlib.import_module("surpyval.utils.data_formats")

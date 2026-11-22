@@ -147,6 +147,8 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         self.model = model
         self.dist = model.dist
         self.surv_data = model.surv_data
+        # A known hazard ratio enters the likelihood, held fixed
+        self.hr = float(getattr(model, "hr", 1.0))
         pmap = model.param_map
         self.names = sorted(pmap, key=pmap.__getitem__)
         core_names = sorted(
@@ -203,7 +205,9 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
     def _lr_full_neg_ll(self, theta: npt.NDArray) -> float:
         core, gamma, p, f0 = self._split(np.asarray(theta, dtype=float))
         return float(
-            self.dist._neg_ll_func(self.surv_data, *core, gamma, f0, p)
+            self.dist._neg_ll_func(
+                self.surv_data, *core, gamma, f0, p, hr=self.hr
+            )
         )
 
     def _lr_declared_bounds(self) -> list[tuple[Any, Any]]:

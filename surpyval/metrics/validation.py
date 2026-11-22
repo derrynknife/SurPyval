@@ -75,12 +75,15 @@ from surpyval.utils.ipcw import (
 )
 from surpyval.utils.validation import (
     alpha_ci_error,
+    check_alpha_ci,
     check_c_and_e,
     check_option,
     unknown_cause_error,
 )
 
 __all__ = [
+    "Score",
+    "TimeScores",
     "survival_probability",
     "brier_score",
     "integrated_brier_score",
@@ -318,7 +321,7 @@ def survival_probability(
     return np.column_stack(cols)
 
 
-def brier_score(
+def _brier_score(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     survival: npt.ArrayLike,
@@ -468,7 +471,7 @@ def _brier_terms(
     return terms
 
 
-def integrated_brier_score(
+def _integrated_brier_score(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     survival: npt.ArrayLike,
@@ -514,7 +517,7 @@ def integrated_brier_score(
     >>> round(integrated_brier_score(x, c, S_km, times), 4)
     0.1038
     """
-    times_arr, bs = brier_score(
+    times_arr, bs = _brier_score(
         x, c, survival, times, x_train, c_train, e=e, cause=cause
     )
     # Integrate over the grid in time order: an unsorted grid otherwise gave
@@ -531,7 +534,7 @@ def integrated_brier_score(
     return float(area / span)
 
 
-def auc_td(
+def _auc_td(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
@@ -1350,3 +1353,385 @@ def score_predictions(
         cause=cause,
         controls=None if cause is None else controls,
     )
+
+
+# --- The scores as numbers that carry their uncertainty --------------------
+
+_NO_TRAINING_SE = (
+    "the standard error is not available when the censoring weights come "
+    "from training data (x_train, c_train): its influence function is "
+    "that of the scored data's own Kaplan-Meier. Score without x_train "
+    "and c_train for the standard error and interval."
+)
+
+
+class _Uncertain:
+    """The standard error and interval of a score, or why there are
+    none."""
+
+    _se: Any
+    _lower: Any
+    _upper: Any
+    _why_not: str | None
+
+    def _set(
+        self, se: Any, lower: Any, upper: Any, why_not: str | None
+    ) -> None:
+        self._se, self._lower, self._upper = se, lower, upper
+        self._why_not = why_not
+
+    def _check(self) -> None:
+        if self._why_not is not None:
+            raise ValueError(self._why_not)
+
+    @property
+    def se(self) -> Any:
+        """The standard error, ``sd(IF) / sqrt(n)`` from the influence
+        function :func:`score_predictions` uses."""
+        self._check()
+        return self._se
+
+    @property
+    def lower(self) -> Any:
+        """The lower end of the ``1 - alpha_ci`` interval, clipped at 0."""
+        self._check()
+        return self._lower
+
+    @property
+    def upper(self) -> Any:
+        """The upper end of the ``1 - alpha_ci`` interval, clipped at 1."""
+        self._check()
+        return self._upper
+
+
+class Score(_Uncertain, float):
+    """A score that is one number, from :func:`integrated_brier_score`: a
+    ``float`` (``float(score)``, arithmetic and comparisons use it as a
+    number) that carries its standard error ``se`` and the ends of its
+    ``1 - alpha_ci`` interval, ``lower`` and ``upper``, those of
+    :func:`score_predictions`.
+
+    Attributes
+    ----------
+    metric : str
+        ``"ibs"``.
+    alpha_ci : float
+        The significance level of the interval.
+    """
+
+    metric: str
+    alpha_ci: float
+
+    def __new__(cls, value: float, *args: Any) -> Any:
+        return super().__new__(cls, value)
+
+    def __init__(
+        self,
+        value: float,
+        metric: str,
+        alpha_ci: float,
+        se: Any,
+        lower: Any,
+        upper: Any,
+        why_not: str | None,
+    ) -> None:
+        self.metric = metric
+        self.alpha_ci = alpha_ci
+        self._set(se, lower, upper, why_not)
+
+    def __repr__(self) -> str:
+        return float.__repr__(self)
+
+    def __str__(self) -> str:
+        return float.__repr__(self)
+
+    def __reduce__(self) -> Any:
+        return (
+            Score,
+            (
+                float(self),
+                self.metric,
+                self.alpha_ci,
+                self._se,
+                self._lower,
+                self._upper,
+                self._why_not,
+            ),
+        )
+
+
+class TimeScores(_Uncertain, tuple):
+    """A score at each horizon, from :func:`brier_score` and
+    :func:`auc_td`: the pair ``(times, values)`` it always was (``times,
+    bs = brier_score(...)``, ``result[1]``), carrying each value's
+    standard error ``se`` and the ends of its ``1 - alpha_ci`` interval,
+    ``lower`` and ``upper``, arrays as long as ``times``, those of
+    :func:`score_predictions`.
+
+    Attributes
+    ----------
+    times : ndarray
+        The horizons.
+    values : ndarray
+        The score at each.
+    metric : str
+        ``"brier"`` or ``"auc"``.
+    alpha_ci : float
+        The significance level of the intervals.
+    """
+
+    times: npt.NDArray
+    values: npt.NDArray
+    metric: str
+    alpha_ci: float
+
+    def __new__(cls, times: Any, values: Any, *args: Any) -> Any:
+        return super().__new__(cls, (times, values))
+
+    def __init__(
+        self,
+        times: npt.NDArray,
+        values: npt.NDArray,
+        metric: str,
+        alpha_ci: float,
+        se: Any,
+        lower: Any,
+        upper: Any,
+        why_not: str | None,
+    ) -> None:
+        self.times = times
+        self.values = values
+        self.metric = metric
+        self.alpha_ci = alpha_ci
+        self._set(se, lower, upper, why_not)
+
+    def __reduce__(self) -> Any:
+        return (
+            TimeScores,
+            (
+                self.times,
+                self.values,
+                self.metric,
+                self.alpha_ci,
+                self._se,
+                self._lower,
+                self._upper,
+                self._why_not,
+            ),
+        )
+
+
+def _uncertainty(
+    metric: str,
+    x: Any,
+    c: Any,
+    predictions: Any,
+    times: Any,
+    alpha_ci: float,
+    e: Any,
+    cause: Any,
+    controls: str,
+    trained: bool,
+) -> tuple[Any, Any, Any, str | None]:
+    """The standard error and interval :func:`score_predictions` gives
+    ``metric``, or why there are none."""
+    if trained:
+        return None, None, None, _NO_TRAINING_SE
+    scores = score_predictions(
+        x,
+        c,
+        predictions,
+        times,
+        metrics=(metric,),
+        alpha_ci=alpha_ci,
+        e=e,
+        cause=cause,
+        controls=controls,
+    ).scores
+    rows = scores[scores["metric"] == metric]
+    se = rows["se"].to_numpy(dtype=float)
+    lower = rows["lower"].to_numpy(dtype=float)
+    upper = rows["upper"].to_numpy(dtype=float)
+    if metric == "ibs":
+        return float(se[0]), float(lower[0]), float(upper[0]), None
+    return se, lower, upper, None
+
+
+def brier_score(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    survival: npt.ArrayLike,
+    times: npt.ArrayLike,
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
+    *,
+    alpha_ci: float = 0.05,
+) -> TimeScores:
+    __doc__ = _brier_score.__doc__  # noqa: F841 - set below
+    out = _brier_score(x, c, survival, times, x_train, c_train, e, cause)
+    check_alpha_ci(alpha_ci)
+    trained = x_train is not None or c_train is not None
+    se, lower, upper, why = _uncertainty(
+        "brier",
+        x,
+        c,
+        survival,
+        times,
+        alpha_ci,
+        e,
+        cause,
+        "cause_free",
+        trained,
+    )
+    return TimeScores(out[0], out[1], "brier", alpha_ci, se, lower, upper, why)
+
+
+def integrated_brier_score(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    survival: npt.ArrayLike,
+    times: npt.ArrayLike,
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
+    *,
+    alpha_ci: float = 0.05,
+) -> Score:
+    value = _integrated_brier_score(
+        x, c, survival, times, x_train, c_train, e, cause
+    )
+    check_alpha_ci(alpha_ci)
+    trained = x_train is not None or c_train is not None
+    se, lower, upper, why = _uncertainty(
+        "ibs",
+        x,
+        c,
+        survival,
+        times,
+        alpha_ci,
+        e,
+        cause,
+        "cause_free",
+        trained,
+    )
+    return Score(value, "ibs", alpha_ci, se, lower, upper, why)
+
+
+def _ranked(risk: Any, n_times: int) -> npt.NDArray:
+    """Risk scores as values in (0, 1) in the same order, ties kept: the
+    AUC and its influence function read only the order."""
+    from scipy.stats import rankdata
+
+    arr = np.asarray(risk, dtype=float)
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 1)
+    if arr.shape[1] == 1 and n_times > 1:
+        arr = np.repeat(arr, n_times, axis=1)
+    return rankdata(arr, axis=0) / (arr.shape[0] + 1.0)
+
+
+def auc_td(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    risk: npt.ArrayLike,
+    times: npt.ArrayLike,
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
+    controls: str = "cause_free",
+    *,
+    alpha_ci: float = 0.05,
+) -> TimeScores:
+    out = _auc_td(x, c, risk, times, x_train, c_train, e, cause, controls)
+    check_alpha_ci(alpha_ci)
+    trained = x_train is not None or c_train is not None
+    if not trained and np.isnan(np.asarray(risk, dtype=float)).any():
+        why: str | None = (
+            "the standard error is not available with a missing (NaN) risk "
+            "score: drop those subjects to have it."
+        )
+        se = lower = upper = None
+    else:
+        ranks = None if trained else _ranked(risk, out[0].size)
+        # score_predictions reads a survival probability (a cumulative
+        # incidence with a cause): the ranks with the order that keeps
+        # a higher risk a higher risk.
+        predictions = None
+        if ranks is not None:
+            predictions = ranks if cause is not None else 1.0 - ranks
+        se, lower, upper, why = _uncertainty(
+            "auc",
+            x,
+            c,
+            predictions,
+            times,
+            alpha_ci,
+            e,
+            cause,
+            controls,
+            trained,
+        )
+    return TimeScores(out[0], out[1], "auc", alpha_ci, se, lower, upper, why)
+
+
+_ALPHA_DOC = """    alpha_ci : float, optional
+        Keyword only: the significance level of the intervals the result
+        carries, by default 0.05.
+
+"""
+
+_TIME_SCORES_DOC = """    Returns
+    -------
+    TimeScores
+        The pair ``(times, {name})``, the horizons and the {what} at each,
+        as before (``times, {name} = ...``). It carries each value's
+        standard error ``se`` and the ends of its ``1 - alpha_ci``
+        interval, ``lower`` and ``upper`` (:func:`score_predictions`'s);
+        reading them raises a ``ValueError`` saying why where they are
+        not available (censoring weights from ``x_train`` and ``c_train``,
+        or a missing risk score).{extra}"""
+
+
+def _document(public: Any, private: Any, returns: str | None) -> None:
+    """``public`` gets the docstring of ``private``, its returns replaced
+    by ``returns`` (or, for a number, the uncertainty told before the
+    examples), with ``alpha_ci`` added to its parameters."""
+    doc = private.__doc__
+    start = doc.index("    Returns\n") if "    Returns\n" in doc else None
+    if returns is not None and start is not None:
+        end = doc.index("\n\n", start)
+        doc = doc[:start] + _ALPHA_DOC + returns + doc[end:]
+    else:
+        at = doc.index("    Examples\n")
+        doc = (
+            doc[:at]
+            + _ALPHA_DOC
+            + "    Returns\n    -------\n    Score\n        The integrated "
+            "Brier score, a ``float`` that carries its standard error\n"
+            "        ``se`` and the ends of its ``1 - alpha_ci`` interval, "
+            "``lower``\n        and ``upper`` (:func:`score_predictions`'s; "
+            "not with ``x_train``).\n\n" + doc[at:]
+        )
+    public.__doc__ = doc
+
+
+_document(
+    brier_score,
+    _brier_score,
+    _TIME_SCORES_DOC.format(name="bs", what="Brier score", extra=""),
+)
+_document(integrated_brier_score, _integrated_brier_score, None)
+_document(
+    auc_td,
+    _auc_td,
+    _TIME_SCORES_DOC.format(
+        name="auc",
+        what="AUC",
+        extra=" A horizon with no cases or no controls, or with a case "
+        "whose\n        weight is not identified, yields ``nan``.",
+    ),
+)

@@ -31,6 +31,7 @@ from surpyval.utils.deprecation import positional_option
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import axis_label
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 _CB_ON = ("cif", "sf", "ff", "R", "F")
 
@@ -229,7 +230,7 @@ class _IntervalCompetingRisks(CompetingRisks):
                 f"data did not converge to tol={tol} in max_iter="
                 f"{max_iter} iterations (the Karush-Kuhn-Tucker gap is "
                 f"{model.gap:.3g}); raise max_iter.",
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         return model
 

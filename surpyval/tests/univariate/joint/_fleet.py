@@ -424,3 +424,106 @@ def simulate_aft(
             )
         )
     return SurpyvalData.from_items(items)
+
+
+#: Two failure modes of the pump fleet: a bearing failure the vibration
+#: warns of (0.9 per mm/s) and a seal failure it says nothing about.
+CAUSES = {
+    "bearing": {"alpha": 2020.0, "beta": 2.0, "marker_effect": 0.9},
+    "seal": {"alpha": 2900.0, "beta": 1.3, "marker_effect": 0.0},
+}
+
+
+def simulate_causes(
+    n=300,
+    seed=0,
+    every=30.0,
+    follow=730.0,
+    causes=None,
+    truth=None,
+    centre=CENTRE,
+    inspect=None,
+):
+    """``(items, lines)``: ``n`` pumps as :func:`simulate`'s, failing by
+    the first of several failure modes (``causes``: each one's Weibull
+    ``alpha`` and ``beta`` at the vibration ``centre`` and its
+    ``marker_effect``; :data:`CAUSES`), each mode's latent age drawn by
+    bisection of its own cumulative hazard and the item's failure the
+    earliest, its ``event_type`` that mode. With ``inspect``, a failure
+    is found (with its mode) only at the next inspection (every
+    ``inspect`` days): interval censored between the last two, left
+    censored if before the first; readings stop at the last inspection
+    before it. The generator's draws are in a fixed order: the lines,
+    each mode's target in the order of ``causes``, then the noise."""
+    truth = dict(TRUTH if truth is None else truth)
+    causes = dict(CAUSES if causes is None else causes)
+    rng = np.random.default_rng(seed)
+    sd0, sd1 = truth["sd_a"], truth["sd_b"]
+    r = truth["corr_a_b"]
+    D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
+    b = rng.multivariate_normal([0.0, 0.0], D, size=n)
+    m0 = truth["a"] + b[:, 0]
+    m1 = truth["b"] + b[:, 1]
+    lives = []
+    for cause in causes.values():
+        target = rng.exponential(size=n)
+        lo, hi = np.zeros(n), np.full(n, 50 * follow)
+        for _ in range(80):
+            mid = (lo + hi) / 2
+            H = _cumhaz(
+                mid,
+                m0,
+                m1,
+                cause["alpha"],
+                cause["beta"],
+                cause["marker_effect"],
+                centre,
+                0.0,
+            )
+            below = H < target
+            lo, hi = np.where(below, mid, lo), np.where(below, hi, mid)
+        lives.append((lo + hi) / 2)
+    lives = np.array(lives)
+    first = np.argmin(lives, axis=0)
+    life = lives.min(axis=0)
+    labels = list(causes)
+    noise = rng.normal(0, truth["sd_noise"], (n, int(follow // every) + 2))
+    items = []
+    for k in range(n):
+        mode = labels[first[k]]
+        if inspect is None:
+            failed = life[k] <= follow
+            end = min(life[k], follow)
+            outcome = {
+                ("observed" if failed else "right_censored"): float(end)
+            }
+            last = end
+        else:
+            stops = np.arange(inspect, follow + 1e-9, inspect)
+            found = stops[stops >= life[k]]
+            failed = bool(found.size)
+            if not failed:
+                outcome = {"right_censored": float(stops[-1])}
+                last = float(stops[-1])
+            elif found[0] == stops[0]:
+                outcome = {"left_censored": float(stops[0])}
+                last = 0.0
+            else:
+                outcome = {
+                    "interval_censored": [
+                        float(found[0] - inspect),
+                        float(found[0]),
+                    ]
+                }
+                last = float(found[0] - inspect)
+        ages = np.arange(0.0, last + 1e-9, every)
+        readings = m0[k] + m1[k] * ages + noise[k, : ages.size]
+        items.append(
+            ItemLifetime(
+                k,
+                **outcome,
+                event_type=mode if failed else None,
+                markers=dict(zip(ages.tolist(), readings.tolist())),
+            )
+        )
+    return items, np.column_stack([m0, m1])

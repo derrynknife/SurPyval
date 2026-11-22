@@ -14,7 +14,9 @@ import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.utils import xcnt_sort
+from surpyval.utils.data_formats import (
+    xcnt_sort,
+)
 
 utils_module = importlib.import_module("surpyval.utils")
 data_formats = importlib.import_module("surpyval.utils.data_formats")

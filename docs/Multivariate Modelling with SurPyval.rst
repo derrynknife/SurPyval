@@ -1046,10 +1046,68 @@ these 95% intervals covered the true parameter and the true joint survival
 between 91.5% and 99% of the time, each within the Monte Carlo error of
 95% (``calibration/test_coverage_copula.py``).
 A model built with ``from_params`` has no covariance (its methods raise a
-``ValueError``), and neither has a fit with a non-parametric margin, whose
-semi-parametric estimate needs a rank-based variance SurPyval does not
-compute. A parameter on a bound of its space (an AMH ``theta`` of 1) has
-no Wald interval: ``nan``, with a warning.
+``ValueError``). A parameter on a bound of its space (an AMH ``theta`` of
+1) has no Wald interval: ``nan``, with a warning.
+
+``kendall_tau_cb()`` and ``spearman_rho_cb()`` bound the two rank
+correlations the fitted copula implies. For a family with one parameter
+the measure is monotone in it, so the bound is the parameter's carried
+through the measure; for the Student-t it is a delta-method bound on
+Fisher's :math:`z`.
+
+.. jupyter-execute::
+
+    print("Kendall's tau :", round(float(model.kendall_tau()), 3),
+          model.kendall_tau_cb().round(3))
+    print("Spearman's rho:", round(float(model.spearman_rho()), 3),
+          model.spearman_rho_cb().round(3))
+
+**With non-parametric margins.** A fit with both margins
+``KaplanMeier`` on complete data with no tied values is the maximum
+pseudo-likelihood estimate from the ranks, and its covariance is that of
+[GenestGhoudiRivest1995mv]_ (their proposition 2.1), which adds to the
+copula's score the change in it from each margin's ranks being estimated.
+``covariance()``, ``standard_errors()``, ``param_cb()`` and the
+dependence measures' bounds use it. Over 500 simulated samples of 100 and
+of 400 rows from a Clayton, a Gumbel and a Frank copula, its 90% intervals
+covered the true parameter between 88.6% and 92.8% of the time and
+its 95% intervals between 93.2% and 96.2%
+(``calibration/test_coverage_copula.py``), each within the Monte Carlo
+error of its level.
+
+.. jupyter-execute::
+
+    print("se, Kaplan-Meier margins: %.4f" % semi.standard_errors()[0])
+    print("theta 95%:", semi.param_cb("theta").round(3))
+
+Every fitted copula model also has the **case bootstrap**,
+``method="bootstrap"`` on ``covariance``, ``standard_errors``,
+``param_cb``, ``cb`` and the dependence measures' bounds, with ``n_boot``
+(200) and ``random_state``: the units are resampled with replacement and
+the whole fit, margins and copula, is done again on each resample; the
+bounds are the percentile intervals of the refits. It is the bound where
+the rank-based covariance does not apply, which the default call then
+refuses, saying why and naming the bootstrap: censored, truncated or tied
+data, a non-parametric margin that is not ``KaplanMeier``, or one
+parametric margin with one non-parametric. It is also the only bound of a
+joint probability (``cb``) with a non-parametric margin: a step function
+has no parameter covariance for the delta method to carry. Over 200
+simulated samples of 100 rows from a Clayton copula with 27% and 30% of
+the series censored and ``KaplanMeier`` margins, its 90% and 95%
+intervals covered the true parameter 92.0% and 96.5% of the time and the
+true joint survival at a point 85.5% and 96.5% (the 85.5% is 4.5 points
+short of its level, inside the Monte Carlo error of 200 samples, 7.4).
+
+.. jupyter-execute::
+
+    kw = dict(method="bootstrap", n_boot=200, random_state=7)
+    print("theta 95%, bootstrap:", semi.param_cb("theta", **kw).round(3))
+    print("joint sf 95%, bootstrap:", semi.cb([8.0, 12.0], **kw).round(3))
+
+Refits that fail are left out and counted in a warning. A restored model
+keeps the covariance of its fit and how it was worked out
+(``"covariance_method"`` in its dictionary), but no data, so it has no
+bootstrap.
 
 .. jupyter-execute::
     :hide-code:

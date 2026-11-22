@@ -25,6 +25,7 @@ from surpyval.utils.surpyval_data import (
     refuses_what_fit_cannot_take,
 )
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._fit_inputs import FitInputsMixin, normalise_how
 from .fitters import bounds_convert
@@ -154,8 +155,15 @@ class OptimisedFitMixin(FitInputsMixin):
         def _parameter_initialiser(
             self, data: SurpyvalData, offset: bool = False
         ) -> npt.NDArray: ...
-        def _neg_ll_func(self, data: Any, *params: Any) -> Any: ...
-        def _log_likelihood(self, data: Any, *params: Any) -> Any: ...
+
+        def _neg_ll_func(
+            self, data: Any, *params: Any, hr: float = 1.0
+        ) -> Any: ...
+
+        def _log_likelihood(
+            self, data: Any, *params: Any, hr: float = 1.0
+        ) -> Any: ...
+
         def _moment(self, n: Any, *p: Any, offset: bool = False) -> Any: ...
         def _set_support(self, model: Any, offset: Any) -> Any: ...
         def sf(self, x: Any, *params: Any) -> Any: ...
@@ -274,6 +282,7 @@ class OptimisedFitMixin(FitInputsMixin):
         on_d_is_0: bool = False,
         turnbull_estimator: str = "Fleming-Harrington",
         w: npt.ArrayLike | Number | None = None,
+        hr: float | None = None,
     ) -> Parametric:
         """
 
@@ -405,6 +414,13 @@ class OptimisedFitMixin(FitInputsMixin):
             the likelihood-ratio and bootstrap bounds, ``aic``, ``bic``
             and ``aic_c`` refuse (see :doc:`/Weighted Data`).
 
+        hr : float, optional
+            A known hazard ratio of the data: the data come from the
+            model whose hazard is ``hr`` times the fitted distribution's
+            (with its offset, ``lfp_p`` and ``f0``), and the fitted model
+            carries it. It is never estimated (it is confounded with the
+            scale). MLE only. See :doc:`/Hazard Ratio`.
+
         Returns
         -------
 
@@ -438,12 +454,12 @@ class OptimisedFitMixin(FitInputsMixin):
              alpha: 10.0
               beta: 3.670796510564323
         >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
-        ...             heuristic='Turnbull')
+        ...             heuristic='Turnbull')  # doctest: +ELLIPSIS
         Parametric SurPyval Model
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
-        Data                : 100 units: 0 events, 100 interval censored
+        Data                : 100 units: 100 events (0 exact, 100 interval ...)
         Parameters          :
              alpha: 9.834445729732789
               beta: 3.2602770099790424
@@ -479,7 +495,26 @@ class OptimisedFitMixin(FitInputsMixin):
             rr=rr,
             on_d_is_0=on_d_is_0,
             turnbull_estimator=turnbull_estimator,
+            hr=hr,
         )
+
+    def _checked_fit_hr(self, hr: Any, how: str) -> float:
+        """The known hazard ratio of a fit (1 without one), refused for a
+        method other than maximum likelihood, which alone has the
+        likelihood it enters."""
+        if hr is None:
+            return 1.0
+        from ._hazard_ratio import checked_hr
+
+        hr = checked_hr(hr)
+        if hr != 1 and how != "MLE":
+            raise ValueError(
+                f"hr is a known factor of the likelihood, which how='{how}' "
+                "does not use: fit with how='MLE', or fit without hr and "
+                "give the hazard ratio to the fitted model with "
+                "model.with_params(model.params, hr=...)."
+            )
+        return hr
 
     def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
         r"""
@@ -633,6 +668,7 @@ class OptimisedFitMixin(FitInputsMixin):
         rr: str = "y",
         on_d_is_0: bool = False,
         turnbull_estimator: str = "Fleming-Harrington",
+        hr: float | None = None,
     ) -> Parametric:
         """
 
@@ -649,7 +685,7 @@ class OptimisedFitMixin(FitInputsMixin):
         surv_data : SurpyvalData
             Survival data in the SurpyvalData class.
         how, offset, zi, lfp, fixed, heuristic, init, rr, on_d_is_0, \
-turnbull_estimator
+turnbull_estimator, hr
             As for :meth:`fit`.
 
         Returns
@@ -668,6 +704,7 @@ turnbull_estimator
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        hr = self._checked_fit_hr(hr, how)
         if surv_data.weighted:
             from ._weighted import check_weighted_fit
 
@@ -694,6 +731,7 @@ turnbull_estimator
             data["w"] = surv_data.w
 
         model = Parametric(self, how, data, offset, lfp, zi)
+        model.hr = hr
         model.surv_data = surv_data
         self._check_fixed_and_init(model, fixed, init, how)
         fitting_info: dict = {}
@@ -703,8 +741,13 @@ turnbull_estimator
         # machinery below -- both of which exist only to seed and run the
         # optimiser. Returns None whenever the closed form does not apply,
         # and the numerical path proceeds untouched.
-        results = self._try_closed_form_mle(
-            surv_data, how, offset, lfp, zi, fixed
+        # A closed form is the likelihood's without a hazard ratio
+        results = (
+            None
+            if hr != 1
+            else self._try_closed_form_mle(
+                surv_data, how, offset, lfp, zi, fixed
+            )
         )
 
         if results is None:
@@ -762,6 +805,7 @@ turnbull_estimator
 
             def from_start(start: Any) -> tuple[dict, dict]:
                 alt_model = Parametric(self, how, data, offset, lfp, zi)
+                alt_model.hr = hr
                 alt_model.surv_data = surv_data
                 alt_info: dict = {}
                 alt = self._fit_numerically(
@@ -873,7 +917,7 @@ turnbull_estimator
             unverified = False
             maximum = "no finite maximum"
         if warning is not None and not maximum_warnings_quiet():
-            warnings.warn(warning, stacklevel=3)
+            warnings.warn(warning, stacklevel=caller_stacklevel())
         if unverified:
             warn_unverified("The maximum-likelihood search", reason)
         # Only maximum likelihood seeks a maximum of the likelihood
@@ -932,6 +976,7 @@ turnbull_estimator
                         model.gamma,
                         model.f0,
                         model.lfp_p,
+                        hr=model.hr,
                     )
                 )
 

@@ -1,0 +1,618 @@
+{
+ "path": "cubic",
+ "how": "MLE",
+ "reps": 200,
+ "fitted": 139,
+ "failed": [
+  {
+   "seed": 1009,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 77.50682139396667
+  },
+  {
+   "seed": 1012,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 72.63705277442932
+  },
+  {
+   "seed": 1015,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 75.03094053268433
+  },
+  {
+   "seed": 1018,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 57.36141633987427
+  },
+  {
+   "seed": 1019,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 39.77668333053589
+  },
+  {
+   "seed": 1022,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 59.73724699020386
+  },
+  {
+   "seed": 1023,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 66.73938918113708
+  },
+  {
+   "seed": 1026,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 68.53082132339478
+  },
+  {
+   "seed": 1029,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 71.2611026763916
+  },
+  {
+   "seed": 1030,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 47.90904521942139
+  },
+  {
+   "seed": 1031,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 75.25961351394653
+  },
+  {
+   "seed": 1037,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 98.83318090438843
+  },
+  {
+   "seed": 1038,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 68.76945114135742
+  },
+  {
+   "seed": 1042,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 107.68370079994202
+  },
+  {
+   "seed": 1051,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 55.90815329551697
+  },
+  {
+   "seed": 1056,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 77.53919768333435
+  },
+  {
+   "seed": 1057,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 87.45312666893005
+  },
+  {
+   "seed": 1061,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 63.872323751449585
+  },
+  {
+   "seed": 1063,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 71.84587240219116
+  },
+  {
+   "seed": 1064,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 66.57818675041199
+  },
+  {
+   "seed": 1066,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 57.6416916847229
+  },
+  {
+   "seed": 1067,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 64.0954647064209
+  },
+  {
+   "seed": 1068,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 79.76416373252869
+  },
+  {
+   "seed": 1071,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 78.8414695262909
+  },
+  {
+   "seed": 1074,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 59.66784191131592
+  },
+  {
+   "seed": 1080,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 72.95267653465271
+  },
+  {
+   "seed": 1081,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 80.25491428375244
+  },
+  {
+   "seed": 1085,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 83.33668422698975
+  },
+  {
+   "seed": 1095,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 106.90806841850281
+  },
+  {
+   "seed": 1096,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 129.0410726070404
+  },
+  {
+   "seed": 1097,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 141.56944274902344
+  },
+  {
+   "seed": 1098,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 116.43064451217651
+  },
+  {
+   "seed": 1099,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 146.30098795890808
+  },
+  {
+   "seed": 1100,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 126.11806130409241
+  },
+  {
+   "seed": 1103,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 129.54807496070862
+  },
+  {
+   "seed": 1106,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 167.10175204277039
+  },
+  {
+   "seed": 1109,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 99.55288505554199
+  },
+  {
+   "seed": 1112,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 106.58946323394775
+  },
+  {
+   "seed": 1113,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 119.32839012145996
+  },
+  {
+   "seed": 1115,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 99.57447075843811
+  },
+  {
+   "seed": 1122,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 159.58658862113953
+  },
+  {
+   "seed": 1123,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 166.0313754081726
+  },
+  {
+   "seed": 1124,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 126.26405882835388
+  },
+  {
+   "seed": 1131,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 158.13399982452393
+  },
+  {
+   "seed": 1133,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 172.93807816505432
+  },
+  {
+   "seed": 1134,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 146.99186515808105
+  },
+  {
+   "seed": 1135,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 159.62572169303894
+  },
+  {
+   "seed": 1138,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 164.11097836494446
+  },
+  {
+   "seed": 1144,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 149.2890965938568
+  },
+  {
+   "seed": 1151,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 238.52063298225403
+  },
+  {
+   "seed": 1156,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 208.04940533638
+  },
+  {
+   "seed": 1159,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 205.47127604484558
+  },
+  {
+   "seed": 1165,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 90.71249842643738
+  },
+  {
+   "seed": 1166,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 69.21569633483887
+  },
+  {
+   "seed": 1169,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 131.3966760635376
+  },
+  {
+   "seed": 1171,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 75.7227373123169
+  },
+  {
+   "seed": 1174,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 67.15346813201904
+  },
+  {
+   "seed": 1181,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 82.0732090473175
+  },
+  {
+   "seed": 1188,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 58.419700622558594
+  },
+  {
+   "seed": 1190,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 63.90207552909851
+  },
+  {
+   "seed": 1197,
+   "ok": false,
+   "error": "ValueError('The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.')",
+   "time": 57.84023904800415
+  }
+ ],
+ "verified": 139,
+ "maxima": [
+  "verified"
+ ],
+ "fit_time_total": 11681.985930681229,
+ "fit_time_mean": 58.409929653406145,
+ "rows": [
+  {
+   "name": "a",
+   "truth": 3.0,
+   "relative": true,
+   "mean": 3.0081717239287107,
+   "bias": 0.002723907976236986,
+   "bias_mcse": 0.0015086863319777918,
+   "bias_z": 1.805483299279391,
+   "coverage": 0.9424460431654677,
+   "coverage_mcse": 0.019754154264342287,
+   "sd_over_se": 1.0319290956027767,
+   "finite_se": 139
+  },
+  {
+   "name": "b",
+   "truth": 1.0,
+   "relative": true,
+   "mean": 0.9947676591365938,
+   "bias": -0.005232340863406147,
+   "bias_mcse": 0.006344823388159838,
+   "bias_z": -0.8246629643262081,
+   "coverage": 0.9568345323741008,
+   "coverage_mcse": 0.017237697110070626,
+   "sd_over_se": 1.0118756024795212,
+   "finite_se": 139
+  },
+  {
+   "name": "c",
+   "truth": -0.6,
+   "relative": true,
+   "mean": -0.5978361334238196,
+   "bias": 0.003606444293634005,
+   "bias_mcse": 0.01259642816924356,
+   "bias_z": 0.286306899478043,
+   "coverage": 0.9280575539568345,
+   "coverage_mcse": 0.021916573424032765,
+   "sd_over_se": 1.0875397605784018,
+   "finite_se": 139
+  },
+  {
+   "name": "d",
+   "truth": 0.25,
+   "relative": true,
+   "mean": 0.24702081955135868,
+   "bias": -0.01191672179456532,
+   "bias_mcse": 0.011260379790277135,
+   "bias_z": -1.058287732431095,
+   "coverage": 0.9064748201438849,
+   "coverage_mcse": 0.024696462419462942,
+   "sd_over_se": 1.1309052142854832,
+   "finite_se": 139
+  },
+  {
+   "name": "sd_a",
+   "truth": 0.5,
+   "relative": true,
+   "mean": 0.4968877916803966,
+   "bias": -0.006224416639206804,
+   "bias_mcse": 0.006303154418090391,
+   "bias_z": -0.9875081945227923,
+   "coverage": 0.9640287769784173,
+   "coverage_mcse": 0.01579483891116333,
+   "sd_over_se": 0.9799427086336848,
+   "finite_se": 139
+  },
+  {
+   "name": "sd_b",
+   "truth": 0.4,
+   "relative": true,
+   "mean": 0.4060374854754792,
+   "bias": 0.015093713688697975,
+   "bias_mcse": 0.014506041531958256,
+   "bias_z": 1.0405122345365563,
+   "coverage": 0.9568345323741008,
+   "coverage_mcse": 0.017237697110070626,
+   "sd_over_se": 0.8854124612250456,
+   "finite_se": 139
+  },
+  {
+   "name": "sd_c",
+   "truth": 0.3,
+   "relative": true,
+   "mean": 0.3141118722344213,
+   "bias": 0.04703957411473772,
+   "bias_mcse": 0.02137252157577059,
+   "bias_z": 2.200937027854735,
+   "coverage": 0.9784172661870504,
+   "coverage_mcse": 0.012325594653189794,
+   "sd_over_se": 0.8949817479082566,
+   "finite_se": 139
+  },
+  {
+   "name": "sd_d",
+   "truth": 0.1,
+   "relative": true,
+   "mean": 0.10346058076253811,
+   "bias": 0.03460580762538107,
+   "bias_mcse": 0.018664199071602557,
+   "bias_z": 1.8541276533014242,
+   "coverage": 0.9784172661870504,
+   "coverage_mcse": 0.012325594653189794,
+   "sd_over_se": 0.9555286134620216,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_a_b",
+   "truth": 0.0,
+   "relative": false,
+   "mean": 0.010908761393540982,
+   "bias": 0.010908761393540982,
+   "bias_mcse": 0.015494077381979226,
+   "bias_z": 0.7040600820948971,
+   "coverage": 0.9424460431654677,
+   "coverage_mcse": 0.019754154264342287,
+   "sd_over_se": 1.0186544781427322,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_a_c",
+   "truth": 0.0,
+   "relative": false,
+   "mean": -0.007078153290559593,
+   "bias": -0.007078153290559593,
+   "bias_mcse": 0.019239091156695993,
+   "bias_z": -0.367904763947028,
+   "coverage": 0.9568345323741008,
+   "coverage_mcse": 0.017237697110070626,
+   "sd_over_se": 0.9494835235458461,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_a_d",
+   "truth": 0.0,
+   "relative": false,
+   "mean": -0.022899591690089455,
+   "bias": -0.022899591690089455,
+   "bias_mcse": 0.02023612880762273,
+   "bias_z": -1.1316191900035457,
+   "coverage": 0.9064748201438849,
+   "coverage_mcse": 0.024696462419462942,
+   "sd_over_se": 1.0503612792822754,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_b_c",
+   "truth": 0.0,
+   "relative": false,
+   "mean": -0.01472617131356304,
+   "bias": -0.01472617131356304,
+   "bias_mcse": 0.024748448334688748,
+   "bias_z": -0.5950341255504916,
+   "coverage": 0.920863309352518,
+   "coverage_mcse": 0.022897028622035694,
+   "sd_over_se": 0.7370758688654484,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_b_d",
+   "truth": 0.0,
+   "relative": false,
+   "mean": 0.019512464305544742,
+   "bias": 0.019512464305544742,
+   "bias_mcse": 0.02493484758780066,
+   "bias_z": 0.7825379416031077,
+   "coverage": 0.935251798561151,
+   "coverage_mcse": 0.02087232029055203,
+   "sd_over_se": 0.8275751501548678,
+   "finite_se": 139
+  },
+  {
+   "name": "corr_c_d",
+   "truth": 0.0,
+   "relative": false,
+   "mean": -0.06986024787097007,
+   "bias": -0.06986024787097007,
+   "bias_mcse": 0.02701725514904303,
+   "bias_z": -2.5857640787555938,
+   "coverage": 0.8920863309352518,
+   "coverage_mcse": 0.02631687221658874,
+   "sd_over_se": 0.8253343718488364,
+   "finite_se": 139
+  },
+  {
+   "name": "sd_noise",
+   "truth": 0.2,
+   "relative": true,
+   "mean": 0.1997689747097485,
+   "bias": -0.0011551264512576363,
+   "bias_mcse": 0.0014224809720541666,
+   "bias_z": -0.8120505468621835,
+   "coverage": 0.9496402877697842,
+   "coverage_mcse": 0.018548713157929553,
+   "sd_over_se": 0.9420894958206398,
+   "finite_se": 139
+  },
+  {
+   "name": "alpha",
+   "truth": 2.5,
+   "relative": true,
+   "mean": 2.5350242456737426,
+   "bias": 0.014009698269497037,
+   "bias_mcse": 0.0056352531118121375,
+   "bias_z": 2.4860814574825576,
+   "coverage": 0.9640287769784173,
+   "coverage_mcse": 0.01579483891116333,
+   "sd_over_se": 0.881485985186746,
+   "finite_se": 139
+  },
+  {
+   "name": "beta",
+   "truth": 2.0,
+   "relative": true,
+   "mean": 2.0355301488233195,
+   "bias": 0.017765074411659976,
+   "bias_mcse": 0.010537169929243237,
+   "bias_z": 1.6859436196769995,
+   "coverage": 0.935251798561151,
+   "coverage_mcse": 0.02087232029055203,
+   "sd_over_se": 1.0648364210915255,
+   "finite_se": 139
+  },
+  {
+   "name": "marker_effect",
+   "truth": 0.8,
+   "relative": true,
+   "mean": 0.8218958713464668,
+   "bias": 0.027369839183083368,
+   "bias_mcse": 0.011719743325260056,
+   "bias_z": 2.3353616562652872,
+   "coverage": 0.935251798561151,
+   "coverage_mcse": 0.02087232029055203,
+   "sd_over_se": 1.046883970105292,
+   "finite_se": 139
+  }
+ ],
+ "wall_time_this_run": 1515.1845149993896,
+ "date": "2026-11-21"
+}

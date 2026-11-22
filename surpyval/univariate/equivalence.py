@@ -130,7 +130,7 @@ from surpyval.utils.validation import (
     check_option,
     option_error,
 )
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 #: The lifetime distributions an equivalent-scale model takes: those on
 #: the positive half-line that are closed under a change of scale, so that
@@ -981,7 +981,7 @@ class EquivalenceFitter:
                 "second clock) is deprecated and will be removed in "
                 f"v{REMOVED_IN_NEXT}; {_PAIR_ENTRY_ADVICE}.",
                 DeprecationWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             name = x2.name if isinstance(x2, SecondaryClock) else None
             values = x2.values if isinstance(x2, SecondaryClock) else x2
@@ -1070,7 +1070,7 @@ class EquivalenceFitter:
                 f"removed in v{REMOVED_IN_NEXT}; use x_col and x2_col, and "
                 "tl_col and tl2_col.",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         if x_cols is not None:
             x_cols = list(x_cols)

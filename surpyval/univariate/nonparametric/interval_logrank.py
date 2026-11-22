@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils import xcnt_handler
+from surpyval.utils.warnings import caller_stacklevel
 
 #: The ``scores`` values of :func:`interval_logrank`, and R's names for them.
 SCORES = ("log-rank", "finkelstein", "wilcoxon")
@@ -505,7 +506,7 @@ def interval_logrank(
             "interval_logrank: the Turnbull NPMLE of the pooled data did not "
             "converge to tol={} in max_iter={} iterations, so the scores "
             "are approximate; raise 'max_iter'.".format(tol, max_iter),
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
     U = {
         _plain(groups[j]): float(np.sum((units * cc)[g == j]))
