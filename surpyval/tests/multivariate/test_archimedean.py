@@ -1,5 +1,5 @@
 import warnings
-from decimal import Decimal, getcontext
+from decimal import Decimal, localcontext
 
 import numpy as np
 import pytest
@@ -106,20 +106,28 @@ def test_from_params_roundtrips_through_to_dict():
 # ---------------------------------------------------------------------------
 
 
-getcontext().prec = 200
+# The references' precision, 200 digits, set in each (a module-level
+# getcontext().prec is the process's, and another test module's import
+# can lower it under xdist: at 50 digits the cdf's reference at theta=300
+# rounds 1 + g(u) g(v) / g(1) to 0).
+_DIGITS = 200
 
 
 def _frank_cdf_exact(u, v, theta):
-    u, v, t = Decimal(u), Decimal(v), Decimal(theta)
-    g = lambda s: (-t * s).exp() - 1  # noqa: E731
-    return float(-1 / t * (1 + g(u) * g(v) / g(Decimal(1))).ln())
+    with localcontext(prec=_DIGITS):
+        u, v, t = Decimal(u), Decimal(v), Decimal(theta)
+        g = lambda s: (-t * s).exp() - 1  # noqa: E731
+        return float(-1 / t * (1 + g(u) * g(v) / g(Decimal(1))).ln())
 
 
 def _frank_pdf_exact(u, v, theta):
-    u, v, t = Decimal(u), Decimal(v), Decimal(theta)
-    g = lambda s: (-t * s).exp() - 1  # noqa: E731
-    one = g(Decimal(1))
-    return float(-t * one * (-t * (u + v)).exp() / (one + g(u) * g(v)) ** 2)
+    with localcontext(prec=_DIGITS):
+        u, v, t = Decimal(u), Decimal(v), Decimal(theta)
+        g = lambda s: (-t * s).exp() - 1  # noqa: E731
+        one = g(Decimal(1))
+        return float(
+            -t * one * (-t * (u + v)).exp() / (one + g(u) * g(v)) ** 2
+        )
 
 
 @pytest.mark.parametrize("theta", [38.0, 60.0, 300.0, -20.0, -60.0])
@@ -185,9 +193,10 @@ def test_frank_theta_zero_is_independence():
 
 
 def _clayton_cdf_exact(u, v, theta):
-    u, v, t = Decimal(u), Decimal(v), Decimal(theta)
-    base = (-t * u.ln()).exp() + (-t * v.ln()).exp() - 1
-    return float((-base.ln() / t).exp())
+    with localcontext(prec=_DIGITS):
+        u, v, t = Decimal(u), Decimal(v), Decimal(theta)
+        base = (-t * u.ln()).exp() + (-t * v.ln()).exp() - 1
+        return float((-base.ln() / t).exp())
 
 
 @pytest.mark.parametrize("theta", [31.0, 100.0, 1000.0])

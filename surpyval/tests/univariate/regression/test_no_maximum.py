@@ -56,11 +56,22 @@ def _no_events(d):
     return {**d, "Z": Z}
 
 
+#: The Fine-Gray fit's warning of few events per coefficient (these data
+#: have 18 for the cause of interest), tested in test_fine_gray.py; not
+#: what these tests are about.
+_FEW_EVENTS = "fewer than 10 per coefficient"
+
+
 def _fit(fit):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         model = fit()
-    return model, [x for x in w if issubclass(x.category, UserWarning)]
+    return model, [
+        x
+        for x in w
+        if issubclass(x.category, UserWarning)
+        and _FEW_EVENTS not in str(x.message)
+    ]
 
 
 # One of each family and link, and the baselines that needed care: the

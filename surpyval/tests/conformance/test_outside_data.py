@@ -60,6 +60,7 @@ RULES = {
     "ProportionalOdds": "hold",
     "BuckleyJames": "hold",
     "SurvivalTree[non-parametric]": "hold",
+    "SurvivalTree[causes, non-parametric]": "hold",
     "CompetingRisks[Nelson-Aalen]": "hold",
     "CompetingRisks[Kaplan-Meier]": "hold",
     "CompetingRisks[tl]": "hold",
@@ -123,6 +124,8 @@ WITHOUT_SET_SUPPORT = {
     "data",
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
+    "SurvivalTree[causes, non-parametric]": "a tree of Aalen-Johansen "
+    "leaves (surpyval.ml), not a single estimate; not given set_support yet",
     "RelativeSurvival": "net survival's expected part accrues from time 0, "
     "not from the first follow-up time: not given set_support yet",
     "PanelCountMCF": "a mean function known only at the inspection times "

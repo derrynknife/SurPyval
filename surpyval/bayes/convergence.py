@@ -241,7 +241,7 @@ def summarise(
         "ess_tail": {n: ess_tail(D[:, :, j]) for j, n in enumerate(names)},
     }
     if divergent is not None:
-        out["divergences"] = int(np.sum(divergent))
+        out["divergences"] = int(np.asarray(divergent).sum())
     if depth is not None and max_depth is not None:
         out["tree_depth_saturated"] = int(
             np.sum(np.asarray(depth) >= max_depth)

@@ -398,7 +398,8 @@ v0.29 (unreleased)
   period with no effort, a ``tau`` with no failures on one side of it,
   and a fit that only reaches the model's limit (no growth on the effort
   clock, or steady failures either side of the change, where
-  ``ChangePoint(HPP)`` is the model). A saved model on a clock has the
+  ``ChangePoint(HPP)`` is the model; the refusal comes alone, without a
+  warning from the search that ran to that limit). A saved model on a clock has the
   key ``clock`` (the model, and the effort or the time of the change),
   and a ``dist`` that SurPyval 0.28 does not know and so refuses. See
   "When the testing was not steady" in
