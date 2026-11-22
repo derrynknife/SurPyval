@@ -13,7 +13,6 @@ from surpyval.degradation import (
     PathModel,
     PowerPath,
     QuadraticPath,
-    SplinePath,
     get_path_model,
 )
 from surpyval.degradation.path_models import path_model_key
@@ -31,9 +30,6 @@ MODELS_AND_PARAMS = [
     (LloydLipowPath, (10.0, 5.0)),
     (GompertzPath, (10.0, 3.0, 0.3)),
     (MichaelisMentenPath, (10.0, 5.0)),
-    (SplinePath(knots=[4.0, 7.0], boundary=(1.0, 10.0)), (2.0, 0.3, 4.0, 3.0)),
-    (SplinePath(knots=[5.0], boundary=(0.0, 12.0)), (20.0, -0.5, -6.0)),
-    (SplinePath(), (2.0, 0.5)),
 ]
 
 

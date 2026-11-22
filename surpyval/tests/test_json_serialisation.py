@@ -625,7 +625,6 @@ def _build(name):
             c=[0, 0, 0, 1, 1, 1],
             priors={"beta": sp_prior.around(2, between=(1.5, 3))},
         ),
-        "bayesian_regression": _bayesian_regression,
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -711,20 +710,7 @@ CASES = [
     "instantly_occurs",
     "joint",
     "bayesian",
-    "bayesian_regression",
 ]
-
-
-def _bayesian_regression():
-    """A short Bayesian Weibull proportional hazards fit (two chains)."""
-    from surpyval import WeibullPH
-
-    rng = np.random.default_rng(1)
-    Z = rng.normal(size=(30, 1))
-    x = Weibull.random(30, 50.0, 2.0, random_state=2)
-    return WeibullPH.fit_bayes(
-        x, Z, chains=2, draws=200, warmup=200, random_state=1
-    )
 
 
 def _frailty_fleet():

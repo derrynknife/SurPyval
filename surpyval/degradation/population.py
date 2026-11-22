@@ -512,11 +512,9 @@ def _elementwise(path_model: Any) -> bool:
     ``path`` and ``jacobian`` act element by element on the times and the
     parameters, so that one call evaluates many units' paths (each row its
     own parameters)."""
-    from .path_models import PATH_MODELS, SplinePath
+    from .path_models import PATH_MODELS
 
-    return isinstance(path_model, SplinePath) or any(
-        type(path_model) is type(m) for m in PATH_MODELS.values()
-    )
+    return any(type(path_model) is type(m) for m in PATH_MODELS.values())
 
 
 class _PaddedUnits:

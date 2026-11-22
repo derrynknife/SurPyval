@@ -442,13 +442,6 @@ for _path in (
     OUT_OF_SCOPE[f"surpyval.degradation.{_path}"] = (
         _COMPONENT + ": a DegradationAnalysis path shape"
     )
-# The spline path is made with its knots (a class, where the other
-# shapes are instances): the joint model on it is registered
-# (WeibullJointPH[spline]), and its own tests are in
-# tests/degradation/test_spline_path.py.
-OUT_OF_SCOPE["surpyval.degradation.SplinePath"] = (
-    _COMPONENT + ": a DegradationAnalysis and joint model path shape"
-)
 # The top-level data-format functions (fs_to_xcnt, ...) are deprecated by
 # date and skipped by the completeness scan (DATED_DATA_FUNCTIONS).
 for _fn in (

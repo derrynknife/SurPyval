@@ -5,7 +5,6 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
-import copy
 import warnings
 from typing import Any
 
@@ -229,7 +228,7 @@ class JointPHFitter(FitterRepr):
         link: Any = "value",
         lag: float = 0.0,
         weight: Any = None,
-        random_effects: Any = None,
+        random_effects: Any = "full",
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -248,10 +247,6 @@ class JointPHFitter(FitterRepr):
                 f"PathModel of your own; got {path_model!r}."
             )
         names = list(path_model.parameter_names)
-        if varying is None and hasattr(path_model, "default_varying"):
-            # a path that says which of its parameters differ between
-            # items (a spline: its level and rate, the bends common)
-            varying = tuple(path_model.default_varying)
         if varying is None:
             varying = tuple(names)
         if isinstance(varying, str):
@@ -319,13 +314,6 @@ class JointPHFitter(FitterRepr):
         self.path_model = path_model
         # in the path's order
         self.varying = tuple(n for n in names if n in varying)
-        if random_effects is None:
-            # the path's own default (a spline: its level and rate
-            # correlated, each varying bend on its own), else every pair
-            chooser = getattr(path_model, "default_random_effects", None)
-            random_effects = (
-                chooser(self.varying) if chooser is not None else "full"
-            )
         self.random_effects = check_random_effects(
             random_effects, self.varying
         )
@@ -938,7 +926,7 @@ def JointPH(
     link: Any = "value",
     lag: float = 0.0,
     weight: Any = None,
-    random_effects: Any = None,
+    random_effects: Any = "full",
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -958,10 +946,9 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them; for a ``SplinePath``, its ``level``
-        and ``rate``. Up to five, each item's integral is on a grid by
-        default; beyond five it is Laplace's approximation
-        (``integration`` of :meth:`JointPHFitter.fit`).
+        items. Default all of them. Up to five, each item's integral
+        is on a grid by default; beyond five it is Laplace's
+        approximation (``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -1000,8 +987,7 @@ def JointPH(
         unit of age.
     random_effects : str or sequence, optional
         Which of the varying path parameters are correlated between
-        items. ``"full"`` (the default, but for a spline's bends, below):
-        every pair, a correlation each
+        items. ``"full"`` (the default): every pair, a correlation each
         (``corr_a_b``, ...; three for three varying parameters, ten for
         five); ``"diagonal"``: none, each varying independently of the
         others; or blocks of names, such as ``[("a", "b"), ("c",)]``:
@@ -1012,12 +998,7 @@ def JointPH(
         the parameters estimated. With many varying parameters and a
         fleet too small to tell their correlations apart, fewer can be
         what makes the fit identifiable; nested structures compare by
-        ``aic()`` or the likelihood ratio of the same data. For a
-        ``SplinePath`` whose bends vary (``varying=("level", "rate",
-        "s1")``), the default is a block of ``level`` and ``rate`` and
-        each bend on its own: a bend's spread is told from few items'
-        readings past its knot, too few to estimate its correlations
-        with the rest as well.
+        ``aic()`` or the likelihood ratio of the same data.
 
     Returns
     -------
@@ -1432,31 +1413,6 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return aliased_columns(gram, len(Z), constant)
 
 
-def _with_placed_path(fitter: JointPHFitter, records: list) -> JointPHFitter:
-    """``fitter``, or a copy of it whose path has its knots placed from
-    the records' reading ages: for a path made of joined pieces (a
-    ``SplinePath``), which also refuses more knots than the items'
-    readings support, and varying bends whose spread they cannot
-    tell."""
-    path: Any = fitter.path_model
-    base = getattr(path, "base", path)
-    if not hasattr(base, "placed"):
-        return fitter
-    ages = [list((r.markers or {}).keys()) for r in records]
-    pooled = np.array([a for item in ages for a in item], dtype=float)
-    placed = base.placed(pooled)
-    placed.check_readings([len(item) for item in ages])
-    placed.check_varying(ages, fitter.varying)
-    if placed is base:
-        return fitter
-    out = copy.copy(fitter)
-    if base is path:
-        out.path_model = placed
-    else:
-        out.path_model = type(path)(placed, dict(path.links))
-    return out
-
-
 def _fit(
     fitter: JointPHFitter,
     records: list,
@@ -1475,7 +1431,6 @@ def _fit(
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
     ``causes`` is :func:`_causes`' (the failure modes and each record's)
     and ``shared`` the survival parameters they have in common."""
-    fitter = _with_placed_path(fitter, records)
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts
@@ -1665,7 +1620,6 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
-    _warn_bends_without_spread(path_model, fitter.varying, out, ages)
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
     out.weight = fitter.weight
@@ -1695,46 +1649,6 @@ def _fit(
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
     return out
-
-
-#: A varying bend of a spline whose spread between items moves an item's
-#: marker by less than this fraction of the readings' noise sd, at any
-#: reading age, is taken as estimated at its lower bound, 0.
-_NO_SPREAD = 0.01
-
-
-def _warn_bends_without_spread(
-    path_model: Any, varying: Any, model: JointModel, ages: list
-) -> None:
-    """One warning naming the varying bends of a spline (``s1``, ...)
-    whose estimated spread between items is at its lower bound, 0 (by
-    :data:`_NO_SPREAD`), saying to leave them out of ``varying``."""
-    names = list(getattr(path_model, "parameter_names", []))
-    bends = [v for v in varying if v in names[2:]]
-    if not bends or not hasattr(path_model, "default_random_effects"):
-        return
-    params = dict(zip(model.parameter_names, np.asarray(model.params)))
-    noise = float(params.get("sd_noise", np.nan))
-    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
-    with np.errstate(all="ignore"):
-        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
-    flat = []
-    for bend in bends:
-        sd = abs(float(params.get(f"sd_{bend}", np.nan)))
-        reach = sd * float(np.max(basis[:, names.index(bend)]))
-        if reach < _NO_SPREAD * noise:
-            flat.append(f"{bend!r} (sd {sd:.3g}, at most {reach:.3g})")
-    if flat:
-        warnings.warn(
-            f"The spread between items of the bend(s) {', '.join(flat)} "
-            "is estimated at its lower bound, 0: it moves an item's "
-            f"marker by under {_NO_SPREAD:.0%} of the readings' noise "
-            f"(sd {noise:.3g}) at any reading age, so the data show no "
-            "difference between items in it. Leave it out of varying "
-            "(common to all items) and compare the two fits by aic().",
-            UserWarning,
-            stacklevel=caller_stacklevel(),
-        )
 
 
 #: An item with at most this many readings has few for Laplace's

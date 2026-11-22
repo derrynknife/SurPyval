@@ -1932,9 +1932,9 @@ def _readings_paths(fitter, **kw):
 
 
 def _degradation():
-    def da(path, label=None):
+    def da(path):
         return Case(
-            name=f"DegradationAnalysis[{label or path}]",
+            name=f"DegradationAnalysis[{path}]",
             fitters=(
                 ("surpyval.degradation.DegradationAnalysis",)
                 if path == "linear"
@@ -1960,9 +1960,7 @@ def _degradation():
             exclude={"counts": "degradation readings carry no counts"},
         )
 
-    # the spline with one knot the fit places from the readings
     out = [da("linear"), da("power")]
-    out.append(da(dg.SplinePath.natural(df=2), "spline"))
     for name in ("WienerProcess", "GammaProcess"):
         fitter = getattr(dg, name)
         out.append(
@@ -2241,12 +2239,11 @@ def _joint():
     the area under it, or its value and slope together, or its value 90
     days earlier (a lag), or the area with exposure fading over 180 days
     (a weight), or its value with the line's start and rate uncorrelated
-    between items (``random_effects="diagonal"``), or the value of a
-    spline path with one knot placed from the readings, its bend common
-    to all items (``[spline]``); or the marker's value speeds up the
-    item's ageing (``WeibullJointAFT``); or the items fail by one of two
-    failure modes, each with a baseline, a coefficient and an effect of
-    its own (``[causes]``: the fit of data with event types ``e``)."""
+    between items (``random_effects="diagonal"``); or the marker's value
+    speeds up the item's ageing (``WeibullJointAFT``); or the items fail
+    by one of two failure modes, each with a baseline, a coefficient and
+    an effect of its own (``[causes]``: the fit of data with event
+    types ``e``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2263,11 +2260,6 @@ def _joint():
         ),
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
-        ),
-        "WeibullJointPH[spline]": sp.JointPH(
-            sp.Weibull,
-            dg.SplinePath.natural(df=2),
-            varying=("level", "rate"),
         ),
         "WeibullJointPH[causes]": sp.WeibullJointPH,
     }
@@ -2616,36 +2608,6 @@ def _bayes_weibull(d):
     )
 
 
-def _bayes_weibull_sampled(d):
-    """The sampler, with the same priors as the grid's case: two short
-    chains from a fixed seed, so the fit is the same on every call."""
-    return sp.Weibull.fit_bayes(
-        d["x"],
-        d.get("c"),
-        d.get("n"),
-        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
-        **_BAYES_SAMPLER,
-    )
-
-
-#: The sampled case's settings: enough draws to pass the sampler's own
-#: convergence checks on the fixture (they are not what is under test
-#: here; tests/bayes/test_sampler.py and test_fit_sampled.py are).
-_BAYES_SAMPLER = dict(
-    method="nuts", chains=2, draws=600, warmup=400, random_state=4590
-)
-
-
-#: Why a sampled fit's ``units`` property is not checked here.
-_SAMPLED_UNITS = (
-    "a sampler's draws rescale with the unit in distribution, not to the "
-    "last digit: rounding in the rescaled log-posterior changes the "
-    "trajectories (tests/bayes/test_fit_sampled.py::"
-    "test_a_change_of_time_unit_rescales_the_posterior checks it within "
-    "Monte Carlo error)"
-)
-
-
 def _bayes_exponential(d):
     """The closed form: a Gamma prior on the rate whose second parameter
     is a time (``prior_time``, rescaled with the data)."""
@@ -2661,18 +2623,17 @@ def _bayes_exponential(d):
     )
 
 
-def _bayes_paths(fit, fitter, priors, **options):
+def _bayes_paths(fit, fitter, priors):
     def from_df(d):
         df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
         return fitter.fit_bayes_from_df(
-            df, x_col="x", c_col="c", n_col="n", priors=priors(d), **options
+            df, x_col="x", c_col="c", n_col="n", priors=priors(d)
         )
 
     def from_data(d):
         return fitter.fit_bayes(
             sp.SurpyvalData(x=d["x"], c=d.get("c"), n=d.get("n")),
             priors=priors(d),
-            **options,
         )
 
     # (fit_from_df: the DataFrame path, fit_bayes_from_df)
@@ -2735,23 +2696,6 @@ def _bayes():
             **common,
         ),
         Case(
-            name="Weibull[bayes-nuts]",
-            fitters=(),
-            data=uni_data,
-            fit=_bayes_weibull_sampled,
-            paths=_bayes_paths(
-                _bayes_weibull_sampled,
-                sp.Weibull,
-                weibull_priors,
-                **_BAYES_SAMPLER,
-            ),
-            rtol=1e-6,
-            **{
-                **common,
-                "exclude": {**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
-            },
-        ),
-        Case(
             name="Exponential[bayes]",
             fitters=(),
             data=exponential_data,
@@ -2763,80 +2707,6 @@ def _bayes():
             rtol=1e-9,
             **common,
         ),
-    ]
-
-
-def _bayes_regression_fit(d):
-    """A Bayesian Weibull proportional hazards fit: a prior on the shape,
-    the default on the coefficients, and the sampler's case's settings."""
-    return sp.WeibullPH.fit_bayes(
-        d["x"],
-        d["Z"],
-        d.get("c"),
-        d.get("n"),
-        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
-        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
-    )
-
-
-def _bayes_regression_df(d):
-    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
-    df = pd.DataFrame(d["Z"], columns=cols)
-    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
-    model = sp.WeibullPH.fit_bayes_from_df(
-        df,
-        x_col="x",
-        Z_cols=cols,
-        c_col="c",
-        n_col="n",
-        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
-        **{k: v for k, v in _BAYES_SAMPLER.items() if k != "method"},
-    )
-    return model
-
-
-#: A Bayesian regression's credible intervals (as the distributions':
-#: no ``mean_cri``, and the hazard's is not swept, for the reason given at
-#: ``_BAYES_BOUNDS``).
-_BAYES_REGRESSION_BOUNDS = (
-    Bound("cri", on=("sf", "ff", "Hf", "df"), wald=False),
-    Bound("quantile_cri", point="qf", wald=False),
-    Bound("param_cri", kind="param", wald=False),
-)
-
-
-def _bayes_regression():
-    return [
-        regression(
-            "WeibullPH[bayes]",
-            sp.WeibullPH,
-            fitters=("surpyval.bayes.BayesianRegression",),
-            model_class="surpyval.bayes.BayesianRegression",
-            fit=_bayes_regression_fit,
-            paths={"fit_from_df": _bayes_regression_df},
-            rtol=1e-6,
-            slow=REFIT_PROPERTIES,
-            exclude={
-                **_BAYES_EXCLUDE,
-                "units": _SAMPLED_UNITS,
-                "covariate_scale": "a sampler's draws rescale with a "
-                "covariate in distribution, not to the last digit (its "
-                "default prior scales with the covariate's sd, "
-                "tests/bayes/test_fit_regression.py), as for a time unit: "
-                + _SAMPLED_UNITS,
-                **{
-                    key: "a column the data do not determine is refused, "
-                    "naming its coefficient and saying to leave the column "
-                    "out (a posterior along it would be its prior's), "
-                    "not aliased"
-                    for key in ("aliasing", "aliasing_constant")
-                },
-                "counts": "a sampler's draws for counts and for repeated "
-                "rows agree in distribution, not to the last digit: the "
-                "likelihoods differ by rounding (n times a row's term "
-                "against n terms), which changes the trajectories",
-            },
-        )
     ]
 
 
@@ -3067,7 +2937,6 @@ CASES: list[Case] = (
     + _landmark()
     + _panel_multistate()
     + _bayes()
-    + _bayes_regression()
     + _panel_count()
     + _relative()
 )
@@ -3918,7 +3787,6 @@ def _bounds(case):
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
-        "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
