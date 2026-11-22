@@ -2435,3 +2435,9 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | Parameter names: the family's parameter and the edge, `theta_0_1`, `rho_0_2\|1` (the pair of axes, then the axes given). | agent | Unambiguous per edge, and one name per parameter (principle 21). | open: the maintainer to confirm before release |
 | Refused: censored and truncated rows; the joint `sf`, `cdf` and so `cb`; conditional distributions but the last series of the order given all the others. Each refusal says what to use (the elliptical copulas for censored rows, draws for the joint probabilities, the order for a conditional). | agent | Each needs integrals of the vine's density over some of its series that are not computed. The conformance case declares only `param_cb`. | open: censored rows in vines |
 | Bounds: Wald `param_cb` on each parameter, as the other copula models; likelihood-ratio and bootstrap refused by `method`'s check, as for them. | agent | The every-bound rule; the gaps are the copula models' own. | open |
+
+### What the publish gate accepts (22 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `publish.yml` accepts, for each job of the latest release run at the pull request's head, its most recent result on the pull request from the head or an earlier head whose tree differs only in `.github/`; that result must be a success. New or renamed jobs must pass at the head. The publish run logs each pass's run. | maintainer ("do not run everything again, update the rule") | 0.29's release run passed every job but one calibration group, whose regrouping changed only CI configuration; a full rerun of about 2.5 hours would have tested the same code again. | done (#1353, #1354) |

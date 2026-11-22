@@ -458,8 +458,9 @@ in that release run (or locally when the maintainer asks for it).
        documentation
    * - Push of a ``v*`` tag
      - ``.github/workflows/publish.yml`` checks that the tagged commit is
-       the merge of a pull request into ``main`` whose full run passed
-       (every job), and that the tag matches the version in
+       the merge of a pull request into ``main`` every job of whose run
+       passed on the code released (see below), and that the tag matches
+       the version in
        ``pyproject.toml``; it then builds the package and publishes it to
        PyPI. It runs no tests of its own. Read the Docs builds the tagged
        documentation
@@ -467,6 +468,18 @@ in that release run (or locally when the maintainer asks for it).
      - the same checks and publishing, for the version typed in (which
        must have no tag and no PyPI release yet); then it creates the tag
        and a GitHub Release
+
+**What counts as a pass.** For each job of the latest run at the release
+pull request's head, the publish workflow takes the job's most recent result
+(a success or a failure; a cancelled or skipped attempt is no result) from a
+run of the pull request at its head, or at an earlier head whose tree is
+identical to the head's outside ``.github/`` (the CI configuration, the
+calibration grouping included). That result must be a success, so a job new
+or renamed at the head must pass at the head, and a change to anything that
+ships or is tested needs a new run. The publish run logs which run each
+job's pass came from. A change to CI configuration alone therefore needs
+only its new or changed jobs run (re-run them in the run at the head), not
+the whole release run.
 
 The full test suite and the documentation build run once per release, on the
 release pull request. That run tests the pull request's merge result, so a
