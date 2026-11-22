@@ -5,6 +5,27 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Bayesian regression: priors on coefficients.** The proportional
+  hazards, accelerated failure time and accelerated life fitters have
+  ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``
+  (``sp.WeibullPH.fit_bayes``, ``sp.AFT(dist).fit_bayes``,
+  ``sp.AcceleratedLife(dist, life_model).fit_bayes``): priors on the
+  coefficients (by name, ``coef_0`` or the column's), on the baseline's
+  parameters and on a life model's, with the fitter's own likelihood
+  (any censoring and truncation), sampled by SurPyval's No-U-Turn sampler
+  and checked for convergence. The result, a
+  ``surpyval.bayes.BayesianRegression``, gives the posterior predictive
+  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``qf`` at covariates, the
+  credible intervals ``cri``, ``quantile_cri`` and ``param_cri``,
+  ``compare()``, ``summary()``, and saves (``to_dict``, pickle). A
+  coefficient of ``exp(beta'Z)`` with no prior gets ``Normal(0, 2.5 /
+  sd)``, ``sd`` its covariate's standard deviation, stated in the result.
+  Weights, penalties, time-varying covariates, ``CoxPH`` and the other
+  regression families are refused, saying what to use. Against a closed
+  form (an exponential model with a binary covariate and flat priors) the
+  posterior agrees within Monte Carlo error. See "Regression: a prior on
+  an effect" in :doc:`Bayesian Fitting with SurPyval`.
+
 - **Bayesian fits with more than three free parameters: SurPyval's own
   sampler.** ``fit_bayes(method="nuts")`` draws the posterior with a
   No-U-Turn sampler written in SurPyval (multinomial sampling, a diagonal

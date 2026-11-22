@@ -386,6 +386,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
         "a posterior, not a maximum: the grid's check of its own accuracy "
         "takes the place of a verified maximum"
     ),
+    "surpyval.bayes.BayesianRegression": (
+        "a posterior, not a maximum: the sampler's convergence checks take "
+        "the place of a verified maximum"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
