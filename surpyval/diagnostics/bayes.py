@@ -2,11 +2,11 @@
 
 A :class:`~surpyval.bayes.model.BayesianParametric` model --
 ``Weibull.fit_bayes(x, c, n, t, priors=...)`` by the grid, the Laplace
-approximation, a closed form or the sampler, or
-``BayesianParametric.from_draws`` with its data -- is checked for whether
-the distribution reproduces the data, whether the prior and the data
-disagree, and whether the posterior was computed accurately. The checks
-are listed in :data:`BAYES` at the bottom.
+approximation or a closed form, or ``BayesianParametric.from_draws`` with
+its data -- is checked for whether the distribution reproduces the data,
+whether the prior and the data disagree, and whether the posterior was
+computed accurately. The checks are listed in :data:`BAYES` at the
+bottom.
 
 The checks
 ----------
@@ -876,88 +876,6 @@ def _grid_rows(ctx: Context) -> list[dict]:
     return rows
 
 
-def _sampler_rows(ctx: Context) -> list[dict]:
-    """The sampler's convergence checks, as the fit recorded them
-    (``model.diagnostics``): nothing is run again."""
-    from surpyval.bayes.convergence import ESS_PER_CHAIN, RHAT_MAX
-
-    model = ctx.model
-    if model.method != "nuts":
-        return []
-    d = model.diagnostics
-    chains = int(d.get("chains", 1))
-    need = ESS_PER_CHAIN * chains
-    total = int(d.get("draws", len(model.posterior.weights)))
-    rows = []
-
-    def worst(key: str, largest: bool) -> tuple[str, float]:
-        values = {
-            k: (float("nan") if v is None else float(v))
-            for k, v in d.get(key, {}).items()
-        }
-        bad = [k for k, v in values.items() if np.isnan(v)]
-        if bad or not values:
-            return (bad[0] if bad else "", float("nan"))
-        name = (max if largest else min)(values, key=lambda k: values[k])
-        return name, values[name]
-
-    name, value = worst("rhat", True)
-    rows.append(
-        {
-            "test": "R-hat (largest)",
-            "statistic": value,
-            "verdict": "ok" if value <= RHAT_MAX else "fail",
-            "detail": "{}: the chains {} (rule: at most {:g})".format(
-                name, "agree" if value <= RHAT_MAX else "disagree", RHAT_MAX
-            ),
-            "_kind": "sampler",
-        }
-    )
-    for key, label in (("ess_bulk", "bulk"), ("ess_tail", "tail")):
-        name, value = worst(key, False)
-        rows.append(
-            {
-                "test": f"effective sample size, {label} (smallest)",
-                "statistic": value,
-                "verdict": "ok" if value >= need else "fail",
-                "detail": "{}: {:.0f} effective draws of {} (rule: at "
-                "least {})".format(name, value, total, need),
-                "_kind": "sampler",
-            }
-        )
-    for key, test, what in (
-        ("divergences", "divergent iterations", "diverged"),
-        (
-            "tree_depth_saturated",
-            "iterations at the largest tree depth",
-            "reached the largest tree depth without turning",
-        ),
-    ):
-        k = int(d.get(key, 0))
-        rows.append(
-            {
-                "test": test,
-                "statistic": float(k),
-                "verdict": "ok" if k == 0 else "fail",
-                "detail": f"{k} of the {total} kept iterations {what} "
-                "(rule: none)",
-                "_kind": "sampler",
-            }
-        )
-    return rows
-
-
-def _sampler_message(row: dict, ctx: Context) -> str:
-    return (
-        "The sampler's draws did not pass their convergence checks, so the "
-        "posterior may be wrong. Refit with more iterations "
-        "({name}.fit_bayes(..., warmup=, draws=)), give a stronger prior "
-        "where the data say little (prior.around(value, between=(low, "
-        "high))), or fix a parameter the data cannot tell apart from "
-        "another (fixed=).".format(name=ctx.model.dist.name)
-    )
-
-
 # ---------------------------------------------------------------------------
 # Refusals and notes
 # ---------------------------------------------------------------------------
@@ -1006,14 +924,6 @@ def _notes(ctx: Context) -> list[str]:
         notes.append(
             "Grid accuracy: not checked, because the posterior is a closed "
             "form ({}), exact.".format(ctx.model.diagnostics.get("case", ""))
-        )
-    elif ctx.model.method == "nuts":
-        notes.append(
-            "Grid accuracy: not checked, because the posterior is "
-            "SurPyval's sampler's draws; sampler_convergence gives its "
-            "checks (rank-normalised split R-hat, bulk and tail effective "
-            "sample size, divergences, tree depth), as the fit recorded "
-            "them."
         )
     elif ctx.model.method == "draws":
         notes.append(
@@ -1202,14 +1112,6 @@ BAYES = register(
                 "summaries.",
                 rows=_grid_rows,
             ),
-            Check(
-                "sampler_convergence",
-                "The sampler's chains agree and hold enough effective "
-                "draws: R-hat at most 1.01, bulk and tail effective sample "
-                "size at least 100 a chain, no divergence and no iteration "
-                "at the largest tree depth.",
-                rows=_sampler_rows,
-            ),
         ),
         advice=(
             AdviceRule(
@@ -1250,13 +1152,6 @@ BAYES = register(
             ),
             *_per_dist(
                 "grid_accuracy", "grid", _grid_message, "{}.fit_bayes(points=)"
-            ),
-            *_per_dist(
-                "sampler_convergence",
-                "sampler",
-                _sampler_message,
-                "{}.fit_bayes(warmup=)",
-                "prior.around(between=)",
             ),
             *_per_dist(
                 "grid_accuracy",

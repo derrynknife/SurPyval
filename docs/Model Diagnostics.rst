@@ -1820,20 +1820,11 @@ The checks
     is compared with the grid posterior the same way. A closed form is
     exact, and another sampler's draws have that sampler's diagnostics:
     neither has rows.
-``sampler_convergence``
-    For a fit by SurPyval's sampler (``method="nuts"``), the convergence
-    checks the fit recorded, one row each: the largest rank-normalised
-    split R-hat (at most 1.01), the smallest bulk and tail effective
-    sample sizes (at least 100 a chain), the divergent iterations and
-    the iterations at the largest tree depth (none of either). Nothing
-    is sampled again. A row that fails is the warning the fit gave.
 
 The advice: for a distribution that does not reproduce the data, the
 distributions ``fit_best`` ranks; for a posterior that fails while the
 distribution fits, or a conflict, ``model.compare()`` and a wider prior;
-for an inaccurate grid, ``fit_bayes(points=)`` or ``method='grid'``;
-for a sampler that has not converged, more iterations
-(``fit_bayes(warmup=, draws=)``) or a stronger prior.
+for an inaccurate grid, ``fit_bayes(points=)`` or ``method='grid'``.
 ``diagnose()`` refuses, saying what to do, a model without its data and
 a ``Bernoulli`` fit (whose posterior fits the proportion of events).
 
