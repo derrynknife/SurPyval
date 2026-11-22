@@ -5,6 +5,83 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **A hazard ratio, ``hr``, on every parametric model.**
+  ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of
+  the Weibull at every age: its survival is the model's raised to ``hr``.
+  It applies over the offset, limited failure population and zero
+  inflation (a mass ``f0`` at 0 becomes ``1 - (1 - f0) ** hr``), so the
+  models at ``hr = 1 - b`` and ``hr = b`` together make the model. Every
+  function follows from the cumulative hazard, precise in both tails;
+  ``qf`` and draws go through ``isf``. A Weibull's and an exponential's
+  moments, entropy, mean residual life and restricted mean stay in closed
+  form (the Weibull at scale ``alpha * hr ** (-1 / beta)``, the
+  exponential at rate ``hr * lambda``); other distributions integrate.
+  ``hr`` is known, not a parameter: it is in ``extras`` and
+  ``with_params(..., hr=)``, kept by ``rescale_time``, printed, pickled,
+  and saved as ``"hr"`` under schema 5, which SurPyval 0.28 refuses. With
+  ``hr = 1`` every value and seeded draw is unchanged. Probability models
+  (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+  ``ExactEventTime``) refuse it. ``fit(..., hr=)`` fits data with a known
+  hazard ratio (maximum likelihood; never estimated); its Wald and
+  bootstrap bounds and ``param_cb`` hold ``hr`` fixed, and the
+  likelihood-ratio bounds on a function and the bounds on the mean, mean
+  residual life and restricted mean refuse, saying to use the bootstrap
+  refits. See :doc:`Hazard Ratio`.
+- **Joint models: any number of path parameters varying between items,
+  by Laplace's approximation (``integration="laplace"``).** A grid of 7
+  values of each varying parameter stops at five (16,807 nodes an item);
+  a sixth was refused. The fits now take ``integration="laplace"``:
+  each item's integral from the integrand's height at the item's most
+  likely parameters and its curvature there, ``q^2 + q + 1`` evaluations
+  for ``q`` varying parameters (21 for four, 43 for six) and no grid. It
+  is the default beyond five, where ``"grid"`` and ``"pruned"`` are
+  refused saying so, and an option below; up to five the default is
+  still the full grid, and those fits are unchanged. The fit maximises
+  the approximated likelihood exactly (its gradient follows each item's
+  most likely parameters as they move, and the standard errors come from
+  differences of that gradient), and the model says ``integration ==
+  "laplace"``, prints it, saves and restores it. With no marker effect
+  it reproduces the closed form to 1e-8 an item, in six dimensions too.
+  On the recovery study's pumps (two varying parameters, read monthly)
+  its estimates were within 0.02 standard errors of the full grid's, and
+  on a fleet with four varying parameters within 0.001, in 9 seconds
+  where the full grid took 555; a recovery study of 200 such fleets
+  covered the truth 89% to 98% of the time on the 139 whose fits had
+  standard errors (the other 61 put the six correlations at the edge of
+  a valid correlation matrix). It is weaker where items have few, noisy
+  readings (0.10 to 0.18 standard errors off with at most five readings
+  a pump, 0.23 to 0.41 with at most three): the fit warns, with the
+  count, when more than 15% of the items have three readings or
+  fewer (the share from a study whose rule was fixed before it ran), saying to use a grid or fewer ``varying`` names. It refuses
+  truncated items, saying to use a grid. A Laplace fit predicts on the
+  full grid up to five varying parameters and by Laplace's approximation
+  beyond. Beyond five the fit also starts from the marker's own mixed
+  model, settled first, since each item's own fitted path is too wild to
+  start from; with up to five that start is tried only where the usual
+  one could not be used ("The joint fit could not start"), so no fit
+  that ran before changes. See "Laplace's approximation" in :doc:`Joint
+  Models`.
+- **Joint models: competing failure modes.** ``JointPH`` fits
+  (``WeibullJointPH``) take the mode of each failure (a record's
+  ``event_type``, ``e`` with arrays, ``e_col`` with a DataFrame). With
+  two or more modes each has a Weibull baseline, hazard coefficients and
+  marker effects of its own (``"bearing: alpha"``, ``"bearing: beta"``,
+  ``"bearing: marker_effect"``, ...), so a reading can warn of one way
+  of failing and not of another, and an item that fails by one mode is
+  no longer at risk of the others. ``shared=["marker_effect"]`` (or
+  ``"beta"``, or a hazard covariate) gives the modes that parameter in
+  common, and ``model.likelihood_ratio_test(shared_model)`` tests the
+  two fits against each other. The model keeps ``causes``, ``shared``
+  and ``n_events_by_cause``, its ``summary()`` has a part for each mode,
+  and its ``sf``, ``cb`` and ``predict`` are of failing by any mode. A
+  failure found at an inspection (left or interval censored) is fitted
+  with its mode. Refused, saying what to do: a failure with no mode, a
+  mode on an item still running, a mode with fewer failures than
+  parameters of its own, ``JointAFT`` and ``how="two-stage"``. One mode,
+  or no event types, gives the same model as before, bit for bit. A
+  model with modes saves as schema 5. See "More than one way to fail"
+  in :doc:`Joint Models`.
+
 - **Copulas with non-parametric margins have standard errors and
   bounds.** A copula fitted with both margins ``KaplanMeier`` on complete
   data with no tied values (the maximum pseudo-likelihood estimate from
