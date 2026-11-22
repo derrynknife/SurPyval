@@ -1504,7 +1504,11 @@ PLANS["CauseSpecificProportionalIntensity"] = Plan(
 )
 
 # Degradation: n is the number of units.
-for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
+for _name in (
+    "DegradationAnalysis[linear]",
+    "DegradationAnalysis[power]",
+    "DegradationAnalysis[spline]",
+):
     PLANS[_name] = Plan(
         _paths,
         40,
@@ -1705,6 +1709,13 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
+    "Weibull[bayes-nuts]": "a sampled posterior, whose calibration is "
+    "the sampler's simulation-based calibration study "
+    "(calibration/test_sbc_bayes.py::"
+    "test_simulation_based_calibration_sampler)",
+    "WeibullPH[bayes]": "a sampled posterior of a regression, whose "
+    "calibration is its simulation-based calibration study "
+    "(calibration/test_sbc_bayes_regression.py)",
     **dict.fromkeys(
         ("QuantileRegression", "QuantileRegression[portnoy]"),
         "the quantile process fitted to the fixture's 30 rows is constant "
@@ -1802,6 +1813,10 @@ EXCLUDED: dict[str, str] = {
     "a weight on the accumulated exposure is in "
     "univariate/joint/test_joint_weight.py and "
     "calibration/test_coverage_joint_weight.py",
+    "WeibullJointPH[spline]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated on a "
+    "spline path is in univariate/joint/test_joint_spline.py and the "
+    "study scripts/studies/joint_recovery/knee_study.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "

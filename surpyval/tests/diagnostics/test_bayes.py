@@ -364,3 +364,23 @@ def test_a_bernoulli_refuses_saying_what_to_do():
         )
     with pytest.raises(ValueError, match=r"model\.compare\(\)"):
         model.diagnose()
+
+
+# -- the sampler --------------------------------------------------------------
+def test_a_sampled_fit_reports_its_convergence_checks():
+    x = sp.Weibull.random(40, 100.0, 2.0, random_state=41)
+    priors = {"beta": sp.prior.around(2, between=(1.2, 4))}
+    kw = dict(priors=priors, method="nuts", chains=2, random_state=3)
+    model = sp.Weibull.fit_bayes(x, draws=600, warmup=400, **kw)
+    d = model.diagnose(n_boot=50, random_state=1)
+    rows = _rows(d, "sampler_convergence")
+    assert len(rows) == 5 and set(rows["verdict"]) == {"ok"}
+    assert _rows(d, "grid_accuracy").empty
+    assert any("sampler_convergence" in n for n in d.notes)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        short = sp.Weibull.fit_bayes(x, draws=20, warmup=20, **kw)
+    d = short.diagnose(n_boot=50, random_state=1)
+    rows = _rows(d, "sampler_convergence")
+    assert "fail" in set(rows["verdict"])
+    assert any("warmup=, draws=" in a for a in d.advice)

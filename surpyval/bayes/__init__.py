@@ -37,9 +37,11 @@ from surpyval.bayes.criteria import (
 from surpyval.bayes.likelihood import LogLikelihood, log_likelihood_fn
 from surpyval.bayes.model import BayesianParametric
 from surpyval.bayes.posterior import Posterior
+from surpyval.bayes.regression import BayesianRegression
 
 __all__ = [
     "BayesianParametric",
+    "BayesianRegression",
     "LogLikelihood",
     "Posterior",
     "PredictiveComparison",

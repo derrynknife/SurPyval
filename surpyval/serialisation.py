@@ -87,6 +87,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.distributional.zero_inflated"
     ),
     "BayesianParametric": "surpyval.bayes.model",
+    "BayesianRegression": "surpyval.bayes.regression",
     "JointModel": "surpyval.univariate.joint.joint_model",
     "EquivalenceModel": "surpyval.univariate.equivalence",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
@@ -262,6 +263,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # (``"random_effects"`` other than ``"full"``): a v0.28 reader would
 # ignore the entry and read the parameters after the sds as a
 # correlation of every pair, misplacing every one after them.
+# And by a joint or degradation model whose path is a spline
+# (``"path_model"`` a dictionary of its knots, not a name): a v0.28
+# reader has no such path, and would fail on the dictionary with a
+# ``TypeError`` or an unhelpful message rather than ask for an upgrade.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 5
 
@@ -833,7 +838,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 
 
 def _is_schema_5_joint(d: dict) -> bool:
-    """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
+    """Whether ``d`` is a joint or degradation model on a spline path
+    (its ``"path_model"`` a dictionary, where a v0.28 reader takes a
+    name and fails on anything else), or a joint model a v0.28 reader
+    would get wrong: one
     with the accelerated survival part, fitted in two stages, with a
     lag, with a weight on its accumulated exposure, with more than three
     varying path parameters, with a covariance structure other than the
@@ -841,6 +849,11 @@ def _is_schema_5_joint(d: dict) -> bool:
     v0.28 reader takes) or with failure modes (``"causes"``: a baseline
     and effects for each, where a v0.28 reader takes one). Each needs
     schema 5."""
+    if isinstance(d.get("path_model"), dict) and d.get("model") in (
+        "JointModel",
+        "DegradationModel",
+    ):
+        return True
     if d.get("model") != "JointModel":
         return False
     return (
