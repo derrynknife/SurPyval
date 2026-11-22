@@ -130,9 +130,9 @@ def to_surpyval(
     >>> import surpyval as sp
     >>> from surpyval.pymc import to_surpyval
     >>> rng = np.random.default_rng(1)
-    >>> trace = az.from_dict(posterior={
+    >>> trace = az.from_dict({"posterior": {
     ...     "log_alpha": rng.normal(np.log(100), 0.05, (2, 1000)),
-    ...     "beta": rng.lognormal(np.log(2), 0.05, (2, 1000))})
+    ...     "beta": rng.lognormal(np.log(2), 0.05, (2, 1000))}})
     >>> model = to_surpyval(trace, sp.Weibull, alpha="log_alpha",
     ...                     transform={"alpha": "exp"})
     >>> model.params.round(0)
