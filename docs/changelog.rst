@@ -1469,6 +1469,19 @@ deprecated none). The names deprecated in this release (see
 
 **Fixed.**
 
+- **A joint fit whose likelihood rises without limit along a hazard
+  coefficient says so.** A level of a hazard covariate with no failures
+  runs its coefficient off to infinity; the search could stop on the
+  rise and pass the checks of a maximum, depending on the platform, and
+  the fit returned with no warning. The fit now applies Newton's test
+  along each hazard coefficient's profile (as the regressions do) and,
+  where the likelihood still rises, warns that no verified maximum was
+  reached, naming the covariate.
+- **A Bayesian predictive quantile in the far upper tail is solved to
+  the last digits of the time.** The search on the log of the time
+  stopped within 1e-15 of it, which near a time of 1 (a Beta's upper
+  edge) left the time up to nine doubles out and moved a tail
+  probability of 1e-12 there by up to 1e-7 of itself.
 - **A joint model's ``cb`` failed where a path parameter was common to
   all items** (``JointPH(Weibull, QuadraticPath, varying=("a", "b"))``,
   say): the bound differentiates the prediction through the common

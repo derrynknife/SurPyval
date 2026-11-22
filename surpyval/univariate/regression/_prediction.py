@@ -20,7 +20,7 @@ does, as the non-parametric estimates' ``qf``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -787,9 +787,11 @@ class RestrictedMeanMixin:
         return self._rmst_logit_cb(value_, se, t, alpha_ci, bound)
 
     def _mean_at(self, rows_c: npt.NDArray, params: Any) -> npt.NDArray:
-        """``int_0^inf S(t | row) dt`` at the parameters ``params`` for the
-        centred rows ``rows_c``: ``lower + m int_0^1 S(lower + m s / (1 -
-        s)) / (1 - s)^2 ds`` by one vector-valued adaptive quadrature,
+        """The mean life, ``int_0^inf S(t | row) dt`` (less ``int_-inf^0
+        F(t | row) dt`` for a baseline on the whole line), at the
+        parameters ``params`` for the centred rows ``rows_c``: ``lower +
+        m int_0^1 S(lower + m s / (1 - s)) / (1 - s)^2 ds`` by one
+        vector-valued adaptive quadrature,
         ``m`` each row's median at ``params`` (so the integrand's scale
         is the row's own); ``S = 1`` below the support's start."""
         from scipy.integrate import quad_vec
@@ -840,6 +842,34 @@ class RestrictedMeanMixin:
                     limit=500,
                 )
             values[finite] = start + value
+            if not np.isfinite(lower):
+                # A baseline on the whole line (Normal, Logistic, Gumbel):
+                # the mean also takes off int_-inf^0 F(t | row) dt, as
+                # mean() does.
+                def below(s: float) -> npt.NDArray:
+                    if s >= 1.0:
+                        return np.zeros(r_fin.shape[0])
+                    t = -m_fin * s / (1.0 - s)
+                    with np.errstate(all="ignore"):
+                        F = 1.0 - np.asarray(
+                            self.model.sf(t, r_fin, *params), dtype=float
+                        )
+                    return m_fin * F / (1.0 - s) ** 2
+
+                with np.errstate(all="ignore"):
+                    negative, _ = quad_vec(
+                        below,
+                        0.0,
+                        1.0,
+                        epsabs=0.0,
+                        epsrel=1e-10,
+                        norm="max",
+                        limit=500,
+                    )
+                # (an additive hazards model has no sf before 0 at a
+                # fixed row: its mean needs a schedule, mean_tvc)
+                negative = np.where(np.isfinite(negative), negative, np.nan)
+                values[finite] = values[finite] - negative
         out[ok] = values
         return out
 
@@ -973,15 +1003,27 @@ class RestrictedMeanMixin:
         else:
             params, center, cov = self._wald_state(robust, cluster, "wald")
             rows_c = np.asarray(self._centred(rows, center), dtype=float)
-            mean = self._mean_at(rows_c, params)
+
+            whole_line = not np.isfinite(lower) and not np.any(center)
+
+            def mean_at(q: Any) -> npt.NDArray:
+                if not whole_line:
+                    return self._mean_at(rows_c, q)
+                # A baseline on the whole line: the mean is mean()'s, with
+                # its part before 0 (which an additive hazards model works
+                # out along a schedule), at each parameter vector.
+                with _ignoring_warnings():
+                    model = cast(Any, self).with_params(q)
+                    return np.atleast_1d(np.asarray(model.mean(rows), float))
+
+            from surpyval.utils.warnings import (
+                ignoring_warnings as _ignoring_warnings,
+            )
+
+            mean = mean_at(params)
             with np.errstate(all="ignore"):
                 se = np.asarray(
-                    delta_method_se(
-                        lambda q: self._mean_at(rows_c, q),
-                        params,
-                        cov,
-                        scale_free=True,
-                    ),
+                    delta_method_se(mean_at, params, cov, scale_free=True),
                     dtype=float,
                 )
             alpha, signs = bound_signs(alpha_ci, bound)

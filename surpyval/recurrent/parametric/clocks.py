@@ -41,7 +41,7 @@ from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
 
 from .hpp import HPP
 from .nhpp_fitter import NHPPFitter
@@ -1010,8 +1010,7 @@ def _checked_against_limit(fitter: Any, data: Any, fit: Any) -> Any:
     the edge of the parameters, which the refusal says, and a warning
     that it found no verified maximum there (given or not, by where the
     search stopped) would only repeat it."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    with collecting_warnings() as caught:
         model = fit()
     fitter._check_beats_limit(data, model)
     for w in caught:

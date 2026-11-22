@@ -1693,6 +1693,13 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
+    "Weibull[bayes-nuts]": "a sampled posterior, whose calibration is "
+    "the sampler's simulation-based calibration study "
+    "(calibration/test_sbc_bayes.py::"
+    "test_simulation_based_calibration_sampler)",
+    "WeibullPH[bayes]": "a sampled posterior of a regression, whose "
+    "calibration is its simulation-based calibration study "
+    "(calibration/test_sbc_bayes_regression.py)",
     **dict.fromkeys(
         ("QuantileRegression", "QuantileRegression[portnoy]"),
         "the quantile process fitted to the fixture's 30 rows is constant "

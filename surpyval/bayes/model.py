@@ -2903,12 +2903,16 @@ def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
         return float(np.exp(v_lo)) if g_lo == g_lo else lo
     if not g_hi > 0:
         return float(np.exp(v_hi)) if g_hi == g_hi else b
+    # To the last digits of the time, not of its log: near a time of 1
+    # (the upper edge of a Beta) the log is near 0, and an absolute
+    # tolerance of 1e-15 on it left the time nine doubles out, which moves
+    # a tail probability of 1e-12 there by 1e-7 of itself.
     root = optimize.brentq(
         g,
         v_lo,
         v_hi,
-        xtol=1e-15,
-        rtol=1e-15,
+        xtol=5e-324,
+        rtol=4 * np.finfo(float).eps,
         maxiter=1000,
     )
     return float(np.exp(root))

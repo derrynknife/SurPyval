@@ -1104,7 +1104,13 @@ class CopulaModel(
             out["covariance"] = covariance.tolist()
             # How it was worked out: "information", "godambe" or "rank".
             out["covariance_method"] = self._covariance_method
+        out.update(self._saved_family())
         return stamp_schema(out)
+
+    def _saved_family(self) -> dict:
+        """Entries a family of more than two series saves over the
+        bivariate copula's (none here); stamped with the rest."""
+        return {}
 
     def _saved_covariance(self) -> npt.NDArray | None:
         """The covariance :meth:`to_dict` stores: the model's, where it
