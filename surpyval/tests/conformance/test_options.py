@@ -85,6 +85,11 @@ NOT_SWEPT = {
     "its closed form and the seeded bootstrap in "
     "recurrent/test_release_time.py, and coverage in calibration/"
     "test_coverage_growth_answers.py",
+    "concordance": "a validation metric of the model's risk scores on "
+    "data, with its own standard error and interval, not a bound on a "
+    "function of the model; checked against R's survival and lifelines "
+    "in reference/test_concordance_references.py and in "
+    "metrics/test_concordance_estimate.py",
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
@@ -1108,12 +1113,16 @@ def _level_name(sigs):
     return out + _default_is("alpha_ci", 0.05)(sigs)
 
 
-def _first_argument(methods, name):
+def _first_argument(methods, name, own=()):
+    # ``own``: documented exceptions, "Class.method" with no such argument.
     def check(sigs):
         return [
             f"{o}.{m}({ps[0].name}, ...)"
             for o, m, ps in sigs
-            if m in methods and ps and ps[0].name not in (name, "args")
+            if m in methods
+            and ps
+            and ps[0].name not in (name, "args")
+            and f"{o}.{m}" not in own
         ]
 
     return check
@@ -1141,6 +1150,8 @@ def _how(sigs):
     # concave with an exact baseline (recorded in DECISIONS.md).
     own = {
         "Copula": "IFM",
+        # (a vine of pair-copulas, likewise)
+        "VineFitter": "IFM",
         "CompetingRisks": "Nelson-Aalen",
         "PanelCountRegression": "pseudo",
     }
@@ -1180,6 +1191,9 @@ CONVENTIONS = {
                 "CompetingRisks": "cif",
                 # its regression counterpart, likewise
                 "ParametricCompetingRisksRegression": "cif",
+                # and the Fine-Gray model, a regression on one cause's
+                # cumulative incidence
+                "FineGrayModel": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
@@ -1202,7 +1216,11 @@ CONVENTIONS = {
     ),
     "time": (
         "the times are the first argument, x",
-        _first_argument(_TIME_FUNCTIONS, "x"),
+        # (the Jelinski-Moranda model's MTBF is the one at the end of
+        # testing, mtbf(): it takes no times)
+        _first_argument(
+            _TIME_FUNCTIONS, "x", own=("JelinskiMorandaModel.mtbf_cb",)
+        ),
     ),
     "quantile": (
         "the probabilities of qf are the first argument, p",

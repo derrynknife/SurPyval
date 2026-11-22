@@ -34,6 +34,20 @@ FITTERS = sorted(
 )
 
 
+#: The fitters built around another (``EffortClock(base, effort)``,
+#: ``ChangePoint(base, tau)``), checked as built.
+_BUILT = {
+    "ChangePoint": lambda: R.ChangePoint(R.CrowAMSAA, tau=5.0),
+    "EffortClock": lambda: R.EffortClock(
+        R.CrowAMSAA, ([4.0, 8.0, 12.0], [1.0, 2.0, 1.0])
+    ),
+}
+
+
+def _fitter(name):
+    return _BUILT[name]() if name in _BUILT else getattr(R, name)
+
+
 def _outcome(call):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -47,13 +61,13 @@ def _outcome(call):
 
 
 def test_every_recurrent_fitter_is_checked():
-    assert len(FITTERS) == 14
+    assert len(FITTERS) == 21
 
 
 @pytest.mark.parametrize("kind", list(DATA))
 @pytest.mark.parametrize("name", FITTERS)
 def test_both_ways_of_fitting_take_the_same_data(name, kind):
-    fitter = getattr(R, name)
+    fitter = _fitter(name)
     data = DATA[kind]
     via_fit = _outcome(lambda: fitter.fit(data))
     via_data = _outcome(lambda: fitter.fit_from_recurrent_data(data))
@@ -69,7 +83,7 @@ def test_both_ways_of_fitting_take_the_same_data(name, kind):
 def test_nothing_is_dropped(name):
     # A fit of data holding covariates or event types the fitter has no
     # argument for is refused; one it has arguments for fits.
-    fitter = getattr(R, name)
+    fitter = _fitter(name)
     takes = set(inspect.signature(fitter.fit).parameters)
     for kind, data in DATA.items():
         holds = {"covariates": {"Z"}, "event types": {"e"}}.get(

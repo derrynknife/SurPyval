@@ -4661,6 +4661,8 @@ def _starve(case):
         "FineGrayModel",
         "ProportionalOddsModel",
         "IntervalCoxPHModel",
+        # (CoxPH's full likelihood, for interval-censored rows)
+        "CoxNPMLEModel",
         "CoxFrailtyModel",
         "CoxMixedEffectsModel",
         "RecurrentCoxModel",

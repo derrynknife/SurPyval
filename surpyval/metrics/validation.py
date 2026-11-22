@@ -59,6 +59,7 @@ Biometrical Journal 48, 1029-1040.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import numpy as np
@@ -1700,7 +1701,11 @@ def _document(public: Any, private: Any, returns: str | None) -> None:
     """``public`` gets the docstring of ``private``, its returns replaced
     by ``returns`` (or, for a number, the uncertainty told before the
     examples), with ``alpha_ci`` added to its parameters."""
-    doc = private.__doc__
+    # Indented as written whatever the interpreter: Python 3.13 strips
+    # the common indentation from docstrings as it compiles them.
+    lines = inspect.cleandoc(private.__doc__).splitlines()
+    doc = "\n".join(lines[:1] + [f"    {s}" if s else s for s in lines[1:]])
+    doc += "\n    "
     start = doc.index("    Returns\n") if "    Returns\n" in doc else None
     if returns is not None and start is not None:
         end = doc.index("\n\n", start)
