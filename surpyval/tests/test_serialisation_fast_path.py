@@ -416,12 +416,18 @@ def _old_required_schema(model_dict):
     # Schema 5 (v0.29), which takes precedence over every other rule: a
     # joint model a v0.28 reader would get wrong (the accelerated survival
     # part, two stages, a lag, a weight, more than three varying path
-    # parameters, correlations held at 0, failure modes), or a parametric
+    # parameters, correlations held at 0, failure modes), a joint or
+    # degradation model on a spline path, or a parametric
     # model with a hazard ratio other than 1.
     def schema_5(d):
         if d.get("parameterization") == "parametric" and d.get("hr") not in (
             None,
             1,
+        ):
+            return True
+        if isinstance(d.get("path_model"), dict) and d.get("model") in (
+            "JointModel",
+            "DegradationModel",
         ):
             return True
         if d.get("model") != "JointModel":
