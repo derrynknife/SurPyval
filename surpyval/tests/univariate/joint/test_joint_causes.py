@@ -22,7 +22,6 @@ import pytest
 
 import surpyval
 from surpyval import (
-    JointModel,
     JointPH,
     SurpyvalData,
     Weibull,
@@ -36,6 +35,7 @@ from surpyval.tests.univariate.joint._fleet import (
     fleet,
     simulate_causes,
 )
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint._likelihood import (
     JointArrays,
     Layout,
