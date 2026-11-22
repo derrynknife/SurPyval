@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
+from surpyval.utils.warnings import caller_stacklevel
 
 from .nonparametric import NonParametric
 
@@ -186,7 +187,7 @@ def life_table(
             "start the intervals at {:g} or earlier to count them.".format(
                 n_[before].sum(), n_.sum(), edges[0], x_.min()
             ),
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
         x_, c_, n_, tl_ = x_[~before], c_[~before], n_[~before], tl_[~before]
     counts = _counts(edges, x_, c_, n_, tl_)
@@ -225,6 +226,7 @@ def _data(
             "without the weights (life_table(x, c, n, tl)) for the table "
             "of the units themselves.",
         )
+    x = notation_as_data(x)
     if isinstance(x, NonParametric):
         d = getattr(x, "data", None)
         if not isinstance(d, dict) or "x" not in d:

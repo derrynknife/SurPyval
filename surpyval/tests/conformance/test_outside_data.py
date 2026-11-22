@@ -50,6 +50,9 @@ RULES = {
     "Turnbull": "hold",
     "CoxPH": "hold",
     "CoxPH[strata]": "hold",
+    # The full-likelihood route (NPMLE baselines), held after its last
+    # innermost interval as CompetingRisks[interval] is.
+    "CoxPH[interval, causes]": "hold",
     "CoxFrailty": "hold",
     "CoxMixedEffects": "hold",
     "AdditiveHazards": "hold",
@@ -57,6 +60,7 @@ RULES = {
     "ProportionalOdds": "hold",
     "BuckleyJames": "hold",
     "SurvivalTree[non-parametric]": "hold",
+    "SurvivalTree[causes, non-parametric]": "hold",
     "CompetingRisks[Nelson-Aalen]": "hold",
     "CompetingRisks[Kaplan-Meier]": "hold",
     "CompetingRisks[tl]": "hold",
@@ -73,12 +77,18 @@ RULES = {
     # A dynamic prediction from its landmark s: 1 (sf) before s, NaN past
     # the horizon s + w it was fitted to.
     "LandmarkCox": "nan",
+    "RelativeSurvival": "hold",
 }
 # Parametric cases that look data-bounded on their fixture but are not,
 # each with the reason: defined by a formula everywhere, they are flat
 # past the data only because the curve has reached its limit to the
 # last bit of a float.
 NOT_DATA_BOUNDED = {
+    "QuantileRegression[portnoy]": "a quantile regression: each row's "
+    "quantiles at the fitted levels are given by the linear model, inside "
+    "or beyond the data, and its ff holds tau_max past the largest of "
+    "them; on this row the largest (14.3) is before the last time (17.0), "
+    "and for others (the Peng-Huang case's first row) it is after it",
     "WeibullMixtureCure": "parametric: the latency's survival at the last "
     "censoring time (60) is 5e-27, so the population's sf is on its "
     "plateau, 1 - lfp_p(z), to the last bit there and beyond; within the "
@@ -88,14 +98,16 @@ START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
 # Estimates whose hazard acts from time 0, not only at the event times: an
 # additive hazards model's covariate effect is a constant added hazard, so
 # before the first observed time it is already the fitted model, and it
-# starts at time 0.
-STARTS_AT_ZERO = frozenset({"AdditiveHazards"})
+# starts at time 0; so does net survival, whose expected part accrues from
+# time 0.
+STARTS_AT_ZERO = frozenset({"AdditiveHazards", "RelativeSurvival"})
 # The data-bounded cases without ``set_support``, each with the reason.
 _SEMI = "semi-parametric: the explicit support is for the non-parametric "
 _SEMI += "estimates only"
 WITHOUT_SET_SUPPORT = {
     "CoxPH": _SEMI,
     "CoxPH[strata]": _SEMI,
+    "CoxPH[interval, causes]": _SEMI,
     "CoxFrailty": _SEMI,
     "CoxMixedEffects": _SEMI,
     "AdditiveHazards": _SEMI,
@@ -112,6 +124,10 @@ WITHOUT_SET_SUPPORT = {
     "data",
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
     "(surpyval.ml), not a single estimate; not given set_support yet",
+    "SurvivalTree[causes, non-parametric]": "a tree of Aalen-Johansen "
+    "leaves (surpyval.ml), not a single estimate; not given set_support yet",
+    "RelativeSurvival": "net survival's expected part accrues from time 0, "
+    "not from the first follow-up time: not given set_support yet",
     "PanelCountMCF": "a mean function known only at the inspection times "
     "(interval-counted data): not given set_support yet",
     "PanelCountRegression": "semi-parametric: a baseline mean function known "

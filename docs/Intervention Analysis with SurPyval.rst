@@ -217,37 +217,39 @@ reduction was larger than a halving, and the test found it. The note about
 power matters most when nothing is found.
 
 The same calculations plan a study before the data are in.
-:func:`~surpyval.test_planning.rate_ratio_power`,
-:func:`~surpyval.test_planning.rate_ratio_detectable` and
-:func:`~surpyval.test_planning.rate_ratio_exposure` take the rate before
-the change and the exposures. With 30 failures in 10000 hours before a
-change, 5000 hours after it would detect a halving about a third of the
-time, and 41000 hours would be needed for 80%:
+:func:`~surpyval.test_planning.rate_ratio_design` takes the rate before the
+change and the exposures, and solves for whichever of the ratio, the
+exposure after and the power is left ``None``. With 30 failures in 10000
+hours before a change, 5000 hours after it would detect a halving about a
+third of the time, and 41000 hours would be needed for 80%:
 
 .. jupyter-execute::
 
-    from surpyval.test_planning import (
-        rate_ratio_detectable,
-        rate_ratio_exposure,
-        rate_ratio_power,
-    )
+    from surpyval.test_planning import rate_ratio_design
 
     rate = 30 / 10000
-    print(round(rate_ratio_power(0.5, rate, 10000, 5000), 3))
-    print(round(rate_ratio_detectable(rate, 10000, 5000), 3))
-    print(round(rate_ratio_exposure(0.5, rate, 10000)))
-    print(rate_ratio_exposure(0.5, 12 / 10000, 10000))
+    before = dict(rate=rate, exposure_before=10000)
+    power = rate_ratio_design(0.5, exposure_after=5000, **before).power
+    smallest = rate_ratio_design(exposure_after=5000, power=0.8, **before).value
+    needed = rate_ratio_design(0.5, power=0.8, **before).value
+    print(round(power, 3), round(smallest, 3), round(needed))
+    print(rate_ratio_design(0.5, rate=12 / 10000, exposure_before=10000,
+                     power=0.8).value)
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert abs(rate_ratio_power(0.5, rate, 10000, 5000) - 0.356) < 1e-3
-    assert abs(rate_ratio_detectable(rate, 10000, 5000) - 0.263) < 1e-3
-    assert 41000 < rate_ratio_exposure(0.5, rate, 10000) < 41400
-    assert np.isinf(rate_ratio_exposure(0.5, 12 / 10000, 10000))
-    assert np.isinf(rate_ratio_exposure(0.5, 23 / 10000, 10000))
-    assert np.isfinite(rate_ratio_exposure(0.5, 24 / 10000, 10000))
+    def exposure(rate):
+        return rate_ratio_design(0.5, rate=rate, exposure_before=10000,
+                          power=0.8).value
+
+    assert abs(power - 0.356) < 1e-3
+    assert abs(smallest - 0.263) < 1e-3
+    assert 41000 < needed < 41400
+    assert np.isinf(exposure(12 / 10000))
+    assert np.isinf(exposure(23 / 10000))
+    assert np.isfinite(exposure(24 / 10000))
 
 The last line is the limit seen for the single pump: however long the
 pumps run after the change, the rate after it becomes known exactly, but

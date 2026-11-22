@@ -40,6 +40,7 @@ def fit_parametric_penalised(
     standardise: bool,
     tol: float,
     w: npt.ArrayLike | float | None = None,
+    units: tuple[npt.NDArray, npt.NDArray] | None = None,
 ) -> ParametricRegressionModel:
     """The penalised fit of a parametric regression ``fitter`` of family
     ``kind``, whose covariates enter through ``link`` (its
@@ -48,7 +49,10 @@ def fit_parametric_penalised(
     scaled to sum to the units, ``SurpyvalData.likelihood_weights``),
     ``N`` the number of units and the standardisation weighted by ``n
     w`` the same way: the objective is ``-l_w / N_w`` plus the penalty,
-    whatever the scale of ``w``."""
+    whatever the scale of ``w``. ``units``, ``(Z, n)`` with one row per
+    unit (subject), gives ``N`` and the standardisation where the rows
+    are not the units (the start-stop rows of ``fit_tvc_penalised``);
+    ``None`` takes them over the rows."""
     from ._fit_skeleton import (
         assemble_regression_model,
         canonical_order,
@@ -94,7 +98,7 @@ def fit_parametric_penalised(
         from surpyval.utils.weights import few_effective_said_later
 
         with np.errstate(all="ignore"), few_effective_said_later():
-            baseline = fitter.dist.fit_from_surpyval_data(data).params
+            baseline = fitter.dist._fit_from_surpyval_data(data).params
         init = np.array([*baseline, *np.zeros(p)], dtype=float)
         init_t = np.asarray(transform(init), dtype=float)
 
@@ -110,10 +114,11 @@ def fit_parametric_penalised(
             init_t,
         )
 
+    Z_units, n_units = (Z_arr, row_weights) if units is None else units
     fit = penalised_fit(
         build,
-        Z_arr,
-        row_weights,
+        Z_units,
+        n_units,
         np.arange(k, k + p),
         penalizer,
         l1_ratio,

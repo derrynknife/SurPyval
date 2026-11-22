@@ -18,9 +18,9 @@ What is public
   ``surpyval.multivariate``, ``surpyval.ml``, ``surpyval.life_models``,
   ``surpyval.metrics``, ``surpyval.diagnostics``, ``surpyval.bayes`` (and
   ``surpyval.prior``), ``surpyval.test_planning``, ``surpyval.datasets``,
-  ``surpyval.pymc``, ``surpyval.utils`` and the four
+  ``surpyval.pymc``, ``surpyval.torch``, ``surpyval.utils``, the five
   ``surpyval.univariate`` packages (``parametric``, ``nonparametric``,
-  ``regression`` and ``competing_risks``), and
+  ``regression``, ``competing_risks`` and ``joint``), and
   ``surpyval.univariate.regression.kinds``, the names of the regression
   families. Where a namespace has an ``__all__``, that list is what it
   promises.

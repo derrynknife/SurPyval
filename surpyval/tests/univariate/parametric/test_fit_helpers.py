@@ -1,4 +1,4 @@
-"""Unit tests for the helpers extracted from ``fit_from_surpyval_data``.
+"""Unit tests for the helpers extracted from ``_fit_from_surpyval_data``.
 
 These exercise ``_clamp_truncation_to_support``, ``_initial_guess`` and
 ``_set_support`` directly, without running a full optimisation, so each

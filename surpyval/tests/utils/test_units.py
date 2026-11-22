@@ -296,7 +296,7 @@ def test_issue_945_fit_data_takes_the_units_unit():
     assert sp.KaplanMeier.fit(data).unit == "hrs"
     # The same unit typed another way at the fit: the fit's label
     assert sp.Weibull.fit(data, unit="hours").unit == "hours"
-    assert sp.Weibull.fit_from_surpyval_data(data).unit == "hrs"
+    assert sp.Weibull._fit_from_surpyval_data(data).unit == "hrs"
     assert sp.fit_best(data).unit == "hrs"
     with pytest.raises(ValueError, match="ages are in 'hrs', but unit='days'"):
         sp.Weibull.fit(data, unit="days")

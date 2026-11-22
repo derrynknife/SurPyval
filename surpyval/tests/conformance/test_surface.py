@@ -63,10 +63,10 @@ INCONSISTENT: dict[str, str] = {}
 # information criterion would not rank it against the parametric fits.
 PARTIAL_LIKELIHOOD = frozenset(
     {
-        "surpyval.SemiParametricRegressionModel",
-        "surpyval.CoxFrailtyModel",
-        "surpyval.ProportionalOddsModel",
-        "surpyval.IntervalCoxPHModel",
+        "surpyval.univariate.regression.SemiParametricRegressionModel",
+        "surpyval.univariate.regression.CoxFrailtyModel",
+        "surpyval.univariate.regression.ProportionalOddsModel",
+        "surpyval.univariate.regression.IntervalCoxPHModel",
         "surpyval.univariate.competing_risks."
         "CompetingRisksProportionalHazards",
         "surpyval.univariate.competing_risks.regression.fine_gray."

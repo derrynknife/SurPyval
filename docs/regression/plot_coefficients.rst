@@ -8,4 +8,4 @@ with its Wald interval, from the model's ``summary()``. Import it as
 
 .. autofunction:: surpyval.plot_coefficients
 
-.. autoclass:: surpyval.CoefficientPlot
+.. autoclass:: surpyval.univariate.regression.CoefficientPlot

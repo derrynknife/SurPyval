@@ -250,8 +250,8 @@ def test_least_squares_fit_of_a_sample_from_the_model():
     # = 1e26) BFGS stopped at alpha, beta = 0.98, -0.0099: cif(55) = 113.4
     # against 4.40 by MLE and 4.14 true, with no warning.
     data = _sample()
-    mse = no_warnings(CoxLewis.fit_from_recurrent_data, data, how="MSE")
-    mle = no_warnings(CoxLewis.fit_from_recurrent_data, data)
+    mse = no_warnings(CoxLewis._fit_from_recurrent_data, data, how="MSE")
+    mle = no_warnings(CoxLewis._fit_from_recurrent_data, data)
     best = _mcf_least_squares(data)
     np.testing.assert_allclose(mse.params, best.x, rtol=1e-3)
     assert mse.res.fun <= best.fun * (1 + 1e-6)

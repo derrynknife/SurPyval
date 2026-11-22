@@ -15,25 +15,19 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.rng import as_generator
-from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
-    BaselineInversionMixin,
     HazardIdentitiesMixin,
     LogLinearPhi,
-    MirroredDistributionAttrs,
-    fit_log_linear,
-    mirror_distribution,
     optimise_ph,
     uniform_draws,
 )
-from .._likelihood import regression_neg_ll
-from .._penalised_fit import PenalisedFitMixin
+from .._regression_fitter import LogLinearRegressionFitter
 from ..kinds import PROPORTIONAL_HAZARD
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
 
 # The name the PH covariate link had before it became the shared
@@ -108,12 +102,9 @@ def _small_on_log_scale(
 
 
 class ProportionalHazardsFitter(
-    MirroredDistributionAttrs,
-    BaselineInversionMixin,
     HazardIdentitiesMixin,
     TVCFitMixin,
-    DataFrameRegressionMixin,
-    PenalisedFitMixin,
+    LogLinearRegressionFitter,
 ):
     """
     Parametric proportional hazards fitter: a parametric baseline hazard
@@ -188,6 +179,7 @@ class ProportionalHazardsFitter(
     fitter_kind = "proportional hazards fitter"
     _penalised_kind = PROPORTIONAL_HAZARD
     name_suffix = "PH"
+    _baseline_functions = ("Hf", "hf", "sf", "ff", "df")
 
     def __init__(
         self,
@@ -214,14 +206,9 @@ class ProportionalHazardsFitter(
             )
 
         self.name = name
-        mirror_distribution(self, dist)
+        self._take_distribution(dist)
         self.phi = phi
         self.phi_name = phi_name
-        self.Hf_dist = self.dist.Hf
-        self.hf_dist = self.dist.hf
-        self.sf_dist = self.dist.sf
-        self.ff_dist = self.dist.ff
-        self.df_dist = self.dist.df
         self.phi_init = phi_init
         self.phi_bounds = phi_bounds
         self.phi_param_map = phi_param_map
@@ -389,9 +376,6 @@ class ProportionalHazardsFitter(
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
 
-    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        return regression_neg_ll(self, data, *params)
-
     @staticmethod
     def create(distribution: Any) -> ProportionalHazardsFitter:
         """
@@ -527,28 +511,19 @@ class ProportionalHazardsFitter(
         >>> model.params.round(4)
         array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])
         """
-        t = truncation_window(x, t, tl, tr)
-        return fit_log_linear(
-            self,
-            x,
-            Z,
-            c,
-            n,
-            t,
-            init,
-            fixed,
-            center,
-            w=w,
-            kind=PROPORTIONAL_HAZARD,
-            optimiser=optimise_ph,
-            reg_model=self._reg_model,
-            phi_bounds=self.phi_bounds,
-            phi_param_map=self.phi_param_map,
-            phi_init=self.phi_init,
+        return self._fit(x, Z, c, n, t, init, fixed, center, tl, tr, w)
+
+    def _fit_options(self) -> dict[str, Any]:
+        return {
+            "optimiser": optimise_ph,
+            "reg_model": self._reg_model,
+            "phi_bounds": self.phi_bounds,
+            "phi_param_map": self.phi_param_map,
+            "phi_init": self.phi_init,
             # Only the log-linear multiplier can be centred and reported at
             # Z = 0 (#463); a custom phi is centred only with center=True.
-            log_linear=self.phi is LogLinearPhi.phi,
-        )
+            "log_linear": self.phi is LogLinearPhi.phi,
+        }
 
     def _penalised_link(self) -> CovariateLink:
         # The penalty is on the coefficients of exp(beta'Z); a custom phi's

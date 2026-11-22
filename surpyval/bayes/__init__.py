@@ -24,10 +24,16 @@ Beta prior, a Normal mean with the spread known).
 The priors are in ``surpyval.prior``; the likelihood every fit uses is
 ``log_likelihood_fn``, for anyone who wants it in another sampler; and
 :meth:`BayesianParametric.from_draws` brings another sampler's draws
-back as a model.
+back as a model. ``model.waic()`` and ``model.loo()`` estimate how well a
+fit predicts new data, and ``compare`` ranks fits by them.
 """
 
 from surpyval.bayes import prior
+from surpyval.bayes.criteria import (
+    PredictiveComparison,
+    PredictiveCriterion,
+    compare,
+)
 from surpyval.bayes.likelihood import LogLikelihood, log_likelihood_fn
 from surpyval.bayes.model import BayesianParametric
 from surpyval.bayes.posterior import Posterior
@@ -36,6 +42,9 @@ __all__ = [
     "BayesianParametric",
     "LogLikelihood",
     "Posterior",
+    "PredictiveComparison",
+    "PredictiveCriterion",
+    "compare",
     "log_likelihood_fn",
     "prior",
 ]

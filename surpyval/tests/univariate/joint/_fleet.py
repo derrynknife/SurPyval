@@ -146,13 +146,18 @@ def simulate_path(
     beta=2.0,
     effect=0.9,
     centre=CENTRE,
+    survival="PH",
 ):
     """``n`` items whose marker follows ``path_model`` with parameters
     normal about ``mean`` with standard deviations ``sd`` (0 for a common
     one, independent), read every ``every`` days with noise ``sd_noise``
     and followed to ``follow`` days, failing at a Weibull PH hazard in
     the path's current value (``effect`` per unit, baseline ``alpha``,
-    ``beta`` at the marker ``centre``)."""
+    ``beta`` at the marker ``centre``); with ``survival="AFT"``, by the
+    accelerated model instead: the item ages at the rate ``exp(effect
+    (m - centre))`` and fails when its effective age reaches a Weibull
+    (``alpha``, ``beta``) draw (the effective age by the same trapezium
+    rule)."""
     rng = np.random.default_rng(seed)
     mean, sd = np.asarray(mean, float), np.asarray(sd, float)
     grid = np.linspace(0, 20 * follow, 40001)
@@ -161,15 +166,21 @@ def simulate_path(
         theta = mean + sd * rng.normal(size=mean.size)
         with np.errstate(all="ignore"):
             m = path_model.path(grid, *theta)
-            h = (
-                (beta / alpha)
-                * (grid / alpha) ** (beta - 1)
-                * np.exp(effect * (m - centre))
-            )
+            if survival == "AFT":
+                h = np.exp(effect * (m - centre))
+            else:
+                h = (
+                    (beta / alpha)
+                    * (grid / alpha) ** (beta - 1)
+                    * np.exp(effect * (m - centre))
+                )
         h = np.where(np.isfinite(h), h, 1e300)
         H = np.concatenate(
             [[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(grid))]
         )
+        if survival == "AFT":
+            # the rate integrated is the effective age
+            H = (H / alpha) ** beta
         life = float(np.interp(rng.exponential(), H, grid))
         end = min(life, follow)
         ages = np.arange(0.0, end + 1e-9, every)
@@ -280,6 +291,21 @@ def simulate_split(
     return items, np.column_stack([m0, m1]), np.column_stack([site, load])
 
 
+def line_area(m0, m1, u, weight=None):
+    """The area under the line ``m0 + m1 s`` over ``(0, u)`` in closed
+    form: all of it (``weight`` None), with what is ``v`` old counting
+    ``exp(-v / scale)`` (``("exponential", scale)``), or only the last
+    ``width`` of it (``("window", width)``)."""
+    if weight is None:
+        return m0 * u + m1 * u**2 / 2
+    kind, scale = weight
+    if kind == "window":
+        lo = np.maximum(u - scale, 0.0)
+        return m0 * (u - lo) + m1 * (u**2 - lo**2) / 2
+    grown = -np.expm1(-u / scale)
+    return m0 * scale * grown + m1 * (scale * u - scale**2 * grown)
+
+
 def simulate_links(
     n=300,
     seed=0,
@@ -292,14 +318,19 @@ def simulate_links(
     follow=2.0,
     every=1 / 12,
     sd_noise=0.7,
+    lag=0.0,
+    weight=None,
 ):
     """``n`` items with ages in years, followed for ``follow`` years and
     read monthly: each marker a line from 3.0 (sd 0.6) rising 1.0 a year
     (sd 0.5, correlation 0.2), read with noise ``sd_noise``; the hazard
     Weibull (``alpha``, ``beta``) times ``exp`` of ``value`` per unit of
     the line above ``centre``, ``slope`` per unit a year of its rise,
-    and ``cumulative`` per unit-year of the area under it from age 0.
-    The lifetimes are by a trapezium rule on a fine grid of ages."""
+    and ``cumulative`` per unit-year of the area under it from age 0,
+    each ``lag`` years later (the line held at its age-0 value until
+    then: its slope 0), the area weighted by ``weight``
+    (:func:`line_area`). The lifetimes are by a trapezium rule on a fine
+    grid of ages."""
     rng = np.random.default_rng(seed)
     sd0, sd1, r = 0.6, 0.5, 0.2
     D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
@@ -309,10 +340,11 @@ def simulate_links(
     t = np.linspace(0.0, 40.0, 400001)
     items = []
     for k in range(n):
+        u = np.maximum(t - lag, 0.0)
         eta = (
-            value * (m0[k] + m1[k] * t - centre)
-            + slope * m1[k]
-            + cumulative * (m0[k] * t + m1[k] * t**2 / 2)
+            value * (m0[k] + m1[k] * u - centre)
+            + slope * m1[k] * ((t > lag) if lag > 0 else 1.0)
+            + cumulative * line_area(m0[k], m1[k], u, weight)
         )
         with np.errstate(all="ignore"):
             h = (
@@ -339,3 +371,159 @@ def simulate_links(
             )
         )
     return SurpyvalData.from_items(items)
+
+
+def simulate_aft(
+    n=300,
+    seed=0,
+    alpha=2.5,
+    beta=2.0,
+    value=0.0,
+    slope=0.0,
+    centre=CENTRE,
+    follow=2.0,
+    every=1 / 12,
+    sd_noise=0.7,
+    gamma=0.0,
+):
+    """``n`` items as :func:`simulate_links`' (ages in years, lines from
+    3.0, sd 0.6, rising 1.0 a year, sd 0.5, correlation 0.2, read monthly
+    with noise ``sd_noise``, followed for ``follow`` years), failing by
+    the accelerated model: each ages at the rate ``exp(value (m(s) -
+    centre) + slope m'(s) + gamma z)`` (``z`` a 0/1 covariate on half
+    the fleet where ``gamma`` is not 0), and fails when its effective
+    age reaches a Weibull (``alpha``, ``beta``) draw. For a line the
+    effective age is in closed form, ``A(t) = r0 (exp(k t) - 1) / k``
+    with ``k = value m1``, so the lifetimes are exact."""
+    rng = np.random.default_rng(seed)
+    sd0, sd1, r = 0.6, 0.5, 0.2
+    D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
+    b = rng.multivariate_normal([0.0, 0.0], D, size=n)
+    m0, m1 = 3.0 + b[:, 0], 1.0 + b[:, 1]
+    z = rng.integers(0, 2, n).astype(float) if gamma else np.zeros(n)
+    used = alpha * rng.exponential(size=n) ** (1.0 / beta)
+    r0 = np.exp(value * (m0 - centre) + slope * m1 + gamma * z)
+    k = value * m1
+    items = []
+    for j in range(n):
+        if abs(k[j]) < 1e-12:
+            life = used[j] / r0[j]
+        else:
+            grow = 1.0 + k[j] * used[j] / r0[j]
+            life = np.log(grow) / k[j] if grow > 0 else np.inf
+        end = min(life, follow)
+        ages = np.arange(0.0, end + 1e-9, every)
+        y = m0[j] + m1[j] * ages + rng.normal(0, sd_noise, ages.size)
+        outcome = "observed" if life <= follow else "right_censored"
+        items.append(
+            ItemLifetime(
+                j,
+                **{outcome: float(end)},
+                covariates={"z": z[j]} if gamma else None,
+                markers=dict(zip(ages.tolist(), y.tolist())),
+            )
+        )
+    return SurpyvalData.from_items(items)
+
+
+#: Two failure modes of the pump fleet: a bearing failure the vibration
+#: warns of (0.9 per mm/s) and a seal failure it says nothing about.
+CAUSES = {
+    "bearing": {"alpha": 2020.0, "beta": 2.0, "marker_effect": 0.9},
+    "seal": {"alpha": 2900.0, "beta": 1.3, "marker_effect": 0.0},
+}
+
+
+def simulate_causes(
+    n=300,
+    seed=0,
+    every=30.0,
+    follow=730.0,
+    causes=None,
+    truth=None,
+    centre=CENTRE,
+    inspect=None,
+):
+    """``(items, lines)``: ``n`` pumps as :func:`simulate`'s, failing by
+    the first of several failure modes (``causes``: each one's Weibull
+    ``alpha`` and ``beta`` at the vibration ``centre`` and its
+    ``marker_effect``; :data:`CAUSES`), each mode's latent age drawn by
+    bisection of its own cumulative hazard and the item's failure the
+    earliest, its ``event_type`` that mode. With ``inspect``, a failure
+    is found (with its mode) only at the next inspection (every
+    ``inspect`` days): interval censored between the last two, left
+    censored if before the first; readings stop at the last inspection
+    before it. The generator's draws are in a fixed order: the lines,
+    each mode's target in the order of ``causes``, then the noise."""
+    truth = dict(TRUTH if truth is None else truth)
+    causes = dict(CAUSES if causes is None else causes)
+    rng = np.random.default_rng(seed)
+    sd0, sd1 = truth["sd_a"], truth["sd_b"]
+    r = truth["corr_a_b"]
+    D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
+    b = rng.multivariate_normal([0.0, 0.0], D, size=n)
+    m0 = truth["a"] + b[:, 0]
+    m1 = truth["b"] + b[:, 1]
+    lives = []
+    for cause in causes.values():
+        target = rng.exponential(size=n)
+        lo, hi = np.zeros(n), np.full(n, 50 * follow)
+        for _ in range(80):
+            mid = (lo + hi) / 2
+            H = _cumhaz(
+                mid,
+                m0,
+                m1,
+                cause["alpha"],
+                cause["beta"],
+                cause["marker_effect"],
+                centre,
+                0.0,
+            )
+            below = H < target
+            lo, hi = np.where(below, mid, lo), np.where(below, hi, mid)
+        lives.append((lo + hi) / 2)
+    lives = np.array(lives)
+    first = np.argmin(lives, axis=0)
+    life = lives.min(axis=0)
+    labels = list(causes)
+    noise = rng.normal(0, truth["sd_noise"], (n, int(follow // every) + 2))
+    items = []
+    for k in range(n):
+        mode = labels[first[k]]
+        if inspect is None:
+            failed = life[k] <= follow
+            end = min(life[k], follow)
+            outcome = {
+                ("observed" if failed else "right_censored"): float(end)
+            }
+            last = end
+        else:
+            stops = np.arange(inspect, follow + 1e-9, inspect)
+            found = stops[stops >= life[k]]
+            failed = bool(found.size)
+            if not failed:
+                outcome = {"right_censored": float(stops[-1])}
+                last = float(stops[-1])
+            elif found[0] == stops[0]:
+                outcome = {"left_censored": float(stops[0])}
+                last = 0.0
+            else:
+                outcome = {
+                    "interval_censored": [
+                        float(found[0] - inspect),
+                        float(found[0]),
+                    ]
+                }
+                last = float(found[0] - inspect)
+        ages = np.arange(0.0, last + 1e-9, every)
+        readings = m0[k] + m1[k] * ages + noise[k, : ages.size]
+        items.append(
+            ItemLifetime(
+                k,
+                **outcome,
+                event_type=mode if failed else None,
+                markers=dict(zip(ages.tolist(), readings.tolist())),
+            )
+        )
+    return items, np.column_stack([m0, m1])

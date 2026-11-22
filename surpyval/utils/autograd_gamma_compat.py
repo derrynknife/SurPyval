@@ -65,17 +65,22 @@ _EPS_H = np.finfo(float).eps ** (1.0 / 3.0)
 # digits of its complement (up to all of them, #442), and one further away
 # keeps its relative precision to within 1e3 * eps.
 _COMPLEMENT = 1e-3
+# ... and the log of a probability whose complement is below this is
+# log1p of minus the complement, where log of the probability itself lost
+# up to eps / complement of its value (2e-13 at a complement of 1e-3).
+# Below it the loss is at most 10 eps.
+_LOG1P_FROM = 0.1
 _LN2 = float(np.log(2.0))
-# A probability is below _COMPLEMENT only where its complement, as scipy
+# A probability is below _LOG1P_FROM only where its complement, as scipy
 # computes it (to 1e-14), is above this.
-_NEAR_ONE = 0.99
+_NEAR_ONE = 0.89
 
 
 def _where_near_one(
     f: Callable, args: tuple, complement: npt.NDArray
 ) -> npt.NDArray:
     """``f(*args)`` where ``complement`` (f's complement, computed) is above
-    ``_NEAR_ONE``, and 1 elsewhere: where f is below ``_COMPLEMENT`` (the
+    ``_NEAR_ONE``, and 1 elsewhere: where f is below ``_LOG1P_FROM`` (the
     only place the callers use it, besides choosing a side) it is f, to
     the bit. Each incomplete function costs as much as its complement, and
     computing both everywhere doubled the cost of a censored fit."""
@@ -134,7 +139,7 @@ def _cdiff2_b(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
 
 
 #: The most terms of the series and fraction of the incomplete gamma's
-#: exact shape derivatives (``_log_pq_da``, #797), and their tolerance.
+#: exact shape derivatives (``log_pq_da``, #797), and their tolerance.
 _PQ_TERMS = 5000
 _PQ_TOL = 4e-16
 
@@ -238,7 +243,7 @@ def _log_pq_shape_derivatives(a: npt.NDArray, x: npt.NDArray) -> tuple:
     return d_log_p, d_log_q, converged
 
 
-def _log_pq_da(which: int) -> Callable:
+def log_pq_da(which: int) -> Callable:
     """The exact shape derivative of log P (``which`` 0) or log Q (1),
     ``f(a, x)`` in plain numpy (:func:`_log_pq_shape_derivatives`);
     ``nan`` where that did not converge, or at an ``x`` of 0 or inf
@@ -280,7 +285,7 @@ def _make_da_primitive(
     positive.
 
     With ``f_a``, f's exact derivative in the shape where it is not
-    ``nan`` (``_log_pq_da``, #797), ``df/da`` is that: the five-point
+    ``nan`` (``log_pq_da``, #797), ``df/da`` is that: the five-point
     differences of ``f`` were up to 4e-9 off mpmath's for the logs of the
     incomplete gamma below x = 30. ``d2f/da2`` is then the difference of
     that first derivative.
@@ -422,7 +427,7 @@ def _gammaincln_raw(a: Boxable, x: Boxable) -> Boxable:
     with np.errstate(divide="ignore"):
         # log1p(-Q) where P is near 1, and rounds to it (#442)
         out = np.where(
-            q < _COMPLEMENT, np.log1p(-np.minimum(q, _COMPLEMENT)), np.log(p)
+            q < _LOG1P_FROM, np.log1p(-np.minimum(q, _LOG1P_FROM)), np.log(p)
         )
     # P(a, x) underflows (or goes subnormal) for small x and for x far
     # below a large a, where a clipped log would stop at -708 (#443).
@@ -455,7 +460,7 @@ def gammaincln(a: Boxable, x: Boxable) -> Boxable:
 _gammaincln_da = _make_da_primitive(
     _gammaincln_raw,
     lambda a, x: np.exp(_log_gamma_density(a, x) - _gammaincln_raw(a, x)),
-    _log_pq_da(0),
+    log_pq_da(0),
 )
 
 defvjp(
@@ -482,7 +487,7 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
     out = np.array(np.log(np.clip(q, _LOG_EPS, np.inf)), dtype=float)
     # log1p(-P) where Q is near 1, and rounds to it (#442)
     p = _where_near_one(_sc_gammainc, (a_arr, x_arr), q)
-    out = np.where(p < _COMPLEMENT, np.log1p(-np.minimum(p, _COMPLEMENT)), out)
+    out = np.where(p < _LOG1P_FROM, np.log1p(-np.minimum(p, _LOG1P_FROM)), out)
     # Q(a, x) underflows past ~1e-308 (x of ~700 for a small a), where
     # a clipped log would cap the Gamma cumulative hazard. There x >> a
     # and the asymptotic series
@@ -516,7 +521,7 @@ def gammainccln(a: Boxable, x: Boxable) -> Boxable:
 _gammainccln_da = _make_da_primitive(
     _gammainccln_raw,
     lambda a, x: -np.exp(_log_gamma_density(a, x) - _gammainccln_raw(a, x)),
-    _log_pq_da(1),
+    log_pq_da(1),
 )
 
 defvjp(
@@ -605,6 +610,8 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
     ``where`` branch is evaluated at a safe argument, so neither puts a
     nan into the other's gradient.
     """
+    if not (isinstance(y, ArrayBox) or isinstance(a, ArrayBox)):
+        return _log_gamma_ratio_plain(y, a)
     z = y
     shifted = 0.0
     for _ in range(int(_ASYMPTOTIC_FROM)):
@@ -620,6 +627,32 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
     return (
         (z - 0.5) * anp.log1p(a / z)
         + a * anp.log(z + a)
+        - a
+        + _stirling_remainder(z + a)
+        - _stirling_remainder(z)
+        - shifted
+    )
+
+
+def _log_gamma_ratio_plain(y: Any, a: Any) -> Any:
+    """``log_gamma_ratio`` where nothing is traced: the same operations
+    in plain numpy, to the bit, stopping the shifts once every ``z`` is
+    at 10 or above (each later one leaves the values as they are).
+    autograd's ``where`` took most of a NegativeBinomial likelihood's
+    time, thirty calls of it an evaluation."""
+    z = y
+    shifted: Any = 0.0
+    for _ in range(int(_ASYMPTOTIC_FROM)):
+        below = np.less(z, _ASYMPTOTIC_FROM)
+        if not below.any():
+            break
+        z_safe = np.where(below, z, 1.0)
+        shifted = shifted + np.where(below, np.log1p(a / z_safe), 0.0)
+        z = np.where(below, z + 1.0, z)
+    z = np.where(np.less(z, _ASYMPTOTIC_FROM), _ASYMPTOTIC_FROM, z)
+    return (
+        (z - 0.5) * np.log1p(a / z)
+        + a * np.log(z + a)
         - a
         + _stirling_remainder(z + a)
         - _stirling_remainder(z)
@@ -747,16 +780,16 @@ def _beta_series_log(
             break
     with np.errstate(divide="ignore"):
         log_x = np.log(x)
-    out = a * log_x + _log_beta_front(a, b) + np.log1p(a * total)
+    out = a * log_x + log_beta_front(a, b) + np.log1p(a * total)
     return np.where(done, out, np.nan)
 
 
-#: Below this multiple of min(1, b), ``_log_beta_front`` takes its Taylor
+#: Below this multiple of min(1, b), ``log_beta_front`` takes its Taylor
 #: series in ``a``: the terms after a^4 are below 1e-16 of it.
 _FRONT_SERIES = 1e-4
 
 
-def _log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+def log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
     r""":math:`\ln \Gamma(a + b) - \ln \Gamma(b) - \ln \Gamma(1 + a)`,
     to its own relative precision at a small ``a``, where it is of size
     ``a`` and the gammas' rounding (1e-18 in the Stirling remainders of
@@ -849,6 +882,9 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
     with np.errstate(divide="ignore"):
         log_p = np.array(np.log(p), dtype=float, ndmin=1)
         log_q = np.array(np.log(q), dtype=float, ndmin=1)
+    # The log of the side near 1 from its complement (``_LOG1P_FROM``)
+    log_p = np.where(q < _LOG1P_FROM, np.log1p(-np.minimum(q, 0.5)), log_p)
+    log_q = np.where(p < _LOG1P_FROM, np.log1p(-np.minimum(p, 0.5)), log_q)
     a_arr, b_arr, xs, p, q, inside, x_arr = (
         np.atleast_1d(v) for v in (a_arr, b_arr, xs, p, q, inside, x_arr)
     )

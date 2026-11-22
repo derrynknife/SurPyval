@@ -57,7 +57,7 @@ from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .._aliasing import (
     aliased_columns,
@@ -181,21 +181,21 @@ class ZeroInflatedDistribution:
         *lat, f0 = params
         return float((1.0 - f0) * self.latency.mean(*lat))
 
-    def fit_from_surpyval_data(self, data: Any) -> Any:
+    def _fit_from_surpyval_data(self, data: Any) -> Any:
         """The start of the search: the zero-inflated fit without
         covariates, its share kept off the ends."""
         with ignoring_warnings():
             try:
-                fitted = self.latency.fit_from_surpyval_data(data, zi=True)
+                fitted = self.latency._fit_from_surpyval_data(data, zi=True)
                 params = [float(v) for v in fitted.params]
                 f0 = float(fitted.f0)
             except Exception:
                 worked = data[~_doa_rows(data)]
-                fitted = self.latency.fit_from_surpyval_data(worked)
+                fitted = self.latency._fit_from_surpyval_data(worked)
                 params = [float(v) for v in fitted.params]
                 f0 = 0.1
         if not onp.all(onp.isfinite(params)) or not onp.isfinite(f0):
-            fitted = self.latency.fit_from_surpyval_data(
+            fitted = self.latency._fit_from_surpyval_data(
                 data[~_doa_rows(data)]
             )
             params, f0 = [float(v) for v in fitted.params], 0.1
@@ -1097,7 +1097,7 @@ class ZeroInflatedModel(DistributionalRegressionModel):
                     int(onp.sum(onp.isposinf(out))), out.size
                 ),
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         if not susceptible:
             out = (1.0 - f0) * out

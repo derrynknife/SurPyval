@@ -53,6 +53,10 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
     # time (#477).
     _cb_link = "loglog"
 
+    # How the parameters move with the time (rescale_time): mu and sigma are
+    # times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -72,7 +76,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         else:
             heuristic = "Nelson-Aalen"
         return np.asarray(
-            self.fit_from_surpyval_data(
+            self._fit_from_surpyval_data(
                 data, how="MPP", heuristic=heuristic
             ).params,
             dtype=float,
@@ -311,6 +315,22 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         array([-1.50073465,  0.93813913,  2.26697416])
         """
         return mu + sigma * (np.log(-np.log1p(-u)))
+
+    def isf(self, s: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \mu + \sigma \ln(-\ln s)
+
+        Examples
+        --------
+        >>> from surpyval import Gumbel
+        >>> Gumbel.isf([0.5, 1e-300], 5, 2)
+        array([ 4.26697416, 18.07562984])
+        """
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return mu + sigma * np.log(-np.log(s))
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

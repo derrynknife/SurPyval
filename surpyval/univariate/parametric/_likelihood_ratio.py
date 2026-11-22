@@ -842,13 +842,18 @@ class _PsiBoundSearch:
 
     # -- the searches ---------------------------------------------------
     def solve(
-        self, target: float, starts: list[npt.NDArray]
+        self,
+        target: float,
+        starts: list[npt.NDArray],
+        below: float | None = None,
     ) -> tuple[float, npt.NDArray | None]:
         """The least negative log-likelihood with psi at ``target``.
 
         Searched in the coordinates scaled by the Wald standard errors
         (``_wald_sd``), where SLSQP's first guess at the curvature is
         near right, and in the search coordinates without a covariance.
+        With ``below``, the starts after one that finds a deviance below
+        it are not searched from (``checks_out``).
         """
         best, best_u = np.inf, None
         if self.scale is None:
@@ -904,6 +909,8 @@ class _PsiBoundSearch:
                 if res.status == 0 or not 0.0 <= excess < 0.05:
                     break
                 z0 = np.asarray(res.x)
+            if below is not None and 2.0 * (best - self.nll_hat) < below:
+                break
         return best, best_u
 
     def extreme(
@@ -1165,7 +1172,14 @@ class _PsiBoundSearch:
         gradient of psi to the target, where the least likelihood with
         psi there is a step away. (From the answer itself SLSQP spent 40
         to 90 evaluations crawling to the target, its line search
-        trading the gap against the likelihood.)
+        trading the gap against the likelihood.) The search from the
+        estimate goes first, and the one from beside the answer runs only
+        where it finds no point of the region: one is enough to show the
+        answer is not the extreme. Beside a slice's extreme far down a
+        NegativeBinomial's valley (``r`` of 1e8 to 1e11, ``1 - p`` of
+        1e-8 to 1e-11) SLSQP took 0.3 to 0.9 s to get nowhere, where the
+        search from the estimate found the region beyond in 0.02 s; that
+        was a third of the band's time.
 
         An answer within that hair of one already checked out on the same
         side (``checked``) is the same extreme, found again from another
@@ -1193,7 +1207,9 @@ class _PsiBoundSearch:
                 return done
         else:
             beyond = psi_star + direction * _lr_hair(psi_star)
-            nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
+            nll, u = self.solve(
+                beyond, [self.u_hat, self._towards(x, beyond)], below=crit
+            )
             if u is not None and 2.0 * (nll - self.nll_hat) < crit:
                 # (kept, for the search to go on from: ``direct``)
                 self.beyond = u
@@ -1515,7 +1531,228 @@ class _PsiBoundSearch:
         answer = self._solve_side(direction)
         if answer in self.unsettled:
             self.unsettled_sides.add(direction)
-        return answer
+        return self.settle(direction, answer)
+
+    def settle(self, direction: float, answer: float) -> float:
+        """``answer``, found at a point of the region the searches know,
+        taken exactly onto the region's boundary from there and to the
+        extreme along it: back onto the boundary where the point is
+        outside by the deviance the searches allow (``_LR_NOISE``), out
+        to it along the gradient of psi where the point is inside, then
+        along the boundary to where psi is most extreme
+        (``_along_boundary``). The answer as it is where it has no such
+        point (a root of the profile walk), or where none of these moves
+        it. Every point taken is a point of the region, so the settled
+        answer is never past the extreme.
+
+        The searches take a point up to ``_LR_NOISE`` (1e-6) of deviance
+        outside the region as on its boundary, and a point that far inside
+        as at the extreme; and on the boundary they stop where psi changes
+        by less than their tolerance, which on a boundary that curves
+        little left a NegativeBinomial's ``sf(2)`` upper bound 2e-12 short
+        of its extreme (a point 1e-6 along the boundary from it), or 1e-12
+        closer, as the arithmetic of the platform fell. A Uniform's bands
+        stopped up to 3e-9 inside its region (a triangle, whose corners
+        give the extremes exactly), and a NegativeBinomial's agreed with
+        the extremes found slice by slice to 1e-10 to 1e-12, its
+        ``sf(8)`` lower bound 3e-8 beyond the extreme of its Poisson
+        limit. Settled, the Uniform's are its extremes to rounding, and
+        the NegativeBinomial's to 3e-14 (1e-11 at the Poisson limit of its
+        ``df(5)`` upper bound); that ``sf(8)`` lower bound is a point of
+        the region 3e-9 short of the limit, which is approached only as
+        ``r -> inf`` and ``p -> 1``. Where the search ends there, ``1 - p``
+        (1e-8) moves in steps of 1e-8 of itself, a step of 1.2e-7 in
+        ``sf(8)``: the step back onto the boundary is taken along each
+        coordinate as well as along the gradient
+        (``_back_by_coordinate``), and the one that loses least is kept.
+        (Along the gradient alone, the step crossed one of those steps or
+        not as the platform's rounding fell: the bound was 6e-8 short on
+        x86-64 Linux and 1.2e-7 on arm64.) Where the step back onto the
+        boundary moves psi by more than the checks' hair (``_lr_hair``),
+        the differences have lost the valley (an ExpoWeibull's as
+        ``beta -> inf``, whose width in ``log(alpha)`` shrinks as
+        ``1 / beta``), and the answer is kept as the searches found it."""
+        at = [u for psi, u in self.known if psi == answer]
+        if not at or not np.isfinite(answer):
+            return answer
+        crit = self.crit
+        x = at[-1]
+        if not self.dev_u(x) <= crit:
+            back = self.back_onto_boundary(x, crit)
+            if back is None:
+                # (at a face of the box, where the deviance has no
+                # gradient: along the line from the estimate)
+                back = self.onto_boundary(self.u_hat, x, crit)
+            # A polish within the checks' hair, not a search: a step back
+            # that moves psi further has lost the valley the answer is in
+            # (the differences no longer resolve it), and the answer is
+            # kept as the searches found it.
+            candidates = [
+                y
+                for y in [back, *self._back_by_coordinate(x, crit)]
+                if y is not None
+                and abs(self.psi_u(y) - answer) <= _lr_hair(answer)
+            ]
+            if not candidates:
+                return answer
+            x = max(candidates, key=lambda y: direction * self.psi_u(y))
+        # Out to the boundary, then along it: points of the region, so
+        # never past the extreme, and each kept only where it is further
+        # out.
+        for move in (self._out_along_psi, self._along_boundary):
+            y = move(direction, x)
+            if y is not None and (
+                direction * (self.psi_u(y) - self.psi_u(x)) > 0
+            ):
+                x = y
+        settled = self.psi_u(x)
+        return settled if np.isfinite(settled) else answer
+
+    def _back_by_coordinate(
+        self, outside: npt.NDArray, level: float
+    ) -> list[npt.NDArray]:
+        """For each coordinate, the point of {deviance <= level} that
+        Newton's steps along it alone reach from ``outside``, a point just
+        outside (none where five do not).
+
+        Where a parameter is near the edge of its space its double moves
+        in steps that are large in the deviance (a NegativeBinomial's
+        ``p`` of ``1 - 1e-8``, whose ulp is 1e-8 of ``1 - p``): a step
+        back along the gradient that moves it at all moves it a whole
+        step, where a step in another coordinate (``r``) can move the
+        deviance as little as it needs to."""
+        out = []
+        grad = central_gradient(self.dev_u, outside, _LR_FD_FINE)
+        for k, slope in enumerate(grad):
+            if not (np.isfinite(slope) and slope != 0.0):
+                continue
+            x = np.array(outside, dtype=float)
+            for _ in range(5):
+                excess = self.dev_u(x) - level
+                if excess <= 0.0:
+                    break
+                # (overshooting a hair, so as to land inside)
+                x[k] -= 1.000001 * excess / slope
+                x = self.model._lr_start(x, self.box)
+            if self.dev_u(x) <= level:
+                out.append(x)
+        return out
+
+    def _along_boundary(
+        self, direction: float, x: npt.NDArray
+    ) -> npt.NDArray | None:
+        """The point of the boundary near ``x``, a point of it, where psi
+        is most extreme: psi along the boundary, taken onto it along the
+        deviance's normal at ``x`` from points along the tangent that
+        psi's gradient leans to, maximised by Newton's steps on a parabola
+        through three of them (the spacing grown tenfold until the bend
+        shows above rounding, to a hundredth of the coordinates). The
+        most extreme point of the region found, or ``None``.
+
+        The searches stop on the boundary where psi changes by less than
+        their tolerance: on a boundary that curves little that is up to
+        1e-6 along it from the extreme, which is 1e-12 of psi, and where
+        within that it stopped depended on the platform's rounding."""
+        grad_dev = central_gradient(self.dev_u, x, _LR_FD_FINE)
+        grad_psi = direction * central_gradient(self.psi_u, x, _LR_FD_FINE)
+        size = float(np.sqrt(grad_dev @ grad_dev))
+        if not (
+            np.all(np.isfinite(grad_psi)) and np.isfinite(size) and size > 0
+        ):
+            return None
+        normal = grad_dev / size
+        tangent = grad_psi - (grad_psi @ normal) * normal
+        lean = float(np.sqrt(tangent @ tangent))
+        if not (np.isfinite(lean) and lean > 0):
+            return None
+        tangent = tangent / lean
+        scale = max(1.0, float(np.max(np.abs(x))))
+
+        def along(s: float) -> tuple[float, npt.NDArray | None]:
+            y = self._onto_boundary_along(x + s * tangent, normal, size)
+            if y is None:
+                return -np.inf, None
+            return direction * self.psi_u(y), y
+
+        q0, y0 = along(0.0)
+        if y0 is None:
+            return None
+        best_q, best = q0, y0
+        rounding = 1e-14 * max(1.0, abs(q0))
+        s0, h = 0.0, 1e-6 * scale
+        for _ in range(8):
+            (q_lo, y_lo), (q_hi, y_hi) = along(s0 - h), along(s0 + h)
+            for q, y in ((q_lo, y_lo), (q_hi, y_hi)):
+                if y is not None and q > best_q:
+                    best_q, best = q, y
+            if y_lo is None or y_hi is None:
+                break
+            bend = q_hi - 2.0 * q0 + q_lo
+            if not bend < -rounding:
+                if h >= 1e-2 * scale:
+                    break
+                h *= 10.0
+                continue
+            # (the parabola's rise to its top, from its middle: below
+            # rounding, there is nothing left to gain)
+            if (q_hi - q_lo) ** 2 / (-8.0 * bend) <= rounding:
+                break
+            step = -(q_hi - q_lo) / (2.0 * bend) * h
+            step = float(np.clip(step, -10 * h, 10 * h))
+            q0, y = along(s0 + step)
+            if y is None:
+                break
+            if q0 > best_q:
+                best_q, best = q0, y
+            s0, h = s0 + step, max(abs(step), 1e-9 * scale)
+        return best
+
+    def _onto_boundary_along(
+        self, y: npt.NDArray, normal: npt.NDArray, slope: float
+    ) -> npt.NDArray | None:
+        """``y``, a point a little off the boundary, taken onto it from
+        inside by Newton's steps along ``normal``, the deviance's normal
+        near it, on which the deviance rises at ``slope``; ``None`` where
+        three steps do not reach it."""
+        crit = self.crit
+        tau = 0.0
+        for _ in range(3):
+            z = self.model._lr_start(y + tau * normal, self.box)
+            excess = self.dev_u(z) - crit
+            if not np.isfinite(excess):
+                return None
+            if -1e-12 * crit <= excess <= 0.0:
+                return z
+            # (overshooting a hair, so as to land inside)
+            tau -= excess / slope + 1e-13 * crit / slope
+        z = self.model._lr_start(y + tau * normal, self.box)
+        return z if self.dev_u(z) <= crit else None
+
+    def _out_along_psi(
+        self, direction: float, x: npt.NDArray
+    ) -> npt.NDArray | None:
+        """Where the line from ``x``, a point of the region, along the
+        gradient of psi (in steps of ``_LR_FD_FINE``; none out of the
+        box where ``x`` is held at it) leaves the region; ``None`` where
+        it cannot be found."""
+        d = direction * central_gradient(self.psi_u, x, _LR_FD_FINE)
+        for k, (b_lo, b_hi) in enumerate(self.box):
+            if b_lo is not None and x[k] <= b_lo and d[k] < 0:
+                d[k] = 0.0
+            if b_hi is not None and x[k] >= b_hi and d[k] > 0:
+                d[k] = 0.0
+        size = float(np.sqrt(d @ d))
+        if not (np.isfinite(size) and size > 0):
+            return None
+        # From a step of the size of the searches' tolerance, growing
+        # fourfold until it is outside
+        t = _LR_FD_FINE * max(1.0, float(np.max(np.abs(x)))) / size
+        for _ in range(40):
+            y = self.model._lr_start(x + t * d, self.box)
+            if not self.dev_u(y) <= self.crit:
+                return self.onto_boundary(x, y, self.crit)
+            t *= 4.0
+        return None
 
     def _solve_side(self, direction: float) -> float:
         quick = self.from_trace(direction)
@@ -1531,24 +1768,34 @@ class _PsiBoundSearch:
             (max(walk, key=lambda k: direction * k[0]) for walk in self.walks),
             key=lambda k: -direction * k[0],
         )
+
+        def far_enough(best: float | None) -> bool:
+            # As far out as every point known, and as the ladder's to
+            # within its tolerance (a ladder that ends on the same
+            # extreme by another path leaves the answer as it was).
+            far = max(
+                direction * k[0]
+                for k in self.known
+                if id(k[1]) not in self.ladder_ids
+            )
+            return (
+                best is not None
+                and direction * best >= far
+                and direction * best >= far_ladder - 1e-6 * max(1.0, abs(best))
+            )
+
+        if on_face is not None and far_enough(on_face):
+            # The probes' answer checked out, as far out as every point
+            # known: the direct searches from the estimate and the tips
+            # found the same extreme (to 1e-11, before it is settled).
+            return on_face
         best = self._best_direct(direction, tips)
         if on_face is not None and (
             best is None or direction * on_face > direction * best
         ):
             best = on_face
-        # As far out as every point known, and as the ladder's to
-        # within its tolerance (a ladder that ends on the same extreme
-        # by another path leaves the answer as it was).
-        far = max(
-            direction * k[0]
-            for k in self.known
-            if id(k[1]) not in self.ladder_ids
-        )
-        if (
-            best is not None
-            and direction * best >= far
-            and direction * best >= far_ladder - 1e-6 * max(1.0, abs(best))
-        ):
+        if far_enough(best):
+            assert best is not None
             return best
         quick = self._retry_beyond(direction, tips)
         if quick is not None:
@@ -1773,7 +2020,12 @@ class LikelihoodRatioMixin:
         model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
         return float(
             self.dist._neg_ll_func(
-                self.surv_data, *theta, self.gamma, self.f0, self.lfp_p
+                self.surv_data,
+                *theta,
+                self.gamma,
+                self.f0,
+                self.lfp_p,
+                hr=getattr(self, "hr", 1.0),
             )
         )
 
@@ -1794,6 +2046,9 @@ class LikelihoodRatioMixin:
 
         dist = self.dist
         if not isinstance(dist, ParametricFitter) or dist.discrete:
+            return False
+        if getattr(self, "hr", 1.0) != 1:
+            # The lean terms are the likelihood's without a hazard ratio
             return False
         lo, hi = (float(v) for v in dist.support)
         return (
@@ -2124,7 +2379,7 @@ class LikelihoodRatioMixin:
                         "parameter's space); nan is returned for it. "
                         "method='wald' gives a bound in its place.",
                         RuntimeWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                     return value
                 warnings.warn(
@@ -2133,7 +2388,7 @@ class LikelihoodRatioMixin:
                     "critical value, or was not finite); nan is returned "
                     "for it. method='wald' gives a bound in its place.",
                     RuntimeWarning,
-                    stacklevel=4,
+                    stacklevel=caller_stacklevel(),
                 )
             return value
 
@@ -2196,9 +2451,30 @@ class LikelihoodRatioMixin:
             step = 1.0
 
         path = _LRPath()
+        # The profile points solved by this side's walks at every level.
+        # A walk's steps do not depend on the level, so the walks at two
+        # levels solve the same points, in the same order from the same
+        # path, until the lower one brackets its crossing: those are
+        # taken from here, as they were solved. (A point is kept under
+        # the path it was solved from, so one solved from another is
+        # solved again: the bounds are those of each level alone, to the
+        # bit.)
+        solved = self.__dict__.setdefault("_lr_profiles", {})
+        side = (idx, *key[2:])
 
         def deviance(w: float) -> float:
-            nll = self._profile_neg_ll(idx, coord.from_u(w), path=path)
+            at = (side, float(w), tuple(path.w))
+            if at in solved:
+                nll, kept = solved[at]
+                if kept is not None:
+                    path.add(*kept)
+            else:
+                n_path = len(path.w)
+                nll = self._profile_neg_ll(idx, coord.from_u(w), path=path)
+                kept = None
+                if len(path.w) > n_path:
+                    kept = (path.w[-1], path.u[-1], path.f[-1])
+                solved[at] = (nll, kept)
             return 2.0 * (nll - nll_hat)
 
         status, w = _lr_walk(
@@ -2345,7 +2621,7 @@ class LikelihoodRatioMixin:
                 "optimiser failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         return shape(lower, upper)
 
@@ -2524,7 +2800,7 @@ class LikelihoodRatioMixin:
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
                 # _cb_lr -> cb -> the query-shape wrapper -> the caller
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
 
         if falling:

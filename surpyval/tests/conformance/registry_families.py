@@ -20,15 +20,18 @@ import surpyval as sp
 from surpyval import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry_fixtures import (
+    X_CR,
     X_DISC,
     X_REG,
     X_STRESS,
     X_UNI,
     Z_AH,
+    Z_CR,
     Z_REG,
     Z_STRESS,
     Z_STRESS2,
     ah_data,
+    cr_data,
     discrete_data,
     grouped_reg_data,
     ic_reg_data,
@@ -124,6 +127,13 @@ PROPERTIES: dict[str, str] = {
         "first time and holds (or is NaN) after the last, for every "
         "function alike"
     ),
+    # test_surviving_level.py, for the cases of SURVIVING_LEVEL.
+    "surviving_level": (
+        "level_at(t, y0=, t0=, given_survival=True) has all its mass below "
+        "the threshold, its qf inverts its ff, its draws are reproducible "
+        "under random_state, and far from the threshold it is level_at's "
+        "unconditioned level"
+    ),
     # test_derivatives.py, for the cases of DIFFERENTIATED.
     "derivatives": (
         "the derivatives a fit or its inference takes (autograd's, or the "
@@ -218,13 +228,14 @@ PROPERTIES: dict[str, str] = {
 # the "attributes" property checks.
 DECLARED_ATTRIBUTES = frozenset(
     {
-        "surpyval.ParametricRegressionModel",
-        "surpyval.DistributionalRegressionModel",
-        "surpyval.SemiParametricRegressionModel",
-        "surpyval.ProportionalOddsModel",
-        "surpyval.AdditiveHazardsModel",
-        "surpyval.AalenAdditiveModel",
-        "surpyval.BuckleyJamesModel",
+        "surpyval.univariate.regression.ParametricRegressionModel",
+        "surpyval.univariate.regression.DistributionalRegressionModel",
+        "surpyval.univariate.regression.SemiParametricRegressionModel",
+        "surpyval.univariate.regression.ProportionalOddsModel",
+        "surpyval.univariate.regression.AdditiveHazardsModel",
+        "surpyval.univariate.regression.AalenAdditiveModel",
+        "surpyval.univariate.regression.BuckleyJamesModel",
+        "surpyval.univariate.regression.QuantileRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
     }
@@ -259,10 +270,10 @@ DIFFERENTIATED = frozenset(
     {
         "surpyval.Parametric",
         "surpyval.MixtureModel",
-        "surpyval.ParametricRegressionModel",
-        "surpyval.DistributionalRegressionModel",
-        "surpyval.FrailtyModel",
-        "surpyval.SemiParametricRegressionModel",
+        "surpyval.univariate.regression.ParametricRegressionModel",
+        "surpyval.univariate.regression.DistributionalRegressionModel",
+        "surpyval.univariate.regression.FrailtyModel",
+        "surpyval.univariate.regression.SemiParametricRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
         "surpyval.univariate.competing_risks.ParametricCompetingRisks",
@@ -274,7 +285,16 @@ DIFFERENTIATED = frozenset(
         ".ProportionalIntensityModel",
         "surpyval.multivariate.CopulaModel",
         "surpyval.degradation.DegradationModel",
-        "surpyval.JointModel",
+        "surpyval.univariate.joint.JointModel",
+        "surpyval.ExcessHazard",
+    }
+)
+# The process models, whose level_at takes given_survival: the level of a
+# unit that has not reached the threshold.
+SURVIVING_LEVEL = frozenset(
+    {
+        "surpyval.degradation.WienerProcessModel",
+        "surpyval.degradation.GammaProcessModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -284,9 +304,20 @@ NOT_DIFFERENTIATED = {
     "Bernoulli": _NO_DERIVATIVES + "a closed-form estimate",
     "FixedEventProbability": _NO_DERIVATIVES + "a closed-form estimate",
     "ExactEventTime": _NO_DERIVATIVES + "a closed-form estimate",
-    "Hypoexponential": _NO_DERIVATIVES + "the model is given its rates",
     **dict.fromkeys(
-        ("CrowAMSAA", "Duane", "CoxLewis", "ProportionalIntensityNHPP"),
+        (
+            "CrowAMSAA",
+            "Duane",
+            "CoxLewis",
+            "GoelOkumoto",
+            "YamadaDelayedS",
+            "InflectionS",
+            "MusaOkumoto",
+            "RayleighDefects",
+            "EffortClock",
+            "ChangePoint",
+            "ProportionalIntensityNHPP",
+        ),
         _NO_DERIVATIVES + "a search on finite-difference gradients, and "
         "a numerical Hessian",
     ),
@@ -297,15 +328,23 @@ NOT_DIFFERENTIATED = {
 # whose fit is not a likelihood maximisation excludes it with the reason).
 NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.NonParametric": "a product-limit or self-consistency estimate",
+    "surpyval.RelativeSurvival": (
+        "a non-parametric estimate: an observed cumulative hazard less an "
+        "expected one"
+    ),
     "surpyval.NeverOccurs": "a fixed model, not fitted",
     "surpyval.InstantlyOccurs": "a fixed model, not fitted",
-    "surpyval.AdditiveHazardsModel": (
+    "surpyval.univariate.regression.AdditiveHazardsModel": (
         "Lin and Ying's estimating equations, a linear system"
     ),
-    "surpyval.BuckleyJamesModel": (
+    "surpyval.univariate.regression.BuckleyJamesModel": (
         "the Buckley-James estimating equations, by iterated least squares"
     ),
-    "surpyval.AalenAdditiveModel": (
+    "surpyval.univariate.regression.QuantileRegressionModel": (
+        "censored quantile regression's estimating equations, a linear "
+        "programme at each level of a grid"
+    ),
+    "surpyval.univariate.regression.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
     ),
     "surpyval.ml.SurvivalTree": "a tree of greedy splits",
@@ -512,6 +551,10 @@ class Case:
         if prop == "derivatives" and (
             self.model_class not in DIFFERENTIATED
             or self.name in NOT_DIFFERENTIATED
+        ):
+            return False
+        if prop == "surviving_level" and (
+            self.model_class not in SURVIVING_LEVEL
         ):
             return False
         if prop == "aliasing_constant" and not self.intercept:
@@ -748,12 +791,12 @@ def _parametric_paths(fitter, **fixed):
 
     def from_surpyval_data(d):
         data = sp.SurpyvalData(d["x"], d["c"], d["n"])
-        return fitter.fit_from_surpyval_data(data, **fixed)
+        return fitter.fit(data, **fixed)
 
     return {
         "fit_from_df": from_df,
         "from_params": from_params,
-        "fit_from_surpyval_data": from_surpyval_data,
+        "fit(data)": from_surpyval_data,
     }
 
 
@@ -828,7 +871,8 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         name=name,
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
         model_class=kw.pop(
-            "model_class", "surpyval.ParametricRegressionModel"
+            "model_class",
+            "surpyval.univariate.regression.ParametricRegressionModel",
         ),
         interface=REGRESSION,
         data=data,
@@ -865,6 +909,40 @@ def _phi(model):
 
 def _beta(model):
     return model.beta
+
+
+def _coefs(model):
+    """A quantile regression's coefficients, a row per level."""
+    return model.coefs
+
+
+def _fixed_method(case, method):
+    """``case`` (a regression) with ``method=`` given to every fit, its
+    refits marked slow."""
+    fitter = sp.QuantileRegression
+
+    def from_df(d, formula=False):
+        cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+        df = pd.DataFrame(d["Z"], columns=cols)
+        df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+        covariates = (
+            {"formula": " + ".join(cols)} if formula else {"Z_cols": cols}
+        )
+        return fitter.fit_from_df(
+            df, x_col="x", c_col="c", n_col="n", method=method, **covariates
+        )
+
+    return replace(
+        case,
+        name=f"{case.name}[{method}]",
+        fitters=(),
+        fit=_fit(fitter, method=method),
+        paths={
+            "fit_from_df": from_df,
+            "formula": functools.partial(from_df, formula=True),
+        },
+        slow=REFIT_PROPERTIES,
+    )
 
 
 # Parametric regression: every kind with every baseline is registered, and
@@ -1019,7 +1097,7 @@ def _frailty_family():
                 data=grouped_reg_data,
                 fitters=(f"surpyval.{base}Frailty",)
                 + (("surpyval.Frailty",) if base == "Weibull" else ()),
-                model_class="surpyval.FrailtyModel",
+                model_class="surpyval.univariate.regression.FrailtyModel",
                 rows=("x", "Z", "c", "n", "groups"),
                 labels=("groups",),
                 paths={"fit_from_df": from_df},
@@ -1084,7 +1162,9 @@ def _semi_parametric():
     cox = regression(
         "CoxPH",
         sp.CoxPH,
-        model_class="surpyval.SemiParametricRegressionModel",
+        model_class=(
+            "surpyval.univariate.regression." "SemiParametricRegressionModel"
+        ),
         paths=_cox_paths(),
         jump_functions=("hf", "df"),
         exclude={"df_hf_sf": step},
@@ -1097,7 +1177,9 @@ def _semi_parametric():
         sp.CoxPH,
         data=stratified_reg_data,
         fitters=(),
-        model_class="surpyval.SemiParametricRegressionModel",
+        model_class=(
+            "surpyval.univariate.regression." "SemiParametricRegressionModel"
+        ),
         call_kwargs={"stratum": 1},
         jump_functions=("hf", "df"),
         rows=("x", "Z", "c", "n", "strata"),
@@ -1112,7 +1194,7 @@ def _semi_parametric():
         "CoxFrailty",
         sp.CoxFrailty,
         data=grouped_reg_data,
-        model_class="surpyval.CoxFrailtyModel",
+        model_class="surpyval.univariate.regression.CoxFrailtyModel",
         rows=("x", "Z", "c", "n", "groups"),
         labels=("groups",),
         paths={
@@ -1137,7 +1219,7 @@ def _semi_parametric():
         "CoxMixedEffects",
         sp.CoxMixedEffects,
         data=grouped_reg_data,
-        model_class="surpyval.CoxMixedEffectsModel",
+        model_class="surpyval.univariate.regression.CoxMixedEffectsModel",
         rows=("x", "Z", "c", "n", "groups"),
         labels=("groups",),
         paths={
@@ -1171,7 +1253,7 @@ def _semi_parametric():
     ah = regression(
         "AdditiveHazards",
         sp.AdditiveHazards,
-        model_class="surpyval.AdditiveHazardsModel",
+        model_class="surpyval.univariate.regression.AdditiveHazardsModel",
         paths={
             "fit_from_df": lambda d: sp.AdditiveHazards.fit_from_df(
                 pd.DataFrame(
@@ -1196,7 +1278,7 @@ def _semi_parametric():
     bj = regression(
         "BuckleyJames",
         sp.BuckleyJames,
-        model_class="surpyval.BuckleyJamesModel",
+        model_class="surpyval.univariate.regression.BuckleyJamesModel",
         functions=("sf", "ff", "Hf"),
         # Documented to take one covariate vector per call.
         z_style="single",
@@ -1222,10 +1304,26 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    qr = regression(
+        "QuantileRegression",
+        sp.QuantileRegression,
+        model_class="surpyval.univariate.regression.QuantileRegressionModel",
+        functions=("sf", "ff", "Hf"),
+        exclude={
+            "df_hf_sf": "QuantileRegressionModel has no hf or df: its "
+            "distribution is a step function read from the quantiles",
+            "random_sf": NO_RANDOM,
+        },
+        draw=None,
+        rtol=1e-6,
+        coefficients=_coefs,
+        intercept=True,
+    )
+    portnoy = _fixed_method(qr, "portnoy")
     po = regression(
         "ProportionalOdds",
         sp.ProportionalOdds,
-        model_class="surpyval.ProportionalOddsModel",
+        model_class="surpyval.univariate.regression.ProportionalOddsModel",
         jump_functions=("hf", "df"),
         exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
         draw=None,
@@ -1236,7 +1334,7 @@ def _semi_parametric():
     aalen = regression(
         "AalenAdditive",
         sp.AalenAdditive,
-        model_class="surpyval.AalenAdditiveModel",
+        model_class="surpyval.univariate.regression.AalenAdditiveModel",
         paths={
             "fit_from_df": lambda d: sp.AalenAdditive.fit_from_df(
                 pd.DataFrame(
@@ -1283,7 +1381,7 @@ def _semi_parametric():
         "IntervalCoxPH",
         sp.IntervalCoxPH,
         data=ic_reg_data,
-        model_class="surpyval.IntervalCoxPHModel",
+        model_class="surpyval.univariate.regression.IntervalCoxPHModel",
         paths={"fit_from_df": ic_from_df},
         jump_functions=("hf", "df"),
         exclude={"df_hf_sf": step},
@@ -1291,7 +1389,48 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, cox_frailty, cox_me, ah, bj, po, aalen, interval_cox]
+
+    def cox_ic_from_df(d):
+        x = np.asarray(d["x"], dtype=float)
+        df = pd.DataFrame(d["Z"], columns=["z0", "z1"])
+        df["xl"], df["xr"], df["c"], df["n"] = x[:, 0], x[:, 1], d["c"], d["n"]
+        return sp.CoxPH.fit_from_df(
+            df,
+            xl_col="xl",
+            xr_col="xr",
+            Z_cols=["z0", "z1"],
+            c_col="c",
+            n_col="n",
+        )
+
+    # CoxPH's full-likelihood route (interval and left-censored rows).
+    cox_interval = regression(
+        "CoxPH[interval]",
+        sp.CoxPH,
+        data=ic_reg_data,
+        fitters=(),
+        model_class="surpyval.univariate.regression.CoxNPMLEModel",
+        paths={"fit_from_df": cox_ic_from_df},
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    return [
+        cox,
+        strat,
+        cox_frailty,
+        cox_me,
+        ah,
+        bj,
+        qr,
+        portnoy,
+        po,
+        aalen,
+        interval_cox,
+        cox_interval,
+    ]
 
 
 _NO_COEFFICIENTS = (
@@ -1378,11 +1517,65 @@ def _trees():
             "aliasing": _NO_COEFFICIENTS,
         },
     )
+
+    def tree_with_causes(kind):
+        return Case(
+            name=f"SurvivalTree[causes, {kind}]",
+            fitters=(),
+            model_class="surpyval.ml.SurvivalTree",
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=_seeded(_fit(ml.SurvivalTree, kind=kind)),
+            functions=("sf", "ff", "Hf", "hf", "df"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            jump_functions=("hf", "df") if kind == "non-parametric" else (),
+            exclude={
+                "aliasing": _NO_COEFFICIENTS,
+                **(
+                    {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
+                    if kind == "non-parametric"
+                    else {}
+                ),
+            },
+        )
+
+    forest_with_causes = Case(
+        name="RandomSurvivalForest[causes]",
+        fitters=(),
+        model_class="surpyval.ml.RandomSurvivalForest",
+        interface=CAUSES_REGRESSION,
+        data=functools.partial(cr_data, True),
+        fit=_seeded(_fit(ml.RandomSurvivalForest, n_trees=3)),
+        functions=("sf", "ff", "Hf", "hf", "df"),
+        event_functions=("cif",),
+        events=("a", "b"),
+        x=X_CR,
+        Z=Z_CR,
+        rows=("x", "Z", "e", "n"),
+        covariates="Z",
+        slow=REFIT_PROPERTIES,
+        exclude={
+            "row_order": forest.exclude["row_order"],
+            "counts": forest.exclude["counts"],
+            "df_hf_sf": forest.exclude["df_hf_sf"],
+            "Hf_sf": forest.exclude["Hf_sf"],
+            "aliasing": _NO_COEFFICIENTS,
+        },
+    )
+
     return [
         tree("weibull"),
         tree("exponential"),
         tree("non-parametric"),
+        tree_with_causes("non-parametric"),
+        tree_with_causes("weibull"),
         forest,
+        forest_with_causes,
     ]
 
 

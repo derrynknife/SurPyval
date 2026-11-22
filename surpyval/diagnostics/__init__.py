@@ -45,6 +45,12 @@ calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
 families. A model with none (Buckley-James, for one)
 refuses with ``NotImplementedError``, saying what to check it with
 meanwhile (:data:`.registry.PENDING`); so does a model with neither.
+Some models of a built family are refused for good, with the alternative
+named in the refusal: a discrete distribution, a distribution whose
+fitter lacks the shared optimiser, a parametric regression with a link
+other than ``exp(beta'Z)``, and a parametric proportional odds or
+additive hazards model fitted to left- or interval-censored or
+right-truncated data.
 
 Adding a family
 ---------------
@@ -93,9 +99,10 @@ to copy. The steps:
      model (the Cox family's clustered standard errors).
    - ``validate(model)``: raise, with a message that names the fix, for
      a model of the family the checks cannot handle (restored without
-     its data, no finite maximum, an option not supported yet --
-     ``NotImplementedError`` saying what to do instead for the last; a
-     message names no issue number).
+     its data, no finite maximum, an option not supported yet, a kind of
+     model the checks do not cover by design -- ``NotImplementedError``
+     saying what to do instead for the last two; a message names no issue
+     number, and a permanent refusal does not say "not yet").
    - ``notes(ctx)``: the notes every report of the family carries (what
      the tests are, what is not checked and why).
    - Register it at the bottom: ``register(Family(name=..., issue=...,

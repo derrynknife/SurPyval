@@ -5,6 +5,7 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -24,26 +25,46 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.readings_entry import markers_by_row, takes_joint_readings
 from surpyval.utils.surpyval_data import accepts_surpyval_data
-from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
+from surpyval.utils.units import normalise_unit, takes_unit
+from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import (
+    caller_stacklevel,
+    ignoring_warnings,
+    warn_no_covariance,
+)
 
 from ._likelihood import (
+    EFFECTS,
     LINKS,
     MAX_VARYING,
     JointArrays,
     Layout,
     Model,
     PathFunction,
+    block_labels,
+    check_integration,
+    check_lag,
+    check_random_effects,
+    check_weight,
     neg_ll,
     place,
 )
-from ._markers import marker_start, survival_start
+from ._markers import (
+    marker_start,
+    settled_marker_start,
+    survival_stage,
+    survival_start,
+)
+from .compare import LinkComparison, compare_links
 from .joint_model import (
+    HOWS,
     JointModel,
     covariate_parts,
     parameter_names,
     path_formula,
     reported_params,
+    shareable,
+    structure_words,
 )
 
 #: The most rounds of placing the nodes and searching from them.
@@ -53,6 +74,129 @@ _ROUNDS = 10
 _ROUND_TOL = 1e-10
 #: A verified maximum's gradient, in standard errors of each parameter.
 _GTOL = 1e-4
+
+#: What a built-in path cannot give the hazard to follow, and why: the
+#: Lloyd-Lipow path has no finite area from age 0, and its slope and the
+#: logarithmic path's are unbounded at age 0 (the power path's is too for
+#: a power below 1, which only the fit can tell: ``_check_power``).
+_CANNOT_FOLLOW = {
+    ("Lloyd-Lipow", "cumulative"): (
+        "The Lloyd-Lipow path a - b / t has no finite area from age 0, so "
+        "the hazard cannot follow its cumulative"
+    ),
+    ("Lloyd-Lipow", "slope"): (
+        "The Lloyd-Lipow path a - b / t has the slope b / t^2, unbounded at "
+        "age 0, so the hazard cannot follow its slope"
+    ),
+    ("Logarithmic", "slope"): (
+        "The Logarithmic path a + b ln(t) has the slope b / t, unbounded at "
+        "age 0, so the hazard cannot follow its slope"
+    ),
+}
+
+
+def cannot_follow(path_model: Any, links: Any) -> list[str]:
+    """Why the hazard cannot follow each of ``links`` of ``path_model``
+    (a built-in path, or one on links), one reason a link; empty where it
+    can follow them all."""
+    name = str(getattr(getattr(path_model, "base", path_model), "name", ""))
+    return [
+        _CANNOT_FOLLOW[(name, link)]
+        for link in links
+        if (name, link) in _CANNOT_FOLLOW
+    ]
+
+
+#: The built-in paths whose value at age 0 is infinite, so the hazard
+#: cannot follow their value with a lag (before the lag it follows the
+#: value at age 0).
+_INFINITE_AT_ZERO = {
+    "Lloyd-Lipow": "The Lloyd-Lipow path a - b / t",
+    "Logarithmic": "The Logarithmic path a + b ln(t)",
+}
+
+
+def _check_lag_at_zero(path_model: Any, links: Any, lag: float) -> None:
+    """Refuse a lag on the value of a path whose value at age 0 is
+    infinite: before the lag the hazard follows the value at age 0."""
+    name = str(getattr(getattr(path_model, "base", path_model), "name", ""))
+    if lag > 0 and "value" in links and name in _INFINITE_AT_ZERO:
+        raise ValueError(
+            f"{_INFINITE_AT_ZERO[name]} is infinite at age 0, and with a "
+            "lag the hazard follows the value at age 0 until the lag has "
+            "passed, so it cannot follow this path's value with a lag. "
+            "Use lag=0, or a path that is finite at age 0, such as "
+            "LinearPath, ExponentialPath or PowerPath."
+        )
+
+
+def _check_start_at_zero(fitter: Any, mu: npt.NDArray) -> None:
+    """Refuse a lag on the value of a path (of one's own) whose value at
+    age 0 is not finite at the average item's parameters ``mu``."""
+    if fitter.lag <= 0 or "value" not in fitter.link:
+        return
+    with np.errstate(all="ignore"):
+        at_zero = np.asarray(
+            fitter.path_model.path(0.0, *np.asarray(mu, dtype=float)),
+            dtype=float,
+        )
+    if not np.all(np.isfinite(at_zero)):
+        raise ValueError(
+            f"The {fitter.path_model.name} path is not finite at age 0 for "
+            "the average item (the readings put it there), and with a lag "
+            "the hazard follows the value at age 0 until the lag has "
+            "passed. Use lag=0, or a path that is finite at age 0."
+        )
+
+
+def _instead(path_model: Any, survival: str, refused: Any) -> str:
+    """What to use in place of the ``refused`` links of ``path_model``:
+    the links it can take, and for the slope a path whose slope is finite
+    at age 0."""
+    usable = [
+        link
+        for link in LINKS
+        if link not in refused
+        and not cannot_follow(path_model, (link,))
+        and not (survival == "AFT" and link == "cumulative")
+    ]
+    out = "Use link=" + " or ".join(repr(link) for link in usable)
+    if "slope" in refused:
+        return out + (
+            ", or for the slope link a path whose slope is finite at age 0, "
+            "such as LinearPath, QuadraticPath or ExponentialPath."
+        )
+    return out + ", or another path."
+
+
+def _infinite_near_zero(survival: str) -> str:
+    rate = "ageing rate" if survival == "AFT" else "failure rate"
+    return (
+        f"(near age 0 the {rate} would be infinite for every item whose "
+        "slope has the sign of its effect)"
+    )
+
+
+def _check_power(fitter: Any, mu: npt.NDArray, found_by: str) -> None:
+    """Refuse the slope link of a power path ``a t^b`` whose average
+    item's power (from ``mu``, the path parameters' means on the path
+    model's scale) is below 1: its slope ``a b t^(b - 1)`` is then
+    unbounded at age 0, where the cumulative hazard starts."""
+    path = fitter.path_model
+    base = getattr(path, "base", path)
+    if "slope" not in fitter.link or getattr(base, "name", None) != "Power":
+        return
+    mu = np.asarray(mu, dtype=float)
+    natural = path.to_natural(mu) if path is not base else mu
+    power = float(natural[list(base.parameter_names).index("b")])
+    if power < 1.0:
+        raise ValueError(
+            "The power path a t^b has the slope a b t^(b - 1), unbounded at "
+            f"age 0 for a power b below 1, and {found_by} the average "
+            f"item's power at b = {power:.3g}, so the hazard cannot follow "
+            f"its slope {_infinite_near_zero(fitter.survival)}. "
+            + _instead(path, fitter.survival, ("slope",))
+        )
 
 
 class JointPHFitter(FitterRepr):
@@ -68,6 +212,13 @@ class JointPHFitter(FitterRepr):
 
     #: The ``repr`` (#614)
     fitter_kind = "joint model fitter"
+    #: The survival part: the marker multiplies the hazard (``"PH"``), or
+    #: speeds up the item's ageing (``"AFT"``, :class:`JointAFTFitter
+    #: <surpyval.univariate.joint.joint_aft.JointAFTFitter>`).
+    survival = "PH"
+    #: A start for the path part (``mu``, ``Delta``, ``L``, ``sigma``)
+    #: from another link's fit of the same data (``compare_links``).
+    _path_start: dict | None = None
 
     def __init__(
         self,
@@ -75,6 +226,9 @@ class JointPHFitter(FitterRepr):
         path_model: Any,
         varying: Any = None,
         link: Any = "value",
+        lag: float = 0.0,
+        weight: Any = None,
+        random_effects: Any = "full",
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -83,7 +237,8 @@ class JointPHFitter(FitterRepr):
             name = getattr(distribution, "name", type(distribution).__name__)
             raise ValueError(
                 "The joint models have a Weibull baseline for now: "
-                f"JointPH(Weibull, path_model), or WeibullJointPH; got {name}."
+                f"Joint{self.survival}(Weibull, path_model), or "
+                f"WeibullJoint{self.survival}; got {name}."
             )
         if not isinstance(path_model, PathModel):
             raise ValueError(
@@ -93,13 +248,6 @@ class JointPHFitter(FitterRepr):
             )
         names = list(path_model.parameter_names)
         if varying is None:
-            if len(names) > MAX_VARYING:
-                raise ValueError(
-                    f"The {path_model.name} path has {len(names)} "
-                    f"parameters; at most {MAX_VARYING} can vary between "
-                    "items (the quadrature is a grid of 7 points in each): "
-                    "choose them with varying=(...)."
-                )
             varying = tuple(names)
         if isinstance(varying, str):
             varying = (varying,)
@@ -110,12 +258,6 @@ class JointPHFitter(FitterRepr):
                 "varying names the path parameters that vary between "
                 f"items, at least one, each once, of {names}; got "
                 f"{list(varying)}."
-            )
-        if len(varying) > MAX_VARYING:
-            raise ValueError(
-                f"At most {MAX_VARYING} path parameters can vary between "
-                "items (the quadrature is a grid of 7 points in each); "
-                f"got {len(varying)}."
             )
         try:
             links = [link] if isinstance(link, str) else list(link)
@@ -133,12 +275,18 @@ class JointPHFitter(FitterRepr):
                 f"list of them, each once; got {link!r}."
             )
         self.link = tuple(name for name in LINKS if name in links)
-        base = getattr(path_model, "base", path_model)
-        if "cumulative" in self.link and base.name == "Lloyd-Lipow":
+        reasons = cannot_follow(path_model, self.link)
+        if reasons:
+            refused = [
+                link
+                for link in self.link
+                if cannot_follow(path_model, (link,))
+            ]
+            said = "; ".join(reasons)
+            if "slope" in refused:
+                said += " " + _infinite_near_zero(self.survival)
             raise ValueError(
-                "The Lloyd-Lipow path a - b / t has no finite area from age "
-                "0, so the hazard cannot follow its cumulative: use "
-                "link='value' or 'slope', or another path."
+                said + ". " + _instead(path_model, self.survival, refused)
             )
         every = parameter_names(
             names, [n for n in names if n in varying], [], links=self.link
@@ -150,15 +298,30 @@ class JointPHFitter(FitterRepr):
                 "also names of the joint model's other parameters; rename "
                 "them in the path model."
             )
+        self.lag = check_lag(lag)
+        _check_lag_at_zero(path_model, self.link, self.lag)
+        self.weight = check_weight(weight)
+        if self.weight is not None and "cumulative" not in self.link:
+            raise ValueError(
+                "'weight' weights the accumulated exposure, the area "
+                "under the marker's path that the 'cumulative' link "
+                f"follows, and the link here is {list(self.link)!r}, "
+                "which has no area to weight. Add the link "
+                "(link='cumulative', or link=['value', 'cumulative']), or "
+                "leave weight out."
+            )
         self.dist = distribution
         self.path_model = path_model
         # in the path's order
         self.varying = tuple(n for n in names if n in varying)
+        self.random_effects = check_random_effects(
+            random_effects, self.varying
+        )
         plain = "".join(ch for ch in path_model.name if ch.isalnum())
         self.name = (
-            f"{distribution.name}JointPH"
+            f"{distribution.name}Joint{self.survival}"
             if path_model is LinearPath
-            else f"{distribution.name}{plain}JointPH"
+            else f"{distribution.name}{plain}Joint{self.survival}"
         )
 
     def _repr_details(self) -> list[str]:
@@ -171,8 +334,16 @@ class JointPHFitter(FitterRepr):
         ]
         if len(self.varying) < len(names):
             out.append("varying: " + ", ".join(self.varying))
+        if self.random_effects != "full":
+            out.append(
+                "random effects: " + structure_words(self.random_effects)
+            )
         if self.link != ("value",):
             out.append("link: " + ", ".join(self.link))
+        if self.lag > 0:
+            out.append(f"lag: {self.lag:g}")
+        if self.weight is not None:
+            out.append("weight: {} {:g}".format(*self.weight))
         return out
 
     @dataframe_covariates
@@ -194,10 +365,16 @@ class JointPHFitter(FitterRepr):
         hazard_covariates: Any = None,
         i: npt.ArrayLike | None = None,
         m: Any = None,
+        marker_unit: str | None = None,
+        how: str = "MLE",
+        integration: str | None = None,
+        e: npt.ArrayLike | None = None,
+        shared: Any = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
-        likelihood.
+        likelihood (or, with ``how="two-stage"``, by the quick and
+        approximate two-stage estimate).
 
         Each item's marker follows the fitter's path model with
         parameters of its own -- those that vary between items
@@ -205,14 +382,33 @@ class JointPHFitter(FitterRepr):
         rest common -- read with normal noise; its hazard is Weibull
         proportional hazards in the path's current, noise-free value (or
         its slope or the area under it: the fitter's ``link``) and its
-        covariates. The varying parameters are integrated out of each
+        covariates. A :func:`~surpyval.univariate.joint.joint_aft.JointAFT`
+        fitter's (``WeibullJointAFT``) has the accelerated survival part
+        in their place: the path and the covariates speed up the item's
+        ageing, and its survival is the Weibull's at the age it has used
+        up. The varying parameters are integrated out of each
         item's likelihood by adaptive Gauss-Hermite quadrature (7 points
         a dimension, the nodes placed again at the new parameters until
-        the log-likelihood stops moving), and the likelihood is maximised
+        the log-likelihood stops moving; ``integration`` says on which
+        nodes), and the likelihood is maximised
         with autograd's gradient; the covariance is the inverse of its
         Hessian. The fit starts from the path fitted to each item alone,
         the spread of those fits, and a survival fit with each item's
         predicted path.
+
+        That start is also a fit of its own, ``how="two-stage"``: first
+        each item's path from its readings alone, pulled towards the
+        fleet's average where it has few readings, then a Weibull
+        proportional hazards (or accelerated) fit of the lifetimes with
+        each item's predicted path taken as a known covariate. It takes a
+        fraction of a second, and it is biased: it forgets that each path
+        is an estimate and that the readings stop when an item fails (in
+        a simulation study, the marker's effect was 8% low with readings
+        every six months, where the joint fit's was within 2.4%), and its
+        standard errors (of the survival part only) are too small. It is
+        for a first look and for comparison with the joint fit; the model
+        says it is approximate (``how``), and has no likelihood to
+        compare (``aic()``, ``bic()`` and ``neg_ll()`` are refused).
 
         The data are usually a :class:`~surpyval.SurpyvalData` of
         :class:`~surpyval.ItemLifetime` records with ``markers``:
@@ -277,6 +473,71 @@ class JointPHFitter(FitterRepr):
             The other name of ``markers``, as ``SurpyvalData(..., m=...)``
             calls the readings; the same in every way. Giving both is a
             TypeError.
+        marker_unit : str, optional
+            The unit the marker is read in (``"mm/s"``, ``"ppm"``), a
+            label kept as typed, as ``unit=`` is for the ages. Readings
+            given as a ``Measurements`` with a unit (``units=``) give it
+            themselves; a different one here is refused. The model keeps
+            it as ``marker_unit`` and, with ``unit``, names what each
+            link's effect is per (``effect_units``: a
+            ``cumulative_effect`` is per ``(mm/s)·years``, say). A label
+            only: nothing is converted.
+        how : str, optional
+            ``"MLE"`` (the default), the joint likelihood's maximum; or
+            ``"two-stage"``, the approximate two-stage estimate (the
+            paths from the readings alone, then the survival part with
+            each item's predicted path as a known covariate): fast, but
+            its estimates are biased, its survival part's standard errors
+            are understated and its marker part has none.
+        integration : {"grid", "pruned", "laplace"}, optional
+            How each item's likelihood is integrated over its varying
+            path parameters: ``"grid"``, on the full grid of 7 points in
+            each (49 nodes for two, 343 for three, 2,401 for four,
+            16,807 for five); ``"pruned"``, on that grid without its
+            lowest-weight nodes, those that hold less than 1e-9 of its
+            weight between them (2,321 nodes for four, 15,415 for five;
+            none are left out for up to three); or ``"laplace"``, by
+            Laplace's approximation, which has no grid: the integrand's
+            height at each item's most likely parameters and its
+            curvature there (``q^2 + q + 1`` evaluations for ``q``
+            varying parameters: 21 for four, 43 for six). Default the
+            full grid, the more accurate, up to five varying parameters,
+            and Laplace's approximation beyond, where a grid is too
+            large (it is refused there). Laplace's approximation is
+            exact where the integrand is normal and close where each
+            item has many readings; the fit warns where many items have
+            few, and it does not take truncated items. The model keeps
+            the choice as ``integration``; its predictions are on the
+            same kind of grid, a Laplace fit's on the full grid up to
+            five varying parameters and by Laplace's approximation
+            beyond.
+        e : array_like, optional
+            The failure mode (event type, or cause) of each failure, any
+            labels; ``None`` for an item still running. A SurpyvalData's
+            event types (``ItemLifetime(..., event_type=...)``) are
+            these. With two or more modes the model is of competing
+            failure modes: each has a Weibull baseline, hazard
+            coefficients and marker effects of its own
+            (``"<mode>: alpha"``, ``"<mode>: beta"``, ``"<mode>:
+            marker_effect"``, ...), so a reading may predict one way of
+            failing and not another, and an item that fails by one mode
+            is no longer at risk of the others; the marker part is one
+            for all. The model's ``sf`` is the survival of every mode
+            together. An item found failed (left or interval censored)
+            needs its mode too. With one mode, or none given, the model
+            is that of one kind of failure. Proportional hazards and
+            ``how="MLE"`` only: a ``JointAFT`` fitter and the two-stage
+            estimate refuse event types.
+        shared : list of str, optional
+            With failure modes: the survival parameters the modes have
+            in common, one parameter each under its plain name:
+            ``"beta"`` (the baselines' shape), a hazard covariate, or a
+            link's effect (``"marker_effect"``, ``"slope_effect"``,
+            ``"cumulative_effect"``). Default none: every mode has its
+            own. The fit with an effect shared is nested in the fit
+            without, so the likelihood-ratio test of the two
+            (``model.likelihood_ratio_test(shared_model)``) asks whether
+            the reading speaks to the modes differently.
 
         Returns
         -------
@@ -303,7 +564,50 @@ class JointPHFitter(FitterRepr):
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
         >>> model.maximum
         'verified'
+        >>> model.integration
+        'grid'
+        >>> quick = WeibullJointPH.fit(
+        ...     SurpyvalData.from_items(items), how="two-stage"
+        ... )
+        >>> quick.how, quick.maximum
+        ('two-stage', 'not applicable')
+
+        Two failure modes, the marker a warning of the first only (a
+        wear-out mode the reading follows, and a random one it does
+        not):
+
+        >>> rng = np.random.default_rng(11)
+        >>> items = []
+        >>> for k in range(120):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     worn = 110 * rng.weibull(2.5) * np.exp(-0.4 * (start - 2))
+        ...     other = 250 * rng.weibull(1.0)
+        ...     end = min(worn, other, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     if end < 120:
+        ...         outcome = {"observed": end}
+        ...         mode = "bearing" if worn < other else "seal"
+        ...     else:
+        ...         outcome, mode = {"right_censored": end}, None
+        ...     items.append(
+        ...         ItemLifetime(k, **outcome, event_type=mode,
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> modes = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> modes.causes
+        ['bearing', 'seal']
+        >>> modes.parameter_names[-3:]
+        ['seal: alpha', 'seal: beta', 'seal: marker_effect']
         """
+        check_option(
+            "how",
+            how,
+            HOWS,
+            "'MLE' fits the joint likelihood; 'two-stage' is the quick, "
+            "approximate estimate.",
+        )
+        integration = check_integration(integration, len(self.varying))
         reference = None
         if marker_reference is not None:
             try:
@@ -323,6 +627,7 @@ class JointPHFitter(FitterRepr):
                 f"this one follows its {' and '.join(self.link)} (alpha "
                 "is at a slope and an area of 0): leave it out."
             )
+        marker_unit = normalise_unit(marker_unit)
         markers = markers_by_row(markers, i, x)
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
         parts = covariate_parts(
@@ -331,7 +636,141 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
-        return _fit(self, records, counts, names, reference, parts)
+        causes = _causes(self, e, records, counts, how)
+        model = _fit(
+            self,
+            records,
+            counts,
+            names,
+            reference,
+            parts,
+            integration,
+            how,
+            causes,
+            _check_shared(shared, causes, parts[1], self.link),
+        )
+        model.marker_unit = marker_unit
+        return model
+
+    def compare_links(
+        self,
+        *args: Any,
+        links: Any = None,
+        metric: str = "aic",
+        **kwargs: Any,
+    ) -> LinkComparison:
+        """
+        Fit the joint model with each of several links to the same data
+        and compare them: does the risk follow the marker's level, how
+        fast it is changing, the exposure accumulated so far, or more
+        than one?
+
+        Each candidate has this fitter's baseline, path model and varying
+        path parameters (its own ``link`` is not used) and is fitted as
+        :meth:`fit` fits, to the data given here, so the log-likelihoods
+        and criteria compare directly. The result ranks the links by
+        ``metric`` (lower is better), with each one's difference from the
+        best and its weight (``table``), and tests each nested pair, such
+        as ``"value"`` against ``"value + slope"``, by the likelihood
+        ratio (``likelihood_ratio_tests()``): see
+        :class:`~surpyval.univariate.joint.compare.LinkComparison`. Links
+        less than 2 apart are no real preference, and the simpler of them
+        is the best (fewer parameters, then the level before the slope
+        before the area). The table says each row in words
+        (``reads_as``) and ``verdict`` the whole comparison, such as
+        "Risk follows how fast the marker is changing. Adding the level
+        does not improve the fit. ..."; ``to_dict()`` gives both as
+        strict JSON. Which link a marker's risk follows is a question for
+        each dataset, and this is the way to ask it.
+
+        The value link is fitted first and the others start from its
+        estimates of the path, which saves about a third of the time; a
+        fit from that start that does not reach a verified maximum is made
+        again from its own start, so each candidate is the maximum its
+        own :meth:`fit` finds.
+
+        A fit that is not a verified maximum is shown but neither ranked
+        nor tested, with one warning naming it; a link that cannot be
+        fitted is listed in ``failed`` with the reason, with one warning.
+        A warning about the data that every fit gives is given once.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            The data and the options, as :meth:`fit` takes them: a
+            ``SurpyvalData`` of items with markers, or arrays with
+            ``markers=``; ``Z``, ``path_covariates``,
+            ``hazard_covariates``, ``unit``, ... A ``marker_reference`` is
+            given to the links that follow the value only (it moves their
+            ``alpha`` and nothing else).
+        links : list, optional
+            The links to compare, two or more, each a link (``"value"``,
+            ``"slope"`` or ``"cumulative"``) or a list of them, each set
+            once. Default the five: ``"value"``, ``"slope"``,
+            ``"cumulative"``, ``["value", "slope"]`` and ``["value",
+            "cumulative"]``, less those the path cannot take, with a
+            warning: a logarithmic path, whose slope is unbounded at age 0,
+            leaves out the two with the slope. A Lloyd-Lipow path, which
+            also has no finite area from age 0, can take only the value,
+            and is refused.
+        metric : str, optional
+            The criterion the links are ranked by: ``"aic"`` (default),
+            ``"aic_c"`` or ``"bic"``.
+
+        Returns
+        -------
+        LinkComparison
+            The fitted candidates (``models``, by the link's name, such as
+            ``"value + slope"``), the ranking (``table``), the best fit
+            (``best``, ``best_link``), ``likelihood_ratio_tests()``, the
+            ``verdict`` in words and ``to_dict()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> data = SurpyvalData.from_items(items)
+        >>> comparison = WeibullJointPH.compare_links(
+        ...     data, links=["value", "slope", ["value", "slope"]]
+        ... )
+        >>> sorted(comparison.models)
+        ['slope', 'value', 'value + slope']
+        >>> list(comparison.table.columns[:4])
+        ['k', 'log_likelihood', 'aic', 'aic_c']
+        >>> comparison.best_label
+        'value'
+        >>> comparison.table.loc["slope", "reads_as"]
+        'clearly worse'
+        >>> comparison.verdict.split(". ")[1]
+        'Adding the rate of change does not clearly improve the fit'
+        >>> comparison.likelihood_ratio_tests()[["simpler", "richer", "df"]]
+          simpler         richer  df
+        0   value  value + slope   1
+        1   slope  value + slope   1
+        """
+        if kwargs.get("how", "MLE") != "MLE":
+            raise ValueError(
+                "compare_links ranks the links by an information criterion "
+                "and tests them by the likelihood ratio, which a two-stage "
+                "fit has not (its two stages have no likelihood of the "
+                "whole model): leave out how=, or compare two-stage fits "
+                "by the accuracy of their predictions "
+                "(surpyval.metrics.score_predictions)."
+            )
+        return compare_links(self, args, kwargs, links=links, metric=metric)
 
     @takes_unit
     def fit_from_df(
@@ -351,6 +790,11 @@ class JointPHFitter(FitterRepr):
         hazard_covariates: Any = None,
         i_col: str | None = None,
         m: Any = None,
+        marker_unit: str | None = None,
+        how: str = "MLE",
+        integration: str | None = None,
+        e_col: str | None = None,
+        shared: Any = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -370,7 +814,16 @@ class JointPHFitter(FitterRepr):
         m_col=...)``) and give it as ``m``, with ``i_col`` naming the
         column of each item's unit in ``df``; the readings are matched to
         the items by unit. ``m`` and ``markers_col`` are two ways of
-        giving the readings: give one.
+        giving the readings: give one. ``marker_unit`` is the unit the
+        readings are in, as for :meth:`fit` (from ``m``'s own unit where
+        it has one), and ``how`` the way to fit, as for :meth:`fit`
+        (``"two-stage"`` for the quick, approximate estimate).
+        ``integration`` is how each item's integral is done, ``"grid"``,
+        ``"pruned"`` or ``"laplace"``, as for :meth:`fit`. ``e_col`` names
+        the column of each failure's mode (missing for an item still
+        running), for a model of competing failure modes, and ``shared``
+        the survival parameters the modes have in common, as for
+        :meth:`fit`.
 
         Examples
         --------
@@ -412,6 +865,7 @@ class JointPHFitter(FitterRepr):
             xl_col=xl_col,
             xr_col=xr_col,
             Z_cols=Z_cols,
+            e_col=e_col,
         )
         if m is not None and markers_col is not None:
             raise TypeError(
@@ -457,6 +911,11 @@ class JointPHFitter(FitterRepr):
                 hazard_covariates=hazard_covariates,
                 i=None if i_col is None else list(df[i_col]),
                 m=m,
+                marker_unit=marker_unit,
+                how=how,
+                integration=integration,
+                e=None if e_col is None else _labels(df[e_col]),
+                shared=shared,
             )
 
 
@@ -465,6 +924,9 @@ def JointPH(
     path_model: Any = None,
     varying: Any = None,
     link: Any = "value",
+    lag: float = 0.0,
+    weight: Any = None,
+    random_effects: Any = "full",
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -484,7 +946,9 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them (at most three).
+        items. Default all of them. Up to five, each item's integral
+        is on a grid by default; beyond five it is Laplace's
+        approximation (``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -493,6 +957,48 @@ def JointPH(
         risk follows the accumulated exposure), or a list of them, each
         with an effect of its own (``marker_effect``, ``slope_effect``,
         ``cumulative_effect``).
+    lag : float, optional
+        How long after the marker the hazard follows it, in the
+        lifetimes' unit of time (default 0: at once). With ``lag=200``
+        the hazard at age ``t`` follows the path at ``t - 200``, so a
+        reading today says what the risk will be 200 hours on. Before
+        the lag has passed the hazard follows the path held at its age-0
+        value: the value at age 0, a slope of 0 and an area of 0 (every
+        link at ``max(t - lag, 0)``, the slope 0 before the lag). The lag
+        is fixed, not estimated: the likelihood is not smooth in it. To
+        choose one, fit each lag you have in mind and compare them by
+        ``aic()`` (the same data, the same number of parameters).
+    weight : tuple, optional
+        How much of the accumulated exposure (the ``"cumulative"`` link,
+        which it needs) still counts, by how long ago it was. The
+        default, ``None``, counts all of it equally: an hour of exposure
+        ten years ago like one last week. ``("exponential", scale)``
+        makes exposure fade: what was accumulated ``u`` ago counts
+        ``exp(-u / scale)`` of what is accumulated now (damage that
+        heals or is repaired), so the hazard follows
+        :math:`\\int_0^t e^{-(t - s)/\\mathrm{scale}} m(s) ds`.
+        ``("window", width)`` counts only the last ``width`` of it, the
+        area under the path over ``(max(t - width, 0), t)``. The scale
+        or width is in the lifetimes' unit of time and, like the lag, is
+        fixed, not estimated: fit each one you have in mind and compare
+        them by ``aic()``. With a ``lag`` the weighted exposure acts
+        ``lag`` later (the weighted area at ``max(t - lag, 0)``).
+        ``cumulative_effect`` is still per unit of the marker times a
+        unit of age.
+    random_effects : str or sequence, optional
+        Which of the varying path parameters are correlated between
+        items. ``"full"`` (the default): every pair, a correlation each
+        (``corr_a_b``, ...; three for three varying parameters, ten for
+        five); ``"diagonal"``: none, each varying independently of the
+        others; or blocks of names, such as ``[("a", "b"), ("c",)]``:
+        those in a block are correlated with each other and with none
+        outside it, every varying parameter in exactly one block. A
+        correlation left out is 0, not estimated, and has no entry in
+        ``params``, ``summary()`` or the saved model, so ``aic()`` counts
+        the parameters estimated. With many varying parameters and a
+        fleet too small to tell their correlations apart, fewer can be
+        what makes the fit identifiable; nested structures compare by
+        ``aic()`` or the likelihood ratio of the same data.
 
     Returns
     -------
@@ -512,12 +1018,29 @@ def JointPH(
     >>> JointPH(Weibull, link=["value", "slope"])
     ... # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., link: value, slope)
+    >>> JointPH(Weibull, lag=200.0)  # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., lag: 200)
+    >>> JointPH(Weibull, QuadraticPath, random_effects=[("a", "b"), "c"])
+    ... # doctest: +ELLIPSIS, +NORMALIZE_WHITESPACE
+    WeibullQuadraticJointPH: joint model fitter (..., random effects:
+    correlated in blocks {a, b}, {c})
+    >>> JointPH(Weibull, link="cumulative", weight=("exponential", 0.5))
+    ... # doctest: +ELLIPSIS
+    WeibullJointPH: joint model fitter (..., weight: exponential 0.5)
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
 
         path_model = LinearPath
-    return JointPHFitter(distribution, path_model, varying, link)
+    return JointPHFitter(
+        distribution,
+        path_model,
+        varying,
+        link,
+        lag,
+        weight,
+        random_effects=random_effects,
+    )
 
 
 # -- the data ----------------------------------------------------------------
@@ -653,6 +1176,153 @@ def _records(
     return records, np.array(counts, dtype=float), names
 
 
+def _labels(e: Any) -> npt.NDArray:
+    """``e`` as an object array of labels, a missing one (``None``,
+    ``nan``, pandas' ``NA``) as ``None``; a tuple label kept whole."""
+    values = list(e)
+    out = np.empty(len(values), dtype=object)
+    for k, value in enumerate(values):
+        missing = value is None
+        if not missing and not isinstance(value, (str, tuple)):
+            try:
+                missing = bool(value != value)
+            except (TypeError, ValueError):
+                missing = True
+        out[k] = None if missing else value
+    return out
+
+
+def _causes(
+    fitter: Any, e: Any, records: list, counts: npt.NDArray, how: str
+) -> tuple | None:
+    """``(causes, index)``: the failure modes of ``e``, in order, and
+    each record's (its index among them, -1 for an item still running);
+    ``None`` where no event types are given, or one mode only (the model
+    of one kind of failure). What the fit of several modes cannot take
+    is refused: a failure with no mode, a mode on an item still running,
+    the accelerated survival part and the two-stage estimate."""
+    from surpyval.univariate.competing_risks.labels import ordered_labels
+
+    if e is None:
+        return None
+    if np.ndim(e) != 1:
+        raise ValueError(
+            "'e' is the failure mode (event type) of each item's failure, "
+            "one label per item (None for an item still running); got "
+            f"{np.ndim(e)} dimension(s)."
+        )
+    labels = _labels(e)
+    rows = max(int(r.id) for r in records) + 1
+    if len(labels) < rows:
+        raise ValueError(
+            f"'e' must hold one failure mode per item; got {len(labels)}."
+        )
+    mine = [labels[int(r.id)] for r in records]
+    causes = ordered_labels(mine)
+    if len(causes) < 2:
+        return None
+    running = [r.outcome == "right_censored" for r in records]
+    labelled = sum(
+        w
+        for w, label, r in zip(counts, mine, running)
+        if r and label is not None
+    )
+    if labelled:
+        raise ValueError(
+            f"{labelled:g} item(s) still running (right censored) have a "
+            "failure mode in 'e'. An item that has not failed has none: "
+            "set their 'e' to None."
+        )
+    unknown = sum(
+        w
+        for w, label, r in zip(counts, mine, running)
+        if not r and label is None
+    )
+    if unknown:
+        raise ValueError(
+            f"{unknown:g} failure(s) have no failure mode in 'e' "
+            f"(the others are {causes!r}). A failure of unknown mode is "
+            "not fitted yet: give each failure's mode, or leave 'e' out "
+            "to fit every failure as one kind."
+        )
+    if fitter.survival == "AFT":
+        raise ValueError(
+            "An accelerated joint model (JointAFT) takes no failure modes "
+            f"('e' has {causes!r}) for now: fit them with the proportional "
+            "hazards one, JointPH (WeibullJointPH), or leave 'e' out to "
+            "fit every failure as one kind."
+        )
+    if how == "two-stage":
+        raise ValueError(
+            "The two-stage estimate takes no failure modes ('e' has "
+            f"{causes!r}) for now: fit them with how='MLE', or leave 'e' "
+            "out to fit every failure as one kind."
+        )
+    index = np.array(
+        [-1 if label is None else causes.index(label) for label in mine],
+        dtype=int,
+    )
+    return causes, index
+
+
+def _check_shared(
+    shared: Any, causes: tuple | None, hazard: list, links: tuple
+) -> tuple:
+    """``shared`` as a tuple of names, refused unless each is a survival
+    parameter the failure modes can have in common."""
+    if shared is None:
+        return ()
+    names = [shared] if isinstance(shared, str) else list(shared)
+    if not names:
+        return ()
+    if causes is None:
+        raise ValueError(
+            "'shared' names the survival parameters that failure modes "
+            "have in common, and this fit has fewer than two modes (no "
+            "'e', or one mode in it): leave 'shared' out."
+        )
+    allowed = shareable(list(hazard), links)
+    if "alpha" in names:
+        raise ValueError(
+            "'shared' cannot hold 'alpha': each failure mode has its own "
+            "scale (two modes with one alpha and one beta would be "
+            f"equally likely at every age). It can hold {allowed!r}."
+        )
+    wrong = [name for name in names if name not in allowed]
+    twice = sorted({name for name in names if names.count(name) > 1})
+    if wrong or twice:
+        raise ValueError(
+            "'shared' names the survival parameters the failure modes "
+            f"have in common, each once, from {allowed!r}; got "
+            f"{wrong + twice!r}."
+        )
+    return tuple(name for name in allowed if name in names)
+
+
+def _check_cause_counts(
+    causes: list, index: npt.NDArray, counts: npt.NDArray, own: list
+) -> dict:
+    """The failures of each mode, ``{mode: count}``; refused where a
+    mode has fewer failures than parameters of its own (``own``)."""
+    found = {
+        cause: float(np.sum(counts[index == k]))
+        for k, cause in enumerate(causes)
+    }
+    short = {cause: n for cause, n in found.items() if n < len(own)}
+    if short:
+        listed = ", ".join(f"{c!r}: {n:g}" for c, n in short.items())
+        raise ValueError(
+            "Each failure mode needs at least as many failures as it has "
+            f"parameters of its own ({len(own)}: {', '.join(own)}); the "
+            f"data have {listed} (every mode: "
+            + ", ".join(f"{c!r}: {n:g}" for c, n in found.items())
+            + "). Merge a rare mode into another in 'e', share parameters "
+            "between the modes (shared=), or leave 'e' out to fit every "
+            "failure as one kind."
+        )
+    return found
+
+
 def _lifetimes(records: list) -> tuple:
     """``(T, d, U, L, Rt)`` of the records: the age each left observation
     (the lower end of an interval: a left censored item's entry age, else
@@ -750,16 +1420,32 @@ def _fit(
     names: list,
     reference: float | None,
     parts: tuple,
+    integration: str = "grid",
+    how: str = "MLE",
+    causes: tuple | None = None,
+    shared: tuple = (),
 ) -> JointModel:
-    """The joint fit of ``records`` (``counts`` of each); ``parts`` is
-    ``(shifts, hazard)``, which covariates enter which part
-    (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`)."""
+    """The joint fit of ``records`` (``counts`` of each), by ``how``
+    (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
+    enter which part
+    (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
+    ``causes`` is :func:`_causes`' (the failure modes and each record's)
+    and ``shared`` the survival parameters they have in common."""
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts
     p_all = len(names)
+    cause_names = None if causes is None else list(causes[0])
     every = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
+        path_names,
+        list(fitter.varying),
+        names,
+        shifts,
+        hazard,
+        fitter.link,
+        fitter.random_effects,
+        cause_names,
+        shared,
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -792,9 +1478,36 @@ def _fit(
     reference = centre if reference is None else reference
     refs = (centre, zbar, reference)
     arrays = JointArrays.build(
-        counts, T, d, L, Z - zbar, ages, values, U=U, Rt=Rt
+        counts,
+        T,
+        d,
+        L,
+        Z - zbar,
+        ages,
+        values,
+        U=U,
+        Rt=Rt,
+        e=None if causes is None else causes[1],
     )
+    if integration == "laplace" and how == "MLE":
+        _check_laplace(arrays, len(fitter.varying))
     kept_names = [names[j] for j in kept]
+    by_cause = None
+    cause_layout: dict = {}
+    if causes is not None and cause_names is not None:
+        kept_hazard = [cov for cov in kept_names if cov in hazard]
+        own = [
+            name
+            for name in ["alpha", *shareable(kept_hazard, fitter.link)]
+            if name not in shared
+        ]
+        by_cause = _check_cause_counts(cause_names, causes[1], counts, own)
+        cause_layout = {
+            "n_causes": len(cause_names),
+            "shared_beta": "beta" in shared,
+            "shared_hazard": [cov in shared for cov in kept_names],
+            "shared_links": [EFFECTS[k] in shared for k in fitter.link],
+        }
     layout = Layout(
         len(path_names),
         p,
@@ -805,14 +1518,200 @@ def _fit(
         ).reshape(len(path_names), p),
         np.array([cov in hazard for cov in kept_names], dtype=bool),
         fitter.link,
+        fitter.survival,
+        block_labels(fitter.random_effects, fitter.varying),
+        **cause_layout,
     )
-    model = Model(layout, PathFunction(path_model, fitter.link), centre)
-    # Starting values: each item's path alone, their spread, then the
-    # survival part on each item's predicted path
-    theta = marker_start(model, ages, values, Z - zbar, counts)
-    theta = survival_start(model, arrays, theta)
-    u = layout.pack(theta)
+    model = Model(
+        layout,
+        PathFunction(path_model, fitter.link, fitter.lag, fitter.weight),
+        centre,
+        integration,
+    )
+    # Starting values: each item's path alone, their spread (or, where
+    # given, another link's fit of the same data: compare_links), then
+    # the survival part on each item's predicted path
+    theta = _given_path_start(fitter._path_start, layout)
+    given_start = theta is not None
+    if theta is None and layout.q > MAX_VARYING:
+        # many parameters an item: the items' own fits are too wild for
+        # their mean and covariance to start from
+        theta = settled_marker_start(model, arrays, ages, values)
+        given_start = True
+    if theta is None:
+        theta = marker_start(model, ages, values, Z - zbar, counts)
+    _check_power(fitter, theta["mu"], "the readings put")
+    _check_start_at_zero(fitter, theta["mu"])
     total = float(np.sum(counts))
+    if how == "two-stage":
+        u, value, cov_u, maximum = _two_stage(model, arrays, theta)
+    else:
+        try:
+            u, value, cov_u, maximum = _maximise(
+                model, arrays, survival_start(model, arrays, theta)
+            )
+        except _NoStart:
+            if given_start:
+                raise
+            # the likelihood is not finite at the start from the items'
+            # own fits: one more, from the settled start
+            theta = settled_marker_start(model, arrays, ages, values)
+            u, value, cov_u, maximum = _maximise(
+                model, arrays, survival_start(model, arrays, theta)
+            )
+        _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
+    estimated = np.asarray(
+        reported_params(layout.unpack(u), layout, refs), dtype=float
+    )
+    covariance = None
+    if cov_u is not None:
+        J = jacobian(
+            lambda v: reported_params(layout.unpack(v), layout, refs)
+        )(u)
+        covariance = J @ cov_u @ J.T
+        covariance = 0.5 * (covariance + covariance.T)
+        if how == "two-stage":
+            # stage one's moment estimates have no standard errors
+            n_marker = len(estimated) - (2 + layout.n_hazard + layout.n_links)
+            covariance[:n_marker, :] = np.nan
+            covariance[:, :n_marker] = np.nan
+    else:
+        warn_no_covariance()
+    # every parameter, nan for an aliased covariate's
+    full_names = parameter_names(
+        path_names,
+        list(fitter.varying),
+        names,
+        shifts,
+        hazard,
+        fitter.link,
+        fitter.random_effects,
+        cause_names,
+        shared,
+    )
+    kept_names = parameter_names(
+        path_names,
+        list(fitter.varying),
+        kept_names,
+        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
+        [c for c in hazard if c in kept_names],
+        fitter.link,
+        fitter.random_effects,
+        cause_names,
+        shared,
+    )
+    where = [full_names.index(name) for name in kept_names]
+    params = np.full(len(full_names), np.nan)
+    params[where] = estimated
+    out = JointModel()
+    out.dist = fitter.dist
+    out.path_model = path_model
+    out.varying = list(fitter.varying)
+    out.random_effects_structure = fitter.random_effects
+    out.params = params
+    out.feature_names = list(names)
+    out.aliased = aliased
+    every_one = all(shifts[n] == list(names) for n in path_names) and list(
+        hazard
+    ) == list(names)
+    # saved as None where every covariate is in both parts (as before)
+    out.path_covariates = (
+        None if every_one else {n: list(shifts[n]) for n in path_names}
+    )
+    out.hazard_covariates = None if every_one else list(hazard)
+    out.parameter_names = full_names
+    out.link = tuple(fitter.link)
+    out.lag = fitter.lag
+    out.weight = fitter.weight
+    out.survival = fitter.survival
+    out.causes = cause_names
+    out.shared = tuple(shared)
+    out.n_events_by_cause = by_cause
+    out.marker_reference = float(reference) if "value" in fitter.link else None
+    out._centre = centre
+    out._zbar = zbar
+    if covariance is not None:
+        full_cov = np.full((len(full_names),) * 2, np.nan)
+        full_cov[np.ix_(where, where)] = covariance
+        out._covariance = full_cov
+    out._neg_ll = float(value)
+    # the path part where it was found, a start for another link's fit
+    found = layout.unpack(u)
+    out._path_start = {
+        key: np.array(found[key], dtype=float)
+        for key in ("mu", "Delta", "L", "sigma")
+    }
+    out.k = len(estimated)
+    out.maximum = maximum
+    out.how = how
+    out.integration = integration
+    out.n_items = total
+    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
+    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
+    return out
+
+
+#: An item with at most this many readings has few for Laplace's
+#: approximation, and a fit warns where more than this share of the
+#: items have. From ``scripts/studies/joint_recovery/
+#: laplace_few_readings.py``'s confirming run, its design and rule fixed
+#: before it ran: of 20 fleets of pumps with noisy readings, 9% to 36% of
+#: them read three times or fewer, every fleet with up to 15% so read was
+#: within 0.074 of the full grid's standard errors, and the first one over
+#: 0.1 had 16% (0.101).
+_FEW_READINGS = 3
+_FEW_SHARE = 0.15
+
+
+def _check_laplace(arrays: JointArrays, q: int) -> None:
+    """Refuse what Laplace's approximation is not for (truncated items),
+    and warn where it is weak: many items with few readings."""
+    on_a_grid = (
+        "use integration='grid' (or 'pruned')"
+        if q <= MAX_VARYING
+        else f"name up to {MAX_VARYING} path parameters in varying=(...) "
+        "and use integration='grid' (or 'pruned')"
+    )
+    truncated = int(np.sum(arrays.truncated))
+    if truncated:
+        raise ValueError(
+            "integration='laplace' does not take truncated items "
+            f"({truncated} here came under observation at an age, or are "
+            "in the data because they failed by one): the chance of an "
+            "item being in the data is an integral with no readings in "
+            "it, which Laplace's approximation is not accurate for; "
+            f"{on_a_grid}."
+        )
+    few = float(np.sum(arrays.w[arrays.n_read <= _FEW_READINGS]))
+    total = float(np.sum(arrays.w))
+    if few > _FEW_SHARE * total:
+        warnings.warn(
+            f"integration='laplace': {few:g} of the {total:g} items "
+            f"({few / total:.0%}) have at most {_FEW_READINGS} readings. "
+            "Laplace's approximation of an item's likelihood is off by a "
+            "term of the order of one over its number of readings, more "
+            "where the readings are noisy: on simulated fleets with "
+            f"more than {_FEW_SHARE:.0%} of the items read so few times "
+            "its estimates were up to 0.22 standard errors from the full "
+            "grid's (0.4 with every item read so few times; the marker's "
+            "effect the most). To be sure of them, "
+            f"{on_a_grid}.",
+            stacklevel=caller_stacklevel(),
+        )
+
+
+class _NoStart(ValueError):
+    """The likelihood is not finite at a fit's starting values."""
+
+
+def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+    """The joint likelihood's maximum from the start ``theta``:
+    ``(u, value, cov_u, maximum)``, the internal parameters, the negative
+    log-likelihood there, their covariance (``None`` where the Hessian is
+    not positive definite) and what the search reached (``"verified"`` or
+    ``"unverified"``, with a warning)."""
+    layout = model.layout
+    u = layout.pack(theta)
 
     def objective(v: Any, placed: tuple) -> Any:
         return neg_ll(v, model, arrays, placed)
@@ -833,15 +1732,21 @@ def _fit(
 
     value, placed, starts = evaluated(u, (None, None))
     if placed is None:
-        raise ValueError(
+        raise _NoStart(
             "The joint fit could not start: the likelihood is not finite at "
             "its starting values (check the readings and the path model)."
         )
     u, value, placed, starts, converged = _descend(
         u, value, placed, starts, search, curvature, evaluated
     )
+
+    # the Hessian a maximum is checked by, and the covariance taken from
+    def laplace_curvature(v: npt.NDArray, at: tuple) -> npt.NDArray:
+        return _laplace_curvature(v, at, search, curvature, evaluated)
+
+    checked_curvature = laplace_curvature if model.laplace else curvature
     value, grad, cov_u, positive, flat = _check_maximum(
-        u, placed, search, curvature
+        u, placed, search, checked_curvature
     )
     # A search can stop short of the maximum on the flat shelf where the
     # items' spread nears a correlation of +-1 (the log-scale Cholesky
@@ -871,79 +1776,77 @@ def _fit(
                 curvature,
                 evaluated,
             )
-            checked = _check_maximum(retry[0], retry[2], search, curvature)
+            checked = _check_maximum(
+                retry[0], retry[2], search, checked_curvature
+            )
             sound = retry[4] and checked[3] and checked[4]
             lower = retry[1] < value - _ROUND_TOL * max(1.0, abs(value))
             if sound or lower:
                 u, _, placed, starts, converged = retry
                 value, grad, cov_u, positive, flat = checked
     verified = converged and positive and flat and np.all(np.isfinite(u))
+    runaway = _runaway_hazard_coefficients(objective, u, placed, layout)
+    if verified and runaway:
+        verified = False
     if not verified:
         reason = None
-        if not converged:
+        if runaway:
+            reason = (
+                "the likelihood still rises along the hazard coefficient(s) "
+                f"{runaway}: a covariate may separate the items that failed "
+                "from those that did not"
+            )
+        elif not converged:
             reason = "the rounds of placing the nodes did not settle"
         elif not positive:
             reason = "the Hessian is not positive definite there"
         elif not flat:
             reason = "the gradient is not zero there"
         warn_unverified("The joint fit", reason)
-    estimated = np.asarray(
-        reported_params(layout.unpack(u), layout, refs), dtype=float
-    )
-    covariance = None
-    if cov_u is not None:
-        J = jacobian(
-            lambda v: reported_params(layout.unpack(v), layout, refs)
-        )(u)
-        covariance = J @ cov_u @ J.T
-        covariance = 0.5 * (covariance + covariance.T)
-    else:
-        warn_no_covariance()
-    # every parameter, nan for an aliased covariate's
-    full_names = parameter_names(
-        path_names, list(fitter.varying), names, shifts, hazard, fitter.link
-    )
-    kept_names = parameter_names(
-        path_names,
-        list(fitter.varying),
-        kept_names,
-        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
-        [c for c in hazard if c in kept_names],
-        fitter.link,
-    )
-    where = [full_names.index(name) for name in kept_names]
-    params = np.full(len(full_names), np.nan)
-    params[where] = estimated
-    out = JointModel()
-    out.dist = fitter.dist
-    out.path_model = path_model
-    out.varying = list(fitter.varying)
-    out.params = params
-    out.feature_names = list(names)
-    out.aliased = aliased
-    every_one = all(shifts[n] == list(names) for n in path_names) and list(
-        hazard
-    ) == list(names)
-    # saved as None where every covariate is in both parts (as before)
-    out.path_covariates = (
-        None if every_one else {n: list(shifts[n]) for n in path_names}
-    )
-    out.hazard_covariates = None if every_one else list(hazard)
-    out.parameter_names = full_names
-    out.link = tuple(fitter.link)
-    out.marker_reference = float(reference) if "value" in fitter.link else None
-    out._centre = centre
-    out._zbar = zbar
-    if covariance is not None:
-        full_cov = np.full((len(full_names),) * 2, np.nan)
-        full_cov[np.ix_(where, where)] = covariance
-        out._covariance = full_cov
-    out._neg_ll = float(value)
-    out.k = len(estimated)
-    out.maximum = "verified" if verified else "unverified"
-    out.n_items = total
-    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
-    out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
+    return u, value, cov_u, "verified" if verified else "unverified"
+
+
+def _two_stage(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+    """The two-stage estimate from stage one's marker part ``theta``:
+    ``(u, value, cov_u, maximum)`` as :func:`_maximise` gives them.
+    There is no likelihood of the whole model (``value`` is ``nan``);
+    the covariance is stage two's, of the survival part alone (the
+    marker part's entries 0, to be set to ``nan`` once reported), and
+    ``maximum`` is ``"not applicable"``, or ``"unverified"``, with a
+    warning, where stage two's search did not reach a verified maximum
+    of its own likelihood."""
+    theta, cov, reason = survival_stage(model, arrays, theta)
+    u = model.layout.pack(theta)
+    cov_u = None
+    if cov is not None:
+        k = cov.shape[0]
+        cov_u = np.zeros((u.size, u.size))
+        cov_u[-k:, -k:] = cov
+    if reason is not None:
+        warn_unverified(
+            "Stage two of the two-stage fit (the survival part, each "
+            "item's predicted path taken as known)",
+            reason,
+            "check the fit, or fit the joint likelihood (how='MLE')",
+        )
+        return u, np.nan, cov_u, "unverified"
+    return u, np.nan, cov_u, "not applicable"
+
+
+def _given_path_start(start: dict | None, layout: Layout) -> dict | None:
+    """A copy of the path part ``start`` (``mu``, ``Delta``, ``L``,
+    ``sigma``) where its shapes are this layout's; ``None`` otherwise."""
+    if start is None:
+        return None
+    shapes = {
+        "mu": (layout.P,),
+        "Delta": (layout.P, layout.p),
+        "L": (layout.q, layout.q),
+        "sigma": (),
+    }
+    out = {key: np.array(start[key], dtype=float) for key in shapes}
+    if any(out[key].shape != shape for key, shape in shapes.items()):
+        return None
     return out
 
 
@@ -1023,6 +1926,33 @@ def _descend(
     return u, value, placed, starts, converged
 
 
+def _runaway_hazard_coefficients(
+    objective: Any, u: npt.NDArray, placed: tuple, layout: Any
+) -> list:
+    """The hazard covariates (by column) along whose coefficient the
+    likelihood has no finite maximum near ``u`` (a level of a covariate
+    with no failures runs its coefficient off to infinity): Newton's test
+    along each coefficient's profile
+    (:func:`~surpyval.univariate.parametric.fitters.runaway.runaway_coefficients`),
+    with the nodes held where the fit placed them. Empty for a model of
+    failure modes (whose coefficients are laid out per mode) or one with
+    no hazard covariates."""
+    if getattr(layout, "n_causes", 1) != 1 or not layout.n_hazard:
+        return []
+    from surpyval.univariate.parametric.fitters.runaway import (
+        runaway_coefficients,
+    )
+
+    positions = layout.hazard_positions()
+    with ignoring_warnings(), np.errstate(all="ignore"):
+        found = runaway_coefficients(
+            lambda v: objective(v, placed),
+            u,
+            [pos for pos, _ in positions],
+        )
+    return [positions[k][1] for k in found]
+
+
 def _check_maximum(
     u: npt.NDArray, placed: tuple, search: Any, curvature: Any
 ) -> tuple:
@@ -1056,6 +1986,44 @@ def _check_maximum(
     return value, grad, cov_u, positive, flat
 
 
+#: The step of the differences of a Laplace fit's gradient, in standard
+#: errors of each parameter.
+_LAPLACE_STEP = 5e-3
+
+
+def _laplace_curvature(
+    u: npt.NDArray,
+    placed: tuple,
+    search: Any,
+    curvature: Any,
+    evaluated: Any,
+) -> npt.NDArray:
+    """The Hessian at ``u`` of the Laplace approximation's negative
+    log-likelihood: central differences of its gradient, each taken with
+    the stencils placed at the point it is taken at (``evaluated``), so
+    the modes' movement with the parameters is in it to every order. The
+    steps are ``_LAPLACE_STEP`` standard errors by the held stencils'
+    Hessian (``curvature``), which leaves the second-order terms of that
+    movement out and so is not itself the answer. ``nan`` where a
+    stencil cannot be placed."""
+    S = _whitening(curvature, u, placed)
+    modes_at = (placed[0].mode, None)
+    k = u.size
+    H = np.full((k, k), np.nan)
+    for j in range(k):
+        grads = []
+        for sign in (1.0, -1.0):
+            v = u + sign * _LAPLACE_STEP * S[:, j]
+            _, at, _ = evaluated(v, modes_at)
+            if at is None:
+                return np.full((k, k), np.nan)
+            with np.errstate(all="ignore"):
+                grads.append(search(v, at)[1])
+        H[:, j] = S.T @ (grads[0] - grads[1]) / (2.0 * _LAPLACE_STEP)
+    inverse = np.linalg.inv(S)
+    return inverse.T @ (0.5 * (H + H.T)) @ inverse
+
+
 def _uncorrelated(u: npt.NDArray, layout: Layout) -> npt.NDArray:
     """``u`` with the items' spread made uncorrelated, each varying
     parameter's sd kept."""
@@ -1082,7 +2050,33 @@ def search_space(model: JointModel, **data: Any) -> tuple:
     the model's parameters; the model's point ``u`` in that space; and
     the number of items. For the checks that a fit's answer is a
     maximum (``tests/conformance``)."""
-    fitter = JointPH(model.dist, model.path_model, model.varying, model.link)
+    lik, arrays, u = likelihood_parts(model, **data)
+    placed, _ = place(u, lik, arrays, (None, None))
+
+    def f(v: Any) -> Any:
+        return neg_ll(v, lik, arrays, placed)
+
+    return f, u, float(np.sum(arrays.w))
+
+
+def likelihood_parts(model: JointModel, **data: Any) -> tuple:
+    """``(lik, arrays, u)``: what the likelihood of ``data`` (the fit's
+    arguments) is computed from (:func:`place`, :func:`neg_ll`) and the
+    model's point in the search's space."""
+    from .joint_aft import JointAFT
+
+    factory = JointAFT if model.survival == "AFT" else JointPH
+    # (an accelerated model has no accumulated exposure to weight)
+    weighted = {} if model.weight is None else {"weight": model.weight}
+    fitter = factory(
+        model.dist,
+        model.path_model,
+        model.varying,
+        model.link,
+        model.lag,
+        **weighted,
+        random_effects=model.random_effects_structure,
+    )
     records, counts, names = _records(
         data["x"],
         data.get("c"),
@@ -1098,14 +2092,21 @@ def search_space(model: JointModel, **data: Any) -> tuple:
         fitter, records, counts, len(names)
     )
     Z = Z_all[:, model._kept] - model._zbar
-    arrays = JointArrays.build(counts, T, d, L, Z, ages, values, U=U, Rt=Rt)
+    causes = _causes(fitter, data.get("e"), records, counts, "MLE")
+    arrays = JointArrays.build(
+        counts,
+        T,
+        d,
+        L,
+        Z,
+        ages,
+        values,
+        U=U,
+        Rt=Rt,
+        e=None if causes is None else causes[1],
+    )
     layout = model._layout
     lik = model._likelihood_model()
     theta = model._theta()
     u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
-    placed, _ = place(u, lik, arrays, (None, None))
-
-    def f(v: Any) -> Any:
-        return neg_ll(v, lik, arrays, placed)
-
-    return f, u, float(np.sum(counts))
+    return lik, arrays, u

@@ -37,6 +37,36 @@ system as it was just before the failure ("as bad as old").
     counting/cox_lewis
     counting/crow_amsaa
 
+Software Reliability Growth Models
+----------------------------------
+
+Poisson processes for faults found and removed during testing: the
+intensity falls as the testing goes on. Fitted to failure times or to
+the failures counted in each period of testing.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/goel_okumoto
+    counting/yamada_delayed_s
+    counting/inflection_s
+    counting/musa_okumoto
+    counting/rayleigh_defects
+    counting/clocks
+
+Models of the Times Between Failures
+------------------------------------
+
+Models of one test campaign's times between failures that are not
+Poisson processes: a whole number of faults (Jelinski-Moranda), or a
+rate that is itself uncertain (Littlewood-Verrall).
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/jelinski_moranda
+    counting/littlewood_verrall
+
 Non-Parametric Models
 ---------------------
 
@@ -101,6 +131,7 @@ Intensities that depend on covariates.
     counting/nhpp_pi
     counting/recurrent_cox
     counting/joint_frailty
+    counting/shared_frailty
 
 Trend Tests and Diagnostics
 ---------------------------

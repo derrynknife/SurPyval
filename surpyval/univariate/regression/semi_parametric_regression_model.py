@@ -161,6 +161,10 @@ class SemiParametricRegressionModel(
         regression models."""
         return coefficient_names(self, len(self.params))
 
+    #: How the coefficients were estimated: Cox's partial likelihood.
+    #: (``CoxPH``'s full-likelihood route returns a ``CoxNPMLEModel``,
+    #: whose ``estimator`` is ``"NPMLE"``.)
+    estimator: str = "partial likelihood"
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
     beta: npt.NDArray
@@ -414,7 +418,9 @@ class SemiParametricRegressionModel(
         *,
         weighting: str = "harrell",
         tau: float | None = None,
-    ) -> float:
+        alpha_ci: float = 0.05,
+        ci_method: str = "normal",
+    ) -> Any:
         """Harrell's concordance index (C) of the model's risk scores,
         the linear predictor :math:`\beta'Z`; see
         :meth:`ConcordanceMixin.concordance
@@ -453,18 +459,32 @@ class SemiParametricRegressionModel(
                     "'strata' out."
                 )
             return super().concordance(
-                x, c, Z, tie_tol, ties, weighting=weighting, tau=tau
+                x,
+                c,
+                Z,
+                tie_tol,
+                ties,
+                weighting=weighting,
+                tau=tau,
+                alpha_ci=alpha_ci,
+                ci_method=ci_method,
             )
-        if weighting != "harrell" or tau is not None:
+        if (
+            weighting != "harrell"
+            or tau is not None
+            or alpha_ci != 0.05
+            or ci_method != "normal"
+        ):
             raise ValueError(self._STRATIFIED_ESTIMATE)
         return self._stratified_concordance(x, c, Z, tie_tol, ties, strata)
 
     _STRATIFIED_ESTIMATE = (
-        "Uno's weighting, a horizon 'tau' and the standard error of the "
-        "concordance are not available for a stratified Cox model: call "
+        "Uno's weighting, a horizon 'tau' and the standard error and "
+        "interval of the concordance are not available for a stratified "
+        "Cox model, whose concordance is a plain number: call "
         "concordance() with the defaults for its pooled Harrell's C, or "
         "score each stratum's rows with "
-        "surpyval.metrics.concordance_estimate."
+        "surpyval.metrics.concordance_index."
     )
 
     def concordance_estimate(
@@ -480,23 +500,22 @@ class SemiParametricRegressionModel(
         ties: str = "therneau",
         ci_method: str = "normal",
     ) -> ConcordanceResult:
-        """The concordance index with its standard error and confidence
-        interval; see :meth:`ConcordanceMixin.concordance_estimate
+        """Deprecated, removed in v0.30: :meth:`concordance` gives the
+        standard error and interval. The concordance index with its
+        standard error and confidence interval; see
+        :meth:`ConcordanceMixin.concordance_estimate
         <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance_estimate>`.
         Not available for a stratified model (it raises ``ValueError``).
         """
+        from surpyval.univariate.regression._concordance import (
+            _warn_estimate,
+        )
+
+        _warn_estimate(type(self).__name__)
         if self.is_stratified:
             raise ValueError(self._STRATIFIED_ESTIMATE)
-        return super().concordance_estimate(
-            x,
-            c,
-            Z,
-            weighting=weighting,
-            tau=tau,
-            alpha=alpha,
-            tie_tol=tie_tol,
-            ties=ties,
-            ci_method=ci_method,
+        return self._estimate_with_se(
+            x, c, Z, weighting, tau, alpha, tie_tol, ties, ci_method
         )
 
     def _stratified_concordance(

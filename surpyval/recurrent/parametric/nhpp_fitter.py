@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from autograd import numpy as np
 from numpy.typing import ArrayLike
@@ -15,7 +16,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -106,6 +107,32 @@ def log_one_minus_exp(delta: np.ndarray) -> np.ndarray:
     return np.log(-np.expm1(-delta))
 
 
+def poisson_count_sums(
+    n: np.ndarray, delta: np.ndarray
+) -> tuple[float, float, float]:
+    """The sums a constant-rate (HPP) likelihood needs from Poisson counts
+    ``n`` over windows of length ``delta``: ``sum(n)``, ``sum(n log
+    delta)`` and ``sum(log n!)``. With the intensity ``rate * phi`` the
+    counts' log-likelihood is ``sum(n log phi) + log(rate) sum(n) + sum(n
+    log delta) - rate sum(phi delta) - sum(log n!)``; the three sums are
+    fixed by the data, so the plain and the proportional-intensity HPP take
+    them once, before the search.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.recurrent.parametric.nhpp_fitter import (
+    ...     poisson_count_sums,
+    ... )
+    >>> total, n_log_delta, log_factorials = poisson_count_sums(
+    ...     np.array([2.0, 0.0, 3.0]), np.array([1.0, 2.0, 1.0])
+    ... )
+    >>> float(total), float(n_log_delta), round(float(log_factorials), 4)
+    (5.0, 0.0, 2.4849)
+    """
+    return n.sum(), (n * np.log(delta)).sum(), gammaln(n + 1).sum()
+
+
 class NHPPFitter(IntensityModel):
 
     #: The ``repr`` (#614)
@@ -143,19 +170,28 @@ class NHPPFitter(IntensityModel):
         over the longest time)."""
         return np.ones(len(self.parameter_names))
 
+    def _check_identified(self, data: EventHistoryData) -> None:
+        """Refuse data for which the model's likelihood has no maximum
+        (nothing, by default; the software reliability growth models
+        refuse data that show no growth)."""
+
     def _closed_form_mle(self, data: EventHistoryData) -> np.ndarray | None:
         """The exact maximum-likelihood parameters where the model has a
         closed form for ``data``, else ``None`` (the default): the search
         is then run."""
         return None
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: EventHistoryData,
         how: str = "MLE",
         init: ArrayLike | None = None,
-    ) -> ParametricRecurrenceModel:
+        frailty: str | None = None,
+        cluster: Any = None,
+    ) -> Any:
         """
         Fit the NHPP model from recurrent data using either Maximum Likelihood
         Estimation (MLE) or Mean Square Error (MSE) methods.
@@ -173,16 +209,24 @@ class NHPPFitter(IntensityModel):
         init: array_like, optional
             Initial parameters for optimization. The default start is
             tried too, and the better fit kept.
+        frailty: {'gamma', 'lognormal'}, optional
+            A shared frailty, as for :meth:`fit`.
+        cluster: mapping or array_like, optional
+            Each item's cluster, as for :meth:`fit`.
 
         Returns
         -------
 
         ParametricRecurrenceModel
             An instance of the ParametricRecurrenceModel class containing the
-            fitted model, estimated parameters, and other relevant attributes.
+            fitted model, estimated parameters, and other relevant attributes
+            (a ``SharedFrailtyModel`` with ``frailty``).
         """
         check_option("how", how, ("MLE", "MSE"))
+        if frailty is not None or cluster is not None:
+            return self._frailty_fit(data, how, init, frailty, cluster)
         validate_nhpp_data(data, self)
+        self._check_identified(data)
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
         default_init = self._default_start(data, x_unqiue, mcf_hat)
@@ -297,6 +341,35 @@ class NHPPFitter(IntensityModel):
             model._n_obs = bic_sample_size(data)
         return model
 
+    def _frailty_fit(
+        self,
+        data: EventHistoryData,
+        how: str,
+        init: ArrayLike | None,
+        frailty: str | None,
+        cluster: Any,
+    ) -> Any:
+        """The fit with a shared frailty (``frailty=``)."""
+        from surpyval.recurrent.shared_frailty import (
+            FAMILIES,
+            fit_shared_frailty,
+        )
+
+        if frailty is None:
+            raise ValueError(
+                "'cluster' names the clusters that share a frailty, so it "
+                "needs 'frailty': give frailty='gamma' (or 'lognormal'), "
+                "or leave out 'cluster'."
+            )
+        check_option("frailty", frailty, FAMILIES)
+        if how != "MLE":
+            raise ValueError(
+                "A frailty fit is by maximum likelihood: how='MSE' has no "
+                "frailty. Use how='MLE' (the default), or leave out "
+                "'frailty'."
+            )
+        return fit_shared_frailty(self, data, frailty, cluster, init)
+
     def _closed_form_model(
         self,
         data: EventHistoryData,
@@ -342,7 +415,9 @@ class NHPPFitter(IntensityModel):
         how: str = "MLE",
         init: ArrayLike | None = None,
         windows: dict | None = None,
-    ) -> ParametricRecurrenceModel:
+        frailty: str | None = None,
+        cluster: Any = None,
+    ) -> Any:
         """
         Fit the NHPP model from the provided data. This function prepares the
         data to ensure that it is in the correct format for the fitting.
@@ -409,12 +484,27 @@ class NHPPFitter(IntensityModel):
             windows are independent for an NHPP, each window is fitted as its
             own observation period. Mutually exclusive with ``t``/``tl``/
             ``tr``.
+        frailty: {'gamma', 'lognormal'}, optional
+            Give each cluster of items an unobserved frailty that
+            multiplies its intensity, for a fleet whose items differ by
+            more than a Poisson process allows: gamma with mean 1 and
+            variance ``theta``, or log-normal with ``log u ~ N(0,
+            theta)``. ``theta`` is estimated with the intensity's
+            parameters, and the fit is a
+            :class:`~surpyval.recurrent.SharedFrailtyModel`. It needs at
+            least two clusters and each event's time (no ``c=-1`` or
+            ``c=2`` counts, no right truncation), by maximum likelihood.
+            Default ``None``: no frailty.
+        cluster: mapping or array_like, optional
+            With ``frailty``, the items that share one: ``{item:
+            cluster}``, or one label per row of ``x`` (the same on every
+            row of an item). By default each item has its own.
 
         Returns
         -------
 
         ParametricRecurrenceModel
-            The fitted model.
+            The fitted model (a ``SharedFrailtyModel`` with ``frailty``).
 
         Examples
         --------
@@ -431,6 +521,17 @@ class NHPPFitter(IntensityModel):
         >>> model.cif(60)
         np.float64(4.5)
         """
+        if cluster is not None and frailty is not None:
+            from surpyval.recurrent.shared_frailty import cluster_of_items
+
+            # Read against the rows as given, before they are sorted
+            cluster = cluster_of_items(
+                cluster,
+                i,
+                np.shape(x)[0] if np.ndim(x) else 1,
+                " With a SurpyvalData or an EventHistoryData as x, give "
+                "the mapping.",
+            )
         data = handle_xicn(
             x,
             i,
@@ -442,7 +543,7 @@ class NHPPFitter(IntensityModel):
             as_recurrent_data=True,
             windows=windows,
         )
-        return self.fit_from_recurrent_data(data, how, init)
+        return self._fit_from_recurrent_data(data, how, init, frailty, cluster)
 
     @takes_unit
     def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:

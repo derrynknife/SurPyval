@@ -50,6 +50,9 @@ Where to start
 - New to SurPyval? Read the :doc:`Quickstart`. In ten minutes it fits a
   first model, shows why censoring matters, and gives a small example of
   every area of the package.
+- Not sure which model your data needs? :doc:`Choosing a Model` asks one
+  yes-or-no question at a time: the shape of the problem, how to write each
+  unit's record, and what you want to know, ending at the call to make.
 - New to survival data, or not sure whether your data is censored or
   truncated? Read :doc:`Types of Data`. Getting this right matters more than
   any choice of model. :doc:`Data Model` then lists every letter a row of
@@ -150,7 +153,8 @@ so on.
        item that keeps failing, a patient with repeated admissions): the
        mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
-       (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
+       (Crow-AMSAA, Duane, Cox-Lewis), software reliability growth
+       (Goel-Okumoto, the S-shaped models, Musa-Okumoto), imperfect repair (Kijima, G1, ARA,
        ARI), trend tests, proportional-intensity regression (parametric,
        and the Andersen-Gill, Prentice-Williams-Peterson and
        Wei-Lin-Weissfeld models with robust standard errors), and whether
@@ -306,6 +310,7 @@ Contents:
    :caption: Quickstart & Intro
 
    Quickstart
+   Choosing a Model
    Survival Analysis from Scratch
    Types of Data
    Data Model
@@ -337,6 +342,7 @@ Contents:
 
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
+   Hazard Ratio
    Bayesian Fitting with SurPyval
    Pooling Rates Across Sources
    Regression Modelling with SurPyval
@@ -347,6 +353,7 @@ Contents:
    Interval-Censored Cox Regression
    Pseudo-Observations
    Adjusted Survival Curves
+   Relative Survival
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
@@ -354,10 +361,12 @@ Contents:
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Intervention Analysis with SurPyval
+   Software Reliability Growth
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
    PyMC with SurPyval
+   Torch with SurPyval
 
 .. toctree::
    :maxdepth: 2

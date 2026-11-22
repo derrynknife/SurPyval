@@ -38,9 +38,9 @@ from surpyval.utils.validation import (
     alpha_ci_error,
     check_alpha_ci,
     check_option,
-    option_error,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._bounds import (
     analytic_cb,
@@ -200,9 +200,11 @@ class DegradationModel(SerialisableMixin):
     c : ndarray
         Per-unit censor flags: 0 where the fitted path crosses the
         threshold at a positive time, 1 (right censored) where it never
-        reaches it, -1 (left censored: failed before its first
-        measurement) where the path is already past the threshold at
-        the first measurement, having crossed at or before time zero.
+        reaches it, or where a crossing past the unit's last reading was
+        censored there (``running="censor"`` or ``censored_units``), -1
+        (left censored: failed before its first measurement) where the
+        path is already past the threshold at the first measurement,
+        having crossed at or before time zero.
     life_model : Parametric
         The lifetime distribution fitted to the pseudo failure times.
     measurement_var : float
@@ -281,6 +283,19 @@ class DegradationModel(SerialisableMixin):
         ``Z`` then also takes a DataFrame and selects these columns by
         name. ``None`` for a model fitted from arrays, which refuses a
         DataFrame.
+    running : str
+        How a unit short of the threshold at its last reading, whose path
+        crosses after it, was counted: ``"extrapolate"`` (a failure at the
+        crossing) or ``"censor"`` (censored at its last reading); see
+        :meth:`DegradationAnalysis.fit`.
+    censored_units : list or None
+        The units given as ``censored_units`` to the fit (censored at
+        their last reading), or ``None``.
+    extrapolated : ndarray of bool or None
+        Per unit (aligned to ``units``): True where its failure time is
+        a crossing extrapolated past its last reading, not seen within
+        its readings. The summary counts them. ``None`` for a clock model
+        restored from a dictionary saved before the flag was kept.
 
     Examples
     --------
@@ -336,6 +351,9 @@ class DegradationModel(SerialisableMixin):
     gamma: npt.NDArray | None
     stress_ref: npt.NDArray | None
     Z_cols: list[str] | None
+    running: str
+    censored_units: list | None
+    extrapolated: npt.NDArray | None
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -367,6 +385,9 @@ class DegradationModel(SerialisableMixin):
         gamma: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         Z_cols: list[str] | None = None,
+        running: str = "extrapolate",
+        censored_units: list | None = None,
+        extrapolated: npt.ArrayLike | None = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -397,6 +418,15 @@ class DegradationModel(SerialisableMixin):
             None if stress_ref is None else np.atleast_1d(stress_ref).tolist()
         )
         self.Z_cols = None if Z_cols is None else list(Z_cols)
+        self.running = running
+        self.censored_units = (
+            None if censored_units is None else list(censored_units)
+        )
+        self.extrapolated = (
+            None
+            if extrapolated is None
+            else np.asarray(extrapolated, dtype=bool)
+        )
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     # -- serialisation -----------------------------------------------------
@@ -480,11 +510,26 @@ class DegradationModel(SerialisableMixin):
                     self.path_param_link_cov
                 ),
                 **self._clock_dict(),
+                **self._running_dict(),
                 # only for a model fitted with named covariates, so other
                 # dicts are unchanged (an older reader ignores the key)
                 **({} if self.Z_cols is None else {"Z_cols": self.Z_cols}),
             }
         )
+
+    def _running_dict(self) -> dict:
+        """How units short of the threshold were counted, for
+        :meth:`to_dict`: which units' failure times are extrapolated past
+        their last reading, and ``running`` and ``censored_units`` where
+        they are not the defaults (an older reader ignores the keys)."""
+        out: dict = {}
+        if self.extrapolated is not None:
+            out["extrapolated"] = self.extrapolated.tolist()
+        if self.running != "extrapolate":
+            out["running"] = self.running
+        if self.censored_units is not None:
+            out["censored_units"] = np.asarray(self.censored_units).tolist()
+        return out
 
     def _clock_dict(self) -> dict:
         """The clock's entries for :meth:`to_dict` (none for other models,
@@ -551,7 +596,15 @@ class DegradationModel(SerialisableMixin):
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
             Z_cols=model_dict.get("Z_cols"),
+            running=model_dict.get("running", "extrapolate"),
+            censored_units=model_dict.get("censored_units"),
+            extrapolated=model_dict.get("extrapolated"),
         )
+        if out.extrapolated is None and out.acceleration is None:
+            # saved before the flag was kept: a failure time past the
+            # unit's last reading (the clock's times are not the readings')
+            last = np.array([out.x[out.i == unit].max() for unit in out.units])
+            out.extrapolated = (out.c == 0) & (out.pseudo_failure_times > last)
         # Recorded so bootstrap bounds can rerun the pipeline. The fitter is
         # not serialised as such, but the restored life model carries it:
         # a regression life model keeps its regression fitter (e.g.
@@ -964,7 +1017,7 @@ class DegradationModel(SerialisableMixin):
                 "reaches the threshold {}; returning nan".format(
                     self.threshold
                 ),
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return float("nan")
         if clock is not None:
@@ -1698,22 +1751,23 @@ class DegradationModel(SerialisableMixin):
         See :meth:`cb` for the two-stage rationale; ``method='analytic'`` is
         the delta-method / generated-regressor correction
         ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
+
+        * A plain model: the life distribution's parameters, ordered as
+          ``life_model.params``.
+        * An accelerated-degradation (covariate) model: the regression life
+          model's parameters, ordered as ``life_model.params`` (the
+          distribution's, then the covariate coefficients); a parameter held
+          fixed has a zero row and column and an aliased one ``nan``, as in
+          ``life_model.covariance()``.
+        * A step-stress (``acceleration="clock"``) model: the reference-stress
+          life parameters followed by the stress coefficients ``gamma``. The
+          pseudo failure times all share the estimated clock, so the
+          first-stage term is the joint least-squares covariance of the clock
+          and the path fits, and the clock's own uncertainty is the last
+          block. Derived for ``population_method="moments"`` (the profile
+          least-squares clock); a ``"reml"`` model raises
+          ``NotImplementedError`` and points to the bootstrap.
         """
-        if self._is_clock:
-            raise NotImplementedError(
-                "The two-stage life-parameter covariance is not derived for "
-                "a step-stress (acceleration='clock') model, whose pseudo "
-                "failure times also depend on the estimated clock; use "
-                "cb(..., method='bootstrap'), which re-estimates the clock "
-                "on every resample."
-            )
-        if self.is_accelerated:
-            raise NotImplementedError(
-                "The two-stage life-parameter covariance is not implemented "
-                "for accelerated-degradation (covariate) models; use "
-                "life_model.covariance() for the (first-stage-only) "
-                "regression parameter covariance."
-            )
         return life_parameter_covariance(self, method=method)
 
     @keeps_query_shape
@@ -1738,11 +1792,15 @@ class DegradationModel(SerialisableMixin):
         first-stage (measurement + extrapolation) uncertainty back in.
 
         For an **accelerated-degradation (covariate) model** the bound is
-        evaluated at a stress vector ``Z`` and only ``method='bootstrap'``
-        is available: the generated-regressor delta-method correction is not
-        derived for the regression life fit, so the first-stage uncertainty is
-        folded in by resampling units (each carrying its stress) and rerunning
-        the whole accelerated pipeline.
+        evaluated at a stress vector ``Z``. The analytic bound applies the
+        generated-regressor correction to the regression life fit: each
+        unit's pseudo-time variance enters through the derivative of the
+        regression score at that unit's stress. For a **step-stress**
+        (``acceleration="clock"``) model the analytic bound also carries the
+        uncertainty of the estimated clock, which every pseudo failure time
+        and every prediction under stress depends on (see
+        :meth:`life_parameter_covariance`); it is derived for
+        ``population_method="moments"`` only.
 
         Parameters
         ----------
@@ -1752,11 +1810,11 @@ class DegradationModel(SerialisableMixin):
             Stress vector at which to evaluate the bound; required for an
             accelerated model, rejected for a plain one. For a step-stress
             (``acceleration="clock"``) model it is one stress row or a
-            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
-            and only ``method='bootstrap'`` is available: units are resampled
-            with their stress histories and the clock is re-estimated on each
-            resample (with the model's ``population_method``, so a ``"reml"``
-            model's bootstrap takes correspondingly longer).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`;
+            its bootstrap resamples units with their stress histories and
+            re-estimates the clock on each resample (with the model's
+            ``population_method``, so a ``"reml"`` model's bootstrap takes
+            correspondingly longer).
         on : {'sf', 'ff', 'Hf'}, optional
             The function to bound (``'R'`` and ``'F'`` are accepted as
             aliases of ``'sf'`` and ``'ff'``). Default ``'sf'``.
@@ -1766,10 +1824,11 @@ class DegradationModel(SerialisableMixin):
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
         method : {'analytic', 'bootstrap'}, optional
-            ``'analytic'`` (default) is a fast delta-method correction;
-            ``'bootstrap'`` resamples units and reruns the whole pipeline (a
-            slower, assumption-light cross-check). Accelerated (covariate)
-            models support ``'bootstrap'`` only.
+            ``'analytic'`` (default) is a fast delta-method correction, in
+            closed form with no refitting; ``'bootstrap'`` resamples units and
+            reruns the whole pipeline (a slower, assumption-light
+            cross-check). A step-stress model fitted with
+            ``population_method="reml"`` supports ``'bootstrap'`` only.
         n_boot : int, optional
             Bootstrap resamples (``method='bootstrap'`` only). Default 200.
         random_state : int or numpy.random.Generator, optional
@@ -1785,45 +1844,17 @@ class DegradationModel(SerialisableMixin):
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         check_option("bound", bound, BOUNDS)
         check_alpha_ci(alpha_ci)
+        check_option("method", method, ("analytic", "bootstrap"))
         if self._is_clock:
             self._clock(Z)  # validates the stress
             Z = self._covariates(Z)
-            if method == "analytic":
-                raise NotImplementedError(
-                    "The two-stage analytic correction is not derived for a "
-                    "step-stress (acceleration='clock') model, whose pseudo "
-                    "failure times also depend on the estimated clock; use "
-                    "method='bootstrap', which re-estimates the clock on "
-                    "every resample."
-                )
-            if method == "bootstrap":
-                return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
-                )
-            raise option_error("method", method, ("analytic", "bootstrap"))
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            if method == "analytic":
-                raise NotImplementedError(
-                    "The two-stage analytic (generated-regressor) correction "
-                    "is not derived for accelerated-degradation (covariate) "
-                    "life fits; use method='bootstrap' (which folds the "
-                    "first-stage uncertainty in by resampling), or "
-                    "life_model.cb(x, Z, on=...) for the first-stage-only "
-                    "regression bounds."
-                )
-            if method == "bootstrap":
-                return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
-                )
-            raise option_error("method", method, ("analytic", "bootstrap"))
+        else:
+            Z = self._predict_Z(Z)
         if method == "analytic":
-            return analytic_cb(self, x, on, alpha_ci, bound)
-        elif method == "bootstrap":
-            return bootstrap_cb(
-                self, x, on, alpha_ci, bound, n_boot, random_state
-            )
-        raise option_error("method", method, ("analytic", "bootstrap"))
+            return analytic_cb(self, x, on, alpha_ci, bound, Z=Z)
+        return bootstrap_cb(
+            self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
+        )
 
     def plot(self, ax: Any = None) -> Any:
         """
@@ -1898,6 +1929,14 @@ class DegradationModel(SerialisableMixin):
         plotting.style_legend(ax)
         return ax
 
+    def _extrapolated_repr(self) -> str:
+        """The units whose failure time is a crossing past their last
+        reading, for ``__repr__`` (nothing for a model restored from a
+        dict that does not say)."""
+        if self.extrapolated is None:
+            return ""
+        return f"\nExtrapolated Units  : {int(self.extrapolated.sum())}"
+
     def _left_censored_repr(self) -> str:
         """The units already failed at their first measurement, for
         ``__repr__`` (nothing when there are none)."""
@@ -1935,6 +1974,7 @@ class DegradationModel(SerialisableMixin):
             f"\nThreshold           : {self.threshold}"
             f"\nNumber of Units     : {len(self.units)}"
             f"\nCensored Units      : {int((self.c == 1).sum())}"
+            f"{self._extrapolated_repr()}"
             f"{self._left_censored_repr()}"
         )
 

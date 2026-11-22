@@ -42,6 +42,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
+from surpyval.utils.warnings import caller_stacklevel
 
 from . import _links
 from .fitter import DistributionalFitter, uniform_draws
@@ -137,22 +138,22 @@ class CuredDistribution:
         *lat, p = params
         return float(self.latency.mean(*lat)) if p >= 1 else float("inf")
 
-    def fit_from_surpyval_data(self, data: Any) -> Any:
+    def _fit_from_surpyval_data(self, data: Any) -> Any:
         """The start of the search: the limited-failure fit without
         covariates, its proportion kept off the ends."""
         from surpyval.utils.warnings import ignoring_warnings
 
         with ignoring_warnings():
             try:
-                fitted = self.latency.fit_from_surpyval_data(data, lfp=True)
+                fitted = self.latency._fit_from_surpyval_data(data, lfp=True)
                 params = [float(v) for v in fitted.params]
                 p = float(fitted.lfp_p)
             except Exception:
-                fitted = self.latency.fit_from_surpyval_data(data)
+                fitted = self.latency._fit_from_surpyval_data(data)
                 params = [float(v) for v in fitted.params]
                 p = 0.5
         if not onp.all(onp.isfinite(params)) or not onp.isfinite(p):
-            fitted = self.latency.fit_from_surpyval_data(data)
+            fitted = self.latency._fit_from_surpyval_data(data)
             params, p = [float(v) for v in fitted.params], 0.5
 
         class _Start:
@@ -684,7 +685,7 @@ class MixtureCureModel(DistributionalRegressionModel):
                 "Use a quantile, qf(p, Z, susceptible=True), "
                 "instead.".format(int(onp.sum(onp.isposinf(out))), out.size),
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return float(out[0]) if out.size == 1 else out
 

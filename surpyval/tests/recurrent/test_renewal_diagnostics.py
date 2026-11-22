@@ -90,9 +90,9 @@ def test_bad_kind_raises():
         MODELS["GR-i"].residuals(kind="nonsense")
 
 
-def test_fit_from_parameters_has_no_residuals():
+def test_from_params_has_no_residuals():
     # A model built from parameters carries no data, so residuals must refuse.
-    model = GeneralizedRenewal.fit_from_parameters(
+    model = GeneralizedRenewal.from_params(
         [10.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
     with pytest.raises(ValueError, match="fitted from data"):
@@ -108,13 +108,13 @@ def _simulate_refit_residuals(truth, fitter, refit_kwargs, seed):
     data = truth.count_terminated_simulation_data(
         8, items=250, random_state=seed
     )
-    model = fitter.fit_from_recurrent_data(data, **refit_kwargs)
+    model = fitter._fit_from_recurrent_data(data, **refit_kwargs)
     return model.residuals("cumulative_hazard"), model
 
 
 def test_age_reduction_residuals_are_exp1():
     # Kijima-I (age reduction): rescaled increments H(v+x) - H(v) are Exp(1).
-    truth = GeneralizedRenewal.fit_from_parameters(
+    truth = GeneralizedRenewal.from_params(
         [30.0, 1.6], 0.4, kijima="i", dist=Weibull
     )
     e, model = _simulate_refit_residuals(
@@ -131,7 +131,7 @@ def test_age_reduction_residuals_are_exp1():
 def test_intensity_reduction_residuals_are_exp1():
     # ARI (intensity reduction): the reduced-intensity integral per interval
     # is Exp(1) under the fitted model -- a different construction entirely.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    truth = ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     e, model = _simulate_refit_residuals(
         truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=5
     )
@@ -155,11 +155,11 @@ def _small_fit(truth, fitter, refit_kwargs, seed):
     data = truth.count_terminated_simulation_data(
         6, items=35, random_state=seed
     )
-    return fitter.fit_from_recurrent_data(data, **refit_kwargs)
+    return fitter._fit_from_recurrent_data(data, **refit_kwargs)
 
 
 def test_cvm_age_reduction_runs_and_matches_statistic():
-    truth = GeneralizedRenewal.fit_from_parameters(
+    truth = GeneralizedRenewal.from_params(
         [30.0, 1.6], 0.4, kijima="i", dist=Weibull
     )
     model = _small_fit(
@@ -176,7 +176,7 @@ def test_cvm_age_reduction_runs_and_matches_statistic():
 
 
 def test_cvm_intensity_reduction_runs():
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    truth = ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     model = _small_fit(truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=4)
     result = model.cramer_von_mises(n_boot=10, random_state=2)
     assert isinstance(result, GoodnessOfFitResult)
@@ -184,7 +184,7 @@ def test_cvm_intensity_reduction_runs():
 
 
 def test_cvm_is_reproducible_with_seed():
-    truth = GeneralizedRenewal.fit_from_parameters(
+    truth = GeneralizedRenewal.from_params(
         [30.0, 1.6], 0.4, kijima="i", dist=Weibull
     )
     model = _small_fit(
@@ -197,7 +197,7 @@ def test_cvm_is_reproducible_with_seed():
 
 
 def test_cvm_no_data_guard():
-    model = GeneralizedRenewal.fit_from_parameters(
+    model = GeneralizedRenewal.from_params(
         [10.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
     with pytest.raises(ValueError, match="fitted from data"):

@@ -323,7 +323,7 @@ def test_624_renewal_fits_refuse_right_truncation(model, kwargs):
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
     with pytest.raises(ValueError, match="does not take right truncation"):
-        model.fit_from_recurrent_data(
+        model._fit_from_recurrent_data(
             handle_xicn(x, i, tl=np.where(i == 3, 0.5, 0.0), tr=20.0),
             **kwargs,
         )
@@ -331,7 +331,7 @@ def test_624_renewal_fits_refuse_right_truncation(model, kwargs):
     items = np.r_[i, 1, 2, 3]
     ends = np.r_[np.zeros_like(x), 1, 1, 1]
     tl = np.where(items == 3, 0.5, 0.0)
-    via_row = model.fit_from_recurrent_data(
+    via_row = model._fit_from_recurrent_data(
         handle_xicn(rows, items, ends, tl=tl), **kwargs
     )
     assert np.isfinite(via_row.log_likelihood)
@@ -355,7 +355,7 @@ def test_624_renewal_refuses_hand_built_right_truncation():
     with pytest.raises(
         ValueError, match="GeneralizedRenewal does not take right truncation"
     ):
-        GeneralizedRenewal.fit_from_recurrent_data(data)
+        GeneralizedRenewal._fit_from_recurrent_data(data)
 
 
 def _per_unit_case(labels):

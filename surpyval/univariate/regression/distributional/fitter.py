@@ -630,7 +630,7 @@ class DistributionalFitter(
         def default_init() -> npt.NDArray:
             # The model warns of few effective units itself, once.
             with few_effective_said_later():
-                base = self.dist.fit_from_surpyval_data(data).params
+                base = self.dist._fit_from_surpyval_data(data).params
             return space.start(base)
 
         user_init = init is not None and len(np.atleast_1d(init)) > 0
@@ -882,7 +882,7 @@ class DistributionalFitter(
             gradient = ag_grad(objective)
             curvature = ag_hessian(objective)
             with np.errstate(all="ignore"):
-                base = self.dist.fit_from_surpyval_data(data).params
+                base = self.dist._fit_from_surpyval_data(data).params
             return PenalisedObjective(
                 lambda tv: float(objective(np.asarray(tv))),
                 lambda tv: onp.asarray(gradient(np.asarray(tv)), dtype=float),

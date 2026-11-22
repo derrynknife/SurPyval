@@ -13,7 +13,12 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import (
+    REMOVED_IN,
+    RenamedAttribute,
+    ambiguous_item_ids,
+    fit_entry,
+)
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -425,7 +430,7 @@ class ARI(RenewalFitMixin):
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same baseline
         intensity and memory; used by the Cramer-von Mises bootstrap."""
-        return self.fit_from_recurrent_data(
+        return self._fit_from_recurrent_data(
             data, baseline=model.model.dist, m=model.m
         )
 
@@ -547,8 +552,10 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         baseline: Any = CrowAMSAA,
@@ -633,7 +640,7 @@ class ARI(RenewalFitMixin):
         """
         try:
             base_params = np.asarray(
-                baseline.fit_from_recurrent_data(data).params, dtype=float
+                baseline._fit_from_recurrent_data(data).params, dtype=float
             )
             if not np.all(np.isfinite(base_params)):
                 raise ValueError
@@ -737,7 +744,7 @@ class ARI(RenewalFitMixin):
         # failed deep inside the fit (#495).
         validate_intensity_model(baseline, type(self).__name__)
         data = handle_xicn(x, i, c, n, tl=tl)
-        return self.fit_from_recurrent_data(data, baseline, m, init=init)
+        return self._fit_from_recurrent_data(data, baseline, m, init=init)
 
     @ambiguous_item_ids("fit_from_df(df, x_col, c_col, n_col)", column=True)
     @column_arguments("x", "i", "c", "n", "tl", "tr")
@@ -815,7 +822,12 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    def fit_from_parameters(
+    #: The old name of :meth:`from_params` (deprecated in v0.29).
+    fit_from_parameters = RenamedAttribute(
+        "from_params", REMOVED_IN, FutureWarning
+    )
+
+    def from_params(
         self,
         baseline_params: ArrayLike,
         rho: float,
@@ -847,7 +859,7 @@ class ARI(RenewalFitMixin):
         Examples
         --------
         >>> from surpyval.recurrent import ARI, Duane
-        >>> model = ARI.fit_from_parameters([1.0, 1.5], 0.6, baseline=Duane)
+        >>> model = ARI.from_params([1.0, 1.5], 0.6, baseline=Duane)
         >>> model.parameter_names
         ['rho', 'alpha', 'b']
         """

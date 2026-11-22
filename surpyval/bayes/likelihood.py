@@ -136,12 +136,23 @@ class LogLikelihood:
             xs = np.maximum(xs, self._lo)
         return xs
 
+    def _observed_terms(
+        self, x: npt.NDArray, dp: list, gamma: Any, p: Any, f0: Any
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The log density of exact rows at ``x`` (none of them a zero of a
+        zero-inflated model), ``(N, m)``, and the log of the mass that can
+        fail at a positive time, ``log(p - f0)``, ``(N,)``: a row's term
+        is their sum."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ld = self.dist.log_df(x[None, :] - gamma, *dp)
+            mass = np.log(p - f0)[:, 0]
+        return ld, mass
+
     def _observed(self, dp: list, gamma: Any, p: Any, f0: Any) -> Any:
         d = self.data
         x, n = d.x_o, d.n_o
         if len(x) == 0:
             return 0.0
-        dist = self.dist
         if self.zi:
             zero = x == 0
             n0 = float(np.sum(n[zero]))
@@ -152,35 +163,43 @@ class LogLikelihood:
             zero_part = 0.0
         if len(x) == 0:
             return zero_part
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ld = dist.log_df(x[None, :] - gamma, *dp)
-            mass = np.log(p - f0)[:, 0]
+        ld, mass = self._observed_terms(x, dp, gamma, p, f0)
         return (ld * n).sum(axis=1) + n.sum() * mass + zero_part
+
+    def _right_terms(
+        self, x: npt.NDArray, dp: list, gamma: Any, p: Any, f0: Any
+    ) -> npt.NDArray:
+        """The log-likelihood of each right-censored row at ``x``."""
+        xs = self._censored_x(x, gamma)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if not self.lfp:
+                return np.log1p(-f0) + self.dist.log_sf(xs, *dp)
+            return np.log((1 - p) + (p - f0) * self.dist.sf(xs, *dp))
 
     def _right(self, dp: list, gamma: Any, p: Any, f0: Any) -> Any:
         d = self.data
         x, n = d.x_r, d.n_r
         if len(x) == 0:
             return 0.0
+        terms = self._right_terms(x, dp, gamma, p, f0)
+        return (terms * n).sum(axis=1)
+
+    def _left_terms(
+        self, x: npt.NDArray, dp: list, gamma: Any, p: Any, f0: Any
+    ) -> npt.NDArray:
+        """The log-likelihood of each left-censored row at ``x``."""
         xs = self._censored_x(x, gamma)
         with np.errstate(divide="ignore", invalid="ignore"):
-            if not self.lfp:
-                terms = np.log1p(-f0) + self.dist.log_sf(xs, *dp)
-            else:
-                terms = np.log((1 - p) + (p - f0) * self.dist.sf(xs, *dp))
-        return (terms * n).sum(axis=1)
+            if not self.zi:
+                return self.dist.log_ff(xs, *dp) + np.log(p)
+            return np.log(f0 + (p - f0) * self.dist.ff(xs, *dp))
 
     def _left(self, dp: list, gamma: Any, p: Any, f0: Any) -> Any:
         d = self.data
         x, n = d.x_l, d.n_l
         if len(x) == 0:
             return 0.0
-        xs = self._censored_x(x, gamma)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            if not self.zi:
-                terms = self.dist.log_ff(xs, *dp) + np.log(p)
-            else:
-                terms = np.log(f0 + (p - f0) * self.dist.ff(xs, *dp))
+        terms = self._left_terms(x, dp, gamma, p, f0)
         return (terms * n).sum(axis=1)
 
     def _windows(
@@ -196,6 +215,19 @@ class LogLikelihood:
         """Sum of ``n log P(xl < T <= xr)`` over the windows."""
         if len(n) == 0:
             return 0.0
+        terms = self._window_terms(xl, xr, dp, gamma, p, f0)
+        return (terms * n).sum(axis=1)
+
+    def _window_terms(
+        self,
+        xl: npt.NDArray,
+        xr: npt.NDArray,
+        dp: list,
+        gamma: Any,
+        p: Any,
+        f0: Any,
+    ) -> npt.NDArray:
+        """``log P(xl < T <= xr)`` of each window, ``(N, m)``."""
         dist = self.dist
         lo_finite = np.isfinite(xl)[None, :]
         hi_finite = np.isfinite(xr)[None, :]
@@ -232,7 +264,7 @@ class LogLikelihood:
                 body = log_fr + _log1mexp(np.maximum(log_fr - log_fl, 0.0))
                 use_tail = lo_eval & (log_sl < np.log(0.5))
                 terms = np.where(use_tail, tail, body)
-        return (terms * n).sum(axis=1)
+        return terms
 
     def _inside(self, xl: npt.NDArray, xr: npt.NDArray, gamma: Any) -> Any:
         """A point inside the support, per parameter point."""
@@ -275,6 +307,101 @@ class LogLikelihood:
         for start in range(0, P.shape[0], step):
             out[start : start + step] = self._evaluate(P[start : start + step])
         return out.reshape(shape)
+
+    def pointwise(self, params: npt.ArrayLike) -> npt.NDArray:
+        """
+        Each data row's own log-likelihood at each parameter point.
+
+        Row ``j`` (in the order of the data's ``x``, ``c``, ``n`` and
+        ``t``) contributes its censoring kind's term (density, survival,
+        failure probability or the probability of its interval) less the
+        log probability of its own truncation window, for one unit: the
+        row's count is not applied. So ``pointwise(P) @ data.n`` is the
+        log-likelihood, to rounding.
+
+        Parameters
+        ----------
+        params : array like
+            Parameter points, shape ``(..., k)``, as for calling the
+            likelihood.
+
+        Returns
+        -------
+        numpy.ndarray
+            Shape ``(...) + (rows,)``; ``-inf`` where a row is impossible
+            at a point.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> from surpyval.bayes import LogLikelihood
+        >>> data = sp.SurpyvalData(x=[1.0, 2.0], c=[0, 1], n=[3, 1])
+        >>> ll = LogLikelihood(sp.Exponential, data)
+        >>> ll.pointwise(np.array([0.5])).round(4)
+        array([-1.1931, -1.    ])
+        >>> bool(np.isclose(ll.pointwise(np.array([0.5])) @ data.n,
+        ...                 ll(np.array([0.5]))))
+        True
+        """
+        P = np.asarray(params, dtype=float)
+        if P.shape[-1] != self.k:
+            raise ValueError(
+                f"params must have {self.k} values in its last axis "
+                f"({', '.join(self.parameter_names)}); got shape {P.shape}"
+            )
+        shape = P.shape[:-1]
+        P = P.reshape(-1, self.k)
+        rows = len(self.data.c)
+        everything = np.ones(rows, dtype=bool)
+        out = np.empty((P.shape[0], rows))
+        step = max(1, _CHUNK // max(rows, 1))
+        for start in range(0, P.shape[0], step):
+            out[start : start + step] = self._pointwise(
+                P[start : start + step], everything
+            )
+        return out.reshape(shape + (rows,))
+
+    def _pointwise(self, P: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+        """:meth:`pointwise` at the points ``P`` (``(N, k)``) for the rows
+        selected by the mask ``rows``, ``(N, rows.sum())``."""
+        d = self.data
+        dp, gamma, p, f0 = self._split(P)
+        column = np.cumsum(rows) - 1
+        out = np.zeros((P.shape[0], int(rows.sum())))
+
+        def take(mask: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+            keep = rows[mask]
+            return keep, column[mask][keep]
+
+        keep, idx = take(d.mask_o)
+        if idx.size:
+            x = d.x_o[keep]
+            if self.zi:
+                zero = x == 0
+                with np.errstate(divide="ignore"):
+                    out[:, idx[zero]] = np.log(f0)
+                x, idx = x[~zero], idx[~zero]
+            if idx.size:
+                ld, mass = self._observed_terms(x, dp, gamma, p, f0)
+                out[:, idx] = ld + mass[:, None]
+        keep, idx = take(d.mask_r)
+        if idx.size:
+            out[:, idx] = self._right_terms(d.x_r[keep], dp, gamma, p, f0)
+        keep, idx = take(d.mask_l)
+        if idx.size:
+            out[:, idx] = self._left_terms(d.x_l[keep], dp, gamma, p, f0)
+        keep, idx = take(d.mask_i)
+        if idx.size:
+            out[:, idx] = self._window_terms(
+                d.x_il[keep], d.x_ir[keep], dp, gamma, p, f0
+            )
+        keep, idx = take(d.truncated_mask)
+        if idx.size:
+            out[:, idx] -= self._window_terms(
+                d.x_tl[keep], d.x_tr[keep], dp, gamma, p, f0
+            )
+        return np.where(np.isnan(out), -np.inf, out)
 
 
 def log_likelihood_fn(
@@ -351,3 +478,87 @@ def log_likelihood_fn(
 
     refuse_weighted_data(data, "log_likelihood_fn", BAYES_WHY, BAYES_INSTEAD)
     return LogLikelihood(dist, data, offset=offset, lfp=lfp, zi=zi)
+
+
+def log_posterior_and_grad(
+    data: SurpyvalData,
+    dist: Any,
+    prior: Any = None,
+    *,
+    offset: bool = False,
+    lfp: bool = False,
+    zi: bool = False,
+    fixed: dict[str, float] | None = None,
+) -> Any:
+    """
+    The log-posterior of a Bayesian fit and its gradient at one point, for
+    a gradient-based sampler: ``f(z) -> (value, gradient)``.
+
+    ``z`` is the free parameters on their unconstrained scale (the log of
+    a positive parameter, the logit of a proportion), in the order of
+    ``f.free_names``. The value is the posterior ``fit_bayes`` uses (the
+    log prior on that scale, its log-Jacobian included, plus this
+    module's log-likelihood) to rounding; the data are checked and split
+    once, here, so a call does no checking. See :mod:`surpyval.bayes._lean`
+    for what a sampler may assume.
+
+    Parameters
+    ----------
+    data : SurpyvalData
+        The data, any censoring and truncation.
+    dist : ParametricFitter
+        A distribution ``fit_bayes`` takes.
+    prior : optional
+        What ``fit_bayes`` takes as ``priors`` (a dict, a joint prior), or
+        a ``BoundPriors`` already bound to this fit.
+    offset, lfp, zi, fixed
+        As for ``fit_bayes``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> from surpyval.bayes.likelihood import log_posterior_and_grad
+    >>> data = sp.SurpyvalData(x=[2.1, 3.4, 4.05, 5.0], c=[0, 0, 0, 1])
+    >>> f = log_posterior_and_grad(data, sp.Weibull,
+    ...                            {"beta": sp.prior.between(1, 5)})
+    >>> f.free_names
+    ['alpha', 'beta']
+    >>> value, gradient = f(np.log([4.0, 2.0]))
+    >>> round(value, 4), gradient.round(4)
+    (-6.6897, array([1.1716, 1.7445]))
+    """
+    from surpyval.bayes._lean import LogPosterior
+    from surpyval.bayes.fitting import (
+        _check_dist,
+        _validate_data,
+        bayes_data,
+        build_bound,
+    )
+    from surpyval.bayes.prior import BoundPriors
+
+    _check_dist(dist, "auto")
+    if getattr(dist, "discrete", False):
+        raise ValueError(
+            f"log_posterior_and_grad covers the continuous distributions; "
+            f"{dist.name} is fitted in closed form (fit_bayes with a Beta "
+            "prior)."
+        )
+    data = bayes_data("log_posterior_and_grad", data)
+    _validate_data(dist, data, offset, zi)
+    if isinstance(prior, BoundPriors):
+        bound = prior
+        if (bound.offset, bound.lfp, bound.zi) != (offset, lfp, zi):
+            raise ValueError(
+                "The BoundPriors were bound with offset, lfp and zi = "
+                f"{bound.offset}, {bound.lfp}, {bound.zi}; pass the same "
+                "here, or pass the priors themselves."
+            )
+    else:
+        bound = build_bound(dist, data, prior, offset, lfp, zi, fixed)
+    if bound.d == 0:
+        raise ValueError(
+            "Every parameter is fixed, so there is nothing to sample: use "
+            f"{dist.name}.from_params(...)."
+        )
+    return LogPosterior(dist, data, bound)

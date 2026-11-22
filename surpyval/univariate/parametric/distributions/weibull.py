@@ -67,6 +67,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
     # log time (#477).
     _cb_link = "loglog"
 
+    # How the parameters move with the time (rescale_time): alpha is a time;
+    # beta has no unit.
+    _time_roles = ("time", "shape")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -96,7 +100,7 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
             # offset (``_offset_seed``). The plot's own offset fit, whose
             # offset was then replaced, was not one distribution (#622).
             return self._offset_seed(data)
-        mpp_model = self.fit_from_surpyval_data(
+        mpp_model = self._fit_from_surpyval_data(
             data, how="MPP", heuristic="Nelson-Aalen"
         )
         return np.asarray(mpp_model.params, dtype=float)
@@ -321,6 +325,22 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         array([1.70919151, 2.06189877, 2.31840554, 2.5362346 , 2.73733292])
         """
         return alpha * (-np.log1p(-u)) ** (1 / beta)
+
+    def isf(self, s: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \alpha \left( -\ln s \right)^{1/\beta}
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.isf([0.5, 1e-300], 10, 2)
+        array([  8.32554611, 262.82608849])
+        """
+        with np.errstate(divide="ignore"):
+            return alpha * (-np.log(s)) ** (1 / beta)
 
     def _mrl_inside(self, x: Any, alpha: float, beta: float) -> Any:
         # In closed form (#825): with z = (x / alpha)**beta and a = 1 /

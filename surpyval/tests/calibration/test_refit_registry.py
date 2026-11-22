@@ -1080,6 +1080,15 @@ def _copula_grid(case, truth, data):
     return np.array([[a, b] for a in q[:, 0] for b in q[:, 1]])
 
 
+def _copula_grid_nd(case, truth, data):
+    # Triples of the margins' quartiles and median (a copula of three
+    # series).
+    q = np.quantile(data["x"], [0.25, 0.5, 0.75], axis=0)
+    return np.array(
+        [[a, b, c] for a in q[:, 0] for b in q[:, 1] for c in q[:, 2]]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Curves and grids by interface
 # ---------------------------------------------------------------------------
@@ -1180,6 +1189,15 @@ PLANS["Beta4"] = Plan(
     "with a and inherit their bias (1.5 and 1.2 sd at n = 300)",
 )
 PLANS["BetaGeometric"] = Plan(_uni_censored, 300, 100)
+PLANS["Hypoexponential"] = Plan(
+    _uni_censored,
+    300,
+    60,
+    note="the curve only: the fixture's two rates are equal (an Erlang), "
+    "and a fit reports its rates in order, slowest first, so each "
+    "estimate is the smaller or larger of two and biased away from a "
+    "common truth by construction",
+)
 for _name in ("Binomial", "Bernoulli", "FixedEventProbability"):
     PLANS[_name] = Plan(_uni_plain, 300, 100, params=_parametric_params)
 PLANS["ExactEventTime"] = Plan(_inspected, 300, 100, params=_parametric_params)
@@ -1415,7 +1433,21 @@ for _name in (
     PLANS[_name] = Plan(_cr, 300, 40, note=_SEMI)
 
 # Recurrent events: n is the number of items, observed over [0, 60].
-for _name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+for _name in (
+    "HPP",
+    "CrowAMSAA",
+    "Duane",
+    "CoxLewis",
+    "GoelOkumoto",
+    "YamadaDelayedS",
+    "InflectionS",
+    "MusaOkumoto",
+    "RayleighDefects",
+    # Goel-Okumoto on another clock (testing effort, a change at tau):
+    # the fitted model's own simulation runs on its clock
+    "EffortClock",
+    "ChangePoint",
+):
     PLANS[_name] = Plan(
         _recurrent_own, 40, 100, params=lambda m: np.asarray(m.params)
     )
@@ -1551,6 +1583,37 @@ PLANS["StudentTCopula"] = Plan(
     grid=_copula_grid,
     note=_COPULA_EDGE.format("nu", "1.3e14", "the Gaussian limit (nu -> inf)"),
 )
+for _name in ("GaussianCopula[D=3]", "GaussianCopula[D=3,exchangeable]"):
+    PLANS[_name] = Plan(
+        _copula, 300, 60, params=_copula_params, grid=_copula_grid_nd
+    )
+
+
+def _vine_curve(case, model, grid):
+    # A vine has no joint sf or CDF (refused, saying to estimate them from
+    # draws): the curve is the conditional CDF of the last series given
+    # the others, which it does compute.
+    return np.asarray(model.conditional_cdf(grid, of=2), dtype=float)
+
+
+PLANS["VineCopula[D=3]"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params,
+    curve=_vine_curve,
+    grid=_copula_grid_nd,
+    note="the curve is the conditional CDF of the last series given the "
+    "others: a vine has no joint sf or CDF",
+)
+PLANS["StudentTCopula[D=3]"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params_except("nu"),
+    grid=_copula_grid_nd,
+    note=_COPULA_EDGE.format("nu", "6.5e14", "the Gaussian limit (nu -> inf)"),
+)
 
 
 _NO_DATA = "built from its parameters (or a constant), not fitted to data"
@@ -1560,6 +1623,14 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    **dict.fromkeys(
+        ("RelativeSurvival", "ExcessHazard"),
+        "the plans draw lifetimes from the model alone, and relative "
+        "survival data need each unit's population death time too, drawn "
+        "from its rate table: recovery and the bounds' coverage on such "
+        "data are checked by calibration/test_coverage_relative_survival.py "
+        "and tests/univariate/test_relative_survival.py",
+    ),
     **dict.fromkeys(
         ("PanelCountMCF", "PanelCountRegression"),
         "no simulation from the model: the mean function is a step "
@@ -1574,6 +1645,21 @@ EXCLUDED: dict[str, str] = {
     "check the grouped-data likelihood rather than the interval one; its "
     "coefficients' coverage on simulated interval-censored data is "
     "calibration/test_coverage_interval_cox.py's",
+    "CoxPH[interval]": "its fixture is interval censored and fitted by "
+    "the full likelihood (CoxNPMLEModel), and the regression plans draw "
+    "exact and right-censored times, which CoxPH fits by its partial "
+    "likelihood (planned above as CoxPH): the route would not be checked. "
+    "With one cause it is IntervalCoxPH's fit "
+    "(tests/univariate/regression/test_cox_npmle.py), whose coverage on "
+    "simulated interval-censored data is "
+    "calibration/test_coverage_interval_cox.py's",
+    "CoxPH[interval, causes]": "its fixture is interval censored with "
+    "causes and fitted by the full likelihood (CoxNPMLEModel), and the "
+    "competing-risks plans draw exact and right-censored times, which "
+    "CoxPH fits by its partial likelihood: the route would not be "
+    "checked. Its coefficients' coverage on simulated interval-censored "
+    "data with causes and delayed entry is "
+    "calibration/test_coverage_cox_npmle.py's",
     "FineGray[strata]": "the competing-risks simulator draws every unit "
     "from one baseline and one censoring distribution; recovery and "
     "coverage of the stratified fit are checked by its own study "
@@ -1619,13 +1705,26 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
-    "Hypoexponential": _NO_DATA,
+    **dict.fromkeys(
+        ("QuantileRegression", "QuantileRegression[portnoy]"),
+        "the quantile process fitted to the fixture's 30 rows is constant "
+        "over runs of levels, so each row's distribution is a step function "
+        "with jumps of up to 0.17: data drawn from it are tied at those "
+        "steps, a refit's steps fall beside the truth's, and the curve check, "
+        "read at the data's own times, sees a whole jump (0.09 at worst over "
+        "40 refits of 300, with the plan of BuckleyJames). Recovery of the "
+        "coefficient process from continuous data with known quantiles is "
+        "tested in tests/univariate/regression/test_quantile_regression.py",
+    ),
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,
     "SurvivalTree[weibull]": _ML,
     "SurvivalTree[exponential]": _ML,
     "SurvivalTree[non-parametric]": _ML,
     "RandomSurvivalForest": _ML,
+    "SurvivalTree[causes, weibull]": _ML,
+    "SurvivalTree[causes, non-parametric]": _ML,
+    "RandomSurvivalForest[causes]": _ML,
     "AdditiveHazards": "documented: the Lin-Ying cumulative hazard need "
     "not be monotone, and the fixture's sf exceeds 1 (1.054 at t = 1 at "
     "the row (0, -0.8)) even where beta'Z >= 0: not a distribution to "
@@ -1663,6 +1762,22 @@ EXCLUDED: dict[str, str] = {
         "panels is calibration/test_coverage_multistate_panel.py, and the "
         "models' special cases are in tests/multistate/test_panel.py",
     ),
+    **dict.fromkeys(
+        (
+            "CrowAMSAA[frailty=gamma]",
+            "CoxLewis[frailty=gamma]",
+            "Duane[frailty=lognormal]",
+            "ProportionalIntensityNHPP[frailty=gamma]",
+            "ProportionalIntensityNHPP[frailty=lognormal]",
+        ),
+        "a fleet whose units each have a frailty, which a model draw does "
+        "not give (the model has no simulator): its own study, "
+        "calibration/test_coverage_shared_frailty.py, simulates fleets "
+        "from the definition and checks the parameters' bias and "
+        "coverage, the bands, the forecast interval and the size of the "
+        "test of no frailty; recovery with covariates is in "
+        "recurrent/test_shared_frailty.py",
+    ),
     "JointFrailty": "recurrent events and a terminal event per unit, "
     "which a model draw of one function does not give: its own study, "
     "calibration/test_coverage_joint_frailty.py, simulates units with "
@@ -1679,6 +1794,45 @@ EXCLUDED: dict[str, str] = {
         "from this link is in univariate/joint/test_joint_links.py"
         for _link in ("slope", "cumulative", "value+slope")
     },
+    "WeibullJointPH[lag]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of a fleet simulated with "
+    "a lag is in univariate/joint/test_joint_lag.py",
+    "WeibullJointPH[weight]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated with "
+    "a weight on the accumulated exposure is in "
+    "univariate/joint/test_joint_weight.py and "
+    "calibration/test_coverage_joint_weight.py",
+    "WeibullJointAFT": "a lifetime with marker readings along it, which a "
+    "model draw does not give: recovery of fleets simulated from the "
+    "accelerated model is in univariate/joint/test_joint_aft.py, and the "
+    "recovery study per path model in scripts/studies/joint_recovery",
+    "WeibullJointPH[diagonal]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of a fleet simulated with "
+    "the line's start and rate uncorrelated is in "
+    "univariate/joint/test_joint_random_effects.py",
+    "WeibullJointPH[causes]": "a lifetime with marker readings along it "
+    "and a failure mode, which a model draw does not give: recovery of a "
+    "fleet simulated with two modes is in "
+    "univariate/joint/test_joint_causes.py, and the parameters' bias and "
+    "coverage in calibration/test_coverage_joint_causes.py",
+    "JelinskiMoranda": "one test campaign a fit, with no simulator on the "
+    "model, and a campaign that shows no growth has no finite estimate of "
+    "N (the fit refuses it), which the plans count as a failed refit: "
+    "recovery from 600 simulated campaigns (the coverage of N's bounds and "
+    "the median estimate, refusals counted) is "
+    "recurrent/test_jelinski_moranda.py's",
+    "LittlewoodVerrall": "one test campaign a fit, and gaps no more "
+    "scattered than exponential times have no estimate of alpha (the fit "
+    "refuses them), which the plans count as a failed refit: recovery "
+    "from campaigns simulated by the model's random() is "
+    "recurrent/test_littlewood_verrall.py's",
+    "ClaytonCopula[margins=KaplanMeier]": "its margins are Kaplan-Meier "
+    "steps on the fixture's rows, so data drawn from it are tied at those "
+    "steps, and its rank-based covariance refuses ties; the margins have "
+    "no parameters to recover. The rank-based estimate's "
+    "coverage on continuous data, and the case bootstrap's on censored "
+    "data with Kaplan-Meier margins, are "
+    "calibration/test_coverage_copula.py's",
 }
 
 

@@ -85,6 +85,36 @@ of the units, 15 instead of 59.
 
     assert demonstration_sample_size(0.95, test_multiple=2.0, shape=2.0) == 15
 
+With the units fixed, :func:`~surpyval.test_planning.demonstration_test_time`
+gives how long each must run, in hours rather than missions: ten units, a
+believed shape of 2, to show 90% reliability over 1000 hours at 90%
+confidence, each run about 1478 hours with no failure (the Weibayes closed
+form, :math:`t_m (\ln \alpha / (n \ln R))^{1/\beta}`). Given ``n`` and
+``shape``, :func:`~surpyval.test_planning.demonstration_plan` searches the
+test length that keeps both risks, and ``mission_time`` reports it in
+hours: ten units are too few to keep a 20% producer's risk at any length,
+which the refusal says with the units that are enough; twenty run about
+2820 hours each, allowing 8 failures.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import demonstration_test_time
+
+    print(round(demonstration_test_time(0.9, 10, mission_time=1000.0,
+                                        shape=2.0, alpha_ci=0.1)))
+    demonstration_plan(0.9, 0.95, alpha_ci=0.1, n=20, shape=2.0,
+                       mission_time=1000.0)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(demonstration_test_time(
+        0.9, 10, mission_time=1000.0, shape=2.0, alpha_ci=0.1)) == 1478
+    _plan = demonstration_plan(0.9, 0.95, alpha_ci=0.1, n=20, shape=2.0,
+                               mission_time=1000.0)
+    assert (round(_plan.unit_test_time, -1), _plan.failures) == (2820, 8)
+
 At a constant failure rate an MTBF is demonstrated by total test time,
 failed units repaired or replaced: about three MTBFs of testing with no
 failures, at 95% confidence. :func:`~surpyval.test_planning.mtbf_demonstration_plan`
@@ -437,6 +467,19 @@ little precision for protection against a life-stress relation that bends:
     assert round(optimum.stresses[0]) == 25
     assert optimum.precision < compromise.precision
 
+Each plan reports what the acceleration buys: the acceleration factor at
+each stress (an hour at 60 V ages a unit as much as 36 hours at 10 V), and
+how long the same 40 units would have to run at the use stress to estimate
+the B10 life as precisely, about 2480 hours against the 1000 of the
+accelerated test.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(optimum.acceleration_factors[-1]) == 36
+    assert round(optimum.use_test_time, -1) == 2480
+
 :func:`~surpyval.test_planning.accelerated_test_precision` gives the
 precision of a test you propose, and the plans' ``simulate`` method checks
 the approximation by fitting :class:`surpyval.AcceleratedLife` to simulated
@@ -454,32 +497,63 @@ new units and 35% of the old would fail, detecting a 30% lower hazard takes
 
 .. jupyter-execute::
 
-    from surpyval.test_planning import (
-        logrank_events,
-        logrank_power,
-        logrank_sample_size,
-    )
+    from surpyval.test_planning import logrank_design
 
-    print(logrank_events(0.5))
-    print(logrank_sample_size(0.7, (0.25, 0.35)))
-    print(round(logrank_power(0.7, (200, 200), (0.25, 0.35)), 2))
+    print(logrank_design(0.5, power=0.8).events)
+    print(logrank_design(0.7, power=0.8, event_probability=(0.25, 0.35)).n)
+    plan = logrank_design(0.7, n=(200, 200), event_probability=(0.25, 0.35))
+    print(plan.solved_for, round(plan.power, 2))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert logrank_events(0.5) == 66
-    assert logrank_sample_size(0.7, (0.25, 0.35)) == (412, 412)
+    assert logrank_design(0.5, power=0.8).events == 66
+    assert logrank_design(0.7, power=0.8, event_probability=(0.25, 0.35)).n == (
+        412,
+        412,
+    )
 
 Freedman's formula, as lifelines' ``sample_size_necessary_under_cph`` uses,
 is the option ``method="freedman"``.
 
+A difference stated in mean lives becomes a hazard ratio only through the
+shape. For exponential lives, a mean life 30% longer is a hazard ratio of
+``1 / 1.3``; for Weibull lives with a common shape :math:`\beta`, it is
+``1.3 ** -beta``. Where the shape is known,
+:func:`~surpyval.test_planning.mean_ratio_design` plans the exact F test of
+the two means themselves (Epstein and Sobel; Lawless, section 3.5): 458
+failures for exponential lives, against the log-rank test's 457, and 116
+for a shape of 2.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import mean_ratio_design
+
+    print(mean_ratio_design(1.3, power=0.8).events,
+          logrank_design(1 / 1.3, power=0.8).events)
+    print(mean_ratio_design(1.3, shape=2.0, power=0.8).events)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert mean_ratio_design(1.3, power=0.8).events == 458
+    assert logrank_design(1 / 1.3, power=0.8).events == 457
+    assert mean_ratio_design(1.3, shape=2.0, power=0.8).events == 116
+
+Every design below works the same way: give all of its quantities (the
+power, the size and the effect) but one, and the one left ``None`` is
+solved for. The answer, a
+:class:`~surpyval.test_planning.PowerCalculation`, says what was solved
+for (``solved_for``) and holds it (``value``) beside the power, the events
+and the units. Giving none, or more than one, is refused, naming them.
+
 To show that a change to a repairable system lowered its *rate* of
 failures, the comparison is of the failures before and after the change,
-over the operating time of each: :func:`~surpyval.test_planning.rate_ratio_power`,
-:func:`~surpyval.test_planning.rate_ratio_detectable` and
-:func:`~surpyval.test_planning.rate_ratio_exposure` give the power, the
-smallest change detectable and the operating time needed, for the test of
+over the operating time of each: :func:`~surpyval.test_planning.rate_ratio_design`
+gives the power, the smallest change detectable or the operating time
+needed, whichever is left ``None``, for the test of
 :func:`surpyval.recurrent.intervention_test`. They are worked through in
 :doc:`Intervention Analysis with SurPyval`.
 
@@ -503,23 +577,22 @@ Schoenfeld's formula.
 
 .. jupyter-execute::
 
-    from surpyval.test_planning import (
-        cox_detectable,
-        cox_events,
-        cox_power,
-        cox_sample_size,
-    )
+    from surpyval.test_planning import cox_design
 
-    print(cox_events(1.5, sd=1.0), cox_events(1.5, sd=1.0, r_squared=0.3))
-    print(cox_sample_size(1.5, 0.4, sd=1.0, r_squared=0.3))
-    print(round(cox_detectable(200, 0.4, sd=1.0, r_squared=0.3), 2))
+    alone = cox_design(1.5, power=0.8, sd=1.0)
+    adjusted = cox_design(1.5, power=0.8, sd=1.0, r_squared=0.3)
+    print(alone.events, adjusted.events)
+    print(cox_design(1.5, power=0.8, event_probability=0.4, sd=1.0, r_squared=0.3).n)
+    smallest = cox_design(power=0.8, n=200, event_probability=0.4, sd=1.0,
+                   r_squared=0.3)
+    print(smallest.solved_for, round(smallest.value, 2))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert cox_events(1.5, sd=1.0) == 48
-    assert cox_events(1.5, sd=1.0, r_squared=0.3) == 69
+    assert alone.events == 48
+    assert adjusted.events == 69
 
 **Showing that a change is no worse, or as good.** A cheaper part, a
 shorter procedure: the aim is to show the new group's hazard is at most a
@@ -535,22 +608,18 @@ ratio of 1.3 at one side of a 95% interval.
 
 .. jupyter-execute::
 
-    from surpyval.test_planning import (
-        equivalence_events,
-        noninferiority_events,
-        noninferiority_sample_size,
-    )
+    from surpyval.test_planning import equivalence_design, noninferiority_design
 
-    print(noninferiority_events(1.3))
-    print(noninferiority_sample_size(1.3, 0.4))
-    print(equivalence_events(1.25, alpha_ci=0.1))
+    print(noninferiority_design(1.3, power=0.8).events)
+    print(noninferiority_design(1.3, power=0.8, event_probability=0.4).n)
+    print(equivalence_design(1.25, power=0.8, alpha_ci=0.1).events)
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert noninferiority_events(1.3) == 457
-    assert equivalence_events(1.25, alpha_ci=0.1) == 688
+    assert noninferiority_design(1.3, power=0.8).events == 457
+    assert equivalence_design(1.25, power=0.8, alpha_ci=0.1).events == 688
 
 **A difference in restricted mean survival time.** When the hazards are
 not expected to be proportional (an effect that starts late, curves that
@@ -559,7 +628,7 @@ off. The restricted mean survival time (RMST) to a horizon :math:`\tau`,
 the area under the survival curve up to :math:`\tau`, needs no such
 assumption, and its difference reads in time: "over five years, the new
 units run on average 0.8 years longer before failing".
-:func:`~surpyval.test_planning.rmst_sample_size` takes the survival curve
+:func:`~surpyval.test_planning.rmst_design` takes the survival curve
 expected in each group (any SurPyval distribution, fitted or with given
 parameters, or a function of time, such as a piecewise exponential), the
 time over which units enter, the follow-up after the last enters and the
@@ -577,7 +646,7 @@ planned is :func:`surpyval.rmst_diff`'s.
 .. jupyter-execute::
 
     import numpy as np
-    from surpyval.test_planning import rmst_power, rmst_sample_size
+    from surpyval.test_planning import rmst_design
 
     def piecewise(t):
         # hazard 0.15 for two years, 0.25 after
@@ -586,8 +655,8 @@ planned is :func:`surpyval.rmst_diff`'s.
 
     curves = (surpyval.Weibull.from_params([8.0, 1.3]), piecewise)
     study = dict(accrual_time=2.0, follow_up=4.0, dropout_rate=0.05)
-    n = rmst_sample_size(curves, 5.0, **study)
-    print(n, round(rmst_power(curves, 5.0, n, **study), 3))
+    n = rmst_design(curves, 5.0, power=0.8, **study).n
+    print(n, round(rmst_design(curves, 5.0, n=n, **study).power, 3))
 
 .. jupyter-execute::
     :hide-code:
@@ -600,7 +669,7 @@ or free of the defect, each group's survival levels off at its cured
 fraction, :math:`S(t) = \pi + (1 - \pi) S_u(t)`, and the hazard ratio
 drifts towards 1 as the uncured fail. Schoenfeld's count for one hazard
 ratio is then wrong, by an amount that depends on the follow-up.
-:func:`~surpyval.test_planning.cure_logrank_sample_size` uses the mean and
+:func:`~surpyval.test_planning.cure_logrank_design` uses the mean and
 variance of the log-rank statistic under the two mixture-cure curves
 (Schoenfeld 1981), over the study's entry, follow-up and dropout. A
 difference in the cured fraction, in the latency (``latency_hazard_ratio``
@@ -608,21 +677,18 @@ or a pair of latency distributions), or both, may be given:
 
 .. jupyter-execute::
 
-    from surpyval.test_planning import (
-        cure_logrank_events,
-        cure_logrank_sample_size,
-    )
+    from surpyval.test_planning import cure_logrank_design
 
     latency = surpyval.Weibull.from_params([2.0, 1.2])
     study = dict(accrual_time=1.0, follow_up=3.0)
-    print(cure_logrank_sample_size((0.45, 0.30), latency, **study))
-    print(cure_logrank_events((0.45, 0.30), latency, **study))
+    plan = cure_logrank_design((0.45, 0.30), latency, power=0.8, **study)
+    print(plan.n, plan.events)
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert cure_logrank_sample_size((0.45, 0.30), latency, **study) == (247, 247)
+    assert plan.n == (247, 247)
 
 A difference only in the cured fraction shows late, when the uncured have
 failed: with half a year of follow-up instead of three, the same plan

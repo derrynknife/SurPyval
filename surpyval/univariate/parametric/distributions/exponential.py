@@ -18,6 +18,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._stable import log1mexp, on_support, positive_or_one
 
@@ -59,6 +60,10 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     # log(-log sf), on which this family is a straight line in
     # log time (#477).
     _cb_link = "loglog"
+
+    # How the parameters move with the time (rescale_time): the failure rate is
+    # per unit of time.
+    _time_roles = ("rate",)
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -383,6 +388,22 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log1p(-u) / failure_rate
 
+    def isf(self, s: Numeric, failure_rate: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = -\ln(s) / \lambda
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> Exponential.isf([0.5, 1e-300], 0.1)
+        array([   6.93147181, 6907.75527898])
+        """
+        with np.errstate(divide="ignore"):
+            return -np.log(s) / failure_rate
+
     def _mrl_inside(self, x: Any, failure_rate: float) -> Any:
         # Memoryless: the mean residual life is the mean at every age.
         return np.full(np.shape(x), 1.0 / failure_rate)
@@ -533,7 +554,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             warnings.warn(
                 "Some Infinite values encountered in plotting points and have \
                 been ignored.",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             y_pp = y_pp[mask]
             x_pp = x_pp[mask]

@@ -35,15 +35,16 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+    survival_before,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
-from surpyval.utils import (
-    check_c_and_e,
-    is_missing_event,
-    resolve_cr_censoring,
-)
+from surpyval.utils import check_c_and_e, is_missing_event
+from surpyval.utils.data_formats import resolve_cr_censoring
 from surpyval.utils.linalg import safe_quadform
 from surpyval.utils.validation import (
     check_option,
@@ -466,7 +467,7 @@ def gray_test(
     # Everyone with x >= t is at risk at t.
     Y = counts[:, ::-1].cumsum(axis=1)[:, ::-1]
 
-    U, V = _score_and_variance(Y, d1, d2, rho)
+    U, V = score_and_variance(Y, d1, d2, rho)
     # Drop the last group for a full-rank (G-1) quadratic form.
     stat = safe_quadform(V[:-1, :-1], U[:-1])
     df = K - 1
@@ -479,7 +480,7 @@ def gray_test(
     )
 
 
-def _score_and_variance(
+def score_and_variance(
     Y: npt.NDArray, d1: npt.NDArray, d2: npt.NDArray, rho: float
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Gray's score and its variance, as R's ``cmprsk`` computes them.
@@ -496,11 +497,10 @@ def _score_and_variance(
     # Each group's all-cause Kaplan-Meier survival (S, and S_minus just
     # before each time) and Aalen-Johansen incidence of the cause (F1).
     S = np.cumprod(1.0 - np.where(at_risk, (d1 + d2) / Y_safe, 0.0), axis=1)
-    S_minus = _left_limit(S, 1.0)
+    S_minus = survival_before(S)
     S_minus_safe = np.where(at_risk, S_minus, 1.0)
-    F1_minus = _left_limit(
-        np.cumsum(S_minus * np.where(at_risk, d1 / Y_safe, 0.0), axis=1), 0.0
-    )
+    dF1 = aalen_johansen_iif(S, np.where(at_risk, d1 / Y_safe, 0.0))
+    F1_minus = _left_limit(np.cumsum(dF1, axis=1), 0.0)
 
     # Gray's subdistribution risk sets R_g = Y_g (1 - F1_g(t-)) / S_g(t-).
     # Y_g / S_g(t-) (``size``) is the group size times its censoring

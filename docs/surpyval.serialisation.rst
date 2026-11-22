@@ -142,6 +142,11 @@ The later versions, each refused by the SurPyval releases before it:
        ``"hess_inv"``); a stratified Cox model (``"strata"``); a model
        whose coefficients carry their signs (``"coefficient_signs"``).
      - 0.27
+   * - 5
+     - A joint model with the accelerated survival part
+       (``"survival": "AFT"``, from ``JointAFT``): a reader without it
+       would predict from it as a proportional hazards model.
+     - 0.29
 
 .. _saved-model-dictionary:
 
@@ -285,7 +290,7 @@ with its own ``schema``.
    * - ``Parametric``
      - ``"parameterization": "parametric"``
      - ``distribution``, ``how``, ``param_names``, ``params``, ``lfp``, ``p``, ``zi``, ``f0``, ``offset``, ``gamma``, ``hess_inv``, ``covariance``, ``_neg_ll``, ``maximum``, ``data_summary``, ``ic_n``
-     - ``fixed``, ``custom``, ``event_counts``, ``n_trials``
+     - ``fixed``, ``custom``, ``event_counts``, ``n_trials``, ``hr`` (a hazard ratio other than 1; schema 5)
    * - ``NonParametric``
      - ``"parameterization": "non-parametric"``
      - ``x``, ``r``, ``d``, ``R``, ``F``, ``H``, ``greenwood``, ``data_summary``
@@ -334,6 +339,10 @@ with its own ``schema``.
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
      - --
+   * - ``QuantileRegressionModel``
+     - ``"model": "QuantileRegressionModel"``
+     - ``method``, ``step``, ``taus``, ``intercepts``, ``coefs``, ``data``
+     - --
    * - ``ProportionalOddsModel``
      - ``"model": "ProportionalOddsModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``d``, ``g0``, ``G0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
@@ -341,6 +350,10 @@ with its own ``schema``.
    * - ``IntervalCoxPHModel``
      - ``"model": "IntervalCoxPHModel"``
      - ``beta``, ``params``, ``se``, ``covariance``, ``p_values``, ``x``, ``H0``, ``H0_infinite``, ``intervals``, ``p0``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``maximum``, ``data_summary``
+     - --
+   * - ``CoxNPMLEModel``
+     - ``"model": "CoxNPMLEModel"``
+     - ``estimator``, ``causes``, ``single``, ``betas``, ``se``, ``covariance``, ``p_values``, ``d``, ``left``, ``right``, ``allowed``, ``report_lower``, ``tau``, ``center``, ``_neg_ll``, ``ic_n``, ``n_iter``, ``tol``, ``maximum``
      - --
    * - ``MixtureModel``
      - ``"model": "MixtureModel"``
@@ -422,10 +435,26 @@ with its own ``schema``.
      - ``"model": "PanelCountRegression"``
      - ``how``, ``x``, ``i``, ``n``, ``Z``, ``params``
      - --
+   * - ``RelativeSurvival``
+     - ``"model": "RelativeSurvival"``
+     - ``method``, ``x``, ``at_risk``, ``events``, ``n_units``, ``observed``, ``expected``, ``variance``
+     - --
+   * - ``ExcessHazard``
+     - ``"model": "ExcessHazard"``
+     - ``params``, ``parameter_names``, ``breaks``, ``aliased``, ``k``, ``_neg_ll``, ``ic_n``, ``covariance``, ``rate_table``, ``maximum``
+     - --
+   * - ``RateTable``
+     - ``"model": "RateTable"``
+     - ``ages``, ``years``, ``strata``, ``rates``
+     - --
    * - ``ParametricRecurrenceModel``
      - ``"model": "ParametricRecurrenceModel"``
      - ``dist``, ``params``, ``how``, ``covariance``, ``maximum``
-     - --
+     - ``clock``
+   * - ``SharedFrailtyModel``
+     - ``"model": "SharedFrailtyModel"``
+     - ``baseline``, ``family``, ``how``, ``params``, ``n_covariates``, ``regression``, ``held``, ``covariance``, ``cluster_ids``, ``cluster_events``, ``cluster_exposure``, ``maximum``
+     - ``feature_names``
    * - ``JointFrailtyModel``
      - ``"model": "JointFrailtyModel"``
      - ``family``, ``time_scale``, ``params``, ``n_covariates``, ``held``, ``covariance``, ``frailty_ids``, ``frailty_values``, ``maximum``
@@ -442,10 +471,18 @@ with its own ``schema``.
      - ``"model": "RenewalModel"``
      - ``family``, ``dist``, ``params``, ``restoration``, ``how``, ``covariance``, ``maximum``, ``kijima_type``
      - ``m``
+   * - ``JelinskiMorandaModel``
+     - ``"model": "JelinskiMorandaModel"``
+     - ``params``, ``n``, ``how``, ``maximum``
+     - ``test_time``, ``weighted_time``
+   * - ``LittlewoodVerrallModel``
+     - ``"model": "LittlewoodVerrallModel"``
+     - ``params``, ``psi``, ``n``, ``how``, ``covariance``, ``maximum``
+     - --
    * - ``DegradationModel``
      - ``"model": "DegradationModel"``
      - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``
-     - --
+     - ``extrapolated``, ``running``, ``censored_units``, ``acceleration``, ``gamma``, ``stress_ref``, ``Z_cols``
    * - ``InducedFailureDistribution``
      - ``"model": "InducedFailureDistribution"``
      - ``samples``, ``threshold``, ``path_name``
@@ -484,7 +521,7 @@ with its own ``schema``.
      - --
    * - ``JointModel``
      - ``"model": "JointModel"``
-     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``_neg_ll``, ``maximum``, ``covariance``
+     - ``distribution``, ``path_model``, ``links``, ``varying``, ``link``, ``survival``, ``params``, ``parameter_names``, ``aliased``, ``path_covariates``, ``hazard_covariates``, ``marker_reference``, ``centre``, ``covariate_means``, ``n_items``, ``n_events``, ``n_readings``, ``integration``, ``_neg_ll``, ``maximum``, ``covariance``
      - --
    * - ``EquivalenceModel``
      - ``"model": "EquivalenceModel"``

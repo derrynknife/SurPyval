@@ -289,12 +289,12 @@ def test_covariates_in_both_places_are_refused():
         sp.WeibullPH.fit(SurpyvalData(X, C, Z=Z), Z=Z)
 
 
-def test_fit_from_surpyval_data_is_kept():
+def test_fit_from_surpyval_data_is_deprecated_for_fit_of_the_data():
+    # tests/test_fit_entries_deprecated.py checks every fitter.
     data = SurpyvalData(X, C)
-    np.testing.assert_allclose(
-        sp.Weibull.fit_from_surpyval_data(data).params,
-        sp.Weibull.fit(data).params,
-    )
+    with pytest.warns(FutureWarning, match=r"call fit\(data\)"):
+        old = sp.Weibull.fit_from_surpyval_data(data)
+    np.testing.assert_array_equal(old.params, sp.Weibull.fit(data).params)
 
 
 # -- the dated deprecation --------------------------------------------------
@@ -547,9 +547,11 @@ def test_issue_933_fit_refusals_name_the_call_to_make():
     with pytest.raises(
         ValueError, match=r"without\('event_types'\), or data.for_event_type"
     ):
-        sp.CoxPH.fit(data)
+        sp.WeibullPH.fit(data)
+    # CoxPH takes the event types: the cause-specific model.
+    assert sp.CoxPH.fit(data).n_event_types == len(set(data.e) - {None})
     with pytest.raises(ValueError, match="without\\('event_types'\\)"):
-        sp.Weibull.fit_from_surpyval_data(data.without("covariates"))
+        sp.Weibull._fit_from_surpyval_data(data.without("covariates"))
 
 
 @pytest.mark.parametrize(

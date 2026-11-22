@@ -54,10 +54,9 @@ def test_every_kind_of_censoring_and_truncation_is_counted():
         tr=[np.inf, np.inf, np.inf, np.inf, 20],
     )
     assert (
-        "Data                : 5 units: 2 events at 2 unique times, "
-        "1 right censored, "
-        "1 left censored, 1 interval censored; 2 left truncated, "
-        "1 right truncated"
+        "Data                : 5 units: 4 events (2 exact at 2 unique "
+        "times, 1 left censored, 1 interval censored), 1 right censored; "
+        "2 left truncated, 1 right truncated"
     ) in repr(model)
 
 
@@ -79,8 +78,16 @@ def test_non_parametric_printout_has_the_data_line():
         "51 right censored"
     ) in (repr(km))
     tb = sp.Turnbull.fit(xl=[1, 2, 3], xr=[2, 4, 5])
-    assert "Data             : 3 units: 0 events, 3 interval censored" in (
-        repr(tb)
+    # The interval censored units had their events, at times not known
+    # exactly: counted as events, not "0 events".
+    assert (
+        "Data             : 3 units: 3 events (0 exact, 3 interval "
+        "censored)" in repr(tb)
+    )
+    assert "Model            : Turnbull" in repr(tb)
+    assert (
+        "Curve            : Fleming-Harrington on Turnbull's expected "
+        "counts" in repr(tb)
     )
     na = sp.NelsonAalen.fit([1, 2, 3, 4], tl=[0, 0, 1, 1])
     assert (
@@ -105,7 +112,14 @@ LINE = (
 
 
 @pytest.mark.parametrize(
-    "fitter", [sp.CoxPH, sp.WeibullPH, sp.WeibullAFT, sp.BuckleyJames]
+    "fitter",
+    [
+        sp.CoxPH,
+        sp.WeibullPH,
+        sp.WeibullAFT,
+        sp.BuckleyJames,
+        sp.QuantileRegression,
+    ],
 )
 def test_regression_printout_has_the_data_line(rossi, fitter):
     x, Z, c = rossi

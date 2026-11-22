@@ -538,9 +538,13 @@ and deviance residuals are of the exact and right-censored rows that are
 not right truncated (the report says how many it left out); the tests use
 every row. A fit to time-varying covariates (``fit_tvc``) is checked too
 (below). ``diagnose()`` refuses, saying what to do: a ``fit_tvc`` model
-fitted with weights (``w=``), a custom covariate link, a model restored
-with ``from_dict``, one with an aliased coefficient, and one whose fit is
-not a verified maximum (the tests compare it with larger models). The
+fitted with weights (``w=``), a model restored with ``from_dict``, one
+with an aliased coefficient, and one whose fit is not a verified maximum
+(the tests compare it with larger models). A custom covariate link (any
+other than ``exp(beta'Z)``, such as a ``phi`` of your own given to
+``ProportionalHazardsFitter``) is refused for good, since every test is
+built on that link: refit with ``PH(dist)`` or ``AFT(dist)``, diagnose
+the refit and compare the two fits by ``aic()``. The
 accelerated life models (#871) and the proportional odds and additive
 hazards models (#870) have their own families.
 
@@ -852,10 +856,14 @@ Counts (``n``), delayed entry (``tl``), ``fit_from_df`` and formulas,
 ``center=True``, fixed parameters and, for the parametric models,
 time-varying covariates (``fit_tvc``). ``diagnose()`` refuses, saying
 what to do: a model restored with ``from_dict`` (it has no data), one
-with an aliased coefficient, one whose fit has no finite maximum and, for
-now, a parametric model fitted to left- or interval-censored or
-right-truncated data, whose rows cannot be split at the cut times
-(#870). The functional form, influence and outliers are not checked for
+with an aliased coefficient, one whose fit has no finite maximum and a
+parametric model fitted to left- or interval-censored or right-truncated
+data, whose rows cannot be split at the cut times. That last refusal is
+permanent: fit the PH and AFT models with the same baseline to the same
+data (``WeibullPH``, ``WeibullAFT``, ...), whose ``diagnose()`` takes
+every kind of censoring and truncation, compare them with the model by
+``aic()``, and test whether the covariates have any effect with
+``likelihood_ratio_test()``. The functional form, influence and outliers are not checked for
 these models yet. A parametric additive hazards fit often ends on the
 boundary of its support (as its fit warns); a refit that does not reach a
 verified maximum is noted, and its test is then approximate. The tests
@@ -1668,9 +1676,18 @@ still a valid test, with p-values in steps of 1/101.
 
 ``diagnose()`` refuses, saying what to do: a model built with
 ``from_params`` or restored without its data, a fit with no finite
-maximum, a discrete distribution (not yet, #875), and the event-probability
-models (``Bernoulli``, ``FixedEventProbability``) and ``ExactEventTime``,
-which have no distribution of times to test. A ``MixtureModel`` is a
+maximum, and the event-probability models (``Bernoulli``,
+``FixedEventProbability``) and ``ExactEventTime``, which have no
+distribution of times to test. Two refusals are permanent, and each names
+what to use instead. A discrete distribution (``Poisson``,
+``NegativeBinomial``, ``DiscreteWeibull``, ...) is refused because
+the tests and plot are for continuous times, not counts: compare discrete
+distributions fitted to the same counts by ``aic()``, and the model's
+``sf`` with ``KaplanMeier.fit`` of the same data. A distribution whose
+fitter lacks the shared optimiser is refused because the bootstrap refits
+each resample with it: plot the model's ``sf`` beside ``KaplanMeier.fit``
+of the data it is meant to describe and, for a model fitted to data,
+compare it with other distributions by ``aic()``. A ``MixtureModel`` is a
 model of its own, without ``diagnose()`` yet.
 
 .. autofunction:: surpyval.diagnostics.univariate.gof_statistics

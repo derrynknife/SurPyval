@@ -179,9 +179,7 @@ class DynamicPrediction:
         sf``, whose derivative is ``-hf``, kept inside the bracket
         (bisection where a step leaves it)."""
         u = self.age
-        alpha = float(
-            self.model.params[self.model.parameter_names.index("alpha")]
-        )
+        alpha = self.model._scale()
         grid = u + alpha * _GRID
         log_sf, _ = self._log_sf_hf(grid)
         # the first grid age at or below each target
@@ -197,7 +195,7 @@ class DynamicPrediction:
             frac = (f_lo - target) / (f_lo - f_hi)
         frac = np.where(np.isfinite(frac), np.clip(frac, 0.0, 1.0), 0.5)
         t = lo + frac * (hi - lo)
-        active = ~never
+        active = np.asarray(~never)
         for _ in range(_STEPS):
             if not active.any():
                 break
@@ -366,10 +364,7 @@ class DynamicPrediction:
                 end = q
                 break
         if not np.isfinite(end):
-            alpha = float(
-                self.model.params[self.model.parameter_names.index("alpha")]
-            )
-            end = self.age + 10.0 * alpha
+            end = self.age + 10.0 * self.model._scale()
         return np.linspace(self.age, end, size)
 
     def to_dict(
@@ -400,7 +395,9 @@ class DynamicPrediction:
             the model has no covariance); ``remaining_life``, ``{"p":
             [0.1, 0.5, 0.9], "life": [...]}``; and ``marker``, the item's
             path from its first reading (or ``age``) to the last age,
-            ``{"x", "mean", "lower", "upper"}``.
+            ``{"x", "mean", "lower", "upper"}``; and ``how``, how the
+            model was fitted (``"two-stage"`` for the approximate
+            estimate, whose bounds are too narrow).
 
         Examples
         --------
@@ -460,6 +457,7 @@ class DynamicPrediction:
             covariates = z.tolist()
         out: dict = {
             "result": type(self).__name__,
+            "how": self.model.how,
             "age": self.age,
             "covariates": covariates,
             "markers": [[float(a), float(v)] for a, v in self.markers.items()],
@@ -485,10 +483,16 @@ class DynamicPrediction:
 
     def __repr__(self) -> str:
         median = float(self.remaining_life(0.5))
-        return (
+        out = (
             "Dynamic prediction of a joint model\n"
             "===================================\n"
             f"Age now             : {self.age:.6g}\n"
             f"Readings            : {len(self.markers)}\n"
             f"Median life left    : {median:.6g}"
         )
+        if self.model.how == "two-stage":
+            out += (
+                "\nModel               : two-stage fit (approximate; its "
+                "bounds are too narrow)"
+            )
+        return out

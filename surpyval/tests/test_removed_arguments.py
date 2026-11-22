@@ -231,9 +231,7 @@ def test_ari_fit_from_parameters_old_names_are_unknown():
     with pytest.raises(
         TypeError, match="unexpected keyword argument 'dist_params'"
     ):
-        ARI.fit_from_parameters(
-            dist_params=[20.0, 1.5], rho=0.5, baseline=Duane
-        )
+        ARI.from_params(dist_params=[20.0, 1.5], rho=0.5, baseline=Duane)
 
 
 @pytest.mark.parametrize(
@@ -418,6 +416,7 @@ _SHIM_NAMES = frozenset(
         "REMOVED_IN_NEXT",
         "renamed_arguments",
         "RenamedAttribute",
+        "fit_entry",
         "renamed_name",
         "DeprecationWarning",
     }

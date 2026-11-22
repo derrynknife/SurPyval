@@ -10,10 +10,10 @@ import pytest
 from scipy import stats
 
 import surpyval
-from surpyval.test_planning import (
-    logrank_events,
-    logrank_power,
-    logrank_sample_size,
+from surpyval.test_planning.comparison import _logrank_events as logrank_events
+from surpyval.test_planning.comparison import _logrank_power as logrank_power
+from surpyval.test_planning.comparison import (
+    _logrank_sample_size as logrank_sample_size,
 )
 
 # Wrong types, passed on purpose to the checks below.

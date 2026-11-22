@@ -11,8 +11,8 @@ from numpy.testing import assert_allclose
 from scipy.stats import norm
 
 import surpyval as sp
-from surpyval import SemiParametricRegressionModel
 from surpyval.datasets import load_rossi_static
+from surpyval.univariate.regression import SemiParametricRegressionModel
 from surpyval.univariate.regression.proportional_hazards._curve_variance import (  # noqa: E501
     curve_components,
 )

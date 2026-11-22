@@ -64,6 +64,12 @@ _TAGGED_MODELS: dict[str, str] = {
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "QuantileRegressionModel": (
+        "surpyval.univariate.regression.quantile.quantile_regression"
+    ),
+    "CoxNPMLEModel": (
+        "surpyval.univariate.regression.proportional_hazards.cox_npmle"
+    ),
     "IntervalCoxPHModel": (
         "surpyval.univariate.regression.proportional_hazards.interval_cox"
     ),
@@ -103,6 +109,9 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.competing_risks.nonparametric.competing_risks"
     ),
     "LandmarkCox": "surpyval.univariate.landmark.landmark_cox",
+    "RelativeSurvival": "surpyval.univariate.relative.net_survival",
+    "ExcessHazard": "surpyval.univariate.relative.excess_hazard",
+    "RateTable": "surpyval.univariate.relative.rate_table",
     "MultiState": "surpyval.multistate.nonparametric",
     "MultiStateProportionalHazards": "surpyval.multistate.regression",
     "PanelMultiState": "surpyval.multistate.panel",
@@ -120,7 +129,12 @@ _TAGGED_MODELS: dict[str, str] = {
         ".cause_specific_proportional_intensity"
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "JelinskiMorandaModel": "surpyval.recurrent.software.jelinski_moranda",
     "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
+    "LittlewoodVerrallModel": (
+        "surpyval.recurrent.software.littlewood_verrall"
+    ),
+    "SharedFrailtyModel": "surpyval.recurrent.shared_frailty",
     "PanelCountMCF": "surpyval.recurrent.panel_count",
     "PanelCountRegression": "surpyval.recurrent.panel_count",
     "ParametricRecurrenceModel": (
@@ -228,8 +242,28 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # reader would drop the states and take the stays in every state as one
 # sample; and data with terminal flags (``"a"``), whose units' several
 # rows it would take as units of their own.
+#
+# Schema 5 is the layout of v0.29, which a v0.28 reader (schema 4)
+# refuses. It is needed by a joint model with the accelerated survival
+# part (``"survival": "AFT"``): a v0.28 reader would ignore the entry
+# and predict from the parameters as if the marker multiplied the
+# hazard. And by a two-stage joint model (``"how": "two-stage"``): a
+# v0.28 reader would ignore the entry and present the approximate
+# estimate as the joint likelihood's. And by a joint model with a lag
+# (``"lag"`` above 0): a v0.28 reader would ignore the entry and predict
+# as if the hazard followed the marker with no delay. And by a joint
+# model with a weight on its accumulated exposure (``"weight"``): a
+# v0.28 reader would ignore the entry and predict as if all the exposure
+# counted equally. And by a joint
+# model with more than three varying path parameters: a v0.28 reader has
+# no prediction grid for four or five, and would fail with a KeyError at
+# its first prediction rather than refuse at the load. And by a joint
+# model whose varying path parameters are not all correlated
+# (``"random_effects"`` other than ``"full"``): a v0.28 reader would
+# ignore the entry and read the parameters after the sds as a
+# correlation of every pair, misplacing every one after them.
 # Every other document keeps the schema it had.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
@@ -259,6 +293,19 @@ _SCHEMA_STATES = 4
 # ``"markers"`` keep their layout): v0.27's schema 4, which a v0.26
 # reader refuses rather than silently drop the readings.
 _SCHEMA_MEASUREMENTS = 4
+
+# The schema of a joint model with the accelerated survival part
+# (``"survival": "AFT"``), fitted in two stages (``"how":
+# "two-stage"``), with a lag (``"lag"`` above 0), with a weight on its
+# accumulated exposure (``"weight"``), with more than three varying path
+# parameters or with some of them uncorrelated (``"random_effects"``
+# other than ``"full"``): v0.29's schema 5. Also a parametric model with
+# a hazard ratio other than 1 (``"hr"``), which a v0.28 reader would load
+# without it.
+_SCHEMA_ACCELERATED_JOINT = 5
+
+# The most path parameters a v0.28 joint model may vary between items.
+_MAX_VARYING_V028 = 3
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -747,6 +794,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
+        _is_schema_5_joint(d) or _has_hazard_ratio(d) for d in dicts
+    ):
+        return _SCHEMA_ACCELERATED_JOINT
     if _SCHEMA_STRATIFIED in stamped_versions or any(
         _is_stratified(d) for d in dicts
     ):
@@ -778,6 +829,39 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
             for d in dicts
         )
         else _SCHEMA_WITHOUT_NON_FINITE
+    )
+
+
+def _is_schema_5_joint(d: dict) -> bool:
+    """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
+    with the accelerated survival part, fitted in two stages, with a
+    lag, with a weight on its accumulated exposure, with more than three
+    varying path parameters, with a covariance structure other than the
+    full one (some correlations held at 0, so fewer parameters than a
+    v0.28 reader takes) or with failure modes (``"causes"``: a baseline
+    and effects for each, where a v0.28 reader takes one). Each needs
+    schema 5."""
+    if d.get("model") != "JointModel":
+        return False
+    return (
+        d.get("survival") == "AFT"
+        or d.get("how") == "two-stage"
+        or (d.get("lag") or 0) > 0
+        or d.get("weight") is not None
+        or len(d.get("varying") or ()) > _MAX_VARYING_V028
+        or (d.get("random_effects") or "full") != "full"
+        or d.get("causes") is not None
+    )
+
+
+def _has_hazard_ratio(d: dict) -> bool:
+    """Whether ``d`` is a parametric model with a hazard ratio other than
+    1 (``"hr"``), which a v0.28 reader would ignore, loading the model
+    without it: schema 5."""
+    return (
+        d.get("parameterization") == "parametric"
+        and d.get("hr") is not None
+        and d.get("hr") != 1
     )
 
 

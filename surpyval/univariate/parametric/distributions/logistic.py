@@ -54,6 +54,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
     # time (#477).
     _cb_link = "logit"
 
+    # How the parameters move with the time (rescale_time): mu and sigma are
+    # times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -72,7 +76,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         return np.asarray(
-            self.fit_from_surpyval_data(data, how="MPP").params, dtype=float
+            self._fit_from_surpyval_data(data, how="MPP").params, dtype=float
         )
 
     def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
@@ -291,6 +295,22 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         # -inf and inf at u = 0 and 1
         with np.errstate(divide="ignore"):
             return mu + sigma * (np.log(u) - np.log1p(-u))
+
+    def isf(self, s: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \mu + \sigma \ln \frac{1 - s}{s}
+
+        Examples
+        --------
+        >>> from surpyval import Logistic
+        >>> Logistic.isf([0.5, 1e-300], 5, 2)
+        array([   5.       , 1386.5510558])
+        """
+        with np.errstate(divide="ignore"):
+            return mu + sigma * (np.log1p(-s) - np.log(s))
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

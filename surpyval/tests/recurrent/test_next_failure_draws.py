@@ -53,10 +53,10 @@ PROBS = np.array([1e-6, 0.01, 0.3, 0.5, 0.9, 0.999, 1 - 1e-9])
 def _truth(key):
     fitter, options, restoration = FAMILIES[key]
     if fitter is ARI:
-        return ARI.fit_from_parameters(
+        return ARI.from_params(
             [20.0, 1.8], restoration, m=options["m"], baseline=CrowAMSAA
         )
-    return fitter.fit_from_parameters([20.0, 1.8], restoration, **options)
+    return fitter.from_params([20.0, 1.8], restoration, **options)
 
 
 def _some_states(model):
@@ -92,7 +92,7 @@ def test_qf_inverts_sf_from_every_state(key):
 
 def test_qf_is_the_weibull_conditional_quantile():
     alpha, beta = 20.0, 1.8
-    model = GeneralizedRenewal.fit_from_parameters([alpha, beta], 0.4)
+    model = GeneralizedRenewal.from_params([alpha, beta], 0.4)
     states = model.states(failures=[[], [10.0], [10.0, 30.0]], now=[7, 15, 40])
     # Kijima I: v = q * last failure + time since it.
     v = np.array([7.0, 0.4 * 10 + 5, 0.4 * 30 + 10])
@@ -108,7 +108,7 @@ def test_qf_is_the_weibull_conditional_quantile():
 
 def test_qf_of_g1_is_on_the_next_gaps_scale():
     alpha, beta, q = 20.0, 1.8, 0.1
-    model = GeneralizedOneRenewal.fit_from_parameters([alpha, beta], q)
+    model = GeneralizedOneRenewal.from_params([alpha, beta], q)
     states = model.states(failures=[[10.0, 30.0]], now=[34.0])
     scale = (1 + q) ** 2
     s = 4.0 / scale
@@ -122,7 +122,7 @@ def test_qf_of_g1_is_on_the_next_gaps_scale():
 
 
 def test_qf_of_ari_inverts_the_reduced_intensity():
-    model = ARI.fit_from_parameters([20.0, 1.8], 0.4, m=1)
+    model = ARI.from_params([20.0, 1.8], 0.4, m=1)
     states = model.states(failures=[[10.0, 30.0]], now=[34.0])
     t, R = 34.0, 0.4 * float(model.model.iif(30.0))
     x = model.next_failure_qf(PROBS, states=states)[0]
@@ -195,18 +195,16 @@ def test_advance_follows_each_restoration_rule():
         state = model.advance(model.states(age=[0.0]), 10.0)
         return model.advance(state, 5.0, failed=False)
 
-    grp1 = after(GeneralizedRenewal.fit_from_parameters([20, 1.8], 0.4))
+    grp1 = after(GeneralizedRenewal.from_params([20, 1.8], 0.4))
     assert grp1.age[0] == pytest.approx(0.4 * 10 + 5)
-    grp2 = after(
-        GeneralizedRenewal.fit_from_parameters([20, 1.8], 0.4, kijima="ii")
-    )
+    grp2 = after(GeneralizedRenewal.from_params([20, 1.8], 0.4, kijima="ii"))
     assert grp2.age[0] == pytest.approx(0.4 * 10 + 5)
-    ara = after(ARA.fit_from_parameters([20, 1.8], 0.6, m=1))
+    ara = after(ARA.from_params([20, 1.8], 0.6, m=1))
     assert ara.age[0] == pytest.approx((1 - 0.6) * 10 + 5)
-    g1 = after(GeneralizedOneRenewal.fit_from_parameters([20, 1.8], 0.1))
+    g1 = after(GeneralizedOneRenewal.from_params([20, 1.8], 0.1))
     assert g1.scale[0] == pytest.approx(1.1)
     assert g1.age[0] == pytest.approx(5 / 1.1)
-    ari_model = ARI.fit_from_parameters([20, 1.8], 0.4, m=1)
+    ari_model = ARI.from_params([20, 1.8], 0.4, m=1)
     ari = after(ari_model)
     assert ari.reduction[0] == pytest.approx(0.4 * ari_model.model.iif(10.0))
 
@@ -481,15 +479,15 @@ def test_with_params_of_the_estimates_reproduces_the_registry_predictions(
 
 
 def test_renewal_with_params_keeps_the_structure():
-    model = ARI.fit_from_parameters([1.0, 1.5], 0.6, m=3, baseline=Duane)
+    model = ARI.from_params([1.0, 1.5], 0.6, m=3, baseline=Duane)
     other = model.with_params([0.3, 1.2, 1.4])
     assert other.m == 3 and other.model.dist is Duane
     assert other.rho == 0.3 and list(other.model.params) == [1.2, 1.4]
-    grp = GeneralizedRenewal.fit_from_parameters([10, 2], 0.5, kijima="ii")
+    grp = GeneralizedRenewal.from_params([10, 2], 0.5, kijima="ii")
     assert grp.with_params([0.1, 9, 2]).kijima_type == "ii"
     with pytest.raises(ValueError, match="q"):
         grp.with_params([-0.1, 9, 2])
-    ara = ARA.fit_from_parameters([10, 2], 0.5, m=np.inf)
+    ara = ARA.from_params([10, 2], 0.5, m=np.inf)
     assert ara.with_params([0.2, 9, 2]).m == np.inf
     with pytest.raises(ValueError, match="rho"):
         ara.with_params([1.2, 9, 2])
@@ -529,7 +527,7 @@ def test_intensity_with_params_draws_agree_with_the_delta_method():
 
 
 def test_renewal_with_params_draws_agree_with_the_delta_method():
-    truth = GeneralizedRenewal.fit_from_parameters([20.0, 1.8], 0.4)
+    truth = GeneralizedRenewal.from_params([20.0, 1.8], 0.4)
     sim = truth.time_terminated_simulation_data(
         150.0, items=25, random_state=9
     )
@@ -599,3 +597,27 @@ def test_a_draw_is_cheap(capsys):
                 f"{1e3 * (done - drawn):.2f} ms for 1000 units"
             )
         assert done - start < 10.0
+
+
+@pytest.mark.parametrize(
+    "bad, name",
+    [
+        ([0.4, -1.0, 1.8], "alpha"),
+        ([0.4, 20.0, 0.0], "beta"),
+        ([0.4, np.nan, 1.8], "alpha"),
+        ([1.5, 20.0, 1.8], "rho"),
+    ],
+)
+def test_ari_with_params_refuses_values_outside_the_ranges(bad, name):
+    # ARI's from_params does not check its baseline, so with_params
+    # used to build a model at a negative scale that predicted nan.
+    model = ARI.from_params([20.0, 1.8], 0.4, m=1)
+    with pytest.raises(ValueError, match=f"{name} = .*parameter_bounds"):
+        model.with_params(bad)
+
+
+def test_renewal_with_params_takes_the_ends_of_the_restoration_range():
+    model = ARI.from_params([20.0, 1.8], 0.4, m=1)
+    assert model.parameter_bounds == [(0.0, 1.0), (0.0, None), (0.0, None)]
+    for rho in (0.0, 1.0):
+        assert model.with_params([rho, 20.0, 1.8]).rho == rho

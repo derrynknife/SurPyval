@@ -48,7 +48,7 @@ def test_grp_simulated_mcf_is_right_at_long_horizons():
     # q = 1 (Kijima-I) is minimal repair: the MCF is (t / 10) ** 3. The
     # old sampler, qf(1 - u * sf(v)), lost all precision once sf(v) fell
     # below 1e-16 and gave about [8, 37] with a spurious asymptote warning.
-    model = GeneralizedRenewal.fit_from_parameters([10, 3], 1.0)
+    model = GeneralizedRenewal.from_params([10, 3], 1.0)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         mcf = model.mcf([20, 40], items=200, random_state=1)
@@ -58,7 +58,7 @@ def test_grp_simulated_mcf_is_right_at_long_horizons():
 def test_grp_partial_repair_matches_exact_sampling():
     t = np.array([40.0, 70.0])
     truth = _kijima_i_weibull_mcf(10.0, 3.0, 0.5, t)
-    model = GeneralizedRenewal.fit_from_parameters([10, 3], 0.5)
+    model = GeneralizedRenewal.from_params([10, 3], 0.5)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         mcf = model.mcf(t, items=200, random_state=2)
@@ -68,7 +68,7 @@ def test_grp_partial_repair_matches_exact_sampling():
 
 
 def test_ara_simulated_mcf_is_right_at_long_horizons():
-    model = ARA.fit_from_parameters([10, 3], 0.0, m=1)
+    model = ARA.from_params([10, 3], 0.0, m=1)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         mcf = model.mcf([20, 40], items=200, random_state=1)
@@ -162,14 +162,14 @@ def test_renewal_rejects_negative_times():
     from surpyval import EventHistoryData
 
     with pytest.raises(ValueError, match="cannot be negative"):
-        GeneralizedRenewal.fit_from_recurrent_data(
+        GeneralizedRenewal._fit_from_recurrent_data(
             EventHistoryData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
         )
     # With one they count from the entry, as new there (#615): a negative
     # time after a negative entry is a positive age (with a warning that a
     # negative entry age is probably a data error, #664).
     with pytest.warns(UserWarning, match="negative age"):
-        entered = GeneralizedRenewal.fit_from_recurrent_data(
+        entered = GeneralizedRenewal._fit_from_recurrent_data(
             handle_xicn([-1.0, 2.0, 3.0, 5.0], [1] * 4, [0, 0, 0, 1], tl=-2.0)
         )
     assert np.allclose(entered.data.x, [1.0, 4.0, 5.0, 7.0])
@@ -205,17 +205,17 @@ _REPAIR_CASES = {
 
 
 @pytest.mark.parametrize("case", sorted(_REPAIR_CASES))
-def test_fit_from_parameters_checks_the_repair_parameter(case):
+def test_from_params_checks_the_repair_parameter(case):
     fitter, value = _REPAIR_CASES[case]
     with pytest.raises(ValueError, match="must be finite and in"):
-        fitter.fit_from_parameters([10, 2], value)
+        fitter.from_params([10, 2], value)
 
 
-def test_fit_from_parameters_accepts_the_bounds():
-    GeneralizedOneRenewal.fit_from_parameters([10, 2], -0.5)
-    GeneralizedRenewal.fit_from_parameters([10, 2], 0.0)
-    ARA.fit_from_parameters([10, 2], 0.0)
-    ARA.fit_from_parameters([10, 2], 1.0)
+def test_from_params_accepts_the_bounds():
+    GeneralizedOneRenewal.from_params([10, 2], -0.5)
+    GeneralizedRenewal.from_params([10, 2], 0.0)
+    ARA.from_params([10, 2], 0.0)
+    ARA.from_params([10, 2], 1.0)
 
 
 @pytest.mark.parametrize("fitter", [GeneralizedRenewal, ARA])
@@ -233,7 +233,7 @@ def test_reloaded_renewal_model_keeps_how():
     fitted = GeneralizedRenewal.fit(x)
     restored = RenewalModel.from_dict(fitted.to_dict())
     assert "Fitted by           : MLE" in repr(restored)
-    given = GeneralizedRenewal.fit_from_parameters([10, 2], 0.2)
+    given = GeneralizedRenewal.from_params([10, 2], 0.2)
     restored = RenewalModel.from_dict(given.to_dict())
     assert "given parameters" in repr(restored)
 
@@ -835,10 +835,10 @@ def test_795_kijima_ii_run_off_reaches_ara_inf():
     data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        kijima = GeneralizedRenewal.fit_from_recurrent_data(
+        kijima = GeneralizedRenewal._fit_from_recurrent_data(
             data, ExpoWeibull, "ii"
         )
-        ara = ARA.fit_from_recurrent_data(data, ExpoWeibull, np.inf)
+        ara = ARA._fit_from_recurrent_data(data, ExpoWeibull, np.inf)
     assert kijima.maximum == ara.maximum == "no finite maximum"
     assert kijima.log_likelihood >= ara.log_likelihood - 1e-3
     assert kijima.params[0] == pytest.approx(1 - ara.params[0], abs=2e-3)
@@ -865,3 +865,30 @@ def test_796_aged_starts_take_the_family_seed():
         )
     assert len(starts) == 4
     assert all(np.isfinite(neg_ll(np.array(s))) for s in starts)
+
+
+@pytest.mark.parametrize(
+    "fitter, args, kwargs",
+    [
+        ("GeneralizedRenewal", ([10.0, 2.0], 0.5), {"kijima": "ii"}),
+        ("GeneralizedOneRenewal", ([10.0, 2.0], 0.5), {}),
+        ("ARA", ([10.0, 2.0], 0.4), {"m": 2}),
+        ("ARI", ([10.0, 2.0], 0.6), {"m": 1}),
+    ],
+)
+def test_fit_from_parameters_is_the_old_name_of_from_params(
+    fitter, args, kwargs
+):
+    import surpyval.recurrent as rc
+
+    renewal = getattr(rc, fitter)
+    new = renewal.from_params(*args, **kwargs)
+    with pytest.warns(FutureWarning, match="use 'from_params'") as caught:
+        old = renewal.fit_from_parameters(*args, **kwargs)
+    assert "v0.30" in str(caught[0].message)
+    assert old.to_dict() == new.to_dict()
+    x = np.array([5.0, 10.0, 20.0])
+    np.testing.assert_array_equal(
+        old.mcf(x, items=20, random_state=3),
+        new.mcf(x, items=20, random_state=3),
+    )

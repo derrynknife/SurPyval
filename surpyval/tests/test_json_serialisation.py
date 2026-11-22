@@ -44,6 +44,7 @@ from surpyval import (
     NonParametric,
     Parametric,
     ProportionalOdds,
+    QuantileRegression,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -69,7 +70,12 @@ from surpyval.serialisation import (
     encode_non_finite,
     required_schema,
 )
-from surpyval.tests.conformance.registry_fixtures import ms_data, panel_data
+from surpyval.tests.conformance.registry_fixtures import (
+    ms_data,
+    panel_data,
+    relative_data,
+    relative_reg_data,
+)
 
 # -- data ---------------------------------------------------------------------
 
@@ -192,6 +198,24 @@ def _interval_cox():
     x[7] = [lo[7], lo[7]]
     c[7] = 1
     return surpyval.IntervalCoxPH.fit(x, z, c=c)
+
+
+def _cox_npmle():
+    """CoxPH's full-likelihood route: inspected lives with two causes,
+    some units entering late, some right truncated."""
+    rng = np.random.default_rng(14)
+    z = np.tile([0.0, 1.0], 30)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(1.5, z.size)
+    lo = 2.0 * np.floor(life / 2.0)
+    x = np.column_stack([lo, lo + 2.0])
+    c = np.full(z.size, 2)
+    e = np.where(np.arange(z.size) % 3 == 0, "wear", "crack").astype(object)
+    x[::5] = life[::5, None]
+    c[::5] = 0
+    x[7] = [lo[7], lo[7]]
+    c[7] = 1
+    e[7] = None
+    return surpyval.CoxPH.fit(x, z, c=c, e=e)
 
 
 def _process_data(seed=2, monotone=False):
@@ -421,8 +445,12 @@ def _build(name):
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
+        "quantile_regression": lambda: QuantileRegression.fit(
+            *_semipar_data(3)
+        ),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
         "interval_cox": _interval_cox,
+        "cox_npmle": _cox_npmle,
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -512,6 +540,12 @@ def _build(name):
                 random_state=1,
             )
         ),
+        "shared_frailty": lambda: CrowAMSAA.fit(
+            _frailty_fleet(),
+            np.repeat(np.arange(6), [2, 2, 3, 4, 9, 12]),
+            (_frailty_fleet() == 60).astype(int),
+            frailty="gamma",
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
@@ -528,6 +562,13 @@ def _build(name):
             [1, 0, 2, 1, 2, 0, 2, 1, 0, 1],
             i=[1, 1, 1, 2, 2, 3, 3, 3, 4, 4],
         ),
+        "relative_survival": lambda: surpyval.RelativeSurvival.fit(
+            **relative_data()
+        ),
+        "excess_hazard": lambda: surpyval.ExcessHazard.fit(
+            **relative_reg_data()
+        ),
+        "rate_table": lambda: surpyval.RateTable([0.01, 0.03], ages=[0, 2]),
         "parametric_recurrence": lambda: CrowAMSAA.fit(
             np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
         ),
@@ -547,8 +588,20 @@ def _build(name):
         "recurrent_cox_wei_lin_weissfeld": lambda: _recurrent_cox(
             WeiLinWeissfeld
         ),
-        "renewal": lambda: GeneralizedRenewal.fit_from_parameters(
+        "renewal": lambda: GeneralizedRenewal.from_params(
             [50.0, 2.0], 0.3, kijima="i", dist=Weibull
+        ),
+        "effort_clock": lambda: surpyval.EffortClock(
+            surpyval.GoelOkumoto, ([20.0, 40.0, 60.0], [200.0, 240.0, 160.0])
+        ).from_params([9.0, 0.005]),
+        "change_point": lambda: surpyval.ChangePoint(
+            surpyval.GoelOkumoto, tau=20.0
+        ).from_params([9.0, 0.05, 2.0]),
+        "jelinski_moranda": lambda: surpyval.JelinskiMoranda.fit(
+            np.array([3.0, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99])
+        ),
+        "littlewood_verrall": lambda: surpyval.LittlewoodVerrall.from_params(
+            [3.0, 10.0, 2.0], n=12
         ),
         "degradation": _degradation,
         "induced_failure_distribution": lambda: _degradation().induced_life(
@@ -601,8 +654,10 @@ CASES = [
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
+    "quantile_regression",
     "proportional_odds",
     "interval_cox",
+    "cox_npmle",
     "mixture",
     "royston_parmar",
     "fine_gray",
@@ -625,9 +680,13 @@ CASES = [
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
     "joint_frailty",
+    "shared_frailty",
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",
+    "relative_survival",
+    "excess_hazard",
+    "rate_table",
     "parametric_recurrence",
     "proportional_intensity",
     "recurrent_cox_andersen_gill",
@@ -635,6 +694,10 @@ CASES = [
     "recurrent_cox_pwp_gap",
     "recurrent_cox_wei_lin_weissfeld",
     "renewal",
+    "effort_clock",
+    "change_point",
+    "jelinski_moranda",
+    "littlewood_verrall",
     "degradation",
     "induced_failure_distribution",
     "wiener_process",
@@ -648,6 +711,13 @@ CASES = [
     "joint",
     "bayesian",
 ]
+
+
+def _frailty_fleet():
+    """The ages of six units' 1 to 11 failures, each watched to 60."""
+    return np.concatenate(
+        [np.r_[60 * (np.arange(n) + 0.5) / n, 60] for n in (1, 1, 2, 3, 8, 11)]
+    )
 
 
 class _LazyModels(dict):
@@ -1215,6 +1285,28 @@ def test_surpyval_data_to_json_is_strict_and_round_trips(tmp_path):
     data.to_json(fp)
     _strict_loads(fp.read_text())
     np.testing.assert_array_equal(SurpyvalData.from_json(fp).t, data.t)
+
+
+def test_secondary_clock_to_json_is_strict_and_round_trips(tmp_path):
+    # The two-clock fits' second clock (0.29): its readings (windows
+    # too), its entry readings and its name.
+    clock = surpyval.SecondaryClock(
+        [[1.0, 3.0], [5.0, 5.0]], tl=[0.0, 0.5], name="landings"
+    )
+    parsed = _strict_loads(clock.to_json())
+    assert parsed["class"] == "SecondaryClock"
+    for restored in (
+        surpyval.from_json(clock.to_json()),
+        surpyval.from_dict(parsed),
+    ):
+        assert isinstance(restored, surpyval.SecondaryClock)
+        np.testing.assert_array_equal(restored.values, clock.values)
+        np.testing.assert_array_equal(restored.tl, clock.tl)
+        assert restored.name == "landings"
+    fp = tmp_path / "clock.json"
+    clock.to_json(fp)
+    _strict_loads(fp.read_text())
+    assert surpyval.SecondaryClock.from_json(fp).name == "landings"
 
 
 def test_hand_edited_dicts_name_the_bad_entry():

@@ -46,6 +46,10 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
             The upper parameter for the Uniform distribution
         """
 
+    # How the parameters move with the time (rescale_time): the ends a and b
+    # are times.
+    _time_roles = ("time", "time")
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -367,6 +371,23 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         array([0.6, 1.2, 1.8, 2.4, 3. ])
         """
         return a + u * (b - a)
+
+    def isf(self, s: Numeric, a: Boxable, b: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = b - s (b - a)
+
+        Examples
+        --------
+        >>> from surpyval import Uniform
+        >>> Uniform.isf([0.5, 1e-300], 0, 10)
+        array([ 5., 10.])
+        """
+        # from the nearer end: b - s (b - a) cancels as s nears 1
+        s = np.asarray(s, dtype=float)
+        return np.where(s < 0.5, b - s * (b - a), a + (1.0 - s) * (b - a))
 
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
         r"""

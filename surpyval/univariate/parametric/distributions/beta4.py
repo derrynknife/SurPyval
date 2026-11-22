@@ -30,6 +30,16 @@ def _power_log(k: Boxable, z: Boxable) -> Boxable:
     return np.where(positive, k * np.log(np.where(positive, z, 1.0)), at_zero)
 
 
+def _power_log1m(k: Boxable, x: Boxable) -> Boxable:
+    r""":math:`k \ln(1 - x)` for :math:`x \leq 1`, with its limit at
+    :math:`x = 1` as :func:`_power_log` has it at 0, from ``log1p``: the
+    log of a rounded ``1 - x`` lost ``eps`` of it, which a shape ``k`` of
+    1e3 made a relative 1e-11 of a Beta's log density near 0."""
+    below = x < 1.0
+    at_one = np.where(k > 0.0, -np.inf, np.where(k < 0.0, np.inf, 0.0))
+    return np.where(below, k * np.log1p(-np.where(below, x, 0.0)), at_one)
+
+
 _CONSEQUENCE = (
     "The reported parameters are where the search stopped (they change with "
     "the data's units), and their standard errors and bounds are "
@@ -83,6 +93,10 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         b : numpy array or scalar
             The upper bound of the support
         """
+
+    # How the parameters move with the time (rescale_time): alpha and beta have
+    # no unit; the ends a and b are times.
+    _time_roles = ("shape", "shape", "time", "time")
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -504,6 +518,31 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         array([2.20090888, 2.26864915, 2.32332388, 2.37307973, 2.42140719])
         """
         return a + (b - a) * betaincinv(alpha, beta, u)
+
+    def isf(
+        self, s: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``: ``b - (b - a)`` times the quantile at ``s`` of
+        the standard Beta with the shapes swapped below ``s = 1/2``, and
+        ``qf(1 - s)`` above it.
+
+        Examples
+        --------
+        >>> from surpyval import Beta4
+        >>> Beta4.isf([0.5, 1e-300], 3, 4, 2, 3).round(6)
+        array([2.421407, 3.      ])
+        """
+        from .beta import Beta
+
+        s = np.asarray(s, dtype=float)
+        upper = s < 0.5
+        swapped = Beta.qf(np.where(upper, s, 0.25), beta, alpha)
+        return np.where(
+            upper,
+            b - (b - a) * swapped,
+            self.qf(np.where(upper, 0.5, 1.0 - s), alpha, beta, a, b),
+        )
 
     def mean(
         self, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable

@@ -406,3 +406,37 @@ def test_degenerate_tvc_fit_degrades_instead_of_crashing():
     with pytest.warns(UserWarning, match=r"column\(s\) 0 of Z cannot"):
         model = CoxPH.fit_tvc(i, xl, xr, c, Z)
     assert np.isnan(model.beta[0]) and np.isnan(model.p_values[0])
+
+
+_TVC_ROWS = {
+    "i": [0, 0, 1, 2, 2, 3, 4, 4, 5, 6],
+    "xl": [0, 2, 0, 0, 1, 0, 0, 3, 0, 0],
+    "xr": [2, 5, 3, 1, 4, 6, 3, 7, 2, 8],
+    "c": [1, 0, 0, 1, 0, 1, 1, 0, 0, 1],
+    "Z": [0, 1, 0, 0, 1, 0, 0, 1, 1, 0],
+}
+
+
+@pytest.mark.filterwarnings("ignore:The weights leave an effective sample")
+@pytest.mark.parametrize(
+    "route", ["plain", "weighted", "penalised", "penalised weighted"]
+)
+def test_every_cox_tvc_route_marks_the_model_alike(route):
+    # Each start-stop route marks its model the same way: is_tvc, the
+    # subject of each internal (sorted) row, and the permutation from the
+    # caller's row order to it.
+    order = np.random.default_rng(2).permutation(10)
+    rows = {k: np.asarray(v)[order] for k, v in _TVC_ROWS.items()}
+    w = np.linspace(0.5, 1.5, 10)
+    if route == "plain":
+        model = CoxPH.fit_tvc(**rows)
+    elif route == "weighted":
+        model = CoxPH.fit_tvc(**rows, w=w)
+    elif route == "penalised":
+        model = CoxPH.fit_tvc_penalised(**rows, penalizer=0.1)
+    else:
+        model = CoxPH.fit_tvc_penalised(**rows, penalizer=0.1, w=w)
+    expected = np.lexsort((rows["xl"], rows["i"]))
+    assert model.is_tvc
+    np.testing.assert_array_equal(model.tvc_row_order, expected)
+    np.testing.assert_array_equal(model.tvc_subject_ids, rows["i"][expected])

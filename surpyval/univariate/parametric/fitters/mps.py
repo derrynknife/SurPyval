@@ -154,7 +154,7 @@ class _TowardLimit:
 
             with ignoring_warnings(), quiet_maximum_warnings():
                 try:
-                    fit = self.family.fit_from_surpyval_data(
+                    fit = self.family._fit_from_surpyval_data(
                         self.model.surv_data, how="MPS"
                     )
                 except (ValueError, ArithmeticError):

@@ -83,9 +83,12 @@ Worked classifications:
 | KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
 | WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| QuantileRegression (censored quantile regression: a coefficient vector per quantile of the log time, Peng-Huang or Portnoy) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | IntervalCoxPH (Cox PH for interval-censored data: NPMLE baseline on the Turnbull intervals, fitted jointly with the coefficients) | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | MixtureCure (a fraction that never fails; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Equivalence (one life on two clocks, `x1 + k x2`, `k` estimated) | univariate | single_event | single | terminal | none | continuous | parametric |
+| RelativeSurvival (net survival beyond a rate table's population hazards: Pohar Perme, Ederer II) | univariate | single_event | single (the cause not recorded) | terminal | none | continuous | nonparametric |
+| ExcessHazard (population hazard plus `lambda_0(t) exp(beta'Z)`, piecewise-constant baseline) | univariate | single_event | single (the cause not recorded) | terminal | with | continuous | parametric |
 | ZeroInflated (a fraction dead on arrival, failing at time 0; covariates on that fraction and on the life of the rest) | univariate | single_event | single | terminal | with | continuous | parametric |
 | Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
@@ -93,7 +96,9 @@ Worked classifications:
 | ParametricCompetingRisksRegression | univariate | single_event | competing | terminal | with | continuous | parametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
-| HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis; software reliability growth: Goel-Okumoto, Yamada delayed S-shaped, inflection S-shaped, Musa-Okumoto; the Rayleigh defect model over development phases; any of them on testing effort in place of time, or with a change point in its rates) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| Jelinski-Moranda (a whole number of faults, each found at one rate; one test campaign) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| Littlewood-Verrall (exponential gaps with gamma rates that fall on average; one test campaign) | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | AndersenGill, PrenticeWilliamsPeterson, WeiLinWeissfeld | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
@@ -135,9 +140,12 @@ model exist:
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
+| Gaussian and Student-t copulas of three or more series (a correlation matrix) | multivariate, more than two series | single_event | single | terminal | none | continuous | parametric |
+| Vine copulas (C- and D-vines of bivariate pair-copulas; complete data) | multivariate, more than two series | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
+| Shared-frailty Poisson process (`frailty=` on CrowAMSAA, Duane, CoxLewis, ProportionalIntensityNHPP; a frailty per item or cluster of items) | multivariate (clustered) | recurrent | single | recurrent | none / with | continuous | parametric |
 | CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
@@ -156,10 +164,12 @@ single / terminal / parametric, with standard errors, bounds and AIC.
 The joint models (`JointPH`, `WeibullJointPH`) model the measurements and the
 failure times *together*: each item's marker follows a degradation path with
 random effects, and the hazard is Weibull proportional hazards in the path's
-current value. Their event-time part classifies as univariate / single_event /
+current value (or, in `JointAFT` / `WeibullJointAFT`, the path speeds up the
+item's ageing: an accelerated failure time part on the Weibull). Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
-truncation; one item's dynamic prediction given its readings so far is
+truncation, and with the failures' event types a hazard for each failure
+mode (competing risks: single becomes multiple); one item's dynamic prediction given its readings so far is
 `JointModel.predict`. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
 predictions without a model of the covariates' paths: a Cox model of the
 units at risk at each landmark, by their covariates known then; it
@@ -176,7 +186,7 @@ Cells of the axes with nothing built yet:
 | Recurrent events with covariates, semi-parametric: robust bounds on the cumulative baseline, and simulation (Andersen–Gill, PWP and WLW are built) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
 | Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
 | Multi-state models (illness-death, progressive) | `multi_state` |
-| Copulas for more than two lifetimes | multivariate, more than two series |
+| Copulas for more than two lifetimes beyond the Gaussian, Student-t and C-/D-vines (regular vines, censored rows in vines, exchangeable Archimedean) | multivariate, more than two series |
 | Shared frailty and correlated series for repairable systems, beyond the one built (a frailty shared by a group of items, such as a fleet; several recurrent series per item; spline baselines) | multivariate / recurrent |
 | Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis |
 

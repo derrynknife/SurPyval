@@ -41,8 +41,12 @@ def _fleet(n, seed, k=K_TRUE, follow_up=(500.0, 3000.0), tl=False):
 
 
 def _fit(d, dist=sp.Weibull, **kw):
+    tl = d.get("tl")
+    if tl is None:
+        return sp.Equivalence(dist).fit(d["x1"], d["x2"], c=d["c"], **kw)
+    clock = sp.SecondaryClock(d["x2"], tl=tl[:, 1])
     return sp.Equivalence(dist).fit(
-        d["x1"], d["x2"], c=d["c"], tl=d.get("tl"), **kw
+        d["x1"], clock, c=d["c"], tl=tl[:, 0], **kw
     )
 
 
@@ -221,7 +225,7 @@ def test_fit_from_df_names_the_clocks():
     d = _fleet(300, seed=23)
     df = pd.DataFrame({"hours": d["x1"], "starts": d["x2"], "c": d["c"]})
     model = sp.WeibullEquivalence.fit_from_df(
-        df, x_cols=["hours", "starts"], c_col="c"
+        df, x_col="hours", x2_col="starts", c_col="c"
     )
     direct = _fit(d)
     np.testing.assert_allclose(model.params, direct.params, rtol=1e-9)
@@ -308,7 +312,7 @@ def test_refuses_data_that_do_not_identify_k(x2, message):
 def test_refusals_say_what_to_do():
     d = _fleet(50, seed=41)
     h, s, c = d["x1"], d["x2"], d["c"]
-    with pytest.raises(ValueError, match="Interval-censored"):
+    with pytest.raises(ValueError, match=r"intervals \(c = 2\) of no width"):
         sp.WeibullEquivalence.fit(h, s, c=np.full(50, 2))
     with pytest.raises(ValueError, match="missing"):
         sp.WeibullEquivalence.fit(np.r_[np.nan, h[1:]], s, c=c)

@@ -227,7 +227,7 @@ def test_integer_times_keep_their_dtype():
 @pytest.mark.parametrize("seed", range(3))
 def test_fitted_ages_as_before(seed):
     data = next(_datasets(seed))
-    model = CrowAMSAA.fit_from_recurrent_data(data)
+    model = CrowAMSAA._fit_from_recurrent_data(data)
     item = np.asarray(data.i)
     x = np.asarray(data.x, dtype=float).reshape(item.size, -1).max(axis=1)
     old = np.array([x[item == u].max() for u in np.unique(item)])

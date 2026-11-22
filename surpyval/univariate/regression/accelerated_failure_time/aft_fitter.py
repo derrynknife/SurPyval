@@ -10,33 +10,25 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._fit_skeleton import (
-    BaselineInversionMixin,
     HazardIdentitiesMixin,
     LogLinearPhi,
     draws_by_row,
-    fit_log_linear,
-    mirror_distribution,
-    optimise_nm_tnc,
     split_log_linear,
 )
-from .._likelihood import regression_neg_ll
-from .._penalised_fit import PenalisedFitMixin
+from .._regression_fitter import LogLinearRegressionFitter
 from ..kinds import ACCELERATED_FAILURE_TIME
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
 
 
 class AFTFitter(
-    BaselineInversionMixin,
     HazardIdentitiesMixin,
     AFTTVCFitMixin,
-    DataFrameRegressionMixin,
-    PenalisedFitMixin,
+    LogLinearRegressionFitter,
 ):
     """
     Accelerated Failure Time fitter using :math:`e^{\\beta' Z}` as the
@@ -59,13 +51,10 @@ class AFTFitter(
     fitter_kind = "accelerated failure time fitter"
     name_suffix = "AFT"
     _penalised_kind = ACCELERATED_FAILURE_TIME
+    _baseline_functions = ("Hf", "hf", "sf", "ff")
 
     def __init__(self, distribution: Any) -> None:
-        mirror_distribution(self, distribution)
-        self.Hf_dist = distribution.Hf
-        self.hf_dist = distribution.hf
-        self.sf_dist = distribution.sf
-        self.ff_dist = distribution.ff
+        self._take_distribution(distribution)
 
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
         return LogLinearPhi.phi(Z, *phi_params)
@@ -86,9 +75,6 @@ class AFTFitter(
         """
         x, dist_params, phi = split_log_linear(self, x, Z, params)
         return phi * self.hf_dist(phi * x, *dist_params)
-
-    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        return regression_neg_ll(self, data, *params)
 
     def random(
         self,
@@ -218,22 +204,7 @@ class AFTFitter(
         >>> model.params.round(3)
         array([9.629, 1.751, 0.473])
         """
-        t = truncation_window(x, t, tl, tr)
-        return fit_log_linear(
-            self,
-            x,
-            Z,
-            c,
-            n,
-            t,
-            init,
-            fixed,
-            center,
-            w=w,
-            kind=ACCELERATED_FAILURE_TIME,
-            optimiser=optimise_nm_tnc,
-            reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
-        )
+        return self._fit(x, Z, c, n, t, init, fixed, center, tl, tr, w)
 
 
 class AFTTVCFitter(AFTFitter):

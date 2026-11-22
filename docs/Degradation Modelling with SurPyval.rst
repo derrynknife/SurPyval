@@ -398,6 +398,88 @@ the choice of path shape matters so much.
     assert np.all(led.pseudo_failure_times > 6000)
     assert round(float(led.qf(0.5)), -3) == 14000
 
+**Units still running at the end of the test.** No unit above reached 450 by
+1000 h, its last reading, so every one of the twelve failure times is an
+extrapolation, and the summary says so ("Extrapolated Units"; the model's
+``extrapolated`` marks which). That is the pseudo-failure-time method: each
+unit's path says when it would cross, and using that is what lets a
+degradation test give a life from units that have not failed. When the
+extrapolation is in doubt (a path shape that may not hold past the readings),
+``running="censor"`` counts a unit short of the threshold at its last reading,
+whose path crosses only after it, as right censored at that reading instead; a
+crossing seen within a unit's readings is a failure either way. On the twelve
+units that would leave no failure to fit, which is refused, saying so. Here
+twelve more units are followed to 1500 h, each reading stopping once a unit
+has passed 450:
+
+.. jupyter-execute::
+
+    rng_run = np.random.default_rng(11)
+    xs, ys, ids = [], [], []
+    for unit in range(12):
+        a, b = rng_run.normal(10.0, 3.0), rng_run.normal(0.30, 0.06)
+        t = np.arange(100.0, 1600.0, 100.0)
+        level = a + b * t + rng_run.normal(0, 3.0, t.size)
+        if (level >= 450).any():                  # stop at the first reading past 450
+            t, level = t[: np.argmax(level >= 450) + 1], level[: np.argmax(level >= 450) + 1]
+        xs.append(t)
+        ys.append(level)
+        ids.append(np.full(t.size, unit))
+    x_run, y_run, i_run = (np.concatenate(v) for v in (xs, ys, ids))
+
+    extrapolated = DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0)
+    censored = DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0,
+                                       running="censor")
+    print("extrapolated past the readings:", extrapolated.extrapolated.astype(int))
+    print("censor flags with 'censor'    :", censored.c)
+    print("reliability at 1000, 1500 h   :", extrapolated.sf([1000.0, 1500.0]).round(3),
+          censored.sf([1000.0, 1500.0]).round(3))
+
+The five units still running at 1500 h are the ones censored; the two fits
+agree here because the straight-line paths hold. To mark units yourself, give
+their labels as ``censored_units``: each is right censored at its last reading,
+whatever ``running`` says. That is the way to say a unit is still running, and
+also the way to record a unit that **failed another way** (it broke, or was
+taken out) while its readings were short of the threshold: its failure by
+degradation was never seen, so for the threshold's life it is censored when it
+stopped, as a competing failure mode is. A unit listed there whose path
+reaches the threshold within its readings has failed by the threshold's
+definition, and is refused. The life times and censoring of a
+:class:`~surpyval.SurpyvalData` holding the readings are not read; pass its
+running units as ``censored_units``.
+
+.. jupyter-execute::
+
+    broke = DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0,
+                                    censored_units=[1])
+    print("censor flags, unit 1 marked   :", broke.c)
+    broke
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert extrapolated.extrapolated.sum() == 5 and (extrapolated.c == 0).all()
+    assert (censored.c == extrapolated.extrapolated).all()
+    assert not censored.extrapolated.any()
+    assert broke.c[1] == 1 and broke.c.sum() == 1
+    assert broke.pseudo_failure_times[1] == x_run[i_run == 1].max()
+    assert "Extrapolated Units  : 4" in repr(broke)
+    try:
+        DegradationAnalysis.fit(x, y, i, threshold=450.0, running="censor")
+    except ValueError as error:
+        assert "running='extrapolate'" in str(error)
+    else:
+        raise AssertionError("an all-censored fit was not refused")
+    _first = np.flatnonzero(censored.c == 0)[0]
+    try:
+        DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0,
+                                censored_units=[_first])
+    except ValueError as error:
+        assert "censored_units" in str(error)
+    else:
+        raise AssertionError("a unit seen to fail was censored")
+
 **Other inputs and options.** Data can come straight from a DataFrame with
 ``fit_from_df``, naming the columns (``Z_cols`` names the stress column(s) for
 the accelerated models below, and every other ``fit`` argument passes
@@ -974,22 +1056,34 @@ and leaves the others alone; the methods that describe a single unit
     _q = np.ravel(adt.qf(0.5, use))
     assert np.all(np.isfinite(_q[:2])) and np.isnan(_q[2])
 
-Two-stage confidence bounds at a stress are available by bootstrap: units
-are resampled (each carrying its stress), the whole accelerated pipeline is
-rerun, and the reliability at ``Z`` is read off each refit, so the first-stage
-path/extrapolation uncertainty is folded in — just as for the plain model, but
-evaluated at a chosen stress:
+Two-stage confidence bounds at a stress fold the first-stage
+path/extrapolation uncertainty in, just as for the plain model. The analytic
+bound (the default) applies the same generated-regressor correction to the
+regression life fit: each unit's pseudo-time variance enters through the
+derivative of the regression score at that unit's stress, so it is in closed
+form, with no refitting. The bootstrap resamples units (each carrying its
+stress), reruns the whole accelerated pipeline and reads the reliability at
+``Z`` off each refit:
 
 .. jupyter-execute::
 
     t = np.array([50.0, 100.0, 150.0])
-    band = model.cb(t, Z=[0.0], on='sf', method='bootstrap',
+    band = model.cb(t, Z=[0.0], on='sf')        # (n, 2): [lower, upper] at Z=0
+    boot = model.cb(t, Z=[0.0], on='sf', method='bootstrap',
                     n_boot=50, random_state=0)
-    band                                        # (n, 2): [lower, upper] at Z=0
+    band, boot
 
-The analytic (generated-regressor) delta-method correction used for the plain
-model is not derived for the regression life fit, so ``method='bootstrap'`` is
-required for a covariate model (and ``model.cb`` needs the stress ``Z``). The
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _plain = model.life_model.cb(t, [0.0], on='sf')
+    assert np.all(band[:, 0] <= _plain[:, 0] + 1e-12)
+    assert np.all(band[:, 1] >= _plain[:, 1] - 1e-12)
+
+``model.cb`` needs the stress ``Z``, and
+``model.life_parameter_covariance()`` is the corrected covariance of the
+regression parameters, ordered as ``model.life_model.params``. The
 first-stage-only regression bounds — which ignore the extrapolation
 uncertainty — remain available directly through ``model.life_model.cb(x, Z,
 ...)``.
@@ -1341,24 +1435,32 @@ population, and each sampled failure time is mapped back to calendar time
 along the history and the plan. ``predict_failure_time`` and
 ``predict_remaining_life`` take the same ``Z`` and ``Z_future``.
 ``induced_life(Z=...)`` pushes the whole population of paths through the
-threshold under any stress or profile, and the two-stage confidence bounds are
-available by bootstrap: units are resampled with their stress histories and
-the clock is re-estimated on every resample.
+threshold under any stress or profile. The two-stage confidence bounds are
+analytic by default: with ``population_method='moments'`` the clock and every
+unit's path are, together, one least-squares fit, so the joint covariance of
+the stress coefficients and the pseudo failure times follows in closed form
+(every pseudo failure time shares the estimated clock, so they are
+correlated), and the bound on life under a stress carries the uncertainty of
+both the life parameters and the clock. ``step.life_parameter_covariance()``
+returns that covariance: the reference-stress life parameters followed by
+``gamma``. The bootstrap resamples units with their stress histories and
+re-estimates the clock on every resample.
 
 .. jupyter-execute::
 
     induced = step.induced_life(Z=profile, random_state=0)
     print('induced median life on the profile:', round(induced.median(), 1))
-    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50,
-            random_state=0)
+    print(step.cb([200.0, 240.0], Z=profile))            # analytic
+    print(step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50,
+                  random_state=0))
 
 ``acceleration='clock'`` cannot be combined with ``links`` or ``path='best'``,
 and the life model must be a plain distribution, since stress enters through
-the clock. The analytic confidence-bound correction is not derived for a clock
-model, whose pseudo failure times also depend on the estimated clock, so
-``cb`` needs ``method='bootstrap'``. With ``population_method='reml'`` every
-bootstrap resample re-runs the mixed-model estimate of the clock, which takes
-seconds per resample; budget ``n_boot`` accordingly.
+the clock. The analytic bound is derived for the profile least-squares clock
+(``population_method='moments'``); a ``population_method='reml'`` model, whose
+clock is the mixed-model estimate, needs ``cb(..., method='bootstrap')``, and
+every bootstrap resample re-runs the mixed-model estimate of the clock, which
+takes seconds per resample; budget ``n_boot`` accordingly.
 
 Which stress model?
 ~~~~~~~~~~~~~~~~~~~
@@ -1959,6 +2061,30 @@ what an inspection would read.
 
     for t in (100.0, 200.0, 250.0):
         assert np.isclose(wear.level_at(t).sf(100.0), wear.ff(t), atol=1e-12)
+
+**The level of a unit still working.** An inspection that finds a unit
+working already knows it has not failed. ``level_at(t, given_survival=True)``
+is the level of such a unit: the paths that reached the threshold before
+``t`` are left out, so all of its mass is below the threshold. For a gamma
+process that is the wear truncated at the threshold. For a Wiener process it
+is the normal level less its mirror image in the threshold, which removes the
+paths that crossed and came back as well as those still above (the method of
+images), renormalised by the chance of no crossing. It has the same
+``sf``, ``ff``, ``df``, ``qf``, ``random`` and ``mean``, and takes ``y0`` and
+``t0`` as before. Far from the threshold it is the plain level; near it, the
+difference is the point.
+
+.. jupyter-execute::
+
+    from surpyval.degradation import WienerProcessModel
+
+    gauge = WienerProcessModel(mu=0.5, sigma=2.0, threshold=100.0)
+    every = gauge.level_at(180.0, y0=10.0, t0=20.0)
+    working = gauge.level_at(180.0, y0=10.0, t0=20.0, given_survival=True)
+    print("P(not failed by 180 h)      :", round(float(gauge.sf(160.0, y0=10.0)), 3))
+    print("P(past 90), every path      :", round(float(every.sf(90.0)), 3))
+    print("P(past 90), a working unit  :", round(float(working.sf(90.0)), 3))
+    print("median level, working unit  :", round(float(working.qf(0.5)), 1))
 
 **Parameter uncertainty.** A fitted model's ``covariance()`` describes how well
 the data pin down its parameters. ``with_params(values)`` builds the same model

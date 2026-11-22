@@ -16,6 +16,7 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+    to_native,
 )
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -33,14 +34,19 @@ from surpyval.utils.validation import (
 
 from ._likelihood import (
     EFFECTS,
-    GH_PREDICT,
+    GH_FIT,
+    INTEGRATIONS,
     JointArrays,
     Layout,
     Model,
     PathFunction,
     _at,
     _path_params,
-    adaptive_nodes,
+    block_labels,
+    cause_thetas,
+    check_lag,
+    check_random_effects,
+    check_weight,
     continued_modes,
     log_integrals,
     log_integrand,
@@ -60,6 +66,43 @@ _LINK_WORDS = {
     "value": "current value",
     "slope": "slope",
     "cumulative": "cumulative area",
+}
+
+
+def _weight_words(weight: tuple | None) -> str:
+    """The weight on the accumulated exposure in words, to follow the
+    links' (empty with none)."""
+    if weight is None:
+        return ""
+    if weight[0] == "window":
+        return f", the area over the last {weight[1]:g} only (window)"
+    return f", the area fading over {weight[1]:g} (exponential weight)"
+
+
+#: The ways a joint model is fitted (``how``): the joint likelihood's
+#: maximum, or the approximate two-stage estimate.
+HOWS = ("MLE", "two-stage")
+
+#: What a two-stage fit's printout and summary say of each part: stage
+#: one's moment estimates have no standard errors, and stage two's
+#: estimates are approximate with standard errors that are too small.
+_STAGE_ONE = "two-stage, stage 1: no standard errors"
+_STAGE_TWO = "two-stage, stage 2: approximate, standard errors understated"
+
+#: Each survival part in words, for the printout.
+_SURVIVAL_WORDS = {
+    "PH": "proportional hazards",
+    "AFT": "accelerated failure time",
+}
+
+#: Each integration in words, for the printout.
+_INTEGRATION_WORDS = {
+    "grid": f"adaptive Gauss-Hermite, full grid ({GH_FIT} points a dimension)",
+    "pruned": (
+        f"adaptive Gauss-Hermite, pruned grid ({GH_FIT} points a "
+        "dimension, without the nodes of negligible weight)"
+    ),
+    "laplace": "Laplace's approximation (no grid)",
 }
 
 #: The formula of each built-in path model, by its name, for the
@@ -170,17 +213,29 @@ def parameter_names(
     shifts: dict[str, list[str]] | None = None,
     hazard: list[str] | None = None,
     links: tuple = ("value",),
+    random_effects: Any = "full",
+    causes: Any = None,
+    shared: Any = (),
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
     ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
-    ``sd_b``, ..., then ``corr_a_b``, ...); ``sd_noise``; the Weibull
-    ``alpha`` and ``beta``; the hazard's covariate coefficients
-    (``<cov>``); and the effect of each of ``links``, what of the path
-    the hazard follows (``marker_effect`` of its value, ``slope_effect``,
-    ``cumulative_effect``). ``shifts`` and ``hazard`` (as
-    :func:`covariate_parts` gives them) say which covariates enter which
-    part; default every one in both."""
+    ``sd_b``, ..., then ``corr_a_b``, ... of each pair correlated in
+    ``random_effects``, checked: every pair where it is ``"full"``, the
+    default); ``sd_noise``; the Weibull ``alpha`` and ``beta``; the
+    hazard's covariate coefficients (``<cov>``); and the effect of each
+    of ``links``, what of the path the hazard follows (``marker_effect``
+    of its value, ``slope_effect``, ``cumulative_effect``). ``shifts``
+    and ``hazard`` (as :func:`covariate_parts` gives them) say which
+    covariates enter which part; default every one in both.
+
+    With ``causes`` (competing failure modes) the survival part is each
+    cause's own, ``"<cause>: alpha"``, ``"<cause>: beta"``, its hazard
+    coefficients and effects, cause by cause (named as
+    ``ParametricCompetingRisks`` names its causes' parameters), then the
+    parameters of ``shared`` (``"beta"``, a hazard covariate or an
+    effect), which the causes have in common, one each under its plain
+    name."""
     if shifts is None:
         shifts = {name: list(covariates) for name in path_names}
     if hazard is None:
@@ -189,13 +244,94 @@ def parameter_names(
     for name in path_names:
         out += [name] + [f"{name}_{cov}" for cov in shifts.get(name, [])]
     out += [f"sd_{name}" for name in varying]
+    label = block_labels(random_effects, varying)
     out += [
         f"corr_{a}_{b}"
         for i, a in enumerate(varying)
-        for b in varying[i + 1 :]
+        for j, b in enumerate(varying)
+        if j > i and label[i] == label[j]
     ]
     effects = [EFFECTS[link] for link in links]
+    if causes is not None:
+        every = ["alpha", "beta", *hazard, *effects]
+        common = [name for name in every[1:] if name in shared]
+        own = [name for name in every if name not in common]
+        out += ["sd_noise"]
+        out += [f"{cause}: {name}" for cause in causes for name in own]
+        return out + common
     return out + ["sd_noise", "alpha", "beta", *hazard, *effects]
+
+
+def shareable(hazard: list[str], links: tuple) -> list[str]:
+    """What the causes of a joint model may share (``shared=``): the
+    Weibull ``beta``, a hazard covariate's coefficient, and a link's
+    effect."""
+    return ["beta", *hazard, *[EFFECTS[link] for link in links]]
+
+
+def _reported_alpha(th: dict, layout: Layout, refs: tuple) -> Any:
+    """``alpha`` at the covariates' 0 and the marker's reference, of the
+    internal ``th`` (one cause's)."""
+    c, zbar, r = refs
+    zeta = anp.reshape(th["zeta"], (layout.n_links,))
+    return th["alpha"] * anp.exp(
+        (
+            anp.dot(th["gamma"], np.asarray(zbar, dtype=float))
+            - _reference_shift(zeta, layout, r, c)
+        )
+        / _per_scale(layout, th["beta"])
+    )
+
+
+def _reported_causes(theta: dict, layout: Layout, refs: tuple) -> Any:
+    """The survival part of the reported parameters with several causes
+    (in the order of :attr:`Layout.cause_slots`)."""
+    cols = np.flatnonzero(layout.hazard)
+    each = []
+    for th in cause_thetas(theta, layout):
+        zeta = anp.reshape(th["zeta"], (layout.n_links,))
+        each.append(
+            [_reported_alpha(th, layout, refs), th["beta"]]
+            + [th["gamma"][k] for k in cols]
+            + [zeta[j] for j in range(layout.n_links)]
+        )
+    slots = layout.cause_slots
+    out = []
+    for j in range(layout.n_survival):
+        k, col = np.argwhere(slots == j)[0]
+        out.append(each[k][col])
+    return anp.stack(out)
+
+
+def _internal_causes(block: Any, layout: Layout, refs: tuple) -> dict:
+    """``alpha``, ``beta``, ``gamma`` and ``zeta`` of every cause from
+    the survival part ``block`` of the reported parameters, the inverse
+    of :func:`_reported_causes`."""
+    c, zbar, r = refs
+    zbar = np.asarray(zbar, dtype=float)
+    slots = layout.cause_slots
+    n_hazard = layout.n_hazard
+    alphas, betas, gammas, zetas = [], [], [], []
+    for k in range(layout.n_causes):
+        v = block[slots[k]]
+        gamma = layout._gamma(v[2 : 2 + n_hazard])
+        zeta = v[2 + n_hazard :]
+        alphas.append(
+            v[0]
+            * anp.exp(
+                -(anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
+                / _per_scale(layout, v[1])
+            )
+        )
+        betas.append(v[1])
+        gammas.append(gamma)
+        zetas.append(zeta)
+    return {
+        "alpha": anp.stack(alphas),
+        "beta": anp.stack(betas),
+        "gamma": anp.stack(gammas),
+        "zeta": anp.stack(zetas),
+    }
 
 
 def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
@@ -220,17 +356,24 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         D = anp.dot(L, anp.transpose(L))
         sd = anp.sqrt(anp.stack([D[i, i] for i in range(q)]))
         parts.append(sd)
+        same = layout.correlated
         corr = [
             D[i, j] / (sd[i] * sd[j])
             for i in range(q)
             for j in range(i + 1, q)
+            if same[i, j]
         ]
         if corr:
             parts.append(anp.stack(corr))
+    if layout.n_causes > 1:
+        parts.append(anp.reshape(theta["sigma"], (1,)))
+        parts.append(_reported_causes(theta, layout, refs))
+        return anp.concatenate(parts)
     beta, gamma = theta["beta"], theta["gamma"]
     zeta = anp.reshape(theta["zeta"], (layout.n_links,))
     alpha = theta["alpha"] * anp.exp(
-        (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c)) / beta
+        (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
+        / _per_scale(layout, beta)
     )
     parts.append(anp.stack([theta["sigma"], alpha, beta]))
     if layout.hazard.all():
@@ -243,10 +386,18 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
     return anp.concatenate(parts)
 
 
+def _per_scale(layout: Layout, beta: Any) -> Any:
+    """What a shift of the log hazard (proportional hazards) or of the
+    log ageing rate (accelerated) is divided by to move ``log alpha``:
+    ``beta`` and 1."""
+    return 1.0 if layout.survival == "AFT" else beta
+
+
 def _reference_shift(zeta: Any, layout: Layout, r: float, c: float) -> Any:
-    """The log hazard between the marker's reference ``r`` and the
-    centre ``c`` of the internal hazard: the value's effect times ``r -
-    c``, and 0 where the hazard does not follow the value."""
+    """The log hazard (the log ageing rate, accelerated) between the
+    marker's reference ``r`` and the centre ``c`` of the internal hazard:
+    the value's effect times ``r - c``, and 0 where the hazard does not
+    follow the value."""
     if "value" not in layout.links:
         return 0.0
     return zeta[layout.links.index("value")] * (r - c)
@@ -269,7 +420,8 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         i += 1 + n
     sd = params[i : i + q]
     i += q
-    n_corr = q * (q - 1) // 2
+    same = layout.correlated
+    n_corr = len(layout.lower)
     corr = params[i : i + n_corr]
     i += n_corr
     if q:
@@ -278,20 +430,34 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         upper = {}
         for a in range(q):
             for b in range(a + 1, q):
-                upper[(a, b)] = corr[k]
-                k += 1
+                if same[a, b]:
+                    upper[(a, b)] = corr[k]
+                    k += 1
         for a in range(q):
             row = []
             for b in range(q):
                 if a == b:
                     row.append(sd[a] ** 2)
-                else:
+                elif same[a, b]:
                     rho = upper[(min(a, b), max(a, b))]
                     row.append(rho * sd[a] * sd[b])
+                else:
+                    # uncorrelated: 0 between the blocks
+                    row.append(0.0 * sd[a] * sd[b])
             rows.append(anp.stack(row))
         L = _cholesky(rows, q)
     else:
         L = anp.zeros((0, 0))
+    if layout.n_causes > 1:
+        return {
+            "mu": anp.stack(mus),
+            "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
+            "L": L,
+            "sigma": params[i],
+            **_internal_causes(
+                params[i + 1 : i + 1 + layout.n_survival], layout, refs
+            ),
+        }
     sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
     n_hazard = layout.n_hazard
     gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
@@ -304,7 +470,7 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         "alpha": alpha_r
         * anp.exp(
             -(anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
-            / beta
+            / _per_scale(layout, beta)
         ),
         "beta": beta,
         "gamma": gamma,
@@ -332,6 +498,39 @@ def _cholesky(rows: list, q: int) -> Any:
     )
 
 
+def structure_words(random_effects: Any) -> str:
+    """The covariance structure of the varying parameters in words, for
+    the printouts and the summary's heading: ``""`` for the full one,
+    ``"uncorrelated"``, or ``"correlated in blocks {a, b}, {c}"``."""
+    if random_effects == "full":
+        return ""
+    if random_effects == "diagonal":
+        return "uncorrelated"
+    blocks = ", ".join(
+        "{" + ", ".join(block) + "}" for block in random_effects
+    )
+    return f"correlated in blocks {blocks}"
+
+
+def _structure_words(random_effects: Any) -> str:
+    """:func:`structure_words` in brackets after a space, or nothing."""
+    words = structure_words(random_effects)
+    return f" ({words})" if words else ""
+
+
+def _saved_structure(random_effects: Any) -> Any:
+    """``random_effects`` in JSON: its name, or its blocks as lists."""
+    if isinstance(random_effects, str):
+        return random_effects
+    return [list(block) for block in random_effects]
+
+
+def _in_brackets(label: str) -> str:
+    """``label`` as a factor of a compound unit: in brackets where it is
+    more than one word or symbol (``"(mm/s)"``, ``"(marker unit)"``)."""
+    return f"({label})" if any(ch in label for ch in " /*·^") else label
+
+
 def _finite_number(name: str, value: Any) -> float:
     try:
         out = float(value) if np.ndim(value) == 0 else None
@@ -346,7 +545,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     """
     A fitted joint model of a marker and a lifetime, returned by the
     :func:`~surpyval.univariate.joint.joint_ph.JointPH` fitters, such as
-    ``WeibullJointPH``.
+    ``WeibullJointPH``, and the
+    :func:`~surpyval.univariate.joint.joint_aft.JointAFT` fitters, such as
+    ``WeibullJointAFT`` (``survival`` says which).
 
     Each item's marker follows the degradation path model (``LinearPath``
     for ``WeibullJointPH``; any ``PathModel``) with parameters of its
@@ -369,24 +570,70 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     (``slope_effect`` times :math:`m'(t)`) or the area under it from age
     0 (``cumulative_effect`` times :math:`\\int_0^t m(s) ds`), in place
     of the value or beside it; the baseline is then at a slope and an
-    area of 0.
+    area of 0. With a ``lag`` above 0 the hazard at age :math:`t` follows
+    each of these at :math:`\\max(t - \\mathrm{lag}, 0)` (the path held at
+    its age-0 value until the lag has passed, so the slope is 0 there):
+    a reading acts ``lag`` later. With a ``weight`` the area counts
+    older exposure for less, :math:`\\int_0^t w(t - s) m(s) ds` with
+    :math:`w(u) = e^{-u/\\mathrm{scale}}` (``("exponential", scale)``)
+    or :math:`w(u) = 1` for :math:`u` up to the width and 0 beyond
+    (``("window", width)``).
+
+    A model fitted to failures with their modes (event types; ``causes``
+    lists them) has a hazard of this form for each failure mode
+    :math:`k`, with its own :math:`\\alpha_k`, :math:`\\beta_k`,
+    :math:`\\gamma_k` and :math:`\\zeta_k` (named ``"<cause>: alpha"``
+    and so on; those in ``shared`` are common to the modes), and one
+    marker part. An item fails by the first mode to occur, so its
+    survival, which ``sf``, ``cb`` and ``predict`` give, is that of every
+    mode together, :math:`\\exp(-\\sum_k H_{ik}(t))`.
+
+    In an accelerated model (``survival == "AFT"``) the marker speeds up
+    the item's ageing in place of multiplying its hazard: by age
+    :math:`t` the item has used up the effective age
+
+    .. math::
+        A_i(t) = \\int_0^t \\exp\\left(\\gamma' z_i + \\zeta
+        \\left(m(s; \\theta_i) - r\\right)\\right) ds, \\qquad
+        S_i(t) = \\exp\\left(-\\left(A_i(t) / \\alpha\\right)^\\beta
+        \\right),
+
+    so time at a high reading uses up life faster, and that life is not
+    given back when the reading falls. The parameters have the same names;
+    an effect is then the log of how many times faster the item ages per
+    unit of the marker or the covariate (with the slope link,
+    ``slope_effect`` times :math:`m'(s)` in the exponent), and with a
+    marker that never changes the model is the proportional hazards one
+    with every effect divided by ``beta``.
 
     ``params`` holds, in the order of ``parameter_names``: each path
     parameter's mean (by the path model's own names: ``a``, ``b``, ...)
     followed by its covariates' shifts (``a_<cov>``, ...); the spread of
     the varying ones between items (``sd_a``, ``sd_b``, ...,
-    ``corr_a_b``, ...); ``sd_noise``; the Weibull ``alpha`` and
-    ``beta``; the hazard's covariate coefficients (``<cov>``); and
-    ``marker_effect`` (:math:`\\zeta`, the change in the log hazard per
-    unit of the marker; ``slope_effect`` and ``cumulative_effect`` for
-    those links). An aliased covariate's entries are ``nan``
-    (``aliased``). ``neg_ll()`` is the negative log-likelihood of the
-    readings and the lifetimes together (so ``aic()`` and ``bic()``
-    compare joint models of the same data).
+    ``corr_a_b``, ... of each pair correlated: every pair unless the
+    fitter was given ``random_effects``); ``sd_noise``; the Weibull
+    ``alpha`` and ``beta``; the hazard's covariate coefficients
+    (``<cov>``); and ``marker_effect`` (:math:`\\zeta`, the change in the
+    log hazard per unit of the marker; ``slope_effect`` and
+    ``cumulative_effect`` for those links). An aliased covariate's
+    entries are ``nan`` (``aliased``). ``neg_ll()`` is the negative
+    log-likelihood of the readings and the lifetimes together (so
+    ``aic()`` and ``bic()`` compare joint models of the same data).
 
     ``sf(x, Z, markers=..., given=...)`` predicts for one item: its
     covariates ``Z``, its readings so far and the age it was last seen
     running; ``sf(x, item)`` takes them from an ``ItemLifetime``.
+
+    A model fitted with ``how="two-stage"`` (``how``) has the same
+    parameters and predictions, from the approximate two-stage estimate:
+    the paths fitted to the readings alone, then the survival part with
+    each item's predicted path taken as known. Its estimates are biased
+    (most where the readings are few or the path curves); its survival
+    part's standard errors (and so the bounds of its predictions) are too
+    small, and its marker part has none (``nan``; the bounds hold it at
+    its estimates). It has no likelihood of the whole model, so
+    ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` are refused. The
+    printout and the summary say so.
 
     Examples
     --------
@@ -435,30 +682,120 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: current value), ``"slope"`` (its rate of change), ``"cumulative"``
     #: (the area under it from age 0), one or more.
     link: tuple = ("value",)
+    #: How long after the marker the hazard follows it, in the lifetimes'
+    #: unit of time (0: at once): the hazard at age ``t`` follows the
+    #: path at ``max(t - lag, 0)``. Fixed by the fit's fitter, not
+    #: estimated.
+    lag: float = 0.0
+    #: How the accumulated exposure (the ``"cumulative"`` link) is
+    #: weighted by how long ago it was: ``None`` (all of it equally),
+    #: ``("exponential", scale)`` (it fades as ``exp(-u / scale)``, ``u``
+    #: the time since) or ``("window", width)`` (only the last ``width``
+    #: counts). Fixed by the fit's fitter, not estimated.
+    weight: tuple | None = None
+    #: The survival part: ``"PH"`` (the marker multiplies the hazard,
+    #: ``JointPH``) or ``"AFT"`` (it speeds up the item's ageing,
+    #: ``JointAFT``).
+    survival: str = "PH"
+    #: The failure modes (causes) of a model fitted to failures with
+    #: event types (``e``), in the order of its parameters: each has a
+    #: Weibull baseline, hazard coefficients and effects of its own,
+    #: named ``"<cause>: <name>"``. ``None`` for a model of one kind of
+    #: failure.
+    causes: list | None = None
+    #: The survival parameters the causes have in common (the fit's
+    #: ``shared``): ``"beta"``, hazard covariates and effects, each one
+    #: parameter under its plain name.
+    shared: tuple = ()
+    #: The failures of each cause, ``{cause: count}`` (count weighted);
+    #: ``None`` for a model of one kind of failure.
+    n_events_by_cause: dict | None = None
     #: The marker value at which ``alpha`` is reported (``None`` where
     #: the hazard does not follow the value).
     marker_reference: float | None
     #: The number of estimated parameters, the ``k`` of the criteria.
     k: int
-    #: What the fit reached (``surpyval.utils.no_maximum``).
+    #: What the fit reached (``surpyval.utils.no_maximum``): ``"not
+    #: applicable"`` for a two-stage fit, which maximises no likelihood
+    #: of the whole model.
     maximum: str = "unknown"
+    #: How it was fitted: ``"MLE"`` (the joint likelihood's maximum) or
+    #: ``"two-stage"`` (the approximate two-stage estimate).
+    how: str = "MLE"
+    #: How each item's likelihood was integrated over its varying path
+    #: parameters, in the fit and in this model's predictions: ``"grid"``
+    #: (adaptive Gauss-Hermite on the full grid of 7 points in each),
+    #: ``"pruned"`` (the same grid without the nodes of negligible
+    #: weight) or ``"laplace"`` (Laplace's approximation, with no grid:
+    #: the default beyond five varying parameters; its predictions are
+    #: on the grid up to five).
+    integration: str = "grid"
+    #: Which varying path parameters are correlated between items:
+    #: ``"full"`` (every pair), ``"diagonal"`` (none) or a tuple of blocks
+    #: of names, those in one block correlated with each other and with
+    #: none outside it (the fitter's ``random_effects``). A correlation
+    #: outside the blocks is 0, not estimated: it has no entry in
+    #: ``params``.
+    random_effects_structure: Any = "full"
     #: The numbers of items, failures and readings fitted (count
     #: weighted).
     n_items: float = 0.0
     n_events: float = 0.0
     n_readings: float = 0.0
+    #: The unit the marker is read in (a label, as ``unit`` is the
+    #: ages'): from the readings' ``Measurements`` or ``marker_unit=`` at
+    #: the fit; None is unknown. With ``unit`` it names the unit of each
+    #: link's effect (``effect_units``).
+    marker_unit: str | None = None
     #: The marker's centre in the internal hazard (the mean reading) and
     #: the covariate means: predictions are computed there.
     _centre: float = 0.0
     _zbar: npt.NDArray
     _covariance: npt.NDArray | None = None
     _neg_ll: float
+    #: The path part of the internal estimates (``mu``, ``Delta``, ``L``,
+    #: ``sigma``), a start for another link's fit of the same data
+    #: (``compare_links``); not saved.
+    _path_start: dict | None = None
 
     @property
     def kind(self) -> str:
-        return "Joint (Weibull proportional hazards, {})".format(
-            ", ".join(_LINK_WORDS[link] for link in self.link)
+        return "Joint (Weibull {}, {})".format(
+            _SURVIVAL_WORDS[self.survival],
+            ", ".join(_LINK_WORDS[link] for link in self.link),
         )
+
+    @property
+    def effect_units(self) -> dict[str, str]:
+        """
+        What each link's effect is per, by its name: ``marker_effect`` per
+        unit of the marker, ``slope_effect`` per unit of the marker per
+        unit of age, and ``cumulative_effect`` per unit of the marker
+        times a unit of age (the area under the path). The labels are
+        ``marker_unit`` and ``unit``, as given; one not given is
+        ``"marker unit"`` or ``"time unit"``. A label of more than one
+        word or symbol is put in brackets in a compound unit.
+
+        Examples
+        --------
+        >>> from surpyval.univariate.joint import JointModel
+        >>> model = JointModel()
+        >>> model.link = ("value", "cumulative")
+        >>> model.marker_unit, model.unit = "mm/s", "years"
+        >>> model.effect_units
+        {'marker_effect': 'mm/s', 'cumulative_effect': '(mm/s)·years'}
+        >>> model.unit = None
+        >>> model.effect_units["cumulative_effect"]
+        '(mm/s)·(time unit)'
+        """
+        marker = self.marker_unit or "marker unit"
+        age = getattr(self, "unit", None) or "time unit"
+        per = {
+            "value": marker,
+            "slope": f"{_in_brackets(marker)}/{_in_brackets(age)}",
+            "cumulative": f"{_in_brackets(marker)}·{_in_brackets(age)}",
+        }
+        return {EFFECTS[link]: per[link] for link in self.link}
 
     # -- the parts -------------------------------------------------------
 
@@ -494,13 +831,60 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ).reshape(len(names), len(kept)),
             np.array([cov in hazard for cov in kept], dtype=bool),
             tuple(self.link),
+            self.survival,
+            block_labels(self.random_effects_structure, self.varying),
+            **self._cause_layout(kept),
+        )
+
+    def _cause_layout(self, kept: list) -> dict:
+        """The layout's entries for the causes (none for a model of one
+        kind of failure)."""
+        if self.causes is None:
+            return {}
+        return {
+            "n_causes": len(self.causes),
+            "shared_beta": "beta" in self.shared,
+            "shared_hazard": [cov in self.shared for cov in kept],
+            "shared_links": [EFFECTS[k] in self.shared for k in self.link],
+        }
+
+    def _names(self) -> list[str]:
+        """The parameters' names as the model's own description gives
+        them (every covariate, aliased ones too)."""
+        shifts, hazard = self._covariate_parts()
+        return parameter_names(
+            list(self.path_model.parameter_names),
+            list(self.varying),
+            list(self.feature_names),
+            shifts,
+            hazard,
+            tuple(self.link),
+            self.random_effects_structure,
+            self.causes,
+            self.shared,
+        )
+
+    def _scale(self) -> float:
+        """A typical age: the Weibull ``alpha`` (the smallest of the
+        causes')."""
+        names = list(self.parameter_names)
+        if self.causes is None:
+            return float(self.params[names.index("alpha")])
+        return float(
+            min(
+                self.params[names.index(f"{cause}: alpha")]
+                for cause in self.causes
+            )
         )
 
     def _likelihood_model(self) -> Model:
         return Model(
             self._layout,
-            PathFunction(self.path_model, tuple(self.link)),
+            PathFunction(
+                self.path_model, tuple(self.link), self.lag, self.weight
+            ),
             self._centre,
+            self.integration,
         )
 
     @property
@@ -538,6 +922,147 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``parameter_names``."""
         return standard_errors_of(self.covariance())
 
+    def _refuse_two_stage(self, name: str) -> None:
+        if self.how == "two-stage":
+            raise ValueError(
+                f"A two-stage fit has no {name}: its two stages (the paths "
+                "from the readings, then the lifetimes with each item's "
+                "predicted path taken as known) have no likelihood of the "
+                "whole model. Compare it with the joint fit by the accuracy "
+                "of their predictions (surpyval.metrics.score_predictions, "
+                "dynamic_auc, dynamic_brier), or refit with how='MLE' for "
+                "the likelihood and the criteria."
+            )
+
+    def neg_ll(self) -> float:
+        """The negative log-likelihood of the readings and the lifetimes
+        together, at the fitted parameters. Refused for a two-stage fit
+        (``how="two-stage"``), which has no likelihood of the whole
+        model."""
+        self._refuse_two_stage("neg_ll()")
+        return super().neg_ll()
+
+    def _refuse_ic(self, name: str) -> None:
+        self._refuse_two_stage(name)
+        super()._refuse_ic(name)
+
+    def likelihood_ratio_test(self, nested: JointModel) -> dict:
+        """
+        The likelihood-ratio test of this model against one nested in
+        it, fitted to the same data: twice the gain in the
+        log-likelihood, chi-squared on the difference in the number of
+        parameters when the nested model holds. With failure modes, the
+        fit with a parameter shared between the modes (``shared=``) is
+        nested in the fit without: the test asks whether the modes
+        differ in it, such as whether the marker speaks to one way of
+        failing more than to another.
+
+        That ``nested`` is nested in this model is the caller's claim;
+        what can be checked is: both are joint fits by maximum
+        likelihood of the same numbers of items, failures and readings,
+        with the same path and survival part, and ``nested`` has fewer
+        parameters and no higher a log-likelihood.
+
+        Parameters
+        ----------
+        nested : JointModel
+            The simpler fit of the same data.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``, the last the nested model's.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(11)
+        >>> items = []
+        >>> for k in range(120):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     worn = 110 * rng.weibull(2.5) * np.exp(-0.4 * (start - 2))
+        ...     other = 250 * rng.weibull(1.0)
+        ...     end = min(worn, other, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     if end < 120:
+        ...         outcome = {"observed": end}
+        ...         mode = "bearing" if worn < other else "seal"
+        ...     else:
+        ...         outcome, mode = {"right_censored": end}, None
+        ...     items.append(
+        ...         ItemLifetime(k, **outcome, event_type=mode,
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> data = SurpyvalData.from_items(items)
+        >>> each = WeibullJointPH.fit(data)
+        >>> one = WeibullJointPH.fit(data, shared=["marker_effect"])
+        >>> test = each.likelihood_ratio_test(one)
+        >>> test["df"], bool(0 <= test["p_value"] <= 1)
+        (1, True)
+        """
+        from scipy.stats import chi2
+
+        if not isinstance(nested, JointModel):
+            raise ValueError(
+                "'nested' is the simpler joint model fitted to the same "
+                f"data; got {type(nested).__name__}."
+            )
+        for model in (self, nested):
+            model._refuse_two_stage("likelihood-ratio test")
+        same = (
+            "n_items",
+            "n_events",
+            "n_readings",
+            "survival",
+            "link",
+            "lag",
+            "weight",
+            "varying",
+        )
+        differ = [
+            name
+            for name in same
+            if getattr(self, name) != getattr(nested, name)
+        ] + (
+            ["path_model"]
+            if type(self.path_model) is not type(nested.path_model)
+            else []
+        )
+        if differ:
+            raise ValueError(
+                "A likelihood-ratio test compares two fits of the same "
+                "data with the same path, links and survival part; these "
+                f"differ in {differ!r}."
+            )
+        df = int(self.k) - int(nested.k)
+        if df < 1:
+            raise ValueError(
+                "'nested' is the simpler model, with fewer parameters "
+                f"than this one; it has {nested.k} and this one {self.k}. "
+                "Call the richer model's likelihood_ratio_test with the "
+                "simpler one."
+            )
+        ll, ll_null = -self.neg_ll(), -nested.neg_ll()
+        gain = ll - ll_null
+        if gain < -1e-6 * max(1.0, abs(ll)):
+            raise ValueError(
+                "The nested model has a higher log-likelihood "
+                f"({ll_null:.6g}) than this one ({ll:.6g}), so it is not "
+                "nested in it or this fit did not reach its maximum "
+                "(check both models' 'maximum')."
+            )
+        statistic = max(2.0 * gain, 0.0)
+        return {
+            "statistic": float(statistic),
+            "df": df,
+            "p_value": float(chi2.sf(statistic, df)),
+            "log_likelihood": float(ll),
+            "log_likelihood_null": float(ll_null),
+        }
+
     def _ic_sample_size_from_data(self) -> float:
         return ic_sample_size(
             [0, 1], [self.n_events, self.n_items - self.n_events]
@@ -551,9 +1076,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         shifts, hazard = self._covariate_parts()
         n_path = len(names) + sum(len(shifts.get(n, [])) for n in names)
         p = len(hazard)
-        q = len(self.varying)
+        n_spread = self._layout.n_spread
         path = list(range(n_path))
-        spread = list(range(n_path, n_path + q + q * (q - 1) // 2))
+        spread = list(range(n_path, n_path + n_spread))
         i = spread[-1] + 1 if spread else n_path
         at = {
             "value": "marker = {:.6g}".format(
@@ -564,26 +1089,120 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "slope": "slope = 0",
             "cumulative": "area = 0",
         }
+        one, two = "", ""
+        if self.how == "two-stage":
+            one, two = f" ({_STAGE_ONE})", f" ({_STAGE_TWO})"
+        if self.causes is not None:
+            return [
+                (
+                    "path: {} ({})".format(
+                        self.path_model.name, path_formula(self.path_model)
+                    ),
+                    path,
+                ),
+                (
+                    "spread between items"
+                    + _structure_words(self.random_effects_structure),
+                    spread,
+                ),
+                ("noise", [i]),
+                *self._cause_parts(hazard, at),
+            ]
         return [
             (
-                "path: {} ({})".format(
-                    self.path_model.name, path_formula(self.path_model)
+                "path: {} ({}){}".format(
+                    self.path_model.name, path_formula(self.path_model), one
                 ),
                 path,
             ),
-            ("spread between items", spread),
-            ("noise", [i]),
             (
-                "survival: {} PH, alpha at {}".format(
-                    self.dist.name, ", ".join(at[link] for link in self.link)
+                "spread between items"
+                + _structure_words(self.random_effects_structure)
+                + one,
+                spread,
+            ),
+            ("noise" + one, [i]),
+            (
+                "survival: {} {}, alpha at {}{}".format(
+                    self.dist.name,
+                    self.survival,
+                    ", ".join(at[link] for link in self.link),
+                    two,
                 ),
                 list(range(i + 1, i + 3 + p)),
             ),
             (
-                "link: " + ", ".join(_LINK_WORDS[link] for link in self.link),
+                "link: "
+                + ", ".join(_LINK_WORDS[link] for link in self.link)
+                + (f", lag {self.lag:g}" if self.lag > 0 else "")
+                + _weight_words(self.weight)
+                + two,
                 list(range(i + 3 + p, i + 3 + p + len(self.link))),
             ),
         ]
+
+    def _cause_parts(self, hazard: list, at: dict) -> list:
+        """The survival part's headings and positions with several
+        causes: each cause's baseline and coefficients, then its
+        effects, then what the causes share."""
+        names = list(self.parameter_names)
+        effects = [EFFECTS[link] for link in self.link]
+        link_words = (
+            ", ".join(_LINK_WORDS[link] for link in self.link)
+            + (f", lag {self.lag:g}" if self.lag > 0 else "")
+            + _weight_words(self.weight)
+        )
+        out = []
+        for cause in self.causes or []:
+            own = [f"{cause}: {name}" for name in ["alpha", "beta", *hazard]]
+            out.append(
+                (
+                    "survival, {}: {} {}, alpha at {}".format(
+                        cause,
+                        self.dist.name,
+                        self.survival,
+                        ", ".join(at[link] for link in self.link),
+                    ),
+                    [names.index(name) for name in own if name in names],
+                )
+            )
+            own = [f"{cause}: {name}" for name in effects]
+            out.append(
+                (
+                    f"link, {cause}: {link_words}",
+                    [names.index(name) for name in own if name in names],
+                )
+            )
+        common = [
+            name for name in ["beta", *hazard, *effects] if name in names
+        ]
+        out.append(
+            (
+                "shared by the failure modes",
+                [names.index(name) for name in common],
+            )
+        )
+        return out
+
+    def _kinds(self, parts: list) -> tuple[set, set, set]:
+        """The positions of the positive parameters, of those with a
+        hazard ratio (coefficients and effects) and of the
+        correlations."""
+        n_sd = len(self.varying)
+        positive = set(parts[2][1]) | set(parts[1][1][:n_sd])
+        corr = set(parts[1][1][n_sd:])
+        if self.causes is None:
+            survival = parts[3][1]
+            hazard = set(survival[2:]) | set(parts[4][1])
+            return positive | set(survival[:2]), hazard, corr
+        names = list(self.parameter_names)
+        baseline = {
+            j
+            for j, name in enumerate(names)
+            if name == "beta" or str(name).endswith((": alpha", ": beta"))
+        }
+        hazard = {j for _, where in parts[3:] for j in where} - baseline
+        return positive | baseline, hazard, corr
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
@@ -593,14 +1212,21 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``(part, name)``, the parts headed by what they are: the path
         (its model and formula: its parameters' means and their
         covariates' shifts), the spread between items (``sd_<name>``,
-        ``corr_<name>_<name>``), the noise (``sd_noise``), the survival
+        ``corr_<name>_<name>``; the heading says which are correlated
+        where the fitter's ``random_effects`` was not ``"full"``), the
+        noise (``sd_noise``), the survival
         part (the Weibull ``alpha`` -- the heading says at which marker
         value -- and ``beta``, and the covariate coefficients) and the
         link (``marker_effect``). ``exp(coef)`` is the hazard ratio of
-        one unit of a covariate or of the marker. The intervals of the
+        one unit of a covariate or of the marker; in an accelerated model
+        (``survival == "AFT"``) it is how many times faster the item ages
+        for that unit (its life divided by that). The intervals of the
         positive parameters (the sds, ``alpha``, ``beta``) are on the log
         scale and those of the correlations on Fisher's ``atanh`` scale,
-        so each stays in its parameter's range.
+        so each stays in its parameter's range. A two-stage fit
+        (``how="two-stage"``) says so in each part's heading: the marker
+        parts (stage 1) have no standard errors, and the survival part's
+        and the link's (stage 2) are approximate and understated.
 
         Examples
         --------
@@ -639,12 +1265,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         q = norm.ppf(1 - alpha_ci / 2)
         level = f"{100 * (1 - alpha_ci):g}%"
         parts = self._parts()
-        survival = parts[3][1]
-        hazard = set(survival[2:]) | set(parts[4][1])
-        positive = set(parts[2][1]) | set(survival[:2])
-        n_sd = len(self.varying)
-        positive |= set(parts[1][1][:n_sd])
-        corr = set(parts[1][1][n_sd:])
+        positive, hazard, corr = self._kinds(parts)
         rows, index = [], []
         for heading, positions in parts:
             for j in positions:
@@ -673,17 +1294,36 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
+        followed += _weight_words(self.weight)
+        if self.lag > 0:
+            followed += f", {self.lag:g} earlier (lag)"
+        if self.survival == "AFT":
+            survival = (
+                f"{self.dist.name} accelerated failure time, ageing sped "
+                f"up by the marker's {followed}"
+            )
+        else:
+            survival = (
+                f"{self.dist.name} proportional hazards in the marker's "
+                f"{followed}"
+            )
         out = (
             "Joint SurPyval Model"
             "\n===================="
             f"\nMarker path         : {self.path_model.name}, "
             f"{path_formula(self.path_model)}; varying between items: "
             f"{', '.join(self.varying)}"
-            f"\nSurvival            : {self.dist.name} proportional hazards "
-            f"in the marker's {followed}"
+            f"{_structure_words(self.random_effects_structure)}"
+            f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
-            f"\nFit                 : maximum {self.maximum}"
+            f"{self._cause_line()}"
+            f"\nFit                 : {self._fit_line()}"
+            f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
+            "\nEffect units        : "
+        )
+        out += "; ".join(
+            f"{name} per {per}" for name, per in self.effect_units.items()
         )
         table = self.summary()
         columns = {
@@ -702,6 +1342,30 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 format_table(rows, list(columns.values())),
             )
         return out
+
+    def _cause_line(self) -> str:
+        """The printout's line of the failure modes (none for a model
+        of one kind of failure)."""
+        if self.causes is None:
+            return ""
+        counts = self.n_events_by_cause or {}
+        return "\nFailure modes       : " + ", ".join(
+            f"{cause} ({counts.get(cause, np.nan):g} failures)"
+            for cause in self.causes
+        )
+
+    def _fit_line(self) -> str:
+        """What the printout's ``Fit`` line says."""
+        if self.how != "two-stage":
+            return f"maximum {self.maximum}"
+        line = (
+            "two-stage (approximate: the paths from the readings alone, "
+            "then the lifetimes with each item's predicted path taken as "
+            "known; estimates biased, standard errors understated, no AIC)"
+        )
+        if self.maximum == "unverified":
+            line += "; stage 2 not at a verified maximum"
+        return line
 
     # -- prediction ------------------------------------------------------
 
@@ -879,7 +1543,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, many, times, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            nodes = model.prediction_nodes(mode, root, theta, many, times)
             log_I = log_integrals(
                 theta, model, many, nodes, times, np.zeros(M), readings=True
             )
@@ -913,17 +1577,24 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             mode, root = continued_modes(
                 theta, model.layout, model.path, one, t, self._centre
             )
-            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
-            log_g = np.asarray(
-                log_integrand(
-                    theta, model, one, nodes, t, np.zeros(1), readings=True
-                ),
-                dtype=float,
-            )[0]
-            weights = np.exp(log_g - np.max(log_g))
-            weights = weights / weights.sum()
+            nodes = model.prediction_nodes(mode, root, theta, one, t)
+            if isinstance(nodes, tuple):
+                log_g = np.asarray(
+                    log_integrand(
+                        theta, model, one, nodes, t, np.zeros(1), readings=True
+                    ),
+                    dtype=float,
+                )[0]
+                weights = np.exp(log_g - np.max(log_g))
+                weights = weights / weights.sum()
+                points = nodes[0]
+            else:
+                # Laplace: the moments over the normal it stands on
+                from ._laplace import sigma_points
+
+                points, weights = sigma_points(nodes)
             params = np.asarray(
-                _path_params(theta, model.layout, one.Z, nodes[0]),
+                _path_params(theta, model.layout, one.Z, points),
                 dtype=float,
             )
             x = np.asarray(x, dtype=float)
@@ -1016,7 +1687,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         mode, root = continued_modes(
             theta, model.layout, model.path, many, times, self._centre
         )
-        nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+        nodes = model.prediction_nodes(mode, root, theta, many, times)
         zero = np.zeros(M)
 
         def f(params: Any) -> Any:
@@ -1164,6 +1835,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ``log(-log sf)`` (so the bounds stay in (0, 1)), the adaptive
         nodes held at the fitted parameters while differentiating. An age
         at or before ``given`` gives ``[1, 1]`` (``[0, 0]`` on ``ff``).
+        A two-stage fit's bounds are from its survival part's
+        uncertainty alone (its marker part held at its estimates), with
+        standard errors that are too small: they are too narrow.
 
         Parameters
         ----------
@@ -1221,6 +1895,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             est = self._estimated
             params = np.asarray(self.params, dtype=float)[est]
             sub = cov[np.ix_(est, est)]
+            if self.how == "two-stage":
+                # stage one's estimates have no variance: held at them
+                sub = np.where(np.isfinite(sub), sub, 0.0)
 
             def log_H(v: Any) -> Any:
                 return anp.log(-f(v))
@@ -1245,16 +1922,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def to_dict(self) -> dict:
         """
         The model as a plain, JSON-serialisable ``dict``: its path model
-        (by its built-in name) and which of its parameters vary, its
-        parameters and their names, the covariates' names and the aliased
-        ones, the marker reference, the centres its predictions are
-        computed at, the covariance, the fitted negative log-likelihood
-        and the counts of the data (not the data). :meth:`from_dict`
-        rebuilds it, and it predicts and bounds as the original. A built-in
-        path on links (``LinkedPathModel``) is saved as its name and its
-        links. A path model of one's own cannot be rebuilt from a name,
-        and is refused (``NotImplementedError``); the model pickles all
-        the same.
+        (by its built-in name) and which of its parameters vary (and
+        which of those are correlated, ``"random_effects"``, where not
+        every pair is), its parameters and their names, the covariates'
+        names and the aliased ones, the marker reference, the centres its
+        predictions are computed at, the covariance, the fitted negative
+        log-likelihood and the counts of the data (not the data).
+        :meth:`from_dict` rebuilds it, and it predicts and bounds as the
+        original. A built-in path on links (``LinkedPathModel``) is saved
+        as its name and its links. A path model of one's own cannot be
+        rebuilt from a name, and is refused (``NotImplementedError``); the
+        model pickles all the same.
 
         Examples
         --------
@@ -1304,6 +1982,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "links": links,
             "varying": list(self.varying),
             "link": list(self.link),
+            **({} if self.lag == 0 else {"lag": float(self.lag)}),
+            **(
+                {}
+                if self.weight is None
+                else {"weight": [self.weight[0], float(self.weight[1])]}
+            ),
+            "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
             "feature_names": list(self.feature_names),
@@ -1328,12 +2013,43 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "n_items": float(self.n_items),
             "n_events": float(self.n_events),
             "n_readings": float(self.n_readings),
+            **(
+                {}
+                if self.marker_unit is None
+                else {"marker_unit": self.marker_unit}
+            ),
+            "integration": self.integration,
+            **(
+                {}
+                if self.random_effects_structure == "full"
+                else {
+                    "random_effects": _saved_structure(
+                        self.random_effects_structure
+                    )
+                }
+            ),
+            **self._causes_entry(),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
+            **({} if self.how == "MLE" else {"how": self.how}),
         }
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance).tolist()
         return stamp_schema(out)
+
+    def _causes_entry(self) -> dict:
+        """What :meth:`to_dict` saves of the causes (nothing for a model
+        of one kind of failure, whose dict is as it was)."""
+        if self.causes is None:
+            return {}
+        counts = self.n_events_by_cause or {}
+        return {
+            "causes": to_native(list(self.causes)),
+            "shared": list(self.shared),
+            "n_events_by_cause": [
+                float(counts.get(cause, np.nan)) for cause in self.causes
+            ],
+        }
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> JointModel:
@@ -1405,6 +2121,34 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.hazard_covariates = None if hazard is None else list(hazard)
         # saved before the hazard could follow anything but the value
         out.link = tuple(model_dict.get("link") or ("value",))
+        # saved before the lag, or with none: at once
+        out.lag = check_lag(model_dict.get("lag", 0.0))
+        # saved before the weights, or with none: all the exposure
+        saved_weight = model_dict.get("weight")
+        out.weight = check_weight(
+            None if saved_weight is None else tuple(saved_weight)
+        )
+        if out.weight is not None and "cumulative" not in out.link:
+            raise ValueError(
+                "A joint model's weight is on its accumulated exposure "
+                "(the 'cumulative' link); the dict has the weight "
+                f"{list(out.weight)!r} and the link {list(out.link)!r}."
+            )
+        # saved before the accelerated survival part: proportional hazards
+        survival = model_dict.get("survival") or "PH"
+        if survival not in _SURVIVAL_WORDS:
+            raise ValueError(
+                "A joint model's survival part is 'PH' (proportional "
+                "hazards) or 'AFT' (accelerated); the dict names "
+                f"{survival!r}."
+            )
+        if survival == "AFT" and "cumulative" in out.link:
+            raise ValueError(
+                "An accelerated joint model does not follow the area under "
+                "the marker (its effective age already accumulates it); the "
+                "dict's link is " + repr(list(out.link)) + "."
+            )
+        out.survival = survival
         reference = model_dict["marker_reference"]
         out.marker_reference = None if reference is None else float(reference)
         out._centre = float(model_dict["centre"])
@@ -1412,7 +2156,31 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.n_items = float(model_dict.get("n_items", 0.0))
         out.n_events = float(model_dict.get("n_events", 0.0))
         out.n_readings = float(model_dict.get("n_readings", 0.0))
-        out._neg_ll = float(model_dict["_neg_ll"])
+        # saved before the marker's unit was kept: unknown
+        out.marker_unit = model_dict.get("marker_unit")
+        # saved before the integration had a choice: the full grid
+        integration = model_dict.get("integration") or "grid"
+        if integration not in INTEGRATIONS:
+            raise ValueError(
+                "A joint model's integration is 'grid', 'pruned' or "
+                f"'laplace'; the dict names {integration!r}."
+            )
+        out.integration = integration
+        # saved before the structure had a choice (or full): every pair
+        # correlated
+        out.random_effects_structure = check_random_effects(
+            model_dict.get("random_effects") or "full", out.varying
+        )
+        # saved before the two-stage fit: the joint likelihood's maximum
+        how = model_dict.get("how") or "MLE"
+        if how not in HOWS:
+            raise ValueError(
+                "A joint model is fitted by 'MLE' or 'two-stage'; the dict "
+                f"names {how!r}."
+            )
+        out.how = how
+        neg_ll = model_dict["_neg_ll"]
+        out._neg_ll = np.nan if neg_ll is None else float(neg_ll)
         out.k = int(np.sum(~np.isnan(out.params)))
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
@@ -1421,4 +2189,40 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError(
                 "The dict's 'parameter_names' and 'params' differ in length."
             )
+        # saved before the failure modes, or with one kind of failure
+        causes = model_dict.get("causes")
+        if causes is not None:
+            from surpyval.univariate.competing_risks.labels import (
+                label_from_native,
+            )
+
+            out.causes = [label_from_native(k) for k in causes]
+            out.shared = tuple(model_dict.get("shared") or ())
+            counts = model_dict.get("n_events_by_cause")
+            if counts is not None:
+                out.n_events_by_cause = {
+                    cause: np.nan if count is None else float(count)
+                    for cause, count in zip(out.causes, counts)
+                }
+            if len(out.causes) < 2 or survival != "PH":
+                raise ValueError(
+                    "A joint model with failure modes ('causes') has two "
+                    "or more and the proportional hazards survival part; "
+                    f"the dict has {out.causes!r} and {survival!r}."
+                )
+            expected = out._names()
+            if expected != out.parameter_names:
+                raise ValueError(
+                    "The dict's 'parameter_names' are not those of its "
+                    f"'causes' ({out.causes!r}) and 'shared' "
+                    f"({list(out.shared)!r}): expected {expected!r}."
+                )
+        if out.random_effects_structure != "full":
+            expected = out._names()
+            if expected != out.parameter_names:
+                saved = _saved_structure(out.random_effects_structure)
+                raise ValueError(
+                    "The dict's 'parameter_names' are not those of its "
+                    f"'random_effects' ({saved!r}): expected {expected!r}."
+                )
         return out

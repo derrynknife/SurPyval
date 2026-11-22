@@ -20,10 +20,14 @@ from scipy import stats
 
 from surpyval.recurrent import InterventionTestResult, intervention_test
 from surpyval.recurrent.intervention import _exact_bound, _Strata
-from surpyval.test_planning import (
-    rate_ratio_detectable,
-    rate_ratio_exposure,
-    rate_ratio_power,
+from surpyval.test_planning.rate_ratio import (
+    _rate_ratio_detectable as rate_ratio_detectable,
+)
+from surpyval.test_planning.rate_ratio import (
+    _rate_ratio_exposure as rate_ratio_exposure,
+)
+from surpyval.test_planning.rate_ratio import (
+    _rate_ratio_power as rate_ratio_power,
 )
 from surpyval.test_planning.rate_ratio import (
     critical_counts,

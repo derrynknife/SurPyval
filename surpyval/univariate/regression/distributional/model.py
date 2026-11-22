@@ -16,7 +16,7 @@ from surpyval.utils.shapes import (
     keeps_query_shape,
 )
 from surpyval.utils.validation import warn_outside_unit_interval
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from .._covariate_link import CovariateLink
 from ..kinds import DISTRIBUTIONAL
@@ -719,7 +719,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 "of the {} rows (nan there); method='wald' gives a bound in "
                 "its place.".format(name, len(failed), rows.shape[0]),
                 RuntimeWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         if bound == "two-sided":
             return np.column_stack([lower, upper])
@@ -925,7 +925,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 "log-logistic shape at or below 1). Use a quantile (qf) "
                 "instead.".format(infinite, rows.shape[0]),
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return out[0] if out.size == 1 else out
 
@@ -1027,7 +1027,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import DistributionalRegressionModel
+        >>> from surpyval.univariate.regression import (
+        ...     DistributionalRegressionModel,
+        ... )
         >>> from surpyval import WeibullDistributional
         >>> rng = np.random.default_rng(3)
         >>> load = rng.uniform(0, 1, 300)

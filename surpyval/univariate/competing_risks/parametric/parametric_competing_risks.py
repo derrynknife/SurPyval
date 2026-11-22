@@ -32,13 +32,16 @@ parameters at once, so with such rows the causes are fitted together (see
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
+import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 from scipy.integrate import IntegrationWarning, quad
 from scipy.optimize import brentq
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -55,6 +58,10 @@ from surpyval.univariate.competing_risks._assembly import (
     wald_all_cause_bound,
     wald_cif_bound,
 )
+from surpyval.univariate.competing_risks._few_events import (
+    event_counts,
+    warn_few_events,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -67,16 +74,16 @@ from surpyval.univariate.competing_risks.rmtl import rmtl_result
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
-from surpyval.utils import (
-    check_e_and_x,
-    is_missing_event,
-    resolve_cr_censoring,
-    xcnt_handler,
-)
+from surpyval.utils import check_e_and_x, is_missing_event, xcnt_handler
+from surpyval.utils._value_method import value_method
+from surpyval.utils.data_formats import resolve_cr_censoring
 from surpyval.utils.dataframe import exact_or_range_frame, frame_column
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import standard_errors_of
-from surpyval.utils.no_maximum import combined_maximum
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    quiet_maximum_warnings,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -90,7 +97,7 @@ from surpyval.utils.validation import (
     validate_cif_event,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 _CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
 _CB_METHODS = ("wald", "lr", "bootstrap")
@@ -144,6 +151,7 @@ def _validate(
 
 
 class ParametricCompetingRisks(
+    ParameterBoundsMixin,
     DiagnoseMixin,
     SerialisableMixin,
 ):
@@ -167,6 +175,12 @@ class ParametricCompetingRisks(
     # ``from_dict`` (which keeps ``_joint`` but not this) is refused as
     # restored. Not saved.
     _fitted_jointly: bool = False
+    # A joint fit's data and estimate, for the likelihood-ratio and
+    # bootstrap bounds of a cause's net functions; and the bootstrap's
+    # refits, by ``(n_boot, random_state)`` for an integer seed. Not
+    # saved by ``to_dict``.
+    _joint_state: dict | None = None
+    _joint_refits: dict | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -752,6 +766,90 @@ class ParametricCompetingRisks(
         self._check_event(event)
         return self.cif(np.inf, event)
 
+    def eliminate(self, *events: Any) -> ParametricCompetingRisks:
+        """
+        The model with one or more causes removed: what the reliability
+        would be if those failure modes were designed out, the others
+        unchanged.
+
+        The causes left keep their fitted distributions, so the new
+        model's all-cause survival is the product of their net survivals,
+        :math:`S(t) = \\prod_{k \\notin E} S_k(t)`, and its cumulative
+        incidences, mean, bounds and draws are those of the causes left
+        competing among themselves. This assumes the causes are
+        independent: removing a cause leaves the others' hazards as they
+        were. The data cannot check that (Tsiatis 1975): a cause that
+        shares a weakness with the one removed would in truth change too.
+
+        For the non-parametric estimate, the same quantity is
+        ``exp(-sum(cr.Hf(x, k) for k in kept))`` from
+        :class:`~surpyval.univariate.competing_risks.CompetingRisks`, the
+        product of the kept causes' Nelson-Aalen net survivals, under the
+        same assumption.
+
+        Parameters
+        ----------
+        *events
+            The causes to remove, at least one, leaving at least one.
+
+        Returns
+        -------
+        ParametricCompetingRisks
+            The model of the causes left.
+
+        Raises
+        ------
+        ValueError
+            If no cause, an unknown cause, or every cause is given, or the
+            model was fitted to left- or interval-censored rows (its
+            causes' estimates are correlated, so the causes left cannot be
+            taken alone; refit without those rows, or treat the result
+            of ``from_fitted`` as ignoring that correlation).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(float(model.sf(2.0)), 6)  # exp(-0.4 * 2)
+        0.449329
+        >>> without_b = model.eliminate("b")
+        >>> without_b.causes
+        ['a']
+        >>> round(float(without_b.sf(2.0)), 6)  # exp(-0.1 * 2)
+        0.818731
+        """
+        if not events:
+            raise ValueError(
+                f"eliminate needs at least one cause to remove, one of "
+                f"{self.causes}."
+            )
+        for event in events:
+            self._check_event(event)
+        removed = set(events)
+        kept = {k: self.models[k] for k in self.causes if k not in removed}
+        if not kept:
+            raise ValueError(
+                f"eliminate would remove every cause ({self.causes}); leave "
+                "at least one."
+            )
+        if self._joint is not None:
+            raise ValueError(
+                "This model was fitted to left- or interval-censored rows, "
+                "with every cause at once: the causes' estimates are "
+                "correlated, and a found-failed row of a removed cause still "
+                "informs the others, so the causes left cannot be taken "
+                "alone. Refit without those rows, or build "
+                "ParametricCompetingRisks.from_fitted({k: model.models[k] "
+                "for k in kept}), whose bounds then ignore that correlation."
+            )
+        return type(self).from_fitted(kept)
+
     def random(
         self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
@@ -863,6 +961,13 @@ class ParametricCompetingRisks(
             for name in _cause_covariance_names(self.models[k])
         ]
 
+    def _declared_bounds(self) -> list:
+        """Each cause's own ranges, in the order of
+        :attr:`covariance_names`."""
+        return [
+            b for k in self.causes for b in self.models[k].parameter_bounds
+        ]
+
     def _estimates(self) -> npt.NDArray:
         """The fitted parameters in the order of :attr:`covariance_names`:
         each cause's in turn."""
@@ -870,6 +975,7 @@ class ParametricCompetingRisks(
             [_cause_estimates(self.models[k]) for k in self.causes]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of every cause's fitted parameters, in the order of
@@ -945,6 +1051,7 @@ class ParametricCompetingRisks(
             )
         return cov
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """
         The standard errors of every cause's fitted parameters, the square
@@ -1099,10 +1206,21 @@ class ParametricCompetingRisks(
         - one cause's net ``sf``, ``ff`` and ``Hf`` (``event=k``) are
           functions of that cause's parameters alone: the bound is the
           cause's own ``models[k].cb``, which also offers
-          ``method="lr"`` and ``"bootstrap"`` (not for a model fitted to
+          ``method="lr"`` and ``"bootstrap"``. For a model fitted to
           left- or interval-censored rows, whose causes were fitted
-          jointly: there the cause's model carries its block of the
-          joint covariance and its Wald bound only).
+          jointly, the Wald bound is the cause's block of the joint
+          covariance, and the other two are over the joint likelihood:
+          ``"lr"`` the extreme of the cause's cumulative hazard over
+          every cause's parameters whose deviance from the maximum is
+          within the chi-squared critical value (the univariate fits'
+          ``z ** 2``; with one cause, the univariate fit's bound), and
+          ``"bootstrap"`` the bias-corrected percentile interval over
+          ``n_boot`` case-bootstrap refits: the units resampled with
+          replacement, each with its window, cause and entry, and the
+          causes fitted together again. A resample with no failure of
+          some cause is left out, with a warning counting such
+          resamples. Both need the data, which ``from_dict`` does not
+          restore.
 
         The bounds hold at each ``x`` separately.
 
@@ -1127,12 +1245,15 @@ class ParametricCompetingRisks(
         method : ('wald', 'lr', 'bootstrap'), str, optional
             ``"wald"`` (the default). ``"lr"`` and ``"bootstrap"`` are
             available for a cause's net function (``event=k``, ``on`` not
-            ``"cif"``), from its own model; elsewhere they raise a
+            ``"cif"``), from its own model or, for a joint fit, from the
+            joint likelihood (above); elsewhere they raise a
             ``ValueError`` saying so.
         n_boot : int, optional
             The number of bootstrap refits, with ``method="bootstrap"``.
         random_state : int or numpy Generator, optional
-            The seed of the bootstrap's simulations.
+            The seed of the bootstrap's simulations (or resamples, for a
+            joint fit, whose refits are kept on the model for each
+            ``n_boot`` and integer seed and reused at other times).
 
         Returns
         -------
@@ -1193,12 +1314,17 @@ class ParametricCompetingRisks(
         t = np.atleast_1d(np.asarray(x, dtype=float))
         if on != "cif" and event is not None:
             if self._joint is not None and method != "wald":
-                raise ValueError(
-                    f"method={method!r} refits one cause on its own, but "
-                    "this model was fitted to left- or interval-censored "
-                    "rows, whose likelihood holds every cause at once: "
-                    "use method='wald', which carries the joint "
-                    "covariance."
+                # The causes were fitted together: the bound profiles or
+                # refits the joint likelihood.
+                return self._cb_net_joint(
+                    t,
+                    event,
+                    on,
+                    alpha_ci,
+                    bound,
+                    method,
+                    n_boot,
+                    random_state,
                 )
             # A net function: the cause's own model and its own bounds.
             try:
@@ -1238,6 +1364,205 @@ class ParametricCompetingRisks(
             if on == "cif":
                 return self._cb_cif(t, event, cov, alpha_ci, bound)
             return self._cb_all_cause(t, on, alpha_ci, bound)
+
+    def _cb_net_joint(
+        self,
+        t: npt.NDArray,
+        event: Any,
+        on: str,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: Any,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The likelihood-ratio or bootstrap bound on cause ``event``'s
+        net ``sf``, ``ff`` or ``Hf`` of a model fitted to left- or
+        interval-censored rows: found on the cause's cumulative hazard,
+        which every one of the three is a monotone function of, over the
+        joint likelihood (see :meth:`cb`)."""
+        if self._joint_state is None:
+            raise ValueError(
+                f"method={method!r} on a model fitted to left- or "
+                "interval-censored rows profiles or refits the joint "
+                "likelihood, which needs the data the model was fitted to; "
+                "a model restored with from_dict does not keep them. Refit "
+                "it with ParametricCompetingRisks.fit, or use "
+                "method='wald', which reads the saved joint covariance."
+            )
+        if t.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        # The side of the cumulative hazard each asked side comes from: the
+        # survival falls as it rises.
+        side = bound
+        if on == "sf" and bound != "two-sided":
+            side = {"lower": "upper", "upper": "lower"}[bound]
+        if method == "lr":
+            H = self._lr_net_Hf(event, t, alpha_ci, side)
+        else:
+            H = self._bootstrap_net_Hf(
+                event, t, alpha_ci, side, n_boot, random_state
+            )
+        with np.errstate(over="ignore"):
+            if on == "sf":
+                return np.exp(-(H[..., ::-1] if bound == "two-sided" else H))
+            if on == "ff":
+                return -np.expm1(-H)
+        return H
+
+    def _lr_net_Hf(
+        self, event: Any, t: npt.NDArray, alpha_ci: float, side: str
+    ) -> npt.NDArray:
+        """The likelihood-ratio bound on cause ``event``'s cumulative
+        hazard at each ``t``: its extreme over the parameters (every
+        cause's) whose deviance from the joint maximum is within the
+        chi-squared critical value, the univariate fits' ``z ** 2``."""
+        from scipy.special import ndtri
+
+        state = self._joint_state
+        assert state is not None
+        i = self.causes.index(event)
+        dist = state["dists"][i]
+        sizes = state["data"].sizes
+        z = ndtri(
+            1.0 - alpha_ci / 2.0 if side == "two-sided" else 1 - alpha_ci
+        )
+        rise = 0.5 * float(z) ** 2
+        est = np.asarray(self.models[event].Hf(t), dtype=float)
+        sides = ("lower", "upper") if side == "two-sided" else (side,)
+        out = np.repeat(est[:, None], len(sides), axis=1)
+        unsettled = 0
+        for j, tj in enumerate(t):
+            if not (np.isfinite(est[j]) and est[j] > 0):
+                # No failure possible yet (or certain): nothing to bound.
+                continue
+            point = np.array([tj])
+
+            def log_H(theta: Any, point: npt.NDArray = point) -> Any:
+                p = joint.split(theta, sizes)[i]
+                return anp.log(anp.sum(dist.Hf(point, *p)))
+
+            for s, which in enumerate(sides):
+                found = joint.likelihood_extreme(
+                    state["data"], state["theta"], log_H, rise, which
+                )
+                if np.isnan(found):
+                    unsettled += 1
+                out[j, s] = np.exp(found)
+        if unsettled:
+            warnings.warn(
+                f"{unsettled} likelihood-ratio bound(s) of cause {event!r} "
+                "could not be settled (the constrained search did not end "
+                "on the edge of the likelihood region) and are nan; use "
+                "method='wald' or method='bootstrap' at those times.",
+                RuntimeWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        return out if side == "two-sided" else out[:, 0]
+
+    def _bootstrap_net_Hf(
+        self,
+        event: Any,
+        t: npt.NDArray,
+        alpha_ci: float,
+        side: str,
+        n_boot: Any,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The bias-corrected percentile bound on cause ``event``'s
+        cumulative hazard at each ``t`` over the case-bootstrap refits
+        of the joint fit (:meth:`_joint_bootstrap`)."""
+        from surpyval.univariate.regression._bootstrap import bca_bounds
+
+        refits = self._joint_bootstrap(n_boot, random_state)
+        model = self.models[event]
+        est = np.asarray(model.Hf(t), dtype=float)
+        sizes = self._joint_state["data"].sizes  # type: ignore[index]
+        start = int(sum(sizes[: self.causes.index(event)]))
+        stop = start + sizes[self.causes.index(event)]
+        draws = np.empty((len(refits), t.size))
+        with np.errstate(all="ignore"):
+            for b, theta in enumerate(refits):
+                rebuilt = _rebuild_cause(event, model, theta[start:stop], None)
+                draws[b] = np.asarray(rebuilt.Hf(t), dtype=float)
+        return bca_bounds(draws, est, np.zeros(t.size), alpha_ci, side)
+
+    def _joint_bootstrap(self, n_boot: Any, random_state: Any) -> list:
+        """The joint fit's parameters refitted to ``n_boot`` case-bootstrap
+        resamples: the units drawn with replacement, each with its own
+        window, cause and entry, and the causes fitted together again from
+        the estimate. A resample with no failure of some cause has no
+        estimate of that cause and is left out; a refit that is not a
+        verified maximum is kept; both are counted in one warning. Cached
+        for an integer seed, so bounds at other times reuse the refits."""
+        from surpyval.univariate.regression._bootstrap import (
+            REFIT_ERRORS,
+            check_n_boot,
+        )
+        from surpyval.utils.no_maximum import warn_bootstrap_refits
+
+        n_boot = check_n_boot(n_boot)
+        key = (
+            (n_boot, int(random_state))
+            if isinstance(random_state, (int, np.integer))
+            and not isinstance(random_state, bool)
+            else None
+        )
+        if self._joint_refits is None:
+            self._joint_refits = {}
+        if key is not None and key in self._joint_refits:
+            return self._joint_refits[key]
+        state = self._joint_state
+        assert state is not None
+        x, c, n, e, t = state["rows"]
+        dists, theta = state["dists"], state["theta"]
+        rng = as_generator(random_state)
+        units = int(round(float(n.sum())))
+        share = n / n.sum()
+        failed = c != 1
+        refits = []
+        counts = {"no estimate": 0, "unverified": 0, "failed": 0}
+        for _ in range(n_boot):
+            drawn = rng.multinomial(units, share).astype(float)
+            keep = drawn > 0
+            if any(
+                not (keep & failed & label_mask(e, k)).any()
+                for k in self.causes
+            ):
+                counts["no estimate"] += 1
+                continue
+            try:
+                with ignoring_warnings(), quiet_maximum_warnings():
+                    data = joint.prepare(
+                        self.causes,
+                        dists,
+                        x[keep],
+                        c[keep],
+                        drawn[keep],
+                        e[keep],
+                        t[keep],
+                    )
+                    found = joint.fit(data, theta)
+            except REFIT_ERRORS:
+                counts["failed"] += 1
+                continue
+            if not np.all(np.isfinite(found.theta)):
+                counts["failed"] += 1
+                continue
+            if found.maximum != "verified":
+                counts["unverified"] += 1
+            refits.append(np.asarray(found.theta, dtype=float))
+        warn_bootstrap_refits(
+            n_boot,
+            no_estimate=counts["no estimate"],
+            unverified=counts["unverified"],
+            failed=counts["failed"],
+            advice="treat the bounds as rough, or use method='lr' or "
+            "method='wald'",
+        )
+        if key is not None:
+            self._joint_refits[key] = refits
+        return refits
 
     def _cb_all_cause(
         self, t: npt.NDArray, on: str, alpha_ci: float, bound: str
@@ -1686,7 +2011,9 @@ class ParametricCompetingRisks(
         (see :meth:`covariance`), and each cause's model in ``models``
         carries the parameters and its block of it, but not the data, so
         its own ``neg_ll``, ``aic``, likelihood-ratio and bootstrap
-        bounds are not available: use this model's. Fitting each cause as
+        bounds are not available: use this model's (``cb(x, event=k,
+        on="sf", method="lr")`` or ``method="bootstrap"``, over the
+        joint likelihood). Fitting each cause as
         a univariate model with the other causes' events right censored
         would be an approximation, not this model's likelihood (it is the
         starting point of the search). Without such rows the fit is a
@@ -1723,6 +2050,15 @@ class ParametricCompetingRisks(
         """
         x, c, n, e, t = _validate(x, c, n, e, tl)
         truncated = tl is not None
+        failed = c != 1
+        warn_few_events(
+            event_counts(e, failed, n, ordered_labels(e[failed])),
+            "each such cause's distribution, and the cumulative incidence "
+            "and bounds built on it, rest on few failures. Check how wide "
+            "cb() is, give the cause a one-parameter distribution "
+            "(dist={cause: Exponential, ...}), or use the non-parametric "
+            "CompetingRisks.",
+        )
         if ((c == -1) | (c == 2)).any():
             return cls._fit_joint(x, c, n, e, t, dist, how)
 
@@ -1808,6 +2144,15 @@ class ParametricCompetingRisks(
             "neg_ll": found.neg_ll,
             "k": found.k,
             "n": found.n_ic,
+        }
+        # What the likelihood-ratio and bootstrap bounds of a cause's net
+        # functions need: the prepared data (its quadrature set at the
+        # estimate), the estimate, and the rows to resample.
+        out._joint_state = {
+            "data": data,
+            "theta": np.asarray(found.theta, dtype=float),
+            "dists": dists,
+            "rows": (x, c, n, e, t),
         }
         return out
 

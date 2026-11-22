@@ -34,6 +34,9 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.stats import norm
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
@@ -181,14 +184,13 @@ def _loo(
         surv = np.cumprod(1.0 - h, axis=1)
         S[start:stop] = surv
         if n_causes:
-            before = np.concatenate(
-                [np.ones((stop - start, 1)), surv[:, :-1]], axis=1
-            )
             for j in range(n_causes):
                 dkj = dk[j][None, :] - (fails & (gk[rows_g, None] == j))
                 with np.errstate(divide="ignore", invalid="ignore"):
                     hk = np.where(r_ > 0, dkj / r_, 0.0)
-                CIF[j, start:stop] = np.cumsum(before * hk, axis=1)
+                CIF[j, start:stop] = np.cumsum(
+                    aalen_johansen_iif(surv, hk), axis=1
+                )
     return u, group_of_row, S, CIF
 
 
@@ -405,8 +407,19 @@ CompetingRisks` gives it. Each unit's pseudo-value is
     from surpyval.utils.validation import validate_cr_inputs, validate_event
 
     _refuse_truncation(tl)
-    if np.ndim(x) != 1:
-        raise ValueError("'x' must be a 1-D array of times.")
+    windows = np.ndim(x) != 1 or (
+        c is not None and np.isin(np.asarray(c), (-1, 2)).any()
+    )
+    if windows:
+        raise ValueError(
+            "Pseudo-observations of the cumulative incidence take one time "
+            "per row in 'x' (a 1-D array) with exact failures (c = 0) and "
+            "right censoring (c = 1) only: they are jackknifed "
+            "Aalen-Johansen estimates, which need each failure's time. For "
+            "left- or interval-censored rows, estimate the incidences with "
+            "CompetingRisks.fit(x, e, c=c), or model covariates with "
+            "CoxPH.fit(x, Z, c=c, e=e)."
+        )
     xa, ca, na, ea = validate_cr_inputs(x, c, n, e, "Kaplan-Meier")
     if na.sum() < 2:
         raise ValueError("Pseudo-observations need at least two units.")

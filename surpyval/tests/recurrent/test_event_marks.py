@@ -198,7 +198,7 @@ def test_cause_specific_nhpp_rejects_interval_censoring():
         e=np.array(["A", None], dtype=object),
     )
     with pytest.raises(ValueError, match="exact"):
-        CauseSpecificNHPP.fit_from_recurrent_data(data)
+        CauseSpecificNHPP._fit_from_recurrent_data(data)
 
 
 def test_cause_specific_nhpp_item_with_no_events_of_a_cause():

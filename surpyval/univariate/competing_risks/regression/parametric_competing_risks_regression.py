@@ -50,6 +50,7 @@ import numpy.typing as npt
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -87,6 +88,7 @@ from surpyval.univariate.regression.regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+from surpyval.utils._value_method import value_method
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
@@ -160,7 +162,9 @@ def _cause_inits(init: Any, causes: list) -> dict:
     return {k: init for k in causes}
 
 
-class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
+class ParametricCompetingRisksRegression(
+    ParameterBoundsMixin, DiagnoseMixin, SerialisableMixin
+):
     """
     A parametric competing-risks regression: one parametric regression
     model per cause, each of that cause's hazard given the covariates,
@@ -767,6 +771,13 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
             for name in self.models[k].covariance_names
         ]
 
+    def _declared_bounds(self) -> list:
+        """Each cause's own ranges, in the order of
+        :attr:`covariance_names`."""
+        return [
+            b for k in self.causes for b in self.models[k].parameter_bounds
+        ]
+
     def _estimates(self) -> npt.NDArray:
         """The fitted values in the order of ``covariance_names``."""
         return np.concatenate(
@@ -776,6 +787,7 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
             ]
         )
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of the parameter estimates, named by
@@ -788,6 +800,7 @@ class ParametricCompetingRisksRegression(DiagnoseMixin, SerialisableMixin):
             [self.models[k].covariance() for k in self.causes]
         )
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """The standard errors of the estimates, the square roots of the
         diagonal of :meth:`covariance`."""

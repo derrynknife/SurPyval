@@ -156,6 +156,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     ROBUST_COVARIANCE,
     STATES,
     STATES_REGRESSION,
+    SURVIVING_LEVEL,
     UNI_FUNCTIONS,
     UNIVARIATE,
     WITH_COVARIATES,
@@ -322,14 +323,14 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.univariate.parametric.ParametricFitter": _BASE,
     "surpyval.univariate.parametric.OptimisedFitMixin": _BASE,
     "surpyval.univariate.parametric.DiscreteParametricFitter": _BASE,
-    "surpyval.AFTFitter": _BASE,
+    "surpyval.univariate.regression.AFTFitter": _BASE,
     "surpyval.ProportionalHazardsFitter": _BASE,
-    "surpyval.ProportionalOddsFitter": _BASE,
-    "surpyval.AdditiveHazardsFitter": _BASE,
-    "surpyval.FrailtyFitter": _BASE,
-    "surpyval.CoxFrailtyFitter": _BASE,
-    "surpyval.CoxMixedEffectsFitter": _BASE,
-    "surpyval.ParameterSubstitutionFitter": _BASE,
+    "surpyval.univariate.regression.ProportionalOddsFitter": _BASE,
+    "surpyval.univariate.regression.AdditiveHazardsFitter": _BASE,
+    "surpyval.univariate.regression.FrailtyFitter": _BASE,
+    "surpyval.univariate.regression.CoxFrailtyFitter": _BASE,
+    "surpyval.univariate.regression.CoxMixedEffectsFitter": _BASE,
+    "surpyval.univariate.regression.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
     "surpyval.multivariate.Copula": _BASE,
@@ -340,6 +341,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PO": _FACTORY,
     "surpyval.AH": _FACTORY,
     "surpyval.JointPH": _FACTORY,
+    "surpyval.JointAFT": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
     "surpyval.EventHistoryData": _DATA,
@@ -349,35 +351,41 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.TransitionMatrix": _DATA
     + ": the states and transitions of a multi-state model",
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
+    "surpyval.SecondaryClock": _DATA
+    + ": the second clock of the two-clock fits (WeibullEquivalence, ...)",
     "surpyval.StepSchedule": _DATA,
+    "surpyval.RateTable": _DATA
+    + ": the population hazards of RelativeSurvival and ExcessHazard",
     "surpyval.landmark": _FUNCTION + ": derives landmark data from data",
     "surpyval.landmark_kaplan_meier": _FUNCTION
     + " (Kaplan-Meier fits, registered, of landmark data)",
     "surpyval.CovariatePath": _DATA,
     "surpyval.RandomEffect": _DATA,
     "surpyval.StepValuedError": "an exception type",
-    "surpyval.LogRankResult": _RESULT,
-    "surpyval.IntervalLogRankResult": _RESULT,
-    "surpyval.PairwiseLogRankResult": _RESULT,
-    "surpyval.MaxComboResult": _RESULT,
-    "surpyval.TrendLogRankResult": _RESULT,
-    "surpyval.PermutationLogRankResult": _RESULT,
-    "surpyval.MaxStatResult": _RESULT,
+    "surpyval.univariate.nonparametric.LogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.IntervalLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.PairwiseLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.MaxComboResult": _RESULT,
+    "surpyval.univariate.nonparametric.TrendLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.PermutationLogRankResult": _RESULT,
+    "surpyval.univariate.nonparametric.MaxStatResult": _RESULT,
     "surpyval.PredictionScores": _RESULT,
+    "surpyval.DynamicAccuracy": _RESULT,
+    "surpyval.DynamicCalibration": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
-    "surpyval.PseudoRegressionResult": _RESULT,
+    "surpyval.univariate.regression.PseudoRegressionResult": _RESULT,
     "surpyval.PooledRate": (
         "what pooled_rate estimated (a population of rates from counts "
         "and exposures, covered by tests/univariate/test_pooled_rate.py), "
         "not a model of times"
     ),
     "surpyval.AdjustedCurves": _RESULT,
-    "surpyval.NonParametricPlot": (
+    "surpyval.univariate.nonparametric.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
-    "surpyval.CoefficientPlot": (
+    "surpyval.univariate.regression.CoefficientPlot": (
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
     "surpyval.univariate.regression.CoefficientPlot": (
@@ -398,13 +406,14 @@ OUT_OF_SCOPE: dict[str, str] = {
     ),
     "surpyval.LikelihoodContour": _RESULT,
     "surpyval.univariate.parametric.ParametricBootstrap": _RESULT,
-    "surpyval.LikelihoodContourPlot": (
+    "surpyval.univariate.parametric.LikelihoodContourPlot": (
         "what plot_likelihood_contour drew (a figure and its contours), "
         "not a model"
     ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.MCFDiffResult": _RESULT,
+    "surpyval.recurrent.PredictionComparison": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -466,8 +475,10 @@ for _fn in (
     "auc_td",
     "brier_score",
     "compare_concordance",
-    "concordance_estimate",
     "concordance_index",
+    "dynamic_auc",
+    "dynamic_brier",
+    "dynamic_calibration",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",
@@ -487,19 +498,38 @@ for _fn in ("to_stacked", "from_stacked"):
     OUT_OF_SCOPE[f"surpyval.multistate.{_fn}"] = (
         _FUNCTION + ": converts multi-state data between its forms"
     )
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
+for _fn in (
+    "laplace",
+    "mil_hdbk_189c",
+    "intervention_test",
+    "mcf_diff",
+    "compare_predictions",
+):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
+for _fn in ("change_point_cb", "change_point_test"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = (
+        _FUNCTION + ": for a fitted change point (test_clocks.py)"
+    )
+for _name in ("EffortTable", "WeibullEffort"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = _DATA + (
+        ": the testing effort over time that EffortClock takes"
+    )
+OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
+    _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
+)
+for _name, _why in (
+    ("JointPHFitter", _BASE),
+    ("JointAFTFitter", _BASE),
+    ("DynamicPrediction", _RESULT),
+    ("LinkComparison", _RESULT),
+):
+    OUT_OF_SCOPE[f"surpyval.univariate.joint.{_name}"] = _why
+OUT_OF_SCOPE["surpyval.recurrent.conditional_gaps"] = (
+    _FUNCTION + ": draws residual lives from a given lifetime model"
+)
 for _fn in (
     "filliben",
-    "fleming_harrington",
-    "fleming_harrington_variance",
-    "greenwood_variance",
-    "kaplan_meier",
-    "nelson_aalen",
-    "nelson_aalen_variance",
     "plotting_positions",
-    "rank_adjust",
-    "turnbull",
 ):
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
@@ -513,6 +543,7 @@ for _result in (
     "GroupSequentialDesign",
     "LifeTestPlan",
     "LogrankGroupSequentialDesign",
+    "PowerCalculation",
     "SequentialDemonstrationTest",
     "SequentialMTBFTest",
     "SimulatedPrecision",
@@ -522,48 +553,33 @@ for _fn in (
     "accelerated_test_plan",
     "accelerated_test_precision",
     "boundary_crossing",
+    "cox_design",
+    "cure_logrank_design",
+    "equivalence_design",
     "demonstrated_mtbf",
     "demonstrated_reliability",
     "demonstration_pass_probability",
     "demonstration_plan",
     "demonstration_sample_size",
     "demonstration_test_multiple",
+    "demonstration_test_time",
     "group_sequential_design",
     "life_test_length",
     "life_test_precision",
     "life_test_sample_size",
-    "logrank_events",
+    "logrank_design",
     "logrank_group_sequential",
-    "logrank_power",
-    "logrank_sample_size",
+    "mean_ratio_design",
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
-    "rate_ratio_detectable",
-    "rate_ratio_exposure",
-    "rate_ratio_power",
+    "noninferiority_design",
+    "rate_ratio_design",
+    "rmst_design",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
-    "cox_detectable",
-    "cox_events",
-    "cox_power",
-    "cox_sample_size",
-    "cure_logrank_events",
-    "cure_logrank_power",
-    "cure_logrank_sample_size",
-    "equivalence_events",
-    "equivalence_power",
-    "equivalence_sample_size",
-    "noninferiority_events",
-    "noninferiority_power",
-    "noninferiority_sample_size",
-    "rmst_power",
-    "rmst_sample_size",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
-OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
-    _FUNCTION + " (reads a plotting-position heuristic's name)"
-)
 
 # The Bayesian fits' building blocks: the likelihood, the posterior and the
 # priors (the model, BayesianParametric, is registered).
@@ -577,6 +593,12 @@ OUT_OF_SCOPE["surpyval.bayes.log_likelihood_fn"] = (
 )
 OUT_OF_SCOPE["surpyval.bayes.LogLikelihood"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.Posterior"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.compare"] = (
+    _FUNCTION + " (ranks Bayesian fits by WAIC or LOO; checked in "
+    "surpyval/tests/bayes/test_criteria.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.PredictiveCriterion"] = _RESULT
+OUT_OF_SCOPE["surpyval.bayes.PredictiveComparison"] = _RESULT
 for _name in (
     "Prior",
     "JointPrior",

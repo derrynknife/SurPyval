@@ -33,6 +33,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.multistate._base import check_bound_args, probability_bounds
 from surpyval.multistate._entry import refuses_surpyval_data
 from surpyval.multistate.transitions import TransitionMatrix
@@ -51,6 +52,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 #: The ways a row can be observed: a snapshot of the state (``"panel"``),
 #: a move timed exactly with the earlier state held until it
@@ -753,7 +755,7 @@ def _crude_start(data: _PanelData, scale: float) -> npt.NDArray:
 # ---------------------------------------------------------------------------
 # The models
 # ---------------------------------------------------------------------------
-class _PanelMultiStateBase(SerialisableMixin):
+class _PanelMultiStateBase(ParameterBoundsMixin, SerialisableMixin):
     """What the panel-data multi-state models share."""
 
     _regression = False
@@ -1562,7 +1564,7 @@ def _inverse_information(H: npt.NDArray) -> npt.NDArray | None:
             "A transition, covariate or period may have too little data: "
             "simplify the model.",
             UserWarning,
-            stacklevel=4,
+            stacklevel=caller_stacklevel(),
         )
         return None
     return 0.5 * (cov + cov.T)

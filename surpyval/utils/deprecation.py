@@ -4,8 +4,8 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.28 is removed in
-v0.29. This module holds the shapes such a rename takes (each with the
+one and points at the caller's line: a name renamed in v0.29 is removed in
+v0.30. This module holds the shapes such a rename takes (each with the
 rename it was written for):
 
 - :func:`renamed_arguments`, an argument of a function or method;
@@ -22,7 +22,7 @@ rename it was written for):
   ``FutureWarning`` for ``CrowAMSAA.fit(x, c)``, the one call that reads
   flags as ids.
 
-A name deprecated in v0.29 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.30 is accepted until :data:`REMOVED_IN_NEXT`.
 
 A few deprecations are given a longer window, chosen by the maintainer:
 they are listed, each with the release that removes it, in
@@ -65,19 +65,21 @@ __all__ = [
     "SCHEDULED_REMOVALS",
     "scheduled_removal",
     "RenamedAttribute",
+    "fit_entry",
     "renamed_arguments",
     "renamed_name",
     "positional_option",
     "ambiguous_item_ids",
 ]
 
-#: The release in which the names deprecated in v0.28 stop being
-#: accepted. (Those deprecated in v0.27, and ``check_ph``, deprecated in
-#: v0.26 with a longer window, were removed in v0.28.)
-REMOVED_IN = "0.29"
+#: The release in which the names deprecated in v0.29 stop being
+#: accepted. (v0.28 deprecated none; those deprecated in v0.27, and
+#: ``check_ph``, deprecated in v0.26 with a longer window, were removed in
+#: v0.28.)
+REMOVED_IN = "0.30"
 
-#: The release in which the names deprecated in v0.29 stop being accepted.
-REMOVED_IN_NEXT = "0.30"
+#: The release in which the names deprecated in v0.30 stop being accepted.
+REMOVED_IN_NEXT = "0.31"
 
 #: The deprecations with a longer window than one release, by name, each
 #: with the release that removes it. ``test_removed_arguments`` fails once
@@ -237,15 +239,17 @@ def renamed_name(
     new: str,
     value: Any,
     removed_in: str = REMOVED_IN,
+    category: type[Warning] = DeprecationWarning,
 ) -> Any:
     """``value``, reached by its old name ``old`` in the namespace ``where``
-    (a module's ``__getattr__``), with a DeprecationWarning naming ``new``
-    and pointing at the line that used the old name. ``value`` is the
-    renamed object itself, so ``isinstance`` checks against the old name
-    keep working until it is removed."""
+    (a module's ``__getattr__``), with a warning of ``category`` (a
+    DeprecationWarning, or a FutureWarning where users must see it wherever
+    the call is made) naming ``new`` and pointing at the line that used the
+    old name. ``value`` is the renamed object itself, so ``isinstance``
+    checks against the old name keep working until it is removed."""
     warnings.warn(
         _message(where, old, new, removed_in),
-        DeprecationWarning,
+        category,
         stacklevel=3,
     )
     return value
@@ -261,8 +265,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.28,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.29.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.29,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.30.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -291,7 +295,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.29;
+    describe: 'names' is deprecated and will be removed in v0.30;
     use 'labels'.
     """
 
@@ -329,8 +333,13 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.29 passes
-    ``removed_in=REMOVED_IN_NEXT``.
+    attribute). A name deprecated in v0.30 passes
+    ``removed_in=REMOVED_IN_NEXT``; ``category=FutureWarning`` warns where
+    Python would hide a DeprecationWarning (code outside ``__main__``).
+    ``advice`` replaces the warning's "use '<new>'" where the new name is
+    private and the user is to call something else: the public
+    ``fit_from_surpyval_data``, now ``_fit_from_surpyval_data``, says
+    "call fit(data)".
 
     Examples
     --------
@@ -344,25 +353,32 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.29;
+    Model.loglik is deprecated and will be removed in v0.30;
     use 'log_likelihood'.
     """
 
-    def __init__(self, new: str, removed_in: str = REMOVED_IN) -> None:
+    def __init__(
+        self,
+        new: str,
+        removed_in: str = REMOVED_IN,
+        category: type[Warning] = DeprecationWarning,
+        advice: str | None = None,
+    ) -> None:
         self.new = new
         self.old = ""
         self.removed_in = removed_in
+        self.category = category
+        self.advice = f"use '{new}'" if advice is None else advice
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.old = name
 
     def _warn(self, owner: type) -> None:
         warnings.warn(
-            "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}'.".format(
-                owner.__name__, self.old, self.removed_in, self.new
+            "{}.{} is deprecated and will be removed in v{}; {}.".format(
+                owner.__name__, self.old, self.removed_in, self.advice
             ),
-            DeprecationWarning,
+            self.category,
             stacklevel=3,
         )
 
@@ -379,6 +395,39 @@ class RenamedAttribute:
     def __set__(self, obj: Any, value: Any) -> None:
         self._warn(type(obj))
         setattr(obj, self.new, value)
+
+
+def fit_entry(new: str) -> RenamedAttribute:
+    """
+    The old public name of a fitter's data entry point, now the private
+    ``new``: ``fit_from_surpyval_data`` and ``fit_from_recurrent_data``,
+    deprecated in v0.29, since ``fit(data)`` takes the data object itself.
+
+    Declare it on the class under the old name,
+    ``fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")``.
+    Calling it warns with a ``FutureWarning`` saying to call ``fit(data)``
+    and runs the private method, so the result is the same to the last
+    digit until v0.30 removes it.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import fit_entry
+    >>> class Fitter:
+    ...     def _fit_from_surpyval_data(self, data):
+    ...         return len(data)
+    ...     fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Fitter().fit_from_surpyval_data([1, 2, 3])
+    3
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Fitter.fit_from_surpyval_data is deprecated and will be removed in
+    v0.30; call fit(data).
+    """
+    return RenamedAttribute(
+        new, REMOVED_IN, FutureWarning, advice="call fit(data)"
+    )
 
 
 _ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth")

@@ -160,17 +160,24 @@ model or forest.
 .. automodule:: surpyval.metrics.validation
    :members:
 
-Harrell's concordance index of any risk score, with Therneau's treatment
-of tied event times by default, as R and lifelines (every regression model
-also has a ``concordance`` method that picks its family's score):
+The accuracy of dynamic predictions -- a unit's chance of failing within a
+window from an age, given what was known then, as a joint model or a
+landmark model gives it -- at each age: the dynamic AUC, Brier score and
+calibration, with cross-validation by unit (worked example in
+:doc:`Joint Models`):
+
+.. automodule:: surpyval.metrics.dynamic
+   :members: dynamic_auc, dynamic_brier, dynamic_calibration, DynamicAccuracy, DynamicCalibration
+
+Harrell's or Uno's concordance index of any risk score, with Therneau's
+treatment of tied event times by default, as R and lifelines: a number
+that carries its standard error and confidence interval (every regression
+model also has a ``concordance`` method that picks its family's score).
+The comparison of two scores' C on the same subjects is
+``compare_concordance`` (see "How sure is C, and Uno's version" on the
+:doc:`regression analysis` page):
 
 .. autofunction:: surpyval.metrics.concordance.concordance_index
-
-Harrell's or Uno's C with its standard error and confidence interval, and
-the comparison of two scores' C on the same subjects (see "How sure is C,
-and Uno's version" on the :doc:`regression analysis` page):
-
-.. autofunction:: surpyval.metrics.concordance.concordance_estimate
 
 .. autoclass:: surpyval.metrics.concordance.ConcordanceResult
 

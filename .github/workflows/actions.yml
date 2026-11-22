@@ -13,7 +13,8 @@ run-name: SurPyval CI
 # test suite on three interpreters (each split into six parts that run at
 # once) with the docstring examples, the calibration studies and scenario
 # cards (in groups that run at once), the PyMC helpers with PyMC installed,
-# the wheel check and the documentation build. Publishing a release
+# the torch helpers with PyTorch installed, the wheel check and the
+# documentation build. Publishing a release
 # (publish.yml) checks that this run passed.
 #
 # Every job has a time limit (``timeout-minutes``) of about twice its time
@@ -92,8 +93,10 @@ jobs:
   # is fixed, as a reminder to remove its entry.
   conformance:
     runs-on: ubuntu-latest
-    # 8 minutes on the 0.26 release run, installation included.
-    timeout-minutes: 20
+    # 8 minutes on the 0.26 release run, installation included; in one
+    # process it passed 20 minutes at 94% on the 0.29 release run, and in
+    # a process per core it took 29 minutes there.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -112,7 +115,7 @@ jobs:
       - name: pytest (conformance)
         run: >-
           python -m pytest surpyval/tests/conformance -m "not slow"
-          --timeout=600 --timeout-method=thread
+          -n auto --timeout=600 --timeout-method=thread
 
   # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).
@@ -447,6 +450,7 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_multistate_panel.py
+              surpyval/tests/calibration/test_coverage_multistate_parametric.py
           - group: pool-joint-frailty
             workers: '0'
             test-timeout: 5400
@@ -477,8 +481,65 @@ jobs:
               surpyval/tests/calibration/test_coverage_zero_inflated.py
               surpyval/tests/calibration/test_coverage_mixture_cure.py
               surpyval/tests/calibration/test_coverage_equivalence.py
+          # The joint model with a weight on its accumulated exposure:
+          # two studies of 200 fits, each fit fitted twice (with the weight
+          # and without). On 20 November 2026, on two busy cores of a
+          # Linux container, the exponential weight took 3,504 s and the
+          # window 1,980 s: over the 45-minute per-test limit of "rest",
+          # so a group of their own, one study per worker.
+          - group: joint-weight
+            workers: '2'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_weight.py
+          # The studies added in 0.29, out of the rest group: with them
+          # it ran past 120 minutes at 48% on the 0.29 release run.
+          - group: joint-causes
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_causes.py
+          - group: joint-lag-links
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_lag.py
+              surpyval/tests/calibration/test_link_selection_joint.py
+          # Two of these studies (the censored Gaussian of three series,
+          # and the Cox NPMLE with interval censoring and delayed entry)
+          # lost their workers on the 0.29 release run (four at once ran
+          # short of memory, it seems): each runs on fewer.
+          - group: copula-nd
+            workers: '2'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_copula_nd.py
+          - group: cox-npmle
+            workers: '1'
+            test-timeout: 5400
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_cox_npmle.py
+          - group: growth-frailty
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_change_point_size.py
+              surpyval/tests/calibration/test_coverage_growth_answers.py
+              surpyval/tests/calibration/test_coverage_shared_frailty.py
+          - group: relative-survival-metrics
+            workers: auto
+            job-timeout: 120
+            args: >-
+              surpyval/tests/calibration/test_coverage_relative_survival.py
+              surpyval/tests/calibration/test_metric_bias.py
+          # 31 minutes on the 0.26 release run; the 0.29 release run
+          # stopped it at 60, with the studies the 0.29 models brought.
           - group: rest
             workers: auto
+            job-timeout: 120
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
               --ignore=surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
@@ -497,7 +558,9 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_bootstrap.py
               --ignore=surpyval/tests/calibration/test_coverage_panel_count.py
               --ignore=surpyval/tests/calibration/test_coverage_multistate_panel.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_parametric.py
               --ignore=surpyval/tests/calibration/test_coverage_joint_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_weight.py
               --ignore=surpyval/tests/calibration/test_coverage_cox_mixed_effects.py
               --ignore=surpyval/tests/calibration/test_coverage_interval_cox.py
               --ignore=surpyval/tests/calibration/test_coverage_semimarkov.py
@@ -507,6 +570,16 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_zero_inflated.py
               --ignore=surpyval/tests/calibration/test_coverage_mixture_cure.py
               --ignore=surpyval/tests/calibration/test_coverage_equivalence.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_causes.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_lag.py
+              --ignore=surpyval/tests/calibration/test_link_selection_joint.py
+              --ignore=surpyval/tests/calibration/test_coverage_copula_nd.py
+              --ignore=surpyval/tests/calibration/test_coverage_cox_npmle.py
+              --ignore=surpyval/tests/calibration/test_change_point_size.py
+              --ignore=surpyval/tests/calibration/test_coverage_growth_answers.py
+              --ignore=surpyval/tests/calibration/test_coverage_shared_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_relative_survival.py
+              --ignore=surpyval/tests/calibration/test_metric_bias.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
@@ -606,6 +679,45 @@ jobs:
 
       - name: doctests (PyMC helpers)
         run: python -m pytest -rs --doctest-modules surpyval/pymc
+
+  # The torch helpers (surpyval.torch) with PyTorch installed. PyTorch is
+  # not a dependency of SurPyval, nor an extra, nor in requirements_dev.txt,
+  # and the helpers' tests are skipped unless pytest is given --run-torch,
+  # so no other job runs them. This job installs the CPU build here only,
+  # checks the import before the tests (so a failed install fails the job
+  # rather than leaving every test skipped) and runs the helpers' tests
+  # (with the test that they refuse without PyTorch, which the main suite
+  # runs where PyTorch is absent) and doctests: about half a minute on four shared
+  # cores of a cloud machine on 20 November 2026, with torch 2.15; 15 of
+  # the tests skip by design, for families without a support edge at 0.
+  torch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: Install PyTorch, the CPU build (this job only)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch; print('torch', torch.__version__)"
+
+      - name: pytest (torch helpers)
+        run: >
+          python -m pytest -rs --run-torch surpyval/tests/torch
+          surpyval/tests/test_torch_optional.py
+
+      - name: doctests (torch helpers)
+        run: python -m pytest -rs --doctest-modules surpyval/torch
 
   # The 3.12 parts' coverage, combined into one report.
   coverage:

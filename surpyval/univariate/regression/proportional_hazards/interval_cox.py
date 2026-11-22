@@ -70,6 +70,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval._parameter_bounds import ParameterBoundsMixin
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -401,6 +402,7 @@ def _check_maximum(
 # The fitted model
 # ---------------------------------------------------------------------------
 class IntervalCoxPHModel(
+    ParameterBoundsMixin,
     AtCovariatesMixin,
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
@@ -1186,7 +1188,8 @@ class IntervalCoxPHModel(
 
         Examples
         --------
-        >>> from surpyval import IntervalCoxPH, IntervalCoxPHModel
+        >>> from surpyval import IntervalCoxPH
+        >>> from surpyval.univariate.regression import IntervalCoxPHModel
         >>> x = [[0, 2], [1, 3], [2, 5], [4, 6], [3, 8], [5, 5], [7, 7],
         ...      [1, 4], [2, 6], [5, 9]]
         >>> c = [2, 2, 2, 2, 2, 0, 1, 2, 2, 2]
@@ -1233,7 +1236,8 @@ class IntervalCoxPHModel(
 
         Examples
         --------
-        >>> from surpyval import IntervalCoxPH, IntervalCoxPHModel
+        >>> from surpyval import IntervalCoxPH
+        >>> from surpyval.univariate.regression import IntervalCoxPHModel
         >>> x = [[0, 2], [1, 3], [2, 5], [4, 6], [3, 8], [5, 5], [7, 7],
         ...      [1, 4], [2, 6], [5, 9]]
         >>> c = [2, 2, 2, 2, 2, 0, 1, 2, 2, 2]

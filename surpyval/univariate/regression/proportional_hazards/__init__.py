@@ -10,6 +10,7 @@ from surpyval.univariate.parametric import (
     Weibull,
 )
 
+from .cox_npmle import CoxNPMLEModel
 from .cox_ph import CoxPH
 from .interval_cox import IntervalCoxPH, IntervalCoxPH_, IntervalCoxPHModel
 from .proportional_hazards_fitter import ProportionalHazardsFitter
@@ -66,6 +67,7 @@ __all__ = [
     "IntervalCoxPH",
     "IntervalCoxPH_",
     "IntervalCoxPHModel",
+    "CoxNPMLEModel",
     "LogisticPH",
     "LogNormalPH",
     "NormalPH",

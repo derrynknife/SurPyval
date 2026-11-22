@@ -16,6 +16,7 @@ from scipy.optimize import minimize
 from scipy.special import expit, logit
 
 import surpyval as sp
+from surpyval.univariate.regression import ZeroInflatedFitter
 from surpyval.univariate.regression.distributional.zero_inflated import (
     _incidence_fit,
 )
@@ -530,7 +531,7 @@ def test_refusals():
     with pytest.raises(ValueError, match="give incidence only"):
         sp.ZeroInflated(sp.Weibull, links={"f0": "probit"})
     with pytest.raises(ValueError, match="built by ZeroInflated"):
-        sp.ZeroInflatedFitter(sp.Weibull)
+        ZeroInflatedFitter(sp.Weibull)
     x, c, Z = _simulate(26, 300)
     with pytest.raises(ValueError, match="method = 'exact'"):
         sp.WeibullZeroInflated.fit(x, Z, c=c, method="exact")

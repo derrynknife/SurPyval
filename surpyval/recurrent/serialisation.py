@@ -3,7 +3,8 @@ from typing import Any
 """Shared helpers for serialising fitted recurrent-event models.
 
 The recurrence intensity models (``HPP``, ``CrowAMSAA``, ``Duane``,
-``CoxLewis``) are stateless singletons whose maths is fully determined by
+``CoxLewis`` and the software reliability growth models) are stateless
+singletons whose maths is fully determined by
 their identity, so a fitted model only needs to store its intensity model's
 name alongside the fitted parameters. The display ``name`` of an intensity
 model does not match its module attribute name, so reconstruction goes through
@@ -25,6 +26,11 @@ def intensity_dist_by_name(name: str) -> Any:
         "Crow-AMSAA": recurrent.CrowAMSAA,
         "Duane": recurrent.Duane,
         "Cox-Lewis": recurrent.CoxLewis,
+        "Goel-Okumoto": recurrent.GoelOkumoto,
+        "Yamada delayed S-shaped": recurrent.YamadaDelayedS,
+        "Inflection S-shaped": recurrent.InflectionS,
+        "Musa-Okumoto": recurrent.MusaOkumoto,
+        "Rayleigh defects": recurrent.RayleighDefects,
     }
     if name not in mapping:
         raise ValueError(

@@ -22,7 +22,11 @@ import numpy as np
 
 import surpyval
 from surpyval.serialisation import NON_FINITE_KEY, SCHEMA_VERSION
-from surpyval.tests.conformance.registry import predictions, scramble
+from surpyval.tests.conformance.registry import (
+    BIVARIATE,
+    predictions,
+    scramble,
+)
 
 # ---------------------------------------------------------------------------
 # Metamorphic rewrites of the data, and the comparison of two fits
@@ -37,6 +41,8 @@ def unit_power(case, key):
     fname = key.split("[")[0]
     if fname in case.jump_functions:
         return 0  # a jump is a probability, whatever the unit
+    if fname == "pdf" and case.interface == BIVARIATE:
+        return case.x.shape[1]  # a joint density: a unit per series
     return _POWER.get(fname, 0)
 
 
@@ -142,6 +148,10 @@ RULES = {
 # For recurrent events ``cif`` is a cumulative intensity, not a probability.
 # The instantaneous MTBF, 1 / iif, of a recurrence model (#578).
 COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1), mtbf=(0.0, np.inf, 0))
+# The faults a finite-fault process has left fall as the testing goes on
+COUNTING_RULES["remaining_faults"] = (0.0, np.inf, -1)
+# The chance of running a further time without a failure
+COUNTING_RULES["next_failure_sf"] = (0.0, 1.0, -1)
 # The totals over the causes of a cause-specific intensity model
 COUNTING_RULES.update(
     total_cif=COUNTING_RULES["cif"],

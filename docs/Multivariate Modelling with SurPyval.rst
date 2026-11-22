@@ -140,6 +140,53 @@ series' arrays ``(x, c, xl, xr, tl, tr)``:
     assert abs(by_count.params[0] - by_row.params[0]) < 1e-3
     assert np.isclose(by_count.log_likelihood, by_row.log_likelihood)
 
+Two or more axes, and what they mean
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``MultivariateSurpyvalData`` is the data of any model with more than one
+value per row. It is the ``x``, ``c``, ``n``, ``t`` of a
+:class:`~surpyval.utils.surpyval_data.SurpyvalData` with an extra axis of
+``D`` columns, for any ``D`` of 2 or more: ``x``, ``xl``, ``xr`` and ``c``
+are ``N`` by ``D``, ``t`` is ``N`` by ``D`` by 2 and ``n`` is one count per
+row. Data with one value per row is a ``SurpyvalData``, and is refused here.
+
+The data does not say what its columns are; the **model** does. A copula
+reads them as correlated series (the two bearings of a shaft). Each
+fitter says how many axes it takes in ``n_axes`` and refuses data with any
+other number: the Clayton, Frank, Gumbel, Joe and AMH copulas take two
+series and refuse three plainly, rather than fit two of them. The Gaussian
+and Student-t copulas take two or more (see "More than two lifetimes"
+below).
+
+One life read on two clocks is not multivariate data. A part that wears
+on a main clock (hours) and a subordinate one (starts, landings) has one
+event, on the main clock, with the second clock read at the same moments:
+univariate data, with the second clock as ``x2`` or a ``SecondaryClock``
+(:doc:`Equivalent Time Scales`).
+
+The axes can be named. The names are used only in messages (a value that
+is not valid names its axis) and in the results of a model fitted to the
+data; nothing is computed from them. ``dimension`` takes a position or a
+name, and the data saves and loads with ``to_json`` / ``from_json`` (or
+``to_dict`` / ``from_dict``, and ``surpyval.from_json``), names included:
+
+.. jupyter-execute::
+
+    three = MultivariateSurpyvalData(
+        [[1200.0, 800.0, 2300.0], [40.0, 12.0, 95.0], [310.0, 150.0, 640.0]],
+        c=[0, 1, 0],
+        names=("hours", "landings", "cycles"),
+    )
+    print(three)
+    print(three.dimension("landings")[0])
+    again = MultivariateSurpyvalData.from_json(three.to_json())
+    print(again.names, np.array_equal(again.x, three.x))
+
+    try:
+        Clayton.fit(three, margins=[surv.Weibull] * 3)
+    except ValueError as error:
+        print(error)
+
 Interval-censored entries need their bounds: a ``c`` of ``2`` without ``xl``
 and ``xr`` raises a ``ValueError``, as does any array of the wrong shape.
 
@@ -461,6 +508,172 @@ behind the Clayton copula's AIC of 34160 (the AMH by 490, the Joe by 1930).
 
     assert amh.params[0] == 1.0, amh.params
     assert min(joe.aic(), amh.aic()) > fits["Clayton"].aic() + 400
+
+More than two lifetimes
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A system of three or more components whose lives depend on each other
+needs a copula of that many series. ``Gaussian.fit`` and ``StudentT.fit``
+take data with any number of axes ``D`` of two or more. With more than two,
+the copula is that of a multivariate normal (or t) vector with a
+**correlation matrix**: one correlation per pair of series, named
+``rho_i_j`` for series ``i < j``.
+
+.. jupyter-execute::
+
+    pump = surv.Weibull.from_params([900.0, 1.8])
+    motor = surv.Weibull.from_params([1500.0, 2.5])
+    seal = surv.LogNormal.from_params([6.5, 0.6])
+    truth3 = Gaussian.from_params([0.6, 0.3, 0.5], margins=[pump, motor, seal])
+    lives = truth3.random(400, random_state=7)
+
+    # The test ends at 1200 hours: whatever still runs is right censored.
+    c3 = (lives > 1200.0).astype(int)
+    x3 = np.minimum(lives, 1200.0)
+    three = [surv.Weibull, surv.Weibull, surv.LogNormal]
+    fit3 = Gaussian.fit(x3, c=c3, margins=three)
+    print(fit3.parameter_names)
+    print(np.round(fit3.correlation, 3))
+    print("standard errors:", np.round(fit3.standard_errors(), 3))
+    print("95% bound on rho_0_1:", np.round(fit3.param_cb("rho_0_1"), 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fit3.parameter_names == ["rho_0_1", "rho_0_2", "rho_1_2"]
+    assert np.all(np.abs(fit3.params - [0.6, 0.3, 0.5]) < 3 * fit3.standard_errors())
+    assert int((c3.sum(axis=1) == 3).sum()) == 15
+
+Each series of a row has its own censoring code, as for two series: here 15
+units outlasted the test in all three components, and others in one or two.
+The model's points have a value per series. The chance that all three
+components survive a 500 hour mission, with its confidence bound, against
+what independent components would give:
+
+.. jupyter-execute::
+
+    mission = [500.0, 500.0, 500.0]
+    print("all three survive: %.4f" % fit3.sf(mission))
+    print("95%% bound: %s" % np.round(fit3.cb(mission), 4))
+    print("if independent: %.4f" % np.prod([m.sf(500.0) for m in fit3.margins]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(float(fit3.sf(mission)) - 0.4866) < 5e-4
+    assert abs(np.prod([m.sf(500.0) for m in fit3.margins]) - 0.4129) < 5e-4
+
+``conditional_cdf(x, of, given)`` is the distribution of one series given
+the values of others (all the others, unless ``given`` names some): the
+chance that the pump has failed by 400 hours when the motor and the seal
+both failed at 800, and when only the motor is known to have:
+
+.. jupyter-execute::
+
+    print("%.4f" % fit3.conditional_cdf([400.0, 800.0, 800.0], of=0))
+    print("%.4f" % fit3.conditional_cdf([400.0, 800.0, 800.0], of=0, given=[1]))
+
+``kendall_tau()``, ``spearman_rho()`` and ``tail_dependence()`` are matrices
+with an entry per pair. ``structure="exchangeable"`` fits one ``rho`` shared
+by every pair (identical components in one environment), which the AIC
+compares with the unstructured matrix:
+
+.. jupyter-execute::
+
+    same = Gaussian.fit(x3, c=c3, margins=three, structure="exchangeable")
+    print("rho = %.3f; AIC %.1f against %.1f" % (
+        same.params[0], same.aic(), fit3.aic()))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert same.aic() > fit3.aic() + 10
+
+What a fit of more than two series takes:
+
+- **Censoring.** Right, left and interval censoring per series, in rows
+  with up to three censored series. A row's likelihood is the density of its
+  observed values times the probability, given them, that the censored ones
+  lie in their ranges: a closed form for one or two censored series, and a
+  deterministic numerical integral (accurate to about :math:`10^{-9}`) for
+  three. Rows with four or more censored series are refused, with their
+  count: that integral is not computed accurately enough to fit with.
+- **Truncation** is refused for more than two series (fit the series in
+  pairs).
+- **Bounds.** Standard errors, ``param_cb`` (Wald, on Fisher's z scale for a
+  correlation) and ``cb`` on the joint survival and CDF, as for two series.
+- **Joint probabilities** of four to eight series (seven for the Student-t)
+  are integrated on a fixed lattice, the same on every call, to about
+  :math:`10^{-4}`.
+
+The other families (Clayton, Frank, Gumbel, Joe, AMH) take two series.
+
+Vines: a family per pair
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Gaussian or Student-t copula gives every pair of series the same kind of
+dependence. A **vine** (a pair-copula construction) builds the copula of
+``D`` series from ``D (D - 1) / 2`` bivariate copulas arranged in trees:
+the first tree joins pairs of series, and each later tree joins two series
+given the ones between them. So one pair can fail together early (a
+Clayton copula's lower tail) and another late (a Gumbel's upper tail).
+``Vine.fit`` chooses the order of the series (by default the path with the
+strongest Kendall's taus between neighbours, ``structure="d"``; or a C-vine
+of root series, ``structure="c"``) and each pair-copula's family by AIC
+among the built-in families and rotations, then fits all the parameters by
+maximum likelihood:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Clayton, Frank, Gumbel, Vine
+
+    drawn = Vine.from_params(
+        [3.0, 2.0, 2.0],
+        [pump, motor, seal],
+        families=[[Clayton, Gumbel], [Frank]],
+    )
+    complete = drawn.random(1000, random_state=11)
+    vine = Vine.fit(complete, margins=three)
+    print(vine.copula)
+    for edge in vine.edges:
+        print(edge["pair"], "given", edge["given"], edge["family"],
+              edge["rotation"], np.round(edge["params"], 2))
+    gauss = Gaussian.fit(complete, margins=three)
+    print("AIC: vine %.1f, Gaussian %.1f" % (vine.aic(), gauss.aic()))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert vine.copula.order in ([0, 1, 2], [2, 1, 0])
+    assert vine.edges[1]["family"] == "Gumbel"
+    assert vine.aic() < gauss.aic() - 100
+
+The first pair's Clayton draws are best fitted by the survival (180 degree)
+Joe copula, which has the same lower-tail dependence; ``families=`` fixes
+the pair-copulas instead (one family for every pair, or a list per tree),
+``candidates=`` narrows the choice, and ``truncate=k`` keeps the first
+``k`` trees and makes the rest independence copulas.
+
+A vine's density, draws (``random``), ``aic``, standard errors and
+``param_cb`` are as for any copula model. What it does not have:
+
+- **Censoring and truncation.** A vine is fitted to fully observed rows: a
+  censored row's likelihood is an integral of the vine's density, which is
+  not computed. Censored rows are refused with their count; fit a Gaussian
+  or Student-t copula to them.
+- **The joint sf and CDF**, and so ``cb``: the vine has them only as
+  integrals of its density. They refuse, saying to estimate them from
+  draws (the proportion of ``model.random(n)`` in the region).
+- **Conditional distributions** other than that of the last series of the
+  order given all the others (``conditional_cdf``).
+- **The dependence matrices** (``kendall_tau()`` and the others) have the
+  pairs joined in the first tree; the other pairs are ``nan``, their
+  dependence spread over several pair-copulas (``edges`` gives each
+  pair-copula's own Kendall's tau).
 
 Rotated copulas
 ~~~~~~~~~~~~~~~
@@ -897,10 +1110,68 @@ these 95% intervals covered the true parameter and the true joint survival
 between 91.5% and 99% of the time, each within the Monte Carlo error of
 95% (``calibration/test_coverage_copula.py``).
 A model built with ``from_params`` has no covariance (its methods raise a
-``ValueError``), and neither has a fit with a non-parametric margin, whose
-semi-parametric estimate needs a rank-based variance SurPyval does not
-compute. A parameter on a bound of its space (an AMH ``theta`` of 1) has
-no Wald interval: ``nan``, with a warning.
+``ValueError``). A parameter on a bound of its space (an AMH ``theta`` of
+1) has no Wald interval: ``nan``, with a warning.
+
+``kendall_tau_cb()`` and ``spearman_rho_cb()`` bound the two rank
+correlations the fitted copula implies. For a family with one parameter
+the measure is monotone in it, so the bound is the parameter's carried
+through the measure; for the Student-t it is a delta-method bound on
+Fisher's :math:`z`.
+
+.. jupyter-execute::
+
+    print("Kendall's tau :", round(float(model.kendall_tau()), 3),
+          model.kendall_tau_cb().round(3))
+    print("Spearman's rho:", round(float(model.spearman_rho()), 3),
+          model.spearman_rho_cb().round(3))
+
+**With non-parametric margins.** A fit with both margins
+``KaplanMeier`` on complete data with no tied values is the maximum
+pseudo-likelihood estimate from the ranks, and its covariance is that of
+[GenestGhoudiRivest1995mv]_ (their proposition 2.1), which adds to the
+copula's score the change in it from each margin's ranks being estimated.
+``covariance()``, ``standard_errors()``, ``param_cb()`` and the
+dependence measures' bounds use it. Over 500 simulated samples of 100 and
+of 400 rows from a Clayton, a Gumbel and a Frank copula, its 90% intervals
+covered the true parameter between 88.6% and 92.8% of the time and
+its 95% intervals between 93.2% and 96.2%
+(``calibration/test_coverage_copula.py``), each within the Monte Carlo
+error of its level.
+
+.. jupyter-execute::
+
+    print("se, Kaplan-Meier margins: %.4f" % semi.standard_errors()[0])
+    print("theta 95%:", semi.param_cb("theta").round(3))
+
+Every fitted copula model also has the **case bootstrap**,
+``method="bootstrap"`` on ``covariance``, ``standard_errors``,
+``param_cb``, ``cb`` and the dependence measures' bounds, with ``n_boot``
+(200) and ``random_state``: the units are resampled with replacement and
+the whole fit, margins and copula, is done again on each resample; the
+bounds are the percentile intervals of the refits. It is the bound where
+the rank-based covariance does not apply, which the default call then
+refuses, saying why and naming the bootstrap: censored, truncated or tied
+data, a non-parametric margin that is not ``KaplanMeier``, or one
+parametric margin with one non-parametric. It is also the only bound of a
+joint probability (``cb``) with a non-parametric margin: a step function
+has no parameter covariance for the delta method to carry. Over 200
+simulated samples of 100 rows from a Clayton copula with 27% and 30% of
+the series censored and ``KaplanMeier`` margins, its 90% and 95%
+intervals covered the true parameter 92.0% and 96.5% of the time and the
+true joint survival at a point 85.5% and 96.5% (the 85.5% is 4.5 points
+short of its level, inside the Monte Carlo error of 200 samples, 7.4).
+
+.. jupyter-execute::
+
+    kw = dict(method="bootstrap", n_boot=200, random_state=7)
+    print("theta 95%, bootstrap:", semi.param_cb("theta", **kw).round(3))
+    print("joint sf 95%, bootstrap:", semi.cb([8.0, 12.0], **kw).round(3))
+
+Refits that fail are left out and counted in a warning. A restored model
+keeps the covariance of its fit and how it was worked out
+(``"covariance_method"`` in its dictionary), but no data, so it has no
+bootstrap.
 
 .. jupyter-execute::
     :hide-code:

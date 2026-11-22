@@ -171,7 +171,9 @@ class SplineBaseline(ParametricFitter):
     def mpp_x_transform(self, x: Any) -> Any:
         return np.log(x)
 
-    def fit_from_surpyval_data(self, data: SurpyvalData, **kwargs: Any) -> Any:
+    def _fit_from_surpyval_data(
+        self, data: SurpyvalData, **kwargs: Any
+    ) -> Any:
         """The univariate Royston-Parmar fit on these knots: the start of
         a regression fit."""
         model = RoystonParmar.fit(
@@ -187,7 +189,7 @@ class SplineBaseline(ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        return self.fit_from_surpyval_data(data).params
+        return self._fit_from_surpyval_data(data).params
 
 
 def regression_knots(

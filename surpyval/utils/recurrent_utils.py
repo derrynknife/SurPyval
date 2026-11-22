@@ -5,8 +5,11 @@ from typing import Any, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils import coerce_xcnt_x, format_truncation
-from surpyval.utils.data_formats import refuse_boolean_censoring
+from surpyval.utils.data_formats import (
+    coerce_xcnt_x,
+    format_truncation,
+    refuse_boolean_censoring,
+)
 
 from .event_history_data import EventHistoryData
 
@@ -192,7 +195,7 @@ def validate_restoration(
     open_lower: bool = False,
 ) -> None:
     """
-    Check a repair / restoration parameter given to ``fit_from_parameters``
+    Check a repair / restoration parameter given to ``from_params``
     against the range its model is defined on (the fitters already search
     only inside it). Outside it the virtual ages go negative (a Kijima
     ``q < 0``, an ARA ``rho > 1``) or the G1 scale ``(1 + q) ** j`` stops
@@ -312,7 +315,7 @@ _INTENSITY_MODELS = "CrowAMSAA, Duane or CoxLewis"
 def _is_intensity_model(dist: object) -> bool:
     return all(
         hasattr(dist, a)
-        for a in ("iif", "cif", "from_params", "fit_from_recurrent_data")
+        for a in ("iif", "cif", "from_params", "_fit_from_recurrent_data")
     )
 
 
@@ -655,7 +658,7 @@ def _xicn_marks(
     """
     if e is None:
         return None
-    from surpyval.utils import resolve_cr_censoring
+    from surpyval.utils.data_formats import resolve_cr_censoring
 
     # One mark per row (a tuple mark is not split into a column), and
     # every "no attributed cause" marker (None, NaN, pandas NA) turned
@@ -1326,7 +1329,7 @@ def handle_xicn(
     """
     Validate recurrent-event data given as arrays and assemble it into a
     :class:`~surpyval.utils.event_history_data.EventHistoryData`, the
-    object every recurrent fitter's ``fit_from_recurrent_data`` takes.
+    object every recurrent fitter's ``_fit_from_recurrent_data`` takes.
 
     Each row is one event (or the right-censored end of observation) of
     the item named in ``i``, at time ``x`` measured from the start of that

@@ -103,6 +103,10 @@ NOT_DIFFERENTIABLE = {
         "where the likelihood is not differentiable"
     ),
     "Binomial": "the number of trials is an integer parameter",
+    "JelinskiMoranda": (
+        "the number of faults is a whole number: the fit is the best of "
+        "them, found exactly, with the rate in closed form"
+    ),
     "FixedEventProbability": (
         "a closed-form share of events, of a distribution with no hazard "
         "for the general likelihood to read"
@@ -316,8 +320,8 @@ def _log_linear(case):
         and case.data is reg_data
         and case.model_class
         in (
-            "surpyval.ParametricRegressionModel",
-            "surpyval.DistributionalRegressionModel",
+            "surpyval.univariate.regression.ParametricRegressionModel",
+            "surpyval.univariate.regression.DistributionalRegressionModel",
         )
         and not case.name.endswith("AH")
     )
@@ -607,7 +611,7 @@ def _no_higher_off_the_ends(model, surv_data, reported, held, free):
         start[i] = hi - 0.1 * (hi - lo) if near_hi else lo + 0.1 * (hi - lo)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        refit = model.dist.fit_from_surpyval_data(
+        refit = model.dist._fit_from_surpyval_data(
             surv_data,
             offset=model.offset,
             lfp=model.lfp,
@@ -824,6 +828,49 @@ def _search_joint_frailty(model, data):
     return [search.in_covariate_units(coefs, lik.Z)]
 
 
+def _search_shared_frailty(model, data):
+    """The shared-frailty Poisson process's marginal likelihood (the
+    model keeps it) at the reported parameters, in the space of its fit:
+    the baseline's parameters unconstrained (a positive one as its log)
+    and in their own units (Cox-Lewis's slope in units of one over the
+    longest time), the log of theta, and the coefficients in their
+    covariates' units. A fit with theta on its boundary 0 reports the
+    model without frailty, whose own fit is the plain one's."""
+    from surpyval.recurrent._bounded import unconstraining_maps
+
+    lik = model._lik
+    k = len(model.dist.parameter_names)
+    estimated = model._estimated()
+    if not estimated[k]:
+        return None
+    p_hat = model._p()
+    units = (
+        np.asarray(model.dist._search_units(model.data), dtype=float)
+        if hasattr(model.dist, "_search_units")
+        else np.ones(k)
+    )
+    to_natural, to_search = unconstraining_maps(list(model.dist.bounds))
+    kept = np.flatnonzero(estimated[k + 1 :])
+
+    def natural(u):
+        base = to_natural(u[:k] * units)
+        parts = [base[j] for j in range(k)] + [anp.exp(u[k])]
+        coefs = [0.0 * u[0]] * model.n_covariates
+        for at, j in enumerate(kept):
+            coefs[j] = u[k + 1 + at]
+        return anp.array(parts + coefs)
+
+    def fun(u):
+        return lik(natural(u))
+
+    u = np.r_[
+        to_search(p_hat[:k]) / units, np.log(p_hat[k]), p_hat[k + 1 :][kept]
+    ]
+    search = Search(fun, u, model._n_obs)
+    coefs = [(k + 1 + at, int(j)) for at, j in enumerate(kept)]
+    return [search.in_covariate_units(coefs, lik.Z)]
+
+
 def _search_panel_multistate(model, data):
     """The panel likelihood (the forward recursion over each unit's
     visits) in the space the fit searches: log intensities in units of
@@ -992,6 +1039,33 @@ def _search_interval_cox(model, data):
     events = float(np.sum(fd.n[fd.c != 1]))
     search = _numerical(fun, beta, events)
     return [search.in_covariate_units(_columns(beta), fd.Z[:, kept])]
+
+
+def _search_cox_npmle(model, data):
+    """The profile likelihood of CoxPH's full-likelihood fit over every
+    cause's coefficients, the baselines maximised at each point (the
+    fit's own projected Newton, from the fitted baselines), by central
+    differences."""
+    from surpyval.univariate.regression.proportional_hazards import (
+        _cs_npmle as engine,
+    )
+    from surpyval.univariate.regression.proportional_hazards import cox_npmle
+
+    fd = model._fit_data
+    K, p = np.shape(model.betas)
+    kept = np.flatnonzero(~np.isnan(np.asarray(model.betas)[0]))
+    fit = cox_npmle._Fit(fd, K, kept, 1e-12)
+    theta = fit.solution.theta
+
+    def fun(beta):
+        b = np.asarray(beta, float).reshape(K, kept.size)
+        return -float(engine.profile(fit.lik, b, theta).value)
+
+    beta = np.asarray(model.betas, dtype=float)[:, kept].ravel()
+    events = float(np.sum(fd.n[fd.c != 1]))
+    search = _numerical(fun, beta, events)
+    Zk = np.tile(fd.Z[:, kept], (1, K))
+    return [search.in_covariate_units(_columns(beta), Zk)]
 
 
 def _numerical(fun, x, n_obs):
@@ -1365,8 +1439,31 @@ def _search_equivalence(model, data):
     return [Search(fun, u, d.size, held=held)]
 
 
+def _search_excess_hazard(model, data):
+    """The excess hazard likelihood, rate table and all, in the natural
+    log-rates and the coefficients (each in its covariate's units)."""
+    if data is None:
+        return None
+    from surpyval.univariate.relative.excess_hazard import search_space
+
+    fun, u, n_obs, floor = search_space(model, data)
+    return [Search(fun, u, n_obs, floor=floor)]
+
+
+def _search_gaps(model):
+    """The Littlewood-Verrall likelihood where it was searched: in the
+    logs of alpha and of psi at the first gap and at the next."""
+    data = model._data
+    return Search(
+        lambda u: -data.log_likelihood(*np.exp(np.asarray(u, dtype=float))),
+        np.asarray(model._u, dtype=float),
+        float(model.n),
+    )
+
+
 SEARCHES: dict[str, Callable] = {
     "EquivalenceModel": _search_equivalence,
+    "ExcessHazard": _search_excess_hazard,
     "JointModel": _search_joint,
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,
@@ -1381,11 +1478,13 @@ SEARCHES: dict[str, Callable] = {
     "SemiParametricRegressionModel": _search_cox,
     "ProportionalOddsModel": _search_proportional_odds,
     "IntervalCoxPHModel": _search_interval_cox,
+    "CoxNPMLEModel": _search_cox_npmle,
     "FineGrayModel": _search_fine_gray,
     "CompetingRisksProportionalHazards": _search_crph,
     "MultiStateProportionalHazards": _search_multistate_cox,
     "ParametricMultiState": _search_parametric_multistate,
     "JointFrailtyModel": _search_joint_frailty,
+    "SharedFrailtyModel": _search_shared_frailty,
     "ParametricMultiStateRegression": (
         _search_parametric_multistate_regression
     ),
@@ -1403,9 +1502,16 @@ SEARCHES: dict[str, Callable] = {
     # (each cause's own proportional-intensity model, as above)
     "CauseSpecificProportionalIntensity": _search_cause_specific_nhpp,
     "CopulaModel": _search_copula,
+    # (a copula of more than two series)
+    "MultivariateCopulaModel": _search_copula,
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,
     "DestructiveDegradationModel": _search_destructive,
+    # A whole number of faults, found exactly: no gradient to check (the
+    # case is in NOT_DIFFERENTIABLE; its own tests compare the estimate
+    # with a search over every whole number).
+    "JelinskiMorandaModel": lambda model, data: (),
+    "LittlewoodVerrallModel": lambda model, data: [_search_gaps(model)],
 }
 
 

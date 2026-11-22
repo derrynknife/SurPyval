@@ -110,7 +110,9 @@ def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
         if lfp:
             *params, p = params
 
-        return model.dist._neg_ll_func(model.surv_data, *params, gamma, f0, p)
+        return model.dist._neg_ll_func(
+            model.surv_data, *params, gamma, f0, p, hr=model.hr
+        )
 
     return fun
 
@@ -856,13 +858,19 @@ def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
             kept.append(None)
             family = getattr(model.dist, "_offset_limit_family", None)
             family = family() if family is not None else None
-            if not model.offset or model.lfp or model.zi or family is None:
+            if (
+                not model.offset
+                or model.lfp
+                or model.zi
+                or model.hr != 1
+                or family is None
+            ):
                 return None
             from surpyval.utils.no_maximum import quiet_maximum_warnings
 
             with ignoring_warnings(), quiet_maximum_warnings():
                 try:
-                    limit = family.fit_from_surpyval_data(model.surv_data)
+                    limit = family._fit_from_surpyval_data(model.surv_data)
                 except (ValueError, ArithmeticError):
                     return None
             if limit.maximum == "verified":
@@ -1167,7 +1175,7 @@ def _covariance(
         else:
             p_i = p
         return model.dist._neg_ll_func(
-            model.surv_data, *theta, gamma, f0_i, p_i
+            model.surv_data, *theta, gamma, f0_i, p_i, hr=model.hr
         )
 
     def u_to_phi(u: npt.NDArray) -> Any:

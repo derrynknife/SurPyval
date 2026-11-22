@@ -9,16 +9,25 @@ its risk score is -- a higher score predicting an earlier event -- through
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.metrics.concordance import (
-    ConcordanceResult,
-    concordance_estimate,
-    concordance_index,
-)
+from surpyval.metrics.concordance import ConcordanceResult, concordance_index
+from surpyval.utils.deprecation import REMOVED_IN
+
+
+def _warn_estimate(owner: str) -> None:
+    """The deprecation of a model's ``concordance_estimate``."""
+    warnings.warn(
+        f"{owner}.concordance_estimate is deprecated and will be removed in "
+        f"v{REMOVED_IN}; use 'concordance', which gives the standard "
+        "error and interval (alpha_ci= for alpha).",
+        FutureWarning,
+        stacklevel=3,
+    )
 
 
 class ConcordanceMixin:
@@ -43,9 +52,11 @@ class ConcordanceMixin:
         *,
         weighting: str = "harrell",
         tau: float | None = None,
-    ) -> float:
+        alpha_ci: float = 0.05,
+        ci_method: str = "normal",
+    ) -> ConcordanceResult | float:
         """Harrell's (or Uno's) concordance index (C) of the model's risk
-        scores.
+        scores, with its standard error and confidence interval.
 
         The proportion of usable pairs of subjects -- the one with the
         earlier time had the event -- in which the model gives that
@@ -99,16 +110,26 @@ class ConcordanceMixin:
             ``"harrell"`` (default): every usable pair weighs 1. ``"uno"``:
             Uno's inverse-probability-of-censoring weighted C, each pair
             weighted by ``1 / G(t-)^2`` (see
-            :func:`surpyval.metrics.concordance_estimate`).
+            :func:`surpyval.metrics.concordance_index`).
         tau : float, optional
             Count only the pairs whose earlier time is at most ``tau``.
             Default ``None``, every pair.
+        alpha_ci : float, optional
+            Keyword only: the significance level of the interval. Default
+            ``0.05``.
+        ci_method : {"normal", "logit"}, optional
+            Keyword only: the scale of the interval. Default ``"normal"``.
 
         Returns
         -------
-        float
-            The concordance index. For its standard error and confidence
-            interval use :meth:`concordance_estimate`.
+        ConcordanceResult
+            The concordance index, a ``float`` that carries its
+            infinitesimal-jackknife standard error ``se`` and interval
+            ``ci`` (:func:`surpyval.metrics.concordance_index`). With no
+            data it scores the data the model was fitted to, each row
+            repeated ``n`` times as its own subject (as R does with the
+            rows repeated); the standard error treats the scores as fixed,
+            as R's does. A plain ``nan`` where a covariate is missing.
 
         Raises
         ------
@@ -138,11 +159,17 @@ class ConcordanceMixin:
             # A missing covariate leaves a subject's score, and so the
             # index, undefined (as the forests' concordance).
             return float("nan")
-        if weighting == "harrell" and tau is None:
-            return concordance_index(x_arr, c_arr, risk, tie_tol, ties)
-        return concordance_estimate(
-            x_arr, c_arr, risk, weighting, tau, tie_tol=tie_tol, ties=ties
-        ).estimate
+        return concordance_index(
+            x_arr,
+            c_arr,
+            risk,
+            tie_tol,
+            ties,
+            weighting=weighting,
+            tau=tau,
+            alpha_ci=alpha_ci,
+            ci_method=ci_method,
+        )
 
     def concordance_estimate(
         self,
@@ -157,12 +184,16 @@ class ConcordanceMixin:
         ties: str = "therneau",
         ci_method: str = "normal",
     ) -> ConcordanceResult:
-        """The model's concordance index with its standard error and
+        """Deprecated: :meth:`concordance` gives the standard error and
+        interval (``alpha_ci=`` for ``alpha``); this name is removed in
+        v0.30.
+
+        The model's concordance index with its standard error and
         confidence interval (R's ``concordance(fit)``).
 
         The index and the scores are :meth:`concordance`'s; the standard
         error is the infinitesimal jackknife of
-        :func:`surpyval.metrics.concordance_estimate`. With no data it
+        :func:`surpyval.metrics.concordance_index`. With no data it
         scores the data the model was fitted to, each row repeated ``n``
         times as its own subject, and so as R does with the rows
         repeated, not with ``n`` as case weights. The standard error
@@ -212,10 +243,28 @@ class ConcordanceMixin:
         ...     lung, x_col="time", c_col="censored",
         ...     Z_cols=["age", "sex", "ph.ecog"],
         ... )
-        >>> res = model.concordance_estimate()
+        >>> res = model.concordance()
         >>> round(res.estimate, 4), round(res.se, 4)
         (0.6371, 0.0251)
         """
+        _warn_estimate(type(self).__name__)
+        return self._estimate_with_se(
+            x, c, Z, weighting, tau, alpha, tie_tol, ties, ci_method
+        )
+
+    def _estimate_with_se(
+        self,
+        x: npt.ArrayLike | None,
+        c: npt.ArrayLike | None,
+        Z: Any,
+        weighting: str,
+        tau: float | None,
+        alpha: float,
+        tie_tol: float,
+        ties: str,
+        ci_method: str,
+    ) -> ConcordanceResult:
+        """The body of the deprecated :meth:`concordance_estimate`."""
         x_arr, c_arr, risk = self._concordance_inputs(x, c, Z)
         if np.isnan(risk).any():
             raise ValueError(
@@ -223,7 +272,9 @@ class ConcordanceMixin:
                 "risk scores are undefined: drop those rows from x, c and "
                 "Z".format(int(np.isnan(risk).sum()), risk.size)
             )
-        return concordance_estimate(
+        from surpyval.metrics.concordance import concordance_with_se
+
+        return concordance_with_se(
             x_arr, c_arr, risk, weighting, tau, alpha, tie_tol, ties, ci_method
         )
 

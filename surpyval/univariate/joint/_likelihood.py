@@ -20,7 +20,10 @@ be in the hazard, the path or both: the entries of ``Delta`` and
 The hazard may follow, in place of the path's value or beside it, the
 path's slope or the area under it from age 0 (the links, each with an
 effect of its own): ``zeta (path - c)`` is then the sum over the links
-(:func:`predictor`), and everything below holds with it.
+(:func:`predictor`), and everything below holds with it. The area may
+count older exposure for less (:class:`WeightedArea`: an exponential
+weight, or a window), and each link may be followed a lag later
+(:class:`LaggedPath`).
 
 Given ``theta_i`` the readings and the lifetime are independent, so an
 item's likelihood is the integral over its varying parameters
@@ -29,9 +32,12 @@ item's likelihood is the integral over its varying parameters
           phi(theta_V; mu_V + Delta_V z_i, D) d theta_V,
 
 evaluated by adaptive Gauss-Hermite quadrature: a product grid
-(7 points a dimension) centred at the mode of the integrand and scaled
-by its curvature there (Gauss-Newton: the path's Jacobian, which is the
-exact curvature for a path linear in its parameters). The nodes are
+(7 points a dimension; on request without the nodes whose weight is
+negligible, :func:`gh_grid`; beyond five varying parameters there is no
+grid, and the integral is Laplace's approximation, :mod:`._laplace`)
+centred at the mode of the integrand and scaled by its curvature there
+(Gauss-Newton: the path's Jacobian, which is the exact curvature for a
+path linear in its parameters). The nodes are
 placed in the space of the varying parameters themselves and held fixed
 while the parameters are searched, so the path is evaluated at fixed
 nodes (any path model works, and autograd differentiates the rest),
@@ -60,6 +66,12 @@ by 15-point Gauss-Legendre in ``w``: the nodes do not move with
 ``beta``, so the path is evaluated at fixed ages, and the error is
 below 3e-6 relative for shapes 0.5 to 5 with the hazard changing by a
 factor of up to e^8 over ``(0, t]``.
+
+That is the proportional hazards survival part. The accelerated one
+(``Layout.survival == "AFT"``: the marker speeds up the item's ageing)
+has its own lifetime terms in :mod:`._aft`, which the integrand and the
+search for each item's mode take in place of these
+(:func:`lifetime_functions`); the rest is shared.
 """
 
 from __future__ import annotations
@@ -75,26 +87,199 @@ from autograd.scipy.special import logsumexp
 
 #: Gauss-Hermite points a dimension: in the fit (adaptive; 2-3 fail on
 #: sparse data), and in a prediction (by the number of varying path
-#: parameters: 15, 15, then 9 for three).
+#: parameters: 15, 15, then 9 for three and 7 for four and five).
 GH_FIT = 7
-GH_PREDICT = {1: 15, 2: 15, 3: 9}
+GH_PREDICT = {1: 15, 2: 15, 3: 9, 4: 7, 5: 7}
 #: Gauss-Legendre points of the cumulative hazard.
 GL_POINTS = 15
-#: The most path parameters that may vary: a full grid has 7^q nodes.
-MAX_VARYING = 3
+#: The most path parameters that may vary on a grid: a full grid has
+#: 7^q nodes (2,401 for four, 16,807 for five). Beyond it the integral
+#: is Laplace's approximation (:mod:`._laplace`).
+MAX_VARYING = 5
+#: How the integral over the varying parameters is done: on the full
+#: product grid (``"grid"``), on it without the nodes of negligible
+#: weight (``"pruned"``), or by Laplace's approximation (``"laplace"``:
+#: no grid). The default is the full grid, the more accurate one,
+#: wherever there is one (up to ``MAX_VARYING`` varying parameters), and
+#: Laplace's approximation beyond; the others are options the caller
+#: chooses.
+INTEGRATIONS = ("grid", "pruned", "laplace")
+#: The pruned grid leaves out the lowest-weight nodes of the product
+#: grid, as many as have less than this share of the grid's total weight
+#: between them (nodes of equal weight are kept or left out together).
+PRUNE_SHARE = 1e-9
 
 
-def gh_grid(dim: int, points: int) -> tuple[npt.NDArray, npt.NDArray]:
+def gh_grid(
+    dim: int, points: int, prune: bool = False
+) -> tuple[npt.NDArray, npt.NDArray]:
     """The ``dim``-dimensional product Gauss-Hermite grid: nodes
     ``(K, dim)`` and log weights ``(K,)`` for ``int exp(-|z|^2) f(z)
-    dz``."""
+    dz``.
+
+    With ``prune`` the nodes of negligible weight are left out: the
+    lowest-weight nodes, as many as together hold less than
+    ``PRUNE_SHARE`` (1e-9) of the grid's total weight, nodes of equal
+    weight kept or left out together (so the grid keeps its symmetries).
+    They are the corners, where several coordinates are extreme at once:
+    none of 7 points in up to three dimensions, 80 of the 2,401 nodes
+    in four and 1,392 of the 16,807 in five. The rule depends on ``dim``
+    and ``points`` only, never on the data. The kept nodes are in the
+    full grid's order and
+    their weights are not rescaled."""
     x, w = np.polynomial.hermite.hermgauss(points)
     grids = np.meshgrid(*([x] * dim), indexing="ij")
     z = np.stack([g.ravel() for g in grids], axis=-1)
     logw = np.zeros(z.shape[0])
     for g in np.meshgrid(*([np.log(w)] * dim), indexing="ij"):
         logw = logw + g.ravel()
+    if prune:
+        keep = _heavy_enough(logw)
+        z, logw = z[keep], logw[keep]
     return z, logw
+
+
+def _heavy_enough(logw: npt.NDArray) -> npt.NDArray:
+    """The mask of the nodes a pruned grid keeps (:func:`gh_grid`)."""
+    share = np.exp(logw - np.max(logw))
+    share = share / share.sum()
+    ordered = np.sort(share)
+    # the nodes that could go one at a time, lightest first
+    below = int(np.searchsorted(np.cumsum(ordered), PRUNE_SHARE, "left"))
+    if below == 0:
+        return np.ones(share.size, dtype=bool)
+    if below == share.size:  # pragma: no cover - PRUNE_SHARE < 1
+        below -= 1
+    # ... but every node as heavy as the first one kept stays (a tie is
+    # equal to a few ulps: the same product in another order)
+    return share >= ordered[below] * (1.0 - 1e-9)
+
+
+def check_integration(integration: Any, q: int) -> str:
+    """The name of the integration over ``q`` varying parameters:
+    ``integration`` itself where it is given, else the default for
+    ``q``."""
+    if integration is None:
+        return "grid" if q <= MAX_VARYING else "laplace"
+    if not isinstance(integration, str) or integration not in INTEGRATIONS:
+        raise ValueError(
+            "'integration' is how each item's likelihood is integrated "
+            "over its varying path parameters: 'grid' (the full grid of "
+            f"{GH_FIT} points in each), 'pruned' (the grid without the "
+            "nodes of negligible weight) or 'laplace' (Laplace's "
+            "approximation, with no grid), or leave it out for the "
+            f"default; got {integration!r}."
+        )
+    if integration != "laplace" and q > MAX_VARYING:
+        raise ValueError(
+            f"integration={integration!r} is a grid of {GH_FIT} points in "
+            f"each varying path parameter, too many beyond {MAX_VARYING} "
+            f"of them ({GH_FIT}^{q} nodes an item for the {q} here): use "
+            "integration='laplace' (the default for this many), or name "
+            f"up to {MAX_VARYING} in varying=(...), the rest common to "
+            "all items."
+        )
+    return integration
+
+
+#: The covariance structures of the varying parameters named in words:
+#: every pair correlated (one block), or none (each in a block of its
+#: own). Any other is given as its blocks.
+RANDOM_EFFECTS = ("full", "diagonal")
+
+
+def check_random_effects(random_effects: Any, varying: Any) -> Any:
+    """``random_effects`` for the varying parameters ``varying`` (in the
+    path's order), checked and in one form: ``"full"`` (one block: every
+    pair correlated), ``"diagonal"`` (each its own block: none
+    correlated), or a tuple of blocks, each a tuple of the names of the
+    parameters correlated with each other, in ``varying``'s order and the
+    blocks by their first. Blocks that make one of the two are named by
+    it (so one varying parameter is ``"full"``). Every varying parameter
+    is in exactly one block; anything else is refused, saying which."""
+    varying = list(varying)
+    usage = (
+        "'full' (every pair of varying path parameters correlated), "
+        "'diagonal' (none), or a list of blocks of the names correlated "
+        "with each other, such as [('a', 'b'), ('c',)], each varying "
+        f"parameter in exactly one; the varying parameters are {varying!r}"
+    )
+    if isinstance(random_effects, str):
+        if random_effects not in RANDOM_EFFECTS:
+            raise ValueError(
+                f"'random_effects' is {usage}; got {random_effects!r}."
+            )
+        if random_effects == "full":
+            blocks = [list(varying)]
+        else:
+            blocks = [[v] for v in varying]
+    else:
+        try:
+            if isinstance(random_effects, dict):
+                raise TypeError
+            given = list(random_effects)
+        except TypeError:
+            raise ValueError(
+                f"'random_effects' is {usage}; got {random_effects!r}."
+            ) from None
+        blocks = []
+        for block in given:
+            if isinstance(block, str):
+                block = [block]
+            try:
+                names = list(block)
+            except TypeError:
+                names = [block]
+            if not names:
+                raise ValueError(
+                    "'random_effects' has an empty block: each block names "
+                    f"one or more varying parameters, of {varying!r}."
+                )
+            blocks.append(names)
+        named = [name for block in blocks for name in block]
+        unknown = [name for name in named if name not in varying]
+        if unknown:
+            raise ValueError(
+                f"'random_effects' names {unknown!r}, which are not varying "
+                f"path parameters; those are {varying!r} (a parameter "
+                "common to all items has no spread to correlate)."
+            )
+        twice = [v for v in varying if named.count(v) > 1]
+        if twice:
+            raise ValueError(
+                f"'random_effects' names {twice!r} more than once: put each "
+                "varying parameter in exactly one block."
+            )
+        missing = [v for v in varying if v not in named]
+        if missing:
+            raise ValueError(
+                f"'random_effects' leaves out {missing!r}: put each varying "
+                "parameter in exactly one block, one correlated with none "
+                f"in a block of its own, such as ({missing[0]!r},)."
+            )
+    ordered = sorted(
+        (tuple(sorted(block, key=varying.index)) for block in blocks),
+        key=lambda block: varying.index(block[0]),
+    )
+    if len(ordered) == 1:
+        return "full"
+    if all(len(block) == 1 for block in ordered):
+        return "diagonal"
+    return tuple(ordered)
+
+
+def block_labels(random_effects: Any, varying: Any) -> tuple:
+    """The block of each of ``varying`` (``0, 1, ...``) in the checked
+    ``random_effects`` (:func:`check_random_effects`)."""
+    q = len(varying)
+    if random_effects == "full":
+        return (0,) * q
+    if random_effects == "diagonal":
+        return tuple(range(q))
+    label = {
+        name: k for k, block in enumerate(random_effects) for name in block
+    }
+    return tuple(label[name] for name in varying)
 
 
 def _gl_grid() -> tuple[npt.NDArray, npt.NDArray]:
@@ -207,24 +392,272 @@ class LinkPath:
         return x[:, None] * np.einsum("k,mkp->mp", AREA_W, J)
 
 
+#: The weights the accumulated exposure may take (``weight``).
+WEIGHTS = ("exponential", "window")
+#: An exponentially weighted area is summed over the last ``EXP_SPAN``
+#: scales of the weight (what is older has ``exp(-30)``, 1e-13, of the
+#: newest exposure's weight), in pieces that end at these fractions of
+#: that span back from the age (the oldest first).
+EXP_SPAN = 30.0
+EXP_EDGES = (1.0, 0.5, 0.2, 0.0)
+#: Plain Gauss-Legendre on (0, 1), for a piece with nothing at its ends.
+PLAIN_NODES = GL_NODES
+PLAIN_W = np.exp(GL_LOGW) / 4.0
+
+
+def check_weight(weight: Any) -> tuple | None:
+    """``weight`` as ``(kind, scale)`` with a float scale, or ``None``;
+    refused unless it is ``None`` or one of ``WEIGHTS`` with one finite
+    scale above 0."""
+    if weight is None:
+        return None
+    try:
+        kind, scale = weight
+        value = float(scale)
+        fine = (
+            isinstance(kind, str)
+            and kind in WEIGHTS
+            and not np.ndim(scale)
+            and np.isfinite(value)
+            and value > 0
+        )
+    except (TypeError, ValueError):
+        fine = False
+    if not fine:
+        raise ValueError(
+            "'weight' says how much of the accumulated exposure (the "
+            "'cumulative' link) still counts, by how long ago it was: "
+            "('exponential', scale) for exposure that fades as "
+            "exp(-(time since) / scale), or ('window', width) to count "
+            "only the last 'width' of it, the scale or width one finite "
+            "number above 0 in the lifetimes' unit of time; or None for "
+            f"all of it, equally; got {weight!r}."
+        )
+    return (kind, value)
+
+
+class WeightedArea(LinkPath):
+    """The area under a marker's path with older exposure counting for
+    less, as a path of its own: at age ``x``
+
+        int_0^x w(x - s) path(s) ds,
+
+    with ``w(u) = exp(-u / scale)`` (``"exponential"``) or ``w(u) = 1``
+    for ``u <= scale`` and 0 beyond (``"window"``). :meth:`rule` gives
+    the ages and weights of the sum, which the path and its Jacobian
+    share."""
+
+    def __init__(self, path_model: Any, weight: tuple) -> None:
+        super().__init__(path_model, "cumulative")
+        self.kind, self.scale = weight[0], float(weight[1])
+        self.name = (
+            f"{path_model.name} (cumulative, {self.kind} weight "
+            f"{self.scale:g})"
+        )
+
+    def rule(self, x: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+        """The ages ``(..., K)`` and weights ``(..., K)`` (the kernel
+        ``w`` included) of the weighted area at the ages ``x`` ``(...)``.
+
+        A window is one piece, ``(max(x - scale, 0), x)``, by the plain
+        area's rule from its older end (``AREA_NODES``: the plain area's
+        own sum while the window reaches back to age 0).
+
+        An exponential weight is summed over ``(max(x - 30 scale, 0),
+        x)`` in three pieces, which end 100%, 50%, 20% and 0% of that
+        span back from ``x`` (``EXP_EDGES``), each by 15-point
+        Gauss-Legendre: the kernel changes by a factor of at most
+        ``e^15`` over a piece, which the rule follows to 1e-10 of the
+        area. The oldest piece is by the plain area's rule where it
+        starts at age 0 (a path may have a logarithmic or root
+        singularity there), and by plain Gauss-Legendre where it does
+        not (there the path is smooth, and what lies at its older end
+        has a weight of 1e-13)."""
+        x = np.asarray(x, dtype=float)[..., None]
+        if self.kind == "window":
+            lo = np.maximum(x - self.scale, 0.0)
+            width = x - lo
+            return lo + width * AREA_NODES, width * AREA_W
+        reach = EXP_SPAN * self.scale
+        span = np.minimum(x, reach)
+        from_zero = x <= reach
+        ages, weights = [], []
+        for k in range(len(EXP_EDGES) - 1):
+            a = x - span * EXP_EDGES[k]
+            width = span * (EXP_EDGES[k] - EXP_EDGES[k + 1])
+            if k == 0:
+                nodes = np.where(from_zero, AREA_NODES, PLAIN_NODES)
+                w = np.where(from_zero, AREA_W, PLAIN_W)
+            else:
+                nodes, w = PLAIN_NODES, PLAIN_W
+            s = a + width * nodes
+            ages.append(s)
+            weights.append(width * w * np.exp(-(x - s) / self.scale))
+        return np.concatenate(ages, axis=-1), np.concatenate(weights, axis=-1)
+
+    def path(self, x: Any, *params: Any) -> Any:
+        ages, weights = self.rule(x)
+        spread = [np.asarray(v, dtype=float)[..., None] for v in params]
+        m = np.asarray(self.base.path(ages, *spread), dtype=float)
+        return np.sum(weights * m, axis=-1)
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        ages, weights = self.rule(x)
+        K = ages.shape[-1]
+        P = np.stack(
+            [
+                np.repeat(np.broadcast_to(np.asarray(v, float), x.shape), K)
+                for v in params
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.base, ages.ravel(), P).reshape(x.size, K, -1)
+        return np.einsum("mk,mkp->mp", weights, J)
+
+
+class LaggedPath:
+    """What the hazard follows of a marker's path ``lag`` later (a path
+    model, or a :class:`LinkPath`, as ``inner``): at age ``x`` the
+    inner path at ``max(x - lag, 0)``. The lagged path is the path held
+    at its age-0 value until ``lag``, so its value there is the path's
+    at age 0 and its slope and the area under it are 0 (``held_at_zero``
+    is ``False`` for the value, ``True`` for the slope and the area)."""
+
+    def __init__(self, inner: Any, lag: float, held_at_zero: bool) -> None:
+        self.inner = inner
+        self.lag = float(lag)
+        self.held_at_zero = held_at_zero
+        self.name = f"{inner.name} ({lag:g} earlier)"
+        self.parameter_names = list(inner.parameter_names)
+
+    def _ages(self, x: Any) -> tuple:
+        """The inner path's ages, and where ``x`` is past the lag."""
+        x = np.asarray(x, dtype=float)
+        past = x > self.lag
+        if self.held_at_zero:
+            # 0 before the lag, whatever the inner path is at age 0
+            return np.where(past, x - self.lag, 1.0), past
+        return np.maximum(x - self.lag, 0.0), past
+
+    def path(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        with np.errstate(all="ignore"):
+            out = np.asarray(self.inner.path(ages, *params), dtype=float)
+        return np.where(past, out, 0.0) if self.held_at_zero else out
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        ages, past = self._ages(x)
+        P = np.stack(
+            [
+                np.broadcast_to(np.asarray(v, float), ages.shape)
+                for v in params
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.inner, ages, P)
+        return np.where(past[..., None], J, 0.0) if self.held_at_zero else J
+
+
+def lag_rule(
+    lo: npt.NDArray, hi: npt.NDArray, lag: Any
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The ages ``(N, 2 GL_POINTS)`` and log weights of the rule for
+    ``int_lo^hi f(s) ds`` (``0 <= lo < hi``, finite) when the hazard
+    follows the marker ``lag`` later: the interval split at ``lag``,
+    where the lagged path has a kink (its slope a jump), and each piece
+    by the cumulative hazard's own rule, ``s = a + (b - a) w^4`` and
+    15-point Gauss-Legendre in ``w``. A piece of no width has weights
+    ``-inf``. ``lag`` may be several ages, ascending
+    (``PathFunction.cuts``: the lag, and where a window on the
+    accumulated exposure starts to move): the interval is split at each,
+    ``GL_POINTS`` ages a piece."""
+    lo = np.asarray(lo, dtype=float)
+    hi = np.asarray(hi, dtype=float)
+    edges = [lo]
+    for cut in np.atleast_1d(np.asarray(lag, dtype=float)):
+        edges.append(np.clip(cut, lo, hi))
+    edges.append(hi)
+    ages, logw = [], []
+    with np.errstate(divide="ignore"):
+        for a, b in zip(edges[:-1], edges[1:]):
+            width = b - a
+            ages.append(a[:, None] + width[:, None] * GL_U[None, :])
+            logw.append(
+                np.log(width)[:, None]
+                + (GL_LOGW + 3 * np.log(GL_NODES))[None, :]
+            )
+    return np.concatenate(ages, axis=1), np.concatenate(logw, axis=1)
+
+
+def check_lag(lag: Any) -> float:
+    """``lag`` as a float, refused unless it is one finite number of 0
+    or more."""
+    try:
+        value = float(lag)
+    except (TypeError, ValueError):
+        value = np.nan
+    if np.ndim(lag) or not np.isfinite(value) or value < 0:
+        raise ValueError(
+            "'lag' is how long after a reading the hazard follows it (the "
+            "hazard at age t follows the marker's path at t - lag, and at "
+            "age 0 before the lag), one finite number of 0 or more in the "
+            f"lifetimes' unit of time; got {lag!r}."
+        )
+    return value
+
+
 class PathFunction:
     """``path(params, x)`` of a path model for autograd: ``params``
     ``(..., p)`` and ``x`` ``(...)`` of one shape, its derivatives the
     path model's Jacobian and, for the second, central differences of
     that. ``terms`` holds what the hazard follows, one ``(link, path,
     function)`` for each of ``links``: the path itself (``"value"``),
-    or its :class:`LinkPath`."""
+    or its :class:`LinkPath`; with a ``lag`` above 0, each of those
+    ``lag`` later (:class:`LaggedPath`). With a ``weight`` (``(kind,
+    scale)``, :func:`check_weight`) the cumulative link is the
+    :class:`WeightedArea`. The readings are always of the path itself
+    (``values``).
 
-    def __init__(self, path_model: Any, links: tuple = ("value",)) -> None:
+    ``cuts`` are the ages, ascending, at which what the hazard follows
+    has a kink, where the integrals of the hazard over age are split
+    (:func:`lag_rule`): the lag, and with a window on the accumulated
+    exposure the age at which the window stops reaching back to age 0
+    (the lag plus its width)."""
+
+    def __init__(
+        self,
+        path_model: Any,
+        links: tuple = ("value",),
+        lag: float = 0.0,
+        weight: tuple | None = None,
+    ) -> None:
         self.model = path_model
         self.values, self.jac = _differentiable(path_model)
         self.links = tuple(links)
+        self.lag = float(lag)
+        self.weight = weight if "cumulative" in self.links else None
+        cuts = [self.lag] if self.lag > 0 else []
+        if self.weight is not None and self.weight[0] == "window":
+            cuts.append(self.lag + float(self.weight[1]))
+        self.cuts = tuple(cuts)
         self.terms: list = []
         for link in self.links:
+            followed: Any
             if link == "value":
-                self.terms.append((link, path_model, self.values))
+                followed = path_model
+            elif link == "cumulative" and self.weight is not None:
+                followed = WeightedArea(path_model, self.weight)
             else:
                 followed = LinkPath(path_model, link)
+            if self.lag > 0:
+                followed = LaggedPath(followed, self.lag, link != "value")
+                self.terms.append(
+                    (link, followed, _differentiable(followed)[0])
+                )
+            elif link == "value":
+                self.terms.append((link, path_model, self.values))
+            else:
                 self.terms.append(
                     (link, followed, _differentiable(followed)[0])
                 )
@@ -308,10 +741,31 @@ class Layout:
     coefficients ``gamma`` (the covariates of ``hazard``) and the
     marker's effects ``zeta``, one for each of ``links`` (what of the
     path the hazard follows: its value, slope or cumulative area).
+    ``survival`` is the survival part, ``"PH"`` (proportional hazards)
+    or ``"AFT"`` (accelerated: the covariates and the links speed up
+    the item's ageing); the parameters are the same in both.
 
     ``shifts`` ``(P, p)`` and ``hazard`` ``(p,)`` say which covariates
     enter which part (default every one in both): an entry that is off is
-    held at 0, not estimated."""
+    held at 0, not estimated.
+
+    ``blocks`` ``(q,)`` labels each varying parameter with its block of
+    correlated ones (default one block: every pair correlated). An entry
+    of the Cholesky factor between two blocks is held at 0, not
+    estimated, so ``D`` is block diagonal: the factor of a matrix that is
+    block diagonal, in any order of its rows, is 0 between the blocks
+    too, and a factor that is gives such a matrix.
+
+    ``n_causes`` above 1 is competing failure modes (causes): each has a
+    hazard of its own, with its own log ``alpha`` and ``beta``, ``gamma``
+    and ``zeta``, and the vector holds, after log ``sigma``, each cause's
+    own entries in that order and then the entries the causes share, one
+    each: ``beta`` where ``shared_beta``, the hazard coefficients of
+    ``shared_hazard`` ``(p,)`` and the effects of ``shared_links``
+    ``(n_links,)``. ``unpack`` then gives ``alpha`` and ``beta``
+    ``(n_causes,)``, ``gamma`` ``(n_causes, p)`` and ``zeta``
+    ``(n_causes, n_links)`` (:func:`cause_thetas` gives each cause's).
+    With one cause the vector and ``unpack`` are as described above."""
 
     P: int
     p: int
@@ -319,6 +773,12 @@ class Layout:
     shifts: Any = None
     hazard: Any = None
     links: tuple = ("value",)
+    survival: str = "PH"
+    blocks: Any = None
+    n_causes: int = 1
+    shared_beta: bool = False
+    shared_hazard: Any = None
+    shared_links: Any = None
 
     def __post_init__(self) -> None:
         self.links = tuple(self.links)
@@ -332,10 +792,47 @@ class Layout:
             if self.hazard is None
             else np.asarray(self.hazard, dtype=bool).reshape(self.p)
         )
+        self.blocks = (
+            (0,) * len(self.varying)
+            if self.blocks is None
+            else tuple(int(b) for b in self.blocks)
+        )
+        self.shared_hazard = (
+            np.zeros(self.p, dtype=bool)
+            if self.shared_hazard is None
+            else np.asarray(self.shared_hazard, dtype=bool).reshape(self.p)
+        ) & self.hazard
+        self.shared_links = (
+            np.zeros(len(self.links), dtype=bool)
+            if self.shared_links is None
+            else np.asarray(self.shared_links, dtype=bool).reshape(
+                len(self.links)
+            )
+        )
 
     @property
     def q(self) -> int:
         return len(self.varying)
+
+    @property
+    def correlated(self) -> npt.NDArray:
+        """``(q, q)``: whether two varying parameters are in one block
+        (their correlation estimated, else held at 0)."""
+        labels = np.asarray(self.blocks, dtype=int)
+        return labels[:, None] == labels[None, :]
+
+    @property
+    def lower(self) -> list[tuple[int, int]]:
+        """``(row, column)`` of each estimated entry below the diagonal
+        of the Cholesky factor (and of each correlation), by rows."""
+        same = self.correlated
+        return [(r, c) for r in range(self.q) for c in range(r) if same[r, c]]
+
+    @property
+    def n_spread(self) -> int:
+        """The number of estimated spread parameters: ``q`` sds and the
+        correlations within the blocks."""
+        return self.q + len(self.lower)
 
     @property
     def common(self) -> tuple:
@@ -354,16 +851,37 @@ class Layout:
         return len(self.links)
 
     @property
+    def n_survival(self) -> int:
+        """The number of estimated parameters of the survival part: the
+        Weibull ``alpha`` and ``beta``, the hazard's coefficients and
+        the effects, of every cause (one each where shared)."""
+        if self.n_causes == 1:
+            return 2 + self.n_hazard + self.n_links
+        return int(self.cause_slots.max()) + 1
+
+    @property
+    def cause_slots(self) -> npt.NDArray:
+        """``(n_causes, 2 + n_hazard + n_links)``: where in the survival
+        part of the vector each cause's log ``alpha``, log ``beta``,
+        estimated hazard coefficients and effects are: its own entries,
+        cause by cause, then the shared ones."""
+        shared = np.concatenate(
+            [
+                [False, self.shared_beta],
+                self.shared_hazard[self.hazard],
+                self.shared_links,
+            ]
+        ).astype(bool)
+        own = int((~shared).sum())
+        slots = np.zeros((self.n_causes, shared.size), dtype=int)
+        for k in range(self.n_causes):
+            slots[k, ~shared] = k * own + np.arange(own)
+            slots[k, shared] = self.n_causes * own + np.arange(shared.sum())
+        return slots
+
+    @property
     def size(self) -> int:
-        q = self.q
-        return (
-            self.P
-            + self.n_shifts
-            + q * (q + 1) // 2
-            + 3
-            + self.n_hazard
-            + self.n_links
-        )
+        return self.P + self.n_shifts + self.n_spread + 1 + self.n_survival
 
     def shift_positions(self) -> list[tuple[int, int, int]]:
         """``(position in u, path parameter, covariate column)`` of each
@@ -377,8 +895,7 @@ class Layout:
     def hazard_positions(self) -> list[tuple[int, int]]:
         """``(position in u, covariate column)`` of each estimated
         hazard coefficient."""
-        q = self.q
-        start = self.P + self.n_shifts + q * (q + 1) // 2 + 3
+        start = self.P + self.n_shifts + self.n_spread + 3
         cols = np.flatnonzero(self.hazard)
         return [(start + k, int(c)) for k, c in enumerate(cols)]
 
@@ -412,22 +929,42 @@ class Layout:
         i += n_shifts
         diag = anp.exp(u[i : i + q])
         i += q
-        lower = u[i : i + q * (q - 1) // 2]
-        i += q * (q - 1) // 2
+        n_lower = len(self.lower)
+        lower = u[i : i + n_lower]
+        i += n_lower
+        same = self.correlated
         rows = []
         k = 0
         for r in range(q):
             row = []
             for col in range(q):
-                if col < r:
+                if col < r and same[r, col]:
                     row.append(lower[k])
                     k += 1
+                elif col < r:
+                    row.append(0.0 * diag[r])
                 elif col == r:
                     row.append(diag[r])
                 else:
                     row.append(0.0 * diag[r])
             rows.append(anp.stack(row))
         L = anp.stack(rows) if q else anp.zeros((0, 0))
+        if self.n_causes > 1:
+            slots = self.cause_slots
+            block = u[i + 1 : i + 1 + self.n_survival]
+            each = [block[slots[c]] for c in range(self.n_causes)]
+            return {
+                "mu": mu,
+                "Delta": Delta,
+                "L": L,
+                "sigma": anp.exp(u[i]),
+                "alpha": anp.exp(anp.stack([v[0] for v in each])),
+                "beta": anp.exp(anp.stack([v[1] for v in each])),
+                "gamma": anp.stack(
+                    [self._gamma(v[2 : 2 + n_hazard]) for v in each]
+                ),
+                "zeta": anp.stack([v[2 + n_hazard :] for v in each]),
+            }
         return {
             "mu": mu,
             "Delta": Delta,
@@ -442,8 +979,38 @@ class Layout:
     def pack(self, theta: dict) -> npt.NDArray:
         L = np.asarray(theta["L"], dtype=float)
         q = self.q
-        lower = [L[r, c] for r in range(q) for c in range(r)]
+        lower = [L[r, c] for r, c in self.lower]
         Delta = np.asarray(theta["Delta"], dtype=float).reshape(self.P, self.p)
+        if self.n_causes > 1:
+            C = self.n_causes
+            each = np.column_stack(
+                [
+                    np.log(np.asarray(theta["alpha"], dtype=float)),
+                    np.log(np.asarray(theta["beta"], dtype=float)),
+                    np.asarray(theta["gamma"], dtype=float).reshape(C, self.p)[
+                        :, self.hazard
+                    ],
+                    np.asarray(theta["zeta"], dtype=float).reshape(
+                        C, self.n_links
+                    ),
+                ]
+            )
+            # a shared entry is its mean over the causes (equal in a
+            # theta that unpack gave)
+            slots = self.cause_slots
+            block = np.zeros(self.n_survival)
+            np.add.at(block, slots.ravel(), each.ravel())
+            block /= np.bincount(slots.ravel(), minlength=block.size)
+            return np.concatenate(
+                [
+                    np.asarray(theta["mu"], dtype=float),
+                    Delta[self.shifts],
+                    np.log(np.diag(L)) if q else np.zeros(0),
+                    np.asarray(lower, dtype=float),
+                    [np.log(theta["sigma"])],
+                    block,
+                ]
+            )
         gamma = np.atleast_1d(np.asarray(theta["gamma"], dtype=float))
         return np.concatenate(
             [
@@ -462,6 +1029,24 @@ class Layout:
         )
 
 
+def cause_thetas(theta: dict, layout: Layout) -> list[dict]:
+    """``theta`` for each cause's hazard: itself with that cause's
+    ``alpha``, ``beta``, ``gamma`` and ``zeta`` (the one ``theta`` where
+    the layout has one cause)."""
+    if layout.n_causes == 1:
+        return [theta]
+    return [
+        dict(
+            theta,
+            alpha=theta["alpha"][k],
+            beta=theta["beta"][k],
+            gamma=theta["gamma"][k],
+            zeta=theta["zeta"][k],
+        )
+        for k in range(layout.n_causes)
+    ]
+
+
 # -- the data --------------------------------------------------------------
 
 
@@ -473,7 +1058,10 @@ class JointArrays:
     where the item has none), the entry age ``L`` (0 for an item observed
     from 0) and the right truncation ``Rt`` (``inf`` for none), the
     centred covariates ``Z`` ``(N, p)``, and the readings padded to ``(N,
-    R)``: ``ages``, ``values`` and their ``mask``."""
+    R)``: ``ages``, ``values`` and their ``mask``. ``e`` is the cause of
+    each item's failure, its index among the model's causes (competing
+    failure modes), and -1 where the item has not failed or its failure
+    is of any cause (every item's in a model of one cause)."""
 
     w: npt.NDArray
     T: npt.NDArray
@@ -485,6 +1073,11 @@ class JointArrays:
     mask: npt.NDArray
     U: npt.NDArray
     Rt: npt.NDArray
+    e: Any = None
+
+    def __post_init__(self) -> None:
+        if self.e is None:
+            self.e = np.full(len(self.w), -1, dtype=int)
 
     @classmethod
     def build(
@@ -498,6 +1091,7 @@ class JointArrays:
         values: list,
         U: Any = None,
         Rt: Any = None,
+        e: Any = None,
     ) -> JointArrays:
         N = len(ages)
         R = max([len(a) for a in ages] + [1])
@@ -533,7 +1127,20 @@ class JointArrays:
                 if Rt is None
                 else np.asarray(Rt, dtype=float).reshape(N)
             ),
+            e=(
+                np.full(N, -1, dtype=int)
+                if e is None
+                else np.asarray(e, dtype=int).reshape(N)
+            ),
         )
+
+    def of_any_cause(self) -> JointArrays:
+        """The items with no cause given (``e`` -1): for a term that is
+        of failing by any cause, such as a truncated item's probability
+        of being in the data."""
+        fields = {k: getattr(self, k) for k in self.__dataclass_fields__}
+        fields["e"] = np.full(len(self.w), -1, dtype=int)
+        return JointArrays(**fields)
 
     def take(self, index: Any) -> JointArrays:
         """The items ``index``."""
@@ -596,7 +1203,10 @@ def predictor(
 
 
 def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
-    """``log phi(theta_V; mu_V + Delta_V z, D)`` at the nodes."""
+    """``log phi(theta_V; mu_V + Delta_V z, D)`` at the nodes. ``D`` is
+    block diagonal where the layout has blocks (``Layout.blocks``): the
+    Cholesky factor's entries between them, held at 0, are left out of
+    the substitution."""
     q = layout.q
     if q == 0:
         return anp.zeros(nodes.shape[:2])
@@ -606,12 +1216,14 @@ def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
     )
     diff = nodes - mean[:, None, :]
     L = theta["L"]
+    same = layout.correlated
     # forward substitution: L x = diff
     xs: list = []
     for r in range(q):
         acc = diff[..., r]
         for c in range(r):
-            acc = acc - L[r, c] * xs[c]
+            if same[r, c]:
+                acc = acc - L[r, c] * xs[c]
         xs.append(acc / L[r, r])
     quad = sum(x_**2 for x_ in xs)
     log_det = anp.sum(anp.log(anp.stack([L[r, r] for r in range(q)])))
@@ -642,6 +1254,12 @@ def log_cumhaz(
     ``t_i`` is 0)."""
     positive = t > 0
     safe = np.where(positive, t, 1.0)
+    if path.cuts:
+        # from age 0, split at the lag (and a window's start)
+        out = log_cumhaz_between(
+            theta, path, params, arrays, np.zeros(safe.size), safe, centre
+        )
+        return anp.where(positive[:, None], out, -anp.inf)
     eta = predictor(theta, path, params, safe[:, None] * GL_U[None, :], centre)
     beta = theta["beta"]
     inner = logsumexp(
@@ -675,9 +1293,14 @@ def log_cumhaz_between(
     ``(lo, hi]`` directly, with ``s = lo + (hi - lo) w^4``, by the same
     15-point Gauss-Legendre in ``w`` (with ``lo = 0`` this is the
     cumulative hazard's own rule), so a narrow interval late in life
-    loses no precision to a difference of two cumulative hazards."""
+    loses no precision to a difference of two cumulative hazards. With
+    a lag (or a window on the accumulated exposure), split at
+    ``path.cuts`` (:func:`lag_rule`)."""
     width = hi - lo
-    s = lo[:, None] + width[:, None] * GL_U[None, :]
+    if path.cuts:
+        s, logw = lag_rule(lo, hi, path.cuts)
+    else:
+        s = lo[:, None] + width[:, None] * GL_U[None, :]
     eta = predictor(theta, path, params, s, centre)
     alpha, beta = theta["alpha"], theta["beta"]
     lin = anp.dot(arrays.Z, theta["gamma"])
@@ -688,6 +1311,8 @@ def log_cumhaz_between(
         + lin[:, None, None]
         + eta
     )
+    if path.cuts:
+        return logsumexp(logw[:, None, :] + log_h, axis=-1)
     inner = logsumexp(GL_LOGW + 3 * np.log(GL_NODES) + log_h, axis=-1)
     return np.log(width)[:, None] + inner
 
@@ -751,6 +1376,147 @@ def log_event(
         + lin
     )
     return base[:, None] + eta
+
+
+# -- competing failure modes (causes) ---------------------------------------
+#
+# With several causes each has a hazard of its own (its own Weibull
+# baseline, coefficients and effects; :func:`cause_thetas`), and an
+# item's lifetime term is
+#
+#     prod_k h_k(T)^(d_k) exp(-sum_k H_k(T)):
+#
+# the hazard of the cause it failed by and the survival of every cause.
+# An item found failed by cause k in ``(l, u]`` has, in place of the
+# hazard, ``int_l^u h_k(s) exp(-(H(s) - H(l))) ds`` with ``H`` the sum of
+# the causes' cumulative hazards: the cause's hazard and the survival of
+# all of them to each age of the interval, which does not factor by
+# cause.
+
+
+def log_hazard(
+    theta: dict,
+    path: PathFunction,
+    params: Any,
+    arrays: JointArrays,
+    s: npt.NDArray,
+    centre: float,
+) -> Any:
+    """``log h(s | theta)`` at the ages ``s`` ``(N, A)`` (each above 0)
+    and the nodes: ``(N, K, A)``."""
+    eta = predictor(theta, path, params, s, centre)
+    alpha, beta = theta["alpha"], theta["beta"]
+    lin = anp.dot(arrays.Z, theta["gamma"])
+    return (
+        anp.log(beta)
+        - anp.log(alpha)
+        + (beta - 1) * (np.log(s)[:, None, :] - anp.log(alpha))
+        + lin[:, None, None]
+        + eta
+    )
+
+
+def log_event_of(
+    thetas: list, path: PathFunction, params: Any, arrays: JointArrays, c: Any
+) -> Any:
+    """The log of each item's hazard at its age ``T``, at the nodes
+    ``(N, K)``: its cause's, and for an item with no cause (``e`` -1) the
+    sum of the causes' (the hazard of failing at all)."""
+    each = [log_event(th, path, params, arrays, c) for th in thetas]
+    out = logsumexp(anp.stack(each), axis=0)
+    for k, log_h in enumerate(each):
+        out = anp.where((arrays.e == k)[:, None], log_h, out)
+    return out
+
+
+def log_cause_fails_between(
+    thetas: list,
+    path: PathFunction,
+    params: Any,
+    arrays: JointArrays,
+    lo: npt.NDArray,
+    hi: npt.NDArray,
+    centre: float,
+) -> Any:
+    """The log of the probability, at the nodes ``(N, K)``, that an item
+    which reached ``lo`` fails in ``(lo, hi]``, by its cause where it
+    has one (``arrays.e``): ``int_lo^hi h_k(s) exp(-(H(s) - H(lo)))
+    ds``, by the cumulative hazard's rule over the interval (``s = lo +
+    (hi - lo) w^4``, 15-point Gauss-Legendre in ``w``, split at the
+    path's cuts), the causes' cumulative hazards from ``lo`` to each of
+    its ages by the same rule. An item with no cause (-1) fails by any:
+    ``1 - exp(-(H(hi) - H(lo)))``. 0 for a row whose ``hi`` is ``inf``
+    (no upper end)."""
+    rows, lo_s, hi_s = _between(lo, hi)
+    if not rows.any():
+        return anp.zeros(params.shape[:2])
+    total = logsumexp(
+        anp.stack(
+            [
+                log_cumhaz_between(
+                    th, path, params, arrays, lo_s, hi_s, centre
+                )
+                for th in thetas
+            ]
+        ),
+        axis=0,
+    )
+    out = anp.where(rows[:, None], log1mexp(total), 0.0)
+    known = np.flatnonzero(rows & (arrays.e >= 0))
+    if not known.size:
+        return out
+    sub = arrays.take(known)
+    sub_params = params[known]
+    a, b = lo_s[known], hi_s[known]
+    if path.cuts:
+        s, logw = lag_rule(a, b, path.cuts)
+    else:
+        s = a[:, None] + (b - a)[:, None] * GL_U[None, :]
+        logw = np.log(b - a)[:, None] + (GL_LOGW + 3 * np.log(GL_NODES))
+    n, A = s.shape
+    # every age of every row's rule as a row of its own
+    again = np.repeat(np.arange(n), A)
+    inner = sub.take(again)
+    inner_params = sub_params[again]
+    start = np.repeat(a, A)
+    ends = s.ravel()
+    # a piece of no width (a cut at an end) has no age above the start
+    live = ends > start
+    ends_safe = np.where(live, ends, start + 1.0)
+    H_to = sum(
+        anp.exp(
+            log_cumhaz_between(
+                th, path, inner_params, inner, start, ends_safe, centre
+            )
+        )
+        for th in thetas
+    )
+    # (n A, K) -> (n, K, A)
+    H_to = anp.transpose(anp.reshape(H_to, (n, A, params.shape[1])), (0, 2, 1))
+    log_h: Any = 0.0
+    for k, th in enumerate(thetas):
+        own = (sub.e == k).astype(float)[:, None, None]
+        log_h = log_h + own * log_hazard(th, path, sub_params, sub, s, centre)
+    with np.errstate(divide="ignore"):
+        logw = np.where(live.reshape(n, A), logw, -np.inf)
+    found = logsumexp(logw[:, None, :] + log_h - H_to, axis=-1)
+    # back among the items
+    place_ = np.zeros((len(arrays.w), n))
+    place_[known, np.arange(n)] = 1.0
+    is_known = np.zeros(len(arrays.w), dtype=bool)
+    is_known[known] = True
+    return anp.where(is_known[:, None], anp.dot(place_, found), out)
+
+
+def lifetime_functions(layout: Layout) -> tuple:
+    """``(log_cumhaz, log_event, log_fails_between)`` of the layout's
+    survival part: this module's (proportional hazards), or the
+    accelerated part's (:mod:`._aft`), which take the same arguments."""
+    if layout.survival == "AFT":
+        from . import _aft
+
+        return _aft.log_cumhaz, _aft.log_event, _aft.log_fails_between
+    return log_cumhaz, log_event, log_fails_between
 
 
 # -- where the nodes go -------------------------------------------------------
@@ -827,59 +1593,112 @@ def _mode_objective(
             f = f + np.sum(r**2, axis=1) / (2 * s2)
             g = g - np.einsum("nr,nrj->nj", r, J) / s2
             H = H + np.einsum("nri,nrj->nij", J, J) / s2
-        # the lifetime: an event flag d at age t, survival to t
-        positive = t > 0
-        safe = np.where(positive, t, 1.0)
-        s_ages = safe[:, None] * GL_U[None, :]
-        terms = followed(s_ages)
-        beta = float(theta["beta"])
-        lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
-        log_lam = (
-            (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
-                :, None
-            ]
-            + np.log(beta)
-            + GL_LOGW
-            + (4 * beta - 1) * np.log(GL_NODES)
-            + log_effect(terms)
-        )
-        lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
-        f = f + lam.sum(axis=1)
-        grad, curve = weighted(lam, terms)
-        g = g + grad
-        H = H + curve
-        if np.any(d > 0):
-            for effect, mT, JT in followed(safe[:, None]):
-                f = f - d * effect * mT[:, 0]
-                g = g - (d * effect)[:, None] * JT[:, 0]
-        if upper is not None:
-            rows, lo, hi = _between(t, upper)
-            if rows.any():
-                width = hi - lo
-                s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
+        if layout.survival == "AFT":
+            from ._aft import mode_terms
+
+            life = mode_terms(
+                theta,
+                arrays,
+                d,
+                t,
+                upper,
+                followed,
+                log_effect,
+                weighted,
+                lag=path.lag,
+            )
+            f, g, H = f + life[0], g + life[1], H + life[2]
+        elif layout.n_causes > 1:
+            life = _cause_mode_terms(
+                theta,
+                layout,
+                path,
+                arrays,
+                d,
+                t,
+                upper,
+                (followed, log_effect, weighted),
+            )
+            f, g, H = f + life[0], g + life[1], H + life[2]
+        else:
+            # the lifetime: an event flag d at age t, survival to t
+            positive = t > 0
+            safe = np.where(positive, t, 1.0)
+            beta = float(theta["beta"])
+            lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
+            if path.cuts:
+                # from age 0, split at the lag (as log_cumhaz)
+                s_ages, logw = lag_rule(np.zeros(safe.size), safe, path.cuts)
                 terms = followed(s_ages)
                 alpha = float(theta["alpha"])
                 log_lam = (
-                    (lin + np.log(width) + np.log(beta / alpha))[:, None]
+                    (lin + np.log(beta / alpha))[:, None]
                     + (beta - 1) * (np.log(s_ages) - np.log(alpha))
-                    + GL_LOGW
-                    + 3 * np.log(GL_NODES)
+                    + logw
                     + log_effect(terms)
                 )
-                lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
-                delta = np.where(rows, lam.sum(axis=1), 1.0)
-                g_delta, _ = weighted(lam, terms)
-                small = -np.expm1(-delta)
-                f = f - np.where(rows, np.log(small), 0.0)
-                g = (
-                    g
-                    - np.where(rows, 1.0 / np.expm1(delta), 0.0)[:, None]
-                    * g_delta
+            else:
+                s_ages = safe[:, None] * GL_U[None, :]
+                terms = followed(s_ages)
+                log_lam = (
+                    (
+                        lin
+                        + beta * (np.log(safe) - np.log(float(theta["alpha"])))
+                    )[:, None]
+                    + np.log(beta)
+                    + GL_LOGW
+                    + (4 * beta - 1) * np.log(GL_NODES)
+                    + log_effect(terms)
                 )
-                curve = np.where(rows, np.exp(-delta) / small**2, 0.0)
-                H = H + curve[:, None, None] * np.einsum(
-                    "ni,nj->nij", g_delta, g_delta
-                )
+            lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
+            f = f + lam.sum(axis=1)
+            grad, curve = weighted(lam, terms)
+            g = g + grad
+            H = H + curve
+            if np.any(d > 0):
+                for effect, mT, JT in followed(safe[:, None]):
+                    f = f - d * effect * mT[:, 0]
+                    g = g - (d * effect)[:, None] * JT[:, 0]
+            if upper is not None:
+                rows, lo, hi = _between(t, upper)
+                if rows.any():
+                    width = hi - lo
+                    alpha = float(theta["alpha"])
+                    if path.cuts:
+                        s_ages, logw = lag_rule(lo, hi, path.cuts)
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(beta / alpha))[:, None]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + logw
+                            + log_effect(terms)
+                        )
+                    else:
+                        s_ages = lo[:, None] + width[:, None] * GL_U[None, :]
+                        terms = followed(s_ages)
+                        log_lam = (
+                            (lin + np.log(width) + np.log(beta / alpha))[
+                                :, None
+                            ]
+                            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+                            + GL_LOGW
+                            + 3 * np.log(GL_NODES)
+                            + log_effect(terms)
+                        )
+                    lam = np.where(rows[:, None], np.exp(log_lam), 0.0)
+                    delta = np.where(rows, lam.sum(axis=1), 1.0)
+                    g_delta, _ = weighted(lam, terms)
+                    small = -np.expm1(-delta)
+                    f = f - np.where(rows, np.log(small), 0.0)
+                    g = (
+                        g
+                        - np.where(rows, 1.0 / np.expm1(delta), 0.0)[:, None]
+                        * g_delta
+                    )
+                    curve = np.where(rows, np.exp(-delta) / small**2, 0.0)
+                    H = H + curve[:, None, None] * np.einsum(
+                        "ni,nj->nij", g_delta, g_delta
+                    )
         # the prior
         Lc = np.asarray(theta["L"], dtype=float)
         Dinv = np.linalg.inv(Lc @ Lc.T)
@@ -891,6 +1710,139 @@ def _mode_objective(
         f = f + 0.5 * np.einsum("ni,ij,nj->n", diff, Dinv, diff)
         g = g + diff @ Dinv
         H = H + Dinv[None]
+    return f, g, H
+
+
+def _cause_mode_terms(
+    theta: dict,
+    layout: Layout,
+    path: PathFunction,
+    arrays: JointArrays,
+    d: npt.NDArray,
+    t: npt.NDArray,
+    upper: npt.NDArray | None,
+    helpers: tuple,
+) -> tuple:
+    """The lifetime's part of :func:`_mode_objective` with several
+    causes: ``(f, g, H)``. Every cause's cumulative hazard to ``t``, the
+    hazard of the item's own cause at ``t`` (of any, for an item with
+    none), and for a row that fails in ``(t, upper]`` the term ``(1 -
+    exp(-Delta)) Delta_k / Delta`` with ``Delta`` the interval's
+    cumulative hazard and ``Delta_k`` its cause's (all of it for an
+    item with no cause): the interval's probability where the causes'
+    hazards are in proportion over it, which places the nodes; the
+    integral itself is :func:`log_cause_fails_between`'s. The curvature
+    is the cumulative hazards' and that of ``-log(1 - exp(-Delta))``,
+    as with one cause."""
+    followed, log_effect, weighted = helpers
+    thetas = cause_thetas(theta, layout)
+    N, q = len(arrays.w), layout.q
+    positive = t > 0
+    safe = np.where(positive, t, 1.0)
+    cause = np.asarray(arrays.e, dtype=int)
+
+    def effects(raw: list, th: dict) -> list:
+        zeta = np.asarray(th["zeta"], dtype=float).reshape(-1)
+        return [(zeta[j], m, J) for j, (_, m, J) in enumerate(raw)]
+
+    def log_base(th: dict, s_ages: npt.NDArray, logw: npt.NDArray) -> Any:
+        """The log of the baseline hazard at the ages times the rule's
+        weights, the covariates' part included."""
+        alpha, beta = float(th["alpha"]), float(th["beta"])
+        lin = arrays.Z @ np.asarray(th["gamma"], dtype=float)
+        return (
+            (lin + np.log(beta / alpha))[:, None]
+            + (beta - 1) * (np.log(s_ages) - np.log(alpha))
+            + logw
+        )
+
+    def rule(lo: npt.NDArray, hi: npt.NDArray) -> tuple:
+        if path.cuts:
+            return lag_rule(lo, hi, path.cuts)
+        width = hi - lo
+        return (
+            lo[:, None] + width[:, None] * GL_U[None, :],
+            np.log(width)[:, None] + (GL_LOGW + 3 * np.log(GL_NODES)),
+        )
+
+    f = np.zeros(N)
+    g = np.zeros((N, q))
+    H = np.zeros((N, q, q))
+    s_ages, logw = rule(np.zeros(N), safe)
+    raw = followed(s_ages)
+    at_T = followed(safe[:, None])
+    failed = d > 0
+    log_h, grads = [], []
+    for k, th in enumerate(thetas):
+        terms = effects(raw, th)
+        lam = np.where(
+            positive[:, None],
+            np.exp(log_base(th, s_ages, logw) + log_effect(terms)),
+            0.0,
+        )
+        f = f + lam.sum(axis=1)
+        grad, curve = weighted(lam, terms)
+        g = g + grad
+        H = H + curve
+        if failed.any():
+            terms_T = effects(at_T, th)
+            log_h.append(
+                log_base(th, safe[:, None], np.zeros((N, 1)))[:, 0]
+                + log_effect(terms_T)[:, 0]
+            )
+            grads.append(sum(effect * JT[:, 0] for effect, _, JT in terms_T))
+    if failed.any():
+        stacked = np.stack(log_h)
+        top = stacked.max(axis=0)
+        share = np.exp(stacked - top[None])
+        total = share.sum(axis=0)
+        # an item with no cause: the hazard of failing at all
+        log_own = top + np.log(total)
+        g_own = sum(
+            (share[k] / total)[:, None] * grads[k] for k in range(len(thetas))
+        )
+        for k in range(len(thetas)):
+            mine = cause == k
+            log_own = np.where(mine, stacked[k], log_own)
+            g_own = np.where(mine[:, None], grads[k], g_own)
+        f = f - np.where(failed, d * log_own, 0.0)
+        g = g - np.where(failed, d, 0.0)[:, None] * g_own
+    if upper is not None:
+        rows, lo, hi = _between(t, upper)
+        if rows.any():
+            s_ages, logw = rule(lo, hi)
+            raw = followed(s_ages)
+            deltas, g_deltas = [], []
+            for th in thetas:
+                terms = effects(raw, th)
+                lam = np.where(
+                    rows[:, None],
+                    np.exp(log_base(th, s_ages, logw) + log_effect(terms)),
+                    0.0,
+                )
+                deltas.append(lam.sum(axis=1))
+                g_deltas.append(weighted(lam, terms)[0])
+            delta = np.where(rows, sum(deltas), 1.0)
+            g_delta = sum(g_deltas)
+            small = -np.expm1(-delta)
+            f = f - np.where(rows, np.log(small), 0.0)
+            g = (
+                g
+                - np.where(rows, 1.0 / np.expm1(delta), 0.0)[:, None] * g_delta
+            )
+            curve = np.where(rows, np.exp(-delta) / small**2, 0.0)
+            H = H + curve[:, None, None] * np.einsum(
+                "ni,nj->nij", g_delta, g_delta
+            )
+            for k in range(len(thetas)):
+                mine = rows & (cause == k)
+                if not mine.any():
+                    continue
+                own = np.where(mine, deltas[k], 1.0)
+                f = f - np.where(mine, np.log(own) - np.log(delta), 0.0)
+                g = g - np.where(mine, 1.0, 0.0)[:, None] * (
+                    g_deltas[k] / own[:, None] - g_delta / delta[:, None]
+                )
     return f, g, H
 
 
@@ -1018,13 +1970,15 @@ def continued_modes(
 
 
 def adaptive_nodes(
-    mode: npt.NDArray, root: npt.NDArray, points: int
+    mode: npt.NDArray, root: npt.NDArray, points: int, prune: bool = False
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """The nodes ``(N, K, q)`` of each item's adaptive grid and their log
     weights ``(N, K)``, the change of variables included: ``int f db ~
-    sum_k exp(logw_k) f(b_k)``."""
+    sum_k exp(logw_k) f(b_k)``. ``prune``: without the nodes of
+    negligible weight (:func:`gh_grid`), so ``K`` is below ``points **
+    q``; nothing downstream needs a full product."""
     q = mode.shape[1]
-    z, logw = gh_grid(q, points)
+    z, logw = gh_grid(q, points, prune)
     nodes = mode[:, None, :] + np.sqrt(2.0) * np.einsum("nij,kj->nki", root, z)
     log_det = q * 0.5 * np.log(2.0) + np.sum(
         np.log(np.diagonal(root, axis1=1, axis2=2)), axis=1
@@ -1041,11 +1995,47 @@ def adaptive_nodes(
 @dataclass
 class Model:
     """What the likelihood needs besides the parameters: the layout, the
-    path, and the marker's centre ``c`` in the hazard."""
+    path, the marker's centre ``c`` in the hazard, and how the integral
+    over the varying parameters is done (``INTEGRATIONS``)."""
 
     layout: Layout
     path: PathFunction
     centre: float
+    integration: str = "grid"
+
+    @property
+    def prune(self) -> bool:
+        return self.integration == "pruned"
+
+    @property
+    def laplace(self) -> bool:
+        return self.integration == "laplace"
+
+    def prediction_nodes(
+        self,
+        mode: npt.NDArray,
+        root: npt.NDArray,
+        theta: dict,
+        arrays: JointArrays,
+        t: npt.NDArray,
+    ) -> Any:
+        """The nodes of a prediction's integrals, of items still running
+        at the ages ``t`` with their readings (their ``mode`` and
+        ``root`` at ``theta``, :func:`continued_modes`'): the adaptive
+        grid (``GH_PREDICT`` points a dimension, pruned as the fit's
+        were) wherever there is one, a Laplace fit's too (one item's
+        grid is cheap, and exact for an item with few readings or
+        none); beyond ``MAX_VARYING`` varying parameters, Laplace's
+        stencil (:mod:`._laplace`)."""
+        if self.layout.q in GH_PREDICT:
+            return adaptive_nodes(
+                mode, root, GH_PREDICT[self.layout.q], self.prune
+            )
+        from ._laplace import laplace_nodes
+
+        return laplace_nodes(
+            theta, self, arrays, mode, root, t, np.zeros(len(t))
+        )
 
 
 def log_integrals(
@@ -1061,7 +2051,15 @@ def log_integrals(
     """``log int p(y | theta)^readings h(t | theta)^d S(t | theta)
     phi(theta_V) d theta_V`` of each item, by the fixed nodes ``(b,
     logw)``; with ``upper``, a row with a finite one has ``S(t) -
-    S(upper)`` (it failed in ``(t, upper]``) in place of ``S(t)``."""
+    S(upper)`` (it failed in ``(t, upper]``) in place of ``S(t)``. Nodes
+    that are a Laplace stencil give Laplace's approximation
+    (:func:`._laplace.log_integrals`)."""
+    if not isinstance(nodes, tuple):
+        from . import _laplace
+
+        return _laplace.log_integrals(
+            theta, model, arrays, nodes, t, d, readings, upper
+        )
     return logsumexp(
         log_integrand(theta, model, arrays, nodes, t, d, readings, upper),
         axis=1,
@@ -1082,18 +2080,30 @@ def log_integrand(
     the integrand at each node plus the node's log weight."""
     b, logw = nodes
     layout, path, c = model.layout, model.path, model.centre
+    cumhaz, event, fails_between = lifetime_functions(layout)
     params = _path_params(theta, layout, arrays.Z, b)
     log_g = log_prior(theta, layout, arrays.Z, b) + logw
     if readings:
         log_g = log_g + log_readings(theta, path, params, arrays)
-    H = anp.exp(log_cumhaz(theta, path, params, arrays, t, c))
+    if layout.n_causes > 1:
+        thetas = cause_thetas(theta, layout)
+        for th in thetas:
+            log_g = log_g - anp.exp(cumhaz(th, path, params, arrays, t, c))
+        if np.any(d > 0):
+            log_g = log_g + d[:, None] * log_event_of(
+                thetas, path, params, arrays, c
+            )
+        if upper is not None and np.any(np.isfinite(upper)):
+            log_g = log_g + log_cause_fails_between(
+                thetas, path, params, arrays, t, upper, c
+            )
+        return log_g
+    H = anp.exp(cumhaz(theta, path, params, arrays, t, c))
     log_g = log_g - H
     if np.any(d > 0):
-        log_g = log_g + d[:, None] * log_event(theta, path, params, arrays, c)
+        log_g = log_g + d[:, None] * event(theta, path, params, arrays, c)
     if upper is not None and np.any(np.isfinite(upper)):
-        log_g = log_g + log_fails_between(
-            theta, path, params, arrays, t, upper, c
-        )
+        log_g = log_g + fails_between(theta, path, params, arrays, t, upper, c)
     return log_g
 
 
@@ -1117,12 +2127,32 @@ def place(
         start=lik_start,
         upper=arrays.U,
     )
-    nodes = adaptive_nodes(mode, root, GH_FIT)
+    if model.laplace:
+        if arrays.truncated.any():
+            raise ValueError(
+                "Laplace's approximation does not take truncated items "
+                "(the fit refuses them): use integration='grid'."
+            )
+        from ._laplace import laplace_nodes
+
+        stencils = laplace_nodes(
+            theta,
+            model,
+            arrays,
+            mode,
+            root,
+            arrays.T,
+            arrays.d,
+            True,
+            arrays.U,
+        )
+        return (stencils, None), (mode, None)
+    nodes = adaptive_nodes(mode, root, GH_FIT, model.prune)
     entry = None
     entered = arrays.truncated
     e_mode = None
     if entered.any():
-        sub = arrays.take(entered)
+        sub = arrays.take(entered).of_any_cause()
         e_mode, e_root = modes(
             theta,
             model.layout,
@@ -1135,7 +2165,7 @@ def place(
             start=entry_start,
             upper=sub.Rt,
         )
-        entry = adaptive_nodes(e_mode, e_root, GH_FIT)
+        entry = adaptive_nodes(e_mode, e_root, GH_FIT, model.prune)
     return (nodes, entry), (mode, e_mode)
 
 
@@ -1158,7 +2188,7 @@ def neg_ll(u: Any, model: Model, arrays: JointArrays, placed: tuple) -> Any:
     )
     entered = arrays.truncated
     if entry is not None:
-        sub = arrays.take(entered)
+        sub = arrays.take(entered).of_any_cause()
         ll = ll - anp.sum(
             sub.w
             * log_integrals(

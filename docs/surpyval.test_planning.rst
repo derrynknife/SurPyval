@@ -18,6 +18,8 @@ Demonstration tests
 
 .. autofunction:: surpyval.test_planning.demonstration_test_multiple
 
+.. autofunction:: surpyval.test_planning.demonstration_test_time
+
 .. autofunction:: surpyval.test_planning.demonstration_pass_probability
 
 .. autofunction:: surpyval.test_planning.mtbf_test_time
@@ -69,63 +71,34 @@ Accelerated life tests
 .. autoclass:: surpyval.test_planning.AcceleratedTestPlan
    :members: simulate, to_dict
 
-Comparing two groups
---------------------
+Power and sample size
+---------------------
 
-.. autofunction:: surpyval.test_planning.logrank_events
+One function per design: give every quantity but one, and the one left
+``None`` is solved for. A log-rank test of a hazard ratio, a Cox model's
+coefficient, non-inferiority and equivalence of a hazard ratio, a
+difference in restricted mean survival time, a log-rank test when some
+units are cured, and the exact test of a change in a failure rate at an
+intervention (:func:`surpyval.recurrent.intervention_test`).
 
-.. autofunction:: surpyval.test_planning.logrank_sample_size
+.. autofunction:: surpyval.test_planning.logrank_design
 
-.. autofunction:: surpyval.test_planning.logrank_power
+.. autofunction:: surpyval.test_planning.cox_design
 
-Comparing two failure rates
----------------------------
+.. autofunction:: surpyval.test_planning.noninferiority_design
 
-The power of the exact test of a change in a failure rate at an
-intervention, :func:`surpyval.recurrent.intervention_test`.
+.. autofunction:: surpyval.test_planning.equivalence_design
 
-.. autofunction:: surpyval.test_planning.rate_ratio_power
+.. autofunction:: surpyval.test_planning.rmst_design
 
-.. autofunction:: surpyval.test_planning.rate_ratio_detectable
+.. autofunction:: surpyval.test_planning.cure_logrank_design
 
-.. autofunction:: surpyval.test_planning.rate_ratio_exposure
+.. autofunction:: surpyval.test_planning.rate_ratio_design
 
-Beyond the plain log-rank calculation
--------------------------------------
+.. autofunction:: surpyval.test_planning.mean_ratio_design
 
-A Cox model's coefficient, non-inferiority and equivalence of a hazard
-ratio, a difference in restricted mean survival time, and a log-rank test
-when some units are cured.
-
-.. autofunction:: surpyval.test_planning.cox_events
-
-.. autofunction:: surpyval.test_planning.cox_sample_size
-
-.. autofunction:: surpyval.test_planning.cox_power
-
-.. autofunction:: surpyval.test_planning.cox_detectable
-
-.. autofunction:: surpyval.test_planning.noninferiority_events
-
-.. autofunction:: surpyval.test_planning.noninferiority_sample_size
-
-.. autofunction:: surpyval.test_planning.noninferiority_power
-
-.. autofunction:: surpyval.test_planning.equivalence_events
-
-.. autofunction:: surpyval.test_planning.equivalence_sample_size
-
-.. autofunction:: surpyval.test_planning.equivalence_power
-
-.. autofunction:: surpyval.test_planning.rmst_sample_size
-
-.. autofunction:: surpyval.test_planning.rmst_power
-
-.. autofunction:: surpyval.test_planning.cure_logrank_sample_size
-
-.. autofunction:: surpyval.test_planning.cure_logrank_events
-
-.. autofunction:: surpyval.test_planning.cure_logrank_power
+.. autoclass:: surpyval.test_planning.PowerCalculation
+   :members: to_dict
 
 Group-sequential designs
 ------------------------

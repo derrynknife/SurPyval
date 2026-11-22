@@ -29,7 +29,8 @@ import math
 
 import numpy as np
 
-from surpyval.metrics import auc_td, brier_score
+from surpyval import SurpyvalData
+from surpyval.metrics import auc_td, brier_score, dynamic_auc, dynamic_brier
 from surpyval.tests.calibration._montecarlo import Z_TOL
 
 LEVELS = np.array([0.0, 1.0, 2.0])
@@ -96,3 +97,89 @@ def test_brier_and_auc_unbiased_with_ties():
     print(f"events tied with a censoring: {ties:.0%}")
     _check_mean(bs, bs_true, "Brier score", 0.002)
     _check_mean(auc, auc_true, "AUC", 0.003)
+
+
+# -- The dynamic AUC and Brier score, at an age over a window ---------------
+#
+# Units of three kinds (z = 0, 1, 2) fail at a Weibull hazard (shape 2,
+# scale 3 exp(-0.4 z)); independent exponential censoring (rate 0.2, all
+# followed to 6 at most) censors about 30% of them. The predictor is the
+# true one: a unit of kind z running at s fails by s + w with probability
+# pi_z = 1 - S_z(s + w) / S_z(s). The units running at s are of kind z in
+# the proportions q_z proportional to p_z S_z(s) (censoring does not depend
+# on z), so
+# the true values are the closed forms above with q_z and pi_z in place of
+# p_z and F_z. 200 data sets of 300 units; the tolerance is that of the
+# study above.
+
+DYN_ALPHA = 3.0 * np.exp(-0.4 * LEVELS)
+DYN_AT = np.array([1.0, 2.0])
+DYN_WINDOW = 1.5
+
+
+class _TrueWeibull:
+    """The true survival of each unit's kind (its one covariate)."""
+
+    def sf(self, x, Z):
+        z = np.asarray(Z, dtype=float)[:, 0].astype(int)
+        return np.exp(-((np.asarray(x, dtype=float) / DYN_ALPHA[z]) ** 2))
+
+
+def _dynamic_true_values():
+    def S(t):
+        return np.exp(-((t / DYN_ALPHA) ** 2))
+
+    bs = np.empty(DYN_AT.size)
+    auc = np.empty(DYN_AT.size)
+    p = np.full(LEVELS.size, 1 / LEVELS.size)
+    for k, s in enumerate(DYN_AT):
+        q = p * S(s) / np.sum(p * S(s))
+        pi = 1 - S(s + DYN_WINDOW) / S(s)
+        bs[k] = np.sum(q * pi * (1 - pi))
+        num = 0.0
+        for a in range(LEVELS.size):
+            for b in range(LEVELS.size):
+                win = float(pi[a] > pi[b]) + 0.5 * float(pi[a] == pi[b])
+                num += q[a] * pi[a] * q[b] * (1 - pi[b]) * win
+        auc[k] = num / (np.sum(q * pi) * np.sum(q * (1 - pi)))
+    return bs, auc
+
+
+def _check_dynamic(estimates, truth, label, slack):
+    est = np.asarray(estimates)
+    mean = est.mean(axis=0)
+    se = est.std(axis=0, ddof=1) / math.sqrt(est.shape[0])
+    bad = []
+    for k, s in enumerate(DYN_AT):
+        tol = Z_TOL * se[k] + slack
+        line = (
+            "{} at s={:g}, w={:g}: mean {:.4f} (true {:.4f}, tolerance +/- "
+            "{:.4f})".format(label, s, DYN_WINDOW, mean[k], truth[k], tol)
+        )
+        print(line)
+        if abs(mean[k] - truth[k]) > tol:
+            bad.append(line)
+    assert not bad, "\n".join(bad)
+
+
+def test_dynamic_brier_and_auc_unbiased_with_censoring():
+    rng = np.random.default_rng(2026)
+    bs_true, auc_true = _dynamic_true_values()
+    reps = 200
+    bs = np.empty((reps, DYN_AT.size))
+    auc = np.empty((reps, DYN_AT.size))
+    censored = 0.0
+    model = _TrueWeibull()
+    for r in range(reps):
+        z = rng.integers(0, LEVELS.size, N)
+        t = DYN_ALPHA[z] * rng.weibull(2.0, N)
+        cens = np.minimum(rng.exponential(1 / 0.2, N), 6.0)
+        x = np.minimum(t, cens)
+        c = (cens < t).astype(int)
+        censored += c.mean() / reps
+        data = SurpyvalData(x=x, c=c, Z=z[:, None].astype(float))
+        bs[r] = dynamic_brier(model, data, DYN_AT, DYN_WINDOW).estimate()
+        auc[r] = dynamic_auc(model, data, DYN_AT, DYN_WINDOW).estimate()
+    print(f"censored: {censored:.0%}")
+    _check_dynamic(bs, bs_true, "dynamic Brier score", 0.002)
+    _check_dynamic(auc, auc_true, "dynamic AUC", 0.003)

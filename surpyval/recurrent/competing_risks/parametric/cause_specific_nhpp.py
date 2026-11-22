@@ -46,7 +46,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -434,9 +434,11 @@ class CauseSpecificNHPP(SerialisableMixin):
             end = float(x_upper.max())
         return entry, end
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @classmethod
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         cls,
         data: Any,
         dist: Any = CrowAMSAA,
@@ -498,7 +500,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         for cause in out.event_types:
             cx, ci, cc, ctl = cause_rows(data, cause, windows)
             cause_data = handle_xicn(cx, ci, cc, tl=ctl)
-            out.models[cause] = dist.fit_from_recurrent_data(
+            out.models[cause] = dist._fit_from_recurrent_data(
                 cause_data, how=how, init=init
             )
         return out
@@ -576,7 +578,9 @@ class CauseSpecificNHPP(SerialisableMixin):
                 "intensity model."
             )
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, e=e)
-        return cls.fit_from_recurrent_data(data, dist=dist, how=how, init=init)
+        return cls._fit_from_recurrent_data(
+            data, dist=dist, how=how, init=init
+        )
 
     @classmethod
     @ambiguous_item_ids(

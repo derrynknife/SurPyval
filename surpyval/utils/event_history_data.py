@@ -1709,6 +1709,34 @@ class EventHistoryData(ReshapeMixin):
 
         return cls.from_dict(load(source))
 
+    def equals(self, other: Any, rtol: float = 1e-9) -> bool:
+        """
+        Whether ``other`` is the same data: an ``EventHistoryData`` with
+        the same rows (``x``, ``i``, ``c``, ``n``, ``tl``, ``tr``, event
+        types, covariates and their names), attributes, time-varying
+        covariates, states, observation windows and unit. Numbers are
+        compared to the relative tolerance ``rtol``; ``data == other`` is
+        the same with ``rtol=0``.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> a = EventHistoryData.from_histories(observed={"A": [5, 9]})
+        >>> a == EventHistoryData.from_histories(observed={"A": [5, 9]})
+        True
+        """
+        from surpyval.utils.data_ops import HISTORY_FIELDS, same_data
+
+        return same_data(self, other, HISTORY_FIELDS, rtol)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, EventHistoryData):
+            return NotImplemented
+        return self.equals(other, rtol=0)
+
+    # Equal by contents: not hashable
+    __hash__ = None  # type: ignore[assignment]
+
     def __iter__(self) -> Any:
         # A stateless iterator: the old hand-rolled _index version broke
         # nested iteration over the same object.
@@ -2155,7 +2183,7 @@ def _refuse_what_fit_cannot_take(
 
 
 def refuses_unmodelled_data(method: F) -> F:
-    """Refuse, in a ``fit_from_recurrent_data``, data that holds what the
+    """Refuse, in a ``_fit_from_recurrent_data``, data that holds what the
     fitter's ``fit`` has no argument for -- covariates (``Z``), event
     types (``e``) -- or what no model uses yet (time-varying covariates,
     #905; states, #887), as ``fit(data)`` does (#959): fitting it as if

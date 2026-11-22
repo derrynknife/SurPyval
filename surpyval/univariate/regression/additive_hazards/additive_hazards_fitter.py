@@ -82,7 +82,6 @@ from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
-    MirroredDistributionAttrs,
     _gradient,
     assemble_regression_model,
     free_baseline,
@@ -90,15 +89,14 @@ from .._fit_skeleton import (
     judge_search,
     keep_information,
     make_objective,
-    mirror_distribution,
     prepare_regression_fit,
     say_verdict,
     uniform_draws,
 )
-from .._likelihood import regression_neg_ll
+from .._regression_fitter import RegressionFitter
 from ..kinds import ADDITIVE_HAZARD
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin, truncation_window
+from ..regression_data import truncation_window
 from ..tvc_fit import TVCFitMixin
 
 
@@ -132,10 +130,9 @@ class _BudgetedGradient(Gradient):
 
 
 class AdditiveHazardsFitter(
-    MirroredDistributionAttrs,
     HazardIdentitiesMixin,
     TVCFitMixin,
-    DataFrameRegressionMixin,
+    RegressionFitter,
 ):
     """
     Parametric additive hazards fitter: the covariates add a constant
@@ -162,9 +159,7 @@ class AdditiveHazardsFitter(
 
     def __init__(self, name: str, dist: Any) -> None:
         self.name = name
-        mirror_distribution(self, dist)
-        self.Hf_dist = dist.Hf
-        self.hf_dist = dist.hf
+        self._take_distribution(dist)
 
     # -- covariate-aware distribution functions (x, Z, *params) -----------
 
@@ -205,7 +200,7 @@ class AdditiveHazardsFitter(
         return y
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        value = regression_neg_ll(self, data, *params)
+        value = super().neg_ll(data, *params)
         # Every observed point must lie inside the model's support, where
         # it is a distribution: H(x | Z) >= 0 and h(x | Z) >= 0 (#828).
         # Nothing else keeps it there. The likelihood rises without limit
@@ -506,7 +501,7 @@ class AdditiveHazardsFitter(
             "the hazard positive by construction.".format(
                 x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
             ),
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
         return True
 

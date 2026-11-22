@@ -362,6 +362,64 @@ def turnbull_pieces(
     return bounds, lo, hi, w_lo, keep, verdict
 
 
+def windowed_pieces(
+    xl: npt.NDArray,
+    xr: npt.NDArray,
+    tl: npt.NDArray,
+    tr: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The Turnbull pieces of rows ``(xl, xr]`` (``xl == xr`` exact, ``xr
+    = inf`` right censored, ``xl = -inf`` left censored) with windows
+    ``(tl, tr]`` (``-inf`` / ``inf`` for none), for the estimates that
+    take right truncation too (``CoxPH``'s full-likelihood route).
+
+    Returns ``(bounds, lo, hi, w_lo, w_hi)``: the sorted bounds (piece
+    ``j`` is ``(bounds[j], bounds[j + 1]]``; each exact time in twice),
+    each row's support ``[lo, hi]`` cut down to its window, and its window
+    ``[w_lo, w_hi]``, as piece indices.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric.turnbull import (
+    ...     windowed_pieces,
+    ... )
+    >>> xl, xr = np.array([1.0, 2.0]), np.array([3.0, 2.0])
+    >>> tl, tr = np.array([0.5, -np.inf]), np.array([4.0, np.inf])
+    >>> bounds, lo, hi, w_lo, w_hi = windowed_pieces(xl, xr, tl, tr)
+    >>> bounds[lo].tolist(), bounds[hi + 1].tolist()
+    ([1.0, 2.0], [3.0, 2.0])
+    """
+    c = np.where(xl == xr, 0, 2)
+    ends = np.concatenate([xl, xr, tl, tr, [-np.inf, np.inf]])
+    exact_times = np.unique(xl[c == 0])
+    bounds = np.sort(np.concatenate([np.unique(ends), exact_times]))
+    M = bounds.size
+    lo, hi, _, _, _ = _censoring_supports(bounds, xl, xr, exact_times)
+    w_lo = np.zeros(xl.size, dtype=np.int64)
+    w_hi = np.full(xl.size, M - 1, dtype=np.int64)
+    if np.isfinite(tl).any() or np.isfinite(tr).any():
+        w_lo, w_hi = _truncation_windows(bounds, tl, tr, exact_times)
+        lo, hi = _intersect_windows(lo, hi, w_lo, w_hi)
+    return bounds, lo, hi, w_lo, w_hi
+
+
+def piece_coverage(lo: npt.NDArray, hi: npt.NDArray, M: int) -> npt.NDArray:
+    """How many of the index ranges ``[lo, hi]`` contain each of ``M``
+    pieces.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric.turnbull import (
+    ...     piece_coverage,
+    ... )
+    >>> piece_coverage(np.array([0, 1]), np.array([1, 2]), 4).tolist()
+    [1.0, 2.0, 1.0, 0.0]
+    """
+    return _coverage(lo, hi, M)
+
+
 def _initial_mass(
     lo: npt.NDArray,
     hi: npt.NDArray,
@@ -1019,7 +1077,7 @@ def turnbull(
     Examples
     --------
     >>> from surpyval.utils.data_formats import xcnt_handler
-    >>> from surpyval.univariate.nonparametric import turnbull
+    >>> from surpyval.univariate.nonparametric.turnbull import turnbull
     >>> x, c, n, t = xcnt_handler(xl=[1, 2, 3, 1, 9], xr=[5, 3, 6, 8, 10])
     >>> out = turnbull(x, c, n, t)
     >>> out["x"]

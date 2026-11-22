@@ -24,7 +24,7 @@ from surpyval.bayes.engines.grid import (
 )
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.prior import BoundPriors, PriorSpec, quantity_at
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 from surpyval.utils.warnings import ignoring_warnings
 
 METHODS = ("auto", "grid", "conjugate", "laplace")
@@ -72,11 +72,17 @@ def _check_dist(dist: Any, method: str) -> None:
             "discrete. log_likelihood_fn and posterior draws from another "
             "sampler are the way to a Bayesian fit of it for now."
         )
-    if dist.name in ("ExactEventTime", "Hypoexponential"):
+    if dist.name == "ExactEventTime":
         raise ValueError(
-            f"fit_bayes does not take {dist.name}: it is given its "
-            "parameters (a point mass, or a chain of given rates), not "
-            "fitted."
+            "fit_bayes does not take ExactEventTime: it is given its "
+            "parameters (a point mass), not fitted."
+        )
+    if dist.name == "Hypoexponential":
+        raise ValueError(
+            "fit_bayes does not take Hypoexponential: its parameters are "
+            "one rate per stage, and fit_bayes has no argument for the "
+            "number of stages. Fit it by maximum likelihood, "
+            "Hypoexponential.fit(x, stages=m)."
         )
     if dist.name in _MOVING_SUPPORT:
         raise ValueError(
@@ -122,6 +128,7 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
         refuse_weighted_data,
     )
 
+    x = notation_as_data(x)
     if isinstance(x, SurpyvalData):
         given = [k for k, v in arrays.items() if v is not None]
         if given:
@@ -254,7 +261,7 @@ def _mle_start(
     try:
         with ignoring_warnings(), quiet_maximum_warnings():
             with np.errstate(all="ignore"):
-                return dist.fit_from_surpyval_data(
+                return dist._fit_from_surpyval_data(
                     data,
                     offset=offset,
                     lfp=lfp,

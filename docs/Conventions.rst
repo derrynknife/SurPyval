@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. Every fitter's ``fit`` accepts a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``, ``CrowAMSAA.fit(data)``; ``fit_from_surpyval_data`` does the same for the univariate and regression models), refusing what the model cannot take (see :doc:`Data Model`), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. Every fitter's ``fit`` accepts a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``, ``CrowAMSAA.fit(data)``; the two-clock fits, ``WeibullEquivalence`` and the others, take arrays, whose rows must line up with the second clock's ``x2``, as the relative survival fits, ``RelativeSurvival`` and ``ExcessHazard``, take arrays whose rows line up with each unit's ``age``, ``year`` and ``stratum``), refusing what the model cannot take (see :doc:`Data Model`), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
 
 .. jupyter-execute::
     :hide-code:
@@ -508,6 +508,63 @@ converted.
     assert model.unit == "hrs"
     assert surv.from_dict(model.to_dict()).unit == "hrs"
 
+Rescaling a model's time
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A label is not converted, but a model's time can be:
+``model.rescale_time(factor)`` is the model whose survival function is
+:math:`R(\text{factor}\,t)`, the same life on another clock. A pump that
+runs a quarter of the time ages a quarter of an hour in each hour of the
+calendar, so its life on the calendar is ``rescale_time(0.25)`` of its
+life in operating hours; a life fitted in hours is, in days,
+``rescale_time(24, unit="days")``. Without ``unit`` the model keeps its
+label, which is right for a duty cycle (calendar hours are still hours).
+
+.. jupyter-execute::
+
+    x = [410, 620, 790, 950, 1100, 1300, 1550, 1900]
+    pump = surv.Weibull.fit(x, unit="hours")      # operating hours
+    calendar = pump.rescale_time(0.25)             # runs 25% of the time
+    print(calendar.params, calendar.unit)
+    print(calendar.sf(4000), pump.sf(1000))
+
+The rescaled model is the fit to the data in the new unit (principle 6 of
+:doc:`Design Principles`), found without refitting. Each parameter moves
+by its role: a time (a scale, a location, an end of the support, the offset
+``gamma``) is divided by ``factor``, a rate multiplied by it, the log of a
+time (the LogNormal's ``mu``) less ``log(factor)``, and a shape, ``lfp_p``
+and ``f0`` kept. The covariance follows by the delta method, exactly, so a
+shape's standard error is unchanged and a time's divided by ``factor``;
+the data move to the new unit with it, so every bound -- Wald,
+likelihood-ratio, bootstrap, pivotal -- is the refit's; and the
+log-likelihood rises by ``log(factor)`` for each exact observation, a
+density per unit of time (every other contribution is a probability). A
+model without its data (built from parameters, or restored from a dict
+saved without it) keeps its Wald bounds, but its ``neg_ll``, ``aic`` and
+``bic`` refuse, as moving them needs the count of exact observations.
+
+``MixtureModel`` moves each component and keeps the weights; the point
+masses ``NeverOccurs`` and ``InstantlyOccurs`` are the same on every
+clock. Three kinds of distribution refuse, saying what to do: a
+distribution of counts (a count has no unit of time), the ``Beta``, whose
+support (0, 1) becomes (0, 1 / factor) (the ``Beta4`` with ends 0 and
+``1 / factor`` is that model), and a ``CustomDistribution``, which does
+not say which of its parameters are times (define it on the new clock).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import numpy as _np
+
+    assert calendar.unit == "hours"
+    _np.testing.assert_allclose(calendar.params, pump.params * [4, 1])
+    assert abs(calendar.sf(4000) - pump.sf(1000)) < 1e-14
+    _days = pump.rescale_time(24, unit="days")
+    _np.testing.assert_allclose(
+        _days.standard_errors(), pump.standard_errors() * [1 / 24, 1]
+    )
+
 Plots
 ~~~~~
 
@@ -567,7 +624,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A model fitted with sampling weights is stamped 3 and a stratified Cox model 4, which older releases refuse rather than misread (one as unweighted, the other as its first stratum's baseline); so is a ``ParametricCompetingRisks`` fitted to left- or interval-censored rows (schema 4), whose covariance between causes SurPyval 0.26 would drop, and data with states, a ``SurpyvalData`` with ``s`` (schema 4), whose states it would drop. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
+Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A model fitted with sampling weights is stamped 3 and a stratified Cox model 4, which older releases refuse rather than misread (one as unweighted, the other as its first stratum's baseline); so is a ``ParametricCompetingRisks`` fitted to left- or interval-censored rows (schema 4), whose covariance between causes SurPyval 0.26 would drop, and data with states, a ``SurpyvalData`` with ``s`` (schema 4), whose states it would drop; and a joint model with the accelerated survival part, ``JointAFT`` (schema 5), which SurPyval 0.28 would read as a proportional hazards one, and a joint model with failure modes (``"causes"``, schema 5), whose first mode's parameters it would take as the model's. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
 A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 

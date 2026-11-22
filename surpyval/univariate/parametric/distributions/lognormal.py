@@ -5,6 +5,7 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import brentq
+from scipy.special import ndtri
 
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.fitters.closed_form import (
@@ -73,6 +74,10 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         # The same for both names of the distribution (``Galton``
         # is another name for ``LogNormal``).
         return "LogNormal"
+
+    # How the parameters move with the time (rescale_time): mu is the log of a
+    # time; sigma has no unit.
+    _time_roles = ("log_time", "shape")
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -360,6 +365,25 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         array([0.11928899, 0.69316658, 2.46550819, 7.29078766])
         """
         return np.exp(norm.ppf(u, mu, sigma))
+
+    def isf(self, s: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""The inverse survival function: the time at which the survival
+        function is ``s``.
+
+        .. math::
+            t(s) = \exp\left(\mu - \sigma \Phi^{-1}(s)\right)
+
+        Examples
+        --------
+        >>> from surpyval import LogNormal
+        >>> LogNormal.isf([0.5, 1e-300], 2, 0.5)
+        array([7.38905610e+00, 8.18961924e+08])
+        """
+        s = np.asarray(s, dtype=float)
+        with np.errstate(divide="ignore"):
+            z = np.where(s <= 0.5, -ndtri(s), ndtri(1.0 - s))
+        with np.errstate(over="ignore"):
+            return np.exp(mu + sigma * z)
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

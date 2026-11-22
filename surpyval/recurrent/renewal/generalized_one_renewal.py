@@ -22,7 +22,12 @@ from surpyval.recurrent.renewal.renewal_model import (
     conditional_gaps,
     event_positions,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import (
+    REMOVED_IN,
+    RenamedAttribute,
+    ambiguous_item_ids,
+    fit_entry,
+)
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -173,7 +178,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
         distribution; used by the Cramer-von Mises bootstrap."""
-        return self.fit_from_recurrent_data(data, dist=model.model.dist)
+        return self._fit_from_recurrent_data(data, dist=model.model.dist)
 
     def create_negll_func(
         self,
@@ -299,8 +304,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 "LogNormal).".format(dist.name, dist.support)
             )
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any = Weibull,
@@ -343,7 +350,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         >>>
         >>> rec_data = handle_xicn(x, i, c)
         >>>
-        >>> model = GeneralizedOneRenewal.fit_from_recurrent_data(rec_data)
+        >>> model = GeneralizedOneRenewal.fit(rec_data)
         >>> model
         G1 Renewal SurPyval Model
         =========================
@@ -548,9 +555,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
               tests, q = 0: p = 0.0148)
         """
         data = handle_xicn(x, i, c, n, tl=tl)
-        return self.fit_from_recurrent_data(data, dist=dist, init=init)
+        return self._fit_from_recurrent_data(data, dist=dist, init=init)
 
-    def fit_from_parameters(
+    #: The old name of :meth:`from_params` (deprecated in v0.29).
+    fit_from_parameters = RenamedAttribute(
+        "from_params", REMOVED_IN, FutureWarning
+    )
+
+    def from_params(
         self, params: ArrayLike, q: float, dist: Any = Weibull
     ) -> RenewalModel:
         """
@@ -578,7 +590,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         >>> from surpyval import Weibull
         >>> from surpyval.recurrent import GeneralizedOneRenewal
         >>>
-        >>> model = GeneralizedOneRenewal.fit_from_parameters(
+        >>> model = GeneralizedOneRenewal.from_params(
         ...     [10, 2],
         ...     0.2,
         ...     dist=Weibull

@@ -56,6 +56,7 @@ from surpyval.univariate.regression.regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+from surpyval.utils._value_method import value_method
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import (
@@ -183,6 +184,10 @@ class CompetingRisksProportionalHazards(
     #: them. ``None`` on a model restored with ``from_dict``, which does
     #: not store them (only their coefficients and baselines).
     models: dict | None = None
+    #: How the coefficients were estimated: each cause's partial
+    #: likelihood (``CoxPH``'s full-likelihood route, for interval data
+    #: or right truncation, returns a ``CoxNPMLEModel`` instead).
+    estimator: str = "partial likelihood"
     #: Each cause's coefficients' covariance, in ``event_idx_map`` order
     #: (``None`` for a Cox model restored from a dict saved before they
     #: were stored).
@@ -408,6 +413,7 @@ class CompetingRisksProportionalHazards(
             for name in names
         ]
 
+    @value_method
     def covariance(self) -> npt.NDArray:
         """
         The covariance of ``params``: block-diagonal across the causes,
@@ -439,6 +445,7 @@ class CompetingRisksProportionalHazards(
             )
         return block_diag(*[np.atleast_2d(c) for c in self._covariances])
 
+    @value_method
     def standard_errors(self) -> npt.NDArray:
         """The standard errors of ``params``, the square roots of the
         diagonal of :meth:`covariance` (``nan`` for an aliased
@@ -615,6 +622,7 @@ class CompetingRisksProportionalHazards(
         """
         return np.exp(self._log_phi_e(Z, self._cause_index(event)))
 
+    @value_method
     def phi(self, Z: Any) -> npt.NDArray:
         """The multiplier of the summed coefficients (the deprecated
         ``beta``) at ``Z`` (kept for backward compatibility; no prediction
@@ -1032,7 +1040,8 @@ class CompetingRisksProportionalHazards(
         no covariance, standard errors, bounds or p-values (they raise an
         error that says why; ``summary()`` shows them as ``nan``), and its
         ``aic`` and ``bic`` count the causes' effective degrees of freedom.
-        The Fine-Gray model has no penalised fit.
+        The Fine-Gray model's penalised fit is ``FineGray.fit_penalised``,
+        one cause at a time.
 
         Parameters
         ----------

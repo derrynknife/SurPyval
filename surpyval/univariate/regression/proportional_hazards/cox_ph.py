@@ -826,9 +826,27 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
         time_interaction: dict | None = None,
-    ) -> SemiParametricRegressionModel:
+        tr: npt.ArrayLike | None = None,
+        e: npt.ArrayLike | None = None,
+        masked: str = "refuse",
+    ) -> Any:
         """
         Fits Cox Proportional Hazards model to the provided data.
+
+        Every kind of row is taken. Exact and right-censored rows, with
+        or without left truncation, are fitted by Cox's partial
+        likelihood, as always. A left-censored (``c = -1``) or
+        interval-censored (``c = 2``) row, or a right-truncation time
+        ``tr``, cannot enter the partial likelihood, so such data are
+        fitted by the full likelihood with a non-parametric
+        (NPMLE) baseline on the Turnbull intervals, returning a
+        :class:`~surpyval.univariate.regression.proportional_hazards.cox_npmle.CoxNPMLEModel`.
+        Every model says which was used in ``estimator``
+        (``"partial likelihood"`` or ``"NPMLE"``). With causes
+        ``e`` the model is the cause-specific one: each cause has its
+        own coefficients, by the partial likelihood (a
+        ``CompetingRisksProportionalHazards``, one Cox fit per cause)
+        or by the full likelihood (one joint fit of every cause).
 
         Parameters
         ----------
@@ -933,6 +951,26 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             covariates are not all 0, so it grows as rows times events.
             Default ``None``, proportional hazards.
 
+        tr: array-like, optional
+            Right-truncation times: a row is in the data only because its
+            event (of any cause) came by ``tr``, and its likelihood is
+            divided by the probability of that. Takes the full-likelihood
+            route. Where every row is right truncated, the data say
+            nothing after the largest ``tr``: the curves are those of
+            units known to fail by then, ``nan`` after it, with a
+            warning.
+        e: array-like, optional
+            The cause of each failure, for competing risks; ``None`` (or
+            ``NaN``) for a right-censored row. Each cause gets its own
+            coefficients, which multiply its own hazard; ``cif(x, Z,
+            event)`` gives a cause's cumulative incidence.
+        masked: str, optional
+            For the full-likelihood route with causes, a failure with no
+            cause in ``e``: ``"refuse"`` (the default) or ``"include"``
+            (counted as a failure from some cause in its window; assumes
+            whether a cause was recorded does not depend on which cause
+            it was).
+
         Returns
         -------
 
@@ -971,6 +1009,39 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> model.sf([20, 52], [1, 25, 3]).round(4)
         array([0.9326, 0.7963])
         """
+        from .cox_npmle import needs_full_likelihood
+
+        if needs_full_likelihood(x, c, tr, masked):
+            return self._fit_full_likelihood(
+                x,
+                Z,
+                c,
+                n,
+                tl,
+                tr,
+                e,
+                masked,
+                tol,
+                strata,
+                center,
+                w,
+                time_interaction,
+            )
+        if e is not None:
+            return self._fit_cause_specific(
+                x,
+                Z,
+                e,
+                c,
+                n,
+                tl,
+                tie_method,
+                tol,
+                strata,
+                center,
+                w,
+                time_interaction,
+            )
         if time_interaction is not None:
             from .time_interaction import fit_time_interaction
 
@@ -1090,6 +1161,93 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model.H0 = model.h0.cumsum()
 
         return model
+
+    @staticmethod
+    def _fit_full_likelihood(
+        x: Any,
+        Z: Any,
+        c: Any,
+        n: Any,
+        tl: Any,
+        tr: Any,
+        e: Any,
+        masked: str,
+        tol: float,
+        strata: Any,
+        center: bool,
+        w: Any,
+        time_interaction: Any,
+    ) -> Any:
+        """The full-likelihood route (``cox_npmle``): left- or
+        interval-censored rows, or right truncation."""
+        from .cox_npmle import fit_npmle, parse
+
+        for name, value, instead in (
+            ("strata", strata, "put the stratum in Z"),
+            ("w", w, "weights are not built for this route"),
+            (
+                "time_interaction",
+                time_interaction,
+                "fit a parametric model (e.g. WeibullPH) with the "
+                "interaction as a covariate",
+            ),
+        ):
+            if value is not None:
+                raise ValueError(
+                    f"CoxPH takes {name!r} with exact and right-censored "
+                    "data only (the partial likelihood); with left- or "
+                    "interval-censored rows or right truncation the fit is "
+                    f"by the full likelihood, which has no {name!r}: "
+                    f"{instead}."
+                )
+        rows, causes, single = parse(x, Z, c, n, tl, tr, e, masked)
+        return fit_npmle(rows, causes, single, tol=tol, center=center)
+
+    @staticmethod
+    def _fit_cause_specific(
+        x: Any,
+        Z: Any,
+        e: Any,
+        c: Any,
+        n: Any,
+        tl: Any,
+        tie_method: str,
+        tol: float,
+        strata: Any,
+        center: bool,
+        w: Any,
+        time_interaction: Any,
+    ) -> Any:
+        """Exact and right-censored data with causes: the cause-specific
+        Cox model by the partial likelihood, one fit per cause
+        (``CompetingRisksProportionalHazards(model="Cox")``)."""
+        from surpyval.univariate.competing_risks import (
+            CompetingRisksProportionalHazards,
+        )
+
+        if strata is not None or time_interaction is not None:
+            raise ValueError(
+                "CoxPH with causes e takes no 'strata' or "
+                "'time_interaction'; fit each cause with CoxPH (the other "
+                "causes as right censored) to use them."
+            )
+        if tol != 1e-10:
+            raise ValueError(
+                "CoxPH with causes e uses each cause's default tolerance; "
+                "leave 'tol' at its default."
+            )
+        return CompetingRisksProportionalHazards.fit(
+            x,
+            Z,
+            e,
+            c=c,
+            n=n,
+            model="Cox",
+            tie_method=tie_method,
+            center=center,
+            w=w,
+            tl=tl,
+        )
 
     def _fit_stratified(
         self,
@@ -1500,7 +1658,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     def fit_from_df(
         self,
         df: pd.DataFrame,
-        x_col: str,
+        x_col: str | None = None,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
         n_col: str | None = None,
@@ -1511,7 +1669,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool = False,
         w_col: str | None = None,
         time_interaction: dict | None = None,
-    ) -> SemiParametricRegressionModel:
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        tr_col: str | None = None,
+        e_col: str | None = None,
+        masked: str = "refuse",
+    ) -> Any:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
 
@@ -1559,6 +1722,21 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             Time-varying coefficients, ``{column: g}`` with the column by
             its name (a covariate column, or a column of the formula's
             design); see :meth:`fit`.
+        xl_col, xr_col: str, optional
+            In place of ``x_col``: each row's interval ``(xl, xr]``, equal
+            for an exact time, ``xr`` infinite (or blank) for a
+            right-censored row and ``xl`` blank or ``-inf`` for a
+            left-censored one; the censoring flags are read from them when
+            ``c_col`` is not given. Takes the full-likelihood route where
+            a row is an interval or left censored.
+        tr_col: str, optional
+            The column of right-truncation times (the full-likelihood
+            route); see :meth:`fit`.
+        e_col: str, optional
+            The column of causes, for competing risks (blank for a
+            censored row); see :meth:`fit`.
+        masked: str, optional
+            See :meth:`fit`.
 
         Returns
         -------
@@ -1566,6 +1744,35 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model: SemiParametricRegressionModel
             The fitted model.
         """
+        if (
+            xl_col is not None
+            or xr_col is not None
+            or tr_col is not None
+            or e_col is not None
+        ):
+            return self._fit_from_df_general(
+                df,
+                x_col,
+                Z_cols,
+                c_col,
+                n_col,
+                formula,
+                tie_method,
+                strata_col,
+                tl_col,
+                center,
+                w_col,
+                time_interaction,
+                xl_col,
+                xr_col,
+                tr_col,
+                e_col,
+                masked,
+            )
+        if x_col is None:
+            raise ValueError(
+                "Give the times: 'x_col', or 'xl_col' and 'xr_col'."
+            )
         arrays = validate_coxph_df_inputs(
             df,
             x_col,
@@ -1598,6 +1805,96 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model._model_spec = model_spec
 
         return model
+
+    def _fit_from_df_general(
+        self,
+        df: pd.DataFrame,
+        x_col: str | None,
+        Z_cols: Any,
+        c_col: str | None,
+        n_col: str | None,
+        formula: str | None,
+        tie_method: str,
+        strata_col: str | None,
+        tl_col: str | None,
+        center: bool,
+        w_col: str | None,
+        time_interaction: dict | None,
+        xl_col: str | None,
+        xr_col: str | None,
+        tr_col: str | None,
+        e_col: str | None,
+        masked: str,
+    ) -> Any:
+        """``fit_from_df`` with intervals, right truncation or causes."""
+        from surpyval.utils.dataframe import check_columns
+
+        from ..regression_data import FrameDesign
+
+        check_columns(
+            df,
+            x_col=x_col,
+            c_col=c_col,
+            n_col=n_col,
+            tl_col=tl_col,
+            tr_col=tr_col,
+            xl_col=xl_col,
+            xr_col=xr_col,
+            e_col=e_col,
+            strata_col=strata_col,
+            w_col=w_col,
+        )
+        design = FrameDesign(df, Z_cols, formula)
+        if (xl_col is None) != (xr_col is None):
+            raise ValueError(
+                "Give both 'xl_col' and 'xr_col' (each row's interval), or "
+                "'x_col' alone."
+            )
+        c = design.column(c_col)
+        if xl_col is not None:
+            if x_col is not None:
+                raise ValueError(
+                    "Give either 'x_col' or 'xl_col' and 'xr_col', not both."
+                )
+            xl = np.asarray(design.column(xl_col), dtype=float)
+            xr = np.asarray(design.column(xr_col), dtype=float)
+            xl = np.where(np.isnan(xl), -np.inf, xl)
+            xr = np.where(np.isnan(xr), np.inf, xr)
+            if c is None:
+                c = np.where(
+                    xl == xr,
+                    0,
+                    np.where(np.isinf(xr), 1, np.where(np.isinf(xl), -1, 2)),
+                )
+            c_arr = np.asarray(c)
+            x: Any = np.column_stack(
+                [
+                    np.where(c_arr == -1, xr, xl),
+                    np.where(c_arr == 1, xl, xr),
+                ]
+            )
+        elif x_col is None:
+            raise ValueError(
+                "Give the times: 'x_col', or 'xl_col' and 'xr_col'."
+            )
+        else:
+            x = design.column(x_col)
+        return design.fit(
+            self.fit,
+            x,
+            design.Z,
+            c=c,
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            tr=design.column(tr_col),
+            e=None if e_col is None else design.causes(e_col),
+            masked=masked,
+            tie_method=tie_method,
+            strata=design.column(strata_col),
+            center=center,
+            w=design.column(w_col),
+            time_interaction=time_interaction,
+        )
 
     def fit_tvc(
         self,
@@ -1694,8 +1991,6 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             i, xl, xr, c, Z, n, strata
         )
         if w is not None:
-            from surpyval.utils.weights import check_weights
-
             if strata_arr is not None:
                 from surpyval.utils.weights import refuse_weighted
 
@@ -1706,23 +2001,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 )
             from ._weighted_cox import fit_weighted_cox
 
-            w_rows = check_weights(w, len(row_order))[row_order]
             model = fit_weighted_cox(
                 x,
                 Z_arr,
                 c,
                 n_arr,
                 tl,
-                w_rows,
+                _row_weights(w, row_order),
                 tie_method,
                 tol,
                 center,
                 cluster=ident,
             )
-            model.is_tvc = True
-            model.tvc_subject_ids = ident
-            model.tvc_row_order = row_order
-            return model
+            return _as_tvc(model, ident, row_order)
         model = self.fit(
             x=x,
             Z=Z_arr,
@@ -1734,14 +2025,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
             strata=strata_arr,
         )
-        model.is_tvc = True
-        # Subject ids per *internal* (sorted) row, and the permutation from
-        # the caller's row order to the internal order: residuals and
-        # cluster-robust SEs align with the internal order, so user-supplied
-        # per-row labels must be permuted the same way (#259).
-        model.tvc_subject_ids = ident
-        model.tvc_row_order = row_order
-        return model
+        return _as_tvc(model, ident, row_order)
 
     def fit_tvc_from_df(
         self,
@@ -1932,11 +2216,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
-        w_rows = None
-        if w is not None:
-            from surpyval.utils.weights import check_weights
-
-            w_rows = check_weights(w, len(row_order))[row_order]
+        w_rows = _row_weights(w, row_order)
         model = fit_cox_penalised(
             self,
             x,
@@ -1954,10 +2234,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             w=w_rows,
             units=_subject_covariates(x, tl, Z_arr, n_arr, ident, w_rows),
         )
-        model.is_tvc = True
-        model.tvc_subject_ids = ident
-        model.tvc_row_order = row_order
-        return model
+        return _as_tvc(model, ident, row_order)
 
     def fit_tvc_timeline_penalised(
         self,
@@ -2088,6 +2365,35 @@ def _tvc_rows(
             )
         strata_arr = strata_arr[row_order]
     return x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr
+
+
+def _row_weights(
+    w: npt.ArrayLike | float | None, row_order: npt.NDArray
+) -> npt.NDArray | None:
+    """The weights ``w`` of :meth:`CoxPH_.fit_tvc`'s start-stop rows
+    (one per row, or one for every row), checked and put in the internal
+    row order of :func:`_tvc_rows`; ``None`` for no weights."""
+    if w is None:
+        return None
+    from surpyval.utils.weights import check_weights
+
+    return check_weights(w, len(row_order))[row_order]
+
+
+def _as_tvc(
+    model: SemiParametricRegressionModel,
+    ident: npt.NDArray,
+    row_order: npt.NDArray,
+) -> SemiParametricRegressionModel:
+    """Mark a Cox ``model`` fitted to start-stop rows: ``is_tvc``, the
+    subject of each *internal* (sorted) row, and the permutation from the
+    caller's row order to the internal order. Residuals and cluster-robust
+    standard errors align with the internal order, so per-row labels a
+    user supplies must be permuted the same way (#259)."""
+    model.is_tvc = True
+    model.tvc_subject_ids = ident
+    model.tvc_row_order = row_order
+    return model
 
 
 def _subject_covariates(

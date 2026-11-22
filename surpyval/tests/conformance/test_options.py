@@ -63,7 +63,38 @@ from surpyval.tests.conformance.registry import (
 SIDES = ("two-sided", "lower", "upper")
 
 # Public methods taking a level or bound= that are not swept, and why.
+_GROWTH_ANSWERS = (
+    "by inversion or transformation of a swept delta-method bound (iif_cb, "
+    "cif_cb), with arguments that are not the case's times; checked "
+    "against closed forms, the bound it inverts and by coverage in "
+    "recurrent/test_growth_answers.py and calibration/"
+    "test_coverage_growth_answers.py"
+)
+
 NOT_SWEPT = {
+    "next_failure_sf_cb": "the reliability over a mission from each unit's "
+    "age, " + _GROWTH_ANSWERS,
+    "expected_events_cb": "the events expected in a stretch of time (two "
+    "arguments, its ends), " + _GROWTH_ANSWERS,
+    "time_to_intensity_cb": "the testing time to a target intensity, "
+    + _GROWTH_ANSWERS,
+    "time_to_reliability_cb": "the testing time to a target reliability, "
+    + _GROWTH_ANSWERS,
+    "release_time_cb": "the cheapest release time for given costs (its "
+    "arguments are costs, not the case's times); the delta method against "
+    "its closed form and the seeded bootstrap in "
+    "recurrent/test_release_time.py, and coverage in calibration/"
+    "test_coverage_growth_answers.py",
+    "activation_energy": "the life model's parameter's param_cb (swept) "
+    "scaled by Boltzmann's constant, refused for a life model that is not "
+    "thermally activated; checked in regression/test_accelerated_life.py",
+    "plot_life_stress": "draws the bounds of the life at each stress, "
+    "mean_cb and quantile_cb's (swept)",
+    "concordance": "a validation metric of the model's risk scores on "
+    "data, with its own standard error and interval, not a bound on a "
+    "function of the model; checked against R's survival and lifelines "
+    "in reference/test_concordance_references.py and in "
+    "metrics/test_concordance_estimate.py",
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
@@ -71,6 +102,10 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "frailties": "a table of each cluster's predicted frailty with the "
+    "interval of its distribution given the cluster's history (not a "
+    "confidence bound on a function; checked against the gamma posterior "
+    "and by quadrature in recurrent/test_shared_frailty.py)",
     "variance_cb": "a table of the variance components' profile-likelihood "
     "intervals of a mixed-effects Cox model (no point method to sweep; "
     "checked in regression/test_cox_mixed_effects.py)",
@@ -224,11 +259,11 @@ def _parameters(model):
     names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
-    if model.lfp:
+    if getattr(model, "lfp", False):  # (not a regression's)
         names.append("lfp_p")
         values.append(model.lfp_p)
         supports.append((0, 1))
-    if model.zi:
+    if getattr(model, "zi", False):
         names.append("f0")
         values.append(model.f0)
         supports.append((0, 1))
@@ -325,6 +360,9 @@ def _estimate(case, spec, fname, event):
     if spec.kind == "param":
         return _parameters(model)[1]
     if spec.kind == "coef":
+        if "tau" in spec.kwargs:
+            # (a quantile regression's intercept and coefficients at tau)
+            return np.asarray(model.coefficients(spec.kwargs["tau"]), float)
         return np.asarray(model.coef, float)
     out = []
     for args in spec.query:
@@ -349,12 +387,22 @@ def _estimate(case, spec, fname, event):
             out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "sojourn_cb":
             out.append(model.mean_sojourn(*args))
+        elif spec.method in (
+            "remaining_faults_cb",
+            "current_rate_cb",
+            "kendall_tau_cb",
+            "spearman_rho_cb",
+        ):
+            out.append(getattr(model, spec.method.removesuffix("_cb"))())
+        elif spec.method == "mtbf_cb":
+            out.append(model.mtbf())
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)
             out.append(model.parameters_at(row)[0, k])
         else:
-            out.append(model.mean())
+            # (a regression's mean_cb is at the covariates of its query)
+            out.append(model.mean(*args))
     return np.asarray(out, float)
 
 
@@ -369,6 +417,8 @@ def value_range(case, spec, fname):
     if spec.kind == "function":
         counting = case.interface.startswith("counting")
         lower, upper, _ = (COUNTING_RULES if counting else RULES)[fname]
+    elif spec.method in ("kendall_tau_cb", "spearman_rho_cb"):
+        lower, upper = -1.0, 1.0
     elif spec.kind in ("rul", "summary"):
         lower, upper = 0.0, np.inf
     else:
@@ -410,6 +460,16 @@ def test_every_uncertainty_method_is_swept(case):
         if name == "rmst_cb" and not getattr(case, "continuous", True):
             # refused on a discrete distribution, with the sum to use
             continue
+        if name == "remaining_faults_cb" and not _finite_faults(model):
+            # refused for a process whose failures go on without limit,
+            # saying so and what to ask instead
+            continue
+        if name in ("kendall_tau_cb", "spearman_rho_cb") and np.ndim(
+            getattr(model, name.removesuffix("_cb"))()
+        ):
+            # refused where the measure is a matrix (a vine's, one for
+            # each pair), saying to bound a pair's parameter instead
+            continue
         if name == "rmtl" and getattr(model, "estimator", "") == "NPMLE":
             # refused for interval-censored rows (the time lost depends on
             # where in each window the mass lies), saying what to use
@@ -428,6 +488,14 @@ def test_every_uncertainty_method_is_swept(case):
         f"{case.name}: uncertainty methods not declared in its bounds "
         f"(registry.py, _bounds): {missing}"
     )
+
+
+def _finite_faults(model):
+    try:
+        model.remaining_faults(1.0)
+    except ValueError:
+        return False
+    return True
 
 
 def _percentile(spec):
@@ -851,6 +919,11 @@ def _estimator_params():
 def _check_model(case, model):
     """test_bounds' checks: valid values, monotone in time, at each
     covariate row (as one vector for every time)."""
+    if case.interface == "bivariate" and "cdf" not in case.functions:
+        # (a vine has no joint CDF or sf: its density)
+        values = np.asarray(model.pdf(case.x), float)
+        check_valid("pdf", values, (0.0, np.inf, 0))
+        return
     if case.interface == "bivariate":
         X = case.x[:5]  # each coordinate rises along these
         check_valid("cdf", np.asarray(model.cdf(X), float), (0.0, 1.0, 1))
@@ -897,8 +970,11 @@ def _agreement_params():
 def _summary(case, model):
     """The functions the estimators are compared on: probabilities
     absolutely, a cumulative intensity relatively."""
-    if case.interface == "bivariate":
+    if case.interface == "bivariate" and "cdf" in case.functions:
         return {"cdf": np.asarray(model.cdf(case.x), float)}, False
+    if case.interface == "bivariate":
+        # (a vine has no joint CDF: its density, relatively)
+        return {"pdf": np.asarray(model.pdf(case.x), float)}, True
     if "sf" in case.functions:
         return {
             "sf": np.asarray(call(case, model, "sf", case.x), float)
@@ -1043,12 +1119,16 @@ def _level_name(sigs):
     return out + _default_is("alpha_ci", 0.05)(sigs)
 
 
-def _first_argument(methods, name):
+def _first_argument(methods, name, own=()):
+    # ``own``: documented exceptions, "Class.method" with no such argument.
     def check(sigs):
         return [
             f"{o}.{m}({ps[0].name}, ...)"
             for o, m, ps in sigs
-            if m in methods and ps and ps[0].name not in (name, "args")
+            if m in methods
+            and ps
+            and ps[0].name not in (name, "args")
+            and f"{o}.{m}" not in own
         ]
 
     return check
@@ -1076,6 +1156,8 @@ def _how(sigs):
     # concave with an exact baseline (recorded in DECISIONS.md).
     own = {
         "Copula": "IFM",
+        # (a vine of pair-copulas, likewise)
+        "VineFitter": "IFM",
         "CompetingRisks": "Nelson-Aalen",
         "PanelCountRegression": "pseudo",
     }
@@ -1115,6 +1197,9 @@ CONVENTIONS = {
                 "CompetingRisks": "cif",
                 # its regression counterpart, likewise
                 "ParametricCompetingRisksRegression": "cif",
+                # and the Fine-Gray model, a regression on one cause's
+                # cumulative incidence
+                "FineGrayModel": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
@@ -1137,7 +1222,11 @@ CONVENTIONS = {
     ),
     "time": (
         "the times are the first argument, x",
-        _first_argument(_TIME_FUNCTIONS, "x"),
+        # (the Jelinski-Moranda model's MTBF is the one at the end of
+        # testing, mtbf(): it takes no times)
+        _first_argument(
+            _TIME_FUNCTIONS, "x", own=("JelinskiMorandaModel.mtbf_cb",)
+        ),
     ),
     "quantile": (
         "the probabilities of qf are the first argument, p",

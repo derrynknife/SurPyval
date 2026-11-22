@@ -294,6 +294,20 @@ def test_band_over_a_single_time_is_the_pointwise_arcsine_interval():
         )
 
 
+@pytest.mark.parametrize("bound_type", ["arcsine", "exp"])
+def test_band_over_a_single_time_is_the_pointwise_bound_on_its_scale(
+    bound_type,
+):
+    # The bands and the pointwise bounds form their arcsine and log(-log)
+    # intervals with the same transforms; over a single time a band's
+    # critical value is the normal deviate, so it is the pointwise bound.
+    model = sp.KaplanMeier.fit([1.0, 2, 3, 4], c=[0, 1, 1, 1])
+    cb = model.cb([1.0, 2.5], bound_type=bound_type)
+    for method in ("hall-wellner", "nair"):
+        band = model.band([1.0, 2.5], method=method, bound_type=bound_type)
+        np.testing.assert_allclose(band, cb, atol=1e-6)
+
+
 def test_band_refuses_an_unknown_bound_type_naming_the_choices():
     model = sp.KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8])
     with pytest.raises(ValueError, match="'arcsine', 'exp' or 'normal'"):

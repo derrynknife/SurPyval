@@ -171,6 +171,58 @@ def test_far_upper_tail_window_stays_finite():
     assert got == pytest.approx(expected, rel=1e-10)
 
 
+# For each family, a bound beyond which its probability rounds to 0 at
+# PARAMS (where it has one: F of LogNormal, LogLogistic and Logistic
+# and S of Exponential, LogNormal, LogLogistic and Logistic never round
+# to 0 in log space, so those bounds are only far, not past).
+FAR = {
+    "Weibull": (1e-200, 1e200),
+    "Exponential": (1e-323, 1e300),
+    "LogNormal": (1e-300, 1e300),
+    "Gamma": (1e-300, 1e4),
+    "LogLogistic": (1e-300, 1e300),
+    "Normal": (-1e306, 1e306),
+    "Gumbel": (-5000.0, 5000.0),
+    "Logistic": (-1e300, 1e300),
+    "Rayleigh": (1e-200, 1e200),
+}
+
+
+@pytest.mark.parametrize("name", list(PARAMS))
+def test_windows_with_a_bound_past_the_tail_have_finite_gradients(name):
+    # A window whose bound is so far in a tail that the probability
+    # beyond it rounds to 0 is the window without that bound, as fit
+    # takes it; its log, -inf, must not put a NaN into the gradient.
+    dist = _dist(name)
+    params = np.array(PARAMS[name])
+    lo, hi = FAR[name]
+    arrays = dict(
+        x=[9.0, 9.0, 9.0, 24.0, [lo, 6.0], [22.0, hi]],
+        c=[0, 0, 0, 0, 2, 2],
+        tl=[lo, 1.0, lo, 22.0, -INF, -INF],
+        tr=[29.0, hi, hi, hi, INF, INF],
+    )
+    theta = [pt.dscalar(p) for p in dist.parameter_names]
+    ll = log_likelihood(
+        dist, **arrays, **dict(zip(dist.parameter_names, theta))
+    )
+    f = pytensor.function(theta, [ll, *pt.grad(ll, theta)])
+    value, *grad = (float(v) for v in f(*params))
+    assert value == pytest.approx(
+        _surpyval_ll(dist, arrays, params), rel=1e-10
+    )
+    for i in range(len(params)):
+        h = 1e-6 * abs(params[i])
+        up, down = params.copy(), params.copy()
+        up[i] += h
+        down[i] -= h
+        fd = (
+            _surpyval_ll(dist, arrays, up) - _surpyval_ll(dist, arrays, down)
+        ) / (2 * h)
+        assert np.isfinite(grad[i])
+        assert grad[i] == pytest.approx(fd, rel=1e-5, abs=1e-6)
+
+
 def test_xl_xr_and_t_forms():
     xl, xr = [1.0, 4.0, 6.0], [3.0, 4.0, 9.0]
     t = [[0.5, 20.0]] * 3

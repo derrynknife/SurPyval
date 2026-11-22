@@ -9,6 +9,7 @@ from numpy.testing import assert_allclose
 
 import surpyval as sp
 from surpyval.datasets import load_rossi_static
+from surpyval.univariate.regression import CoefficientPlot
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -288,7 +289,7 @@ def test_penalised_model_has_estimates_and_no_intervals():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         out = sp.plot_coefficients(model)
-    assert isinstance(out, sp.CoefficientPlot)
+    assert isinstance(out, CoefficientPlot)
     assert out.on == "exp"
     table = out.values["CoxPH"]
     assert list(table.index) == ["coef_0", "coef_1"]

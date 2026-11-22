@@ -365,6 +365,78 @@ def recurrent_data(with_Z=False, with_e=False):
     return d
 
 
+def growth_data():
+    """Three systems under test to t = 60 whose failures slow down after
+    a steady start (9, 8 and 8 of them), each ending with a censoring
+    row: data with reliability growth, for the software reliability
+    growth models. The times are the quantiles of an inflection S-shaped
+    curve, ``a = 9``, ``b = 0.1``, ``psi = 3``, at evenly spread counts,
+    rounded to a decimal place."""
+    events = (
+        [2.1, 5.9, 9.3, 12.7, 16.1, 19.9, 24.3, 30.4, 42.3],
+        [2.3, 6.3, 9.9, 13.5, 16.3, 20.3, 25.2, 32.3],
+        [1.4, 5.4, 8.9, 12.4, 15.9, 19.8, 23.4, 29.2],
+    )
+    x, i, c = [], [], []
+    for k, times in enumerate(events):
+        x += [*times, 60.0]
+        i += [k + 1] * (len(times) + 1)
+        c += [0] * len(times) + [1]
+    return {
+        "x": np.array(x),
+        "i": np.array(i),
+        "c": np.array(c),
+        "n": np.ones(len(x), int),
+    }
+
+
+def campaign_data():
+    """One test campaign: twelve failure times of a program under test,
+    and the end of testing at 110 with no failure since the last."""
+    x = np.array([3, 8, 12, 20, 25, 33, 41, 47, 58, 70, 81, 99, 110.0])
+    c = np.zeros(13, int)
+    c[-1] = 1
+    return {"x": x, "c": c}
+
+
+def scattered_campaign_data():
+    """One test campaign: 24 failure times whose gaps lengthen and are
+    more scattered than exponential times (a few long gaps early, short
+    ones late), and the end of testing at 400."""
+    gaps = [2, 1, 9, 3, 1, 4, 22, 2, 6, 3, 38, 5, 2, 11, 7, 61, 4, 9, 3, 15]
+    gaps += [88, 6, 13, 40]
+    x = np.append(np.cumsum(gaps), 400.0).astype(float)
+    c = np.zeros(x.size, int)
+    c[-1] = 1
+    return {"x": x, "c": c}
+
+
+def frailty_recurrent_data(with_Z=False):
+    """Ten repairable items watched to 60, with 1 to 12 failures each
+    (more spread than Poisson counts have, so a frailty is estimated):
+    item k's j-th of n failures at ``60 ((j + 0.5 + 0.3 frac(0.618 k j))
+    / (n + 0.6)) ** 0.8``, rounded to 3 places."""
+    counts = [1, 2, 2, 3, 4, 5, 7, 8, 10, 12]
+    x, i, c, Z = [], [], [], []
+    for k, n in enumerate(counts):
+        j = np.arange(n)
+        shift = 0.3 * ((0.6180339887498949 * (k + 1) * (j + 1)) % 1.0)
+        times = np.round(60.0 * ((j + 0.5 + shift) / (n + 0.6)) ** 0.8, 3)
+        x += [*np.sort(times), 60.0]
+        i += [k + 1] * (n + 1)
+        c += [0] * n + [1]
+        Z += [[0.0, 1.0, 0.5][k % 3]] * (n + 1)
+    d = {
+        "x": np.array(x),
+        "i": np.array(i),
+        "c": np.array(c),
+        "n": np.ones(len(x), int),
+    }
+    if with_Z:
+        d["Z"] = np.array(Z)[:, None]
+    return d
+
+
 X_REC = np.array([1.0, 5.0, 12.0, 25.0, 40.0, 55.0])
 Z_REC = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.2]])
 
@@ -440,6 +512,59 @@ def joint_data():
     }
 
 
+def joint_causes_data():
+    """80 items of a joint model with two failure modes: the marker and
+    covariate of :func:`joint_data`'s items, each failing by the first of
+    a wear failure whose Weibull PH hazard follows the line's current
+    value and a random failure that does not (a Weibull of shape 1.2,
+    its quantiles in an order of their own), censored at 730; ``e`` is
+    the mode of each failure, ``"a"`` the wear and ``"b"`` the random
+    one as every fixture's causes are named (None for an item still
+    running)."""
+    from scipy.special import ndtri
+
+    size = 80
+    u = (scramble(size) + 0.5) / size
+    v = np.argsort(np.argsort(np.sin(2.7 * np.arange(size) + 1.0))) + 0.5
+    v = v / size
+    level = 3.0 + 0.6 * ndtri(u)
+    rate = (1.0 + 0.5 * ndtri(v)) / 365
+    z = (np.arange(size) % 2).astype(float)
+    order = np.argsort(np.argsort(np.sin(1.9 * np.arange(size) + 0.3)))
+    E = -np.log1p(-(order + 0.5) / size)
+    other = np.argsort(np.argsort(np.sin(3.1 * np.arange(size) + 2.0)))
+    E2 = -np.log1p(-(other + 0.5) / size)
+    t = np.linspace(0.0, 4000.0, 8001)
+    x, c, e, markers = [], [], [], []
+    for k in range(size):
+        h = (
+            (2 / 900)
+            * (t / 900)
+            * np.exp(0.9 * (level[k] + rate[k] * t - 4.0) + 0.4 * z[k])
+        )
+        H = np.r_[0.0, np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))]
+        wear = float(np.interp(E[k], H, t))
+        random = 1100.0 * (E2[k] * np.exp(0.3 * z[k])) ** (1 / 1.2)
+        life = min(wear, random)
+        end = round(min(life, 730.0), 2)
+        ages = np.arange(0.0, end, 60.0)
+        y = level[k] + rate[k] * ages + 0.5 * np.sin(1.3 * k + 0.7 * ages)
+        x.append(end)
+        c.append(0 if life < 730.0 else 1)
+        e.append(None if life >= 730.0 else ("a" if wear < random else "b"))
+        markers.append(dict(zip(ages.tolist(), np.round(y, 3).tolist())))
+    n = np.ones(size, int)
+    n[[3, 17, 30]] = 2
+    return {
+        "x": np.array(x),
+        "c": np.array(c),
+        "n": n,
+        "Z": z[:, None],
+        "markers": markers,
+        "e": np.array(e, dtype=object),
+    }
+
+
 #: The joint model's query: an item read four times, still running at
 #: 400 (``JOINT_ITEM``), at ages before and after that.
 X_JOINT = np.array([100.0, 300.0, 450.0, 600.0, 900.0, 1200.0])
@@ -466,6 +591,33 @@ def copula_data():
 
 X_COP = np.array(
     [[2.0, 1.0], [5.0, 2.0], [8.0, 3.0], [10.0, 5.0], [14.0, 7.0], [3.0, 6.0]]
+)
+
+
+def copula3_data():
+    """Three positively dependent series (the two of ``copula_data`` and
+    a third whose order is theirs with next-but-one neighbours
+    swapped)."""
+    u = (np.arange(1, 21) - 0.3) / 20.4
+    swap = np.arange(20) ^ 1
+    swap2 = np.arange(20) ^ 2
+    x1 = 10.0 * (-np.log1p(-u)) ** 0.5
+    x2 = 5.0 * (-np.log1p(-u[swap])) ** (1 / 1.4)
+    x3 = 20.0 * (-np.log1p(-u[swap2])) ** (1 / 2.5)
+    n = np.ones(20, int)
+    n[[3, 8]] = 2
+    return {"x": np.round(np.column_stack([x1, x2, x3]), 3), "n": n}
+
+
+X_COP3 = np.array(
+    [
+        [2.0, 1.0, 8.0],
+        [5.0, 2.0, 12.0],
+        [8.0, 3.0, 15.0],
+        [10.0, 5.0, 18.0],
+        [14.0, 7.0, 25.0],
+        [3.0, 6.0, 10.0],
+    ]
 )
 
 
@@ -664,3 +816,47 @@ def panel_count_data(with_Z=False):
             :, None
         ]
     return d
+
+
+# ---------------------------------------------------------------------------
+# Relative survival (a rate table of population hazards beside the data)
+# ---------------------------------------------------------------------------
+def relative_rate_table():
+    """Population hazards by age band, calendar year and stratum (0, 1):
+    small beside the fixtures' own hazards, as a population's are beside
+    a disease's."""
+    import surpyval as sp
+
+    ages = np.array([0.0, 50.0, 60.0, 70.0, 80.0])
+    base = np.array([0.002, 0.006, 0.015, 0.035, 0.08])
+    rates = {
+        0: np.column_stack([base, 0.8 * base]),
+        1: np.column_stack([1.4 * base, 1.1 * base]),
+    }
+    return sp.RateTable(rates, ages, years=np.array([2000.0, 2010.0]))
+
+
+def _relative_columns(size):
+    """Each unit's age, calendar year and stratum at time 0."""
+    return {
+        "age": np.round(np.linspace(42.0, 78.0, size)[scramble(size)], 1),
+        "year": np.round(np.linspace(1998.0, 2016.0, size), 2),
+        "stratum": np.tile([0.0, 1.0], size // 2 + 1)[:size],
+    }
+
+
+def relative_data():
+    """``uni_data``'s 12 rows, each unit with its age, year and stratum, and
+    the rate table, for ``RelativeSurvival``."""
+    d = uni_data()
+    columns = _relative_columns(d["x"].size)
+    return {**d, **columns, "rate_table": relative_rate_table()}
+
+
+def relative_reg_data():
+    """``reg_data``'s 30 rows with each unit's age, year and stratum, the
+    rate table and a baseline excess hazard on two intervals (split at the
+    events' median), for ``ExcessHazard``."""
+    d = reg_data()
+    columns = _relative_columns(d["x"].size)
+    return {**d, **columns, "rate_table": relative_rate_table(), "breaks": 2}

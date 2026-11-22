@@ -51,6 +51,7 @@ from surpyval.utils.surpyval_data import (
     _distinct_states,
     lost_message,
     named_fit,
+    notation_as_data,
     terminal_flags,
     with_data_unit,
 )
@@ -78,6 +79,15 @@ _TAKE_GAPS = (
     "without covariates, and the proportional-intensity models' fit_tvc "
     "with them"
 )
+
+
+def _notation_as_data(bound: inspect.BoundArguments) -> Any:
+    """The fit's ``x``, an :class:`~surpyval.utils.notation.Items` (or
+    ``Observations``) turned into its ``surpyval_data()`` in ``bound``."""
+    data = notation_as_data(bound.arguments.get("x"))
+    if "x" in bound.arguments:
+        bound.arguments["x"] = data
+    return data
 
 
 def notes_text(model: Any) -> str:
@@ -110,11 +120,11 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
-        data = bound.arguments.get("x")
+        data = _notation_as_data(bound)
         if not isinstance(data, SurpyvalData) or data.ids is None:
             # Without units: the fit refuses it as it did before, saying
             # to give each row's unit.
-            return method(*args, **kwargs)
+            return method(*bound.args, **bound.kwargs)
         given = [
             name
             for name in _BESIDE + ("Z", "e")
@@ -128,7 +138,7 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        _refuse_what_no_recurrent_fit_takes(data)
+        refuse_what_no_recurrent_fit_takes(data)
         owner = bound.arguments.get(params[0]) if params else None
         fit_tvc = (
             getattr(owner, "fit_tvc", None)
@@ -139,6 +149,8 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
         lost = _lost(data, names, layout, callable(fit_tvc))
         if lost:
             raise ValueError(_refusal(lost))
+        if "i" not in names:
+            _refuse_several_units(data)
         if data.Z is None and "Z" in names:
             parameter = signature.parameters["Z"]
             if parameter.default is inspect.Parameter.empty:
@@ -179,7 +191,21 @@ def accepts_recurrent_surpyval_data(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
-def _refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
+def _refuse_several_units(data: SurpyvalData) -> None:
+    """Refuse, for a fit of one unit's history (one test campaign, with
+    no ``i``), data whose rows are of more than one unit: their events
+    would be read as one unit's."""
+    units = list(dict.fromkeys(_id_array(data.ids).tolist()))
+    if len(units) > 1:
+        raise ValueError(
+            f"This fit is of one unit's history (one test campaign), and "
+            f"the SurpyvalData holds {len(units)} units ({named(units)}): "
+            "fit each unit on its own, from a SurpyvalData of that unit's "
+            "rows."
+        )
+
+
+def refuse_what_no_recurrent_fit_takes(data: SurpyvalData) -> None:
     """Refuse data that no recurrent fit takes: in more than one state,
     with measurements, weights or step time-varying covariates from
     records."""
@@ -660,9 +686,9 @@ def accepts_terminal_surpyval_data(method: F) -> F:
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         bound = signature.bind_partial(*args, **kwargs)
-        data = bound.arguments.get("x")
+        data = _notation_as_data(bound)
         if not isinstance(data, SurpyvalData):
-            return method(*args, **kwargs)
+            return method(*bound.args, **bound.kwargs)
         if data.ids is None:
             raise TypeError(
                 "The joint frailty model compares units, and the "
@@ -681,7 +707,7 @@ def accepts_terminal_surpyval_data(method: F) -> F:
                 + " (give the covariates, entry times and terminal flags "
                 "a in the data, or pass arrays rather than a SurpyvalData)."
             )
-        _refuse_what_no_recurrent_fit_takes(data)
+        refuse_what_no_recurrent_fit_takes(data)
         layout = _Layout(data)
         lost = _joint_lost(data, layout)
         if lost:

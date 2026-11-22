@@ -72,9 +72,7 @@ def test_ari_fit_and_information_criteria():
 
 
 def test_ari_mcf_simulation_monotonic():
-    model = ARI.fit_from_parameters(
-        [60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA
-    )
+    model = ARI.from_params([60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA)
     mcf = model.mcf(
         np.array([5.0, 10.0, 20.0, 30.0]), items=800, random_state=0
     )
@@ -96,9 +94,7 @@ def test_ari_rejects_unsupported_censoring():
 
 
 def test_ari_inference_requires_fit_from_data():
-    model = ARI.fit_from_parameters(
-        [60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA
-    )
+    model = ARI.from_params([60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA)
     with pytest.raises(ValueError, match="fitted from data"):
         model.aic()
 
@@ -156,7 +152,7 @@ PARAM_GRID = [
 
 @pytest.mark.parametrize("m", [1, 2, 3, np.inf])
 def test_vectorised_negll_matches_the_scalar_original(m):
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=m, baseline=CrowAMSAA)
+    truth = ARI.from_params([20.0, 1.5], 0.5, m=m, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(6, items=12, random_state=1)
     negll = ARI.create_negll_func(data, CrowAMSAA, m)
     for params in PARAM_GRID:
@@ -202,7 +198,7 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
     # test before taking logs rather than warning its way to a nan. Note
     # a rising baseline (beta > 1) stays positive even at rho = 1, so
     # the case has to be built from a flat or falling one.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    truth = ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(6, items=10, random_state=2)
     negll = ARI.create_negll_func(data, CrowAMSAA, 1)
     got = negll(np.array(params))
@@ -213,9 +209,9 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
 
 def test_fit_scales_to_many_items():
     # 250 items took 19 seconds under the per-event loop.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    truth = ARI.from_params([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(8, items=250, random_state=5)
-    model = ARI.fit_from_recurrent_data(data, baseline=CrowAMSAA, m=1)
+    model = ARI._fit_from_recurrent_data(data, baseline=CrowAMSAA, m=1)
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.model.params).all()
 
@@ -234,9 +230,9 @@ def test_ari_refuses_a_lifetime_distribution_clearly(dist):
     message = str(err.value)
     assert "CrowAMSAA" in message and "ARA" in message
     with pytest.raises(ValueError, match="baseline intensity model"):
-        ARI.fit_from_recurrent_data(handle_xicn(X, I), baseline=dist)
+        ARI._fit_from_recurrent_data(handle_xicn(X, I), baseline=dist)
     with pytest.raises(ValueError, match="baseline intensity model"):
-        ARI.fit_from_parameters([10.0, 2.0], 0.5, baseline=dist)
+        ARI.from_params([10.0, 2.0], 0.5, baseline=dist)
 
 
 def test_ari_refuses_anything_else_clearly():
@@ -251,14 +247,14 @@ def test_lifetime_fitters_refuse_an_intensity_model_clearly(fitter):
     with pytest.raises(ValueError, match="not an intensity model.*ARI"):
         fitter.fit(X, I, dist=CrowAMSAA)
     with pytest.raises(ValueError, match="not an intensity model"):
-        fitter.fit_from_parameters([10.0, 2.0], 0.5, dist=CrowAMSAA)
+        fitter.from_params([10.0, 2.0], 0.5, dist=CrowAMSAA)
 
 
 def test_g1_refuses_an_intensity_model_clearly():
     with pytest.raises(ValueError, match="not an intensity model"):
         GeneralizedOneRenewal.fit(X, I, dist=Duane)
     with pytest.raises(ValueError, match="not an intensity model"):
-        GeneralizedOneRenewal.fit_from_parameters([10.0, 2.0], 0.5, dist=Duane)
+        GeneralizedOneRenewal.from_params([10.0, 2.0], 0.5, dist=Duane)
 
 
 @pytest.mark.parametrize("dist", [CrowAMSAA, Duane, CoxLewis])
@@ -272,7 +268,7 @@ def test_ari_still_takes_every_intensity_model(dist):
 
 
 @pytest.mark.parametrize(
-    "method", ["fit", "fit_from_recurrent_data", "fit_from_df"]
+    "method", ["fit", "_fit_from_recurrent_data", "fit_from_df"]
 )
 def test_ari_takes_its_baseline_as_baseline(method):
     # In ARA, GeneralizedRenewal and GeneralizedOneRenewal `dist` is a
@@ -284,8 +280,8 @@ def test_ari_takes_its_baseline_as_baseline(method):
     def call(**kw):
         if method == "fit":
             return ARI.fit(X, I, m=1, **kw)
-        if method == "fit_from_recurrent_data":
-            return ARI.fit_from_recurrent_data(handle_xicn(X, I), m=1, **kw)
+        if method == "_fit_from_recurrent_data":
+            return ARI._fit_from_recurrent_data(handle_xicn(X, I), m=1, **kw)
         df = pd.DataFrame({"x": X, "i": I})
         return ARI.fit_from_df(df, x_col="x", i_col="i", m=1, **kw)
 
@@ -295,25 +291,21 @@ def test_ari_takes_its_baseline_as_baseline(method):
         call(dist=Duane)
 
 
-def test_ari_fit_from_parameters_takes_baseline():
-    new = ARI.fit_from_parameters(
-        baseline_params=[20.0, 1.5], rho=0.5, baseline=Duane
-    )
+def test_ari_from_params_takes_baseline():
+    new = ARI.from_params(baseline_params=[20.0, 1.5], rho=0.5, baseline=Duane)
     assert new.model.dist is Duane
     with pytest.raises(TypeError, match="unexpected keyword argument 'dist'"):
-        ARI.fit_from_parameters([20.0, 1.5], 0.5, dist=Duane)
+        ARI.from_params([20.0, 1.5], 0.5, dist=Duane)
     with pytest.raises(
         TypeError, match="unexpected keyword argument 'dist_params'"
     ):
-        ARI.fit_from_parameters(
-            dist_params=[20.0, 1.5], rho=0.5, baseline=Duane
-        )
+        ARI.from_params(dist_params=[20.0, 1.5], rho=0.5, baseline=Duane)
 
 
 def test_ari_signatures_name_the_baseline():
     import inspect
 
-    for method in ("fit", "fit_from_recurrent_data", "fit_from_parameters"):
+    for method in ("fit", "_fit_from_recurrent_data", "from_params"):
         params = inspect.signature(getattr(ARI, method)).parameters
         assert "baseline" in params and "dist" not in params, method
         assert params["baseline"].default is CrowAMSAA

@@ -14,6 +14,7 @@ JM on the PBC trial is in ``tests/reference/test_joint_links.py``.
 
 import functools
 import pickle
+import re
 import warnings
 from typing import Any
 
@@ -21,11 +22,17 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import JointModel, JointPH, Weibull, WeibullJointPH
-from surpyval.degradation import LinkedPathModel, LloydLipowPath
+from surpyval import JointAFT, JointPH, Weibull, WeibullJointPH
+from surpyval.degradation import (
+    LinkedPathModel,
+    LloydLipowPath,
+    LogarithmicPath,
+    PowerPath,
+)
 from surpyval.degradation.path_models import PATH_MODELS, PathModel
-from surpyval.tests.univariate.joint._fleet import simulate_links
+from surpyval.tests.univariate.joint._fleet import line_area, simulate_links
 from surpyval.tests.univariate.joint.test_joint_extensions import KINDS
+from surpyval.univariate.joint import JointModel
 from surpyval.univariate.joint._likelihood import (
     JointArrays,
     Layout,
@@ -34,7 +41,7 @@ from surpyval.univariate.joint._likelihood import (
     log_cumhaz,
     log_event,
 )
-from surpyval.univariate.joint.joint_ph import search_space
+from surpyval.univariate.joint.joint_ph import _check_power, search_space
 
 X = np.array([0.3, 1.0, 2.5, 7.0])
 THETA = [1.3, 0.4, 0.2]
@@ -246,12 +253,31 @@ LINK_FITS = {
 }
 
 
-def _brute_force_neg_ll(model, data):
+def _simpson(f, lo, hi, lag=0.0):
+    """``int_lo^hi f(s) ds`` by Simpson's rule with 2001 points, on each
+    side of ``lag`` where it is inside ``(lo, hi)``, where a lagged
+    marker has a kink; ``f`` takes an array of ages and gives ``(..,
+    ages)``. The piece after ``lag`` starts just past it, so a slope that
+    starts there is taken from the right."""
+    total = 0.0
+    cuts = [lo] + ([lag] if lo < lag < hi else []) + [hi]
+    for k, (a, b) in enumerate(zip(cuts[:-1], cuts[1:])):
+        s = np.linspace(a, b, 2001)
+        w = np.ones(s.size)
+        w[1:-1:2], w[2:-1:2] = 4, 2
+        at = s.copy()
+        if k > 0:
+            at[0] = np.nextafter(a, np.inf)
+        total = total + f(at) @ w * (s[1] - s[0]) / 3
+    return total
+
+
+def _brute_force_neg_ll(model, data, lag=0.0, weight=None):
     """The negative log-likelihood of ``data`` by a dense grid over the
     random effects (161 points a dimension, 7 sds each way) and Simpson's
     rule in age (2001 points), from the model's parameters alone, the
-    line's slope and area written out: no quadrature or code of the
-    model's."""
+    line's slope and area written out (the area weighted by ``weight``,
+    ``_fleet.line_area``): no quadrature or code of the model's."""
     p = dict(zip(model.parameter_names, model.params))
     v0, v1, r = p["sd_a"] ** 2, p["sd_b"] ** 2, p["corr_a_b"]
     D = np.array([[v0, r * np.sqrt(v0 * v1)], [r * np.sqrt(v0 * v1), v1]])
@@ -278,16 +304,20 @@ def _brute_force_neg_ll(model, data):
         def hazard(t, m0=m0, m1=m1):
             t = np.atleast_1d(t)[None, :]
             h0 = (p["beta"] / p["alpha"]) * (t / p["alpha"]) ** (p["beta"] - 1)
+            # the line lag later, held at its age-0 value until then
+            u = np.maximum(t - lag, 0.0)
             eta = 0.0
             if "marker_effect" in p:
                 eta = eta + p["marker_effect"] * (
-                    m0[:, None] + m1[:, None] * t - reference
+                    m0[:, None] + m1[:, None] * u - reference
                 )
             if "slope_effect" in p:
-                eta = eta + p["slope_effect"] * m1[:, None]
+                eta = eta + p["slope_effect"] * m1[:, None] * (
+                    (t > lag) if lag > 0 else 1.0
+                )
             if "cumulative_effect" in p:
-                eta = eta + p["cumulative_effect"] * (
-                    m0[:, None] * t + m1[:, None] * t**2 / 2
+                eta = eta + p["cumulative_effect"] * line_area(
+                    m0[:, None], m1[:, None], u, weight
                 )
             return h0 * np.exp(eta)
 
@@ -296,10 +326,7 @@ def _brute_force_neg_ll(model, data):
                 return np.zeros(B0.size)
             if t <= 0:
                 return np.ones(B0.size)
-            s = np.linspace(0, t, 2001)
-            w = np.ones(s.size)
-            w[1:-1:2], w[2:-1:2] = 4, 2
-            return np.exp(-hazard(s) @ w * (s[1] - s[0]) / 3)
+            return np.exp(-_simpson(hazard, 0.0, t, lag))
 
         readings = data["markers"][k]
         ages = np.array(list(readings), dtype=float)
@@ -541,6 +568,37 @@ def test_summary_and_repr_say_the_link():
     )
 
 
+def test_each_effect_says_what_it_is_per():
+    # a value's effect is per unit of the marker, a slope's per unit of
+    # the marker per unit of age, an area's per unit of the marker times
+    # a unit of age
+    model = _model_at(("value", "slope", "cumulative"))
+    model.marker_unit, model.unit = "mm/s", "years"
+    assert model.effect_units == {
+        "marker_effect": "mm/s",
+        "slope_effect": "(mm/s)/years",
+        "cumulative_effect": "(mm/s)·years",
+    }
+    shown = repr(model)
+    assert (
+        "Effect units        : marker_effect per mm/s; slope_effect per "
+        "(mm/s)/years; cumulative_effect per (mm/s)·years"
+    ) in shown
+    model.marker_unit = "ppm"
+    assert model.effect_units["cumulative_effect"] == "ppm·years"
+    # either one unknown is named as such
+    model.marker_unit, model.unit = None, "h"
+    assert model.effect_units["slope_effect"] == "(marker unit)/h"
+    model.unit = None
+    assert model.effect_units["cumulative_effect"] == (
+        "(marker unit)·(time unit)"
+    )
+    # one entry per link, in the effects' order
+    assert list(_model_at(("cumulative",)).effect_units) == [
+        "cumulative_effect"
+    ]
+
+
 def test_the_fitter_says_its_link():
     assert "link" not in repr(JointPH(Weibull))
     assert repr(JointPH(Weibull, link="slope")).endswith("link: slope)")
@@ -610,7 +668,113 @@ def test_a_path_with_no_finite_area_cannot_be_accumulated():
             LinkedPathModel(LloydLipowPath, {"b": "log"}),
             link=["value", "cumulative"],
         )
-    JointPH(Weibull, LloydLipowPath, link="slope")
+
+
+@pytest.mark.parametrize(
+    "path, formula",
+    [
+        (LogarithmicPath, r"slope b / t, unbounded at age 0"),
+        (LloydLipowPath, r"slope b / t\^2, unbounded at age 0"),
+        (LinkedPathModel(LogarithmicPath, {"b": "log"}), r"slope b / t,"),
+    ],
+)
+@pytest.mark.parametrize("link", ["slope", ["value", "slope"]])
+@pytest.mark.parametrize("factory", [JointPH, JointAFT])
+def test_a_path_whose_slope_is_unbounded_at_0_cannot_be_followed(
+    path, formula, link, factory
+):
+    with pytest.raises(ValueError, match=formula) as refusal:
+        factory(Weibull, path, link=link)
+    message = str(refusal.value)
+    assert "cannot follow its slope" in message
+    assert "would be infinite" in message
+    assert "LinearPath, QuadraticPath or ExponentialPath" in message
+    # what to use instead: the links the path can take
+    if path is LloydLipowPath:
+        assert "Use link='value', or for the slope link" in message
+    elif factory is JointAFT:
+        assert "ageing rate" in message
+        assert "Use link='value', or for the slope link" in message
+    else:
+        assert "Use link='value' or 'cumulative', or" in message
+    # the value (and for a logarithmic path the area) are still taken
+    factory(Weibull, path, link="value")
+
+
+def test_a_path_with_neither_slope_nor_area_says_both():
+    with pytest.raises(ValueError) as refusal:
+        JointPH(Weibull, LloydLipowPath, link=["slope", "cumulative"])
+    message = str(refusal.value)
+    assert "no finite area" in message
+    assert "unbounded at age 0" in message
+    assert "Use link='value', or for the slope link" in message
+
+
+def _power_fleet(power, n=60, seed=3):
+    """``n`` items whose readings follow ``a t^power`` (``a`` about 3,
+    the power with sd 0.05) from age 0.1, every quarter year, with noise
+    of 5% (multiplied, so every reading is positive, as a power path
+    needs), Weibull lifetimes (ages in years) and a third of them
+    censored."""
+    rng = np.random.default_rng(seed)
+    x = 3.0 * rng.weibull(2.0, n) + 0.2
+    c = (rng.random(n) < 1 / 3).astype(int)
+    markers = []
+    for life in x:
+        a = 3.0 + rng.normal(0.0, 0.3)
+        b = power + rng.normal(0.0, 0.05)
+        ages = np.arange(0.1, life, 0.25)
+        markers.append(
+            {
+                float(age): float(a * age**b * np.exp(rng.normal(0, 0.05)))
+                for age in ages
+            }
+        )
+    return x, c, markers
+
+
+@pytest.mark.parametrize("factory", [JointPH, JointAFT])
+def test_a_power_below_1_has_a_slope_that_cannot_be_followed(factory):
+    x, c, markers = _power_fleet(0.5)
+    with pytest.raises(ValueError, match="power b below 1") as refusal:
+        factory(Weibull, PowerPath, link="slope").fit(
+            x=x, c=c, markers=markers
+        )
+    message = str(refusal.value)
+    found = re.search(
+        r"the readings put the average item's power at b = ([0-9.]+),", message
+    )
+    assert found and abs(float(found.group(1)) - 0.5) < 0.05
+    assert "LinearPath, QuadraticPath or ExponentialPath" in message
+    if factory is JointAFT:
+        assert "Use link='value', or for the slope link" in message
+    else:
+        assert "Use link='value' or 'cumulative', or" in message
+
+
+def test_a_power_above_1_has_a_slope_that_can_be_followed():
+    x, c, markers = _power_fleet(1.5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = JointPH(Weibull, PowerPath, link="slope").fit(
+            x=x, c=c, markers=markers
+        )
+    est = dict(zip(model.parameter_names, model.params))
+    assert est["b"] > 1.0
+    assert np.isfinite(est["slope_effect"])
+
+
+def test_a_power_on_a_log_link_is_judged_on_its_own_scale():
+    fitter = JointPH(
+        Weibull, LinkedPathModel(PowerPath, {"b": "log"}), link="slope"
+    )
+    with pytest.raises(ValueError, match="b = 0.8,"):
+        _check_power(fitter, np.array([3.0, np.log(0.8)]), "the fit puts")
+    _check_power(fitter, np.array([3.0, np.log(1.2)]), "the fit puts")
+    # only the slope link is judged
+    _check_power(
+        JointPH(Weibull, PowerPath), np.array([3.0, 0.5]), "the fit puts"
+    )
 
 
 def test_a_covariate_named_as_an_effect_is_refused():

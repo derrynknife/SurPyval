@@ -346,7 +346,7 @@ def test_fits_refuse_several_rows_per_unit_saying_what_they_are():
         sp.Weibull.fit(_recurrent())
     for call in (
         sp.KaplanMeier.fit,
-        sp.Weibull.fit_from_surpyval_data,
+        sp.Weibull._fit_from_surpyval_data,
         lambda d: d.to_xrd(),
         lambda d: sp.life_table(d, intervals=[0, 5, 10]),
     ):

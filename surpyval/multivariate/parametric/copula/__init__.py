@@ -9,6 +9,7 @@ from .archimedean import (
 from .copula import Copula
 from .copula_model import CopulaModel
 from .elliptical import Gaussian, StudentT
+from .vine import Vine
 
 __all__ = [
     "Copula",
@@ -21,4 +22,5 @@ __all__ = [
     "Joe",
     "AMH",
     "StudentT",
+    "Vine",
 ]

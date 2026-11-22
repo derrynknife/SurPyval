@@ -146,8 +146,11 @@ distribution of the same family.
 Equivalent Time Scales
 ----------------------
 
-One life measured on two clocks (hours and starts, say), combined into
-one age ``x1 + k x2`` with ``k`` learned from the data. See
+One life measured on a main clock (hours, say) and a subordinate second
+clock (starts) read at the same moments, combined into one age
+``x + k x2`` with ``k`` learned from the data. The data are univariate:
+``x``, ``c``, ``n``, ``t`` on the main clock, plus ``x2`` (an array or a
+``SecondaryClock``). See
 :doc:`Equivalent Time Scales` for the guide.
 
 .. toctree::

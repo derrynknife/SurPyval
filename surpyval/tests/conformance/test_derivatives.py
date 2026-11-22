@@ -316,19 +316,33 @@ def _joint(case):
     return [(" (search space)", f, at, _autograd(f), model.neg_ll())]
 
 
+def _excess_hazard(case):
+    """The excess hazard likelihood in the natural log-rates and the
+    coefficients, by autograd (the fit's own derivatives, in the search
+    space a linear map of this one)."""
+    from surpyval.univariate.relative.excess_hazard import search_space
+
+    model = fitted(case)
+    f, at, _, _ = search_space(model, case.data())
+    return [(" (log-rates)", f, at, _autograd(f), model.neg_ll())]
+
+
 OBJECTIVES = {
-    "surpyval.JointModel": _joint,
+    "surpyval.univariate.joint.JointModel": _joint,
+    "surpyval.ExcessHazard": _excess_hazard,
     "surpyval.Parametric": lambda case: _parametric(fitted(case)),
-    "surpyval.ParametricRegressionModel": lambda case: _regression(
-        fitted(case)
+    "surpyval.univariate.regression.ParametricRegressionModel": (
+        lambda case: _regression(fitted(case))
     ),
-    "surpyval.DistributionalRegressionModel": lambda case: _regression(
-        fitted(case)
+    "surpyval.univariate.regression.DistributionalRegressionModel": (
+        lambda case: _regression(fitted(case))
     ),
-    "surpyval.FrailtyModel": _spied,
+    "surpyval.univariate.regression.FrailtyModel": _spied,
     "surpyval.univariate.competing_risks.regression.fine_gray"
     ".FineGrayModel": _spied,
-    "surpyval.SemiParametricRegressionModel": lambda case: _cox(fitted(case)),
+    "surpyval.univariate.regression.SemiParametricRegressionModel": (
+        lambda case: _cox(fitted(case))
+    ),
     "surpyval.univariate.competing_risks.ParametricCompetingRisks": (
         lambda case: _competing_parametric(fitted(case))
     ),
@@ -415,7 +429,12 @@ _H = 1e-4
 
 
 def _is_copula(case):
-    return case.model_class == "surpyval.multivariate.CopulaModel"
+    # (the bivariate families' h-functions; a copula of more series has
+    # none of its own)
+    return (
+        case.model_class == "surpyval.multivariate.CopulaModel"
+        and case.x.shape[1] == 2
+    )
 
 
 @pytest.mark.parametrize("case", cases_for("derivatives", where=_is_copula))

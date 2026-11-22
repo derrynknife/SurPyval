@@ -84,9 +84,13 @@ Every competing-risks fit takes the same core arrays:
   see `Delayed entry`_, `Assembling a model from separately fitted causes`_
   and `Delayed entry in the cause-specific model`_).
 
-Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected by
-every fit but ``ParametricCompetingRisks`` (see `Failures found at
-inspections`_), whose error says so.
+Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are taken by
+``ParametricCompetingRisks`` (see `Failures found at inspections`_),
+``CompetingRisks`` (`The non-parametric estimate for inspection data`_),
+``gray_test`` and the cause-specific ``CoxPH``; the other regressions
+(``FineGray``, ``CompetingRisksProportionalHazards``,
+``ParametricCompetingRisksRegression``) and ``pseudo_cif`` refuse them,
+saying which of those to use.
 
 lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
 integer column with ``0`` for a censored row. Here ``0`` is a cause like any
@@ -632,6 +636,37 @@ units that fail, as ``Parametric.mean`` does.
     _area = quad(lambda t: float(pmodel.sf(t)), 0, np.inf, limit=200)[0]
     assert np.isclose(_area, pmodel.mean(), rtol=1e-8)
 
+Eliminating a failure mode
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+"If a design change removed the shocks, how long would the units last?"
+``eliminate(cause)`` returns the model of the causes left, each with its
+fitted distribution, so its ``sf``, ``mean``, ``qf``, ``cif`` and ``cb``
+answer for the units with that failure mode designed out. Its all-cause
+survival is the product of the kept causes' net survivals, which assumes
+the causes act independently: removing one leaves the others' hazards as
+they were. The data cannot check that, so it is an assumption to state
+with the answer.
+
+.. jupyter-execute::
+
+    no_shock = pmodel.eliminate("shock")
+    print("MTTF without shocks : %.2f" % no_shock.mean())
+    print("B10 without shocks  : %.2f" % no_shock.qf(0.1))
+    print(np.round(no_shock.cb([50.0, 100.0], on="sf"), 3))
+
+For the non-parametric estimate the same quantity is the product of the
+kept causes' Nelson-Aalen net survivals,
+``np.exp(-sum(model.Hf(t, k) for k in kept))``, under the same assumption.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert no_shock.causes == ["wear"]
+    assert np.isclose(no_shock.mean(), pmodel.models["wear"].mean(), rtol=1e-6)
+    assert np.isclose(no_shock.qf(0.1), pmodel.qf(0.1, event="wear"))
+
 How sure are these numbers? Bands and parameter uncertainty
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -817,7 +852,24 @@ bound (``cb`` on ``cif``, ``sf``, ``ff`` and ``Hf``, ``standard_errors``) uses
 it. Each cause's model in ``models`` carries its parameters and its block of
 that covariance, so its own Wald bounds hold; it has no data of its own, so
 its likelihood-ratio and bootstrap bounds, ``neg_ll`` and ``aic`` are the
-model's, not the cause's. Only ``how="MLE"`` and continuous distributions
+model's, not the cause's. A cause's net ``sf``, ``ff`` and ``Hf`` take
+``method="lr"`` and ``method="bootstrap"`` on the model, over the joint
+likelihood: the likelihood-ratio bound profiles every cause's parameters
+(with one cause it is the univariate fit's bound), and the bootstrap is by
+cases -- the units resampled with their windows, the causes fitted together
+again -- since a parametric resample would need the inspection schedule.
+Both need the data the model was fitted to, which ``from_dict`` does not
+restore.
+
+.. jupyter-execute::
+
+    print(inspected.cb([50.0, 100.0], "wear", on="sf", method="lr").round(3))
+
+In a simulation of failures found at inspections every 2 time units (n =
+300, 200 replicates;
+``surpyval/tests/calibration/test_coverage_competing_risks_interval.py``)
+the 95% likelihood-ratio bounds on each cause's net survival covered 92.5%
+to 96% at three times. Only ``how="MLE"`` and continuous distributions
 are supported, and a row in a window needs its cause. ``diagnose()`` does
 not yet check such a fit (its checks need each failure's exact time) and
 says so; compare distributions by their ``aic()``, and the all-cause
@@ -913,6 +965,69 @@ by SQUAREM, until its Karush-Kuhn-Tucker conditions hold to ``tol``.
     assert abs(np_inspected.cif(100.0, "wear")
                - inspected.cif(100.0, "wear")) < 0.06
 
+Covariates with inspection data: ``CoxPH``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To see how covariates change each cause's rate when failures are found at
+inspections, give ``CoxPH.fit`` the windows and the causes. In plain words:
+each cause gets its own hazard ratios, as in the cause-specific Cox model
+below, but because nobody knows exactly when an inspected unit failed, the
+fit uses the full likelihood -- the probability of each unit failing from its
+cause somewhere in its window -- and estimates every cause's baseline from
+the data together with the coefficients. The fitted model's ``estimator``
+says ``"NPMLE"``; with exact times and right censoring only ``CoxPH`` keeps
+the partial likelihood (``"partial likelihood"``). Delayed entry (``tl``) and
+right truncation (``tr``) are taken too.
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+
+    rng = np.random.default_rng(7)
+    n_units = 150
+    load = rng.binomial(1, 0.5, n_units).astype(float)
+    h_wear = 0.010 * np.exp(0.8 * load)    # load speeds up wear ...
+    h_crack = 0.006 * np.exp(-0.5 * load)  # ... and slows cracking
+    life = rng.exponential(1 / (h_wear + h_crack))
+    cause = np.where(rng.random(n_units) < h_wear / (h_wear + h_crack),
+                     "wear", "crack").astype(object)
+    # Inspected every 25 h up to 200 h
+    lo = 25.0 * np.floor(life / 25.0)
+    x_cox = np.column_stack([lo, lo + 25.0])
+    c_cox = np.full(n_units, 2)
+    still = life > 200.0
+    x_cox[still] = 200.0
+    c_cox[still] = 1
+    cause[still] = None
+
+    cox_inspected = CoxPH.fit(x_cox, load, c=c_cox, e=cause)
+    print(cox_inspected.estimator)
+    print(cox_inspected.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(3))
+    print("wear CIF at 100 h, low / high load: %.3f / %.3f" % (
+        cox_inspected.cif(100.0, [0.0], "wear"),
+        cox_inspected.cif(100.0, [1.0], "wear")))
+
+The standard errors come from the curvature of the profile likelihood (each
+baseline refitted around the estimate); ``param_cb`` also gives
+likelihood-ratio and bootstrap intervals, and ``cb`` approximate bootstrap
+bounds on the curves. With one cause (no ``e``) the same route is the
+interval-censored Cox model, ``IntervalCoxPH``. Where every row is right
+truncated the data cannot say how many units fail after the largest
+truncation time: the fit warns, and its curves are ``nan`` after it. See
+:doc:`Competing Risks Analysis` for the likelihood.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox_inspected.estimator == "NPMLE"
+    assert cox_inspected.maximum == "verified"
+    _b = dict(zip(cox_inspected.parameter_names, cox_inspected.params))
+    assert _b["wear: coef_0"] > 0 > _b["crack: coef_0"], _b
+    assert abs(cox_inspected.cif(100.0, [1.0], "wear")
+               + cox_inspected.cif(100.0, [1.0], "crack")
+               - cox_inspected.ff(100.0, [1.0])) < 1e-12
+
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -988,7 +1103,7 @@ Reach for it when the clinical or engineering question is "how many fail of this
 cause", not "how fast".
 
 Pass the observed times ``x``, the per-observation cause label ``e``, the group
-label, and the ``cause`` of interest; optional ``n`` gives row counts.
+label, and the cause of interest as ``event``; optional ``n`` gives row counts.
 Censored rows follow the same rules as for the model classes (see
 `Competing-risks data format`_): a missing cause (``None`` or ``NaN``) marks a
 censored row, and an optional ``c`` must agree with it.
@@ -1279,9 +1394,18 @@ Fine-Gray Sub-distribution Hazards
 The Fine-Gray model estimates the effect of covariates directly on the
 cumulative incidence function of a chosen cause, using an
 inverse-probability-of-censoring-weighted subdistribution risk set. ``e`` is
-the per-observation cause label (``None`` for a censored row) and ``cause``
+the per-observation cause label (``None`` for a censored row) and ``event``
 selects the cause of interest. ``Z`` is the covariate matrix, one row per
 observation.
+
+The baseline, and so ``phi(Z)``, is that of a unit with every covariate at 0,
+unless the model is fitted with ``center=True``, which puts it at the
+covariate means (``model.center``). With a covariate such as a temperature in
+°C, ``phi`` at 50 is the multiplier relative to 0 °C: fit with
+``center=True``, or compare two units as ``phi(Z1) / phi(Z0)``.
+``standard_errors(robust=...)``, ``covariance(...)`` and ``phi(Z)`` are
+methods, called for their values, where ``beta`` and ``coefficients`` are
+arrays.
 
 Here we simulate two-cause data whose cause-1 incidence follows a Fine-Gray
 model with coefficients :math:`(0.7, -0.4)`, apply right-censoring, and recover
@@ -1394,13 +1518,46 @@ means (``model.center``, and ``phi`` is relative to them).
     _last = np.max(x[(e == 1) & (c == 0)])
     assert round(_last, 1) == 5.6, _last
 
+``cb`` bounds the cumulative incidence (``on="cif"``) or one minus it
+(``on="sf"``) by the case bootstrap: the units are resampled, the model
+refitted to each resample, and the bounds are the percentiles of the refits'
+incidences, so they carry the coefficients', the baseline's and the
+censoring weights' uncertainty together. Here the 95% bounds at
+:math:`Z = (1, 0)` contain the true incidence at each time. There is no
+Wald or likelihood-ratio bound: ``method="wald"`` and ``"lr"`` refuse and
+say to use the bootstrap.
+
+.. jupyter-execute::
+
+    times = np.array([0.5, 1.0, 2.0])
+    z = np.array([1.0, 0.0])
+    bounds = model.cb(times, z, n_boot=100, random_state=1)
+    truth = 1 - (1 - p * (1 - np.exp(-times))) ** np.exp(z @ beta)
+    print(np.round(model.cif(times, z), 3))
+    print(np.round(bounds, 3))
+    print(np.round(truth, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((bounds[:, 0] < truth) & (truth < bounds[:, 1])), bounds
+
 Things to watch:
 
-- ``cause`` must be given when the data contain more than one cause, and it
+- ``event`` must be given when the data contain more than one cause, and it
   must be one that is observed; with a single cause it may be omitted.
+- With fewer than ten events of the cause per coefficient the fit warns,
+  with the counts: the coefficients, p-values and bounds then rest on few
+  events (Peduzzi et al.'s rule of ten events per variable).
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.
+- For many covariates, or correlated ones, ``FineGray.fit_penalised`` adds a
+  ridge, lasso or elastic-net penalty (the objective of R's
+  ``fastcmprsk::fastCrrp``; see the penalised regression section of
+  :doc:`Regression Modelling with SurPyval`). The penalised model predicts
+  the incidence, but has no standard errors.
 - Censoring times tied with event times (common when times are recorded in
   whole days or months) follow R's ``cmprsk::crr``: the event is taken to
   come first. A unit that failed from a competing cause at :math:`x_i` keeps

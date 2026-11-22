@@ -20,7 +20,7 @@ does, as the non-parametric estimates' ``qf``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -785,6 +785,266 @@ class RestrictedMeanMixin:
             return function_bounds(self, fits, value, None, alpha_ci, bound)
         value_, se = self._rmst_wald(t, rows, robust, cluster)
         return self._rmst_logit_cb(value_, se, t, alpha_ci, bound)
+
+    def _mean_at(self, rows_c: npt.NDArray, params: Any) -> npt.NDArray:
+        """The mean life, ``int_0^inf S(t | row) dt`` (less ``int_-inf^0
+        F(t | row) dt`` for a baseline on the whole line), at the
+        parameters ``params`` for the centred rows ``rows_c``: ``lower +
+        m int_0^1 S(lower + m s / (1 - s)) / (1 - s)^2 ds`` by one
+        vector-valued adaptive quadrature,
+        ``m`` each row's median at ``params`` (so the integrand's scale
+        is the row's own); ``S = 1`` below the support's start."""
+        from scipy.integrate import quad_vec
+
+        out = np.full(rows_c.shape[0], np.nan)
+        ok = np.all(np.isfinite(rows_c), axis=1)
+        if not ok.any():
+            return out
+        r_ok = rows_c[ok]
+        lower = float(self.distribution.support[0])
+        start = lower if np.isfinite(lower) else 0.0
+        with np.errstate(all="ignore"):
+            median = np.asarray(
+                self._mean_scale(r_ok, params, start), dtype=float
+            )
+
+        # A survival that levels off above 0 (a cured fraction, a hazard
+        # that dies away) has an infinite mean: where S is still above
+        # 1e-12 at a million typical lives, the row's mean is inf.
+        with np.errstate(all="ignore"):
+            far = np.asarray(
+                self.model.sf(start + 1e6 * median, r_ok, *params),
+                dtype=float,
+            )
+        finite = ~(far > 1e-12) & np.isfinite(median)
+        values = np.full(r_ok.shape[0], np.inf)
+        if finite.any():
+            r_fin, m_fin = r_ok[finite], median[finite]
+
+            def integrand(s: float) -> npt.NDArray:
+                if s >= 1.0:
+                    return np.zeros(r_fin.shape[0])
+                t = start + m_fin * s / (1.0 - s)
+                with np.errstate(all="ignore"):
+                    S = np.asarray(
+                        self.model.sf(t, r_fin, *params), dtype=float
+                    )
+                return m_fin * S / (1.0 - s) ** 2
+
+            with np.errstate(all="ignore"):
+                value, _ = quad_vec(
+                    integrand,
+                    0.0,
+                    1.0,
+                    epsabs=0.0,
+                    epsrel=1e-10,
+                    norm="max",
+                    limit=500,
+                )
+            values[finite] = start + value
+            if not np.isfinite(lower):
+                # A baseline on the whole line (Normal, Logistic, Gumbel):
+                # the mean also takes off int_-inf^0 F(t | row) dt, as
+                # mean() does.
+                def below(s: float) -> npt.NDArray:
+                    if s >= 1.0:
+                        return np.zeros(r_fin.shape[0])
+                    t = -m_fin * s / (1.0 - s)
+                    with np.errstate(all="ignore"):
+                        F = 1.0 - np.asarray(
+                            self.model.sf(t, r_fin, *params), dtype=float
+                        )
+                    return m_fin * F / (1.0 - s) ** 2
+
+                with np.errstate(all="ignore"):
+                    negative, _ = quad_vec(
+                        below,
+                        0.0,
+                        1.0,
+                        epsabs=0.0,
+                        epsrel=1e-10,
+                        norm="max",
+                        limit=500,
+                    )
+                # (an additive hazards model has no sf before 0 at a
+                # fixed row: its mean needs a schedule, mean_tvc)
+                negative = np.where(np.isfinite(negative), negative, np.nan)
+                values[finite] = values[finite] - negative
+        out[ok] = values
+        return out
+
+    def _mean_scale(
+        self, rows_c: npt.NDArray, params: Any, start: float
+    ) -> npt.NDArray:
+        """Each row's median above ``start`` at ``params``: the time where
+        the cumulative hazard reaches ``log 2``, by bisection on the log
+        scale (a typical life, to scale the integral of the mean)."""
+        lo = np.full(rows_c.shape[0], -50.0)
+        hi = np.full(rows_c.shape[0], 50.0)
+        target = np.log(2.0)
+        for _ in range(200):
+            mid = 0.5 * (lo + hi)
+            H = np.asarray(
+                self.model.Hf(start + np.exp(mid), rows_c, *params),
+                dtype=float,
+            )
+            above = H >= target
+            hi = np.where(above, mid, hi)
+            lo = np.where(above, lo, mid)
+        return np.exp(0.5 * (lo + hi))
+
+    def mean_cb(
+        self,
+        Z: Any,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the mean life :meth:`mean` of a unit with
+        covariates ``Z``: an accelerated life model's MTTF at a stress.
+
+        Parameters
+        ----------
+        Z : array like or DataFrame
+            One covariate row, or one row per unit (a bound for each).
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'bootstrap'}, optional
+            ``'wald'`` (the default) is the delta method on the log of the
+            mean above the support's start (the mean itself for a baseline
+            on the whole line), from its gradient in the parameters
+            (central differences of the mean, the integral of
+            :meth:`sf`) and their covariance, as the univariate models'
+            ``mean_cb``. ``'bootstrap'`` is the BCa interval of the mean
+            over the parametric bootstrap refits of :meth:`cb`. There is
+            no likelihood-ratio bound on the mean of a regression model:
+            ``'lr'`` is refused (bound a quantile with ``quantile_cb(...,
+            method='lr')`` instead).
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only).
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance; ``method``
+            must be ``"wald"``. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit.
+
+        Returns
+        -------
+        numpy array
+            The bound(s): one row (or value) per row of ``Z``; a mean that
+            is infinite (a survival that levels off above 0) has infinite
+            bounds.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AcceleratedLife, Weibull
+        >>> from surpyval.life_models import Power
+        >>> np.random.seed(1)
+        >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
+        >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)
+        >>> model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+        >>> round(float(model.mean(10.0)), 2)
+        73.93
+        >>> model.mean_cb(10.0).round(2)
+        array([58.15, 94.  ])
+        """
+        from surpyval.utils.linalg import bound_signs, delta_method_se
+        from surpyval.utils.shapes import covariate_rows
+        from surpyval.utils.validation import (
+            BOUNDS,
+            check_alpha_ci,
+            check_option,
+        )
+
+        from ._bootstrap import bound_method
+        from ._inference import check_robust_request
+
+        check_alpha_ci(alpha_ci)
+        method = bound_method(method)
+        if method == "lr":
+            raise ValueError(
+                "mean_cb has no likelihood-ratio bound for a regression "
+                "model: use method='wald' (the default) or "
+                "method='bootstrap', or bound a quantile with "
+                "quantile_cb(p, Z, method='lr')."
+            )
+        check_robust_request(robust, cluster, method)
+        self._refuse_weighted_method(method)
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        rows = np.asarray(
+            covariate_rows(self._prepare_Z(Z), self._n_covariates()),
+            dtype=float,
+        )
+        lower = float(self.distribution.support[0])
+        if method == "bootstrap":
+            from ._bootstrap import function_bounds, refits
+
+            fits = refits(self, n_boot, random_state)
+            fits.warn()
+
+            def value(p: npt.NDArray, center: Any = None) -> npt.NDArray:
+                rows_c = np.asarray(self._centred(rows, center), float)
+                return self._mean_at(rows_c, p)
+
+            out = function_bounds(self, fits, value, None, alpha_ci, bound)
+        else:
+            params, center, cov = self._wald_state(robust, cluster, "wald")
+            rows_c = np.asarray(self._centred(rows, center), dtype=float)
+
+            whole_line = not np.isfinite(lower) and not np.any(center)
+
+            def mean_at(q: Any) -> npt.NDArray:
+                if not whole_line:
+                    return self._mean_at(rows_c, q)
+                # A baseline on the whole line: the mean is mean()'s, with
+                # its part before 0 (which an additive hazards model works
+                # out along a schedule), at each parameter vector.
+                with _ignoring_warnings():
+                    model = cast(Any, self).with_params(q)
+                    return np.atleast_1d(np.asarray(model.mean(rows), float))
+
+            from surpyval.utils.warnings import (
+                ignoring_warnings as _ignoring_warnings,
+            )
+
+            mean = mean_at(params)
+            with np.errstate(all="ignore"):
+                se = np.asarray(
+                    delta_method_se(mean_at, params, cov, scale_free=True),
+                    dtype=float,
+                )
+            alpha, signs = bound_signs(alpha_ci, bound)
+            from scipy.special import ndtri
+
+            z = ndtri(1.0 - alpha) * signs
+            with np.errstate(all="ignore"):
+                if np.isfinite(lower):
+                    above = mean - lower
+                    out = lower + above[:, None] * np.exp(
+                        z * (se / above)[:, None]
+                    )
+                else:
+                    out = mean[:, None] + z * se[:, None]
+            out = out if bound == "two-sided" else out[:, 0]
+            out = np.where(
+                np.isinf(mean)[:, None] if out.ndim == 2 else np.isinf(mean),
+                np.inf,
+                out,
+            )
+        return out[0] if out.shape[0] == 1 else out
 
     def rmst_diff(
         self,

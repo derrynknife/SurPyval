@@ -314,8 +314,19 @@ def _whole_number_array(values: npt.ArrayLike, name: str) -> npt.NDArray:
         arr = np.asarray(values, dtype=np.float64)
     except (ValueError, TypeError):
         raise ValueError(f"'{name}' must be an array of integers.")
-    if not np.isfinite(arr).all() or (arr != np.floor(arr)).any():
+    if not np.isfinite(arr).all():
         raise ValueError(f"'{name}' must be an array of integers.")
+    fractional = arr != np.floor(arr)
+    if fractional.any():
+        example = float(arr[fractional].ravel()[0])
+        raise ValueError(
+            f"'{name}' must be an array of integers, counts of units; "
+            f"{int(fractional.sum())} of its values are fractional (e.g. "
+            f"{example!r}). Fractional counts are estimates, not "
+            "observations: to_xrd gives Turnbull's expected counts for "
+            "interval censored or truncated data, and from_xrd takes "
+            "counts of units. Fit the original data instead."
+        )
     return arr.astype(int)
 
 
@@ -561,6 +572,16 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         raise TypeError(
             f"{kind}: build the dataset, SurpyvalData.from_items("
             f"{'items' if listed else '[item, ...]'}), and fit that."
+        )
+    from surpyval.utils.notation import Item
+
+    if isinstance(record, Item):
+        raise TypeError(
+            f"x is {one}Item history{plural}: collect "
+            f"{'them' if listed else 'it'} as Items("
+            f"{'items' if listed else '[item, ...]'}), which a fit that "
+            "takes a SurpyvalData takes as it is (or "
+            "Items(...).surpyval_data())."
         )
     if isinstance(record, ItemHistory):
         kind = f"x is {one}ItemHistory record{plural} (one item's history)"
