@@ -93,8 +93,10 @@ jobs:
   # is fixed, as a reminder to remove its entry.
   conformance:
     runs-on: ubuntu-latest
-    # 8 minutes on the 0.26 release run, installation included.
-    timeout-minutes: 20
+    # 8 minutes on the 0.26 release run, installation included; in one
+    # process it passed 20 minutes at 94% on the 0.29 release run, so it
+    # now runs in a process per core.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -113,7 +115,7 @@ jobs:
       - name: pytest (conformance)
         run: >-
           python -m pytest surpyval/tests/conformance -m "not slow"
-          --timeout=600 --timeout-method=thread
+          -n auto --timeout=600 --timeout-method=thread
 
   # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).

@@ -98,10 +98,10 @@ def test_593_a_fit_evaluates_each_point_once(monkeypatch):
     calls = []
     original = parametric_fitter.ParametricFitter._neg_ll_func
 
-    def counted(self, data, *params):
+    def counted(self, data, *params, **kwargs):
         boxed = any(isinstance(p, Box) for p in params)
         calls.append((boxed, tuple(_unboxed(p) for p in params)))
-        return original(self, data, *params)
+        return original(self, data, *params, **kwargs)
 
     monkeypatch.setattr(
         parametric_fitter.ParametricFitter, "_neg_ll_func", counted

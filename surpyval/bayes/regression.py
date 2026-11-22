@@ -843,7 +843,7 @@ class BayesianRegression(SerialisableMixin):
         return out, rows
 
     def _n_covariates(self) -> int:
-        return int(np.shape(self.data.Z)[1])
+        return int(np.asarray(self.data.Z).shape[1])
 
     # ------------------------------------------------------------------
     # Credible intervals
@@ -869,7 +869,8 @@ class BayesianRegression(SerialisableMixin):
         Z : array like or DataFrame
             The covariates: one row per time, or one row for all.
         on : {'sf', 'ff', 'Hf', 'hf', 'df'}, optional
-            The function. Default ``'sf'``.
+            The function (``'R'`` and ``'F'`` are ``'sf'`` and ``'ff'``).
+            Default ``'sf'``.
         alpha_ci : float, optional
             1 minus the credible level. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
@@ -887,6 +888,8 @@ class BayesianRegression(SerialisableMixin):
         >>> bool(lo < model.sf(40.0, [[0.0]]) < hi)
         True
         """
+        # ``'R'`` and ``'F'`` are ``'sf'`` and ``'ff'``, as for every model
+        on = {"R": "sf", "F": "ff"}.get(on, on)
         if on not in _ON:
             raise ValueError(
                 f"on must be one of {', '.join(_ON)}; got {on!r}. "
@@ -895,20 +898,31 @@ class BayesianRegression(SerialisableMixin):
             )
         levels = _levels(alpha_ci, bound)
         shape = np.shape(x)
-        per_draw = self._per_draw(on)
-        below = 1.0 if on == "sf" else 0.0
+        # ff and Hf are falling functions of sf: their interval is sf's,
+        # transformed, so the three agree exactly (as the predictive's do)
+        # rather than by the interpolation between draws.
+        via_sf = on in ("ff", "Hf")
+        per_draw = self._per_draw("sf" if via_sf else on)
+        below = 1.0 if on == "sf" or via_sf else 0.0
         out = []
         for level in levels:
 
+            # (sf's point at 1 - level, where the function falls in sf)
+            at = 1.0 - level if via_sf else level
+
             def at_level(
-                x: Any, Z: Any, *p: Any, level: float = level
+                x: Any, Z: Any, *p: Any, at: float = at
             ) -> npt.NDArray:
-                return np.quantile(per_draw(x, Z), level, axis=0)
+                return np.quantile(per_draw(x, Z), at, axis=0)
 
             flat = np.reshape(np.asarray(x, dtype=float), -1)
-            out.append(
-                np.reshape(self._point._eval(at_level, flat, Z, below), shape)
-            )
+            if via_sf:
+                sf = self._point._eval(at_level, flat, Z, 1.0)
+                with np.errstate(divide="ignore"):
+                    value = 1.0 - sf if on == "ff" else -np.log(sf)
+            else:
+                value = self._point._eval(at_level, flat, Z, below)
+            out.append(np.reshape(value, shape))
         return np.stack(out, axis=-1) if len(out) == 2 else out[0]
 
     def quantile_cri(

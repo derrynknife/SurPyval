@@ -25,6 +25,7 @@ whose ``fit`` returns the ``ParametricRecurrenceModel`` the others do.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import autograd.numpy as np
@@ -346,6 +347,8 @@ class EffortClock(_ClockFitter):
         :class:`WeibullEffort` curve. Effort cannot fall: a negative
         amount is refused.
 
+    Notes
+    -----
     The returned object is a fitter: its ``fit`` takes the data the base
     model's does, in time (not effort), and returns a
     ``ParametricRecurrenceModel`` whose ``cif``, ``iif``, bounds,
@@ -538,6 +541,8 @@ class ChangePoint(_ClockFitter):
         failure for the best 3. Estimating it needs exact failure times
         (not counts in periods) of one system.
 
+    Notes
+    -----
     The returned object is a fitter with the base model's parameters and
     ``ratio``; its ``fit`` returns a ``ParametricRecurrenceModel``, which
     carries ``change_point`` (a dict with ``tau``, and for an estimated
@@ -781,9 +786,16 @@ class ChangePoint(_ClockFitter):
                 "itself with frailty=, or the change point without it."
             )
         if self.tau is not None:
-            model = super()._fit_from_recurrent_data(data, how, init)
-            if how == "MLE":
-                self._check_beats_limit(data, model)
+            if how != "MLE":
+                model = super()._fit_from_recurrent_data(data, how, init)
+            else:
+                model = _checked_against_limit(
+                    self,
+                    data,
+                    lambda: super(ChangePoint, self)._fit_from_recurrent_data(
+                        data, how, init
+                    ),
+                )
             model.change_point = {"tau": self.tau}
             return model
         if how != "MLE":
@@ -974,8 +986,13 @@ def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
     tau, params, _, taus, values = profile.search(data, init)
     # the fit at the chosen time, with a fit's checks and warnings
     chosen = ChangePoint(base, tau=tau)
-    model = NHPPFitter._fit_from_recurrent_data(chosen, data, "MLE", params)
-    chosen._check_beats_limit(data, model)
+    model = _checked_against_limit(
+        chosen,
+        data,
+        lambda: NHPPFitter._fit_from_recurrent_data(
+            chosen, data, "MLE", params
+        ),
+    )
     model.change_point = {
         "tau": tau,
         "candidates": taus,
@@ -983,6 +1000,22 @@ def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
         "estimated": True,
         "no_change_log_likelihood": no_change,
     }
+    return model
+
+
+def _checked_against_limit(fitter: Any, data: Any, fit: Any) -> Any:
+    """``fit()``'s model, refused where it does not beat the model's
+    limit (:meth:`ChangePoint._check_beats_limit`). The fit's warnings
+    are held until the check passes: where it refuses, the search ran to
+    the edge of the parameters, which the refusal says, and a warning
+    that it found no verified maximum there (given or not, by where the
+    search stopped) would only repeat it."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = fit()
+    fitter._check_beats_limit(data, model)
+    for w in caught:
+        warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
     return model
 
 

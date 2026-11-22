@@ -3857,9 +3857,16 @@ def _copula_bounds(case):
     )
     # The rank correlations' bounds (the independence copula's are its
     # measures, 0, at every level).
-    measures = tuple(
-        Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
-        for m in ("kendall_tau_cb", "spearman_rho_cb")
+    # A copula of three or more series has a matrix of them, one for
+    # each pair, and refuses these bounds, saying to bound a pair's
+    # parameter (param_cb) instead.
+    measures = (
+        ()
+        if "[D=" in case.name
+        else tuple(
+            Bound(m, kind="summary", query=((),), nan_ok=nan_ok)
+            for m in ("kendall_tau_cb", "spearman_rho_cb")
+        )
     )
     if "margins=KaplanMeier" in case.name:
         # Rank-based margins: the Wald bound on the parameter from the
@@ -4245,6 +4252,14 @@ def _bounds(case):
                 query=((_rmst_tau(case), np.asarray(case.Z, float)[:1]),),
                 label="rmst_cb[wald]",
             ),
+            # The mean life at the first covariate row
+            Bound(
+                "mean_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[wald]",
+            ),
         )
         if case.name not in _REGRESSION_LR_X:
             return wald
@@ -4287,6 +4302,13 @@ def _bounds(case):
                 "quantile_cb",
                 point="qf",
                 label="quantile_cb[bootstrap]",
+                **boot,
+            ),
+            Bound(
+                "mean_cb",
+                kind="summary",
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[bootstrap]",
                 **boot,
             ),
         )
@@ -4712,6 +4734,8 @@ def _starve(case):
         "FineGrayModel",
         "ProportionalOddsModel",
         "IntervalCoxPHModel",
+        # (CoxPH's full likelihood, for interval-censored rows)
+        "CoxNPMLEModel",
         "CoxFrailtyModel",
         "CoxMixedEffectsModel",
         "RecurrentCoxModel",

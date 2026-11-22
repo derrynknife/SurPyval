@@ -254,11 +254,17 @@ def test_other_lifetimes_draw_as_before(lifetime):
     v = rng.choice([0.0, 50.0, 2000.0, 6000.0], size=400)
     expected = _old_draw(lifetime, v, u)
     np.testing.assert_array_equal(conditional_gaps(lifetime, v, u), expected)
+    # One at a time against the old draw one at a time: numpy's loops
+    # over many values may round differently from its one-value path (by
+    # an ulp, on x86-64 Linux), so each is held to its own kind.
     one = [
         conditional_gaps(lifetime, v[k : k + 1], u[k : k + 1])[0]
         for k in range(40)
     ]
-    np.testing.assert_array_equal(one, expected[:40])
+    old_one = [
+        _old_draw(lifetime, v[k : k + 1], u[k : k + 1])[0] for k in range(40)
+    ]
+    np.testing.assert_array_equal(one, old_one)
 
 
 def test_a_hazard_that_levels_off_below_the_target_never_fails():

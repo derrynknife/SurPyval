@@ -87,6 +87,13 @@ class PowerCalculation:
         :func:`rate_ratio_design`).
     inputs : dict
         The design's other arguments, as given.
+
+    Examples
+    --------
+    >>> from surpyval.test_planning import logrank_design
+    >>> plan = logrank_design(0.7, power=0.8, event_probability=0.3)
+    >>> plan.design, plan.solved_for
+    ('logrank', 'n')
     """
 
     design: str

@@ -455,15 +455,8 @@ class OptimisedFitMixin(FitInputsMixin):
              alpha: 10.0
               beta: 3.670796510564323
         >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
-        ...             heuristic='Turnbull')  # doctest: +ELLIPSIS
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MPP
-        Data                : 100 units: 100 events (0 exact, 100 interval ...)
-        Parameters          :
-             alpha: 9.834445729732789
-              beta: 3.2602770099790424
+        ...             heuristic='Turnbull').params
+        array([9.83444573, 3.26027701])
         >>> c = np.zeros_like(x)
         >>> c[x > 13] = 1
         >>> x[x > 13] = 13

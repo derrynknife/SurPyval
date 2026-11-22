@@ -26,10 +26,6 @@ See "When the testing was not steady" in
 
 .. autoclass:: surpyval.recurrent.EffortClock
 
-   .. automethod:: surpyval.recurrent.EffortClock.fit
-   .. automethod:: surpyval.recurrent.EffortClock.fit_from_df
-   .. automethod:: surpyval.recurrent.EffortClock.from_params
-
 .. autoclass:: surpyval.recurrent.EffortTable
    :members:
 
@@ -37,10 +33,6 @@ See "When the testing was not steady" in
    :members:
 
 .. autoclass:: surpyval.recurrent.ChangePoint
-
-   .. automethod:: surpyval.recurrent.ChangePoint.fit
-   .. automethod:: surpyval.recurrent.ChangePoint.fit_from_df
-   .. automethod:: surpyval.recurrent.ChangePoint.from_params
 
 .. autofunction:: surpyval.recurrent.change_point_cb
 

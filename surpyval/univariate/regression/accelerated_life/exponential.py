@@ -33,6 +33,7 @@ class InverseExponential_(LifeModel):
     kelvin_stress_columns = (0,)
     phi_takes_rows = True
     log_scale_parameters = ("b",)
+    activation_parameter = ("a", -1.0)
 
     def __init__(self) -> None:
         super().__init__(
@@ -93,6 +94,7 @@ class ExponentialLifeModel_(LifeModel):
     kelvin_stress_columns = (0,)
     phi_takes_rows = True
     log_scale_parameters = ("b",)
+    activation_parameter = ("a", 1.0)
 
     def __init__(self, name: str = "Exponential") -> None:
         super().__init__(
