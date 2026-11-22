@@ -5,6 +5,28 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **A hazard ratio, ``hr``, on every parametric model.**
+  ``Weibull.from_params([1000, 2], hr=1.5)`` has 1.5 times the hazard of
+  the Weibull at every age: its survival is the model's raised to ``hr``.
+  It applies over the offset, limited failure population and zero
+  inflation (a mass ``f0`` at 0 becomes ``1 - (1 - f0) ** hr``), so the
+  models at ``hr = 1 - b`` and ``hr = b`` together make the model. Every
+  function follows from the cumulative hazard, precise in both tails;
+  ``qf`` and draws go through ``isf``. A Weibull's and an exponential's
+  moments, entropy, mean residual life and restricted mean stay in closed
+  form (the Weibull at scale ``alpha * hr ** (-1 / beta)``, the
+  exponential at rate ``hr * lambda``); other distributions integrate.
+  ``hr`` is known, not a parameter: it is in ``extras`` and
+  ``with_params(..., hr=)``, kept by ``rescale_time``, printed, pickled,
+  and saved as ``"hr"`` under schema 5, which SurPyval 0.28 refuses. With
+  ``hr = 1`` every value and seeded draw is unchanged. Probability models
+  (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+  ``ExactEventTime``) refuse it. ``fit(..., hr=)`` fits data with a known
+  hazard ratio (maximum likelihood; never estimated); its Wald and
+  bootstrap bounds and ``param_cb`` hold ``hr`` fixed, and the
+  likelihood-ratio bounds on a function and the bounds on the mean, mean
+  residual life and restricted mean refuse, saying to use the bootstrap
+  refits. See :doc:`Hazard Ratio`.
 - **Joint models: any number of path parameters varying between items,
   by Laplace's approximation (``integration="laplace"``).** A grid of 7
   values of each varying parameter stops at five (16,807 nodes an item);

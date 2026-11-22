@@ -299,7 +299,9 @@ _SCHEMA_MEASUREMENTS = 4
 # "two-stage"``), with a lag (``"lag"`` above 0), with a weight on its
 # accumulated exposure (``"weight"``), with more than three varying path
 # parameters or with some of them uncorrelated (``"random_effects"``
-# other than ``"full"``): v0.29's schema 5.
+# other than ``"full"``): v0.29's schema 5. Also a parametric model with
+# a hazard ratio other than 1 (``"hr"``), which a v0.28 reader would load
+# without it.
 _SCHEMA_ACCELERATED_JOINT = 5
 
 # The most path parameters a v0.28 joint model may vary between items.
@@ -793,7 +795,7 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
     if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
-        _is_schema_5_joint(d) for d in dicts
+        _is_schema_5_joint(d) or _has_hazard_ratio(d) for d in dicts
     ):
         return _SCHEMA_ACCELERATED_JOINT
     if _SCHEMA_STRATIFIED in stamped_versions or any(
@@ -849,6 +851,17 @@ def _is_schema_5_joint(d: dict) -> bool:
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
         or (d.get("random_effects") or "full") != "full"
         or d.get("causes") is not None
+    )
+
+
+def _has_hazard_ratio(d: dict) -> bool:
+    """Whether ``d`` is a parametric model with a hazard ratio other than
+    1 (``"hr"``), which a v0.28 reader would ignore, loading the model
+    without it: schema 5."""
+    return (
+        d.get("parameterization") == "parametric"
+        and d.get("hr") is not None
+        and d.get("hr") != 1
     )
 
 

@@ -265,6 +265,7 @@ class ExactEventTime_(ParametricFitter):
         gamma: Boxable | None = None,
         lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
+        hr: Boxable | None = None,
     ) -> Parametric:
         """Create an ExactEventTime model from the known event time.
 
@@ -272,7 +273,7 @@ class ExactEventTime_(ParametricFitter):
         ``lfp_p`` and ``f0`` are accepted so the signature matches
         :meth:`ParametricFitter.from_params`, and rejected.
         """
-        reject_structural_params(self.name, gamma, lfp_p, f0)
+        reject_structural_params(self.name, gamma, lfp_p, f0, hr)
         model = Parametric(self, "from_params", None, False, False, False)
         # T given bare or as a one-element list, like every from_params
         model.params = np.atleast_1d(np.asarray(params, dtype=float)).ravel()

@@ -290,7 +290,7 @@ with its own ``schema``.
    * - ``Parametric``
      - ``"parameterization": "parametric"``
      - ``distribution``, ``how``, ``param_names``, ``params``, ``lfp``, ``p``, ``zi``, ``f0``, ``offset``, ``gamma``, ``hess_inv``, ``covariance``, ``_neg_ll``, ``maximum``, ``data_summary``, ``ic_n``
-     - ``fixed``, ``custom``, ``event_counts``, ``n_trials``
+     - ``fixed``, ``custom``, ``event_counts``, ``n_trials``, ``hr`` (a hazard ratio other than 1; schema 5)
    * - ``NonParametric``
      - ``"parameterization": "non-parametric"``
      - ``x``, ``r``, ``d``, ``R``, ``F``, ``H``, ``greenwood``, ``data_summary``
