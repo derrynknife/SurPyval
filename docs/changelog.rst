@@ -5,6 +5,19 @@ v0.29 (unreleased)
 
 **Added.**
 
+- **Accelerated life tests: what user tests found missing.** A parametric
+  regression's ``mean_cb(Z)`` bounds the mean life (an accelerated life
+  model's MTTF at a stress) by the delta method on its log, or by the
+  parametric bootstrap; ``method="lr"`` refuses, naming ``quantile_cb``.
+  An accelerated life model has ``activation_energy()`` (Arrhenius,
+  Eyring and their inverses: ``E_a`` in eV with its interval, beside
+  ``E_a / k_B`` in kelvin), which its printout now reports;
+  ``common_shape_test()``, the likelihood-ratio test of one shape at every
+  stress level against a shape for each (levels with fewer than two
+  failures left out, with a warning); and ``plot_life_stress(p=...)``, a
+  life (median, a B-life or the mean) against stress with its bounds and
+  the test levels and data marked.
+
 - **Bayesian regression: priors on coefficients.** The proportional
   hazards, accelerated failure time and accelerated life fitters have
   ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``
@@ -385,7 +398,8 @@ v0.29 (unreleased)
   period with no effort, a ``tau`` with no failures on one side of it,
   and a fit that only reaches the model's limit (no growth on the effort
   clock, or steady failures either side of the change, where
-  ``ChangePoint(HPP)`` is the model). A saved model on a clock has the
+  ``ChangePoint(HPP)`` is the model; the refusal comes alone, without a
+  warning from the search that ran to that limit). A saved model on a clock has the
   key ``clock`` (the model, and the effort or the time of the change),
   and a ``dist`` that SurPyval 0.28 does not know and so refuses. See
   "When the testing was not steady" in
