@@ -413,12 +413,30 @@ def _old_required_schema(model_dict):
             and d.get("strata") is not None
         )
 
-    # Schema 5 (v0.29): a joint model with the accelerated survival part
-    # ("survival": "AFT"), which takes precedence over every other rule.
-    def accelerated_joint(d):
-        return d.get("model") == "JointModel" and d.get("survival") == "AFT"
+    # Schema 5 (v0.29), which takes precedence over every other rule: a
+    # joint model a v0.28 reader would get wrong (the accelerated survival
+    # part, two stages, a lag, a weight, more than three varying path
+    # parameters, correlations held at 0, failure modes), or a parametric
+    # model with a hazard ratio other than 1.
+    def schema_5(d):
+        if d.get("parameterization") == "parametric" and d.get("hr") not in (
+            None,
+            1,
+        ):
+            return True
+        if d.get("model") != "JointModel":
+            return False
+        return (
+            d.get("survival") == "AFT"
+            or d.get("how") == "two-stage"
+            or (d.get("lag") or 0) > 0
+            or d.get("weight") is not None
+            or len(d.get("varying") or ()) > 3
+            or (d.get("random_effects") or "full") != "full"
+            or d.get("causes") is not None
+        )
 
-    if walk(model_dict, accelerated_joint):
+    if walk(model_dict, schema_5):
         return 5
     if walk(model_dict, stratified):
         return 4
