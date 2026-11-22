@@ -1770,6 +1770,11 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         points: int | None = None,
         unit: Any = None,
         w: Any = None,
+        chains: int = 4,
+        draws: int = 1000,
+        warmup: int = 1000,
+        random_state: Any = None,
+        n_jobs: int | None = None,
     ) -> Any:
         """
         Fit the distribution by Bayes' rule: the prior times the
@@ -1798,11 +1803,15 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         offset, zi, lfp, fixed
             As for ``fit``; ``gamma``, ``f0`` and ``lfp_p`` then need a
             prior or are flat.
-        method : {'auto', 'grid', 'conjugate', 'laplace'}, optional
+        method : {'auto', 'grid', 'conjugate', 'laplace', 'nuts'}, optional
             ``'auto'`` (the default) uses the closed form where one
-            applies, else the self-checking grid (1 to 3 free
-            parameters); ``'laplace'`` a normal approximation, labelled
-            approximate.
+            applies, else the self-checking grid for 1 to 3 free
+            parameters and the sampler for more; ``'laplace'`` a normal
+            approximation, labelled approximate; ``'nuts'`` SurPyval's
+            No-U-Turn sampler, for any number of free parameters. A
+            sampled fit is random (seed it with ``random_state``) and is
+            checked for convergence: a failed check warns, naming the
+            parameter and the number, and ``model.ok`` is False.
         points : int, optional
             The grid's starting points per parameter.
         unit : str, optional
@@ -1811,6 +1820,15 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             Weights are not taken: a ``w`` is refused with a
             ``ValueError`` that says what to use instead (``fit`` with
             ``w``, or counts ``n`` for identical units).
+        chains, draws, warmup : int, optional
+            The sampler's chains (4), and each chain's kept draws (1000)
+            and warm-up iterations (1000).
+        random_state : int or numpy.random.Generator, optional
+            The sampler's seed, by the one seed rule (``None``: numpy's
+            global stream). The grid and the closed forms draw nothing.
+        n_jobs : int, optional
+            Chains run at once (one by default); the draws do not depend
+            on it.
 
         Examples
         --------
@@ -1845,6 +1863,11 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             method=method,
             points=points,
             unit=unit,
+            chains=chains,
+            draws=draws,
+            warmup=warmup,
+            random_state=random_state,
+            n_jobs=n_jobs,
         )
 
     def fit_bayes_from_df(

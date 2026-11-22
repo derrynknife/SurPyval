@@ -115,12 +115,19 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
     priors : PriorSpec
         The priors as given.
     method : str
-        ``"grid"``, ``"conjugate"``, ``"laplace"`` or ``"draws"``.
+        ``"grid"``, ``"conjugate"``, ``"laplace"``, ``"nuts"`` (SurPyval's
+        sampler) or ``"draws"`` (draws made elsewhere).
     log_evidence : float
         The log marginal likelihood (for Bayes factors), where every prior
         is proper; ``nan`` otherwise.
     diagnostics : dict
-        How the posterior was computed and how accurately.
+        How the posterior was computed and how accurately. For a fit by
+        the sampler: ``rhat``, ``ess_bulk`` and ``ess_tail`` by
+        parameter, ``divergences``, ``tree_depth_saturated``, the
+        settings (``chains``, ``draws_per_chain``, ``warmup``), each
+        chain's ``step_size``, and ``problems``, the checks that failed
+        (:attr:`ok` is False where there are any). The posterior's
+        points are the draws, chain after chain.
     predictive_table : bool
         Whether a posterior of more than 2,000 points reads its predictive
         ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` from a table built once
@@ -259,6 +266,59 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         model._log_post = log_post
         model._log_z = result.log_z
         model._attach_density()
+        return model
+
+    @classmethod
+    def _from_sampler(
+        cls,
+        dist: Any,
+        data: SurpyvalData,
+        bound: Any,
+        out: dict,
+        summary: dict,
+        problems: list[str],
+        sampler: dict,
+        mle: Any,
+    ) -> BayesianParametric:
+        chains, draws, d = out["draws"].shape
+        theta = bound.full_theta(out["draws"].reshape(chains * draws, d))
+        post = Posterior(
+            bound.names,
+            bound.free_names,
+            theta,
+            np.full(len(theta), 1.0 / len(theta)),
+            "draws",
+            transforms=[bound.transforms[i] for i in bound.free_idx],
+        )
+        diag = {
+            "method": "nuts",
+            "free_parameters": list(bound.free_names),
+            "chains": chains,
+            "draws_per_chain": draws,
+            "draws": chains * draws,
+            "warmup": int(sampler["warmup"]),
+            **summary,
+            "warmup_divergences": int(out["warmup_divergences"].sum()),
+            "step_size": [float(v) for v in out["step_size"]],
+            "accept": float(out["accept"].mean()),
+            "leapfrog_steps": int(out["steps"].sum()),
+            "problems": list(problems),
+            "ok": not problems,
+        }
+        model = cls(
+            dist,
+            post,
+            data=data,
+            priors=bound.spec,
+            offset=bound.offset,
+            lfp=bound.lfp,
+            zi=bound.zi,
+            fixed=bound.fixed,
+            method="nuts",
+            diagnostics=diag,
+        )
+        model._mle_fit = mle
+        model._mle_known = True
         return model
 
     @classmethod
@@ -1693,6 +1753,8 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         xr: Any = None,
         replace: bool = False,
         method: str | None = None,
+        random_state: Any = None,
+        n_jobs: int | None = None,
     ) -> BayesianParametric:
         """
         The posterior with more data: exact, the original prior times the
@@ -1710,6 +1772,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             running (or have since failed), so that no unit counts twice.
         method : str, optional
             The engine; by default the one used before.
+        random_state, n_jobs : optional
+            The seed and the chains run at once, where the refit is by
+            the sampler (which runs with the settings used before).
 
         Examples
         --------
@@ -1755,6 +1820,17 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 k: v for k, v in fixed.items() if k not in self.priors.fixed()
             },
             method=m,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            **{
+                k: self.diagnostics[d]
+                for k, d in (
+                    ("chains", "chains"),
+                    ("draws", "draws_per_chain"),
+                    ("warmup", "warmup"),
+                )
+                if self.method == "nuts" and d in self.diagnostics
+            },
         )
         model.unit = self.unit
         return model
@@ -2777,6 +2853,23 @@ def _how_computed(model: BayesianParametric) -> str:
             "Approximated by a normal at the posterior's peak (Laplace); "
             "with few failures this can be poor: check it with the grid."
         )
+    if model.method == "nuts":
+        worst = max(d.get("rhat", {}).values(), default=float("nan"))
+        least = min(
+            list(d.get("ess_bulk", {}).values())
+            + list(d.get("ess_tail", {}).values()),
+            default=float("nan"),
+        )
+        text = (
+            f"Sampled (No-U-Turn sampler): {d.get('chains')} chains of "
+            f"{d.get('draws_per_chain')} draws after {d.get('warmup')} "
+            f"warm-up iterations; largest R-hat {worst:.3f}, smallest "
+            f"effective sample size {least:.0f}, "
+            f"{d.get('divergences', 0)} divergences."
+        )
+        if d.get("problems"):
+            text += " NOT CONVERGED: " + "; ".join(d["problems"]) + "."
+        return text
     return f"From {d.get('draws', len(model.posterior.weights))} draws."
 
 

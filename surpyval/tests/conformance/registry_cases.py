@@ -2613,6 +2613,36 @@ def _bayes_weibull(d):
     )
 
 
+def _bayes_weibull_sampled(d):
+    """The sampler, with the same priors as the grid's case: two short
+    chains from a fixed seed, so the fit is the same on every call."""
+    return sp.Weibull.fit_bayes(
+        d["x"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+        **_BAYES_SAMPLER,
+    )
+
+
+#: The sampled case's settings: enough draws to pass the sampler's own
+#: convergence checks on the fixture (they are not what is under test
+#: here; tests/bayes/test_sampler.py and test_fit_sampled.py are).
+_BAYES_SAMPLER = dict(
+    method="nuts", chains=2, draws=600, warmup=400, random_state=4590
+)
+
+
+#: Why a sampled fit's ``units`` property is not checked here.
+_SAMPLED_UNITS = (
+    "a sampler's draws rescale with the unit in distribution, not to the "
+    "last digit: rounding in the rescaled log-posterior changes the "
+    "trajectories (tests/bayes/test_fit_sampled.py::"
+    "test_a_change_of_time_unit_rescales_the_posterior checks it within "
+    "Monte Carlo error)"
+)
+
+
 def _bayes_exponential(d):
     """The closed form: a Gamma prior on the rate whose second parameter
     is a time (``prior_time``, rescaled with the data)."""
@@ -2628,17 +2658,18 @@ def _bayes_exponential(d):
     )
 
 
-def _bayes_paths(fit, fitter, priors):
+def _bayes_paths(fit, fitter, priors, **options):
     def from_df(d):
         df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
         return fitter.fit_bayes_from_df(
-            df, x_col="x", c_col="c", n_col="n", priors=priors(d)
+            df, x_col="x", c_col="c", n_col="n", priors=priors(d), **options
         )
 
     def from_data(d):
         return fitter.fit_bayes(
             sp.SurpyvalData(x=d["x"], c=d.get("c"), n=d.get("n")),
             priors=priors(d),
+            **options,
         )
 
     # (fit_from_df: the DataFrame path, fit_bayes_from_df)
@@ -2699,6 +2730,23 @@ def _bayes():
             paths=_bayes_paths(_bayes_weibull, sp.Weibull, weibull_priors),
             rtol=1e-6,
             **common,
+        ),
+        Case(
+            name="Weibull[bayes-nuts]",
+            fitters=(),
+            data=uni_data,
+            fit=_bayes_weibull_sampled,
+            paths=_bayes_paths(
+                _bayes_weibull_sampled,
+                sp.Weibull,
+                weibull_priors,
+                **_BAYES_SAMPLER,
+            ),
+            rtol=1e-6,
+            **{
+                **common,
+                "exclude": {**_BAYES_EXCLUDE, "units": _SAMPLED_UNITS},
+            },
         ),
         Case(
             name="Exponential[bayes]",
