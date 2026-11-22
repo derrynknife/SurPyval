@@ -2020,7 +2020,12 @@ class LikelihoodRatioMixin:
         model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
         return float(
             self.dist._neg_ll_func(
-                self.surv_data, *theta, self.gamma, self.f0, self.lfp_p
+                self.surv_data,
+                *theta,
+                self.gamma,
+                self.f0,
+                self.lfp_p,
+                hr=getattr(self, "hr", 1.0),
             )
         )
 
@@ -2041,6 +2046,9 @@ class LikelihoodRatioMixin:
 
         dist = self.dist
         if not isinstance(dist, ParametricFitter) or dist.discrete:
+            return False
+        if getattr(self, "hr", 1.0) != 1:
+            # The lean terms are the likelihood's without a hazard ratio
             return False
         lo, hi = (float(v) for v in dist.support)
         return (

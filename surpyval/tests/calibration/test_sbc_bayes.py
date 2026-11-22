@@ -27,6 +27,17 @@ likelihood leaves out, and the ranks could not be uniform. (The study's
 first runs set them from the truth, and failed for that reason; see
 DECISIONS.md.)
 
+The sampler (``method="nuts"``) has a scenario of its own, with rules
+fixed before its first run (DECISIONS.md, 21 Nov 2026): the Weibull with
+30% Type I censoring and the weak priors, the same 500 replicates and
+data seeds; four chains of 250 draws after 500 warm-up iterations, seeded
+``8600 + r``; every tenth draw of each chain kept (a sampler's draws
+follow one another, and the ranks are uniform only for independent
+ones), the first 99 of those 100 used, so a rank is one of 100 values in
+20 bins of 5; the same chi-square rule; and the 90% interval's coverage
+(rank 5 to 94) within 0.03 of 0.90, as 99 draws have no 2.5% point. A
+replicate that fails its convergence checks is counted and kept.
+
 Scenarios: Weibull with 20 complete values (weakly informative and
 informative priors), with 30% and 80% Type I censoring, inspections
 (interval censored), left truncation, and about 3 failures among 40
@@ -188,7 +199,14 @@ SCENARIOS = {
 EXPONENTIAL_PRIOR = (3.0, 300.0)
 
 
-def _ranks(dist, priors_key, simulate, n):
+#: The sampler's scenario: chains, draws and warm-up per chain, and the
+#: thinning that leaves 99 draws.
+SAMPLER = dict(method="nuts", chains=4, draws=250, warmup=500)
+SAMPLER_THIN = 10
+SAMPLER_DRAWS = 99
+
+
+def _ranks(dist, priors_key, simulate, n, sampler=False):
     names = list(dist.parameter_names) + ["B10"]
     ranks = {k: [] for k in names}
     refused = []
@@ -207,11 +225,21 @@ def _ranks(dist, priors_key, simulate, n):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                model = dist.fit_bayes(**data, priors=priors)
+                options = (
+                    dict(SAMPLER, random_state=8600 + r) if sampler else {}
+                )
+                model = dist.fit_bayes(**data, priors=priors, **options)
         except ValueError as e:
             refused.append((r, str(e)[:120]))
             continue
-        draws = model.posterior.draws(DRAWS, random_state=8600 + r)
+        if sampler:
+            ranks.setdefault("_not_converged", []).append(int(not model.ok))
+            per_chain = model.posterior.points.reshape(
+                SAMPLER["chains"], SAMPLER["draws"], -1
+            )[:, ::SAMPLER_THIN]
+            draws = per_chain.reshape(-1, per_chain.shape[2])[:SAMPLER_DRAWS]
+        else:
+            draws = model.posterior.draws(DRAWS, random_state=8600 + r)
         cols = model.posterior.parameter_names
         for k, name in enumerate(dist.parameter_names):
             d = draws[:, cols.index(name)]
@@ -223,24 +251,25 @@ def _ranks(dist, priors_key, simulate, n):
     return ranks, refused
 
 
-def _check(label, ranks, refused):
+def _check(label, ranks, refused, draws=DRAWS, level=0.95, slack=0.02):
     assert not refused, f"{label}: {len(refused)} fits refused: {refused[:3]}"
     failures = []
+    tail = round((draws + 1) * (1 - level) / 2)
     for name, rk in ranks.items():
         rk = np.asarray(rk)
-        counts = np.bincount(rk * BINS // (DRAWS + 1), minlength=BINS)
+        counts = np.bincount(rk * BINS // (draws + 1), minlength=BINS)
         expected = len(rk) / BINS
         stat = float(np.sum((counts - expected) ** 2 / expected))
         p = float(stats.chi2.sf(stat, BINS - 1))
-        cover = float(np.mean((rk >= 25) & (rk < DRAWS + 1 - 25)))
+        cover = float(np.mean((rk >= tail) & (rk < draws + 1 - tail)))
         print(
             f"{label} {name}: chi-square p = {p:.4f}, "
-            f"95% coverage {cover:.3f}"
+            f"{level:.0%} coverage {cover:.3f}"
         )
         if p < 0.001:
             failures.append(f"{name}: ranks not uniform (p = {p:.2e})")
-        if abs(cover - 0.95) > 0.02:
-            failures.append(f"{name}: 95% coverage {cover:.3f}")
+        if abs(cover - level) > slack:
+            failures.append(f"{name}: {level:.0%} coverage {cover:.3f}")
     assert not failures, f"{label}: " + "; ".join(failures)
 
 
@@ -296,3 +325,26 @@ def test_simulation_based_calibration_closed_form():
         20,
     )
     _check("Exponential (Gamma prior) 30% censored", ranks, refused)
+
+
+def test_simulation_based_calibration_sampler():
+    ranks, refused = _ranks(
+        sp.Weibull,
+        "weak",
+        lambda d, t, n, r, c: _type_one(d, t, n, 0.3, r, c),
+        20,
+        sampler=True,
+    )
+    failed = ranks.pop("_not_converged")
+    print(
+        f"Weibull 30% censored, sampler: {sum(failed)} of {len(failed)} "
+        "fits did not pass their convergence checks"
+    )
+    _check(
+        "Weibull 30% censored, sampler",
+        ranks,
+        refused,
+        draws=SAMPLER_DRAWS,
+        level=0.90,
+        slack=0.03,
+    )

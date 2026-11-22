@@ -235,6 +235,7 @@ surpyval.ZeroInflatedModel
 surpyval.at_risk_table
 surpyval.auc_td
 surpyval.bayes.BayesianParametric
+surpyval.bayes.BayesianRegression
 surpyval.bayes.LogLikelihood
 surpyval.bayes.Posterior
 surpyval.bayes.PredictiveComparison
@@ -306,6 +307,7 @@ surpyval.degradation.ProcessLevel
 surpyval.degradation.ProcessRUL
 surpyval.degradation.QuadraticPath
 surpyval.degradation.RULPrediction
+surpyval.degradation.SplinePath
 surpyval.degradation.WienerProcess
 surpyval.degradation.WienerProcessModel
 surpyval.degradation.get_path_model
@@ -390,6 +392,7 @@ surpyval.multivariate.Independence
 surpyval.multivariate.Joe
 surpyval.multivariate.MultivariateSurpyvalData
 surpyval.multivariate.StudentT
+surpyval.multivariate.Vine
 surpyval.pairwise_logrank
 surpyval.penalty_path
 surpyval.permutation_logrank

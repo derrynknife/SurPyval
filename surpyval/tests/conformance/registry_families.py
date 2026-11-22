@@ -386,6 +386,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
         "a posterior, not a maximum: the grid's check of its own accuracy "
         "takes the place of a verified maximum"
     ),
+    "surpyval.bayes.BayesianRegression": (
+        "a posterior, not a maximum: the sampler's convergence checks take "
+        "the place of a verified maximum"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
@@ -871,7 +875,8 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         name=name,
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
         model_class=kw.pop(
-            "model_class", "surpyval.univariate.regression.ParametricRegressionModel"
+            "model_class",
+            "surpyval.univariate.regression.ParametricRegressionModel",
         ),
         interface=REGRESSION,
         data=data,
@@ -1161,7 +1166,9 @@ def _semi_parametric():
     cox = regression(
         "CoxPH",
         sp.CoxPH,
-        model_class="surpyval.univariate.regression.SemiParametricRegressionModel",
+        model_class=(
+            "surpyval.univariate.regression." "SemiParametricRegressionModel"
+        ),
         paths=_cox_paths(),
         jump_functions=("hf", "df"),
         exclude={"df_hf_sf": step},
@@ -1174,7 +1181,9 @@ def _semi_parametric():
         sp.CoxPH,
         data=stratified_reg_data,
         fitters=(),
-        model_class="surpyval.univariate.regression.SemiParametricRegressionModel",
+        model_class=(
+            "surpyval.univariate.regression." "SemiParametricRegressionModel"
+        ),
         call_kwargs={"stratum": 1},
         jump_functions=("hf", "df"),
         rows=("x", "Z", "c", "n", "strata"),

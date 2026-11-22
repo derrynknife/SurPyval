@@ -1271,7 +1271,8 @@ class ProportionalOddsModel(
 
         Examples
         --------
-        >>> from surpyval import ProportionalOdds, ProportionalOddsModel
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.univariate.regression import ProportionalOddsModel
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
@@ -1317,7 +1318,8 @@ class ProportionalOddsModel(
 
         Examples
         --------
-        >>> from surpyval import ProportionalOdds, ProportionalOddsModel
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.univariate.regression import ProportionalOddsModel
         >>> model = ProportionalOdds.fit([1, 2, 3, 4], [0, 1, 0, 1])
         >>> ProportionalOddsModel.from_dict(model.to_dict()).beta.round(4)
         array([1.1744])

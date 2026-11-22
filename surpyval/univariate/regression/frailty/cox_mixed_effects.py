@@ -1865,7 +1865,8 @@ def lognormal_cox_frailty(
 ) -> Any:
     """``CoxFrailty.fit(..., family="lognormal")``: the one-term random
     intercept of the mixed-effects engine, reported as a
-    :class:`~surpyval.univariate.regression.CoxFrailtyModel`. ``theta`` is the variance of the
+    :class:`~surpyval.univariate.regression.CoxFrailtyModel`. ``theta`` is the
+    variance of the
     log-frailty, its standard error from the curvature of the profile
     integrated likelihood in ``log theta`` (delta method)."""
     from .cox_frailty import CoxFrailtyModel

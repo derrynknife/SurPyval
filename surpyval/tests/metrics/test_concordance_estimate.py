@@ -25,9 +25,11 @@ from surpyval.metrics import (
     concordance_index,
 )
 from surpyval.metrics.concordance import (
-    _concordance_estimate as concordance_estimate,
+    _harrell_value,
 )
-from surpyval.metrics.concordance import _harrell_value
+from surpyval.metrics.concordance import (
+    concordance_with_se as concordance_estimate,
+)
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 
 

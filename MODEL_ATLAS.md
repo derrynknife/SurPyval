@@ -140,6 +140,8 @@ model exist:
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
+| Gaussian and Student-t copulas of three or more series (a correlation matrix) | multivariate, more than two series | single_event | single | terminal | none | continuous | parametric |
+| Vine copulas (C- and D-vines of bivariate pair-copulas; complete data) | multivariate, more than two series | single_event | single | terminal | none | continuous | parametric |
 | WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
 | CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
@@ -166,7 +168,8 @@ current value (or, in `JointAFT` / `WeibullJointAFT`, the path speeds up the
 item's ageing: an accelerated failure time part on the Weibull). Their event-time part classifies as univariate / single_event /
 single / terminal / with covariates (each in the hazard, the path or both) /
 continuous / parametric, with every censoring type and left and right
-truncation; one item's dynamic prediction given its readings so far is
+truncation, and with the failures' event types a hazard for each failure
+mode (competing risks: single becomes multiple); one item's dynamic prediction given its readings so far is
 `JointModel.predict`. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
 predictions without a model of the covariates' paths: a Cox model of the
 units at risk at each landmark, by their covariates known then; it
@@ -183,7 +186,7 @@ Cells of the axes with nothing built yet:
 | Recurrent events with covariates, semi-parametric: robust bounds on the cumulative baseline, and simulation (Andersen–Gill, PWP and WLW are built) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
 | Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
 | Multi-state models (illness-death, progressive) | `multi_state` |
-| Copulas for more than two lifetimes | multivariate, more than two series |
+| Copulas for more than two lifetimes beyond the Gaussian, Student-t and C-/D-vines (regular vines, censored rows in vines, exchangeable Archimedean) | multivariate, more than two series |
 | Shared frailty and correlated series for repairable systems, beyond the one built (a frailty shared by a group of items, such as a fleet; several recurrent series per item; spline baselines) | multivariate / recurrent |
 | Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis |
 
