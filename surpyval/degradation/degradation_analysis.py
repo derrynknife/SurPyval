@@ -55,12 +55,7 @@ from .degradation_model import (  # noqa: F401
     _is_regression_fitter,
     _path_at,
 )
-from .path_models import (
-    PATH_MODELS,
-    PathModel,
-    SplinePath,
-    get_path_model,
-)
+from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
 from .rul import InducedFailureDistribution, RULPrediction  # noqa: F401
 from .step_stress import (
@@ -353,16 +348,6 @@ class DegradationAnalysis_(FitterRepr):
             )
         else:
             path_model = get_path_model(path)
-        if isinstance(path_model, SplinePath) and not path_model.is_placed:
-            if acceleration == "clock":
-                raise ValueError(
-                    "With acceleration='clock' the path is fitted on the "
-                    "reference-stress time, which is not known before the "
-                    "fit, so a spline's knots cannot be placed from the "
-                    "measurement times: give them in that time, "
-                    "SplinePath(knots=[...], boundary=(lo, hi))."
-                )
-            path_model = path_model.placed(x_arr)
 
         # Stage-3 accelerated degradation: stress speeds up every unit's
         # clock, and the path is fitted on the reference-stress time.

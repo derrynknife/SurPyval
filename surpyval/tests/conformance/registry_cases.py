@@ -1932,9 +1932,9 @@ def _readings_paths(fitter, **kw):
 
 
 def _degradation():
-    def da(path, label=None):
+    def da(path):
         return Case(
-            name=f"DegradationAnalysis[{label or path}]",
+            name=f"DegradationAnalysis[{path}]",
             fitters=(
                 ("surpyval.degradation.DegradationAnalysis",)
                 if path == "linear"
@@ -1960,9 +1960,7 @@ def _degradation():
             exclude={"counts": "degradation readings carry no counts"},
         )
 
-    # the spline with one knot the fit places from the readings
     out = [da("linear"), da("power")]
-    out.append(da(dg.SplinePath.natural(df=2), "spline"))
     for name in ("WienerProcess", "GammaProcess"):
         fitter = getattr(dg, name)
         out.append(
@@ -2241,12 +2239,11 @@ def _joint():
     the area under it, or its value and slope together, or its value 90
     days earlier (a lag), or the area with exposure fading over 180 days
     (a weight), or its value with the line's start and rate uncorrelated
-    between items (``random_effects="diagonal"``), or the value of a
-    spline path with one knot placed from the readings, its bend common
-    to all items (``[spline]``); or the marker's value speeds up the
-    item's ageing (``WeibullJointAFT``); or the items fail by one of two
-    failure modes, each with a baseline, a coefficient and an effect of
-    its own (``[causes]``: the fit of data with event types ``e``)."""
+    between items (``random_effects="diagonal"``); or the marker's value
+    speeds up the item's ageing (``WeibullJointAFT``); or the items fail
+    by one of two failure modes, each with a baseline, a coefficient and
+    an effect of its own (``[causes]``: the fit of data with event
+    types ``e``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2263,11 +2260,6 @@ def _joint():
         ),
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
-        ),
-        "WeibullJointPH[spline]": sp.JointPH(
-            sp.Weibull,
-            dg.SplinePath.natural(df=2),
-            varying=("level", "rate"),
         ),
         "WeibullJointPH[causes]": sp.WeibullJointPH,
     }

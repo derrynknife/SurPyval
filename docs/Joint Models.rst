@@ -910,140 +910,6 @@ ratio of rates:
 ``varying=`` then names ``log(b)``. The two fits describe the same fleet
 with a different spread of rates, and predict alike where the data are.
 
-.. _joint-spline:
-
-A reading that bends: a spline path
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Many readings follow no formula: flat for years and then a knee, or a
-fall after an overhaul and then a rise. ``SplinePath`` is a smooth curve
-of joined pieces (a natural cubic spline) that bends where the readings
-do. The fleet's mean curve is the spline, and each item differs from it
-by a level and a rate of its own:
-
-.. math::
-
-    m_i(t) = \text{level}_i + \text{rate}_i\, t + \sum_k s_k N_k(t).
-
-The pieces join at *knots*. ``SplinePath.natural(df=3)`` places two
-between the first and last reading ages, at the thirds of all the reading
-ages (as R's ``ns(time, 3)`` does), and the fitted model's ``path_model``
-records them; ``SplinePath(knots=[...], boundary=(lo, hi))`` takes knots
-you choose, at an age where the reading is known to turn, say. Each
-:math:`N_k` is 0 up to its knot, so ``level`` and ``rate`` are the level
-at age 0 and the rate before the first knot, and each ``s_k`` (in the
-reading's unit) bends the curve after its knot. With no knots at all
-(``SplinePath()``, or ``df=1``) the path is the straight line, and the
-fit is ``LinearPath``'s to the last digit.
-
-A fleet of 150 pumps whose vibration stays near 3 mm/s for a year and
-then climbs, fitted with one knot at the year, where the readings are
-known to turn:
-
-.. jupyter-execute::
-
-    from surpyval.degradation import LinearPath, SplinePath
-
-
-    knee_rng = np.random.default_rng(452)
-
-
-    def knee(k):
-        level, climb = knee_rng.normal(3.0, 0.5), knee_rng.normal(0.006, 0.001)
-        t = np.linspace(0, 6000, 30001)
-        m = level + climb * np.maximum(t - 365.0, 0.0)
-        h = (2 / 800) * (t / 800) * np.exp(0.9 * (m - 4.0))
-        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
-        life = np.interp(knee_rng.exponential(), H, t)
-        end = min(life, 730.0)
-        ages = np.arange(0.0, end, 30.0)
-        y = level + climb * np.maximum(ages - 365.0, 0.0)
-        y = y + knee_rng.normal(0, 0.3, ages.size)
-        outcome = "observed" if life <= 730 else "right_censored"
-        return ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, y)))
-
-
-    bent = SurpyvalData.from_items([knee(k) for k in range(150)])
-    turn = SplinePath(knots=[365.0], boundary=(0.0, 730.0))
-    spline = JointPH(Weibull, turn, varying=("level", "rate"))
-    spline = spline.fit(bent, marker_reference=4.0)
-    line = JointPH(Weibull, LinearPath).fit(bent, marker_reference=4.0)
-    print(spline.path_model)
-    print(round(line.aic() - spline.aic(), 1))
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    assert spline.maximum == "verified"
-    assert spline.parameter_names[:3] == ["level", "rate", "s1"]
-    assert line.aic() - spline.aic() > 50
-
-``aic()`` compares the two fits of the same data: the line is far behind.
-What it costs is in the predictions. A pump read to 450 days, 85 days
-past the turn, whose vibration has started to climb:
-
-.. jupyter-execute::
-
-    seen = np.arange(0.0, 451.0, 30.0)
-    turning = dict(zip(seen, 3.0 + 0.006 * np.maximum(seen - 365.0, 0.0)))
-    for fitted in (spline, line):
-        ahead = fitted.predict(markers=turning, given=450.0)
-        print(
-            fitted.path_model.name,
-            round(float(ahead.marker(450.0)), 2),
-            round(float(ahead.marker(630.0)), 2),
-            round(float(ahead.sf(630.0)), 3),
-        )
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    truth_450, truth_630 = 3.0 + 0.006 * 85, 3.0 + 0.006 * 265
-    by_spline = spline.predict(markers=turning, given=450.0)
-    by_line = line.predict(markers=turning, given=450.0)
-    assert abs(by_spline.marker(630.0) - truth_630) < abs(
-        by_line.marker(630.0) - truth_630
-    )
-    assert abs(by_spline.marker(450.0) - truth_450) < 0.25
-
-The pump's vibration is truly 3.51 mm/s at 450 days and 4.59 at 630.
-Both fits read the level at 450 days about right, but the line cannot
-turn with the readings: it projects 3.84 at 630, where the spline
-projects 4.5. The chances of reaching 630 days are close here (0.734
-and 0.737): each fit's baseline hazard has absorbed its own picture of
-the fleet's path, so the line's error shows first in the marker it
-forecasts.
-
-.. jupyter-execute::
-    :hide-code:
-    :hide-output:
-
-    _s, _l = by_spline, by_line
-    assert round(float(_l.marker(630.0)), 2) == 3.84, _l.marker(630.0)
-    assert round(float(_s.marker(630.0)), 1) == 4.5, _s.marker(630.0)
-    assert round(float(_l.sf(630.0)), 3) == 0.734, _l.sf(630.0)
-    assert round(float(_s.sf(630.0)), 3) == 0.737, _s.sf(630.0)
-
-Choosing the knots: more knots follow more turns and need more readings.
-A spline with more parameters than the items' median number of readings
-is refused, saying how many knots the readings support; compare ``df``
-by ``aic()``. Beyond the last knot the curve is extended as a straight
-line, so a prediction far past the readings rests on the last piece's
-slope: place the upper boundary where the readings end (the default).
-Every link works on a spline: the slope and the area under it
-(``link="slope"``, ``"cumulative"``) are in closed form, and the
-integrals of the hazard over age are taken piece by piece between the
-knots, where the curve's third derivative jumps (one unsplit rule was
-off by up to :math:`10^{-4}` of a cumulative hazard on a bent path; the
-split one is within :math:`10^{-7}`). With a ``weight`` on the
-accumulated exposure the weighted area is by the quadrature above, not
-split at the knots: within :math:`10^{-6}` of the area on a knee. The
-bends ``s_k`` are common to all items: for a spline, ``varying``
-defaults to ``("level", "rate")``, where every other path's default is
-all of its parameters.
-
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2181,8 +2047,7 @@ What it does and does not do
 The joint model (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
-  default; a spline, ``SplinePath``, where the reading bends as no
-  formula does), with any number of its parameters varying between items
+  default), with any number of its parameters varying between items
   (on a grid up to five, by Laplace's approximation beyond)
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``; every pair correlated, none, or blocks of them,
@@ -2213,7 +2078,7 @@ The joint model (#891) is the standard one. It has:
 - the quick, approximate two-stage fit (``how="two-stage"``) for a first
   look and for comparison.
 
-Not yet (see #891's roadmap): other baselines (a
+Not yet (see #891's roadmap): spline paths; other baselines (a
 log-normal or log-logistic one for the accelerated part, whose risk can
 rise and then fall, and spline baselines); several markers. The
 accelerated part has not yet been compared with R's ``JM``

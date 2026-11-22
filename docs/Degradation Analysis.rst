@@ -202,11 +202,6 @@ Degradation can be increasing (crack length) or decreasing (luminous flux);
 the direction is carried by the sign of the fitted parameters and needs no
 configuration.
 
-A measurement that follows none of these (flat and then a knee, a fall
-and then a rise) can take a spline, ``SplinePath``: a smooth curve of
-joined cubic pieces, linear in its parameters, whose crossing time is
-found numerically (see :doc:`Degradation Modelling with SurPyval`).
-
 Two properties of a path model matter later on:
 
 * **Linear in its parameters.** The linear, quadratic, logarithmic and
@@ -221,9 +216,7 @@ Two properties of a path model matter later on:
   replacing :math:`t` by :math:`c\,t` gives another member of the same family
   (:math:`a + b\,(ct) = a + (bc)\,t`). This is what lets a unit held at one
   stress "absorb" an acceleration factor into its own parameters, which becomes
-  important for step-stress tests. (A spline is closed only together with
-  its knots, which are fixed: on the same knots a rescaled spline is another
-  curve.)
+  important for step-stress tests.
 
 When the physics does not dictate a shape, one can be selected by information
 criterion: every registered path is fitted to every unit, the residual sums of

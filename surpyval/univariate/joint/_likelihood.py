@@ -82,7 +82,7 @@ from typing import Any
 import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
-from autograd.extend import defjvp, defvjp, primitive
+from autograd.extend import defvjp, primitive
 from autograd.scipy.special import logsumexp
 
 #: Gauss-Hermite points a dimension: in the fit (adaptive; 2-3 fail on
@@ -355,31 +355,18 @@ class LinkPath:
     change (``"slope"``: the path model's ``slope`` and
     ``slope_jacobian``) or the area under it from age 0
     (``"cumulative"``: 15-point Gauss-Legendre of the path and of its
-    Jacobian over ``(0, x)``, ``AREA_NODES``; for a path of joined
-    pieces, the path model's own ``area`` and ``area_jacobian``, a
-    closed form)."""
+    Jacobian over ``(0, x)``, ``AREA_NODES``)."""
 
     def __init__(self, path_model: Any, link: str) -> None:
         self.base = path_model
         self.link = link
         self.name = f"{path_model.name} ({link})"
         self.parameter_names = list(path_model.parameter_names)
-        #: Whether the area is the path model's own closed form: for a
-        #: path of joined pieces (one with ``breaks``, a spline), which
-        #: the rule below would not follow across its knots.
-        self.closed = (
-            link == "cumulative"
-            and type(self) is LinkPath
-            and bool(getattr(path_model, "breaks", ()))
-            and hasattr(path_model, "area")
-        )
 
     def path(self, x: Any, *params: Any) -> Any:
         x = np.asarray(x, dtype=float)
         if self.link == "slope":
             return np.asarray(self.base.slope(x, *params), dtype=float)
-        if self.closed:
-            return np.asarray(self.base.area(x, *params), dtype=float)
         spread = [np.asarray(v, dtype=float)[..., None] for v in params]
         m = np.asarray(
             self.base.path(x[..., None] * AREA_NODES, *spread), dtype=float
@@ -392,8 +379,6 @@ class LinkPath:
             return np.asarray(
                 self.base.slope_jacobian(x, *params), dtype=float
             )
-        if self.closed:
-            return np.asarray(self.base.area_jacobian(x, *params), dtype=float)
         K = AREA_NODES.size
         P = np.stack(
             [
@@ -636,11 +621,9 @@ class PathFunction:
 
     ``cuts`` are the ages, ascending, at which what the hazard follows
     has a kink, where the integrals of the hazard over age are split
-    (:func:`lag_rule`): the lag, with a window on the accumulated
+    (:func:`lag_rule`): the lag, and with a window on the accumulated
     exposure the age at which the window stops reaching back to age 0
-    (the lag plus its width), and the ages a path of joined pieces
-    names as its ``breaks`` (a spline's knots, where its third
-    derivative jumps), the lag later."""
+    (the lag plus its width)."""
 
     def __init__(
         self,
@@ -657,12 +640,7 @@ class PathFunction:
         cuts = [self.lag] if self.lag > 0 else []
         if self.weight is not None and self.weight[0] == "window":
             cuts.append(self.lag + float(self.weight[1]))
-        # a path of joined pieces (a spline): its knots, the lag later
-        pieces = getattr(path_model, "base", path_model)
-        for knot in getattr(pieces, "breaks", ()):
-            if knot + self.lag > 0:
-                cuts.append(float(knot) + self.lag)
-        self.cuts = tuple(sorted(set(cuts)))
+        self.cuts = tuple(cuts)
         self.terms: list = []
         for link in self.links:
             followed: Any
@@ -726,12 +704,6 @@ def _differentiable(path_model: Any) -> tuple:
         lambda ans, params, x: lambda g: g[..., None] * jac(params, x),
     )
     defvjp(jac, jac_vjp)
-    # forward mode, which a prediction's confidence bound takes through
-    # the path parameters common to all items (their means)
-    defjvp(
-        values,
-        lambda g, ans, params, x: anp.sum(g * jac(params, x), axis=-1),
-    )
     return values, jac
 
 
@@ -1633,7 +1605,7 @@ def _mode_objective(
                 followed,
                 log_effect,
                 weighted,
-                lag=path.cuts if path.cuts else 0.0,
+                lag=path.lag,
             )
             f, g, H = f + life[0], g + life[1], H + life[2]
         elif layout.n_causes > 1:
