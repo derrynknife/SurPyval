@@ -68,7 +68,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
     ) -> npt.NDArray:
         heuristic = "Fleming-Harrington"
         return np.asarray(
-            self.fit_from_surpyval_data(
+            self._fit_from_surpyval_data(
                 data, how="MPP", heuristic=heuristic
             ).params,
             dtype=float,

@@ -870,7 +870,7 @@ def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
 
             with ignoring_warnings(), quiet_maximum_warnings():
                 try:
-                    limit = family.fit_from_surpyval_data(model.surv_data)
+                    limit = family._fit_from_surpyval_data(model.surv_data)
                 except (ValueError, ArithmeticError):
                     return None
             if limit.maximum == "verified":

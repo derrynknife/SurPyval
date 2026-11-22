@@ -30,6 +30,7 @@ from surpyval.utils.deprecation import (
     REMOVED_IN_NEXT,
     RenamedAttribute,
     ambiguous_item_ids,
+    fit_entry,
 )
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
@@ -301,7 +302,7 @@ class ARA(RenewalFitMixin):
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
         distribution and memory; used by the Cramer-von Mises bootstrap."""
-        return self.fit_from_recurrent_data(
+        return self._fit_from_recurrent_data(
             data, dist=model.model.dist, m=model.m
         )
 
@@ -339,8 +340,10 @@ class ARA(RenewalFitMixin):
 
         return negll_func
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any = Weibull,
@@ -498,7 +501,7 @@ class ARA(RenewalFitMixin):
         1.0
         """
         data = handle_xicn(x, i, c, n, tl=tl)
-        return self.fit_from_recurrent_data(data, dist, m, init=init)
+        return self._fit_from_recurrent_data(data, dist, m, init=init)
 
     #: The old name of :meth:`from_params` (deprecated in v0.29).
     fit_from_parameters = RenamedAttribute(

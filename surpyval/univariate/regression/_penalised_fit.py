@@ -98,7 +98,7 @@ def fit_parametric_penalised(
         from surpyval.utils.weights import few_effective_said_later
 
         with np.errstate(all="ignore"), few_effective_said_later():
-            baseline = fitter.dist.fit_from_surpyval_data(data).params
+            baseline = fitter.dist._fit_from_surpyval_data(data).params
         init = np.array([*baseline, *np.zeros(p)], dtype=float)
         init_t = np.asarray(transform(init), dtype=float)
 

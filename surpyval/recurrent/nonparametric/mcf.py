@@ -20,7 +20,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -644,8 +644,10 @@ class NonParametricCounting(
         out.var = np.cumsum(step_var)
         return out
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self, data: EventHistoryData
     ) -> NonParametricCounting:
         """
@@ -665,7 +667,7 @@ class NonParametricCounting(
         return out
 
     def _point_estimate(self, data: EventHistoryData) -> NonParametricCounting:
-        """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
+        """:meth:`_fit_from_recurrent_data` without the Lawless-Nadeau
         variance, which costs about (items x distinct times) and which the
         simulations, returning only the MCF, discard."""
         reject_unsupported_nonparametric(data, "NonParametricCounting")
@@ -760,7 +762,7 @@ class NonParametricCounting(
                [1.93248007, 6.33900458]])
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
-        return self.fit_from_recurrent_data(data)
+        return self._fit_from_recurrent_data(data)
 
 
 def _observation_origin(data: EventHistoryData) -> float:

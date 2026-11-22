@@ -96,7 +96,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             # underflowed.
             return self._offset_seed(data)
         return np.asarray(
-            self.fit_from_surpyval_data(data, how="MPP").params,
+            self._fit_from_surpyval_data(data, how="MPP").params,
             dtype=float,
         )
 

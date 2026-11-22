@@ -1404,6 +1404,12 @@ v0.29 (unreleased)
   (``ProportionalHazardsFitter``), ``MixtureModel``, and the two-clock
   fits' ``EquivalenceFitter`` and ``EquivalenceModel`` stay at the top
   level.
+- ``fit_from_surpyval_data`` (the parametric distributions) and
+  ``fit_from_recurrent_data`` (every recurrent fitter): ``fit`` takes the
+  data object itself, ``Weibull.fit(data)`` or ``CrowAMSAA.fit(data)``,
+  with the same options. Each old name gives the same fit to the last
+  digit, with a ``FutureWarning`` saying to call ``fit(data)``, and is
+  removed in v0.30.
 
 - Internal steps that ``surpyval.univariate.nonparametric`` and
   ``surpyval.utils`` exposed as public names. From the non-parametric

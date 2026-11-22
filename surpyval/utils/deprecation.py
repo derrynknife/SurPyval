@@ -65,6 +65,7 @@ __all__ = [
     "SCHEDULED_REMOVALS",
     "scheduled_removal",
     "RenamedAttribute",
+    "fit_entry",
     "renamed_arguments",
     "renamed_name",
     "positional_option",
@@ -334,6 +335,10 @@ class RenamedAttribute:
     attribute). A name deprecated in v0.29 passes
     ``removed_in=REMOVED_IN_NEXT``; ``category=FutureWarning`` warns where
     Python would hide a DeprecationWarning (code outside ``__main__``).
+    ``advice`` replaces the warning's "use '<new>'" where the new name is
+    private and the user is to call something else: the public
+    ``fit_from_surpyval_data``, now ``_fit_from_surpyval_data``, says
+    "call fit(data)".
 
     Examples
     --------
@@ -356,20 +361,21 @@ class RenamedAttribute:
         new: str,
         removed_in: str = REMOVED_IN,
         category: type[Warning] = DeprecationWarning,
+        advice: str | None = None,
     ) -> None:
         self.new = new
         self.old = ""
         self.removed_in = removed_in
         self.category = category
+        self.advice = f"use '{new}'" if advice is None else advice
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.old = name
 
     def _warn(self, owner: type) -> None:
         warnings.warn(
-            "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}'.".format(
-                owner.__name__, self.old, self.removed_in, self.new
+            "{}.{} is deprecated and will be removed in v{}; {}.".format(
+                owner.__name__, self.old, self.removed_in, self.advice
             ),
             self.category,
             stacklevel=3,
@@ -388,6 +394,39 @@ class RenamedAttribute:
     def __set__(self, obj: Any, value: Any) -> None:
         self._warn(type(obj))
         setattr(obj, self.new, value)
+
+
+def fit_entry(new: str) -> RenamedAttribute:
+    """
+    The old public name of a fitter's data entry point, now the private
+    ``new``: ``fit_from_surpyval_data`` and ``fit_from_recurrent_data``,
+    deprecated in v0.29, since ``fit(data)`` takes the data object itself.
+
+    Declare it on the class under the old name,
+    ``fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")``.
+    Calling it warns with a ``FutureWarning`` saying to call ``fit(data)``
+    and runs the private method, so the result is the same to the last
+    digit until v0.30 removes it.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import fit_entry
+    >>> class Fitter:
+    ...     def _fit_from_surpyval_data(self, data):
+    ...         return len(data)
+    ...     fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Fitter().fit_from_surpyval_data([1, 2, 3])
+    3
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Fitter.fit_from_surpyval_data is deprecated and will be removed in
+    v0.30; call fit(data).
+    """
+    return RenamedAttribute(
+        new, REMOVED_IN_NEXT, FutureWarning, advice="call fit(data)"
+    )
 
 
 _ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth")

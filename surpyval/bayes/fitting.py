@@ -272,7 +272,7 @@ def _mle_start(
     try:
         with ignoring_warnings(), quiet_maximum_warnings():
             with np.errstate(all="ignore"):
-                return dist.fit_from_surpyval_data(
+                return dist._fit_from_surpyval_data(
                     data,
                     offset=offset,
                     lfp=lfp,

@@ -42,7 +42,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -317,9 +317,11 @@ class CauseSpecificMCF(SerialisableMixin):
         label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @classmethod
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(cls, data: Any) -> CauseSpecificMCF:
+    def _fit_from_recurrent_data(cls, data: Any) -> CauseSpecificMCF:
         if data.e is None:
             raise ValueError(
                 "EventHistoryData has no event-type marks; pass `e` to "
@@ -403,7 +405,7 @@ class CauseSpecificMCF(SerialisableMixin):
         # the same validation, sorting and (scalar or per-row) truncation
         # handling as every other recurrent fit.
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, e=e)
-        return cls.fit_from_recurrent_data(data)
+        return cls._fit_from_recurrent_data(data)
 
     @classmethod
     @ambiguous_item_ids(

@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize_scalar
 
+from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.event_history_data import EventHistoryData
 from surpyval.utils.warnings import ignoring_warnings
 
@@ -166,7 +167,9 @@ class GrowthNHPPFitter(NHPPFitter):
     def _limit_powers(self) -> tuple[int, ...]:
         return () if self._limit_power is None else (self._limit_power,)
 
-    def fit_from_recurrent_data(
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
+    def _fit_from_recurrent_data(
         self,
         data: EventHistoryData,
         how: str = "MLE",
@@ -174,7 +177,7 @@ class GrowthNHPPFitter(NHPPFitter):
         frailty: str | None = None,
         cluster: Any = None,
     ) -> Any:
-        model = super().fit_from_recurrent_data(
+        model = super()._fit_from_recurrent_data(
             data, how, init, frailty, cluster
         )
         if how == "MLE" and frailty is None and cluster is None:
@@ -187,8 +190,8 @@ class GrowthNHPPFitter(NHPPFitter):
                 raise ValueError(self._no_growth(None, None))
         return model
 
-    fit_from_recurrent_data.__doc__ = (
-        NHPPFitter.fit_from_recurrent_data.__doc__
+    _fit_from_recurrent_data.__doc__ = (
+        NHPPFitter._fit_from_recurrent_data.__doc__
     )
 
 

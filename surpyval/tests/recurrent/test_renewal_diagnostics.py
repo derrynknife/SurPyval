@@ -108,7 +108,7 @@ def _simulate_refit_residuals(truth, fitter, refit_kwargs, seed):
     data = truth.count_terminated_simulation_data(
         8, items=250, random_state=seed
     )
-    model = fitter.fit_from_recurrent_data(data, **refit_kwargs)
+    model = fitter._fit_from_recurrent_data(data, **refit_kwargs)
     return model.residuals("cumulative_hazard"), model
 
 
@@ -155,7 +155,7 @@ def _small_fit(truth, fitter, refit_kwargs, seed):
     data = truth.count_terminated_simulation_data(
         6, items=35, random_state=seed
     )
-    return fitter.fit_from_recurrent_data(data, **refit_kwargs)
+    return fitter._fit_from_recurrent_data(data, **refit_kwargs)
 
 
 def test_cvm_age_reduction_runs_and_matches_statistic():

@@ -14,7 +14,6 @@ phase out as the rows ``fit`` takes.
    :no-value:
 
    .. automethod:: surpyval.recurrent.parametric.rayleigh_defects.RayleighDefects.fit
-   .. automethod:: surpyval.recurrent.parametric.rayleigh_defects.RayleighDefects.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.parametric.rayleigh_defects.RayleighDefects.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.rayleigh_defects.RayleighDefects.from_params
    .. automethod:: surpyval.recurrent.parametric.rayleigh_defects.RayleighDefects.cif

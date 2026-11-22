@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.no_maximum import (
     maximum_warnings_quiet,
     warn_no_maximum,
@@ -476,7 +477,7 @@ class OptimisedFitMixin(FitInputsMixin):
         surv_data = SurpyvalData(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr, w=w
         )
-        return self.fit_from_surpyval_data(
+        return self._fit_from_surpyval_data(
             surv_data,
             how=how,
             offset=offset,
@@ -647,8 +648,10 @@ class OptimisedFitMixin(FitInputsMixin):
         keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
         return self.fit_from_ecdf(x[keep], F[keep])
 
+    fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+
     @refuses_what_fit_cannot_take
-    def fit_from_surpyval_data(
+    def _fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
         how: str = "MLE",
@@ -668,9 +671,8 @@ class OptimisedFitMixin(FitInputsMixin):
         Fit the distribution to data already held in a
         :class:`~surpyval.utils.surpyval_data.SurpyvalData` object.
 
-        :meth:`fit` builds a ``SurpyvalData`` from its arrays and calls this
-        method; call it directly to reuse one prepared data object across
-        several fits.
+        :meth:`fit` builds a ``SurpyvalData`` from its arrays (or takes the
+        one it is given, ``fit(data)``) and calls this method.
 
         Parameters
         ----------
@@ -692,7 +694,7 @@ turnbull_estimator, hr
         --------
         >>> from surpyval import Weibull, SurpyvalData
         >>> data = SurpyvalData(x=[1, 3, 4, 7, 9], c=[0, 0, 0, 0, 1])
-        >>> model = Weibull.fit_from_surpyval_data(data)
+        >>> model = Weibull.fit(data)
         >>> model.params.round(3)
         array([6.022, 1.351])
         """

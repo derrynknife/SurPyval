@@ -2,7 +2,7 @@
 
 A model that can be reached several ways -- ``fit``, ``fit_from_df``
 (with column names or a formula), ``from_params`` with the fitted
-parameters, ``fit_from_surpyval_data`` / ``fit_from_recurrent_data``,
+parameters, ``fit`` given a ``SurpyvalData`` or ``EventHistoryData``,
 Cox's ``fit_tvc`` with one interval per subject -- gives the same
 predictions from the same data and the default options of each.
 """

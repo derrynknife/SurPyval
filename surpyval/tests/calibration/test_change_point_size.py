@@ -35,7 +35,7 @@ def _p_value(r):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
-            model = ChangePoint(GoelOkumoto).fit_from_recurrent_data(data)
+            model = ChangePoint(GoelOkumoto)._fit_from_recurrent_data(data)
             out = change_point_test(
                 model,
                 n_boot=N_BOOT,

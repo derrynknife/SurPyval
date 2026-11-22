@@ -241,7 +241,7 @@ def test_inspections_of_one_type_may_not_overlap():
 def test_a_fit_of_every_failure_refuses_crossed_inspections():
     data = EventHistoryData.from_items([TWO_AT_ONCE, CROSSED])
     with pytest.raises(ValueError, match="without\\('event_types'\\)"):
-        sp.recurrent.CrowAMSAA.fit_from_recurrent_data(data)
+        sp.recurrent.CrowAMSAA._fit_from_recurrent_data(data)
 
 
 def test_first_events_found_together_are_masked_causes():

@@ -1029,7 +1029,7 @@ def prepare_regression_fit(
         # says what its own search reached: the start's fit does not
         # (principle 22).
         with few_effective_said_later(), quiet_maximum_warnings():
-            ps = fitter.dist.fit_from_surpyval_data(data).params
+            ps = fitter.dist._fit_from_surpyval_data(data).params
         if callable(phi_init):
             init_phi = phi_init(Z_data)
         else:

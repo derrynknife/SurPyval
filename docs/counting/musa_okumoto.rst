@@ -13,7 +13,6 @@ that show no reliability growth are refused.
    :no-value:
 
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit
-   .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit_from_recurrent_data
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.from_params
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.cif

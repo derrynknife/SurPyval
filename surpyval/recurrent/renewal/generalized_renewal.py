@@ -25,6 +25,7 @@ from surpyval.utils.deprecation import (
     REMOVED_IN_NEXT,
     RenamedAttribute,
     ambiguous_item_ids,
+    fit_entry,
 )
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
@@ -639,7 +640,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         """Refit this model family on ``data`` with the same lifetime
         distribution and Kijima type; used by the Cramer-von Mises bootstrap.
         """
-        return self.fit_from_recurrent_data(
+        return self._fit_from_recurrent_data(
             data, dist=model.model.dist, kijima=model.kijima_type
         )
 
@@ -696,8 +697,10 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         return negll_func
 
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any = Weibull,
@@ -751,7 +754,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         >>>
         >>> recurrent_data = handle_xicn(x, i, c)
         >>>
-        >>> model = GeneralizedRenewal.fit_from_recurrent_data(recurrent_data)
+        >>> model = GeneralizedRenewal.fit(recurrent_data)
         >>> model
         Generalized Renewal SurPyval Model
         ==================================
@@ -919,7 +922,7 @@ class GeneralizedRenewal(RenewalFitMixin):
               (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
         data = handle_xicn(x, i, c, n, tl=tl)
-        return self.fit_from_recurrent_data(data, dist, kijima, init=init)
+        return self._fit_from_recurrent_data(data, dist, kijima, init=init)
 
     #: The old name of :meth:`from_params` (deprecated in v0.29).
     fit_from_parameters = RenamedAttribute(

@@ -416,6 +416,7 @@ _SHIM_NAMES = frozenset(
         "REMOVED_IN_NEXT",
         "renamed_arguments",
         "RenamedAttribute",
+        "fit_entry",
         "renamed_name",
         "DeprecationWarning",
     }

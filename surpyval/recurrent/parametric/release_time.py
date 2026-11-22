@@ -488,7 +488,7 @@ class ReleaseTimeMixin:
                     sim = diagnostics._simulate_windows(
                         rng, windows, mass, inv_cif
                     )
-                    refit = self.dist.fit_from_recurrent_data(sim)
+                    refit = self.dist._fit_from_recurrent_data(sim)
                 times[k] = plan.time(np.asarray(refit.params, dtype=float))
             except (NeverReached, ValueError):
                 continue  # no best release time: inf

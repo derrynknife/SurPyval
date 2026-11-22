@@ -38,6 +38,7 @@ from scipy.stats import chi2
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.parametric.counting_process import Boxable
+from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.warnings import ignoring_warnings
@@ -467,7 +468,9 @@ class EffortClock(_ClockFitter):
             data, onp.asarray(self.effort.cumulative(x_unique)), mcf_hat
         )
 
-    def fit_from_recurrent_data(
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         how: str = "MLE",
@@ -475,7 +478,7 @@ class EffortClock(_ClockFitter):
         frailty: str | None = None,
         cluster: Any = None,
     ) -> Any:
-        model = super().fit_from_recurrent_data(
+        model = super()._fit_from_recurrent_data(
             data, how, init, frailty, cluster
         )
         growth = isinstance(self.base, GrowthNHPPFitter)
@@ -767,7 +770,9 @@ class ChangePoint(_ClockFitter):
             )
         )
 
-    def fit_from_recurrent_data(
+    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+
+    def _fit_from_recurrent_data(
         self,
         data: Any,
         how: str = "MLE",
@@ -782,12 +787,12 @@ class ChangePoint(_ClockFitter):
             )
         if self.tau is not None:
             if how != "MLE":
-                model = super().fit_from_recurrent_data(data, how, init)
+                model = super()._fit_from_recurrent_data(data, how, init)
             else:
                 model = _checked_against_limit(
                     self,
                     data,
-                    lambda: super(ChangePoint, self).fit_from_recurrent_data(
+                    lambda: super(ChangePoint, self)._fit_from_recurrent_data(
                         data, how, init
                     ),
                 )
@@ -955,7 +960,7 @@ def _base_start(base: Any, data: Any, x_unique: Any, mcf_hat: Any) -> Any:
 
 def _plain_fit(base: Any, data: Any) -> Any:
     with ignoring_warnings():
-        return base.fit_from_recurrent_data(data)
+        return base._fit_from_recurrent_data(data)
 
 
 def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
@@ -984,7 +989,7 @@ def _estimate_tau(base: Any, data: Any, init: Any) -> Any:
     model = _checked_against_limit(
         chosen,
         data,
-        lambda: NHPPFitter.fit_from_recurrent_data(
+        lambda: NHPPFitter._fit_from_recurrent_data(
             chosen, data, "MLE", params
         ),
     )

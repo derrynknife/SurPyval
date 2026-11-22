@@ -278,14 +278,14 @@ class TerminalNode(Node):
             if params is not None:
                 return Weibull.from_params(params)
             try:
-                return Weibull.fit_from_surpyval_data(self.data)
+                return Weibull._fit_from_surpyval_data(self.data)
             except Exception:
                 pass
         params = leaf_mle(self.data, "exponential")
         if params is not None:
             return Exponential.from_params(params)
         try:
-            return Exponential.fit_from_surpyval_data(self.data)
+            return Exponential._fit_from_surpyval_data(self.data)
         except Exception:
             return self._crude_exponential()
 
