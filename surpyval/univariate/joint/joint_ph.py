@@ -5,6 +5,7 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
+import copy
 import warnings
 from typing import Any
 
@@ -247,6 +248,10 @@ class JointPHFitter(FitterRepr):
                 f"PathModel of your own; got {path_model!r}."
             )
         names = list(path_model.parameter_names)
+        if varying is None and hasattr(path_model, "default_varying"):
+            # a path that says which of its parameters differ between
+            # items (a spline: its level and rate, the bends common)
+            varying = tuple(path_model.default_varying)
         if varying is None:
             varying = tuple(names)
         if isinstance(varying, str):
@@ -946,9 +951,10 @@ def JointPH(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them. Up to five, each item's integral
-        is on a grid by default; beyond five it is Laplace's
-        approximation (``integration`` of :meth:`JointPHFitter.fit`).
+        items. Default all of them; for a ``SplinePath``, its ``level``
+        and ``rate``. Up to five, each item's integral is on a grid by
+        default; beyond five it is Laplace's approximation
+        (``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -1413,6 +1419,29 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return aliased_columns(gram, len(Z), constant)
 
 
+def _with_placed_path(fitter: JointPHFitter, records: list) -> JointPHFitter:
+    """``fitter``, or a copy of it whose path has its knots placed from
+    the records' reading ages: for a path made of joined pieces (a
+    ``SplinePath``), which also refuses more knots than the items'
+    readings support."""
+    path: Any = fitter.path_model
+    base = getattr(path, "base", path)
+    if not hasattr(base, "placed"):
+        return fitter
+    ages = [list((r.markers or {}).keys()) for r in records]
+    pooled = np.array([a for item in ages for a in item], dtype=float)
+    placed = base.placed(pooled)
+    placed.check_readings([len(item) for item in ages])
+    if placed is base:
+        return fitter
+    out = copy.copy(fitter)
+    if base is path:
+        out.path_model = placed
+    else:
+        out.path_model = type(path)(placed, dict(path.links))
+    return out
+
+
 def _fit(
     fitter: JointPHFitter,
     records: list,
@@ -1431,6 +1460,7 @@ def _fit(
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
     ``causes`` is :func:`_causes`' (the failure modes and each record's)
     and ``shared`` the survival parameters they have in common."""
+    fitter = _with_placed_path(fitter, records)
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts

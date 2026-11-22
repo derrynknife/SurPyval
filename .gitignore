@@ -29,3 +29,6 @@ publish.sh
 
 # Local multi-interpreter check environments (scripts/check_all_pythons.py)
 .venvs/
+
+# raw results of the study scripts (their summaries are kept)
+scripts/studies/joint_recovery/results_*.jsonl
