@@ -24,6 +24,7 @@ from .path_models import (
     PathModel,
     PowerPath,
     QuadraticPath,
+    SplinePath,
     get_path_model,
 )
 
