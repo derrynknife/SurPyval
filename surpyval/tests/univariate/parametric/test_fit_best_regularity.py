@@ -376,3 +376,18 @@ def test_666_return_table_neg_ll_has_no_weights_and_shows_set_aside():
     uniform = table[table["model"] == "Uniform"].iloc[0]
     assert uniform["status"] == "set aside"
     assert "support ends" in uniform["reason"]
+
+
+def test_the_set_aside_warning_points_at_the_caller_in_plain_words():
+    # It pointed at surpyval/utils/surpyval_data.py, and spoke of "a
+    # regular maximum of the likelihood".
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        sp.fit_best(SEVEN, include=["Beta4", "Weibull"])
+    aside = [w for w in rec if str(w.message).startswith("fit_best set aside")]
+    assert len(aside) == 1
+    assert aside[0].filename == __file__
+    message = str(aside[0].message)
+    assert "regular maximum" not in message
+    assert "Chosen: Weibull" in message
+    assert "fit it on its own" in message

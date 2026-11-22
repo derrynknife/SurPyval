@@ -2020,7 +2020,12 @@ class LikelihoodRatioMixin:
         model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
         return float(
             self.dist._neg_ll_func(
-                self.surv_data, *theta, self.gamma, self.f0, self.lfp_p
+                self.surv_data,
+                *theta,
+                self.gamma,
+                self.f0,
+                self.lfp_p,
+                hr=getattr(self, "hr", 1.0),
             )
         )
 
@@ -2041,6 +2046,9 @@ class LikelihoodRatioMixin:
 
         dist = self.dist
         if not isinstance(dist, ParametricFitter) or dist.discrete:
+            return False
+        if getattr(self, "hr", 1.0) != 1:
+            # The lean terms are the likelihood's without a hazard ratio
             return False
         lo, hi = (float(v) for v in dist.support)
         return (
@@ -2371,7 +2379,7 @@ class LikelihoodRatioMixin:
                         "parameter's space); nan is returned for it. "
                         "method='wald' gives a bound in its place.",
                         RuntimeWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                     return value
                 warnings.warn(
@@ -2380,7 +2388,7 @@ class LikelihoodRatioMixin:
                     "critical value, or was not finite); nan is returned "
                     "for it. method='wald' gives a bound in its place.",
                     RuntimeWarning,
-                    stacklevel=4,
+                    stacklevel=caller_stacklevel(),
                 )
             return value
 
@@ -2613,7 +2621,7 @@ class LikelihoodRatioMixin:
                 "optimiser failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         return shape(lower, upper)
 
@@ -2792,7 +2800,7 @@ class LikelihoodRatioMixin:
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
                 # _cb_lr -> cb -> the query-shape wrapper -> the caller
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
 
         if falling:

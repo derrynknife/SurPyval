@@ -26,7 +26,9 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     Examples
     --------
     >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric import nelson_aalen_variance
+    >>> from surpyval.univariate.nonparametric.nelson_aalen import (
+    ...     nelson_aalen_variance,
+    ... )
     >>> r = np.array([10, 8, 5])
     >>> d = np.array([2, 1, 3])
     >>> nelson_aalen_variance(r, d).round(4)
@@ -88,7 +90,7 @@ def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     Examples
     --------
     >>> import numpy as np
-    >>> from surpyval.univariate.nonparametric import nelson_aalen
+    >>> from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
     >>> r = np.array([10, 8, 5])
     >>> d = np.array([2, 1, 3])
     >>> nelson_aalen(r, d).round(4)

@@ -379,19 +379,23 @@ def test_the_four_dimension_fit_agrees_with_the_full_grids():
 def test_an_unknown_integration_is_refused():
     data = simulate(5, seed=36, q=3)
     fitter = JointPH(Weibull, QuadraticPath)
-    for bad in ("laplace", "Grid", 7):
-        with pytest.raises(ValueError, match="'grid'.*or 'pruned'"):
+    for bad in ("Laplace", "Grid", 7):
+        with pytest.raises(ValueError, match="'grid'.*'pruned'.*or 'laplace'"):
             fitter.fit(**data, integration=bad)
 
 
 @pytest.mark.parametrize("factory", [JointPH, JointAFT])
-def test_up_to_five_parameters_may_vary(factory):
+def test_up_to_five_parameters_may_vary_on_a_grid(factory):
     assert factory(Weibull, QUARTIC).varying == ("a", "b", "c", "d", "e")
+    # a sixth may vary too: its integral is Laplace's approximation, and
+    # a grid is refused at the fit (test_joint_laplace.py)
     quintic = PolynomialPath(5)
-    with pytest.raises(ValueError, match=r"at most 5 .* varying=\(\.\.\.\)"):
-        factory(Weibull, quintic)
-    with pytest.raises(ValueError, match="At most 5 .* Laplace .* got 6"):
-        factory(Weibull, quintic, varying=tuple("abcdef"))
+    assert len(factory(Weibull, quintic).varying) == 6
+    assert lik.check_integration(None, 6) == "laplace"
+    with pytest.raises(
+        ValueError, match=r"7\^6 nodes .*integration='laplace'"
+    ):
+        lik.check_integration("grid", 6)
     assert len(factory(Weibull, quintic, varying=tuple("abcde")).varying) == 5
 
 
@@ -415,8 +419,8 @@ def test_the_integration_is_printed_saved_and_restored():
     # a model saved before the choice existed used the full grid
     del saved["integration"]
     assert JointModel.from_dict(saved).integration == "grid"
-    saved["integration"] = "laplace"
-    with pytest.raises(ValueError, match="'grid' or 'pruned'"):
+    saved["integration"] = "simpson"
+    with pytest.raises(ValueError, match="'grid', 'pruned' or 'laplace'"):
         JointModel.from_dict(saved)
     assert copy.deepcopy(pruned).integration == "pruned"
 

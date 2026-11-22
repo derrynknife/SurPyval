@@ -377,7 +377,12 @@ def _estimate(case, spec, fname, event):
             out.append(model.params[model.parameter_names.index(args[0])])
         elif spec.method == "sojourn_cb":
             out.append(model.mean_sojourn(*args))
-        elif spec.method in ("remaining_faults_cb", "current_rate_cb"):
+        elif spec.method in (
+            "remaining_faults_cb",
+            "current_rate_cb",
+            "kendall_tau_cb",
+            "spearman_rho_cb",
+        ):
             out.append(getattr(model, spec.method.removesuffix("_cb"))())
         elif spec.method == "mtbf_cb":
             out.append(model.mtbf())
@@ -401,6 +406,8 @@ def value_range(case, spec, fname):
     if spec.kind == "function":
         counting = case.interface.startswith("counting")
         lower, upper, _ = (COUNTING_RULES if counting else RULES)[fname]
+    elif spec.method in ("kendall_tau_cb", "spearman_rho_cb"):
+        lower, upper = -1.0, 1.0
     elif spec.kind in ("rul", "summary"):
         lower, upper = 0.0, np.inf
     else:
@@ -445,6 +452,12 @@ def test_every_uncertainty_method_is_swept(case):
         if name == "remaining_faults_cb" and not _finite_faults(model):
             # refused for a process whose failures go on without limit,
             # saying so and what to ask instead
+            continue
+        if name in ("kendall_tau_cb", "spearman_rho_cb") and np.ndim(
+            getattr(model, name.removesuffix("_cb"))()
+        ):
+            # refused where the measure is a matrix (a vine's, one for
+            # each pair), saying to bound a pair's parameter instead
             continue
         if name == "rmtl" and getattr(model, "estimator", "") == "NPMLE":
             # refused for interval-censored rows (the time lost depends on
@@ -895,6 +908,11 @@ def _estimator_params():
 def _check_model(case, model):
     """test_bounds' checks: valid values, monotone in time, at each
     covariate row (as one vector for every time)."""
+    if case.interface == "bivariate" and "cdf" not in case.functions:
+        # (a vine has no joint CDF or sf: its density)
+        values = np.asarray(model.pdf(case.x), float)
+        check_valid("pdf", values, (0.0, np.inf, 0))
+        return
     if case.interface == "bivariate":
         X = case.x[:5]  # each coordinate rises along these
         check_valid("cdf", np.asarray(model.cdf(X), float), (0.0, 1.0, 1))
@@ -941,8 +959,11 @@ def _agreement_params():
 def _summary(case, model):
     """The functions the estimators are compared on: probabilities
     absolutely, a cumulative intensity relatively."""
-    if case.interface == "bivariate":
+    if case.interface == "bivariate" and "cdf" in case.functions:
         return {"cdf": np.asarray(model.cdf(case.x), float)}, False
+    if case.interface == "bivariate":
+        # (a vine has no joint CDF: its density, relatively)
+        return {"pdf": np.asarray(model.pdf(case.x), float)}, True
     if "sf" in case.functions:
         return {
             "sf": np.asarray(call(case, model, "sf", case.x), float)

@@ -263,6 +263,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # (``"random_effects"`` other than ``"full"``): a v0.28 reader would
 # ignore the entry and read the parameters after the sds as a
 # correlation of every pair, misplacing every one after them.
+# And by a joint or degradation model whose path is a spline
+# (``"path_model"`` a dictionary of its knots, not a name): a v0.28
+# reader has no such path, and would fail on the dictionary with a
+# ``TypeError`` or an unhelpful message rather than ask for an upgrade.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 5
 
@@ -300,7 +304,9 @@ _SCHEMA_MEASUREMENTS = 4
 # "two-stage"``), with a lag (``"lag"`` above 0), with a weight on its
 # accumulated exposure (``"weight"``), with more than three varying path
 # parameters or with some of them uncorrelated (``"random_effects"``
-# other than ``"full"``): v0.29's schema 5.
+# other than ``"full"``): v0.29's schema 5. Also a parametric model with
+# a hazard ratio other than 1 (``"hr"``), which a v0.28 reader would load
+# without it.
 _SCHEMA_ACCELERATED_JOINT = 5
 
 # The most path parameters a v0.28 joint model may vary between items.
@@ -794,7 +800,7 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
     if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
-        _is_schema_5_joint(d) for d in dicts
+        _is_schema_5_joint(d) or _has_hazard_ratio(d) for d in dicts
     ):
         return _SCHEMA_ACCELERATED_JOINT
     if _SCHEMA_STRATIFIED in stamped_versions or any(
@@ -832,12 +838,22 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
 
 
 def _is_schema_5_joint(d: dict) -> bool:
-    """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
+    """Whether ``d`` is a joint or degradation model on a spline path
+    (its ``"path_model"`` a dictionary, where a v0.28 reader takes a
+    name and fails on anything else), or a joint model a v0.28 reader
+    would get wrong: one
     with the accelerated survival part, fitted in two stages, with a
     lag, with a weight on its accumulated exposure, with more than three
-    varying path parameters or with a covariance structure other than the
+    varying path parameters, with a covariance structure other than the
     full one (some correlations held at 0, so fewer parameters than a
-    v0.28 reader takes). Each needs schema 5."""
+    v0.28 reader takes) or with failure modes (``"causes"``: a baseline
+    and effects for each, where a v0.28 reader takes one). Each needs
+    schema 5."""
+    if isinstance(d.get("path_model"), dict) and d.get("model") in (
+        "JointModel",
+        "DegradationModel",
+    ):
+        return True
     if d.get("model") != "JointModel":
         return False
     return (
@@ -847,6 +863,18 @@ def _is_schema_5_joint(d: dict) -> bool:
         or d.get("weight") is not None
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
         or (d.get("random_effects") or "full") != "full"
+        or d.get("causes") is not None
+    )
+
+
+def _has_hazard_ratio(d: dict) -> bool:
+    """Whether ``d`` is a parametric model with a hazard ratio other than
+    1 (``"hr"``), which a v0.28 reader would ignore, loading the model
+    without it: schema 5."""
+    return (
+        d.get("parameterization") == "parametric"
+        and d.get("hr") is not None
+        and d.get("hr") != 1
     )
 
 

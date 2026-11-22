@@ -223,3 +223,46 @@ def test_alpha_ci_given_as_a_confidence_is_warned_of():
 def test_invalid_plans_are_refused(call):
     with pytest.raises(ValueError):
         call()
+
+
+# --- Weibayes test length in time (user-test finding) ---------------------
+
+
+@pytest.mark.parametrize(
+    "reliability, n, shape, alpha_ci, mission",
+    [(0.9, 10, 2.0, 0.1, 1000.0), (0.95, 20, 1.5, 0.05, 50.0)],
+)
+def test_the_zero_failure_test_time_is_the_weibayes_closed_form(
+    reliability, n, shape, alpha_ci, mission
+):
+    from surpyval.test_planning import demonstration_test_time
+
+    # T = t_m (ln alpha / (n ln R))^(1 / beta): every unit survives T with
+    # chance alpha when the mission reliability is only R.
+    expected = mission * (
+        math.log(alpha_ci) / (n * math.log(reliability))
+    ) ** (1.0 / shape)
+    got = demonstration_test_time(
+        reliability, n, mission_time=mission, shape=shape, alpha_ci=alpha_ci
+    )
+    assert got == pytest.approx(expected, rel=1e-12)
+    # The hand calculation of the 1000-hour, shape-2 case: eta = 3081 h.
+    if mission == 1000.0:
+        assert round(got) == 1478
+
+
+def test_the_test_time_is_the_test_multiple_times_the_mission():
+    from surpyval.test_planning import demonstration_test_time
+
+    multiple = demonstration_test_multiple(0.9, 15, 2, shape=2.5)
+    got = demonstration_test_time(0.9, 15, 2, mission_time=200.0, shape=2.5)
+    assert got == pytest.approx(200.0 * multiple, rel=1e-14)
+    # Units of time do not matter.
+    hours = demonstration_test_time(0.9, 15, 2, mission_time=8.0, shape=2.5)
+    assert hours * 25.0 == pytest.approx(got, rel=1e-14)
+    arrays = demonstration_test_time(
+        0.9, np.array([10, 20]), mission_time=1.0, shape=2.0
+    )
+    assert arrays.shape == (2,) and arrays[0] > arrays[1]
+    with pytest.raises(ValueError, match="mission_time must be positive"):
+        demonstration_test_time(0.9, 10, mission_time=0.0, shape=2.0)

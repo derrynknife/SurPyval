@@ -442,6 +442,13 @@ for _path in (
     OUT_OF_SCOPE[f"surpyval.degradation.{_path}"] = (
         _COMPONENT + ": a DegradationAnalysis path shape"
     )
+# The spline path is made with its knots (a class, where the other
+# shapes are instances): the joint model on it is registered
+# (WeibullJointPH[spline]), and its own tests are in
+# tests/degradation/test_spline_path.py.
+OUT_OF_SCOPE["surpyval.degradation.SplinePath"] = (
+    _COMPONENT + ": a DegradationAnalysis and joint model path shape"
+)
 # The top-level data-format functions (fs_to_xcnt, ...) are deprecated by
 # date and skipped by the completeness scan (DATED_DATA_FUNCTIONS).
 for _fn in (
@@ -475,7 +482,6 @@ for _fn in (
     "auc_td",
     "brier_score",
     "compare_concordance",
-    "concordance_estimate",
     "concordance_index",
     "dynamic_auc",
     "dynamic_brier",
@@ -530,15 +536,7 @@ OUT_OF_SCOPE["surpyval.recurrent.conditional_gaps"] = (
 )
 for _fn in (
     "filliben",
-    "fleming_harrington",
-    "fleming_harrington_variance",
-    "greenwood_variance",
-    "kaplan_meier",
-    "nelson_aalen",
-    "nelson_aalen_variance",
     "plotting_positions",
-    "rank_adjust",
-    "turnbull",
 ):
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
@@ -571,12 +569,14 @@ for _fn in (
     "demonstration_plan",
     "demonstration_sample_size",
     "demonstration_test_multiple",
+    "demonstration_test_time",
     "group_sequential_design",
     "life_test_length",
     "life_test_precision",
     "life_test_sample_size",
     "logrank_design",
     "logrank_group_sequential",
+    "mean_ratio_design",
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
@@ -587,9 +587,6 @@ for _fn in (
     "sequential_mtbf_test",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
-OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
-    _FUNCTION + " (reads a plotting-position heuristic's name)"
-)
 
 # The Bayesian fits' building blocks: the likelihood, the posterior and the
 # priors (the model, BayesianParametric, is registered).

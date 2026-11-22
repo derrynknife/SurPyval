@@ -15,11 +15,14 @@ import warnings
 
 import autograd.numpy as np
 
-from surpyval.univariate.nonparametric import (
+from surpyval.univariate.nonparametric._heuristics import (
     canonical_heuristic,
+)
+from surpyval.univariate.nonparametric.plotting_positions import (
     plotting_positions,
 )
 from surpyval.utils.numeric import _round_vals
+from surpyval.utils.warnings import caller_stacklevel
 
 
 def adjust_heuristic(
@@ -35,7 +38,7 @@ def adjust_heuristic(
         if heuristic != "Turnbull":
             warnings.warn(
                 "Interval censored data, heuristic changed to Turnbull",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             heuristic = "Turnbull"
 
@@ -43,7 +46,7 @@ def adjust_heuristic(
         if heuristic != "Turnbull":
             warnings.warn(
                 "Truncated censored data, heuristic changed to Turnbull",
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             heuristic = "Turnbull"
 
@@ -87,7 +90,7 @@ def _weighted_positions(
         or np.isin(c_arr, (-1, 2)).any()
         or np.isfinite(np.asarray(t)[:, 1]).any()
     ):
-        from surpyval.univariate.nonparametric import turnbull
+        from surpyval.univariate.nonparametric.turnbull import turnbull
 
         out = turnbull(x, c_arr, n, t, w=w)
         return out["x"], out["r"], out["d"], 1 - out["R"]
