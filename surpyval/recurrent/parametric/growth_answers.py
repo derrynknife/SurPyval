@@ -324,10 +324,11 @@ class GrowthAnswersMixin:
         ``start + x`` (flat arrays of one length), as a function of the
         parameters.
 
-        It is the log of a difference of two counts wherever that keeps
-        its digits. Far out on a curve that levels off the two counts
-        are equal to rounding, and it is the log of the intensity's
-        integral over the mission instead, summed in logs: an 8-point
+        It is the log of a difference of two counts where that is at
+        least half the later count (so it keeps its digits). Further out,
+        where a curve that levels off makes the two counts nearly equal,
+        it is the log of the intensity's integral over the mission
+        instead, summed in logs: an 8-point
         Gauss-Legendre rule on each of 41 pieces that halve towards the
         mission's start, where a falling intensity has its weight."""
         with np.errstate(all="ignore"):
@@ -337,7 +338,10 @@ class GrowthAnswersMixin:
             kept = later - np.asarray(
                 self.dist.cif(start, *self._mle), dtype=float
             )
-        direct = kept > 1e-6 * later
+        # (a difference of two counts loses as many digits as the counts
+        # are larger than it: 1e-6 of them lost six, which the delta
+        # method's differences then magnified to 1e-8 of a bound)
+        direct = kept > 0.5 * later
         far = ~direct
         edges = np.concatenate([[0.0], 0.5 ** np.arange(40, -1, -1.0)])
         node, weight = np.polynomial.legendre.leggauss(8)
@@ -387,7 +391,7 @@ class GrowthAnswersMixin:
     def next_failure_sf_cb(
         self,
         x: ArrayLike,
-        age: "ArrayLike | None" = None,
+        age: ArrayLike | None = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
     ) -> np.ndarray:
@@ -678,7 +682,7 @@ class GrowthAnswersMixin:
             lambda t: np.asarray(self.cif(np.asarray(t) + mission))
             - np.asarray(self.cif(t)),
             level,
-            "a reliability over a mission of {:g}".format(mission),
+            f"a reliability over a mission of {mission:g}",
             float(target),
         )
 
