@@ -180,6 +180,38 @@ def degradation_readings(source: Any, what: str) -> tuple:
     )
 
 
+def data_censoring(source: Any, i: np.ndarray) -> dict | None:
+    """``censored_units="data"`` read from ``source``: ``{unit: x}`` for
+    each right-censored row (``c = 1``) of a SurpyvalData whose unit has
+    readings in ``i``, a unit still running at its ``x`` (None where
+    there is none). Observed, left and interval censored rows are left
+    to the threshold. Refused for a Measurements, which has no
+    censoring."""
+    from surpyval.utils.measurements import Measurements
+
+    if isinstance(source, Measurements):
+        raise ValueError(
+            "censored_units='data' reads the censoring of a SurpyvalData "
+            "holding the readings, and a Measurements has none: list the "
+            "units still running as censored_units (or {unit: time} for "
+            "the time each was last known to be running)."
+        )
+    data = source
+    units = (
+        list(data.ids) if data.ids is not None else list(range(len(data.x)))
+    )
+    x = np.asarray(data.x, dtype=float)
+    if x.ndim == 2:
+        x = x[:, 0]
+    seen = set(np.asarray(i, dtype=object).tolist())
+    out = {
+        unit: float(time)
+        for unit, time, c in zip(units, x, np.asarray(data.c))
+        if c == 1 and unit in seen
+    }
+    return out or None
+
+
 def _is_readings(value: Any) -> bool:
     from surpyval.utils.measurements import Measurements
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -249,6 +281,11 @@ def takes_readings(method: F) -> F:
         arguments["x"], arguments["y"], arguments["i"] = x_arr, y_arr, i_arr
         if Z is not None:
             arguments["Z"] = Z
+        if (
+            isinstance(arguments.get("censored_units"), str)
+            and arguments["censored_units"] == "data"
+        ):
+            arguments["censored_units"] = data_censoring(x, i_arr)
 
         def fit() -> Any:
             return method(*bound.args, **bound.kwargs)

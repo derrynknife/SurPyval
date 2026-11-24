@@ -225,3 +225,247 @@ def test_bootstrap_refits_keep_the_censoring():
         )
     assert np.isfinite(bounds).all()
     assert bounds[0, 0] <= model.sf(40.0) <= bounds[0, 1]
+
+
+# A unit known to be still running at a time after its last reading:
+# ``censored_units={unit: time}`` censors it there; ``"data"`` reads the
+# times from a SurpyvalData's right-censored units.
+
+
+def _life_fit_of(model, times, flags):
+    """The model's unit times and flags are ``times`` and ``flags``, and
+    its life fit is the Weibull fit of them."""
+    np.testing.assert_allclose(model.pseudo_failure_times, times, rtol=1e-12)
+    assert model.c.tolist() == flags
+    _same_life_fit(model)
+
+
+def test_a_unit_running_after_its_last_reading_is_censored_then():
+    # unit 3: last reading at 70, still running at 90, path crosses at 100
+    x, y, i = _data()
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units={3: 90.0}
+    )
+    _life_fit_of(
+        model, [40.0, 50.0, 80.0, 90.0, 40.0, 50.0], [0, 0, 0, 1, 0, 0]
+    )
+    assert model.censored_units == [3]
+    assert model.censored_at == {3: 90.0}
+    assert model.extrapolated.tolist() == [
+        False,
+        False,
+        True,
+        False,
+        False,
+        False,
+    ]
+    # the later time moves the life fit: censored at 70, the fit differs
+    at_last = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units=[3]
+    )
+    assert not np.allclose(model.life_model.params, at_last.life_model.params)
+
+
+def test_a_time_of_none_or_the_last_reading_is_the_list_form():
+    x, y, i = _data()
+    listed = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units=[2, 3]
+    )
+    for given in ({2: None, 3: None}, {2: 60.0, 3: np.float64(70.0)}):
+        model = DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units=given
+        )
+        np.testing.assert_array_equal(
+            model.pseudo_failure_times, listed.pseudo_failure_times
+        )
+        np.testing.assert_array_equal(model.c, listed.c)
+        np.testing.assert_array_equal(
+            model.life_model.params, listed.life_model.params
+        )
+    assert listed.censored_at is None
+
+
+@pytest.mark.parametrize("time", [80.0, 85.0])
+def test_a_time_at_or_past_the_crossing_is_refused(time):
+    # unit 2's path crosses at 80, after its last reading at 60: running
+    # at 80 or later, by its path it failed unseen
+    x, y, i = _data()
+    with pytest.raises(ValueError, match=r"censored_units.*\[2\].*failed"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units={2: time}
+        )
+
+
+def test_a_time_before_the_last_reading_is_refused():
+    x, y, i = _data()
+    with pytest.raises(ValueError, match=r"before their last readings"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units={3: 65.0}
+        )
+
+
+@pytest.mark.parametrize("time", [np.nan, np.inf, "soon", True])
+def test_a_time_that_is_not_a_finite_number_is_refused(time):
+    x, y, i = _data()
+    with pytest.raises(ValueError, match="finite number"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units={3: time}
+        )
+
+
+def test_a_unit_seen_to_cross_is_refused_with_a_time_too():
+    x, y, i = _data()
+    with pytest.raises(ValueError, match=r"by their last reading"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units={0: 70.0}
+        )
+
+
+def test_a_path_that_never_crosses_is_censored_at_the_time_given():
+    # unit 6 falls away from the threshold: it never reaches it
+    units = dict(UNITS)
+    units[6] = (-0.01, 60.0)
+    x, y, i = _data(units)
+    with pytest.warns(UserWarning, match="never reach"):
+        model = DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units={6: 120.0}
+        )
+    assert model.c[-1] == 1
+    assert model.pseudo_failure_times[-1] == 120.0
+
+
+def test_a_time_is_refused_on_the_stress_clock():
+    x, y, i = _data()
+    Z = np.where(x > 30, 2.0, 1.0)
+    with pytest.raises(ValueError, match="acceleration='clock'"):
+        DegradationAnalysis.fit(
+            x,
+            y,
+            i,
+            threshold=THRESHOLD,
+            Z=Z,
+            acceleration="clock",
+            censored_units={3: 90.0},
+        )
+
+
+def test_the_running_at_times_are_saved_and_restored():
+    x, y, i = _data()
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units={3: 90.0, 2: None}
+    )
+    assert model.censored_units == [2, 3]
+    assert model.censored_at == {3: 90.0}
+    back = DegradationModel.from_json(model.to_json())
+    assert back.censored_units == [2, 3]
+    assert back.censored_at == {3: 90.0}
+    assert repr(back) == repr(model)
+    assert (
+        "censored_at"
+        not in DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units=[3]
+        ).to_dict()
+    )
+
+
+def test_bootstrap_refits_keep_the_running_at_times():
+    rng = np.random.default_rng(20261125)
+    x, y, i = [], [], []
+    for unit in range(10):
+        slope = rng.normal(0.2, 0.03)
+        last = 60.0 if unit % 2 else 30.0
+        t = np.arange(5.0, last + 1, 5.0)
+        x.append(t)
+        y.append(slope * t + rng.normal(0, 0.1, t.size))
+        i.append(np.full(t.size, unit))
+    x, y, i = (np.concatenate(v) for v in (x, y, i))
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units={0: 35.0, 2: 34.0}
+    )
+    assert model.pseudo_failure_times[[0, 2]].tolist() == [35.0, 34.0]
+    seen = []
+    original = DegradationAnalysis.fit
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("censored_units"))
+        return original(*args, **kwargs)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(DegradationAnalysis, "fit", spy)
+            bounds = model.cb(
+                [40.0], method="bootstrap", n_boot=20, random_state=1
+            )
+    assert np.isfinite(bounds).all()
+    times = {t for given in seen if given for t in given.values()}
+    assert times <= {35.0, 34.0} and times
+
+
+def _readings_data(c, x_life):
+    from surpyval import Measurements
+
+    x, y, i = _data()
+    store = {}
+    for t, v, u in zip(x, y, i):
+        store.setdefault(int(u), {})[float(t)] = float(v)
+    readings = Measurements({"wear": store})
+    return sp.SurpyvalData(x_life, c=c, i=list(UNITS), m=readings)
+
+
+def test_data_reads_the_right_censored_units_when_asked():
+    life = _readings_data(
+        c=[0, 0, 0, 1, 0, 0], x_life=[40.0, 50.0, 80.0, 90.0, 40.0, 50.0]
+    )
+    model = DegradationAnalysis.fit(
+        life, threshold=THRESHOLD, censored_units="data"
+    )
+    x, y, i = _data()
+    by_hand = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD, censored_units={3: 90.0}
+    )
+    np.testing.assert_array_equal(
+        model.pseudo_failure_times, by_hand.pseudo_failure_times
+    )
+    np.testing.assert_array_equal(model.c, by_hand.c)
+    np.testing.assert_allclose(
+        model.life_model.params, by_hand.life_model.params, rtol=1e-12
+    )
+    assert model.censored_at == {3: 90.0}
+    # without the opt-in the data's censoring is not read, as before
+    plain = DegradationAnalysis.fit(life, threshold=THRESHOLD)
+    assert (plain.c == 0).all() and plain.censored_units is None
+
+
+def test_data_with_no_right_censored_units_censors_none():
+    life = _readings_data(c=[0] * 6, x_life=[40.0] * 6)
+    model = DegradationAnalysis.fit(
+        life, threshold=THRESHOLD, censored_units="data"
+    )
+    assert model.censored_units is None and (model.c == 0).all()
+
+
+def test_data_running_past_the_crossing_is_refused():
+    # unit 2 recorded as running at 85, but its path crosses at 80
+    life = _readings_data(c=[0, 0, 1, 0, 0, 0], x_life=[85.0] * 6)
+    with pytest.raises(ValueError, match=r"\[2\].*failed unseen"):
+        DegradationAnalysis.fit(
+            life, threshold=THRESHOLD, censored_units="data"
+        )
+
+
+def test_data_is_refused_without_a_surpyval_data():
+    x, y, i = _data()
+    with pytest.raises(ValueError, match="SurpyvalData"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units="data"
+        )
+    life = _readings_data(c=[1] * 6, x_life=[100.0] * 6)
+    with pytest.raises(ValueError, match="Measurements has none"):
+        DegradationAnalysis.fit(
+            life.m, threshold=THRESHOLD, censored_units="data"
+        )
+    with pytest.raises(ValueError, match="list of units"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=THRESHOLD, censored_units="all"
+        )

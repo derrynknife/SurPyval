@@ -290,7 +290,12 @@ class DegradationModel(SerialisableMixin):
         :meth:`DegradationAnalysis.fit`.
     censored_units : list or None
         The units given as ``censored_units`` to the fit (censored at
-        their last reading), or ``None``.
+        their last reading, or at the time in ``censored_at``), or
+        ``None``.
+    censored_at : dict or None
+        ``{unit: time}`` for the units of ``censored_units`` given a time
+        they were still running at, after their last reading (censored
+        there), or ``None`` where no unit was.
     extrapolated : ndarray of bool or None
         Per unit (aligned to ``units``): True where its failure time is
         a crossing extrapolated past its last reading, not seen within
@@ -353,6 +358,7 @@ class DegradationModel(SerialisableMixin):
     Z_cols: list[str] | None
     running: str
     censored_units: list | None
+    censored_at: dict | None
     extrapolated: npt.NDArray | None
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
@@ -387,6 +393,7 @@ class DegradationModel(SerialisableMixin):
         Z_cols: list[str] | None = None,
         running: str = "extrapolate",
         censored_units: list | None = None,
+        censored_at: dict | None = None,
         extrapolated: npt.ArrayLike | None = None,
     ) -> None:
         self.x = x
@@ -421,6 +428,11 @@ class DegradationModel(SerialisableMixin):
         self.running = running
         self.censored_units = (
             None if censored_units is None else list(censored_units)
+        )
+        self.censored_at = (
+            None
+            if not censored_at
+            else {unit: float(time) for unit, time in censored_at.items()}
         )
         self.extrapolated = (
             None
@@ -529,6 +541,12 @@ class DegradationModel(SerialisableMixin):
             out["running"] = self.running
         if self.censored_units is not None:
             out["censored_units"] = np.asarray(self.censored_units).tolist()
+        if self.censored_at is not None:
+            # pairs, not a mapping: a unit's label need not be a string
+            out["censored_at"] = [
+                [np.asarray(unit).tolist(), time]
+                for unit, time in self.censored_at.items()
+            ]
         return out
 
     def _clock_dict(self) -> dict:
@@ -598,6 +616,14 @@ class DegradationModel(SerialisableMixin):
             Z_cols=model_dict.get("Z_cols"),
             running=model_dict.get("running", "extrapolate"),
             censored_units=model_dict.get("censored_units"),
+            censored_at=(
+                None
+                if model_dict.get("censored_at") is None
+                else {
+                    (tuple(unit) if isinstance(unit, list) else unit): time
+                    for unit, time in model_dict["censored_at"]
+                }
+            ),
             extrapolated=model_dict.get("extrapolated"),
         )
         if out.extrapolated is None and out.acceleration is None:
