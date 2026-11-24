@@ -37,6 +37,15 @@ v0.30 (unreleased)
   raised a ``ValueError`` before. A Weibull's bounds with ``hr`` are the
   plain Weibull fit's (to 1e-13 by likelihood ratio, 1e-8 by Wald).
 
+- **The entropy and a discrete model's moments with a hazard ratio.**
+  ``entropy()`` of a continuous model with ``hr`` other than 1 is the
+  quadrature of ``-f log f`` beyond the Weibull and Exponential (whose
+  closed forms are unchanged); the Gumbel, Rayleigh, Beta(1, b), Gamma of
+  shape 1 and ExpoWeibull with ``mu = 1`` agree with their closed forms
+  to 1e-10. ``mean``, ``moment`` and ``var`` of a discrete model with
+  ``hr`` are sums over its survival function (a geometric agrees with
+  its closed form to 1e-12). Both raised a ``ValueError`` before.
+
 v0.29 (22 November 2026)
 ------------------------
 

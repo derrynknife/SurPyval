@@ -56,10 +56,16 @@ How it applies
   their ``mean``, ``moment``, ``var``, ``entropy``, ``mrl`` and restricted
   mean are those families' closed forms. Other distributions integrate
   the survival function numerically for the mean, moments, variance, mean
-  residual life and restricted mean, and refuse the entropy (integrate
-  ``-df * log(df)`` instead). A discrete model's moments, and the
-  defective moments of a limited failure population, are refused with
-  what to use.
+  residual life and restricted mean, and the density for the entropy,
+  :math:`-\int f \log f\,dt` (with :math:`\log f = \log hr + \log h_0 -
+  hr\,H_0`, so the far tail adds nothing it should not). A discrete
+  model's moments are sums over its survival function,
+  :math:`E[T] = \sum_{k \ge 0} P(T > k)` and :math:`E[T^n] = \sum_{k \ge
+  0} ((k + 1)^n - k^n) P(T > k)`; where those sums have not settled after
+  about 17 million counts (a tail falling as a power of ``k``, whose
+  moment may be infinite) they are refused. A discrete model's entropy
+  and mean residual life, and the defective moments of a limited failure
+  population, are refused with what to use.
 - **``hr = 1`` changes nothing.** Every function and every seeded draw is
   the model's without ``hr``, to the last bit.
 

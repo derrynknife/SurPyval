@@ -206,10 +206,13 @@ def test_refusals_say_what_to_do():
             sp.Weibull.from_params([10, 2], hr=bad)
     with pytest.raises(ValueError, match="1 - \\(1 - q\\) \\*\\* hr"):
         sp.Bernoulli.from_params([0.3], hr=2.0)
-    with pytest.raises(ValueError, match="integrate"):
-        sp.Gamma.from_params([2.0, 1.0], hr=2.0).entropy()
-    with pytest.raises(ValueError, match="sum over"):
-        sp.Poisson.from_params([3.0], hr=2.0).mean()
+    with pytest.raises(ValueError, match="sum -p \\* log\\(p\\)"):
+        sp.Poisson.from_params([3.0], hr=2.0).entropy()
+    with pytest.raises(ValueError, match="sum the survival beyond"):
+        sp.Poisson.from_params([3.0], hr=2.0).mrl(2)
+    # a power-law tail: P(T > k) ~ k ** (-0.5 * 1.5), no finite mean
+    with pytest.raises(ValueError, match="has not settled"):
+        sp.BetaGeometric.from_params([0.5, 1.0], hr=1.5).mean()
 
 
 def test_with_params_extras_and_repr():
@@ -543,3 +546,70 @@ def test_summary_bounds_with_hr_contain_the_estimate():
     res = model.rmst(10.0)
     assert res["lower"] < res["rmst"] < res["upper"] and res["se"] > 0
     np.testing.assert_allclose(res["rmst"], model.mean(tau=10.0), rtol=1e-9)
+
+
+def test_entropy_by_quadrature_against_closed_forms():
+    hr = 2.5
+    cases = [
+        # a Gumbel's hazard exp((t - mu) / sigma) times hr moves mu by
+        # -sigma log hr; the entropy does not depend on the location
+        (
+            sp.Gumbel.from_params([10.0, 2.0], hr=hr),
+            1 + np.euler_gamma + math.log(2.0),
+        ),
+        # a Rayleigh is a Weibull of shape 2: sigma / sqrt(hr)
+        (
+            sp.Rayleigh.from_params([3.0], hr=hr),
+            1
+            + math.log(3.0 / math.sqrt(hr) / math.sqrt(2))
+            + np.euler_gamma / 2,
+        ),
+        # Beta(1, b) has survival (1 - t) ** b, so with hr it is
+        # Beta(1, b hr) on a finite support: entropy 1 - 1 / b - log b
+        (
+            sp.Beta.from_params([1.0, 3.0], hr=hr),
+            -math.log(3.0 * hr) + 1 - 1 / (3.0 * hr),
+        ),
+        # a gamma of shape 1 is the exponential of rate hr * 0.5
+        (sp.Gamma.from_params([1.0, 0.5], hr=hr), 1 - math.log(0.5 * hr)),
+        # an ExpoWeibull with mu = 1 is the Weibull at alpha hr ** (-1 / 2)
+        (
+            sp.ExpoWeibull.from_params([10.0, 2.0, 1.0], hr=hr),
+            sp.Weibull.from_params([10 * hr**-0.5, 2.0]).entropy(),
+        ),
+    ]
+    for model, want in cases:
+        np.testing.assert_allclose(model.entropy(), want, rtol=1e-10)
+    # the family's own entropy, through the same quadrature
+    np.testing.assert_allclose(
+        sp.Beta.from_params([1.0, 3.0], hr=hr).entropy(),
+        sp.Beta.from_params([1.0, 3.0 * hr]).entropy(),
+        rtol=1e-10,
+    )
+
+
+def test_discrete_moments_by_summing_the_survival():
+    hr = 2.5
+    # a geometric's constant hazard p becomes 1 - (1 - p) ** hr
+    p = 1 - 0.7**hr
+    model = sp.Geometric.from_params([0.3], hr=hr)
+    np.testing.assert_allclose(model.mean(), 1 / p, rtol=1e-12)
+    np.testing.assert_allclose(model.var(), (1 - p) / p**2, rtol=1e-11)
+    # E[T^3] of a geometric on 1, 2, ...: (p^2 - 6p + 6) / p^3
+    np.testing.assert_allclose(
+        model.moment(3), (p**2 - 6 * p + 6) / p**3, rtol=1e-11
+    )
+    # a discrete Weibull's q becomes q ** hr (its own moments are summed
+    # to seven figures)
+    dw = sp.DiscreteWeibull.from_params([0.8, 1.5], hr=hr)
+    same = sp.DiscreteWeibull.from_params([0.8**hr, 1.5])
+    np.testing.assert_allclose(dw.mean(), same.mean(), rtol=1e-8)
+    np.testing.assert_allclose(dw.var(), same.var(), rtol=1e-7)
+    # a Poisson, against the sum over its own mass function
+    poisson = sp.Poisson.from_params([3.0], hr=hr)
+    k = np.arange(0, 200, dtype=float)
+    pk = poisson.df(k)
+    np.testing.assert_allclose(poisson.mean(), np.sum(k * pk), rtol=1e-12)
+    np.testing.assert_allclose(
+        poisson.moment(2), np.sum(k**2 * pk), rtol=1e-12
+    )
