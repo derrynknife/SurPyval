@@ -13,6 +13,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-25
+
+### Clearing dated code before 1.0 (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.utils.recurrent_event_data`, a module kept only to raise an `ImportError` naming `EventHistoryData` (removed in v0.26), is deleted: its import now gets Python's plain "No module named" error. The top-level `RecurrentEventData` hint stays for now. | proposed | Four releases have passed since the removal; the policy keeps a removal hint "for a release or two". Nothing in RePyability or the Reliafy backend imports it. | done |
+| `surpyval.beta` stays, holding only the dated alias `surpyval.beta.ml`, and goes with it in the first release on or after 12 April 2027. | proposed | Deleting the package would remove the alias before its announced date. It is outside the public promise either way. | done |
+| The private alias `surpyval.utils._caller_stacklevel` is removed; its seven importers import `caller_stacklevel` from `surpyval.utils.warnings`. | proposed | An internal name, so no deprecation; it shrinks the private-import allowlist by seven entries. | done |
+| `heuristic`, `rr`, `on_d_is_0` and `turnbull_estimator` stay as arguments of a distribution's `fit`, but a value other than the default given with a method other than `how="MPP"` warns (`FutureWarning`, at the user's line), saying it was ignored and that from v0.31 the call is refused. The result is unchanged. | proposed (the issue offered an `mpp=` options argument or this) | Only probability plotting reads them; the others ignored them in silence, so the call did not do what it said (a misspelt heuristic passed unseen). Keeping them as arguments leaves every documented MPP call (`fit(x, how="MPP", heuristic="Blom")`) working without a change, where an `mpp=` dictionary would deprecate all of them. | done |
+| The ten dated data functions keep their announced removal (first release on or after 12 April 2027). | maintainer (21 Nov 2026: 1.0 does not ship before that date) | The date in the warning stands. | done |
+
 ## 2026-11-21
 
 ### Result, model, base-fitter and plot classes off the top level (21 Nov 2026)

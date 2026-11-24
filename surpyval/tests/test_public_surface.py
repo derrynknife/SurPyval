@@ -144,12 +144,13 @@ def how_retired(dotted: str) -> str | None:
 
 def test_how_retired_tells_the_kinds_apart() -> None:
     # Removed with a hint (removed_names), moved with a hint, deprecated
-    # by date, a removed module, and two that would be silent.
+    # by date, and names that would be silent.
     assert how_retired("surpyval.RecurrentEventData") == "hint"
     assert how_retired("surpyval.TrendTestResult") == "hint"
+    # Its hint retired in v0.30, the module removed in v0.26 is silent
     assert (
         how_retired("surpyval.utils.recurrent_event_data.RecurrentEventData")
-        == "hint"
+        is None
     )
     # Its hint retired, a name removed in v0.23 is silent
     assert how_retired("surpyval.utils.score.score") is None

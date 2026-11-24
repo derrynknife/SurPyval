@@ -104,6 +104,75 @@ def _optimizer_label(how: str, res: Any) -> str:
 
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
+#: The options of ``fit`` that only probability plotting (``how="MPP"``)
+#: reads, each with its default.
+MPP_ONLY_OPTIONS: dict[str, Any] = {
+    "heuristic": "Nelson-Aalen",
+    "rr": "y",
+    "on_d_is_0": False,
+    "turnbull_estimator": "Fleming-Harrington",
+}
+
+
+def warn_mpp_only_options(name: str, how: str, **given: Any) -> None:
+    """Warn, with a ``FutureWarning`` at the user's line, when ``fit`` is
+    given an option only ``how="MPP"`` reads (:data:`MPP_ONLY_OPTIONS`)
+    with another method: the option changes nothing, so the call does not
+    do what it says. The fit and its result are unchanged; from
+    :data:`~surpyval.utils.deprecation.REMOVED_IN_NEXT` such a call is
+    refused. An option left at its default (given or not) is not
+    reported.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.univariate.parametric.optimised_fit import (
+    ...     warn_mpp_only_options,
+    ... )
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     warn_mpp_only_options("Weibull", "MLE", rr="x", on_d_is_0=False)
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Weibull.fit: rr='x' is read only by how='MPP' (probability
+    plotting), so how='MLE' ignored it and the result is the fit without
+    it. From v0.31 this is refused: drop rr, or fit with how='MPP'.
+    """
+    if how == "MPP":
+        return
+    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+
+    from ..nonparametric._heuristics import canonical_heuristic
+
+    ignored = []
+    for option, value in given.items():
+        default = MPP_ONLY_OPTIONS[option]
+        if option == "heuristic":
+            same = canonical_heuristic(value) == default
+        else:
+            same = value == default
+        if not same:
+            ignored.append((option, value))
+    if not ignored:
+        return
+    shown = ", ".join(f"{option}={value!r}" for option, value in ignored)
+    names = [option for option, _ in ignored]
+    dropped = (
+        names[0]
+        if len(names) == 1
+        else ", ".join(names[:-1]) + " and " + names[-1]
+    )
+    verb = "is" if len(ignored) == 1 else "are"
+    pronoun = "it" if len(ignored) == 1 else "them"
+    warnings.warn(
+        f"{name}.fit: {shown} {verb} read only by how='MPP' (probability "
+        f"plotting), so how='{how}' ignored {pronoun} and the result is the "
+        f"fit without {pronoun}. From v{REMOVED_IN_NEXT} this is refused: "
+        f"drop {dropped}, or fit with how='MPP'.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
 #: How far an ECDF given to ``fit_from_ecdf`` may fall between neighbouring
 #: points (floating-point rounding) before it is refused as not a CDF.
 _ECDF_FALL_TOLERANCE = 1e-12
@@ -328,6 +397,11 @@ class OptimisedFitMixin(FitInputsMixin):
             Only MLE supports every kind of censoring and truncation, and
             only MLE can fit ``zi`` and ``lfp`` models; MOM and MSE do not
             support truncation.
+
+            Only MPP reads ``heuristic``, ``rr``, ``on_d_is_0`` and
+            ``turnbull_estimator``: given (other than at its default) with
+            another method, each is ignored with a ``FutureWarning``, and
+            from v0.31 refused.
 
         offset : boolean, optional
             If :code:`True` finds the shifted distribution. If not provided
@@ -699,6 +773,14 @@ turnbull_estimator, hr
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        warn_mpp_only_options(
+            self.name,
+            how,
+            heuristic=heuristic,
+            rr=rr,
+            on_d_is_0=on_d_is_0,
+            turnbull_estimator=turnbull_estimator,
+        )
         hr = self._checked_fit_hr(hr, how)
         if surv_data.weighted:
             from ._weighted import check_weighted_fit

@@ -45,7 +45,6 @@ from scipy.special import gammaln
 from surpyval.univariate.parametric.fitters import at_boundary_maximum
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     xcnt_handler,
@@ -56,6 +55,7 @@ from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import curvature_scales, numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import caller_stacklevel
 
 from .._aliasing import expand, fit_columns
 from .._fit_skeleton import (
@@ -369,7 +369,7 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
                 int(missing.sum()), n_obs
             ),
             UserWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
         keep = ~missing
         x, c, w, groups = (a[keep] for a in (x, c, w, groups))

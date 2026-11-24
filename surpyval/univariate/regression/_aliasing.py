@@ -27,7 +27,7 @@ from typing import Any, TypeVar
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils import _caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel
 
 #: ``(names, quiet)`` for the fit in progress: the names of the columns of
 #: ``Z`` (from ``fit_from_df``) for the warning, and the columns it need
@@ -260,7 +260,7 @@ def warn_aliased(columns: "npt.ArrayLike", how: str) -> None:
             describe_columns(shown), how
         ),
         UserWarning,
-        stacklevel=_caller_stacklevel(),
+        stacklevel=caller_stacklevel(),
     )
 
 

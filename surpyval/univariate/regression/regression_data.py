@@ -24,7 +24,6 @@ from formulaic import Formula, ModelSpec
 from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     formula_model_matrix,
@@ -39,7 +38,7 @@ from surpyval.utils.dataframe import (
     frame_column,
 )
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._aliasing import covariate_columns
 
@@ -768,7 +767,7 @@ def record_empty_levels(model_spec: Any, df: pd.DataFrame) -> None:
             "predicting for such a level raises a ValueError, as for a "
             "level the model was not fitted with.",
             UserWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
 
 

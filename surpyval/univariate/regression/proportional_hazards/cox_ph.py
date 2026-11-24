@@ -31,7 +31,6 @@ from surpyval.univariate.nonparametric import (
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     validate_coxph,
@@ -43,6 +42,7 @@ from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import caller_stacklevel
 
 from .._aliasing import (
     aliased_columns,
@@ -556,7 +556,7 @@ def _stratified_rows(
                 int(missing.sum()), missing.shape[0]
             ),
             UserWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
         obs = [_sub(a, ~missing) for a in obs]
         labels_arr = labels_arr[~missing]

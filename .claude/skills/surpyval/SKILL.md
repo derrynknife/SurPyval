@@ -121,7 +121,9 @@ Extra `fit` options on parametric distributions: `how` (`"MLE"` default, or
 location/threshold `gamma`, e.g. 3-parameter Weibull), `zi=True`
 (zero-inflation), `lfp=True` (limited failure population / cure fraction),
 `fixed={"beta": 2}` (hold parameters), `init=[...]`. For `how="MPP"`,
-`heuristic` picks the plotting positions (`"Nelson-Aalen"` default); an
+`heuristic` picks the plotting positions (`"Nelson-Aalen"` default), with
+`rr`, `on_d_is_0` and `turnbull_estimator`; only MPP reads these four, and
+passing one with another `how` warns (it is ignored; refused from 0.31). An
 MPP fit's bounds are `method="pivotal"` on `cb`/`quantile_cb`/`param_cb`
 (exact for complete or type II samples; Weibull, LogNormal, LogLogistic,
 Normal, Logistic, Gumbel, GumbelLEV, Exponential). `model.rba()` gives an
@@ -361,7 +363,7 @@ d.tables["proportional_hazards"]      # cox.zph table: per covariate + GLOBAL
 Regression predictions take the covariate vector as the second argument:
 `model.sf(x, Z)`, `model.ff(x, Z)`, `model.hf(x, Z)`, etc.
 
-## New in 0.26
+## More models and options
 
 ```python
 import numpy as np, pandas as pd, surpyval as sp

@@ -14,11 +14,12 @@ changelog:
   (``NHPPProportionalIntensity.fit(dist=)``);
 - :data:`REMOVED_TOP_LEVEL`, the package's own old names (read by
   ``surpyval.__getattr__``), with :func:`from_import` so that
-  ``from surpyval import RecurrentEventData`` keeps the message;
-- ``surpyval.utils.recurrent_event_data``, a module that raises on import.
+  ``from surpyval import RecurrentEventData`` keeps the message.
 
 An entry is dropped once the old name has been gone for a release or two:
-the hints for the names removed in v0.23 and v0.24 were retired in v0.27.
+the hints for the names removed in v0.23 and v0.24 were retired in v0.27,
+and ``surpyval.utils.recurrent_event_data`` (a module that only raised on
+import, removed in v0.26) in v0.30.
 """
 
 from __future__ import annotations

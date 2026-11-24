@@ -52,7 +52,6 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils import _caller_stacklevel
 from surpyval.utils.covariates import (
     coefficient_names,
     loaded_coefficient_names,
@@ -69,7 +68,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 from .._aliasing import expand, fit_columns
 from .._fit_skeleton import covariate_center
@@ -853,7 +852,7 @@ class CoxFrailtyFitter(FitterRepr):
                 warnings.warn(
                     message,
                     caught_warning.category,
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
         kept = np.arange(p_all)
         if cox is not None and cox.aliased.size:
