@@ -594,7 +594,11 @@ its data, so data-dependent methods (bootstrap bounds, residuals) raise.
   Text: `Items.parse("P1: 120, 310, [400, 450], 1000+ | (0, inf]")`, one line
   per item; `data.to_notation()` on data with ids gives the `Items` back
   (`.surpyval_data() == data`, else refused). `EventHistoryData` is being phased out: build new data as
-  `SurpyvalData(..., i=..., a=...)` or `Items`.
+  `SurpyvalData(..., i=..., a=...)`, `Items`, `SurpyvalData.from_items([ItemHistory(...)])`,
+  `SurpyvalData.from_histories(observed={id: [ages]}, right_censored={id: age})` or
+  `SurpyvalData.from_dataframe(log, i_col=, x_col=, ends={id: age})`; `data.to_first_events()` /
+  `data.to_gaps()` give lifetimes from repeated events; `model.data.to_surpyval_data()` converts
+  the `EventHistoryData` a recurrent model or simulation hands back.
 
 **Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
 `sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never

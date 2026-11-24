@@ -150,8 +150,14 @@ def test_the_dataset_needs_consistent_items():
         SurpyvalData.from_items([ItemLifetime("A", observed=5)], counts=0)
     with pytest.raises(ValueError, match="one per item"):
         SurpyvalData.from_items([ItemLifetime("A", observed=5)], counts=[1, 2])
+    # Histories alone are data with units i; a list is of one kind
+    assert SurpyvalData.from_items([sp.ItemHistory("A", observed=[5])]).i == [
+        "A"
+    ]
     with pytest.raises(TypeError, match="ItemLifetime records"):
-        SurpyvalData.from_items([sp.ItemHistory("A", observed=[5])])
+        SurpyvalData.from_items(
+            [sp.ItemHistory("A", observed=[5]), ItemLifetime("B", observed=5)]
+        )
 
 
 # -- #931: every record that builds goes into a dataset ----------------------

@@ -170,7 +170,7 @@ Readings taken on an item over its life go in ``readings``: ``{name: {age: value
     print(data.m)
     print(data.time_varying_covariates)
 
-``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is being phased out, and ``fleet.event_history_data()`` gives one only for code that still needs it.
+``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is being phased out, and ``fleet.event_history_data()`` gives one only for code that still needs it (``to_surpyval_data()`` turns one back into rows).
 
 Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
 
@@ -709,15 +709,17 @@ For repairable items, each item can fail many times. The recurrent event models 
     print(mcf.mcf([1000, 2000, 2600]))
 
 The same log, written as each machine's history keyed by its id, is read by
-``EventHistoryData.from_histories``: ``observed`` holds each machine's age
-at its failures and ``right_censored`` its current reading. Every recurrent
-``fit`` takes the result in place of the arrays:
+``SurpyvalData.from_histories``: ``observed`` holds each machine's age
+at its failures and ``right_censored`` its current reading. The result has
+one row per failure and one for the end of each machine's record, each with
+its machine's id ``i``, and every recurrent ``fit`` takes it in place of the
+arrays:
 
 .. jupyter-execute::
 
-    from surpyval import EventHistoryData
+    from surpyval import SurpyvalData
 
-    data = EventHistoryData.from_histories(
+    data = SurpyvalData.from_histories(
         observed={"M1": [420, 1310, 2050], "M2": [980, 2400], "M3": [1720]},
         right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
     )
@@ -772,28 +774,28 @@ with an ``ItemHistory`` and build the dataset from the list:
     )
     fan = ItemHistory("F1", observed=[800], observed_event_types="bearing",
                       right_censored=3000)
-    data = EventHistoryData.from_items([pump, fan])
-    data.to_items()[1]
+    data = SurpyvalData.from_items([pump, fan])
+    print(data)
 
-Every check names the item and says what is wrong with its history, and
-``data.to_items()`` gives the items back. Two kinds of history are kept with
-the data for the models that will use them, and refused by every fit until
-then:
+Every check names the item and says what is wrong with its history. An
+``ItemHistory`` can also record two things these rows do not fit:
 
 - ``time_varying_covariates`` (#905): ``{age: values}``, a ``StepSchedule``
-  or a continuously varying ``CovariatePath``.
-- The item's path through states (#887), recorded like its failures: an
-  ``initial_state``, changes seen as they happened (``observed_states={age:
-  state}``), changes between two inspections (``interval_censored_states=
-  [[lower, upper, state]]``) and a state already reached at the first look
-  (``left_censored_states``).
+  or a continuously varying ``CovariatePath``. They are kept with the
+  data, and refused by the recurrent fits, which take covariates that
+  change as rows instead (one per stretch, see :doc:`Data Model`).
+- The item's path through states (#887): an ``initial_state`` and its
+  changes (``observed_states={age: state}`` and so on). Multi-state data
+  is rows of another kind, one per stay in a state
+  (``SurpyvalData(x, s=..., e=..., i=...)``), so ``from_items`` refuses
+  records with states and says so.
 
 ``markers`` (repeated measurements, #891) are reserved for joint models of
 histories; a lifetime's record, ``ItemLifetime``, takes them now (see
 :doc:`Joint Models`).
 
 A log held in a DataFrame, one row per failure, is read by
-``EventHistoryData.from_dataframe``: the item and age columns, the type of
+``SurpyvalData.from_dataframe``: the item and age columns, the type of
 each failure, and each item's end of observation as a ``c = 1`` row, a
 column (``end_col``) or ``ends={item: age}``, which also names the items
 that never failed and so have no row:
@@ -805,7 +807,7 @@ that never failed and so have no row:
         "hours":   [420, 1310, 2050, 980, 2400],
         "part":    ["seal", "bearing", "seal", "seal", "bearing"],
     })
-    data = EventHistoryData.from_dataframe(
+    data = SurpyvalData.from_dataframe(
         log, i_col="machine", x_col="hours", e_col="part",
         ends={"M1": 2600, "M2": 2900, "M3": 3100},
     )
@@ -856,9 +858,18 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
      - save and restore the data, as JSON text or a file (``to_dict`` /
        ``from_dict`` give the dictionary; ``surpyval.from_json`` reads it
        too; every data class has them)
+   * - ``SurpyvalData.from_items([ItemHistory(...), ...])``,
+       ``SurpyvalData.from_histories(observed={id: [ages]},
+       right_censored={id: age})``
+     - each item's history of repeated events → data with one row per
+       event and each row's unit ``i``, which the recurrent models fit
+   * - ``data.to_first_events()``, ``data.to_gaps()``
+     - repeated events → lifetime data: each unit's first failure, or
+       the times between its failures
    * - ``handle_xicn(x, i, c, n, ...)``
-     - validates recurrent event data (``xicnt``) and returns the
-       ``EventHistoryData`` object the recurrent models use
+     - validates recurrent event arrays (``xicnt``) and returns the
+       ``EventHistoryData`` the recurrent models work on (being phased
+       out; its ``to_surpyval_data()`` gives the rows)
 
 The conversions are not all lossless, and it pays to know where they drop
 information:

@@ -16,12 +16,23 @@ Data Classes
 every univariate fitter builds one, and the parametric, non-parametric
 and regression ``fit`` methods accept one in place of the arrays (``Weibull.fit(data)``). Its constructors
 ``from_observations`` and ``from_xrd`` read the ``fsli`` and ``xrd``
-layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``EventHistoryData`` holds recurrent-event data
-(each row an event of an item); build it from one
+layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them.
+
+With each row's unit ``i``, a ``SurpyvalData`` also holds recurrent-event
+data (each row an event of a unit, or the end of its observation), which
+every recurrent ``fit`` takes. Build it from the rows
+(``SurpyvalData(x, c, i=i)``), from one
 :class:`~surpyval.utils.item_history.ItemHistory` per item
-(``EventHistoryData.from_items``), from dictionaries keyed by item
-(``from_histories``), or from arrays with :func:`handle_xicn
-<surpyval.utils.recurrent_utils.handle_xicn>`.
+(``SurpyvalData.from_items``), from dictionaries keyed by item
+(``SurpyvalData.from_histories``) or from a log in a DataFrame
+(``SurpyvalData.from_dataframe``); ``to_first_events`` and ``to_gaps``
+give lifetime data from it.
+
+``EventHistoryData`` is the older class for the same data, and is being
+phased out. It still works: the recurrent models keep their data in one
+(``model.data``), the simulations return one, and :func:`handle_xicn
+<surpyval.utils.recurrent_utils.handle_xicn>` builds one from arrays. Its
+``to_surpyval_data()`` gives the same histories as a ``SurpyvalData``.
 
 .. autoclass:: surpyval.utils.surpyval_data.SurpyvalData
    :members:
