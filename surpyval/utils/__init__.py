@@ -81,10 +81,6 @@ from surpyval.utils.validation import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.warnings import caller_stacklevel
-
-# The old private name, until its callers import ``caller_stacklevel``.
-_caller_stacklevel = caller_stacklevel
 
 __all__ = [
     "xcnt_handler",

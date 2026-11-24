@@ -70,49 +70,14 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "_round_vals",
         ),
         (
-            "surpyval.univariate.regression._aliasing",
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
-            "surpyval.univariate.regression._fit_skeleton",
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
-            "surpyval.univariate.regression.accelerated_life.parameter_substitution",  # noqa: E501
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
             "surpyval.univariate.regression.additive_hazards.additive_hazards_fitter",  # noqa: E501
             "surpyval.univariate.regression._fit_skeleton",
             "_gradient",
         ),
         (
-            "surpyval.univariate.regression.frailty.cox_frailty",
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
             "surpyval.univariate.regression.frailty.frailty_fitter",
             "surpyval.univariate.regression._fit_skeleton",
             "_gradient",
-        ),
-        (
-            "surpyval.univariate.regression.frailty.frailty_fitter",
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
-            "surpyval.univariate.regression.proportional_hazards.cox_ph",
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
-            "surpyval.univariate.regression.regression_data",
-            "surpyval.utils",
-            "_caller_stacklevel",
         ),
     }
 )

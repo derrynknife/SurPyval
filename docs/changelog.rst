@@ -59,6 +59,26 @@ v0.30 (unreleased)
   steps there are 1/2, not 1. Fits where every unit with windows has at
   least one failure are unchanged.
 
+**Deprecated.**
+
+- A distribution's ``fit`` warns (``FutureWarning``) when it is given
+  ``heuristic``, ``rr``, ``on_d_is_0`` or ``turnbull_estimator`` (other
+  than at its default) with a method other than ``how="MPP"``. Only
+  probability plotting reads them, so the other methods ignored them in
+  silence; the result is unchanged. From v0.31 the call is refused. To
+  migrate: drop the option, or fit with ``how="MPP"``.
+
+**Removed.**
+
+- ``surpyval.utils.recurrent_event_data``, kept since v0.26 only to raise
+  an ``ImportError`` naming its replacement: its import now fails with
+  Python's own error. Use ``surpyval.EventHistoryData``.
+
+**Changed.**
+
+- The agent skill's "New in 0.26" section is now "More models and
+  options". No result changes.
+
 v0.29 (22 November 2026)
 ------------------------
 

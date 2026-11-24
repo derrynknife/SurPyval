@@ -38,7 +38,6 @@ from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
 )
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
 )
@@ -52,7 +51,7 @@ from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._aliasing import (
     aliased_columns,
@@ -1204,7 +1203,7 @@ def finite_start(
                     "The log-likelihood is not finite at the supplied "
                     "`init`, so the fit cannot start there; starting from "
                     "the default initial values instead.",
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
                 return alt
     raise ValueError(
