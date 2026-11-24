@@ -1942,8 +1942,11 @@ class LikelihoodRatioMixin:
         """The searches over every fitted parameter of an offset,
         limited-failure or zero-inflated model
         (``ExtendedLikelihoodRatio``), kept; ``None`` for a model with
-        none of the three, whose searches are its own."""
-        if not (self.offset or self.lfp or self.zi):
+        none of the three, whose searches are its own. A model with a
+        hazard ratio ``hr`` other than 1 (held fixed) takes them too: they
+        evaluate the model's own functions at each point, which carry
+        ``hr``, where the plain searches evaluate the distribution's."""
+        if not (self.offset or self.lfp or self.zi or self._lr_hr() != 1):
             return None
         from ._likelihood_ratio_extended import ExtendedLikelihoodRatio
 
@@ -1952,6 +1955,7 @@ class LikelihoodRatioMixin:
             float(self.gamma),
             float(self.lfp_p),
             float(self.f0),
+            self._lr_hr(),
             id(self.surv_data),
         )
         kept = self.__dict__.get("_lr_extended_search")
@@ -1959,6 +1963,10 @@ class LikelihoodRatioMixin:
             kept = (key, ExtendedLikelihoodRatio(self))
             self.__dict__["_lr_extended_search"] = kept
         return kept[1]
+
+    def _lr_hr(self) -> float:
+        """The model's known hazard ratio (1 where it has none)."""
+        return float(getattr(self, "hr", 1.0))
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as

@@ -348,10 +348,6 @@ def test_fits_with_hr_refuse_what_they_cannot_carry():
     with pytest.raises(ValueError, match="how='MLE'"):
         sp.Weibull.fit(x, c, how="MPP", hr=2.0)
     model = sp.Weibull.fit(x, c, hr=2.0)
-    with pytest.raises(ValueError, match="method='wald'"):
-        model.cb([5.0], method="lr")
-    with pytest.raises(ValueError, match="method='wald'"):
-        model.quantile_cb(0.5, method="lr")
     for call in (
         lambda: model.mean_cb(),
         lambda: model.mrl_cb([5.0]),
@@ -360,3 +356,98 @@ def test_fits_with_hr_refuse_what_they_cannot_carry():
     ):
         with pytest.raises(ValueError, match="bootstrap"):
             call()
+
+
+def test_lr_bounds_on_functions_are_the_familys():
+    # A Weibull with a known hr is the Weibull at alpha * hr ** (-1 /
+    # beta): one-to-one, so its likelihood region is the family's, and so
+    # is the extreme of every function over it.
+    x, c = _censored_sample()
+    plain = sp.Weibull.fit(x, c)
+    scaled = sp.Weibull.fit(x, c, hr=2.0)
+    t = np.array([3.0, 8.0, 13.0])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        for bound in ("two-sided", "lower", "upper"):
+            np.testing.assert_allclose(
+                scaled.cb(t, on=on, method="lr", bound=bound),
+                plain.cb(t, on=on, method="lr", bound=bound),
+                rtol=FIT_RTOL,
+            )
+    np.testing.assert_allclose(
+        scaled.quantile_cb([0.1, 0.5, 0.9], method="lr"),
+        plain.quantile_cb([0.1, 0.5, 0.9], method="lr"),
+        rtol=FIT_RTOL,
+    )
+
+
+def test_lr_bounds_of_an_exponential_are_its_rates():
+    # One parameter: the band on sf(t) = exp(-hr * rate * t) is that
+    # function of the rate's own likelihood-ratio interval.
+    x, c = _censored_sample()
+    model = sp.Exponential.fit(x, c, hr=0.5)
+    lo, hi = model.param_cb("failure_rate", method="lr")
+    t = np.array([2.0, 5.0, 20.0])
+    want = np.column_stack([np.exp(-0.5 * hi * t), np.exp(-0.5 * lo * t)])
+    np.testing.assert_allclose(model.cb(t, method="lr"), want, rtol=1e-8)
+    # qf(p) = -log(1 - p) / (hr * rate)
+    p = np.array([0.1, 0.5])
+    want_q = np.column_stack(
+        [-np.log1p(-p) / (0.5 * hi), -np.log1p(-p) / (0.5 * lo)]
+    )
+    np.testing.assert_allclose(
+        model.quantile_cb(p, method="lr"), want_q, rtol=1e-8
+    )
+
+
+def test_lr_bound_is_on_the_deviance_contour():
+    # A lognormal with hr is no lognormal: check the bound directly, as
+    # the least deviance with sf(5) held at it, which is the critical
+    # value at each end.
+    from scipy.optimize import minimize
+    from scipy.stats import chi2
+
+    x, c = _censored_sample()
+    model = sp.LogNormal.fit(x, c, hr=0.5)
+    nll_hat = model.neg_ll()
+
+    def nll(theta):
+        return sp.LogNormal._neg_ll_func(
+            model.surv_data, *theta, 0.0, 0.0, 1.0, hr=0.5
+        )
+
+    lower, upper = model.cb([5.0], method="lr")[0]
+    assert lower < model.sf(5.0) < upper
+    for end in (lower, upper):
+        held = {
+            "type": "eq",
+            "fun": lambda th, end=end: float(
+                sp.LogNormal.from_params(th, hr=0.5).sf(5.0)
+            )
+            - end,
+        }
+        found = minimize(
+            nll,
+            model.params,
+            constraints=[held],
+            method="SLSQP",
+            options={"ftol": 1e-14, "maxiter": 500},
+        )
+        np.testing.assert_allclose(
+            2 * (found.fun - nll_hat), chi2.ppf(0.95, 1), rtol=1e-8
+        )
+
+
+def test_lr_bounds_with_hr_and_the_other_options():
+    x, c = _censored_sample()
+    t = np.array([5.0, 10.0])
+    for model in (
+        sp.Weibull.fit(x, c, hr=2.0, offset=True),
+        sp.Weibull.fit(x, c, hr=2.0, lfp=True),
+        sp.Poisson.fit(np.round(x).astype(int), hr=2.0),
+    ):
+        for on in ("sf", "Hf", "hf", "df"):
+            band = model.cb(t, on=on, method="lr")
+            point = getattr(model, on)(t)
+            assert np.all(band[:, 0] <= point) and np.all(point <= band[:, 1])
+        q = model.quantile_cb(0.5, method="lr")
+        assert q[0] <= model.qf(0.5) <= q[1]
