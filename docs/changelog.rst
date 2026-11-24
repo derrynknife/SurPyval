@@ -45,6 +45,19 @@ v0.30 (unreleased)
   to 1e-10. ``mean``, ``moment`` and ``var`` of a discrete model with
   ``hr`` are sums over its survival function (a geometric agrees with
   its closed form to 1e-12). Both raised a ``ValueError`` before.
+**Fixed.**
+
+- **A unit watched with no failure counts as exposure when the data has
+  gaps.** A recurrent fit given observation windows (``windows=``, or a
+  ``SurpyvalData`` whose units have gaps in their rows) left out a unit
+  that had windows and no failure in them, so the time it was watched
+  without failing was lost and the rate of failures came out too high.
+  Its windows are now part of the fit, as a failure-free unit's end of
+  observation is without gaps. Two failures on a unit watched for 7
+  hours beside a unit watched for 4 hours with none: ``HPP`` gave 2/7 =
+  0.286 per hour and gives 2/11 = 0.182; the mean cumulative function's
+  steps there are 1/2, not 1. Fits where every unit with windows has at
+  least one failure are unchanged.
 
 v0.29 (22 November 2026)
 ------------------------

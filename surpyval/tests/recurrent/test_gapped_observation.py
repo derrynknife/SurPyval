@@ -247,3 +247,45 @@ def test_hpp_accepts_windows():
         windows[item] = wins
     model = HPP.fit(np.concatenate(xs), np.concatenate(ii), windows=windows)
     assert np.isclose(model.params[0], rate, rtol=0.1)
+
+
+def test_item_with_windows_and_no_failure_is_exposure():
+    """An item watched over its windows with no failure in them is
+    exposure, as a failure-free item's ``c = 1`` row is without windows.
+    Item 1 fails twice in (0, 3] and (5, 9] (7 hours); item 2 is watched
+    over (0, 4] and does not fail: the constant rate is 2 / 11, where
+    leaving item 2 out gives 2 / 7. The MCF's first risk set holds both."""
+    import surpyval
+    from surpyval import SurpyvalData
+    from surpyval.recurrent import HPP, CrowAMSAA, NonParametricCounting
+
+    arrays = dict(x=[1, 2], i=[1, 1], c=[0, 0])
+    windows = {1: [(0, 3), (5, 9)], 2: [(0, 4)]}
+    data = surpyval.handle_xicn(**arrays, windows=windows)
+    assert data.x.tolist() == [1, 2, 3, 9, 4]
+    assert data.c.tolist() == [0, 0, 1, 1, 1]
+    assert [item for item, _ in data.window_map.values()] == [1, 1, 2]
+    assert HPP.fit(**arrays, windows=windows).params[0] == pytest.approx(
+        2 / 11, rel=1e-9
+    )
+    alone = HPP.fit(**arrays, windows={1: windows[1]})
+    assert alone.params[0] == pytest.approx(2 / 7, rel=1e-9)
+    # Rows with gaps say the same: unit 2's only row is its end
+    rows = SurpyvalData(
+        [1, 2, 3, 9, 4],
+        [0, 0, 1, 1, 1],
+        i=[1, 1, 1, 1, 2],
+        tl=[0, -np.inf, -np.inf, 5, 0],
+    )
+    assert HPP.fit(rows).params[0] == pytest.approx(2 / 11, rel=1e-9)
+    # Two at risk at each failure: the MCF steps by 1/2, not by 1
+    mcf = NonParametricCounting.fit(**arrays, windows=windows)
+    np.testing.assert_allclose(mcf.mcf_hat[:2], [0.5, 1.0])
+    # Power law, both items watched from 0 to T = 10 with one gap-free
+    # window each: beta = N / sum(ln(T / t)), whoever failed
+    both = CrowAMSAA.fit(
+        [2, 5], [1, 1], [0, 0], windows={1: [(0, 10)], 2: [(0, 10)]}
+    )
+    beta = 2 / (np.log(10 / 2) + np.log(10 / 5))
+    assert both.params[1] == pytest.approx(beta, rel=1e-6)
+    assert both.params[0] == pytest.approx(10 / 1.0 ** (1 / beta), rel=1e-6)
