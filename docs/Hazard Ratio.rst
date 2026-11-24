@@ -101,11 +101,14 @@ The bounds hold ``hr`` fixed, as a known constant:
   one reparameterisation of the other);
 - ``param_cb`` with every method, the likelihood-ratio bounds included
   (the profile likelihood is the hazard-scaled model's);
-- refused, naming what to use instead: ``mean_cb``, ``mrl_cb``,
-  ``rmst_cb`` and ``rmst`` (bound them from the bootstrap refits,
-  ``model.bootstrap(...).models``, which carry ``hr``), and the pivotal
-  bound, which is for a probability-plotting fit (``fit(..., hr=)`` is
-  maximum likelihood only).
+- ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and ``rmst`` with every method
+  they have. The Wald bound differentiates the hazard-scaled model's own
+  mean, mean residual life or restricted mean (a closed form for the
+  Weibull and exponential, the integral of ``sf`` otherwise), and the
+  likelihood-ratio bound takes its extreme over the region;
+- refused, naming what to use instead: the pivotal bound, which is for a
+  probability-plotting fit (``fit(..., hr=)`` is maximum likelihood
+  only).
 
 Saving
 ------

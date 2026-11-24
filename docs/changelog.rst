@@ -30,6 +30,12 @@ v0.30 (unreleased)
   no existing fit changes. The model keeps the times as
   ``censored_at``, saved by ``to_dict``, and the bootstrap bounds' refits
   censor a resampled unit at its time too.
+- **Bounds on the mean, mean residual life and restricted mean of a
+  model with a hazard ratio.** ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and
+  ``rmst`` work with a known ``hr`` other than 1, by every method they
+  have (Wald, likelihood-ratio, bootstrap), with ``hr`` held fixed. They
+  raised a ``ValueError`` before. A Weibull's bounds with ``hr`` are the
+  plain Weibull fit's (to 1e-13 by likelihood ratio, 1e-8 by Wald).
 
 v0.29 (22 November 2026)
 ------------------------
