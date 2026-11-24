@@ -51,6 +51,17 @@ class EventHistoryData(ReshapeMixin):
     called ``RecurrentEventData`` before v0.25 (the old name was removed in
     v0.26).
 
+    This class is being phased out: a
+    :class:`~surpyval.SurpyvalData` with each row's unit ``i`` is the
+    form for several rows per unit, built by ``SurpyvalData.from_items``
+    (from :class:`~surpyval.utils.item_history.ItemHistory` records),
+    ``SurpyvalData.from_histories`` and ``SurpyvalData.from_dataframe``,
+    with ``to_first_events``, ``to_gaps`` and ``to_histories`` of its
+    own, and every recurrent ``fit`` takes it. :meth:`to_surpyval_data`
+    gives the data held here (a fitted model's ``data``, simulated data,
+    the result of ``handle_xicn``) in that form. It still works, and
+    nothing here warns yet.
+
     Build one from each item's record with :meth:`from_items`
     (:class:`~surpyval.utils.item_history.ItemHistory`), from each item's
     failure ages with :meth:`from_histories`, or from ``x``, ``i``, ``c``,
@@ -637,6 +648,42 @@ class EventHistoryData(ReshapeMixin):
     # was removed in v0.26.
     get_times_to_first_events = RemovedName("use 'to_first_events()'", "0.26")
 
+    def to_surpyval_data(self) -> SurpyvalData:
+        """
+        The same histories as a :class:`~surpyval.SurpyvalData` with units
+        ``i``, the form for several rows per unit, which every recurrent
+        ``fit`` takes: one row per event in time order, then the end of
+        the item's observation (``c = 1``) where it has one, with its late
+        entry ``tl`` on its first row, its right truncation ``tr``, its
+        covariates, attributes and the events' types. An item watched in
+        separate stretches (observation windows) has each stretch start
+        with its ``tl`` and end with a ``c = 1`` row. A fit of the rows is
+        the fit of this data.
+
+        The rows are read back and compared with this data before they
+        are returned, so nothing is lost on the way; data they cannot hold
+        (changes of state) is refused, naming what to use.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9], "B": [4]},
+        ...     right_censored={"A": 12, "B": 10},
+        ... )
+        >>> data.to_surpyval_data()
+        SurpyvalData: 2 items, 5 rows
+           id     x  c  n  a
+          'A'   5.0  0  1  0
+          'A'   9.0  0  1  0
+          'A'  12.0  1  1  0
+          'B'   4.0  0  1  0
+          'B'  10.0  1  1  0
+        """
+        from surpyval.utils.history_rows import rows_from_event_history
+
+        return rows_from_event_history(self)
+
     def to_first_events(self) -> SurpyvalData:
         """
         Each item's time to its first failure, as lifetime data, one
@@ -806,62 +853,17 @@ class EventHistoryData(ReshapeMixin):
         >>> bool((again.x == data.x).all())
         True
         """
-        from surpyval.utils.item_history import ItemHistory
-
-        if unknown:
-            from surpyval.utils.record_keywords import (
-                FROM_HISTORIES_ALIASES,
-                accepted_names,
-                refuse_unknown_keywords,
-            )
-
-            refuse_unknown_keywords(
-                "EventHistoryData.from_histories",
-                unknown,
-                accepted_names(EventHistoryData.from_histories),
-                FROM_HISTORIES_ALIASES,
-            )
-        observed = _history_dict("observed", observed)
-        right_censored = _history_dict("right_censored", right_censored)
-        items = list(dict.fromkeys([*observed, *right_censored]))
-        if not items:
-            raise ValueError(
-                "Give each item's failures (observed) or end of observation "
-                "(right_censored), keyed by the item's id."
-            )
-        starts = _per_item("left_truncation", left_truncation, items, None)
-        ends = _per_item("right_truncation", right_truncation, items, None)
-        rows = None
-        if covariates is not None:
-            rows = _item_covariate_rows(
-                _history_dict("covariates", covariates), items
-            )
-        histories = []
-        for k, item in enumerate(items):
-            ages = _failure_times(item, observed.get(item, []))
-            end = right_censored.get(item)
-            if end is not None:
-                end = _single_age("right_censored", item, end)
-            if gaps:
-                if (ages < 0).any() or (end is not None and end < 0):
-                    raise ValueError(
-                        f"Item {item!r}: with gaps=True the times are times "
-                        "between failures, which cannot be negative."
-                    )
-                origin = 0.0 if starts[k] is None else starts[k]
-                ages = origin + np.cumsum(ages)
-                if end is not None:
-                    end = (ages[-1] if len(ages) else origin) + end
-            histories.append(
-                ItemHistory(
-                    item,
-                    observed=ages,
-                    right_censored=end,
-                    left_truncation=starts[k],
-                    right_truncation=ends[k],
-                    covariates=None if rows is None else rows[k],
-                )
-            )
+        histories = _histories_from_dicts(
+            "EventHistoryData.from_histories",
+            EventHistoryData.from_histories,
+            observed,
+            right_censored,
+            left_truncation,
+            right_truncation,
+            covariates,
+            gaps,
+            unknown,
+        )
         return cls.from_items(histories, unit=unit)
 
     @classmethod
@@ -1074,33 +1076,8 @@ class EventHistoryData(ReshapeMixin):
             ),
         )
         typed = [h.has_event_types for h in items]
-        events = [
-            bool(len(h.observed) or len(h.interval_censored))
-            or h.left_censored is not None
-            for h in items
-        ]
-        masked = []
         if any(typed):
-            # Failures whose type was not recorded: masked causes
-            masked = [
-                h.id
-                for h, t, ev in zip(items, typed, events)
-                if ev
-                and (
-                    not t
-                    or any(
-                        k is None
-                        for k in (
-                            *h.observed_event_types,
-                            *h.interval_censored_event_types,
-                        )
-                    )
-                    or (
-                        h.left_censored is not None
-                        and h.left_censored_event_types is None
-                    )
-                )
-            ]
+            masked = _masked_items(items)
             if masked:
                 warn_masked(len(masked), "items " + named(masked))
         x: list = []
@@ -2000,6 +1977,110 @@ def _all_or_none(items: list, name: str, get: Callable) -> bool:
             f"Every item's '{name}' must have the same number of values."
         )
     return True
+
+
+def _histories_from_dicts(
+    owner: str,
+    method: Any,
+    observed: dict | None,
+    right_censored: dict | None,
+    left_truncation: Any,
+    right_truncation: Any,
+    covariates: dict | None,
+    gaps: bool,
+    unknown: dict,
+) -> list:
+    """The :class:`~surpyval.utils.item_history.ItemHistory` records of
+    the dicts ``from_histories`` takes (``owner`` names it in a refusal,
+    and ``method`` is it, for the keywords it accepts)."""
+    from surpyval.utils.item_history import ItemHistory
+
+    if unknown:
+        from surpyval.utils.record_keywords import (
+            FROM_HISTORIES_ALIASES,
+            accepted_names,
+            refuse_unknown_keywords,
+        )
+
+        refuse_unknown_keywords(
+            owner,
+            unknown,
+            accepted_names(method),
+            FROM_HISTORIES_ALIASES,
+        )
+    observed = _history_dict("observed", observed)
+    right_censored = _history_dict("right_censored", right_censored)
+    items = list(dict.fromkeys([*observed, *right_censored]))
+    if not items:
+        raise ValueError(
+            "Give each item's failures (observed) or end of observation "
+            "(right_censored), keyed by the item's id."
+        )
+    starts = _per_item("left_truncation", left_truncation, items, None)
+    ends = _per_item("right_truncation", right_truncation, items, None)
+    rows = None
+    if covariates is not None:
+        rows = _item_covariate_rows(
+            _history_dict("covariates", covariates), items
+        )
+    histories = []
+    for k, item in enumerate(items):
+        ages = _failure_times(item, observed.get(item, []))
+        end = right_censored.get(item)
+        if end is not None:
+            end = _single_age("right_censored", item, end)
+        if gaps:
+            if (ages < 0).any() or (end is not None and end < 0):
+                raise ValueError(
+                    f"Item {item!r}: with gaps=True the times are times "
+                    "between failures, which cannot be negative."
+                )
+            origin = 0.0 if starts[k] is None else starts[k]
+            ages = origin + np.cumsum(ages)
+            if end is not None:
+                end = (ages[-1] if len(ages) else origin) + end
+        histories.append(
+            ItemHistory(
+                item,
+                observed=ages,
+                right_censored=end,
+                left_truncation=starts[k],
+                right_truncation=ends[k],
+                covariates=None if rows is None else rows[k],
+            )
+        )
+    return histories
+
+
+def _masked_items(items: list) -> list:
+    """The ids of the ItemHistory records with a failure whose type was
+    not recorded (masked causes), where any of ``items`` has event
+    types."""
+    typed = [h.has_event_types for h in items]
+    events = [
+        bool(len(h.observed) or len(h.interval_censored))
+        or h.left_censored is not None
+        for h in items
+    ]
+    return [
+        h.id
+        for h, t, ev in zip(items, typed, events)
+        if ev
+        and (
+            not t
+            or any(
+                k is None
+                for k in (
+                    *h.observed_event_types,
+                    *h.interval_censored_event_types,
+                )
+            )
+            or (
+                h.left_censored is not None
+                and h.left_censored_event_types is None
+            )
+        )
+    ]
 
 
 def _item_covariate_rows(covariates: dict, items: list) -> list:

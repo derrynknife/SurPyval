@@ -341,7 +341,10 @@ def test_fits_refuse_several_rows_per_unit_saying_what_they_are():
         ValueError,
         match=r"^This fit takes one row per unit \(units 1, 2 have several: "
         r"repeated events, a = 0 where the unit carried on; the recurrent "
-        r"models in surpyval.recurrent take them\)\.$",
+        r"models in surpyval.recurrent take them, and "
+        r"data.to_first_events\(\) or data.to_gaps\(\) gives each unit's "
+        r"first failure, or the times between its failures, as "
+        r"lifetimes\)\.$",
     ):
         sp.Weibull.fit(_recurrent())
     for call in (

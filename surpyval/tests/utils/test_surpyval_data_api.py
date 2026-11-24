@@ -595,7 +595,7 @@ def test_issue_933_fit_refusals_name_the_call_to_make():
         (
             pd.DataFrame({"t": [1, 2, 3], "i": [1, 1, 1]}),
             sp.recurrent.CrowAMSAA.fit,
-            r"EventHistoryData.from_dataframe",
+            r"SurpyvalData.from_dataframe\(df, x_col=..., c_col=..., i_col",
         ),
         (
             {"observed": [1, 2]},

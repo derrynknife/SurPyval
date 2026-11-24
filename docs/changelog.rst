@@ -55,6 +55,38 @@ v0.30 (unreleased)
   to 1e-10. ``mean``, ``moment`` and ``var`` of a discrete model with
   ``hr`` are sums over its survival function (a geometric agrees with
   its closed form to 1e-12). Both raised a ``ValueError`` before.
+- **One data class for repeated events: SurpyvalData with units does what
+  EventHistoryData did.** A ``SurpyvalData`` with each row's unit ``i``
+  is the form for several rows per unit, and it can now be built and
+  reshaped without ``EventHistoryData``:
+
+  - ``SurpyvalData.from_items`` takes a list of ``ItemHistory`` records
+    (it refused them): one row per event in time order, then the end of
+    the item's observation, with its late entry, right truncation,
+    covariates, event types and attributes.
+  - ``SurpyvalData.from_histories(observed={id: [ages]},
+    right_censored={id: age}, ...)`` reads each unit's failure ages, with
+    the arguments of ``EventHistoryData.from_histories`` (``gaps=True``
+    for times between failures), and ``data.to_histories()`` gives the
+    dicts back.
+  - ``SurpyvalData.from_dataframe`` takes ``end_col=`` and ``ends={id:
+    age}`` for a log with one row per failure, the end of each unit's
+    observation given beside it (and so the units that never failed).
+  - ``data.to_first_events()`` and ``data.to_gaps()`` give lifetime data
+    from repeated events: each unit's time to its first failure, and the
+    times between its failures (each repair as good as new).
+  - ``EventHistoryData.to_surpyval_data()`` gives the data a recurrent
+    model keeps (``model.data``), a simulation returns or ``handle_xicn``
+    builds as a ``SurpyvalData``; observation windows become gaps between
+    a unit's rows. The rows are read back and compared before they are
+    returned, and a fit of them is the fit of the original (the
+    parameters are identical).
+
+  The messages that told you to build an ``EventHistoryData`` (a
+  recurrent fit given records, a dict or a DataFrame) now name the
+  ``SurpyvalData`` form. ``EventHistoryData`` still works and does not
+  warn; see *Changed*.
+
 **Fixed.**
 
 - **A unit watched with no failure counts as exposure when the data has
@@ -85,6 +117,21 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
+
+- **EventHistoryData is no longer needed to prepare recurrent data.**
+  Everything it was built for has a ``SurpyvalData`` form (see *Added*),
+  and the documentation now uses that. Nothing is removed and nothing
+  warns: ``EventHistoryData``, ``handle_xicn`` and ``model.data`` behave
+  as before. Moving over is one call each: ``EventHistoryData.from_items``
+  / ``from_histories`` / ``from_dataframe`` become the ``SurpyvalData``
+  methods of the same names, and ``data.to_surpyval_data()`` converts
+  what you already hold. One difference to know: ``SurpyvalData`` keeps
+  the units in the order given, where ``EventHistoryData`` sorts them by
+  id; the fits are the same. An ``ItemHistory``'s changes of state are
+  not part of these rows (multi-state data is ``SurpyvalData`` with
+  ``s``), so ``from_items`` refuses records that have them.
+- A lifetime fit given data with several rows per unit now also names
+  ``data.to_first_events()`` and ``data.to_gaps()`` in its refusal.
 
 - The agent skill's "New in 0.26" section is now "More models and
   options". No result changes.

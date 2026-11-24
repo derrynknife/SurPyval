@@ -545,8 +545,8 @@ def refuse_time_values(value: Any, name: str) -> None:
 def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
     """Refuse an ``x`` that is a data class, a record or a list of
     records, a DataFrame or a dict, naming what to do with it (#933): a
-    recurrent fit (``recurrent``) takes an ``EventHistoryData``, a
-    lifetime fit a ``SurpyvalData``."""
+    recurrent fit (``recurrent``) takes a ``SurpyvalData`` with each
+    row's unit ``i``, a lifetime fit a ``SurpyvalData`` of lifetimes."""
     from surpyval.utils.event_history_data import EventHistoryData
     from surpyval.utils.item_history import ItemHistory
     from surpyval.utils.item_lifetime import ItemLifetime
@@ -566,7 +566,7 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
                 f"{kind}, which a recurrent fit does not take: a lifetime "
                 "model fits them, as SurpyvalData.from_items(items); a "
                 "recurrent model takes each item's history of repeated "
-                "events, EventHistoryData.from_items([ItemHistory(...), "
+                "events, SurpyvalData.from_items([ItemHistory(...), "
                 "...])."
             )
         raise TypeError(
@@ -587,17 +587,16 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         kind = f"x is {one}ItemHistory record{plural} (one item's history)"
         if recurrent:
             raise TypeError(
-                f"{kind}: build the dataset, EventHistoryData.from_items("
+                f"{kind}: build the dataset, SurpyvalData.from_items("
                 f"{'items' if listed else '[item, ...]'}), and fit that."
             )
         raise TypeError(
             f"{kind} of repeated events, which a lifetime fit does not "
-            "take: fit EventHistoryData.from_items("
+            "take: fit SurpyvalData.from_items("
             f"{'items' if listed else '[item, ...]'}).to_first_events() for "
             "the time to each item's first failure, or .to_gaps() for the "
             "times between failures; a recurrent model (such as "
-            "surpyval.recurrent.CrowAMSAA) fits the EventHistoryData as it "
-            "is."
+            "surpyval.recurrent.CrowAMSAA) fits the SurpyvalData as it is."
         )
     if isinstance(x, EventHistoryData):
         raise TypeError(
@@ -616,9 +615,8 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
                 "lifetime model fits it (Weibull.fit(data), "
                 "KaplanMeier.fit(data), ...); a recurrent model takes each "
                 "unit's history of repeated events, a SurpyvalData with "
-                "each row's unit (SurpyvalData(x, c, ..., i=i)) or an "
-                "EventHistoryData "
-                "(EventHistoryData.from_items([ItemHistory(...), ...]))."
+                "each row's unit (SurpyvalData(x, c, ..., i=i), or "
+                "SurpyvalData.from_items([ItemHistory(...), ...]))."
             )
         raise TypeError(
             "x is a SurpyvalData, which this function does not "
@@ -630,8 +628,8 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
             raise TypeError(
                 "x is a DataFrame: name its columns, "
                 "fit_from_df(df, x_col=..., i_col=..., c_col=...), or build "
-                "the data with EventHistoryData.from_dataframe(df, id=..., "
-                "age=..., ...) and fit that."
+                "the data with SurpyvalData.from_dataframe(df, x_col=..., "
+                "c_col=..., i_col=...) and fit that."
             )
         raise TypeError(
             "x is a DataFrame: name its columns, fit_from_df(df, x_col=..., "
@@ -643,7 +641,7 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         if recurrent:
             raise TypeError(
                 "x is a dict: each item's history keyed by its id is "
-                "EventHistoryData.from_histories(observed={id: [ages]}, "
+                "SurpyvalData.from_histories(observed={id: [ages]}, "
                 "right_censored={id: age}); fit that."
             )
         raise TypeError(
