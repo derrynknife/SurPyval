@@ -1338,12 +1338,13 @@ class NonParametric(
         alpha_ci: float = 0.05,
         bound_type: str = "exp",
         dist: str = "z",
+        bound: str = "two-sided",
     ) -> npt.NDArray:
         r"""
-        Two-sided confidence interval of the quantile at each
-        probability p using the Brookmeyer-Crowley method: the interval
-        is the set of times at which the pointwise confidence interval
-        of the survival function contains 1 - p.
+        Confidence interval of the quantile at each probability p using
+        the Brookmeyer-Crowley method: the interval is the set of times
+        at which the pointwise confidence interval of the survival
+        function contains 1 - p.
 
         Parameters
         ----------
@@ -1361,15 +1362,20 @@ class NonParametric(
         dist : ('z',), str, optional
             The statistic used in the underlying survival function
             bounds. Only the normal ('z') is supported.
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            The two-sided interval (default), or one one-sided bound at
+            ``alpha_ci``: the end of the two-sided interval at
+            ``2 alpha_ci``.
 
         Returns
         -------
 
         cb : numpy array
             Array of shape (len(p), 2) with the ``[lower, upper]``
-            interval of the quantile for each p. The upper limit is NaN
-            where the relevant bound of the survival function never
-            crosses 1 - p (i.e. the interval is open to the right).
+            interval of the quantile for each p (shape ``(len(p),)`` for
+            a one-sided bound). The upper limit is NaN where the relevant
+            bound of the survival function never crosses 1 - p (i.e. the
+            interval is open to the right).
 
         Examples
         --------
@@ -1387,6 +1393,12 @@ class NonParametric(
         the median survival time", Biometrics 38, 29-41.
         """
         check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        if bound != "two-sided" and not alpha_ci < 0.5:
+            raise ValueError(
+                f"A one-sided bound takes alpha_ci below 0.5 (it is an end "
+                f"of the two-sided interval at 2 alpha_ci); got {alpha_ci}."
+            )
         p = np.atleast_1d(p).astype(float)
         outside = warn_outside_unit_interval(p, "quantile_cb")
 
@@ -1394,7 +1406,7 @@ class NonParametric(
             self.x,
             on="sf",
             bound="two-sided",
-            alpha_ci=alpha_ci,
+            alpha_ci=alpha_ci if bound == "two-sided" else 2 * alpha_ci,
             bound_type=bound_type,
             dist=dist,
         )
@@ -1417,7 +1429,76 @@ class NonParametric(
             out[i, 1] = (
                 self.x[np.argmax(in_upper)] if in_upper.any() else np.nan
             )
-        return out
+        if bound == "two-sided":
+            return out
+        return out[:, 0] if bound == "lower" else out[:, 1]
+
+    def median_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        bound_type: str = "exp",
+    ) -> npt.NDArray | float:
+        r"""
+        Confidence interval of the median survival time, :attr:`median`:
+        :meth:`quantile_cb` at ``p = 0.5``.
+
+        In words: the interval holds every time at which the survival
+        curve's own pointwise confidence interval still contains 50%.
+        It starts where the lower survival bound first falls to 0.5 and
+        ends where the upper survival bound first falls below it
+        (Brookmeyer and Crowley 1982), so it needs no estimate of the
+        density at the median, and it is not symmetric about it.
+
+        Parameters
+        ----------
+
+        alpha_ci : scalar, optional
+            The level of significance. Defaults to 0.05 (a 95% interval).
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            The two-sided interval (default), or one one-sided bound.
+        bound_type : str, optional
+            The scale of the pointwise survival bounds, any of
+            :meth:`cb`'s; the default ``'exp'`` (log-log) is R's
+            ``conf.type = "log-log"``, ``'log'`` R's default.
+
+        Returns
+        -------
+
+        cb : numpy array or scalar
+            The ``[lower, upper]`` interval, or the one bound asked for.
+            The upper end is NaN where the upper survival bound never
+            falls below 0.5 in the data (the interval is open to the
+            right: R's ``survfit`` prints ``NA`` there); the median itself
+            is NaN where the estimate never reaches 0.5.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit(
+        ...     [5, 5, 8, 8, 9, 12, 13, 13, 16, 18, 23, 23, 27, 28, 30, 31,
+        ...      33, 34, 43, 45, 45, 48, 161],
+        ...     c=[0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        ...        1, 0, 0, 1],
+        ... )
+        >>> model.median
+        np.float64(27.0)
+        >>> model.median_cb()
+        array([13., 34.])
+        >>> model.median_cb(bound_type="log")
+        array([18., 45.])
+
+        References
+        ----------
+
+        Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
+        the median survival time", Biometrics 38, 29-41.
+        """
+        out = self.quantile_cb(
+            0.5, alpha_ci=alpha_ci, bound_type=bound_type, bound=bound
+        )
+        out = np.asarray(out, dtype=float)
+        return out if bound == "two-sided" else float(np.ravel(out)[0])
 
     def _survival_past_data(self, tau: float) -> float | None:
         """The survival estimate at the largest observed time when ``tau``

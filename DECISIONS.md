@@ -2454,3 +2454,11 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | Decision | By | Reason | Status |
 |---|---|---|---|
 | `publish.yml` accepts, for each job of the latest release run at the pull request's head, its most recent result on the pull request from the head or an earlier head whose tree differs only in `.github/`; that result must be a success. New or renamed jobs must pass at the head. The publish run logs each pass's run. | maintainer ("do not run everything again, update the rule") | 0.29's release run passed every job but one calibration group, whose regrouping changed only CI configuration; a full rerun of about 2.5 hours would have tested the same code again. | done (#1353, #1354) |
+
+### The median's confidence interval (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `median_cb(alpha_ci=0.05, bound="two-sided", bound_type="exp")` on `NonParametric`: `quantile_cb(0.5)`, a two-element array, or a float for one side. `quantile_cb` gains `bound=` as its last keyword (default two-sided, so every call keeps its result); a one-sided bound at `alpha_ci` is the end of the two-sided interval at `2 alpha_ci` and refuses `alpha_ci >= 0.5`. An open upper end stays `nan`, as `quantile_cb`'s. | proposed | The named call users reach for (R prints the median with its interval); the one-sided bound follows the package's `bound=` convention. `bound` goes last so positional calls `quantile_cb(p, alpha, bound_type)` keep working. | done |
+| Validation: R `survival` 3.x `quantile(survfit(...))` on `lung` (quartiles; `conf.type` log-log, log, plain; 95% and 90%): all 36 ends equal. On `aml` equal for log-log and plain; for `log` R's upper end of the median is 48 where SurPyval gives 45: R's upper bound is 0.458 at 45 and 0.462 at 48 (not monotone), both below 0.5, and R's `findq` interpolates it as if sorted. 45 is the end of the Brookmeyer-Crowley set. | proposed | The definition, not R's reading of a non-monotone curve. | done |
+| Not changed: the median of a curve that sits exactly at 0.5 over a step (`KaplanMeier.fit([1, 2, 3, 4])`) is the step's start, 2; R reports the midpoint, 2.5. | proposed | `qf`'s documented rule (the smallest time at which F reaches p); changing it moves a number every caller sees, which is the maintainer's call. | open |

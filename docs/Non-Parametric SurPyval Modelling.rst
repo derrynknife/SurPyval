@@ -239,6 +239,9 @@ With six items the data are consistent with a median anywhere from 1 upwards: th
 survival never falls below 0.5, so the upper end is ``nan`` (open). Six items is simply too few to
 pin a median down.
 
+``median_cb()`` is the same interval for the median alone, ``quantile_cb(0.5)``; both take
+``bound="lower"`` or ``"upper"`` for a one-sided bound.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:

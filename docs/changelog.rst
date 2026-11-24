@@ -5,6 +5,16 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The median's confidence interval on every non-parametric model.**
+  ``median_cb(alpha_ci, bound, bound_type)`` on the Kaplan-Meier,
+  Nelson-Aalen, Fleming-Harrington and Turnbull estimates gives the
+  Brookmeyer-Crowley interval of the median survival time
+  (``quantile_cb(0.5)``), and ``quantile_cb`` takes ``bound="lower"`` or
+  ``"upper"`` for a one-sided bound (the end of the two-sided interval at
+  twice ``alpha_ci``). The two-sided intervals are unchanged; they agree
+  with R's ``quantile(survfit(...))`` on the lung data for the log-log,
+  log and plain scales.
+
 - **Likelihood-ratio bounds on a model with a hazard ratio.** A model
   with a known ``hr`` other than 1 has ``cb(method="lr")`` (every
   ``on=``) and ``quantile_cb(method="lr")``, with ``hr`` held fixed: the

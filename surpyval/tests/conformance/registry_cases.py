@@ -3505,6 +3505,14 @@ def _nonparametric_bounds(case):
         )
     )
     out.append(Bound("mean_cb", kind="summary", sides=False, query=((),)))
+    # Brookmeyer-Crowley: an inversion of the pointwise bounds, a step
+    # function of alpha_ci that does not close onto the median; the upper
+    # end is NaN where the interval is open to the right.
+    out.append(
+        Bound(
+            "median_cb", kind="summary", query=((),), wald=False, nan_ok=True
+        )
+    )
     out.append(
         Bound("rmst", kind="summary", sides=False, query=((6.0,), (12.0,)))
     )
