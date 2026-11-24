@@ -94,13 +94,18 @@ scale multiplied by :math:`2^{1/\beta}`). Maximum likelihood only.
 The bounds hold ``hr`` fixed, as a known constant:
 
 - ``cb`` and ``quantile_cb`` with ``method="wald"`` (every ``on=``
-  target) and ``method="bootstrap"`` (each refit has the same ``hr``);
+  target), ``method="lr"`` and ``method="bootstrap"`` (each refit has the
+  same ``hr``). The likelihood-ratio bound is the extreme of the
+  hazard-scaled model's own function over the parameters' likelihood
+  region, so a Weibull's is the plain Weibull fit's (the two models are
+  one reparameterisation of the other);
 - ``param_cb`` with every method, the likelihood-ratio bounds included
   (the profile likelihood is the hazard-scaled model's);
-- refused, naming what to use instead: the likelihood-ratio bounds on a
-  function (``cb``/``quantile_cb`` with ``method="lr"``), and
-  ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and ``rmst`` (bound them from the
-  bootstrap refits, ``model.bootstrap(...).models``, which carry ``hr``).
+- refused, naming what to use instead: ``mean_cb``, ``mrl_cb``,
+  ``rmst_cb`` and ``rmst`` (bound them from the bootstrap refits,
+  ``model.bootstrap(...).models``, which carry ``hr``), and the pivotal
+  bound, which is for a probability-plotting fit (``fit(..., hr=)`` is
+  maximum likelihood only).
 
 Saving
 ------

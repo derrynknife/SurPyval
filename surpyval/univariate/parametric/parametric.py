@@ -4445,25 +4445,21 @@ class Parametric(
 
     def _refuse_hr_bound(self, what: str, method: Any = None) -> None:
         """Refuse, saying what to use, a bound a model with a hazard ratio
-        does not carry it into: the likelihood-ratio and pivotal bounds
-        on a function (``cb``, ``quantile_cb``), and every bound on the
-        mean, mean residual life and restricted mean (``method`` None).
-        Its Wald and bootstrap bounds hold ``hr`` fixed, and ``param_cb``
-        has every method."""
+        does not carry it into: the pivotal bound on a function (``cb``,
+        ``quantile_cb``; a probability-plotting fit cannot take ``hr``),
+        and every bound on the mean, mean residual life and restricted
+        mean (``method`` None). Its Wald, likelihood-ratio and bootstrap
+        bounds hold ``hr`` fixed, and ``param_cb`` has every method."""
         if self.hr == 1:
             return
         if method is not None:
-            m = str(method).lower()
-            if m in ("wald", "bootstrap") or not (
-                self._is_pivotal(method)
-                or m in ("lr", "likelihood", "likelihood-ratio", "profile")
-            ):
+            if not self._is_pivotal(method):
                 return
             raise ValueError(
                 f"{what}(method='{method}') is not available for a model "
-                f"with a hazard ratio (hr = {self.hr:g}): use "
-                "method='wald' or method='bootstrap', which hold hr fixed, "
-                "or param_cb for the parameters' likelihood-ratio bounds."
+                f"with a hazard ratio (hr = {self.hr:g}): the pivotal bound "
+                "is for a probability-plotting fit, which cannot carry hr; "
+                "use method='wald', 'lr' or 'bootstrap', which hold hr fixed."
             )
         raise ValueError(
             f"{what} is not available for a model with a hazard ratio (hr "

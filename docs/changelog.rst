@@ -1,5 +1,18 @@
 Changelog
 ==
+v0.30 (unreleased)
+------------------
+
+**Added.**
+
+- **Likelihood-ratio bounds on a model with a hazard ratio.** A model
+  with a known ``hr`` other than 1 has ``cb(method="lr")`` (every
+  ``on=``) and ``quantile_cb(method="lr")``, with ``hr`` held fixed: the
+  extreme of the model's own function over the likelihood region of its
+  fitted parameters, offset, limited-failure proportion and zero
+  inflation included. They raised a ``ValueError`` before. A Weibull's
+  bounds with ``hr`` are the plain Weibull fit's, to 1e-13.
+
 v0.29 (22 November 2026)
 ------------------------
 

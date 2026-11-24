@@ -191,6 +191,11 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
     def _lr_lean_data(self) -> None:
         return None
 
+    def _lr_extended(self) -> None:
+        # These are the searches over every fitted parameter already (a
+        # hazard ratio, ``self.hr``, is in their likelihood and functions)
+        return None
+
     def _lr_plain(self) -> bool:
         return False
 
