@@ -60,6 +60,21 @@ def base(model: Any) -> Any:
     return out
 
 
+def at(model: Any, core: Any, p: float = 1.0, f0: float = 0.0) -> Any:
+    """The model, its hazard ratio and offset kept, at the distribution
+    parameters ``core``, limited-failure proportion ``p`` and zero
+    inflation ``f0``: what a delta-method bound differentiates (``mean``,
+    ``mrl`` and the restricted mean of a model with ``hr``)."""
+    out = object.__new__(type(model))
+    state = dict(model.__dict__)
+    state.pop("_mean", None)
+    state["params"] = onp.array(core, dtype=float)
+    state["lfp_p"] = float(p)
+    state["f0"] = float(f0)
+    out.__dict__.update(state)
+    return out
+
+
 def same_family(model: Any) -> Any:
     """The model as one of its own family with ``hr = 1``, where the
     family is closed under a hazard ratio (Weibull, Exponential) and the

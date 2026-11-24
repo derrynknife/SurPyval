@@ -3812,7 +3812,6 @@ class Parametric(
         mean; :meth:`quantile_cb` bounds a quantile.
         """
         check_alpha_ci(alpha_ci)
-        self._refuse_hr_bound("mean_cb")
         self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
@@ -3826,6 +3825,9 @@ class Parametric(
 
         def mean_of(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
+            if self.hr != 1:
+                # The hazard-scaled model's own mean (hr held fixed)
+                return _hr.at(self, core, p, f0).mean()
             return (p - f0) * (self.dist.mean(*core) + self.gamma)
 
         with np.errstate(all="ignore"):
@@ -3964,7 +3966,6 @@ class Parametric(
         array([3.316, 5.375])
         """
         check_alpha_ci(alpha_ci)
-        self._refuse_hr_bound("mrl_cb")
         self._check_summary_cb(alpha_ci, bound, "mrl_cb")
         t = np.atleast_1d(np.asarray(x, dtype=float))
         value = np.asarray(self.mrl(t), dtype=float)
@@ -3995,6 +3996,8 @@ class Parametric(
 
                 def mrl_of(phi: npt.NDArray) -> Any:
                     core, p, f0 = self._cb_unpack(phi, ctx)
+                    if self.hr != 1:
+                        return _hr.at(self, core, p, f0).mrl(t_ok)
                     out = np.atleast_1d(
                         np.asarray(
                             self.dist.mrl(t_ok - self.gamma, *core), float
@@ -4095,6 +4098,8 @@ class Parametric(
 
         def rmst_of(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
+            if self.hr != 1:
+                return _hr.at(self, core, p, f0)._rmst_values(taus)
             return self._rmst_of(taus, core, p, f0)
 
         value = onp.asarray(rmst_of(ctx.phi_hat), dtype=float)
@@ -4197,7 +4202,6 @@ class Parametric(
         surpyval.rmst_diff : compare the RMST of two groups.
         """
         check_alpha_ci(alpha_ci)
-        self._refuse_hr_bound("rmst")
         if tau is None:
             tau = self._rmst_default_tau("rmst")
         t = self._rmst_taus(tau)
@@ -4285,7 +4289,6 @@ class Parametric(
         array([5.906, 7.178])
         """
         check_alpha_ci(alpha_ci)
-        self._refuse_hr_bound("rmst_cb")
         self._check_summary_cb(alpha_ci, bound, "rmst_cb")
         if tau is None:
             tau = self._rmst_default_tau("rmst_cb")
@@ -4443,29 +4446,18 @@ class Parametric(
         if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
 
-    def _refuse_hr_bound(self, what: str, method: Any = None) -> None:
-        """Refuse, saying what to use, a bound a model with a hazard ratio
-        does not carry it into: the pivotal bound on a function (``cb``,
-        ``quantile_cb``; a probability-plotting fit cannot take ``hr``),
-        and every bound on the mean, mean residual life and restricted
-        mean (``method`` None). Its Wald, likelihood-ratio and bootstrap
-        bounds hold ``hr`` fixed, and ``param_cb`` has every method."""
-        if self.hr == 1:
+    def _refuse_hr_bound(self, what: str, method: Any) -> None:
+        """Refuse, saying what to use, the pivotal bound on a function
+        (``cb``, ``quantile_cb``) of a model with a hazard ratio: it is for
+        a probability-plotting fit, which cannot take ``hr``. Every other
+        bound holds ``hr`` fixed."""
+        if self.hr == 1 or not self._is_pivotal(method):
             return
-        if method is not None:
-            if not self._is_pivotal(method):
-                return
-            raise ValueError(
-                f"{what}(method='{method}') is not available for a model "
-                f"with a hazard ratio (hr = {self.hr:g}): the pivotal bound "
-                "is for a probability-plotting fit, which cannot carry hr; "
-                "use method='wald', 'lr' or 'bootstrap', which hold hr fixed."
-            )
         raise ValueError(
-            f"{what} is not available for a model with a hazard ratio (hr "
-            f"= {self.hr:g}): bound it from the bootstrap refits, which "
-            "carry hr, as numpy.quantile([m.mean() for m in "
-            "model.bootstrap(1000).models], [0.025, 0.975]) for the mean."
+            f"{what}(method='{method}') is not available for a model "
+            f"with a hazard ratio (hr = {self.hr:g}): the pivotal bound "
+            "is for a probability-plotting fit, which cannot carry hr; "
+            "use method='wald', 'lr' or 'bootstrap', which hold hr fixed."
         )
 
     @staticmethod

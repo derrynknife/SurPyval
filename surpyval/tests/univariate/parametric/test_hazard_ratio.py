@@ -347,15 +347,6 @@ def test_fits_with_hr_refuse_what_they_cannot_carry():
     x, c = _censored_sample()
     with pytest.raises(ValueError, match="how='MLE'"):
         sp.Weibull.fit(x, c, how="MPP", hr=2.0)
-    model = sp.Weibull.fit(x, c, hr=2.0)
-    for call in (
-        lambda: model.mean_cb(),
-        lambda: model.mrl_cb([5.0]),
-        lambda: model.rmst_cb(10.0),
-        lambda: model.rmst(10.0),
-    ):
-        with pytest.raises(ValueError, match="bootstrap"):
-            call()
 
 
 def test_lr_bounds_on_functions_are_the_familys():
@@ -451,3 +442,104 @@ def test_lr_bounds_with_hr_and_the_other_options():
             assert np.all(band[:, 0] <= point) and np.all(point <= band[:, 1])
         q = model.quantile_cb(0.5, method="lr")
         assert q[0] <= model.qf(0.5) <= q[1]
+
+
+@pytest.mark.parametrize("method", ["wald", "lr"])
+def test_summary_bounds_are_the_familys(method):
+    # The mean, mean residual life and restricted mean of a Weibull with
+    # hr are the plain fit's (one model, reparameterised); the delta
+    # method is invariant to that too, at the maximum.
+    x, c = _censored_sample()
+    plain = sp.Weibull.fit(x, c)
+    scaled = sp.Weibull.fit(x, c, hr=2.0)
+    np.testing.assert_allclose(
+        scaled.mean_cb(method=method),
+        plain.mean_cb(method=method),
+        rtol=FIT_RTOL,
+    )
+    t = np.array([2.0, 8.0])
+    np.testing.assert_allclose(
+        scaled.mrl_cb(t, method=method),
+        plain.mrl_cb(t, method=method),
+        rtol=FIT_RTOL,
+    )
+    taus = np.array([5.0, 10.0])
+    np.testing.assert_allclose(
+        scaled.rmst_cb(taus, method=method),
+        plain.rmst_cb(taus, method=method),
+        rtol=FIT_RTOL,
+    )
+    if method == "wald":
+        got, want = scaled.rmst(10.0), plain.rmst(10.0)
+        for key in ("rmst", "se", "lower", "upper"):
+            np.testing.assert_allclose(got[key], want[key], rtol=FIT_RTOL)
+
+
+def test_wald_mean_of_an_exponential_with_hr():
+    # mean = 1 / (hr * rate); the delta method on log(mean) has the
+    # standard error se(rate) / rate.
+    from scipy.stats import norm
+
+    x, c = _censored_sample()
+    model = sp.Exponential.fit(x, c, hr=0.5)
+    rate = model.params[0]
+    se = np.sqrt(model.covariance()[0, 0]) / rate
+    z = norm.ppf(0.975)
+    mean = 1 / (0.5 * rate)
+    np.testing.assert_allclose(
+        model.mean_cb(), mean * np.exp([-z * se, z * se]), rtol=1e-6
+    )
+    # memoryless: the mean residual life is the mean at every age
+    np.testing.assert_allclose(
+        model.mrl_cb([3.0])[0], model.mean_cb(), rtol=1e-6
+    )
+
+
+def test_lr_mean_of_a_lognormal_with_hr_is_on_the_contour():
+    from scipy.optimize import minimize
+    from scipy.stats import chi2
+
+    x, c = _censored_sample()
+    model = sp.LogNormal.fit(x, c, hr=0.5)
+    nll_hat = model.neg_ll()
+
+    def nll(theta):
+        return sp.LogNormal._neg_ll_func(
+            model.surv_data, *theta, 0.0, 0.0, 1.0, hr=0.5
+        )
+
+    lower, upper = model.mean_cb(method="lr")
+    assert lower < model.mean() < upper
+    for end in (lower, upper):
+        held = {
+            "type": "eq",
+            "fun": lambda th, end=end: sp.LogNormal.from_params(
+                th, hr=0.5
+            ).mean()
+            / end
+            - 1,
+        }
+        found = minimize(
+            nll,
+            model.params,
+            constraints=[held],
+            method="SLSQP",
+            options={"ftol": 1e-14, "maxiter": 500},
+        )
+        np.testing.assert_allclose(
+            2 * (found.fun - nll_hat), chi2.ppf(0.95, 1), rtol=1e-6
+        )
+
+
+def test_summary_bounds_with_hr_contain_the_estimate():
+    x, c = _censored_sample()
+    model = sp.Gamma.fit(x, c, hr=0.5)
+    for method in ("wald", "bootstrap"):
+        kw = {} if method == "wald" else {"n_boot": 30, "random_state": 1}
+        lo, hi = model.mrl_cb([5.0], method=method, **kw)[0]
+        assert lo < model.mrl(5.0) < hi
+        lo, hi = model.rmst_cb(10.0, method=method, **kw)
+        assert lo < model.mean(tau=10.0) < hi
+    res = model.rmst(10.0)
+    assert res["lower"] < res["rmst"] < res["upper"] and res["se"] > 0
+    np.testing.assert_allclose(res["rmst"], model.mean(tau=10.0), rtol=1e-9)
