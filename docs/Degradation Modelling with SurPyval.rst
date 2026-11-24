@@ -444,9 +444,22 @@ taken out) while its readings were short of the threshold: its failure by
 degradation was never seen, so for the threshold's life it is censored when it
 stopped, as a competing failure mode is. A unit listed there whose path
 reaches the threshold within its readings has failed by the threshold's
-definition, and is refused. The life times and censoring of a
-:class:`~surpyval.SurpyvalData` holding the readings are not read; pass its
-running units as ``censored_units``.
+definition, and is refused.
+
+A unit is often known to be running later than its last reading: the
+readings stopped at 52 hours but the study ran to 60. Give the time as
+``censored_units={unit: time}`` and the unit is censored there, which tells
+the life fit it survived longer than its readings show (``None`` is its last
+reading). The time must be at or after the last reading, and before the
+time the unit's fitted path crosses the threshold: a unit said to be running
+past its crossing has, by its path, failed unseen, so that is refused (give
+an earlier time, or leave it out to take the crossing as its failure time).
+
+The life times and censoring of a :class:`~surpyval.SurpyvalData` holding
+the readings are not read by default, so the fit is the same as from the
+readings alone. Ask for them with ``censored_units="data"``: each
+right-censored unit (``c = 1``) is still running at its ``x``, as if given
+in the dict; its observed and other censored rows are left to the threshold.
 
 .. jupyter-execute::
 
@@ -454,6 +467,14 @@ running units as ``censored_units``.
                                     censored_units=[1])
     print("censor flags, unit 1 marked   :", broke.c)
     broke
+
+.. jupyter-execute::
+
+    _last = x_run[i_run == 1].max()
+    later = DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0,
+                                    censored_units={1: _last + 10.0})
+    print("unit 1 censored at            :", later.pseudo_failure_times[1])
+    print("reliability at 1000, 1500 h   :", later.sf([1000.0, 1500.0]).round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -465,6 +486,8 @@ running units as ``censored_units``.
     assert broke.c[1] == 1 and broke.c.sum() == 1
     assert broke.pseudo_failure_times[1] == x_run[i_run == 1].max()
     assert "Extrapolated Units  : 4" in repr(broke)
+    assert later.c[1] == 1 and later.pseudo_failure_times[1] == _last + 10.0
+    assert later.censored_at == {1: _last + 10.0}
     try:
         DegradationAnalysis.fit(x, y, i, threshold=450.0, running="censor")
     except ValueError as error:

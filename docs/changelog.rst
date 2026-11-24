@@ -12,6 +12,28 @@ v0.30 (unreleased)
   fitted parameters, offset, limited-failure proportion and zero
   inflation included. They raised a ``ValueError`` before. A Weibull's
   bounds with ``hr`` are the plain Weibull fit's, to 1e-13.
+Unreleased
+----------
+
+**Added.**
+
+- **Degradation analysis: a unit still running after its last reading.**
+  ``DegradationAnalysis.fit(censored_units={unit: time})`` right censors
+  each unit at the time it was last known to be running, after its last
+  reading (a study that ended at 60 for a unit last read at 52), instead
+  of at that reading; a time of ``None`` keeps the last reading, so a
+  list is the same as before. A time before the last reading is refused,
+  and so is one at or past the time the unit's fitted path crosses the
+  threshold (by its path it failed unseen: give an earlier time, or leave
+  the unit out to take the crossing as its failure); with
+  ``acceleration="clock"`` a time is refused (the paths are on the
+  reference-stress clock). ``censored_units="data"``, with the readings
+  given as a ``SurpyvalData``, reads its right-censored units (``c = 1``)
+  as still running at their ``x``; its other rows are left to the
+  threshold. Without it a SurpyvalData's censoring is still not read, so
+  no existing fit changes. The model keeps the times as
+  ``censored_at``, saved by ``to_dict``, and the bootstrap bounds' refits
+  censor a resampled unit at its time too.
 
 v0.29 (22 November 2026)
 ------------------------

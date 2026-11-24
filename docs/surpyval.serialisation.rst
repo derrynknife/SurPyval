@@ -482,7 +482,7 @@ with its own ``schema``.
    * - ``DegradationModel``
      - ``"model": "DegradationModel"``
      - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``
-     - ``extrapolated``, ``running``, ``censored_units``, ``acceleration``, ``gamma``, ``stress_ref``, ``Z_cols``
+     - ``extrapolated``, ``running``, ``censored_units``, ``censored_at``, ``acceleration``, ``gamma``, ``stress_ref``, ``Z_cols``
    * - ``InducedFailureDistribution``
      - ``"model": "InducedFailureDistribution"``
      - ``samples``, ``threshold``, ``path_name``
