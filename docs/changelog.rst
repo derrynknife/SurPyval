@@ -58,8 +58,6 @@ v0.30 (unreleased)
   0.286 per hour and gives 2/11 = 0.182; the mean cumulative function's
   steps there are 1/2, not 1. Fits where every unit with windows has at
   least one failure are unchanged.
-Unreleased
-----------
 
 **Deprecated.**
 
