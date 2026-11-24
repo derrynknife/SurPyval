@@ -12,10 +12,6 @@ v0.30 (unreleased)
   fitted parameters, offset, limited-failure proportion and zero
   inflation included. They raised a ``ValueError`` before. A Weibull's
   bounds with ``hr`` are the plain Weibull fit's, to 1e-13.
-Unreleased
-----------
-
-**Added.**
 
 - **Degradation analysis: a unit still running after its last reading.**
   ``DegradationAnalysis.fit(censored_units={unit: time})`` right censors
