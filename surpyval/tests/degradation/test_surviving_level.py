@@ -229,6 +229,76 @@ def test_draws_are_reproducible_and_follow_ff(key):
     assert ks_distance(a, level.ff) <= KS_BAND_20000
 
 
+def _wiener_quantile_mp(mu, sigma, L, y0, t, p, dps=50):
+    # The Wiener level's quantile given survival in 50-digit arithmetic:
+    # the image formula's distribution function, bisected to 1e-40.
+    mp = pytest.importorskip("mpmath")
+    with mp.workdps(dps):
+        mu, sigma, L, y0, t, p = map(mp.mpf, (mu, sigma, L, y0, t, p))
+        m, s, gap = y0 + mu * t, sigma * mp.sqrt(t), L - y0
+        weight = mp.exp(2 * mu * gap / sigma**2)
+
+        def below(y):
+            return mp.ncdf((y - m) / s) - weight * mp.ncdf(
+                (y - m - 2 * gap) / s
+            )
+
+        target = p * below(L)
+        lo, hi = min(m, L) - 60 * s, L
+        while hi - lo > mp.mpf(10) ** -40 * max(abs(hi), s):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if below(mid) < target else (lo, mid)
+        return float((lo + hi) / 2)
+
+
+@pytest.mark.parametrize(
+    "mu, sigma, y0, t",
+    [
+        (0.5, 2.0, 10.0, 160.0),  # the "wiener" setting
+        (-0.1, 3.0, 85.0, 100.0),  # drifting away, near the threshold
+        (2.0, 0.5, 60.0, 15.0),  # fast drift, survival about 0.16
+        (0.01, 5.0, 99.0, 0.5),  # just below the threshold
+    ],
+)
+def test_wiener_quantile_against_extended_precision(mu, sigma, y0, t):
+    # Newton's steps on ff settle on the root to a few units in the last
+    # place of the level (or of its spread, for a level near 0). Close to
+    # p = 1 the density falls to 0 at the threshold, so the rounding in ff
+    # (its two terms nearly cancel there) moves the level more: about
+    # 1e-14 of it at 1 - 1e-6 and 2e-12 at 1 - 1e-9, as with a bisection.
+    level = WienerProcessModel(mu, sigma, THRESHOLD).level_at(
+        t, y0=y0, given_survival=True
+    )
+    scale = level.params["scale"]
+    for p, rtol in [
+        *((p, 1e-13) for p in (1e-9, 1e-3, 0.05, 0.37, 0.5, 0.9, 0.999)),
+        (1 - 1e-6, 1e-12),
+        (1 - 1e-9, 1e-11),
+    ]:
+        exact = _wiener_quantile_mp(mu, sigma, THRESHOLD, y0, t, p)
+        got = float(level.qf(p))
+        assert abs(got - exact) <= rtol * max(abs(exact), scale), (p, got)
+
+
+def test_wiener_quantile_of_one_value_is_that_of_an_array():
+    # One probability (solved on floats) and many (solved together) take
+    # the same steps, so agree to the bit, at any array size.
+    level = _level("wiener")
+    p = np.random.default_rng(3).uniform(size=40)
+    many = level.qf(p)
+    few = level.qf(p[:5])
+    one = np.array([float(level.qf(q)) for q in p])
+    np.testing.assert_array_equal(many, one)
+    np.testing.assert_array_equal(few, one[:5])
+    special = np.array([0.0, 1.0, np.nan, 0.5])
+    np.testing.assert_array_equal(
+        level.qf(special)[:3], [-np.inf, THRESHOLD, np.nan]
+    )
+    np.testing.assert_array_equal(
+        level.qf(np.r_[special, p])[:3], [-np.inf, THRESHOLD, np.nan]
+    )
+
+
 def test_exposure_zero_is_the_reading():
     model = WienerProcessModel(0.5, 2.0, THRESHOLD)
     level = model.level_at(30.0, y0=40.0, t0=30.0, given_survival=True)

@@ -260,6 +260,20 @@ v0.30 (unreleased)
   1, naming ``model.sf(t) ** hr`` and ``Dist.fit(..., hr=hr)``. They
   raised a ``TypeError`` for the unknown argument before.
 
+- **A Wiener level given survival draws about 50 times faster.**
+  ``WienerProcessModel.level_at(..., given_survival=True).qf`` (and so
+  ``random``) took 200 halvings of a bracket for every probability, some
+  0.8 ms for one value. It now takes Newton's steps on ``ff``, whose
+  density is closed form, inside a bracket that each step narrows, and
+  stops once the level has settled: about 16 µs for one value, and a few
+  steps per value for an array. One value and an array of them give the
+  same levels to the bit. Levels move in the last digits only: within
+  1e-13 of themselves (median 1e-16) over 20,000 draws at survival above
+  1e-6, and both the old and new levels are within 3e-14 of a 50-digit
+  reference there. Near ``p = 1``, and where the survival is tiny, the
+  rounding in ``ff`` itself limits both methods alike (about 2e-12 of the
+  level at ``p = 1 - 1e-9``), and the two can differ by that much.
+
 v0.29 (22 November 2026)
 ------------------------
 
