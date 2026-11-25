@@ -645,9 +645,108 @@ class ProcessRUL:
         }
 
 
-# Halvings of the Wiener level's quantile bracket: enough to close any
-# double-precision bracket to adjacent floats (the loop stops changing it).
-_LEVEL_BISECTIONS = 200
+# Steps of the Wiener level's quantile search: Newton steps inside a
+# bracket that each step narrows, a halving where a Newton step would leave
+# it. Newton settles in a handful; the cap is only a guard, enough for
+# halvings alone to close any double-precision bracket.
+_LEVEL_STEPS = 200
+# A quantile has settled when a step moves it by at most this fraction of
+# its size (or of the level's spread, for a level near 0): a few units in
+# the last place.
+_LEVEL_TOL = 4.0 * np.finfo(float).eps
+# Probabilities at most this many are solved one at a time on floats, which
+# skips numpy's per-call cost on small arrays; more are solved together.
+_LEVEL_SCALAR_MAX = 8
+_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
+
+
+def _wiener_below_and_density(
+    y: Any, m: float, s: float, shift: float, log_weight: float
+) -> tuple[Any, Any]:
+    """P(level <= y and no crossing by t), and its density times ``s``,
+    for a Wiener level given survival (see :class:`ProcessLevel`), at
+    ``y`` at most the threshold: floats or arrays alike, by the same
+    operations, so one value and an array of them agree to the bit."""
+    a = (y - m) / s
+    b = (y - m - shift) / s
+    free = ndtr(a)
+    image = np.exp(log_weight + log_ndtr(b))
+    density = (np.exp(-0.5 * a * a) - np.exp(log_weight - 0.5 * b * b)) * (
+        _INV_SQRT_2PI
+    )
+    return np.maximum(free - image, 0.0), density
+
+
+def _wiener_quantile_one(
+    target: float,
+    lo: float,
+    hi: float,
+    m: float,
+    s: float,
+    shift: float,
+    log_weight: float,
+) -> float:
+    """The level ``y`` in ``[lo, hi]`` at which the Wiener level given
+    survival's ``below`` (P(level <= y and no crossing)) reaches
+    ``target``, for one value on floats: Newton steps from ``lo`` on the
+    closed-form density, each step narrowing the bracket, with a halving
+    wherever a Newton step would leave it. :func:`_wiener_quantile_many`
+    is the same search on arrays."""
+    x = lo
+    for _ in range(_LEVEL_STEPS):
+        below, density = _wiener_below_and_density(x, m, s, shift, log_weight)
+        if below < target:
+            lo = x
+        else:
+            hi = x
+        nxt = 0.5 * (lo + hi)
+        if density > 0.0:
+            newton = x - (below - target) * s / density
+            if lo <= newton <= hi:
+                nxt = newton
+        if abs(nxt - x) <= _LEVEL_TOL * max(abs(nxt), s) or hi - lo <= (
+            _LEVEL_TOL * max(abs(nxt), s)
+        ):
+            return float(nxt)
+        x = nxt
+    return float(0.5 * (lo + hi))
+
+
+def _wiener_quantile_many(
+    target: npt.NDArray,
+    lo: npt.NDArray,
+    hi: npt.NDArray,
+    m: float,
+    s: float,
+    shift: float,
+    log_weight: float,
+) -> npt.NDArray:
+    """:func:`_wiener_quantile_one` for arrays: the same steps on each
+    element, stopping each once it has settled."""
+    lo, hi = lo.copy(), hi.copy()
+    x = lo.copy()
+    out = 0.5 * (lo + hi)
+    live = np.arange(x.size)
+    for _ in range(_LEVEL_STEPS):
+        xl, tl, lol, hil = x[live], target[live], lo[live], hi[live]
+        below, density = _wiener_below_and_density(xl, m, s, shift, log_weight)
+        low = below < tl
+        lol = np.where(low, xl, lol)
+        hil = np.where(low, hil, xl)
+        nxt = 0.5 * (lol + hil)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            newton = xl - (below - tl) * s / density
+        take = (density > 0.0) & (lol <= newton) & (newton <= hil)
+        nxt = np.where(take, newton, nxt)
+        tol = _LEVEL_TOL * np.maximum(np.abs(nxt), s)
+        done = (np.abs(nxt - xl) <= tol) | (hil - lol <= tol)
+        out[live[done]] = nxt[done]
+        lo[live], hi[live], x[live] = lol, hil, nxt
+        out[live[~done]] = 0.5 * (lol + hil)[~done]
+        live = live[~done]
+        if live.size == 0:
+            break
+    return out
 
 
 class ProcessLevel:
@@ -677,8 +776,9 @@ class ProcessLevel:
     the density at ``y`` below the threshold ``L`` is proportional to
     ``phi((y - m) / s) - exp(2 mu (L - y0) / sigma**2) phi((y - m - 2 (L
     - y0)) / s)``, and its total is the first-passage survival. ``qf``
-    is closed form for the gamma process and a bisection of ``ff`` for
-    the Wiener process.
+    is closed form for the gamma process; for the Wiener process it is
+    Newton's method on ``ff`` (whose density is closed form), kept inside
+    a bracket that each step narrows.
 
     Attributes
     ----------
@@ -846,20 +946,32 @@ class ProcessLevel:
             a, rate = self.params["shape"], self.params["rate"]
             out = self.y0 + gammaincinv(a, np.exp(log_target)) / rate
             return np.where(np.isnan(p), np.nan, np.minimum(out, L))
-        m, s, _, _ = self._wiener_terms()
+        m, s, shift, log_weight = self._wiener_terms()
         # Bracket: below(y) <= Phi((y - m) / s), so the quantile is at
         # or above the free path's quantile of p * S; and below L.
         ok = np.isfinite(log_target)
         lo = np.where(ok, m + s * ndtri_exp(np.where(ok, log_target, 0.0)), L)
         lo = np.minimum(lo, L)
-        hi = np.full_like(lo, L)
         target = np.exp(log_target)
-        for _ in range(_LEVEL_BISECTIONS):
-            mid = 0.5 * (lo + hi)
-            low = self._below(mid) < target
-            lo = np.where(low, mid, lo)
-            hi = np.where(low, hi, mid)
-        out = 0.5 * (lo + hi)
+        if p.size <= _LEVEL_SCALAR_MAX:
+            out = np.array(
+                [
+                    _wiener_quantile_one(
+                        float(target_i),
+                        float(lo_i),
+                        L,
+                        m,
+                        s,
+                        shift,
+                        log_weight,
+                    )
+                    for target_i, lo_i in zip(target, lo)
+                ]
+            ).reshape(p.shape)
+        else:
+            out = _wiener_quantile_many(
+                target, lo, np.full_like(lo, L), m, s, shift, log_weight
+            )
         out = np.where(p == 0.0, -np.inf, out)
         out = np.where(p == 1.0, L, out)
         return np.where(np.isnan(p), np.nan, out)
