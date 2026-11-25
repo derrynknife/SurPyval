@@ -274,8 +274,6 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
     ) -> BayesianParametric:
         """The Laplace engine's result as a model: the normal's draws (with
         their importance weights where reweighted)."""
-        from surpyval.bayes.engines.laplace import K_BAD, K_GOOD, SHIFT
-
         theta = bound.full_theta(result.phi)
         free_t = [bound.transforms[i] for i in bound.free_idx]
         normal = {
@@ -293,34 +291,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             normal=normal,
         )
         proper = bound.proper and data is not None
-        k = result.pareto_k
-        quality = (
-            "good" if k <= K_GOOD else ("usable" if k <= K_BAD else "poor")
-        )
-        j, pct = result.shift_at.split(":") if result.shift_at else ("0", "")
-        shift_at = f"{bound.free_names[int(j)]}'s {pct}% point"
-        if (
-            quality != "poor"
-            and result.shift > SHIFT
-            and not result.importance
-        ):
-            quality = "poor"
-        diag = {
-            "method": "laplace",
-            "free_parameters": list(bound.free_names),
-            "draws": result.draws,
-            "pareto_k": k,
-            "shift": result.shift,
-            "shift_at": shift_at,
-            "approximation": quality,
-            "importance": bool(result.importance),
-            "importance_requested": bool(importance),
-            "ess": result.ess,
-            "log_z_laplace": result.log_z_laplace,
-            "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
-            "ok": True,
-            "approximate": True,
-        }
+        diag = laplace_diagnostics(result, bound, importance)
         model = cls(
             dist,
             post,
@@ -344,42 +315,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
 
     def _warn_laplace(self) -> None:
         """Warn where the Laplace approximation's checks fail."""
-        from surpyval.bayes.engines.laplace import K_BAD, SHIFT
-
-        d = self.diagnostics
-        k = float(d.get("pareto_k", 0.0))
-        n_free = len(d.get("free_parameters", []))
-        other = (
-            "method='grid' (exact for up to three free parameters)"
-            if n_free <= 3
-            else "PyMC through surpyval.pymc for the exact posterior"
-        )
-        if k > K_BAD:
-            extra = (
-                " Reweighting the draws (importance=True) cannot repair it."
-                if d.get("importance_requested")
-                else ""
-            )
-            warnings.warn(
-                f"The Laplace approximation is poor for this fit: the Pareto "
-                f"k of the exact posterior against the normal is {k:.2f} "
-                f"(above {K_BAD}), so the posterior is far from normal on "
-                f"the parameters' log scale (few failures, or a parameter "
-                f"near a bound).{extra} Use {other}.",
-                stacklevel=caller_stacklevel(),
-            )
-            return
-        shift = float(d.get("shift", 0.0))
-        if shift > SHIFT and not d.get("importance"):
-            warnings.warn(
-                f"The Laplace approximation is off for this fit: reweighting "
-                f"its draws towards the exact posterior moves "
-                f"{d.get('shift_at')} by {shift:.0%} of its 95% interval's "
-                f"width (more than {SHIFT:.0%}), so the posterior is skewed "
-                f"on the parameters' log scale. Refit with importance=True, "
-                f"which corrects it, or use {other}.",
-                stacklevel=caller_stacklevel(),
-            )
+        warn_laplace(self.diagnostics)
 
     @classmethod
     def _from_conjugate(
@@ -2887,7 +2823,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
     return out
 
 
-def _how_computed(model: BayesianParametric) -> str:
+def _how_computed(model: Any) -> str:
     d = model.diagnostics
     if model.method == "conjugate":
         return f"Computed exactly in closed form ({d.get('case', '')})."
@@ -2922,6 +2858,76 @@ def _how_computed(model: BayesianParametric) -> str:
             f"{d.get('approximation')}."
         )
     return f"From {d.get('draws', len(model.posterior.weights))} draws."
+
+
+def laplace_diagnostics(result: Any, bound: Any, importance: bool) -> dict:
+    """The diagnostics of a Laplace engine's ``result`` for the fit whose
+    priors are ``bound``: its checks against the exact posterior, and
+    their verdict (``approximation``: good, usable or poor)."""
+    from surpyval.bayes.engines.laplace import K_BAD, K_GOOD, SHIFT
+
+    k = result.pareto_k
+    quality = "good" if k <= K_GOOD else ("usable" if k <= K_BAD else "poor")
+    j, pct = result.shift_at.split(":") if result.shift_at else ("0", "")
+    shift_at = f"{bound.free_names[int(j)]}'s {pct}% point"
+    if quality != "poor" and result.shift > SHIFT and not result.importance:
+        quality = "poor"
+    return {
+        "method": "laplace",
+        "free_parameters": list(bound.free_names),
+        "draws": result.draws,
+        "pareto_k": k,
+        "shift": result.shift,
+        "shift_at": shift_at,
+        "approximation": quality,
+        "importance": bool(result.importance),
+        "importance_requested": bool(importance),
+        "ess": result.ess,
+        "log_z_laplace": result.log_z_laplace,
+        "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
+        "ok": True,
+        "approximate": True,
+    }
+
+
+def warn_laplace(d: dict) -> None:
+    """Warn where a Laplace fit's checks (its ``diagnostics``, ``d``)
+    fail, saying what to use instead."""
+    from surpyval.bayes.engines.laplace import K_BAD, SHIFT
+
+    k = float(d.get("pareto_k", 0.0))
+    n_free = len(d.get("free_parameters", []))
+    regression = d.get("regression", False)
+    if n_free <= 3 and not regression:
+        other = "method='grid' (exact for up to three free parameters)"
+    else:
+        other = "PyMC through surpyval.pymc for the exact posterior"
+    if k > K_BAD:
+        extra = (
+            " Reweighting the draws (importance=True) cannot repair it."
+            if d.get("importance_requested")
+            else ""
+        )
+        warnings.warn(
+            f"The Laplace approximation is poor for this fit: the Pareto "
+            f"k of the exact posterior against the normal is {k:.2f} "
+            f"(above {K_BAD}), so the posterior is far from normal on "
+            f"the parameters' log scale (few failures, or a parameter "
+            f"near a bound).{extra} Use {other}.",
+            stacklevel=caller_stacklevel(),
+        )
+        return
+    shift = float(d.get("shift", 0.0))
+    if shift > SHIFT and not d.get("importance"):
+        warnings.warn(
+            f"The Laplace approximation is off for this fit: reweighting "
+            f"its draws towards the exact posterior moves "
+            f"{d.get('shift_at')} by {shift:.0%} of its 95% interval's "
+            f"width (more than {SHIFT:.0%}), so the posterior is skewed "
+            f"on the parameters' log scale. Refit with importance=True, "
+            f"which corrects it, or use {other}.",
+            stacklevel=caller_stacklevel(),
+        )
 
 
 def _normal_density(post: Posterior) -> Any:

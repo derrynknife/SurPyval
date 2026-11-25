@@ -220,6 +220,13 @@ def _level(spec, alpha):
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
+    if type(model).__name__ == "BayesianRegression":
+        # the posterior medians of the distribution's parameters, then of
+        # the coefficients
+        names = list(model.parameter_names)
+        k = len(model.dist.parameter_names)
+        supports = list(model.dist.bounds) + [(None, None)] * (len(names) - k)
+        return names, np.asarray(model.params, float), supports
     if hasattr(model, "_parameter_bounds"):
         names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
@@ -509,12 +516,27 @@ def _percentile(spec):
     return "n_boot" in spec.kwargs
 
 
+def _of_a_skewed_mean(case, spec):
+    # A Bayesian regression's sf is the predictive, the mean of the
+    # draws' sf, and its credible interval's ends are their quantiles: in
+    # the far tail, where a few draws carry most of the mean, the mean is
+    # above the upper quantile (on this case's last query time, 2.3e-5
+    # against an 80% interval's upper end of 3.8e-6). Its ordering, levels
+    # and transforms are checked by the other sweeps.
+    return case.model_class.endswith("BayesianRegression") and (
+        spec.method == "cri"
+    )
+
+
 # A percentile bootstrap interval need not contain the estimate (its ends
 # are quantiles of the refits, which a biased estimator shifts), so the
 # bootstraps are left out of containment and closure.
 @pytest.mark.parametrize(
     "case, spec",
-    _bound_params("cb_contains", where=lambda c, s: not _percentile(s)),
+    _bound_params(
+        "cb_contains",
+        where=lambda c, s: not _percentile(s) and not _of_a_skewed_mean(c, s),
+    ),
 )
 def test_bounds_contain_the_estimate(case, spec):
     skip_without_finite_maximum(case)

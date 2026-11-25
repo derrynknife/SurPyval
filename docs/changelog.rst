@@ -17,6 +17,33 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Bayesian regression: priors on coefficients.** The proportional
+  hazards, accelerated failure time and accelerated life fitters have
+  ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``
+  (``sp.WeibullPH.fit_bayes``, ``sp.AFT(dist).fit_bayes``,
+  ``sp.AcceleratedLife(dist, life_model).fit_bayes``): priors on the
+  coefficients (by name, ``coef_0`` or the column's), on the baseline's
+  parameters and on a life model's, with the fitter's own likelihood
+  (any censoring and truncation), computed by the Laplace engine with
+  its checks and ``importance=True``. The result, a
+  ``surpyval.bayes.BayesianRegression``, gives the posterior predictive
+  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``qf`` at covariates, the
+  credible intervals ``cri``, ``quantile_cri`` and ``param_cri``,
+  ``compare()``, ``summary()``, and saves (``to_dict``, pickle). A
+  coefficient of ``exp(beta'Z)`` with no prior gets ``Normal(0, 2.5 /
+  sd)``, ``sd`` its covariate's standard deviation, stated in the result.
+  Weights, penalties, time-varying covariates, ``CoxPH`` and the other
+  regression families are refused, saying what to use. Checked against
+  closed forms (an exponential model with a binary covariate and flat
+  priors: the Laplace normal to 1e-4, reweighted within 0.6% of the exact
+  interval), the maximum-likelihood fit as the prior flattens, and a
+  coverage study of the 90% intervals. See "Regression: a prior on an
+  effect" in :doc:`Bayesian Fitting with SurPyval`.
+- The Laplace engine measures the curvature along the axes of the
+  posterior's own spread, refined twice, so a long correlated ridge (an
+  accelerated life model's scale and exponent) or a parameter on a scale
+  of millions is measured, not refused.
+
 - **The Laplace engine for Bayesian fits of any number of parameters.**
   ``fit_bayes(..., method="laplace")`` is now a normal approximation at
   the posterior's peak (on the parameters' log and logit scales) for any

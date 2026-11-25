@@ -815,6 +815,20 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         return unique_x, r, d, h0
 
     @penalty_argument("_fit_penalised", firth="_fit_firth")
+    def fit_bayes(self, *args: Any, **kwargs: Any) -> Any:
+        """Refuses: a Bayesian fit needs a parametric baseline. Use a
+        parametric proportional hazards fitter (``WeibullPH.fit_bayes``,
+        ``ExponentialPH.fit_bayes``, ...), whose coefficients mean what
+        Cox's do."""
+        raise ValueError(
+            "CoxPH has no fit_bayes: its baseline hazard is semi-parametric "
+            "(a step at every failure), which the Bayesian regressions do "
+            "not cover. Use a parametric proportional hazards fitter, such "
+            "as WeibullPH.fit_bayes(x, Z, ...), whose coefficients are log "
+            "hazard ratios as Cox's are; or the accelerated failure time "
+            "and accelerated life fitters' fit_bayes."
+        )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data

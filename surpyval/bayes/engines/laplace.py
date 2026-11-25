@@ -129,19 +129,54 @@ def normal_logpdf(
     return out
 
 
+def _hessian_along(
+    log_post: LogPost, mode: npt.NDArray, L: npt.NDArray, h: float
+) -> npt.NDArray:
+    """Minus the Hessian of ``log_post`` at ``mode``, by central
+    differences of step ``h`` along the columns of ``L`` (the axes of a
+    guess at the covariance, so that a long, correlated ridge is measured
+    along its own directions), carried back to the parameters."""
+    d = mode.size
+
+    def along(u: npt.NDArray) -> npt.NDArray:
+        return log_post(mode + np.atleast_2d(u) @ L.T)
+
+    with np.errstate(all="ignore"):
+        Hu = -hessian(along, np.zeros(d), np.full(d, h))
+    Hu = 0.5 * (Hu + Hu.T)
+    Linv = np.linalg.inv(L)
+    out: npt.NDArray = Linv.T @ Hu @ Linv
+    return 0.5 * (out + out.T)
+
+
 def curvature(
     log_post: LogPost, mode: npt.NDArray, cov: npt.NDArray
 ) -> npt.NDArray:
     """The covariance of the normal at ``mode``: the inverse of minus the
-    Hessian of ``log_post`` there, by central differences scaled to the
-    spread in ``cov``. Refuses where the posterior does not curve down in
-    every direction (no peak, or a ridge the data do not resolve)."""
+    Hessian of ``log_post`` there, by central differences along the axes
+    of the covariance found so far (``cov`` to start, refined twice).
+    Refuses where the posterior does not curve down in every direction
+    (no peak, or a ridge the data do not resolve)."""
     d = mode.size
-    sd = np.sqrt(np.clip(np.diag(cov), 1e-300, None))
-    h = np.clip(0.1 * sd, 1e-6, 0.5)
-    with np.errstate(all="ignore"):
-        H = -hessian(log_post, mode, h)
-    H = 0.5 * (H + H.T)
+    guess = 0.5 * (np.asarray(cov, dtype=float) + np.asarray(cov).T)
+    try:
+        L = np.linalg.cholesky(guess)
+    except np.linalg.LinAlgError:
+        L = np.diag(np.sqrt(np.clip(np.abs(np.diag(guess)), 1e-12, None)))
+    H = None
+    for _ in range(3):
+        trial = None
+        for h in (0.1, 0.01, 0.001):
+            Ht = _hessian_along(log_post, mode, L, h)
+            if np.all(np.isfinite(Ht)) and np.all(np.linalg.eigvalsh(Ht) > 0):
+                trial = Ht
+                break
+        if trial is None:
+            break
+        H = trial
+        L = np.linalg.cholesky(np.linalg.inv(H))
+    if H is None:
+        H = _hessian_along(log_post, mode, L, 0.01)
     if not np.all(np.isfinite(H)):
         raise GridError(
             "The posterior's curvature at its peak is not finite (the peak "
@@ -149,9 +184,17 @@ def curvature(
             "approximation can be made. Use method='grid' (up to three free "
             "parameters) or another sampler's draws (from_draws)."
         )
-    vals, vecs = np.linalg.eigh(H)
-    scale = max(float(np.max(np.abs(vals))), 1e-300)
-    if np.any(vals <= 1e-10 * scale):
+    # judged on the curvature's correlations, so that a parameter on a
+    # scale of millions (a coefficient of a covariate in micro-units) is
+    # not taken for a flat one
+    diag = np.diag(H)
+    flat = not np.all(diag > 0)
+    if not flat:
+        S = 1.0 / np.sqrt(diag)
+        svals, svecs = np.linalg.eigh(H * S[:, None] * S[None, :])
+        flat = bool(np.any(svals <= 1e-10))
+    if flat:
+        vals, vecs = np.linalg.eigh(H)
         worst = vecs[:, int(np.argmin(vals))]
         return_dir = int(np.argmax(np.abs(worst)))
         raise GridError(
@@ -161,7 +204,7 @@ def curvature(
             "determine every parameter. Give the parameters priors, fix "
             "some, or use method='grid' (up to three free parameters)."
         )
-    out: npt.NDArray = (vecs / vals) @ vecs.T
+    out: npt.NDArray = np.linalg.inv(H)
     return 0.5 * (out + out.T)
 
 

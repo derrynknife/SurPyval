@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-25
 
+### Bayesian regression on the Laplace engine (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `fit_bayes` and `fit_bayes_from_df` live on `RegressionFitter`, so the proportional hazards, accelerated failure time and accelerated life fitters have them; the result is `surpyval.bayes.BayesianRegression`. Other families that inherit the method (proportional odds) refuse by the fitted model's `kind`; `CoxPH.fit_bayes` refuses, naming the parametric proportional hazards fitters. | maintainer (plan) | One entry point per fitter; the refusal says what is covered. | done |
+| The posterior is the fitter's own `neg_ll` plus the priors on the unconstrained scale, computed by the Laplace engine (1,024 Sobol draws, `importance=True` to reweight); the maximum-likelihood fit gives the data as read, the names, the ranges and the start. Exact posteriors go through PyMC (`surpyval.pymc`). | maintainer (no own sampler) | No second likelihood to keep in step with the fitter's. | done |
+| Default prior on a coefficient of `exp(beta'Z)` with none given: `Normal(0, 2.5 / sd)`, `sd` the covariate's (count-weighted) standard deviation in the data, stated in `default_priors` and the summary; a covariate constant in the data is refused. A life model's parameters, a custom `phi`'s and the baseline's get no default (flat on the unconstrained scale, allowed only where the data determine them). | proposed | The default scale is a visible choice: 2.5 per standard deviation is weakly informative (Gelman et al. 2008's scale for logistic regression) and does not depend on the covariate's unit. | open |
+| Not covered, each refused with what to use: weights `w`, penalties (a prior on a coefficient is the Bayesian penalty), `init` and `center`, time-varying covariates, priors on quantities, from data or from a model (a `MultivariateNormal` on the parameters is taken). `diagnose()` refuses, pointing to `diagnostics` and `model.mle.diagnose()`; `cb`, `quantile_cb` and `param_cb` refuse, pointing to the `cri` methods. | proposed | Principle 2: a refusal names the fix. | done |
+
 ### The Laplace engine (25 Nov 2026)
 
 | Decision | By | Reason | Status |
