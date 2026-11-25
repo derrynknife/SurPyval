@@ -401,7 +401,8 @@ class Gompertz_(OptimisedFitMixin, ParametricFitter):
                 onp.log1p(y) / onp.where(y == 0, 1.0, y),
             )
             t = H / rate * ratio
-        return onp.where(y <= -1.0, onp.inf, t)
+        # at H = inf (u = 1, s = 0) the ratio is inf / inf or 0 * inf
+        return onp.where((y <= -1.0) | onp.isposinf(H), onp.inf, t)
 
     def qf(self, u: Numeric, shape: Boxable, rate: Boxable) -> Boxable:
         r"""

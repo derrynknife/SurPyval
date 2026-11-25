@@ -226,10 +226,25 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
 
     def log_ff(self, x: Numeric, mu: Boxable, lam: Boxable) -> Boxable:
         # F = Phi(a) + e^{2 lam / mu} Phi(-b): two positive terms, added
-        # in logs
+        # in logs. Above the mean (a > 0), where F is near 1, log F =
+        # log(1 - S) from the accurate log S instead: the sum keeps F to
+        # an ulp, but its log is then about -S, and an ulp of F is all of
+        # it once S is below 1e-16 (log_ff was 1.3e-4 off at S = 1e-300).
         x_pos = positive_or_one(x)
         a, b, d = _ab(x_pos, mu, lam)
-        inside = np.logaddexp(norm.logcdf(a), 2.0 * lam / mu + norm.logcdf(-b))
+        above = a > 0
+        if np.any(above):
+            a_up = np.where(above, a, 1.0)
+            d_up = np.where(above, d, 1.0)
+            r = -self._log_sf_above(a_up, d_up)
+            from_sf = log1mexp(r, np.log(r))[0]
+            if np.all(above):
+                return on_support(x, from_sf, -np.inf)
+            # half the mean: a point below it, for the direct sum
+            x_dn = np.where(above, 0.5 * mu + np.zeros_like(a), x_pos)
+            a, b, d = _ab(x_dn, mu, lam)
+        direct = np.logaddexp(norm.logcdf(a), 2.0 * lam / mu + norm.logcdf(-b))
+        inside = np.where(above, from_sf, direct) if np.any(above) else direct
         return on_support(x, inside, -np.inf)
 
     def log_sf(self, x: Numeric, mu: Boxable, lam: Boxable) -> Boxable:
