@@ -234,6 +234,17 @@ v0.30 (unreleased)
 
 **Changed.**
 
+- **One natural cubic spline basis.** ``surpyval.utils.splines`` holds
+  the natural (restricted) cubic spline basis, with its first and second
+  derivatives and its antiderivative, in Durrleman and Simon's form (the
+  Royston-Parmar models') and in the truncated-power form of *Elements of
+  Statistical Learning*. ``RoystonParmar`` and
+  ``RoystonParmarRegression`` now compute their basis there; their
+  numbers are unchanged to the last bit (the same operations in the same
+  order, checked on 100 random knot sets). Both forms span exactly the
+  curves of SciPy's ``CubicSpline(bc_type="natural")`` (to 1e-11, with
+  derivatives and integral) and R's ``splines::ns`` (to 1e-12).
+
 - **A joint model's printout leads with alpha at the covariates' means.**
   Where the hazard's covariates are far from 0 (a load near 90%), ``alpha``
   at ``Z = 0`` is far outside the data (2.8e5 with a standard error of
