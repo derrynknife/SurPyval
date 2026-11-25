@@ -257,14 +257,11 @@ def test_fit_from_df_is_the_fit_of_the_arrays():
 
 
 # -- refusals ----------------------------------------------------------------
-def test_censored_and_truncated_data_are_refused():
+def test_truncated_data_are_refused():
+    # (censored rows: test_vine_censoring.py)
     X = Vine.from_params([2.0, 1.0, 0.5], _margins(), families=Clayton).random(
         50, random_state=4673
     )
-    c = np.zeros(X.shape, int)
-    c[:4, 2] = 1
-    with pytest.raises(ValueError, match="4 row.*Gaussian.fit"):
-        Vine.fit(X, c=c, margins=[sp.Weibull] * 3)
     t = np.full(X.shape + (2,), np.inf)
     t[:, :, 0] = -np.inf
     t[0, 0, 1] = 1e6  # one row truncated on the right in its first series

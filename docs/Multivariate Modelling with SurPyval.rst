@@ -659,12 +659,40 @@ the pair-copulas instead (one family for every pair, or a list per tree),
 ``k`` trees and makes the rest independence copulas.
 
 A vine's density, draws (``random``), ``aic``, standard errors and
-``param_cb`` are as for any copula model. What it does not have:
+``param_cb`` are as for any copula model. Rows may be censored in two of
+the series, which the vine then has at its ends:
 
-- **Censoring and truncation.** A vine is fitted to fully observed rows: a
-  censored row's likelihood is an integral of the vine's density, which is
-  not computed. Censored rows are refused with their count; fit a Gaussian
-  or Student-t copula to them.
+.. jupyter-execute::
+
+    limit = np.array([pump.qf(0.7), np.inf, seal.qf(0.7)])
+    c_vine = (complete > limit).astype(int)   # pump and seal censored
+    censored_vine = Vine.fit(
+        np.minimum(complete, limit), c=c_vine, margins=three
+    )
+    print(censored_vine.copula, "ends", censored_vine.copula.ends)
+    print(np.round(censored_vine.params, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(censored_vine.copula.ends) == {0, 2}
+
+What a vine does not have:
+
+- **Censoring in more than two series, and truncation.** A censored row's
+  likelihood is the vine's density integrated over its censored series.
+  That integral is in closed form when the censored series are the *ends*
+  of the vine: a D-vine's first and last series, a C-vine's last two.
+  Given the series between them, those two are joined by the last tree's
+  pair-copula alone, so a censored end's earlier pair-copulas integrate
+  out and the last one gives the chance that the end lies in its range
+  (through the h-functions, as for a bivariate copula). So a vine takes
+  right, left and interval censoring in up to two series, and the fit
+  puts the censored series at the ends of its order (or checks that a
+  given ``order`` does). Censoring in more series is refused, saying to
+  fit a Gaussian or Student-t copula, which takes it in any series;
+  truncation is refused.
 - **The joint sf and CDF**, and so ``cb``: the vine has them only as
   integrals of its density. They refuse, saying to estimate them from
   draws (the proportion of ``model.random(n)`` in the region).

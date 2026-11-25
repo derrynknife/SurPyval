@@ -41,6 +41,18 @@ v0.30 (unreleased)
   With the second stress held constant the answer and its Wald and
   likelihood-ratio intervals are the Arrhenius model's to 1e-6. No fitted
   number changes.
+- **Censored rows in a vine copula.** ``Vine.fit`` takes right, left and
+  interval censoring in up to two of the series, which it puts at the ends
+  of the vine (a D-vine's first and last series, a C-vine's last two;
+  a given ``order`` is checked): given the series between them, the two
+  ends are joined by the last tree's pair-copula alone, so a censored
+  row's likelihood is in closed form through the h-functions. The
+  tree-by-tree start fits each pair-copula to its censored likelihood. A
+  Gaussian vine censored in its ends gives the Gaussian copula's
+  likelihood to 1e-8 (a Student-t vine the t copula's to 1e-7), and a
+  vine of two series the bivariate fit. Censoring in more than two series
+  is refused, saying to use the Gaussian or Student-t copula; truncation
+  is still refused. Fully observed fits do not change.
 
 - **A Wald bound on a Fine-Gray model's cumulative incidence.**
   ``FineGrayModel.cb(..., method="wald")`` gives the delta-method bound on
