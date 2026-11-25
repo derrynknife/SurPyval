@@ -3457,14 +3457,14 @@ def _rmst_tau(case):
 
 def _nonparametric_bounds(case):
     out = []
-    for bound_type in ("exp", "normal"):
+    for bound_type in ("log-log", "plain"):
         for interp in ("step", "linear", "cubic"):
             out.append(
                 Bound(
                     "cb",
                     on=_ON_SURVIVAL,
                     kwargs={"bound_type": bound_type, "interp": interp},
-                    in_range=bound_type == "exp",
+                    in_range=bound_type == "log-log",
                     nan_ok=True,
                     label=f"cb[{bound_type},{interp}]",
                 )
@@ -3482,7 +3482,7 @@ def _nonparametric_bounds(case):
                     # onto the estimate. (It used to be left out because
                     # the search at alpha_ci -> 1 did not end, #420.)
                     wald=False,
-                    in_range=bound_type == "exp",
+                    in_range=bound_type == "log-log",
                     nan_ok=True,
                     label=f"band[{method},{bound_type}]",
                 )
@@ -3556,12 +3556,12 @@ def _mcf_bounds(per_cause=False):
             "mcf_cb",
             point="mcf",
             kwargs={"bound_type": bound_type, "interp": interp},
-            in_range=bound_type == "exp",
+            in_range=bound_type == "log",
             nan_ok=True,
             per_cause=per_cause,
             label=f"mcf_cb[{bound_type},{interp}]",
         )
-        for bound_type in ("exp", "normal")
+        for bound_type in ("log", "plain")
         for interp in ("step", "linear")
     )
 
@@ -3570,10 +3570,10 @@ def _competing_risks_bounds():
     # The cumulative incidence of each cause (#728), and the all-cause and
     # each cause's net sf / ff / Hf (the single-event estimates' bounds).
     out = []
-    for bound_type in ("exp", "normal"):
+    for bound_type in ("log-log", "plain"):
         common = dict(
             kwargs={"bound_type": bound_type},
-            in_range=bound_type == "exp",
+            in_range=bound_type == "log-log",
             nan_ok=True,
         )
         out += [
@@ -3698,11 +3698,11 @@ def _multistate_bounds(variances):
                 if v is None
                 else {"variance": v, "bound_type": t}
             ),
-            in_range=t == "exp",
+            in_range=t == "log-log",
             label=f"cb[{t}]" if v is None else f"cb[{v}, {t}]",
         )
         for v in variances
-        for t in ("exp", "normal")
+        for t in ("log-log", "plain")
     )
 
 

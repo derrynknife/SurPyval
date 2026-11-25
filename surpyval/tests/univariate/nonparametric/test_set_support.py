@@ -165,7 +165,7 @@ def test_hf_before_the_first_value_is_zero_and_outside_points_are_ignored():
     assert np.isnan(model.hf(1.0)).all()
 
 
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 @pytest.mark.parametrize("interp", ["step", "linear", "cubic"])
 @pytest.mark.parametrize("bound", ["two-sided", "upper", "lower"])
 @pytest.mark.parametrize("on", ["sf", "ff", "Hf"])
@@ -201,7 +201,7 @@ def test_cb_regions(model, on, bound, interp, bound_type):
     at_last = model.cb([last], **kw)
     np.testing.assert_array_equal(after, np.concatenate([at_last, at_last]))
     # They still contain the estimate.
-    if bound == "two-sided" and bound_type == "exp":
+    if bound == "two-sided" and bound_type == "log-log":
         q = np.array([lower, first - 1.0, last + 1.0, upper])
         est = getattr(bounded, on)(q, interp=interp)
         cb = bounded.cb(q, **kw)

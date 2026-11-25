@@ -175,7 +175,7 @@ def test_equal_precision_band_covers_a_from_a_tenth_to_nine_tenths():
         valid = np.isfinite(a) & (a > 0) & (model.R > 0) & (model.R < 1)
     inside = valid & (a >= 0.1) & (a <= 0.9)
     assert inside.any() and (valid & ~inside).any()
-    for bound_type in ("arcsine", "exp", "normal"):
+    for bound_type in ("arcsine", "log-log", "plain"):
         nair = model.band(method="nair", bound_type=bound_type)
         assert np.isfinite(nair[inside]).all()
         assert np.isnan(nair[~inside]).all()
@@ -294,7 +294,7 @@ def test_band_over_a_single_time_is_the_pointwise_arcsine_interval():
         )
 
 
-@pytest.mark.parametrize("bound_type", ["arcsine", "exp"])
+@pytest.mark.parametrize("bound_type", ["arcsine", "log-log"])
 def test_band_over_a_single_time_is_the_pointwise_bound_on_its_scale(
     bound_type,
 ):
