@@ -503,7 +503,11 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   `sp.prior.check(dist, priors)`. The model's `sf`/`qf`/`mean` are the
   posterior predictive (a new unit's life); `quantile_cri(p, point=True)`
   is the posterior median of the quantile. `update(x, c)` adds data exactly.
-  Deterministic grid (1 to 3 free parameters), no seed.
+  Deterministic grid (1 to 3 free parameters), no seed; past three (or
+  `method="laplace"`) a normal approximation at the peak, checked by its
+  Pareto k (`diagnostics["pareto_k"]`, warns above 0.7);
+  `importance=True` reweights it towards the exact posterior. Exact
+  posteriors of many parameters: PyMC via `surpyval.pymc`.
 - **Aalen** (`sp.AalenAdditive.fit(x, Z, c)`): effects that change over time;
   read `cumulative_coefficients()` / `plot()` by slope; test with
   `constant_effects_test(random_state=)`.

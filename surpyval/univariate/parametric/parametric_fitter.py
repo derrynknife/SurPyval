@@ -1770,6 +1770,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         points: int | None = None,
         unit: Any = None,
         w: Any = None,
+        importance: bool = False,
     ) -> Any:
         """
         Fit the distribution by Bayes' rule: the prior times the
@@ -1801,10 +1802,18 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         method : {'auto', 'grid', 'conjugate', 'laplace'}, optional
             ``'auto'`` (the default) uses the closed form where one
             applies, else the self-checking grid (1 to 3 free
-            parameters); ``'laplace'`` a normal approximation, labelled
-            approximate.
+            parameters), else the Laplace approximation. ``'laplace'`` is
+            a normal approximation at the posterior's peak, for any
+            number of free parameters, labelled approximate and checked
+            against the exact posterior (its Pareto k, in
+            ``diagnostics``; a warning where it is poor).
         points : int, optional
             The grid's starting points per parameter.
+        importance : bool, optional
+            With ``method='laplace'`` (or ``'auto'`` past three free
+            parameters), reweight the normal's draws towards the exact
+            posterior by Pareto-smoothed importance sampling, where its
+            check allows (Pareto k up to 0.7). False by default.
         unit : str, optional
             The unit of the times, as for ``fit``.
         w : None
@@ -1845,6 +1854,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             method=method,
             points=points,
             unit=unit,
+            importance=importance,
         )
 
     def fit_bayes_from_df(
