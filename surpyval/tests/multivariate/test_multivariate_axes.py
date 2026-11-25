@@ -131,9 +131,14 @@ def test_copulas_take_exactly_two_axes():
 def test_the_elliptical_copulas_take_three_axes():
     # (the Gaussian and Student-t copulas of more than two series; their
     # own tests are in test_elliptical_nd.py)
+    # Truncation of three or more series is taken since #1387 (it used to
+    # be refused); the fit's own checks are in test_elliptical_nd.py.
     assert Gaussian.n_axes == 2
-    with pytest.raises(ValueError, match="3 series does not take truncated"):
-        Gaussian.fit(_three(), margins=[sp.Weibull] * 3)
+    # Four rows, two of them perfectly concordant in series 0 and 2: the fit
+    # runs, and says the correlation has no finite maximum.
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        model = Gaussian.fit(_three(), margins=[sp.Weibull] * 3)
+    assert len(model.margins) == 3
 
 
 def test_copula_fit_of_the_data_object_equals_the_arrays():
