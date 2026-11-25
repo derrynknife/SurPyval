@@ -214,6 +214,16 @@ v0.30 (unreleased)
   covariates, coverage was 0.900-0.901 with no censoring; with 34%
   censored 0.94-0.95 (observed) and 0.909 (ipcw); with 71% censored
   0.98-0.99 (observed) and 0.945 (ipcw). Nothing existing changes.
+- **Maturity projections** (MIL-HDBK-189C sections 6.3.4 to 6.3.6), in
+  ``surpyval.recurrent``: ``ampm_projection`` (the AMSAA maturity
+  projection model, from the first occurrence of each mode to be fixed),
+  ``ampm_stein_projection`` (AMPM-Stein, from each mode's failure count,
+  pooling systems tested side by side) and ``adpm_stein_projection`` (its
+  discrete form for one-shot items). Each gives the reliability to expect
+  once the seen modes are fixed with their fix-effectiveness factors,
+  allowing for the modes not seen yet, in the many-modes form the
+  handbook recommends for complex systems. See
+  :doc:`counting/maturity_projection`.
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
   returns its two-sided bounds as a

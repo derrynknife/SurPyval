@@ -114,6 +114,8 @@ Worked classifications:
 | PanelCountRegression (proportional means, panel counts) | univariate | recurrent | single | recurrent | with | continuous | semiparametric |
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | Discrete reliability growth: Crow-AMSAA discrete, Lloyd-Lipow, Gompertz, modified Gompertz (successes and trials by stage) | univariate | recurrent | single | recurrent | none | discrete | parametric |
+| Maturity projections: AMPM, AMPM-Stein (failure modes with fix-effectiveness factors) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| Maturity projection: discrete AMPM-Stein (modes behind one-shot failures) | univariate | recurrent | single | recurrent | none | discrete | parametric |
 | MultiState (Aalen–Johansen) | univariate | single_event | single/competing | multi_state | none | continuous | nonparametric |
 | MultiStateProportionalHazards (Cox per transition) | univariate | single_event | single/competing | multi_state | with | continuous | semiparametric |
 | ParametricMultiState (a distribution per transition) | univariate | single_event | single/competing | multi_state | none | continuous | parametric |
@@ -268,9 +270,11 @@ order of how often it is asked for within each group; not a plan.
 
 **Recurrent, parametric (reliability growth).**
 
-- The maturity projection models (AMPM, and AMPM-Stein and ADPM-Stein,
-  MIL-HDBK-189C section 6.3.4 to 6.3.6). Built: Duane, Crow-AMSAA, Crow
-  Extended, the AMSAA-Crow projection, the discrete growth models
+- The maturity projection models' finite-number-of-modes forms and
+  bounds on the projections. Built: Duane, Crow-AMSAA, Crow
+  Extended, the AMSAA-Crow projection, the maturity projections (AMPM,
+  AMPM-Stein and ADPM-Stein in their many-modes forms,
+  MIL-HDBK-189C section 6.3.4 to 6.3.6), the discrete growth models
   (Crow-AMSAA discrete, Lloyd-Lipow, Gompertz, modified Gompertz) and the
   planning curves (`surpyval.test_planning`: the idealised curve,
   PM2-Continuous and PM2-Discrete).
