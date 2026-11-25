@@ -91,6 +91,7 @@ surpyval.GeneralizedOneRenewal
 surpyval.GeneralizedRenewal
 surpyval.Geometric
 surpyval.GoelOkumoto
+surpyval.Gompertz
 surpyval.Gumbel
 surpyval.GumbelAFT
 surpyval.GumbelAH
@@ -646,6 +647,7 @@ surpyval.univariate.parametric.Gamma
 surpyval.univariate.parametric.Gauss
 surpyval.univariate.parametric.GeneralizedGamma
 surpyval.univariate.parametric.Geometric
+surpyval.univariate.parametric.Gompertz
 surpyval.univariate.parametric.Gumbel
 surpyval.univariate.parametric.GumbelLEV
 surpyval.univariate.parametric.Hypoexponential

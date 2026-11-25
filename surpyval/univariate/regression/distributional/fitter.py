@@ -107,6 +107,7 @@ SUPPORTED = (
     "Beta",
     "ExpoWeibull",
     "GeneralizedGamma",
+    "Gompertz",
 )
 
 #: The advice of a refusal of the parameters at Z = 0.

@@ -5,7 +5,9 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
-- ``fit_best`` also tries the new ``GeneralizedGamma``. Where it has the
+- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
+  50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
+  Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
   lognormal fits, its extra parameter usually costs it the AIC and BIC
   comparison, and ``metric="neg_ll"`` (which has no penalty) will now
@@ -151,6 +153,28 @@ v0.30 (unreleased)
   ``compare_links``, a lag or weight per marker. A single-marker fit
   given several named measurements still refuses them, now saying how to
   fit them together. No number of a one-marker fit changes.
+
+- **The Gompertz distribution, built in:** ``surpyval.Gompertz``, with
+  hazard ``rate * exp(shape * x)``, in R's ``flexsurv`` and ``eha``
+  parameterisation (``shape``, ``rate``). The shape may be negative: the
+  cumulative hazard then levels off at ``-rate / shape`` and a fraction
+  ``exp(rate / shape)`` never fails, which the results say (an infinite
+  mean, infinite quantiles above the fraction that fails, ``inf`` in
+  random draws). ``shape = 0`` is the exponential, exactly and with exact
+  derivatives through it. Every fit option of a built-in distribution
+  (probability-plot fitting refused), Wald, likelihood-ratio and
+  bootstrap bounds, ``PH(Gompertz)`` (on the rate, as flexsurv's
+  covariates) and ``AFT(Gompertz)`` with exact changes of origin,
+  ``Distributional(Gompertz)``, ``fit_best``, and the PyMC and torch
+  helpers. Against flexsurv 2.3.2: the functions to 1e-10, the ``lung``
+  fits (right censored, left truncated, PH on ``sex``) to 1e-6 in
+  log-likelihood and a hundredth of a standard error in the estimates.
+  See :doc:`univariate/gompertz`.
+
+- A ``GeneralizedGamma`` fit whose ``Q`` runs off says where it is going:
+  for ``Q`` growing, a power law up to the largest observation (data that
+  look bounded above); for ``Q`` falling, a support that starts at the
+  smallest one (compare an offset fit).
 
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a

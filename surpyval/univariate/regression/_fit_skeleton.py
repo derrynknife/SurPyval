@@ -398,7 +398,8 @@ class HazardIdentitiesMixin:
 #
 # - PH, H(x | Z) = exp(beta'Z) H0(x): H0 at Z = 0 is exp(-s) times H0 at
 #   the centre -- a scale change for Weibull, Rayleigh and Exponential, a
-#   location shift for Gumbel (H0 = exp((x - mu) / sigma)).
+#   change of rate for Gompertz, a location shift for Gumbel (H0 =
+#   exp((x - mu) / sigma)).
 # - AFT, H(x | Z) = H0(exp(beta'Z) x): time at Z = 0 is time at the
 #   centre scaled by exp(s), so any scale family maps (a scale parameter
 #   times exp(s), a rate times exp(-s), a log-time location plus s, and
@@ -442,6 +443,10 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
         (0,),
         lambda p, s: [p[0] * np.exp(s / 2.0)],
     ),
+    (PROPORTIONAL_HAZARD, "Gompertz"): (
+        (1,),
+        lambda p, s: [p[0], p[1] * np.exp(-s)],
+    ),
     (PROPORTIONAL_HAZARD, "Gumbel"): (
         (0,),
         lambda p, s: [p[0] + p[1] * s, p[1]],
@@ -458,6 +463,10 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
     (ACCELERATED_FAILURE_TIME, "LogNormal"): (
         (0,),
         lambda p, s: [p[0] + s, p[1]],
+    ),
+    (ACCELERATED_FAILURE_TIME, "Gompertz"): (
+        (0, 1),
+        lambda p, s: [p[0] * np.exp(-s), p[1] * np.exp(-s)],
     ),
     (ACCELERATED_FAILURE_TIME, "GeneralizedGamma"): (
         (0,),

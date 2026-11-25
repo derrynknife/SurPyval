@@ -34,6 +34,7 @@ from .distributions import (
     Gauss,
     GeneralizedGamma,
     Geometric,
+    Gompertz,
     Gumbel,
     GumbelLEV,
     Hypoexponential,

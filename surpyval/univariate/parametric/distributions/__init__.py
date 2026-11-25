@@ -14,6 +14,7 @@ from .exponential import Exponential
 from .gamma import Gamma
 from .generalized_gamma import GeneralizedGamma
 from .geometric import Geometric
+from .gompertz import Gompertz
 from .gumbel import Gumbel
 from .gumbel_lev import GumbelLEV
 from .hypoexponential import Hypoexponential

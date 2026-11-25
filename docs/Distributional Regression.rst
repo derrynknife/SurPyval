@@ -226,7 +226,8 @@ its coefficients enter, one rule for each kind of parameter:
   Rayleigh's ``sigma``): :math:`s = -1`, so :math:`\alpha(z) = \alpha
   e^{-b'z}` and a positive coefficient shrinks the scale, exactly as the
   AFT model's coefficient does.
-- A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``):
+- A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``, a
+  Gompertz's ``rate`` and its ``shape``, the hazard's growth rate):
   :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive
   coefficient raises the rate, again the AFT model's coefficient.
 - A **location** (``mu`` of a LogNormal, GeneralizedGamma, Normal,
@@ -377,7 +378,7 @@ Limits
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
   LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
-  ExpoWeibull and GeneralizedGamma. Prebuilt fitters are ``WeibullDistributional``,
+  ExpoWeibull, GeneralizedGamma and Gompertz. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and

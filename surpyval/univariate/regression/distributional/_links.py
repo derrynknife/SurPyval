@@ -65,6 +65,7 @@ EFFECT: dict[str, dict[str, str]] = {
     "Beta": {"alpha": "longer", "beta": "shorter"},
     "ExpoWeibull": {"alpha": "longer", "mu": "longer"},
     "GeneralizedGamma": {"mu": "longer", "Q": "shorter"},
+    "Gompertz": {"shape": "shorter", "rate": "shorter"},
 }
 
 

@@ -42,7 +42,10 @@ def test_beta4_no_longer_wins_on_seven_points(metric):
 def test_uniform_no_longer_wins_on_weibull_data():
     # Before: 'Uniform' on [3.8, 147.7], neg_ll 248.5 against 255.3
     model, _ = _fit_best(WEIBULL_50)
-    assert model.dist.name == "Rayleigh"  # a Weibull with shape 2
+    # The Gompertz (AIC 508.1) beats the Rayleigh (512.8), a Weibull with
+    # shape 2, since the Gompertz was added; the GeneralizedGamma runs off
+    # towards its power-law limit (Q to inf) and is set aside.
+    assert model.dist.name == "Gompertz"
 
 
 def test_a_named_non_regular_family_is_set_aside_with_a_warning():

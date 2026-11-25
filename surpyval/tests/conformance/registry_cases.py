@@ -180,6 +180,7 @@ def _univariate():
         "LogLogistic",
         "ExpoWeibull",
         "GeneralizedGamma",
+        "Gompertz",
         "Rayleigh",
         "Normal",
         "Gumbel",
@@ -4712,7 +4713,7 @@ _PLAIN_CONTINUOUS: tuple[str, ...] = (
     "LogNormal",
 )
 _PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
-_PLAIN_CONTINUOUS += ("GeneralizedGamma",)
+_PLAIN_CONTINUOUS += ("GeneralizedGamma", "Gompertz")
 _PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
 _PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
 _PLAIN_DISCRETE += ("DiscreteWeibull",)

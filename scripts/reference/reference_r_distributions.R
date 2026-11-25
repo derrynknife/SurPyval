@@ -1,5 +1,6 @@
 # Reference results from R for SurPyval's built-in GeneralizedGamma
-# (flexsurv's "gengamma", Prentice's (mu, sigma, Q)).
+# (flexsurv's "gengamma", Prentice's (mu, sigma, Q)) and Gompertz
+# (flexsurv's "gompertz", (shape, rate)).
 #
 # Writes surpyval/tests/reference/data/r_distributions.json, with the
 # software, its version, the call and the values of each entry, as the
@@ -21,7 +22,8 @@
 #   censored, and on lung left truncated at entry = floor(time / 4)
 #   (Surv(entry, time, status)), with optim's relative tolerance
 #   tightened to 1e-14: the maximised log-likelihood, the estimates and
-#   their standard errors.
+#   their standard errors. For the Gompertz also ~ sex, which in
+#   flexsurv acts on the rate: the proportional hazards model.
 
 suppressPackageStartupMessages({
     library(survival)
@@ -102,6 +104,25 @@ add("lung_gengamma", fit_entry(
 add("lung_gengamma_truncated", fit_entry(
     "gengamma", Surv(entry, time, status) ~ 1,
     "Surv(entry, time, status) ~ 1"))
+
+# ---- Gompertz -----------------------------------------------------------
+gz_pars <- list(c(0.1, 0.01), c(-0.1, 0.05), c(0, 0.2), c(1e-6, 0.2),
+                c(2, 1e-3), c(-2, 0.5))
+gz_probs <- c(1e-6, 0.001, 0.1, 0.5, 0.9)
+add("functions_gompertz", functions_entry(
+    "gompertz", "dgompertz / pgompertz / qgompertz(., shape, rate)",
+    gz_pars, times, gz_probs, dgompertz, pgompertz, qgompertz))
+# flexsurv's time is in days on lung; in years the shape is not tiny
+lung_d$time_y <- lung_d$time / 365.25
+lung_d$entry_y <- lung_d$entry / 365.25
+add("lung_gompertz", fit_entry(
+    "gompertz", Surv(time_y, status) ~ 1, "Surv(time / 365.25, status) ~ 1"))
+add("lung_gompertz_truncated", fit_entry(
+    "gompertz", Surv(entry_y, time_y, status) ~ 1,
+    "Surv(entry / 365.25, time / 365.25, status) ~ 1"))
+add("lung_gompertz_sex", fit_entry(
+    "gompertz", Surv(time_y, status) ~ sex,
+    "Surv(time / 365.25, status) ~ sex"))
 
 out <- list(
     generator = "scripts/reference/reference_r_distributions.R",
