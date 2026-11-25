@@ -38,6 +38,7 @@ from surpyval.bayes.target import (
     register_adapter,
     register_target,
 )
+from surpyval.serialisation import SerialisableMixin
 from surpyval.utils.event_history_data import EventHistoryData
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.warnings import ignoring_warnings
@@ -80,46 +81,89 @@ def _columns(theta: npt.NDArray) -> list:
     return [theta[:, j][:, None] for j in range(theta.shape[1])]
 
 
-def _pieces_log_lik(fitter: Any, s: dict, theta: npt.NDArray) -> npt.NDArray:
+def _pieces_log_lik(
+    fitter: Any, s: dict, theta: npt.NDArray, Z: dict | None = None
+) -> npt.NDArray:
     """The NHPP log-likelihood of the pieces ``s`` (one item's, or every
     item's; ``EventHistoryData.split_for_nhpp_likelihood``) at rows of
     parameters, ``(N, k) -> (N,)``: the terms of
     ``nhpp_log_likelihood``, with the intensity evaluated at every row
-    at once. It is used only where it agrees with the fitter's own
-    likelihood (checked at each fit)."""
+    at once. With ``Z`` (each piece's covariate rows) the parameters
+    after the baseline's are the coefficients of a proportional
+    intensity, ``exp(Z beta)`` times the baseline's. It is used only
+    where it agrees with the fitter's own likelihood (checked at each
+    fit)."""
+    k_base = len(fitter.parameter_names)
+    coef = theta[:, k_base:]
+    theta = theta[:, :k_base]
     cols = _columns(theta)
+    rows = len(theta)
+
+    def eta(key: str) -> Any:
+        if Z is None:
+            return 0.0
+        return coef @ Z[key].T
 
     def cif(x: npt.NDArray) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         if x.size == 0:
-            return np.zeros((len(theta), 0))
+            return np.zeros((rows, 0))
         return np.asarray(fitter.cif(x[None, :], *cols), dtype=float)
 
-    def counted(n: npt.NDArray, delta: npt.NDArray) -> npt.NDArray:
+    def counted(n: npt.NDArray, delta: npt.NDArray, key: str) -> npt.NDArray:
         if delta.shape[1] == 0:
-            return np.zeros(len(theta))
-        out: npt.NDArray = (n * np.log(delta) - delta - gammaln(n + 1)).sum(
+            return np.zeros(rows)
+        e = eta(key)
+        out: npt.NDArray = (
+            n * e + n * np.log(delta) - np.exp(e) * delta - gammaln(n + 1)
+        ).sum(axis=1)
+        return out
+
+    def at_least_one(delta: npt.NDArray, key: str) -> npt.NDArray:
+        if delta.shape[1] == 0:
+            return np.zeros(rows)
+        out: npt.NDArray = np.log(-np.expm1(-np.exp(eta(key)) * delta)).sum(
             axis=1
         )
         return out
 
-    def at_least_one(delta: npt.NDArray) -> npt.NDArray:
-        if delta.shape[1] == 0:
-            return np.zeros(len(theta))
-        out: npt.NDArray = np.log(-np.expm1(-delta)).sum(axis=1)
-        return out
-
     x_o = np.asarray(s["x_o"], dtype=float)
-    ll = np.zeros(len(theta))
+    ll = np.zeros(rows)
     if x_o.size:
         log_iif = np.asarray(fitter.log_iif(x_o[None, :], *cols), dtype=float)
-        ll = ll + (log_iif + cif(s["x_o_prev"]) - cif(x_o)).sum(axis=1)
-    ll = ll + (cif(s["x_right_prev"]) - cif(s["x_right"])).sum(axis=1)
-    ll = ll + counted(s["n_left"], cif(s["x_left"]) - cif(s["x_left_prev"]))
-    ll = ll + counted(s["n_i"], cif(s["x_i_r"]) - cif(s["x_i_l"]))
-    ll = ll - at_least_one(cif(s["sel_to"]) - cif(s["sel_from"]))
-    ll = ll + at_least_one(cif(s["gap_to"]) - cif(s["gap_from"]))
+        e = eta("o")
+        ll = ll + (
+            log_iif + e + np.exp(e) * (cif(s["x_o_prev"]) - cif(x_o))
+        ).sum(axis=1)
+    if np.size(s["x_right"]):
+        ll = ll + (
+            np.exp(eta("right")) * (cif(s["x_right_prev"]) - cif(s["x_right"]))
+        ).sum(axis=1)
+    ll = ll + counted(
+        s["n_left"], cif(s["x_left"]) - cif(s["x_left_prev"]), "left"
+    )
+    ll = ll + counted(s["n_i"], cif(s["x_i_r"]) - cif(s["x_i_l"]), "i")
+    ll = ll - at_least_one(cif(s["sel_to"]) - cif(s["sel_from"]), "sel")
+    ll = ll + at_least_one(cif(s["gap_to"]) - cif(s["gap_from"]), "gap")
     return ll
+
+
+def _covariate_pieces(s: dict, Z: npt.NDArray) -> dict:
+    """Each likelihood piece's covariate rows, gathered with the split's
+    own masks (as the proportional intensity fitters do)."""
+    Z = np.asarray(Z, dtype=float)
+    out = {
+        key: Z[s[mask]]
+        for key, mask in (
+            ("o", "mask_o"),
+            ("right", "mask_right"),
+            ("left", "mask_left"),
+            ("i", "mask_i"),
+        )
+    }
+    out["sel"] = Z[s["sel_idx"]]
+    out["gap"] = Z[s["gap_idx"]]
+    return out
 
 
 @register_target
@@ -136,6 +180,10 @@ class RecurrenceTarget(Target):
         self, fitter: Any, data: EventHistoryData, mle: Any = None
     ) -> None:
         self.fitter = fitter
+        #: The intensity whose functions the results evaluate (the
+        #: baseline, for a proportional intensity).
+        self.baseline = fitter
+        self.k_base = len(fitter.parameter_names)
         self.dist = fitter
         self.data = data
         self.mle = mle
@@ -144,10 +192,24 @@ class RecurrenceTarget(Target):
         self.fixed = {}
         name = str(fitter.name)
         self.family = name if name.endswith("Process") else f"{name} process"
-        self._neg_ll = _natural_neg_ll(fitter, data)
-        self._pieces = data.split_for_nhpp_likelihood()
+        self._finish()
+
+    def _make_neg_ll(self, data: EventHistoryData) -> Any:
+        """The fitter's own negative log-likelihood of ``data``, in the
+        parameters' own scales."""
+        return _natural_neg_ll(self.fitter, data)
+
+    def _split(self, data: EventHistoryData) -> tuple:
+        """What the all-rows likelihood needs of ``data``: its pieces
+        and (a proportional intensity) their covariate rows."""
+        return data.split_for_nhpp_likelihood(), None
+
+    def _finish(self) -> None:
+        data = self.data
+        self._neg_ll = self._make_neg_ll(data)
+        self._pieces, self._Z = self._split(data)
         entry, exit_ = data.item_observation_windows()
-        lower = float(getattr(fitter, "support", (0.0, np.inf))[0])
+        lower = float(getattr(self.baseline, "support", (0.0, np.inf))[0])
         self.entry = np.where(
             np.isfinite(entry), entry, max(lower, 0.0) if lower > -1 else 0.0
         )
@@ -184,7 +246,9 @@ class RecurrenceTarget(Target):
         try:
             pts = self._trial_points()
             with ignoring_warnings(), np.errstate(all="ignore"):
-                fast = _pieces_log_lik(self.fitter, self._pieces, pts)
+                fast = _pieces_log_lik(
+                    self.baseline, self._pieces, pts, self._Z
+                )
                 slow = np.array([-self.neg_ll(p) for p in pts])
         except Exception:  # noqa: BLE001 - any failure means "do not use"
             return False
@@ -200,7 +264,7 @@ class RecurrenceTarget(Target):
         if not self._vector:
             return super().log_lik(theta)
         with ignoring_warnings(), np.errstate(all="ignore"):
-            out = _pieces_log_lik(self.fitter, self._pieces, theta)
+            out = _pieces_log_lik(self.baseline, self._pieces, theta, self._Z)
         return np.where(np.isnan(out), -np.inf, out)
 
     def estimates(self) -> npt.NDArray:
@@ -213,8 +277,8 @@ class RecurrenceTarget(Target):
             pieces, negs = [], []
             for k in range(len(first)):
                 sub = self.data[np.flatnonzero(inverse == k)]
-                pieces.append(sub.split_for_nhpp_likelihood())
-                negs.append(_natural_neg_ll(self.fitter, sub))
+                pieces.append(self._split(sub))
+                negs.append(self._make_neg_ll(sub))
             self._unit_pieces, self._unit_neg_ll = pieces, negs
         assert self._unit_neg_ll is not None
         return self._unit_pieces, self._unit_neg_ll
@@ -226,7 +290,9 @@ class RecurrenceTarget(Target):
         with ignoring_warnings(), np.errstate(all="ignore"):
             for u, (s, f) in enumerate(zip(pieces, negs)):
                 if self._vector:
-                    out[:, u] = _pieces_log_lik(self.fitter, s, theta)
+                    out[:, u] = _pieces_log_lik(
+                        self.baseline, s[0], theta, s[1]
+                    )
                 else:
                     out[:, u] = [-float(f(row)) for row in theta]
         return out
@@ -403,20 +469,27 @@ class RecurrenceTarget(Target):
         observation, ``beta (log T - log alpha)``, in its place: the
         count the data say most about, nearly independent of the
         shape."""
-        if getattr(self.fitter, "name", "") != "Crow-AMSAA":
+        if getattr(self.baseline, "name", "") != "Crow-AMSAA":
             return None
-        if list(bound.free_names) != ["alpha", "beta"]:
+        free = list(bound.free_names)
+        if free[:2] != ["alpha", "beta"]:
             return None
         log_end = float(np.log(self.end))
 
+        # (any further free parameters, a proportional intensity's
+        # coefficients, are left as they are)
         def forward(phi: npt.NDArray) -> npt.NDArray:
             return np.column_stack(
-                [np.exp(phi[:, 1]) * (log_end - phi[:, 0]), phi[:, 1]]
+                [
+                    np.exp(phi[:, 1]) * (log_end - phi[:, 0]),
+                    phi[:, 1],
+                    phi[:, 2:],
+                ]
             )
 
         def inverse(u: npt.NDArray) -> npt.NDArray:
             return np.column_stack(
-                [log_end - u[:, 0] * np.exp(-u[:, 1]), u[:, 1]]
+                [log_end - u[:, 0] * np.exp(-u[:, 1]), u[:, 1], u[:, 2:]]
             )
 
         def log_det(u: npt.NDArray) -> npt.NDArray:
@@ -424,14 +497,14 @@ class RecurrenceTarget(Target):
             return out
 
         return Reparameterisation(
-            ["the expected events by the end of observation", "beta"],
+            ["the expected events by the end of observation", *free[1:]],
             forward,
             inverse,
             log_det,
         )
 
     def _at(self, fname: str, t: float) -> Any:
-        fitter, names = self.fitter, self.names
+        fitter, names = self.baseline, self.names[: self.k_base]
 
         def value(theta: dict) -> npt.NDArray:
             p = [np.asarray(theta[n], dtype=float) for n in names]
@@ -669,21 +742,29 @@ class BayesianRecurrence(BayesianResult):
         self.unit = getattr(self.mle, "unit", None)
 
     # -- the process at every posterior point --------------------
-    def _values(self, on: str, x: npt.NDArray) -> npt.NDArray:
-        """``on`` at times ``x`` for every posterior point, ``(P, m)``."""
-        fitter = self.target.fitter
-        cols = _columns(self.posterior.points)
+    def _values(
+        self, on: str, x: npt.NDArray, scale: npt.NDArray | None = None
+    ) -> npt.NDArray:
+        """``on`` at times ``x`` for every posterior point, ``(P, m)``;
+        ``scale`` multiplies each point's intensity (a proportional
+        intensity's ``exp(Z beta)``)."""
+        fitter = self.target.baseline
+        cols = _columns(self.posterior.points[:, : self.target.k_base])
         x = np.asarray(x, dtype=float).reshape(-1)
         with ignoring_warnings(), np.errstate(all="ignore"):
             if on == "cif":
                 out = fitter.cif(x[None, :], *cols)
             else:
                 out = fitter.iif(x[None, :], *cols)
-                if on == "mtbf":
-                    out = 1.0 / np.asarray(out, dtype=float)
-        return np.broadcast_to(
-            np.asarray(out, dtype=float), (len(self.posterior.points), x.size)
-        )
+            out = np.broadcast_to(
+                np.asarray(out, dtype=float),
+                (len(self.posterior.points), x.size),
+            )
+            if scale is not None:
+                out = out * scale[:, None]
+            if on == "mtbf":
+                out = 1.0 / out
+        return np.asarray(out, dtype=float)
 
     @keeps_query_shape
     def cif(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -734,17 +815,24 @@ class BayesianRecurrence(BayesianResult):
             return None
         return self.posterior._exact(self.posterior.exact["name"])
 
-    def _quantile(self, on: str, x: npt.NDArray, level: float) -> npt.NDArray:
+    def _quantile(
+        self,
+        on: str,
+        x: npt.NDArray,
+        level: float,
+        scale: npt.NDArray | None = None,
+    ) -> npt.NDArray:
         x = np.asarray(x, dtype=float).reshape(-1)
         exact = self._exact_rate()
-        if exact is not None:
+        if exact is not None and scale is None:
             # every function is monotone in the rate
             if on == "mtbf":
                 return np.full(x.shape, 1.0 / float(exact.ppf(1.0 - level)))
             rate = float(exact.ppf(level))
             return rate * x if on == "cif" else np.full(x.shape, rate)
         return np.asarray(
-            self.posterior.wquantile(self._values(on, x), level), dtype=float
+            self.posterior.wquantile(self._values(on, x, scale), level),
+            dtype=float,
         ).reshape(x.shape)
 
     def cri(
@@ -1023,9 +1111,766 @@ def fit(
     return model
 
 
+# ---------------------------------------------------------------------------
+# Proportional intensity: covariates on a process
+# ---------------------------------------------------------------------------
+#: The default prior on a proportional intensity's coefficient is
+#: ``Normal(0, COEFFICIENT_SCALE / sd)``, ``sd`` its covariate's standard
+#: deviation over the systems: the regressions' default.
+COEFFICIENT_SCALE = 2.5
+
+
+def _pi_fitters(mle: Any) -> tuple[Any, Any]:
+    """The proportional intensity fitter of a fitted model, and the
+    intensity its baseline's functions come from."""
+    import surpyval.recurrent as recurrent
+
+    if getattr(mle, "kind", "") == "HPP":
+        return recurrent.ProportionalIntensityHPP, recurrent.HPP
+    return recurrent.ProportionalIntensityNHPP, mle.dist
+
+
+@register_target
+class ProportionalIntensityTarget(RecurrenceTarget):
+    """A proportional intensity model's side of a Bayesian fit: the
+    baseline's parameters and one coefficient a covariate, the fitter's
+    own likelihood, one system as the unit."""
+
+    tag = "proportional-intensity"
+
+    def __init__(self, mle: Any, data: EventHistoryData | None = None):
+        self.mle = mle
+        self.data = mle.data if data is None else data
+        self.fitter, self.baseline = _pi_fitters(mle)
+        self.k_base = len(self.baseline.parameter_names)
+        self.dist = self.fitter
+        self.names = list(mle._parameter_names())
+        self.bounds = list(mle._parameter_bounds())
+        self.fixed = {}
+        base = str(self.baseline.name)
+        base = base if base.endswith("Process") else f"{base} process"
+        self.family = f"Proportional intensity ({base} baseline)"
+        first, _ = self.data.item_rows()
+        #: Each system's covariate row.
+        self.Z_items = np.atleast_2d(np.asarray(self.data.Z, dtype=float))[
+            first
+        ]
+        self._finish()
+
+    def __reduce__(self) -> tuple:
+        return (type(self), (self.mle, self.data))
+
+    def _make_neg_ll(self, data: EventHistoryData) -> Any:
+        if getattr(self.mle, "kind", "") == "HPP":
+            f = self.fitter.create_negll_func(data)
+
+            def natural(theta: npt.NDArray) -> Any:
+                theta = np.asarray(theta, dtype=float)
+                return f(np.concatenate([[np.log(theta[0])], theta[1:]]))
+
+            return natural
+        f = self.fitter.create_negll_func(data, self.baseline)
+        return lambda theta: f(np.asarray(theta, dtype=float))
+
+    def _split(self, data: EventHistoryData) -> tuple:
+        s = data.split_for_nhpp_likelihood()
+        return s, _covariate_pieces(s, np.atleast_2d(data.Z))
+
+    def estimates(self) -> npt.NDArray:
+        return np.asarray(self.mle._mle, dtype=float)
+
+    def with_params(self, theta: npt.NDArray) -> Any:
+        import copy
+
+        theta = np.asarray(theta, dtype=float)
+        model = copy.copy(self.mle)
+        model.params = theta[: self.k_base]
+        model.coeffs = theta[self.k_base :]
+        model._mle = theta
+        return model
+
+    def simulate(self, theta: npt.NDArray, rng: Any) -> list:
+        self._refuse_truncated()
+        theta = np.asarray(theta, dtype=float)
+        base, coef = theta[: self.k_base], theta[self.k_base :]
+        lo = np.atleast_1d(self.baseline.cif(self.entry, *base))
+        hi = np.atleast_1d(self.baseline.cif(self.exit, *base))
+        rate = np.exp(self.Z_items @ coef)
+        out = []
+        for a, b, r in zip(lo, hi, rate):
+            m = int(rng.poisson(max(r * (b - a), 0.0)))
+            u = np.sort(a + (b - a) * rng.uniform(size=m))
+            out.append(
+                np.asarray(self.baseline.inv_cif(u, *base), dtype=float)
+            )
+        return out
+
+    def default_priors(self, spec: Any, fixed: dict) -> dict:
+        """``Normal(0, 2.5 / sd)`` for each coefficient with no prior,
+        ``sd`` its covariate's standard deviation over the systems."""
+        from surpyval.bayes.prior import NormalOnScale
+
+        covered = set(spec.single) | set(fixed)
+        for j in spec.joint:
+            if j.is_likelihood:
+                continue
+            if j.names is None:
+                return {}
+            covered |= set(j.names)
+        out = {}
+        for k, name in enumerate(self.names[self.k_base :]):
+            if name in covered:
+                continue
+            sd = float(np.std(self.Z_items[:, k]))
+            if not sd > 0:
+                raise ValueError(
+                    f"The covariate of {name} is the same for every "
+                    "system, so the data say nothing about its coefficient "
+                    "and it has no scale for a default prior. Leave the "
+                    f"column out, or give the coefficient a prior "
+                    f"(priors={{{name!r}: ...}})."
+                )
+            scale = COEFFICIENT_SCALE / sd
+            out[name] = NormalOnScale(
+                loc=0.0,
+                scale=scale,
+                kind="identity",
+                said=f"default: Normal(0, {scale:.4g}), which is "
+                f"{COEFFICIENT_SCALE:g} over the covariate's standard "
+                f"deviation ({sd:.4g})",
+            )
+        return out
+
+    def conjugate(self, bound: Any) -> Any | None:
+        return None
+
+    def quantities(self) -> dict:
+        return {}
+
+    def describe_data(self) -> str:
+        k = self.Z_items.shape[1]
+        return (
+            super().describe_data() + f", {k} covariate{'s' if k != 1 else ''}"
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "target": self.tag,
+            "mle": self.mle.to_dict(),
+            "data": self.data.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ProportionalIntensityTarget:
+        import surpyval
+
+        with ignoring_warnings():
+            mle = surpyval.from_dict(d["mle"])
+        return cls(mle, EventHistoryData.from_dict(d["data"]))
+
+
+def _is_pi_fit(model: Any) -> bool:
+    return (
+        type(model).__name__ == "ProportionalIntensityModel"
+        and getattr(model, "data", None) is not None
+        and getattr(model, "_mle", None) is not None
+        and not hasattr(model, "frailty")
+    )
+
+
+register_adapter(_is_pi_fit, lambda model: ProportionalIntensityTarget(model))
+
+
+class BayesianProportionalIntensity(BayesianRecurrence):
+    """
+    A Bayesian fit of a proportional intensity model
+    (``ProportionalIntensityHPP.fit_bayes``,
+    ``ProportionalIntensityNHPP.fit_bayes``): the posterior of the
+    baseline's parameters and the covariates' coefficients, with every
+    result given for a covariate set ``Z`` (one row: one kind of
+    system).
+
+    Attributes
+    ----------
+    params : numpy.ndarray
+        The posterior medians: the baseline's parameters, then the
+        coefficients (``parameter_names``).
+    default_priors : dict
+        The coefficients given ``Normal(0, 2.5 / sd)`` because none was
+        stated, in words.
+    method : str
+        ``"grid"`` (exact; up to three free parameters) or
+        ``"laplace"`` (approximate, with its checks in ``diagnostics``).
+
+    Examples
+    --------
+    Eight systems, half of them in a harsher duty (``Z = 1``):
+
+    >>> import numpy as np
+    >>> from surpyval.recurrent import ProportionalIntensityHPP
+    >>> rng = np.random.default_rng(1)
+    >>> x, Z, i, c = [], [], [], []
+    >>> for k in range(8):
+    ...     z = float(k % 2)
+    ...     m = rng.poisson(0.02 * np.exp(0.7 * z) * 300.0)
+    ...     x += [*np.sort(300.0 * rng.uniform(size=m)), 300.0]
+    ...     Z += [[z]] * (m + 1)
+    ...     i += [k] * (m + 1)
+    ...     c += [0] * m + [1]
+    >>> model = ProportionalIntensityHPP.fit_bayes(x, Z, i, c)
+    >>> model.method, model.parameter_names
+    ('grid', ['lambda', 'coef_0'])
+    >>> lo, hi = model.cri(300.0, [1.0], on="mtbf")
+    >>> bool(lo < model.mtbf(300.0, [1.0]) < hi)
+    True
+    >>> bool(model.mtbf(300.0, [0.0]) > model.mtbf(300.0, [1.0]))
+    True
+    """
+
+    model_tag = "BayesianProportionalIntensity"
+
+    def _scale(self, Z: Any) -> npt.NDArray:
+        """``exp(Z beta)`` at every posterior point, for one covariate
+        set."""
+        k = self.target.k_base
+        p = len(self.parameter_names) - k
+        z = np.asarray(Z, dtype=float).reshape(-1)
+        if z.size != p:
+            raise ValueError(
+                f"Z is one covariate set: {p} value"
+                f"{'s' if p != 1 else ''}, one for each of "
+                f"{', '.join(self.parameter_names[k:])}; got "
+                f"{np.shape(Z)}. Call once for each covariate set."
+            )
+        with np.errstate(over="ignore"):
+            out: npt.NDArray = np.exp(self.posterior.points[:, k:] @ z)
+        return out
+
+    def cif(self, x: npt.ArrayLike, Z: Any) -> npt.NDArray:
+        """The expected number of events by ``x`` for a system with
+        covariates ``Z``: the posterior mean."""
+        x = np.asarray(x, dtype=float)
+        v = self._values("cif", x, self._scale(Z))
+        return np.reshape(self.posterior.expectation(v), x.shape)
+
+    mcf = cif
+
+    def iif(self, x: npt.ArrayLike, Z: Any) -> npt.NDArray:
+        """The expected intensity at ``x`` for a system with covariates
+        ``Z``: the posterior mean."""
+        x = np.asarray(x, dtype=float)
+        v = self._values("iif", x, self._scale(Z))
+        return np.reshape(self.posterior.expectation(v), x.shape)
+
+    def mtbf(self, x: npt.ArrayLike, Z: Any) -> npt.NDArray:
+        """The instantaneous MTBF at ``x`` for a system with covariates
+        ``Z``: its posterior median."""
+        x = np.asarray(x, dtype=float)
+        return np.reshape(
+            self._quantile("mtbf", x, 0.5, self._scale(Z)), x.shape
+        )
+
+    def cri(  # type: ignore[override]
+        self,
+        x: npt.ArrayLike,
+        Z: Any,
+        on: str = "cif",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        A credible interval for the process of a system with covariates
+        ``Z`` at times ``x``.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times.
+        Z : array like
+            One covariate set (one value a covariate).
+        on : {'cif', 'iif', 'mtbf'}, optional
+            Default ``'cif'``.
+        alpha_ci : float, optional
+            1 minus the credible level. Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided adds a last ``[lower, upper]`` axis.
+        """
+        on = {"mcf": "cif", "intensity": "iif"}.get(on, on)
+        if on not in _ON:
+            raise ValueError(
+                f"on must be one of {', '.join(_ON)}; got {on!r}. "
+                "(param_cri gives a parameter's interval, function_cri "
+                "any function's.)"
+            )
+        levels = _levels(alpha_ci, bound)
+        shape = np.shape(x)
+        scale = self._scale(Z)
+        out = [
+            np.reshape(
+                self._quantile(on, np.asarray(x, float), level, scale), shape
+            )
+            for level in levels
+        ]
+        return np.stack(out, axis=-1) if len(out) == 2 else out[0]
+
+    def mtbf_cri(  # type: ignore[override]
+        self,
+        Z: Any,
+        x: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """A credible interval for the instantaneous MTBF of a system
+        with covariates ``Z``: now (``x`` left out: at :attr:`end`) or
+        at a later ``x``."""
+        at = self.end if x is None else x
+        return self.cri(at, Z, on="mtbf", alpha_ci=alpha_ci, bound=bound)
+
+    def mtbf_probability(  # type: ignore[override]
+        self, requirement: float, Z: Any, at: float | None = None
+    ) -> float:
+        """The posterior probability that the instantaneous MTBF of a
+        system with covariates ``Z``, at time ``at`` (by default
+        :attr:`end`), is at least ``requirement``."""
+        requirement = float(requirement)
+        if not requirement > 0:
+            raise ValueError(
+                f"requirement must be a positive MTBF; got {requirement!r}."
+            )
+        at = self.end if at is None else float(at)
+        values = self._values("mtbf", np.array([at]), self._scale(Z))[:, 0]
+        return float(self.posterior.weights @ (values >= requirement))
+
+    def count(  # type: ignore[override]
+        self,
+        Z: Any,
+        start: float | None = None,
+        end: float | None = None,
+        *,
+        duration: float | None = None,
+        systems: float = 1,
+    ) -> CountPrediction:
+        """The predictive distribution of the number of events in a
+        period for ``systems`` systems with covariates ``Z`` (see
+        :meth:`BayesianRecurrence.count`)."""
+        start = self.end if start is None else float(start)
+        if (end is None) == (duration is None):
+            raise ValueError(
+                "Give the period's end or its duration (one of them)."
+            )
+        if end is None:
+            assert duration is not None
+            end = start + float(duration)
+        end = float(end)
+        if not end > start:
+            raise ValueError(
+                f"The period must end after it starts; got ({start:g}, "
+                f"{end:g}]."
+            )
+        if not float(systems) > 0:
+            raise ValueError(f"systems must be positive; got {systems!r}.")
+        values = self._values("cif", np.array([start, end]), self._scale(Z))
+        means = float(systems) * (values[:, 1] - values[:, 0])
+        return CountPrediction(
+            means, self.posterior.weights, start, end, float(systems)
+        )
+
+
+def fit_proportional_intensity(
+    fitter: Any,
+    x: Any,
+    Z: Any,
+    i: Any = None,
+    c: Any = None,
+    n: Any = None,
+    t: Any = None,
+    tl: Any = None,
+    tr: Any = None,
+    *,
+    priors: Any = None,
+    method: str = "auto",
+    importance: bool = False,
+    points: int | None = None,
+    **fit_options: Any,
+) -> BayesianProportionalIntensity:
+    """The Bayesian fit of a proportional intensity model; see the
+    fitters' ``fit_bayes``."""
+    from surpyval.utils.no_maximum import quiet_maximum_warnings
+
+    try:
+        with quiet_maximum_warnings(), np.errstate(all="ignore"):
+            mle = fitter.fit(
+                x, Z, i=i, c=c, n=n, t=t, tl=tl, tr=tr, **fit_options
+            )
+    except ValueError as e:
+        raise ValueError(
+            "fit_bayes starts from the maximum-likelihood fit, which "
+            f"refuses these data: {e}"
+        ) from None
+    aliased = np.atleast_1d(getattr(mle, "aliased", ())).astype(int)
+    if aliased.size:
+        names = mle._coefficient_names()
+        raise ValueError(
+            "The data do not determine "
+            + ", ".join(names[j] for j in aliased.tolist())
+            + " (the coefficient of a column that is constant or a "
+            "combination of the others). Leave the column out."
+        )
+    model: BayesianProportionalIntensity = fit_target(
+        ProportionalIntensityTarget(mle),
+        priors,
+        method=method,
+        importance=importance,
+        points=points,
+        result=BayesianProportionalIntensity,
+    )
+    return model
+
+
+# ---------------------------------------------------------------------------
+# Cause-specific processes: one posterior a cause
+# ---------------------------------------------------------------------------
+#: The draws, and their seed, that combine the causes' posteriors into
+#: the total's.
+TOTAL_DRAWS = 4000
+TOTAL_SEED = 20261125
+
+
+class BayesianCauseSpecific(SerialisableMixin):
+    """
+    A Bayesian fit of cause-specific intensities
+    (``CauseSpecificNHPP.fit_bayes``): one process a failure cause, each
+    with its own posterior.
+
+    The causes' likelihoods are separate (each cause's events are an
+    independent thinning of the whole process), so with priors stated a
+    cause at a time their posteriors are independent, and each is the
+    :class:`BayesianRecurrence` of that cause's events, in ``models``.
+    The total over causes (``event=None``) combines them by
+    ``TOTAL_DRAWS`` joint draws with a fixed seed.
+
+    Attributes
+    ----------
+    models : dict
+        Each cause's Bayesian fit.
+    event_types : list
+        The causes.
+    mle : CauseSpecificNHPP
+        The maximum-likelihood fit to the same data.
+    end : float
+        The latest time observed.
+
+    Examples
+    --------
+    >>> import surpyval as sp
+    >>> from surpyval.recurrent import CauseSpecificNHPP
+    >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    >>> e = ["seal", "pump", "seal", "pump", "seal", "seal", "pump",
+    ...      "seal", "pump", "seal", "seal", None]
+    >>> model = CauseSpecificNHPP.fit_bayes(x, c=[0] * 11 + [1], e=e)
+    >>> sorted(model.models)
+    ['pump', 'seal']
+    >>> model.cri(400.0, "seal", on="mtbf").shape
+    (2,)
+    >>> lo, hi = model.cri(400.0, on="mtbf")       # all causes together
+    >>> bool(lo < hi < model.cri(400.0, "seal", on="mtbf")[1])
+    True
+    """
+
+    model_tag = "BayesianCauseSpecific"
+
+    def __init__(self, models: dict, mle: Any = None) -> None:
+        self.models = dict(models)
+        self.event_types = list(models)
+        self.mle = mle
+        self.end = float(max(m.end for m in models.values()))
+        self.method = {k: m.method for k, m in models.items()}
+        self.diagnostics = {k: m.diagnostics for k, m in models.items()}
+
+    def _cause(self, event: Any) -> BayesianRecurrence:
+        if event not in self.models:
+            raise ValueError(
+                f"No cause {event!r}; the causes are "
+                f"{', '.join(repr(k) for k in self.event_types)} "
+                "(event=None is all of them together)."
+            )
+        fit: BayesianRecurrence = self.models[event]
+        return fit
+
+    def _total(self, on: str, x: npt.NDArray) -> npt.NDArray:
+        """``on`` summed over the causes at joint draws, ``(draws, m)``:
+        the causes' posteriors are independent, so a joint draw is one
+        from each."""
+        x = np.asarray(x, dtype=float).reshape(-1)
+        total = np.zeros((TOTAL_DRAWS, x.size))
+        base = "cif" if on == "cif" else "iif"
+        for j, fit in enumerate(self.models.values()):
+            draws = fit.posterior.draws(
+                TOTAL_DRAWS, random_state=TOTAL_SEED + j
+            )
+            cols = _columns(draws)
+            fitter = fit.target.baseline
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                total = total + np.asarray(
+                    getattr(fitter, base)(x[None, :], *cols), dtype=float
+                )
+        return 1.0 / total if on == "mtbf" else total
+
+    def cif(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """The expected number of events of cause ``event`` by ``x``
+        (all causes for ``event=None``): the posterior mean."""
+        if event is not None:
+            return self._cause(event).cif(x)
+        x = np.asarray(x, dtype=float)
+        return sum(  # type: ignore[return-value]
+            np.asarray(m.cif(x)) for m in self.models.values()
+        )
+
+    def iif(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """The expected intensity of cause ``event`` at ``x`` (all
+        causes for ``event=None``): the posterior mean."""
+        if event is not None:
+            return self._cause(event).iif(x)
+        x = np.asarray(x, dtype=float)
+        return sum(  # type: ignore[return-value]
+            np.asarray(m.iif(x)) for m in self.models.values()
+        )
+
+    def mtbf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """The instantaneous MTBF at ``x``, counting failures of cause
+        ``event`` only, or of any cause (``event=None``): its posterior
+        median."""
+        if event is not None:
+            return self._cause(event).mtbf(x)
+        x = np.asarray(x, dtype=float)
+        return np.reshape(np.median(self._total("mtbf", x), axis=0), x.shape)
+
+    def cri(
+        self,
+        x: npt.ArrayLike,
+        event: Any = None,
+        on: str = "cif",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        A credible interval for one cause's process at times ``x``, or
+        for all causes together (``event=None``).
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times.
+        event : optional
+            The cause; ``None`` (the default) is the total.
+        on : {'cif', 'iif', 'mtbf'}, optional
+            Default ``'cif'``.
+        alpha_ci : float, optional
+            1 minus the credible level. Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided adds a last ``[lower, upper]`` axis.
+        """
+        if event is not None:
+            return self._cause(event).cri(x, on, alpha_ci, bound)
+        on = {"mcf": "cif", "intensity": "iif"}.get(on, on)
+        if on not in _ON:
+            raise ValueError(
+                f"on must be one of {', '.join(_ON)}; got {on!r}."
+            )
+        levels = _levels(alpha_ci, bound)
+        shape = np.shape(x)
+        values = self._total(on, np.asarray(x, dtype=float))
+        out = [
+            np.reshape(np.quantile(values, level, axis=0), shape)
+            for level in levels
+        ]
+        return np.stack(out, axis=-1) if len(out) == 2 else out[0]
+
+    def param_cri(
+        self,
+        event: Any,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """A credible interval for a parameter of one cause's process."""
+        return self._cause(event).param_cri(name, alpha_ci, bound)
+
+    def mtbf_probability(
+        self, requirement: float, event: Any = None, at: float | None = None
+    ) -> float:
+        """The posterior probability that the instantaneous MTBF at
+        ``at`` (by default :attr:`end`) is at least ``requirement``,
+        counting failures of cause ``event`` only or of any cause
+        (``event=None``)."""
+        if event is not None:
+            return self._cause(event).mtbf_probability(requirement, at)
+        requirement = float(requirement)
+        if not requirement > 0:
+            raise ValueError(
+                f"requirement must be a positive MTBF; got {requirement!r}."
+            )
+        at = self.end if at is None else float(at)
+        values = self._total("mtbf", np.array([at]))[:, 0]
+        return float(np.mean(values >= requirement))
+
+    def count(
+        self,
+        event: Any = None,
+        start: float | None = None,
+        end: float | None = None,
+        *,
+        duration: float | None = None,
+        systems: float = 1,
+    ) -> CountPrediction:
+        """The predictive distribution of the number of events of cause
+        ``event`` in a period, or of any cause (``event=None``); see
+        :meth:`BayesianRecurrence.count`."""
+        if event is not None:
+            return self._cause(event).count(
+                start, end, duration=duration, systems=systems
+            )
+        start = self.end if start is None else float(start)
+        if (end is None) == (duration is None):
+            raise ValueError(
+                "Give the period's end or its duration (one of them)."
+            )
+        if end is None:
+            assert duration is not None
+            end = start + float(duration)
+        end = float(end)
+        if not end > start:
+            raise ValueError(
+                f"The period must end after it starts; got ({start:g}, "
+                f"{end:g}]."
+            )
+        values = self._total("cif", np.array([start, end]))
+        means = float(systems) * (values[:, 1] - values[:, 0])
+        weights = np.full(len(means), 1.0 / len(means))
+        return CountPrediction(means, weights, start, end, float(systems))
+
+    def summary(self, alpha_ci: float = 0.05) -> str:
+        """Each cause's fit in words, one after another."""
+        parts = []
+        for cause, fit in self.models.items():
+            parts.append(f"Cause {cause!r}\n" + fit.summary(alpha_ci))
+        return "\n\n".join(parts)
+
+    def __repr__(self) -> str:
+        return self.summary()
+
+    def diagnose(self, replicates: int = 200, random_state: Any = 0) -> dict:
+        """Each cause's checks (``BayesianRecurrence.diagnose``), by
+        cause."""
+        return {
+            cause: fit.diagnose(replicates, random_state)
+            for cause, fit in self.models.items()
+        }
+
+    def to_dict(self) -> dict:
+        """A strict-JSON dictionary of the fit: each cause's, by the
+        cause's position in ``event_types`` (which is saved with
+        them)."""
+        import surpyval
+        from surpyval.serialisation import stamp_schema
+
+        return stamp_schema(
+            {
+                "model": self.model_tag,
+                "event_types": [
+                    k if isinstance(k, (str, bool)) or k is None else float(k)
+                    for k in self.event_types
+                ],
+                "models": [m.to_dict() for m in self.models.values()],
+                "surpyval_version": surpyval.__version__,
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> BayesianCauseSpecific:
+        """Rebuild a fit from :meth:`to_dict`."""
+        from surpyval.serialisation import require_model_tag
+
+        require_model_tag(
+            model_dict, cls.model_tag, "a Bayesian cause-specific fit"
+        )
+        models = {
+            cause: BayesianRecurrence.from_dict(d)
+            for cause, d in zip(
+                model_dict["event_types"], model_dict["models"]
+            )
+        }
+        return cls(models)
+
+
+def fit_cause_specific(
+    cls: Any,
+    x: Any,
+    i: Any = None,
+    c: Any = None,
+    n: Any = None,
+    e: Any = None,
+    tl: Any = None,
+    tr: Any = None,
+    *,
+    dist: Any = None,
+    priors: Any = None,
+    method: str = "auto",
+    importance: bool = False,
+    points: int | None = None,
+) -> BayesianCauseSpecific:
+    """The Bayesian fit of cause-specific intensities; see
+    ``CauseSpecificNHPP.fit_bayes``."""
+    from collections.abc import Mapping
+
+    from surpyval.utils.no_maximum import quiet_maximum_warnings
+
+    kwargs = {} if dist is None else {"dist": dist}
+    try:
+        with quiet_maximum_warnings(), np.errstate(all="ignore"):
+            mle = cls.fit(x, i=i, c=c, n=n, e=e, tl=tl, tr=tr, **kwargs)
+    except ValueError as err:
+        raise ValueError(
+            "fit_bayes starts from the maximum-likelihood fit, which "
+            f"refuses these data: {err}"
+        ) from None
+    causes = list(mle.event_types)
+    by_cause = (
+        isinstance(priors, Mapping)
+        and len(priors) > 0
+        and all(k in causes for k in priors)
+    )
+    if isinstance(priors, Mapping) and not by_cause:
+        if any(k in causes for k in priors):
+            raise ValueError(
+                "priors mixes causes and parameter names. Give either one "
+                "set for every cause (priors={'beta': ...}) or a set a "
+                "cause (priors={cause: {'beta': ...}}); the causes are "
+                f"{', '.join(repr(k) for k in causes)}."
+            )
+    models = {}
+    for cause in causes:
+        own = priors.get(cause) if by_cause else priors
+        fitted = mle.models[cause]
+        models[cause] = fit_target(
+            RecurrenceTarget(fitted.dist, fitted.data, fitted),
+            own,
+            method=method,
+            importance=importance,
+            points=points,
+            result=BayesianRecurrence,
+        )
+    return BayesianCauseSpecific(models, mle)
+
+
 __all__ = [
+    "BayesianCauseSpecific",
+    "BayesianProportionalIntensity",
     "BayesianRecurrence",
     "CountPrediction",
+    "ProportionalIntensityTarget",
     "RecurrenceTarget",
     "fit",
+    "fit_cause_specific",
+    "fit_proportional_intensity",
 ]
