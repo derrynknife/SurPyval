@@ -34,6 +34,8 @@ from surpyval.tests.conformance.registry import (
 # How each function scales with the time unit: value(K x) * K**power
 # in the new unit equals value(x) in the old one.
 _POWER = {"hf": 1, "df": 1, "iif": 1, "total_iif": 1, "pdf": 2, "qf": -1}
+# A mean time between failures is a time
+_POWER.update(mtbf=-1, total_mtbf=-1)
 
 
 def unit_power(case, key):

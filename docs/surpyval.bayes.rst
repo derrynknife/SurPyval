@@ -53,11 +53,15 @@ Recurrent-event processes
 -------------------------
 
 ``CrowAMSAA.fit_bayes`` and ``HPP.fit_bayes``; see "Reliability growth
-and repairable systems" in :doc:`Bayesian Fitting with SurPyval`.
+and repairable systems" in :doc:`Bayesian Fitting with SurPyval`. The
+results, ``BayesianRecurrence``, ``BayesianProportionalIntensity`` and
+``BayesianCauseSpecific``, are importable from ``surpyval.recurrent``
+(for ``isinstance`` checks and loading saved fits); they are made by
+``fit_bayes``, not built directly.
 
 .. automethod:: surpyval.recurrent.parametric._bayes_fit.BayesFitMixin.fit_bayes
 
-.. autoclass:: surpyval.recurrent.bayes.BayesianRecurrence
+.. autoclass:: surpyval.recurrent.BayesianRecurrence
    :members:
 
 .. autoclass:: surpyval.recurrent.bayes.CountPrediction
@@ -71,12 +75,12 @@ failure cause:
 
 .. automethod:: surpyval.recurrent.ProportionalIntensityHPP.fit_bayes
 
-.. autoclass:: surpyval.recurrent.bayes.BayesianProportionalIntensity
+.. autoclass:: surpyval.recurrent.BayesianProportionalIntensity
    :members:
 
 .. automethod:: surpyval.recurrent.CauseSpecificNHPP.fit_bayes
 
-.. autoclass:: surpyval.recurrent.bayes.BayesianCauseSpecific
+.. autoclass:: surpyval.recurrent.BayesianCauseSpecific
    :members:
 
 Comparing fits

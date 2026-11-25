@@ -2845,6 +2845,185 @@ def _bayes():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Bayesian fits of the recurrent-event processes (surpyval.recurrent.bayes)
+# ---------------------------------------------------------------------------
+def _bayes_hpp_priors(d):
+    """A Gamma prior on the HPP's rate whose second parameter is a time
+    (``prior_time``, rescaled with the data): the closed form."""
+    return {
+        "lambda": sp.Gamma.from_params(
+            [2.0, float(np.asarray(d["prior_time"]))]
+        )
+    }
+
+
+def _bayes_recurrence_fit(fitter, priors=None):
+    def run(d):
+        return fitter.fit_bayes(
+            d["x"],
+            d.get("i"),
+            d.get("c"),
+            d.get("n"),
+            priors=None if priors is None else priors(d),
+        )
+
+    return run
+
+
+def _bayes_recurrence_data_path(fitter, priors=None):
+    """The fixture as an event-history container."""
+
+    def run(d):
+        data = sp.handle_xicn(d["x"], d["i"], d["c"], d["n"])
+        return fitter.fit_bayes(
+            data, priors=None if priors is None else priors(d)
+        )
+
+    return run
+
+
+#: A recurrent-event Bayesian fit's credible intervals: ``cri`` on every
+#: function it takes, each parameter's, and the instantaneous MTBF now
+#: (at the latest time observed) and at a later time.
+_BAYES_RECURRENCE_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False),
+    Bound("param_cri", kind="param", wald=False),
+    Bound("mtbf_cri", kind="summary", query=((), (40.0,)), wald=False),
+)
+#: A proportional intensity fit's: the same, for one covariate set a call.
+_BAYES_PI_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False),
+    Bound("param_cri", kind="param", wald=False),
+    Bound(
+        "mtbf_cri",
+        kind="summary",
+        query=(([0.5],), ([1.0], 40.0)),
+        wald=False,
+    ),
+)
+#: Cause-specific fits': each cause's process, all causes together (4,000
+#: joint draws, fixed seed) and each cause's parameters.
+_BAYES_CAUSES_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False, per_cause=True),
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False, label="cri[total]"),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "alpha"), ("a", "beta"), ("b", "alpha"), ("b", "beta")),
+        wald=False,
+    ),
+)
+_BAYES_RECURRENCE_EXCLUDE = {
+    "convergence": "not an optimiser: the grid checks its own accuracy and "
+    "refuses when it cannot reach it, and a closed form has nothing to "
+    "starve (tests/bayes/test_recurrent_bayes.py)",
+    # (as for the maximum-likelihood fits of the same processes)
+    "counts": "the xicn format refuses a count above 1 on an event row",
+}
+
+
+def _bayes_recurrent():
+    def hpp_data():
+        return {**recurrent_data(), "prior_time": 20.0}
+
+    common = dict(
+        model_class="surpyval.recurrent.BayesianRecurrence",
+        interface=COUNTING,
+        functions=("cif", "iif", "mtbf"),
+        x=X_REC,
+        rows=("x", "i", "c", "n"),
+        explicit_seed=True,
+        draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+        exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+    )
+    out = [
+        # the grid, flat priors on the log scales (no time unit in them)
+        Case(
+            name="CrowAMSAA[bayes]",
+            fitters=("surpyval.recurrent.BayesianRecurrence",),
+            data=recurrent_data,
+            fit=_bayes_recurrence_fit(rc.CrowAMSAA),
+            paths={
+                "fit(data)": _bayes_recurrence_data_path(rc.CrowAMSAA),
+            },
+            rtol=1e-6,
+            **common,
+        ),
+        # the closed form
+        Case(
+            name="HPP[bayes]",
+            fitters=(),
+            data=hpp_data,
+            fit=_bayes_recurrence_fit(rc.HPP, _bayes_hpp_priors),
+            paths={
+                "fit(data)": _bayes_recurrence_data_path(
+                    rc.HPP, _bayes_hpp_priors
+                ),
+            },
+            times=("x", "prior_time"),
+            rtol=1e-9,
+            **common,
+        ),
+        Case(
+            name="ProportionalIntensityHPP[bayes]",
+            fitters=("surpyval.recurrent.BayesianProportionalIntensity",),
+            model_class="surpyval.recurrent.BayesianProportionalIntensity",
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(recurrent_data, True),
+            fit=lambda d: rc.ProportionalIntensityHPP.fit_bayes(
+                d["x"], d["Z"], d["i"], d["c"], d["n"]
+            ),
+            functions=("cif", "iif", "mtbf"),
+            x=X_REC,
+            Z=Z_REC,
+            # one covariate set a call
+            z_style="single",
+            rows=("x", "Z", "i", "c", "n"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.asarray(m.params[1:]),
+            # the baseline rate absorbs a constant
+            intercept=True,
+            explicit_seed=True,
+            draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+            rtol=1e-6,
+            exclude={
+                **_BAYES_RECURRENCE_EXCLUDE,
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+        Case(
+            name="CauseSpecificNHPP[bayes]",
+            fitters=("surpyval.recurrent.BayesianCauseSpecific",),
+            model_class="surpyval.recurrent.BayesianCauseSpecific",
+            interface=COUNTING_CAUSES,
+            data=functools.partial(recurrent_data, False, True),
+            fit=lambda d: rc.CauseSpecificNHPP.fit_bayes(
+                d["x"], d["i"], d["c"], d["n"], e=d["e"]
+            ),
+            # The total MTBF over the causes is a median of 4,000 joint
+            # draws (fixed seeds, one a cause in order): a Monte Carlo
+            # number, not a function the change of unit or of labels
+            # keeps to 1e-6. Its interval is swept (cri[total]).
+            functions=("cif", "iif"),
+            event_functions=("cif", "iif", "mtbf"),
+            events=("a", "b"),
+            x=X_REC,
+            rows=("x", "i", "c", "n", "e"),
+            rtol=1e-6,
+            exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+        ),
+    ]
+    return out
+
+
 def _bayes_regression_fit(d):
     """A Bayesian Weibull proportional hazards fit (the Laplace engine): a
     prior on the shape, the default on the coefficients."""
@@ -3139,6 +3318,7 @@ CASES: list[Case] = (
     + _panel_multistate()
     + _bayes()
     + _bayes_regression()
+    + _bayes_recurrent()
     + _panel_count()
     + _relative()
 )
@@ -3348,6 +3528,16 @@ NO_DF_PATH: dict[str, str] = {
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
+    **{
+        name: "fit_bayes takes arrays or an event-history container; the "
+        "recurrent-event fitters have no fit_bayes_from_df yet"
+        for name in (
+            "CrowAMSAA[bayes]",
+            "HPP[bayes]",
+            "ProportionalIntensityHPP[bayes]",
+            "CauseSpecificNHPP[bayes]",
+        )
+    },
 }
 
 
@@ -4056,6 +4246,9 @@ def _bounds(case):
             ),
         ),
         "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
+        "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
+        "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,
+        "BayesianCauseSpecific": _BAYES_CAUSES_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
