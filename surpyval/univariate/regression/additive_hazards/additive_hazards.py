@@ -57,6 +57,10 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
@@ -921,6 +925,7 @@ class AdditiveHazards_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric additive hazards fitter"
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1033,10 +1038,15 @@ class AdditiveHazards_(FitterRepr):
         model._fit_data = (x, c, n, Z)
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1122,7 +1132,7 @@ class AdditiveHazards_(FitterRepr):
         >>> rng = np.random.default_rng(3)
         >>> Z = rng.normal(size=(300, 4))
         >>> x = rng.exponential(1 / (0.2 + 0.05 * Z[:, 0] + 0.05))
-        >>> model = AdditiveHazards.fit_penalised(
+        >>> model = AdditiveHazards.fit(
         ...     x, Z, penalizer=0.1, l1_ratio=1
         ... )
         >>> model.beta.round(4)

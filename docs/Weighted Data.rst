@@ -425,8 +425,8 @@ below).
 Penalised fits with weights
 ---------------------------
 
-``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the parametric
-families' ``fit_penalised`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
+``CoxPH.fit(..., penalizer=...)``, ``CoxPH.fit_tvc(..., penalizer=...)`` and the parametric
+families' ``fit(..., penalizer=...)`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
 and the others) take ``w``. A penalised fit divides the log-likelihood by
 the number of units before adding the penalty; with weights that number is
 the weighted one, :math:`N_w = \sum n w`, and the covariates are

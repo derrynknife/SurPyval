@@ -8,8 +8,8 @@ the fitter class below. Its fit methods cover ordinary data (``fit``,
 ``fit_from_df``, with right censoring, left truncation, a choice of tie
 handling and optional strata) and time-varying covariates in start-stop
 form (``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df``
-versions), with penalised fits beside them (``fit_penalised`` for ridge,
-lasso and elastic net; ``fit_firth`` for Firth's penalty, which keeps the
+versions), with penalised fits beside them (``fit(..., penalizer=...)`` for ridge,
+lasso and elastic net; ``fit(..., firth=True)`` for Firth's penalty, which keeps the
 estimates finite where a covariate separates the events from the
 survivors); ``fit(..., time_interaction=)`` gives a covariate a coefficient
 that changes with time, :math:`\beta + \gamma g(t)`. The theory is in
@@ -59,7 +59,7 @@ coefficient over time its ``time_varying_effect`` returns.
 Firth's fit
 -----------
 
-The ``firth`` attribute of a model fitted by ``CoxPH.fit_firth``.
+The ``firth`` attribute of a model fitted by ``CoxPH.fit(..., firth=True)``.
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult
    :members: likelihood_ratio_test, to_dict, from_dict

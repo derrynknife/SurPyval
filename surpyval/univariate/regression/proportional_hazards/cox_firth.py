@@ -99,7 +99,7 @@ def refuse_firth_information_criterion(name: str) -> FirthRefusal:
     Firth fit: what it is, why, and what to use instead."""
     return FirthRefusal(
         f"{name} is not available for a Firth-penalised Cox fit "
-        f"(CoxPH.fit_firth): {FIRTH_IC_WHY}. {FIRTH_IC_INSTEAD}"
+        f"(CoxPH.fit(..., firth=True)): {FIRTH_IC_WHY}. {FIRTH_IC_INSTEAD}"
     )
 
 
@@ -728,7 +728,8 @@ def _model(
 
 #: The fix the monotone-likelihood warning of a Cox fit names.
 FIRTH_ADVICE = (
-    "refit with CoxPH.fit_firth (Firth's penalised partial likelihood), "
+    "refit with CoxPH.fit(..., firth=True) (Firth's penalised partial "
+    "likelihood), "
     "which keeps the estimates finite and gives profile-likelihood "
     "intervals and tests, or remove or coarsen the covariate"
 )

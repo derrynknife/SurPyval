@@ -978,7 +978,7 @@ def test_few_events_per_coefficient_are_warned_of_once():
     few = [w for w in caught if "per coefficient" in str(w.message)]
     assert events < 20 and len(few) == 1
     assert f"has {events} events for 2 coefficients" in str(few[0].message)
-    assert "fit_penalised" in str(few[0].message)
+    assert "penalizer=" in str(few[0].message)
     assert model.cause == 1
     x, Z, e, c = _simulate_fine_gray(400, seed=3)
     with warnings.catch_warnings(record=True) as caught:

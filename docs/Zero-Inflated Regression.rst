@@ -192,7 +192,7 @@ is possible too (``covariates={"beta": [...]}``), as in a
 :doc:`distributional regression <Distributional Regression>`, of which
 this model is a member: the fits, checks, bounds (``cb``, ``param_cb``
 and ``param_cb`` with ``Z``, with Wald, likelihood-ratio and bootstrap methods),
-weights, ``fit_penalised``, ``to_dict`` and ``from_dict`` are that
+weights, ``fit(..., penalizer=...)``, ``to_dict`` and ``from_dict`` are that
 family's. ``ZeroInflated(Weibull, incidence="probit")`` (or
 ``"cloglog"``) changes the link of ``f0``.
 

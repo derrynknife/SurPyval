@@ -47,10 +47,10 @@ frailty (``group=``) or on a given frailty (``frailty=``). Like the
 parametric regression models it reports ``neg_ll()``, ``aic()``,
 ``bic()`` and ``aic_c()`` (``theta`` counted as a parameter), so a
 frailty fit can be compared directly with the proportional-hazards fit it
-reduces to at ``theta = 0``. ``fit_penalised`` adds a ridge, lasso or
+reduces to at ``theta = 0``. ``fit(..., penalizer=...)`` adds a ridge, lasso or
 elastic-net penalty on the coefficients (the baseline and ``theta`` are not
 penalised); where its objective is smallest at ``theta = 0`` it is the
-penalised proportional-hazards fit (``WeibullPH.fit_penalised`` for
+penalised proportional-hazards fit (``WeibullPH.fit(..., penalizer=...)`` for
 ``WeibullFrailty``). See the penalised regression section of
 :doc:`/Regression Modelling with SurPyval`.
 

@@ -53,6 +53,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -535,6 +539,7 @@ class ZeroInflatedFitter(DistributionalFitter):
 
     # -- fitting -------------------------------------------------------------
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -744,10 +749,15 @@ class ZeroInflatedFitter(DistributionalFitter):
                     start += m
         return onp.r_[base, coefs]
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -772,7 +782,7 @@ fit_penalised`), on the rows as :meth:`fit` reads them: both parts are
         t = _untruncated_at_zero(truncation_window(x, t, tl, tr))
         data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
         xz, cz, nz, tz, wz = _zero_inflated_rows(data)
-        model = DistributionalFitter.fit_penalised(
+        model = DistributionalFitter._fit_penalised(
             self,
             xz,
             Z,

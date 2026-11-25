@@ -4938,7 +4938,7 @@ Penalised regression: ridge, lasso and elastic net
 
 With many covariates, or correlated ones, the maximum likelihood
 coefficients can be unstable or not exist at all. A penalty on their size
-steadies them: ``fit_penalised`` on ``CoxPH`` and on the parametric
+steadies them: ``fit(..., penalizer=...)`` on ``CoxPH`` and on the parametric
 proportional hazards, AFT and proportional odds fitters minimises the
 negative log-likelihood (the partial likelihood for Cox) divided by the
 number of units, plus
@@ -4973,7 +4973,7 @@ yourself with ``ddof=1`` and turn the package's standardisation off:
 .. code-block:: python
 
     sd = rossi[cols].std(ddof=1)  # pandas' default divisor is N - 1
-    ridge_ll = CoxPH.fit_penalised(rossi['week'], rossi[cols] / sd,
+    ridge_ll = CoxPH.fit(rossi['week'], rossi[cols] / sd,
                                    c=rossi['censored'], penalizer=0.05,
                                    standardise=False)
     ridge_ll.params / sd.values   # in the covariates' own units
@@ -4990,9 +4990,9 @@ is close to, but not exactly, the lasso.)
     rossi['censored'] = 1 - rossi['arrest']
     cols = ['fin', 'age', 'race', 'wexp', 'mar', 'paro', 'prio']
     full = CoxPH.fit(rossi['week'], rossi[cols], c=rossi['censored'])
-    ridge = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    ridge = CoxPH.fit(rossi['week'], rossi[cols],
                                 c=rossi['censored'], penalizer=0.05)
-    lasso = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    lasso = CoxPH.fit(rossi['week'], rossi[cols],
                                 c=rossi['censored'], penalizer=0.05,
                                 l1_ratio=1.0)
     pd.DataFrame({'unpenalised': full.params, 'ridge': ridge.params,
@@ -5039,7 +5039,7 @@ and the global ``likelihood_ratio_test``: a penalised estimate does not
 maximise the likelihood, so neither its sandwich nor twice its gain in
 log-likelihood has the distribution those calls rely on.
 
-**Strata and truncation.** ``CoxPH.fit_penalised`` takes ``strata``, as
+**Strata and truncation.** ``CoxPH.fit(..., penalizer=...)`` takes ``strata``, as
 ``CoxPH.fit`` does: a baseline hazard per stratum and one set of
 coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
 standardisation are over all the rows, not within each stratum. It takes
@@ -5048,14 +5048,14 @@ with ``tl=start``; with no subject ids, ``N`` is then the number of *rows*
 (weighted by ``n``), as in glmnet, so a subject split into ten rows counts
 ten times in the penalty's scale, and the same ``penalizer`` shrinks less
 the more rows the follow-up is split into. For start-stop data use
-``CoxPH.fit_tvc_penalised(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
+``CoxPH.fit_tvc(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
 for which the partial likelihood has no term: the parametric penalised fits
 take every kind of censoring and truncation (left, right or both).
 
 .. jupyter-execute::
 
     strat_cols = ['fin', 'age', 'race', 'mar', 'paro', 'prio']
-    stratified = CoxPH.fit_penalised(rossi['week'], rossi[strat_cols],
+    stratified = CoxPH.fit(rossi['week'], rossi[strat_cols],
                                      c=rossi['censored'],
                                      strata=rossi['wexp'], penalizer=0.05,
                                      l1_ratio=0.5)
@@ -5068,8 +5068,8 @@ take every kind of censoring and truncation (left, right or both).
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
 
-**Weights.** ``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the
-parametric families' ``fit_penalised`` take sampling weights ``w``, as
+**Weights.** ``CoxPH.fit(..., penalizer=...)``, ``CoxPH.fit_tvc(..., penalizer=...)`` and the
+parametric families' ``fit(..., penalizer=...)`` take sampling weights ``w``, as
 their ``fit`` does (see :doc:`Weighted Data`). In plain words: each row
 counts ``w`` times as much in the likelihood, in the number of units the
 penalty is measured against and in the covariates' standard deviations, so
@@ -5087,7 +5087,7 @@ likelihood of ``CoxPH.fit(w=)`` for Cox) and the covariates standardised
 by their :math:`n w`-weighted standard deviations with divisor
 :math:`N_w`: glmnet's ``weights``, which the Cox fit matches to 1e-6
 (ridge, lasso and elastic net, Breslow and Efron). For start-stop data
-(``fit_tvc_penalised``) :math:`N_w` sums over the subjects, each weighted
+(``fit_tvc(..., penalizer=...)``) :math:`N_w` sums over the subjects, each weighted
 by its rows' weights averaged over its follow-up. A weighted penalised fit
 has no standard errors, robust ones included, and its ``aic`` and ``bic``
 are refused, as for every weighted fit; a ``penalty_path`` of weighted fits
@@ -5096,7 +5096,7 @@ has the coefficients but cannot choose the penalty by them.
 .. jupyter-execute::
 
     w = 0.5 + (np.arange(len(rossi)) % 5) / 2   # survey weights, say
-    weighted = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    weighted = CoxPH.fit(rossi['week'], rossi[cols],
                                    c=rossi['censored'], w=w,
                                    penalizer=0.05, l1_ratio=0.5)
     weighted.params.round(4)
@@ -5105,7 +5105,7 @@ has the coefficients but cannot choose the penalty by them.
     :hide-code:
     :hide-output:
 
-    rescaled = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    rescaled = CoxPH.fit(rossi['week'], rossi[cols],
                                    c=rossi['censored'], w=10 * w,
                                    penalizer=0.05, l1_ratio=0.5)
     assert np.allclose(rescaled.params, weighted.params, atol=1e-10)
@@ -5113,23 +5113,23 @@ has the coefficients but cannot choose the penalty by them.
 
 **More models.** The same objective, standardisation and refusals apply to
 
-- ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``
+- ``RoystonParmarPH.fit(..., penalizer=...)`` and ``RoystonParmarPO.fit(..., penalizer=...)``
   (and any ``RoystonParmarRegression``): the knots are placed as for
   ``fit``, then the PH or PO family on the spline baseline is fitted with
   the penalty; the spline coefficients are not penalised.
-- ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
+- ``CoxPH.fit_tvc(..., penalizer=...)`` and ``CoxPH.fit_tvc_timeline(..., penalizer=...)``: the
   start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
   ``N`` the number of *subjects* and the covariates standardised over the
   subjects, each subject's covariate averaged over its follow-up (each row
   weighted by its length). Splitting a subject's follow-up into more rows
   changes neither the partial likelihood nor these, so it does not change
   the fit.
-- ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
+- ``CompetingRisksProportionalHazards.fit(..., penalizer=...)``: the cause-specific
   Cox model, one penalised Cox fit per cause with the other causes
   censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
   fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
   causes, and ``models`` holds each cause's penalised Cox model.
-- ``FineGray.fit_penalised``: the Fine-Gray model's weighted partial
+- ``FineGray.fit(..., penalizer=...)``: the Fine-Gray model's weighted partial
   likelihood (the subdistribution risk sets with their censoring weights)
   over ``N``, the units, plus the penalty: the objective of R's
   ``fastcmprsk::fastCrrp``. The weighted partial likelihood is a Cox
@@ -5138,7 +5138,7 @@ has the coefficients but cannot choose the penalty by them.
   baseline, risk sets and censoring distribution per stratum, ``N`` and the
   standardisation over every row); ``cluster`` only changes a covariance,
   which a penalised model does not have, and weights are refused.
-- ``AdditiveHazards.fit_penalised``: Lin and Ying's estimating equation
+- ``AdditiveHazards.fit(..., penalizer=...)``: Lin and Ying's estimating equation
   ``A beta = b`` is the gradient of the quadratic loss
   :math:`\tfrac12 \beta' A \beta - b' \beta`, which takes the place of the
   negative log-likelihood (Gorst-Rasmussen and Scheike 2012; R's
@@ -5151,24 +5151,24 @@ has the coefficients but cannot choose the penalty by them.
   unit. There is no likelihood, so no ``aic`` or ``bic``, and a
   ``penalty_path`` of it has the coefficients but no criterion to choose
   by.
-- ``ProportionalOdds.fit_penalised``: the semi-parametric proportional odds
+- ``ProportionalOdds.fit(..., penalizer=...)``: the semi-parametric proportional odds
   model's profile likelihood (the baseline odds maximised out at each
   ``beta``), with its exact gradient and Hessian, so the solver and its
   check are those of the other fits; delayed entry ``tl`` is taken.
-- ``WeibullFrailty.fit_penalised`` (any ``Frailty(dist, family=...)``):
+- ``WeibullFrailty.fit(..., penalizer=...)`` (any ``Frailty(dist, family=...)``):
   the marginal likelihood of the shared-frailty model, the frailty
   variance ``theta`` and the baseline not penalised. ``theta = 0``, no
   shared frailty, is the edge of its space; where the objective is
   smallest there the fit is the penalised proportional hazards fit of the
-  same baseline (``WeibullPH.fit_penalised``), with ``theta`` 0.
-- ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+  same baseline (``WeibullPH.fit(..., penalizer=...)``), with ``theta`` 0.
+- ``fit_tvc(..., penalizer=...)`` and ``fit_tvc_timeline(..., penalizer=...)`` of the
   parametric PH and PO families and of the AFT family: the start-stop or
   timeline data of ``fit_tvc`` (for AFT, its accumulated-age likelihood),
   with ``N`` the subjects and the covariates standardised over the
-  subjects, as ``CoxPH.fit_tvc_penalised``, so splitting a subject's rows
+  subjects, as ``CoxPH.fit_tvc(..., penalizer=...)``, so splitting a subject's rows
   does not change the fit. The parametric additive hazards models have no
   penalised fit (their coefficients are rates; see below) and refuse.
-- ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
+- ``ProportionalIntensityHPP.fit(..., penalizer=...)``: the recurrent-event model
   with a constant baseline rate, ``N`` the number of items and the
   covariates standardised over the items; for exact event times it is
   glmnet's Poisson regression of each item's events with the log of its
@@ -5176,12 +5176,12 @@ has the coefficients but cannot choose the penalty by them.
   covariance, bounds (``cif_cb``, ``iif_cb``, ``param_cb``) or
   ``cramer_von_mises`` bootstrap. The models with a non-homogeneous
   baseline (``ProportionalIntensityNHPP``) have no penalised fit yet.
-- ``WeibullDistributional.fit_penalised`` and the other distributional
+- ``WeibullDistributional.fit(..., penalizer=...)`` and the other distributional
   regressions: covariates on every parameter, with ``penalizer`` one value,
   one per covariate column (that column on every parameter), or one per
   parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
   named is not penalised). The intercepts are not penalised. With
-  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``,
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit(..., penalizer=...)``,
   coefficient for coefficient: the scale's coefficients take the AFT sign
   (``model.coefficient_signs``), a positive one a shorter life.
 
@@ -5189,7 +5189,7 @@ has the coefficients but cannot choose the penalty by them.
 
     from surpyval import WeibullDistributional
 
-    shape_too = WeibullDistributional.fit_penalised(
+    shape_too = WeibullDistributional.fit(
         rossi['week'], rossi[['fin', 'age', 'prio']], c=rossi['censored'],
         penalizer={'alpha': 0.01, 'beta': 0.1}, l1_ratio=1.0)
     pd.Series(shape_too.params, index=shape_too.parameter_names).round(4)
@@ -5215,7 +5215,7 @@ smallest. BIC charges more for each coefficient, so it keeps fewer.
 
     from surpyval import penalty_path
 
-    path = penalty_path(CoxPH.fit_penalised, rossi['week'], rossi[cols],
+    path = penalty_path(CoxPH.fit, rossi['week'], rossi[cols],
                         c=rossi['censored'], l1_ratio=1.0, n_penalties=10)
     path.table().round(4)
 
@@ -5254,10 +5254,10 @@ weighted, and they refuse them rather than ignore them.
 
     from surpyval import AdditiveHazards, ProportionalOdds
 
-    lin_ying = AdditiveHazards.fit_penalised(
+    lin_ying = AdditiveHazards.fit(
         rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
         l1_ratio=1.0)
-    odds = ProportionalOdds.fit_penalised(
+    odds = ProportionalOdds.fit(
         rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
         l1_ratio=1.0)
     pd.DataFrame({'excess hazard per week': lin_ying.params,
@@ -5279,11 +5279,11 @@ Sometimes every event happens in one group: all the deaths are among the
 treated patients, or every failure is on the units from one supplier.
 Then the partial likelihood keeps rising as that group's hazard ratio
 grows, the ordinary Cox estimate is infinite, and ``CoxPH.fit`` warns "No
-finite maximum" (it names the coefficients and suggests ``fit_firth``).
+finite maximum" (it names the coefficients and suggests ``fit(..., firth=True)``).
 This is called *monotone likelihood*, or separation, and it is common in
 small studies with a rare event.
 
-``CoxPH.fit_firth`` fits the model with Firth's penalty (Heinze and
+``CoxPH.fit(..., firth=True)`` fits the model with Firth's penalty (Heinze and
 Schemper 2001). In words: it adds a small term that grows very negative
 as the information about a coefficient vanishes, which is exactly what
 happens as a coefficient runs off to infinity, so the estimate stays
@@ -5320,7 +5320,7 @@ and reports the Wald intervals and p-values.
     c_sep = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
     Z_sep = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
                       [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
-    firth = CoxPH.fit_firth(x_sep, Z_sep, c=c_sep)
+    firth = CoxPH.fit(x_sep, Z_sep, c=c_sep, firth=True)
     firth
 
 .. jupyter-execute::
@@ -5334,7 +5334,7 @@ and reports the Wald intervals and p-values.
     assert firth.maximum == 'verified', firth.maximum
     assert np.all(np.isfinite(firth.firth.upper))
 
-``fit_firth`` takes delayed entry ``tl`` (so start-stop rows, as
+``fit(..., firth=True)`` takes delayed entry ``tl`` (so start-stop rows, as
 ``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
 covariate the partial likelihood cannot estimate at all (a constant
 column, say), since the penalty has no value there, and it does not take

@@ -238,7 +238,7 @@ The checks
     ``d.tables['proportional_hazards']`` is the test on one scale, the
     ``transform`` given to ``diagnose()``, as ``cox.zph`` prints it, and
     with ``transform='identity'`` or ``'log'`` the rows test on that
-    scale too. A penalised fit (``CoxPH.fit_penalised``) refuses: it has
+    scale too. A penalised fit (``CoxPH.fit(..., penalizer=...)``) refuses: it has
     no p-values. (lifelines, and R before
     version 3.0, compute Grambsch and Therneau's approximation of it,
     whose statistics differ a little in small samples.)

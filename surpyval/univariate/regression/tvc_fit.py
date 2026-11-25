@@ -34,6 +34,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
+
 from ._aliasing import covariate_columns
 from .regression_data import design_matrix_from_df
 
@@ -199,6 +204,7 @@ class TVCFitMixin:
     ``fit(x, Z, c, n, t, ...)`` method that accepts truncation ``t`` as a
     ``[tl, tr]`` matrix."""
 
+    @penalty_argument("_fit_tvc_penalised")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -316,7 +322,12 @@ class TVCFitMixin:
         _count_subjects(model, first, counts, n_arr)
         return model
 
-    def fit_tvc_penalised(
+    fit_tvc_penalised = penalised_entry(
+        "_fit_tvc_penalised",
+        "call fit_tvc(..., penalizer=...); its default was penalizer=0.1",
+    )
+
+    def _fit_tvc_penalised(
         self,
         i: npt.ArrayLike,
         xl: npt.ArrayLike,
@@ -389,7 +400,7 @@ class TVCFitMixin:
         >>> c = np.r_[np.where(one, 0, 1), np.zeros((~one).sum(), dtype=int)]
         >>> stress = np.r_[np.zeros(n), np.ones((~one).sum())]
         >>> Z = np.column_stack([stress, rng.normal(size=(n, 2))[i]])
-        >>> model = WeibullPH.fit_tvc_penalised(
+        >>> model = WeibullPH.fit_tvc(
         ...     i, xl, xr, c, Z, penalizer=0.05, l1_ratio=1
         ... )
         >>> model.params.round(3)  # alpha, beta (shape), coefficients
@@ -402,13 +413,14 @@ class TVCFitMixin:
         kind = getattr(self, "_penalised_kind", None)
         if kind is None:
             raise ValueError(
-                "fit_tvc_penalised is not available for the parametric "
+                "A penalised fit_tvc is not available for the parametric "
                 "additive hazards models, which have no penalised fit: "
                 "their coefficients are rates (an excess hazard per unit of "
                 "time), so a penalty on their size would depend on the unit "
                 "of time. Fit the unpenalised model with fit_tvc, or a "
-                "penalised proportional hazards (WeibullPH.fit_tvc_penalised) "
-                "or Cox (CoxPH.fit_tvc_penalised) model."
+                "penalised proportional hazards (WeibullPH.fit_tvc(..., "
+                "penalizer=...)) or Cox (CoxPH.fit_tvc(..., penalizer=...)) "
+                "model."
             )
         refuse_weights(w)
         x, c_arr, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
@@ -442,7 +454,13 @@ class TVCFitMixin:
         _count_subjects(model, first, counts, n_arr)
         return model
 
-    def fit_tvc_timeline_penalised(
+    fit_tvc_timeline_penalised = penalised_entry(
+        "_fit_tvc_timeline_penalised",
+        "call fit_tvc_timeline(..., penalizer=...); its default was "
+        "penalizer=0.1",
+    )
+
+    def _fit_tvc_timeline_penalised(
         self,
         i: npt.ArrayLike,
         x: npt.ArrayLike,
@@ -476,7 +494,7 @@ class TVCFitMixin:
         from .proportional_hazards.tvc import handle_tvc_timeline
 
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
-        return self.fit_tvc_penalised(
+        return self._fit_tvc_penalised(
             i_ss,
             xl,
             xr,
@@ -490,6 +508,7 @@ class TVCFitMixin:
             w=w,
         )
 
+    @penalty_argument("_fit_tvc_timeline_penalised")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,

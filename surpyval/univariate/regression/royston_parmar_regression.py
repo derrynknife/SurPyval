@@ -52,6 +52,10 @@ from surpyval.univariate.parametric.royston_parmar import (
     rcs_basis,
     rcs_deriv,
 )
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -343,6 +347,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         baseline = SplineBaseline(knots, self.scale)
         return (PH if self.scale == "hazard" else PO)(baseline)
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -412,10 +417,15 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
             x, Z, c=c, n=n, t=t, init=init, fixed=fixed, center=center, w=w
         )
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -459,7 +469,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         >>> rng = np.random.default_rng(2)
         >>> Z = rng.normal(size=(300, 3))
         >>> x = 10 * rng.weibull(1.5, 300) * np.exp(-0.4 * Z[:, 0])
-        >>> model = RoystonParmarPH.fit_penalised(
+        >>> model = RoystonParmarPH.fit(
         ...     x, Z, penalizer=0.05, l1_ratio=1
         ... )
         >>> model.params[-3:].round(3)
@@ -472,7 +482,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         knots = self.knots
         if knots is None:
             knots = regression_knots(x, Z, c, n, t, self.df)
-        return self.family(knots).fit_penalised(
+        return self.family(knots)._fit_penalised(
             x,
             Z,
             c=c,

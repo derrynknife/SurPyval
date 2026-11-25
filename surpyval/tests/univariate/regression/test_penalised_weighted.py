@@ -481,7 +481,7 @@ def test_weighted_parametric_round_trip_and_data(data):
     held = sp.SurpyvalData(x=x, c=c, Z=Z, w=w)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        from_data = WeibullPH.fit_penalised(held, penalizer=0.05)
+        from_data = WeibullPH.fit(held, penalizer=0.05)
     np.testing.assert_allclose(from_data.params, model.params, atol=1e-9)
 
 

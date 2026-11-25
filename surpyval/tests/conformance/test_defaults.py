@@ -36,9 +36,18 @@ FITTERS = sorted({f for case in CASES for f in case.fitters})
 
 def _entry_points(fitter):
     """name -> signature of each public ``fit*`` method of ``fitter``."""
+    from surpyval.utils.deprecation import RenamedAttribute
+
+    owner = fitter if isinstance(fitter, type) else type(fitter)
     out = {}
     for name in dir(fitter):
         if not name.startswith("fit"):
+            continue
+        if isinstance(
+            inspect.getattr_static(owner, name, None), RenamedAttribute
+        ):
+            # a deprecated old name (fit_penalised, v0.30), whose defaults
+            # are its own until it goes
             continue
         method = getattr(fitter, name)
         if not callable(method):

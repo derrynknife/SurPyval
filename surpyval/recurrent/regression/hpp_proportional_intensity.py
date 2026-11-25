@@ -20,6 +20,10 @@ from surpyval.univariate.regression._aliasing import (
     dataframe_covariates,
     fit_columns,
 )
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
@@ -251,6 +255,7 @@ class ProportionalIntensityHPP(
 
         return negll_func
 
+    @penalty_argument("_fit_penalised")
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
@@ -437,11 +442,16 @@ class ProportionalIntensityHPP(
         )
         return mark_tvc(out, rows)
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     @accepts_event_history_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: ArrayLike,
         Z: ArrayLike,
@@ -508,7 +518,7 @@ class ProportionalIntensityHPP(
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
         >>> Z = df[["fin", "age", "prio"]].values
-        >>> model = ProportionalIntensityHPP.fit_penalised(
+        >>> model = ProportionalIntensityHPP.fit(
         ...     df["week"].values, Z, i=np.arange(len(df)),
         ...     c=1 - df["arrest"].values, penalizer=0.02, l1_ratio=1,
         ... )

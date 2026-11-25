@@ -1,9 +1,10 @@
 """The coefficient path of a penalised fit, and the penalty an information
 criterion chooses: :func:`penalty_path`.
 
-A penalised fit (``fit_penalised``) needs a ``penalizer``. The path fits
-the model over a grid of penalties, from the smallest one that sets every
-coefficient to 0 down to a small fraction of it, and records each fit's
+A penalised fit (``fit(..., penalizer=...)``) needs a ``penalizer``. The
+path fits the model over a grid of penalties, from the smallest one that
+sets every coefficient to 0 down to a small fraction of it, and records
+each fit's
 coefficients, effective degrees of freedom, log-likelihood, AIC and BIC.
 The AIC and BIC count the effective degrees of freedom of each fit (Gray
 1992; the number of non-zero coefficients for the lasso), so they trade
@@ -76,7 +77,7 @@ class PenaltyPath:
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
     >>> path = penalty_path(
-    ...     CoxPH.fit_penalised, df["week"], df[["fin", "age", "prio"]],
+    ...     CoxPH.fit, df["week"], df[["fin", "age", "prio"]],
     ...     c=1 - df["arrest"], l1_ratio=1, n_penalties=5,
     ... )
     >>> len(path), path.coefficients.shape
@@ -311,13 +312,13 @@ def penalty_path(
     Fit a penalised model over a path of penalties, and choose the penalty
     by AIC or BIC.
 
-    ``fit_penalised`` is any model's penalised fit (``CoxPH.fit_penalised``,
-    ``WeibullAFT.fit_penalised``, ``CoxPH.fit_tvc_penalised``,
-    ``ProportionalIntensityHPP.fit_penalised``, ...); ``args`` and
-    ``kwargs`` are passed to it (the data, ``standardise``, ``tie_method``,
-    ...), with each penalty of the path as its ``penalizer``. Every fit
-    starts afresh, so each is the same model ``fit_penalised`` gives at that
-    penalty.
+    ``fit_penalised`` is any fit that takes a ``penalizer`` (``CoxPH.fit``,
+    ``WeibullAFT.fit``, ``CoxPH.fit_tvc``, ``ProportionalIntensityHPP.fit``,
+    ...; the ``fit_penalised`` methods, deprecated in v0.30, still work);
+    ``args`` and ``kwargs`` are passed to it (the data, ``standardise``,
+    ``tie_method``, ...), with each penalty of the path as its
+    ``penalizer``. Every fit starts afresh, so each is the same model the
+    fit gives at that penalty.
 
     Without ``penalizers`` the path is glmnet's: ``n_penalties`` penalties
     evenly spaced on the log scale from the smallest penalty that sets every
@@ -330,9 +331,9 @@ def penalty_path(
     Parameters
     ----------
     fit_penalised : callable
-        A penalised fit, such as ``CoxPH.fit_penalised``.
+        A fit that takes a ``penalizer``, such as ``CoxPH.fit``.
     *args, **kwargs
-        The arguments of ``fit_penalised`` other than ``penalizer`` and
+        The arguments of the fit other than ``penalizer`` and
         ``l1_ratio``.
     penalizers : array_like, optional
         The penalties, instead of the default path; sorted, largest
@@ -362,7 +363,7 @@ def penalty_path(
     >>> df = load_rossi_static()
     >>> cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
     >>> path = penalty_path(
-    ...     CoxPH.fit_penalised, df["week"], df[cols], c=1 - df["arrest"],
+    ...     CoxPH.fit, df["week"], df[cols], c=1 - df["arrest"],
     ...     l1_ratio=1, n_penalties=10,
     ... )
     >>> path.table()[["penalizer", "nonzero"]].round(4).head(3)

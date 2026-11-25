@@ -67,11 +67,11 @@ def _left_truncation(
         )
     if np.any(np.isfinite(window[:, 1])):
         raise ValueError(
-            "CoxPH.fit_penalised takes left truncation (delayed entry, tl) "
+            "A penalised CoxPH.fit takes left truncation (delayed entry, tl) "
             "only: the Cox partial likelihood has no term for right "
             "truncation, as for CoxPH.fit. For right-truncated data use a "
-            "parametric penalised fit, such as WeibullPH.fit_penalised(x, "
-            "Z, c=c, t=t, penalizer=...) (or the AFT and PO families), "
+            "parametric penalised fit, such as WeibullPH.fit(x, Z, c=c, "
+            "t=t, penalizer=...) (or the AFT and PO families), "
             "which takes every kind of truncation."
         )
     return window[:, 0]
