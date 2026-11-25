@@ -274,6 +274,18 @@ v0.30 (unreleased)
   rounding in ``ff`` itself limits both methods alike (about 2e-12 of the
   level at ``p = 1 - 1e-9``), and the two can differ by that much.
 
+- **One mixture draw in a renewal simulation is about 2.4 times faster.**
+  ``conditional_gaps`` for one item of a continuous ``MixtureModel`` (what
+  the virtual-age simulations ask for, one draw at a time) now runs its
+  cumulative hazard, hazard rate and Newton start on floats, calling each
+  component's ``Hf``, ``hf`` and ``qf`` on a float, instead of on
+  one-element arrays: about 50 µs a draw, from 120 µs. The formulas and
+  steps are the array path's, so the draws are the same: to the bit in
+  960 draws over five mixtures here, and to rounding (numpy's vectorised
+  ``exp`` and ``log`` may round the last bit differently from Python's
+  on some CPUs) elsewhere. Several items at once take the array path as
+  before.
+
 v0.29 (22 November 2026)
 ------------------------
 

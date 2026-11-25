@@ -365,6 +365,12 @@ def conditional_gaps_from_energy(
     """
     v = np.asarray(v, dtype=float)
     energy = np.asarray(energy, dtype=float)
+    if v.size == 1 and energy.size == 1 and _is_mixture(lifetime):
+        # One draw of a mixture (what the simulations ask for): the same
+        # steps on floats, without numpy's per-call cost on one value.
+        gap = _mixture_gap_one(lifetime, _first(v), _first(energy))
+        if gap is not None:
+            return np.full(np.broadcast(v, energy).shape, gap)
     hazard, quantile, both = _lifetime_functions(lifetime)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
         H_v = np.broadcast_to(hazard(v), v.shape)
@@ -454,6 +460,114 @@ def _mixture_start(
             bound = np.maximum(bound, t[1])
         bound = np.maximum(bound, lowest)
     return np.where(np.isfinite(bound) & (bound > v), bound, v)
+
+
+class _MixtureOne:
+    """A continuous mixture's cumulative hazard, hazard rate and Newton
+    start (``MixtureModel._component_hazards``, ``_hazard_and_rate`` and
+    :func:`_mixture_start`) at one point, on floats: the same formulas,
+    one component's ``Hf``, ``hf`` and ``qf`` called on a float each.
+    Anything off the ordinary path (no survivors left, a component's
+    value undefined, a float that overflows) raises ``_Fallback`` for the
+    caller to take the array path instead."""
+
+    def __init__(self, lifetime: Any) -> None:
+        dist = lifetime.dist
+        if not all(
+            callable(getattr(dist, name, None)) for name in ("Hf", "hf", "qf")
+        ):
+            raise _Fallback
+        self.dist = dist
+        self.rows = [
+            tuple(float(p) for p in row)
+            for row in np.asarray(lifetime.params, dtype=float)
+        ]
+        self.w = [float(w) for w in np.ravel(lifetime.w)]
+        self.log_w = [math.log(w) if w > 0 else -math.inf for w in self.w]
+
+    def _each(self, name: str, x: float) -> list[float]:
+        fn = getattr(self.dist, name)
+        with np.errstate(all="ignore"):
+            out = [float(fn(x, *row)) for row in self.rows]
+        if any(math.isnan(value) for value in out):
+            raise _Fallback
+        return out
+
+    def H(self, x: float) -> float:
+        return self._combined(self._each("Hf", x))
+
+    def _combined(self, H_i: list[float]) -> float:
+        # The mixture's H from its components'.
+        F = 0.0
+        for w, H in zip(self.w, H_i):
+            F += w * -math.expm1(-H)
+        if F < 0.5:
+            return -math.log1p(-F)
+        terms = [lw - H for lw, H in zip(self.log_w, H_i)]
+        top = max(terms)
+        if not math.isfinite(top):
+            raise _Fallback  # no survivors left
+        total = 0.0
+        for term in terms:
+            total += math.exp(term - top)
+        return -(top + math.log(total))
+
+    def both(self, x: float) -> "tuple[float, float]":
+        H_i = self._each("Hf", x)
+        H = self._combined(H_i)
+        h_i = self._each("hf", x)
+        h = 0.0
+        for w, Hc, hc in zip(self.w, H_i, h_i):
+            share = w * math.exp(H - Hc)
+            if share > 0:
+                h += share * hc
+        return H, h
+
+    def start(self, v: float, target: float) -> float:
+        lowest, bound = math.inf, -math.inf
+        for lw, row in zip(self.log_w, self.rows):
+            for k, level in enumerate((target, target + lw)):
+                t = -math.inf  # no bound from this root
+                if level > 0:
+                    with np.errstate(all="ignore"):
+                        t = float(self.dist.qf(-math.expm1(-level), *row))
+                    if not math.isfinite(t):
+                        t = -math.inf
+                if k == 0:
+                    lowest = min(lowest, t)
+                else:
+                    bound = max(bound, t)
+        bound = max(bound, lowest)
+        return bound if math.isfinite(bound) and bound > v else v
+
+
+class _Fallback(Exception):
+    """A one-draw float path that hands the draw to the array path."""
+
+
+def _mixture_gap_one(lifetime: Any, v: float, energy: float) -> "float | None":
+    """:func:`conditional_gaps_from_energy` for one draw of a continuous
+    mixture, on floats (see :class:`_MixtureOne`); ``None`` where the
+    array path is to take it."""
+    try:
+        one = _MixtureOne(lifetime)
+        H_v = one.H(v)
+        target = H_v + energy
+        if not math.isfinite(target):
+            return math.inf
+        root = _newton_one(
+            lambda x, H=None: one.both(x),
+            v,
+            target,
+            None,
+            one.start(v, target),
+            floats=True,
+        )
+    except (_Fallback, ArithmeticError, ValueError):
+        return None
+    if root is None:
+        return None
+    return max(root - v, 0.0)
 
 
 def _lifetime_functions(
@@ -744,23 +858,29 @@ def _newton_one(
     target: float,
     H_v: "float | None",
     start: "float | None" = None,
+    floats: bool = False,
 ) -> "float | None":
     """``_invert_cumulative_hazard``'s Newton steps for one draw, on
     floats, with the same rules; ``None`` where it hands the draw to
-    bracketing (an undefined or infinite ``H``, or no convergence)."""
+    bracketing (an undefined or infinite ``H``, or no convergence).
+    ``floats``: ``both`` takes and gives floats, not one-element
+    arrays."""
     lo, hi = v, math.inf
     first = max(abs(v), 1.0)
     previous = math.inf
     x = v if start is None else start
     assume_below = start is None
     for k in range(_NEWTON_MAXITER + 1):
-        point = np.array([x])
-        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            if k == 0 and H_v is not None:
-                H_arr, h_arr = both(point, np.array([H_v]))
-            else:
-                H_arr, h_arr = both(point)
-        H, h = _first(H_arr), _first(h_arr)
+        if floats:
+            H, h = both(x)
+        else:
+            point = np.array([x])
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                if k == 0 and H_v is not None:
+                    H_arr, h_arr = both(point, np.array([H_v]))
+                else:
+                    H_arr, h_arr = both(point)
+            H, h = _first(H_arr), _first(h_arr)
         if not math.isfinite(H):
             return None
         g = H - target
