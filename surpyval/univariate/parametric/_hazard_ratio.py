@@ -49,6 +49,18 @@ def checked_hr(hr: Any) -> float:
     return value
 
 
+def refuse_unless_one(hr: Any, what: str, alternative: str) -> None:
+    """Refuse a hazard ratio other than 1 given to a model that cannot
+    carry one (``what``), saying what to use; ``None`` and 1 pass."""
+    if hr is None:
+        return
+    if checked_hr(hr) != 1:
+        raise ValueError(
+            f"{what} does not take a hazard ratio (hr = {float(hr):g}): "
+            f"{alternative}"
+        )
+
+
 def base(model: Any) -> Any:
     """The model without its hazard ratio: the same object's state with
     ``hr = 1`` (no cached mean)."""
