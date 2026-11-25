@@ -85,6 +85,14 @@ censored, left truncated, and AFT on ``sex``) agree in log-likelihood to
 1e-6 and in the estimates to a hundredth of a standard error
 (``surpyval/tests/reference/test_generalized_f.py``).
 
+Bounds
+------
+
+Wald bounds are immediate; likelihood-ratio bounds take tens of seconds
+(38 s for ``sf`` at two times on 40 rows), since each point profiles four
+parameters; the bootstrap refits the four-parameter model each time and
+takes many minutes.
+
 Covariates
 ----------
 

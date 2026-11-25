@@ -193,7 +193,8 @@ v0.30 (unreleased)
   power-law upper tail. Each tail comes from the side of the beta variable
   that does not round. Every fit option of a built-in distribution except
   probability-plot fitting and the method of moments (both refused, with
-  the reason), Wald, likelihood-ratio and bootstrap bounds, ``qf``/``isf``,
+  the reason), Wald and likelihood-ratio bounds (the bootstrap runs, but
+  with four parameters it takes many minutes), ``qf``/``isf``,
   moments (``inf`` where the tail is too heavy), saving, ``fit_best``,
   ``AFT(GeneralizedF)`` and ``Distributional(GeneralizedF)``. Against
   flexsurv 2.3.2:
