@@ -522,6 +522,93 @@ def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
     return sd
 
 
+# The most times ``_lr_follow_valley`` takes the likelihood's curvature
+# again and searches in its whitened coordinates, and the least fall in
+# the negative log-likelihood (1e-10, 2e-10 of deviance) it counts as
+# having moved further down the valley.
+_LR_VALLEY_ROUNDS = 12
+_LR_VALLEY_GAIN = 1e-10
+
+
+def _lr_follow_valley(
+    obj: Callable[[npt.NDArray], float],
+    best: float,
+    best_u: npt.NDArray,
+    box: list[tuple[Any, Any]] | None,
+) -> tuple[float, npt.NDArray, bool]:
+    """Follow a profile minimum down a narrow, slanting valley.
+
+    The searches of ``_profile_neg_ll`` move the nuisance parameters in
+    their coordinates scaled by the Wald standard errors at the fit. Far
+    out along a profile whose model tends to a limiting one (a Gamma with
+    an offset as the offset goes to minus infinity, which tends to the
+    Normal), the nuisance parameters' minimum lies along a valley that
+    slants across those coordinates and is only about ``1 / (x - offset)``
+    wide: L-BFGS-B stops on its wall, and the deviance it reports is far
+    too high (93 at an offset of -1e6 where it is 0.85), which made a
+    flat profile look as though it crossed the critical value.
+
+    So, from the search's best point ``best_u`` (its minimum ``best``),
+    the curvature of ``obj`` is taken there (``numdifftools``) and the
+    search is run again in the coordinates it whitens (along its
+    eigenvectors, each divided by the square root of its eigenvalue's
+    size), in which the valley is round; and again from where that ends,
+    until a search falls by less than ``_LR_VALLEY_GAIN``. Returns the
+    minimum, its point, and whether it is settled: a whitened search from
+    it falls no further. A point the first whitened search cannot move
+    (or whose curvature cannot be taken: near an offset's corner, where
+    the likelihood above the fit's maximum is refused) is the search's
+    own, as before; one that moved and goes on moving after
+    ``_LR_VALLEY_ROUNDS`` rounds, or whose curvature is lost on the way,
+    is not settled. A point on a box limit is returned as it is: the
+    whitened search has no box.
+    """
+    from numdifftools import Hessian  # type: ignore
+
+    u = onp.asarray(best_u, dtype=float)
+    if box is not None:
+        for k, (lo, hi) in enumerate(box):
+            if (lo is not None and u[k] <= lo) or (
+                hi is not None and u[k] >= hi
+            ):
+                return best, u, True
+
+    def inside(v: npt.NDArray) -> float:
+        if box is not None:
+            for k, (lo, hi) in enumerate(box):
+                if (lo is not None and v[k] < lo) or (
+                    hi is not None and v[k] > hi
+                ):
+                    return np.inf
+        return obj(v)
+
+    # (numdifftools warns of the all-nan slices of a refused likelihood)
+    with np.errstate(all="ignore"), ignoring_warnings():
+        for k in range(_LR_VALLEY_ROUNDS):
+            try:
+                hess = onp.asarray(Hessian(inside)(u), dtype=float)
+                lam, vec = onp.linalg.eigh(hess)
+            except (onp.linalg.LinAlgError, ValueError, ArithmeticError):
+                return best, u, k == 0
+            if not (onp.all(onp.isfinite(lam)) and onp.all(lam != 0)):
+                return best, u, k == 0
+            rot = vec / onp.sqrt(onp.abs(lam))
+            origin = u
+            res = minimize(
+                lambda zz: inside(origin + rot @ zz),
+                onp.zeros(len(u)),
+                method="L-BFGS-B",
+                jac="3-point",
+                options={"ftol": 1e-15, "gtol": 1e-10, "maxiter": 1000},
+            )
+            if not (
+                onp.isfinite(res.fun) and res.fun < best - _LR_VALLEY_GAIN
+            ):
+                return best, u, True
+            best, u = float(res.fun), origin + rot @ res.x
+    return best, u, False
+
+
 def _scaled_bounds(
     bounds: list[tuple[Any, Any]] | None,
     origin: npt.NDArray,
@@ -1921,6 +2008,13 @@ class LikelihoodRatioMixin:
         def _user_fixed_idx(self) -> set: ...
         def _summary_scale(self, zero_floor: bool = False) -> tuple: ...
 
+    #: Whether ``_profile_neg_ll`` follows each profile minimum down a
+    #: narrow valley (``_lr_follow_valley``) and reports a minimum it
+    #: cannot verify as not found: an offset model's searches
+    #: (``ExtendedLikelihoodRatio``), whose profiles tend to a limiting
+    #: model along such valleys.
+    _follows_valleys: bool = False
+
     def __getstate__(self) -> dict:
         """What pickles: everything but the likelihood-ratio searches'
         caches (the ``_lr_`` attributes: the likelihoods, walks, regions
@@ -2290,6 +2384,15 @@ class LikelihoodRatioMixin:
                     best, best_u = float(res.fun), np.asarray(res.x)
         if best_u is None:
             return np.inf if zero else np.nan
+        if self._follows_valleys:
+            best, best_u, settled = _lr_follow_valley(
+                obj, best, best_u, bounds
+            )
+            if not settled:
+                # Not shown to be the profile's minimum: the deviance
+                # here is an upper bound only, which the walk must not
+                # read as a crossing (``_lr_walk``'s *Resolution*).
+                return np.nan
         if path is not None:
             path.add(w, best_u, best)
         return best

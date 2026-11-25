@@ -158,6 +158,9 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         self._gamma_idx = pmap.get("gamma") if model.offset else None
         self._p_idx = pmap.get(model.lfp_name) if model.lfp else None
         self._f0_idx = pmap.get("f0") if model.zi else None
+        # An offset's profiles tend to a limiting model along narrow
+        # valleys (a Gamma's to the Normal): ``_lr_follow_valley``
+        self._follows_valleys = self._gamma_idx is not None
         phi = onp.empty(len(self.names))
         phi[self._core_idx] = onp.asarray(model.params, dtype=float)
         for idx, value in (

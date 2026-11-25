@@ -382,19 +382,14 @@ def test_a_side_with_unbounded_likelihood_points_is_the_edge(alpha_ci):
     assert list(beta) == [0.0, np.inf]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1417: the profile loses its valley near the normal limit; "
-    "with the gamma functions accurate at large shapes the walk no longer "
-    "reads the lost profile as noise, and returns a finite lower bound",
-)
 def test_flat_gamma_offset_bounds_do_not_depend_on_rounding():
     # The profile of the Gamma offset model's alpha tends to the Normal
     # limit, whose deviance (0.854) is below the 80% two-sided critical
     # value (1.64): the upper bound is infinite at every level. Its
-    # offset's lower side runs the same way, but the searches lose the
-    # profile before it shows it has converged: that bound is not found,
-    # and the warning says why.
+    # offset's lower side runs the same way, to the same limit: the
+    # lower bound is minus infinity at every level, with no warning. The
+    # searches lost the profile's narrow valley there, and returned a
+    # finite lower bound (-3.5e6 at 99%, -4.6e5 at 80%) (#1417).
     model = _small_gamma_offset()
     for alpha_ci in (0.01, 0.05, 0.2):
         with warnings.catch_warnings(record=True) as caught:
@@ -402,12 +397,69 @@ def test_flat_gamma_offset_bounds_do_not_depend_on_rounding():
             alpha = model.param_cb("alpha", alpha_ci=alpha_ci, method="lr")
             gamma = model.param_cb("gamma", alpha_ci=alpha_ci, method="lr")
         assert alpha[1] == np.inf
-        assert np.isnan(gamma[0])
+        assert gamma[0] == -np.inf
         assert gamma[1] == pytest.approx(7.411)
-        messages = [str(w.message) for w in caught]
-        assert len(messages) == 1, messages
-        assert "so flat" in messages[0]
-        assert caught[0].filename == __file__
+        assert [str(w.message) for w in caught] == []
+
+
+def _normal_limit_deviance(x, c, n):
+    """The deviance of the Normal fit against the Gamma offset fit: the
+    limit of the Gamma offset's profile deviance as the offset goes to
+    minus infinity (the shifted Gamma tends to the Normal)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gamma = sp.Gamma.fit(x, c=c, n=n, offset=True)
+        normal = sp.Normal.fit(x, c=c, n=n)
+    return 2.0 * (normal.neg_ll() - gamma.neg_ll())
+
+
+def test_the_gamma_offset_profile_follows_its_valley_to_the_normal_limit():
+    # Far out, the profile minimum over alpha and beta lies along a
+    # valley about sd / (mean - offset) wide; the searches stopped on its
+    # wall (a deviance of 8.9 at an offset of -1e4, 93 at -1e6). Followed
+    # down it, the deviance rises towards the Normal limit, 0.854, and
+    # stays below it.
+    x, c, n = _small_offset_data()
+    limit = _normal_limit_deviance(x, c, n)
+    assert limit == pytest.approx(0.854, abs=1e-3)
+    model = _small_gamma_offset()
+    searches = model._lr_extended()
+    nll_hat = searches._lr_neg_ll(np.asarray(searches.params, dtype=float))
+    j = searches._gamma_idx
+    devs = []
+    for offset in (-1e2, -1e4, -1e6):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            nll = searches._profile_neg_ll(j, offset)
+        devs.append(2.0 * (nll - nll_hat))
+    assert devs[0] < devs[1] < devs[2] < limit + 1e-6
+    assert devs[2] == pytest.approx(limit, abs=1e-3)
+
+
+def test_a_gamma_offset_whose_normal_limit_is_excluded_has_a_finite_bound():
+    # The other way round: data far from Normal (a strong right skew)
+    # have a Normal limit far above the critical value, and the offset's
+    # lower bound is a finite crossing the profile deviance reaches.
+    rng = np.random.default_rng(7)
+    x = 3.0 + rng.gamma(1.5, 4.0, 60)
+    c = np.zeros_like(x)
+    n = np.ones_like(x)
+    assert _normal_limit_deviance(x, c, n) > 10.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.Gamma.fit(x, offset=True)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        lower, upper = model.param_cb("gamma", alpha_ci=0.05, method="lr")
+    assert [str(w.message) for w in caught] == []
+    assert -np.inf < lower < model.gamma < upper <= x.min()
+    # The bound is where the profile deviance is the critical value
+    searches = model._lr_extended()
+    nll_hat = searches._lr_neg_ll(np.asarray(searches.params, dtype=float))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        nll = searches._profile_neg_ll(searches._gamma_idx, lower)
+    assert 2.0 * (nll - nll_hat) == pytest.approx(3.841459, abs=1e-3)
 
 
 def test_a_side_without_unbounded_likelihood_points_is_searched():
