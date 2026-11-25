@@ -37,6 +37,14 @@ Design decisions made while working on the open issues, with the reason for each
 | It integrates the path once, out to where `H` passes the largest target, and finds each value inside its own quadrature panel (a 16 to 128 point grid across the panel, an inverse cubic first guess, then Illinois steps). Additive hazards, a time-scaling family on a repeating path, and a baseline defined below 0 without a `start` at or after 0 use repeated `Hf_tvc` calls instead. | proposed | The fixed cost of a pass dominates; a single value costs about two `Hf_tvc` calls in all. The other cases keep `Hf_tvc`'s own handling (negative hazards, the periodic shortcut, the covariate before 0). | done |
 | Where the hazard dies away and survival levels off above `1 - p`, the answer is `inf`, with no warning. Additive hazards give the first age at which the target is reached. | proposed | As a limited-failure population's quantile; `mean_tvc` warns because its answer is a summary of the whole path, a quantile is not. | done |
 | Solved to `4 * rtol` (4e-10) of the target on `H`; each value stops on its own. | proposed | The quadrature's own accuracy on `H` is about 1e-10; a value never moves another. | done |
+### PIT and D-calibration (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.metrics.d_calibration` with `pit_values`, in `surpyval/metrics/pit.py`; a model (`ff(x)`, or `sf(x, Z)` paired with rows) or `F=` arrays from any source. Networks pass `F=` (from `surpyval.torch`'s `sf` or `to_surpyval` per row); no torch-specific path. | proposed | One entry point for every model with a CDF, as the other metrics; the arrays route covers everything else without a torch dependency. | done |
+| The histogram is on the CDF scale `u = F(x)` (first bin `u` in [0, 0.1)); Haider et al. write it on the survival scale. Same numbers, bin for bin, as SurvivalEVAL. | proposed | The issue and the PIT literature read the CDF at the outcome. | done |
+| Default: Haider et al.'s spread of censored weight (conservative with censoring: 1% rejections at 5% with 30% censored). `randomise=True` draws censored `u` uniformly on `(F(x), 1]` and outcomes between `F(x-)` and `F(x)`; the test then has its level. | proposed | The default matches the published method and other packages; the randomised option is the exact-level alternative, with the trade-off stated in the docs. | done |
+| Equal-width bins only (default 10); right censoring only (left, interval refused); `by=` for one test per group (horizon). No recalibration. | proposed | The chi-square expects equal counts; interval-censored D-calibration and recalibration are later steps. | done |
 
 ## 2026-11-25
 

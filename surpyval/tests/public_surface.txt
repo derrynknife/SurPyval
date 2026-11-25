@@ -37,6 +37,7 @@ surpyval.CoxNPMLEModel
 surpyval.CoxPH
 surpyval.CrowAMSAA
 surpyval.CustomDistribution
+surpyval.DCalibration
 surpyval.DegradationAnalysis
 surpyval.DestructiveDegradation
 surpyval.DiscreteWeibull
@@ -282,6 +283,7 @@ surpyval.brier_score
 surpyval.compare_concordance
 surpyval.concordance_estimate
 surpyval.concordance_index
+surpyval.d_calibration
 surpyval.datasets.load_bearing_failures
 surpyval.datasets.load_bofors_steel
 surpyval.datasets.load_boston_housing
@@ -368,6 +370,7 @@ surpyval.maxcombo_logrank
 surpyval.maxstat_logrank
 surpyval.metrics.ConcordanceComparison
 surpyval.metrics.ConcordanceResult
+surpyval.metrics.DCalibration
 surpyval.metrics.DynamicAccuracy
 surpyval.metrics.DynamicCalibration
 surpyval.metrics.PredictionScores
@@ -378,10 +381,12 @@ surpyval.metrics.brier_score
 surpyval.metrics.compare_concordance
 surpyval.metrics.concordance_estimate
 surpyval.metrics.concordance_index
+surpyval.metrics.d_calibration
 surpyval.metrics.dynamic_auc
 surpyval.metrics.dynamic_brier
 surpyval.metrics.dynamic_calibration
 surpyval.metrics.integrated_brier_score
+surpyval.metrics.pit_values
 surpyval.metrics.score_predictions
 surpyval.metrics.survival_probability
 surpyval.ml.RandomSurvivalForest
@@ -413,6 +418,7 @@ surpyval.pairwise_logrank
 surpyval.penalty_path
 surpyval.permutation_logrank
 surpyval.person_years
+surpyval.pit_values
 surpyval.plot_coefficients
 surpyval.plot_likelihood_contour
 surpyval.plot_nonparametric

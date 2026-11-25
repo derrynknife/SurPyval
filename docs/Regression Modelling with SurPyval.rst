@@ -5636,6 +5636,89 @@ with the same trapezoid weights as its estimate. The numbers agree with
 data without tied event times. The censoring distribution is estimated from
 the scored data, as ``Score`` does; there is no ``x_train`` here.
 
+Is each predicted distribution right? The PIT and D-calibration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model that gives every subject their own survival curve can be checked
+with one simple idea. Read each subject's own predicted CDF at what
+actually happened to them, :math:`u_i = F_i(x_i)`: the predicted chance of
+failing by the time they did. If the predictions are right, these numbers
+are spread evenly between 0 and 1, whatever the subjects' covariates: a
+tenth below 0.1, a tenth between 0.1 and 0.2, and so on. Too many near 0
+and 1 means the predicted curves are too narrow; a pile in the middle
+means they are too wide; more on one side means they are shifted. This is
+the *probability integral transform* (PIT) histogram. Note it is the CDF
+*at* the outcome, not a quantile.
+
+A subject censored at :math:`x_i` has not failed yet, so all that is known
+is :math:`u_i > F_i(x_i)`. If the model is right their :math:`u` is equally
+likely to be anywhere in :math:`(F_i(x_i), 1]`, so their weight is spread
+evenly over that range. That is *D-calibration* (Haider, Hoehn, Davis and
+Greiner, 2020). The test compares each of ``B`` equal bins with the
+:math:`N/B` it should hold, by Pearson's chi-square on :math:`B - 1`
+degrees of freedom.
+
+:func:`~surpyval.metrics.d_calibration` takes a fitted model (with ``Z=``
+for one with covariates: any model whose ``sf(x, Z)`` pairs times with
+rows, including the forests and joint models) or, from any other source
+such as a neural network, the predicted CDFs at the outcomes as ``F=``:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import d_calibration
+
+    dcal_cox = d_calibration(x_te, c_te, model=cox, Z=Z_te)
+    print(dcal_cox)
+
+    # A Cox model that leaves out the second covariate
+    cox_1 = CoxPH.fit(x=x_tr, Z=Z_tr[:, :1], c=c_tr)
+    dcal_1 = d_calibration(x_te, c_te, model=cox_1, Z=Z_te[:, :1])
+    print(f"one covariate: p = {dcal_1.p_value:.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert dcal_cox.p_value > 0.01 and dcal_1.p_value > 0.01
+
+Both pass, and that is the lesson. The model without the second covariate
+spreads its predictions too widely for each subject, yet across subjects
+its :math:`u` values are still close to even, because its curves are
+right on average. **Calibration is not sharpness**: report it with a
+score of how informative the predictions are (the Brier score, the AUC or
+the concordance). A model that predicts the same curve for everyone can be
+perfectly calibrated and useless.
+
+.. jupyter-execute::
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    dcal_cox.plot(ax=ax);
+
+Three things to know:
+
+- **With censoring the default test is conservative.** Spreading a
+  censored subject's weight gives each bin its expected share instead of
+  one random count, so the bins vary less than the chi-square assumes. In
+  400 simulated data sets under the true model the 5% test rejected 5.25%
+  with no censoring, 1% with 30% censored and none with 82% censored: a
+  model it rejects is badly off, but passing is weaker evidence than the
+  p-value suggests. ``randomise=True`` draws each censored subject's
+  :math:`u` at random from its range instead, and the test then holds its
+  level (3.75% to 5.25% in the same simulation); set ``seed`` to repeat it.
+- **Jumps in the predicted CDF.** For discrete outcomes, or a step-function
+  model scored on the data it was fitted to, :math:`u` is not uniform even
+  for a right model. ``randomise=True`` also draws each outcome's :math:`u`
+  between the CDF just below and at the outcome (the randomised PIT).
+- **Independent subjects.** Repeated forecasts of one unit (at several
+  ages or horizons) are not independent, and the p-value is then too
+  small. Pass each forecast's horizon as ``by=`` for a histogram and test
+  per horizon, each of independent subjects.
+
+Mapping predictions through the observed PIT distribution to correct them
+(recalibration) is not offered.
+
 Concordance
 ~~~~~~~~~~~
 
