@@ -33,6 +33,7 @@ import sys
 import time
 import warnings
 from multiprocessing import Pool
+from typing import Any
 
 import numpy as np
 
@@ -64,7 +65,7 @@ TRUTH = {
 }
 
 
-def one(seed):
+def one(seed: Any) -> Any:
     from surpyval import JointPH, Weibull
     from surpyval.degradation import SplinePath
     from surpyval.tests.univariate.joint._fleet import simulate_path
@@ -91,7 +92,7 @@ def one(seed):
     return out
 
 
-def summarise(results):
+def summarise(results: Any) -> Any:
     good = [r for r in results if r["ok"]]
     spread = [
         any("lower bound, 0" in w for w in r["varying"]["warnings"])
