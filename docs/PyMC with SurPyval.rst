@@ -326,6 +326,64 @@ scale (446 to 2,036) is wider than any observed site's. A group with no
 failures is kept, with a warning: its survivors still inform the
 population.
 
+``shrinkage(trace, pooling)`` says how far each group was pulled, as a
+table: each group's own maximum-likelihood estimate (its data alone),
+its pooled posterior median, the population's median, and ``pulled``,
+the share of the way from its own estimate to the population's that
+pooling moved it, on the log scale (0 is no pooling, 1 complete
+pooling). The group's own fit frees every parameter, shared ones too, so
+with a shared parameter ``pulled`` can fall a little outside 0 to 1.
+
+When every group has plenty of data the non-centred form's :math:`z_g`
+and :math:`\tau` are tied together and it samples worse; ``centred=True``
+draws :math:`\log \alpha_g \sim N(\mu, \tau)` directly (one variable
+``groups_alpha``) instead. ``group_models`` and ``shrinkage`` read
+either.
+
+Repairable systems: a fleet's growth rates
+------------------------------------------
+
+The power-law (Crow-AMSAA) process expects :math:`(t / \alpha)^\beta`
+events by time :math:`t`: :math:`\beta` below 1 is reliability growth.
+``nhpp_likelihood`` adds SurPyval's exact likelihood of systems' event
+histories under it (the one ``CrowAMSAA.fit`` maximises: event times,
+each system's end of observation, counts in windows, truncation) to a
+PyMC model, and ``nhpp_log_likelihood`` gives it as an expression.
+
+Systems of one design, run by different crews, improve at different
+rates, but the rates are alike. ``pooled_likelihood(CrowAMSAA, ...)``
+gives each system (or each group of systems, ``group=``) its own
+:math:`\beta` drawn from a population, as above:
+
+.. code:: python
+
+    from surpyval.recurrent import CrowAMSAA
+
+    with pm.Model():
+        alpha = pm.LogNormal("alpha", mu=np.log(20.0), sigma=1.0)
+        pooling = pooled_likelihood(
+            CrowAMSAA, x=x, i=system, c=c,
+            pool={"beta": (np.log(0.8), 0.5)},
+            shared={"alpha": alpha},
+            tau_scale=0.5,
+        )
+        trace = pm.sample(random_seed=1)
+
+    models = group_models(trace, pooling, random_state=1)
+    models["unit 7"].mtbf_cri()          # its MTBF now
+    models["new group"].param_cri("beta")  # a system not yet seen
+    shrinkage(trace, pooling)
+
+Here ``group_models`` gives a
+:class:`~surpyval.recurrent.bayes.BayesianRecurrence` a system, with its
+MTBF, expected events and their intervals; the new system's is read at
+the latest time any system was observed to. In the tests (eight systems,
+growth rates log-normal about 0.8 with a spread of 0.3; two watched only
+a short time, with four events each) the spread's 95% interval holds
+0.3, the two short systems' rates move from 0.52 and 0.26 (each fitted
+alone) to 0.62 and 0.53, towards the population's 0.74, and the new
+system's interval on its rate is wider than any observed system's.
+
 Priors from SurPyval
 --------------------
 
@@ -388,3 +446,9 @@ API
 .. autofunction:: surpyval.pymc.pooled_likelihood
 
 .. autofunction:: surpyval.pymc.group_models
+
+.. autofunction:: surpyval.pymc.shrinkage
+
+.. autofunction:: surpyval.pymc.nhpp_likelihood
+
+.. autofunction:: surpyval.pymc.nhpp_log_likelihood
