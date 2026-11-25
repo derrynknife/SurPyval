@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
+from scipy.special import betaincinv
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.fleming_harrington import (
@@ -69,6 +70,9 @@ def plotting_positions(
 
     with constants ``(A, B)`` that depend on the heuristic (Blom uses
     ``A = 0.375, B = 0.25``, Median ``A = 0.3, B = 0.4``, and so on).
+    ``'Exact'`` is the exact median rank instead: the median of the i-th
+    of N uniform order statistics, a Beta(i, N - i + 1) variable, which
+    ``'Median'`` (Benard's formula) and ``'Filliben'`` approximate.
     With right-censored data the ranks ``i`` are adjusted by the mean
     order number (Johnson's method) before the formula is applied. The
     *estimator* heuristics (``'Nelson-Aalen'``, ``'Kaplan-Meier'``,
@@ -101,7 +105,8 @@ def plotting_positions(
         The method used to compute F. One of ``'Blom'`` (the default),
         ``'Median'``, ``'ECDF'``, ``'ECDF_Adj'``, ``'Modal'``,
         ``'Midpoint'``, ``'Mean'``, ``'Weibull'``, ``'Benard'``,
-        ``'Beard'``, ``'Hazen'``, ``'Gringorten'``, ``'None'``,
+        ``'Exact'`` (also ``'Exact median'``), ``'Beard'``, ``'Hazen'``,
+        ``'Gringorten'``, ``'None'``,
         ``'Larsen'``, ``'Tukey'``, ``'DPW'``, ``'Filliben'``,
         ``'Nelson-Aalen'``, ``'Kaplan-Meier'``, ``'Fleming-Harrington'``
         or ``'Turnbull'``.
@@ -212,6 +217,15 @@ def plotting_positions(
         ranks = nonp._rank_adjust(x_, c=c)
         d = 1 - c
         r = np.linspace(N, 1, num=N)
+
+        if heuristic == "Exact":
+            # The median of Beta(i, N - i + 1) at each (adjusted) rank;
+            # a censored row's rank is nan, and carries the previous
+            # failure's value below.
+            with np.errstate(invalid="ignore"):
+                F = betaincinv(ranks, N - ranks + 1.0, 0.5)
+            R = 1 - ffill_or_zero(F)
+            return x_, r, d, 1 - R
 
         A, B = HEURISTIC_AB[heuristic]
         # The modal position (i - 1) / (N - 1) is 0 / 0 for one item (a

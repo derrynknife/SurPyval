@@ -5550,7 +5550,8 @@ class Parametric(
         ----------
 
         heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',\
-            'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
+            'Weibull', 'Benard', 'Exact', 'Beard', 'Hazen', 'Gringorten',\
+            'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
             The method that the plotting point on the probability plot will
@@ -5657,7 +5658,8 @@ class Parametric(
         ----------
 
         heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean', \
-            'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
+            'Weibull', 'Benard', 'Exact', 'Beard', 'Hazen', 'Gringorten',\
+            'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
             The method that the plotting point on the probability plot will

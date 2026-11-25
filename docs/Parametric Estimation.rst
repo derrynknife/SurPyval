@@ -424,7 +424,11 @@ Some names are synonyms: ``'ECDF'`` and ``'None'`` are the raw empirical CDF
 :math:`k/n`, and ``'Mean'``, ``'Weibull'`` and ``'ECDF_Adj'`` are all
 :math:`k/(n + 1)`, the expected value of the :math:`k`-th uniform order
 statistic. ``'Median'`` and ``'Benard'`` are both Benard's
-approximation to the median rank, :math:`(k - 0.3)/(n + 0.4)`. Any point with :math:`\hat{F} = 0` or :math:`1` (the top point of
+approximation to the median rank, :math:`(k - 0.3)/(n + 0.4)`. The exact
+median rank, the median of the :math:`k`-th of :math:`n` uniform order
+statistics (a Beta(:math:`k, n - k + 1`) variable), is ``'Exact'`` (also
+``'Exact median'``); it is what WeibullR's rank regressions use, and
+Benard's formula is within a few tenths of a percent of it. Any point with :math:`\hat{F} = 0` or :math:`1` (the top point of
 ``'ECDF'``, for example) cannot be transformed and is left out of the fit.
 
 One final option available is that of the Filliben estimate (``'Filliben'``),

@@ -51,6 +51,16 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Exact median ranks for probability plots and rank regression**,
+  ``heuristic="Exact"`` (also ``"Exact median"``): the median of each
+  order statistic's beta distribution, ``betaincinv(i, N - i + 1, 0.5)``,
+  with Johnson's adjusted ranks under suspensions as the other rank
+  heuristics. ``"Median"``/``"Benard"`` and ``"Filliben"`` are
+  approximations of it. It reproduces WeibullR 1.2.4's ``getPPP`` positions
+  (to 1e-10) and its ``MRRw2p`` rank regression on the Lieblein-Zelen
+  bearings (80.94702, 2.255012), complete and with suspensions. Nothing
+  existing changes.
+
 - **Discrete (success/fail) reliability growth models**, in
   ``surpyval.recurrent``: ``CrowAMSAADiscrete`` (the AMSAA discrete
   tracking model of MIL-HDBK-189C, matching its worked example),
@@ -700,6 +710,12 @@ v0.30 (unreleased)
   before.
 
 **Documentation.**
+
+- "Coming from Weibull++" and the plotting-position pages now describe
+  the median-rank options correctly (``"Median"``/``"Benard"``,
+  ``"Filliben"`` and the new ``"Exact"``), and the Weibull++ page notes
+  how a Nevada table's returns differ from ReliaSoft's (end of period)
+  and how to match them with ``to_data(ages="end")``.
 
 - Three guides for people moving from other tools: :doc:`Coming from
   lifelines`, :doc:`Coming from R` (``survival``, ``flexsurv``,

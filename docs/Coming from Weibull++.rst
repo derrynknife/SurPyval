@@ -53,8 +53,11 @@ The vocabulary
      - ``how="MPP", rr="x"``
    * - rank regression on Y (RRY)
      - ``how="MPP", rr="y"``
+   * - median ranks, exact (the beta-distribution medians)
+     - ``heuristic="Exact"`` (with ``how="MPP"``)
    * - median ranks, Benard's approximation
-     - ``heuristic="Benard"`` (with ``how="MPP"``)
+     - ``heuristic="Median"`` or ``"Benard"`` (with ``how="MPP"``); also
+       ``"Filliben"``, Filliben's approximation
    * - Kaplan-Meier, Johnson's adjusted ranks for suspensions
      - ``heuristic="Kaplan-Meier"``; the rank heuristics adjust ranks by
        Johnson's method when there are suspensions
@@ -184,14 +187,32 @@ Rank regression
     assert np.allclose(rry.params, [81.57757, 2.181229], rtol=1e-5), rry.params
 
 These are the regressions on Benard's median ranks, :math:`(i - 0.3) / (n
-+ 0.4)`. ``WeibullR::MRRw2p`` gives 80.947 and 2.2550: it regresses on the
-*exact* median ranks (the median of each order statistic's beta
-distribution) rather than Benard's approximation of them, and the two
-differ by up to a few tenths of a percent for small samples. SurPyval has
-no exact-median-rank heuristic; Benard's is what most tools mean by
-"median ranks". With RRX the time is regressed on the rank (the
-probability plot's line is fitted horizontally), and with RRY the other
-way; the two give different answers whenever the points are not on a
++ 0.4)` (``heuristic="Median"`` is the same formula). Weibull++ and
+``WeibullR::MRRw2p`` regress on the *exact* median ranks instead, the
+median of each order statistic's beta distribution, of which Benard's
+formula is an approximation. SurPyval has those too, as
+``heuristic="Exact"``, and with them RRX gives WeibullR's 80.947 and
+2.2550:
+
+.. jupyter-execute::
+
+    exact = sp.Weibull.fit(bearings, how="MPP", rr="x", heuristic="Exact")
+    print("RRX, exact median ranks:", exact.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(exact.params, [80.94702, 2.255012], rtol=1e-6), exact.params
+
+The two kinds of median rank differ by a few tenths of a percent for small
+samples, so the fits differ in the third or fourth figure. With
+suspensions, both adjust the failures' ranks by Johnson's method first, as
+Weibull++ and WeibullR do. ``heuristic="Filliben"`` is a third
+approximation to the same medians.
+
+With RRX the time is regressed on the rank (the probability plot's line
+is fitted horizontally), and with RRY the other way; the two give different answers whenever the points are not on a
 straight line.
 
 Rank regression comes from the probability plot; with censored data MLE
@@ -346,11 +367,12 @@ Differences that catch people out
   answers on the same data, and RRX and RRY differ too. Tools differ in
   their default; SurPyval's is MLE (``how="MLE"``). Match the method
   before comparing numbers.
-- **Plotting positions.** Benard's approximation, exact median ranks,
-  Kaplan-Meier and Nelson-Aalen give slightly different points, and so
-  slightly different regression lines. SurPyval's default for
-  ``how="MPP"`` is Nelson-Aalen; pass ``heuristic="Benard"`` for median
-  ranks.
+- **Plotting positions.** Exact median ranks, Benard's approximation of
+  them, Kaplan-Meier and Nelson-Aalen give slightly different points, and
+  so slightly different regression lines. SurPyval's default for
+  ``how="MPP"`` is Nelson-Aalen; pass ``heuristic="Exact"`` for the exact
+  median ranks Weibull++ and WeibullR use, or ``heuristic="Median"`` for
+  Benard's approximation.
 - **Ties and suspensions in rank regression.** Tools differ in how they
   rank tied failures and adjust ranks for suspensions (Johnson's method,
   Kaplan-Meier); with heavy censoring, rank regression results vary between
@@ -358,6 +380,12 @@ Differences that catch people out
 - **The censoring flag.** ``c = 1`` is a suspension. Data from a tool that
   marks failures with ``F`` and suspensions with ``S`` becomes
   ``c = (status == "S").astype(int)``.
+- **Nevada (warranty) tables.** ReliaSoft treats a return as happening at
+  the end of its period. SurPyval's ``NevadaTable`` by default treats each
+  return as interval censored within its period, because that is all the
+  table tells you. To reproduce ReliaSoft's numbers, read the table with
+  ``ages="end"``:
+  ``sp.Weibull.fit(sp.NevadaTable(shipped, returns).to_data(ages="end"))``.
 
 What SurPyval adds
 ------------------

@@ -18,6 +18,7 @@ PLOTTING_METHODS = [
     "Mean",
     "Weibull",
     "Benard",
+    "Exact",
     "Beard",
     "Hazen",
     "Gringorten",
@@ -33,15 +34,22 @@ PLOTTING_METHODS = [
 ]
 
 #: Heuristic names, written in any case, that mean a listed one: Benard's
-#: approximation is often spelled "Bernard".
-HEURISTIC_ALIASES = {"bernard": "Benard"}
+#: approximation is often spelled "Bernard", and the exact median ranks
+#: are also asked for by that name.
+HEURISTIC_ALIASES = {
+    "bernard": "Benard",
+    "exact median": "Exact",
+    "exact-median": "Exact",
+    "exact_median": "Exact",
+}
 
 
 def canonical_heuristic(heuristic: Any) -> Any:
     """The plotting heuristic as ``PLOTTING_METHODS`` spells it, whatever
     its case, as ``how=`` is read (0.24 review); ``'Bernard'`` is
-    ``'Benard'``. Anything that is not a known name is returned as given,
-    for the check that refuses it to name it.
+    ``'Benard'``, and ``'Exact median'`` is ``'Exact'``. Anything that is
+    not a known name is returned as given, for the check that refuses it
+    to name it.
 
     Examples
     --------
@@ -50,6 +58,8 @@ def canonical_heuristic(heuristic: Any) -> Any:
     ... )
     >>> canonical_heuristic("blom"), canonical_heuristic("BERNARD")
     ('Blom', 'Benard')
+    >>> canonical_heuristic("exact median")
+    'Exact'
     """
     if not isinstance(heuristic, str):
         return heuristic
