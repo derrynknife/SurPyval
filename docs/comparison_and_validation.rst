@@ -169,6 +169,15 @@ calibration, with cross-validation by unit (worked example in
 .. automodule:: surpyval.metrics.dynamic
    :members: dynamic_auc, dynamic_brier, dynamic_calibration, DynamicAccuracy, DynamicCalibration
 
+Whether each predicted distribution is right: the PIT histogram, and
+D-calibration with censoring, of any model with a CDF or of predicted CDFs
+from anywhere, with a chi-square test of uniformity (see "Is each
+predicted distribution right?" on the :doc:`Regression Modelling with
+SurPyval` page):
+
+.. automodule:: surpyval.metrics.pit
+   :members: d_calibration, pit_values, DCalibration
+
 Harrell's or Uno's concordance index of any risk score, with Therneau's
 treatment of tied event times by default, as R and lifelines: a number
 that carries its standard error and confidence interval (every regression

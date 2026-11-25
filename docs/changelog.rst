@@ -180,6 +180,20 @@ v0.30 (unreleased)
   ``Hf_tvc`` calls. ``Hf_tvc(x, Z, start=a)`` is the cumulative hazard
   between ``a`` and ``x``, ``-log sf_tvc(x, Z, given=a)``. Nothing
   existing changes.
+- **PIT histogram and D-calibration for any predicted distribution**:
+  ``surpyval.metrics.d_calibration`` (and ``pit_values``). Each case's
+  own predicted CDF at its outcome, ``u = F(x)``, should be uniform if
+  the predictions are right; a right-censored case's weight is spread
+  evenly over ``(F(x), 1]`` (Haider et al. 2020), and a chi-square test
+  gives one p-value. It takes any fitted model with a CDF (with ``Z=``
+  for regression models, Cox, the forests and joint models) or the
+  predicted CDFs from any source as ``F=``; ``randomise=True`` gives the
+  randomised PIT for jumps and draws censored cases instead of spreading
+  them; ``by=`` gives one test per forecast horizon. It matches
+  SurvivalEVAL 0.9.0's ``d_calibration`` to 1e-10 (histogram, statistic
+  and p-value). With censoring the spread test is conservative (1% of
+  400 right-model data sets rejected at 5% with 30% censored); the
+  randomised one holds its level (3.75-5.25%). Nothing existing changes.
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each

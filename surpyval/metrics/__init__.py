@@ -13,6 +13,7 @@ from .dynamic import (
     dynamic_brier,
     dynamic_calibration,
 )
+from .pit import DCalibration, d_calibration, pit_values
 from .validation import (
     PredictionScores,
     Score,
@@ -27,6 +28,7 @@ from .validation import (
 __all__ = [
     "ConcordanceComparison",
     "ConcordanceResult",
+    "DCalibration",
     "DynamicAccuracy",
     "DynamicCalibration",
     "PredictionScores",
@@ -36,10 +38,12 @@ __all__ = [
     "brier_score",
     "compare_concordance",
     "concordance_index",
+    "d_calibration",
     "dynamic_auc",
     "dynamic_brier",
     "dynamic_calibration",
     "integrated_brier_score",
+    "pit_values",
     "score_predictions",
     "survival_probability",
 ]
