@@ -1412,7 +1412,7 @@ def handle_xicn(
     >>> from surpyval import handle_xicn
     >>> data = handle_xicn([2, 5, 8, 3, 9], i=[1, 1, 1, 2, 2],
     ...                    c=[0, 0, 1, 0, 1])
-    >>> data.ids
+    >>> data.item_ids
     [1, 2]
     """
     from surpyval.utils.event_history_data import warn_built_by_user

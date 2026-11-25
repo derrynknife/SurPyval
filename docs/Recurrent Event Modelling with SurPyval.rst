@@ -2089,7 +2089,7 @@ count from there.
     :hide-output:
 
     _states = ara.unit_states()
-    assert list(_states.index) == list(ara.data.ids)
+    assert list(_states.index) == list(ara.data.item_ids)
     assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
     assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
     assert np.all(ahead.lower <= ahead.expected)
