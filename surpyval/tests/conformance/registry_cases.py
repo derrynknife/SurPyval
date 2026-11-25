@@ -4231,6 +4231,13 @@ def _bounds(case):
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
             Bound(
+                "mean_cb",
+                kind="summary",
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[lr]",
+                **lr,
+            ),
+            Bound(
                 "cs_cb",
                 kind="summary",
                 query=_window_query(case, np.asarray(case.Z, float)[:1]),

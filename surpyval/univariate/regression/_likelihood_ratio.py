@@ -998,6 +998,60 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
             want,
         )
 
+    def means(
+        self,
+        rows: npt.NDArray,
+        crit: float,
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on the mean life at each covariate
+        row ``rows[i]`` (centred as the searches' are): the extreme of
+        the mean (``_mean_at``, the integral of ``sf``) over the region,
+        searched on its log above the start of the support (the mean
+        itself for a baseline on the whole line), as the univariate
+        ``mean_cb(method="lr")`` searches it. Returned as ``band``
+        returns its bounds."""
+        fitted = self.fitted
+        lower_edge = float(self.dist.support[0])
+        logged = np.isfinite(lower_edge)
+
+        def psi_of(i: int, theta: npt.NDArray) -> float:
+            with ignoring_warnings():
+                m = float(fitted._mean_at(rows[i : i + 1], theta)[0])
+            if logged:
+                return float(np.log(m - lower_edge))
+            return m
+
+        if logged:
+            ends = (_LN_TINY, _LN_MAX)
+
+            def value(v: Any) -> Any:
+                return lower_edge + np.exp(v)
+
+        else:
+            ends = (-_FLOAT_MAX, _FLOAT_MAX)
+
+            def value(v: Any) -> Any:
+                return v
+
+        n = rows.shape[0]
+        free = self._free()
+        if not free:
+            at = np.array([value(psi_of(i, self.params)) for i in range(n)])
+            return at, at, [], []
+        return self._lr_band(
+            np.arange(n),
+            np.arange(n),
+            psi_of,
+            lambda i: (rows[i].tobytes(),),
+            "mean",
+            free,
+            crit,
+            ends,
+            value,
+            want,
+        )
+
 
 def _survival_scale(
     on: str, additive: bool
@@ -1359,6 +1413,53 @@ def window_cb_lr(
             f"not be found at positions {failed} (the constrained optimiser "
             "failed from every start); nan is returned there. "
             "method='wald' gives a bound in its place.",
+            RuntimeWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    if bound == "two-sided":
+        return np.column_stack([lower, upper])
+    return lower if bound == "lower" else upper
+
+
+def mean_cb_lr(
+    model: Any,
+    rows: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
+    """``mean_cb(method="lr")``: at each covariate row ``rows[i]`` (as
+    given), the extreme of the mean life over the likelihood region
+    (``RegressionLikelihoodRatio.means``); an infinite mean at the
+    estimate (a survival that levels off above 0) has infinite bounds,
+    as the Wald bound's."""
+    search = lr_search(model, reported=False)
+    rows_c = np.asarray(model._centred(rows, search.center), dtype=float)
+    rows_c = np.ascontiguousarray(rows_c)
+    want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
+    crit = critical_value(alpha_ci, bound)
+    with ignoring_warnings():
+        at = np.asarray(model._mean_at(rows_c, search.params), dtype=float)
+    lower = np.full(at.size, np.nan)
+    upper = np.full(at.size, np.nan)
+    finite = np.flatnonzero(np.isfinite(at))
+    failed: list[int] = []
+    unsettled: list[int] = []
+    if finite.size:
+        lo, hi, bad, unsure = search.means(rows_c[finite], crit, want)
+        lower[finite], upper[finite] = lo, hi
+        failed = [int(finite[i]) for i in bad]
+        unsettled = [int(finite[i]) for i in unsure]
+    infinite = np.isinf(at)
+    lower[infinite] = np.inf if want[0] else np.nan
+    upper[infinite] = np.inf if want[1] else np.nan
+    if unsettled:
+        warn_unsettled(f"on the mean at the covariate rows {unsettled}")
+    if failed:
+        warnings.warn(
+            "The likelihood-ratio bound on the mean could not be found at "
+            f"the covariate rows {failed} (the constrained optimiser failed "
+            "from every start); nan is returned there. method='wald' gives "
+            "a bound in its place.",
             RuntimeWarning,
             stacklevel=caller_stacklevel(),
         )
