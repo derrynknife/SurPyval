@@ -564,6 +564,14 @@ with its own ``schema``.
      - ``"model": "BayesianProcessModel"``
      - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
      - --
+   * - ``BayesianCompetingRisks``
+     - ``"model": "BayesianCompetingRisks"``
+     - ``causes``, ``models``, ``surpyval_version``
+     - --
+   * - ``BayesianMultiState``
+     - ``"model": "BayesianMultiState"``
+     - ``mle``, ``models``, ``draws``, ``surpyval_version``
+     - --
 
 
 Readers and helpers

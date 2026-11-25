@@ -99,6 +99,23 @@ The Wiener and gamma processes' fits; see "Degradation processes" in
 .. autoclass:: surpyval.degradation.bayes.BayesianProcessRUL
    :members:
 
+Competing risks and multi-state models
+--------------------------------------
+
+Each cause's (or transition's) likelihood is a factor of its own, so
+these are compositions of the distributions' fits; see "Competing risks
+and multi-state models" in :doc:`Bayesian Fitting with SurPyval`.
+
+.. automethod:: surpyval.univariate.competing_risks.ParametricCompetingRisks.fit_bayes
+
+.. autoclass:: surpyval.univariate.competing_risks.parametric.bayes.BayesianCompetingRisks
+   :members:
+
+.. automethod:: surpyval.multistate.ParametricMultiState.fit_bayes
+
+.. autoclass:: surpyval.multistate.bayes.BayesianMultiState
+   :members:
+
 Comparing fits
 --------------
 

@@ -891,6 +891,94 @@ class ParametricMultiState(_ParametricMultiStateBase):
             clock=clock,
         )
 
+    @classmethod
+    @takes_unit
+    @other_name("s", "state")
+    @multistate_data
+    @accepts_surpyval_data
+    def fit_bayes(
+        cls,
+        x: npt.ArrayLike,
+        e: npt.ArrayLike,
+        state: npt.ArrayLike,
+        tl: npt.ArrayLike | float | None = None,
+        i: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        transitions: Any = None,
+        dist: Any = None,
+        clock: str = "forward",
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit each transition's distribution by Bayes' rule: priors on its
+        parameters times the likelihood :meth:`fit` maximises.
+
+        The likelihood is a product of one factor per transition, so
+        with priors stated a transition at a time each transition has
+        its own posterior, computed exactly as ``dist.fit_bayes``
+        computes it on the transition's spells (censored where they
+        ended otherwise, left truncated where they began; the grid for
+        up to three free parameters: exact). The state occupation
+        probabilities come from joint draws of the transitions'
+        posteriors.
+
+        Parameters
+        ----------
+        x, e, state, tl, i, n, transitions, dist, clock
+            The spells and the model, as for :meth:`fit`.
+        priors : optional
+            One set of priors for every transition (as ``dist.fit_bayes``
+            takes them), or a set a transition, ``{(from, to): {...}}``
+            (a transition left out has none).
+        method, points, importance
+            As for ``dist.fit_bayes``.
+
+        Returns
+        -------
+        surpyval.multistate.bayes.BayesianMultiState
+            ``models`` (each transition's
+            :class:`~surpyval.bayes.BayesianParametric`); ``occupancy``
+            and ``length_of_stay`` for a new unit (posterior means) with
+            ``occupancy_cri`` and ``length_of_stay_cri``, and
+            ``transition_probabilities``.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.multistate import ParametricMultiState
+        >>> model = ParametricMultiState.fit_bayes(
+        ...     x=[2, 5, 3, 4, 6, 1, 7, 3, 8, 2], e=["ill", "dead", "dead",
+        ...     None, "ill", "dead", None, "ill", None, "dead"],
+        ...     state=["healthy", "ill", "healthy", "healthy", "healthy",
+        ...     "ill", "ill", "healthy", "ill", "healthy"],
+        ...     tl=[0, 2, 0, 0, 0, 0, 6, 0, 3, 0], dist=sp.Exponential,
+        ... )
+        >>> model.occupancy_cri([2.0, 6.0], "dead").shape
+        (2, 2)
+        """
+        from surpyval.multistate import bayes
+
+        return bayes.fit(
+            cls,
+            x,
+            e,
+            state,
+            tl,
+            i,
+            n,
+            transitions,
+            dist,
+            clock,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
     @staticmethod
     def _fit_one(
         fitter: Any,
