@@ -172,3 +172,34 @@ def test_median_and_benard_are_the_approximation_of_the_exact_ranks():
     _, _, _, benard = plotting_positions(BEARINGS, heuristic="Median")
     assert np.max(np.abs(benard - exact)) < 0.002
     assert not np.allclose(benard, exact, rtol=1e-6)
+
+
+@pytest.mark.parametrize("seed", range(8))
+@pytest.mark.parametrize(
+    "heuristic", ["Nelson-Aalen", "Kaplan-Meier", "Fleming-Harrington"]
+)
+def test_estimator_positions_are_those_of_the_risk_sets_bit_for_bit(
+    seed, heuristic
+):
+    # plotting_positions validates its data once and reads the risk sets
+    # from the handled arrays: the result is exactly that of the data's
+    # own to_xrd(), which validates them again (ties, counts, right
+    # censoring and delayed entry).
+    import surpyval as sp
+    from surpyval.univariate.nonparametric.plotting_positions import (
+        ESTIMATOR_FUNCS,
+    )
+
+    rng = np.random.default_rng(seed)
+    k = int(rng.integers(5, 200))
+    x = np.round(rng.weibull(1.3, k) * 10, int(rng.integers(0, 3))) + 0.01
+    c = (rng.uniform(size=k) < 0.3).astype(int)
+    n = rng.integers(1, 4, k)
+    tl = np.where(rng.uniform(size=k) < 0.3, x * rng.uniform(0, 0.9, k), 0)
+    t = np.column_stack([tl, np.full(k, np.inf)])
+    x_e, r, d, F = plotting_positions(x, c, n, t, heuristic=heuristic)
+    x_ref, r_ref, d_ref = sp.SurpyvalData(x, c, n, t).to_xrd()
+    np.testing.assert_array_equal(x_e, x_ref)
+    np.testing.assert_array_equal(r, r_ref)
+    np.testing.assert_array_equal(d, d_ref)
+    np.testing.assert_array_equal(F, 1 - ESTIMATOR_FUNCS[heuristic](r, d))
