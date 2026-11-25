@@ -3102,6 +3102,28 @@ shipment period (the row, from 0) and the period of service it came back in
 ``to_returns()`` gives that list back from a table, and ``to_array()`` the
 triangle, in either layout.
 
+Two more things a warranty table may need. By default every unit of a
+shipment is taken as in service from the start of its shipment period, as the
+warranty tools do. If units go out evenly through the month, a unit shipped
+late in it is younger than its shipment's age, so every age reads a little
+old; ``shipping="spread"`` takes each unit as shipped mid-period, which
+makes every age (returns, survivors and the forecast's starting age) half a
+period younger. And when a shipment's returns are known only as a total to
+date, with no breakdown by month, give them as ``totals`` (one per
+shipment, ``None`` for the shipments whose rows hold their returns): those
+returns are failures at some age up to the shipment's age, left censored.
+
+.. jupyter-execute::
+
+    spread = surv.NevadaTable(
+        shipped=[100, 140, 150],
+        returns=[[3, 3, 5], [None, 0, 0], [None, None, 4]],
+        totals=[None, 6, None],     # July's units: 6 back, months unknown
+        shipping="spread",
+    )
+    print(spread)
+    print(surv.Weibull.fit(spread.to_data()).params.round(3))
+
 
 Creating a custom Distribution
 ------------------------------

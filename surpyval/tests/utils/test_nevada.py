@@ -249,3 +249,182 @@ def test_from_returns_refusals():
 
 def test_top_level_name():
     assert surv.NevadaTable is NevadaTable
+
+
+# -- shipments spread through their period ------------------------------------
+
+
+def test_spread_reads_every_age_half_a_period_younger():
+    start = NevadaTable(SHIPPED, CALENDAR, period=2.0)
+    table = NevadaTable(SHIPPED, CALENDAR, period=2.0, shipping="spread")
+    np.testing.assert_array_equal(table.age, [7.0, 5.0, 3.0, 1.0])
+    np.testing.assert_array_equal(table.survivors, start.survivors)
+    x, c, n = table.to_xcnt()
+    # Period 2: the first period's returns in (0, 1], the k-th in
+    # (2k - 3, 2k - 1]; survivors at 2m - 1.
+    np.testing.assert_array_equal(
+        x,
+        [[0, 1], [1, 3], [3, 5], [5, 7], [1, 1], [3, 3], [5, 5], [7, 7]],
+    )
+    np.testing.assert_array_equal(c, [2, 2, 2, 2, 1, 1, 1, 1])
+    np.testing.assert_array_equal(n, [11, 8, 2, 3, 74, 65, 53, 44])
+    x_end, _, _ = table.to_xcnt("end")
+    np.testing.assert_array_equal(x_end[:4], [1, 3, 5, 7])
+    x_mid, _, _ = table.to_xcnt("middle")
+    np.testing.assert_array_equal(x_mid[:4], [0.5, 2, 4, 6])
+    assert "shipments spread" in repr(table).splitlines()[0]
+    ahead = table.forecast(surv.Weibull.from_params([6, 2]), horizon=1)
+    expected = surv.forecast(
+        surv.Weibull.from_params([6, 2]),
+        age=[7.0, 5.0, 3.0, 1.0],
+        n=table.survivors,
+        horizon=1,
+    )
+    np.testing.assert_array_equal(ahead.expected, expected.expected)
+    back = NevadaTable.from_returns(
+        SHIPPED, *table.to_returns(), period=2.0, shipping="spread"
+    )
+    assert back.shipping == "spread"
+
+
+def test_start_is_unchanged_by_the_option():
+    # Bit for bit: the default reading is the reading before the option.
+    a = NevadaTable(SHIPPED, CALENDAR, period=30.44)
+    b = NevadaTable(SHIPPED, CALENDAR, period=30.44, shipping="start")
+    for ages in ("interval", "end", "middle"):
+        for u, v in zip(a.to_xcnt(ages), b.to_xcnt(ages)):
+            np.testing.assert_array_equal(u, v)
+    x, _, _ = a.to_xcnt("middle")
+    np.testing.assert_array_equal(x[:4], (np.arange(1, 5) - 0.5) * 30.44)
+
+
+def test_spread_recovers_a_simulation_better_than_the_start_reading():
+    # 12 monthly shipments of 500 units, each unit going into service at a
+    # uniform time in its shipment month; Weibull(eta 6, beta 2) lives in
+    # months; 40 tables, seed 715. The start reading takes every unit as
+    # in service from the start of the month, so its ages run old.
+    rng = np.random.default_rng(715)
+    S, N, truth = 12, 500, np.array([6.0, 2.0])
+    fits = {"start": [], "spread": []}
+    for _ in range(40):
+        grid = np.full((S, S), np.nan)
+        for i in range(S):
+            m = S - i
+            u = rng.uniform(0, 1, N)
+            t = truth[0] * rng.weibull(truth[1], N)
+            k = np.ceil(u + t).astype(int)
+            grid[i, :m] = np.bincount(k[k <= m], minlength=m + 1)[1 : m + 1]
+        for shipping, out in fits.items():
+            table = NevadaTable(
+                np.full(S, N), grid, layout="age", shipping=shipping
+            )
+            out.append(surv.Weibull.fit(table.to_data()).params)
+    start = np.array(fits["start"]).mean(axis=0)
+    spread = np.array(fits["spread"]).mean(axis=0)
+    # Measured: start (6.566, 2.263), spread (6.024, 1.984).
+    np.testing.assert_allclose(spread, truth, rtol=0.02)
+    assert np.all(np.abs(spread - truth) < np.abs(start - truth) / 5)
+
+
+# -- returns known only as totals ---------------------------------------------
+
+
+def test_totals_are_left_censored_at_the_shipment_age():
+    calendar = [row[:] for row in CALENDAR]
+    calendar[1] = [None, 0, 0, 0]  # shipment 1: 7 returns, by when unknown
+    table = NevadaTable(SHIPPED, calendar, totals=[None, 7, None, None])
+    np.testing.assert_array_equal(table.survivors, [44, 53, 65, 74])
+    np.testing.assert_array_equal(np.isnan(table.totals), [1, 0, 1, 1])
+    x, c, n = table.to_xcnt()
+    # By period of service, without shipment 1: k=1: 1+0+6, k=2: 2+5,
+    # k=3: none, k=4: 3; then the survivors; then shipment 1's 7 returns,
+    # left censored at its age, 3.
+    np.testing.assert_array_equal(
+        x,
+        [[0, 1], [1, 2], [3, 4]] + [[1, 1], [2, 2], [3, 3], [4, 4]] + [[3, 3]],
+    )
+    np.testing.assert_array_equal(c, [2, 2, 2, 1, 1, 1, 1, -1])
+    np.testing.assert_array_equal(n, [7, 7, 3, 74, 65, 53, 44, 7])
+    x, c, n = table.to_xcnt("end")
+    np.testing.assert_array_equal(x[-1:], [3])
+    np.testing.assert_array_equal(c[-1:], [-1])
+    # The fit is the fit of the same rows given directly.
+    direct = surv.Weibull.fit(*table.to_xcnt())
+    assert surv.Weibull.fit(table.to_data()).params == pytest.approx(
+        direct.params
+    )
+    assert "total 7" in repr(table)
+    spread = NevadaTable(
+        SHIPPED, calendar, totals=[None, 7, None, None], shipping="spread"
+    )
+    assert spread.to_xcnt()[0][-1].tolist() == [2.5, 2.5]
+    age = NevadaTable(
+        SHIPPED,
+        [[1, 2, 0, 3], [], [0, 5], [6]],
+        layout="age",
+        observed=[4, 3, 2, 1],
+        totals=[None, 7, None, None],
+    )
+    for u, v in zip(age.to_xcnt(), table.to_xcnt()):
+        np.testing.assert_array_equal(u, v)
+
+
+def test_totals_recover_a_simulation():
+    # Half the shipments report only their total returns to date: the fit
+    # still recovers the lives (Weibull eta 6, beta 2; 12 shipments of
+    # 2000; 20 tables, seed 1715).
+    rng = np.random.default_rng(1715)
+    S, N, truth = 12, 2000, np.array([6.0, 2.0])
+    fits = []
+    for _ in range(20):
+        grid = np.full((S, S), np.nan)
+        totals = np.full(S, np.nan)
+        for i in range(S):
+            m = S - i
+            k = np.ceil(truth[0] * rng.weibull(truth[1], N)).astype(int)
+            counts = np.bincount(k[k <= m], minlength=m + 1)[1 : m + 1]
+            if i % 2:
+                totals[i] = counts.sum()
+                grid[i, :m] = 0
+            else:
+                grid[i, :m] = counts
+        table = NevadaTable(np.full(S, N), grid, layout="age", totals=totals)
+        fits.append(surv.Weibull.fit(table.to_data()).params)
+    np.testing.assert_allclose(np.mean(fits, axis=0), truth, rtol=0.02)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        (dict(shipped=[5], returns=[[1]], shipping="late"), "'shipping'"),
+        (
+            dict(shipped=[5, 5], returns=[[1, 0], [None, 0]], totals=[1]),
+            "one per shipment",
+        ),
+        (
+            dict(
+                shipped=[5, 5], returns=[[1, 0], [None, 0]], totals=[1, None]
+            ),
+            "returns in its row",
+        ),
+        (
+            dict(
+                shipped=[5, 5], returns=[[0, 0], [None, 0]], totals=[6, None]
+            ),
+            "Shipment 0",
+        ),
+        (
+            dict(
+                shipped=[5, 5],
+                returns=[[0, 0], []],
+                layout="age",
+                totals=[None, 2],
+            ),
+            "no periods in service",
+        ),
+        (dict(shipped=[5], returns=[[0]], totals=[1.5]), "whole"),
+    ],
+)
+def test_totals_and_shipping_refusals(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        NevadaTable(**kwargs)
