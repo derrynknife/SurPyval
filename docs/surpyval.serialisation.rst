@@ -556,6 +556,10 @@ with its own ``schema``.
      - ``"model": "BayesianCauseSpecific"``
      - ``event_types``, ``models``, ``surpyval_version``
      - --
+   * - ``BayesianProcessModel``
+     - ``"model": "BayesianProcessModel"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
 
 
 Readers and helpers

@@ -83,6 +83,22 @@ failure cause:
 .. autoclass:: surpyval.recurrent.BayesianCauseSpecific
    :members:
 
+Degradation processes
+---------------------
+
+The Wiener and gamma processes' fits; see "Degradation processes" in
+:doc:`Bayesian Fitting with SurPyval`.
+
+.. automethod:: surpyval.degradation.WienerProcess.fit_bayes
+
+.. automethod:: surpyval.degradation.GammaProcess.fit_bayes
+
+.. autoclass:: surpyval.degradation.bayes.BayesianProcessModel
+   :members:
+
+.. autoclass:: surpyval.degradation.bayes.BayesianProcessRUL
+   :members:
+
 Comparing fits
 --------------
 

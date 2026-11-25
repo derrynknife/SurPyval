@@ -686,6 +686,10 @@ class OnQuantities(JointPrior):
                     "again with prior.on_function to refit."
                 )
             return _function_values(fn, target, fit, theta)
+        if target is not None and hasattr(target, "life_quantity"):
+            # a family whose model is a life (a degradation process's
+            # first passage): its B-lives, R_at and mean
+            return target.life_quantity(spec)(theta)
         if target is not None:
             raise ValueError(
                 f"{spec[0]!r} statements (B-lives, R_at, mean, median, "
@@ -759,6 +763,8 @@ class OnQuantities(JointPrior):
             if scale == "log":
                 return Transform("log", 0.0, np.inf)
             return Transform("identity")
+        if hasattr(getattr(fit, "target", None), "life_quantity"):
+            return Transform("log", 0.0, np.inf)
         lo = float(self.dist.support[0])
         if fit.offset or not np.isfinite(lo):
             return Transform("identity")
@@ -1408,7 +1414,9 @@ def from_model(
     if isinstance(model, (BayesianParametric, BayesianResult)):
         return model.as_prior(weight=weight, param=param, widen=widen)
     target = target_for_model(model)
-    if not hasattr(model, "covariance") or not hasattr(model, "dist"):
+    if not hasattr(model, "covariance") or (
+        target is None and not hasattr(model, "dist")
+    ):
         raise ValueError(
             "from_model takes a fitted SurPyval model (Weibull.fit(...)) "
             f"or a Bayesian fit; got {type(model).__name__}."

@@ -279,6 +279,25 @@ v0.30 (unreleased)
   marker, each against its own marker's noise; the warning names them
   ``"vibration.s1"``. Saved models keep a lag or weight by marker.
 
+- **Bayesian fits of the Wiener and gamma degradation processes**:
+  ``WienerProcess.fit_bayes`` and ``GammaProcess.fit_bayes`` (readings,
+  stress and zero increments as ``fit`` takes them; not gauge readings
+  yet). Priors on the process's parameters and stress coefficients, on
+  its life (``prior.on_quantities(WienerProcess, B10=...,
+  instead_of=["mu"])``) or from an earlier fleet (``prior.from_model(fit,
+  param="mu")``, or ``prior.from_fit`` for its readings); the grid for up
+  to three free parameters. ``BayesianProcessModel`` gives a new unit's
+  predictive first-passage life (``sf``, ``ff``, ``qf``), credible
+  intervals on the population's (``cri``, ``quantile_cri``,
+  ``mean_cri``), and ``predict_rul`` a unit's remaining life (the
+  predictive median and interval, and the credible interval of the
+  median), all from the closed-form first-passage law at every posterior
+  point. With no priors the Wiener posterior matches the
+  normal-inverse-gamma closed form to 0.2% of the intervals' widths; a
+  weight-1 power prior from an earlier fleet matches fitting both
+  fleets together; simulation-based calibration (200 fleets a process
+  drawn from the priors) holds the intervals on a parameter and on the
+  B10 life at their level. Nothing existing changes.
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
   returns its two-sided bounds as a

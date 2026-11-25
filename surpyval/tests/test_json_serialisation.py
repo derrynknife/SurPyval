@@ -650,6 +650,9 @@ def _build(name):
         "bayesian_cause_specific": lambda: CauseSpecificNHPP.fit_bayes(
             *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
         ),
+        "bayesian_process": lambda: GammaProcess.fit_bayes(
+            *_process_data(1, monotone=True), threshold=15.0
+        ),
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -741,6 +744,7 @@ CASES = [
     "bayesian_recurrence",
     "bayesian_proportional_intensity",
     "bayesian_cause_specific",
+    "bayesian_process",
 ]
 
 
