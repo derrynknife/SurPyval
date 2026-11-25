@@ -2503,3 +2503,11 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | No bounds on `qf` or `mean` (no `quantile_cb` or `mean_cb` on `JointModel`): `cb` is the model's one bound (Wald on `log(-log sf)`). | proposed | A bound on the quantile needs the derivative of the inverse through the adaptive nodes (as `cb` does for `sf`); a later step. | gap |
 | Validation: an item with many near noise-free constant readings is a Weibull PH (as `test_a_constant_known_marker_is_a_weibull_ph`): its `mean` equals `u + (a / beta) Gamma(1/beta, (u/a)^beta) e^{(u/a)^beta}` to 1e-5 (781.33) and its `qf` the closed-form conditional quantile to 1e-4, the readings' noise (1e-3) setting both; against adaptive quadrature of the prediction's own `sf`, the mean of that item to 5e-15 and the restricted mean of a rising item to 1e-8 (tested to 1e-7) at three horizons. | proposed | A closed form, and the integral it approximates. | done |
 
+### A joint model's printout: alpha at the covariates' means (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The printout's survival part (one failure mode) leads with `alpha` at the hazard covariates' means (and the marker reference), its standard error and 95% interval from the delta method on `log alpha - (gamma . zbar) / beta` (`/ 1` for an accelerated model), on the log scale as the table's positive parameters; the parameter follows as `alpha (Z = 0)`. The heading names the means. Only the printout changes: `params`, `summary()` and `to_dict` keep `alpha` at `Z = 0`. Means within 1e-12 of 0 print as before. | proposed (user test) | The readable value first, as the issue asks: at `Z = 0` far from the data `alpha` was 1e11 with a larger standard error. Changing the parameter itself would move every saved model and every caller's `params`. | done |
+| Checked: the row equals the reported `alpha` and its standard error of the same fleet refitted with the covariate centred (799.2, se 78.65, to 2e-3 and 2e-2: two fits' optimiser tolerances). | proposed | Another route to the same number. | done |
+| Not done: a model with several failure modes prints each mode's `alpha` at `Z = 0` as before. | proposed | Each mode's block has its own covariates and shared terms; a follow-up. | gap |
+

@@ -184,6 +184,16 @@ v0.30 (unreleased)
 
 **Changed.**
 
+- **A joint model's printout leads with alpha at the covariates' means.**
+  Where the hazard's covariates are far from 0 (a load near 90%), ``alpha``
+  at ``Z = 0`` is far outside the data (2.8e5 with a standard error of
+  2.9e6 in the test fleet; 1e11 in a user test). The survival part now
+  shows ``alpha`` at the covariates' means first, with its Wald interval on
+  the log scale (799.2, se 78.65: the reported ``alpha`` of the same data
+  with the covariate centred), then the parameter as ``alpha (Z = 0)``.
+  The parameters, ``summary()`` and ``to_dict`` are unchanged; a model
+  whose covariates have mean 0, or has none, prints as before.
+
 - **EventHistoryData is no longer needed to prepare recurrent data.**
   Everything it was built for has a ``SurpyvalData`` form (see *Added*),
   and the documentation now uses that. Nothing is removed and nothing
