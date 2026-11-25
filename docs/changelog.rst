@@ -5,6 +5,29 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **Likelihood-ratio bounds on an offset: a correctness change.** A
+  three-parameter fit with an offset can tend to a simpler model as the
+  offset runs off to minus infinity (a Gamma to the Normal, a
+  LogLogistic to the Logistic). When the data cannot rule that limit
+  out, the offset's lower bound is minus infinity. The profile search
+  lost the narrow valley its other parameters follow there and reported
+  too large a deviance (93 at an offset of -1e6, where it is 0.85), so a
+  flat profile looked as though it crossed the critical value. On a
+  12-unit Gamma example the 99% and 80% lower bounds on ``gamma`` were
+  -3.5e6 and -4.6e5 (and the 95% one nan, with a warning); all three
+  are now ``-inf``. A LogLogistic's 99% bound on the same data moves
+  from -3.3e6 to ``-inf``. Each profile point is now followed down its
+  valley in coordinates the likelihood's curvature there makes round,
+  and a point that cannot be shown to be the minimum is not read as a
+  crossing: the bound is reported as not found, with a warning, rather
+  than as a wrong number. Bounds that were found (a crossing the
+  profile does reach) are unchanged.
+
+- **GeneralizedF quantiles no longer depend on the other values asked
+  for.** ``qf`` and ``isf`` refine every value with Newton steps until
+  all of them have converged, so a value still converging, or a missing
+  one, could move another by an ulp. Each value now stops on its own.
+
 - **The gamma, Poisson, binomial, negative binomial, Beta-Geometric and
   discrete Weibull functions at large shapes: a correctness change.** A
   log mass such as :math:`k \ln \mu - \mu - \ln k!` is a sum of terms of

@@ -36,18 +36,24 @@ def solve_log_tails(
             )
 
         def newton(y: Any, steps: int) -> Any:
+            # Each value stops once its own step is within rounding, so
+            # that its answer does not depend on the other values asked
+            # for with it (a value still converging, or a missing one,
+            # kept the others stepping by an ulp either way).
+            done = onp.zeros(onp.shape(y), dtype=bool)
             for _ in range(steps):
                 current = tail(y)
                 slope = onp.exp(y + dist.log_df(onp.exp(y), *params) - current)
                 slope = onp.where(lower, slope, -slope)
                 step = (current - target) / slope
                 step = onp.clip(
-                    onp.where(onp.isfinite(step), step, 0.0), -2.0, 2.0
+                    onp.where(onp.isfinite(step) & ~done, step, 0.0), -2.0, 2.0
                 )
                 y = y - step
-                if onp.all(
+                done = done | (
                     onp.abs(step) <= 4e-16 * onp.maximum(1.0, onp.abs(y))
-                ):
+                )
+                if onp.all(done):
                     break
             return y
 
