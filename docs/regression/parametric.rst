@@ -40,8 +40,9 @@ reusing the ordinary maximum-likelihood fit; the AFT family fits it with
 its own accumulated-age likelihood. A fitted PH, AH, AFT or PO model, and
 an accelerated life model whose life parameter scales time (by cumulative
 exposure), can then be *evaluated* along a covariate path with ``sf_tvc`` /
-``Hf_tvc``, bounded with ``cb_tvc`` and integrated to a mean (residual)
-life with ``mean_tvc``: a piecewise-constant path described as a
+``Hf_tvc``, bounded with ``cb_tvc``, integrated to a mean (residual)
+life with ``mean_tvc`` and inverted to a quantile (or a draw of a life
+from a given age) with ``qf_tvc``: a piecewise-constant path described as a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` is summed
 exactly, and a continuously varying one described as a
 :class:`~surpyval.univariate.regression.tvc_path.CovariatePath` (a ramp, a
