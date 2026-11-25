@@ -95,7 +95,7 @@ def _numerically_equal(want: str, got: str) -> bool:
 OPT_IN = {
     "ml": (
         "--run-ml",
-        "beta ML tree/forest tests",
+        "slow survival tree and forest tests (surpyval.ml)",
         "surpyval/tests/ml",
     ),
     "invariants": (

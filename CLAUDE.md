@@ -68,7 +68,16 @@ computed in it holds to 1e-16 only on x86-64 Linux. Use exact arithmetic
   is, with the numbers, and investigated.
 - **Scope.** SurPyval is a general statistics package for anyone with
   time-to-event data, not only engineers. Reliability test planning belongs
-  here (`surpyval.test_planning`). Physics of failure does not.
+  here (`surpyval.test_planning`). Physics of failure does not. It is not a
+  machine-learning framework, a Bayesian sampler or a deep-learning
+  framework: survival trees and forests, penalised fits and prediction
+  scores are in, as statistical models and measures; tuning, pipeline and
+  cross-validation tooling, and boosting, are out. The one exception is
+  `cross_validate=` on `dynamic_auc` / `dynamic_brier`, honest
+  out-of-sample scoring of one model. Bayesian fits are closed form, grid
+  and the Laplace approximation; sampling goes through PyMC
+  (`surpyval.pymc`). No networks or training loops; `surpyval.torch` gives
+  the likelihood as a loss. See `DECISIONS.md` (scope, 25 Nov 2026).
 - **Every bound.** Each model aims to offer every bound type (`cb` methods
   and `on=` targets, likelihood-ratio, bootstrap). A missing one is a
   documented gap: the call refuses and says why and what to use instead,
