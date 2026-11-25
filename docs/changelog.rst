@@ -5,6 +5,33 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **GeneralizedGamma, GeneralizedF, Gompertz and InverseGaussian in the
+  far tails: a correctness change.** The four are now checked against
+  50-digit mpmath values on the tails grid (``test_tails.py``), as every
+  other closed-form distribution is, and the grid found these:
+
+  - ``GeneralizedGamma.df`` (and ``hf``) at ``x = 0`` when
+    :math:`Q\sigma = 1`, where the density is finite and not 0, used
+    :math:`\mu Q / \sigma` for :math:`\mu / (Q\sigma)` in its constant:
+    at ``mu = 1``, ``sigma = 0.5``, ``Q = 2`` it gave 0.0143 where it
+    is 0.2870 (the limit of ``df`` as ``x`` falls to 0). Only that one point changes (``mu = 0`` and every ``x > 0``
+    were right).
+  - ``GeneralizedGamma.log_sf`` (or ``log_ff``) where the other tail
+    underflows the gamma variable: 0 instead of about minus the tiny
+    tail (``log_sf`` 0 and ``sf`` 1 where they are -1e-8 and
+    0.99999999, at ``Q = 10``; ``hf`` 1e-8 off there).
+  - ``GeneralizedF.log_sf`` and ``log_ff`` likewise far out (0 where
+    the value is -1e-300), and its ``df`` and ``hf`` far in the upper
+    tail with a large first shape, which lost up to 1.2e-11 (relative)
+    to a cancellation; both are now within 1e-12. The left-truncated
+    fit to ``lung``, whose search runs off, now says "No finite
+    maximum" (it said only that it was not a verified maximum).
+  - ``InverseGaussian.log_ff`` above the mean, where ``F`` is near 1:
+    3.7e-10 off at ``S = 1e-8`` and 1.3e-4 off at ``S = 1e-300``; now
+    taken from the accurate ``log_sf``.
+  - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
+    were nan).
+
 - **Likelihood-ratio bounds on an offset: a correctness change.** A
   three-parameter fit with an offset can tend to a simpler model as the
   offset runs off to minus infinity (a Gamma to the Normal, a

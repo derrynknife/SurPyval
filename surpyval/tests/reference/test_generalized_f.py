@@ -149,9 +149,10 @@ def test_truncated_likelihood_matches_flexsurv(lung):
     data = surv.SurpyvalData(x, c, tl=np.floor(x / 4))
     ll = GF._log_likelihood(data, *params, 0.0, 0.0, 1.0)
     assert float(ll) == pytest.approx(ref["values"]["loglik"], abs=1e-8)
-    # its search runs off (Q and P growing past 17 and 39) and says so;
-    # it still climbs past the likelihood at the untruncated estimates
-    with pytest.warns(UserWarning, match="verified maximum"):
+    # its search runs off (Q and P growing past 17 and 39, and on to 63
+    # and 521 since the density is exact far in its upper tail) and says
+    # so; it still climbs past the likelihood at the untruncated estimates
+    with pytest.warns(UserWarning, match="No finite maximum"):
         model = GF.fit(x, c=c, tl=np.floor(x / 4))
     assert -model.neg_ll() >= ref["values"]["loglik"]
 

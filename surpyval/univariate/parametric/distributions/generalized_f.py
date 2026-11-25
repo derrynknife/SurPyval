@@ -252,8 +252,16 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
             tail_s = s2 * -softplus(v_far) - np.log(s2) + lead
             low = far & (v < 0)
             high = far & (v > 0)
-            log_f = np.where(low, tail_f, np.where(high, 0.0, log_f))
-            log_s = np.where(high, tail_s, np.where(low, 0.0, log_s))
+            # and the other tail is 1 minus it, in logs: about -F (or
+            # -S), not 0 (log_sf was 0 where F was 1e-300); each formed
+            # only on its own rows (from -1 elsewhere), so that no nan
+            # reaches a gradient
+            r_s = -np.where(high, tail_s, -1.0)
+            r_f = -np.where(low, tail_f, -1.0)
+            near_f = log1mexp(r_s, np.log(r_s))[0]
+            near_s = log1mexp(r_f, np.log(r_f))[0]
+            log_f = np.where(low, tail_f, np.where(high, near_f, log_f))
+            log_s = np.where(high, tail_s, np.where(low, near_s, log_s))
         return log_s, log_f
 
     def log_sf(
@@ -270,7 +278,10 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         self, x: Numeric, mu: Boxable, sigma: Boxable, Q: Boxable, P: Boxable
     ) -> Boxable:
         # ln delta - ln(sigma x) + s1 v - (s1 + s2) softplus(v) - ln B(s1,s2)
-        # with v = z + ln(s1 / s2)
+        # with v = z + ln(s1 / s2), the middle as -s1 softplus(-v) - s2
+        # softplus(v): the same, since softplus(v) - v = softplus(-v), but
+        # without s1 v and s1 softplus(v) cancelling far out (they lost 3
+        # digits at s1 = 200, v = 24)
         delta, s1, s2 = _shapes(Q, P)
         z, x_pos = self._z(x, mu, sigma, delta)
         v = z + np.log(s1) - np.log(s2)
@@ -278,8 +289,8 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
             np.log(delta)
             - np.log(sigma)
             - np.log(x_pos)
-            + s1 * v
-            - (s1 + s2) * softplus(v)
+            - s1 * softplus(-v)
+            - s2 * softplus(v)
             - betaln_accurate(s1, s2)
         )
         return self._edges(

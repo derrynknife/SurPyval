@@ -145,8 +145,14 @@ def _log_tails(w: Boxable, Q: Boxable) -> tuple[Boxable, Boxable]:
         u = np.exp(log_u_in)
     upper_c, lower_c = agammainccln(q, u), agammaincln(q, u)
     if onp.any(tiny):
-        lower_c = np.where(tiny, q * log_u_tiny - agammaln(q + 1.0), lower_c)
-        upper_c = np.where(tiny, 0.0, upper_c)
+        lower_t = q * log_u_tiny - agammaln(q + 1.0)
+        lower_c = np.where(tiny, lower_t, lower_c)
+        # the upper tail is 1 - P, in logs: about -P, which is not 0 for
+        # a small shape (P = 1e-8 at u = 1e-800 for q = 0.01, where 0
+        # made sf 1 and log_sf 0 in the lower tail at Q = 10)
+        upper_c = np.where(
+            tiny, log1mexp(-lower_t, np.log(-lower_t))[0], upper_c
+        )
     positive = Q_v > 0
     log_s_c = np.where(positive, upper_c, lower_c)
     log_f_c = np.where(positive, lower_c, upper_c)
@@ -447,14 +453,14 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
         r"""The density (and hazard) at x = 0 and its log. For
         :math:`Q > 0` it behaves like :math:`c\,x^{1/(Q\sigma) - 1}`, with
         :math:`\ln c = q\ln q - \ln(\sigma/Q) - \ln\Gamma(q) - \mu
-        Q/\sigma`; for :math:`Q \le 0` it is 0."""
+        /(Q\sigma)`; for :math:`Q \le 0` it is 0."""
         Q_pos = np.where(Q > 0, Q, 1.0)
         q = 1.0 / (Q_pos * Q_pos)
         log_c = (
             q * np.log(q)
             - np.log(sigma / Q_pos)
             - agammaln(q)
-            - mu * Q_pos / sigma
+            - mu / (Q_pos * sigma)
         )
         value, log_value = power_at_zero(1.0 / (Q_pos * sigma) - 1.0, log_c)
         return (

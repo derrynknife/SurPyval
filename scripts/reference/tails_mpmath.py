@@ -46,7 +46,14 @@ dependency; use a separate virtual environment)::
     /tmp/tails_venv/bin/python scripts/reference/tails_mpmath.py
 
 Re-running reproduces the file byte for byte (a fixed seed chooses the
-points that are re-checked at 80 digits).
+points that are re-checked at 80 digits). To add or change some
+distributions without recomputing the rest, name them after ``--add``::
+
+    /tmp/tails_venv/bin/python scripts/reference/tails_mpmath.py --add Gompertz
+
+(their cases are recomputed and put in place; the others are kept, and
+the file is the one a full run would write). Names alone, without
+``--add``, write a trial file ``tails_mpmath.partial.json`` beside it.
 """
 
 import json
@@ -138,16 +145,6 @@ SKIPPED = {
     "MixtureModel": "a fitted combination of the distributions here",
     "RoystonParmar": "a fitted spline model, not a closed-form "
     "distribution",
-    # New in v0.30, each checked against R at fixed parameters (rtol
-    # 1e-10, tests/reference/test_<name>.py) but not yet on this grid.
-    "GeneralizedGamma": "new; against flexsurv in test_generalized_gamma.py"
-    ", not yet on this grid",
-    "GeneralizedF": "new; against flexsurv in test_generalized_f.py, not "
-    "yet on this grid",
-    "Gompertz": "new; against flexsurv in test_gompertz.py, not yet on "
-    "this grid",
-    "InverseGaussian": "new; against statmod and SuppDists in "
-    "test_inverse_gaussian.py, not yet on this grid",
 }
 # Specified below, but not generated yet: the reference computation itself
 # fails or is too slow on this grid. Listed as skipped so the check names
@@ -583,6 +580,118 @@ def _hypo_edge(side, *rates):
     return mpf(rates[0]) if len(rates) == 1 else mpf(0)
 
 
+def _gompertz(x, a, b):
+    H = b * x if a == 0 else b / a * mp.expm1(a * x)
+    return mp.exp(-H), -mp.expm1(-H), b * mp.exp(a * x - H)
+
+
+def _gompertz_qf(u, uc, a, b):
+    H = _L(u, uc)
+    if a == 0:
+        return H / b
+    y = a * H / b
+    if y <= -1:
+        # past the plateau of a negative shape: never reached
+        return INF
+    return mp.log1p(y) / a
+
+
+def _inverse_gaussian(x, mu, lam):
+    """sf = Phi(-a) - e^(2 lam / mu) Phi(-b), a difference that cancels
+    far above the mean; the precision is raised until it keeps 20 digits
+    beyond the working precision."""
+    extra = 30
+    while True:
+        with mp.workdps(mp.dps + extra):
+            r = mp.sqrt(lam / x)
+            a = r * (x / mu - 1)
+            b = r * (x / mu + 1)
+            e = mp.exp(2 * lam / mu)
+            lower = e * mp.ncdf(-b)
+            t1 = mp.ncdf(-a)
+            sf = t1 - lower
+            if sf > 0 and mp.mag(t1) - mp.mag(sf) < (extra - 20) * 3.3:
+                ff = mp.ncdf(a) + lower
+                df = mp.sqrt(lam / (2 * mp.pi * x**3)) * mp.exp(
+                    -lam * (x - mu) ** 2 / (2 * mu**2 * x)
+                )
+                return +sf, +ff, +df
+        extra *= 2
+        if extra > 5000:
+            raise RuntimeError(f"InverseGaussian sf lost: {x} {mu} {lam}")
+
+
+def _gengamma(x, mu, sigma, Q):
+    w = (mp.log(x) - mu) / sigma
+    if Q == 0:
+        return mp.ncdf(-w), mp.ncdf(w), mp.npdf(w) / (sigma * x)
+    q = 1 / Q**2
+    ew = mp.exp(Q * w)
+    lower, upper = _gamma_pq(q, q * ew)
+    sf, ff = (upper, lower) if Q > 0 else (lower, upper)
+    log_g = mp.log(abs(Q)) + q * mp.log(q) - mp.loggamma(q) + q * (Q * w - ew)
+    return sf, ff, mp.exp(log_g) / (sigma * x)
+
+
+def _gengamma_edge(side, mu, sigma, Q):
+    # f ~ c x^(1/(Q sigma) - 1) at 0 for Q > 0 (q Q w = w / Q); 0 for
+    # Q <= 0
+    if Q <= 0:
+        return mpf(0)
+    k = 1 / (Q * sigma)
+    if k < 1:
+        return INF
+    if k > 1:
+        return mpf(0)
+    q = 1 / Q**2
+    return mp.exp(
+        mp.log(Q / sigma) + q * mp.log(q) - mp.loggamma(q) - mu / (Q * sigma)
+    )
+
+
+def _genf_shapes(Q, P):
+    tmp = Q**2 + 2 * P
+    delta = mp.sqrt(tmp)
+    s1 = 2 / (tmp + Q * delta)
+    # s1 s2 = 2 / (P tmp): the other denominator cancels for P << Q^2
+    s2 = 2 / (P * tmp) / s1
+    return delta, s1, s2
+
+
+def _genf(x, mu, sigma, Q, P):
+    delta, s1, s2 = _genf_shapes(Q, P)
+    v = delta * (mp.log(x) - mu) / sigma + mp.log(s1 / s2)
+    b = 1 / (1 + mp.exp(-v))
+    bc = 1 / (1 + mp.exp(v))
+    ff, sf = _betainc_pair(s1, s2, b, bc)
+    log_df = (
+        mp.log(delta)
+        - mp.log(sigma)
+        - mp.log(x)
+        + s1 * v
+        - (s1 + s2) * mp.log1p(mp.exp(v))
+        - _log_beta(s1, s2)
+    )
+    return sf, ff, mp.exp(log_df)
+
+
+def _genf_edge(side, mu, sigma, Q, P):
+    # f ~ c x^(delta s1 / sigma - 1) at 0
+    delta, s1, s2 = _genf_shapes(Q, P)
+    k = delta * s1 / sigma
+    if k < 1:
+        return INF
+    if k > 1:
+        return mpf(0)
+    return mp.exp(
+        mp.log(delta)
+        - mp.log(sigma)
+        + s1 * mp.log(s1 / s2)
+        - s1 * delta * mu / sigma
+        - _log_beta(s1, s2)
+    )
+
+
 def _product(*axes):
     out = [()]
     for axis in axes:
@@ -730,6 +839,55 @@ CONTINUOUS = [
         # the partial-fraction sum cancels near 0 (ff ~ x^m); 450 extra
         # digits cover ff down to 1e-400 for m = 3
         extra_dps=450,
+    ),
+    Continuous(
+        "Gompertz",
+        # a negative shape has a plateau: sf levels off at e^(b/a), so
+        # the targets below it are left out (qf is infinite there)
+        _product((-1.0, -1e-3, 0.0, 1e-3, 0.1, 10.0), SCALES),
+        _gompertz,
+        _positive,
+        lambda side, a, b: mpf(b),
+        qf=_gompertz_qf,
+        start=_pos_start(lambda a, b: 1 / mpf(b)),
+    ),
+    Continuous(
+        "InverseGaussian",
+        # the shape lam / mu from 1e-6 (a long right tail) to 1e3 (near a
+        # Normal), at means 1e-6 to 1e6
+        [(m, m * r) for m in SCALES for r in (1e-3, 1.0, 1e3)]
+        + [(1.0, 1e-6), (1.0, 1e6)],
+        _inverse_gaussian,
+        _positive,
+        lambda side, mu, lam: mpf(0),
+        start=_pos_start(lambda mu, lam: mu),
+    ),
+    Continuous(
+        "GeneralizedGamma",
+        # Q from -3 to 10, through the lognormal (Q = 0) and Temme's
+        # region (|Q| < 0.1); (1, 0.5, 2) has the density finite and
+        # non-zero at 0 (Q sigma = 1) with mu != 0
+        _product(
+            (0.0, 5.0),
+            (0.2, 1.0, 3.0),
+            (-3.0, -1.0, -0.05, 0.0, 0.01, 0.05, 0.5, 1.0, 10.0),
+        )
+        + [(1.0, 0.5, 2.0)],
+        _gengamma,
+        _positive,
+        _gengamma_edge,
+        start=lambda mu, sigma, Q: (mu, sigma),
+        # q ln q - ln Gamma(q) cancels for a large q = 1 / Q^2
+        extra_dps=20,
+    ),
+    Continuous(
+        "GeneralizedF",
+        _product((0.0, 3.0), (0.5, 2.0), (-1.0, 0.0, 1.0), (0.01, 1.0, 10.0)),
+        _genf,
+        _positive,
+        _genf_edge,
+        start=lambda mu, sigma, Q, P: (mu, sigma),
+        extra_dps=20,
     ),
 ]
 
@@ -1288,8 +1446,47 @@ def _dump(out):
     return text + ',\n "cases": [\n' + ",\n".join(lines) + "\n ]\n}\n"
 
 
+def _recount(cases):
+    """The number of points a full run re-checks at ``CHECK_DPS``: one
+    draw of the seeded generator per point, in the order of the cases."""
+    rng = random.Random(398)
+    return sum(
+        rng.random() < CHECK_FRACTION for case in cases for _ in case["x"]
+    )
+
+
+def add(names):
+    """Regenerate only the distributions ``names`` and put their cases
+    into ``tails_mpmath.json`` in the place a full run puts them, keeping
+    every other case as it is. The values do not depend on the seeded
+    generator (it only picks the points re-checked at ``CHECK_DPS``), so
+    the file is the one a full run writes; only the count of re-checked
+    points is recounted."""
+    path = DATA / "tails_mpmath.json"
+    old = json.loads(path.read_text())
+    new = build(set(names))
+    order = [spec.name for spec in CONTINUOUS + DISCRETE]
+    by_dist = {}
+    for case in old["cases"]:
+        if case["dist"] not in names:
+            by_dist.setdefault(case["dist"], []).append(case)
+    for case in new["cases"]:
+        by_dist.setdefault(case["dist"], []).append(case)
+    cases = [case for name in order for case in by_dist.get(name, [])]
+    out = dict(old)
+    out["settings"] = dict(old["settings"], rechecked_points=_recount(cases))
+    out["skipped"] = SKIPPED
+    out["cases"] = cases
+    path.write_text(_dump(out))
+    print("wrote", path)
+
+
 def main():
-    only = set(sys.argv[1:])
+    args = sys.argv[1:]
+    if args[:1] == ["--add"]:
+        add(set(args[1:]))
+        return
+    only = set(args)
     path = DATA / "tails_mpmath.json"
     if only:
         # a trial run of some distributions, written beside the real file

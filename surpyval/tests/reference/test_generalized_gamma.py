@@ -277,3 +277,15 @@ def test_in_fit_best():
     from surpyval.fit_best import distributions
 
     assert GG in distributions
+
+
+def test_density_at_zero_is_its_limit():
+    # With Q sigma = 1 the density at 0 is finite and not 0: c = (Q /
+    # sigma) q^q e^{-mu / (Q sigma)} / Gamma(q), q = 1 / Q^2. At mu = 1,
+    # sigma = 0.5, Q = 2 that is 0.28699... (it was 0.0143, from mu Q /
+    # sigma in place of mu / (Q sigma)), the limit of df as x falls to 0.
+    q = 0.25
+    c = np.exp(np.log(4.0) + q * np.log(q) - float(mp.loggamma(q)) - 1.0)
+    assert GG.df(0.0, 1.0, 0.5, 2.0) == pytest.approx(c, rel=1e-14)
+    assert GG.df(1e-12, 1.0, 0.5, 2.0) == pytest.approx(c, rel=1e-12)
+    assert GG.hf(0.0, 1.0, 0.5, 2.0) == pytest.approx(c, rel=1e-14)
