@@ -23,6 +23,29 @@ v0.30 (unreleased)
   than as a wrong number. Bounds that were found (a crossing the
   profile does reach) are unchanged.
 
+- **Likelihood-ratio lower bounds on an offset that tends to its
+  limit: a correctness change.** Where the search above still could
+  not settle the profile far out, the offset's lower bound is now
+  checked against the limiting model itself (the Normal for a Gamma or
+  a LogNormal, the Logistic for a LogLogistic, the smallest extreme
+  value distribution, ``Gumbel``, for a Weibull), fitted to the same
+  data. If the limit fits the data at least as well as the offset fit,
+  the best fit is the limit, so no offset is ruled out and the lower
+  bound is ``-inf``. If the limit fits a little worse but within the
+  critical value, and the profile is seen rising towards it, the lower
+  bound is also ``-inf``. Otherwise the bound stays "not found", with
+  its warning. On the 12-unit example the Weibull's 99% one-sided bound
+  moves from nan (with a warning) to ``-inf`` (its limit's deviance is
+  4.16, below 5.41), and the LogLogistic's 80% one-sided bound does the
+  same (0.62, below 0.71). On 40 values from a Normal, where the offset
+  fit is not the maximum (the Normal is better by a deviance of 0.50
+  for a Gamma, 0.37 for a LogNormal), the bounds move from nan to
+  ``-inf`` at 80%, 95% and 99%. The same applies to bounds that were
+  finite only because noise far out read as a crossing: -3.4e14
+  (LogNormal) and -6.0e14 (LogLogistic) become ``-inf``. Bounds where
+  the limit is ruled out are unchanged: the Weibull's 95% one-sided
+  bound on the 12-unit data is still -16.39.
+
 - **GeneralizedF quantiles no longer depend on the other values asked
   for.** ``qf`` and ``isf`` refine every value with Newton steps until
   all of them have converged, so a value still converging, or a missing

@@ -462,6 +462,123 @@ def test_a_gamma_offset_whose_normal_limit_is_excluded_has_a_finite_bound():
     assert 2.0 * (nll - nll_hat) == pytest.approx(3.841459, abs=1e-3)
 
 
+def _limit_deviance(family, x, c=None, n=None):
+    """The deviance of ``family``'s offset limit (the smallest extreme
+    value distribution for a Weibull, the Logistic for a LogLogistic,
+    the Normal for a Gamma or a LogNormal) against its offset fit."""
+    limit = {
+        "Weibull": sp.Gumbel,
+        "LogLogistic": sp.Logistic,
+        "Gamma": sp.Normal,
+        "LogNormal": sp.Normal,
+    }[family]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(sp, family).fit(x, c=c, n=n, offset=True)
+        other = limit.fit(x, c=c, n=n)
+    return model, 2.0 * (other.neg_ll() - model.neg_ll())
+
+
+def _lower(model, alpha_ci):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        lower = model.param_cb(
+            "gamma", alpha_ci=alpha_ci, bound="lower", method="lr"
+        )[0]
+    return lower, [str(w.message) for w in caught]
+
+
+@pytest.mark.parametrize(
+    "family, limit, alpha_ci",
+    [("Weibull", 4.164, 0.01), ("LogLogistic", 0.616, 0.2)],
+)
+def test_an_offset_whose_limit_is_inside_the_region_is_minus_infinity(
+    family, limit, alpha_ci
+):
+    # The 12-unit data's offset profile rises towards its limit's
+    # deviance (a Weibull's Gumbel, 4.164; a LogLogistic's Logistic,
+    # 0.616), below the one-sided critical value (5.41 at 99%, 0.708 at
+    # 80%): no offset down to -inf is excluded. The searches lose the
+    # valley far out (a Weibull's shape and scale run to infinity
+    # together), and the bound was nan with a warning.
+    x, c, n = _small_offset_data()
+    model, d_lim = _limit_deviance(family, x, c, n)
+    assert d_lim == pytest.approx(limit, abs=1e-3)
+    assert ndtri(1 - alpha_ci) ** 2 > d_lim
+    assert _lower(model, alpha_ci) == (-np.inf, [])
+
+
+def test_an_offset_whose_limit_is_outside_the_region_keeps_its_crossing():
+    # At 95% one-sided (2.71) the Weibull's Gumbel limit, 4.164, is
+    # excluded, and the bound is the crossing the profile reaches, as
+    # before: -16.39, where the profile deviance is the critical value.
+    x, c, n = _small_offset_data()
+    model, _ = _limit_deviance("Weibull", x, c, n)
+    lower, caught = _lower(model, 0.05)
+    assert caught == []
+    assert lower == pytest.approx(-16.39, abs=0.01)
+    searches = model._lr_extended()
+    nll_hat = searches._lr_neg_ll(np.asarray(searches.params, dtype=float))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        nll = searches._profile_neg_ll(searches._gamma_idx, lower)
+    assert 2.0 * (nll - nll_hat) == pytest.approx(ndtri(0.95) ** 2, abs=1e-3)
+
+
+def _near_normal(seed):
+    rng = np.random.default_rng(seed)
+    return 20.0 + 2.0 * rng.standard_normal(40)
+
+
+def test_a_lognormal_offset_profile_falls_to_its_better_normal_limit():
+    # The reference for the next test, in closed form: with the offset
+    # held, a LogNormal's maximum-likelihood mu and sigma are the mean
+    # and standard deviation of log(x - gamma). On 40 near-Normal values
+    # the profile deviance falls from the fitted offset (-68.1) to the
+    # Normal's, -0.375, without rising again: the Normal fits better
+    # than any offset, and the likelihood's supremum is at gamma = -inf.
+    from scipy import stats
+
+    x = _near_normal(1)
+    model, d_lim = _limit_deviance("LogNormal", x)
+    assert d_lim == pytest.approx(-0.375, abs=1e-3)
+
+    def nll(g):
+        logs = np.log(x - g)
+        return -stats.lognorm.logpdf(
+            x - g, logs.std(), scale=np.exp(logs.mean())
+        ).sum()
+
+    offsets = -np.logspace(2, 8, 25)
+    devs = np.array([2.0 * (nll(g) - model.neg_ll()) for g in offsets])
+    assert np.all(np.diff(devs) <= 1e-9)
+    assert devs[-1] == pytest.approx(d_lim, abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    "family, seed, limit",
+    [
+        ("Gamma", 1, -0.498),
+        ("LogNormal", 1, -0.375),
+        ("LogNormal", 2, -0.341),
+        ("LogLogistic", 4, -0.005),
+    ],
+)
+def test_an_offset_fit_beaten_by_its_limit_has_a_lower_bound_of_minus_inf(
+    family, seed, limit
+):
+    # Near-Normal data whose offset fit is not the maximum: the limit
+    # (the Normal, the Logistic) fits better, so no offset down to -inf
+    # is excluded. The searches could not settle the profile far out,
+    # and gave nan with a warning, or read noise as a crossing (a
+    # LogNormal, seed 2, -3.4e14 at 99%; a LogLogistic, seed 4, -6.0e14
+    # at 99% and 95%).
+    model, d_lim = _limit_deviance(family, _near_normal(seed))
+    assert d_lim == pytest.approx(limit, abs=1e-3)
+    for alpha_ci in (0.01, 0.05, 0.2):
+        assert _lower(model, alpha_ci) == (-np.inf, [])
+
+
 def test_a_side_without_unbounded_likelihood_points_is_searched():
     # A Weibull shape above 1 has a density of 0 at the offset: its upper
     # side is walked to the critical value, while its lower side and both
