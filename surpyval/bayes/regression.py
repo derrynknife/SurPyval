@@ -33,7 +33,6 @@ How it is computed
 
 from __future__ import annotations
 
-import time
 import warnings
 from typing import Any
 
@@ -41,7 +40,6 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.bayes.engines.grid import weighted_quantile
-from surpyval.bayes.model import laplace_diagnostics, warn_laplace
 from surpyval.bayes.posterior import Posterior
 from surpyval.bayes.prior import (
     BoundPriors,
@@ -49,11 +47,9 @@ from surpyval.bayes.prior import (
     NormalOnScale,
     PriorSpec,
 )
-from surpyval.serialisation import (
-    SerialisableMixin,
-    require_model_tag,
-    stamp_schema,
-)
+from surpyval.bayes.result import BayesianResult, _levels, fit_target
+from surpyval.bayes.target import Target, register_adapter, register_target
+from surpyval.serialisation import require_model_tag, stamp_schema
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
@@ -99,7 +95,7 @@ def refuse_options(what: str, options: dict) -> None:
     if options:
         raise ValueError(
             f"{what} does not take {', '.join(sorted(options))}. It takes "
-            "the data (x, Z, c, n, t, tl, tr), priors, fixed and "
+            "the data (x, Z, c, n, t, tl, tr), priors, fixed, method and "
             "importance."
         )
 
@@ -115,28 +111,6 @@ def refuse_time_varying(Z: Any) -> None:
             "proportional hazards, accelerated failure time and accelerated "
             "life fitters. Use fit_tvc for the maximum-likelihood fit."
         )
-
-
-def _log_posterior(fitter: Any, data: SurpyvalData, bound: Any) -> Any:
-    """The log posterior at rows of the free parameters' unconstrained
-    values: the priors (with the change of scale) plus the fitter's own
-    log-likelihood."""
-
-    def log_post(phi: npt.NDArray) -> npt.NDArray:
-        phi = np.atleast_2d(phi)
-        out = np.asarray(bound.log_prior(phi), dtype=float).copy()
-        theta = bound.full_theta(phi)
-        with ignoring_warnings(), np.errstate(all="ignore"):
-            for i in range(len(phi)):
-                if not np.isfinite(out[i]):
-                    continue
-                try:
-                    out[i] += -float(fitter.neg_ll(data, *theta[i]))
-                except (ValueError, FloatingPointError, ZeroDivisionError):
-                    out[i] = -np.inf
-        return np.where(np.isnan(out), -np.inf, out)
-
-    return log_post
 
 
 def _coefficient_names(mle: Any) -> list[str]:
@@ -224,6 +198,7 @@ def fit(
     tl: Any = None,
     tr: Any = None,
     importance: bool = False,
+    method: str = "auto",
     **options: Any,
 ) -> BayesianRegression:
     """The Bayesian fit of a parametric regression; see the fitters'
@@ -234,7 +209,7 @@ def fit(
         fitter,
         lambda: fitter.fit(x, Z, c, n, t, fixed=fixed, tl=tl, tr=tr),
     )
-    return from_mle(mle, priors, importance)
+    return from_mle(mle, priors, importance, method)
 
 
 def fit_from_df(
@@ -243,6 +218,7 @@ def fit_from_df(
     *,
     priors: Any = None,
     importance: bool = False,
+    method: str = "auto",
     **columns: Any,
 ) -> BayesianRegression:
     """``fit_bayes`` on the columns of a DataFrame, named as
@@ -252,12 +228,12 @@ def fit_from_df(
             refuse_options("fit_bayes_from_df", {k.replace("_col", ""): 1})
         columns.pop(k, None)
     mle = _mle(fitter, lambda: fitter.fit_from_df(df, **columns))
-    return from_mle(mle, priors, importance)
+    return from_mle(mle, priors, importance, method)
 
 
-def _bind(mle: Any, priors: Any) -> tuple[BoundPriors, dict[str, str]]:
-    """The priors (given and default) bound to the regression's
-    parameters, and the defaults' descriptions by name."""
+def _check_covered(mle: Any) -> None:
+    """Refuse the families ``fit_bayes`` does not cover, and a design
+    the data do not determine."""
     if mle.kind not in COVERED:
         raise ValueError(
             f"fit_bayes covers the proportional hazards, accelerated "
@@ -273,38 +249,112 @@ def _bind(mle: Any, priors: Any) -> tuple[BoundPriors, dict[str, str]]:
             "column that is constant or a combination of the others). "
             "Leave the column out."
         )
-    spec = PriorSpec.parse(priors)
-    for j in spec.joint:
-        if not isinstance(j, MultivariateNormal):
-            raise ValueError(
-                "A regression's priors are given on its parameters by name "
-                "(priors={'coef_0': ..., 'beta': ...}) or jointly as a "
-                "MultivariateNormal; priors on quantities, from data and "
-                "from a model are for the distributions' fit_bayes."
-            )
-    names = list(mle.parameter_names)
-    fixed = {k: float(v) for k, v in dict(mle.fixed).items()}
-    defaults = _default_priors(mle, spec, fixed)
-    full = PriorSpec.parse({**spec.single, **defaults})
-    full.joint = list(spec.joint)
-    bound = BoundPriors(
-        full,
-        mle.dist,
-        names,
-        list(mle.parameter_bounds),
-        False,
-        False,
-        False,
-        fixed,
+
+
+@register_target
+class RegressionTarget(Target):
+    """The parametric regressions' side of a Bayesian fit
+    (:mod:`surpyval.bayes.target`): the fitter's own likelihood, the
+    maximum-likelihood fit's names, ranges and start, and the default
+    prior on a coefficient.
+
+    ``method="auto"`` is the Laplace engine for a regression, whatever
+    the number of parameters: its likelihood is evaluated one parameter
+    point at a time, which the grid's tens of thousands of points make
+    slow. The grid is there on request (``method="grid"``, up to three
+    free parameters).
+    """
+
+    tag = "regression"
+    unit_name = "row"
+    default_method = "laplace"
+    laplace_draws = DRAWS
+    laplace_only = True
+
+    def __init__(self, mle: Any, data: SurpyvalData | None = None) -> None:
+        self.mle = mle
+        self.fitter = mle.model
+        self.dist = mle.dist
+        self.kind = mle.kind
+        # (a loaded maximum-likelihood fit holds no data: it comes apart)
+        self.data = mle.data if data is None else data
+        self.names = list(mle.parameter_names)
+        self.bounds = list(mle.parameter_bounds)
+        self.fixed = {k: float(v) for k, v in dict(mle.fixed).items()}
+        self.family = f"{self.dist.name} {self.kind}"
+
+    def neg_ll(self, theta: npt.NDArray) -> float:
+        return float(self.fitter.neg_ll(self.data, *theta))
+
+    def with_params(self, theta: npt.NDArray) -> Any:
+        return self.mle.with_params(theta)
+
+    def default_priors(self, spec: Any, fixed: dict) -> dict:
+        out: dict = _default_priors(self.mle, spec, fixed)
+        return out
+
+    def check(self, bound: BoundPriors) -> None:
+        for j in bound.spec.joint:
+            if not isinstance(j, MultivariateNormal):
+                raise ValueError(
+                    "A regression's priors are given on its parameters by "
+                    "name (priors={'coef_0': ..., 'beta': ...}) or jointly "
+                    "as a MultivariateNormal; priors on quantities, from "
+                    "data and from a model are for the distributions' "
+                    "fit_bayes."
+                )
+
+    def check_flat(self, bound: BoundPriors) -> None:
+        _check_flat(self.mle, self.data, bound)
+
+    def describe_data(self) -> str:
+        n = np.asarray(self.data.n)
+        c = np.asarray(self.data.c)
+        total, failed = int(n.sum()), int(n[c == 0].sum())
+        k = int(np.asarray(self.data.Z).shape[1])
+        return (
+            f"{total} items ({failed} failed), {k} "
+            f"covariate{'s' if k != 1 else ''}"
+        )
+
+    def same_data(self, other: Any) -> bool:
+        a, b = self.data, other.data
+        for name in ("x", "c", "n", "t", "Z"):
+            u = np.asarray(getattr(a, name))
+            v = np.asarray(getattr(b, name))
+            if u.shape != v.shape or not np.array_equal(u, v):
+                return False
+        return True
+
+    def to_dict(self) -> dict:
+        return {
+            "target": self.tag,
+            "mle": self.mle.to_dict(),
+            "data": self.data.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> RegressionTarget:
+        import surpyval
+
+        with ignoring_warnings():
+            mle = surpyval.from_dict(d["mle"])
+        return cls(mle, SurpyvalData.from_dict(d["data"]))
+
+
+def _is_regression_fit(model: Any) -> bool:
+    return (
+        getattr(model, "kind", None) in COVERED
+        and hasattr(model, "k_dist")
+        and getattr(model, "data", None) is not None
+        and not isinstance(model, BayesianResult)
     )
-    said = {
-        k: p.describe(bound.transforms[names.index(k)])
-        for k, p in defaults.items()
-    }
-    return bound, said
 
 
-def _check_flat(mle: Any, bound: BoundPriors) -> None:
+register_adapter(_is_regression_fit, lambda model: RegressionTarget(model))
+
+
+def _check_flat(mle: Any, data: Any, bound: BoundPriors) -> None:
     """A flat prior is allowed only where the data determine the
     parameter: refused with no failure information, and, where every
     free parameter is flat, unless the maximum-likelihood fit's maximum
@@ -312,7 +362,7 @@ def _check_flat(mle: Any, bound: BoundPriors) -> None:
     improper = bound.improper_names
     if not improper:
         return
-    if not np.any(np.asarray(mle.data.c) != 1):
+    if not np.any(np.asarray(data.c) != 1):
         raise ValueError(
             f"With no failures, the data do not determine "
             f"{', '.join(improper)}; give each a prior (for example "
@@ -327,84 +377,25 @@ def _check_flat(mle: Any, bound: BoundPriors) -> None:
 
 
 def from_mle(
-    mle: Any, priors: Any, importance: bool = False
+    mle: Any,
+    priors: Any,
+    importance: bool = False,
+    method: str = "auto",
 ) -> BayesianRegression:
     """The posterior of the regression ``mle`` was fitted for, with
-    ``priors``, by the Laplace engine."""
-    from surpyval.bayes.engines.grid import GridError, find_mode
-    from surpyval.bayes.engines.laplace import run_laplace
-
-    started = time.perf_counter()
-    bound, defaults = _bind(mle, priors)
-    if bound.d == 0:
-        raise ValueError(
-            "Every parameter is fixed, so there is nothing to fit."
-        )
-    _check_flat(mle, bound)
-    log_post = _log_posterior(mle.model, mle.data, bound)
-    theta = np.asarray(mle.params, dtype=float)
-    with np.errstate(all="ignore"):
-        start = bound.to_phi(theta[None, :])[0]
-    starts = [s for s in (start, bound.centre()) if s is not None]
-    starts = [
-        s
-        for s in starts
-        if np.all(np.isfinite(s)) and np.isfinite(log_post(s)[0])
-    ]
-    if not starts:
-        raise ValueError(
-            "No starting point: the priors give no density to the "
-            "maximum-likelihood fit's parameters "
-            f"({', '.join(bound.free_names)}). Check the priors' ranges."
-        )
-    try:
-        mode, cov, _ = find_mode(log_post, starts)
-        result = run_laplace(
-            log_post, mode, cov, importance=importance, draws=DRAWS
-        )
-    except GridError as e:
-        raise ValueError(str(e)) from None
-    post = Posterior(
-        bound.names,
-        bound.free_names,
-        bound.full_theta(result.phi),
-        np.exp(result.log_w),
-        "laplace",
-        transforms=[bound.transforms[i] for i in bound.free_idx],
-        normal={
-            "mean": [float(v) for v in result.mode],
-            "cov": [[float(v) for v in row] for row in result.cov],
-            "reweighted": bool(result.importance),
-        },
+    ``priors``: by the Laplace engine unless ``method`` says otherwise."""
+    _check_covered(mle)
+    model: BayesianRegression = fit_target(
+        RegressionTarget(mle),
+        priors,
+        method=method,
+        importance=importance,
+        result=BayesianRegression,
     )
-    diag = {
-        **laplace_diagnostics(result, bound, importance),
-        "regression": True,
-    }
-    model = BayesianRegression(mle, post, bound.spec, defaults, diag)
-    model.diagnostics["seconds"] = time.perf_counter() - started
-    warn_laplace(model.diagnostics)
     return model
 
 
-def _levels(alpha_ci: float, bound: str) -> list[float]:
-    if not 0 < alpha_ci < 1:
-        raise ValueError(
-            f"alpha_ci must be between 0 and 1 (0.05 for a 95% interval); "
-            f"got {alpha_ci!r}."
-        )
-    if bound == "two-sided":
-        return [alpha_ci / 2, 1 - alpha_ci / 2]
-    if bound == "lower":
-        return [alpha_ci]
-    if bound == "upper":
-        return [1 - alpha_ci]
-    raise ValueError(
-        f"bound must be 'two-sided', 'lower' or 'upper'; got {bound!r}."
-    )
-
-
-class BayesianRegression(SerialisableMixin):
+class BayesianRegression(BayesianResult):
     """
     A Bayesian fit of a parametric regression (proportional hazards,
     accelerated failure time or accelerated life): the posterior of the
@@ -432,7 +423,11 @@ class BayesianRegression(SerialisableMixin):
     diagnostics : dict
         How the posterior was computed and its checks against the exact
         posterior (``pareto_k``, ``shift``, ``approximation``; see
-        :mod:`surpyval.bayes.engines.laplace`).
+        :mod:`surpyval.bayes.engines.laplace`), and ``prior_conflict``:
+        the parameters whose prior the data disagree with.
+    method : str
+        The engine: ``"laplace"`` unless ``fit_bayes`` was asked for
+        another.
     kind : str
         The family, as the maximum-likelihood model names it.
 
@@ -461,7 +456,6 @@ class BayesianRegression(SerialisableMixin):
     """
 
     model_tag = "BayesianRegression"
-    method = "laplace"
 
     def __init__(
         self,
@@ -472,54 +466,26 @@ class BayesianRegression(SerialisableMixin):
         diagnostics: dict,
         data: SurpyvalData | None = None,
     ) -> None:
-        self.mle = mle
-        self.posterior = posterior
-        self.priors = priors
-        self.default_priors = dict(default_priors)
-        self.diagnostics = dict(diagnostics)
+        target = (
+            mle if isinstance(mle, Target) else RegressionTarget(mle, data)
+        )
+        diagnostics = {"method": "laplace", **dict(diagnostics)}
+        super().__init__(
+            target, posterior, priors, default_priors, diagnostics
+        )
+        mle = target.mle
         self.model = mle.model
-        self.dist = mle.dist
         self.kind = mle.kind
-        # (a loaded maximum-likelihood fit holds no data: it comes apart)
-        self.data = mle.data if data is None else data
         self.fixed = dict(mle.fixed)
         self.k_dist = mle.k_dist
         self.k = mle.k
         self.unit = getattr(mle, "unit", None)
-        self.params = np.asarray(posterior.median(), dtype=float)
         self._point = mle.with_params(self.params)
-
-    # ------------------------------------------------------------------
-    # Names and values
-    # ------------------------------------------------------------------
-    @property
-    def parameter_names(self) -> list[str]:
-        """The names of ``params``."""
-        return list(self.posterior.parameter_names)
-
-    @property
-    def ok(self) -> bool:
-        """Whether the posterior was computed (a poor approximation is
-        warned of and stated in ``diagnostics["approximation"]``)."""
-        return bool(self.diagnostics.get("ok", True))
-
-    def raise_if_failed(self) -> None:
-        """Raise ``ValueError`` where :attr:`ok` is False."""
-        if not self.ok:
-            raise ValueError(
-                "The Bayesian fit did not pass its checks: "
-                + "; ".join(self.diagnostics.get("problems", []))
-            )
 
     def at_params(self) -> Any:
         """The plug-in regression model at the posterior medians (a
         ``ParametricRegressionModel`` built from parameters)."""
         return self._point
-
-    def draw_models(self, k: int = 100, random_state: Any = None) -> list:
-        """``k`` ordinary regression models, one per posterior draw."""
-        draws = self.posterior.draws(k, random_state=random_state)
-        return [self.mle.with_params(d) for d in draws]
 
     # ------------------------------------------------------------------
     # The posterior predictive at covariates
@@ -943,9 +909,7 @@ class BayesianRegression(SerialisableMixin):
         >>> model.param_cri("coef_0").shape
         (2,)
         """
-        levels = _levels(alpha_ci, bound)
-        out = np.asarray(self.posterior.quantile(name, levels), dtype=float)
-        return out if len(levels) == 2 else out[0]
+        return super().param_cri(name, alpha_ci, bound)
 
     def _refuse_cb(self, what: str, instead: str) -> Any:
         raise ValueError(
@@ -981,19 +945,6 @@ class BayesianRegression(SerialisableMixin):
     # ------------------------------------------------------------------
     # Comparison and summary
     # ------------------------------------------------------------------
-    def _bound(self) -> BoundPriors:
-        names = self.parameter_names
-        return BoundPriors(
-            self.priors,
-            self.dist,
-            names,
-            list(self.mle.parameter_bounds),
-            False,
-            False,
-            False,
-            {k: float(v) for k, v in self.fixed.items()},
-        )
-
     def compare(self, alpha_ci: float = 0.05) -> Any:
         """
         The prior, the maximum-likelihood estimate (with its Wald
@@ -1011,43 +962,7 @@ class BayesianRegression(SerialisableMixin):
         >>> sorted(model.compare().table)
         ['alpha', 'beta', 'coef_0']
         """
-        from surpyval.bayes.model import Comparison, _prior_interval
-
-        _levels(alpha_ci, "two-sided")
-        bound = self._bound()
-        names = self.parameter_names
-        estimates = np.asarray(self.mle.params, dtype=float)
-        table = {}
-        for name in bound.free_names:
-            i = names.index(name)
-            t = bound.transforms[i]
-            described = bound.descriptions.get(name)
-            interval = None
-            if name in self.priors.single:
-                interval = _prior_interval(bound, name, t, alpha_ci)
-            mle_interval = None
-            try:
-                with ignoring_warnings(), np.errstate(all="ignore"):
-                    ci = np.asarray(
-                        self.mle.param_cb(name, alpha_ci=alpha_ci),
-                        dtype=float,
-                    ).reshape(-1)
-                if ci.size == 2 and np.all(np.isfinite(ci)):
-                    mle_interval = (float(ci[0]), float(ci[1]))
-            except (ValueError, TypeError, KeyError):
-                mle_interval = None
-            table[name] = {
-                "prior": described
-                or f"no prior given; flat on {t.scale_name}",
-                "prior_interval": interval,
-                "mle": float(estimates[i]),
-                "mle_interval": mle_interval,
-                "posterior_median": float(self.params[i]),
-                "posterior_interval": tuple(
-                    float(v) for v in self.param_cri(name, alpha_ci)
-                ),
-            }
-        return Comparison(table, alpha_ci)
+        return super().compare(alpha_ci)
 
     def summary(self, alpha_ci: float = 0.05) -> str:
         """The fit in words: the data, the priors (the defaults marked),
@@ -1064,55 +979,11 @@ class BayesianRegression(SerialisableMixin):
         >>> "coef_0: default: Normal(0," in model.summary()
         True
         """
-        from surpyval.bayes.model import _fmt, _how_computed
-
-        lvl = f"{1 - alpha_ci:.0%}"
-        n = np.asarray(self.data.n)
-        c = np.asarray(self.data.c)
-        total, failed = int(n.sum()), int(n[c == 0].sum())
-        lines = [
-            f"{self.dist.name} {self.kind}: Bayesian fit, {total} items "
-            f"({failed} failed), {self._n_covariates()} "
-            f"covariate{'s' if self._n_covariates() != 1 else ''}"
-        ]
-        bound = self._bound()
-        names = self.parameter_names
-        lines.append("Priors:")
-        for name in bound.free_names:
-            t = bound.transforms[names.index(name)]
-            said = bound.descriptions.get(
-                name, f"no prior given; flat on {t.scale_name}"
-            )
-            lines.append(f"  {name}: {said}")
-        for name, v in self.fixed.items():
-            lines.append(f"  {name}: fixed at {_fmt(float(v))}")
-        width = max(len(s) for s in names)
-        lines.append(
-            f"Posterior{' ' * max(width - 7, 1)}  median   {lvl} credible "
-            "interval      max. lik."
-        )
-        estimates = np.asarray(self.mle.params, dtype=float)
-        for name in bound.free_names:
-            i = names.index(name)
-            lo, hi = self.param_cri(name, alpha_ci)
-            lines.append(
-                f"  {name:<{width}}  {_fmt(float(self.params[i])):>8}   "
-                f"{_fmt(float(lo))} - {_fmt(float(hi))}"
-                f"      {_fmt(float(estimates[i]))}"
-            )
-        lines.append(_how_computed(self))
-        return "\n".join(lines)
-
-    def __repr__(self) -> str:
-        return self.summary()
+        return super().summary(alpha_ci)
 
     # ------------------------------------------------------------------
     # Saving and loading
     # ------------------------------------------------------------------
-    def __getstate__(self) -> dict:
-        state = dict(self.__dict__)
-        return state
-
     def to_dict(self) -> dict:
         """
         A strict-JSON dictionary of the model: the maximum-likelihood fit
@@ -1133,12 +1004,7 @@ class BayesianRegression(SerialisableMixin):
         True
         """
         import surpyval
-        from surpyval.bayes.model import _jsonable
 
-        diag = {
-            k: (float(v) if isinstance(v, (np.floating, np.integer)) else v)
-            for k, v in self.diagnostics.items()
-        }
         out = {
             "model": self.model_tag,
             "kind": self.kind,
@@ -1147,7 +1013,7 @@ class BayesianRegression(SerialisableMixin):
             "default_priors": dict(self.default_priors),
             "posterior": self.posterior.to_dict(),
             "data": self.data.to_dict(),
-            "diagnostics": _jsonable(diag),
+            "diagnostics": self._diagnostics_dict(),
             "surpyval_version": surpyval.__version__,
         }
         return stamp_schema(out)

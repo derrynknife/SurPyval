@@ -114,6 +114,9 @@ NOT_SWEPT = {
     "variance_cb": "a table of the variance components' profile-likelihood "
     "intervals of a mixed-effects Cox model (no point method to sweep; "
     "checked in regression/test_cox_mixed_effects.py)",
+    "function_cri": "the credible interval of a function of the model that "
+    "the caller gives, on every family's Bayesian fit (checked against "
+    "closed forms in tests/bayes/test_shared_layer.py)",
     "summary": "a table of the parameters' Wald intervals (param_cb's for "
     "the baseline; checked in regression/test_summary.py, #484)",
     "trend_test": "a hypothesis test: alpha_ci is the level its trend is "

@@ -38,10 +38,22 @@ from surpyval.bayes.likelihood import LogLikelihood, log_likelihood_fn
 from surpyval.bayes.model import BayesianParametric
 from surpyval.bayes.posterior import Posterior
 from surpyval.bayes.regression import BayesianRegression
+from surpyval.bayes.result import (
+    BayesianDiagnosis,
+    BayesianResult,
+    PredictiveCheck,
+    fit_target,
+)
+from surpyval.bayes.target import Target
 
 __all__ = [
+    "BayesianDiagnosis",
     "BayesianParametric",
     "BayesianRegression",
+    "BayesianResult",
+    "PredictiveCheck",
+    "Target",
+    "fit_target",
     "LogLikelihood",
     "Posterior",
     "PredictiveComparison",
