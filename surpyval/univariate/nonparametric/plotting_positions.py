@@ -10,7 +10,8 @@ from surpyval.univariate.nonparametric.fleming_harrington import (
 )
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
-from surpyval.utils import ffill_or_zero, xcnt_handler, xcnt_to_xrd
+from surpyval.utils import ffill_or_zero, xcnt_handler
+from surpyval.utils.data_formats import _handled_xcnt_to_xrd
 from surpyval.utils.validation import check_option
 
 # Estimator-form heuristics share one dispatch; the (A, B) constants
@@ -195,7 +196,9 @@ def plotting_positions(
     if heuristic == "Filliben":
         out = nonp.filliben(x, c, n, t)
     elif heuristic in ESTIMATOR_FUNCS:
-        x_e, r, d = xcnt_to_xrd(x, c, n, t)
+        # Already handled above, so not validated, grouped and sorted a
+        # second time: the same arrays, so the same numbers.
+        x_e, r, d = _handled_xcnt_to_xrd(x, c, n, t)
         R = ESTIMATOR_FUNCS[heuristic](r, d)
         return x_e, r, d, 1 - R
     elif heuristic == "Turnbull":

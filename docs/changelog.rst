@@ -877,6 +877,13 @@ v0.30 (unreleased)
 
 **Changed.**
 
+- **Probability-plot starts are quicker on large data.**
+  ``plotting_positions`` with the ``"Nelson-Aalen"``, ``"Kaplan-Meier"``
+  and ``"Fleming-Harrington"`` estimators (the start of most parametric
+  fits, and ``how="MPP"``) validated, grouped and sorted its data twice;
+  it now does so once, 0.22 s rather than 0.35 to 0.41 s at a million
+  rows. The results are the same to the bit.
+
 - **Bootstrap bounds on large data sets are about ten times faster.**
   The set-up of ``method="bootstrap"`` (on ``cb``, ``param_cb``,
   ``quantile_cb`` and ``bootstrap()``, univariate and regression, and the
@@ -977,6 +984,14 @@ v0.30 (unreleased)
   before.
 
 **Documentation.**
+
+- :doc:`Speed` now says where a random survival forest's time goes
+  (the split search, 86% to 89% of a tree; with Weibull leaves, solving
+  each candidate child's shape about 60%), what the jackknife of a
+  limited-failure or zero-inflated bootstrap costs (one refit per
+  distinct row, most of the time past about a hundred of them), and what
+  a fit's set-up costs, including that a start given with ``init`` is
+  tried alongside the default one rather than instead of it.
 
 - "Coming from Weibull++" and the plotting-position pages now describe
   the median-rank options correctly (``"Median"``/``"Benard"``,

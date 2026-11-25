@@ -215,7 +215,41 @@ What the time goes on
 - **The random survival forest** grows each tree by searching every
   candidate split of every chosen covariate at every node, and with
   ``kind="weibull"`` fits a Weibull in each leaf. It runs in pure Python
-  and NumPy, one tree at a time by default.
+  and NumPy, one tree at a time by default. Profiled on the data above,
+  one tree takes about 0.4 s at 10,000 rows and 4 s at 100,000, and the
+  split search is almost all of it (86% to 89%); the leaf fits are 3% to
+  4%, and slicing the rows into each node's children 5% to 7%. With
+  Weibull leaves the search is scored by the Weibull likelihood of the
+  two children of every candidate cut (at most 64 cuts per covariate per
+  node), and solving for each child's shape is about 60% of the whole
+  fit: a few Newton steps per cut, each a pass over the node's rows. It
+  is already worked out for every cut at once from the node's rows, not
+  a new data set per cut. With ``kind="non-parametric"`` the log-rank
+  statistic of every cut comes from running sums over the covariate's
+  order, one sort per covariate per node (80% to 90% of a tree that takes
+  0.17 s at 10,000 rows and 1.5 s at 100,000). So there is no cut being
+  scored twice, and nothing left to remove that keeps the trees exactly
+  as they are; what is left is the number of passes.
+- **The limited-failure and zero-inflated bootstrap** (``lfp=True`` or
+  ``zi=True`` with ``method="bootstrap"``) gives the bias-corrected and
+  accelerated (BCa) interval, whose acceleration comes from the jackknife:
+  the model is refitted once without each distinct row (a grouped row of
+  ``n`` units counts once, weighted by ``n``). That is one extra fit per
+  distinct row, on top of the ``n_boot`` refits, and a limited-failure
+  fit is a slow one (it tries several starts). For a Weibull with
+  ``lfp=True`` and 50 bootstrap samples, the jackknife took 7.5 s of
+  14 s at 91 distinct rows, 44 s of 51 s at 270 and 91 s of 98 s at 892:
+  past about a hundred distinct rows it is most of the time, and it grows
+  in proportion to them. Grouping identical rows with ``n`` shortens it
+  in proportion. It is the
+  exact jackknife; a shortcut from the scores (the infinitesimal
+  jackknife) would change the bounds, so it is not used.
+- **A fit's own set-up.** Before it searches, a fit validates, groups
+  and sorts the rows (about a third of a second at a million rows) and,
+  unless ``init`` is given, finds a start from a probability plot (about
+  as long again). A start you give with ``init`` does not skip that: the
+  default start is still tried after it, and the better of the two kept,
+  so that a poor ``init`` cannot give a worse model than none would.
 - **The joint model** integrates over each item's random effects (a
   quadrature grid per item), so its cost is per item and per reading.
 
@@ -285,9 +319,14 @@ Said plainly:
 - **Random survival forests are slow beyond tens of thousands of rows.**
   100 trees take half a minute at 10,000 rows and three and a half minutes
   at 100,000; a million rows would take over half an hour on one core and
-  was not run. For a forest on that much data, subsample, or use a
+  was not run. Non-parametric leaves are about twice as
+  quick, as the log-rank split needs no shape to be solved for at each
+  cut. For a forest on that much data, subsample, or use a
   dedicated gradient-boosting or forest library and SurPyval to check the
   predictions (``surpyval.metrics``).
+- **The limited-failure or zero-inflated bootstrap on many distinct
+  rows** adds one refit per distinct row for its jackknife (see above);
+  group the data, or use the likelihood-ratio bound.
 - **Turnbull on data where every unit has its own inspection times** grows
   faster than ``n``: 2.3 s at 100,000 rows, 42 s at a million.
 - **The bootstrap on large data sets** costs ``n_boot`` re-fits of the
