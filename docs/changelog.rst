@@ -140,6 +140,31 @@ v0.30 (unreleased)
   "Regression models" and "Groups sharing a population" in
   :doc:`PyMC with SurPyval`.
 
+- **Bayesian regression: beliefs about a life, earlier fits, WAIC/LOO
+  and predictive checks.** A Bayesian regression (``fit_bayes`` on the
+  proportional hazards, accelerated failure time and accelerated life
+  fitters) now takes a belief about any quantity of the model, such as a
+  B10 life at a use stress (``sp.prior.on_quantities(fitter,
+  sp.prior.on_function(lambda m: m.qf(0.1, use), ...),
+  instead_of="alpha")``); an earlier regression as the prior
+  (``sp.prior.from_model``: its estimates and covariance, or an earlier
+  Bayesian regression exactly; ``sp.prior.from_fit``: its data as a power
+  prior with a ``weight``); ``model.waic()`` and ``model.loo()`` with a
+  row as the unit, and ``sp.bayes.compare`` between regressions fitted to
+  the same rows; and ``model.diagnose()``, which refused before and now
+  reports the Laplace checks, any disagreement between the data and the
+  priors, and posterior predictive checks on the number of failures, the
+  total time on test and the shortest time (``model.ppc()`` for one).
+  Left- and interval-censored and right-truncated data have no
+  predictive check and say so. Checked: leave-one-out against leaving
+  each row out exactly (an exponential model in two groups: within 0.02
+  a row, 0.05 in total), a power prior at weight 1 against the fit of
+  all the rows (2e-5), and a belief on a mean life against the same
+  belief on the rate (1e-4). The guide has a worked example of a prior
+  on an Arrhenius activation energy: the life model's ``a`` is the
+  energy over Boltzmann's constant, in kelvin, so a belief in eV is
+  divided by the constant. See "Regression: a prior on an effect" in
+  :doc:`Bayesian Fitting with SurPyval`.
 - **Bayesian fits: one shared layer for every family.** The Bayesian
   regression is rebuilt on a layer the other families' fits will use,
   with no change to its numbers (the posterior's draws, intervals and
