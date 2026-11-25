@@ -735,6 +735,143 @@ def _differentiable(path_model: Any) -> tuple:
     return values, jac
 
 
+class _OneMarker:
+    """What the hazard follows of one marker of several, as a path of
+    the joint parameter vector: the marker's own (``inner``, a path or
+    its :class:`LinkPath`) of its slice of the parameters, less
+    ``shift`` (the marker's centre, for its value)."""
+
+    def __init__(self, inner: Any, part: slice, shift: float, P: int):
+        self.inner = inner
+        self.part = part
+        self.shift = float(shift)
+        self.P = P
+        self.name = getattr(inner, "name", "path")
+
+    def path(self, x: Any, *params: Any) -> Any:
+        with np.errstate(all="ignore"):
+            out = np.asarray(
+                self.inner.path(x, *params[self.part]), dtype=float
+            )
+        return out - self.shift
+
+    def jacobian(self, x: Any, *params: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        own = np.stack(
+            [
+                np.broadcast_to(np.asarray(v, dtype=float), x.shape)
+                for v in params[self.part]
+            ],
+            axis=-1,
+        )
+        J = path_jacobian(self.inner, x, own)
+        out = np.zeros(x.shape + (self.P,))
+        out[..., self.part] = J
+        return out
+
+
+class MarkerPaths:
+    """The paths of several markers as the likelihood's ``path``: the
+    parameter vector is each marker's path parameters in turn (``parts``
+    of the :class:`~._multi.MarkerSet` ``model``), each marker's
+    readings are of its own path (:meth:`reading_means`), and ``terms``
+    holds what the hazard follows of each, one ``(link, path,
+    function)`` for each ``(marker, link)`` of ``links`` (a marker with
+    none is read, and not in the hazard), each of the whole vector: a
+    marker's value is less its own ``centre`` (the likelihood's centre is
+    then 0). ``cuts`` are every marker's (:class:`PathFunction`)."""
+
+    def __init__(
+        self,
+        model: Any,
+        links: tuple,
+        lag: float = 0.0,
+        weight: tuple | None = None,
+        centres: Any = None,
+    ) -> None:
+        self.model = model
+        self.links = tuple(tuple(pair) for pair in links)
+        self.lag = float(lag)
+        self.weight = weight
+        names = list(model.names)
+        P = len(model.parameter_names)
+        centres = np.zeros(len(names)) if centres is None else centres
+        self.centres = np.asarray(centres, dtype=float).reshape(len(names))
+        self.parts: list = []
+        self.slices: list = list(model.slices)
+        cuts: set = set()
+        for name, path_model in zip(names, model.models):
+            own = tuple(link for marker, link in self.links if marker == name)
+            part = PathFunction(path_model, own, lag, weight)
+            self.parts.append(part)
+            if own:
+                cuts.update(part.cuts)
+        self.cuts = tuple(sorted(cuts))
+        self.terms: list = []
+        for marker, link in self.links:
+            k = names.index(marker)
+            part, piece = self.parts[k], self.slices[k]
+            j = part.links.index(link)
+            _, followed, function = part.terms[j]
+            shift = self.centres[k] if link == "value" else 0.0
+            self.terms.append(
+                (
+                    link,
+                    _OneMarker(followed, piece, shift, P),
+                    _sliced(function, piece, shift),
+                )
+            )
+
+    def reading_means(self, params: Any, arrays: JointArrays) -> Any:
+        """Each reading's path value ``(N, K, R)`` at the parameters
+        ``(N, K, P)``, each marker's at its own block of columns."""
+        out = []
+        for k, (part, piece) in enumerate(zip(self.parts, self.slices)):
+            cols = arrays.columns(k)
+            out.append(_at(part, params[..., piece], arrays.ages[:, cols]))
+        return anp.concatenate(out, axis=-1)
+
+    def reading_jacobians(
+        self, params: npt.NDArray, arrays: JointArrays
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The paths at the readings ``(N, R)`` and their Jacobian ``(N,
+        R, P)`` at the parameters ``(N, P)`` (numbers, for the search for
+        each item's mode)."""
+        N, R = arrays.ages.shape
+        m = np.zeros((N, R))
+        J = np.zeros((N, R, params.shape[-1]))
+        for k, (part, piece) in enumerate(zip(self.parts, self.slices)):
+            cols = arrays.columns(k)
+            ages = arrays.ages[:, cols]
+            own = np.broadcast_to(
+                params[:, None, piece],
+                ages.shape + (params[:, piece].shape[-1],),
+            )
+            m[:, cols] = part.model.path(ages, *np.moveaxis(own, -1, 0))
+            J[:, cols, piece] = path_jacobian(part.model, ages, np.array(own))
+        return m, J
+
+    def noise(self, sigma: Any, arrays: JointArrays) -> Any:
+        """The noise sd of each reading column ``(R,)``."""
+        return anp.reshape(sigma, (-1,))[arrays.channel[0]]
+
+
+def _sliced(function: Any, piece: slice, shift: float) -> Any:
+    """``function`` (of one marker's parameters) of the whole vector,
+    less ``shift``."""
+
+    def of_all(params: Any, x: Any) -> Any:
+        out = function(params[..., piece], x)
+        return out - shift if shift else out
+
+    return of_all
+
+
+def several_markers(path: Any) -> bool:
+    """Whether ``path`` is several markers' (:class:`MarkerPaths`)."""
+    return isinstance(path, MarkerPaths)
+
+
 # -- the parameters ---------------------------------------------------------
 
 
@@ -793,7 +930,13 @@ class Layout:
     ``(n_links,)``. ``unpack`` then gives ``alpha`` and ``beta``
     ``(n_causes,)``, ``gamma`` ``(n_causes, p)`` and ``zeta``
     ``(n_causes, n_links)`` (:func:`cause_thetas` gives each cause's).
-    With one cause the vector and ``unpack`` are as described above."""
+    With one cause the vector and ``unpack`` are as described above.
+
+    ``n_markers`` above 1 is several markers (:class:`MarkerPaths`): the
+    path is their paths' parameters one marker after another, ``links``
+    are ``(marker, link)`` pairs, and log ``sigma`` is one entry a marker
+    (``unpack`` gives ``sigma`` ``(n_markers,)``); the rest is as
+    above."""
 
     P: int
     p: int
@@ -807,6 +950,7 @@ class Layout:
     shared_beta: bool = False
     shared_hazard: Any = None
     shared_links: Any = None
+    n_markers: int = 1
 
     def __post_init__(self) -> None:
         self.links = tuple(self.links)
@@ -909,7 +1053,13 @@ class Layout:
 
     @property
     def size(self) -> int:
-        return self.P + self.n_shifts + self.n_spread + 1 + self.n_survival
+        return (
+            self.P
+            + self.n_shifts
+            + self.n_spread
+            + self.n_markers
+            + self.n_survival
+        )
 
     def shift_positions(self) -> list[tuple[int, int, int]]:
         """``(position in u, path parameter, covariate column)`` of each
@@ -923,7 +1073,7 @@ class Layout:
     def hazard_positions(self) -> list[tuple[int, int]]:
         """``(position in u, covariate column)`` of each estimated
         hazard coefficient."""
-        start = self.P + self.n_shifts + self.n_spread + 3
+        start = self.P + self.n_shifts + self.n_spread + self.n_markers + 2
         cols = np.flatnonzero(self.hazard)
         return [(start + k, int(c)) for k, c in enumerate(cols)]
 
@@ -977,6 +1127,13 @@ class Layout:
                     row.append(0.0 * diag[r])
             rows.append(anp.stack(row))
         L = anp.stack(rows) if q else anp.zeros((0, 0))
+        sigma = (
+            anp.exp(u[i])
+            if self.n_markers == 1
+            else anp.exp(u[i : i + self.n_markers])
+        )
+        # the survival part starts after the noise
+        i += self.n_markers - 1
         if self.n_causes > 1:
             slots = self.cause_slots
             block = u[i + 1 : i + 1 + self.n_survival]
@@ -985,7 +1142,7 @@ class Layout:
                 "mu": mu,
                 "Delta": Delta,
                 "L": L,
-                "sigma": anp.exp(u[i]),
+                "sigma": sigma,
                 "alpha": anp.exp(anp.stack([v[0] for v in each])),
                 "beta": anp.exp(anp.stack([v[1] for v in each])),
                 "gamma": anp.stack(
@@ -997,7 +1154,7 @@ class Layout:
             "mu": mu,
             "Delta": Delta,
             "L": L,
-            "sigma": anp.exp(u[i]),
+            "sigma": sigma,
             "alpha": anp.exp(u[i + 1]),
             "beta": anp.exp(u[i + 2]),
             "gamma": self._gamma(u[i + 3 : i + 3 + n_hazard]),
@@ -1035,7 +1192,7 @@ class Layout:
                     Delta[self.shifts],
                     np.log(np.diag(L)) if q else np.zeros(0),
                     np.asarray(lower, dtype=float),
-                    [np.log(theta["sigma"])],
+                    np.log(np.atleast_1d(np.asarray(theta["sigma"], float))),
                     block,
                 ]
             )
@@ -1046,11 +1203,8 @@ class Layout:
                 Delta[self.shifts],
                 np.log(np.diag(L)) if q else np.zeros(0),
                 np.asarray(lower, dtype=float),
-                [
-                    np.log(theta["sigma"]),
-                    np.log(theta["alpha"]),
-                    np.log(theta["beta"]),
-                ],
+                np.log(np.atleast_1d(np.asarray(theta["sigma"], float))),
+                [np.log(theta["alpha"]), np.log(theta["beta"])],
                 gamma.reshape(self.p)[self.hazard],
                 np.asarray(theta["zeta"], dtype=float).reshape(self.n_links),
             ]
@@ -1089,7 +1243,14 @@ class JointArrays:
     R)``: ``ages``, ``values`` and their ``mask``. ``e`` is the cause of
     each item's failure, its index among the model's causes (competing
     failure modes), and -1 where the item has not failed or its failure
-    is of any cause (every item's in a model of one cause)."""
+    is of any cause (every item's in a model of one cause).
+
+    ``channel`` ``(N, R)`` is the marker each reading column is of (0
+    throughout for one marker). With several markers the columns are in
+    blocks, a marker's readings in its own block (padded with its first
+    reading's age), the blocks in the markers' order and the same in
+    every row, so each marker's path is evaluated only at its own
+    readings (:meth:`columns`)."""
 
     w: npt.NDArray
     T: npt.NDArray
@@ -1102,10 +1263,18 @@ class JointArrays:
     U: npt.NDArray
     Rt: npt.NDArray
     e: Any = None
+    channel: Any = None
 
     def __post_init__(self) -> None:
         if self.e is None:
             self.e = np.full(len(self.w), -1, dtype=int)
+        if self.channel is None:
+            self.channel = np.zeros(np.shape(self.mask), dtype=int)
+
+    def columns(self, k: int) -> npt.NDArray:
+        """The reading columns of marker ``k`` (a block)."""
+        row = self.channel[0] if len(self.channel) else np.zeros(0, int)
+        return np.flatnonzero(row == k)
 
     @classmethod
     def build(
@@ -1120,22 +1289,32 @@ class JointArrays:
         U: Any = None,
         Rt: Any = None,
         e: Any = None,
+        channels: Any = None,
+        n_markers: int = 1,
     ) -> JointArrays:
+        """With ``channels`` (several markers), ``ages`` and ``values``
+        hold each item's readings of every marker and ``channels`` the
+        marker of each (``0`` to ``n_markers - 1``)."""
         N = len(ages)
-        R = max([len(a) for a in ages] + [1])
-        A = np.zeros((N, R))
-        V = np.zeros((N, R))
-        M = np.zeros((N, R), dtype=bool)
-        for i, (a, v) in enumerate(zip(ages, values)):
-            A[i, : len(a)] = a
-            V[i, : len(v)] = v
-            M[i, : len(a)] = True
-        # padded ages repeat the first (or 0), so the path is defined there
-        for i in range(N):
-            if len(ages[i]):
-                A[i, len(ages[i]) :] = ages[i][0]
-            else:
-                A[i, :] = max(float(np.asarray(T, dtype=float)[i]), 1e-12)
+        if channels is not None:
+            A, V, M, C = _marker_blocks(ages, values, channels, n_markers, T)
+        else:
+            R = max([len(a) for a in ages] + [1])
+            A = np.zeros((N, R))
+            V = np.zeros((N, R))
+            M = np.zeros((N, R), dtype=bool)
+            C = np.zeros((N, R), dtype=int)
+            for i, (a, v) in enumerate(zip(ages, values)):
+                A[i, : len(a)] = a
+                V[i, : len(v)] = v
+                M[i, : len(a)] = True
+            # padded ages repeat the first (or 0), so the path is defined
+            # there
+            for i in range(N):
+                if len(ages[i]):
+                    A[i, len(ages[i]) :] = ages[i][0]
+                else:
+                    A[i, :] = max(float(np.asarray(T, dtype=float)[i]), 1e-12)
         return cls(
             w=np.asarray(w, dtype=float),
             T=np.asarray(T, dtype=float),
@@ -1160,6 +1339,7 @@ class JointArrays:
                 if e is None
                 else np.asarray(e, dtype=int).reshape(N)
             ),
+            channel=C,
         )
 
     def of_any_cause(self) -> JointArrays:
@@ -1185,6 +1365,53 @@ class JointArrays:
         """The items in the data because they reached an age (left
         truncated) or failed by one (right truncated)."""
         return (self.L > 0) | np.isfinite(self.Rt)
+
+
+def _marker_blocks(
+    ages: list, values: list, channels: list, n_markers: int, T: Any
+) -> tuple:
+    """The padded ``(ages, values, mask, channel)`` of several markers'
+    readings: a block of columns a marker, as wide as the most readings
+    of it an item has (at least 1), each item's readings of it in age
+    order there and padded with the first of them (with ``T``, as one
+    marker's, where the item has none of it)."""
+    N = len(ages)
+    T = np.asarray(T, dtype=float)
+    split = []
+    for a, v, ch in zip(ages, values, channels):
+        a = np.asarray(a, dtype=float)
+        v = np.asarray(v, dtype=float)
+        ch = np.asarray(ch, dtype=int)
+        mine = []
+        for k in range(n_markers):
+            on = ch == k
+            order = np.argsort(a[on], kind="stable")
+            mine.append((a[on][order], v[on][order]))
+        split.append(mine)
+    widths = [
+        max([len(item[k][0]) for item in split] + [1])
+        for k in range(n_markers)
+    ]
+    R = int(sum(widths))
+    A = np.zeros((N, R))
+    V = np.zeros((N, R))
+    M = np.zeros((N, R), dtype=bool)
+    C = np.repeat(
+        np.repeat(np.arange(n_markers), widths)[None, :], N, axis=0
+    ).astype(int)
+    for i, item in enumerate(split):
+        start = 0
+        for k, (a, v) in enumerate(item):
+            width = widths[k]
+            if len(a):
+                A[i, start : start + width] = a[0]
+                A[i, start : start + len(a)] = a
+                V[i, start : start + len(v)] = v
+                M[i, start : start + len(a)] = True
+            else:
+                A[i, start : start + width] = max(float(T[i]), 1e-12)
+            start += width
+    return A, V, M, C
 
 
 # -- the integrand ---------------------------------------------------------
@@ -1259,9 +1486,15 @@ def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
 
 
 def log_readings(
-    theta: dict, path: PathFunction, params: Any, arrays: JointArrays
+    theta: dict, path: Any, params: Any, arrays: JointArrays
 ) -> Any:
     """``log p(y_i | theta)`` at the nodes ``(N, K)``."""
+    if several_markers(path):
+        m = path.reading_means(params, arrays)
+        r = arrays.values[:, None, :] - m
+        s2 = path.noise(theta["sigma"], arrays) ** 2
+        each = -0.5 * anp.log(2 * np.pi * s2) - r**2 / (2 * s2)
+        return anp.sum(anp.where(arrays.mask[:, None, :], each, 0.0), axis=-1)
     m = _at(path, params, arrays.ages)
     r = arrays.values[:, None, :] - m
     ss = anp.sum(anp.where(arrays.mask[:, None, :], r**2, 0.0), axis=-1)
@@ -1553,7 +1786,7 @@ def lifetime_functions(layout: Layout) -> tuple:
 def _mode_objective(
     theta: dict,
     layout: Layout,
-    path: PathFunction,
+    path: Any,
     arrays: JointArrays,
     b: npt.NDArray,
     d: npt.NDArray,
@@ -1610,7 +1843,16 @@ def _mode_objective(
         f = np.zeros(len(b))
         g = np.zeros((len(b), q))
         H = np.zeros((len(b), q, q))
-        if readings:
+        if readings and several_markers(path):
+            s2m = np.asarray(path.noise(theta["sigma"], arrays)) ** 2
+            m, J = path.reading_jacobians(params, arrays)
+            J = J[..., V]
+            r = np.where(arrays.mask, arrays.values - m, 0.0)
+            J = np.where(arrays.mask[..., None], J, 0.0)
+            f = f + np.sum(r**2 / (2 * s2m), axis=1)
+            g = g - np.einsum("nr,nrj->nj", r / s2m, J)
+            H = H + np.einsum("nri,nrj->nij", J / s2m[:, None], J)
+        elif readings:
             s2 = float(theta["sigma"]) ** 2
             ages = arrays.ages
             P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
@@ -1951,6 +2193,15 @@ def modes(
         moved = np.abs(step * np.where(accept, size, 0.0)[:, None])
         if np.all(moved <= 1e-10 * (scale + np.abs(b))):
             break
+    # A row whose cumulative hazard overflows (an age so far beyond the
+    # data that the item cannot have survived to it whatever its path:
+    # its survival there is 0) has no finite curvature: its nodes are
+    # placed by the prior's alone, and its integrand is 0 on them.
+    bad = ~np.isfinite(H).all(axis=(-2, -1))
+    if bad.any():
+        Lc = np.asarray(theta["L"], dtype=float)
+        prior = np.linalg.inv(Lc @ Lc.T)
+        H = np.where(bad[:, None, None], prior[None], H)
     # The curvature in each varying parameter's own scale (its prior
     # spread), so that neither the inverse nor the floor depends on the
     # unit of time: a slope a second is ten million times smaller than
@@ -2027,7 +2278,8 @@ class Model:
     over the varying parameters is done (``INTEGRATIONS``)."""
 
     layout: Layout
-    path: PathFunction
+    #: A :class:`PathFunction`, or several markers' :class:`MarkerPaths`.
+    path: Any
     centre: float
     integration: str = "grid"
 

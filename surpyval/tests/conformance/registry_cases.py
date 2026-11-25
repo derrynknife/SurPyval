@@ -50,6 +50,7 @@ from surpyval.tests.conformance.registry_families import (
 )
 from surpyval.tests.conformance.registry_fixtures import (
     JOINT_ITEM,
+    JOINT_MARKERS_ITEM,
     X_COP,
     X_COP3,
     X_CR,
@@ -84,6 +85,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     joint_causes_data,
     joint_data,
     joint_frailty_data,
+    joint_markers_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -2381,6 +2383,89 @@ def _joint():
     return out
 
 
+def _joint_markers():
+    """The joint model of two markers (``JointPH(Weibull, {name: path,
+    ...})``): :func:`joint_markers_data`'s vibration and temperature,
+    each a line with its level varying between items (correlated across
+    the markers) and a common rate, the hazard following both markers'
+    values; predicting for one item read with both and still running at
+    400 (``JOINT_MARKERS_ITEM``)."""
+    fitter = sp.JointPH(
+        sp.Weibull,
+        {"vibration": dg.LinearPath, "temperature": dg.LinearPath},
+        varying=["vibration.a", "temperature.a"],
+    )
+
+    def measurements(d):
+        ids = [f"u{k}" for k in range(len(d["x"]))]
+        return ids, sp.Measurements(
+            {
+                name: {i: dict(r[name]) for i, r in zip(ids, d["markers"])}
+                for name in ("vibration", "temperature")
+            }
+        )
+
+    def from_arrays(d):
+        ids, m = measurements(d)
+        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+
+    def from_data(d):
+        ids, m = measurements(d)
+        return fitter.fit(
+            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        )
+
+    case = regression(
+        "WeibullJointPH[markers]",
+        fitter,
+        fitters=(),
+        model_class="surpyval.univariate.joint.JointModel",
+        data=joint_markers_data,
+        x=X_JOINT,
+        Z=np.ones((X_JOINT.size, 1)),
+        functions=("sf", "ff"),
+        z_style="single",
+        paths={
+            "fit_from_df": lambda d: fitter.fit_from_df(
+                pd.DataFrame(
+                    {
+                        "x": d["x"],
+                        "c": d["c"],
+                        "n": d["n"],
+                        "z0": np.asarray(d["Z"])[:, 0],
+                        "markers": list(d["markers"]),
+                    }
+                ),
+                x_col="x",
+                markers_col="markers",
+                c_col="c",
+                n_col="n",
+                Z_cols=["z0"],
+            ),
+            "fit(measurements)": from_arrays,
+            "fit(data)": from_data,
+        },
+        rows=("x", "Z", "c", "n", "markers"),
+        coefficients=_joint_coefficients,
+        intercept=True,
+        draw=None,
+        exclude={
+            "random_sf": "an item's draws depend on its readings: "
+            "JointModel.predict(...).random(size) draws for one item",
+            "row_independence": "one item a call (Z is its covariate "
+            "vector), so there are no rows to mix up",
+        },
+    )
+    return [
+        replace(
+            case,
+            times=("x", "markers"),
+            call_kwargs=dict(JOINT_MARKERS_ITEM),
+            call_times=("markers", "given"),
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Royston-Parmar (spline baseline) regression: PH and PO on the spline
 # ---------------------------------------------------------------------------
@@ -3035,6 +3120,7 @@ CASES: list[Case] = (
     + _dabrowska()
     + _vines()
     + _joint()
+    + _joint_markers()
     + _spline_regression()
     + _distributional()
     + _mixture_cure()
@@ -4505,7 +4591,13 @@ def _bounds(case):
             ),
         )
     if cls == "JointModel":
-        return (Bound("cb", on=("sf", "ff"), kwargs=dict(JOINT_ITEM)),)
+        return (
+            Bound(
+                "cb",
+                on=("sf", "ff"),
+                kwargs=dict(case.call_kwargs or JOINT_ITEM),
+            ),
+        )
     if cls == "DestructiveDegradationModel":
         # Every call refits the model n_boot times.
         return (

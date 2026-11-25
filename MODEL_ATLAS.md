@@ -95,7 +95,7 @@ Worked classifications:
 | Survival trees and forests (`surpyval.ml`: log-rank, deviance and conditional-inference splits; parametric or step leaves) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | Survival trees and forests grown with causes (`e=`: cause-specific or Gray splits, a cumulative incidence per leaf) | univariate | single_event | competing | terminal | with | continuous | nonparametric |
 | LandmarkCox (a Cox model of the units at risk at each landmark) | univariate | single_event | single | terminal | with (as known at the landmark) | continuous | semiparametric |
-| JointPH, JointAFT (a reading's path with random effects, and a Weibull hazard that follows it; a hazard per failure mode with event types) | univariate | single_event | single/competing | terminal | with | continuous | parametric |
+| JointPH, JointAFT (a reading's path with random effects, and a Weibull hazard that follows it; several readings, each with its own path and effect; a hazard per failure mode with event types) | univariate | single_event | single/competing | terminal | with | continuous | parametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
 | ParametricCompetingRisksRegression | univariate | single_event | competing | terminal | with | continuous | parametric |
@@ -192,7 +192,9 @@ truncation, and with the failures' event types a hazard for each failure
 mode (competing risks: single becomes multiple); one item's dynamic prediction given its readings so far is
 `JointModel.predict`, with its quantiles and mean (`qf`, `mean`). The path
 may be a spline, with bends common to the fleet or varying between items;
-one reading (marker) per model. Landmarking (`landmark`, `LandmarkCox`) gives dynamic
+and there may be several readings (markers) per item, each with its own path,
+noise and effect, their random effects correlated across the markers
+(`JointPH(Weibull, {name: path_model, ...})`). Landmarking (`landmark`, `LandmarkCox`) gives dynamic
 predictions without a model of the covariates' paths: a Cox model of the
 units at risk at each landmark, by their covariates known then; it
 classifies as univariate / single_event / single / terminal / with
@@ -210,7 +212,7 @@ Cells of the axes with nothing built yet, or only part:
 | Multi-state: hidden Markov (misclassified states) for panel data; a semi-Markov ("clock reset") Cox model per transition (the Markov and parametric semi-Markov models are built) | `multi_state` |
 | Copulas for more than two lifetimes beyond the Gaussian, Student-t and C-/D-vines: regular vines, vines with censoring in more than two series or with truncation, exchangeable Archimedean | multivariate, more than two series |
 | Shared frailty and correlated series for repairable systems, beyond those built: several recurrent series per item, a frailty nested in a group's, spline baselines | multivariate / recurrent |
-| Joint models of more than one reading per item (several markers, each with its own effect; a combined health index) | univariate / single_event / with / parametric |
+| Joint models of several readings per item beyond the several-marker model (built: each marker its own path and effect, correlated random effects): failure modes with several markers, a combined health index | univariate / single_event / with / parametric |
 | Bayesian inference beyond the parametric distributions and the PH, AFT and accelerated-life regressions: Cox, recurrent events, degradation, competing risks, multi-state | the inference axis |
 
 Not gaps, by choice: discrete time with covariates is logistic or binomial

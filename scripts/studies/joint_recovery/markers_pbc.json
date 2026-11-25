@@ -1,0 +1,120 @@
+{
+ "run": "2026-11-25",
+ "seconds": 1204.4,
+ "maximum": "verified",
+ "estimate": {
+  "bilirubin.a": 0.4896774677974533,
+  "bilirubin.b": 0.19472621599764267,
+  "albumin.a": 3.548424132033847,
+  "albumin.b": -0.11111483836592746,
+  "sd_bilirubin.a": 0.9987777754653151,
+  "sd_bilirubin.b": 0.1884417054254751,
+  "sd_albumin.a": 0.35507057845888834,
+  "sd_albumin.b": 0.07136347314652866,
+  "corr_bilirubin.a_bilirubin.b": 0.4628645538647399,
+  "corr_bilirubin.a_albumin.a": -0.5451698030090176,
+  "corr_bilirubin.a_albumin.b": -0.5038379006697111,
+  "corr_bilirubin.b_albumin.a": -0.36290465871194905,
+  "corr_bilirubin.b_albumin.b": -0.835565015438322,
+  "corr_albumin.a_albumin.b": 0.23177086416361245,
+  "bilirubin.sd_noise": 0.34677014091941977,
+  "albumin.sd_noise": 0.3190661326778503,
+  "alpha": 138.59867825270862,
+  "beta": 0.8031729056050381,
+  "bilirubin.marker_effect": 0.9502071602209152,
+  "albumin.marker_effect": -2.703495619401611
+ },
+ "se": {
+  "bilirubin.a": 0.05808,
+  "bilirubin.b": 0.01386,
+  "albumin.a": 0.02321,
+  "albumin.b": 0.006724,
+  "sd_bilirubin.a": 0.0425,
+  "sd_bilirubin.b": 0.01294,
+  "sd_albumin.a": 0.01904,
+  "sd_albumin.b": 0.006717,
+  "corr_bilirubin.a_bilirubin.b": 0.0683,
+  "corr_bilirubin.a_albumin.a": 0.05045,
+  "corr_bilirubin.a_albumin.b": 0.07938,
+  "corr_bilirubin.b_albumin.a": 0.07712,
+  "corr_bilirubin.b_albumin.b": 0.04463,
+  "corr_albumin.a_albumin.b": 0.1026,
+  "bilirubin.sd_noise": 0.006646,
+  "albumin.sd_noise": 0.005916,
+  "alpha": 60.32,
+  "beta": 0.08361,
+  "bilirubin.marker_effect": 0.1193,
+  "albumin.marker_effect": 0.3514
+ },
+ "se_note": "standard errors as printed (4 significant figures)",
+ "R": {
+  "JMbayes2 0.6.6 (posterior mean, sd)": {
+   "bilirubin.marker_effect": [
+    0.94694,
+    0.14923
+   ],
+   "albumin.marker_effect": [
+    -2.84918,
+    0.39277
+   ],
+   "bilirubin.a": [
+    0.49094,
+    0.05833
+   ],
+   "bilirubin.b": [
+    0.19246,
+    0.01359
+   ],
+   "albumin.a": [
+    3.54813,
+    0.02347
+   ],
+   "albumin.b": [
+    -0.1106,
+    0.00679
+   ],
+   "bilirubin.sd_noise": [
+    0.34667,
+    0.00647
+   ],
+   "albumin.sd_noise": [
+    0.32009,
+    0.00613
+   ]
+  },
+  "joineRML 0.4.9 (estimate, se)": {
+   "bilirubin.marker_effect": [
+    0.9087,
+    0.1236
+   ],
+   "albumin.marker_effect": [
+    -2.7697,
+    0.3395
+   ],
+   "bilirubin.a": [
+    0.4842,
+    0.049
+   ],
+   "bilirubin.b": [
+    0.1927,
+    0.0106
+   ],
+   "albumin.a": [
+    3.551,
+    0.0219
+   ],
+   "albumin.b": [
+    -0.1112,
+    0.0048
+   ],
+   "bilirubin.sd_noise": [
+    0.3468,
+    null
+   ],
+   "albumin.sd_noise": [
+    0.3193,
+    null
+   ]
+  }
+ }
+}
