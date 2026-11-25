@@ -409,9 +409,12 @@ surpyval.pseudo_regression_from_df
 surpyval.pseudo_rmst
 surpyval.pseudo_survival
 surpyval.pymc.PRIOR_FAMILIES
+surpyval.pymc.REGRESSION
 surpyval.pymc.SUPPORTED
 surpyval.pymc.censored_likelihood
+surpyval.pymc.group_models
 surpyval.pymc.log_likelihood
+surpyval.pymc.pooled_likelihood
 surpyval.pymc.prior_from_model
 surpyval.pymc.prior_from_spec
 surpyval.pymc.to_surpyval
