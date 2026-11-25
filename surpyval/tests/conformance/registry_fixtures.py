@@ -33,6 +33,63 @@ def uni_data():
     return {"x": x, "c": c, "n": n}
 
 
+def genf_data():
+    """40 rows with a heavy upper tail, the quantiles of a generalised F
+    (mu 1, sigma 0.6, Q 0.3, P 3) at (i - 1/2) / 40, two right censored
+    and two with counts above 1. On ``uni_data`` the generalised F's
+    likelihood is largest at P = 0, the edge of its range where it is the
+    generalised gamma; here its maximum is inside (P about 0.73)."""
+    x = np.array(
+        [
+            0.111,
+            0.276,
+            0.421,
+            0.557,
+            0.687,
+            0.812,
+            0.933,
+            1.051,
+            1.168,
+            1.283,
+            1.396,
+            1.509,
+            1.622,
+            1.735,
+            1.849,
+            1.964,
+            2.081,
+            2.2,
+            2.322,
+            2.448,
+            2.58,
+            2.717,
+            2.861,
+            3.015,
+            3.179,
+            3.356,
+            3.549,
+            3.763,
+            4.001,
+            4.271,
+            4.582,
+            4.947,
+            5.386,
+            5.927,
+            6.622,
+            7.557,
+            8.909,
+            11.095,
+            15.472,
+            31.615,
+        ]
+    )
+    c = np.zeros(40, int)
+    c[[13, 26]] = 1
+    n = np.ones(40, int)
+    n[[2, 7]] = [2, 3]
+    return {"x": x, "c": c, "n": n}
+
+
 def uni_exact_data():
     """``uni_data`` with every value exactly observed: the Uniform's MLE
     refuses censored values (#460)."""

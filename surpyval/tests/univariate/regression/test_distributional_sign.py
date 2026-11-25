@@ -46,6 +46,7 @@ BASE = {
     "Logistic": [5.0, 1.0],
     "Beta": [2.0, 3.0],
     "ExpoWeibull": [3.0, 1.5, 2.0],
+    "GeneralizedF": [1.0, 0.6, 0.5, 1.0],
     "GeneralizedGamma": [1.0, 0.6, 0.5],
     "Gompertz": [0.2, 0.05],
     "InverseGaussian": [10.0, 20.0],

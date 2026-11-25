@@ -378,7 +378,8 @@ Limits
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
   LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
-  ExpoWeibull, GeneralizedGamma, Gompertz and InverseGaussian. Prebuilt fitters are ``WeibullDistributional``,
+  ExpoWeibull, GeneralizedGamma, GeneralizedF, Gompertz and
+  InverseGaussian. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and

@@ -26,6 +26,8 @@ v0.30 (unreleased)
   draw exactly as before.
 
 - ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
+- ``fit_best`` also tries the new ``GeneralizedGamma``, ``GeneralizedF``,
+  ``Gompertz`` and ``InverseGaussian``. On
   50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
   Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
@@ -183,6 +185,21 @@ v0.30 (unreleased)
   ``compare_links``, a lag or weight per marker. A single-marker fit
   given several named measurements still refuses them, now saying how to
   fit them together. No number of a one-marker fit changes.
+
+- **The generalised F distribution, built in:** ``surpyval.GeneralizedF``,
+  in Prentice's (1975) parameterisation (``mu``, ``sigma``, ``Q``, ``P``),
+  the one R's ``flexsurv`` calls ``genf``. It holds the generalised gamma
+  (``P`` to 0) and the log-logistic (``Q = 0, P = 1``), and allows a
+  power-law upper tail. Each tail comes from the side of the beta variable
+  that does not round. Every fit option of a built-in distribution except
+  probability-plot fitting and the method of moments (both refused, with
+  the reason), Wald, likelihood-ratio and bootstrap bounds, ``qf``/``isf``,
+  moments (``inf`` where the tail is too heavy), saving, ``fit_best``,
+  ``AFT(GeneralizedF)`` and ``Distributional(GeneralizedF)``. Against
+  flexsurv 2.3.2:
+  the functions to 1e-10, and the ``lung`` fits (right censored, AFT on
+  ``sex``) to 1e-6 in log-likelihood; the left-truncated likelihood to
+  1e-8. See :doc:`univariate/generalized_f`.
 
 - **The inverse Gaussian distribution, built in:**
   ``surpyval.InverseGaussian`` (``mu``, the mean, and ``lam``, the shape),
