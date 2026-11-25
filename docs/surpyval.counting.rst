@@ -54,6 +54,17 @@ the failures counted in each period of testing.
     counting/rayleigh_defects
     counting/clocks
 
+Discrete (Success/Fail) Reliability Growth
+------------------------------------------
+
+Growth of one-shot items, fitted to the failures and trials of each
+development stage: the AMSAA discrete model, Lloyd-Lipow and Gompertz.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/discrete_growth
+
 Models of the Times Between Failures
 ------------------------------------
 

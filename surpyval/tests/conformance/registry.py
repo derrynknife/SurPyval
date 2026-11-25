@@ -521,6 +521,24 @@ for _name in ("EffortTable", "WeibullEffort"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = _DATA + (
         ": the testing effort over time that EffortClock takes"
     )
+# Growth models of success/fail counts by stage: they fit successes and
+# trials per stage, not xcnt data, so the battery (sf, hazard, censoring,
+# truncation) has nothing to run; their fits, both bounds and refusals are
+# in tests/recurrent/test_discrete_growth.py, and the bounds' coverage in
+# calibration/test_coverage_discrete_growth.py.
+for _name in (
+    "CrowAMSAADiscrete",
+    "LloydLipow",
+    "GompertzGrowth",
+    "ModifiedGompertzGrowth",
+):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = (
+        "a growth model of successes and trials by stage, not of xcnt "
+        "data (tests/recurrent/test_discrete_growth.py)"
+    )
+OUT_OF_SCOPE["surpyval.recurrent.DiscreteGrowthModel"] = (
+    _RESULT + ": the fitted discrete growth models"
+)
 OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
     _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
 )

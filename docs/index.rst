@@ -199,6 +199,11 @@ so on.
        PM2-Discrete plans with their steps after each corrective action
        period.
      - :doc:`Reliability Growth Planning`
+   * - Discrete reliability growth
+     - Growth of one-shot items from successes and trials by stage: the
+       AMSAA discrete model, Lloyd-Lipow and Gompertz, with Wald and
+       likelihood-ratio bounds and the next stage projected.
+     - :doc:`Discrete Reliability Growth`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
@@ -389,6 +394,7 @@ Contents:
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
    Reliability Growth Planning
+   Discrete Reliability Growth
    PyMC with SurPyval
    Torch with SurPyval
 
