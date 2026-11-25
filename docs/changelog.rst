@@ -32,6 +32,15 @@ v0.30 (unreleased)
   Laplace interval exactly; within 1% of the conjugate posterior's at
   1,000 lives) and the grid (within 0.2 sd at 100 Weibull lives; 0.01 sd
   reweighted), with a coverage study of its 90% intervals.
+- **The activation energy of the temperature-nonthermal life model.**
+  ``activation_energy()`` now serves ``life_models.PowerExponential``
+  (an Arrhenius term in the temperature, the first column of ``Z`` in
+  kelvin, times a power of a second, non-thermal stress): ``a`` times
+  Boltzmann's constant in eV, with the interval of ``param_cb('a')`` by any
+  of its methods, and the printed model adds its line. It raised before.
+  With the second stress held constant the answer and its Wald and
+  likelihood-ratio intervals are the Arrhenius model's to 1e-6. No fitted
+  number changes.
 
 - **A Wald bound on a Fine-Gray model's cumulative incidence.**
   ``FineGrayModel.cb(..., method="wald")`` gives the delta-method bound on

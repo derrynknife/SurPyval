@@ -3235,7 +3235,15 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
     for name, value in zip(model_2s.parameter_names, model_2s.params):
         if name != model_2s.life_parameter:   # alpha is given by the life model
             print(f'{name:5s} = {value:.4g}')
-    print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
+    energy_2s = model_2s.activation_energy()
+    print('activation energy (eV): %.3f, 95%% interval %.3f to %.3f'
+          % (energy_2s['activation_energy'], energy_2s['lower'],
+             energy_2s['upper']))
+
+``activation_energy()`` reads the temperature term, the first column of
+``Z`` (in kelvin), and gives its interval as for the Arrhenius model; held
+at one voltage, the fit gives the Arrhenius fit's activation energy and
+interval.
 
 The fit separates the two effects — an activation energy of 0.67 eV against
 the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
@@ -3256,6 +3264,7 @@ give the ``Power`` fit, with ``n`` aliased.
     _names = model_2s.parameter_names
     _p = dict(zip(_names, model_2s.params))
     assert round(_p['a'] * k, 2) == 0.67 and round(_p['n'], 2) == -1.44, _p
+    assert energy_2s['lower'] < 0.7 < energy_2s['upper']
 
 Creating a custom life model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
