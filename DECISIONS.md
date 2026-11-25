@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-25
 
+### Dabrowska's bivariate survival estimator (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.multivariate.Dabrowska.fit` returns a `BivariateNonParametric`, in `surpyval/multivariate/nonparametric/`; `sf(X)`, `ff(X)`/`cdf(X)` take a row per point as the copulas' do, and `sf_grid(t1, t2)` gives a grid. A list is read as one sequence per series, as `MultivariateSurpyvalData` reads it. | maintainer (asked) / proposed (shape) | The copulas' calling conventions, so the two kinds of joint model are used the same way. | done |
+| Where no unit is left in either series at a pair of failure times (`m = 0`), or none is at risk in both (`Y = 0`), the factor is 0, so the estimate is 0 in that corner. | proposed | R's `mhazard` does the same (checked to 1e-15), and with no censoring it is the empirical answer; past the data in both series nothing is known. | done |
+| Bounds: `method="wald"` (default) uses the exact influence of each row (derivatives of the estimate in the row weights, worked out from the counts), the infinitesimal-jackknife variance, on the logit scale; `method="bootstrap"` resamples the pairs. A likelihood-ratio bound is refused (no likelihood), naming the copulas. | proposed | The influence-function variance of Dabrowska's estimator (Gill, van der Laan and Wellner 1995) is what the infinitesimal jackknife estimates; checked against finite differences (2e-10) and the bootstrap (within 10%). | done |
+| Right censoring only; left or interval censoring and truncation are refused, naming a copula with parametric margins. Two series only, naming the Gaussian, Student-t and vine copulas for more. No `t`, `xl`, `xr` arguments on `fit` (a `MultivariateSurpyvalData` carrying them is refused with the same message). | proposed | Dabrowska's estimator is defined for right-censored pairs. | done |
+| Not built: the Prentice-Cai and Lin-Ying estimators, and a dependence measure (Kendall's tau or the cross-ratio) from the estimate. | proposed | Optional in the request; the Dabrowska estimate is the standard one. | gap |
+
 ### Warranty Nevada tables (25 Nov 2026)
 
 | Decision | By | Reason | Status |

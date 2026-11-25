@@ -52,6 +52,21 @@ v0.30 (unreleased)
   reliabilities. Each gives the reliability at any stage, the projected
   next stage, its ceiling, Wald (logit) and likelihood-ratio bounds, and
   a plot. See :doc:`Discrete Reliability Growth`.
+- **Dabrowska's bivariate survival estimator.**
+  ``surpyval.multivariate.Dabrowska.fit(x, c, n)`` (or a two-series
+  ``MultivariateSurpyvalData``, or ``fit_from_df``) estimates the joint
+  survival of two right-censored lifetimes, :math:`P(T_1 > s, T_2 > t)`,
+  with no copula family to choose: the two-dimensional Kaplan-Meier
+  (Dabrowska, 1988). The result has ``sf`` and ``ff`` at points,
+  ``sf_grid`` on a grid, ``margins`` (the Kaplan-Meier estimates),
+  ``cb`` (the influence-function standard error on the logit scale, or
+  the case bootstrap), ``influence``, ``standard_errors``, a contour
+  ``plot`` and ``to_dict``. With no censoring it equals the empirical
+  joint survival exactly; its margins equal Kaplan-Meier exactly; it
+  matches R's ``mhazard::npSurv2(estimator = "dabrowska")`` to 1e-15 on
+  three data sets; its influence matches finite differences to 2e-10 and
+  its standard errors the bootstrap's within 10%. See "Joint survival
+  without a copula" in :doc:`Multivariate Modelling with SurPyval`.
 
 - **Warranty Nevada tables.** ``surpyval.NevadaTable`` reads the
   warranty triangle of shipments by return period (each row a shipment

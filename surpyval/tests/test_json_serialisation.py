@@ -322,6 +322,14 @@ def _destructive():
     return DestructiveDegradation.fit(x, y, threshold=20, c=c)
 
 
+def _dabrowska():
+    from surpyval.multivariate import Dabrowska
+
+    x = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]])
+    c = np.array([[0, 0], [0, 1], [1, 0], [0, 0]])
+    return Dabrowska.fit(x, c=c, n=[1, 2, 1, 1])
+
+
 def _copula_with_km_margin():
     from surpyval.multivariate import Clayton
 
@@ -615,6 +623,7 @@ def _build(name):
         ),
         "destructive": _destructive,
         "copula": _copula_with_km_margin,
+        "bivariate_non_parametric": _dabrowska,
         "survival_tree": _tree,
         "random_survival_forest": _forest,
         "never_occurs": lambda: NeverOccurs,
@@ -705,6 +714,7 @@ CASES = [
     "gamma_process",
     "destructive",
     "copula",
+    "bivariate_non_parametric",
     "survival_tree",
     "random_survival_forest",
     "never_occurs",

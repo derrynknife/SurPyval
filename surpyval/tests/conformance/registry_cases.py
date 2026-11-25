@@ -2103,6 +2103,38 @@ def _copulas():
     return out
 
 
+def _dabrowska():
+    # Dabrowska's non-parametric joint survival of two lifetimes, on the
+    # copula fixture with its second series' longest four lives censored
+    # (so the censoring is exercised).
+    def data():
+        d = copula_data()
+        c = np.zeros(d["x"].shape, int)
+        c[np.argsort(d["x"][:, 1])[-4:], 1] = 1
+        return {**d, "c": c}
+
+    return [
+        Case(
+            name="Dabrowska",
+            fitters=("surpyval.multivariate.Dabrowska",),
+            model_class="surpyval.multivariate.BivariateNonParametric",
+            interface=BIVARIATE,
+            data=data,
+            fit=lambda d: mv.Dabrowska.fit(**d),
+            functions=("sf", "ff", "cdf"),
+            x=X_COP,
+            rows=("x", "c", "n"),
+            rtol=1e-12,
+            starve=None,
+            exclude={
+                "convergence": "a closed-form estimate: nothing to starve",
+                "maximum": "a closed-form estimate, not a search for a "
+                "maximum",
+            },
+        )
+    ]
+
+
 # Copulas of more than two series: (case name, family, structure)
 _COPULAS_ND = (
     ("GaussianCopula[D=3]", "Gaussian", "unstructured"),
@@ -2999,6 +3031,7 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _copulas_nd()
+    + _dabrowska()
     + _vines()
     + _joint()
     + _spline_regression()
@@ -3188,6 +3221,12 @@ def _df_paths():
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
+    paths["Dabrowska"] = lambda d: mv.Dabrowska.fit_from_df(
+        _frame(d, ("x", "c", "n"))[0],
+        x_cols=["x0", "x1"],
+        c_cols=["c0", "c1"],
+        n_col="n",
+    )
     # (its fixture has no counts: the rows alone)
     paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
         mv.Clayton.fit_from_df(
@@ -3898,6 +3937,28 @@ def _bounds(case):
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        # The influence-function (Wald) bound and the case bootstrap, on
+        # the joint survival and the joint distribution function.
+        # (one sweep each for the joint sf and CDF, which are not
+        # complements, as for the copulas)
+        "BivariateNonParametric": (
+            Bound("cb", on=("sf",)),
+            Bound("cb", on=("ff",), label="cb[ff]"),
+            Bound(
+                "cb",
+                on=("sf",),
+                label="cb[bootstrap]",
+                kwargs={"method": "bootstrap", **_BOOT},
+                wald=False,
+            ),
+            Bound(
+                "cb",
+                on=("ff",),
+                label="cb[ff, bootstrap]",
+                kwargs={"method": "bootstrap", **_BOOT},
+                wald=False,
+            ),
+        ),
         "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,

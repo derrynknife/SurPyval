@@ -67,6 +67,19 @@ Fitted Model
 .. autoclass:: surpyval.multivariate.parametric.copula.copula_model.CopulaModel
    :members:
 
+Non-parametric joint survival
+-----------------------------
+
+Dabrowska's estimator of the joint survival of two right-censored lifetimes,
+with no copula family to choose (see "Joint survival without a copula" in
+:doc:`Multivariate Modelling with SurPyval`).
+
+.. autoclass:: surpyval.multivariate.nonparametric.dabrowska.Dabrowska
+   :members:
+
+.. autoclass:: surpyval.multivariate.nonparametric.dabrowska.BivariateNonParametric
+   :members:
+
 Data
 ----
 

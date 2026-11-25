@@ -1423,3 +1423,81 @@ built-in families start from the value matching the data's Kendall's tau; pass
 And a model of a custom family cannot be restored with ``from_dict``, which
 rebuilds a copula from its name and so only knows the built-in families.
 
+
+Joint survival without a copula: Dabrowska's estimator
+------------------------------------------------------
+
+A copula answers "how likely are both lifetimes to last past their times?" by
+choosing a family for the dependence. When you do not want to choose one, or
+want to check the one you chose, :class:`~surpyval.multivariate.Dabrowska`
+estimates the joint survival :math:`S(s, t) = P(T_1 > s, T_2 > t)` directly
+from right-censored pairs, as Kaplan-Meier does for one lifetime.
+
+In plain words: it starts from the two Kaplan-Meier curves, whose product is
+the answer if the two lifetimes were unrelated, and corrects it at every pair
+of failure times by how much more (or less) often the two series failed
+together there than they would have by chance. With no censoring it is
+exactly the fraction of units that outlived both times, and at
+:math:`t = 0` (or :math:`s = 0`) it is exactly the other series' Kaplan-Meier
+curve.
+
+The formula: of the :math:`Y` units at risk in both series at a pair of
+failure times :math:`(u, v)`, :math:`a` fail in the first at :math:`u`,
+:math:`b` in the second at :math:`v`, :math:`c` in both and :math:`m = Y - a -
+b + c` in neither, and
+
+.. math::
+    \hat S(s, t) = \hat S_1(s)\, \hat S_2(t) \prod_{u \le s,\ v \le t}
+    \frac{Y m}{(Y - a)(Y - b)}
+
+(Dabrowska, 1988). Here two series are drawn from a Clayton copula (so the
+truth is known), each censored by its own random time:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Clayton, Dabrowska
+
+    truth = Clayton.from_params(
+        [2.0], [surv.Weibull.from_params([10, 2]),
+                surv.Weibull.from_params([5, 1.5])]
+    )
+    T = truth.random(1000, random_state=11)
+    C = np.random.default_rng(12).exponential([30.0, 14.0], (1000, 2))
+    x, c = np.minimum(T, C), (T > C).astype(int)
+    print("censored in each series:", c.mean(axis=0).round(2))
+
+    joint = Dabrowska.fit(x, c=c)
+    print(joint)
+    pts = np.array([[4.0, 2.0], [8.0, 4.0], [12.0, 7.0]])
+    print("estimate:", joint.sf(pts).round(3))
+    print("truth   :", truth.sf(pts).round(3))
+    print("95% bound:\n", joint.cb(pts).round(3))
+
+The bound uses the estimator's influence function (the infinitesimal
+jackknife: how much each unit moves the estimate), on the logit scale so it
+stays between 0 and 1; ``cb(pts, method="bootstrap")`` resamples the pairs
+instead. ``sf_grid(t1, t2)`` gives the estimate on a grid, and ``plot()`` a
+contour map of it:
+
+.. jupyter-execute::
+
+    ax = joint.plot(levels=[0.1, 0.25, 0.5, 0.75, 0.9])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _err = joint.sf(pts) - truth.sf(pts)
+    assert np.all(np.abs(_err) < 3.5 * joint.standard_errors(pts)), _err
+    _km = [m.sf(pts[:, d]) for d, m in enumerate(joint.margins)]
+    assert np.all(joint.sf(pts) > _km[0] * _km[1])
+
+Like every non-parametric estimate of a joint survival function, it can put a
+little negative probability on some rectangles in small or heavily censored
+samples; that is a known property of the estimator and fades as the sample
+grows. Where no unit is at risk in both series (past the data in both
+directions) the estimate is 0, as in R's ``mhazard``, with which it agrees to
+1e-15 (``scripts/reference/reference_r_mhazard_dabrowska.R``). It takes right
+censoring only, and two series: for left or interval censoring or truncation
+use a copula with parametric margins, and for three or more series a Gaussian
+or Student-t copula or a vine.
