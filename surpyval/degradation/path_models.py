@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from surpyval.utils.splines import natural_cubic_bends
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
@@ -842,6 +843,551 @@ class MichaelisMentenPath_(PathModel):
         return [1.2 * y.max(), float(np.median(x))]
 
 
+#: How many points of each piece (between neighbouring knots)
+#: ``SplinePath.inv_path`` looks at for the first crossing of a level.
+_SPLINE_GRID = 32
+
+
+class SplinePath(PathModel):
+    """
+    A smooth curve of joined pieces: a natural cubic spline.
+
+    The path is flat and then climbs, or falls and then rises, wherever
+    the measurements say so, without a formula being named. It is a
+    cubic between neighbouring knots, joined so that its value, slope and
+    curvature are continuous, and a straight line before the first
+    boundary knot and after the last. With the interior knots
+    :math:`\\kappa_1 < \\dots < \\kappa_K` between the boundary knots
+    ``lo`` and ``hi``,
+
+    .. math::
+
+        m(t) = \\text{level} + \\text{rate}\\, t + \\sum_{k=1}^{K} s_k N_k(t),
+
+    where each :math:`N_k` is 0 up to its knot (:math:`N_1`'s is ``lo``,
+    :math:`N_{k}`'s is :math:`\\kappa_{k-1}`) and a straight line after
+    ``hi``. So ``level`` is the line's value at age 0 and ``rate`` its
+    slope before ``lo``, and the ``s_k`` (in the measurement's unit) bend
+    the curve after each knot. With no interior knots the path is the
+    straight line of ``LinearPath``.
+
+    The parameters are ``level``, ``rate``, ``s1``, ..., ``sK``. The path
+    is linear in them, so one unit's fit is linear least squares.
+
+    Parameters
+    ----------
+    knots : array_like, optional
+        The interior knots, ascending and strictly between the boundary
+        knots. Default: none (a straight line).
+    boundary : (float, float), optional
+        The boundary knots ``(lo, hi)``: the path is a straight line
+        outside them. Left out, they are the first and last measurement
+        times of the data a fitter is given
+        (``DegradationAnalysis.fit``, ``JointPH(...).fit``), and the
+        fitted model's ``path_model`` records them.
+
+    Notes
+    -----
+    :meth:`natural` places the knots from the data instead. Outside the
+    boundary knots the path is extrapolated as a straight line; a
+    prediction far beyond them rests on that line.
+
+    The basis is the truncated-power form of the natural cubic spline:
+    with every knot :math:`\\xi_1 = \\text{lo} < \\dots < \\xi_{K+2} =
+    \\text{hi}` on the scale :math:`u = (t - \\text{lo}) / (\\text{hi} -
+    \\text{lo})`, :math:`d_k(u) = [(u - \\xi_k)_+^3 - (u - 1)_+^3] / (1 -
+    \\xi_k)` and :math:`N_k = d_k - d_{K+1}`.
+
+    Examples
+    --------
+    A reading that is flat for 4 years and then climbs: a knee at 4.
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import SplinePath
+    >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
+    >>> path.parameter_names
+    ['level', 'rate', 's1']
+    >>> t = np.arange(0.0, 11.0)
+    >>> y = np.where(t < 4, 2.0, 2.0 + 0.5 * (t - 4))
+    >>> theta = path.fit(t, y)
+    >>> path.path([2.0, 8.0], *theta).round(2)
+    array([1.97, 3.92])
+    >>> path.slope([2.0, 8.0], *theta).round(2)
+    array([0.04, 0.57])
+
+    With no interior knots it is the straight line:
+
+    >>> SplinePath().path([1.0, 2.0], 3.0, 0.5)
+    array([3.5, 4. ])
+    """
+
+    name = "Spline"
+    linear_in_parameters = True
+    #: The parameters that differ between items in a joint model
+    #: (``JointPH``) unless ``varying=`` names others: the bends are
+    #: common to the fleet.
+    default_varying = ("level", "rate")
+
+    def __init__(self, knots: Any = (), boundary: Any = None) -> None:
+        self.df: int | None = None
+        self.knots: tuple[float, ...] | None = _spline_knots(knots)
+        self.boundary: tuple[float, float] | None = None
+        if boundary is not None:
+            self.boundary = _spline_boundary(boundary, self.knots)
+        self.parameter_names = ["level", "rate"] + [
+            f"s{k + 1}" for k in range(len(self.knots))
+        ]
+
+    @classmethod
+    def natural(cls, df: int = 3) -> SplinePath:
+        """
+        A spline whose knots are placed from the data it is fitted to.
+
+        The boundary knots are the first and last measurement times, and
+        the ``df - 1`` interior knots are at equally spaced quantiles of
+        all the units' measurement times (as R's ``splines::ns(t, df)``
+        places them). A fitter (``DegradationAnalysis.fit``,
+        ``JointPH(...).fit``) places them, and the fitted model's
+        ``path_model`` records them; :meth:`placed` does it directly.
+
+        Parameters
+        ----------
+        df : int, optional
+            How many parameters shape the curve beside its ``level``:
+            ``rate`` and ``df - 1`` bends, ``s1`` to ``s{df - 1}``.
+            Default 3 (two interior knots); 1 is a straight line.
+
+        Returns
+        -------
+        SplinePath
+            A spline with ``df + 1`` parameters whose knots are not
+            placed yet.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import SplinePath
+        >>> path = SplinePath.natural(df=3)
+        >>> path.parameter_names
+        ['level', 'rate', 's1', 's2']
+        >>> placed = path.placed(np.arange(0.0, 13.0))
+        >>> placed.knots, placed.boundary
+        ((4.0, 8.0), (0.0, 12.0))
+        """
+        if isinstance(df, bool) or not isinstance(df, (int, np.integer)):
+            raise ValueError(
+                "df is how many parameters shape the spline beside its "
+                f"level, a whole number of 1 or more; got {df!r}."
+            )
+        if df < 1:
+            raise ValueError(
+                "df is how many parameters shape the spline beside its "
+                f"level, 1 (a straight line) or more; got {df}."
+            )
+        out = cls()
+        out.df = int(df)
+        out.knots = None
+        out.parameter_names = ["level", "rate"] + [
+            f"s{k + 1}" for k in range(int(df) - 1)
+        ]
+        return out
+
+    @property
+    def is_placed(self) -> bool:
+        """Whether the knots and the boundary are set (else a fitter
+        places them from its data, see :meth:`placed`)."""
+        return self.knots is not None and self.boundary is not None
+
+    def placed(self, x: npt.ArrayLike) -> SplinePath:
+        """
+        This spline with its knots placed from the measurement times
+        ``x`` (every unit's, together): itself where they are set
+        already.
+
+        A boundary left out is the first and last of ``x``; the interior
+        knots of :meth:`natural` are the quantiles ``1/df``, ...,
+        ``(df - 1)/df`` of ``x``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import SplinePath
+        >>> SplinePath(knots=[3.0]).placed([0.0, 1.0, 2.0, 5.0]).boundary
+        (0.0, 5.0)
+        """
+        if self.is_placed:
+            return self
+        times = np.asarray(x, dtype=float).ravel()
+        seen = times[np.isfinite(times)]
+        if seen.size == 0 or seen.min() == seen.max():
+            raise ValueError(
+                "The spline path's knots are placed from the measurement "
+                "times, which must span more than one time; got "
+                f"{np.unique(seen).size} distinct time(s). Give knots and "
+                "boundary to SplinePath(knots=[...], boundary=(lo, hi))."
+            )
+        boundary = self.boundary
+        if boundary is None:
+            boundary = (float(seen.min()), float(seen.max()))
+        knots = self.knots
+        if knots is None:
+            df = int(self.df or 1)
+            inside = seen[(seen >= boundary[0]) & (seen <= boundary[1])]
+            knots = tuple(
+                float(v) for v in np.quantile(inside, np.arange(1, df) / df)
+            )
+            if len(set(knots)) < len(knots) or (
+                knots and not boundary[0] < knots[0] <= knots[-1] < boundary[1]
+            ):
+                raise ValueError(
+                    f"SplinePath.natural(df={df}) places {df - 1} interior "
+                    "knot(s) at quantiles of the measurement times, and "
+                    f"here they are {list(knots)} with the boundary "
+                    f"{boundary}: not distinct and inside it, as the "
+                    f"times hold {np.unique(inside).size} distinct "
+                    "value(s) with many repeats. Use a smaller df, or "
+                    "give the knots: SplinePath(knots=[...], "
+                    "boundary=(lo, hi))."
+                )
+        return type(self)(knots=knots, boundary=boundary)
+
+    def check_readings(self, counts: npt.ArrayLike) -> None:
+        """Refuse a spline with more parameters than the units' readings
+        support: ``counts`` is each unit's number of readings, and their
+        median must reach the number of parameters."""
+        counts = np.asarray(counts, dtype=float)
+        counts = counts[counts > 0]
+        n = len(self.parameter_names)
+        median = float(np.median(counts)) if counts.size else 0.0
+        if median < n:
+            most = int(np.floor(median)) - 2
+            fix = (
+                f"use at most {most} interior knot(s) "
+                f"(SplinePath.natural(df={most + 1}))"
+                if most >= 1
+                else "use LinearPath"
+            )
+            raise ValueError(
+                f"The spline path has {n - 2} interior knot(s), so {n} "
+                f"parameters, and the {counts.size} unit(s) with readings "
+                f"have a median of {median:g} each: too few to tell the "
+                f"curve's bends from noise. With these readings, {fix}."
+            )
+
+    @property
+    def breaks(self) -> tuple[float, ...]:
+        """The ages at which the path's pieces join (every knot, where
+        its third derivative jumps): none for a straight line. An
+        integral of a function of the path is taken piece by piece."""
+        if not self.parameter_names[2:] or not self.is_placed:
+            return ()
+        lo, hi = self.boundary or (np.nan, np.nan)
+        return (lo, *(self.knots or ()), hi)
+
+    def _require_placed(self) -> tuple:
+        if self.knots is None or self.boundary is None:
+            what = (
+                f"SplinePath.natural(df={self.df})"
+                if self.knots is None
+                else "A SplinePath with no boundary"
+            )
+            raise ValueError(
+                f"{what} has no knots until a fit places them from the "
+                "measurement times: fit it with DegradationAnalysis.fit("
+                "..., path=...) or JointPH(Weibull, ...).fit(...) and use "
+                "the fitted model's path_model, or place them with "
+                ".placed(x)."
+            )
+        lo, hi = self.boundary
+        span = hi - lo
+        inner = (np.asarray(self.knots, dtype=float) - lo) / span
+        return lo, span, inner
+
+    def _bends(self, x: npt.NDArray, deriv: int = 0) -> list:
+        """Each :math:`N_k` at ``x`` (of any shape), or its derivative
+        (``deriv`` 1) or antiderivative (-1), from the shared basis
+        (:func:`surpyval.utils.splines.natural_cubic_bends`, its
+        truncated-power form)."""
+        self._require_placed()
+        lo, hi = self.boundary or (np.nan, np.nan)
+        knots = np.array([lo, *(self.knots or ()), hi], dtype=float)
+        return natural_cubic_bends(x, knots, deriv, form="esl")
+
+    def basis(self, x: npt.ArrayLike) -> npt.NDArray:
+        """
+        The spline's basis at time(s) ``x``: one column for each
+        parameter (1, ``x`` and each :math:`N_k(x)`), so the path is
+        ``basis(x) @ params``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import SplinePath
+        >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
+        >>> path.basis([0.0, 5.0, 10.0]).round(4)
+        array([[ 1.    ,  0.    ,  0.    ],
+               [ 1.    ,  5.    ,  0.1233],
+               [ 1.    , 10.    ,  0.64  ]])
+        """
+        x = np.asarray(x, dtype=float)
+        if not self.parameter_names[2:]:
+            return np.column_stack([np.ones_like(x), x])
+        return _columns(x, 1.0, x, *self._bends(x))
+
+    def path(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        level, rate, *bends = params
+        x = np.asarray(x, dtype=float)
+        out = level + rate * x
+        if bends:
+            for s, column in zip(bends, self._bends(x)):
+                out = out + s * column
+        return out
+
+    def jacobian(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        return self.basis(x)
+
+    def slope(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        level, rate, *bends = params
+        x = np.asarray(x, dtype=float)
+        out = rate + 0.0 * x
+        if bends:
+            for s, column in zip(bends, self._bends(x, 1)):
+                out = out + s * column
+        return out
+
+    def slope_jacobian(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        x = np.asarray(x, dtype=float)
+        if not self.parameter_names[2:]:
+            return _columns(x, 0.0, 1.0)
+        return _columns(x, 0.0, 1.0, *self._bends(x, 1))
+
+    def _areas(self, x: npt.NDArray) -> list:
+        """The area under each :math:`N_k` from age 0 to ``x``."""
+        at_zero = self._bends(np.zeros_like(x), -1)
+        return [
+            upper - lower for upper, lower in zip(self._bends(x, -1), at_zero)
+        ]
+
+    def area(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        """
+        The area under the path from age 0 to ``x``, in closed form (the
+        path's pieces are cubics, so the area's are quartics).
+
+        Examples
+        --------
+        >>> from surpyval.degradation import SplinePath
+        >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
+        >>> path.area([4.0, 10.0], 2.0, 0.0, 5.0).round(4)
+        array([ 8.32, 29.8 ])
+        """
+        level, rate, *bends = params
+        x = np.asarray(x, dtype=float)
+        out = level * x + rate * x**2 / 2.0
+        if bends:
+            for s, column in zip(bends, self._areas(x)):
+                out = out + s * column
+        return out
+
+    def area_jacobian(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        """Partial derivatives of :meth:`area` with respect to the
+        parameters, at time(s) ``x``: a ``(len(x), n_params)`` matrix."""
+        x = np.asarray(x, dtype=float)
+        bends = self._areas(x) if self.parameter_names[2:] else []
+        return _columns(x, x, x**2 / 2.0, *bends)
+
+    def inv_path(self, y: npt.ArrayLike, *params: Any) -> npt.NDArray:
+        """
+        The first time after 0 at which the path reaches level ``y``
+        (``nan`` when it never does); with no interior knots, the
+        straight line's crossing, as ``LinearPath`` gives it.
+
+        The path is looked at on a grid of 32 points between neighbouring
+        knots (from age 0, or the lower boundary knot if that is
+        earlier), and the first crossing found is refined by bisection;
+        after the upper boundary knot the path is a straight line, whose
+        crossing is exact. A path that touches the level and turns back
+        within one step of the grid is not seen.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import SplinePath
+        >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
+        >>> float(path.inv_path(3.0, 2.0, 0.0, 5.0).round(4))
+        5.9696
+        >>> float(path.inv_path(1.0, 2.0, 0.0, 5.0))
+        nan
+        """
+        level, rate, *bends = params
+        y = np.asarray(y, dtype=float)
+        if not bends:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return (y - level) / rate
+        lo, span, inner = self._require_placed()
+        hi = lo + span
+        edges = np.concatenate([[lo], lo + span * inner, [hi]])
+        edges = np.unique(np.concatenate([[0.0], edges[edges > 0.0]]))
+        steps = np.linspace(0.0, 1.0, _SPLINE_GRID + 1)[1:]
+        grid = np.concatenate(
+            [[edges[0]]]
+            + [a + (b - a) * steps for a, b in zip(edges[:-1], edges[1:])]
+        )
+        theta = [np.asarray(v, dtype=float) for v in (level, rate, *bends)]
+        shape = np.broadcast_shapes(y.shape, *[v.shape for v in theta])
+        target = np.broadcast_to(y, shape).ravel()
+        flat = [np.broadcast_to(v, shape).ravel() for v in theta]
+        spread = [v[:, None] for v in flat]
+        with np.errstate(all="ignore"):
+            gap = self.path(grid[None, :], *spread) - target[:, None]
+            side = np.sign(gap)
+            # the first step of the grid over which the path reaches y
+            reached = (side[:, 1:] != side[:, :-1]) & (side[:, :-1] != 0)
+            reached |= side[:, 1:] == 0
+            found = reached.any(axis=1)
+            first = np.argmax(reached, axis=1)
+            left, right = grid[first], grid[first + 1]
+            start = np.take_along_axis(side, first[:, None], axis=1)[:, 0]
+            for _ in range(60):
+                middle = (left + right) / 2.0
+                same = np.sign(self.path(middle, *flat) - target) == start
+                left = np.where(same, middle, left)
+                right = np.where(same, right, middle)
+            inside = (left + right) / 2.0
+            # past the last knot the path is a straight line
+            end = self.path(np.full(target.shape, hi), *flat)
+            tilt = self.slope(np.full(target.shape, hi), *flat)
+            beyond = hi + (target - end) / tilt
+            beyond = np.where(
+                np.isfinite(beyond) & (beyond > hi), beyond, np.nan
+            )
+        out = np.where(found, inside, beyond)
+        out = np.where(np.isfinite(target), out, np.nan)
+        for v in flat:
+            out = np.where(np.isfinite(v), out, np.nan)
+        return out.reshape(shape)
+
+    @takes_unit
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
+        """
+        Fit the path parameters to one unit's measurements by linear
+        least squares on the spline's basis (its knots as they are: a
+        spline whose knots are not placed is refused, saying how to place
+        them).
+
+        Parameters
+        ----------
+        x : array_like
+            The unit's measurement times.
+        y : array_like
+            Its degradation measurements.
+
+        Returns
+        -------
+        numpy array
+            The fitted ``level``, ``rate`` and ``s1``, ..., ``sK``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import SplinePath
+        >>> path = SplinePath(knots=[4.0], boundary=(0.0, 10.0))
+        >>> t = np.arange(0.0, 11.0)
+        >>> path.fit(t, path.path(t, 2.0, 0.1, 5.0)).round(6)
+        array([2. , 0.1, 5. ])
+        """
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        self.check_data(x, y)
+        if not self.parameter_names[2:]:
+            return np.array(_ols(x, y))
+        params, *_ = np.linalg.lstsq(self.basis(x), y, rcond=None)
+        return params
+
+    @property
+    def formula(self) -> str:
+        """The path's formula in words, for a model's printout."""
+        bends = self.parameter_names[2:]
+        if not bends:
+            return "level + rate t"
+        terms = " + ".join(f"{s} N{k + 1}(t)" for k, s in enumerate(bends))
+        if not self.is_placed:
+            return f"level + rate t + {terms} (natural cubic spline)"
+        knots = ", ".join(f"{k:g}" for k in self.knots or ())
+        lo, hi = self.boundary or (np.nan, np.nan)
+        return (
+            f"level + rate t + {terms} (natural cubic spline, knots at "
+            f"{knots} between {lo:g} and {hi:g})"
+        )
+
+    def to_dict(self) -> dict:
+        """
+        The spline as a dictionary of plain values, ``{"name": "Spline",
+        "knots": [...], "boundary": [lo, hi]}``, from which
+        ``get_path_model`` (and so a saved model's ``from_dict``) builds
+        it again. A spline whose knots are not placed is refused.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import SplinePath, get_path_model
+        >>> saved = SplinePath(knots=[4.0], boundary=(0.0, 10.0)).to_dict()
+        >>> saved
+        {'name': 'Spline', 'knots': [4.0], 'boundary': [0.0, 10.0]}
+        >>> get_path_model(saved).knots
+        (4.0,)
+        """
+        self._require_placed()
+        return {
+            "name": self.name,
+            "knots": [float(k) for k in self.knots or ()],
+            "boundary": [float(b) for b in self.boundary or ()],
+        }
+
+    def __repr__(self) -> str:
+        if self.knots is None:
+            return f"Spline Degradation Path Model (natural, df={self.df})"
+        where = ", ".join(f"{k:g}" for k in self.knots) or "none"
+        if self.boundary is None:
+            return f"Spline Degradation Path Model (knots: {where})"
+        lo, hi = self.boundary
+        return (
+            f"Spline Degradation Path Model (knots: {where}; boundary "
+            f"{lo:g} to {hi:g})"
+        )
+
+
+def _spline_knots(knots: Any) -> tuple[float, ...]:
+    """``knots`` as an ascending tuple of finite floats, or refused."""
+    try:
+        values = np.asarray(knots, dtype=float).ravel()
+    except (TypeError, ValueError):
+        values = np.array([np.nan])
+    if not np.isfinite(values).all() or np.any(np.diff(values) <= 0):
+        raise ValueError(
+            "knots are the spline's interior knots: finite ages, "
+            f"ascending, each once; got {knots!r}."
+        )
+    return tuple(float(v) for v in values)
+
+
+def _spline_boundary(
+    boundary: Any, knots: tuple[float, ...]
+) -> tuple[float, float]:
+    """``boundary`` as ``(lo, hi)`` around ``knots``, or refused."""
+    try:
+        lo, hi = (float(v) for v in boundary)
+    except (TypeError, ValueError):
+        lo = hi = np.nan
+    if not (np.isfinite(lo) and np.isfinite(hi) and lo < hi):
+        raise ValueError(
+            "boundary is the spline's boundary knots (lo, hi), two finite "
+            f"ages with lo < hi; got {boundary!r}."
+        )
+    if knots and not (lo < knots[0] and knots[-1] < hi):
+        raise ValueError(
+            f"The spline's interior knots {list(knots)} must lie strictly "
+            f"between its boundary knots {(lo, hi)}: move the boundary "
+            "out, or drop the knots outside it."
+        )
+    return lo, hi
+
+
 LinearPath: PathModel = LinearPath_()
 QuadraticPath: PathModel = QuadraticPath_()
 ExponentialPath: PathModel = ExponentialPath_()
@@ -873,22 +1419,44 @@ _KEY_BY_DISPLAY_NAME: dict[str, str] = {
 }
 
 
-def path_model_key(path_model: PathModel) -> str:
+def path_model_key(path_model: PathModel) -> Any:
     """
     The name under which ``path_model`` can be resolved again.
 
     For a built-in path model this is its ``PATH_MODELS`` key (so
     ``get_path_model(path_model_key(m))`` returns the built-in model);
-    a custom :class:`PathModel` is not registered, so its ``name`` is
+    for a :class:`SplinePath`, which is made with its knots, its
+    ``to_dict()`` (``get_path_model`` builds an equal one from it); a
+    custom :class:`PathModel` is not registered, so its ``name`` is
     returned as the best available label.
     """
+    if isinstance(path_model, SplinePath):
+        return path_model.to_dict()
     for key, model in PATH_MODELS.items():
         if type(model) is type(path_model):
             return key
     return path_model.name
 
 
-def get_path_model(path: str | PathModel) -> PathModel:
+def _spline_from_dict(saved: dict) -> SplinePath:
+    """The :class:`SplinePath` of its ``to_dict()``, or a refusal saying
+    what the dictionary lacks."""
+    if saved.get("name") != SplinePath.name:
+        raise ValueError(
+            "A path model given as a dictionary is a spline's, "
+            "{'name': 'Spline', 'knots': [...], 'boundary': [lo, hi]} "
+            f"(SplinePath.to_dict()); got the name {saved.get('name')!r}."
+        )
+    missing = [key for key in ("knots", "boundary") if key not in saved]
+    if missing:
+        raise ValueError(
+            f"The spline path's dictionary has no {missing}: it holds "
+            "'name', 'knots' and 'boundary' (SplinePath.to_dict())."
+        )
+    return SplinePath(knots=saved["knots"], boundary=saved["boundary"])
+
+
+def get_path_model(path: str | dict | PathModel) -> PathModel:
     """
     Resolve ``path`` to a :class:`PathModel` instance.
 
@@ -898,7 +1466,8 @@ def get_path_model(path: str | PathModel) -> PathModel:
     ``"offset-exponential"``, ``"power"``, ``"logarithmic"``,
     ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``. A built-in
     model's display ``name`` (e.g. ``"Offset Exponential"``) is accepted
-    too. (``"best"`` — automatic selection — is handled by
+    too, and so is a :class:`SplinePath`'s ``to_dict()``, which a saved
+    model holds. (``"best"`` — automatic selection — is handled by
     ``DegradationAnalysis.fit``, not here.)
 
     Examples
@@ -915,6 +1484,8 @@ def get_path_model(path: str | PathModel) -> PathModel:
     """
     if isinstance(path, PathModel):
         return path
+    if isinstance(path, dict):
+        return _spline_from_dict(path)
     if isinstance(path, str):
         key = path.lower()
         key = _KEY_BY_DISPLAY_NAME.get(key, key)
@@ -924,7 +1495,6 @@ def get_path_model(path: str | PathModel) -> PathModel:
             "path", path, sorted(PATH_MODELS), "A PathModel is accepted too."
         )
     raise ValueError(
-        "path must be a string or a PathModel instance, got {}".format(
-            type(path)
-        )
+        "path must be a string, a PathModel instance or a SplinePath's "
+        "to_dict(), got {}".format(type(path))
     )

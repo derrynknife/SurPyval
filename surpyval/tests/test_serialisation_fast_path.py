@@ -413,11 +413,18 @@ def _old_required_schema(model_dict):
             and d.get("strata") is not None
         )
 
-    # Schema 5 (v0.29), which takes precedence over every other rule: a
-    # joint model a v0.28 reader would get wrong (the accelerated survival
-    # part, two stages, a lag, a weight, more than three varying path
-    # parameters, correlations held at 0, failure modes), or a parametric
-    # model with a hazard ratio other than 1.
+    # Schema 6 (v0.30), which takes precedence over every other rule: a
+    # joint or degradation model on a spline path.
+    def schema_6(d):
+        return isinstance(d.get("path_model"), dict) and d.get("model") in (
+            "JointModel",
+            "DegradationModel",
+        )
+
+    # Schema 5 (v0.29): a joint model a v0.28 reader would get wrong (the
+    # accelerated survival part, two stages, a lag, a weight, more than
+    # three varying path parameters, correlations held at 0, failure
+    # modes), or a parametric model with a hazard ratio other than 1.
     def schema_5(d):
         if d.get("parameterization") == "parametric" and d.get("hr") not in (
             None,
@@ -436,6 +443,8 @@ def _old_required_schema(model_dict):
             or d.get("causes") is not None
         )
 
+    if walk(model_dict, schema_6):
+        return 6
     if walk(model_dict, schema_5):
         return 5
     if walk(model_dict, stratified):

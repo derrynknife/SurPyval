@@ -306,6 +306,7 @@ surpyval.degradation.ProcessLevel
 surpyval.degradation.ProcessRUL
 surpyval.degradation.QuadraticPath
 surpyval.degradation.RULPrediction
+surpyval.degradation.SplinePath
 surpyval.degradation.WienerProcess
 surpyval.degradation.WienerProcessModel
 surpyval.degradation.get_path_model

@@ -262,8 +262,14 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # (``"random_effects"`` other than ``"full"``): a v0.28 reader would
 # ignore the entry and read the parameters after the sds as a
 # correlation of every pair, misplacing every one after them.
+#
+# Schema 6 is the layout of v0.30, which a v0.29 reader (schema 5)
+# refuses. It is needed by a joint or degradation model whose path is a
+# spline (``"path_model"`` a dictionary of its knots, not a name): a
+# v0.29 reader has no such path, and would fail on the dictionary with a
+# ``TypeError`` or an unhelpful message rather than ask for an upgrade.
 # Every other document keeps the schema it had.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
@@ -303,6 +309,8 @@ _SCHEMA_MEASUREMENTS = 4
 # a hazard ratio other than 1 (``"hr"``), which a v0.28 reader would load
 # without it.
 _SCHEMA_ACCELERATED_JOINT = 5
+# A joint or degradation model on a spline path (schema 6).
+_SCHEMA_SPLINE_PATH = 6
 
 # The most path parameters a v0.28 joint model may vary between items.
 _MAX_VARYING_V028 = 3
@@ -794,6 +802,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_SPLINE_PATH in stamped_versions or any(
+        _is_spline_path(d) for d in dicts
+    ):
+        return _SCHEMA_SPLINE_PATH
     if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
         _is_schema_5_joint(d) or _has_hazard_ratio(d) for d in dicts
     ):
@@ -829,6 +841,16 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
             for d in dicts
         )
         else _SCHEMA_WITHOUT_NON_FINITE
+    )
+
+
+def _is_spline_path(d: dict) -> bool:
+    """Whether ``d`` is a joint or degradation model on a spline path
+    (its ``"path_model"`` a dictionary, where a v0.29 reader takes a
+    name and fails on anything else): schema 6."""
+    return isinstance(d.get("path_model"), dict) and d.get("model") in (
+        "JointModel",
+        "DegradationModel",
     )
 
 

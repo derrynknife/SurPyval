@@ -1504,6 +1504,10 @@ PLANS["CauseSpecificProportionalIntensity"] = Plan(
 )
 
 # Degradation: n is the number of units.
+_INDUCED_NOTE = (
+    "the curve is the induced life (the population's), not the "
+    "pseudo-failure-time Weibull, which only summarises it"
+)
 for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
     PLANS[_name] = Plan(
         _paths,
@@ -1512,9 +1516,26 @@ for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
         params=_path_params,
         curve=_induced_curve,
         grid=_quantile_grid,
-        note="the curve is the induced life (the population's), not the "
-        "pseudo-failure-time Weibull, which only summarises it",
+        note=_INDUCED_NOTE,
     )
+PLANS["DegradationAnalysis[spline]"] = Plan(
+    _paths,
+    40,
+    60,
+    # every parameter but the bend's between-unit variance (the last)
+    params=lambda m: _path_params(m)[:-1],
+    curve=_induced_curve,
+    grid=_quantile_grid,
+    note=_INDUCED_NOTE + "; the bend's between-unit variance is not held "
+    "to the bias rule: the fixture's (0.209) is 1.1% of the variance of "
+    "one unit's own estimate of the bend (18.5, from its ten readings and "
+    "the noise), so at 40 units it is as good as on the boundary, and an "
+    "estimate kept to a valid covariance (clipped, or REML) is biased up "
+    "(z 0.62 here; the unclipped moment estimate is unbiased, z -0.02 in "
+    "600 refits). calibration/test_coverage_degradation.py::"
+    "test_spline_bend_variance checks both: unbiased unclipped, and "
+    "within the rule once the bend's spread is one the readings can tell",
+)
 PLANS["InducedFailureDistribution"] = Plan(
     _paths,
     40,
@@ -1802,6 +1823,10 @@ EXCLUDED: dict[str, str] = {
     "a weight on the accumulated exposure is in "
     "univariate/joint/test_joint_weight.py and "
     "calibration/test_coverage_joint_weight.py",
+    "WeibullJointPH[spline]": "a lifetime with marker readings along it, "
+    "which a model draw does not give: recovery of fleets simulated on a "
+    "spline path is in univariate/joint/test_joint_spline.py and the "
+    "study scripts/studies/joint_recovery/knee_study.py",
     "WeibullJointAFT": "a lifetime with marker readings along it, which a "
     "model draw does not give: recovery of fleets simulated from the "
     "accelerated model is in univariate/joint/test_joint_aft.py, and the "

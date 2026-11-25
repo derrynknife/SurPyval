@@ -182,6 +182,35 @@ v0.30 (unreleased)
   ``SurpyvalData`` form. ``EventHistoryData`` still works and does not
   warn; see *Changed*.
 
+- **Spline paths: a reading that bends where the data say it bends.**
+  ``surpyval.degradation.SplinePath`` is a new path shape for
+  ``DegradationAnalysis`` and the joint models: a natural cubic spline,
+  ``level + rate t`` plus one bend ``s_k`` after each knot, a straight
+  line outside its boundary knots. ``SplinePath(knots=[...],
+  boundary=(lo, hi))`` takes the knots; ``SplinePath.natural(df=3)`` has
+  them placed by the fit, at quantiles of the reading ages (as R's
+  ``ns(t, 3)``), and the fitted model's ``path_model`` records them. In
+  ``JointPH(Weibull, SplinePath.natural(df=3))`` the fleet's mean curve
+  is the spline and each item has a level and a rate of its own (the
+  spline's default ``varying``; the bends are common). The value, slope
+  and cumulative links all work (the slope and the area in closed form),
+  and the hazard's integrals over age are taken piece by piece between
+  the knots. With no interior knots the path is ``LinearPath`` and the
+  fits are the same to the last digit. A spline with more parameters than
+  the items' median number of readings is refused, with the counts and
+  the number of knots the readings support. Saved models keep the knots
+  (``"path_model"`` is then a dictionary, stamped schema 6, which older
+  releases refuse rather than misread). ``path="best"`` does not try a
+  spline. A joint fit whose bends are common starts from one least
+  squares fit of every item's readings together (the bends shared, each
+  item's level and rate its own), not the mean of each item's own
+  spline: an item that fails before a knot cannot tell that knot's bend,
+  and on a fleet whose readings stop at failure ``natural(df=3)`` had
+  stalled, unverified, far from the readings (AIC 8407 against 3673 now,
+  verified, in a tenth of the time). The spline's basis is the shared
+  one of ``surpyval.utils.splines``. See "A reading that bends" in :doc:`Joint Models` and "A path
+  with no formula" in :doc:`Degradation Modelling with SurPyval`.
+
 **Fixed.**
 
 - **A unit watched with no failure counts as exposure when the data has
