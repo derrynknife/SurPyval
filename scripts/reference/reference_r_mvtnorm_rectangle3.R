@@ -2,8 +2,8 @@
 # multivariate normal and t distributions from R's mvtnorm, for
 # copula/_rectangle.py (a row with three censored coordinates).
 #
-# Writes surpyval/tests/reference/data/r_mvtnorm_rectangle3.json, in the
-# layout of r_mvtnorm_rectangle.json. Generated with R 4.6.2 and mvtnorm
+# Writes surpyval/tests/reference/data/mvtnorm_rectangle3_r.json, in the
+# layout of mvtnorm_rectangle_r.json. Generated with R 4.6.2 and mvtnorm
 # 1.5.0; run from the repository root:
 #
 #     Rscript scripts/reference/reference_r_mvtnorm_rectangle3.R
@@ -102,5 +102,5 @@ out <- list(
 )
 writeLines(
   toJSON(out, auto_unbox = TRUE, digits = NA, null = "null", pretty = TRUE),
-  "surpyval/tests/reference/data/r_mvtnorm_rectangle3.json"
+  "surpyval/tests/reference/data/mvtnorm_rectangle3_r.json"
 )

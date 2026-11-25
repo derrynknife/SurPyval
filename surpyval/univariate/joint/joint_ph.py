@@ -845,7 +845,7 @@ class JointPHFitter(FitterRepr):
                         f"number; got {value!r}."
                     )
                 references[name] = number
-        units = _marker_units(marker_unit, names, markers, x)
+        units = marker_units(marker_unit, names, markers, x)
         rows = rows_by_marker(markers_by_row(markers, i, x, names), names)
         records, counts, covariates = _records(
             x, c, n, t, tl, tr, Z, [{}] * len(rows)
@@ -1434,7 +1434,7 @@ def _records(
     return records, np.array(counts, dtype=float), names
 
 
-def _marker_units(given: Any, names: list, markers: Any, x: Any) -> Any:
+def marker_units(given: Any, names: list, markers: Any, x: Any) -> Any:
     """The unit each of several markers is read in, ``{marker: unit}``
     (``None`` where no marker has one): ``given`` (a dict) and the
     readings' own units (a Measurements, given or held by the data),

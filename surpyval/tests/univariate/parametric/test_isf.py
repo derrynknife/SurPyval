@@ -59,7 +59,31 @@ def test_isf_inverts_sf(case):
     assert np.all(err <= allowed), (err, allowed)
 
 
-@pytest.mark.parametrize("case", CONTINUOUS, ids=_id)
+# The round trip below also carries the error of ``sf``, which it assumes
+# is a few ulps. The gamma survival function at shape 1e3 (SciPy's
+# ``gammaincc``) is not: 5.5e3 ulps (1.2e-12) relative at t = 1.407e9,
+# where s = 1e-30, so isf(sf(t)) is 10 ulps from t there although isf is
+# within 6.2 ulps of the 50-digit inverse at every point
+# (test_gamma_isf_at_a_large_shape_against_mpmath). It is the incomplete
+# gamma at large shapes of #1300, and passes once that is fixed.
+SF_NOT_YET_TO_A_FEW_ULPS = {
+    "Gamma(1000.0, 1e-06)": "#1300: the gamma sf at shape 1e3 is 1.2e-12 "
+    "from the 50-digit value at s = 1e-30, so the round trip is 10 ulps off",
+}
+
+
+def _round_trip_cases():
+    out = []
+    for case in CONTINUOUS:
+        reason = SF_NOT_YET_TO_A_FEW_ULPS.get(_id(case))
+        marks = (
+            [pytest.mark.xfail(strict=True, reason=reason)] if reason else []
+        )
+        out.append(pytest.param(case, id=_id(case), marks=marks))
+    return out
+
+
+@pytest.mark.parametrize("case", _round_trip_cases())
 def test_isf_of_sf_gives_back_the_time(case):
     """isf(sf(t)) == t deep in the upper tail, to the conditioning of
     ``isf`` (``1 / (t h(t))`` per relative error of ``s``)."""
@@ -71,6 +95,29 @@ def test_isf_of_sf_gives_back_the_time(case):
     h = dist.hf(t, *params)
     allowed = 8 * EPS * np.abs(t) * np.maximum(1.0, 1.0 / (np.abs(t) * h))
     assert np.all(np.abs(back - t) <= allowed)
+
+
+# t with Q(1000, 1e-6 t) = s for each s of S, by mpmath at 50 digits
+# (findroot on log Q, the regularised upper incomplete gamma).
+GAMMA_LARGE_SHAPE_ISF = [
+    959693932.72883330741,
+    999666686.42696518206,
+    1100578098.2933146098,
+    1187748813.4679806072,
+    1282626549.5836436893,
+    1407188640.1575391091,
+    1830846962.0466365579,
+    2280126849.3444182829,
+    2666752073.3019953148,
+]
+
+
+def test_gamma_isf_at_a_large_shape_against_mpmath():
+    """Gamma.isf at shape 1e3 is within 8 ulps of the 50-digit inverse
+    down to s = 1e-300 (6.2 at most, at s = 1e-30)."""
+    t = sp.Gamma.isf(S, 1e3, 1e-6)
+    true = np.array(GAMMA_LARGE_SHAPE_ISF)
+    assert np.all(np.abs(t - true) <= 8 * EPS * true), (t - true) / true / EPS
 
 
 @pytest.mark.parametrize("case", CONTINUOUS, ids=_id)

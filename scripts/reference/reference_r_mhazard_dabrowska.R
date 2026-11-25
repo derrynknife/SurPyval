@@ -1,7 +1,7 @@
 # Reference results from R for Dabrowska's bivariate survival estimator,
 # surpyval.multivariate.Dabrowska (Dabrowska 1988).
 #
-# Writes surpyval/tests/reference/data/r_mhazard_dabrowska.json: for each
+# Writes surpyval/tests/reference/data/mhazard_dabrowska_r.json: for each
 # data set, its rows, the software and its version, the call, and the
 # estimate on the grid of the two series' failure times. Generated with
 # R 4.6.2 and mhazard 0.2.3 (npSurv2, estimator = "dabrowska").
@@ -71,5 +71,5 @@ for (name in names(sets)) {
     )
 }
 path <- file.path("surpyval", "tests", "reference", "data",
-                  "r_mhazard_dabrowska.json")
+                  "mhazard_dabrowska_r.json")
 writeLines(toJSON(out, digits = NA, auto_unbox = TRUE, pretty = TRUE), path)

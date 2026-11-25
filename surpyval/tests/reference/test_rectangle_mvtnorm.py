@@ -1,7 +1,7 @@
 """The rectangle probabilities of four or more coordinates
 (``copula/_rectangle.py``) against R's mvtnorm.
 
-``data/r_mvtnorm_rectangle.json`` is written by
+``data/mvtnorm_rectangle_r.json`` is written by
 ``scripts/reference/reference_r_mvtnorm_rectangle.R`` (R 4.6.2, mvtnorm
 1.5.0): random correlation matrices of four to eight coordinates with
 limits mixing right-, left- and interval-censored coordinates, the normal
@@ -22,7 +22,7 @@ import pytest
 
 from surpyval.multivariate.parametric.copula._rectangle import rectangle
 
-DATA = Path(__file__).parent / "data" / "r_mvtnorm_rectangle.json"
+DATA = Path(__file__).parent / "data" / "mvtnorm_rectangle_r.json"
 CASES = json.loads(DATA.read_text())["cases"]
 
 

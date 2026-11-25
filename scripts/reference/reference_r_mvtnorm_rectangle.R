@@ -2,7 +2,7 @@
 # distributions from R's mvtnorm, for the lattice rule of four or more
 # coordinates in copula/_rectangle.py.
 #
-# Writes surpyval/tests/reference/data/r_mvtnorm_rectangle.json: for each
+# Writes surpyval/tests/reference/data/mvtnorm_rectangle_r.json: for each
 # case the correlation matrix, the limits (null for an infinite one), the
 # degrees of freedom (null for the normal) and mvtnorm's probability with
 # its error estimate. Generated with R 4.6.2 and mvtnorm 1.5.0; run from the
@@ -102,5 +102,5 @@ out <- list(
 )
 writeLines(
   toJSON(out, auto_unbox = TRUE, digits = NA, null = "null", pretty = TRUE),
-  "surpyval/tests/reference/data/r_mvtnorm_rectangle.json"
+  "surpyval/tests/reference/data/mvtnorm_rectangle_r.json"
 )

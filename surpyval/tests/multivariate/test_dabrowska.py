@@ -27,7 +27,7 @@ REFERENCE = (
     Path(__file__).parents[1]
     / "reference"
     / "data"
-    / "r_mhazard_dabrowska.json"
+    / "mhazard_dabrowska_r.json"
 )
 
 

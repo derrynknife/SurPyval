@@ -14,7 +14,7 @@ from scipy import stats
 
 import surpyval as sp
 from surpyval.bayes import BayesianResult, Target, fit_target
-from surpyval.bayes.engines.conjugate import ConjugateResult, _prior_family
+from surpyval.bayes.engines.conjugate import ConjugateResult, prior_family
 from surpyval.bayes.target import TARGETS, register_target
 from surpyval.tests.bayes import kit
 
@@ -77,7 +77,7 @@ class RateTarget(Target):
 
     def conjugate(self, bound):
         prior = bound.spec.single.get("rate")
-        fam = None if prior is None else _prior_family(prior)
+        fam = None if prior is None else prior_family(prior)
         if fam is None or fam[0] != "gamma" or bound.spec.joint:
             return None
         a, b = fam[1]

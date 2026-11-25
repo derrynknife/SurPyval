@@ -15,7 +15,7 @@ Checked against:
 - the maximum-likelihood fit (with no priors the posterior's peak on the
   log scale is the maximum-likelihood estimate);
 - frozen PyMC references (``references/crow_amsaa_*.json``, made by
-  ``references/make_crow_amsaa.py``), by the kit's rule;
+  ``scripts/reference/make_crow_amsaa.py``), by the kit's rule;
 - simulation-based calibration is in
   ``tests/calibration/test_sbc_recurrent_bayes.py``.
 """

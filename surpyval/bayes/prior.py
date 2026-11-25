@@ -68,7 +68,7 @@ def _z(mass: float) -> float:
     return float(stats.norm.ppf(0.5 + 0.5 * mass))
 
 
-def _fmt(v: float) -> str:
+def format_number(v: float) -> str:
     """A number to four significant figures, for the summaries: with
     thousands separators from 1,000 to below 10 million, in scientific
     notation beyond and below 0.001."""
@@ -84,6 +84,10 @@ def _fmt(v: float) -> str:
         digits = int(np.floor(np.log10(a))) + 1
         return f"{round(v, 4 - digits):,.0f}"
     return f"{v:.4g}"
+
+
+# The name the summaries here use.
+_fmt = format_number
 
 
 def _check_mass(mass: float) -> float:

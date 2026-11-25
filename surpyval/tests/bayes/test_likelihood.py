@@ -55,6 +55,19 @@ def _point(dist, rng, offset, lfp, zi, x_min):
     p = []
     if offset:
         p.append(rng.uniform(-2.0, 0.3 * x_min))
+    # The Gompertz hazard is b e^{a x}: a shape drawn like the others (1
+    # to 6) puts H at e^54 by the last time, so every survival is 0, the
+    # likelihood -inf or quantised, and nothing is checked. Its shape and
+    # rate are drawn on the scale of these times instead (as the Beta's
+    # data are put on its support).
+    ranges = {"Gompertz": [(-0.3, 0.4), (0.02, 0.5)]}.get(dist.name)
+    if ranges is not None:
+        p += [rng.uniform(lo, hi) for lo, hi in ranges]
+        if lfp:
+            p.append(rng.uniform(0.3, 0.99))
+        if zi:
+            p.append(rng.uniform(0.01, 0.3))
+        return np.array(p)
     for lo, hi in dist.bounds:
         if lo == 0 and hi is None:
             p.append(rng.uniform(0.5, 4.0))

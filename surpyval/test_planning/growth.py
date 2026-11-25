@@ -173,6 +173,18 @@ class IdealisedGrowthCurve:
         ``M_F = M(T)``, the MTBF at the end of the test.
     test_time : float
         ``T``, the total test time.
+
+    Examples
+    --------
+    MIL-HDBK-189C's SPLAN example 1: 68 hours over the first 500, growing
+    at 0.23 for 2800 hours.
+
+    >>> from surpyval.test_planning import idealised_growth_curve
+    >>> curve = idealised_growth_curve(
+    ...     68.0, 500.0, growth_rate=0.23, test_time=2800.0
+    ... )
+    >>> round(curve.final_mtbf, 1), round(curve.mtbf(1000.0), 1)
+    (131.3, 103.6)
     """
 
     initial_mtbf: float
@@ -708,6 +720,20 @@ class PM2ContinuousPlan:
     growth_potential : float
         :math:`M_{GP} = M_I / (1 - MS \\mu_d)`, the MTBF were every B mode
         found and fixed.
+
+    Examples
+    --------
+    MIL-HDBK-189C's PM2 example (figure 27): 25 hours initially, a goal of
+    90 hours after 30,000 hours of test.
+
+    >>> from surpyval.test_planning import pm2_continuous
+    >>> plan = pm2_continuous(
+    ...     25.0, 90.0, 30000.0, management_strategy=0.95, fef=0.8
+    ... )
+    >>> round(float(plan.mtbf(0.0)), 6), round(float(plan.mtbf(30000)), 6)
+    (25.0, 90.0)
+    >>> round(plan.growth_potential, 2)
+    104.17
     """
 
     initial_mtbf: float
@@ -1105,6 +1131,19 @@ class PM2DiscretePlan:
         The beta shape.
     growth_potential : float
         :math:`R_{GP} = R_I^{1 - MS \\mu_d}`.
+
+    Examples
+    --------
+    >>> from surpyval.test_planning import pm2_discrete
+    >>> plan = pm2_discrete(
+    ...     0.8987, 0.9639, 400, management_strategy=0.9, fef=0.8
+    ... )
+    >>> round(float(plan.reliability(1)), 4)
+    0.8987
+    >>> round(float(plan.reliability(400)), 4)
+    0.9639
+    >>> round(plan.growth_potential, 4)
+    0.9705
     """
 
     initial_reliability: float

@@ -47,7 +47,11 @@ from surpyval.bayes.prior import (
     PowerPrior,
     PriorSpec,
 )
-from surpyval.bayes.result import BayesianResult, _levels, fit_target
+from surpyval.bayes.result import (
+    BayesianResult,
+    fit_target,
+    interval_levels,
+)
 from surpyval.bayes.target import Target, register_adapter, register_target
 from surpyval.serialisation import require_model_tag, stamp_schema
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
@@ -936,7 +940,7 @@ class BayesianRegression(BayesianResult):
                 "(quantile_cri gives the interval of a quantile, param_cri "
                 "of a parameter.)"
             )
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         shape = np.shape(x)
         # ff and Hf are falling functions of sf: their interval is sf's,
         # transformed, so the three agree exactly (as the predictive's do)
@@ -991,7 +995,7 @@ class BayesianRegression(BayesianResult):
         """
         from surpyval.utils.validation import warn_outside_unit_interval
 
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         shape = np.shape(p)
         flat = np.reshape(np.asarray(p, dtype=float), -1)
         warn_outside_unit_interval(flat, "quantile_cri")

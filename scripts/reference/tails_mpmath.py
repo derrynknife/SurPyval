@@ -138,6 +138,16 @@ SKIPPED = {
     "MixtureModel": "a fitted combination of the distributions here",
     "RoystonParmar": "a fitted spline model, not a closed-form "
     "distribution",
+    # New in v0.30, each checked against R at fixed parameters (rtol
+    # 1e-10, tests/reference/test_<name>.py) but not yet on this grid.
+    "GeneralizedGamma": "new; against flexsurv in test_generalized_gamma.py"
+    ", not yet on this grid",
+    "GeneralizedF": "new; against flexsurv in test_generalized_f.py, not "
+    "yet on this grid",
+    "Gompertz": "new; against flexsurv in test_gompertz.py, not yet on "
+    "this grid",
+    "InverseGaussian": "new; against statmod and SuppDists in "
+    "test_inverse_gaussian.py, not yet on this grid",
 }
 # Specified below, but not generated yet: the reference computation itself
 # fails or is too slow on this grid. Listed as skipped so the check names

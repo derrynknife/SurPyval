@@ -158,6 +158,7 @@ module = [
     'make_fixtures',
     'reference_python',
     'tails_mpmath',
+    'make_crow_amsaa',
     'study',
 ]
 disallow_untyped_defs = false

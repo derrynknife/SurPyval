@@ -480,9 +480,9 @@ def takes_joint_readings(method: F) -> F:
         if getattr(arguments.get("self"), "takes_several_markers", False):
             # a model of several markers: its fit takes the readings and
             # their units by marker
-            from surpyval.univariate.joint.joint_ph import _marker_units
+            from surpyval.univariate.joint.joint_ph import marker_units
 
-            arguments["marker_unit"] = _marker_units(
+            arguments["marker_unit"] = marker_units(
                 arguments.get("marker_unit"),
                 list(arguments["self"].markers),
                 readings,

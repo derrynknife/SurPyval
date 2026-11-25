@@ -1,7 +1,7 @@
 """The rectangle probabilities of three coordinates (the quadrature of
 ``copula/_rectangle.py``) against R's mvtnorm.
 
-``data/r_mvtnorm_rectangle3.json`` is written by
+``data/mvtnorm_rectangle3_r.json`` is written by
 ``scripts/reference/reference_r_mvtnorm_rectangle3.R`` (R 4.6.2, mvtnorm
 1.5.0): random correlation matrices of three coordinates, half of them
 nearly singular (smallest eigenvalue 7e-4, 1e-3, 1e-2 or 0.05), with
@@ -23,7 +23,7 @@ import pytest
 
 from surpyval.multivariate.parametric.copula._rectangle import rectangle
 
-DATA = Path(__file__).parent / "data" / "r_mvtnorm_rectangle3.json"
+DATA = Path(__file__).parent / "data" / "mvtnorm_rectangle3_r.json"
 CASES = json.loads(DATA.read_text())["cases"]
 
 
