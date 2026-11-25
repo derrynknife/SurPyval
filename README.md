@@ -53,6 +53,10 @@ This project grew out of a reliability engineering project, where parameters hav
 
 Different fields name the same ideas differently: a *failure* is an *event*, a *unit* is a *subject*, *reliability* is *survival* and a *suspension* is a *right censored* observation. The API has one name for each (`c` for the censoring flag, `sf` for the survival function), and the documentation's [glossary](https://surpyval.readthedocs.io/en/latest/Glossary.html) maps the vocabularies to each other.
 
+## What SurPyval is, and is not
+
+SurPyval is a statistics package for time-to-event data. It is not a machine-learning framework, a Bayesian sampler or a deep-learning framework. It has survival trees and forests, penalised fits and prediction scores because they are statistical models and measures; it has no tuning, pipeline or cross-validation tooling, and no boosting. It does Bayesian fits by closed form, grid and the Laplace approximation; sampling goes through PyMC (`surpyval.pymc`). It has no networks or training loops; `surpyval.torch` gives its likelihood as a loss to people who train their own.
+
 # The Model Landscape
 
 SurPyval's models can be placed on a set of orthogonal axes. The table below
