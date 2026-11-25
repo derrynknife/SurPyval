@@ -1,5 +1,6 @@
 """Coverage of the bounds on a discrete growth model's reliability:
-``reliability_cb`` by Wald (logit) and likelihood ratio, two-sided 90%.
+``reliability_cb`` by Wald (logit), likelihood ratio and (for the
+Crow-AMSAA discrete design) the parametric bootstrap, two-sided 90%.
 
 Designs, each a modest development programme (the bounds are
 asymptotic, so this measures them where they are used):
@@ -69,3 +70,33 @@ def test_discrete_growth_reliability_coverage():
                 continue
         for m, b in bounds.items():
             check_coverage(b[:, 0], b[:, 1], truth, NOMINAL, f"{name} {m}")
+
+
+def test_discrete_growth_bootstrap_coverage():
+    # The parametric bootstrap's percentile bounds on the Crow-AMSAA
+    # discrete design above (the one with the fewest failures, about 20 a
+    # programme), 200 programmes of 200 replicates each, seed 1127.
+    reps, n_boot = 200, 200
+    fitter, n, curve, stage = DESIGNS["crow-amsaa-discrete"]
+    r = curve(n)
+    truth = r[stage - 1]
+    rng = np.random.default_rng(1127)
+    b = np.full((reps, 2), np.nan)
+    for rep in range(reps):
+        failures = rng.binomial(n, 1 - r)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model = fitter.fit(failures, n)
+                b[rep] = model.reliability_cb(
+                    stage,
+                    alpha_ci=1 - NOMINAL,
+                    method="bootstrap",
+                    n_boot=n_boot,
+                    random_state=rep,
+                )
+        except ValueError:
+            continue
+    check_coverage(
+        b[:, 0], b[:, 1], truth, NOMINAL, "crow-amsaa-discrete bootstrap"
+    )

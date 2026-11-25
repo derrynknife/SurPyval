@@ -392,6 +392,7 @@ def _build(name):
         CrowAMSAA,
         GeneralizedRenewal,
         JointFrailty,
+        LloydLipow,
         NonParametricCounting,
         PanelCountMCF,
         PanelCountRegression,
@@ -554,6 +555,9 @@ def _build(name):
             (_frailty_fleet() == 60).astype(int),
             frailty="gamma",
         ),
+        "discrete_growth": lambda: LloydLipow.fit(
+            [6, 5, 4, 3, 3, 2], [10, 10, 10, 10, 10, 10]
+        ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
             np.array([1, 1, 1, 2, 2, 2]),
@@ -709,6 +713,7 @@ CASES = [
     "cause_specific_proportional_intensity",
     "joint_frailty",
     "shared_frailty",
+    "discrete_growth",
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",

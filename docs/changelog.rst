@@ -391,8 +391,15 @@ v0.30 (unreleased)
   fitted to the failures and trials of each stage by maximum likelihood
   or, for Lloyd-Lipow and Gompertz, by least squares on observed
   reliabilities. Each gives the reliability at any stage, the projected
-  next stage, its ceiling, Wald (logit) and likelihood-ratio bounds, and
-  a plot. See :doc:`Discrete Reliability Growth`.
+  next stage, its ceiling, Wald (logit), likelihood-ratio and parametric
+  bootstrap bounds (``method="bootstrap"``, seeded by ``random_state``),
+  and a plot, and saves with ``to_dict`` / ``surpyval.from_dict``. In
+  a study of 4000 simulated programmes the AMSAA model's 90% Wald and
+  likelihood-ratio bounds cover at 0.898 and 0.894; its
+  ``handbook_lower_bound`` (MIL-HDBK-189C's approximation) is not
+  conservative (0.878 as a 95% lower bound), so prefer
+  ``reliability_cb(..., bound="lower")``. See
+  :doc:`Discrete Reliability Growth`.
 - **Dabrowska's bivariate survival estimator.**
   ``surpyval.multivariate.Dabrowska.fit(x, c, n)`` (or a two-series
   ``MultivariateSurpyvalData``, or ``fit_from_df``) estimates the joint

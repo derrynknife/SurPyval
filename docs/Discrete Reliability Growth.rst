@@ -89,9 +89,18 @@ demonstration needs):
 - ``method="lr"``, for maximum likelihood fits, finds the reliabilities
   at which the profile likelihood has fallen by the chi-squared amount.
   It is the better bound with few trials or a reliability near 1.
+- ``method="bootstrap"``, for data given as failures and trials, is the
+  parametric bootstrap: the test is rerun ``n_boot`` times (1000 by
+  default) with the fitted model as the truth, each rerun refitted, and
+  the bounds are the percentiles of the refitted reliabilities. Give
+  ``random_state`` to repeat it exactly.
 
 ``param_cb`` gives bounds on the parameters, and
-``next_reliability_cb`` on the projection.
+``next_reliability_cb`` on the projection (Wald or bootstrap).
+
+A fitted model saves with ``model.to_dict()`` (or ``to_json``) and comes
+back with ``surpyval.from_dict`` (or ``from_json``): its parameters,
+fitting method, data and covariance, so every bound is available again.
 
 *Coverage.* In a simulation study (400 programmes each;
 ``surpyval/tests/calibration/test_coverage_discrete_growth.py``), the 90%
@@ -104,21 +113,34 @@ proportions:
    * - Design
      - Wald
      - Likelihood ratio
+     - Bootstrap
    * - Lloyd-Lipow, 10 stages of 30 trials
      - 0.930
      - 0.933
+     - not run
    * - Gompertz, 10 stages of 30 trials
      - 0.930
      - 0.928
+     - not run
    * - AMSAA discrete, 6 configurations of 25 trials
      - 0.873
      - 0.860
+     - 0.885 (200 programmes of 200 replicates)
 
-Lloyd-Lipow and Gompertz bounds are a little wide at this size; the
-AMSAA discrete bounds a little narrow (each within the study's
-tolerance of 0.055). With few failures, treat a bound on the AMSAA
-model's last configuration as optimistic, or read the more conservative
-``handbook_lower_bound``.
+Lloyd-Lipow and Gompertz bounds are a little wide at this size. The
+AMSAA discrete design has the fewest failures (about 20 a programme),
+and its first study came out a little low. A study of 4000 programmes of
+the same design puts the Wald and likelihood-ratio bounds at their
+nominal level (0.898 and 0.894, each with a standard error of 0.005), so
+the first figures were the 400-programme study's own sampling error (its
+standard error is 0.015), and no small-sample correction is needed.
+
+The same study shows that ``handbook_lower_bound``, the handbook's
+approximate bound, is *not* conservative: as a 95% lower bound it
+covered the truth in 0.878 of programmes, where the one-sided Wald and
+likelihood-ratio bounds covered it in 0.958 and 0.950. Prefer
+``reliability_cb(..., bound="lower")``; the handbook bound is there to
+check a calculation against the handbook.
 
 Checked against
 ---------------

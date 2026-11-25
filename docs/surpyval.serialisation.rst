@@ -424,6 +424,10 @@ with its own ``schema``.
      - ``"model": "CauseSpecificProportionalIntensity"``
      - ``baseline``, ``event_types``, ``models``, ``covariances``
      - ``feature_names``
+   * - ``DiscreteGrowthModel``
+     - ``"model": "DiscreteGrowthModel"``
+     - ``growth_model``, ``params``, ``method``, ``data``, ``cov``
+     - --
    * - ``NonParametricCounting``
      - ``"model": "NonParametricCounting"``
      - ``x``, ``mcf_hat``, ``var``, ``origin``
