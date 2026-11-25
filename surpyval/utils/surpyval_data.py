@@ -3993,6 +3993,11 @@ def terminal_flags(
     """
     c = np.asarray(c)
     k = len(c)
+    if a is None and ids is None:
+        # Each row is its own unit, so no unit has more than one row: the
+        # answer without building the units row by row, which took a
+        # second per million rows of every fit.
+        return None, None
     units = list(range(k)) if ids is None else list(ids)
     rows_of: dict = {}
     for r, unit in enumerate(units):

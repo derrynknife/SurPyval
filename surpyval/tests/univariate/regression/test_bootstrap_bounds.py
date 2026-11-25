@@ -295,6 +295,58 @@ def test_617_conditional_censoring_of_the_failed_units():
         assert np.all(np.isin(draws[:, i], list(later)))
 
 
+def _censoring_by_loop(x, failed, tl):
+    """The product-limit censoring estimate counted afresh at every
+    censoring time (the direct, O(units x times) form)."""
+    times = np.unique(x[~failed])
+    mass = np.zeros(times.size)
+    surv = 1.0
+    for j, s in enumerate(times):
+        at_risk = np.sum((x >= s) & (tl < s))
+        d = np.sum((x == s) & ~failed)
+        mass[j] = surv * d / at_risk
+        surv *= 1.0 - d / at_risk
+    tail = max(surv, 0.0)
+    after = np.append(np.cumsum(mass[::-1])[::-1] + tail, tail)
+    return times, after, np.searchsorted(times, x[failed])
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_the_censoring_estimate_by_running_counts_is_the_direct_count(seed):
+    # Ties (times rounded), late entry (some with tl past nothing), units
+    # whose window never opens before they leave, and missing entries:
+    # the sorted running counts give the direct count to the last bit.
+    rng = np.random.default_rng(seed)
+    n = 400
+    x = np.round(rng.weibull(1.5, n) * 10, 1) + 0.1
+    failed = rng.uniform(size=n) < 0.6
+    tl = np.where(
+        rng.uniform(size=n) < 0.4, x * rng.uniform(0, 1.2, n), -np.inf
+    )
+    tl[:5] = np.nan
+    design = _bootstrap.ResampleDesign.__new__(_bootstrap.ResampleDesign)
+    design.x, design.failed, design.tl = x, failed, tl
+    design._censoring_distribution()
+    times, after, first = _censoring_by_loop(x, failed, tl)
+    np.testing.assert_array_equal(design.censor_times, times)
+    np.testing.assert_array_equal(design.censor_after, after)
+    np.testing.assert_array_equal(design.first_later, first)
+
+
+def test_the_censoring_estimate_with_no_censoring_or_no_failures():
+    design = _bootstrap.ResampleDesign.__new__(_bootstrap.ResampleDesign)
+    design.x = np.array([1.0, 2.0, 3.0])
+    design.tl = np.full(3, -np.inf)
+    design.failed = np.ones(3, bool)
+    design._censoring_distribution()
+    assert design.censor_times.size == 0
+    np.testing.assert_array_equal(design.censor_after, [1.0])
+    design.failed = np.zeros(3, bool)
+    design._censoring_distribution()
+    # every unit censored: masses 1/3, 1/3, 1/3 and nothing past the last
+    np.testing.assert_allclose(design.censor_after, [1.0, 2 / 3, 1 / 3, 0.0])
+
+
 def test_617_truncated_resamples_stay_in_their_windows(monkeypatch):
     rng = np.random.default_rng(1)
     Z = rng.uniform(0, 1, 80)

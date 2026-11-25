@@ -22,7 +22,12 @@ The machine was an Apple M5 laptop (macOS 27.2, arm64) with Python 3.12.2,
 SurPyval 0.29 (the ``dev`` branch of 25 November 2026), NumPy 2.5.5, SciPy
 1.18.1, pandas 2.3.3 and autograd 1.9.1, with other work running on it at
 the same time. Read the times as orders of magnitude and for how they grow
-with ``n``; a quiet machine is somewhat faster.
+with ``n``; a quiet machine is somewhat faster. The ``Weibull.fit``,
+``fit_from_df``, ``WeibullAFT.fit`` and bootstrap rows were measured again
+later that day (pandas 3.1.1), after the bootstrap's set-up was made one
+sort and every fit stopped indexing its rows one by one; the other rows
+are from before that, and the fits among them of ungrouped data without
+unit ids may now be up to a second per million rows quicker.
 
 The data: Weibull lives (scale 100, shape 2) with about 30% right censored;
 for the regressions, three covariates (one normal, one binary, one uniform)
@@ -42,20 +47,20 @@ Fit times
      - 100,000
      - 1,000,000
    * - ``Weibull.fit`` (MLE, censored)
-     - 12 ms
-     - 28 ms
-     - 0.19 s
-     - 2.2 s
+     - 10 ms
+     - 19 ms
+     - 0.11 s
+     - 1.3 s
    * - the same data, grouped with counts ``n``
      - 12 ms
      - 12 ms
      - 11 ms
      - 13 ms
    * - ``Weibull.fit_from_df``
-     - 13 ms
-     - 28 ms
-     - 0.20 s
-     - 2.5 s
+     - 10 ms
+     - 20 ms
+     - 0.11 s
+     - 1.4 s
    * - ``KaplanMeier.fit``
      - 0.5 ms
      - 2.8 ms
@@ -72,10 +77,10 @@ Fit times
      - 0.16 s
      - 1.9 s
    * - ``WeibullAFT.fit``, 3 covariates
-     - 53 ms
-     - 93 ms
-     - 0.57 s
-     - 5.7 s
+     - 42 ms
+     - 73 ms
+     - 0.40 s
+     - 5.2 s
    * - ``Turnbull.fit``, everyone inspected on one schedule
      - 1.2 ms
      - 1.9 ms
@@ -150,25 +155,25 @@ worked out, so a second call is quicker):
      - 4.3 s
      - 64 s
    * - bootstrap, ``method="bootstrap"``, 200 samples (the default)
-     - 4.8 s
-     - 10 s
-     - 62 s
-     - --
+     - 4.1 s
+     - 6.9 s
+     - 39 s
+     - 550 s
    * - bootstrap, 50 samples
-     - 0.85 s
-     - 2.2 s
-     - 18 s
-     - 1,300 s
+     - 1.5 s
+     - 2.7 s
+     - 15 s
+     - 126 s
    * - likelihood ratio, grouped data
      - 0.52 s
      - 0.52 s
      - 0.47 s
      - 0.52 s
    * - bootstrap, 200 samples, grouped data
-     - 12 s
-     - 19 s
-     - 85 s
-     - --
+     - 6.4 s
+     - 8.8 s
+     - 43 s
+     - 470 s
 
 The first bound of a session takes about 0.3 s more than these, once,
 while the derivatives it needs are set up.
@@ -198,13 +203,15 @@ What the time goes on
   several constrained re-fits. Its cost grows with ``n`` like a fit's,
   times a few dozen.
 - **The bootstrap** re-fits the model ``n_boot`` times, so it costs
-  ``n_boot`` fits, plus a set-up step that estimates the censoring
-  distribution (so that each resample is censored as the data were). That
-  set-up grows with the number of rows times the number of distinct
-  censoring times, so on large data sets it is most of the cost: at
-  200,000 rows it took 44 of the 52 seconds of a five-sample bootstrap. It
-  works unit by unit, so grouping the data with ``n`` does not shorten
-  it.
+  ``n_boot`` fits of a simulated data set the size of the data, plus a
+  set-up step that estimates the censoring distribution (so that each
+  resample is censored as the data were). The set-up is one sort, 0.2 s
+  at a million rows; the re-fits are the rest. Each simulated unit gets its
+  own failure time, so grouping the data with ``n`` does not shorten the
+  re-fits of the (unweighted) parametric bootstrap. A fit with sampling
+  weights is resampled by cases instead, and grouped weighted data are
+  resampled by row (each row drawn a multinomial number of times), so
+  there each re-fit is only as big as the grouped data.
 - **The random survival forest** grows each tree by searching every
   candidate split of every chosen covariate at every node, and with
   ``kind="weibull"`` fits a Weibull in each leaf. It runs in pure Python
@@ -219,7 +226,7 @@ Making a fit faster
   data recorded to the hour, the day or the cycle, with many units at each
   value, fits almost instantly once grouped: a million censored rows
   recorded to whole time units become about 500 distinct ``(x, c)`` rows,
-  and the fit drops from 2.2 s to 13 ms. The answer is exactly the same:
+  and the fit drops from 1.3 s to 13 ms. The answer is exactly the same:
 
   .. jupyter-execute::
 
@@ -253,7 +260,7 @@ Making a fit faster
   likelihood-ratio and bootstrap bounds and costs almost nothing.
 - **Prefer the likelihood-ratio bound to the bootstrap** in small and
   medium samples: it is the better bound when the data are few, and it is
-  ten to twenty times quicker than 200 bootstrap re-fits. On grouped data
+  about ten times quicker than 200 bootstrap re-fits. On grouped data
   it takes about half a second whatever the number of units.
 - **``fit_from_df`` costs the same as ``fit``.** It is a convenience, not a
   speed-up: the columns are read into the same arrays. Group the
@@ -283,11 +290,13 @@ Said plainly:
   predictions (``surpyval.metrics``).
 - **Turnbull on data where every unit has its own inspection times** grows
   faster than ``n``: 2.3 s at 100,000 rows, 42 s at a million.
-- **The bootstrap on large data sets.** 200 samples take a minute at
-  100,000 rows, and even 50 samples took 22 minutes (1,300 s) at a
-  million, because of the set-up step above rather than the re-fits.
-  Grouping does not help it. At that size use the Wald bound, or the
-  likelihood-ratio bound on grouped data (half a second at any size).
+- **The bootstrap on large data sets** costs ``n_boot`` re-fits of the
+  whole data set: 200 samples take 40 s at 100,000 rows and about nine
+  minutes at a million (50 samples, two minutes). Grouping does not
+  shorten the parametric bootstrap. At that size use the Wald bound, or
+  the likelihood-ratio bound on grouped data (half a second at any size).
+  (Before 25 November a set-up step made it far slower: 50 samples took
+  22 minutes at a million rows.)
 - **Likelihood-ratio bounds on a million ungrouped rows** take about a
   minute; grouped, half a second.
 

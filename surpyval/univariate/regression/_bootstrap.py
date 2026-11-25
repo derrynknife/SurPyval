@@ -37,6 +37,12 @@ the weighted information (the bread of the sandwich), not the robust
 covariance. Nothing is simulated, so left- and interval-censored data
 are resampled as they are, and the resamples are drawn by position
 alone, so a seed gives the same bounds at any scale of the weights.
+Grouped data (rows with ``n`` above 1) are resampled by row: drawing the
+``N`` units with replacement draws each row a multinomial number of
+times, with probability ``n_i / N`` each, so each resample is the rows
+with those counts. That is the same resample, in distribution, as drawing
+the units one by one, but each refit is of the data's rows, not of every
+unit (``CaseDesign``).
 """
 
 from __future__ import annotations
@@ -224,29 +230,57 @@ def _refuse_unresamplable(model: Any) -> None:
 class CaseDesign:
     """What a case resample of a weighted model's data draws from: every
     unit (a row with ``n = k`` is ``k`` units) with its covariates, time,
-    censoring, truncation and weight."""
+    censoring, truncation and weight.
+
+    Grouped data (a row with ``n`` above 1) are resampled by row: drawing
+    the units i.i.d. with replacement draws each row a multinomial number
+    of times (``N`` draws, row ``i`` with probability ``n_i / N``), so the
+    resample is the rows with those counts, the same resample in
+    distribution as the units drawn one by one, and each refit is of as
+    many rows as the data have rather than of every unit. Data of one
+    unit per row are drawn unit by unit, as before."""
 
     def __init__(self, model: Any) -> None:
         _refuse_unresamplable(model)
         data = model.data
         n = np.asarray(data.n, dtype=int)
-        units = np.repeat(np.arange(n.size), n)
-        self.x = np.asarray(data.x, dtype=float)[units]
-        self.c = np.asarray(data.c)[units]
-        self.Z = np.asarray(data.Z, dtype=float)[units]
-        self.t = np.asarray(data.t, dtype=float)[units]
-        self.truncated = bool(np.any(np.isfinite(self.t)))
         # The weights scaled to sum to the units, as the fit uses them, so
         # that the refits do not depend on the scale of ``w``.
         w = np.asarray(data.w, dtype=float)
-        self.w = (w * (n.sum() / np.sum(n * w)))[units]
+        w = w * (n.sum() / np.sum(n * w))
+        self.grouped = bool(np.any(n > 1))
+        rows = (
+            np.arange(n.size)
+            if self.grouped
+            else np.repeat(np.arange(n.size), n)
+        )
+        self.x = np.asarray(data.x, dtype=float)[rows]
+        self.c = np.asarray(data.c)[rows]
+        self.Z = np.asarray(data.Z, dtype=float)[rows]
+        self.t = np.asarray(data.t, dtype=float)[rows]
+        self.truncated = bool(np.any(np.isfinite(self.t)))
+        self.w = w[rows]
+        self.units = int(n.sum())
+        self.share = n[rows] / self.units
 
     def resample(self, rng: np.random.Generator) -> tuple:
-        """One resample, ``(x, Z, c, t, w)``: the units drawn with
-        replacement."""
+        """One resample, ``(x, Z, c, t, weights)``: the units drawn with
+        replacement (``weights`` the refit's ``w``, and ``n`` for grouped
+        data)."""
+        if self.grouped:
+            counts = rng.multinomial(self.units, self.share)
+            k = np.flatnonzero(counts)
+            t = self.t[k] if self.truncated else None
+            return (
+                self.x[k],
+                self.Z[k],
+                self.c[k],
+                t,
+                {"w": self.w[k], "n": counts[k]},
+            )
         k = rng.integers(0, self.c.size, size=self.c.size)
         t = self.t[k] if self.truncated else None
-        return self.x[k], self.Z[k], self.c[k], t, self.w[k]
+        return self.x[k], self.Z[k], self.c[k], t, {"w": self.w[k]}
 
 
 class ResampleDesign:
@@ -282,15 +316,28 @@ class ResampleDesign:
         """The product-limit estimate of the censoring distribution (the
         censored units its events, the failed ones censored at their
         failure, each at risk from its entry): its distinct times and the
-        probability at each, the rest of the mass at infinity."""
-        times = np.unique(self.x[~self.failed])
-        mass = np.zeros(times.size)
-        surv = 1.0
-        for j, s in enumerate(times):
-            at_risk = np.sum((self.x >= s) & (self.tl < s))
-            d = np.sum((self.x == s) & ~self.failed)
-            mass[j] = surv * d / at_risk
-            surv *= 1.0 - d / at_risk
+        probability at each, the rest of the mass at infinity.
+
+        One sort and running counts, ``O(n log n)``: at a time ``s`` the
+        units at risk are those that entered before it (``tl < s``) less
+        those that left before it (``x < s``). A unit whose window does
+        not open before it leaves (``tl`` not below ``x``, or missing) is
+        never at risk, as in the direct count ``x >= s and tl < s``. The
+        product runs in time order, so the estimate is the same, to the
+        last bit, as counting every unit afresh at every time."""
+        x, tl = self.x, self.tl
+        times, d = np.unique(x[~self.failed], return_counts=True)
+        with np.errstate(invalid="ignore"):
+            window = tl < x
+        entered = np.searchsorted(np.sort(tl[window]), times, side="left")
+        left = np.searchsorted(np.sort(x[window]), times, side="left")
+        at_risk = entered - left
+        with np.errstate(divide="ignore", invalid="ignore"):
+            # The probability of lasting to just before each time: the
+            # running product, in time order, of 1 - d / at_risk.
+            surv_before = np.cumprod(np.append(1.0, 1.0 - d / at_risk))
+            mass = surv_before[:-1] * d / at_risk
+        surv = float(surv_before[-1])
         self.censor_times = times
         # The mass at or after each time, and past the last (the tail).
         tail = max(surv, 0.0)
@@ -358,8 +405,7 @@ def _draw(
     }
     for _ in range(n_boot):
         if cases:
-            x, Z, c, t, w = design.resample(rng)
-            weights: dict[str, Any] = {"w": w}
+            x, Z, c, t, weights = design.resample(rng)
         else:
             x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
             Z, weights = design.Z, {}
