@@ -200,6 +200,33 @@ v0.30 (unreleased)
   "Regression models" and "Groups sharing a population" in
   :doc:`PyMC with SurPyval`.
 
+- **Bayesian reliability growth: ``CrowAMSAA.fit_bayes`` and
+  ``HPP.fit_bayes``.** Priors on a recurrent-event process's parameters
+  times the likelihood ``fit`` uses, for any data ``fit`` takes. A
+  Crow-AMSAA posterior (two parameters) is computed on the grid, so it
+  is exact; an HPP with a Gamma prior on its rate is the gamma-Poisson
+  closed form, and takes data with no failures at all. Priors: on the
+  growth rate ``beta`` (or any parameter) by name; on the MTBF, the
+  intensity or the expected number of failures at a time
+  (``sp.prior.on_quantities(CrowAMSAA, mtbf_at={T: ...},
+  instead_of="alpha")``); and from an earlier test phase
+  (``sp.prior.from_fit(phase1, weight=)``, its data as a power prior, or
+  ``sp.prior.from_model(phase1)``). The result
+  (``surpyval.recurrent.bayes.BayesianRecurrence``) gives ``mtbf_cri()``
+  (the MTBF now, or projected to a later time), ``cri(x, on="cif" |
+  "iif" | "mtbf")``, ``count(duration=)`` (the predictive distribution
+  of the number of failures in a period), ``mtbf_probability(
+  requirement)`` (the probability the requirement is met), and what
+  every Bayesian fit has: ``param_cri``, ``function_cri``, ``compare``,
+  ``summary``, ``waic`` and ``loo`` (one system is the unit),
+  ``diagnose`` with predictive checks, ``as_prior`` and saving. Checked
+  against the gamma posterior of ``beta`` with no priors (0.2%), the
+  maximum-likelihood estimate, the negative binomial predictive count
+  (1e-12), leaving a system out exactly (5e-3), two frozen PyMC
+  references (within 2.3 Monte Carlo standard errors) and
+  simulation-based calibration (300 repetitions a scenario). See
+  "Reliability growth and repairable systems" in :doc:`Bayesian Fitting
+  with SurPyval`.
 - **Bayesian regression: beliefs about a life, earlier fits, WAIC/LOO
   and predictive checks.** A Bayesian regression (``fit_bayes`` on the
   proportional hazards, accelerated failure time and accelerated life

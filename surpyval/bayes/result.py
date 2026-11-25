@@ -131,14 +131,23 @@ def _grid_summary(target: Any, bound: BoundPriors) -> Any:
     97.5% points of each free parameter and of the family's own check
     quantities."""
 
+    # which of the family's quantities are checked is settled on the
+    # first lattice (those finite all over it), so that every lattice's
+    # summary has the same columns
+    use: list[int] | None = None
+
     def summary(phi: npt.NDArray, w: npt.NDArray, shape: tuple) -> npt.NDArray:
+        nonlocal use
         theta = bound.full_theta(phi)
         cols = [theta[:, i] for i in bound.free_idx]
         with np.errstate(all="ignore"):
-            for extra in target.grid_checks(bound.theta_dict(phi)):
-                extra = np.asarray(extra, dtype=float)
-                if np.all(np.isfinite(extra)):
-                    cols.append(extra)
+            extras = [
+                np.asarray(e, dtype=float)
+                for e in target.grid_checks(bound.theta_dict(phi))
+            ]
+        if use is None:
+            use = [k for k, e in enumerate(extras) if np.all(np.isfinite(e))]
+        cols += [extras[k] for k in use]
         return lattice_quantile(
             np.stack(cols, axis=1), w, [0.025, 0.5, 0.975], shape
         ).T
@@ -275,11 +284,38 @@ def fit_target(
             f"({', '.join(bound.free_names)}). Check the priors' ranges."
         )
     free_t = [bound.transforms[i] for i in bound.free_idx]
+    # The engines work in the target's working coordinates u where it
+    # has them (phi = inverse(u), with the change of variables in the
+    # density); the points come back to phi before anything is read.
+    rp = target.reparam(bound)
+    plain_summary = _grid_summary(target, bound)
+    work: Any = log_post
+    summary: Any = plain_summary
+    where: Any = bound
+    if rp is not None:
+
+        def in_u(u: npt.NDArray) -> npt.NDArray:
+            u = np.atleast_2d(u)
+            with np.errstate(all="ignore"):
+                out = log_post(rp.inverse(u)) + rp.log_det(u)
+            return np.where(np.isnan(out), -np.inf, out)
+
+        def summary_in_u(
+            u: npt.NDArray, w: npt.NDArray, shape: tuple
+        ) -> npt.NDArray:
+            out: npt.NDArray = plain_summary(rp.inverse(u), w, shape)
+            return out
+
+        work, summary = in_u, summary_in_u
+        with np.errstate(all="ignore"):
+            starts = [rp.forward(s[None, :])[0] for s in starts]
+        starts = [s for s in starts if np.all(np.isfinite(s))]
+        where = _WorkingNames(bound, rp)
     try:
-        mode, cov, _ = find_mode(log_post, starts)
+        mode, cov, _ = find_mode(work, starts)
         if method == "laplace":
             approx = run_laplace(
-                log_post,
+                work,
                 mode,
                 cov,
                 importance=importance,
@@ -287,41 +323,56 @@ def fit_target(
             )
         else:
             grid = run_grid(
-                log_post,
+                work,
                 mode,
                 cov,
-                _grid_summary(target, bound),
+                summary,
                 points=points,
                 flat_names=bound.improper_names,
             )
     except GridError as e:
         raise ValueError(str(e)) from None
+
+    def to_phi(u: npt.NDArray) -> npt.NDArray:
+        out: npt.NDArray = u if rp is None else rp.inverse(np.atleast_2d(u))
+        return out
+
     if method == "laplace":
         post = Posterior(
             bound.names,
             bound.free_names,
-            bound.full_theta(approx.phi),
+            bound.full_theta(to_phi(approx.phi)),
             np.exp(approx.log_w),
             "laplace",
             transforms=free_t,
-            normal={
-                "mean": [float(v) for v in approx.mode],
-                "cov": [[float(v) for v in row] for row in approx.cov],
-                "reweighted": bool(approx.importance),
-            },
+            # (in working coordinates the normal is not one on phi: the
+            # parameters' quantiles are then the draws')
+            normal=(
+                {
+                    "mean": [float(v) for v in approx.mode],
+                    "cov": [[float(v) for v in row] for row in approx.cov],
+                    "reweighted": bool(approx.importance),
+                }
+                if rp is None
+                else None
+            ),
         )
-        diag = dict(laplace_diagnostics(approx, bound, importance))
+        diag = dict(laplace_diagnostics(approx, where, importance))
+        diag["free_parameters"] = list(bound.free_names)
+        diag["mode"] = _phi_mode(bound, log_post, to_phi(approx.mode), rp)
         if target.laplace_only:
             diag["regression"] = True
     else:
         post = Posterior(
             bound.names,
             bound.free_names,
-            bound.full_theta(grid.phi),
+            bound.full_theta(to_phi(grid.phi)),
             np.exp(grid.log_w),
             "grid",
             transforms=free_t,
-            cell=grid.cell,
+            # (a cell is a box in the lattice's coordinates: kept only
+            # where those are phi, for draws inside a cell)
+            cell=grid.cell if rp is None else None,
             shape=grid.shape,
         )
         diag = {
@@ -333,7 +384,7 @@ def fit_target(
             "integration_error": grid.error,
             "half_width_sd": float(np.max(grid.half_widths)),
             "widened": grid.checks.get("widened", 0),
-            "mode": [float(v) for v in bound.full_theta(grid.mode)[0]],
+            "mode": _phi_mode(bound, log_post, to_phi(grid.mode), rp),
             "log_evidence": (
                 float(grid.log_z) if bound.proper else float("nan")
             ),
@@ -345,6 +396,36 @@ def fit_target(
     if method == "laplace":
         warn_laplace(model.diagnostics)
     return model
+
+
+def _phi_mode(
+    bound: BoundPriors, log_post: Any, at: npt.NDArray, rp: Any
+) -> list[float]:
+    """The posterior's peak on the parameters' unconstrained scale, as
+    every parameter's value: where the engine worked in other
+    coordinates its peak there is not this one (the change of variables
+    moves it), so it is searched from there."""
+    from surpyval.bayes.engines.grid import GridError, find_mode
+
+    at = np.atleast_2d(at)[0]
+    if rp is not None:
+        try:
+            at, _, _ = find_mode(log_post, [at])
+        except GridError:
+            pass
+    return [float(v) for v in bound.full_theta(at)[0]]
+
+
+class _WorkingNames:
+    """The bound priors as the Laplace diagnostics read them, where the
+    engine worked in a target's working coordinates."""
+
+    def __init__(self, bound: BoundPriors, rp: Any) -> None:
+        self.free_names = list(rp.names)
+        self._bound, self._rp = bound, rp
+
+    def full_theta(self, u: npt.NDArray) -> npt.NDArray:
+        return self._bound.full_theta(self._rp.inverse(np.atleast_2d(u)))
 
 
 def _conjugate_posterior(bound: BoundPriors, case: Any) -> Posterior:

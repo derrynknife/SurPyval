@@ -1603,6 +1603,14 @@ def from_params(
     return out
 
 
+#: The words for the families' named quantities, in a prior's summary.
+_FAMILY_LABELS = {
+    "mtbf_at": "MTBF at",
+    "intensity_at": "intensity at",
+    "cif_at": "expected events by",
+}
+
+
 def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
     """(label, spec, prior) entries for one keyword of on_quantities."""
     if key in ("R_at", "quantile"):
@@ -1633,9 +1641,9 @@ def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
         return [(key, ("q", p), value)]
     if key.endswith("_at") and isinstance(value, Mapping):
         # a quantity the fitted family names (an MTBF at a time)
-        what = key[:-3].replace("_", " ")
+        what = _FAMILY_LABELS.get(key, key[:-3].replace("_", " ") + " at")
         return [
-            (f"{what} at {_fmt(k)}", ("family", key, float(k)), p)
+            (f"{what} {_fmt(k)}", ("family", key, float(k)), p)
             for k, p in value.items()
         ]
     if not _is_life_distribution(dist):
