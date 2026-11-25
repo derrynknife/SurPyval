@@ -808,6 +808,76 @@ with scale :math:`\sqrt{S / ((n-1) \sum \Delta t)}`, where
 :math:`n` increments. The tests hold the grid to it to 0.2% of the 95%
 intervals' widths.
 
+Competing risks and multi-state models
+--------------------------------------
+
+A part that can fail in two ways, wear and cracking, has a life
+distribution for each, and the first to happen ends its life. The
+likelihood of such data splits into one factor a cause: a part that
+cracked contributes the crack's density and the chance it had not yet
+worn out, and a part still running contributes the chance it has done
+neither. So with priors stated a cause at a time, what is learned about
+one cause does not depend on what is believed about the other, and each
+cause's posterior is simply the ordinary Bayesian fit of its
+distribution, with the other cause's failures treated as parts still
+running when they were removed. ``ParametricCompetingRisks.fit_bayes``
+does exactly that, and combines the fits:
+
+.. code-block:: python
+
+    import surpyval as sp
+    from surpyval.univariate.competing_risks import ParametricCompetingRisks
+
+    x = [12, 25, 31, 40, 44, 52, 60, 71, 80, 80]
+    e = ["wear", "crack", "wear", "wear", "crack", "wear", "crack",
+         "wear", None, None]
+    # three cracks: a constant crack rate; wear-out with a shape of about 3
+    model = ParametricCompetingRisks.fit_bayes(
+        x, e, dist={"wear": sp.Weibull, "crack": sp.Exponential},
+        priors={"wear": {"beta": sp.prior.around(3, between=(2, 5))}})
+
+    model.models["wear"]          # wear's own BayesianParametric fit
+    model.cif(50.0, "wear")       # P(a new part has worn out by 50)
+    model.cri(50.0, "wear")       # the 95% credible interval on it
+    model.quantile_cri(0.1)       # the B10 life, failing from any cause
+    model.probability_of_cause("crack")
+
+Priors are one set for every cause or a set a cause, as for the
+cause-specific intensities. The predictions for a new part (``sf``,
+``ff``, ``cif``, ``qf``) are the posterior predictive, and exact: since
+the causes' posteriors are independent, the chance a new part survives
+every cause is the product of its chances of surviving each, and its
+chance of wearing out by ``t`` is the integral of wear's predictive
+density against the other causes' predictive survival. The credible
+intervals come from 4,000 joint draws (one from each cause's posterior)
+with a fixed seed, so the numbers repeat. Units found failed in a window
+at an inspection (``c`` of -1 or 2) are refused: such a unit's
+likelihood holds every cause at once, so the causes' posteriors are no
+longer separate fits; ``fit`` takes them by maximum likelihood.
+
+The same holds for a **multi-state model**: units moving between
+healthy, degraded and failed, say, with a distribution for the hazard of
+each move. Its likelihood is a factor a transition, so
+``ParametricMultiState.fit_bayes`` fits each transition's distribution
+by Bayes' rule on the spells in its starting state, and the
+probabilities of being in each state follow from joint draws through
+the model's own equations:
+
+.. code-block:: python
+
+    from surpyval.multistate import ParametricMultiState
+
+    model = ParametricMultiState.fit_bayes(x, e, state, tl=tl)
+    model.occupancy(240.0, "failed")       # P(a new unit is failed)
+    model.occupancy_cri(240.0, "failed")   # its 95% credible interval
+    model.length_of_stay(240.0, "degraded")
+
+A state occupation probability for a new unit is the mean over 1,000
+joint draws (``model.draws``; fixed seed), so it carries a Monte Carlo
+error of about its spread over the draws divided by 31; the transitions'
+posteriors themselves are exact. A model of two states (working, then
+failed) is the distribution's own Bayesian fit, posterior for posterior.
+
 What every Bayesian fit reports
 -------------------------------
 

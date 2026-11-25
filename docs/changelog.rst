@@ -390,6 +390,31 @@ v0.30 (unreleased)
   ``mtbf_cri``, saving and the metamorphic checks. A cause-specific
   fit with tuple causes now saves and loads (its causes were written as
   numbers, which a tuple is not).
+- **Bayesian competing risks and multi-state models, by composition**:
+  ``ParametricCompetingRisks.fit_bayes(x, e, c, n, dist, tl, priors=)``
+  and ``ParametricMultiState.fit_bayes(x, e, state, tl, ...,
+  priors=)``. Each likelihood is a product of one factor a cause (or a
+  transition), so each posterior is that distribution's own
+  ``fit_bayes`` on its cause-specific data (checked equal, point for
+  point), and nothing new is fitted. Competing risks
+  (``BayesianCompetingRisks``): the posterior predictive ``sf``, ``ff``,
+  ``hf``, ``cif``, ``qf`` and ``probability_of_cause`` of a new unit,
+  exact from the causes' predictive functions (the incidence to about
+  1e-6); ``cri`` on a cause's incidence or the all-cause survival and
+  ``quantile_cri`` on the all-cause B-life from 4,000 joint draws with
+  a fixed seed (each draw's incidence to about 1e-8, against the
+  maximum-likelihood model's at the same parameters). Two Exponential
+  causes with Gamma priors match their closed forms (the Lomax
+  predictive survival to 1e-10, each draw's incidence to 1e-12), and in
+  simulation-based calibration (300 test fleets drawn from the priors)
+  the intervals on each cause's incidence and on the B10 life hold their
+  level. Multi-state (``BayesianMultiState``): ``occupancy``,
+  ``occupancy_cri``, ``length_of_stay`` (with ``_cri``) and
+  ``transition_probabilities`` from 1,000 joint draws through the
+  model's own forward (or renewal) equations; a two-state model is the
+  univariate fit. Priors are one set for every cause (transition) or a
+  set each. Windows of inspection (``c`` of -1 or 2) in competing risks
+  are refused: their likelihood holds every cause at once.
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each

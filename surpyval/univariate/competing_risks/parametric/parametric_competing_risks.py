@@ -2090,6 +2090,92 @@ class ParametricCompetingRisks(
         return model
 
     @classmethod
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_bayes(
+        cls,
+        x: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        dist: Any = Weibull,
+        tl: npt.ArrayLike | float | None = None,
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit each cause's distribution by Bayes' rule: priors on its
+        parameters times the cause-specific likelihood ``fit`` uses.
+
+        The likelihood factorises over the causes, so with priors
+        stated a cause at a time each cause has its own posterior,
+        computed exactly as ``dist.fit_bayes`` computes it with the
+        other causes' failures right censored (the grid for up to three
+        free parameters: exact). Nothing else is fitted: the result
+        combines the causes' fits.
+
+        Parameters
+        ----------
+        x, e, c, n, dist, tl
+            The data and the distributions, as for :meth:`fit`: exact
+            failures, right censoring and left truncation. A unit found
+            failed in a window (``c`` of -1 or 2) is refused: its
+            likelihood holds every cause at once.
+        priors : optional
+            One set of priors for every cause (as ``dist.fit_bayes``
+            takes: ``{"beta": ...}``), or a set a cause, ``{cause:
+            {"beta": ...}}`` (a cause left out has none: its parameters
+            are flat on their unconstrained scale, allowed where its
+            data determine them).
+        method, points, importance
+            As for ``dist.fit_bayes``.
+
+        Returns
+        -------
+        surpyval.univariate.competing_risks.parametric.bayes.BayesianCompetingRisks
+            ``models`` (each cause's
+            :class:`~surpyval.bayes.BayesianParametric`); the predictive
+            ``sf``, ``ff``, ``cif``, ``qf`` for a new unit; ``cri(x,
+            event)`` on a cause's cumulative incidence or the all-cause
+            survival, and ``quantile_cri(p)`` on the all-cause B-life.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [12, 25, 31, 40, 44, 52, 60, 71, 80, 80]
+        >>> e = ["wear", "crack", "wear", "wear", "crack", "wear", "crack",
+        ...      "wear", None, None]
+        >>> model = ParametricCompetingRisks.fit_bayes(
+        ...     x, e, dist=sp.Exponential)
+        >>> model.method
+        {'crack': 'grid', 'wear': 'grid'}
+        >>> b10 = model.quantile_cri(0.1)    # the all-cause B10 life
+        >>> b10.shape
+        (2,)
+        """
+        from surpyval.univariate.competing_risks.parametric import bayes
+
+        return bayes.fit(
+            cls,
+            x,
+            e,
+            c,
+            n,
+            dist,
+            tl,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
+    @classmethod
     def _fit_joint(
         cls,
         x: npt.NDArray,
