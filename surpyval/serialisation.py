@@ -183,6 +183,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
         "surpyval.multivariate.parametric.copula.copula_model",
         "CopulaModel",
     ),
+    "bivariate-non-parametric": (
+        "surpyval.multivariate.nonparametric.dabrowska",
+        "BivariateNonParametric",
+    ),
 }
 
 

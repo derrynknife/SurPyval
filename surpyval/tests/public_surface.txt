@@ -383,9 +383,11 @@ surpyval.multistate.TransitionMatrix
 surpyval.multistate.from_stacked
 surpyval.multistate.to_stacked
 surpyval.multivariate.AMH
+surpyval.multivariate.BivariateNonParametric
 surpyval.multivariate.Clayton
 surpyval.multivariate.Copula
 surpyval.multivariate.CopulaModel
+surpyval.multivariate.Dabrowska
 surpyval.multivariate.Frank
 surpyval.multivariate.Gaussian
 surpyval.multivariate.Gumbel

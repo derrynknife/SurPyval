@@ -122,7 +122,7 @@ Worked classifications:
 | PanelMultiState, PanelMultiStateRegression (a Markov model of states seen only at visits: the moves interval censored) | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric |
 | (not built yet) hidden Markov (misclassified states) for panel data; semi-Markov Cox per transition | univariate | single_event | single/competing | multi_state | none/with | continuous | parametric/semiparametric |
 
-Most models SurPyval ships are `univariate`. Three kinds of `multivariate`
+Most models SurPyval ships are `univariate`. Four kinds of `multivariate`
 model exist:
 
 - **Copulas** (`surpyval.multivariate`: Independence, Gaussian,
@@ -143,6 +143,9 @@ model exist:
   `CoxMixedEffects` (R's `coxme`) generalises the log-normal one to several
   Gaussian random-effect terms: nested and crossed grouping factors and
   correlated random slopes.
+- **Non-parametric joint survival** (`Dabrowska`): the joint survival of
+  two right-censored lifetimes with no dependence family chosen, the
+  two-dimensional Kaplan-Meier (Dabrowska, 1988); right censoring only.
 - **Joint frailty of recurrent and terminal events** (`JointFrailty`):
   each item's own frailty acts on its recurrent intensity and, raised to
   a power `alpha`, on the hazard of a terminal event that ends its
@@ -159,6 +162,7 @@ model exist:
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
 | Shared-frailty Poisson process (`frailty=` on CrowAMSAA, Duane, CoxLewis, ProportionalIntensityNHPP; a frailty per item or cluster of items) | multivariate (clustered) | recurrent | single | recurrent | none / with | continuous | parametric |
 | CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
+| Dabrowska (non-parametric joint survival of two right-censored lifetimes, no copula chosen) | multivariate (two series) | single_event | single | terminal | none | continuous | nonparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
@@ -205,7 +209,6 @@ Cells of the axes with nothing built yet, or only part:
 | Recurrent events with competing failure modes and covariates, semi-parametric (the parametric one, `CauseSpecificProportionalIntensity`, is built) | univariate / recurrent / competing / recurrent / with / continuous / semiparametric |
 | Multi-state: hidden Markov (misclassified states) for panel data; a semi-Markov ("clock reset") Cox model per transition (the Markov and parametric semi-Markov models are built) | `multi_state` |
 | Copulas for more than two lifetimes beyond the Gaussian, Student-t and C-/D-vines: regular vines, vines with censoring in more than two series or with truncation, exchangeable Archimedean | multivariate, more than two series |
-| Non-parametric joint survival of two lifetimes (no copula chosen) | multivariate / single_event / nonparametric |
 | Shared frailty and correlated series for repairable systems, beyond those built: several recurrent series per item, a frailty nested in a group's, spline baselines | multivariate / recurrent |
 | Joint models of more than one reading per item (several markers, each with its own effect; a combined health index) | univariate / single_event / with / parametric |
 | Bayesian inference beyond the parametric distributions and the PH, AFT and accelerated-life regressions: Cox, recurrent events, degradation, competing risks, multi-state | the inference axis |

@@ -78,7 +78,11 @@ def test_joint_distribution_is_valid(case):
     sf = np.asarray(model.sf(X), float)
     check_valid("cdf", cdf, (0.0, 1.0, 1))
     check_valid("sf", sf, (0.0, 1.0, -1))
-    check_valid("pdf", np.asarray(model.pdf(case.x), float), (0.0, np.inf, 0))
+    if hasattr(model, "pdf"):
+        # (a non-parametric step estimate has no density)
+        check_valid(
+            "pdf", np.asarray(model.pdf(case.x), float), (0.0, np.inf, 0)
+        )
     F1 = np.asarray(model.margins[0].ff(X[:, 0]), float)
     F2 = np.asarray(model.margins[1].ff(X[:, 1]), float)
     assert np.all(cdf >= np.maximum(F1 + F2 - 1, 0) - 1e-10)

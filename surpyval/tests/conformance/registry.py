@@ -344,6 +344,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.JointAFT": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
+    "surpyval.NevadaTable": _DATA,
     "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
