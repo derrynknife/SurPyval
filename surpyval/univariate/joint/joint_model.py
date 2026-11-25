@@ -2121,7 +2121,9 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             path = path.base
         key = path_model_key(path)
         # by its class: an unpickled built-in path is a copy of it
-        if type(PATH_MODELS.get(key)) is not type(path):
+        if not isinstance(key, dict) and type(
+            PATH_MODELS.get(key)
+        ) is not type(path):
             raise NotImplementedError(
                 f"The {path.name!r} path model is not a built-in "
                 "one, so it cannot be rebuilt from a name: keep the model "
@@ -2232,7 +2234,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         True
         """
         import surpyval
-        from surpyval.degradation.path_models import PATH_MODELS
+        from surpyval.degradation.path_models import (
+            PATH_MODELS,
+            get_path_model,
+        )
 
         require_model_tag(model_dict, "JointModel", "a joint model")
         if model_dict["distribution"] != "Weibull":
@@ -2241,14 +2246,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 f"{model_dict['distribution']!r}."
             )
         key = model_dict["path_model"]
-        if key not in PATH_MODELS:
+        if not isinstance(key, dict) and key not in PATH_MODELS:
             raise ValueError(
                 f"Unknown path model {key!r}; the built-in ones are "
-                f"{sorted(PATH_MODELS)}."
+                f"{sorted(PATH_MODELS)}, and a spline is saved as its "
+                "SplinePath.to_dict()."
             )
         out = cls()
         out.dist = surpyval.Weibull
-        out.path_model = PATH_MODELS[key]
+        out.path_model = get_path_model(key)
         if model_dict.get("links"):
             from surpyval.degradation.stress import (
                 LinkedPathModel,
