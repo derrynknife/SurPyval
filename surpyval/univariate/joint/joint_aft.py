@@ -10,6 +10,7 @@ hazards model; the likelihood's lifetime terms are :mod:`._aft`'s."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from .joint_ph import JointPHFitter
@@ -40,7 +41,15 @@ class JointAFTFitter(JointPHFitter):
         random_effects: Any = None,
     ) -> None:
         try:
-            named = [link] if isinstance(link, str) else list(link)
+            if isinstance(link, Mapping):
+                # several markers: each marker's links
+                named = [
+                    k
+                    for v in link.values()
+                    for k in ([v] if isinstance(v, str) else list(v or []))
+                ]
+            else:
+                named = [link] if isinstance(link, str) else list(link)
         except TypeError:
             named = []
         if "cumulative" in named:

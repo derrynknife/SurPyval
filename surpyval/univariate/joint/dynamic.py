@@ -96,7 +96,14 @@ class DynamicPrediction:
         self._args = (Z, markers, given)
         self.covariates = z
         self.age = float(u)
-        self.markers = dict(zip(ages.tolist(), values.tolist()))
+        names = getattr(model, "markers", None)
+        if names is not None:
+            self.markers: dict = {
+                name: dict(zip(a.tolist(), v.tolist()))
+                for name, a, v in zip(names, ages, values)
+            }
+        else:
+            self.markers = dict(zip(ages.tolist(), values.tolist()))
         self._ages, self._values = ages, values
         self._missing = not bool(np.all(np.isfinite(z)))
 
@@ -390,39 +397,72 @@ class DynamicPrediction:
 
     # -- the marker --------------------------------------------------------
 
-    def marker(self, x: npt.ArrayLike) -> Any:
+    def marker(self, x: npt.ArrayLike, name: Any = None) -> Any:
         """The mean of the item's true (noise-free) marker at ages ``x``,
         given its readings and survival to ``age``: its smoothed path up
         to ``age``, and beyond it the path projected (not conditioned on
-        surviving to ``x``)."""
+        surviving to ``x``). With several markers, of the marker
+        ``name`` (given every marker's readings)."""
         x_arr = np.asarray(x, dtype=float)
-        mean, _ = self._moments(x_arr)
+        mean, _ = self._moments(x_arr, name)
         return mean.reshape(x_arr.shape)[()]
 
+    def _marker_name(self, name: Any) -> Any:
+        """The marker ``name`` checked (``None`` for a model of one)."""
+        names = getattr(self.model, "markers", None)
+        if names is None:
+            if name is not None:
+                raise ValueError(
+                    "This model has one marker: leave 'name' out."
+                )
+            return None
+        if name is None and len(names) == 1:
+            return names[0]
+        if name not in names:
+            raise ValueError(
+                "With several markers, name the one whose path to give, "
+                f"name= one of {list(names)!r}; got {name!r}."
+            )
+        return name
+
     def marker_interval(
-        self, x: npt.ArrayLike, alpha_ci: float = 0.05
+        self, x: npt.ArrayLike, alpha_ci: float = 0.05, name: Any = None
     ) -> npt.NDArray:
         """An equal-tailed ``1 - alpha_ci`` interval for the item's true
         marker at ages ``x``, mean plus or minus a normal quantile of its
         standard deviation, at the fitted parameters: ``[lower, upper]``
         on a last axis. It is the spread of the item's own path, not of a
         new reading (which adds the noise, ``sd_noise``), and for a path
-        not linear in its parameters a normal approximation."""
+        not linear in its parameters a normal approximation. With
+        several markers, of the marker ``name``."""
         check_alpha_ci(alpha_ci)
         x_arr = np.asarray(x, dtype=float)
-        mean, sd = self._moments(x_arr)
+        mean, sd = self._moments(x_arr, name)
         q = norm.ppf(1 - alpha_ci / 2)
         out = np.stack([mean - q * sd, mean + q * sd], axis=-1)
         return out.reshape(x_arr.shape + (2,))
 
-    def _moments(self, x: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    def _moments(
+        self, x: npt.NDArray, name: Any = None
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        name = self._marker_name(name)
         flat = np.atleast_1d(x).ravel()
         if self._missing:
             return np.full(flat.shape, np.nan), np.full(flat.shape, np.nan)
         safe = np.where(np.isfinite(flat), flat, 0.0)
-        mean, sd = self.model._marker_moments(
-            safe, self.covariates, self._ages, self._values, self.age
-        )
+        if name is None:
+            mean, sd = self.model._marker_moments(
+                safe, self.covariates, self._ages, self._values, self.age
+            )
+        else:
+            mean, sd = self.model._marker_moments(
+                safe,
+                self.covariates,
+                self._ages,
+                self._values,
+                self.age,
+                marker=name,
+            )
         bad = ~np.isfinite(flat)
         return np.where(bad, np.nan, mean), np.where(bad, np.nan, sd)
 
@@ -449,6 +489,11 @@ class DynamicPrediction:
         """
         rng = as_generator(random_state)
         return np.asarray(self.qf(rng.uniform(size=int(size))), dtype=float)
+
+    def _n_readings(self) -> int:
+        if getattr(self.model, "markers", None) is None:
+            return len(self.markers)
+        return sum(len(r) for r in self.markers.values())
 
     # -- serialisation -----------------------------------------------------
 
@@ -541,11 +586,16 @@ class DynamicPrediction:
                 band = None
             if band is not None and np.isfinite(band).any():
                 sf_lower, sf_upper = band[:, 0], band[:, 1]
-        start = min([self.age, *self._ages.tolist()])
+        marker_names = getattr(self.model, "markers", None)
+        every = (
+            np.concatenate(self._ages)
+            if marker_names is not None
+            else self._ages
+        )
+        start = min([self.age, *np.asarray(every).tolist()])
         finite = grid[np.isfinite(grid)]
         stop = float(finite.max()) if finite.size else self.age
         path = np.linspace(start, max(stop, start), 101)
-        interval = self.marker_interval(path, alpha_ci=alpha_ci)
         p = np.array(_REMAINING_P)
         names = list(getattr(self.model, "feature_names", None) or [])
         z = np.atleast_1d(np.asarray(self.covariates, dtype=float)).ravel()
@@ -558,7 +608,16 @@ class DynamicPrediction:
             "how": self.model.how,
             "age": self.age,
             "covariates": covariates,
-            "markers": [[float(a), float(v)] for a, v in self.markers.items()],
+            "markers": (
+                [[float(a), float(v)] for a, v in self.markers.items()]
+                if marker_names is None
+                else {
+                    str(name): [
+                        [float(a), float(v)] for a, v in readings.items()
+                    ]
+                    for name, readings in self.markers.items()
+                }
+            ),
             "alpha_ci": float(alpha_ci),
             "x": grid,
             "sf": np.asarray(self.sf(grid), dtype=float),
@@ -570,14 +629,29 @@ class DynamicPrediction:
                 "p": p,
                 "life": np.asarray(self.remaining_life(p), dtype=float),
             },
-            "marker": {
-                "x": path,
-                "mean": np.asarray(self.marker(path), dtype=float),
-                "lower": interval[:, 0],
-                "upper": interval[:, 1],
-            },
+            "marker": (
+                self._marker_entry(path, alpha_ci, None)
+                if marker_names is None
+                else {
+                    str(name): self._marker_entry(path, alpha_ci, name)
+                    for name in marker_names
+                }
+            ),
         }
         return encode_non_finite(out)
+
+    def _marker_entry(
+        self, path: npt.NDArray, alpha_ci: float, name: Any
+    ) -> dict:
+        """``to_dict``'s ``marker``: the item's path (of marker ``name``)
+        and its interval along ``path``."""
+        interval = self.marker_interval(path, alpha_ci=alpha_ci, name=name)
+        return {
+            "x": path,
+            "mean": np.asarray(self.marker(path, name), dtype=float),
+            "lower": interval[:, 0],
+            "upper": interval[:, 1],
+        }
 
     def __repr__(self) -> str:
         median = float(self.remaining_life(0.5))
@@ -585,7 +659,7 @@ class DynamicPrediction:
             "Dynamic prediction of a joint model\n"
             "===================================\n"
             f"Age now             : {self.age:.6g}\n"
-            f"Readings            : {len(self.markers)}\n"
+            f"Readings            : {self._n_readings()}\n"
             f"Median life left    : {median:.6g}"
         )
         if self.model.how == "two-stage":

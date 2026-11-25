@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import warnings
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -40,6 +41,7 @@ from ._likelihood import (
     MAX_VARYING,
     JointArrays,
     Layout,
+    MarkerPaths,
     Model,
     PathFunction,
     block_labels,
@@ -220,6 +222,17 @@ class JointPHFitter(FitterRepr):
     #: A start for the path part (``mu``, ``Delta``, ``L``, ``sigma``)
     #: from another link's fit of the same data (``compare_links``).
     _path_start: dict | None = None
+    #: The markers' names, for a model of several markers (``path_model``
+    #: a dict of their path models); ``None`` for one marker.
+    markers: list | None = None
+    path_model: Any
+    link: Any
+
+    @property
+    def takes_several_markers(self) -> bool:
+        """Whether the fitter fits several markers (a SurpyvalData's
+        named measurements are its markers)."""
+        return self.markers is not None
 
     def __init__(
         self,
@@ -241,6 +254,17 @@ class JointPHFitter(FitterRepr):
                 f"Joint{self.survival}(Weibull, path_model), or "
                 f"WeibullJoint{self.survival}; got {name}."
             )
+        if isinstance(path_model, Mapping):
+            self._set_markers(
+                distribution,
+                path_model,
+                varying,
+                link,
+                lag,
+                weight,
+                random_effects,
+            )
+            return
         if not isinstance(path_model, PathModel):
             raise ValueError(
                 "path_model is a degradation path model, such as "
@@ -336,7 +360,87 @@ class JointPHFitter(FitterRepr):
             else f"{distribution.name}{plain}Joint{self.survival}"
         )
 
+    def _set_markers(
+        self,
+        distribution: Any,
+        path_models: Mapping,
+        varying: Any,
+        link: Any,
+        lag: float,
+        weight: Any,
+        random_effects: Any,
+    ) -> None:
+        """The fitter of several markers (``path_model`` a dict
+        ``{marker: path model}``)."""
+        from ._multi import (
+            MarkerSet,
+            check_marker_dimension,
+            check_markers,
+            marker_links,
+            marker_random_effects,
+            marker_varying,
+        )
+
+        names, models = check_markers(path_models)
+        self.markers = names
+        self.path_model = MarkerSet(names, models)
+        self.varying = marker_varying(names, models, varying)
+        check_marker_dimension(self.varying)
+        self.link = marker_links(names, link)
+        self.lag = check_lag(lag)
+        self.weight = check_weight(weight)
+        followed = [k for _, k in self.link]
+        if self.weight is not None and "cumulative" not in followed:
+            raise ValueError(
+                "'weight' weights the accumulated exposure, the area "
+                "under a marker's path that the 'cumulative' link "
+                "follows, and no marker here has that link. Add it "
+                "(link={marker: ['value', 'cumulative']}), or leave "
+                "weight out."
+            )
+        for name, model in zip(names, models):
+            own = tuple(k for m, k in self.link if m == name)
+            reasons = cannot_follow(model, own)
+            if reasons:
+                refused = [k for k in own if cannot_follow(model, (k,))]
+                said = "; ".join(reasons)
+                if "slope" in refused:
+                    said += " " + _infinite_near_zero(self.survival)
+                raise ValueError(
+                    f"Marker {name!r}: "
+                    + said
+                    + ". "
+                    + _instead(model, self.survival, refused)
+                )
+            _check_lag_at_zero(model, own, self.lag)
+        self.dist = distribution
+        if random_effects is None:
+            random_effects = "full"
+        self.random_effects = check_random_effects(
+            marker_random_effects(random_effects, self.varying), self.varying
+        )
+        self.name = f"{distribution.name}Joint{self.survival}"
+
     def _repr_details(self) -> list[str]:
+        if self.markers is not None:
+            out = [f"{self.dist.name} baseline"]
+            for name, model in zip(self.markers, self.path_model.models):
+                out.append(
+                    "{}: {} path, {}".format(
+                        name, model.name, path_formula(model)
+                    )
+                )
+            out.append("varying: " + ", ".join(self.varying))
+            if self.random_effects != "full":
+                out.append(
+                    "random effects: " + structure_words(self.random_effects)
+                )
+            out.append("link: " + ", ".join(f"{m} {k}" for m, k in self.link))
+            if self.lag > 0:
+                out.append(f"lag: {self.lag:g}")
+            if self.weight is not None:
+                out.append("weight: {} {:g}".format(*self.weight))
+            return out
         names = list(self.path_model.parameter_names)
         out = [
             f"{self.dist.name} baseline",
@@ -620,6 +724,26 @@ class JointPHFitter(FitterRepr):
             "approximate estimate.",
         )
         integration = check_integration(integration, len(self.varying))
+        if self.markers is not None:
+            return self._fit_markers(
+                x,
+                c,
+                n,
+                t,
+                Z,
+                markers,
+                tl,
+                tr,
+                marker_reference,
+                path_covariates,
+                hazard_covariates,
+                i,
+                marker_unit,
+                how,
+                integration,
+                e,
+                shared,
+            )
         reference = None
         if marker_reference is not None:
             try:
@@ -662,6 +786,93 @@ class JointPHFitter(FitterRepr):
             _check_shared(shared, causes, parts[1], self.link),
         )
         model.marker_unit = marker_unit
+        return model
+
+    def _fit_markers(
+        self,
+        x: Any,
+        c: Any,
+        n: Any,
+        t: Any,
+        Z: Any,
+        markers: Any,
+        tl: Any,
+        tr: Any,
+        marker_reference: Any,
+        path_covariates: Any,
+        hazard_covariates: Any,
+        i: Any,
+        marker_unit: Any,
+        how: str,
+        integration: str,
+        e: Any,
+        shared: Any,
+    ) -> JointModel:
+        """:meth:`fit` of several markers."""
+        from ._multi import checked_readings, rows_by_marker
+
+        names = list(self.markers or [])
+        if e is not None or shared is not None:
+            raise ValueError(
+                "A joint model of several markers takes no failure modes "
+                "(e, shared) yet: fit one marker with its modes, or the "
+                "markers together without them."
+            )
+        valued = [m for m, k in self.link if k == "value"]
+        references = {}
+        if marker_reference is not None:
+            if not isinstance(marker_reference, Mapping):
+                raise ValueError(
+                    "With several markers 'marker_reference' is a dict "
+                    "{marker: value}, the value of each marker whose value "
+                    f"the hazard follows ({valued!r}) at which alpha is "
+                    f"reported; got {marker_reference!r}."
+                )
+            for name, value in marker_reference.items():
+                if name not in valued:
+                    raise ValueError(
+                        f"'marker_reference' names {name!r}; it takes the "
+                        "markers whose value the hazard follows, "
+                        f"{valued!r}."
+                    )
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    number = np.nan
+                if np.ndim(value) or not np.isfinite(number):
+                    raise ValueError(
+                        f"'marker_reference'[{name!r}] is one finite "
+                        f"number; got {value!r}."
+                    )
+                references[name] = number
+        units = _marker_units(marker_unit, names, markers, x)
+        rows = rows_by_marker(markers_by_row(markers, i, x, names), names)
+        records, counts, covariates = _records(
+            x, c, n, t, tl, tr, Z, [{}] * len(rows)
+        )
+        readings = [
+            checked_readings(r, rows[int(r.id)], names) for r in records
+        ]
+        parts = covariate_parts(
+            list(self.path_model.parameter_names),
+            covariates,
+            path_covariates,
+            hazard_covariates,
+        )
+        model = _fit(
+            self,
+            records,
+            counts,
+            covariates,
+            references,
+            parts,
+            integration,
+            how,
+            None,
+            (),
+            readings=readings,
+        )
+        model.marker_unit = units
         return model
 
     def compare_links(
@@ -781,6 +992,13 @@ class JointPHFitter(FitterRepr):
                 "whole model): leave out how=, or compare two-stage fits "
                 "by the accuracy of their predictions "
                 "(surpyval.metrics.score_predictions)."
+            )
+        if self.markers is not None:
+            raise ValueError(
+                "compare_links compares the links of one marker; this fitter "
+                "has several. Fit the links you have in mind (link={marker: "
+                "...}) and compare them by aic(), or test a marker's links "
+                "against fewer by likelihood_ratio_test."
             )
         return compare_links(self, args, kwargs, links=links, metric=metric)
 
@@ -953,8 +1171,18 @@ def JointPH(
     ----------
     distribution : ParametricFitter
         ``surpyval.Weibull``.
-    path_model : PathModel, optional
-        The marker's path. Default ``LinearPath``.
+    path_model : PathModel or dict, optional
+        The marker's path. Default ``LinearPath``. A dict ``{name: path
+        model}`` is a model of several markers read on each item, each
+        with its own path, varying parameters, noise and effects, their
+        varying parameters correlated across the markers; ``varying``,
+        ``link`` and ``random_effects`` may then be given by marker (a
+        dict, or names ``"<marker>.<parameter>"``), ``random_effects``
+        may be ``"by_marker"`` (correlated within each marker only), and
+        the fit takes each row's readings as ``{name: {age: value}}`` (a
+        ``Measurements`` of named measurements). Up to eight varying
+        parameters over the markers: see "Several markers on one item"
+        in the joint models' guide.
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
@@ -1046,6 +1274,17 @@ def JointPH(
     >>> JointPH(Weibull, link="cumulative", weight=("exponential", 0.5))
     ... # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., weight: exponential 0.5)
+
+    Two markers, the hazard following the value of each:
+
+    >>> from surpyval.degradation import LinearPath
+    >>> two = JointPH(
+    ...     Weibull, {"vibration": LinearPath, "temperature": LinearPath}
+    ... )
+    >>> two.varying
+    ('vibration.a', 'vibration.b', 'temperature.a', 'temperature.b')
+    >>> two.link
+    (('vibration', 'value'), ('temperature', 'value'))
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
@@ -1193,6 +1432,50 @@ def _records(
     if not records:
         raise ValueError("No items are left to fit.")
     return records, np.array(counts, dtype=float), names
+
+
+def _marker_units(given: Any, names: list, markers: Any, x: Any) -> Any:
+    """The unit each of several markers is read in, ``{marker: unit}``
+    (``None`` where no marker has one): ``given`` (a dict) and the
+    readings' own units (a Measurements, given or held by the data),
+    which must agree."""
+    from surpyval.utils.measurements import Measurements
+    from surpyval.utils.surpyval_data import SurpyvalData
+    from surpyval.utils.units import same_unit
+
+    if isinstance(given, str) and len(names) == 1:
+        given = {names[0]: given}
+    if given is not None and not isinstance(given, Mapping):
+        raise ValueError(
+            "With several markers 'marker_unit' is a dict {marker: unit}, "
+            f"the unit each is read in; got {given!r}."
+        )
+    out: dict = {name: None for name in names}
+    for name, unit in (given or {}).items():
+        if name not in names:
+            raise ValueError(
+                f"'marker_unit' names {name!r}, which is not a marker; the "
+                f"markers are {names!r}."
+            )
+        out[name] = normalise_unit(unit)
+    held = None
+    if isinstance(markers, Measurements):
+        held = markers
+    elif isinstance(x, SurpyvalData) and x.m is not None:
+        held = x.m
+    if held is not None:
+        for name, unit in held.units.items():
+            if name not in out or unit is None:
+                continue
+            if out[name] is None:
+                out[name] = unit
+            elif not same_unit(out[name], unit):
+                raise ValueError(
+                    f"Marker {name!r}'s readings are in {unit!r}, but "
+                    f"marker_unit gives {out[name]!r}: a model is in the "
+                    "unit of its readings (no conversion is made)."
+                )
+    return out if any(v is not None for v in out.values()) else None
 
 
 def _labels(e: Any) -> npt.NDArray:
@@ -1420,6 +1703,135 @@ def _arrays(
     return T, d, L, Z, ages, values, U, Rt
 
 
+def _marker_arrays(
+    fitter: JointPHFitter,
+    records: list,
+    readings: list,
+    counts: Any,
+    p: int,
+) -> tuple:
+    """``(T, d, L, Z, U, Rt)`` of the records, and the checks of what a
+    model of several markers needs: each marker's readings inside its
+    path's domain, and read at as many ages as its path has parameters
+    on enough items to see how they differ."""
+    T, d, U, L, Rt = _lifetimes(records)
+    point = ~np.isfinite(U)
+    if np.any(L < 0) or np.any(T[point] <= 0) or np.any(U[~point] <= 0):
+        raise ValueError(
+            "The joint model's ages start at 0 (a Weibull baseline): every "
+            "item fails or is censored after 0 and comes under observation "
+            "at 0 or later (left_truncation)."
+        )
+    Z = (
+        np.array([r.covariates for r in records], dtype=float).reshape(-1, p)
+        if p
+        else np.zeros((len(records), 0))
+    )
+    if not (d.any() or np.isfinite(U).any()):
+        raise ValueError(
+            "The joint model needs at least one failure (observed, or "
+            "found failed: left or interval censored): every item is still "
+            "running."
+        )
+    for k, (name, model) in enumerate(
+        zip(fitter.markers or [], fitter.path_model.models)
+    ):
+        ages = [item[k][0] for item in readings]
+        for item in readings:
+            a, v = item[k]
+            if len(a):
+                try:
+                    model.check_data(a, v)
+                except ValueError as error:
+                    raise ValueError(f"Marker {name!r}: {error}") from None
+        P = len(model.parameter_names)
+        q = sum(1 for v in fitter.varying if v.split(".", 1)[0] == name)
+        fitted = sum(1 for a in ages if len(np.unique(a)) >= P)
+        if fitted < q + 2:
+            raise ValueError(
+                f"The joint model needs readings of marker {name!r} at {P} "
+                f"or more ages (its {model.name} path's parameters) on at "
+                f"least {q + 2} items, to see how their paths differ; "
+                f"{fitted} item(s) have them."
+            )
+    return T, d, L, Z, U, Rt
+
+
+def _marker_refs(
+    markers: list, links: tuple, centres: list, zbar: Any, reference: dict
+) -> tuple:
+    """``refs`` (:func:`~.joint_model.reported_params`) of several
+    markers: the centre and the reference of each link's term (a value's
+    its marker's, 0 for a slope or an area)."""
+    c = np.array(
+        [centres[markers.index(m)] if k == "value" else 0.0 for m, k in links]
+    )
+    r = np.array(
+        [reference[m] if k == "value" else 0.0 for m, k in links],
+        dtype=float,
+    )
+    return (c, zbar, r)
+
+
+def _with_placed_paths(fitter: JointPHFitter, readings: list) -> Any:
+    """:func:`_with_placed_path` for several markers: each marker's path
+    of joined pieces placed from its own readings' ages."""
+    from ._multi import MarkerSet
+
+    models = []
+    changed = False
+    for k, model in enumerate(fitter.path_model.models):
+        base = getattr(model, "base", model)
+        if not hasattr(base, "placed"):
+            models.append(model)
+            continue
+        ages = [list(item[k][0]) for item in readings]
+        pooled = np.array([a for item in ages for a in item], dtype=float)
+        placed = base.placed(pooled)
+        placed.check_readings([len(item) for item in ages])
+        name = fitter.path_model.names[k]
+        own = [
+            v.split(".", 1)[1]
+            for v in fitter.varying
+            if v.split(".", 1)[0] == name
+        ]
+        placed.check_varying(ages, tuple(own))
+        if placed is not base:
+            changed = True
+            model = (
+                placed
+                if base is model
+                else type(model)(placed, dict(model.links))
+            )
+        models.append(model)
+    if not changed:
+        return fitter
+    out = copy.copy(fitter)
+    out.path_model = MarkerSet(fitter.path_model.names, models)
+    return out
+
+
+def _check_markers(
+    fitter: JointPHFitter, mu: npt.NDArray, found_by: str
+) -> None:
+    """:func:`_check_power` and :func:`_check_start_at_zero` of the path,
+    or of each marker's."""
+    if fitter.markers is None:
+        _check_power(fitter, mu, found_by)
+        _check_start_at_zero(fitter, mu)
+        return
+    mu = np.asarray(mu, dtype=float)
+    for name, model, piece in zip(
+        fitter.markers, fitter.path_model.models, fitter.path_model.slices
+    ):
+        one = copy.copy(fitter)
+        one.markers = None
+        one.path_model = model
+        one.link = tuple(k for m, k in fitter.link if m == name)
+        _check_power(one, mu[piece], found_by)
+        _check_start_at_zero(one, mu[piece])
+
+
 def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """The covariate columns the data cannot determine: constant (the
     path means and the Weibull scale are intercepts), or combinations of
@@ -1462,20 +1874,29 @@ def _fit(
     records: list,
     counts: npt.NDArray,
     names: list,
-    reference: float | None,
+    reference: Any,
     parts: tuple,
     integration: str = "grid",
     how: str = "MLE",
     causes: tuple | None = None,
     shared: tuple = (),
+    readings: Any = None,
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each), by ``how``
     (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
     enter which part
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
     ``causes`` is :func:`_causes`' (the failure modes and each record's)
-    and ``shared`` the survival parameters they have in common."""
-    fitter = _with_placed_path(fitter, records)
+    and ``shared`` the survival parameters they have in common. With
+    several markers, ``readings`` holds each record's readings by marker
+    (``_multi.checked_readings``) and ``reference`` is ``{marker:
+    value}``."""
+    several = fitter.markers is not None
+    markers: list = list(fitter.markers or [])
+    if several:
+        fitter = _with_placed_paths(fitter, readings)
+    else:
+        fitter = _with_placed_path(fitter, records)
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts
@@ -1491,6 +1912,7 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -1502,9 +1924,21 @@ def _fit(
             f"Covariates named {clash!r} would share a parameter's name in "
             "the joint model; rename them."
         )
-    T, d, L, Z_all, ages, values, U, Rt = _arrays(
-        fitter, records, counts, p_all
-    )
+    channels = None
+    if several:
+        from ._multi import joined, marker_centres
+
+        T, d, L, Z_all, U, Rt = _marker_arrays(
+            fitter, records, readings, counts, p_all
+        )
+        each = [joined(item) for item in readings]
+        ages = [a for a, _, _ in each]
+        values = [v for _, v, _ in each]
+        channels = [ch for _, _, ch in each]
+    else:
+        T, d, L, Z_all, ages, values, U, Rt = _arrays(
+            fitter, records, counts, p_all
+        )
     aliased = _aliased(Z_all, counts)
     if aliased.size:
         warn_aliased(
@@ -1518,10 +1952,21 @@ def _fit(
     read_w = np.concatenate(
         [np.full(len(v), w) for v, w in zip(values, counts)]
     )
-    centre = float(np.average(np.concatenate(values), weights=read_w))
     zbar = np.average(Z, axis=0, weights=counts) if p else np.zeros(0)
-    reference = centre if reference is None else reference
-    refs = (centre, zbar, reference)
+    if several:
+        centres = marker_centres(readings, counts, len(markers))
+        given: dict = dict(reference or {})
+        reference = {
+            name: given.get(name, centres[k])
+            for k, name in enumerate(markers)
+            if (name, "value") in fitter.link
+        }
+        refs = _marker_refs(markers, fitter.link, centres, zbar, reference)
+        centre: Any = 0.0
+    else:
+        centre = float(np.average(np.concatenate(values), weights=read_w))
+        reference = centre if reference is None else reference
+        refs = (centre, zbar, reference)
     arrays = JointArrays.build(
         counts,
         T,
@@ -1533,6 +1978,8 @@ def _fit(
         U=U,
         Rt=Rt,
         e=None if causes is None else causes[1],
+        channels=channels,
+        n_markers=len(markers) if several else 1,
     )
     if integration == "laplace" and how == "MLE":
         _check_laplace(arrays, len(fitter.varying))
@@ -1566,18 +2013,25 @@ def _fit(
         fitter.survival,
         block_labels(fitter.random_effects, fitter.varying),
         **cause_layout,
+        n_markers=len(markers) if several else 1,
     )
-    model = Model(
-        layout,
-        PathFunction(path_model, fitter.link, fitter.lag, fitter.weight),
-        centre,
-        integration,
-    )
+    path: Any
+    if several:
+        path = MarkerPaths(
+            path_model, fitter.link, fitter.lag, fitter.weight, centres
+        )
+    else:
+        path = PathFunction(path_model, fitter.link, fitter.lag, fitter.weight)
+    model = Model(layout, path, centre, integration)
     # Starting values: each item's path alone, their spread (or, where
     # given, another link's fit of the same data: compare_links), then
     # the survival part on each item's predicted path
     theta = _given_path_start(fitter._path_start, layout)
     given_start = theta is not None
+    if theta is None and several:
+        from ._multi import marker_part_start
+
+        theta = marker_part_start(model, arrays, readings, Z - zbar, counts)
     if theta is None and layout.q > MAX_VARYING:
         # many parameters an item: the items' own fits are too wild for
         # their mean and covariance to start from
@@ -1585,8 +2039,7 @@ def _fit(
         given_start = True
     if theta is None:
         theta = marker_start(model, ages, values, Z - zbar, counts)
-    _check_power(fitter, theta["mu"], "the readings put")
-    _check_start_at_zero(fitter, theta["mu"])
+    _check_markers(fitter, theta["mu"], "the readings put")
     total = float(np.sum(counts))
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
@@ -1600,11 +2053,18 @@ def _fit(
                 raise
             # the likelihood is not finite at the start from the items'
             # own fits: one more, from the settled start
-            theta = settled_marker_start(model, arrays, ages, values)
+            if several:
+                from ._multi import marker_part_start
+
+                theta = marker_part_start(
+                    model, arrays, readings, Z - zbar, counts, settled=True
+                )
+            else:
+                theta = settled_marker_start(model, arrays, ages, values)
             u, value, cov_u, maximum = _maximise(
                 model, arrays, survival_start(model, arrays, theta)
             )
-        _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
+        _check_markers(fitter, layout.unpack(u)["mu"], "the fit puts")
     estimated = np.asarray(
         reported_params(layout.unpack(u), layout, refs), dtype=float
     )
@@ -1633,6 +2093,7 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
     kept_names = parameter_names(
         path_names,
@@ -1644,6 +2105,7 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -1665,7 +2127,9 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
-    _warn_bends_without_spread(path_model, fitter.varying, out, ages)
+    if not several:
+        _warn_bends_without_spread(path_model, fitter.varying, out, ages)
+    out.markers = None if not several else list(markers)
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
     out.weight = fitter.weight
@@ -1673,8 +2137,14 @@ def _fit(
     out.causes = cause_names
     out.shared = tuple(shared)
     out.n_events_by_cause = by_cause
-    out.marker_reference = float(reference) if "value" in fitter.link else None
-    out._centre = centre
+    if several:
+        out.marker_reference = dict(reference) or None
+        out._centre = list(centres)
+    else:
+        out.marker_reference = (
+            float(reference) if "value" in fitter.link else None
+        )
+        out._centre = centre
     out._zbar = zbar
     if covariance is not None:
         full_cov = np.full((len(full_names),) * 2, np.nan)
@@ -2154,6 +2624,8 @@ def likelihood_parts(model: JointModel, **data: Any) -> tuple:
     factory = JointAFT if model.survival == "AFT" else JointPH
     # (an accelerated model has no accumulated exposure to weight)
     weighted = {} if model.weight is None else {"weight": model.weight}
+    if model.markers is not None:
+        return _marker_likelihood_parts(model, factory, weighted, data)
     fitter = factory(
         model.dist,
         model.path_model,
@@ -2190,6 +2662,63 @@ def likelihood_parts(model: JointModel, **data: Any) -> tuple:
         U=U,
         Rt=Rt,
         e=None if causes is None else causes[1],
+    )
+    layout = model._layout
+    lik = model._likelihood_model()
+    theta = model._theta()
+    u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
+    return lik, arrays, u
+
+
+def _marker_likelihood_parts(
+    model: JointModel, factory: Any, weighted: dict, data: dict
+) -> tuple:
+    """:func:`likelihood_parts` of a model of several markers."""
+    from ._multi import checked_readings, joined, rows_by_marker
+
+    names = list(model.markers or [])
+    links: dict = {name: [] for name in names}
+    for name, link in model.link:
+        links[name].append(link)
+    fitter = factory(
+        model.dist,
+        dict(zip(names, model.path_model.models)),
+        list(model.varying),
+        links,
+        model.lag,
+        **weighted,
+        random_effects=model.random_effects_structure,
+    )
+    rows = rows_by_marker(data["markers"], names)
+    records, counts, _ = _records(
+        data["x"],
+        data.get("c"),
+        data.get("n"),
+        data.get("t"),
+        data.get("tl"),
+        data.get("tr"),
+        data.get("Z"),
+        [{}] * len(rows),
+    )
+    readings = [checked_readings(r, rows[int(r.id)], names) for r in records]
+    p = len(model.feature_names)
+    T, d, L, Z_all, U, Rt = _marker_arrays(
+        fitter, records, readings, counts, p
+    )
+    Z = Z_all[:, model._kept] - model._zbar
+    each = [joined(item) for item in readings]
+    arrays = JointArrays.build(
+        counts,
+        T,
+        d,
+        L,
+        Z,
+        [a for a, _, _ in each],
+        [v for _, v, _ in each],
+        U=U,
+        Rt=Rt,
+        channels=[ch for _, _, ch in each],
+        n_markers=len(names),
     )
     layout = model._layout
     lik = model._likelihood_model()

@@ -1814,6 +1814,162 @@ pumps (100 fleets of 1200), the log-link model's biases fell to +0.4%
 (0.25%), +0.2% (0.5%) and +0.005 (0.0035), and every interval covered the
 truth between 93% and 98% of the time.
 
+.. _joint-several-markers:
+
+Several markers on one item
+---------------------------
+
+**In plain words.** An item is often read in more than one way: a pump's
+vibration *and* its bearing temperature, a patient's bilirubin *and*
+albumin. A joint model of several markers takes them all. Each marker
+follows a path of its own (a line, a curve, a spline), each has its own
+reading noise, and each has its own effect on the risk of failure. The
+items' paths are also allowed to move together: an item whose vibration
+starts high may tend to run hot too. Learning that is what lets one
+marker sharpen what the model knows about another, and it stops a model
+of one marker from crediting it with another's effect. With two
+correlated readings, a model of vibration alone credits vibration with
+part of temperature's effect, and ranks a hot but smooth pump wrongly.
+
+**The model.** Marker :math:`k` of item :math:`i` is read at ages of its
+own,
+
+.. math::
+    y_{ijk} = m_k(t_{ijk}; \theta_{ik}) + \varepsilon_{ijk}, \qquad
+    \varepsilon_{ijk} \sim N(0, \sigma_k^2),
+
+the varying parameters of every marker are one normal vector with one
+covariance :math:`D` across the markers (estimated through its Cholesky
+factor, so it is always a valid covariance), and the hazard follows each
+marker through its own links,
+
+.. math::
+    h_i(t) = h_0(t) \exp\Big(\gamma' z_i + \sum_k \sum_l \zeta_{kl}\,
+    f_l\big(m_k(\cdot; \theta_{ik})\big)(t)\Big),
+
+:math:`f_l` the marker's current value (less its reference), slope or
+area, as for one marker. Given an item's path parameters the readings of
+every marker and its lifetime are independent, so its likelihood is the
+one-marker integral over all of them together.
+
+**Fitting.** ``path_model`` is a dict, one path model a marker; ``link``,
+``varying`` and ``random_effects`` may be given by marker:
+
+.. code-block:: python
+
+    from surpyval import JointPH, Weibull
+    from surpyval.degradation import LinearPath, QuadraticPath
+
+    fitter = JointPH(
+        Weibull,
+        {"vibration": LinearPath, "temperature": QuadraticPath},
+        varying={"temperature": ["a", "b"]},  # its curvature common
+        link={"vibration": "value", "temperature": ["value", "slope"]},
+    )
+    model = fitter.fit(data)  # a SurpyvalData whose m holds both
+
+- ``link``: one link or a list for every marker, or a dict by marker. A
+  marker given ``[]`` (or left out of the dict) is read and modelled, and
+  not in the hazard: its readings still inform the others through the
+  correlations.
+- ``varying``: each marker's default (every parameter; a spline's level
+  and rate), a dict by marker, or a list of names ``"<marker>.<name>"``.
+- ``random_effects``: ``"full"`` (the default: every pair of varying
+  parameters correlated, across the markers too), ``"by_marker"`` (each
+  marker's correlated with each other and with none of another
+  marker's), ``"diagonal"``, or blocks of ``"<marker>.<name>"`` names.
+- ``marker_reference`` and ``marker_unit`` are dicts by marker.
+
+The parameters are named by marker: ``vibration.a``,
+``sd_vibration.a``, ``corr_vibration.a_temperature.a``,
+``vibration.sd_noise``, ``vibration.marker_effect``; ``alpha`` and
+``beta`` are the baseline's at every followed marker's reference (each
+marker's mean reading unless given). A model of one marker given as a
+dict is the single-marker model, with these names.
+
+**The data.** Markers are usually read at different ages, so the
+readings are in long form, one per reading: the unit, the age, the
+marker's name and the value. That is a :class:`~surpyval.Measurements` of
+named measurements (``Measurements.from_dataframe(readings, i_col=...,
+x_col=..., m_col=..., m_name_col=...)``, or ``{marker: {unit: {age:
+value}}}``), held by the data as ``data.m`` or given as ``m=`` with each
+row's unit as ``i=``; with arrays, ``markers=`` is one ``{marker: {age:
+value}}`` per row. Each marker's readings are checked against the item's
+observation as one marker's are. A long form needs no value for a marker
+not read at a visit and no padding; a wide table (a column a marker)
+would force the markers onto one timetable. Measurements the model does
+not name are not used, and a single-marker fitter refuses several,
+saying how to keep one or fit them together.
+
+**How many parameters can vary.** The integral over an item's varying
+parameters is over all the markers' together: two markers each with a
+level and a rate is four. Up to five in all it is on the adaptive grid
+(7 points a dimension: 2,401 nodes an item for four, 16,807 for five);
+beyond five it is Laplace's approximation (``integration="laplace"``),
+up to eight in all (``MAX_MARKER_VARYING``). More is refused, saying to
+name fewer in ``varying``: an item's integral costs ``q^2 + q + 1``
+evaluations by Laplace's approximation and the covariance has
+``q (q + 1) / 2`` parameters (36 for eight), too many to estimate from
+a usual fleet. ``random_effects="by_marker"`` or fewer varying
+parameters is the remedy for a fleet that cannot tell the correlations
+apart. A four-dimensional fit takes about a minute for 150 items read
+about 30 times each, and twenty minutes for the PBC trial below (312
+patients); ``integration="laplace"`` is faster at some cost in accuracy
+where items have few readings (:ref:`Laplace's approximation
+<joint-laplace>`).
+
+**Bounds and tests.** Each association has a Wald interval and test in
+``summary()``. A likelihood-ratio test of a marker's effect is the fit
+without it (``link={"temperature": []}``) against the fit with it,
+``model.likelihood_ratio_test(nested)``; the test of the correlations
+across the markers is ``random_effects="by_marker"`` against
+``"full"``. Likelihood-ratio and bootstrap intervals are not offered for
+the joint models, of one marker or several.
+
+**Prediction.** ``sf``, ``ff``, ``qf``, ``mean``, ``cb`` and ``predict``
+take every marker's readings so far, ``markers={"vibration": {...},
+"temperature": {...}}``; a marker with none so far may be left out. The
+dynamic prediction's ``marker(x, name)`` and ``marker_interval(x,
+name=...)`` give one marker's path given all of them. An
+``ItemLifetime`` holds one marker's readings, so ``sf(x, item)`` is
+refused for a model of several.
+
+**Checked by.**
+
+- A model of one marker given as a dict equals the single-marker fit
+  to 2e-15 (parameters, standard errors and log-likelihood).
+- Two markers, the second not in the hazard and uncorrelated with the
+  first (``random_effects="by_marker"``), equal the first marker's joint
+  fit (to 1e-9) plus a linear mixed model of the second: R's
+  ``nlme::lme(..., method = "ML")`` gives the same fixed effects, spread
+  and noise to 3e-10 and the same log-likelihood to 1e-9
+  (``scripts/reference/reference_r_joint_markers.R``).
+- On the Mayo PBC trial (``pbc2``: 312 patients, 140 deaths; log
+  bilirubin and albumin, each a line in years with a level and a rate of
+  each patient's own, the four correlated; the hazard in both current
+  values), against R's multivariate joint models
+  (``scripts/studies/joint_recovery/markers_pbc.py`` and ``.R``). Neither
+  R package has the Weibull baseline: ``JMbayes2`` is Bayesian (posterior
+  means, a spline baseline) and ``joineRML`` fits a Cox baseline by Monte
+  Carlo EM, so they agree within their standard errors, not to digits.
+  Bilirubin's effect (per unit of log bilirubin) 0.950 (se 0.119),
+  against 0.947 (posterior sd 0.149) and 0.909 (0.124); albumin's (per
+  g/dl) -2.70 (0.35), against -2.85 (0.39) and -2.77 (0.34). The paths
+  agree to the second or third figure (bilirubin's level 0.490, 0.491,
+  0.484; its rate 0.195, 0.192, 0.193 a year; albumin's 3.548, 3.548,
+  3.551 and -0.111, -0.111, -0.111), as do the noise sds (0.347, 0.347,
+  0.347; 0.319, 0.320, 0.319), the spreads (within 0.004 of each other
+  but bilirubin's rate, 0.188 against 0.185 and 0.187) and the
+  correlations across the markers (the levels -0.545, against -0.526
+  and -0.544; the rates -0.836, against -0.788 and -0.838). The
+  SurPyval fit reached a verified maximum on the full grid in 20
+  minutes.
+
+Not yet: failure modes with several markers (``e=``), ``compare_links``,
+a shared health index (one hidden condition behind every reading), and
+a lag or weight that differs between markers (one ``lag`` and one
+``weight`` apply to every marker).
+
 Prediction: survival given the readings so far
 ----------------------------------------------
 
@@ -2278,6 +2434,10 @@ The joint model (#891) is the standard one. It has:
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``; every pair correlated, none, or blocks of them,
   ``random_effects=``) and the rest common;
+- or several markers (``path_model`` a dict), each with its own path,
+  noise and effects in the hazard, their varying parameters correlated
+  across the markers (up to eight in all; see :ref:`several markers
+  <joint-several-markers>`);
 - a Weibull proportional hazards survival part (``JointPH(Weibull,
   path_model)``; ``WeibullJointPH`` is the line; other baselines are
   refused) in the path's current value, its slope, the area under it, or
@@ -2306,7 +2466,8 @@ The joint model (#891) is the standard one. It has:
 
 Not yet (see #891's roadmap): other baselines (a
 log-normal or log-logistic one for the accelerated part, whose risk can
-rise and then fall, and spline baselines); several markers. The
+rise and then fall, and spline baselines); several markers with failure modes, and a shared
+health index (see :ref:`several markers <joint-several-markers>`). The
 accelerated part has not yet been compared with R's ``JM``
 (``method = "weibull-AFT-aGH"``, the same model) on reference data, nor
 had its prediction band put through a calibration study. The two-stage fit

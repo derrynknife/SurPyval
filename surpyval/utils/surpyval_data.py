@@ -3247,7 +3247,17 @@ def accepts_surpyval_data(method: F) -> F:
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        markers = _markers_taken(data, names)
+        markers = _markers_taken(
+            data,
+            names,
+            bool(
+                getattr(
+                    bound.arguments.get(params[0]) if params else None,
+                    "takes_several_markers",
+                    False,
+                )
+            ),
+        )
         if data.time_varying_covariates is not None:
             if data.e is not None and "e" not in names:
                 raise ValueError(
@@ -3537,21 +3547,47 @@ def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
     ]
 
 
-def _markers_taken(data: SurpyvalData, names: set) -> dict:
+def _markers_taken(
+    data: SurpyvalData, names: set, takes_several: bool = False
+) -> dict:
     """The data's marker readings as a fit's ``markers`` argument (one
     ``{age: value}`` per row), ``{}`` where it has none; refused for a fit
-    that takes none."""
+    that takes none. For a fit that ``takes_several`` markers, each row's
+    ``{name: {age: value}}`` of every named measurement."""
     if data.m is None:
         return {}
     if "markers" not in names:
         raise ValueError(_NO_MARKERS)
+    if takes_several:
+        from surpyval.univariate.joint._multi import ByMarker
+
+        if units_with_several_rows(data):
+            raise ValueError(
+                "A joint model takes one row per unit, with the unit's "
+                "readings; some units have several rows."
+            )
+        keys = data.ids if data.ids is not None else range(len(data.x))
+        store = {name: data.m[name] for name in data.m.names}
+        return {
+            "markers": [
+                ByMarker(
+                    {
+                        str(name): dict(one.get(key, {}))
+                        for name, one in store.items()
+                    }
+                )
+                for key in keys
+            ]
+        }
     if len(data.m.names) > 1:
         raise ValueError(
             "This fit takes one measurement as its markers, and the "
             f"SurpyvalData holds {len(data.m.names)} ("
             + ", ".join(map(str, data.m.names))
             + "): keep one with data.with_measurement(name), or leave "
-            'them out with data.without("m").'
+            'them out with data.without("m") (or fit them together, a '
+            "joint model of several markers: JointPH(Weibull, {name: "
+            "path_model, ...}))."
         )
     several = units_with_several_rows(data)
     if several:

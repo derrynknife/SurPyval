@@ -512,6 +512,36 @@ def joint_data():
     }
 
 
+def joint_markers_data():
+    """:func:`joint_data`'s items read with a second marker: a
+    temperature with a level of each item's own (from quantiles in an
+    order tied to the vibration's level, so the two are correlated across
+    the items) and a common rate, read every 90 days, its noise from a
+    cosine; the lifetimes are :func:`joint_data`'s (the hazard follows
+    the vibration only). Each row's readings are ``{marker: {age:
+    value}}``."""
+    from scipy.special import ndtri
+
+    d = joint_data()
+    size = len(d["x"])
+    u = (scramble(size) + 0.5) / size
+    w = np.argsort(np.argsort(u + 0.3 * np.sin(5.1 * np.arange(size)))) + 0.5
+    level = 60.0 + 4.0 * ndtri(w / size)
+    markers = []
+    for k, (end, vibration) in enumerate(zip(d["x"], d["markers"])):
+        ages = np.arange(0.0, end, 90.0)
+        y = level[k] + 0.01 * ages + 1.5 * np.cos(0.9 * k + 0.4 * ages)
+        markers.append(
+            {
+                "vibration": dict(vibration),
+                "temperature": dict(
+                    zip(ages.tolist(), np.round(y, 3).tolist())
+                ),
+            }
+        )
+    return dict(d, markers=markers)
+
+
 def joint_causes_data():
     """80 items of a joint model with two failure modes: the marker and
     covariate of :func:`joint_data`'s items, each failing by the first of
@@ -570,6 +600,15 @@ def joint_causes_data():
 X_JOINT = np.array([100.0, 300.0, 450.0, 600.0, 900.0, 1200.0])
 JOINT_ITEM = {
     "markers": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6, 360.0: 3.9},
+    "given": 400.0,
+}
+
+
+JOINT_MARKERS_ITEM = {
+    "markers": {
+        "vibration": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6, 360.0: 3.9},
+        "temperature": {0.0: 61.0, 180.0: 63.0, 360.0: 64.5},
+    },
     "given": 400.0,
 }
 

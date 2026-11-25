@@ -70,6 +70,9 @@ def _ages_scaled(value, k):
     from collections.abc import Mapping
 
     if isinstance(value, Mapping):
+        if value and all(isinstance(v, Mapping) for v in value.values()):
+            # several markers' readings, {marker: {age: value}}
+            return {name: _ages_scaled(v, k) for name, v in value.items()}
         return {age * k: reading for age, reading in value.items()}
     if np.ndim(value) and len(value) and isinstance(value[0], Mapping):
         return [_ages_scaled(v, k) for v in value]

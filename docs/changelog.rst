@@ -125,6 +125,32 @@ v0.30 (unreleased)
   truncated, and AFT on ``sex``) to 1e-6 in log-likelihood and a
   hundredth of a standard error in the estimates. See
   :doc:`univariate/generalized_gamma`.
+- **Joint models of several markers.** ``JointPH(Weibull, {"vibration":
+  LinearPath, "temperature": QuadraticPath})`` (and ``JointAFT``) fits
+  two or more readings per item together with its lifetime: each marker
+  with its own path, varying parameters and noise, each with its own
+  effect (or effects: ``link`` by marker) on the hazard, and the items'
+  varying parameters correlated across the markers (one covariance,
+  ``random_effects="full"`` by default; ``"by_marker"`` for none across
+  them). The readings are in long form, a ``Measurements`` of named
+  measurements (``data.m``, or ``m=`` with ``i=``), or ``markers=[{name:
+  {age: value}}, ...]`` with arrays; markers may be read at different
+  ages. Parameters are named by marker (``vibration.a``,
+  ``corr_vibration.a_temperature.a``, ``vibration.sd_noise``,
+  ``vibration.marker_effect``); ``summary()``, the printout, Wald bounds,
+  ``sf``/``ff``/``qf``/``mean``/``cb``, ``predict`` (given every marker's
+  readings; ``marker(x, name)``), ``to_dict``/``from_dict`` and the
+  likelihood-ratio test of a marker's effect or of the cross-correlations
+  work as for one marker. Up to five varying parameters in all on the
+  grid, Laplace's approximation beyond, up to eight (more is refused).
+  Checked: a one-marker dict equals ``WeibullJointPH`` to 2e-15; an
+  unlinked, uncorrelated second marker equals ``nlme::lme(method =
+  "ML")`` (3e-10); on PBC (bilirubin and albumin) the associations agree
+  with ``JMbayes2`` and ``joineRML`` within their standard errors. Not
+  yet: failure modes with several markers,
+  ``compare_links``, a lag or weight per marker. A single-marker fit
+  given several named measurements still refuses them, now saying how to
+  fit them together. No number of a one-marker fit changes.
 
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a
@@ -436,6 +462,14 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A joint model's prediction far beyond the data.** ``sf``, ``qf`` and
+  ``predict`` of a joint model whose hazard grows without bound whatever
+  the item's path (a common rate, say: ``varying=("a",)``) raised
+  ``LinAlgError: SVD did not converge`` at an age where the cumulative
+  hazard overflows, so ``qf`` failed whenever its search reached one.
+  The survival there is now 0 (its hazard ``nan``); every finite answer
+  is unchanged.
 
 - **A unit watched with no failure counts as exposure when the data has
   gaps.** A recurrent fit given observation windows (``windows=``, or a
