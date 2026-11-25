@@ -1029,7 +1029,11 @@ forecasts.
 Choosing the knots: more knots follow more turns and need more readings.
 A spline with more parameters than the items' median number of readings
 is refused, saying how many knots the readings support; compare ``df``
-by ``aic()``. Beyond the last knot the curve is extended as a straight
+by ``aic()``. On the fleet above, ``SplinePath.natural(df=3)`` places
+its knots at 210 and 420 days (the readings stop at failure, so their
+ages crowd early) and fits as well as the knot at the year (AIC 3672.9
+against 3668.6), its mean curve within 0.2 mm/s of the truth at every
+age read; where a turn is known, a knot there needs fewer parameters. Beyond the last knot the curve is extended as a straight
 line, so a prediction far past the readings rests on the last piece's
 slope: place the upper boundary where the readings end (the default).
 Every link works on a spline: the slope and the area under it

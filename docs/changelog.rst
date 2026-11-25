@@ -201,7 +201,14 @@ v0.30 (unreleased)
   the number of knots the readings support. Saved models keep the knots
   (``"path_model"`` is then a dictionary, stamped schema 6, which older
   releases refuse rather than misread). ``path="best"`` does not try a
-  spline. See "A reading that bends" in :doc:`Joint Models` and "A path
+  spline. A joint fit whose bends are common starts from one least
+  squares fit of every item's readings together (the bends shared, each
+  item's level and rate its own), not the mean of each item's own
+  spline: an item that fails before a knot cannot tell that knot's bend,
+  and on a fleet whose readings stop at failure ``natural(df=3)`` had
+  stalled, unverified, far from the readings (AIC 8407 against 3673 now,
+  verified, in a tenth of the time). The spline's basis is the shared
+  one of ``surpyval.utils.splines``. See "A reading that bends" in :doc:`Joint Models` and "A path
   with no formula" in :doc:`Degradation Modelling with SurPyval`.
 
 **Fixed.**

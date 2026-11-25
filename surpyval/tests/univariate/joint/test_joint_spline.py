@@ -289,6 +289,67 @@ def test_a_knee_fleet_is_recovered_where_a_line_is_not():
     assert spline.aic() < line.aic() - 10
 
 
+def _docs_knee_fleet():
+    """The knee fleet of "A reading that bends" in docs/Joint Models.rst
+    (150 pumps, seed 452; each pump's level and its climb after 365 days
+    its own, the readings stopping at failure)."""
+    rng = np.random.default_rng(452)
+
+    def knee(k):
+        level, climb = rng.normal(3.0, 0.5), rng.normal(0.006, 0.001)
+        t = np.linspace(0, 6000, 30001)
+        m = level + climb * np.maximum(t - 365.0, 0.0)
+        h = (2 / 800) * (t / 800) * np.exp(0.9 * (m - 4.0))
+        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+        life = np.interp(rng.exponential(), H, t)
+        end = min(life, 730.0)
+        ages = np.arange(0.0, end, 30.0)
+        y = level + climb * np.maximum(ages - 365.0, 0.0)
+        y = y + rng.normal(0, 0.3, ages.size)
+        outcome = "observed" if life <= 730 else "right_censored"
+        return ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, y)))
+
+    return SurpyvalData.from_items([knee(k) for k in range(150)])
+
+
+@pytest.mark.calibration
+def test_natural_df3_reaches_its_maximum_on_the_docs_knee_fleet():
+    """``SplinePath.natural(df=3)`` on the docs' knee fleet (knots at 210
+    and 420 days, the reading ages skewed early). Started from the mean
+    of each pump's own spline, the fit stalled far from the readings
+    (unverified in 214 s: level 4.53, s1 42.9, s2 -71.2, noise sd 0.68
+    against 0.31, the level-rate correlation at 1, AIC 8407 against
+    3669 for the knot at 365): a pump that fails before 420 days has no
+    reading of ``s2``, and its own fit of ``s1`` from a few readings is
+    wild. The start now fits the common bends to every pump's readings
+    together: verified in about 25 s, AIC within 5 of the hand-placed
+    knot's, and the fleet's mean curve within 0.2 of the truth's at
+    every age read: 3.02, 2.95, 3.16, 3.46, 4.33, 5.26 against 3, 3,
+    3, 3.51, 4.41, 5.19 at 0, 180, 365, 450, 600 and 730 days (a smooth
+    curve rounds the sharp turn at 365 days, as the hand-placed knot's
+    does: 3.16 there too)."""
+    data = _docs_knee_fleet()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df3 = JointPH(
+            Weibull, SplinePath.natural(df=3), varying=("level", "rate")
+        ).fit(data, marker_reference=4.0)
+        knee = JointPH(Weibull, KNEE, varying=("level", "rate")).fit(
+            data, marker_reference=4.0
+        )
+    assert df3.path_model.knots == (210.0, 420.0)
+    assert df3.maximum == "verified"
+    assert abs(df3.aic() - knee.aic()) < 5
+    p = dict(zip(df3.parameter_names, df3.params))
+    ages = np.array([0.0, 180.0, 365.0, 450.0, 600.0, 730.0])
+    curve = df3.path_model.path(
+        ages, *[p[n] for n in df3.path_model.parameter_names]
+    )
+    truth = 3.0 + 0.006 * np.maximum(ages - 365.0, 0.0)
+    assert np.max(np.abs(curve - truth)) < 0.2
+    assert p["sd_noise"] == pytest.approx(0.3, abs=0.03)
+
+
 def test_a_bound_with_a_path_parameter_common_to_all_items(straight):
     """``cb`` differentiates the prediction through the common path
     parameters' means in forward mode, which the path had no rule for
