@@ -5,6 +5,12 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- ``fit_best`` also tries the new ``GeneralizedGamma``. Where it has the
+  best value of the metric the answer changes: on data a Weibull or
+  lognormal fits, its extra parameter usually costs it the AIC and BIC
+  comparison, and ``metric="neg_ll"`` (which has no penalty) will now
+  often pick it, since it contains both.
+
 - **Three censored series in a Gaussian or Student-t copula, with nearly
   singular correlations: a wrong-number fix.** The likelihood of a row
   with three censored series (and the copula's CDF, survival function and
@@ -101,6 +107,24 @@ v0.30 (unreleased)
   the correctable intensity seen, the rate of new modes, and the steps
   after each corrective action period with their lags. Each plan plots
   against a fitted growth model. See :doc:`Reliability Growth Planning`.
+- **The generalised gamma distribution, built in:**
+  ``surpyval.GeneralizedGamma``, in Prentice's (1974) parameterisation
+  (``mu``, ``sigma``, ``Q``), the one R's ``flexsurv`` calls
+  ``gengamma``. It holds the lognormal (``Q = 0``), the Weibull
+  (``Q = 1``), the gamma (``Q = sigma``) and the exponential, and is
+  continuous and differentiable in ``Q`` through 0: near the lognormal
+  its tails come from Temme's uniform expansion of the incomplete gamma
+  function, and its log density is written so that nothing cancels.
+  Every fit option of a built-in distribution (censoring, truncation, an
+  offset, ``fixed``, MLE/MPS/MSE/MOM; probability-plot fitting is
+  refused, as for the gamma), Wald, likelihood-ratio and bootstrap
+  bounds, ``qf``/``isf``, ``mean`` and moments, ``random``, saving, and
+  ``AFT(GeneralizedGamma)`` with an exact change of origin. Against
+  flexsurv 2.3.2: density, distribution function, log survival and
+  quantiles to 1e-10, and the ``lung`` fits (right censored, left
+  truncated, and AFT on ``sex``) to 1e-6 in log-likelihood and a
+  hundredth of a standard error in the estimates. See
+  :doc:`univariate/generalized_gamma`.
 
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a

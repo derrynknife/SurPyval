@@ -132,6 +132,7 @@ LIFE = {
     "GumbelLEV": "mu",
     "Logistic": "mu",
     "ExpoWeibull": "alpha",
+    "GeneralizedGamma": "mu",
 }
 
 

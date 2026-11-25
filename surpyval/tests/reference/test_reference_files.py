@@ -37,6 +37,7 @@ EXPECTED_SOURCES = {
     "r_reda",
     "r_rmst",
     "r_custom_recipes",
+    "r_distributions",
     "r_distributional_diagnostics",
     "r_competing_entry",
     "r_fine_gray_variance",

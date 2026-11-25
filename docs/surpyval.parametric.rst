@@ -60,6 +60,7 @@ Continuous lifetime distributions.
    univariate/gumbel
    univariate/gumbel_lev
    univariate/gamma
+   univariate/generalized_gamma
    univariate/normal
    univariate/lognormal
    univariate/logistic

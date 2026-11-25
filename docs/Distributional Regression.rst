@@ -229,15 +229,15 @@ its coefficients enter, one rule for each kind of parameter:
 - A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``):
   :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive
   coefficient raises the rate, again the AFT model's coefficient.
-- A **location** (``mu`` of a LogNormal, Normal, Gumbel, GumbelLEV or
-  Logistic): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
+- A **location** (``mu`` of a LogNormal, GeneralizedGamma, Normal,
+  Gumbel, GumbelLEV or Logistic): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
   :math:`\mu e^{-b'z}` with a log link) and a positive coefficient moves
   failures earlier; for the LogNormal it is the AFT model's coefficient.
 - A **shape that orders lives**, one whose increase makes every quantile
   later (a Gamma's shape ``alpha``, an ExpoWeibull's ``mu``, a Beta's
   ``alpha``): :math:`s = -1`, so a positive coefficient lowers it and
-  shortens lives; a Beta's ``beta``, whose increase makes values earlier,
-  has :math:`s = +1`.
+  shortens lives; a Beta's ``beta`` and a GeneralizedGamma's ``Q``, whose
+  increase makes values earlier, have :math:`s = +1`.
 - A **shape or spread with no direction** (a Weibull's or log-logistic's
   shape ``beta``, every ``sigma`` of a location-scale distribution): it
   makes some quantiles earlier and others later, so "shorter life" does
@@ -376,8 +376,8 @@ Limits
 
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
-  LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta and
-  ExpoWeibull. Prebuilt fitters are ``WeibullDistributional``,
+  LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
+  ExpoWeibull and GeneralizedGamma. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and
