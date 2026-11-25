@@ -13,6 +13,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-26
+
+### Labelled MCF bounds (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `NonParametricCounting.mcf_cb` returns its two-sided bounds as `ConfidenceBounds`, an `ndarray` subclass with `.lower`, `.upper` and a labelled printout; one-sided bounds stay plain arrays. Anything computed from it (arithmetic, a column, a reduction) is a plain array. | proposed | The package's two-sided bounds are `[lower, upper]` on the last axis (Conventions), so a subclass labels them without changing any caller: a new return type (a named tuple, a dict) would break every `b[:, 0]`. One-sided bounds are what `bound=` asked for; wrapping a scalar would turn an `np.float64` into a 0-d array. | done |
+| Only the MCF's bounds are labelled for now; the other `*_cb` methods keep plain arrays. | proposed | The user finding was on `mcf_cb`. `labels_two_sided` is one decorator, so every two-sided `*_cb` can take it in one pass if wanted. | open |
+
 ## 2026-11-25
 
 ### Scope: not a machine-learning, sampling or deep-learning framework (25 Nov 2026)

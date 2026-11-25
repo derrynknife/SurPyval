@@ -57,6 +57,16 @@ table" in :doc:`Parametric SurPyval Modelling`).
 .. autoclass:: surpyval.utils.nevada.NevadaTable
    :members:
 
+``ConfidenceBounds`` is the array a two-sided bound comes back as where
+its columns are labelled (``NonParametricCounting.mcf_cb`` and
+``CauseSpecificMCF.mcf_cb``): ``[lower, upper]`` on the last axis, as
+every two-sided bound (see :doc:`Conventions`), with the columns also
+named, ``.lower`` and ``.upper``, and printed with their names and level.
+Anything computed from it is a plain array.
+
+.. autoclass:: surpyval.utils.bounds.ConfidenceBounds
+   :members: wrap, lower, upper
+
 Data Wrangling Utilities
 ------------------------
 

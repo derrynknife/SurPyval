@@ -19,6 +19,7 @@ from surpyval.univariate.nonparametric._support import (
     on_support,
     support_from_dict,
 )
+from surpyval.utils.bounds import labels_two_sided
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
 from surpyval.utils.event_history_data import (
@@ -353,6 +354,7 @@ class NonParametricCounting(
             )
         return np.asarray(self.x, dtype=float), values
 
+    @labels_two_sided
     @keeps_query_shape
     def mcf_cb(
         self,
@@ -368,8 +370,11 @@ class NonParametricCounting(
         Confidence bounds for the MCF at the query times ``x``.
 
         Two-sided bounds return one row per query with columns ordered
-        ``[lower, upper]`` (matching the parametric ``cif_cb``); one-sided
-        bounds return a 1-D array. Queries before the first event return 0
+        ``[lower, upper]`` (matching the parametric ``cif_cb``), as a
+        :class:`~surpyval.utils.bounds.ConfidenceBounds`: the same array,
+        which also names its columns (``.lower``, ``.upper``) and prints
+        them labelled; one-sided bounds return a plain array of the
+        query's shape. Queries before the first event return 0
         (for ``interp="linear"``, bounds rising from 0 at the origin, as
         the MCF does); queries after the last observed time or before the
         origin return NaN, mirroring :meth:`mcf`. With a support set (see
@@ -395,14 +400,15 @@ class NonParametricCounting(
             :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
             positive; or ``"plain"`` for Wald bounds
             :math:`\\hat{M} \\pm z \\sqrt{V}`. (``"exp"`` and ``"normal"``
-            until v0.30, still accepted with a warning.)
+            are still accepted, with a warning, until v0.31.)
         dist : str, optional
             Only ``"z"``, the normal critical value.
 
         Returns
         -------
-        numpy array
-            The bound(s) at each ``x``.
+        ConfidenceBounds or numpy array
+            The bound(s) at each ``x``: two-sided, ``[lower, upper]`` on
+            the last axis, labelled; one-sided, the bound itself.
 
         Raises
         ------
@@ -766,10 +772,13 @@ class NonParametricCounting(
         >>> model = NonParametricCounting.fit(x, i=i, c=c)
         >>> model.mcf([10, 30, 60])
         array([1. , 2. , 3.5])
-        >>> model.mcf_cb([10, 30, 60])
-        array([[0.25009765, 3.99843816],
-               [1.00019529, 3.999219  ],
-               [1.93248007, 6.33900458]])
+        >>> bounds = model.mcf_cb([10, 30, 60])
+        >>> bounds.lower
+        array([0.25009765, 1.00019529, 1.93248007])
+        >>> bounds.upper
+        array([3.99843816, 3.999219  , 6.33900458])
+        >>> bounds[0]  # the same array: [lower, upper] at each time
+        ConfidenceBounds(lower=0.25009765, upper=3.99843816, level=95%)
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self._fit_from_recurrent_data(data)

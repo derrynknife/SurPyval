@@ -122,6 +122,16 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The MCF's two-sided bounds name their columns.**
+  ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
+  returns its two-sided bounds as a
+  ``surpyval.utils.bounds.ConfidenceBounds``: the same ``[lower, upper]``
+  array as before, so indexing, ``np.asarray``, arithmetic and ``tolist``
+  are unchanged, with ``.lower`` and ``.upper`` and a printout that labels
+  them and gives the level (``ConfidenceBounds(lower=1.0002, upper=3.9992,
+  level=95%)``). Anything computed from it is a plain array. One-sided
+  bounds are unchanged. No number changes.
+
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each
   order statistic's beta distribution, ``betaincinv(i, N - i + 1, 0.5)``,

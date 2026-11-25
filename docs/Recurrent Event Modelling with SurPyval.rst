@@ -380,7 +380,9 @@ observed time; either may be infinite. ``set_support`` returns the model, and
     assert (_m[3:5] == model.mcf([9])[0]).all()
 
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
-bounds, returned as ``[lower, upper]`` columns and computed on the log scale
+bounds, returned as ``[lower, upper]`` columns (the array is a
+``ConfidenceBounds``, which also names them: ``bounds.lower`` and
+``bounds.upper``, and prints them labelled) and computed on the log scale
 so they cannot go negative (``bound_type="plain"`` gives the symmetric
 estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
 ``"upper"`` gives a one-sided bound and ``alpha_ci`` sets the level
@@ -393,6 +395,8 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 .. jupyter-execute::
 
     print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
+    bounds = model.mcf_cb(6.5)
+    print("lower, upper at 6.5:", bounds.lower.round(2), bounds.upper.round(2))
     print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", alpha_ci=0.1).round(2))
     print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="plain").round(2))
     print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
