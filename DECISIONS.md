@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-26
 
+### The power-law NHPP in PyMC and fleet pooling (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.pymc.nhpp_likelihood` / `nhpp_log_likelihood` take the data as `CrowAMSAA.fit` does (its own data handling, so the terms are the fit's: checked equal to 1e-12) and one `alpha`, `beta` for every system or one a group (`group=` labels a row, a `{system: group}` dict, or `"system"`). Only the power law for now. | proposed | The plan's case; other intensities follow the same pieces. | done |
+| Fleet pooling is `pooled_likelihood(CrowAMSAA, ...)`, not a new function: each system is its own group by default, a group is a set of whole systems, pooled parameters on the log scale, the rest shared. `group_models` returns a `BayesianRecurrence` a group (from the draws), the new system's read at the fleet's latest observation time. | proposed | One pooling entry point for lives and event histories. | done |
+| `centred=False` stays the default; `centred=True` draws each group's value from `Normal(mu, tau)` directly. | maintainer (#671 default) | Non-centred samples well with little data a group, the usual pooling case. | done |
+| `shrinkage(trace, pooling)` returns a DataFrame: each group's own maximum-likelihood estimate (all its parameters free), pooled posterior median, population median and `pulled` on the unconstrained scale. With shared parameters `pulled` can fall a little outside 0 to 1, said in the docs. | maintainer (#671 default) | The table the template's users ask for. | done |
+| The template's calibration study (200 repetitions, seeds and rules fixed before the first run) runs with the calibration studies where PyMC is installed, skipped otherwise. | maintainer (#671 default) | As the other studies. | done |
+
 ### Conformal lower bounds on a survival time (26 Nov 2026)
 
 | Decision | By | Reason | Status |

@@ -20,7 +20,13 @@ what to install when it is absent.
 - :func:`pooled_likelihood` builds groups (sites, fleets) sharing one
   population distribution (hierarchical, partial pooling), and
   :func:`group_models` turns its draws into a SurPyval model per group
-  and one for a new group.
+  and one for a new group; :func:`shrinkage` tabulates how far pooling
+  pulled each group;
+- :func:`nhpp_likelihood` adds the power-law (Crow-AMSAA) NHPP
+  likelihood of systems' event histories (:func:`nhpp_log_likelihood`
+  as an expression), and ``pooled_likelihood(CrowAMSAA, ...)`` pools a
+  fleet's systems, each with its own growth rate drawn from a
+  population.
 
 See :doc:`/PyMC with SurPyval` for a worked example.
 """
@@ -31,7 +37,8 @@ from surpyval.pymc.likelihood import (
     censored_likelihood,
     log_likelihood,
 )
-from surpyval.pymc.pooling import group_models, pooled_likelihood
+from surpyval.pymc.nhpp import nhpp_likelihood, nhpp_log_likelihood
+from surpyval.pymc.pooling import group_models, pooled_likelihood, shrinkage
 from surpyval.pymc.posterior import to_surpyval
 from surpyval.pymc.priors import (
     PRIOR_FAMILIES,
@@ -46,8 +53,11 @@ __all__ = [
     "censored_likelihood",
     "group_models",
     "log_likelihood",
+    "nhpp_likelihood",
+    "nhpp_log_likelihood",
     "pooled_likelihood",
     "prior_from_model",
     "prior_from_spec",
+    "shrinkage",
     "to_surpyval",
 ]

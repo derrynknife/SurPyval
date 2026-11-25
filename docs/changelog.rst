@@ -222,6 +222,22 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The power-law NHPP in PyMC, and pooling a fleet's growth rates**:
+  ``surpyval.pymc.nhpp_likelihood`` and ``nhpp_log_likelihood`` give
+  the Crow-AMSAA likelihood of systems' event histories (exact times,
+  end of observation, counts in windows, truncation), equal to the one
+  ``CrowAMSAA.fit`` maximises to 1e-12, with one ``alpha`` and ``beta``
+  for every system or one a group. ``pooled_likelihood(CrowAMSAA, x=,
+  i=, c=, pool={"beta": ...})`` gives each system (or group of
+  systems) its own growth rate from a population, and ``group_models``
+  returns a ``BayesianRecurrence`` a system and one for a new system.
+  For the pooling template, ``centred=True`` (the centred form, for
+  groups with plenty of data) and ``shrinkage(trace, pooling)``, a table
+  of each group's own estimate, pooled estimate, the population's and
+  how far pooling pulled it; a simulation-based calibration study of
+  the template (200 repetitions, run with the calibration studies where
+  PyMC is installed). PyMC is still not a dependency. Nothing existing
+  changes.
 - **Conformal lower bounds on a survival time, for any model**:
   ``surpyval.metrics.conformal_lower_bound``. "At least 90% of new units
   outlive this bound", from any fitted model with a CDF (with ``Z=`` for
