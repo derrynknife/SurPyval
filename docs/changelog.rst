@@ -536,6 +536,23 @@ v0.30 (unreleased)
   on some CPUs) elsewhere. Several items at once take the array path as
   before.
 
+**Documentation.**
+
+- Three guides for people moving from other tools: :doc:`Coming from
+  lifelines`, :doc:`Coming from R` (``survival``, ``flexsurv``,
+  ``cmprsk``, ``mstate`` and friends) and :doc:`Coming from Weibull++`
+  (Weibull++, Minitab and ``WeibullR``). Each maps the names, shows common
+  tasks side by side with SurPyval's numbers checked against the other
+  tool (lifelines 0.30.3; survival 3.8.12, flexsurv 2.3.2, cmprsk 2.2.12,
+  WeibullR 1.2.4; closed forms for Crow-AMSAA), and lists the differences
+  that catch people out: the censoring flag (``c = 1 - event``), the
+  opposite sign of AFT coefficients, R's log-scale Kaplan-Meier bounds,
+  and rank-regression settings.
+- :doc:`Speed`: measured fit times by data size, from ``n = 10^3`` to
+  ``10^6``, for the common models and bounds, what dominates the cost and
+  how to make a fit faster, from a new benchmark script,
+  ``scripts/bench_speed.py`` (not run in CI).
+
 v0.29 (22 November 2026)
 ------------------------
 

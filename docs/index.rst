@@ -67,15 +67,23 @@ Where to start
   survival or reliability, right censored or suspended)? The
   :doc:`Glossary` maps the engineering, medical and statistical
   vocabularies to each other and to SurPyval's names.
+- Coming from another tool? :doc:`Coming from lifelines`,
+  :doc:`Coming from R` and :doc:`Coming from Weibull++` map its names to
+  SurPyval's, show common tasks side by side with matching numbers, and
+  list the differences that catch people out (the censoring flag first).
+- Wondering how long a fit takes on a million rows? :doc:`Speed` has
+  measured times by data size and the ways to make a fit faster.
 
 How the documentation is organised
 ----------------------------------
 
-The pages are in five groups, in the menu on the left:
+The pages are in six groups, in the menu on the left:
 
 - **Quickstart & Intro**: the pages above, plus
   :doc:`Handy References - Aide-mémoire`, a one-page summary of the
   functions of a distribution and how they relate.
+- **Coming from other tools**: guides for users of lifelines, R and the
+  engineering reliability tools.
 - **Survival Analysis**: the *theory* pages. Each explains a family of
   methods from first principles: the problem it solves, the mathematics, how
   to read the results, what can go wrong and when to use something else.
@@ -86,7 +94,7 @@ The pages are in five groups, in the menu on the left:
   also includes :doc:`applications`, complete examples from several fields.
   Each theory page links to its how-to page and the other way round.
 - **SurPyval**: the API reference (:doc:`surpyval`), with every class,
-  function and argument, the :doc:`changelog` and the
+  function and argument, :doc:`Speed`, the :doc:`changelog` and the
   :doc:`Deprecation Policy`.
 - **Community Guidelines**: where to get help, how to report a problem and
   how to contribute.
@@ -330,6 +338,14 @@ Contents:
 
 .. toctree::
    :maxdepth: 2
+   :caption: Coming from other tools
+
+   Coming from lifelines
+   Coming from R
+   Coming from Weibull++
+
+.. toctree::
+   :maxdepth: 2
    :caption: Survival Analysis
 
    Non-Parametric Estimation
@@ -381,6 +397,7 @@ Contents:
    :caption: SurPyval
 
    surpyval
+   Speed
    changelog
    Deprecation Policy
 
