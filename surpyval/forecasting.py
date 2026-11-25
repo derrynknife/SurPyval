@@ -41,6 +41,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.model_data import event_data
 from surpyval.utils.validation import check_alpha_ci
 from surpyval.utils.warnings import caller_stacklevel
 
@@ -630,7 +631,7 @@ def _intensity_forecast(
         model = model._superposed()
     units = None
     if age is None:
-        data = getattr(model, "data", None)
+        data = event_data(model)
         if data is None or getattr(data, "window_map", None) is not None:
             raise ValueError(
                 "age is required: this model carries no data to take the "
@@ -801,7 +802,7 @@ def _frailty_forecast(
         }
     units = None
     if age is None:
-        data = getattr(model, "data", None)
+        data = event_data(model)
         if data is None or getattr(data, "window_map", None) is not None:
             raise ValueError(
                 "age is required: this model carries no data to take the "

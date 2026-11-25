@@ -30,6 +30,7 @@ from surpyval.utils.linalg import (
     scale_free_hessian,
     wald_bound_on_support,
 )
+from surpyval.utils.model_data import event_data
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.recurrent_data import notes_text
@@ -1630,16 +1631,17 @@ class RenewalModel(
         self._check_has_data("residuals")
         from surpyval.recurrent import diagnostics
 
-        diagnostics._validate_diagnostic_data(self.data, "Residuals")
+        diagnostics._validate_diagnostic_data(event_data(self), "Residuals")
         increments = np.asarray(
-            self._fitter._rescaled_increments(self, self.data), dtype=float
+            self._fitter._rescaled_increments(self, event_data(self)),
+            dtype=float,
         )
-        c = np.asarray(self.data.c)
+        c = np.asarray(event_data(self).c)
 
         def martingale() -> np.ndarray:
             residuals = []
-            for item in np.unique(self.data.i):
-                mask = self.data.i == item
+            for item in np.unique(event_data(self).i):
+                mask = event_data(self).i == item
                 observed = int((c[mask] == 0).sum())
                 residuals.append(observed - float(increments[mask].sum()))
             return np.array(residuals)
@@ -1685,7 +1687,10 @@ class RenewalModel(
         from surpyval.recurrent import diagnostics
 
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
+            event_data(self),
+            test=test,
+            alternative=alternative,
+            alpha_ci=alpha_ci,
         )
 
     def cramer_von_mises(
@@ -1740,7 +1745,7 @@ class RenewalModel(
         since new without a failure."""
         if age is None:
             self._check_has_data("Prediction from each unit's history")
-            data = self.data
+            data = event_data(self)
             item = np.asarray(data.i)
             order = np.argsort(item, kind="stable")
             x = np.asarray(data.x, dtype=float)[order]
@@ -2923,7 +2928,7 @@ class RenewalModel(
         fit to the times to first failure."""
         starts = [np.asarray(self._mle[1:], dtype=float)]
         fitter = getattr(self, "_fitter", None)
-        data = getattr(self, "data", None)
+        data = event_data(self)
         dist = self.model.dist
         if fitter is None or data is None:
             return starts

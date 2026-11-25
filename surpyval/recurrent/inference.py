@@ -13,6 +13,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.linalg import scale_free_hessian, wald_bound_on_support
+from surpyval.utils.model_data import event_data
 from surpyval.utils.validation import alpha_ci_error
 from surpyval.utils.warnings import ignoring_warnings, warn_no_covariance
 
@@ -59,7 +60,7 @@ def require_data(model: Any, what: str) -> None:
     fit, plots against the data) calls this first, so none of them fails
     with a bare ``AttributeError``.
     """
-    if getattr(model, "data", None) is None:
+    if event_data(model) is None:
         raise ValueError(
             "{} requires a model fitted from data; models built from "
             "parameters (from_params) or restored "

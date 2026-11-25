@@ -149,6 +149,14 @@ v0.30 (unreleased)
 
 **Deprecated.**
 
+- The recurrent diagnostics that take data,
+  ``surpyval.recurrent.diagnostics.item_windows``,
+  ``cumulative_hazard_residuals``, ``martingale_residuals`` and
+  ``trend_test``, take a ``SurpyvalData`` with units ``i`` as well as an
+  ``EventHistoryData``, with the same answers to the last digit. Inside,
+  the package now reads a fitted recurrent model's data through one
+  helper rather than ``model.data``, ready for ``model.data`` to become a
+  ``SurpyvalData``; no number changes.
 - **One container for recurrent data: building an** ``EventHistoryData``
   **warns.** A ``SurpyvalData`` with each row's unit ``i`` does every job
   an ``EventHistoryData`` did (v0.30, above), so building one yourself

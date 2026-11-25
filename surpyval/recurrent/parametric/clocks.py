@@ -39,6 +39,7 @@ from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.deprecation import fit_entry
+from surpyval.utils.model_data import event_data
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
@@ -1134,7 +1135,7 @@ def change_point_test(
             "n_boot is the number of simulated data sets, a whole number "
             f"of at least 19; got {n_boot!r}"
         )
-    base, data = model.dist.base, model.data
+    base, data = model.dist.base, event_data(model)
     try:
         plain = _plain_fit(base, data)
     except ValueError as err:

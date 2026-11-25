@@ -28,6 +28,7 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.model_data import event_data
 from surpyval.utils.recurrent_data import (
     accepts_recurrent_surpyval_data,
     notes_text,
@@ -100,7 +101,7 @@ class NonParametricCounting(
             "=" * len(title),
             "Model            : Mean cumulative function (Nelson-Aalen)",
         ]
-        data = getattr(self, "data", None)
+        data = event_data(self)
         if data is not None:
             c = np.asarray(data.c)
             n = np.asarray(data.n)
