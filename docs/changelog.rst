@@ -16,6 +16,18 @@ v0.30 (unreleased)
   tolerance of 1e-13 of the mean as well as a relative one: where that
   part was 0 the quadrature ran to its limit (1.5 s a mean); means move by
   less than 1e-13 of themselves.
+- **Quantiles and the mean of a joint model's prediction.**
+  ``JointModel.qf(p, Z, markers, given)`` gives the age by which one item
+  has failed with probability ``p`` (``predict(...).qf(p)``), and
+  ``JointModel.mean(Z, markers, given, tau)`` and
+  ``DynamicPrediction.mean(tau)`` the expected failure age given the
+  readings and the age now, or with ``tau`` the restricted mean to it.
+  Where the item's survival levels off above 0 (a path whose varying slope
+  may carry the marker away from failure) the mean is infinite, and
+  ``mean()`` says so with a warning that gives the chance and names
+  ``tau``. A known constant marker gives a Weibull PH's conditional mean
+  and quantiles (to 1e-5 and 1e-4), and the restricted mean is the area
+  under ``sf`` to 1e-7.
 
 - **Bounds on the chance of failing in the next window, given the age
   now.** ``cs_cb(x, given, alpha_ci, bound, on, method)`` on the

@@ -217,6 +217,104 @@ class DynamicPrediction:
             active[idx[done]] = False
         return np.where(never, np.inf, t)
 
+    def mean(self, tau: float | None = None) -> float:
+        r"""
+        The expected failure age given the readings and survival to
+        ``age`` (``u``): ``u`` plus the expected remaining life,
+
+        .. math::
+            E[T \mid T > u, y] = u + \int_u^\infty
+            P(T > t \mid T > u, y)\, dt ,
+
+        or, with ``tau``, the restricted mean :math:`E[\min(T, \tau)
+        \mid T > u, y]`, the same integral to ``tau``.
+
+        In words: the area under the item's survival curve from now on,
+        added to its age now. A path whose varying parameters can carry
+        the marker away from failure (a straight line whose slope may be
+        negative, say) leaves a chance, however small, that the item never
+        fails, and then the mean is infinite: where the survival is still
+        above 1e-12 a thousand ``alpha`` past ``u`` (the end of
+        :meth:`qf`'s search), ``mean()`` returns ``inf`` and warns,
+        giving that chance; ``mean(tau)`` and :meth:`qf` are finite there.
+
+        The integral is taken on ``t = u + a e^w`` (``a`` the model's
+        ``alpha``) by Simpson's rule in ``w`` (steps of at most 1/32 from
+        ``e^w = 1e-12``), stopping where the survival has fallen below
+        1e-17. ``nan`` where a covariate is missing.
+
+        Parameters
+        ----------
+        tau : float, optional
+            An age past ``age``: the restricted mean to it. ``None`` (the
+            default) for the mean.
+
+        Returns
+        -------
+        float
+            The expected failure age (since new, as the model's ages).
+        """
+        import warnings
+
+        from surpyval.utils.warnings import caller_stacklevel
+
+        if self._missing:
+            return float("nan")
+        u = self.age
+        a = self.model._scale()
+        w_lo = np.log(1e-12)
+        if tau is not None:
+            tau = float(tau)
+            if not np.isfinite(tau) or tau < u:
+                raise ValueError(
+                    f"tau is an age at or after the age now, {u:g}; got "
+                    f"{tau:g}. Leave it out for the mean."
+                )
+            if tau == u:
+                return u
+            w_hi = np.log((tau - u) / a)
+            if w_hi <= w_lo:
+                return tau
+        else:
+            w_hi = np.log(1e3)
+        n = max(int(np.ceil((w_hi - w_lo) * 16.0)) * 2, 2)
+        w_all = np.linspace(w_lo, w_hi, n + 1)
+        h = float(w_all[1] - w_all[0])
+        floor = np.log(1e-17)
+        parts = []
+        log_sf = np.zeros(1)
+        # in blocks, stopping once the survival is below the floor: ages
+        # far past it are not asked about
+        for first in range(0, w_all.size, 128):
+            w = w_all[first : first + 128]
+            log_sf, _ = self._log_sf_hf(u + a * np.exp(w))
+            parts.append(np.exp(log_sf + w) * a)
+            if log_sf[-1] < floor:
+                break
+        else:
+            if tau is None and log_sf[-1] > np.log(1e-12):
+                warnings.warn(
+                    "The mean failure age is infinite: the item's survival "
+                    f"levels off at about {np.exp(log_sf[-1]):.3g} (it is "
+                    f"still that a thousand alpha, {1e3 * a:g}, past the "
+                    "age now), the chance that its path never brings it "
+                    "to fail. Give tau for the restricted mean to an age, "
+                    "or use qf for the quantiles.",
+                    UserWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+                return float("inf")
+        terms = np.concatenate(parts)
+        if terms.size % 2 == 0:
+            # (stopped past the floor: what is left is below it)
+            terms = np.append(terms, 0.0)
+        # Simpson's rule: exact to h^4 where tau cuts the integrand off
+        weights = np.ones(terms.size)
+        weights[1:-1:2], weights[2:-1:2] = 4.0, 2.0
+        area = h / 3.0 * float(np.sum(weights * terms))
+        # the part below e^w = 1e-12, where the survival is 1
+        return float(u + area + 1e-12 * a)
+
     def remaining_life(self, p: npt.ArrayLike = 0.5) -> Any:
         """
         The remaining life from ``age`` that the item outlives with

@@ -1816,6 +1816,98 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         return 1.0 - self.sf(x, Z, markers, given)
 
     @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: Any = None,
+        markers: dict | None = None,
+        given: float | None = None,
+    ) -> npt.NDArray:
+        """
+        The age by which one item has failed with probability ``p``, given
+        its covariates ``Z``, its readings so far ``markers`` and that it
+        was still running at age ``given`` (as for :meth:`sf`): the
+        inverse of :meth:`ff`, ``predict(Z, markers, given).qf(p)``.
+
+        ``given`` for ``p = 0``; ``inf`` for 1 and where the survival
+        never falls to ``1 - p`` (a path that can carry the marker away
+        from failure leaves a chance of never failing); ``nan`` with a
+        warning outside [0, 1]. The remaining life is ``qf(p) - given``.
+        The result has the shape of ``p``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> t = model.qf([0.1, 0.5], markers={0: 2.0, 20: 2.5}, given=40)
+        >>> bool(40 < t[0] < t[1])
+        True
+        >>> bool(np.allclose(model.ff(t, markers={0: 2.0, 20: 2.5},
+        ...                           given=40), [0.1, 0.5]))
+        True
+        """
+        return self.predict(Z, markers, given).qf(p)
+
+    def mean(
+        self,
+        Z: Any = None,
+        markers: dict | None = None,
+        given: float | None = None,
+        tau: float | None = None,
+    ) -> float:
+        """
+        The expected failure age of one item, given its covariates ``Z``,
+        its readings so far ``markers`` and that it was still running at
+        age ``given`` (as for :meth:`sf`), or with ``tau`` the restricted
+        mean to that age: ``predict(Z, markers, given).mean(tau)`` (see
+        :meth:`DynamicPrediction.mean
+        <surpyval.univariate.joint.dynamic.DynamicPrediction.mean>`).
+
+        It is ``inf``, with a warning giving the chance, where the item's
+        survival levels off above 0: a path whose varying parameters can
+        carry the marker away from failure (a straight line with a slope
+        that may be negative) leaves a chance that it never fails. Give
+        ``tau`` for the restricted mean then, or use :meth:`qf`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> m = model.mean(markers={0: 2.0, 20: 2.5}, given=40, tau=200)
+        >>> bool(40 < m < 200)
+        True
+        """
+        return self.predict(Z, markers, given).mean(tau)
+
+    @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
