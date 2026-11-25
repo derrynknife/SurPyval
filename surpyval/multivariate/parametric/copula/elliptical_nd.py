@@ -16,10 +16,10 @@ Kurowicka and Joe 2009), each on Fisher's z scale, and the exchangeable
 A row's likelihood is the copula density of its observed coordinates
 times the probability, given them, that the censored coordinates lie in
 their rectangle (a conditional normal, or t, vector), from
-``_rectangle.py``: closed forms for one or two censored coordinates and a
-deterministic quadrature for three. Rows with more censored coordinates
-are refused (the integral is then not accurate enough to fit with), as is
-truncation.
+``_rectangle.py``: closed forms for one or two censored coordinates, a
+deterministic quadrature for three, and a fixed lattice rule for four or
+more (whose integration order is read from the data, so that the
+likelihood is smooth in the parameters). Truncation is refused.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
-from ._rectangle import MAX_LIKELIHOOD_AXES, rectangle
+from ._rectangle import MAX_AXES, rectangle
 from .copula import _LOG_FLOOR, _U_CLIP, Copula, _check_margins
 from .elliptical import StudentT, StudentTCopula
 
@@ -389,7 +389,7 @@ class EllipticalCopulaND(Copula):
         for p, pattern in enumerate(patterns):
             rows = onp.flatnonzero(which == p)
             O, C = onp.flatnonzero(pattern), onp.flatnonzero(~pattern)
-            if C.size > MAX_LIKELIHOOD_AXES:
+            if C.size > _most_censored(self):
                 raise ValueError(_too_censored(self, rows.size, C.size))
             z = self._z(U[onp.ix_(rows, O)], nu)
             out = self._log_density(z, R[onp.ix_(O, O)], nu)
@@ -403,7 +403,10 @@ class EllipticalCopulaND(Copula):
                 hi = onp.where(c == 1, onp.inf, self._z(hi_u, nu))
                 mean, scale, corr, df = self._conditional(z, R, nu, O, C)
                 mass = rectangle(
-                    (lo - mean) / scale, (hi - mean) / scale, corr, df
+                    (lo - mean) / scale,
+                    (hi - mean) / scale,
+                    corr,
+                    df,
                 )
                 out = out + onp.log(onp.clip(mass, _LOG_FLOOR, None))
             ll[rows] = out
@@ -684,15 +687,19 @@ def _where_complete(z: Any, f: Any) -> npt.NDArray:
     return out
 
 
+def _most_censored(copula: Any) -> int:
+    return MAX_AXES - copula.student
+
+
 def _too_censored(copula: Any, rows: int, censored: int) -> str:
+    most = _most_censored(copula)
     return (
         f"A {copula.name} copula of {copula.n_axes} series is fitted to "
-        f"rows with up to {MAX_LIKELIHOOD_AXES} censored series; {rows} "
-        f"row(s) have {censored}. Their likelihood is an integral over "
-        "the censored series that is not computed accurately enough to "
-        f"fit with beyond {MAX_LIKELIHOOD_AXES}. Fit the copula to "
-        f"{MAX_LIKELIHOOD_AXES} of the series at a time, or leave those "
-        "rows out and say so with the result."
+        f"rows with up to {most} censored series; {rows} row(s) have "
+        f"{censored}. Their likelihood is an integral over the censored "
+        f"series that is not computed beyond {most}. Fit the copula to "
+        f"{most} of the series at a time, or leave those rows out and "
+        "say so with the result."
     )
 
 
@@ -710,7 +717,7 @@ def _check_rows(copula: Any, data: Any) -> None:
             "the series in pairs."
         )
     censored = onp.sum(data.c != 0, axis=1)
-    over = censored > MAX_LIKELIHOOD_AXES
+    over = censored > _most_censored(copula)
     if over.any():
         raise ValueError(
             _too_censored(copula, int(over.sum()), int(censored.max()))

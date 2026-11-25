@@ -94,6 +94,19 @@ v0.30 (unreleased)
   vine of two series the bivariate fit. Censoring in more than two series
   is refused, saying to use the Gaussian or Student-t copula; truncation
   is still refused. Fully observed fits do not change.
+- **Four or more censored series in a Gaussian or Student-t copula.**
+  Rows with four or more censored series (up to 15 for the Gaussian, 14
+  for the Student-t) are fitted; they were refused. Their likelihood
+  integrates the censored series by Genz's conditioning on a fixed rank-1
+  lattice of 65,521 points (built component by component; the script is
+  ``scripts/reference/lattice_cbc.py``), in Genz and Bretz's
+  prioritised order, with the last series in closed form. Against exact
+  one-factor integrals and R's ``mvtnorm`` the error is below 3e-6 for
+  four to ten series (below 1e-3 of the probability itself, also for
+  nearly singular correlation matrices), and the likelihood's second
+  differences in a correlation agree from a step of 1e-2 to 1e-5. A
+  four-series fit with every series censored in some rows recovers its
+  correlations within three standard errors.
 
 - **A Wald bound on a Fine-Gray model's cumulative incidence.**
   ``FineGrayModel.cb(..., method="wald")`` gives the delta-method bound on
@@ -375,6 +388,15 @@ v0.30 (unreleased)
   order, checked on 100 random knot sets). Both forms span exactly the
   curves of SciPy's ``CubicSpline(bc_type="natural")`` (to 1e-11, with
   derivatives and integral) and R's ``splines::ns`` (to 1e-12).
+- **Joint probabilities of four or more series of an elliptical copula
+  are more accurate.** ``sf``, ``cdf`` and ``cb`` of a Gaussian or
+  Student-t copula of four or more series use the lattice rule of the
+  likelihood (above), accurate to about 3e-6 where the old rule (4,093
+  points, the last two series in closed form, a fixed order) was
+  accurate to about 1e-4. Those numbers move by up to about 1e-4:
+  an intentional change. They now go up to 15 series (14 for the
+  Student-t), where the old rule stopped at eight (seven). Three or fewer
+  series do not change.
 
 - **A joint model's printout leads with alpha at the covariates' means.**
   Where the hazard's covariates are far from 0 (a load near 90%), ``alpha``

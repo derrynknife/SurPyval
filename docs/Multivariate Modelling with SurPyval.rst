@@ -594,20 +594,25 @@ compares with the unstructured matrix:
 
 What a fit of more than two series takes:
 
-- **Censoring.** Right, left and interval censoring per series, in rows
-  with up to three censored series. A row's likelihood is the density of its
-  observed values times the probability, given them, that the censored ones
-  lie in their ranges: a closed form for one or two censored series, and a
-  deterministic numerical integral (accurate to about :math:`10^{-9}`) for
-  three. Rows with four or more censored series are refused, with their
-  count: that integral is not computed accurately enough to fit with.
+- **Censoring.** Right, left and interval censoring per series, in any
+  number of the series of a row (up to 15 for the Gaussian copula, 14 for
+  the Student-t). A row's likelihood is the density of its observed values
+  times the probability, given them, that the censored ones lie in their
+  ranges: a closed form for one or two censored series, a deterministic
+  numerical integral (accurate to about :math:`10^{-9}`) for three, and
+  for four or more Genz's method of conditioning one series at a time,
+  integrated on a fixed lattice of 65,521 points. That rule is the same
+  on every call, so the likelihood is a smooth function of the
+  correlations that a search and its Hessian can use, and it is accurate
+  to about :math:`3 \times 10^{-6}` (checked against R's ``mvtnorm`` and
+  exact one-factor integrals).
 - **Truncation** is refused for more than two series (fit the series in
   pairs).
 - **Bounds.** Standard errors, ``param_cb`` (Wald, on Fisher's z scale for a
   correlation) and ``cb`` on the joint survival and CDF, as for two series.
-- **Joint probabilities** of four to eight series (seven for the Student-t)
-  are integrated on a fixed lattice, the same on every call, to about
-  :math:`10^{-4}`.
+- **Joint probabilities** of four or more series (up to 15, 14 for the
+  Student-t) use the same lattice rule, to about :math:`3 \times
+  10^{-6}`.
 
 The other families (Clayton, Frank, Gumbel, Joe, AMH) take two series.
 
