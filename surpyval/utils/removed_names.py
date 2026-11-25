@@ -44,8 +44,8 @@ F = TypeVar("F", bound=Callable[..., Any])
 #: instead, release it was removed in)}``.
 REMOVED_TOP_LEVEL: dict[str, tuple[str, str]] = {
     "RecurrentEventData": (
-        "it is surpyval.EventHistoryData (from surpyval import "
-        "EventHistoryData)",
+        "it became surpyval.EventHistoryData, itself deprecated in v0.30: "
+        "use surpyval.SurpyvalData with each row's unit i",
         "0.26",
     ),
 }

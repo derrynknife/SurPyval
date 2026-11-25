@@ -15,8 +15,9 @@ from surpyval import EventHistoryData
 def test_the_old_top_level_name_names_the_new_one():
     with pytest.raises(
         AttributeError,
-        match="'RecurrentEventData': it was removed in v0.26; it is "
-        "surpyval.EventHistoryData",
+        match="'RecurrentEventData': it was removed in v0.26; it became "
+        "surpyval.EventHistoryData, itself deprecated in v0.30: use "
+        "surpyval.SurpyvalData",
     ):
         surpyval.RecurrentEventData
     assert not hasattr(surpyval, "RecurrentEventData")
@@ -48,7 +49,8 @@ def test_star_import_no_longer_gets_the_old_name():
     [("items", "'ids'"), ("get_times_to_first_events", "'to_first_events()'")],
 )
 def test_the_old_attributes_name_their_replacements(old, new):
-    data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 2])
+    with pytest.warns(FutureWarning, match="handle_xicn is deprecated"):
+        data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 2])
     with pytest.raises(AttributeError) as caught:
         getattr(data, old)
     message = str(caught.value)

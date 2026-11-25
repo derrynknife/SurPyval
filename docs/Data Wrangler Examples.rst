@@ -170,7 +170,7 @@ Readings taken on an item over its life go in ``readings``: ``{name: {age: value
     print(data.m)
     print(data.time_varying_covariates)
 
-``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is being phased out, and ``fleet.event_history_data()`` gives one only for code that still needs it (``to_surpyval_data()`` turns one back into rows).
+``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is deprecated in v0.30 and removed in v0.31, with ``fleet.event_history_data()`` (``to_surpyval_data()`` turns one back into rows).
 
 Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
 
@@ -868,8 +868,9 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
        the times between its failures
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event arrays (``xicnt``) and returns the
-       ``EventHistoryData`` the recurrent models work on (being phased
-       out; its ``to_surpyval_data()`` gives the rows)
+       ``EventHistoryData`` the recurrent models work on (deprecated in
+       v0.30, removed in v0.31: use ``SurpyvalData(x, c, n, i=i)``, or
+       pass the arrays to the fit)
 
 The conversions are not all lossless, and it pays to know where they drop
 information:

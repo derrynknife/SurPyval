@@ -1682,8 +1682,19 @@ class Items:
         :class:`~surpyval.utils.event_history_data.EventHistoryData`, a
         bridge while that class remains: :meth:`surpyval_data` is the
         primary form, which every recurrent fitter takes. Terminal flags
-        and readings, which it has no place for, are refused."""
-        from surpyval.utils.event_history_data import EventHistoryData
+        and readings, which it has no place for, are refused.
+
+        .. deprecated:: 0.30
+            Removed in v0.31, with ``EventHistoryData``: use
+            :meth:`surpyval_data`."""
+        from surpyval.utils.event_history_data import (
+            EventHistoryData,
+            warn_built_by_user,
+        )
+
+        warn_built_by_user(
+            "Items.event_history_data()", "Items.surpyval_data()"
+        )
 
         ended = [
             repr(item.id)

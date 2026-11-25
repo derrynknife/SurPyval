@@ -149,6 +149,21 @@ v0.30 (unreleased)
 
 **Deprecated.**
 
+- **One container for recurrent data: building an** ``EventHistoryData``
+  **warns.** A ``SurpyvalData`` with each row's unit ``i`` does every job
+  an ``EventHistoryData`` did (v0.30, above), so building one yourself
+  is deprecated and removed in v0.31. Each way warns once
+  (``FutureWarning``), at your line, naming the call that does the same:
+  the constructor (``SurpyvalData(x, c, n, i=i, tl=tl, tr=tr)``),
+  ``from_items``, ``from_histories`` and ``from_dataframe`` (the
+  ``SurpyvalData`` method of the same name and arguments), ``from_dict``
+  and ``from_json`` (``surpyval.from_dict`` / ``surpyval.from_json``),
+  ``surpyval.handle_xicn`` (``SurpyvalData(...)``, or pass the arrays to
+  the fit, ``CrowAMSAA.fit(x, i=i, c=c)``), and
+  ``Items.event_history_data()`` (``Items.surpyval_data()``). The fits and
+  simulations, which still build one inside, warn nobody, and their
+  numbers are unchanged. The hint for the long-removed
+  ``RecurrentEventData`` now names ``SurpyvalData``.
 - A distribution's ``fit`` warns (``FutureWarning``) when it is given
   ``heuristic``, ``rr``, ``on_d_is_0`` or ``turnbull_estimator`` (other
   than at its default) with a method other than ``how="MPP"``. Only

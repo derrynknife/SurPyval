@@ -42,6 +42,43 @@ def _grouped_in_order(inverse: npt.NDArray) -> bool:
     return bool(np.all(inverse[1:] >= inverse[:-1]))
 
 
+def _outside_package(frame: Any) -> bool:
+    """Whether ``frame`` is user code: outside the package, or one of the
+    package's own tests (which are callers too, as for
+    :func:`~surpyval.utils.warnings.caller_stacklevel`)."""
+    import os
+
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tests_dir = os.path.join(package_dir, "tests") + os.sep
+    name = os.path.abspath(frame.f_code.co_filename)
+    return not name.startswith(package_dir + os.sep) or name.startswith(
+        tests_dir
+    )
+
+
+def warn_built_by_user(what: str, instead: str, depth: int = 2) -> None:
+    """Warn that building an :class:`EventHistoryData` yourself (``what``)
+    is deprecated, naming the :class:`~surpyval.SurpyvalData` call that
+    does the same (``instead``). Only a call from user code warns: the
+    package still builds one inside every recurrent fit, and that warns
+    nobody. ``depth`` is the frame of the call, counted from the
+    function that calls this one's caller (2: the caller of the entry
+    point that calls this)."""
+    import sys
+
+    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+
+    if not _outside_package(sys._getframe(depth)):
+        return
+    warnings.warn(
+        f"{what} is deprecated and will be removed in v{REMOVED_IN_NEXT}: "
+        "SurpyvalData with each row's unit i is the one container for "
+        f"several rows per unit. Use {instead}.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
 class EventHistoryData(ReshapeMixin):
     """
     Event history data: the history of each of several items over time --
@@ -59,8 +96,15 @@ class EventHistoryData(ReshapeMixin):
     with ``to_first_events``, ``to_gaps`` and ``to_histories`` of its
     own, and every recurrent ``fit`` takes it. :meth:`to_surpyval_data`
     gives the data held here (a fitted model's ``data``, simulated data,
-    the result of ``handle_xicn``) in that form. It still works, and
-    nothing here warns yet.
+    the result of ``handle_xicn``) in that form.
+
+    .. deprecated:: 0.30
+        Building one yourself (the constructor, :meth:`from_items`,
+        :meth:`from_histories`, :meth:`from_dataframe`,
+        :meth:`from_dict`, :meth:`from_json`, ``surpyval.handle_xicn``
+        and ``Items.event_history_data()``) warns, and is removed in
+        v0.31: use the ``SurpyvalData`` call of the same name. The
+        recurrent fits still build one inside, with no warning.
 
     Build one from each item's record with :meth:`from_items`
     (:class:`~surpyval.utils.item_history.ItemHistory`), from each item's
@@ -143,6 +187,11 @@ class EventHistoryData(ReshapeMixin):
         tr: npt.ArrayLike | None = None,
         unit: Any = None,
     ) -> None:
+        warn_built_by_user(
+            "Building an EventHistoryData",
+            "SurpyvalData(x, c, n, i=i, tl=tl, tr=tr), or pass the arrays "
+            "to the fit (CrowAMSAA.fit(x, i=i, c=c))",
+        )
         self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
         # One i, c or n is every row's, as for handle_xicn
         self.i, self.c, self.n = (
@@ -853,6 +902,11 @@ class EventHistoryData(ReshapeMixin):
         >>> bool((again.x == data.x).all())
         True
         """
+        warn_built_by_user(
+            "EventHistoryData.from_histories",
+            "SurpyvalData.from_histories(observed, right_censored, ...), "
+            "which takes the same arguments",
+        )
         histories = _histories_from_dicts(
             "EventHistoryData.from_histories",
             EventHistoryData.from_histories,
@@ -963,6 +1017,11 @@ class EventHistoryData(ReshapeMixin):
         >>> data.ids, data.c.tolist()
         (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
+        warn_built_by_user(
+            "EventHistoryData.from_dataframe",
+            "SurpyvalData.from_dataframe(df, i_col=..., ...), which takes "
+            "the same columns",
+        )
         from surpyval.utils.data_frames import history_from_frame
 
         return history_from_frame(
@@ -1034,6 +1093,9 @@ class EventHistoryData(ReshapeMixin):
         >>> data.c, data.n
         (array([0, 0, 1, 2, 1]), array([1, 1, 1, 3, 1]))
         """
+        warn_built_by_user(
+            "EventHistoryData.from_items", "SurpyvalData.from_items(items)"
+        )
         from surpyval.utils.item_history import ItemHistory
         from surpyval.utils.record_keywords import (
             FROM_ITEMS_ALIASES,
@@ -1579,6 +1641,11 @@ class EventHistoryData(ReshapeMixin):
         >>> EventHistoryData.from_dict(data.to_dict()).x
         array([ 5.,  9., 12.])
         """
+        warn_built_by_user(
+            "EventHistoryData.from_dict",
+            "surpyval.from_dict, which reads what an EventHistoryData's "
+            "to_dict wrote",
+        )
         from surpyval.serialisation import decode_non_finite
         from surpyval.utils.data_json import label_back, schedule_back
 
@@ -1682,6 +1749,11 @@ class EventHistoryData(ReshapeMixin):
         >>> EventHistoryData.from_json(data.to_json()).ids
         ['A']
         """
+        warn_built_by_user(
+            "EventHistoryData.from_json",
+            "surpyval.from_json, which reads what an EventHistoryData's "
+            "to_json wrote",
+        )
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
