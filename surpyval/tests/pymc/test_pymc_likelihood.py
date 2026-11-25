@@ -33,6 +33,7 @@ PARAMS = {
     "Logistic": [11.0, 3.5],
     "Rayleigh": [9.0],
     "Gompertz": [0.1, 0.02],
+    "InverseGaussian": [12.0, 20.0],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -187,6 +188,7 @@ FAR = {
     "Logistic": (-1e300, 1e300),
     "Rayleigh": (1e-200, 1e200),
     "Gompertz": (1e-300, 1e4),
+    "InverseGaussian": (1e-3, 1e6),
 }
 
 

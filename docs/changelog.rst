@@ -5,7 +5,8 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
-- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
+- ``fit_best`` also tries the new ``GeneralizedGamma``, ``Gompertz`` and
+  ``InverseGaussian``. On
   50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
   Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
@@ -163,6 +164,19 @@ v0.30 (unreleased)
   ``compare_links``, a lag or weight per marker. A single-marker fit
   given several named measurements still refuses them, now saying how to
   fit them together. No number of a one-marker fit changes.
+
+- **The inverse Gaussian distribution, built in:**
+  ``surpyval.InverseGaussian`` (``mu``, the mean, and ``lam``, the shape),
+  as R's ``statmod`` and ``SuppDists``: the first passage time of a
+  drifting Brownian motion. Computed so that it holds in both tails and
+  for any ``lam / mu`` (no ``e^{2 lam / mu}`` overflow, no cancellation
+  far above the mean); a closed-form MLE for exact, untruncated data.
+  Every fit option of a built-in distribution (probability-plot fitting
+  refused), Wald, likelihood-ratio and bootstrap bounds, ``qf``/``isf``,
+  moments, saving, ``fit_best``, ``AFT(InverseGaussian)``,
+  ``Distributional(InverseGaussian)`` and the PyMC and torch helpers.
+  Against statmod 1.5.2 the functions to 1e-10, and the ``lung`` fits
+  to 1e-6 in log-likelihood. See :doc:`univariate/inverse_gaussian`.
 
 - **The Gompertz distribution, built in:** ``surpyval.Gompertz``, with
   hazard ``rate * exp(shape * x)``, in R's ``flexsurv`` and ``eha``

@@ -1,6 +1,7 @@
 # Reference results from R for SurPyval's built-in GeneralizedGamma
 # (flexsurv's "gengamma", Prentice's (mu, sigma, Q)) and Gompertz
-# (flexsurv's "gompertz", (shape, rate)).
+# (flexsurv's "gompertz", (shape, rate)) and InverseGaussian (statmod's
+# and SuppDists' (mean, shape)).
 #
 # Writes surpyval/tests/reference/data/r_distributions.json, with the
 # software, its version, the call and the values of each entry, as the
@@ -9,7 +10,7 @@
 #
 #     Rscript scripts/reference/reference_r_distributions.R
 #
-# Needs survival, flexsurv and jsonlite. Run with R 4.6.2, survival 3.8.12
+# Needs survival, flexsurv, statmod, SuppDists, numDeriv and jsonlite. Run with R 4.6.2, survival 3.8.12
 # and flexsurv 2.3.2. Re-running reproduces the file byte for byte.
 #
 # What each value is:
@@ -24,10 +25,19 @@
 #   tightened to 1e-14: the maximised log-likelihood, the estimates and
 #   their standard errors. For the Gompertz also ~ sex, which in
 #   flexsurv acts on the rate: the proportional hazards model.
+# * The inverse Gaussian: statmod's dinvgauss / pinvgauss / qinvgauss, and
+#   SuppDists' dinvGauss / pinvGauss at the same points (a second
+#   implementation). Neither package fits censored data, so the fits are
+#   the censored (and left-truncated) log-likelihood written with
+#   statmod's pinvgauss(log.p = TRUE), maximised by optim (Nelder-Mead,
+#   then BFGS, reltol = 1e-14), standard errors from numDeriv's Richardson
+#   Hessian.
 
 suppressPackageStartupMessages({
     library(survival)
     library(flexsurv)
+    library(statmod)
+    library(SuppDists)
     library(jsonlite)
 })
 
@@ -43,7 +53,9 @@ stopifnot(isTRUE(all.equal(lung_d$time, survival::lung$time)))
 
 versions <- list(
     survival = as.character(packageVersion("survival")),
-    flexsurv = as.character(packageVersion("flexsurv"))
+    flexsurv = as.character(packageVersion("flexsurv")),
+    statmod = as.character(packageVersion("statmod")),
+    SuppDists = as.character(packageVersion("SuppDists"))
 )
 
 refs <- list()
@@ -123,6 +135,82 @@ add("lung_gompertz_truncated", fit_entry(
 add("lung_gompertz_sex", fit_entry(
     "gompertz", Surv(time_y, status) ~ sex,
     "Surv(time / 365.25, status) ~ sex"))
+
+# ---- inverse Gaussian ---------------------------------------------------
+ig_pars <- list(c(10, 20), c(2, 0.3), c(1, 500), c(5, 1))
+ig_times <- c(0.05, 0.3, 1, 2, 5, 10, 30, 100)
+ig_probs <- c(1e-6, 0.001, 0.1, 0.5, 0.9, 0.999)
+add("functions_invgauss", list(
+    fixture = "lung", software = "R statmod",
+    version = versions$statmod,
+    call = "dinvgauss / pinvgauss / qinvgauss(., mean, shape)",
+    settings = list(t = ig_times, p = ig_probs, params = ig_pars,
+                    note = "no data: the fixture field is nominal"),
+    values = list(
+        pdf = lapply(ig_pars, function(a) dinvgauss(ig_times, a[1], a[2])),
+        log_pdf = lapply(ig_pars, function(a)
+            dinvgauss(ig_times, a[1], a[2], log = TRUE)),
+        cdf = lapply(ig_pars, function(a) pinvgauss(ig_times, a[1], a[2])),
+        log_sf = lapply(ig_pars, function(a)
+            pinvgauss(ig_times, a[1], a[2], lower.tail = FALSE,
+                      log.p = TRUE)),
+        quantile = lapply(ig_pars, function(a)
+            sapply(ig_probs, function(p) qinvgauss(p, a[1], a[2])))
+    )
+))
+add("functions_invgauss_suppdists", list(
+    fixture = "lung", software = "R SuppDists",
+    version = versions$SuppDists,
+    call = "dinvGauss / pinvGauss(., nu, lambda)",
+    settings = list(t = ig_times, params = ig_pars,
+                    note = "no data: the fixture field is nominal"),
+    values = list(
+        pdf = lapply(ig_pars, function(a) dinvGauss(ig_times, a[1], a[2])),
+        cdf = lapply(ig_pars, function(a) pinvGauss(ig_times, a[1], a[2]))
+    )
+))
+ig_fit <- function(time, status, entry, label) {
+    nll <- function(lp) {
+        m <- exp(lp[1]); s <- exp(lp[2])
+        ll <- sum(ifelse(status == 1,
+                         dinvgauss(time, m, s, log = TRUE),
+                         pinvgauss(time, m, s, lower.tail = FALSE,
+                                   log.p = TRUE)))
+        if (!is.null(entry)) {
+            ll <- ll - sum(pinvgauss(entry[entry > 0], m, s,
+                                     lower.tail = FALSE, log.p = TRUE))
+        }
+        -ll
+    }
+    start <- log(c(mean(time), mean(time)))
+    f <- optim(start, nll, method = "Nelder-Mead",
+               control = list(reltol = 1e-14, maxit = 20000))
+    f <- optim(f$par, nll, method = "BFGS",
+               control = list(reltol = 1e-14, maxit = 10000))
+    est <- exp(f$par)
+    nat <- function(p) nll(log(p))
+    H <- numDeriv::hessian(nat, est)
+    list(
+        fixture = "lung", software = "R statmod + optim",
+        version = versions$statmod,
+        call = sprintf(
+            "optim of the censored log-likelihood (%s) with pinvgauss(log.p = TRUE)",
+            label),
+        settings = list(formula = label,
+                        entry = "floor(time / 4) where truncated"),
+        values = list(
+            loglik = -f$value,
+            names = c("mu", "lam"),
+            est = est,
+            se = sqrt(diag(solve(H)))
+        )
+    )
+}
+add("lung_invgauss", ig_fit(lung_d$time, lung_d$status, NULL,
+                            "Surv(time, status)"))
+add("lung_invgauss_truncated", ig_fit(lung_d$time, lung_d$status,
+                                      lung_d$entry,
+                                      "Surv(entry, time, status)"))
 
 out <- list(
     generator = "scripts/reference/reference_r_distributions.R",

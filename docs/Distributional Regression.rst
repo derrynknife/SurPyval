@@ -231,7 +231,7 @@ its coefficients enter, one rule for each kind of parameter:
   :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive
   coefficient raises the rate, again the AFT model's coefficient.
 - A **location** (``mu`` of a LogNormal, GeneralizedGamma, Normal,
-  Gumbel, GumbelLEV or Logistic): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
+  Gumbel, GumbelLEV or Logistic, and an InverseGaussian's mean ``mu``): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
   :math:`\mu e^{-b'z}` with a log link) and a positive coefficient moves
   failures earlier; for the LogNormal it is the AFT model's coefficient.
 - A **shape that orders lives**, one whose increase makes every quantile
@@ -378,7 +378,7 @@ Limits
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
   LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
-  ExpoWeibull, GeneralizedGamma and Gompertz. Prebuilt fitters are ``WeibullDistributional``,
+  ExpoWeibull, GeneralizedGamma, Gompertz and InverseGaussian. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and

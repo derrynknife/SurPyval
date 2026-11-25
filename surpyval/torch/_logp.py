@@ -125,6 +125,55 @@ GOMPERTZ = Family(
     ),
 )
 
+
+# InverseGaussian: mu (mean), lam (shape); a, b = sqrt(lam / x) (x / mu -+ 1).
+# F = Phi(a) + e^{2 lam / mu} Phi(-b), added in logs; above the mean
+# S = phi(a) (M(a) - M(b)), M Mills' ratio, as surpyval's own
+def _ig_ab(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    # x = inf, where both are +inf, from a stand-in (0 * inf is NaN)
+    top = torch.isinf(x)
+    x_in = torch.where(top, 1.0, x)
+    r = torch.sqrt(lam / x_in)
+    a = torch.where(top, math.inf, r * (x_in / mu - 1.0))
+    return a, torch.where(top, math.inf, r * (x_in / mu + 1.0))
+
+
+def _ig_log_ff(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(torch, x, mu, lam)
+    return torch.logaddexp(
+        _log_ndtr(torch, a), 2.0 * lam / mu + _log_ndtr(torch, -b)
+    )
+
+
+def _ig_log_sf(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(torch, x, mu, lam)
+    above = a > 0
+    a_up = torch.where(above, a, 1.0)
+    b_up = torch.where(above, b, 2.0)
+    mills = math.sqrt(math.pi / 2.0)
+    up = (
+        -(a_up**2) / 2.0
+        - _HALF_LOG_2PI
+        + torch.log(
+            mills * torch.special.erfcx(a_up / _SQRT2)
+            - mills * torch.special.erfcx(b_up / _SQRT2)
+        )
+    )
+    x_dn = torch.where(above, 0.5 * mu + 0.0 * x, x)
+    down = log1mexp(torch, _ig_log_ff(torch, x_dn, mu, lam))
+    return torch.where(above, up, down)
+
+
+INVERSE_GAUSSIAN = Family(
+    log_df=lambda torch, x, mu, lam: (
+        0.5 * (torch.log(lam) - math.log(2.0 * math.pi))
+        - 1.5 * torch.log(x)
+        - lam * (x - mu) ** 2 / (2.0 * mu**2 * x)
+    ),
+    log_sf=_ig_log_sf,
+    log_ff=_ig_log_ff,
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda torch, x, sigma: (
@@ -373,4 +422,5 @@ FAMILIES: dict[str, Family] = {
     "Logistic": LOGISTIC,
     "Rayleigh": RAYLEIGH,
     "Gompertz": GOMPERTZ,
+    "InverseGaussian": INVERSE_GAUSSIAN,
 }

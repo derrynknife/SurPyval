@@ -116,6 +116,53 @@ GOMPERTZ = Family(
     centre=lambda pt, a, b: 1.0 / b,
 )
 
+
+# InverseGaussian: mu (mean), lam (shape); a, b = sqrt(lam / x) (x / mu -+ 1).
+# F = Phi(a) + e^{2 lam / mu} Phi(-b), added in logs; above the mean
+# S = phi(a) (M(a) - M(b)), M Mills' ratio, as surpyval's own
+def _ig_ab(pt: Any, x: Any, mu: Any, lam: Any) -> Any:
+    # x = inf, where both are +inf, from a stand-in (0 * inf is NaN)
+    top = pt.isinf(x)
+    x_in = pt.switch(top, 1.0, x)
+    r = pt.sqrt(lam / x_in)
+    a = pt.switch(top, math.inf, r * (x_in / mu - 1.0))
+    return a, pt.switch(top, math.inf, r * (x_in / mu + 1.0))
+
+
+def _ig_log_ff(pt: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(pt, x, mu, lam)
+    return pt.logaddexp(_log_ndtr(pt, a), 2.0 * lam / mu + _log_ndtr(pt, -b))
+
+
+def _ig_log_sf(pt: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(pt, x, mu, lam)
+    above = a > 0
+    a_up = pt.switch(above, a, 1.0)
+    b_up = pt.switch(above, b, 2.0)
+    mills = math.sqrt(math.pi / 2.0)
+    up = (
+        -(a_up**2) / 2.0
+        - _HALF_LOG_2PI
+        + pt.log(
+            mills * pt.erfcx(a_up / _SQRT2) - mills * pt.erfcx(b_up / _SQRT2)
+        )
+    )
+    x_dn = pt.switch(above, 0.5 * mu + 0.0 * x, x)
+    down = log1mexp(pt, _ig_log_ff(pt, x_dn, mu, lam))
+    return pt.switch(above, up, down)
+
+
+INVERSE_GAUSSIAN = Family(
+    log_df=lambda pt, x, mu, lam: (
+        0.5 * (pt.log(lam) - math.log(2.0 * math.pi))
+        - 1.5 * pt.log(x)
+        - lam * (x - mu) ** 2 / (2.0 * mu**2 * x)
+    ),
+    log_sf=_ig_log_sf,
+    log_ff=_ig_log_ff,
+    centre=lambda pt, mu, lam: mu,
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda pt, x, sigma: (
@@ -229,4 +276,5 @@ FAMILIES: dict[str, Family] = {
     "Logistic": LOGISTIC,
     "Rayleigh": RAYLEIGH,
     "Gompertz": GOMPERTZ,
+    "InverseGaussian": INVERSE_GAUSSIAN,
 }
