@@ -545,6 +545,22 @@ for _name in (
 OUT_OF_SCOPE["surpyval.recurrent.DiscreteGrowthModel"] = (
     _RESULT + ": the fitted discrete growth models"
 )
+# Maturity projections: estimates from failure modes' counts and first
+# occurrences with fix-effectiveness factors, not fits of xcnt data; tested
+# in tests/recurrent/test_maturity_projection.py.
+for _fn in (
+    "ampm_projection",
+    "ampm_stein_projection",
+    "adpm_stein_projection",
+):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = (
+        _FUNCTION + ": a maturity projection from failure modes and fix "
+        "effectiveness (tests/recurrent/test_maturity_projection.py)"
+    )
+for _name in ("AMPMProjection", "SteinProjection", "DiscreteSteinProjection"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = (
+        _RESULT + ": a maturity projection"
+    )
 OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
     _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
 )

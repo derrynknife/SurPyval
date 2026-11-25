@@ -18,6 +18,14 @@ from .discrete_growth import (
 )
 from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
+from .maturity_projection import (
+    AMPMProjection,
+    DiscreteSteinProjection,
+    SteinProjection,
+    adpm_stein_projection,
+    ampm_projection,
+    ampm_stein_projection,
+)
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .panel_count import PanelCountMCF, PanelCountRegression
 from .parametric import (

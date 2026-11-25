@@ -204,6 +204,11 @@ so on.
        AMSAA discrete model, Lloyd-Lipow and Gompertz, with Wald and
        likelihood-ratio bounds and the next stage projected.
      - :doc:`Discrete Reliability Growth`
+   * - Maturity projection
+     - The reliability once the fixes are in, allowing for the failure
+       modes not seen yet (AMPM, AMPM-Stein and the discrete AMPM-Stein of
+       MIL-HDBK-189C).
+     - :doc:`counting/maturity_projection`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
