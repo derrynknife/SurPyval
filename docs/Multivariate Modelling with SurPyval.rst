@@ -599,7 +599,9 @@ What a fit of more than two series takes:
   the Student-t). A row's likelihood is the density of its observed values
   times the probability, given them, that the censored ones lie in their
   ranges: a closed form for one or two censored series, a deterministic
-  numerical integral (accurate to about :math:`10^{-9}`) for three, and
+  numerical integral for three (within :math:`10^{-9}` of R's
+  ``mvtnorm``, or of the reference's own error where that is larger, also
+  for nearly singular correlation matrices), and
   for four or more Genz's method of conditioning one series at a time,
   integrated on a fixed lattice of 65,521 points. That rule is the same
   on every call, so the likelihood is a smooth function of the

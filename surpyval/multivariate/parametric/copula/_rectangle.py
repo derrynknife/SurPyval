@@ -12,10 +12,16 @@ of coordinates ``k``:
 - three: the integral, over the first coordinate, of the bivariate
   rectangle of the other two given it, by tanh-sinh quadrature on the
   first coordinate's probability scale, split where the integrand bends
-  (where a conditional median passes a limit). It is a deterministic,
-  smooth function of the limits and the correlations, which a likelihood
-  search and its finite-difference Hessian need (a randomised integrator
-  gives neither), accurate to about 1e-9 (see ``test_rectangle.py``);
+  (where a conditional median passes a limit, and where the other two's
+  standardised limits meet). It is a deterministic, smooth function of
+  the limits and the correlations, which a likelihood search and its
+  finite-difference Hessian need (a randomised integrator gives neither).
+  Against R's mvtnorm (``tests/reference/test_rectangle3_mvtnorm.py``)
+  it agrees to within the reference's own error (1e-10 for the normal,
+  up to 4e-7 for the t), also for correlation matrices whose smallest
+  eigenvalue is 7e-4; against a rule ten times finer it is within 4e-10
+  (and 5e-6 of the probability, where that is above 1e-8) down to a
+  smallest eigenvalue of 1e-4;
 - four or more: Genz's (1992) sequential conditioning on all but the last
   coordinate, which is in closed form at each node, integrated on a fixed
   rank-1 lattice of 65,521 points (tent transformed, so the rule is the
@@ -53,8 +59,10 @@ from .elliptical import (
     _tanh_sinh,
 )
 
-# The outer rule of the three-coordinate integral
-_Z, _ZC, _W = _tanh_sinh(step=1.0 / 8.0)
+# The outer rule of the three-coordinate integral (a step of 1/12: with
+# 1/8 a nearly singular matrix's probability was off by up to 2e-7; with
+# 1/12 it is within 4e-10 of a rule ten times finer)
+_Z, _ZC, _W = _tanh_sinh(step=1.0 / 12.0)
 
 # The lattice of four or more coordinates: ``_LATTICE_N`` (prime) points
 # with the generating vector below, built component by component (the
@@ -191,10 +199,27 @@ def _rect3(lo: Any, hi: Any, corr: Any, nu: float | None) -> Any:
         onp.clip((corr[1, 2] - r[0] * r[1]) / (s[0] * s[1]), -1.0, 1.0)
     )
     lo0, hi0 = lo[:, 0], hi[:, 0]
-    # Where the integrand bends: where a conditional median passes a limit
+    # Where the integrand bends: where a conditional median passes a
+    # limit, and where the other two's standardised limits meet (a limit
+    # of one equal to a limit of the other, negated if their conditional
+    # correlation is negative). Near the meeting points the bivariate
+    # rectangle changes over a width of about sqrt(1 - rho_c^2), which a
+    # nearly singular correlation matrix makes narrow: without them as
+    # panel ends the rule missed up to 1e-5 of the probability.
     limits = onp.concatenate([lo[:, 1:], hi[:, 1:]], axis=1)
+    sign = 1.0 if rho_c >= 0.0 else -1.0
     with onp.errstate(divide="ignore", invalid="ignore"):
         kinks = limits / onp.tile(r, 2)[None, :]
+        meet = onp.stack(
+            [
+                (a / s[0] - sign * b / s[1])
+                / (r[0] / s[0] - sign * r[1] / s[1])
+                for a in (lo[:, 1], hi[:, 1])
+                for b in (lo[:, 2], hi[:, 2])
+            ],
+            axis=1,
+        )
+    kinks = onp.concatenate([kinks, meet], axis=1)
     kinks = onp.where(onp.isfinite(kinks), kinks, lo0[:, None])
     kinks = onp.clip(kinks, lo0[:, None], hi0[:, None])
     edges = onp.sort(
