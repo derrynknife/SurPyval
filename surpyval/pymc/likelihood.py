@@ -9,10 +9,19 @@ import numpy as np
 
 from surpyval.pymc._logp import FAMILIES, Family, log1mexp
 from surpyval.pymc._optional import pymc, pytensor_assert, pytensor_tensor
+from surpyval.pymc._regression import (
+    REGRESSION_KINDS,
+    regression_kind,
+    regression_theta,
+)
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
 
 SUPPORTED = tuple(FAMILIES)
+#: The regression fitters the likelihood takes, on a baseline in
+#: :data:`SUPPORTED`: proportional hazards (the log-linear link),
+#: accelerated failure time and accelerated life.
+REGRESSION = REGRESSION_KINDS
 
 _DATA_ARGS = ("x", "c", "n", "t", "xl", "xr", "tl", "tr")
 
@@ -217,6 +226,7 @@ def log_likelihood(
     xr: Any = None,
     tl: Any = None,
     tr: Any = None,
+    Z: Any = None,
     **params: Any,
 ) -> Any:
     """
@@ -234,19 +244,30 @@ def log_likelihood(
 
     Parameters
     ----------
-    dist : distribution
-        One of :data:`SUPPORTED`, such as ``surpyval.Weibull``.
+    dist : distribution or regression fitter
+        One of :data:`SUPPORTED`, such as ``surpyval.Weibull``; or a
+        proportional hazards, accelerated failure time or accelerated
+        life fitter on one of them (``surpyval.WeibullPH``,
+        ``surpyval.AFT(surpyval.Gamma)``,
+        ``surpyval.AcceleratedLife(surpyval.Weibull, Power)``), whose
+        likelihood with covariates is then the term (see :data:`REGRESSION`).
     data : SurpyvalData or array-like, optional
         The data; an array is taken as ``x``.
     x, c, n, t, xl, xr, tl, tr : array-like, optional
         The data as arrays in SurPyval's usual forms (see
         :doc:`/Conventions`), checked as ``fit`` checks them, and kept in
         the order given.
+    Z : array-like, optional
+        With a regression fitter: the covariates (or stresses), one row
+        per data row in the data's row order.
     **params
         Every parameter of ``dist`` by name (``alpha=..., beta=...``): a
         number, a PyMC variable or a pytensor expression. A scalar applies
         to every row; a vector of one value per row (``len(data)``, in the
-        data's row order) gives each row its own, for covariates.
+        data's row order) gives each row its own, for covariates. With a
+        regression fitter: the baseline's parameters (scalars) and the
+        coefficients, by name (``coef_0=...``) or as one vector
+        (``coefs=b``), or the life model's parameters (``a=..., n=...``).
 
     Returns
     -------
@@ -268,11 +289,41 @@ def log_likelihood(
     """
     what = "log_likelihood"
     pt = pytensor_tensor(what)
-    family = _family(dist, what)
+    return _term(pt, dist, data, params, Z, what, x, c, n, t, xl, xr, tl, tr)
+
+
+def _term(
+    pt: Any,
+    dist: Any,
+    data: Any,
+    params: dict,
+    Z: Any,
+    what: str,
+    *arrays: Any,
+) -> Any:
+    x, c, n, t, xl, xr, tl, tr = arrays
+    kind = regression_kind(dist)
+    if kind is None:
+        if Z is not None:
+            raise TypeError(
+                f"{what}: Z= is for a regression fitter (surpyval.WeibullPH, "
+                "...); with a distribution, give each row its parameter "
+                "instead (alpha=pm.math.exp(Z @ b))."
+            )
+        family = _family(dist, what)
     data = as_surpyval_data(
         what, data, x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr
     )
-    return _build(pt, dist, family, data, params, what)
+    if kind is None:
+        return _build(pt, dist, family, data, params, what)
+    if getattr(data, "Z", None) is not None:
+        if Z is not None:
+            raise TypeError(
+                f"{what}: the SurpyvalData holds the covariates; leave out "
+                "Z=."
+            )
+        Z = data.Z
+    return _build_regression(pt, dist, kind, data, Z, params, what)
 
 
 def _build(
@@ -286,6 +337,55 @@ def _build(
     dist._check_inside_support(data, every_row=True)
     rows = len(data.c)
     theta = _parameters(pt, dist, params, rows, what)
+    return _sum_rows(pt, dist, family, data, theta)
+
+
+def _build_regression(
+    pt: Any,
+    fitter: Any,
+    kind: str,
+    data: SurpyvalData,
+    Z: Any,
+    params: dict,
+    what: str,
+) -> Any:
+    """The term of a regression fitter: its baseline's functions with the
+    covariates entered as the fitter enters them."""
+    Z = _covariates(Z, len(data.c), what)
+    fitter.dist._check_inside_support(data, every_row=True)
+    family, theta, _ = regression_theta(pt, fitter, kind, Z, params, what)
+    return _sum_rows(pt, fitter.dist, family, data, theta)
+
+
+def _covariates(Z: Any, rows: int, what: str) -> np.ndarray:
+    if Z is None:
+        raise TypeError(
+            f"{what}: a regression fitter needs the covariates, Z= (one "
+            "row per data row, in the data's row order)."
+        )
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim == 1:
+        Z = Z[:, None]
+    if Z.ndim != 2 or Z.shape[0] != rows:
+        raise ValueError(
+            f"{what}: Z must have one row per data row ({rows}); it has "
+            f"shape {Z.shape}."
+        )
+    if not np.all(np.isfinite(Z)):
+        raise ValueError(
+            f"{what}: Z has missing or infinite values; drop those rows "
+            "(with their data) first."
+        )
+    return Z
+
+
+def _sum_rows(
+    pt: Any,
+    dist: Any,
+    family: Family,
+    data: SurpyvalData,
+    theta: list,
+) -> Any:
     support = tuple(float(s) for s in dist.support)
     total: Any = pt.as_tensor_variable(np.float64(0.0))
     for mask, xs, ns, fn in (
@@ -337,6 +437,7 @@ def censored_likelihood(
     xr: Any = None,
     tl: Any = None,
     tr: Any = None,
+    Z: Any = None,
     **params: Any,
 ) -> Any:
     """
@@ -351,8 +452,10 @@ def censored_likelihood(
 
     Parameters
     ----------
-    dist : distribution
-        One of :data:`SUPPORTED`, such as ``surpyval.Weibull``.
+    dist : distribution or regression fitter
+        As for :func:`log_likelihood`: one of :data:`SUPPORTED`, or a
+        proportional hazards, accelerated failure time or accelerated
+        life fitter on one of them, with ``Z``.
     data : SurpyvalData or array-like, optional
         The data; an array is taken as ``x``.
     name : str, default "likelihood"
@@ -365,7 +468,10 @@ def censored_likelihood(
         Every parameter of ``dist`` by name: a scalar applies to every
         row, a vector of one value per row (``len(data)``, in the data's
         row order) gives each row its own, as with covariates
-        (``alpha=pm.math.exp(Z @ b)``).
+        (``alpha=pm.math.exp(Z @ b)``). With a regression fitter, as for
+        :func:`log_likelihood`.
+    Z : array-like, optional
+        With a regression fitter: the covariates, one row per data row.
 
     Returns
     -------
@@ -399,8 +505,5 @@ def censored_likelihood(
             f"{what} adds a term to a PyMC model: call it inside "
             "`with pm.Model():`."
         ) from err
-    family = _family(dist, what)
-    data = as_surpyval_data(
-        what, data, x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr
-    )
-    return pm.Potential(name, _build(pt, dist, family, data, params, what))
+    term = _term(pt, dist, data, params, Z, what, x, c, n, t, xl, xr, tl, tr)
+    return pm.Potential(name, term)

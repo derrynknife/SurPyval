@@ -17,6 +17,20 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The PyMC bridge takes regression models and groups.**
+  ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a
+  proportional hazards, accelerated failure time or accelerated life
+  fitter (on a supported baseline) with covariates ``Z``: the term is the
+  fitter's own likelihood (equal to ``neg_ll`` to 1e-10 for every row type
+  and truncation), coefficients by name or as ``coefs=``, a life model's
+  parameters as ``life={...}``. ``pooled_likelihood`` builds groups (sites,
+  fleets) sharing one population distribution (a non-centred
+  hierarchical model with a half-normal spread), and ``group_models``
+  turns its draws into a SurPyval model per group and for a new group.
+  PyMC stays optional: imported only when a helper is called. See
+  "Regression models" and "Groups sharing a population" in
+  :doc:`PyMC with SurPyval`.
+
 - **Bayesian regression: priors on coefficients.** The proportional
   hazards, accelerated failure time and accelerated life fitters have
   ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``

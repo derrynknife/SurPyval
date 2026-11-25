@@ -511,7 +511,11 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   `method="laplace"`) a normal approximation at the peak, checked by its
   Pareto k (`diagnostics["pareto_k"]`, warns above 0.7);
   `importance=True` reweights it towards the exact posterior. Exact
-  posteriors of many parameters: PyMC via `surpyval.pymc`.
+  posteriors of many parameters: PyMC via `surpyval.pymc`
+  (`censored_likelihood(sp.WeibullPH, x=, c=, Z=, alpha=, beta=, coefs=b)`;
+  ALT: `life={"a": a, "n": n}`; groups: `pooled_likelihood(dist, x=, group=,
+  pool={"alpha": (centre, spread)}, shared={"beta": beta})`, then
+  `group_models(trace, pooling)`).
 - **Aalen** (`sp.AalenAdditive.fit(x, Z, c)`): effects that change over time;
   read `cumulative_coefficients()` / `plot()` by slope; test with
   `constant_effects_test(random_state=)`.

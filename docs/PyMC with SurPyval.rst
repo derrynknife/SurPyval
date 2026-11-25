@@ -33,11 +33,18 @@ The helpers are:
 - :func:`~surpyval.pymc.prior_from_spec`: priors from a plain description
   that can be stored as JSON;
 - :func:`~surpyval.pymc.to_surpyval`: the posterior draws back into a
-  SurPyval model, with its functions, credible intervals and plots.
+  SurPyval model, with its functions, credible intervals and plots;
+- :func:`~surpyval.pymc.pooled_likelihood` and
+  :func:`~surpyval.pymc.group_models`: groups (sites, fleets, batches)
+  sharing one population distribution, and a SurPyval model per group
+  and for a new group.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
 Normal, Gumbel, Logistic and Rayleigh distributions
-(``surpyval.pymc.SUPPORTED``); any other is refused with that list.
+(``surpyval.pymc.SUPPORTED``); any other is refused with that list. The
+likelihood helpers also take the proportional hazards, accelerated failure
+time and accelerated life fitters on those distributions
+(``surpyval.pymc.REGRESSION``), with covariates.
 
 From an old fleet to a new design
 ---------------------------------
@@ -210,6 +217,114 @@ The rules:
   ``Z=`` (which keeps the order) and use ``data.Z``;
 - a length that is only known when the model runs is checked then.
 
+Regression models
+-----------------
+
+The likelihood helpers take a regression fitter in place of a
+distribution, with the covariates as ``Z``: the term is then exactly the
+likelihood that fitter's ``fit`` maximises, its covariates entered as
+SurPyval enters them. This is the way to the exact posterior of a
+regression when SurPyval's own ``fit_bayes`` (a normal approximation, see
+:doc:`Bayesian Fitting with SurPyval`) is not good enough, such as with
+very few failures.
+
+- **Proportional hazards** (``surpyval.WeibullPH``, ``LogNormalPH``, ...):
+  the hazard is the baseline's times :math:`e^{\beta' Z}`. Give the
+  baseline's parameters and the coefficients, by name (``coef_0=...``)
+  or as one vector (``coefs=b``).
+- **Accelerated failure time** (``surpyval.WeibullAFT``,
+  ``surpyval.AFT(surpyval.Gamma)``, ...): the covariates speed up time,
+  :math:`S(x \mid Z) = S_0(e^{\beta' Z} x)`; the same parameters.
+- **Accelerated life** (``surpyval.AcceleratedLife(surpyval.Weibull,
+  Power)``, ...): the life model's :math:`L(Z)` takes the place of the
+  baseline's life parameter. Give the baseline's other parameters, and
+  the life model's in a dict, ``life={"a": a, "n": n}`` (a dict, because
+  their names, such as ``n`` and ``c``, can be the data's).
+
+.. code:: python
+
+    with pm.Model():
+        alpha = pm.LogNormal("alpha", mu=np.log(100.0), sigma=1.0)
+        beta = pm.LogNormal("beta", mu=np.log(1.5), sigma=0.5)
+        b = pm.Normal("b", mu=0.0, sigma=1.0, shape=2)
+        censored_likelihood(sp.WeibullPH, x=x, c=c, Z=Z,
+                            alpha=alpha, beta=beta, coefs=b)
+        trace = pm.sample(random_seed=1)
+
+    from surpyval.life_models import Power
+    with pm.Model():
+        beta = pm.LogNormal("beta", mu=np.log(2.0), sigma=0.5)
+        a = pm.LogNormal("a", mu=np.log(5e3), sigma=2.0)
+        n = pm.Normal("n", mu=-2.0, sigma=0.5)   # past tests: n near -2
+        censored_likelihood(sp.AcceleratedLife(sp.Weibull, Power),
+                            x=x, c=c, Z=voltage, beta=beta,
+                            life={"a": a, "n": n})
+
+The tests check each kind against the fitter's own likelihood to
+:math:`10^{-10}` for every row type and truncation, and its gradient
+against a central difference; a Weibull proportional hazards model
+sampled this way agrees with ``fit_bayes(..., importance=True)`` within
+0.11 posterior standard deviations at the 5%, 50% and 95% points. A
+custom proportional hazards link, and a life model that cannot be written
+as a pytensor expression, are refused; give the baseline's parameter per
+row yourself then (see Covariates).
+
+Groups sharing a population
+---------------------------
+
+Eight sites run the same pumps. Most have thirty records, two have four.
+Fitting each site alone gives the small sites wild answers; fitting all
+of them as one hides real differences between the sites. The middle way
+is a *hierarchical* model: each site has its own scale, but the sites'
+scales are drawn from one population distribution, whose centre and
+spread are estimated with them. A site with little data is then pulled
+towards the population (it *borrows strength*), and a site with plenty
+keeps its own value. How hard the pull is depends on how different the
+sites turn out to be, which the data decide.
+
+``pooled_likelihood`` builds this inside a PyMC model. For each pooled
+parameter (here the Weibull scale ``alpha``), on its log scale,
+
+.. math::
+
+    \log \alpha_g = \mu + \tau z_g, \qquad z_g \sim N(0, 1),
+
+with a Normal prior on the population's centre :math:`\mu` (``pool``
+gives its centre and spread) and a half-normal prior on the spread between
+sites :math:`\tau` (``tau_scale``). This is the non-centred form, which
+samples well when groups have little data. The other parameters are
+shared (here the shape, ``beta``), and the likelihood is SurPyval's,
+every row at its own site's parameters.
+
+.. code:: python
+
+    from surpyval.pymc import group_models, pooled_likelihood
+
+    with pm.Model():
+        beta = pm.LogNormal("beta", mu=np.log(2.0), sigma=0.5)
+        pooling = pooled_likelihood(
+            sp.Weibull, x=x, c=c, group=site,
+            pool={"alpha": (np.log(1000.0), 1.0)},   # a typical alpha ~1000
+            shared={"beta": beta},
+            tau_scale=0.5,
+        )
+        trace = pm.sample(random_seed=1, target_accept=0.95)
+
+    models = group_models(trace, pooling, random_state=1)
+    models["site 6"].param_cri("alpha")      # a small site, pulled in
+    models["new group"].quantile_cri(0.1)    # a site not yet seen
+
+``group_models`` gives a :class:`~surpyval.bayes.BayesianParametric` for
+each site, and one for a ``"new group"``: each draw's population with a
+fresh :math:`z`, so its uncertainty includes how much sites differ. In
+the tests (eight simulated sites whose scales differ by a spread of 0.3 on
+the log scale), the spread's 95% interval is 0.24 to 0.77, the two small
+sites' scales move from 669 and 416 (each fitted alone) to 747 and 543,
+towards the population's 967, and the new site's 90% interval for its
+scale (446 to 2,036) is wider than any observed site's. A group with no
+failures is kept, with a warning: its survivors still inform the
+population.
+
 Priors from SurPyval
 --------------------
 
@@ -268,3 +383,7 @@ API
 .. autofunction:: surpyval.pymc.prior_from_spec
 
 .. autofunction:: surpyval.pymc.to_surpyval
+
+.. autofunction:: surpyval.pymc.pooled_likelihood
+
+.. autofunction:: surpyval.pymc.group_models
