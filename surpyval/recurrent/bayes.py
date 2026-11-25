@@ -30,8 +30,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.special import gammaln
 
-from surpyval.bayes.engines.conjugate import ConjugateResult, _prior_family
-from surpyval.bayes.result import BayesianResult, _levels, fit_target
+from surpyval.bayes.engines.conjugate import ConjugateResult, prior_family
+from surpyval.bayes.result import (
+    BayesianResult,
+    fit_target,
+    interval_levels,
+)
 from surpyval.bayes.target import (
     Reparameterisation,
     Target,
@@ -421,7 +425,7 @@ class RecurrenceTarget(Target):
         if bound.free_names != ["lambda"]:
             return None
         prior = bound.spec.single.get("lambda")
-        fam = None if prior is None else _prior_family(prior)
+        fam = None if prior is None else prior_family(prior)
         if fam is None or fam[0] != "gamma":
             return None
         s = self._pieces
@@ -519,21 +523,21 @@ class RecurrenceTarget(Target):
         """``mtbf_at``, ``intensity_at`` and ``cif_at``: the
         instantaneous MTBF, the intensity and the expected number of
         events by a time."""
-        from surpyval.bayes.prior import _fmt
+        from surpyval.bayes.prior import format_number
 
         return {
             "mtbf_at": lambda t: (
-                f"MTBF at {_fmt(t)}",
+                f"MTBF at {format_number(t)}",
                 self._at("mtbf", t),
                 "log",
             ),
             "intensity_at": lambda t: (
-                f"intensity at {_fmt(t)}",
+                f"intensity at {format_number(t)}",
                 self._at("iif", t),
                 "log",
             ),
             "cif_at": lambda t: (
-                f"expected events by {_fmt(t)}",
+                f"expected events by {format_number(t)}",
                 self._at("cif", t),
                 "log",
             ),
@@ -670,7 +674,7 @@ class CountPrediction:
         """A predictive interval for the count: its ``alpha_ci / 2`` and
         ``1 - alpha_ci / 2`` points (it holds the count with at least
         ``1 - alpha_ci`` probability)."""
-        lo, hi = self.quantile(_levels(alpha_ci, "two-sided"))
+        lo, hi = self.quantile(interval_levels(alpha_ci, "two-sided"))
         return float(lo), float(hi)
 
     def __repr__(self) -> str:
@@ -874,7 +878,7 @@ class BayesianRecurrence(BayesianResult):
                 "(param_cri gives a parameter's interval, function_cri "
                 "any function's.)"
             )
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         shape = np.shape(x)
         out = [
             np.reshape(self._quantile(on, np.asarray(x, float), level), shape)
@@ -1402,7 +1406,7 @@ class BayesianProportionalIntensity(BayesianRecurrence):
                 "(param_cri gives a parameter's interval, function_cri "
                 "any function's.)"
             )
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         shape = np.shape(x)
         scale = self._scale(Z)
         out = [
@@ -1580,12 +1584,17 @@ class BayesianCauseSpecific(SerialisableMixin):
     model_tag = "BayesianCauseSpecific"
 
     def __init__(self, models: dict, mle: Any = None) -> None:
-        self.models = dict(models)
-        self.event_types = list(models)
+        # The causes as plain Python values, so a fit and its saved copy
+        # name them alike ('A', not np.str_('A')) in summaries and errors.
+        self.models = {
+            (k.item() if isinstance(k, np.generic) else k): m
+            for k, m in models.items()
+        }
+        self.event_types = list(self.models)
         self.mle = mle
-        self.end = float(max(m.end for m in models.values()))
-        self.method = {k: m.method for k, m in models.items()}
-        self.diagnostics = {k: m.diagnostics for k, m in models.items()}
+        self.end = float(max(m.end for m in self.models.values()))
+        self.method = {k: m.method for k, m in self.models.items()}
+        self.diagnostics = {k: m.diagnostics for k, m in self.models.items()}
 
     def _cause(self, event: Any) -> BayesianRecurrence:
         if event not in self.models:
@@ -1677,7 +1686,7 @@ class BayesianCauseSpecific(SerialisableMixin):
             raise ValueError(
                 f"on must be one of {', '.join(_ON)}; got {on!r}."
             )
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         shape = np.shape(x)
         values = self._total(on, np.asarray(x, dtype=float))
         out = [

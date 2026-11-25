@@ -64,7 +64,7 @@ REPLICATES = 200
 P_EXTREME = 0.025
 
 
-def _levels(alpha_ci: float, bound: str) -> list[float]:
+def interval_levels(alpha_ci: float, bound: str) -> list[float]:
     if not 0 < alpha_ci < 1:
         raise ValueError(
             f"alpha_ci must be between 0 and 1 (0.05 for a 95% interval); "
@@ -819,7 +819,7 @@ class BayesianResult(SerialisableMixin):
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided adds a last ``[lower, upper]`` axis.
         """
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         values, w = self.function_draws(fn)
         shape = values.shape[1:]
         flat = values.reshape(len(values), -1)
@@ -844,7 +844,7 @@ class BayesianResult(SerialisableMixin):
         self, name: str, alpha_ci: float = 0.05, bound: str = "two-sided"
     ) -> npt.NDArray:
         """A credible interval for a parameter, by its name."""
-        levels = _levels(alpha_ci, bound)
+        levels = interval_levels(alpha_ci, bound)
         out = np.asarray(self.posterior.quantile(name, levels), dtype=float)
         return out if len(levels) == 2 else out[0]
 
@@ -872,7 +872,7 @@ class BayesianResult(SerialisableMixin):
         """
         from surpyval.bayes.model import Comparison, _prior_interval
 
-        _levels(alpha_ci, "two-sided")
+        interval_levels(alpha_ci, "two-sided")
         bound = self._bound()
         names = self.parameter_names
         target = self.target

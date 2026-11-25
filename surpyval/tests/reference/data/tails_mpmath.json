@@ -178,7 +178,11 @@
   "Discretize": "built from a continuous distribution's sf, which is checked here",
   "DiscretizedFitter": "the class Discretize returns (see Discretize)",
   "MixtureModel": "a fitted combination of the distributions here",
-  "RoystonParmar": "a fitted spline model, not a closed-form distribution"
+  "RoystonParmar": "a fitted spline model, not a closed-form distribution",
+  "GeneralizedGamma": "new; against flexsurv in test_generalized_gamma.py, not yet on this grid",
+  "GeneralizedF": "new; against flexsurv in test_generalized_f.py, not yet on this grid",
+  "Gompertz": "new; against flexsurv in test_gompertz.py, not yet on this grid",
+  "InverseGaussian": "new; against statmod and SuppDists in test_inverse_gaussian.py, not yet on this grid"
  },
  "cases": [
 {"dist":"Weibull","params":[1e-06,0.001],"x":[0.0,6.690538053130385e-166],"regime":["lower edge","centre"],"values":[["1.0","0.0","inf","inf","0.0","0.0","-inf","inf"],["0.5","0.5","5.1800555878733398e+161","1.036011117574668e+162","0.69314718055994531","-0.69314718055994531","-0.69314718055994531","372.36101575950485"]],"sens":[["0.0","0.0","0.0","0.0","0.0","0.0","0.0","0.0"],["0.13","0.13","9.8e+161","1.7e+162","0.26","0.26","0.26","1.9"]],"qf":{"u":[0.0,1e-300,1e-100,1e-30,1e-08,0.5,0.99999999,0.9999999999999999,1.0],"regime":["p edge","p tiny","p tiny","p small","p small","p centre","p near 1","p near 1","p edge"],"value":["0.0","1.0000000000144047e-300006","1.0000000000048132e-100006","1.0000000000015213e-30006","1.0000050000129252e-8006","6.6905380531303849e-166","2.0215085053720761e+1259","1.2627885806449788e+1559","inf"],"sens":["0.0","6.9e-300001","2.3e-100001","7.0e-30002","1.9e-8002","1.2e-162","6.0e+1262","4.6e+1562","0.0"]},"isf":{"s":[1.0,0.9999999999999999,0.99999999,0.5,1e-08,1e-30,1e-100,1e-300,0.0],"regime":["s edge","s near 1","s near 1","s centre","s small","s small","s tiny","s tiny","s edge"],"value":["0.0","2.5717562798850582e-15961","1.0000100248099401e-8006","6.6905380531303849e-166","2.0215090567955046e+1259","2.1724181328432621e+1833","1.6431934665166767e+2356","2.1724181328431605e+2833","inf"],"sens":["0.0","9.7e-15957","1.9e-8002","1.2e-162","6.0e+1262","9.2e+1836","8.9e+2359","1.4e+2837","0.0"]}},

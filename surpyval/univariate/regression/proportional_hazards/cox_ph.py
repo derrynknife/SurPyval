@@ -814,7 +814,6 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                     h0[t] = np.exp(-log_r[t]) * np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
-    @penalty_argument("_fit_penalised", firth="_fit_firth")
     def fit_bayes(self, *args: Any, **kwargs: Any) -> Any:
         """Refuses: a Bayesian fit needs a parametric baseline. Use a
         parametric proportional hazards fitter (``WeibullPH.fit_bayes``,
@@ -829,6 +828,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             "and accelerated life fitters' fit_bayes."
         )
 
+    @penalty_argument("_fit_penalised", firth="_fit_firth")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data

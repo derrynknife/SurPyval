@@ -37,7 +37,7 @@ class ConjugateResult:
     label: str
 
 
-def _prior_family(prior: Any) -> tuple[str, tuple] | None:
+def prior_family(prior: Any) -> tuple[str, tuple] | None:
     """(family, params) of a prior that is a plain Gamma, Beta or Normal
     SurPyval model, else None."""
     from surpyval.bayes.prior import DistributionPrior, NormalOnScale
@@ -75,7 +75,7 @@ def applies(
     if len(free) != 1:
         return None
     prior = bound.spec.single.get(free[0])
-    fam = None if prior is None else _prior_family(prior)
+    fam = None if prior is None else prior_family(prior)
     if fam is None:
         return None
     c = np.asarray(data.c)
@@ -99,7 +99,7 @@ def applies(
 def solve(case: str, dist: Any, bound: Any, data: Any) -> ConjugateResult:
     """The closed-form posterior of ``case`` (from :func:`applies`)."""
     free = bound.free_names[0]
-    fam = _prior_family(bound.spec.single[free])
+    fam = prior_family(bound.spec.single[free])
     assert fam is not None
     a, b = fam[1]
     n = np.asarray(data.n, dtype=float)

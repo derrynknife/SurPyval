@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as np
@@ -16,6 +15,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._stable import _erfcx, log1mexp, on_support, positive_or_one
 
@@ -476,8 +476,7 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
         lower = p <= s
         target = onp.log(onp.where(lower, p, s))
         dist = invgauss(mu / lam, scale=lam)
-        with onp.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with onp.errstate(all="ignore"), ignoring_warnings():
             # Far in a tail, its asymptote: S ~ e^{-lam x / (2 mu^2)}
             # above, F ~ Phi(-sqrt(lam / x)) below; elsewhere scipy's.
             far = onp.where(lower, p, s) < 1e-8

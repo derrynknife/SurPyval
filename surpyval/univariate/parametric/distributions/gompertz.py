@@ -165,6 +165,13 @@ class Gompertz_(OptimisedFitMixin, ParametricFitter):
         x_l = np.where(small, 0.0, x + np.zeros_like(y))
         with onp.errstate(over="ignore"):
             direct = rate / a_l * np.expm1(a_l * x_l)
+        over = onp.isposinf(onp.asarray(getval(direct), dtype=float))
+        if onp.any(over):
+            # H is inf there; its gradient, inf - inf, would be nan and
+            # leak through every mask downstream, so the inf is put in
+            # with a zero gradient and H formed at x = 0 beneath it.
+            x_l = np.where(over, 0.0, x_l)
+            direct = np.where(over, np.inf, rate / a_l * np.expm1(a_l * x_l))
         return np.where(small, rate * x * series, direct)
 
     def Hf(self, x: Numeric, shape: Boxable, rate: Boxable) -> Boxable:

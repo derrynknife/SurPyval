@@ -41,7 +41,15 @@ import pandas as pd
 from autograd import hessian, jacobian
 from scipy import optimize, stats
 
+from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.validation import check_alpha_ci
+
+#: What a growth model's fit says when given a SurpyvalData.
+_COUNTS_NOT_ROWS = (
+    "A discrete growth model takes success/fail counts by stage, which "
+    "have no rows in a SurpyvalData: pass failures= and trials= (and "
+    "stage=) as arrays, one value a stage, or reliability= alone."
+)
 
 __all__ = [
     "CrowAMSAADiscrete",
@@ -117,6 +125,22 @@ class DiscreteGrowthModel:
     log_likelihood : float
         The binomial log-likelihood at the fit (``nan`` for data given as
         reliabilities).
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import LloydLipow
+    >>> model = LloydLipow.fit(
+    ...     failures=[6, 5, 4, 3, 3, 2], trials=[10, 10, 10, 10, 10, 10]
+    ... )
+    >>> model.name, model.method, model.param_names
+    ('Lloyd-Lipow', 'mle', ('R_inf', 'alpha'))
+    >>> round(model.reliability(6), 3), round(model.log_likelihood, 3)
+    (0.725, -37.988)
+    >>> model.param_cb().round(3)
+           value  lower  upper
+    param
+    R_inf  0.798  0.523  0.934
+    alpha  0.437  0.169  1.130
     """
 
     def __init__(
@@ -459,6 +483,7 @@ class _GrowthFitter:
 
     # -- fitting -------------------------------------------------------------
 
+    @refuses_surpyval_data_with(_COUNTS_NOT_ROWS, argument="failures")
     def fit(
         self,
         failures: npt.ArrayLike | None = None,
@@ -917,6 +942,22 @@ class ModifiedGompertzGrowth_(_GrowthFitter):
     cannot bend to). It climbs from :math:`d + a b` at stage 0 to the
     ceiling :math:`a + d`; ``b`` and ``c`` are in (0, 1), and ``d`` in
     [0, 1) with :math:`a + d \\le 1`. Fitted as :class:`GompertzGrowth`.
+
+    Examples
+    --------
+    Reliabilities on the curve with ``a = 0.6``, ``b = 0.2``, ``c = 0.5``
+    and ``d = 0.3`` (to four decimals) give those parameters back, and the
+    ceiling ``a + d``:
+
+    >>> from surpyval.recurrent import ModifiedGompertzGrowth
+    >>> model = ModifiedGompertzGrowth.fit(
+    ...     reliability=[0.42, 0.5683, 0.7012, 0.7907, 0.8426, 0.8706, 0.8851],
+    ...     stage=[0, 1, 2, 3, 4, 5, 6],
+    ... )
+    >>> [round(float(p), 3) for p in model.params]
+    [0.6, 0.2, 0.5, 0.3]
+    >>> round(model.limit, 3)
+    0.9
     """
 
     name = "Modified Gompertz"
@@ -1059,6 +1100,7 @@ class CrowAMSAADiscrete_(_GrowthFitter):
     def _check_stages(self, s: np.ndarray) -> None:
         pass
 
+    @refuses_surpyval_data_with(_COUNTS_NOT_ROWS, argument="failures")
     def fit(
         self,
         failures: npt.ArrayLike | None = None,

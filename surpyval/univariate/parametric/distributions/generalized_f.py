@@ -222,10 +222,20 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         # was 7e-6 off where s2 = 0.2), so the other tail is the
         # complement of the one computed directly.
         small_b = v <= 0.0
-        b_in = np.where(small_b, b, 0.25)
-        c_in = np.where(small_b, 0.25, one_minus_b)
+        # Where the series below takes over (|v| > _FAR_V), the direct
+        # forms are evaluated at a harmless 0.25 instead: there B or 1 - B
+        # underflows, and their gradient would be nan, which the masks
+        # below would carry into every derivative.
+        far = np.abs(v) > _FAR_V
+        b_in = np.where(small_b & ~far, b, 0.25)
+        c_in = np.where(small_b | far, 0.25, one_minus_b)
         direct_f = abetaincln(s1, s2, b_in)
         direct_s = abetaincln(s2, s1, c_in)
+        if np.any(far):
+            # and their complements from a log of -1, not of a tail that
+            # may round to 0 at extreme shapes
+            direct_f = np.where(far, -1.0, direct_f)
+            direct_s = np.where(far, -1.0, direct_s)
         from_f = log1mexp(-direct_f, np.log(-direct_f))[0]
         from_s = log1mexp(-direct_s, np.log(-direct_s))[0]
         log_f = np.where(small_b, direct_f, from_s)
@@ -235,7 +245,6 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         # (a B(a, b)) (1 + O(y)), with ln y = -softplus(-v) (or
         # -softplus(v)) itself finite: the lower and the power-law upper
         # tail keep falling instead of stopping at -inf.
-        far = np.abs(v) > _FAR_V
         if np.any(far):
             v_far = np.where(far, v, 2.0 * _FAR_V)
             lead = -betaln_accurate(s1, s2)

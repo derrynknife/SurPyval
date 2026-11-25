@@ -199,16 +199,20 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
         "ChangePoint",
         "CoxLewis",
         "CrowAMSAA",
+        "CrowAMSAADiscrete",
         "Duane",
         "EffortClock",
         "GeneralizedOneRenewal",
         "GeneralizedRenewal",
         "GoelOkumoto",
+        "GompertzGrowth",
         "HPP",
         "InflectionS",
         "JelinskiMoranda",
         "JointFrailty",
         "LittlewoodVerrall",
+        "LloydLipow",
+        "ModifiedGompertzGrowth",
         "MusaOkumoto",
         "NonParametricCounting",
         "PanelCountMCF",
@@ -225,7 +229,17 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
     # no rows in a SurpyvalData: they refuse one, in words. WeibullEffort
     # fits a curve to a table of testing effort by period (ends,
     # amounts), not events: it refuses one too, naming EffortClock.
-    refusing = {"PanelCountMCF", "PanelCountRegression", "WeibullEffort"}
+    # The discrete growth models take success/fail counts by stage, which
+    # have no rows either.
+    refusing = {
+        "PanelCountMCF",
+        "PanelCountRegression",
+        "WeibullEffort",
+        "CrowAMSAADiscrete",
+        "GompertzGrowth",
+        "LloydLipow",
+        "ModifiedGompertzGrowth",
+    }
 
     def marked(f, flag):
         while f is not None:
@@ -959,3 +973,18 @@ def test_event_history_data_entry_unchanged():
     model = rc.CrowAMSAA._fit_from_recurrent_data(history)
     _same(model, rc.CrowAMSAA.fit(d["x"], i=d["i"], c=d["c"]))
     assert model.notes == ()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "CrowAMSAADiscrete",
+        "GompertzGrowth",
+        "LloydLipow",
+        "ModifiedGompertzGrowth",
+    ],
+)
+def test_discrete_growth_models_refuse_a_surpyval_data(name):
+    data = sp.SurpyvalData(x=[1.0, 2.0, 3.0])
+    with pytest.raises(TypeError, match="success/fail counts by stage"):
+        getattr(rc, name).fit(data)

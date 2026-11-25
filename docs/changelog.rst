@@ -5,8 +5,6 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
-- ``fit_best`` also tries the new ``GeneralizedGamma``, ``Gompertz`` and
-  ``InverseGaussian``. On
 - **The case bootstrap of grouped weighted data draws differently (same
   distribution).** A fit with sampling weights ``w`` is bootstrapped by
   resampling its units. Grouped data (any row with ``n`` above 1; a
@@ -25,7 +23,6 @@ v0.30 (unreleased)
   with one unit per row, and every unweighted (parametric) bootstrap,
   draw exactly as before.
 
-- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
 - ``fit_best`` also tries the new ``GeneralizedGamma``, ``GeneralizedF``,
   ``Gompertz`` and ``InverseGaussian``. On
   50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
@@ -624,6 +621,30 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **``CoxPH.fit(..., penalizer=...)`` and ``CoxPH.fit(..., firth=True)``
+  work again.** On the development branch the penalty arguments of
+  ``CoxPH.fit`` had been lost when ``CoxPH.fit_bayes`` was added (the
+  refusal took the decorator that adds them), so both calls, and
+  ``penalty_path`` with ``CoxPH``, raised ``TypeError``. No release had
+  the fault; the numbers are those of the penalised fits as before.
+- **A Bayesian cause-specific fit names its causes alike before and after
+  saving.** ``summary()`` of a fit from ``CauseSpecificNHPP.fit_bayes``
+  printed a cause as ``np.str_('A')`` until it was saved and read back;
+  causes are now kept as plain Python values (``'A'``).
+- **The new ``Gompertz`` and ``GeneralizedF`` keep a finite gradient far
+  out.** Where the Gompertz cumulative hazard overflows, and where the
+  generalised F's beta variable underflows, the gradient (through
+  autograd, as maximum likelihood and the samplers' log-posterior use
+  it) was ``nan`` although the value was finite. The values are
+  unchanged; only the masked branches are now evaluated at harmless
+  points.
+- The saved forms of ``BayesianResult``, ``BayesianRecurrence``,
+  ``BayesianProportionalIntensity`` and ``BayesianCauseSpecific`` are on
+  the serialisation page, and every new public growth model, plan and
+  the Dabrowska estimate have a docstring example. The fit of a discrete
+  growth model (``CrowAMSAADiscrete``, ``LloydLipow``, ``GompertzGrowth``,
+  ``ModifiedGompertzGrowth``) given a ``SurpyvalData`` refuses it in words:
+  it takes counts by stage, which have no rows there.
 - **A joint model's prediction far beyond the data.** ``sf``, ``qf`` and
   ``predict`` of a joint model whose hazard grows without bound whatever
   the item's path (a common rate, say: ``varying=("a",)``) raised

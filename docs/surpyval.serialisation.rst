@@ -540,6 +540,22 @@ with its own ``schema``.
      - ``"model": "BayesianRegression"``
      - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
      - --
+   * - ``BayesianResult``
+     - ``"model": "BayesianResult"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianRecurrence``
+     - ``"model": "BayesianRecurrence"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianProportionalIntensity``
+     - ``"model": "BayesianProportionalIntensity"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianCauseSpecific``
+     - ``"model": "BayesianCauseSpecific"``
+     - ``event_types``, ``models``, ``surpyval_version``
+     - --
 
 
 Readers and helpers

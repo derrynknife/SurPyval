@@ -23,7 +23,7 @@ def test_import_surpyval_does_not_import_torch():
         text=True,
         check=True,
     )
-    assert out.stdout.strip() == "False 9"
+    assert out.stdout.strip() == "False 11"
 
 
 def test_the_families_are_those_of_the_pymc_helpers():

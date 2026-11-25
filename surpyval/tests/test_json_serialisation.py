@@ -635,6 +635,21 @@ def _build(name):
             priors={"beta": sp_prior.around(2, between=(1.5, 3))},
         ),
         "bayesian_regression": _bayesian_regression,
+        "bayesian_result": _bayesian_result,
+        "bayesian_recurrence": lambda: CrowAMSAA.fit_bayes(
+            np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
+        ),
+        "bayesian_proportional_intensity": lambda: (
+            ProportionalIntensityHPP.fit_bayes(
+                _pi_data()[0],
+                _pi_data()[3],
+                i=_pi_data()[1],
+                c=_pi_data()[2],
+            )
+        ),
+        "bayesian_cause_specific": lambda: CauseSpecificNHPP.fit_bayes(
+            *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
+        ),
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -722,7 +737,24 @@ CASES = [
     "joint",
     "bayesian",
     "bayesian_regression",
+    "bayesian_result",
+    "bayesian_recurrence",
+    "bayesian_proportional_intensity",
+    "bayesian_cause_specific",
 ]
+
+
+def _bayesian_result():
+    """The shared Bayesian result, from a family's target (here the
+    regression's, as ``fit_target``'s example)."""
+    from surpyval import WeibullPH
+    from surpyval.bayes import fit_target
+    from surpyval.bayes.regression import RegressionTarget
+
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(30, 1))
+    x = Weibull.random(30, 50.0, 2.0, random_state=2)
+    return fit_target(RegressionTarget(WeibullPH.fit(x, Z)))
 
 
 def _bayesian_regression():
