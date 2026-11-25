@@ -1100,9 +1100,14 @@ the readings' noise at any reading age -- one warning names it and says
 to leave it out of ``varying``: the data show no difference between items
 in it, and the common-bend model is the same fit with one parameter
 fewer. (With the spread held at 0 the likelihood is the common-bend
-model's.) On such data the larger fit can stop short of the common-bend
-fit's likelihood, and says so (its maximum is unverified, #1334): take
-the common-bend fit.
+model's.) On such data the search for the larger fit could stop short of
+the common-bend fit's likelihood, with a spread run to 0 (#1334). So where
+the search ends unverified, or with a bend's spread at 0, the fit searches
+once more. The second search starts from the common-bend fit, with each
+bend's spread small, and the better of the two maxima is kept. A verified
+fit with every spread clear of 0 is not searched again, so it costs
+nothing more. A varying fit therefore reaches at least the likelihood of
+the common-bend fit it contains.
 
 **How well it recovers the truth.** A simulation study (run on
 2026-11-25 with ``scripts/studies/joint_recovery/shape_study.py``, whose
@@ -1113,10 +1118,12 @@ independent, read every 30 days to 730 with noise sd 0.4, and the hazard
 above. Each fleet was fitted with the bend common and with it varying.
 
 - 198 of the 200 fleets were fitted both ways; in the other two a fit
-  ended with no covariance. Refitted with the current code, one of the
-  two fits both ways. In the other the varying fit stops short, with
-  ``sd_rate`` run to 0 and an AIC 3.2 worse than the common fit's: the
-  stall described above (#1334). It is flagged unverified.
+  ended with no covariance. Refitted with the current code, both fit
+  both ways. In one of them (seed 2123) the varying fit had stopped
+  short, with ``sd_rate`` run to 0 and an AIC 3.2 worse than the common
+  fit's: the stall described above (#1334). With the second search it
+  reaches a verified maximum 20.0 higher in log-likelihood than before,
+  with an AIC 37 better than the common fit's.
 - All 198 varying fits reached a verified maximum, and ``aic()``
   preferred the varying bend in all 198 (by 48.5 at the median, 9.8 at
   the least). The bend's spread was never warned of as 0: here it is
@@ -1131,9 +1138,34 @@ above. Each fleet was fitted with the bend common and with it varying.
   marker effect +2.7% (se 1.2%), 97% coverage.
 
 So where the items' knees differ, let them vary and compare by
-``aic()``. The study had no fleet where the bends are alike, so it does
-not test how often the 1%-of-noise warning fires when they are: that,
-and the readings rule, are kept as they are.
+``aic()``.
+
+**Where the bends are alike, or nearly.** A second study
+(``scripts/studies/joint_recovery/bend_null_study.py``, its design fixed
+before it ran, run on 2026-11-26) fitted the same fleets with the bend's
+spread between pumps 0, 0.1 and 0.3 (against 1.0 above). This run is a
+reduced one, 10 fleets for each spread, so each share below is uncertain
+by about 15 points; the design has 200.
+
+- With no spread (sd 0), the warning fired in 4 of 10 fleets, and
+  ``aic()`` preferred the varying fit in 2. A spread that is truly 0 is
+  estimated above 0 in about half of fleets, as any variance at its
+  boundary is. So the warning cannot be expected to fire in every such
+  fleet: ``aic()`` is the check that matters, and it preferred the
+  common bend in 8 of 10.
+- With a small spread, the warning fired in 5 of 10 fleets at sd 0.1 and
+  2 of 10 at sd 0.3, and ``aic()`` preferred the varying fit in 3 and 1.
+  Spreads this small are not told from none by 150 pumps read monthly for
+  two years. The warning says that the estimate is at 0, which it is, not
+  that the truth is.
+- No varying fit fell short of the common-bend fit's likelihood (30 of
+  30, with the second search above).
+- The readings rule refused none of the fleets, even cut at 450 or 540
+  days. The bend ``s1`` of a one-knot spline acts from the start of the
+  boundary, so every reading counts (a median of 15 or 18 per pump), and
+  the rule is met.
+
+Read a bend's warning with the ``aic()`` comparison, not alone.
 
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

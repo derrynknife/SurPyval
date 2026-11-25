@@ -31,6 +31,23 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
+- **Joint models on a spline path with varying bends reach the
+  common-bend fit they contain.** Where the search ended unverified, or
+  with a bend's spread between items at 0, it could stop short of the
+  likelihood of the same model with the bend common to all items,
+  which is the varying model with that spread at 0. Such a fit now
+  searches once more, starting from the common-bend fit with each
+  bend's spread small, and keeps the better maximum. On the test
+  fixture whose lines have no bend, the negative log-likelihood goes
+  from 480.41 to 479.75, the common-bend fit's. In the shape study's
+  fleet where the varying fit had stalled (seed 2123), the fit moves
+  from 2679.23 (unverified, ``sd_rate`` at 0) to 2659.19 (verified,
+  ``sd_rate`` 0.29 a year and ``sd_s1`` 0.93), and its AIC from 3.1
+  worse than the common-bend fit's to 36.9 better. Verified fits with
+  every spread clear of 0 are unchanged, and are not searched again.
+  A study of fleets whose bends are alike, or nearly, is described on
+  the joint models page (``scripts/studies/joint_recovery/
+  bend_null_study.py``).
 
 - **Likelihood-ratio bounds on an offset: a correctness change.** A
   three-parameter fit with an offset can tend to a simpler model as the
