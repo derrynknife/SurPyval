@@ -46,6 +46,26 @@ v0.30 (unreleased)
   the limit is ruled out are unchanged: the Weibull's 95% one-sided
   bound on the 12-unit data is still -16.39.
 
+- **Likelihood-ratio bounds of an offset fit that is not a maximum: a
+  correctness change.** On data an offset does not help (40 values from
+  a Normal), an offset LogNormal, Gamma or LogLogistic fit stops at a
+  point that is not a maximum (a LogNormal at ``gamma = -68.1``): its
+  limit, the Normal or the Logistic, fits better, and the fit already
+  warned "No finite maximum". Its likelihood-ratio bounds were measured
+  from that point, though a likelihood-ratio region is the parameters
+  whose likelihood is close enough to the best the family can do. They
+  are now measured from the limit's fit. The 95% upper bound on
+  ``gamma`` moves from 3.233 to 1.707 (LogNormal), 8.469 to 7.181
+  (Gamma) and 14.58 to 7.349 (LogLogistic); the LogNormal's 90% bounds
+  on ``mu`` and ``sigma``, nan with a warning on one side before, are
+  now 2.901 to ``inf`` and 0 to 0.1070, and its 90% bounds on ``sf(18)``
+  move from 0.7680--0.9232 to 0.7745--0.9204, the Normal's own. A bound
+  whose level the fit itself falls outside is nan, with a warning. The
+  fit's warning now says that the data do not support an offset, names
+  the limit to fit instead, and says that only the Wald bounds are
+  meaningless. The returned model is still the fit. Fits whose offset
+  beats its limit are unchanged.
+
 - **GeneralizedF quantiles no longer depend on the other values asked
   for.** ``qf`` and ``isf`` refine every value with Newton steps until
   all of them have converged, so a value still converging, or a missing

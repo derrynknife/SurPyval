@@ -1230,12 +1230,27 @@ turnbull_estimator, hr
             f"converge along {'its' if one else 'their'} "
             f"profile{'' if one else 's'} where the search stopped"
         )
+        limit = self._offset_limit_family() if offset else None
+        if limit is not None:
+            # The likelihood-ratio bounds are measured from the limit's
+            # fit, the supremum (``ExtendedLikelihoodRatio
+            # ._lr_supremum_nll``), so only the Wald ones mean nothing
+            consequence = (
+                "The reported parameters are where the search stopped, not "
+                "a maximum, and their standard errors and Wald bounds are "
+                "meaningless (likelihood-ratio bounds are measured from the "
+                f"{limit.name} fit, the best the {self.name} approaches)"
+            )
+        else:
+            consequence = (
+                "The reported parameters are where the search stopped, and "
+                "their standard errors and bounds are meaningless"
+            )
         warn_no_maximum(
             f"the {self.name} likelihood keeps increasing as {named} "
             f"run{'s' if one else ''} on, towards a limit of the family "
             f"that none of its members reaches: {how_found}",
-            "The reported parameters are where the search stopped, and "
-            "their standard errors and bounds are meaningless",
+            consequence,
             self._runaway_advice(runaway, values, offset),
         )
 
@@ -1253,6 +1268,7 @@ turnbull_estimator, hr
             # ends; see ``fitters.mle._Judge.keep``) or the shape that
             # makes up for it
             return (
+                "the data do not support an offset: "
                 f"as gamma runs to -inf the {self.name} approaches a "
                 f"{limit.name} distribution, which fits these data at least "
                 f"as well as any {self.name} the search reached: fit "
