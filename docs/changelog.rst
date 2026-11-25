@@ -91,6 +91,37 @@ v0.30 (unreleased)
   "Regression models" and "Groups sharing a population" in
   :doc:`PyMC with SurPyval`.
 
+- **Bayesian fits: one shared layer for every family.** The Bayesian
+  regression is rebuilt on a layer the other families' fits will use,
+  with no change to its numbers (the posterior's draws, intervals and
+  saved form are bit-identical). A family gives a
+  ``surpyval.bayes.Target`` (its own likelihood, parameter names and
+  ranges, its units and how to simulate a data set), and
+  ``surpyval.bayes.fit_target`` chooses the engine by one rule: closed
+  form where conjugate, the grid for one to three free parameters, the
+  Laplace approximation beyond; there is still no sampler. Every result
+  (``surpyval.bayes.BayesianResult``) has ``function_cri(fn)`` and
+  ``probability(condition)`` for any function of the fitted model,
+  ``param_cri``, ``compare()``, ``summary()`` (the engine and its checks,
+  the default priors, and where the data disagree with a prior),
+  ``waic()`` and ``loo()`` per unit, a posterior predictive check
+  (``ppc()``, and ``diagnose()`` for the report), ``as_prior()`` and
+  saving. New priors for any family: ``sp.prior.on_function`` (a belief
+  about any function of the model, taken by ``on_quantities``, whose
+  ``instead_of=`` names the parameters the statements replace the priors
+  of), and ``sp.prior.from_fit`` (an earlier fit's data as a power
+  prior); ``sp.prior.from_model`` takes an earlier Bayesian fit of any
+  family. A Bayesian regression now warns, and says in its summary and
+  ``diagnostics["prior_conflict"]``, where a parameter's
+  maximum-likelihood estimate lies outside the central 99% of the prior
+  given for it; and it takes ``method="grid"`` for the exact posterior
+  of up to three free parameters (the default stays Laplace). Checked on
+  Poisson counts against the gamma posterior (closed form to 1e-12, the
+  grid to 2e-4), leave-one-out against refitting without each unit
+  (2e-3), and by simulation-based calibration (300 repetitions: coverage
+  and uniformity inside the rules, and a wrong likelihood rejected). See
+  "What every Bayesian fit reports" in :doc:`Bayesian Fitting with
+  SurPyval`.
 - **Bayesian regression: priors on coefficients.** The proportional
   hazards, accelerated failure time and accelerated life fitters have
   ``fit_bayes(x, Z, c, n, t, priors=...)`` and ``fit_bayes_from_df``

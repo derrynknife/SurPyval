@@ -25,6 +25,30 @@ The model
 .. autoclass:: surpyval.bayes.Posterior
    :members:
 
+Every family's fit
+------------------
+
+The regressions' and the other families' Bayesian fits share one layer:
+a family gives a :class:`~surpyval.bayes.Target` (its likelihood, names,
+ranges, units and simulation), and ``fit_target`` chooses the engine
+(closed form where conjugate, the grid for one to three free parameters,
+the Laplace approximation beyond) and returns a
+:class:`~surpyval.bayes.BayesianResult`.
+
+.. autoclass:: surpyval.bayes.BayesianResult
+   :members:
+
+.. autoclass:: surpyval.bayes.PredictiveCheck
+   :members:
+
+.. autoclass:: surpyval.bayes.BayesianDiagnosis
+   :members:
+
+.. autofunction:: surpyval.bayes.fit_target
+
+.. autoclass:: surpyval.bayes.Target
+   :members:
+
 Comparing fits
 --------------
 
@@ -55,9 +79,13 @@ Priors
 
 .. autofunction:: surpyval.bayes.prior.on_quantities
 
+.. autofunction:: surpyval.bayes.prior.on_function
+
 .. autofunction:: surpyval.bayes.prior.from_model
 
 .. autofunction:: surpyval.bayes.prior.from_data
+
+.. autofunction:: surpyval.bayes.prior.from_fit
 
 .. autofunction:: surpyval.bayes.prior.from_params
 

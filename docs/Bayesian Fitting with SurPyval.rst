@@ -442,6 +442,60 @@ covered, and refused with what to use: weights, penalties (a prior on a
 coefficient is the Bayesian penalty), time-varying covariates, the
 semi-parametric Cox model and the other regression families.
 
+What every Bayesian fit reports
+-------------------------------
+
+The distributions' fits, the regressions' and the other families' are the
+same computation: priors on a model's parameters times the likelihood the
+family's own ``fit`` uses. One rule chooses how the posterior is
+computed, and every result says which was used:
+
+1. **in closed form** where the prior and the data are conjugate (a Gamma
+   prior on a constant rate, for one);
+2. **on the grid** for one to three free parameters: the exact
+   posterior, to a stated integration error;
+3. **by the Laplace approximation** beyond three, with its two checks
+   against the exact posterior (the Pareto k and the shift of the
+   interval's ends) and ``importance=True`` to correct it.
+
+There is no sampler in SurPyval. For the exact posterior of a model with
+more than three free parameters, sample it with PyMC through
+:mod:`surpyval.pymc`.
+
+Beside its intervals, each result gives:
+
+- ``summary()``: the data, each prior (those SurPyval chose are marked
+  "default" and listed in ``default_priors``), the posterior beside the
+  maximum-likelihood estimate, and the engine with its checks;
+- a note, and a warning at the fit, where **the data disagree with a
+  prior**: a parameter whose maximum-likelihood estimate (what the data
+  say alone) lies outside the central 99% of the prior given for it
+  (``diagnostics["prior_conflict"]``). Neither is taken as right; the
+  note says to look;
+- ``function_cri(fn)`` and ``probability(condition)``: the credible
+  interval of any function of the fitted model, and the posterior
+  probability that a requirement is met;
+- ``waic()`` and ``loo()``, per *unit* of the data (a row of lives; one
+  system's whole history for a recurrent-event process);
+- ``ppc()``, a **posterior predictive check**. In words: simulate a few
+  hundred data sets from the fitted model, each from one posterior draw
+  and under the observed design (the same units, covariates and
+  observation windows), and see whether a summary of the real data, such
+  as the number of failures, sits among the simulated ones. If the real
+  value is in the extreme 2.5% at either end, the model does not
+  reproduce that feature of the data. ``diagnose()`` gathers this with
+  the engine's checks and the prior conflicts in one report.
+
+A belief about a quantity the model implies, rather than about a
+parameter, is stated with ``sp.prior.on_function``: any function of the
+fitted model (a B10 life at a use stress, the MTBF at the end of a test).
+``sp.prior.on_quantities`` carries it to the parameters by the change of
+variables; ``instead_of=`` names the parameters the statements replace
+the priors of, and the others keep their own. An earlier fit of any
+family is a prior through ``sp.prior.from_model`` (its estimates and
+covariance, or exactly for an earlier Bayesian fit) or
+``sp.prior.from_fit`` (its data, as a power prior with a ``weight``).
+
 Priors: the helpers, and their dangers
 --------------------------------------
 

@@ -614,6 +614,21 @@ OUT_OF_SCOPE["surpyval.bayes.compare"] = (
 )
 OUT_OF_SCOPE["surpyval.bayes.PredictiveCriterion"] = _RESULT
 OUT_OF_SCOPE["surpyval.bayes.PredictiveComparison"] = _RESULT
+# The layer every family's Bayesian fit shares (checked on a family small
+# enough to work by hand in surpyval/tests/bayes/test_shared_layer.py; the
+# families' own fits are registered)
+OUT_OF_SCOPE["surpyval.bayes.BayesianResult"] = (
+    "the base of every family's Bayesian fit, built by fit_bayes "
+    "(checked in surpyval/tests/bayes/test_shared_layer.py); the "
+    "families' own results are registered"
+)
+OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
+    _FUNCTION + " (the engine rule behind every family's fit_bayes; "
+    "checked in surpyval/tests/bayes/test_shared_layer.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.PredictiveCheck"] = _RESULT
+OUT_OF_SCOPE["surpyval.bayes.BayesianDiagnosis"] = _RESULT
 for _name in (
     "Prior",
     "JointPrior",
@@ -623,8 +638,12 @@ for _name in (
     "Fixed",
     "MultivariateNormal",
     "PowerPrior",
+    "FitPowerPrior",
     "OnQuantities",
+    "FunctionStatement",
     "PriorSpec",
+    "from_fit",
+    "on_function",
     "around",
     "between",
     "uniform",

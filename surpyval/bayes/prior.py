@@ -6,8 +6,10 @@ the plain helpers :func:`around`, :func:`between`, :func:`uniform`,
 :func:`flat` and :func:`fixed`), a joint prior on the parameters together
 (:class:`MultivariateNormal`, which :func:`from_model` builds from an
 earlier fit), a prior on the quantities people know (:func:`on_quantities`:
-a B-life, a reliability at a time, the mean) and the old data themselves
-(:func:`from_data`, a power prior).
+a B-life, a reliability at a time, the mean, or any function of the
+fitted model by :func:`on_function`) and the old data themselves
+(:func:`from_data`, a power prior; :func:`from_fit` for the data of an
+earlier fit of any family).
 
 Every prior is used on the parameter's unconstrained scale (the log of a
 positive parameter, the logit of a proportion; see
@@ -39,7 +41,9 @@ __all__ = [
     "from_model",
     "from_data",
     "from_params",
+    "from_fit",
     "on_quantities",
+    "on_function",
     "check",
     "Prior",
     "JointPrior",
@@ -49,7 +53,9 @@ __all__ = [
     "Fixed",
     "MultivariateNormal",
     "PowerPrior",
+    "FitPowerPrior",
     "OnQuantities",
+    "FunctionStatement",
     "PriorSpec",
 ]
 
@@ -633,17 +639,62 @@ class OnQuantities(JointPrior):
     """
 
     def __init__(
-        self, dist: Any, statements: list[tuple[str, Any, Any]]
+        self,
+        dist: Any,
+        statements: list[tuple[str, Any, Any]],
+        instead_of: list[str] | None = None,
+        functions: dict[str, Any] | None = None,
     ) -> None:
         self.dist = dist
         # (label, spec, prior): spec is ("q", p), ("R", t), ("mean",),
-        # ("param", name)
+        # ("param", name), ("family", keyword, key) for a quantity the
+        # fitted family names (an MTBF at a time), or ("fn", label,
+        # scale) for a function of the fitted model, held in
+        # ``functions`` by its label
         self.statements = statements
-        self.names = None
-        self.said = "; ".join(f"{lab} {p.said}" for lab, _, p in statements)
+        #: The parameters the statements stand in place of priors on
+        #: (``None``: every free parameter of the fit).
+        self.instead_of = None if instead_of is None else list(instead_of)
+        self.names = self.instead_of
+        self.functions = dict(functions or {})
+        self.said = "; ".join(
+            f"{lab} {getattr(p, 'said', '') or 'as given'}"
+            for lab, _, p in statements
+        )
 
-    def quantity(self, spec: tuple, theta: dict[str, Any]) -> Any:
+    def quantity(
+        self, spec: tuple, theta: dict[str, Any], fit: Any = None
+    ) -> Any:
         """The quantity ``spec`` at the parameter points ``theta``."""
+        kind = spec[0]
+        target = getattr(fit, "target", None)
+        if kind == "param" and target is not None:
+            return theta[spec[1]]
+        if kind == "family":
+            _, fn, _ = _family_quantity(target, spec)
+            return fn(theta)
+        if kind == "fn":
+            fn = self.functions.get(spec[1])
+            if fn is None:
+                raise ValueError(
+                    f"The prior on {spec[1]} was saved without its "
+                    "function (a function is not saved); build the prior "
+                    "again with prior.on_function to refit."
+                )
+            return _function_values(fn, target, fit, theta)
+        if target is not None:
+            raise ValueError(
+                f"{spec[0]!r} statements (B-lives, R_at, mean, median, "
+                "quantile) are quantities of a life distribution. For "
+                f"{target.family}, state the belief with "
+                "prior.on_function(lambda model: ..., belief, name=...), or "
+                "one of the family's own quantities"
+                + (
+                    f" ({', '.join(target.quantities())})."
+                    if target.quantities()
+                    else "."
+                )
+            )
         return quantity_at(self.dist, spec, theta)
 
     def centre(self, fit: Any) -> npt.NDArray | None:
@@ -651,6 +702,11 @@ class OnQuantities(JointPrior):
         prior's centre, by least squares."""
         from scipy import optimize
 
+        if self.instead_of is not None and len(self.instead_of) != fit.d:
+            # the statements do not locate every free parameter
+            return None
+        if self.functions and any(v is None for v in self.functions.values()):
+            return None
         ts = [self.transform_of(spec, fit) for _, spec, _ in self.statements]
         target = []
         for (_, _, p), t in zip(self.statements, ts):
@@ -665,7 +721,9 @@ class OnQuantities(JointPrior):
             out = []
             for (_, spec, _), t in zip(self.statements, ts):
                 with np.errstate(all="ignore"):
-                    q = np.asarray(self.quantity(spec, theta), dtype=float)
+                    q = np.asarray(
+                        self.quantity(spec, theta, fit), dtype=float
+                    )
                     out.append(float(np.ravel(t.to_phi(q))[0]))
             r = np.asarray(out) - target_arr
             return np.where(np.isfinite(r), r, 1e6)
@@ -686,6 +744,17 @@ class OnQuantities(JointPrior):
             return fit.transforms[fit.names.index(spec[1])]
         if kind == "R":
             return Transform("logit", 0.0, 1.0)
+        if kind in ("fn", "family"):
+            scale = (
+                spec[2]
+                if kind == "fn"
+                else _family_quantity(getattr(fit, "target", None), spec)[2]
+            )
+            if scale == "logit":
+                return Transform("logit", 0.0, 1.0)
+            if scale == "log":
+                return Transform("log", 0.0, np.inf)
+            return Transform("identity")
         lo = float(self.dist.support[0])
         if fit.offset or not np.isfinite(lo):
             return Transform("identity")
@@ -693,20 +762,48 @@ class OnQuantities(JointPrior):
 
     def bind(self, fit: Any) -> Any:
         free = fit.free_names
-        if len(self.statements) != len(free):
-            raise ValueError(
-                f"on_quantities has {len(self.statements)} statements for "
-                f"{len(free)} free parameters ({', '.join(free)}). Give "
-                "exactly one statement per free parameter (a quantity, or "
-                "a parameter by name, e.g. beta=prior.between(1.2, 4)); "
-                "statements beyond that are not combined in this version."
-            )
+        if self.instead_of is None:
+            if len(self.statements) != len(free):
+                raise ValueError(
+                    f"on_quantities has {len(self.statements)} statements "
+                    f"for {len(free)} free parameters ({', '.join(free)}). "
+                    "Give exactly one statement per free parameter (a "
+                    "quantity, or a parameter by name, e.g. "
+                    "beta=prior.between(1.2, 4)), or say which parameters "
+                    "the statements stand in place of priors on "
+                    "(instead_of=[...], one per statement) and give the "
+                    "others their own priors."
+                )
+            cols_of = list(range(len(free)))
+        else:
+            if len(self.statements) != len(self.instead_of):
+                raise ValueError(
+                    f"on_quantities has {len(self.statements)} statements "
+                    f"in place of {len(self.instead_of)} parameters "
+                    f"({', '.join(self.instead_of)}): give one statement "
+                    "for each parameter named in instead_of."
+                )
+            cols_of = fit.indices(self.instead_of, "on_quantities")
         for lab, spec, p in self.statements:
             if spec[0] == "param" and spec[1] not in free:
                 raise ValueError(
                     f"on_quantities names {spec[1]}, which is not a free "
                     f"parameter of the fit ({', '.join(free)})."
                 )
+        if any(
+            spec[0] == "fn" and self.functions.get(spec[1]) is None
+            for _, spec, _ in self.statements
+        ):
+            # a saved prior without its function: it describes itself,
+            # and refuses only where its density is asked for
+            def unavailable(phi: npt.NDArray) -> Any:
+                raise ValueError(
+                    "A prior on a function of the model was saved without "
+                    "the function; build it again with prior.on_function "
+                    "to refit."
+                )
+
+            return unavailable
         ts = [self.transform_of(spec, fit) for _, spec, _ in self.statements]
         for (lab, spec, p), t in zip(self.statements, ts):
             p.check_support(t, lab)
@@ -716,24 +813,26 @@ class OnQuantities(JointPrior):
             cols = []
             for (_, spec, _), t in zip(self.statements, ts):
                 q = np.broadcast_to(
-                    np.asarray(self.quantity(spec, theta), dtype=float),
+                    np.asarray(self.quantity(spec, theta, fit), dtype=float),
                     (phi.shape[0],),
                 )
                 cols.append(t.to_phi(q))
             return np.stack(cols, axis=1)
 
         def log_density(phi: npt.NDArray) -> Any:
-            N, k = phi.shape
+            N = phi.shape[0]
+            k = len(cols_of)
             psi = q_phi(phi)
             out = np.zeros(N)
             for j, ((_, _, p), t) in enumerate(zip(self.statements, ts)):
                 out = out + p.log_density_phi(psi[:, j], t)
-            # log |det d psi / d phi| by central differences
+            # log |det d psi / d phi| by central differences, over the
+            # parameters the statements stand in place of
             h = 1e-5
             J = np.empty((N, k, k))
-            for i in range(k):
-                step = np.zeros(k)
-                step[i] = h
+            for i, col in enumerate(cols_of):
+                step = np.zeros(phi.shape[1])
+                step[col] = h
                 J[:, :, i] = (q_phi(phi + step) - q_phi(phi - step)) / (2 * h)
             with np.errstate(divide="ignore", invalid="ignore"):
                 sign, logdet = np.linalg.slogdet(J)
@@ -748,12 +847,238 @@ class OnQuantities(JointPrior):
     def to_dict(self) -> dict:
         return {
             "prior": "OnQuantities",
-            "dist": self.dist.name,
+            "dist": getattr(self.dist, "name", None),
             "statements": [
                 [lab, list(spec), p.to_dict()]
                 for lab, spec, p in self.statements
             ],
+            "instead_of": self.instead_of,
         }
+
+
+class FunctionStatement:
+    """A belief about a function of the fitted model, for
+    :func:`on_quantities`. Built by :func:`on_function`.
+
+    Examples
+    --------
+    >>> import surpyval as sp
+    >>> s = sp.prior.on_function(
+    ...     lambda model: model.qf(0.1, [[0.0]]),
+    ...     sp.prior.between(20, 40), name="B10 at Z = 0")
+    >>> type(s).__name__, s.scale
+    ('FunctionStatement', 'log')
+    """
+
+    def __init__(self, fn: Any, belief: Any, name: str, scale: str) -> None:
+        if not callable(fn):
+            raise ValueError(
+                "on_function takes a function of the fitted model, e.g. "
+                f"lambda model: model.mtbf(500.0); got {fn!r}."
+            )
+        if scale not in ("log", "logit", "identity"):
+            raise ValueError(
+                "scale must be 'log' (a positive quantity: a life, an "
+                "MTBF), 'logit' (a probability) or 'identity' (any real "
+                f"number); got {scale!r}."
+            )
+        self.fn = fn
+        self.name = str(name)
+        self.scale = scale
+        self.belief = as_prior(belief, self.name)
+
+    def __repr__(self) -> str:
+        return f"FunctionStatement({self.name}: {self.belief.said})"
+
+
+def on_function(
+    fn: Any, belief: Any, name: str = "", scale: str = "log"
+) -> FunctionStatement:
+    """
+    A belief about any function of the fitted model: the MTBF at the end
+    of a test, a B10 life at a use stress, a remaining useful life.
+
+    ``fn`` takes the family's ordinary model (what ``fit`` returns, at
+    given parameters) and returns one number. The statement goes to
+    :func:`on_quantities`, which carries the belief to the parameters by
+    the change of variables.
+
+    Parameters
+    ----------
+    fn : callable
+        ``fn(model) -> float``.
+    belief : prior
+        What is believed about the function's value:
+        :func:`around`, :func:`between` or a SurPyval distribution.
+    name : str, optional
+        What the function is, for the summary ("B10 at 50 C").
+    scale : {'log', 'logit', 'identity'}, optional
+        The quantity's range: positive (``'log'``, the default), a
+        probability (``'logit'``) or any real number (``'identity'``).
+
+    Examples
+    --------
+    >>> import surpyval as sp
+    >>> s = sp.prior.on_function(
+    ...     lambda model: model.qf(0.1, [[0.0]]),
+    ...     sp.prior.between(20, 40), name="B10 at Z = 0")
+    >>> s.name
+    'B10 at Z = 0'
+    """
+    name = name or getattr(fn, "__name__", "a function of the model")
+    return FunctionStatement(fn, belief, name, scale)
+
+
+def _family_quantity(target: Any, spec: tuple) -> tuple:
+    """``(label, function of the parameters' dict, scale)`` of a family's
+    named quantity ``("family", keyword, key)``."""
+    known = {} if target is None else target.quantities()
+    if spec[1] not in known:
+        family = "a life distribution" if target is None else target.family
+        raise ValueError(
+            f"on_quantities does not know {spec[1]!r} for {family}"
+            + (f"; its quantities are {', '.join(known)}" if known else "")
+            + ". State any other belief with prior.on_function."
+        )
+    out: tuple = known[spec[1]](spec[2])
+    return out
+
+
+def _function_values(
+    fn: Any, target: Any, fit: Any, theta: dict[str, Any]
+) -> npt.NDArray:
+    """``fn`` of the family's model at each parameter point."""
+    if target is None:
+        raise ValueError(
+            "prior.on_function is for the families whose fit_bayes builds "
+            "the model at each parameter point (the regressions and the "
+            "recurrent-event models). For a life distribution use the "
+            "named quantities (B10=, R_at=, mean=, median=, quantile=)."
+        )
+    rows = np.stack([np.asarray(theta[n], dtype=float) for n in fit.names], 1)
+    out = np.full(len(rows), np.nan)
+    with ignoring_warnings(), np.errstate(all="ignore"):
+        for i, row in enumerate(rows):
+            if not np.all(np.isfinite(row)):
+                continue
+            try:
+                out[i] = float(np.ravel(fn(target.with_params(row)))[0])
+            except (ValueError, FloatingPointError, ZeroDivisionError):
+                continue
+    return out
+
+
+class FitPowerPrior(JointPrior):
+    """The data of an earlier fit, of any family, as the prior: their
+    likelihood raised to ``weight`` (a power prior; Ibrahim and Chen,
+    2000). Built by :func:`from_fit`.
+
+    It multiplies whatever other priors are given, so with ``weight=1``
+    fitting the new data with it is the same as fitting the old and the
+    new data together.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+    >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+    >>> p = sp.prior.from_fit(sp.WeibullPH.fit(x, Z), weight=0.5)
+    >>> type(p).__name__, p.weight
+    ('FitPowerPrior', 0.5)
+    """
+
+    is_likelihood = True
+
+    def __init__(self, target: Any, weight: float = 1.0, said: str = ""):
+        weight = float(weight)
+        if not 0 < weight <= 1:
+            raise ValueError(
+                f"weight must be in (0, 1]: 1 counts the old data in full, "
+                f"0.5 as half as much; got {weight}."
+            )
+        self.target = target
+        self.weight = weight
+        self.said = said or (
+            f"the data of an earlier {target.family} fit "
+            f"({target.describe_data()}) at weight {weight:g}"
+        )
+
+    def bind(self, fit: Any) -> Any:
+        new = getattr(fit, "target", None)
+        if new is None or list(self.target.names) != list(fit.names):
+            raise ValueError(
+                f"The old data were fitted by {self.target.family} "
+                f"(parameters {', '.join(self.target.names)}), and this "
+                f"fit's parameters are {', '.join(fit.names)}: a power "
+                "prior needs the same model for the old and the new data."
+            )
+        w = self.weight
+        old = self.target
+
+        def log_density(phi: npt.NDArray) -> Any:
+            return w * old.log_lik(fit.full_theta(phi))
+
+        return log_density
+
+    def describe(self) -> str:
+        return self.said
+
+    def to_dict(self) -> dict:
+        return {
+            "prior": "FitPowerPrior",
+            "target": self.target.to_dict(),
+            "weight": self.weight,
+            "said": self.said,
+        }
+
+
+def from_fit(model: Any, weight: float = 1.0) -> FitPowerPrior:
+    """
+    The data of an earlier fit as the prior, for any family with a
+    Bayesian fit (a regression, a recurrent-event process): their exact
+    likelihood raised to ``weight`` (a power prior; Ibrahim and Chen,
+    2000).
+
+    Better than :func:`from_model` when the earlier fit still holds its
+    data, especially with few events, where a normal summary of them is
+    poor. With ``weight=1`` it is the same as fitting the old and the new
+    data together.
+
+    Parameters
+    ----------
+    model : fitted model
+        The earlier fit (maximum likelihood or Bayesian), holding its
+        data.
+    weight : float, optional
+        How much of the old evidence to count, in (0, 1]. Defaults to 1.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+    >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+    >>> old = sp.WeibullPH.fit(x, Z)
+    >>> p = sp.prior.from_fit(old, weight=0.5)
+    >>> p.weight
+    0.5
+    """
+    from surpyval.bayes.target import Target, target_for_model
+
+    target = model if isinstance(model, Target) else None
+    if target is None:
+        target = getattr(model, "target", None)
+    if target is None:
+        target = target_for_model(model)
+    if target is None or target.data is None:
+        raise ValueError(
+            "prior.from_fit takes an earlier fit that holds its data (a "
+            "regression's or a recurrent-event process's, by fit or "
+            f"fit_bayes); got {type(model).__name__}. For a life "
+            "distribution's old data use prior.from_data(x, c, ...)."
+        )
+    return FitPowerPrior(target, weight)
 
 
 def quantity_at(dist: Any, spec: tuple, theta: dict[str, Any]) -> Any:
@@ -1073,9 +1398,12 @@ def from_model(
             f" got {widen}."
         )
     from surpyval.bayes.model import BayesianParametric
+    from surpyval.bayes.result import BayesianResult
+    from surpyval.bayes.target import target_for_model
 
-    if isinstance(model, BayesianParametric):
+    if isinstance(model, (BayesianParametric, BayesianResult)):
         return model.as_prior(weight=weight, param=param, widen=widen)
+    target = target_for_model(model)
     if not hasattr(model, "covariance") or not hasattr(model, "dist"):
         raise ValueError(
             "from_model takes a fitted SurPyval model (Weibull.fit(...)) "
@@ -1095,13 +1423,32 @@ def from_model(
             f"The earlier fit has no covariance ({e}). Give its numbers "
             "with prior.from_params(dist, params, within=...) instead."
         ) from None
-    names, ts = _model_transforms(model)
-    values = list(np.atleast_1d(model.params))
-    if getattr(model, "lfp", False):
+    if target is not None:
+        names = list(target.names)
+        ts = [Transform.for_bounds(b) for b in target.bounds]
+        values = [float(v) for v in target.estimates()]
+        family = target.family
+    else:
+        names, ts = _model_transforms(model)
+        values = list(np.atleast_1d(model.params))
+        family = model.dist.name
+    if target is None and getattr(model, "lfp", False):
         values.append(float(model.lfp_p))
-    if getattr(model, "zi", False):
+    if target is None and getattr(model, "zi", False):
         values.append(float(model.f0))
-    keep = [i for i in range(len(names)) if cov[i, i] > 0]
+    if cov.shape != (len(names), len(names)):
+        raise ValueError(
+            f"The earlier fit's covariance is {cov.shape[0]} x "
+            f"{cov.shape[1]} for {len(names)} parameters "
+            f"({', '.join(names)}), so it cannot be read as their prior. "
+            "Use prior.from_fit(model) for its data, or give the numbers "
+            "with prior.MultivariateNormal."
+        )
+    keep = [
+        i
+        for i in range(len(names))
+        if np.isfinite(cov[i, i]) and cov[i, i] > 0
+    ]
     v = np.array([values[i] for i in keep], dtype=float)
     ts_k = [ts[i] for i in keep]
     names_k = [names[i] for i in keep]
@@ -1119,7 +1466,7 @@ def from_model(
         "param": param,
     }
     said = (
-        f"from an earlier {model.dist.name} fit "
+        f"from an earlier {family} fit "
         f"({', '.join(f'{n} {_fmt(x)}' for n, x in zip(names_k, v))}), "
         f"weight {weight:g}" + (f", widened x{widen:g}" if widen != 1 else "")
     )
@@ -1284,6 +1631,17 @@ def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
         if not 0 < p < 1:
             raise ValueError(f"{key}: a B-life is between B0 and B100.")
         return [(key, ("q", p), value)]
+    if key.endswith("_at") and isinstance(value, Mapping):
+        # a quantity the fitted family names (an MTBF at a time)
+        what = key[:-3].replace("_", " ")
+        return [
+            (f"{what} at {_fmt(k)}", ("family", key, float(k)), p)
+            for k, p in value.items()
+        ]
+    if not _is_life_distribution(dist):
+        # a parameter of a family whose names the fit knows (a
+        # coefficient, a process's beta): checked when the prior is bound
+        return [(key, ("param", key), value)]
     names = list(dist.parameter_names) + ["gamma", "lfp_p", "f0"]
     if key in names:
         return [(key, ("param", key), value)]
@@ -1294,7 +1652,22 @@ def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
     )
 
 
-def on_quantities(dist: Any, **statements: Any) -> OnQuantities:
+def _is_life_distribution(dist: Any) -> bool:
+    """Whether ``dist`` is a univariate distribution (whose quantities
+    ``quantity_at`` computes), not a regression or a process."""
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+
+    return isinstance(dist, ParametricFitter)
+
+
+def on_quantities(
+    dist: Any = None,
+    *functions: Any,
+    instead_of: list[str] | str | None = None,
+    **statements: Any,
+) -> OnQuantities:
     """
     A prior on the quantities people know, turned into a prior on the
     distribution's parameters.
@@ -1311,10 +1684,26 @@ def on_quantities(dist: Any, **statements: Any) -> OnQuantities:
     Each statement is a prior: :func:`around`, :func:`between` or a
     SurPyval distribution.
 
+    For the other families with a Bayesian fit (a regression, a
+    recurrent-event process) the quantities are functions of the fitted
+    model, each stated with :func:`on_function` (a B10 life at a use
+    stress, a remaining life), or one the family names (``mtbf_at={500:
+    ...}`` for a process). There the statements usually stand in place
+    of priors on some of the parameters only (``instead_of=["alpha"]``:
+    one statement for each parameter named), and the other parameters
+    keep their own priors.
+
     Parameters
     ----------
-    dist : ParametricFitter
-        The distribution the beliefs describe.
+    dist : fitter
+        The distribution (or regression, or process) the beliefs
+        describe.
+    *functions : FunctionStatement
+        Beliefs about functions of the fitted model, from
+        :func:`on_function`.
+    instead_of : list of str, optional
+        The parameters the statements stand in place of priors on, one
+        for each statement. By default every free parameter of the fit.
     **statements
         The beliefs, as above.
 
@@ -1329,16 +1718,33 @@ def on_quantities(dist: Any, **statements: Any) -> OnQuantities:
     >>> [label for label, _, _ in belief.statements]
     ['B10', 'beta']
     """
-    if not statements:
+    if isinstance(dist, FunctionStatement):
+        functions = (dist,) + functions
+        dist = None
+    if not statements and not functions:
         raise ValueError(
             "on_quantities needs at least one statement, e.g. "
             "B10=prior.around(5000, between=(3000, 8000))."
         )
     entries = []
+    held: dict[str, Any] = {}
+    for f in functions:
+        if not isinstance(f, FunctionStatement):
+            raise ValueError(
+                "on_quantities takes the distribution, then statements "
+                "from prior.on_function, then beliefs by keyword; got "
+                f"{f!r}."
+            )
+        if f.name in held:
+            raise ValueError(f"Two statements are named {f.name!r}.")
+        held[f.name] = f.fn
+        entries.append((f.name, ("fn", f.name, f.scale), f.belief))
     for key, value in statements.items():
         for lab, spec, p in _quantity_spec(key, value, dist):
             entries.append((lab, spec, as_prior(p, lab)))
-    return OnQuantities(dist, entries)
+    if isinstance(instead_of, str):
+        instead_of = [instead_of]
+    return OnQuantities(dist, entries, instead_of, held)
 
 
 def as_prior(value: Any, name: str) -> Prior:
@@ -1398,17 +1804,28 @@ def prior_from_dict(d: dict) -> Any:
             dist=dist,
             said=d.get("said", ""),
         )
+    if kind == "FitPowerPrior":
+        from surpyval.bayes.target import target_from_dict
+
+        return FitPowerPrior(
+            target_from_dict(d["target"]), d["weight"], d.get("said", "")
+        )
     if kind == "OnQuantities":
         import surpyval
 
-        dist = getattr(surpyval, d["dist"])
-        return OnQuantities(
-            dist,
-            [
-                (lab, tuple(spec), prior_from_dict(p))
-                for lab, spec, p in d["statements"]
-            ],
+        dist = (
+            None
+            if d.get("dist") is None
+            else getattr(surpyval, d["dist"], None)
         )
+        entries = [
+            (lab, tuple(spec), prior_from_dict(p))
+            for lab, spec, p in d["statements"]
+        ]
+        # a function is not saved: its statement describes itself, and
+        # refuses where its density is asked for
+        held = {spec[1]: None for _, spec, _ in entries if spec[0] == "fn"}
+        return OnQuantities(dist, entries, d.get("instead_of"), held)
     if kind == "PriorSpec":
         return PriorSpec.from_dict(d)
     raise ValueError(f"Unknown prior {kind!r} in a saved prior.")
@@ -1516,8 +1933,12 @@ class BoundPriors:
         lfp: bool,
         zi: bool,
         fixed: dict[str, float],
+        target: Any = None,
     ) -> None:
         self.spec = spec
+        #: The fitted family's target (:mod:`surpyval.bayes.target`),
+        #: where the fit is not a life distribution's.
+        self.target = target
         self.dist = dist
         self.names = list(names)
         self.offset, self.lfp, self.zi = offset, lfp, zi
@@ -1667,6 +2088,14 @@ class BoundPriors:
                 found = j.centre(self)
                 if found is not None:
                     c = found
+            elif isinstance(j, FitPowerPrior):
+                # the old data's own estimates locate the parameters
+                # where the new data alone do not
+                old = j.target.start()
+                if old is not None and len(old) == len(self.names):
+                    with np.errstate(all="ignore"):
+                        at = self.to_phi(np.asarray(old)[None, :])[0]
+                    c = np.where(np.isnan(c), at, c)
         return None if np.isnan(c).any() else c
 
 

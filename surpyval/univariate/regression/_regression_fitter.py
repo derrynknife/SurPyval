@@ -90,6 +90,7 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
         importance: bool = False,
+        method: str = "auto",
         **options: Any,
     ) -> Any:
         """
@@ -127,6 +128,11 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
             Reweight the normal's draws towards the exact posterior by
             Pareto-smoothed importance sampling, where its check allows
             (Pareto k up to 0.7). False by default.
+        method : {'auto', 'laplace', 'grid'}, optional
+            The engine. ``'auto'`` (the default) is the Laplace
+            approximation for a regression; ``'grid'`` computes the
+            exact posterior of one to three free parameters, at a cost
+            of tens of thousands of likelihood evaluations.
 
         Returns
         -------
@@ -169,6 +175,7 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
             tl=tl,
             tr=tr,
             importance=importance,
+            method=method,
             **options,
         )
 
@@ -186,6 +193,7 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         *,
         priors: Any = None,
         importance: bool = False,
+        method: str = "auto",
         **columns: Any,
     ) -> Any:
         """
@@ -216,6 +224,7 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
             df,
             priors=priors,
             importance=importance,
+            method=method,
             x_col=x_col,
             Z_cols=Z_cols,
             c_col=c_col,
