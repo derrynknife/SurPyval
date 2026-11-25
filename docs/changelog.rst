@@ -154,6 +154,20 @@ v0.30 (unreleased)
   them and gives the level (``ConfidenceBounds(lower=1.0002, upper=3.9992,
   level=95%)``). Anything computed from it is a plain array. One-sided
   bounds are unchanged. No number changes.
+- **Read-outs of a fitted survival tree or forest.** ``partial_dependence``
+  on ``RandomSurvivalForest`` and ``SurvivalTree`` gives each unit's
+  predicted survival (or ``ff``, ``Hf``, a cause's ``cif``) as one
+  covariate is set to each of a range of values, its other covariates as
+  they are (ICE curves), and their weighted average (the partial
+  dependence), with ``plot(at=...)`` and a centred (c-ICE) view.
+  ``minimal_depth()`` gives how near the root each covariate first splits
+  the trees (the root at depth 0, an unused covariate at the tree's depth,
+  as randomForestSRC's ``max.subtree``) and the share of trees that use
+  it. ``feature_importances(times=[...])`` gives permutation importance by
+  horizon: the rise in the out-of-bag Brier score (or, with
+  ``metric="auc"``, the fall in the time-dependent AUC) at each time when
+  a covariate is shuffled. Without ``times`` the importance is the
+  out-of-bag log-likelihood one, unchanged.
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each

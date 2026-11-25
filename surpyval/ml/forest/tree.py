@@ -21,6 +21,7 @@ from surpyval.ml.forest.node import (
     route_to_leaves,
     tree_lines,
 )
+from surpyval.ml.forest.readouts import minimal_depth, partial_dependence
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -1044,6 +1045,41 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         restore_covariate_meta(tree, model_dict)
         tree._root = node_from_dict(model_dict["root"])
         return tree
+
+    def partial_dependence(
+        self,
+        covariate: Any,
+        values: ArrayLike,
+        x: ArrayLike,
+        *,
+        Z: Any = None,
+        weights: ArrayLike | None = None,
+        on: str = "sf",
+        event: Any = None,
+    ) -> Any:
+        """ICE and partial-dependence curves of one covariate, as for
+        :meth:`RandomSurvivalForest.partial_dependence
+        <surpyval.ml.forest.forest.RandomSurvivalForest.partial_dependence>`.
+        A single tree's curves are steps, changing only where the tree
+        splits on the covariate."""
+        return partial_dependence(
+            self,
+            covariate,
+            values,
+            x,
+            Z=Z,
+            weights=weights,
+            on=on,
+            event=event,
+        )
+
+    def minimal_depth(self) -> pd.DataFrame:
+        """The depth of each covariate's shallowest split, the root at
+        depth 0; a covariate the tree never splits on gets the tree's
+        depth (its deepest leaf). As for the forest's
+        :meth:`~surpyval.ml.forest.forest.RandomSurvivalForest.minimal_depth`
+        with one tree, so ``split_fraction`` is 1 or 0."""
+        return minimal_depth(self)
 
     @property
     def feature_labels(self) -> list[str]:

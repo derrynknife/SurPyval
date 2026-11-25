@@ -146,6 +146,44 @@ tree then gives it zero incidence).
   event=k)`` is its concordance with the failures from ``k``, a failure
   from another cause counting as later than all of them (Wolbers et al.).
 
+Reading a fitted forest
+-----------------------
+
+A forest predicts well but has no coefficients to read. Three read-outs
+say what it has learnt, all from the fitted model, without refitting:
+
+- **How the prediction moves with one covariate**:
+  ``forest.partial_dependence(covariate, values, x)``. Each unit keeps its
+  other covariates, the chosen one is set to each of ``values``, and its
+  survival at the times ``x`` is predicted: one curve per unit, its
+  *individual conditional expectation* (ICE). Their average is the
+  *partial dependence*: the forest's average prediction for each value.
+  Parallel ICE curves mean the covariate acts the same way for everyone;
+  curves that cross or fan out point to an interaction the average hides.
+  ``result.plot(at=t)`` draws both at one time (``centred=True`` starts
+  every curve at 0 to compare shapes), and ``result.to_frame()`` gives the
+  average as a table. Setting a covariate to a value rarely seen with a
+  unit's other covariates asks the forest about a region it has little
+  data in, so read the ends of the range with care.
+- **Which covariates the trees split on first**: ``forest.minimal_depth()``.
+  A covariate that matters is usually split on near the root, where a split
+  divides the most units. Its *minimal depth* in a tree is the depth of its
+  first split (the root is 0; a tree that never uses it gives it the tree's
+  depth). The table gives the mean over the trees (smaller is more
+  important) and the share of trees that use it at all. It needs no
+  out-of-bag data, so it also works on a forest restored with
+  ``from_dict``.
+- **How much each covariate matters, at each horizon**:
+  ``forest.feature_importances(times=[1, 5, 10])``. Each covariate is
+  shuffled among each tree's out-of-bag units, which breaks its link with
+  the outcome, and the out-of-bag Brier score at each time is computed
+  again; the importance is how much it gets worse. A covariate can matter
+  for early failures and not late ones. ``metric="auc"`` uses the
+  time-dependent AUC instead. Without ``times`` the importance is the
+  out-of-bag log-likelihood one, a single number per covariate.
+
+``SurvivalTree`` has ``partial_dependence`` and ``minimal_depth`` too.
+
 Random Survival Forest
 ----------------------
 
@@ -177,6 +215,12 @@ leaf's fitted distribution is reached.
 
 .. autoclass:: surpyval.ml.forest.node.CompetingRisksLeaf
    :members:
+
+Read-outs
+---------
+
+.. automodule:: surpyval.ml.forest.readouts
+   :members: PartialDependence
 
 Cause-aware splits
 ------------------
