@@ -29,6 +29,16 @@ Design decisions made while working on the open issues, with the reason for each
 | The coverage study before the other options: a Clayton (tau 0.5) with the copula studies' Weibull margins and censoring, 100 and 400 pairs, two points, 90% and 95%; the Wald bounds 400 data sets, the bootstrap 200 of 200 resamples. | proposed | It checks the bounds users already get, and is cheap (six minutes on two cores). Every cell is within tolerance. | done |
 | The bootstrap builds each resample's estimate only up to the largest point asked about in each series (a row past the cut at risk throughout, its failure past it). | proposed | The estimate at a point depends only on the grid up to it, so the bounds are the same bit for bit (tested), and the work falls with the corner's share of the grid. Vectorising across resamples would need a grid per resample in memory. | done |
 | The Prentice-Cai and Lin-Ying estimators, and a dependence summary from the estimate (Kendall's tau, the cross-ratio surface), are not built. | proposed | Neither has been asked for by a user; Dabrowska's is the standard estimate and a copula gives the dependence as a parameter. | open |
+### Several markers: lag and weight by marker, compare_links, bend warning (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `lag` and `weight` take one value for every marker (as before) or a dict by marker; a marker left out has no lag and no weight. A weight for a marker without the `cumulative` link is refused, naming it. | proposed | The same form as `varying` and `link` take with several markers. One value stays the default, so every existing call and saved model is unchanged. | done |
+| A lag or weight by marker is saved as a dict; a v0.28 reader is not given one (schema 5, as a lag already was). | proposed | The saved form follows the fitter's own. | done |
+| `compare_links(..., marker=name)` is needed with several markers. Each candidate gives that marker the link compared and every other marker the fitter's links; the others' parts are refitted in each candidate, not held at fixed values. | proposed | With the other markers' estimates held fixed, the candidates would not be maximum-likelihood fits of the same model family, and their AICs would not compare. Refitting keeps each candidate the fit its own `fit()` gives. The `marker_reference` of the compared marker goes only to the candidates that follow its value. | done |
+| The spline "bends without spread" warning with several markers checks each marker's bends against that marker's noise sd and reading ages, in one warning naming `"<marker>.s1"`. | proposed | The one-marker rule, applied marker by marker. | done |
+| The vibration effect's bias at 800 items: the study's design is committed (`markers_study.py`, `ITEMS=800`, seeds 3200 to 3399) but not run here. | proposed | About seven hours on two processes; it is left to a quiet machine. | open |
+| Failure modes with several markers (`e=`, `shared=`) are not built yet and are still refused. | proposed | Built separately, after the cause-specific layout gains a marker dimension. | open |
 
 ### Labelled MCF bounds (26 Nov 2026)
 

@@ -133,6 +133,25 @@ def _check_lag_at_zero(path_model: Any, links: Any, lag: float) -> None:
         )
 
 
+def _marker_lag_lines(lag: Any, weight: Any) -> list:
+    """The fitter printout's lines of the lags and weights of several
+    markers (one for all, or by marker)."""
+    out = []
+    if isinstance(lag, Mapping):
+        said = [f"{m} {v:g}" for m, v in lag.items() if v > 0]
+        if said:
+            out.append("lag: " + ", ".join(said))
+    elif lag > 0:
+        out.append(f"lag: {lag:g}")
+    if isinstance(weight, Mapping):
+        said = [f"{m} {w[0]} {w[1]:g}" for m, w in weight.items() if w]
+        if said:
+            out.append("weight: " + ", ".join(said))
+    elif weight is not None:
+        out.append("weight: {} {:g}".format(*weight))
+    return out
+
+
 def _check_start_at_zero(fitter: Any, mu: npt.NDArray) -> None:
     """Refuse a lag on the value of a path (of one's own) whose value at
     age 0 is not finite at the average item's parameters ``mu``."""
@@ -376,9 +395,12 @@ class JointPHFitter(FitterRepr):
             MarkerSet,
             check_marker_dimension,
             check_markers,
+            lag_of,
+            marker_lags,
             marker_links,
             marker_random_effects,
             marker_varying,
+            marker_weights,
         )
 
         names, models = check_markers(path_models)
@@ -387,17 +409,8 @@ class JointPHFitter(FitterRepr):
         self.varying = marker_varying(names, models, varying)
         check_marker_dimension(self.varying)
         self.link = marker_links(names, link)
-        self.lag = check_lag(lag)
-        self.weight = check_weight(weight)
-        followed = [k for _, k in self.link]
-        if self.weight is not None and "cumulative" not in followed:
-            raise ValueError(
-                "'weight' weights the accumulated exposure, the area "
-                "under a marker's path that the 'cumulative' link "
-                "follows, and no marker here has that link. Add it "
-                "(link={marker: ['value', 'cumulative']}), or leave "
-                "weight out."
-            )
+        self.lag = marker_lags(names, lag)
+        self.weight = marker_weights(names, weight, self.link)
         for name, model in zip(names, models):
             own = tuple(k for m, k in self.link if m == name)
             reasons = cannot_follow(model, own)
@@ -412,7 +425,7 @@ class JointPHFitter(FitterRepr):
                     + ". "
                     + _instead(model, self.survival, refused)
                 )
-            _check_lag_at_zero(model, own, self.lag)
+            _check_lag_at_zero(model, own, lag_of(self.lag, name))
         self.dist = distribution
         if random_effects is None:
             random_effects = "full"
@@ -436,10 +449,7 @@ class JointPHFitter(FitterRepr):
                     "random effects: " + structure_words(self.random_effects)
                 )
             out.append("link: " + ", ".join(f"{m} {k}" for m, k in self.link))
-            if self.lag > 0:
-                out.append(f"lag: {self.lag:g}")
-            if self.weight is not None:
-                out.append("weight: {} {:g}".format(*self.weight))
+            out += _marker_lag_lines(self.lag, self.weight)
             return out
         names = list(self.path_model.parameter_names)
         out = [
@@ -880,6 +890,7 @@ class JointPHFitter(FitterRepr):
         *args: Any,
         links: Any = None,
         metric: str = "aic",
+        marker: str | None = None,
         **kwargs: Any,
     ) -> LinkComparison:
         """
@@ -939,6 +950,15 @@ class JointPHFitter(FitterRepr):
         metric : str, optional
             The criterion the links are ranked by: ``"aic"`` (default),
             ``"aic_c"`` or ``"bic"``.
+        marker : str, optional
+            With several markers, the one whose links are compared
+            (needed): each candidate gives that marker the link compared
+            and every other marker the links of this fitter, so the
+            comparison asks what the hazard follows of that marker with
+            the others' parts as they are. ``models`` and the table are
+            by that marker's link, and ``verdict`` names it. A weight
+            on the marker's exposure goes to the candidates that follow
+            its area.
 
         Returns
         -------
@@ -993,14 +1013,21 @@ class JointPHFitter(FitterRepr):
                 "by the accuracy of their predictions "
                 "(surpyval.metrics.score_predictions)."
             )
-        if self.markers is not None:
+        if self.markers is not None and marker not in self.markers:
             raise ValueError(
                 "compare_links compares the links of one marker; this fitter "
-                "has several. Fit the links you have in mind (link={marker: "
-                "...}) and compare them by aic(), or test a marker's links "
-                "against fewer by likelihood_ratio_test."
+                f"has several, {list(self.markers)!r}: name the one with "
+                f"marker= (marker={self.markers[0]!r}); every other keeps "
+                f"its links. Got marker={marker!r}."
             )
-        return compare_links(self, args, kwargs, links=links, metric=metric)
+        if self.markers is None and marker is not None:
+            raise ValueError(
+                "'marker' names which of several markers' links to compare; "
+                "this fitter has one marker: leave marker out."
+            )
+        return compare_links(
+            self, args, kwargs, links=links, metric=metric, marker=marker
+        )
 
     @takes_unit
     def fit_from_df(
@@ -1198,7 +1225,7 @@ def JointPH(
         risk follows the accumulated exposure), or a list of them, each
         with an effect of its own (``marker_effect``, ``slope_effect``,
         ``cumulative_effect``).
-    lag : float, optional
+    lag : float or dict, optional
         How long after the marker the hazard follows it, in the
         lifetimes' unit of time (default 0: at once). With ``lag=200``
         the hazard at age ``t`` follows the path at ``t - 200``, so a
@@ -1208,8 +1235,11 @@ def JointPH(
         link at ``max(t - lag, 0)``, the slope 0 before the lag). The lag
         is fixed, not estimated: the likelihood is not smooth in it. To
         choose one, fit each lag you have in mind and compare them by
-        ``aic()`` (the same data, the same number of parameters).
-    weight : tuple, optional
+        ``aic()`` (the same data, the same number of parameters). With
+        several markers one number applies to every marker, and a dict
+        ``{marker: lag}`` gives each its own (a marker left out at once,
+        0).
+    weight : tuple or dict, optional
         How much of the accumulated exposure (the ``"cumulative"`` link,
         which it needs) still counts, by how long ago it was. The
         default, ``None``, counts all of it equally: an hour of exposure
@@ -1223,7 +1253,10 @@ def JointPH(
         or width is in the lifetimes' unit of time and, like the lag, is
         fixed, not estimated: fit each one you have in mind and compare
         them by ``aic()``. With a ``lag`` the weighted exposure acts
-        ``lag`` later (the weighted area at ``max(t - lag, 0)``).
+        ``lag`` later (the weighted area at ``max(t - lag, 0)``). With
+        several markers one weight applies to every marker with the
+        ``"cumulative"`` link, and a dict ``{marker: weight}`` gives
+        each its own (a marker left out unweighted).
         ``cumulative_effect`` is still per unit of the marker times a
         unit of age.
     random_effects : str or sequence, optional
@@ -1828,6 +1861,10 @@ def _check_markers(
         one.markers = None
         one.path_model = model
         one.link = tuple(k for m, k in fitter.link if m == name)
+        from ._multi import lag_of, weight_of
+
+        one.lag = lag_of(fitter.lag, name)
+        one.weight = weight_of(fitter.weight, name)
         _check_power(one, mu[piece], found_by)
         _check_start_at_zero(one, mu[piece])
 
@@ -2127,8 +2164,9 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
-    if not several:
-        _warn_bends_without_spread(path_model, fitter.varying, out, ages)
+    _warn_bends_without_spread(
+        path_model, fitter.varying, out, ages, channels if several else None
+    )
     out.markers = None if not several else list(markers)
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
@@ -2173,33 +2211,94 @@ def _fit(
 _NO_SPREAD = 0.01
 
 
-def _warn_bends_without_spread(
-    path_model: Any, varying: Any, model: JointModel, ages: list
-) -> None:
-    """One warning naming the varying bends of a spline (``s1``, ...)
-    whose estimated spread between items is at its lower bound, 0 (by
-    :data:`_NO_SPREAD`), saying to leave them out of ``varying``."""
+def _flat_bends(
+    path_model: Any, varying: Any, sd_of: Any, noise: float, ages: list
+) -> list:
+    """``(bend, sd, reach)`` of the varying bends of the spline
+    ``path_model`` among ``varying`` whose spread between items (``sd_of
+    (bend)``) moves no item's marker by :data:`_NO_SPREAD` of the noise
+    sd ``noise`` at any of the reading ``ages``."""
     names = list(getattr(path_model, "parameter_names", []))
     bends = [v for v in varying if v in names[2:]]
     if not bends or not hasattr(path_model, "default_random_effects"):
-        return
-    params = dict(zip(model.parameter_names, np.asarray(model.params)))
-    noise = float(params.get("sd_noise", np.nan))
-    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
+        return []
+    every = np.concatenate(
+        [np.asarray(a, dtype=float) for a in ages] or [np.zeros(0)]
+    )
+    if not every.size:
+        return []
     with np.errstate(all="ignore"):
         basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
     flat = []
     for bend in bends:
-        sd = abs(float(params.get(f"sd_{bend}", np.nan)))
+        sd = abs(float(sd_of(bend)))
         reach = sd * float(np.max(basis[:, names.index(bend)]))
         if reach < _NO_SPREAD * noise:
-            flat.append(f"{bend!r} (sd {sd:.3g}, at most {reach:.3g})")
+            flat.append((bend, sd, reach))
+    return flat
+
+
+def _warn_bends_without_spread(
+    path_model: Any,
+    varying: Any,
+    model: JointModel,
+    ages: list,
+    channels: Any = None,
+) -> None:
+    """One warning naming the varying bends of a spline (``s1``, ...)
+    whose estimated spread between items is at its lower bound, 0 (by
+    :data:`_NO_SPREAD`), saying to leave them out of ``varying``. With
+    several markers (``path_model`` a ``MarkerSet``, ``channels`` each
+    reading's marker), each marker's bends against its own noise and
+    reading ages, named ``"<marker>.s1"``."""
+    params = dict(zip(model.parameter_names, np.asarray(model.params)))
+    if channels is None:
+        noise = float(params.get("sd_noise", np.nan))
+        flat = _flat_bends(
+            path_model,
+            varying,
+            lambda b: params.get(f"sd_{b}", np.nan),
+            noise,
+            ages,
+        )
+        said = ", ".join(
+            f"{b!r} (sd {sd:.3g}, at most {reach:.3g})"
+            for b, sd, reach in flat
+        )
+        noise_words = f"(sd {noise:.3g})"
+    else:
+        entries = []
+        for k, (name, own) in enumerate(
+            zip(path_model.names, path_model.models)
+        ):
+            mine = [
+                v.split(".", 1)[1] for v in varying if v.startswith(name + ".")
+            ]
+            noise = float(params.get(f"{name}.sd_noise", np.nan))
+            seen = [
+                np.asarray(a, dtype=float)[np.asarray(ch) == k]
+                for a, ch in zip(ages, channels)
+            ]
+            for b, sd, reach in _flat_bends(
+                own,
+                mine,
+                lambda b, name=name: params.get(f"sd_{name}.{b}", np.nan),
+                noise,
+                seen,
+            ):
+                entries.append(
+                    f"'{name}.{b}' (sd {sd:.3g}, at most {reach:.3g}, its "
+                    f"noise sd {noise:.3g})"
+                )
+        flat = entries
+        said = ", ".join(entries)
+        noise_words = "(each marker's own)"
     if flat:
         warnings.warn(
-            f"The spread between items of the bend(s) {', '.join(flat)} "
+            f"The spread between items of the bend(s) {said} "
             "is estimated at its lower bound, 0: it moves an item's "
             f"marker by under {_NO_SPREAD:.0%} of the readings' noise "
-            f"(sd {noise:.3g}) at any reading age, so the data show no "
+            f"{noise_words} at any reading age, so the data show no "
             "difference between items in it. Leave it out of varying "
             "(common to all items) and compare the two fits by aic().",
             UserWarning,

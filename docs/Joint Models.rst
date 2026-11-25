@@ -1981,10 +1981,27 @@ refused for a model of several.
   SurPyval fit reached a verified maximum on the full grid in 20
   minutes.
 
-Not yet: failure modes with several markers (``e=``), ``compare_links``,
-a shared health index (one hidden condition behind every reading), and
-a lag or weight that differs between markers (one ``lag`` and one
-``weight`` apply to every marker).
+Each marker can act on the hazard after a delay of its own, and weight
+its accumulated exposure its own way: ``lag`` and ``weight`` take one
+value for every marker, or a dict by marker, as ``varying`` and ``link``
+do. ``lag={"vibration": 30}`` has the hazard follow the vibration 30
+days late and the temperature at once (a marker left out has no lag),
+and ``weight={"vibration": ("window", 90)}`` counts only the last 90
+days of a vibration whose area the hazard follows (``link={"vibration":
+["value", "cumulative"]}``). As with one marker, each is fixed, not
+estimated: compare the choices you have in mind by ``aic()``.
+
+``compare_links`` asks what the hazard follows of one marker:
+``fitter.compare_links(data, marker="vibration")`` fits the vibration's
+links in turn, each with every other marker's links as the fitter has
+them, and ranks them as with one marker; ``models`` and the table are by
+the vibration's link and the ``verdict`` names it. A spline marker's
+varying bends are checked as one marker's are, each against its own
+marker's noise and reading ages, and the warning names them
+``"vibration.s1"``.
+
+Not yet: failure modes with several markers (``e=``), and a shared
+health index (one hidden condition behind every reading).
 
 Prediction: survival given the readings so far
 ----------------------------------------------
