@@ -9,6 +9,7 @@ the data is the same). What the fit made of the terminal flags ``a`` is
 in the model's ``notes``, shown by its ``repr``.
 """
 
+import inspect
 import json
 import warnings
 
@@ -188,6 +189,9 @@ def test_every_recurrent_fit_takes_a_surpyval_data():
         name: getattr(rc, name)
         for name in dir(rc)
         if callable(getattr(getattr(rc, name), "fit", None))
+        # a submodule imported by an earlier test (surpyval.recurrent.bayes
+        # has a module-level fit) is an attribute too, not a fitter
+        and not inspect.ismodule(getattr(rc, name))
     }
     assert set(fitters) == {
         "ARA",
