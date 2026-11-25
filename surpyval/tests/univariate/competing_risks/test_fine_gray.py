@@ -944,9 +944,8 @@ def test_cb_resamples_counted_rows_as_repeated_rows():
 
 def test_cb_refusals_say_what_to_use():
     _, _, _, _, model = _bootstrap_fixture()
-    for method in ("wald", "lr"):
-        with pytest.raises(ValueError, match="method='bootstrap'"):
-            model.cb(1.0, [0.0, 0.0], method=method)
+    with pytest.raises(ValueError, match="method='bootstrap'"):
+        model.cb(1.0, [0.0, 0.0], method="lr")
     with pytest.raises(ValueError, match="on"):
         model.cb(1.0, [0.0, 0.0], on="hf")
     restored = type(model).from_dict(model.to_dict())
@@ -1003,3 +1002,109 @@ def test_methods_used_as_values_say_to_call_them():
     np.testing.assert_array_equal(se, np.sqrt(np.diag(m.covariance())))
     assert m.standard_errors(robust=False).shape == se.shape
     assert np.isclose(m.phi(np.zeros(2)), 1.0)
+
+
+# -- the Wald bound on the cumulative incidence -------------------------------
+
+
+def _wald_data(censored=True, seed=341, n=300):
+    rng = np.random.default_rng(seed)
+    beta, p = np.array([0.7, -0.5]), 0.5
+    Z = np.column_stack([rng.binomial(1, 0.5, n), rng.normal(size=n)])
+    eta = np.exp(Z @ beta)
+    p1 = 1 - (1 - p) ** eta
+    cause = np.where(rng.uniform(size=n) < p1, 1, 2)
+    u = rng.uniform(size=n)
+    t1 = -np.log(1 - (1 - (1 - u * p1) ** (1 / eta)) / p)
+    t = np.where(cause == 1, t1, rng.exponential(1 / eta))
+    e = cause.astype(object)
+    if censored:
+        cens = rng.exponential(1.0, n)
+        e[cens < t] = None
+        t = np.minimum(t, cens)
+    return t, Z.astype(float), e
+
+
+@pytest.mark.parametrize("censored", [False, True])
+def test_wald_influence_is_the_derivative_in_the_case_weights(censored):
+    # A unit's influence on log Lambda(t | z0) is the derivative of the
+    # estimate in its case weight (the empirical influence function): the
+    # fit with w_i = 1 +- 1e-6, the Kaplan-Meier of the censoring weighted
+    # too. Without censoring the linearisation is exact (to 1e-6 here);
+    # with it, the censoring term linearises a Kaplan-Meier by its
+    # Nelson-Aalen increments, O(1/n) apart: the standard errors agree to
+    # 1e-4 (5e-5 at n = 300).
+    from surpyval.univariate.competing_risks.regression.fine_gray import (
+        _cif_log_hazard_influence,
+    )
+
+    x, Z, e = _wald_data(censored)
+    model = FineGray.fit(x, Z, e, event=1)
+    t, z0 = np.array([0.25, 0.75, 1.5]), np.array([1.0, 0.5])
+    log_H, infl, units = _cif_log_hazard_influence(
+        model._fit_data, model.beta, t, z0
+    )
+    np.testing.assert_allclose(
+        np.exp(log_H), -np.log1p(-model.cif(t, z0)), rtol=1e-10
+    )
+
+    def theta(w):
+        fit = FineGray.fit(x, Z, e, event=1, w=w)
+        return np.log(-np.log1p(-fit.cif(t, z0)))
+
+    numeric = np.empty_like(infl)
+    for i in range(x.size):
+        up, down = np.ones(x.size), np.ones(x.size)
+        up[i] += 1e-6
+        down[i] -= 1e-6
+        numeric[i] = (theta(up) - theta(down)) / 2e-6
+    if not censored:
+        np.testing.assert_allclose(infl, numeric, rtol=1e-5, atol=1e-9)
+    np.testing.assert_allclose(
+        np.sqrt(units @ infl**2), np.sqrt((numeric**2).sum(0)), rtol=1e-4
+    )
+
+
+def test_wald_bounds_and_their_options():
+    x, Z, e = _wald_data()
+    model = FineGray.fit(x, Z, e, event=1)
+    t, z0 = [0.25, 0.75, 1.5], [1.0, 0.5]
+    point = model.cif(t, z0)
+    wald = model.cb(t, z0, method="wald")
+    assert np.all(wald[:, 0] < point) and np.all(point < wald[:, 1])
+    # As wide as the case bootstrap's (400 refits): within 10%
+    boot = model.cb(t, z0, n_boot=400, random_state=1)
+    np.testing.assert_allclose(
+        np.diff(wald, axis=1), np.diff(boot, axis=1), rtol=0.1
+    )
+    two = model.cb(t, z0, method="wald", alpha_ci=0.1)
+    np.testing.assert_allclose(
+        model.cb(t, z0, method="wald", bound="lower"), two[:, 0]
+    )
+    np.testing.assert_allclose(
+        model.cb(t, z0, method="wald", on="sf"), 1 - wald[:, ::-1]
+    )
+    np.testing.assert_allclose(
+        model.cb(t, z0, method="wald", on="sf", bound="lower"),
+        1 - two[:, 1],
+    )
+    # Before the first event the incidence is 0, and so are its bounds
+    np.testing.assert_array_equal(model.cb(0.0, z0, method="wald"), 0.0)
+    assert np.isnan(model.cb(np.nan, z0, method="wald")).all()
+    rows = model.cb([0.75, 0.75], [[1.0, 0.5], [0.0, 0.0]], method="wald")
+    np.testing.assert_allclose(rows[0], wald[1], rtol=1e-12)
+
+
+def test_wald_refusals_say_what_to_use():
+    x, Z, e = _wald_data(n=150)
+    strata = np.arange(x.size) % 2
+    stratified = FineGray.fit(x, Z, e, event=1, strata=strata)
+    with pytest.raises(ValueError, match="stratified.*bootstrap"):
+        stratified.cb(1.0, [0.0, 0.0], method="wald", stratum=1)
+    clustered = FineGray.fit(x, Z, e, event=1, cluster=np.arange(x.size) // 3)
+    with pytest.raises(ValueError, match="clustered.*bootstrap"):
+        clustered.cb(1.0, [0.0, 0.0], method="wald")
+    model = FineGray.fit(x, Z, e, event=1)
+    restored = type(model).from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="from_dict.*bootstrap"):
+        restored.cb(1.0, [0.0, 0.0], method="wald")
