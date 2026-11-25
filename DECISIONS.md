@@ -45,6 +45,7 @@ Design decisions made while working on the open issues, with the reason for each
 | The histogram is on the CDF scale `u = F(x)` (first bin `u` in [0, 0.1)); Haider et al. write it on the survival scale. Same numbers, bin for bin, as SurvivalEVAL. | proposed | The issue and the PIT literature read the CDF at the outcome. | done |
 | Default: Haider et al.'s spread of censored weight (conservative with censoring: 1% rejections at 5% with 30% censored). `randomise=True` draws censored `u` uniformly on `(F(x), 1]` and outcomes between `F(x-)` and `F(x)`; the test then has its level. | proposed | The default matches the published method and other packages; the randomised option is the exact-level alternative, with the trade-off stated in the docs. | done |
 | Equal-width bins only (default 10); right censoring only (left, interval refused); `by=` for one test per group (horizon). No recalibration. | proposed | The chi-square expects equal counts; interval-censored D-calibration and recalibration are later steps. | done |
+
 ### Speed: forest split search, lfp/zi jackknife, fit set-up (26 Nov 2026)
 
 | Decision | By | Reason | Status |
