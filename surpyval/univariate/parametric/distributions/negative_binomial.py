@@ -18,17 +18,22 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils.autograd_gamma_compat import (
+    CF_STIFF,
+    beta_b_sum_parts,
     beta_cf,
+    beta_gamma_expansion_parts,
     betainc,
     betainccln,
     betaincln,
     betaln_accurate,
 )
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.saddle_point import log_binomial_mass
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._discrete_tails import refine_quantile
+from .gamma import _hazard_over_rate
 
 
 class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -218,6 +223,53 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
             a_t = np.where(tail, a, 1.0)
             cf = beta_cf(a_t, r, np.where(tail, 1.0 - p, 0.5))
             log_hf = np.where(tail, -np.log(np.abs(cf)), log_hf)
+            # Where the fraction's first denominator is small its steps
+            # cancel (2.7e-9 of the hazard at r = 1e3, p = 1e-6, #1300):
+            # there the hazard is y (a + r - 1) / a over the sum of the
+            # tail down its second shape (``beta_b_sum_parts``)
+            r_b = np.broadcast_to(np.asarray(r, dtype=float), a_t.shape)
+            p_b = np.broadcast_to(np.asarray(p, dtype=float), a_t.shape)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                gap = np.abs(1.0 - (a_t + r_b) * (1.0 - p_b) / (a_t + 1.0))
+            stiff = tail & (gap < CF_STIFF) & (r_b >= 1.0)
+            if np.any(stiff):
+                a_s, r_s, p_s = a_t[stiff], r_b[stiff], p_b[stiff]
+                _, log_total = beta_b_sum_parts(a_s, r_s, 1.0 - p_s, p_s)
+                summed = np.log(p_s) + np.log1p((r_s - 1.0) / a_s) - log_total
+                log_hf = np.array(np.broadcast_to(log_hf, a_t.shape))
+                log_hf[stiff] = np.where(
+                    np.isnan(summed), log_hf[stiff], summed
+                )
+            # and below r = 1 from the expansion in incomplete gammas
+            # (``beta_gamma_expansion_parts``)
+            stiff = tail & (gap < CF_STIFF) & (r_b < 1.0)
+            if np.any(stiff):
+                a_s, r_s, p_s = a_t[stiff], r_b[stiff], p_b[stiff]
+                _, log_total, log_e0 = beta_gamma_expansion_parts(
+                    a_s, r_s, p_s
+                )
+                u0 = -np.log1p(-p_s)
+                # z^b e^-z / Gamma(b, z) is z times the standard gamma's
+                # hazard, from its continued fraction past z = b + 1
+                # (its log form loses z eps, 2e-10 at z = 1e6)
+                z = a_s * u0
+                far = z > r_s + 1.0
+                if np.any(far):
+                    log_e0 = np.where(
+                        far,
+                        np.log(z)
+                        + np.log(
+                            _hazard_over_rate(r_s, np.where(far, z, r_s + 2.0))
+                        ),
+                        log_e0,
+                    )
+                expanded = (
+                    log_e0 + r_s * np.log(p_s / u0) - np.log(a_s) - log_total
+                )
+                log_hf = np.array(np.broadcast_to(log_hf, a_t.shape))
+                log_hf[stiff] = np.where(
+                    np.isnan(expanded), log_hf[stiff], expanded
+                )
         return np.exp(log_hf)
 
     def Hf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
@@ -310,6 +362,24 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         # cancellation of two gammaln of size k ln k (5e-6 of the mass at
         # k = 1e9); and log1p(-p), not log(1 - p), which loses a small p
         # (#458).
+        if not (isinstance(r, ArrayBox) or isinstance(p, ArrayBox)):
+            # The saddle-point form (#1300): r / (r + j) times the
+            # binomial mass at r of r + j trials, j = k - 1 failures.
+            # The form below lost 2e-12 of the mass at r = 1e3, k = 1e9.
+            # (Values only: a fit differentiates the form below.)
+            x_arr = np.asarray(x, dtype=float)
+            inside = x_arr >= 1.0
+            j = np.where(inside, x_arr - 1.0, 0.0)
+            r_arr = np.asarray(r, dtype=float)
+            p_arr = np.asarray(p, dtype=float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                out = -np.log1p(j / r_arr) + log_binomial_mass(
+                    r_arr, j, p_arr, 1.0 - p_arr
+                )
+            out = np.where(
+                inside, out, np.where(np.isnan(x_arr), np.nan, -np.inf)
+            )
+            return out[()] if out.ndim == 0 else out
         safe_x = np.where(x < 2.0, 2.0, x)
         log_coef = np.where(
             x < 2.0,

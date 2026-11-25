@@ -51,6 +51,13 @@ from scipy.special import gammaln as _sc_gammaln
 from scipy.special import polygamma as _sc_polygamma
 from scipy.special import zeta as _sc_zeta
 
+from surpyval.utils.saddle_point import (
+    LARGE_SHAPE,
+    gamma_logs_large,
+    log_binomial_mass,
+    log_gamma_density_large,
+)
+
 # The value-or-box union the distributions use (see parametric_fitter):
 # every boundary here may see a plain numpy value or an ArrayBox.
 Boxable = npt.NDArray | float | ArrayBox
@@ -330,7 +337,29 @@ def _log_gamma_density(a: npt.NDArray, x: npt.NDArray) -> npt.NDArray:
     """``log(x^(a-1) e^-x / Gamma(a))``, the log of dP(a, x)/dx, in plain
     numpy (for the mixed derivatives of ``_make_da_primitive``)."""
     with np.errstate(all="ignore"):
-        return -x + np.log(x) * (a - 1) - _sc_gammaln(a)
+        return np.asarray(
+            _ag_log_gamma_density(
+                np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+            )
+        )
+
+
+def _ag_log_gamma_density(a: Boxable, x: Boxable) -> Boxable:
+    """``log(x^(a-1) e^-x / Gamma(a))`` in autograd numpy: directly, and
+    at a shape of ``LARGE_SHAPE`` or more by the saddle-point form
+    (``log_gamma_density_large``), whose terms do not cancel: the direct
+    one's, of size a log a, lost 1e-2 of the log density at a shape of
+    1e12, and with it the derivative of the logs of the tails in x, which
+    a fit near a normal limit follows (#1300)."""
+    direct = -x + anp.log(x) * (a - 1) - _ag_gammaln(a)
+    a_v = np.asarray(getval(a), dtype=float)
+    x_v = np.asarray(getval(x), dtype=float)
+    large = (a_v >= LARGE_SHAPE) & (x_v > 0) & np.isfinite(x_v)
+    if not np.any(large):
+        return direct
+    a_s = anp.where(large, a, LARGE_SHAPE)
+    x_s = anp.where(large, x, LARGE_SHAPE)
+    return anp.where(large, log_gamma_density_large(a_s, x_s), direct)
 
 
 def _make_dab_primitives(f: Callable) -> tuple[Callable, Callable]:
@@ -393,13 +422,31 @@ def _make_dab_primitives(f: Callable) -> tuple[Callable, Callable]:
 # ---------------------------------------------------------------------------
 
 
+def _large_shape(a_arr: npt.NDArray, x_arr: npt.NDArray) -> npt.NDArray:
+    """Where the shape is large enough for ``gamma_logs_large`` (#1300)."""
+    return (a_arr >= LARGE_SHAPE) & np.isfinite(a_arr) & (x_arr >= 0)
+
+
+def _gammainc_raw(a: Boxable, x: Boxable) -> Boxable:
+    out = _sc_gammainc(a, x)
+    a_arr, x_arr = np.broadcast_arrays(
+        np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+    )
+    large = _large_shape(a_arr, x_arr)
+    if not np.any(large):
+        return out
+    out = np.array(out, dtype=float, ndmin=1).reshape(a_arr.shape).copy()
+    out[large] = np.exp(gamma_logs_large(a_arr[large], x_arr[large])[0])
+    return out if out.ndim else float(out)
+
+
 @primitive
 def gammainc(a: Boxable, x: Boxable) -> Boxable:
-    return _sc_gammainc(a, x)
+    return _gammainc_raw(a, x)
 
 
 _gammainc_da = _make_da_primitive(
-    _sc_gammainc, lambda a, x: np.exp(_log_gamma_density(a, x))
+    _gammainc_raw, lambda a, x: np.exp(_log_gamma_density(a, x))
 )
 
 defvjp(
@@ -409,7 +456,7 @@ defvjp(
     lambda ans, a, x: unbroadcast_f(a, lambda g: g * _gammainc_da(a, x)),
     # d/dx: analytical; anp.log handles ArrayBox x for correct Hessian
     lambda ans, a, x: unbroadcast_f(
-        x, lambda g: g * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a))
+        x, lambda g: g * anp.exp(_ag_log_gamma_density(a, x))
     ),
 )
 
@@ -449,6 +496,11 @@ def _gammaincln_raw(a: Boxable, x: Boxable) -> Boxable:
             at * np.log(xt) - xt - _sc_gammaln(at + 1.0) + np.log(total)
         )
     out = np.where(x_arr == 0, -np.inf, out)
+    large = _large_shape(a_arr, x_arr)
+    if np.any(large):
+        # The saddle-point prefactor and Temme's expansion (#1300)
+        out = np.array(out, dtype=float)
+        out[large] = gamma_logs_large(a_arr[large], x_arr[large])[0]
     return out if out.ndim else float(out)
 
 
@@ -469,8 +521,7 @@ defvjp(
     # d/dx of log P = (dP/dx)/P; ans = log P avoids recomputing P
     lambda ans, a, x: unbroadcast_f(
         x,
-        lambda g: g
-        * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+        lambda g: g * anp.exp(_ag_log_gamma_density(a, x) - ans),
     ),
 )
 
@@ -510,6 +561,11 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
         )
     # Q(a, inf) = 0 (the series is inf - inf there, #561)
     out = np.where(np.isposinf(x_arr), -np.inf, out)
+    large = _large_shape(a_arr, x_arr)
+    if np.any(large):
+        # The saddle-point prefactor and Temme's expansion (#1300)
+        out = np.array(out, dtype=float)
+        out[large] = gamma_logs_large(a_arr[large], x_arr[large])[1]
     return out if out.ndim else float(out)
 
 
@@ -530,8 +586,7 @@ defvjp(
     # d/dx of log Q = -(dP/dx)/Q; negated, ans = log Q
     lambda ans, a, x: unbroadcast_f(
         x,
-        lambda g: g
-        * -anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+        lambda g: g * -anp.exp(_ag_log_gamma_density(a, x) - ans),
     ),
 )
 
@@ -835,7 +890,164 @@ def _beta_cf_log(
         log_x = np.where(x < 0.5, np.log(x), np.log1p(-xc))
         log_xc = np.where(xc < 0.5, np.log(xc), np.log1p(-x))
     front = a * log_x + b * log_xc - betaln_accurate(a, b) - np.log(a)
+    saddle = (a >= 1.0) & (b >= 1.0) & (a + b >= _SADDLE_FRONT)
+    if np.any(saddle):
+        # x^a (1 - x)^b / (a B(a, b)) = b / (a + b) times the binomial
+        # mass at a of a + b trials, by the saddle-point form: the terms
+        # above are of size (a + b) log(a + b), and their rounding was
+        # 1e-9 of a Binomial tail at n = 1e6 (#1300).
+        a_s = np.where(saddle, a, 1.0)
+        b_s = np.where(saddle, b, 1.0)
+        front = np.where(
+            saddle,
+            -np.log1p(a_s / b_s)
+            + log_binomial_mass(
+                a_s, b_s, np.where(saddle, x, 0.5), np.where(saddle, xc, 0.5)
+            ),
+            front,
+        )
     return front + np.log(beta_cf(a, b, x, terms))
+
+
+#: The least ``a + b`` at which ``_beta_cf_log`` takes its front factor
+#: from the saddle-point form; below it the terms of the direct one are
+#: below 200, and their rounding below 5e-14.
+_SADDLE_FRONT = 50.0
+
+
+#: Below this first denominator of ``beta_cf`` (see ``_beta_logs``) the
+#: small tail is summed down its second shape (``_beta_b_sum_log``).
+CF_STIFF = 1e-3
+#: The most terms of ``_beta_b_sum_log``.
+_B_SUM_TERMS = 20000
+
+
+def _beta_b_sum_log(
+    a: npt.NDArray, b: npt.NDArray, x: npt.NDArray, y: npt.NDArray
+) -> npt.NDArray:
+    r"""log I_x(a, b), with ``y = 1 - x`` (each exact on its own side),
+    from the recurrence in the second shape (DLMF 8.17.21),
+
+    .. math::
+        I_x(a, b) = \sum_{j \geq 0} t(b - 1 - j) + I_x(a, b - n), \qquad
+        t(\beta) = \frac{x^a y^\beta}{\beta B(a, \beta)},
+
+    whose terms shrink by :math:`t(\beta - 1) / t(\beta) = \beta / (y
+    (a + \beta - 1))`, below 1 on the side of the tail where ``beta_cf``
+    is used, and to 0 at :math:`\beta = 0` (for a whole ``b`` the sum
+    ends there, exactly). The first term is from the saddle-point form,
+    :math:`t(\beta) = a / (a + \beta)` times the binomial mass at ``a``
+    of :math:`a + \beta` trials. Where the shape runs below 1 first, the
+    rest, :math:`I_x(a, b - n)`, is ``beta_cf``'s. ``nan`` where the sum
+    has not converged in ``_B_SUM_TERMS`` terms, or its terms grow."""
+    log_t0, log_total = beta_b_sum_parts(a, b, x, y)
+    return log_t0 + log_total
+
+
+def beta_b_sum_parts(
+    a: npt.NDArray, b: npt.NDArray, x: npt.NDArray, y: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """``_beta_b_sum_log`` as the log of its first term, t(b - 1), and
+    the log of the sum over it (``nan`` where it is not used). The second
+    is the hazard's own: a Negative Binomial's mass over its tail is
+    :math:`y (a + b - 1) / a` over the sum (``NegativeBinomial.hf``)."""
+    beta = b - 1.0
+    log_t0 = np.log(a / (a + beta)) + log_binomial_mass(a, beta, x, y)
+    total = np.ones_like(a)
+    term = np.ones_like(a)
+    done = np.zeros(a.shape, dtype=bool)
+    for _ in range(_B_SUM_TERMS):
+        # the next term, at beta - 1, while that is a shape (>= 0)
+        live = ~done & (beta >= 1.0)
+        if not np.any(live):
+            break
+        ratio = np.where(live, beta / (y * (a + beta - 1.0)), 1.0)
+        term = np.where(live, term * ratio, term)
+        beta = np.where(live, beta - 1.0, beta)
+        total = np.where(live, total + term, total)
+        done |= live & (term <= 1e-17 * total)
+    # the terms ran out (beta below 1) before they died out: the rest is
+    # I_x(a, beta), 0 at beta = 0 (a whole b)
+    log_total = np.log(total)
+    rest = ~done & (beta > 0.0) & (beta < 1.0)
+    if np.any(rest):
+        with np.errstate(invalid="ignore", divide="ignore"):
+            r_log = _beta_cf_log(
+                a[rest], beta[rest], x[rest], y[rest], _CF_TAIL_TERMS
+            )
+        # the rest over the first term, added to the sum (kept apart
+        # from log t0, which can be of size 1e9)
+        log_total[rest] = np.logaddexp(log_total[rest], r_log - log_t0[rest])
+    unfinished = ~done & (beta >= 1.0)
+    return log_t0, np.where(unfinished, np.nan, log_total)
+
+
+#: Where ``_beta_gamma_expansion_log`` is used: its terms shrink by about
+#: (1 + |b - 1|) (z + b + 5) / a, below this.
+_GAMMA_EXPANSION_FROM = 1e-4
+
+
+def _beta_gamma_expansion_log(
+    a: npt.NDArray, b: npt.NDArray, y: npt.NDArray
+) -> npt.NDArray:
+    r"""log I_x(a, b) at ``x = 1 - y`` near 1 and a large ``a``, as a sum
+    of incomplete gammas (the expansion of TOMS 708's ``bgrat``). With
+    :math:`t = e^{-u}` the integral of :math:`t^{a - 1} (1 - t)^{b - 1}`
+    up to ``x`` is that of :math:`e^{-a u} u^{b - 1} (\frac{1 - e^{-u}}
+    {u})^{b - 1}` from :math:`u_0 = -\ln x`, where the weight keeps
+    :math:`u` within a few :math:`1 / a` of :math:`u_0`. The last factor's
+    series :math:`\sum c_n u^n` makes it
+
+    .. math::
+        I_x(a, b) = \frac{\Gamma(a + b)}{\Gamma(a) a^b} Q(b, z)
+        \sum_{n \geq 0} c_n \frac{\Gamma(b + n, z)}{\Gamma(b, z)
+        a^n}, \qquad z = a u_0,
+
+    with :math:`\Gamma(b + n, z)` from :math:`\Gamma(b, z)` by
+    :math:`\Gamma(s + 1, z) = s \Gamma(s, z) + z^s e^{-z}`, every term
+    positive. Five terms reach 1e-20 where ``_GAMMA_EXPANSION_FROM``
+    holds; ``nan`` elsewhere."""
+    log_lead, log_total, _ = beta_gamma_expansion_parts(a, b, y)
+    return log_lead + log_total
+
+
+def beta_gamma_expansion_parts(
+    a: npt.NDArray, b: npt.NDArray, y: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    r"""``_beta_gamma_expansion_log`` as the log of its leading factor,
+    :math:`\Gamma(a + b) Q(b, z) / (\Gamma(a) a^b)`, the log of the sum
+    (``nan`` where it is not used), and :math:`\ln(z^b e^{-z} / \Gamma(b,
+    z))`. A Negative Binomial's hazard is :math:`(z^b e^{-z} / \Gamma(b,
+    z)) (y / u_0)^b / (a \sum)` (``NegativeBinomial.hf``)."""
+    u0 = -np.log1p(-y)
+    z = a * u0
+    bm = b - 1.0
+    scale = (1.0 + np.abs(bm)) * (z + b + 5.0) / a
+    ok = scale < _GAMMA_EXPANSION_FROM
+    log_q = _gammainccln_raw(b, z)
+    log_gamma_bz = log_q + _sc_gammaln(b)
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        log_e0 = b * np.log(z) - z - log_gamma_bz
+        e0 = np.exp(log_e0)
+    coeffs = (
+        np.ones_like(bm),
+        -bm / 2.0,
+        bm / 24.0 + bm**2 / 8.0,
+        -(bm**2) / 48.0 - bm**3 / 48.0,
+        -bm / 2880.0 + bm**2 / 1152.0 + bm**3 / 192.0 + bm**4 / 384.0,
+    )
+    total = np.ones_like(a)
+    g = np.ones_like(a)
+    zpow = np.ones_like(a)
+    for n in range(1, len(coeffs)):
+        # Gamma(b + n, z) / Gamma(b, z)
+        g = (b + n - 1.0) * g + e0 * zpow
+        zpow = zpow * z
+        total = total + coeffs[n] * g / a**n
+    front = _log_gamma_ratio_plain(a, b) - b * np.log(a)
+    log_total = np.log(total)
+    keep = ok & np.isfinite(front + log_q + log_total)
+    return front + log_q, np.where(keep, log_total, np.nan), log_e0
 
 
 def _log1mexp_neg(v: npt.NDArray) -> npt.NDArray:
@@ -900,6 +1112,28 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
         xc_s = np.where(low, 1.0 - xt, xt)
         with np.errstate(invalid="ignore"):
             small = _beta_cf_log(a_s, b_s, x_s, xc_s, _CF_TAIL_TERMS)
+        # Where the fraction's first denominator, 1 - (a + b) x / (a + 1),
+        # is small, every odd step of it cancels to that size and loses
+        # eps over it: 2e-9 of a Negative Binomial tail at k = 1.2e9 with
+        # r = 1e3 and p = 1e-6, where it is 1.6e-7 (#1300). There the
+        # tail is summed down its second shape instead.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            gap = np.abs(1.0 - (a_s + b_s) * x_s / (a_s + 1.0))
+        stiff = (gap < CF_STIFF) & np.isfinite(small)
+        by_sum = stiff & (b_s >= 1.0)
+        if np.any(by_sum):
+            summed = _beta_b_sum_log(
+                a_s[by_sum], b_s[by_sum], x_s[by_sum], xc_s[by_sum]
+            )
+            small[by_sum] = np.where(np.isnan(summed), small[by_sum], summed)
+        by_gamma = stiff & (b_s < 1.0)
+        if np.any(by_gamma):
+            expanded = _beta_gamma_expansion_log(
+                a_s[by_gamma], b_s[by_gamma], xc_s[by_gamma]
+            )
+            small[by_gamma] = np.where(
+                np.isnan(expanded), small[by_gamma], expanded
+            )
         far = np.isnan(small)
         if np.any(far):
             # The small tail's continued fraction has not converged: its x

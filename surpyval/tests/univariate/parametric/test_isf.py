@@ -60,30 +60,11 @@ def test_isf_inverts_sf(case):
 
 
 # The round trip below also carries the error of ``sf``, which it assumes
-# is a few ulps. The gamma survival function at shape 1e3 (SciPy's
-# ``gammaincc``) is not: 5.5e3 ulps (1.2e-12) relative at t = 1.407e9,
-# where s = 1e-30, so isf(sf(t)) is 10 ulps from t there although isf is
-# within 6.2 ulps of the 50-digit inverse at every point
-# (test_gamma_isf_at_a_large_shape_against_mpmath). It is the incomplete
-# gamma at large shapes of #1300, and passes once that is fixed.
-SF_NOT_YET_TO_A_FEW_ULPS = {
-    "Gamma(1000.0, 1e-06)": "#1300: the gamma sf at shape 1e3 is 1.2e-12 "
-    "from the 50-digit value at s = 1e-30, so the round trip is 10 ulps off",
-}
-
-
-def _round_trip_cases():
-    out = []
-    for case in CONTINUOUS:
-        reason = SF_NOT_YET_TO_A_FEW_ULPS.get(_id(case))
-        marks = (
-            [pytest.mark.xfail(strict=True, reason=reason)] if reason else []
-        )
-        out.append(pytest.param(case, id=_id(case), marks=marks))
-    return out
-
-
-@pytest.mark.parametrize("case", _round_trip_cases())
+# is a few ulps. The gamma survival function at shape 1e3 was SciPy's
+# ``gammaincc``, 5.5e3 ulps (1.2e-12) from the 50-digit value at s = 1e-30,
+# and isf(sf(t)) was 10 ulps from t there; it is now the saddle-point
+# prefactor with Temme's expansion, and isf is polished on it (#1300).
+@pytest.mark.parametrize("case", CONTINUOUS, ids=_id)
 def test_isf_of_sf_gives_back_the_time(case):
     """isf(sf(t)) == t deep in the upper tail, to the conditioning of
     ``isf`` (``1 / (t h(t))`` per relative error of ``s``)."""

@@ -4,6 +4,7 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.scipy.special import gammaln
 
 from surpyval.univariate.parametric.discrete_fitter import (
@@ -21,6 +22,10 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._discrete_tails import log_gamma_ratio
+
+#: Up to this whole k, ``BetaGeometric.log_sf`` sums the logs of its
+#: product form.
+_PRODUCT_TERMS = 64
 
 
 class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -350,7 +355,22 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # each bracket taken by ``log_gamma_ratio``, which keeps its digits
         # at a large k where the four gammaln did not (#449).
         safe_x = np.where(x < 0.0, 0.0, x)
-        return log_gamma_ratio(b, a) - log_gamma_ratio(b + safe_x, a)
+        out = log_gamma_ratio(b, a) - log_gamma_ratio(b + safe_x, a)
+        if isinstance(a, ArrayBox) or isinstance(b, ArrayBox):
+            return out
+        # At a small whole k the two ratios cancel to the size of log R
+        # and their rounding (1.7e-12 of it at a = 1, b = 1e3, k = 1) is
+        # left; there R(k) is the product of (b + j) / (a + b + j) over
+        # j < k, whose logs are summed (#1300). (Values only.)
+        k = np.asarray(safe_x, dtype=float)
+        whole = (k == np.floor(k)) & (k <= _PRODUCT_TERMS)
+        if not np.any(whole):
+            return out
+        total = np.zeros(np.broadcast(k, a, b).shape)
+        for j in range(int(np.max(np.where(whole, k, 0.0)))):
+            total = total - np.where(j < k, np.log1p(a / (b + j)), 0.0)
+        out = np.where(whole, total, out)
+        return out[()] if out.ndim == 0 else out
 
     def log_ff(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         # log F from F where F is small, and log1p(-R) where R is: the
@@ -375,10 +395,11 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # the closed-form hazard h(k) = a / (a + b + k - 1). The argument
         # is clamped before the guard chooses the branch.
         safe_x = np.where(x < 1.0, 1.0, x)
-        log_df = (
-            self.log_sf(safe_x - 1.0, a, b)
-            + np.log(a)
-            - np.log(a + b + safe_x - 1.0)
+        # log(a / (a + b + k - 1)) as -log1p((b + k - 1) / a): the
+        # difference of the two logs lost 1e-10 of a log mass of -1e-6
+        # at a = 1e3, b = 1e-3 (#1300)
+        log_df = self.log_sf(safe_x - 1.0, a, b) - np.log1p(
+            (b + safe_x - 1.0) / a
         )
         return np.where(x < 1.0, -np.inf, log_df)
 

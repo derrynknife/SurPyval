@@ -7,9 +7,9 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.special import gammaln as _sc_gammaln
 
 from surpyval.utils.autograd_gamma_compat import log_gamma_ratio
+from surpyval.utils.saddle_point import log_poisson_mass
 
 __all__ = [
     "log_gamma_ratio",
@@ -129,7 +129,9 @@ def poisson_log_tails(
     low = kt < mu
     # the mass the series starts from: at k (lower) or k + 1 (upper)
     j = np.where(low, kt, kt + 1.0)
-    log_mass = j * np.log(mu) - mu - _sc_gammaln(j + 1.0)
+    # (the saddle-point form: the direct one's terms of size k log k
+    # lost 2e-9 of the mass at mu = 1e6, #1300)
+    log_mass = log_poisson_mass(j, mu)
     total = np.ones_like(kt)
     term = np.ones_like(kt)
     for n in range(1, 100000):

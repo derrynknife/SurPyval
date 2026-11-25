@@ -368,6 +368,13 @@ def small_tail(w: Boxable, Q: Boxable) -> tuple[Boxable, Boxable]:
     :math:`\zeta < 0` the same with :math:`|\zeta|` and :math:`-Q` is
     :math:`\ln F`: no term underflows or cancels in either tail.
     """
+    log_bracket, upper, hy = _log_bracket(w, Q)
+    return -(w * w) * hy + log_bracket, upper
+
+
+def _log_bracket(w: Boxable, Q: Boxable) -> tuple[Boxable, Boxable, Boxable]:
+    r"""``small_tail`` without its :math:`-\zeta^2`: the log of the
+    bracket, whether it is the survival function, and :math:`h(Q w)`."""
     y = Q * w
     hy = h(y)
     root = np.sqrt(hy)
@@ -376,7 +383,19 @@ def small_tail(w: Boxable, Q: Boxable) -> tuple[Boxable, Boxable]:
     upper = zeta >= 0
     sign = np.where(upper, 1.0, -1.0)
     bracket = 0.5 * _erfcx(np.abs(zeta)) + sign * Q * _sum(eta, Q) / _SQRT_2PI
-    return -(w * w) * hy + np.log(bracket), upper
+    return np.log(bracket), upper, hy
+
+
+def small_tail_gamma(
+    w: Boxable, Q: Boxable, zeta2: Boxable
+) -> tuple[Boxable, Boxable]:
+    r"""``small_tail`` with :math:`\zeta^2` given: for a gamma of shape
+    :math:`a = 1 / Q^2` at :math:`x`, :math:`\zeta^2 = a (x / a - 1 -
+    \ln(x / a))`, the deviance that the saddle-point forms compute to a
+    few ulps (``surpyval.utils.saddle_point.bd0(a, x)``), where ``w^2
+    h(Q w)`` carries the rounding of four products."""
+    log_bracket, upper, _ = _log_bracket(w, Q)
+    return -zeta2 + log_bracket, upper
 
 
 def eta_of(w: Boxable, Q: Boxable) -> Boxable:
