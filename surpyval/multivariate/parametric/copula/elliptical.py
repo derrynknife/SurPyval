@@ -254,9 +254,9 @@ class _AnyAxes(Copula):
             Multivariate survival data, or a ``MultivariateSurpyvalData``
             as ``x``, with ``D >= 2`` axes. Each series of a row has its
             own censoring code. With more than two series, truncation
-            (``t``) and rows with more than three censored series are
-            refused (their likelihood is not computed), saying what to
-            do.
+            (``t``) is refused (its likelihood is not computed), saying
+            what to do; rows may have any number of censored series (up
+            to 15, 14 for the Student-t).
         margins : sequence of length D
             A distribution to fit, or a fitted model, per series.
         how : {"IFM", "MLE"}
