@@ -1504,11 +1504,11 @@ PLANS["CauseSpecificProportionalIntensity"] = Plan(
 )
 
 # Degradation: n is the number of units.
-for _name in (
-    "DegradationAnalysis[linear]",
-    "DegradationAnalysis[power]",
-    "DegradationAnalysis[spline]",
-):
+_INDUCED_NOTE = (
+    "the curve is the induced life (the population's), not the "
+    "pseudo-failure-time Weibull, which only summarises it"
+)
+for _name in ("DegradationAnalysis[linear]", "DegradationAnalysis[power]"):
     PLANS[_name] = Plan(
         _paths,
         40,
@@ -1516,9 +1516,26 @@ for _name in (
         params=_path_params,
         curve=_induced_curve,
         grid=_quantile_grid,
-        note="the curve is the induced life (the population's), not the "
-        "pseudo-failure-time Weibull, which only summarises it",
+        note=_INDUCED_NOTE,
     )
+PLANS["DegradationAnalysis[spline]"] = Plan(
+    _paths,
+    40,
+    60,
+    # every parameter but the bend's between-unit variance (the last)
+    params=lambda m: _path_params(m)[:-1],
+    curve=_induced_curve,
+    grid=_quantile_grid,
+    note=_INDUCED_NOTE + "; the bend's between-unit variance is not held "
+    "to the bias rule: the fixture's (0.209) is 1.1% of the variance of "
+    "one unit's own estimate of the bend (18.5, from its ten readings and "
+    "the noise), so at 40 units it is as good as on the boundary, and an "
+    "estimate kept to a valid covariance (clipped, or REML) is biased up "
+    "(z 0.62 here; the unclipped moment estimate is unbiased, z -0.02 in "
+    "600 refits). calibration/test_coverage_degradation.py::"
+    "test_spline_bend_variance checks both: unbiased unclipped, and "
+    "within the rule once the bend's spread is one the readings can tell",
+)
 PLANS["InducedFailureDistribution"] = Plan(
     _paths,
     40,

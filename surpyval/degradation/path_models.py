@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from surpyval.utils.splines import natural_cubic_bends
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
@@ -1101,20 +1102,15 @@ class SplinePath(PathModel):
         inner = (np.asarray(self.knots, dtype=float) - lo) / span
         return lo, span, inner
 
-    def _powers(self, x: npt.NDArray, power: int) -> list:
-        """Each basis function's piecewise polynomial of ``power`` in the
-        scaled age (3: the function itself; 2: a third of its derivative;
-        4: four times its antiderivative), per unit of the scaled age."""
-        lo, span, inner = self._require_placed()
-        u = (x - lo) / span
-        last = np.maximum(u - 1.0, 0.0) ** power
-        starts = np.concatenate([[0.0], inner])
-
-        def d(start: float) -> npt.NDArray:
-            return (np.maximum(u - start, 0.0) ** power - last) / (1.0 - start)
-
-        final = d(starts[-1])
-        return [d(start) - final for start in starts[:-1]]
+    def _bends(self, x: npt.NDArray, deriv: int = 0) -> list:
+        """Each :math:`N_k` at ``x`` (of any shape), or its derivative
+        (``deriv`` 1) or antiderivative (-1), from the shared basis
+        (:func:`surpyval.utils.splines.natural_cubic_bends`, its
+        truncated-power form)."""
+        self._require_placed()
+        lo, hi = self.boundary or (np.nan, np.nan)
+        knots = np.array([lo, *(self.knots or ()), hi], dtype=float)
+        return natural_cubic_bends(x, knots, deriv, form="esl")
 
     def basis(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -1134,14 +1130,14 @@ class SplinePath(PathModel):
         x = np.asarray(x, dtype=float)
         if not self.parameter_names[2:]:
             return np.column_stack([np.ones_like(x), x])
-        return _columns(x, 1.0, x, *self._powers(x, 3))
+        return _columns(x, 1.0, x, *self._bends(x))
 
     def path(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
         level, rate, *bends = params
         x = np.asarray(x, dtype=float)
         out = level + rate * x
         if bends:
-            for s, column in zip(bends, self._powers(x, 3)):
+            for s, column in zip(bends, self._bends(x)):
                 out = out + s * column
         return out
 
@@ -1153,27 +1149,21 @@ class SplinePath(PathModel):
         x = np.asarray(x, dtype=float)
         out = rate + 0.0 * x
         if bends:
-            span = self._require_placed()[1]
-            for s, column in zip(bends, self._powers(x, 2)):
-                out = out + s * (3.0 / span) * column
+            for s, column in zip(bends, self._bends(x, 1)):
+                out = out + s * column
         return out
 
     def slope_jacobian(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         if not self.parameter_names[2:]:
             return _columns(x, 0.0, 1.0)
-        span = self._require_placed()[1]
-        return _columns(
-            x, 0.0, 1.0, *[(3.0 / span) * c for c in self._powers(x, 2)]
-        )
+        return _columns(x, 0.0, 1.0, *self._bends(x, 1))
 
     def _areas(self, x: npt.NDArray) -> list:
         """The area under each :math:`N_k` from age 0 to ``x``."""
-        span = self._require_placed()[1]
-        at_zero = self._powers(np.zeros_like(x), 4)
+        at_zero = self._bends(np.zeros_like(x), -1)
         return [
-            (span / 4.0) * (upper - lower)
-            for upper, lower in zip(self._powers(x, 4), at_zero)
+            upper - lower for upper, lower in zip(self._bends(x, -1), at_zero)
         ]
 
     def area(self, x: npt.ArrayLike, *params: Any) -> npt.NDArray:

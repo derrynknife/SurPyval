@@ -206,7 +206,7 @@ def test_natural_knots_are_placed_from_the_readings_and_recorded(
 
 def test_a_spline_model_saves_loads_pickles_and_predicts(placed):
     saved = json.loads(json.dumps(placed.to_dict()))
-    assert saved["schema"] == 5
+    assert saved["schema"] == 6
     assert saved["path_model"] == placed.path_model.to_dict()
     question = dict(markers={0: 3.0, 120: 3.4, 240: 3.9}, given=240.0)
     ages = np.array([300.0, 500.0, 900.0])

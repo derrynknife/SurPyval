@@ -37,6 +37,7 @@ import sys
 import time
 import warnings
 from multiprocessing import Pool
+from typing import Any
 
 import numpy as np
 
@@ -69,13 +70,13 @@ TRUTH = {
 }
 
 
-def spline():
+def spline() -> Any:
     from surpyval.degradation import SplinePath
 
     return SplinePath(knots=KNOTS, boundary=BOUNDARY)
 
 
-def simulate(seed):
+def simulate(seed: Any) -> Any:
     """``(data, thetas, lives)``: the fleet, each pump's true path
     parameters and its lifetime (drawn as
     ``surpyval.tests.univariate.joint._fleet.simulate_path`` draws)."""
@@ -114,7 +115,7 @@ def simulate(seed):
     return SurpyvalData.from_items(items), items, thetas, lives
 
 
-def true_survival(theta):
+def true_survival(theta: Any) -> Any:
     """A pump's true chance of surviving from the landmark to the
     horizon."""
     grid = np.linspace(LANDMARK, HORIZON, 2001)
@@ -127,7 +128,7 @@ def true_survival(theta):
     return float(np.exp(-np.sum((h[1:] + h[:-1]) / 2 * np.diff(grid))))
 
 
-def fitted(model):
+def fitted(model: Any) -> Any:
     return dict(
         maximum=model.maximum,
         names=list(model.parameter_names),
@@ -137,7 +138,7 @@ def fitted(model):
     )
 
 
-def one(seed):
+def one(seed: Any) -> Any:
     warnings.simplefilter("ignore")
     from surpyval import JointPH, Weibull
     from surpyval.degradation import LinearPath
@@ -178,7 +179,7 @@ def one(seed):
     return out
 
 
-def rows(fits, truth):
+def rows(fits: Any, truth: Any) -> Any:
     """Bias and coverage of each parameter with a truth."""
     names = fits[0]["names"]
     P = np.array([r["params"] for r in fits])
@@ -215,7 +216,7 @@ def rows(fits, truth):
     return out
 
 
-def errors(fits, key):
+def errors(fits: Any, key: Any) -> Any:
     """The mean and root-mean-square error over every prediction, and the
     Monte Carlo standard error of the mean from the fleets' means."""
     every = np.concatenate([np.asarray(r[key], float) for r in fits])
@@ -228,7 +229,7 @@ def errors(fits, key):
     )
 
 
-def summarise(results):
+def summarise(results: Any) -> Any:
     good = [r for r in results if r["ok"]]
     out = dict(
         reps=len(results),

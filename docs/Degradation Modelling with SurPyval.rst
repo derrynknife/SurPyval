@@ -270,7 +270,24 @@ path parameters, and these units differ only in their start and their
 climb, so the bends' spread is estimated as 0. The paths and the
 crossing times do not rest on it; the bounds drawn from the population
 do. The line is held down by the flat years and reaches the threshold
-later than the units will. The crossing time is the first time after 0 at which
+later than the units will.
+
+How far a bend's spread between units can be told depends on how much
+each unit's readings say about its own bend. Each unit's estimate of a
+bend carries the reading noise, and the spread between units is what is
+left of the estimates' scatter once that noise is taken off. Where the
+units' bends differ by much less than one unit's readings can tell, the
+remainder is often below 0, the estimate is held at a valid covariance
+(it warns that it was clipped), and on average it is too high. In a
+study of 40 units read ten times (the bend's true variance 0.21, each
+unit's own estimate of it carrying a variance of 18.5) the reported
+variance averaged 1.5 to 2.0, against an unbiased but often negative
+unclipped estimate; REML (``population_method="reml"``) was higher still
+(1.9 to 2.5). With the true variance at 5.0 (27% of that noise) the bias is
+0.2 standard deviations, and at 20, 0.05. The knots were the same in
+every data set, so they were not the cause. So read a bend's variance
+next to its warnings, and prefer fewer knots, or readings past each
+knot, when the bends' spread matters. The crossing time is the first time after 0 at which
 the spline reaches the threshold, found numerically; past the last knot
 the curve is extended as a straight line, so a threshold far beyond the
 measurements rests on the last piece's slope. A spline is not among the

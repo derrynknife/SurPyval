@@ -93,3 +93,75 @@ def test_predict_rul_interval_coverage():
     check_rate(
         hits, reps, 0.95, "predict_rul failure_time_interval", slack=0.015
     )
+
+
+def _spline_refits(cov, seed, reps=60, n=40):
+    """``reps`` refits of the ``DegradationAnalysis[spline]`` design (the
+    conformance fixture's knots, reading times and noise, 40 units) with
+    the path parameters drawn from ``N(fixture mean, cov)``: each fit's
+    reported variances, and the unclipped noise-corrected moment
+    estimate of them (the sample covariance of the units' own fits less
+    the noise's share, before it is projected onto a valid covariance)."""
+    from surpyval.tests.conformance import registry as reg
+
+    case = reg.CASE_BY_NAME["DegradationAnalysis[spline]"]
+    truth = reg.fitted(case)
+    times = np.unique(case.data()["x"])
+    path = truth.path_model
+    design = path.basis(times)
+    inv = np.linalg.inv(design.T @ design)
+    sd = np.sqrt(truth.measurement_var)
+    w, v = np.linalg.eigh(cov)
+    root = v * np.sqrt(np.maximum(w, 0.0))
+    rng = np.random.default_rng(seed)
+    reported, unclipped = [], []
+    for _ in range(reps):
+        theta = truth.path_param_mean + rng.standard_normal((n, 3)) @ root.T
+        x = np.tile(times, n)
+        y = np.concatenate([path.path(times, *t) for t in theta])
+        y = y + rng.normal(0.0, sd, x.size)
+        i = np.repeat(np.arange(n), times.size)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = DegradationAnalysis.fit(
+                x,
+                y,
+                i,
+                threshold=150.0,
+                path=sp.degradation.SplinePath.natural(df=2),
+            )
+        assert model.path_model.knots == path.knots
+        reported.append(np.diag(model.path_param_cov))
+        unclipped.append(
+            np.diag(model.path_param_sample_cov - model.measurement_var * inv)
+        )
+    return truth, np.array(reported), np.array(unclipped)
+
+
+def test_spline_bend_variance():
+    """The spline path's bend variance, which the refit study does not
+    hold to its bias rule (test_refit_registry.py, its plan's note).
+
+    1. At the fixture's truth, whose bend variance (0.209) is 1.1% of one
+       unit's estimation variance of the bend (18.5), the unclipped
+       moment estimate is unbiased: the noise correction is right, and
+       the reported estimate's upward bias is the clipping to a valid
+       covariance, which no estimate kept valid can avoid there.
+    2. With the bend's spread one the readings can tell (variance 5.0,
+       27% of the estimation variance; the correlations 0), the reported
+       variances meet the refit rule (``check_bias``, slack 0.2).
+
+    The knots are the same in every refit (the readings are at the same
+    ten times), so they are not the cause.
+    """
+    from surpyval.tests.calibration._montecarlo import check_bias
+    from surpyval.tests.conformance import registry as reg
+
+    fixture = reg.fitted(reg.CASE_BY_NAME["DegradationAnalysis[spline]"])
+    cov = fixture.path_param_cov
+    truth, _, unclipped = _spline_refits(cov, seed=6311)
+    check_bias(unclipped, np.diag(cov), "spline unclipped variances")
+
+    told = np.diag(np.r_[np.diag(cov)[:2], 5.0])
+    _, reported, _ = _spline_refits(told, seed=6312)
+    check_bias(reported, np.diag(told), "spline reported variances")

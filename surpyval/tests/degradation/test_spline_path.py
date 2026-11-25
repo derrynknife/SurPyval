@@ -344,7 +344,7 @@ def test_degradation_model_on_a_spline_saves_loads_and_pickles():
         )
     saved = json.loads(json.dumps(model.to_dict()))
     # a reader before the spline path would fail on the dictionary
-    assert saved["schema"] == 5
+    assert saved["schema"] == 6
     assert saved["path_model"]["knots"] == [4.0, 8.0]
     ages = np.array([13.0, 15.0, 18.0])
     for restored in (
