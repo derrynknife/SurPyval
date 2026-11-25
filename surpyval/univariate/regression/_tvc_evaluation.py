@@ -14,6 +14,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
+import numpy as _np
 import numpy.typing as npt
 
 from surpyval.utils.aliases import canonical_name
@@ -332,10 +333,12 @@ class TVCEvaluationMixin:
         x: npt.ArrayLike,
         Z: npt.ArrayLike | Any,
         xl: npt.ArrayLike | None = None,
+        start: float | None = None,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard for a covariate following a path ``Z(t)``: a step
-        schedule, or a continuously varying path.
+        schedule, or a continuously varying path; with ``start``, the
+        cumulative hazard between that age and each ``x``.
 
         For the proportional-hazards, additive-hazards and proportional-odds
         families the hazard at time :math:`t` depends only on :math:`t` and
@@ -405,11 +408,20 @@ class TVCEvaluationMixin:
             segment start times).
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
+        start : float, optional
+            An age to measure from: the cumulative hazard between
+            ``start`` and each ``x``, :math:`H(x) - H(\text{start})`, and
+            0 at and before it. It is ``-log sf_tvc(x, Z, given=start)``:
+            along a ``CovariatePath`` the hazard is integrated from
+            ``start`` on, so nothing is subtracted, and for proportional
+            hazards and odds and additive hazards ``Z`` need only start by
+            then. :meth:`qf_tvc` inverts it.
 
         Returns
         -------
         ndarray
-            The cumulative hazard at each ``x``.
+            The cumulative hazard at each ``x`` (from ``start`` when
+            supplied).
 
         Examples
         --------
@@ -430,10 +442,69 @@ class TVCEvaluationMixin:
         >>> exact = lam * np.expm1(0.1 * beta * t) / (0.1 * beta)
         >>> bool(np.allclose(H, exact, rtol=1e-12, atol=0))
         True
+
+        From an age of 4, the cumulative hazard is the difference of the
+        two integrals from 0:
+
+        >>> H4 = model.Hf_tvc(t, ramp, start=4.0)
+        >>> bool(np.allclose(H4[1:], H[1:] - model.Hf_tvc(4.0, ramp)))
+        True
+        >>> float(H4[0])
+        0.0
         """
-        H, falls, accuracy = self._hf_tvc(x, Z, xl)
+        if start is None:
+            H, falls, accuracy = self._hf_tvc(x, Z, xl)
+            self._warn_tvc(H, falls, accuracy, stacklevel=5)
+            return H
+        H, falls, accuracy, outside = self._hf_tvc_from(x, Z, xl, start)
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        if outside and not falls:
+            self._warn_negative_hazard(1, 1, stacklevel=5)
         return H
+
+    def _hf_tvc_from(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None,
+        given: float | None,
+    ) -> tuple[npt.NDArray, int, tuple | None, bool]:
+        """``H(x) - H(given)`` along the path, 0 at and before ``given``
+        (``H(x)`` without it), as ``sf_tvc`` takes it: the values, the
+        falling-hazard count and the quadrature's accuracy (as
+        :meth:`_hf_tvc`), and whether ``given`` is outside an additive
+        model's support, where every value is ``nan`` (#828)."""
+        from .tvc_path import CovariatePath
+        from .tvc_schedule import less_at_given
+
+        g = None if given is None else float(given)
+        xq = np.atleast_1d(np.asarray(x, dtype=float))
+        if g is not None and np.isnan(g):
+            # A missing conditioning age: nothing is known (as Cox).
+            self._to_schedule(Z, xl)
+            return np.full(xq.shape, np.nan), 0, None, False
+        Z, xl = self._tvc_given(Z, xl, g)
+        # Along a path the hazard is integrated from given on; a step
+        # schedule subtracts H(given).
+        from_given = isinstance(Z, CovariatePath) and g is not None
+        H, falls, accuracy = self._hf_tvc(x, Z, xl, g if from_given else None)
+        if (
+            self._is_additive()
+            and g is not None
+            and np.isnan(self._hf_tvc(g, Z, xl)[0]).any()
+        ):
+            # Survival given an age outside an additive model's support,
+            # where it is not a distribution, is undefined (#828).
+            return np.full(np.shape(H), np.nan), falls, accuracy, True
+        if not from_given:
+            # H(given) is 0 at or below 0, unless the baseline has mass
+            # below 0 (then it is -log of the survival to given).
+            H = less_at_given(H, g, lambda t: self._hf_tvc(t, Z, xl)[0])
+        if g is not None:
+            # H(x) - H(given) is no cumulative hazard at or before the
+            # age: survival to there is certain (#523).
+            H = np.where(xq <= g, 0.0, H)
+        return H, falls, accuracy, False
 
     def _warn_tvc(
         self,
@@ -1249,38 +1320,11 @@ class TVCEvaluationMixin:
         >>> model.sf_tvc([2, 4, 8, 12], ramp, given=4).round(4)
         array([1.    , 1.    , 0.7725, 0.5747])
         """
-        from .tvc_path import CovariatePath
-        from .tvc_schedule import less_at_given, survival_given
-
-        g = None if given is None else float(given)
-        if g is not None and np.isnan(g):
-            # A missing conditioning age: nothing is known (as Cox).
-            self._to_schedule(Z, xl)
-            return np.full(np.atleast_1d(np.asarray(x, float)).shape, np.nan)
-        Z, xl = self._tvc_given(Z, xl, g)
-        # Along a path the hazard is integrated from given on; a step
-        # schedule subtracts H(given).
-        from_given = (
-            isinstance(Z, CovariatePath) and g is not None and not np.isnan(g)
-        )
-        H, falls, accuracy = self._hf_tvc(x, Z, xl, g if from_given else None)
+        H, falls, accuracy, outside = self._hf_tvc_from(x, Z, xl, given)
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
-        if (
-            self._is_additive()
-            and g is not None
-            and not np.isnan(g)
-            and np.isnan(self._hf_tvc(g, Z, xl)[0]).any()
-        ):
-            # Survival given an age outside an additive model's support,
-            # where it is not a distribution, is undefined (#828).
-            if not falls:
-                self._warn_negative_hazard(1, 1, stacklevel=4)
-            return np.full(np.shape(H), np.nan)
-        if not from_given:
-            # H(given) is 0 at or below 0, unless the baseline has mass
-            # below 0 (then it is -log of the survival to given).
-            H = less_at_given(H, g, lambda t: self._hf_tvc(t, Z, xl)[0])
-        return survival_given(x, H, g)
+        if outside and not falls:
+            self._warn_negative_hazard(1, 1, stacklevel=4)
+        return np.exp(-H)
 
     def mean_tvc(
         self,
@@ -1548,6 +1592,336 @@ class TVCEvaluationMixin:
                 stacklevel=caller_stacklevel(),
             )
         return float(value)
+
+    @keeps_query_shape
+    def qf_tvc(
+        self,
+        p: npt.ArrayLike,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
+        start: float | None = None,
+    ) -> npt.NDArray:
+        r"""
+        The age by which a fraction ``p`` of units has failed along a
+        covariate path ``Z(t)`` (a step schedule or a continuously varying
+        path, as for :meth:`sf_tvc`); with ``start``, the age by which a
+        fraction ``p`` of the units still working at ``start`` has failed.
+
+        This is the inverse of :meth:`Hf_tvc`: the age :math:`x` past
+        ``start`` at which the cumulative hazard from ``start`` reaches
+        :math:`-\ln(1 - p)`,
+
+        .. math::
+            H(x \mid Z(\cdot)) - H(\text{start} \mid Z(\cdot)) = -\ln(1 - p),
+
+        so that ``sf_tvc(qf_tvc(p, Z, start=a), Z, given=a)`` is ``1 - p``.
+        With ``p`` drawn uniformly this draws a unit's life along the path
+        (inverse-transform sampling), one call for any number of draws.
+
+        Along a ``CovariatePath`` (or a step schedule, taken as the
+        matching piecewise-constant path) the path is integrated once, on
+        the adaptive quadrature panels :meth:`Hf_tvc` uses, out to where the
+        cumulative hazard passes the largest target; each value is then
+        found inside its own panel, where the cumulative hazard is
+        monotone, without integrating from 0 again. The answer is good to
+        the quadrature's accuracy on ``H`` (a relative error of about
+        ``1e-10``), and one ``RuntimeWarning`` says if that is not reached.
+        Additive hazards, a time-scaling family on a repeating path, and a
+        baseline defined below 0 without a ``start`` at or after 0 are
+        solved by repeated calls to :meth:`Hf_tvc` instead (to the same
+        accuracy, more slowly); for additive hazards, whose hazard can be
+        negative, the answer is the first age at which the target is
+        reached.
+
+        Where the hazard along the path dies away, so the survival levels
+        off above ``1 - p``, that fraction never fails and the answer is
+        ``inf`` (as a limited-failure population's quantile is).
+
+        Parameters
+        ----------
+        p : array_like
+            Failure probabilities in ``[0, 1]`` (``0`` gives ``start``, ``1``
+            gives ``inf``; ``nan`` gives ``nan``).
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path, as for :meth:`sf_tvc`.
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        start : float, optional
+            An age survived to, as ``given`` in :meth:`sf_tvc`: the
+            quantile of the remaining life's end, an age past ``start``.
+            Without it the life is measured from 0 (for a baseline defined
+            below 0, from ``-inf``).
+
+        Returns
+        -------
+        ndarray
+            The age at each ``p``.
+
+        Examples
+        --------
+        An exponential proportional hazards model along a stress that
+        climbs as ``Z(t) = 0.1 t`` has
+        :math:`H(t) = \lambda (e^{0.1 \beta t} - 1) / (0.1 \beta)`, which
+        inverts in closed form:
+
+        >>> import numpy as np
+        >>> from surpyval import CovariatePath, ExponentialPH
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 2, (300, 1))
+        >>> x = rng.exponential(10 * np.exp(-0.7 * Z[:, 0]))
+        >>> model = ExponentialPH.fit(x, Z)
+        >>> lam, beta = model.params
+        >>> ramp = CovariatePath.from_callable(lambda t: 0.1 * t)
+        >>> p = np.array([0.1, 0.5, 0.9])
+        >>> t = model.qf_tvc(p, ramp)
+        >>> exact = np.log1p(-np.log1p(-p) * 0.1 * beta / lam) / (0.1 * beta)
+        >>> bool(np.allclose(t, exact, rtol=1e-9, atol=0))
+        True
+
+        A unit that has survived to 4 along the ramp:
+
+        >>> t4 = model.qf_tvc(p, ramp, start=4.0)
+        >>> bool(np.allclose(model.sf_tvc(t4, ramp, given=4.0), 1 - p))
+        True
+        """
+        from .tvc_path import CovariatePath, step_path
+
+        self._check_tvc_evaluable()
+        pq = np.atleast_1d(np.asarray(p, dtype=float))
+        known = ~np.isnan(pq)
+        if np.any((pq[known] < 0) | (pq[known] > 1)):
+            raise ValueError(
+                "p must be a failure probability in [0, 1]; got values "
+                "from {:g} to {:g}.".format(
+                    float(np.min(pq[known])), float(np.max(pq[known]))
+                )
+            )
+        g = None if start is None else float(start)
+        if g is not None and np.isnan(g):
+            self._to_schedule(Z, xl)
+            return np.full(pq.shape, np.nan)
+        Zg, xlg = self._tvc_given(Z, xl, g)
+        path = self._to_schedule(Zg, xlg)
+        real_line = self._tvc_real_line()
+        origin = g if g is not None else (-np.inf if real_line else 0.0)
+        out = np.full(pq.shape, np.nan)
+        out[known & (pq == 0)] = origin
+        out[known & (pq == 1)] = np.inf
+        solve = known & (pq > 0) & (pq < 1)
+        if not solve.any():
+            return out
+        target = -np.log1p(-pq[solve])
+        aft = self._tvc_scales_time()
+        panels = (
+            not self._is_additive()
+            and (g is not None and g >= 0 or not real_line)
+            and not (aft and path.period is not None)
+        )
+        if panels:
+            if not isinstance(path, CovariatePath):
+                path = step_path(path)
+            out[solve] = self._qf_tvc_panels(target, path, max(origin, 0.0))
+        else:
+            out[solve] = self._qf_tvc_calls(target, Z, xl, g, path)
+        return out
+
+    def _qf_tvc_horizon(
+        self, path: Any, origin: float
+    ) -> tuple[float, npt.NDArray, npt.NDArray]:
+        """The model's time scale at ``origin`` (a first horizon) and the
+        path's value there, centred, and the model's parameters."""
+        params, center = self._tvc_theta(None)
+        zc = self._centred(
+            path._values(np.array([origin]), left=False), center
+        )
+        return self._tvc_time_scale(origin, zc, params), zc, params
+
+    def _qf_tvc_panels(
+        self, target: npt.NDArray, path: Any, origin: float
+    ) -> npt.NDArray:
+        """The ages past ``origin`` (at or after 0) at which the cumulative
+        hazard along ``path`` from ``origin`` reaches ``target``, found
+        panel by panel (see :meth:`qf_tvc`)."""
+        from ._tvc_inverse import bracketed_root, inverse_cubic
+        from .tvc_path import (
+            _evaluate_panels,
+            integrate_panels,
+            missed_target,
+            path_mesh,
+            sum_between,
+        )
+
+        aft = self._tvc_scales_time()
+        scale, _, _ = self._qf_tvc_horizon(path, origin)
+        terms = self._path_panel_terms(path)
+        rtol = self._tvc_rtol
+        top = float(np.max(target))
+        # Out to where H from the origin passes the largest target, a
+        # factor of 2^6 further each time; past 2^200 time scales the
+        # hazard has died away.
+        reach = 4.0 * scale
+        while True:
+            horizon = origin + reach
+            points = np.unique(np.array([origin, horizon]))
+            points = points[points > 0]
+            res = integrate_panels(terms, path_mesh(path, points, scale), rtol)
+            edges, value = res["edges"], res["value"]
+            io = int(np.searchsorted(edges, origin))
+            after = edges[io:]
+            # The integral from 0 to each edge from the origin on (the
+            # accelerated age for a family that scales time), and H from
+            # the origin there.
+            I_edge = sum_between(edges, value, 0.0, after)
+            if aft:
+                H0_origin = self._aft_H0(np.array([I_edge[0]]))[0]
+                H_edge = self._aft_H0(I_edge) - H0_origin
+            else:
+                H_edge = sum_between(edges, value, origin, after)
+            if H_edge[-1] >= top or reach > scale * 2.0**200:
+                break
+            reach *= 64.0
+        out = np.full(target.shape, np.inf)
+        # The first edge at which H reaches each target (H is monotone).
+        H_run = _np.maximum.accumulate(np.nan_to_num(H_edge, nan=-np.inf))
+        j = np.searchsorted(H_run, target, side="left")
+        found = j < after.size
+        if not found.any():
+            return out
+        jf = j[found]
+        # The panel ending at that edge, [a, b].
+        jf = np.maximum(jf, 1)
+        a, b = after[jf - 1], after[jf]
+        base_I, base_H = I_edge[jf - 1], H_edge[jf - 1]
+        tgt = target[found]
+
+        def H_in(x: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+            # H from the origin at x, within the panel [a, x].
+            part = _evaluate_panels(terms, a[rows], x)[0]
+            if aft:
+                return self._aft_H0(base_I[rows] + part) - H0_origin
+            return base_H[rows] + part
+
+        def residual(x: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+            return H_in(x, rows) - tgt[rows]
+
+        # H at a grid of points across each panel, in one pass: a narrow
+        # bracket, and a first guess inside it good enough that one more
+        # pass usually confirms it (finer for a few values, where the
+        # passes, not their size, are the cost).
+        n_sub = int(np.clip(2048 // a.size, 16, 128))
+        frac = np.arange(1, n_sub) / n_sub
+        xs = a[:, None] + (b - a)[:, None] * frac[None, :]
+        rows = np.repeat(np.arange(a.size), n_sub - 1)
+        Hs = H_in(xs.ravel(), rows).reshape(xs.shape)
+        xs = np.column_stack([a, xs, b])
+        Hs = np.column_stack([base_H, Hs, H_edge[jf]])
+        Hs_run = _np.maximum.accumulate(np.nan_to_num(Hs, nan=-np.inf), axis=1)
+        k = np.clip((Hs_run < tgt[:, None]).sum(axis=1), 1, n_sub)
+        idx = np.arange(a.size)
+        lo, hi = xs[idx, k - 1], xs[idx, k]
+        x0 = inverse_cubic(xs, Hs_run, k, tgt)
+        ftol = 4.0 * rtol * np.maximum(tgt, np.finfo(float).tiny)
+        x = bracketed_root(
+            residual,
+            lo,
+            hi,
+            Hs[idx, k - 1] - tgt,
+            Hs[idx, k] - tgt,
+            ftol,
+            x0=x0,
+        )
+        out[found] = x
+        # The quadrature's accuracy at the panels the values sit in.
+        accuracy = missed_target(
+            res, origin, b, rtol, np.zeros(b.shape, dtype=bool)
+        )
+        self._warn_tvc(out, 0, accuracy, stacklevel=6)
+        return out
+
+    def _qf_tvc_calls(
+        self,
+        target: npt.NDArray,
+        Z: Any,
+        xl: npt.ArrayLike | None,
+        g: float | None,
+        path: Any,
+    ) -> npt.NDArray:
+        """As :meth:`_qf_tvc_panels`, by repeated calls to
+        :meth:`_hf_tvc_from`: a bracket on a geometric grid of ages, then
+        the same bracketed solver (see :meth:`qf_tvc`)."""
+        from ._tvc_inverse import bracketed_root
+
+        real_line = self._tvc_real_line()
+        origin = 0.0 if g is None else g
+        from .tvc_path import CovariatePath, step_path
+
+        if not isinstance(path, CovariatePath):
+            path = step_path(path)
+        scale, _, _ = self._qf_tvc_horizon(path, max(origin, path.start, 0.0))
+        steps = scale * 2.0 ** np.arange(-60.0, 201.0)
+        grid = origin + steps
+        if g is None and real_line:
+            # Back to where the path starts (to -inf, where it does).
+            below = origin - steps[::-1]
+            below = below[below > path.start]
+            first = [path.start] if path.start > -np.inf else []
+            grid = np.concatenate([first, below, [origin], grid])
+        else:
+            grid = np.concatenate([[origin], grid])
+        state: dict[str, Any] = {"falls": 0, "accuracy": None}
+
+        def H_at(x: npt.NDArray) -> npt.NDArray:
+            H, falls, accuracy, outside = self._hf_tvc_from(x, Z, xl, g)
+            state["falls"] += falls + int(outside)
+            if accuracy is not None:
+                state["accuracy"] = accuracy
+            return H
+
+        H_grid = H_at(grid)
+        out = np.full(target.shape, np.inf)
+        if np.isnan(H_grid).all():
+            out[:] = np.nan
+        else:
+            H_run = _np.maximum.accumulate(np.nan_to_num(H_grid, nan=-np.inf))
+            j = np.searchsorted(H_run, target, side="left")
+            found = (j < grid.size) & (j > 0)
+            if np.any(j == 0):
+                # Reached before the earliest age the path covers.
+                raise ValueError(
+                    "A fraction p = {:.4g} of units has failed by t = {:g}, "
+                    "where this path starts: the age asked for is earlier, "
+                    "and depends on the covariate before then. Give the "
+                    "path from earlier (from -inf, e.g. "
+                    "CovariatePath.from_callable), or ask from an age "
+                    "(start=...).".format(
+                        float(-np.expm1(-np.min(target))), float(grid[0])
+                    )
+                )
+            if found.any():
+                jf = j[found]
+                tgt = target[found]
+                a, b = grid[jf - 1], grid[jf]
+
+                def residual(x: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+                    return H_at(x) - tgt[rows]
+
+                ftol = (
+                    4.0
+                    * self._tvc_rtol
+                    * np.maximum(tgt, np.finfo(float).tiny)
+                )
+                out[found] = bracketed_root(
+                    residual,
+                    a,
+                    b,
+                    H_grid[jf - 1] - tgt,
+                    H_grid[jf] - tgt,
+                    ftol,
+                )
+        if state["falls"]:
+            self._warn_negative_hazard(state["falls"], 1, stacklevel=6)
+        self._warn_tvc(out, 0, state["accuracy"], stacklevel=6)
+        return out
 
     def _tvc_time_scale(
         self, origin: float, zc: npt.NDArray, params: npt.NDArray

@@ -168,6 +168,18 @@ v0.30 (unreleased)
   ``metric="auc"``, the fall in the time-dependent AUC) at each time when
   a covariate is shuffled. Without ``times`` the importance is the
   out-of-bag log-likelihood one, unchanged.
+- **The quantile along a covariate path, ``qf_tvc``, and the cumulative
+  hazard from an age, ``Hf_tvc(..., start=)``.** On every parametric
+  regression model with ``sf_tvc``, ``qf_tvc(p, Z, xl=None, start=None)``
+  is the age by which a fraction ``p`` of units (of those still working
+  at ``start``) has failed along a step schedule or ``CovariatePath``: the
+  inverse of ``Hf_tvc`` from ``start``. With uniform ``p`` it draws lives
+  along a path in one call. The path is integrated once, and each value is
+  found inside its own quadrature panel, to the quadrature's accuracy on
+  the cumulative hazard (about 1e-10): one draw costs about two
+  ``Hf_tvc`` calls. ``Hf_tvc(x, Z, start=a)`` is the cumulative hazard
+  between ``a`` and ``x``, ``-log sf_tvc(x, Z, given=a)``. Nothing
+  existing changes.
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each

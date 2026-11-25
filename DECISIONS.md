@@ -29,6 +29,14 @@ Design decisions made while working on the open issues, with the reason for each
 | Importance by horizon needs observed and right-censored data without truncation, and refuses anything else with the reason. | proposed | The IPCW Brier score and AUC it reuses take only right censoring. | done |
 | Minimal depth: the root is depth 0, and a tree that never splits on a covariate gives it the tree's depth (its deepest leaf). Reported as the mean over the trees, with the share of trees that split on it. | proposed | Ishwaran et al. (2010), as in randomForestSRC's `max.subtree`. Not checked against randomForestSRC: it isn't installed here. A hand-worked two-tree example is tested. The null-distribution threshold for selection isn't built. | done |
 | Partial dependence averages the ICE curves weighted by the rows' counts `n` when it runs on the training rows, and equally for a `Z` passed in. For a formula fit, the covariate is a design-matrix column. | proposed | A grouped row stands for `n` units. | done |
+### The quantile along a covariate path, `qf_tvc` (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `qf_tvc(p, Z, xl=None, start=None)` is the age past `start` at which the cumulative hazard from `start` reaches `-log(1 - p)`; `Hf_tvc` gains `start=` (the cumulative hazard between the age and each `x`, `-log sf_tvc(given=start)`). | proposed | Drawing a unit's life along a path from its current age is one call; a caller need not subtract two integrals from 0. | done |
+| It integrates the path once, out to where `H` passes the largest target, and finds each value inside its own quadrature panel (a 16 to 128 point grid across the panel, an inverse cubic first guess, then Illinois steps). Additive hazards, a time-scaling family on a repeating path, and a baseline defined below 0 without a `start` at or after 0 use repeated `Hf_tvc` calls instead. | proposed | The fixed cost of a pass dominates; a single value costs about two `Hf_tvc` calls in all. The other cases keep `Hf_tvc`'s own handling (negative hazards, the periodic shortcut, the covariate before 0). | done |
+| Where the hazard dies away and survival levels off above `1 - p`, the answer is `inf`, with no warning. Additive hazards give the first age at which the target is reached. | proposed | As a limited-failure population's quantile; `mean_tvc` warns because its answer is a summary of the whole path, a quantile is not. | done |
+| Solved to `4 * rtol` (4e-10) of the target on `H`; each value stops on its own. | proposed | The quadrature's own accuracy on `H` is about 1e-10; a value never moves another. | done |
 
 ## 2026-11-25
 

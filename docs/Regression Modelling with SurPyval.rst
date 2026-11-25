@@ -4163,6 +4163,34 @@ above 0. A fraction of the units then never fails and the mean is infinite.
 where the integration stopped, as a fitted univariate model's ``mean()`` does
 for a limited-failure population.
 
+**Quantiles and draws along a path.** ``qf_tvc(p, Z, xl=None, start=None)``
+answers the reverse question: by what age has a fraction ``p`` of the units
+failed along this path? With ``start``, it asks this of the units still
+working at that age. It is the age past ``start`` at which the cumulative
+hazard from ``start`` reaches :math:`-\ln(1 - p)`. ``Hf_tvc(x, Z,
+start=a)`` gives that cumulative hazard from an age, and is
+:math:`-\ln` of ``sf_tvc(x, Z, given=a)``. Feeding uniform random numbers
+into ``qf_tvc`` draws lives along the path (inverse-transform sampling),
+any number in one call. The path is integrated once and each value is found
+inside its own quadrature panel, so a single draw costs about two passes
+along the path. Where the hazard dies away and survival levels off above
+:math:`1 - p`, the answer is ``inf``.
+
+.. jupyter-execute::
+
+    print('median life along the ramp     :', ph.qf_tvc(0.5, ramp).round(4))
+    print('median, still working at 1.0   :', ph.qf_tvc(0.5, ramp, start=1.0).round(4))
+    draws = ph.qf_tvc(np.random.default_rng(1).uniform(size=5), ramp, start=1.0)
+    print('five lives from age 1.0        :', draws.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _q = ph.qf_tvc([0.1, 0.5, 0.9], ramp, start=1.0)
+    assert np.allclose(ph.sf_tvc(_q, ramp, given=1.0), [0.9, 0.5, 0.1], rtol=1e-8)
+    assert np.allclose(ph.Hf_tvc(_q, ramp, start=1.0), -np.log([0.9, 0.5, 0.1]), rtol=1e-8)
+
 **Accelerated life along a path.** An accelerated life model sets a
 distribution's life parameter to :math:`L(V)`, a function of the stress.
 Where that parameter scales time, :math:`S(t \mid V) = S_1(t / L(V))`, with
