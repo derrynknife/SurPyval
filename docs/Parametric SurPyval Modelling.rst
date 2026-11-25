@@ -3107,8 +3107,9 @@ Creating a custom Distribution
 ------------------------------
 
 Given the implementation in SurPyval, it is possible to create a new distribution and use all the
-previously listed techniques. For example, the Gompertz distribution is not implemented in the
-surpyval API, this however can be quickly overcome. Its cumulative hazard is
+previously listed techniques. As an example, here is the Gompertz distribution built as a custom
+distribution (it is also built in, as ``surv.Gompertz``, in R's ``flexsurv`` parameterisation; see
+:doc:`univariate/gompertz`). Its cumulative hazard is
 :math:`H(x) = \nu\left(e^{b x} - 1\right)` for :math:`x \geq 0`: a hazard
 :math:`h(x) = \nu b\, e^{b x}` that grows exponentially with age, which is why
 it is a classic model of human mortality. First, we set up a random number
@@ -3284,8 +3285,9 @@ Recipes: more distributions from their cumulative hazard
 
 Several distributions that are popular in survival analysis are a few
 lines as a ``CustomDistribution``: the generalised gamma, the Gompertz
-(above), the generalised F and the inverse Gaussian. The generalised gamma
-is now built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
+(above), the generalised F and the inverse Gaussian. The Gompertz is built
+in as ``surv.Gompertz`` (:doc:`univariate/gompertz`), and the generalised gamma
+is built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
 with care near the lognormal that the recipe does not take; the recipe
 stays as an example of building one from the incomplete gamma function. Each recipe below is checked against ``scipy.stats`` when the
 documentation is built. Write the cumulative hazard with autograd's numpy

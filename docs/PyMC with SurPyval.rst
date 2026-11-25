@@ -40,7 +40,7 @@ The helpers are:
   and for a new group.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
-Normal, Gumbel, Logistic and Rayleigh distributions
+Normal, Gumbel, Logistic, Rayleigh and Gompertz distributions
 (``surpyval.pymc.SUPPORTED``); any other is refused with that list. The
 likelihood helpers also take the proportional hazards, accelerated failure
 time and accelerated life fitters on those distributions

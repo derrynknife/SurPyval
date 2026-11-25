@@ -33,6 +33,7 @@ SurPyval also offers many different distributions for users, and because of the 
 | **LogNormal** | Yes |
 | **Gamma**     | Yes |
 | **Generalised gamma** (Prentice, as flexsurv) | Yes |
+| **Gompertz** (a negative shape allowed: a plateau) | Yes |
 | **Beta**      | No |
 | **Beta (4 parameter)** | No |
 | **Uniform**   | No |

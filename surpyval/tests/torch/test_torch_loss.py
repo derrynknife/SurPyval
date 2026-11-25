@@ -35,6 +35,7 @@ PARAMS = {
     "Gumbel": [14.0, 5.0],
     "Logistic": [11.0, 3.5],
     "Rayleigh": [9.0],
+    "Gompertz": [0.1, 0.02],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -295,6 +296,7 @@ TAILS = {
     "Gumbel": dict(x=[60.0, -4000.0, -4000.0, 60.0], c=[0, 0, 1, -1]),
     "Logistic": dict(x=[5e3, -5e3, -5e3, 5e3], c=[0, 0, 1, -1]),
     "Rayleigh": dict(x=[300.0, 1e-200, 1e-200, 300.0], c=[0, 0, 1, -1]),
+    "Gompertz": dict(x=[400.0, 1e-300, 1e-300, 400.0], c=[0, 0, 1, -1]),
 }
 
 

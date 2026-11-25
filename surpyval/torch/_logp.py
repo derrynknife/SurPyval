@@ -100,6 +100,31 @@ EXPONENTIAL = Family(
     log_ff=lambda torch, x, rate: log1mexp(torch, -rate * x),
 )
 
+
+# Gompertz: shape a, rate b; H = (b / a) expm1(a x), and b x times the
+# series of expm1(y) / y below |a x| = 1e-3 (as surpyval's own)
+def _gompertz_h(torch: Any, x: Any, a: Any, b: Any) -> Any:
+    y = a * x
+    small = torch.abs(y) < 1e-3
+    ys = torch.where(small, y, 0.0)
+    series = 1.0 + ys * (
+        1.0 / 2 + ys * (1.0 / 6 + ys * (1.0 / 24 + ys * (1.0 / 120)))
+    )
+    a_l = torch.where(small, 1.0, a)
+    x_l = torch.where(small, 0.0, x)
+    return torch.where(small, b * x * series, b / a_l * torch.expm1(a_l * x_l))
+
+
+GOMPERTZ = Family(
+    log_df=lambda torch, x, a, b: (
+        torch.log(b) + a * x - _gompertz_h(torch, x, a, b)
+    ),
+    log_sf=lambda torch, x, a, b: -_gompertz_h(torch, x, a, b),
+    log_ff=lambda torch, x, a, b: log1mexp(
+        torch, -_gompertz_h(torch, x, a, b)
+    ),
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda torch, x, sigma: (
@@ -347,4 +372,5 @@ FAMILIES: dict[str, Family] = {
     "Gumbel": GUMBEL,
     "Logistic": LOGISTIC,
     "Rayleigh": RAYLEIGH,
+    "Gompertz": GOMPERTZ,
 }

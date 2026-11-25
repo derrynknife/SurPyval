@@ -133,6 +133,7 @@ LIFE = {
     "Logistic": "mu",
     "ExpoWeibull": "alpha",
     "GeneralizedGamma": "mu",
+    "Gompertz": "rate",
 }
 
 

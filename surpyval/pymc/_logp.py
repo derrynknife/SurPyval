@@ -93,6 +93,29 @@ EXPONENTIAL = Family(
     centre=lambda pt, rate: 1.0 / rate,
 )
 
+
+# Gompertz: shape a, rate b; H = (b / a) expm1(a x), and b x times the
+# series of expm1(y) / y below |a x| = 1e-3, so that it is exact through
+# a = 0 (as surpyval's own)
+def _gompertz_h(pt: Any, x: Any, a: Any, b: Any) -> Any:
+    y = a * x
+    small = pt.abs(y) < 1e-3
+    ys = pt.switch(small, y, 0.0)
+    series = 1.0 + ys * (
+        1.0 / 2 + ys * (1.0 / 6 + ys * (1.0 / 24 + ys * (1.0 / 120)))
+    )
+    a_l = pt.switch(small, 1.0, a)
+    x_l = pt.switch(small, 0.0, x)
+    return pt.switch(small, b * x * series, b / a_l * pt.expm1(a_l * x_l))
+
+
+GOMPERTZ = Family(
+    log_df=lambda pt, x, a, b: pt.log(b) + a * x - _gompertz_h(pt, x, a, b),
+    log_sf=lambda pt, x, a, b: -_gompertz_h(pt, x, a, b),
+    log_ff=lambda pt, x, a, b: log1mexp(pt, -_gompertz_h(pt, x, a, b)),
+    centre=lambda pt, a, b: 1.0 / b,
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda pt, x, sigma: (
@@ -205,4 +228,5 @@ FAMILIES: dict[str, Family] = {
     "Gumbel": GUMBEL,
     "Logistic": LOGISTIC,
     "Rayleigh": RAYLEIGH,
+    "Gompertz": GOMPERTZ,
 }

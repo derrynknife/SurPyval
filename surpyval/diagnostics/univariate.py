@@ -135,6 +135,7 @@ NAMED = (
     "ExpoWeibull",
     "Gamma",
     "GeneralizedGamma",
+    "Gompertz",
     "Gumbel",
     "GumbelLEV",
     "Logistic",

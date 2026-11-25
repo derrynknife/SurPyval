@@ -47,6 +47,7 @@ BASE = {
     "Beta": [2.0, 3.0],
     "ExpoWeibull": [3.0, 1.5, 2.0],
     "GeneralizedGamma": [1.0, 0.6, 0.5],
+    "Gompertz": [0.2, 0.05],
 }
 
 

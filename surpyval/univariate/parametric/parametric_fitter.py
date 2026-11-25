@@ -402,6 +402,7 @@ _PARAMETER_ROLES: dict[str, tuple[str, ...]] = {
     "Gamma": ("shape", "rate"),
     "GeneralizedGamma": ("location of log(x)", "scale of log(x)", "shape"),
     "Geometric": ("probability",),
+    "Gompertz": ("shape", "rate"),
     "Gumbel": ("location", "scale"),
     "GumbelLEV": ("location", "scale"),
     "LogLogistic": ("scale", "shape"),

@@ -32,6 +32,7 @@ PARAMS = {
     "Gumbel": [14.0, 5.0],
     "Logistic": [11.0, 3.5],
     "Rayleigh": [9.0],
+    "Gompertz": [0.1, 0.02],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -185,6 +186,7 @@ FAR = {
     "Gumbel": (-5000.0, 5000.0),
     "Logistic": (-1e300, 1e300),
     "Rayleigh": (1e-200, 1e200),
+    "Gompertz": (1e-300, 1e4),
 }
 
 
