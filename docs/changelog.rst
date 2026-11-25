@@ -224,6 +224,22 @@ v0.30 (unreleased)
   allowing for the modes not seen yet, in the many-modes form the
   handbook recommends for complex systems. See
   :doc:`counting/maturity_projection`.
+- **A coverage study of Dabrowska's bounds**
+  (``tests/calibration/test_coverage_dabrowska.py``). Pairs from a
+  Clayton copula (Kendall's tau 0.5) with Weibull margins, each series
+  27% to 30% censored, at 100 and 400 pairs: the bounds on the joint
+  survival at two points cover as they say. The influence-function
+  (Wald) bounds, 400 data sets each, cover 89.5% to 92.0% at 90% and
+  94.3% to 95.5% at 95%; the case bootstrap's, 200 data sets of 200
+  resamples, 86.5% to 91.5% at 90% and 93.5% to 96.0% at 95%, all
+  within the studies' tolerance.
+
+- **Dabrowska's case bootstrap is about three times faster.** Each
+  resample builds the estimate only on the part of the grid the
+  points asked about are in, not the whole grid: 200 resamples of 400
+  pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
+  to the last digit.
+
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
   returns its two-sided bounds as a
@@ -840,6 +856,11 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **``Dabrowska``: a series with no failures.** Where every unit of one
+  series is censored, ``sf``, ``ff`` and ``cb`` raised an
+  ``IndexError``. That series' margin is now 1, so the joint survival
+  is the other series' Kaplan-Meier estimate.
 
 - **``CoxPH.fit(..., penalizer=...)`` and ``CoxPH.fit(..., firth=True)``
   work again.** On the development branch the penalty arguments of
