@@ -184,12 +184,13 @@ Keys in every dictionary
    * - ``model`` or ``parameterization``
      - Which class wrote it, so that :func:`~surpyval.serialisation.from_dict`
        can choose the reader. Most classes write ``"model"``, set to the
-       class name. Four write ``"parameterization"`` instead:
+       class name. Five write ``"parameterization"`` instead:
        ``"parametric"`` (``Parametric``), ``"non-parametric"``
        (``NonParametric``, whose ``"model"`` holds the estimator,
        ``"Kaplan-Meier"`` for example), ``"parametric-regression"``
-       (``ParametricRegressionModel``) and ``"copula"``
-       (``CopulaModel``). A few classes write both; ``"model"`` then
+       (``ParametricRegressionModel``), ``"copula"``
+       (``CopulaModel``) and ``"bivariate-non-parametric"``
+       (``BivariateNonParametric``). A few classes write both; ``"model"`` then
        decides.
 
 .. _saved-model-optional-keys:
@@ -503,6 +504,10 @@ with its own ``schema``.
      - ``"parameterization": "copula"``
      - ``copula``, ``params``, ``how``, ``margins``, ``maximum``
      - ``rotation``, ``_neg_ll``, ``ic_n``, ``k``, ``covariance``
+   * - ``BivariateNonParametric``
+     - ``"parameterization": "bivariate-non-parametric"``
+     - ``estimator``, ``x``, ``c``, ``n``
+     - ``names``
    * - ``SurvivalTree``
      - ``"model": "SurvivalTree"``
      - ``kind``, ``n_features_split``, ``selection``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``

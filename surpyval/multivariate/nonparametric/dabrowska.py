@@ -46,6 +46,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.serialisation import SerialisableMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import check_alpha_ci
@@ -177,7 +178,7 @@ def _evaluate(
     return S, S1, S2
 
 
-class BivariateNonParametric:
+class BivariateNonParametric(SerialisableMixin):
     r"""
     A non-parametric estimate of the joint survival of two lifetimes,
     from :meth:`Dabrowska.fit`.
