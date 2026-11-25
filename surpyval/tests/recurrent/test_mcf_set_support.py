@@ -23,7 +23,7 @@ NPC: Any = NonParametricCounting
 CB = [
     {"bound": bound, "bound_type": bound_type, "interp": interp}
     for bound in ("two-sided", "upper", "lower")
-    for bound_type in ("exp", "normal")
+    for bound_type in ("log", "plain")
     for interp in INTERPS
 ]
 

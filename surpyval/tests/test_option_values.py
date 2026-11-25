@@ -27,7 +27,7 @@ def _mcf_models():
     ]
 
 
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log", "plain"])
 @pytest.mark.parametrize("interp", ["step", "linear"])
 def test_mcf_cb_refuses_an_unknown_bound(bound_type, interp):
     # bound='both' raised UnboundLocalError ('stat').

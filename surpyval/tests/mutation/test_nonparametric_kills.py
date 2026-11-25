@@ -274,7 +274,7 @@ def test_quantile_cb_is_nan_for_p_outside_0_1(p):
 
 
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.3])
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 def test_quantile_cb_inverts_the_pointwise_bounds(alpha_ci, bound_type):
     # Brookmeyer-Crowley: the interval of the p-quantile is the times at
     # which the pointwise interval of sf, at the same alpha_ci, contains
@@ -522,7 +522,7 @@ def test_turnbull_saved_before_tol_was_recorded_bootstraps_as_fitted():
 
 
 @pytest.mark.parametrize("method", ["hall-wellner", "nair"])
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.2])
 def test_band_over_a_single_time_is_the_pointwise_interval(
     method, bound_type, alpha_ci
