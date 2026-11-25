@@ -184,6 +184,25 @@ def test_a_mixture_s_draws_one_at_a_time_are_the_roots(name):
 
 
 @pytest.mark.parametrize("name", sorted(MIXTURES))
+def test_a_mixture_s_one_draw_on_floats_is_the_array_draw(name, monkeypatch):
+    # One draw's float path (_MixtureOne) runs the array path's formulas
+    # and steps: the same draws, to rounding (numpy's vectorised exp and
+    # log may round the last bit differently from the math module's).
+    v, u, _ = _cases(name)
+    model = MIXTURES[name]
+    floats = [
+        conditional_gaps(model, np.array([a]), [b])[0] for a, b in zip(v, u)
+    ]
+    monkeypatch.setattr(renewal_model, "_mixture_gap_one", lambda *a: None)
+    arrays = [
+        conditional_gaps(model, np.array([a]), [b])[0] for a, b in zip(v, u)
+    ]
+    np.testing.assert_allclose(
+        v + np.array(floats), v + np.array(arrays), rtol=1e-14, atol=0
+    )
+
+
+@pytest.mark.parametrize("name", sorted(MIXTURES))
 def test_the_start_is_at_or_below_the_root(name):
     # Newton's steps begin at a bound below the root, up to the rounding
     # of the components' quantiles where exp(-target) is small (relative
@@ -208,9 +227,18 @@ def test_a_mixture_takes_few_evaluations_a_draw(monkeypatch):
         return original(x)
 
     monkeypatch.setattr(model, "_hazard_and_rate", counted)
+    # One draw takes the same steps on floats (_MixtureOne.both).
+    one = renewal_model._MixtureOne
+    original_one = one.both
+
+    def counted_one(self: Any, x: float) -> Any:
+        calls.append(1)
+        return original_one(self, x)
+
+    monkeypatch.setattr(one, "both", counted_one)
     for vk, uk in zip(v, u):
         conditional_gaps(model, np.array([vk]), [uk])
-    assert len(calls) <= 3 * len(v)
+    assert 0 < len(calls) <= 3 * len(v)
 
 
 def test_a_mixture_s_ends():

@@ -159,6 +159,17 @@ def _count(monkeypatch: Any) -> Counter:
         return counted_hazard, quantile, counted_both
 
     monkeypatch.setattr(renewal_model, "_lifetime_functions", counting)
+    # A mixture's one draw takes the same steps on floats (_MixtureOne).
+    one = renewal_model._MixtureOne
+    for name, key in (("H", "H"), ("both", "both")):
+
+        def counted_one(
+            self: Any, x: Any, _f: Any = getattr(one, name), _k: str = key
+        ) -> Any:
+            calls[_k] += 1
+            return _f(self, x)
+
+        monkeypatch.setattr(one, name, counted_one)
     return calls
 
 
