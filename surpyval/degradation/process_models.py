@@ -2937,6 +2937,100 @@ class WienerProcess:
 
     @classmethod
     @takes_unit
+    @takes_readings
+    def fit_bayes(
+        cls,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
+        y0: float | None = None,
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit the Wiener process by Bayes' rule: priors on ``mu`` and
+        ``sigma`` (and the stress coefficients) times the likelihood of
+        the increments :meth:`fit` maximises.
+
+        In words: the readings say how fast the units degrade and how
+        much their paths wander; a prior says what was believed before
+        (a drift from an earlier fleet, or a life: "B10 about 2000
+        hours"); the posterior combines them, and gives a credible
+        interval on the life and on a unit's remaining life.
+
+        The posterior is computed on a grid for up to three free
+        parameters (exact, to its stated error), and by the checked
+        Laplace approximation beyond. With no priors (flat on ``mu`` and
+        on ``log sigma``) it is the textbook normal-inverse-gamma
+        posterior: ``sigma**2`` scaled inverse chi-squared, ``mu`` a
+        Student t about the maximum-likelihood drift.
+
+        Parameters
+        ----------
+        x, y, i, threshold, Z, stress_ref, y0
+            The readings and the model, as for :meth:`fit`. ``y0`` is
+            held at the maximum-likelihood fit's value (given, or
+            estimated from the readings).
+        priors : dict, joint prior or list, optional
+            A prior for each parameter named (``mu``, ``sigma``,
+            ``gamma_0``, ...); for example
+            ``prior.from_model(earlier_fit, param="mu", weight=0.5)``,
+            an earlier fleet's drift counted at half weight, or
+            ``prior.on_quantities(WienerProcess, B10=..., instead_of=
+            ["mu"])``, a belief about the life. A parameter left out is
+            flat on its unconstrained scale.
+        method : {'auto', 'grid', 'laplace'}, optional
+            The engine. Default ``'auto'``.
+        points, importance
+            The grid's starting points per parameter; reweighting of the
+            Laplace draws.
+
+        Returns
+        -------
+        surpyval.degradation.bayes.BayesianProcessModel
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 3)
+        >>> i = np.repeat(np.arange(3), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(3, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit_bayes(
+        ...     t, y, i, threshold=100,
+        ...     priors={"mu": sp.prior.around(0.5, between=(0.4, 0.6))})
+        >>> lo, hi = model.param_cri("mu")
+        >>> bool(0.4 < lo < hi < 0.65)
+        True
+        """
+        from surpyval.degradation import bayes
+
+        return bayes.fit(
+            cls,
+            x,
+            y,
+            i,
+            threshold,
+            Z,
+            stress_ref,
+            y0,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
+    @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -3585,6 +3679,81 @@ class GammaProcess:
         if fit_stats is not None:
             model._set_fit_stats(*fit_stats)
         return model
+
+    @classmethod
+    @takes_unit
+    @takes_readings
+    def fit_bayes(
+        cls,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
+        resolution: float | None = None,
+        y0: float | None = None,
+        *,
+        gauge: float | None = None,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit the gamma process by Bayes' rule: priors on ``alpha`` and
+        ``beta`` (and the stress coefficients) times the likelihood of
+        the increments :meth:`fit` maximises (zero increments censored
+        at the ``resolution``, as there).
+
+        The posterior is computed on a grid for up to three free
+        parameters (exact, to its stated error), and by the checked
+        Laplace approximation beyond; see
+        :meth:`WienerProcess.fit_bayes` for the priors and the result.
+        Readings off a gauge (``gauge=``, the quantised likelihood) are
+        not taken yet: fit them by :meth:`fit`.
+
+        Returns
+        -------
+        surpyval.degradation.bayes.BayesianProcessModel
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import GammaProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.gamma(shape=2.0 * 10, scale=0.25, size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = GammaProcess.fit_bayes(t, y, i, threshold=100)
+        >>> lo, hi = model.mean_cri()
+        >>> bool(lo < model.mean() < hi)
+        True
+        """
+        from surpyval.degradation import bayes
+
+        if gauge is not None:
+            raise ValueError(
+                "fit_bayes does not take gauge readings yet (their "
+                "quantised likelihood): fit them by GammaProcess.fit(..., "
+                "gauge=), or treat the readings as exact knowingly."
+            )
+        return bayes.fit(
+            cls,
+            x,
+            y,
+            i,
+            threshold,
+            Z,
+            stress_ref,
+            y0,
+            resolution,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
 
     @classmethod
     @takes_unit

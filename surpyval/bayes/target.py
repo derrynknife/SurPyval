@@ -55,6 +55,7 @@ def register_adapter(
 def _load_families() -> None:
     """Import the modules that register targets and adapters."""
     import surpyval.bayes.regression  # noqa: F401
+    import surpyval.degradation.bayes  # noqa: F401
     import surpyval.recurrent.bayes  # noqa: F401
 
 

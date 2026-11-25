@@ -711,6 +711,103 @@ fixed seed:
     model.cri(400.0, on="mtbf")               # counting every failure
     model.mtbf_probability(30.0)              # the system requirement
 
+Degradation processes: Wiener and gamma
+---------------------------------------
+
+Five units are read every 10 hours to 100 hours, and the wear rises by
+about 0.5 an hour with noise; a unit fails when its wear reaches 100.
+``WienerProcess.fit_bayes`` (or ``GammaProcess.fit_bayes``, for wear that
+never goes down) takes the readings as ``fit`` does and puts priors on
+the drift ``mu`` and the diffusion ``sigma`` (and on any stress
+coefficients). With two or three free parameters the posterior is on
+the grid, exact to its stated error.
+
+.. code-block:: python
+
+    from surpyval.degradation import WienerProcess
+
+    model = WienerProcess.fit_bayes(t, y, i, threshold=100)
+    model.param_cri("mu")            # 0.409 to 0.569 an hour
+    model.quantile_cri(0.1)          # B10 life: 148.4 to 202.0 hours
+    model.quantile_cri(0.1, point=True)  # its best guess, 172.4 hours
+    model.qf(0.1)                    # a new unit's B10: 167.8 hours
+    model.mean_cri()                 # mean life: 175.9 to 244.7 hours
+
+The life is the time a unit's wear first reaches the threshold (its
+*first passage*). As for the distributions, ``sf``, ``ff`` and ``qf``
+are for a new unit with all the uncertainty included (so its B10 is
+earlier than the B10 at the best-guess parameters), and ``cri`` and
+``quantile_cri`` are the population's credible intervals. ``mean`` is
+the posterior median of the mean life, since a slow process that is
+still credible can make the posterior mean very large.
+
+**Remaining life.** A unit at a wear of 60 has 40 to go, and the
+increments are independent, so its remaining life is a fresh passage
+over 40:
+
+.. code-block:: python
+
+    rul = model.predict_rul(60.0)
+    rul.median        # 80.2 hours: an even chance either side
+    rul.interval      # 52.7 to 125.2: where this unit's life lies (95%)
+    rul.median_cri    # 69.0 to 95.4: the population's median, credible
+    rul.cri([50.0, 100.0])   # bands on the chance of lasting that long
+
+The interval is for this one unit; the credible interval of the median
+is the uncertainty in the parameters alone, and narrows with more
+readings, while the unit's own spread does not.
+
+**A drift from an earlier fleet.** Two new units with only their own
+readings put the B10 between 150 and 245 hours. The earlier fleet's
+drift, counted at half weight, narrows it to 155 to 216:
+
+.. code-block:: python
+
+    import surpyval as sp
+
+    old = WienerProcess.fit(t, y, i, threshold=100)
+    drift = sp.prior.from_model(old, param="mu", weight=0.5)
+    model = WienerProcess.fit_bayes(
+        t_new, y_new, i_new, threshold=100, priors={"mu": drift})
+
+``sp.prior.from_fit(earlier_bayesian_fit, weight=...)`` takes the
+earlier fleet's readings themselves (their likelihood raised to the
+weight); at weight 1 it is the same as fitting both fleets' readings
+together.
+
+**A belief about the life.** "The B10 is about 170 hours, between 140
+and 200" stands in place of a prior on the drift:
+
+.. code-block:: python
+
+    belief = sp.prior.on_quantities(
+        WienerProcess,
+        B10=sp.prior.around(170, between=(140, 200)),
+        instead_of=["mu"],
+    )
+    model = WienerProcess.fit_bayes(
+        t_new, y_new, i_new, threshold=100, priors=[belief])
+
+``on_quantities`` takes the first-passage life's B-lives, ``R_at`` and
+``mean`` for either process, at the reference stress, from the fit's
+``y0``.
+
+The starting level ``y0`` is the maximum-likelihood fit's (given, or
+estimated from the readings) and held: it is not in the likelihood of
+the increments. A fit with stress takes one stress row ``Z`` in every
+result; a stress profile is taken by ``function_cri(lambda m: m.sf(t,
+schedule))``. Gauge readings (``gauge=``, the quantised likelihood) are
+not taken by ``fit_bayes`` yet.
+
+With no priors the Wiener posterior is the textbook one: flat on ``mu``
+and on ``log sigma`` is :math:`p(\mu, \sigma^2) \propto 1/\sigma^2`, so
+:math:`\sigma^2` is :math:`S / \chi^2_{n-1}` and :math:`\mu` a Student
+:math:`t_{n-1}` about :math:`\hat\mu = \sum \Delta y / \sum \Delta t`
+with scale :math:`\sqrt{S / ((n-1) \sum \Delta t)}`, where
+:math:`S = \sum (\Delta y - \hat\mu \Delta t)^2 / \Delta t` over the
+:math:`n` increments. The tests hold the grid to it to 0.2% of the 95%
+intervals' widths.
+
 What every Bayesian fit reports
 -------------------------------
 

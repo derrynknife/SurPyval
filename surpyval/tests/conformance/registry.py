@@ -662,6 +662,18 @@ OUT_OF_SCOPE["surpyval.bayes.BayesianResult"] = (
     "(checked in surpyval/tests/bayes/test_shared_layer.py); the "
     "families' own results are registered"
 )
+# The Bayesian Wiener and gamma processes: the shared layer's result on
+# the processes' own likelihood (checked against the closed form and the
+# fitted models in surpyval/tests/bayes/test_process_bayes.py).
+OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessModel"] = (
+    "built by WienerProcess.fit_bayes and GammaProcess.fit_bayes (checked "
+    "in surpyval/tests/bayes/test_process_bayes.py and "
+    "surpyval/tests/calibration/test_sbc_process_bayes.py; no "
+    "conformance case yet)"
+)
+OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessRUL"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessLife"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessTarget"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
     _FUNCTION + " (the engine rule behind every family's fit_bayes; "

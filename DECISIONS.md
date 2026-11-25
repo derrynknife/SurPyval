@@ -39,6 +39,18 @@ Design decisions made while working on the open issues, with the reason for each
 | The spline "bends without spread" warning with several markers checks each marker's bends against that marker's noise sd and reading ages, in one warning naming `"<marker>.s1"`. | proposed | The one-marker rule, applied marker by marker. | done |
 | The vibration effect's bias at 800 items: the study's design is committed (`markers_study.py`, `ITEMS=800`, seeds 3200 to 3399) but not run here. | proposed | About seven hours on two processes; it is left to a quiet machine. | open |
 | Failure modes with several markers (`e=`, `shared=`) are not built yet and are still refused. | proposed | Built separately, after the cause-specific layout gains a marker dimension. | open |
+### Bayesian Wiener and gamma degradation processes (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `WienerProcess.fit_bayes` and `GammaProcess.fit_bayes` build a target on the increments' likelihood `fit` maximises (zero gamma increments censored at the resolution, stress on the clock) and use the shared engines: the grid for up to three free parameters, Laplace beyond. No conjugate engine for the Wiener: with no priors its posterior is the normal-inverse-gamma, and the grid is tested against it. | maintainer (plan) | One engine rule everywhere; the grid is exact to its stated error. | done |
+| The starting level `y0` is the maximum-likelihood fit's (given, or estimated from the readings at the fitted rate) and held fixed, not recomputed at each posterior point. | proposed | It is not in the likelihood of the increments; with every unit read at time zero it does not depend on the rate at all. | done |
+| No default priors: a parameter given none is flat on its unconstrained scale (the one "no prior" rule), refused only with no more increments than flat parameters. | proposed | As the other families. | done |
+| `sf`, `ff`, `qf` are the posterior predictive of a new unit's first passage; `cri`, `quantile_cri`, `mean_cri` the population's credible intervals; `mean` the posterior median of the mean life. All are exact over the posterior's points (the Inverse-Gaussian, or the regularised incomplete gamma function, at every point at once); the gamma process's mean life is `g(beta D) / alpha` with `g` one integral tabulated in `beta D`. | proposed | The rule of the distributions' Bayesian fits; MTBF-like quantities as posterior medians. | done |
+| `predict_rul` gives the predictive median and interval of the unit's remaining life and the credible interval of the population's median, from the same functions at the remaining distance. | proposed | The predictive interval answers "when will this unit fail"; the credible interval "how sure are we of the typical one". | done |
+| `on_quantities` takes B-lives, `R_at` and `mean` for a process (at the reference stress, from `y0`), through a target's `life_quantity`; a fitted process works with `prior.from_model` (the drift from an earlier fleet). | proposed | The priors the plan names: drift from a previous fleet, threshold-crossing life. | done |
+| Not yet: gauge readings (the quantised likelihood) and a stress profile (StepSchedule) in the results; the latter is reached by `function_cri(lambda m: m.sf(t, schedule))`. | proposed | Follow-up. | gap |
+| `WienerProcessModel.mean()` with a non-positive drift returns `threshold - y0` over `mu` (negative), where the life is defective and the mean infinite; the Bayesian fit's mean is `inf` there. Left for the maintainer. | proposed | Outside this change. | open |
 
 ### Labelled MCF bounds (26 Nov 2026)
 
