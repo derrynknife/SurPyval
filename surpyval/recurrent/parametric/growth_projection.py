@@ -64,6 +64,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from surpyval.utils.model_data import event_data
+
 
 @dataclass(frozen=True)
 class GrowthProjection:
@@ -299,7 +301,7 @@ def growth_projection(
             "run from 0 to the same end of test, T, each recorded with a "
             "c=1 row at T. Add that row (the time the test stopped)."
         )
-    k = len(model.data.ids)
+    k = len(event_data(model).ids)
     total_time = k * T
 
     t_ev = x_arr[events]

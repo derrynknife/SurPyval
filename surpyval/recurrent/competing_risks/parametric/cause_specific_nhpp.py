@@ -56,6 +56,7 @@ from surpyval.utils.linalg import (
     log_transformed_cb,
     wald_bound_on_support,
 )
+from surpyval.utils.model_data import event_data
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_data import (
     accepts_recurrent_surpyval_data,
@@ -147,7 +148,7 @@ class _AllCauses:
     def __init__(self, model: CauseSpecificNHPP) -> None:
         self.cif = model.total_cif
         first = model.models[model.event_types[0]]
-        self.data = getattr(first, "data", None)
+        self.data = event_data(first)
 
 
 class CauseSpecificNHPP(SerialisableMixin):
@@ -1506,7 +1507,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
-        x_plot = np.linspace(0, float(self.data.x.max()), 200)
+        x_plot = np.linspace(0, float(event_data(self).x.max()), 200)
         for cause in self.event_types:
             ax.plot(
                 x_plot,

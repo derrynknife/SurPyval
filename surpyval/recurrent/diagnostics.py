@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.utils.model_data import as_event_history, event_data
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import ignoring_warnings
@@ -101,6 +102,7 @@ def item_windows(data: Any) -> list:
     ``(item, events, entry, close, explicit_close)`` per item. Exact event
     times only (interval- and left-censored rows are refused).
     """
+    data = as_event_history(data)  # a model.data, rows with units i
     _validate_diagnostic_data(data, "This method")
     return _per_item_windows(data)
 
@@ -131,6 +133,7 @@ def cumulative_hazard_residuals(data: Any, cif: Any) -> np.ndarray:
     model) or an ``item -> callable`` mapping (a regression model, whose
     intensity is scaled per item by ``exp(Z'beta)``).
     """
+    data = as_event_history(data)  # a model.data, rows with units i
     _validate_diagnostic_data(data, "Residuals")
     item_cif = _as_item_cif(cif)
     residuals = []
@@ -154,6 +157,7 @@ def martingale_residuals(data: Any, cif: Any) -> np.ndarray:
     ``cif`` is either a single callable or an ``item -> callable`` mapping
     (see :func:`cumulative_hazard_residuals`).
     """
+    data = as_event_history(data)  # a model.data, rows with units i
     _validate_diagnostic_data(data, "Residuals")
     item_cif = _as_item_cif(cif)
     residuals = []
@@ -309,6 +313,7 @@ def trend_test(
     Each item is tested on its own window ``(entry, close]``, so delayed
     entry (left truncation) is allowed (#575).
     """
+    data = as_event_history(data)  # a model.data, rows with units i
     from surpyval.recurrent.tests import laplace, mil_hdbk_189c
 
     _validate_diagnostic_data(data, "trend_test")
@@ -524,7 +529,7 @@ def cramer_von_mises(
     parameters having been estimated. Failure-truncated items are approximated
     by a window fixed at their last observed event.
     """
-    data = model.data
+    data = event_data(model)
     if not hasattr(model.dist, "inv_cif"):
         raise ValueError(
             "The Cramer-von Mises test requires an invertible CIF; {} does "
@@ -557,7 +562,7 @@ def cramer_von_mises_regression(
     computed under its own covariate-scaled intensity ``Lambda_0 exp(Z'beta)``,
     and the bootstrap refits the full regression model per replicate.
     """
-    data = model.data
+    data = event_data(model)
     if not hasattr(model.dist, "inv_cif"):
         raise ValueError(
             "The Cramer-von Mises test requires an invertible CIF; {} does "
@@ -622,7 +627,7 @@ def cramer_von_mises_renewal(
     """
     from surpyval.utils.recurrent_utils import handle_xicn
 
-    data = model.data
+    data = event_data(model)
     fitter = model._fitter
     increments = fitter._rescaled_increments(model, data)
     # How each item was observed drives its resimulation: an item whose
