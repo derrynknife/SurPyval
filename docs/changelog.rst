@@ -94,6 +94,16 @@ v0.30 (unreleased)
   vine of two series the bivariate fit. Censoring in more than two series
   is refused, saying to use the Gaussian or Student-t copula; truncation
   is still refused. Fully observed fits do not change.
+- **Truncation in a Gaussian or Student-t copula of three or more
+  series.** ``t`` (each series its own window, e.g. late entry) was
+  refused for more than two series. A truncated row's likelihood is now
+  divided by the copula's mass over its window, the rectangle probability
+  of the series truncated in that row. With one series truncated that
+  mass is the series' own probability over the window (to 1e-10), with
+  two it is the bivariate copula's (to 1e-8), and with four the lattice
+  rule's (to 2e-5 against a block of three and an independent series);
+  late entrants' correlations are recovered within three standard errors.
+
 - **Four or more censored series in a Gaussian or Student-t copula.**
   Rows with four or more censored series (up to 15 for the Gaussian, 14
   for the Student-t) are fitted; they were refused. Their likelihood

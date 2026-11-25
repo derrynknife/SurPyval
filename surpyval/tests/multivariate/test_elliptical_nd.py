@@ -393,15 +393,7 @@ def test_fit_from_df_and_data_object_agree_with_the_arrays():
 
 
 # -- refusals -----------------------------------------------------------------
-def test_truncation_is_refused_for_more_than_two_series():
-    X = _model().random(30, random_state=111)
-    t = np.zeros(X.shape + (2,))
-    t[..., 0], t[..., 1] = -np.inf, np.inf
-    t[:5, 0, 0] = 0.01
-    with pytest.raises(
-        ValueError, match=r"truncated data \(t; 5 row\(s\).*in pairs"
-    ):
-        Gaussian.fit(X, t=t, margins=[sp.Weibull] * 3)
+# (truncation: test_elliptical_nd_truncation.py)
 
 
 def test_rows_with_more_censored_series_than_the_rule_takes_are_refused():

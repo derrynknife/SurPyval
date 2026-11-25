@@ -606,8 +606,13 @@ What a fit of more than two series takes:
   correlations that a search and its Hessian can use, and it is accurate
   to about :math:`3 \times 10^{-6}` (checked against R's ``mvtnorm`` and
   exact one-factor integrals).
-- **Truncation** is refused for more than two series (fit the series in
-  pairs).
+- **Truncation.** Each series of a row may have its own truncation window
+  (``t``; late entry is left truncation). A truncated row's likelihood is
+  divided by the copula's mass over its window: the probability, under
+  the copula, that the series truncated in that row lie in their windows
+  (the others are free, so the mass is that of the truncated series
+  alone), from the same rules as the censored series (closed forms for
+  one or two, the lattice rule for four or more).
 - **Bounds.** Standard errors, ``param_cb`` (Wald, on Fisher's z scale for a
   correlation) and ``cb`` on the joint survival and CDF, as for two series.
 - **Joint probabilities** of four or more series (up to 15, 14 for the
