@@ -12,6 +12,7 @@ from .exact_event_time import ExactEventTime
 from .expo_weibull import ExpoWeibull
 from .exponential import Exponential
 from .gamma import Gamma
+from .generalized_f import GeneralizedF
 from .generalized_gamma import GeneralizedGamma
 from .geometric import Geometric
 from .gompertz import Gompertz

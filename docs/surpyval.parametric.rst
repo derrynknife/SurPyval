@@ -61,6 +61,7 @@ Continuous lifetime distributions.
    univariate/gumbel_lev
    univariate/gamma
    univariate/generalized_gamma
+   univariate/generalized_f
    univariate/gompertz
    univariate/inverse_gaussian
    univariate/normal

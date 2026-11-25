@@ -106,6 +106,7 @@ SUPPORTED = (
     "Logistic",
     "Beta",
     "ExpoWeibull",
+    "GeneralizedF",
     "GeneralizedGamma",
     "Gompertz",
     "InverseGaussian",

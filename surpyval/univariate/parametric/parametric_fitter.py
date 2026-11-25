@@ -400,6 +400,12 @@ _PARAMETER_ROLES: dict[str, tuple[str, ...]] = {
     "Exponential": ("rate",),
     "FixedEventProbability": ("probability",),
     "Gamma": ("shape", "rate"),
+    "GeneralizedF": (
+        "location of log(x)",
+        "scale of log(x)",
+        "shape",
+        "shape",
+    ),
     "GeneralizedGamma": ("location of log(x)", "scale of log(x)", "shape"),
     "Geometric": ("probability",),
     "Gompertz": ("shape", "rate"),

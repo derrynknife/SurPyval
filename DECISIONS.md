@@ -2682,3 +2682,14 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `qf` / `isf`: Newton's method in `ln x` on the log of the smaller tail, from scipy's quantile or a tail asymptote, then bisection where it did not converge. | proposed | scipy's `invgauss.isf(1e-300)` fails (Boost "unable to locate solution"); every quantile now inverts `ff`/`sf` to 1e-12. | done |
 | A closed-form MLE (`_closed_form_mle`) for exact, untruncated data. | proposed | The textbook estimator; checked to have a zero gradient. | done |
 | AFT origin map (both parameters times `e^s`), distributional regression (`mu` longer), PyMC and torch families. No PH (not a closed form under a change of origin). No MPP fit. | proposed | As the other scale families. | done |
+
+### The generalised F, built in (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedF(mu, sigma, Q, P)`, flexsurv's `genf`; `P > 0` (the generalised gamma is the limit `P -> 0`, not a member). | maintainer (build it, standard parameterisation) | One-to-one with `flexsurvreg`. | done |
+| Each tail from whichever of `B` and `1 - B` is at most 1/2 (both from logs, by softplus), the other its complement; the shape that cancels in `Q^2 + 2P - Q delta` from `s1 s2 = 2 / (P (Q^2 + 2P))`. Shape derivatives through the analytic ones of `betaincln`. | proposed | The incomplete beta near an argument of 1 works from its rounded complement: `F` at 0.999 was 7e-6 off at `s2 = 0.2`. Against mpmath to 5e-13 down to `P = 1e-6`. | done |
+| Quantiles: the inverse incomplete beta for a start, then Newton's method on the log of the smaller tail with a bisection fallback (a shared `_quantile.solve_log_tails`). | proposed | flexsurv's `qgenf` is off by up to 6e-8 of the probability (and by orders of magnitude at `Q = 2, P = 0.5`); ours inverts `ff` to 1e-14. | done |
+| `how="MOM"` refused (as well as `"MPP"`), with the reason. | proposed | The upper tail is a power law: the fourth moment may not exist, and a moments fit on 400 heavy-tailed quantiles gave `sf(1) = 0.55` where the MLE gives 0.92. | done |
+| Its conformance case fits its own 40-row fixture (`genf_data`): on `uni_data` the maximum is at the edge `P = 0`, where the fit is the generalised gamma and returns "unverified". | proposed | The battery needs an interior maximum. | done |
+| Not in the PyMC or torch lists. | proposed | torch has no incomplete beta function; pytensor's has shape gradients, so a PyMC-only family is a follow-up (the two lists are kept the same). | gap |

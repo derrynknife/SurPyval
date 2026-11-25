@@ -86,6 +86,7 @@ surpyval.GammaPO
 surpyval.GammaProcess
 surpyval.GammaZeroInflated
 surpyval.Gauss
+surpyval.GeneralizedF
 surpyval.GeneralizedGamma
 surpyval.GeneralizedOneRenewal
 surpyval.GeneralizedRenewal
@@ -646,6 +647,7 @@ surpyval.univariate.parametric.FixedEventProbability
 surpyval.univariate.parametric.Galton
 surpyval.univariate.parametric.Gamma
 surpyval.univariate.parametric.Gauss
+surpyval.univariate.parametric.GeneralizedF
 surpyval.univariate.parametric.GeneralizedGamma
 surpyval.univariate.parametric.Geometric
 surpyval.univariate.parametric.Gompertz

@@ -3287,8 +3287,9 @@ Several distributions that are popular in survival analysis are a few
 lines as a ``CustomDistribution``: the generalised gamma, the Gompertz
 (above), the generalised F and the inverse Gaussian. The Gompertz is built
 in as ``surv.Gompertz`` (:doc:`univariate/gompertz`), the inverse Gaussian as
-``surv.InverseGaussian`` (:doc:`univariate/inverse_gaussian`), and the
-generalised gamma is built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
+``surv.InverseGaussian`` (:doc:`univariate/inverse_gaussian`), the
+generalised F as ``surv.GeneralizedF`` (:doc:`univariate/generalized_f`), and
+the generalised gamma is built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
 with care near the lognormal that the recipe does not take; the recipe
 stays as an example of building one from the incomplete gamma function. Each recipe below is checked against ``scipy.stats`` when the
 documentation is built. Write the cumulative hazard with autograd's numpy

@@ -14,6 +14,7 @@ from surpyval.univariate.parametric import (
     Exponential,
     ExpoWeibull,
     Gamma,
+    GeneralizedF,
     GeneralizedGamma,
     Gompertz,
     Gumbel,
@@ -52,6 +53,7 @@ distributions: list[OptimisedFitMixin] = [
     Exponential,
     ExpoWeibull,
     Gamma,
+    GeneralizedF,
     GeneralizedGamma,
     Gompertz,
     Gumbel,
@@ -235,11 +237,11 @@ def fit_best(
 
     The candidates are the fittable continuous univariate distributions
     with a regular likelihood (Beta, Exponential, ExpoWeibull, Gamma,
-    GeneralizedGamma, Gompertz, Gumbel, InverseGaussian, Logistic,
-    LogLogistic, LogNormal, Normal, Rayleigh and Weibull). The data are
-    given as to ``fit`` (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``,
-    ``xl``, ``xr``) and are checked once, as ``fit`` checks them: an
-    input error -- a malformed censoring flag, say -- raises the
+    GeneralizedF, GeneralizedGamma, Gompertz, Gumbel, InverseGaussian,
+    Logistic, LogLogistic, LogNormal, Normal, Rayleigh and Weibull). The
+    data are given as to ``fit`` (``x``, ``c``, ``n``, ``t``, ``tl``,
+    ``tr``, ``xl``, ``xr``) and are checked once, as ``fit`` checks them:
+    an input error -- a malformed censoring flag, say -- raises the
     ``ValueError`` that ``Weibull.fit`` would, rather than failing every
     candidate. A candidate the data lie outside the
     support of (a Beta for data outside (0, 1)) is passed over quietly,

@@ -32,6 +32,7 @@ from .distributions import (
     Galton,
     Gamma,
     Gauss,
+    GeneralizedF,
     GeneralizedGamma,
     Geometric,
     Gompertz,

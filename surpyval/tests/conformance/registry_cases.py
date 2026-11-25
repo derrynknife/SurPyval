@@ -81,6 +81,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     frailty_recurrent_data,
+    genf_data,
     growth_data,
     joint_causes_data,
     joint_data,
@@ -193,6 +194,12 @@ def _univariate():
             fitters += (f"surpyval.{alias[name]}",)
         out.append(continuous(name, fitters=fitters))
     out.append(continuous("Uniform", data=uni_exact_data))
+    # On uni_data its maximum is at the edge P = 0 (the generalised
+    # gamma); four parameters and the incomplete beta make each refit
+    # about 0.5 s
+    out.append(
+        continuous("GeneralizedF", data=genf_data, slow=REFIT_PROPERTIES)
+    )
     out.append(
         continuous(
             "Beta",
@@ -4732,6 +4739,10 @@ _FAST_ESTIMATORS += ("GumbelCopula", "CrowAMSAA")
 def _estimators(case):
     """(estimators, large-only values, large sample) of ``case``."""
     name = case.name
+    if name == "GeneralizedF":
+        # how="MOM" refuses, as documented: the higher moments of its
+        # power-law tail may not exist
+        return _parametric_estimators(case), {}, _quantile_sample
     if name in _PLAIN_CONTINUOUS + _PLAIN_DISCRETE:
         return (
             _parametric_estimators(case),

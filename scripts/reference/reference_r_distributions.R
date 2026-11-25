@@ -1,7 +1,8 @@
 # Reference results from R for SurPyval's built-in GeneralizedGamma
 # (flexsurv's "gengamma", Prentice's (mu, sigma, Q)) and Gompertz
 # (flexsurv's "gompertz", (shape, rate)) and InverseGaussian (statmod's
-# and SuppDists' (mean, shape)).
+# and SuppDists' (mean, shape)) and GeneralizedF (flexsurv's "genf",
+# Prentice's (mu, sigma, Q, P)).
 #
 # Writes surpyval/tests/reference/data/r_distributions.json, with the
 # software, its version, the call and the values of each entry, as the
@@ -82,8 +83,13 @@ functions_entry <- function(dist, call, pars, times, probs, d, p, q) {
     )
 }
 
-fit_entry <- function(dist, formula, label) {
-    fit <- flexsurvreg(formula, data = lung_d, dist = dist, control = tight)
+fit_entry <- function(dist, formula, label, inits = NULL) {
+    fit <- if (is.null(inits)) {
+        flexsurvreg(formula, data = lung_d, dist = dist, control = tight)
+    } else {
+        flexsurvreg(formula, data = lung_d, dist = dist, control = tight,
+                    inits = inits)
+    }
     list(
         fixture = "lung", software = "R flexsurv",
         version = versions$flexsurv,
@@ -211,6 +217,37 @@ add("lung_invgauss", ig_fit(lung_d$time, lung_d$status, NULL,
 add("lung_invgauss_truncated", ig_fit(lung_d$time, lung_d$status,
                                       lung_d$entry,
                                       "Surv(entry, time, status)"))
+
+# ---- generalised F --------------------------------------------------------
+gf_pars <- list(c(1.5, 0.6, 0.5, 1), c(1.5, 0.6, -0.5, 0.3),
+                c(0.2, 1.2, 2, 0.5), c(1, 0.8, 0, 1), c(2, 0.4, 0.3, 0.01),
+                c(1, 0.7, -1.5, 2), c(1, 0.5, 0.5, 1e-4))
+add("functions_genf", functions_entry(
+    "genf", "dgenf / pgenf / qgenf(., mu, sigma, Q, P)",
+    gf_pars, times, probs, dgenf, pgenf, qgenf))
+add("lung_genf", fit_entry(
+    "genf", Surv(time, status) ~ 1, "Surv(time, status) ~ 1"))
+# flexsurvreg cannot fit the left-truncated genf on lung (optim stops on a
+# non-finite difference from any start tried), so the truncated
+# likelihood is checked at fixed parameters instead: the log-likelihood
+# of Surv(entry, time, status) at the untruncated estimates, from dgenf
+# and pgenf directly.
+gf_est <- refs[["lung_genf"]]$values$est
+gf_ll <- with(lung_d, sum(ifelse(
+    status == 1,
+    dgenf(time, gf_est[1], gf_est[2], gf_est[3], gf_est[4], log = TRUE),
+    pgenf(time, gf_est[1], gf_est[2], gf_est[3], gf_est[4],
+          lower.tail = FALSE, log.p = TRUE))) -
+    sum(pgenf(entry[entry > 0], gf_est[1], gf_est[2], gf_est[3], gf_est[4],
+              lower.tail = FALSE, log.p = TRUE)))
+add("lung_genf_truncated_loglik", list(
+    fixture = "lung", software = "R flexsurv",
+    version = versions$flexsurv,
+    call = "sum of dgenf / pgenf(log) less pgenf(entry, log), at the lung_genf estimates",
+    settings = list(params = gf_est,
+                    entry = "floor(time / 4)"),
+    values = list(loglik = gf_ll)
+))
 
 out <- list(
     generator = "scripts/reference/reference_r_distributions.R",

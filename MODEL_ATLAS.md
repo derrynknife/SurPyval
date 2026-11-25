@@ -260,11 +260,10 @@ order of how often it is asked for within each group; not a plan.
 
 **Parametric, no covariates (which distributions).**
 
-- The generalised F and Birnbaum-Saunders are not built-in classes;
-  each is a `CustomDistribution`, so neither is in `fit_best`, the
-  regression families or the PyMC and torch lists. (The generalised
-  gamma, the Gompertz and the inverse Gaussian are built in:
-  `GeneralizedGamma`, `Gompertz`, `InverseGaussian`.)
+- The Birnbaum-Saunders is not a built-in class; it is a
+  `CustomDistribution`, so it is not in `fit_best`, the regression
+  families or the PyMC and torch lists. (The generalised gamma, the
+  Gompertz, the generalised F and the inverse Gaussian are built in.)
 - The piecewise exponential likewise: a custom distribution, by choice.
 
 **Recurrent, parametric (reliability growth).**
