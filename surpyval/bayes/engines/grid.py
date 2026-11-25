@@ -594,35 +594,3 @@ def _improper_message(flat_names: list[str] | None) -> str:
         f"{MAX_HALF_WIDTH:g} standard deviations of its curvature: the "
         "prior is too wide for these data. Give a narrower prior."
     )
-
-
-def laplace_grid(
-    mode: npt.NDArray,
-    cov: npt.NDArray,
-    points: int | None = None,
-) -> GridResult:
-    """The normal approximation at the peak (Laplace), laid on a grid so
-    that every summary is computed as the grid's are."""
-    d = mode.size
-    m = int(points) if points is not None else START_POINTS.get(d, 25)
-    L = np.linalg.cholesky(cov)
-    lo = np.full(d, -START_HALF_WIDTH)
-    hi = np.full(d, START_HALF_WIDTH)
-    za, step = _lattice(lo, hi, m, False)
-    zb, _ = _lattice(lo, hi, m, True)
-    z = np.vstack([za, zb])
-    lp = -0.5 * np.sum(z**2, axis=1)
-    log_w = lp - logsumexp(lp)
-    return GridResult(
-        phi=mode + z @ L.T,
-        log_w=log_w,
-        log_z=float("nan"),
-        error=float("nan"),
-        points_per_dim=[m] * d,
-        cell=np.repeat((L * step[None, :])[None], len(z), axis=0),
-        refinements=0,
-        mode=mode,
-        cov=cov,
-        half_widths=hi.copy(),
-        shape=(2,) + (m,) * d,
-    )

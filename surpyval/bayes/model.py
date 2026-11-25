@@ -220,7 +220,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             bound.free_names,
             theta,
             np.exp(result.log_w),
-            "laplace" if method == "laplace" else "grid",
+            "grid",
             transforms=free_t,
             cell=result.cell,
             shape=result.shape,
@@ -239,7 +239,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             "widened": result.checks.get("widened", 0),
             "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
             "ok": True,
-            "approximate": method == "laplace",
+            "approximate": False,
         }
         model = cls(
             dist,
@@ -260,6 +260,126 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         model._log_z = result.log_z
         model._attach_density()
         return model
+
+    @classmethod
+    def _from_laplace(
+        cls,
+        dist: Any,
+        data: SurpyvalData | None,
+        bound: Any,
+        result: Any,
+        log_post: Any,
+        mle: Any,
+        importance: bool,
+    ) -> BayesianParametric:
+        """The Laplace engine's result as a model: the normal's draws (with
+        their importance weights where reweighted)."""
+        from surpyval.bayes.engines.laplace import K_BAD, K_GOOD, SHIFT
+
+        theta = bound.full_theta(result.phi)
+        free_t = [bound.transforms[i] for i in bound.free_idx]
+        normal = {
+            "mean": [float(v) for v in result.mode],
+            "cov": [[float(v) for v in row] for row in result.cov],
+            "reweighted": bool(result.importance),
+        }
+        post = Posterior(
+            bound.names,
+            bound.free_names,
+            theta,
+            np.exp(result.log_w),
+            "laplace",
+            transforms=free_t,
+            normal=normal,
+        )
+        proper = bound.proper and data is not None
+        k = result.pareto_k
+        quality = (
+            "good" if k <= K_GOOD else ("usable" if k <= K_BAD else "poor")
+        )
+        j, pct = result.shift_at.split(":") if result.shift_at else ("0", "")
+        shift_at = f"{bound.free_names[int(j)]}'s {pct}% point"
+        if (
+            quality != "poor"
+            and result.shift > SHIFT
+            and not result.importance
+        ):
+            quality = "poor"
+        diag = {
+            "method": "laplace",
+            "free_parameters": list(bound.free_names),
+            "draws": result.draws,
+            "pareto_k": k,
+            "shift": result.shift,
+            "shift_at": shift_at,
+            "approximation": quality,
+            "importance": bool(result.importance),
+            "importance_requested": bool(importance),
+            "ess": result.ess,
+            "log_z_laplace": result.log_z_laplace,
+            "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
+            "ok": True,
+            "approximate": True,
+        }
+        model = cls(
+            dist,
+            post,
+            data=data,
+            priors=bound.spec,
+            offset=bound.offset,
+            lfp=bound.lfp,
+            zi=bound.zi,
+            fixed=bound.fixed,
+            method="laplace",
+            log_evidence=result.log_z if proper else float("nan"),
+            diagnostics=diag,
+        )
+        model._mle_fit = mle
+        model._mle_known = data is not None
+        model._log_post = log_post
+        model._log_z = result.log_z
+        model._attach_density()
+        model._warn_laplace()
+        return model
+
+    def _warn_laplace(self) -> None:
+        """Warn where the Laplace approximation's checks fail."""
+        from surpyval.bayes.engines.laplace import K_BAD, SHIFT
+
+        d = self.diagnostics
+        k = float(d.get("pareto_k", 0.0))
+        n_free = len(d.get("free_parameters", []))
+        other = (
+            "method='grid' (exact for up to three free parameters)"
+            if n_free <= 3
+            else "PyMC through surpyval.pymc for the exact posterior"
+        )
+        if k > K_BAD:
+            extra = (
+                " Reweighting the draws (importance=True) cannot repair it."
+                if d.get("importance_requested")
+                else ""
+            )
+            warnings.warn(
+                f"The Laplace approximation is poor for this fit: the Pareto "
+                f"k of the exact posterior against the normal is {k:.2f} "
+                f"(above {K_BAD}), so the posterior is far from normal on "
+                f"the parameters' log scale (few failures, or a parameter "
+                f"near a bound).{extra} Use {other}.",
+                stacklevel=caller_stacklevel(),
+            )
+            return
+        shift = float(d.get("shift", 0.0))
+        if shift > SHIFT and not d.get("importance"):
+            warnings.warn(
+                f"The Laplace approximation is off for this fit: reweighting "
+                f"its draws towards the exact posterior moves "
+                f"{d.get('shift_at')} by {shift:.0%} of its 95% interval's "
+                f"width (more than {SHIFT:.0%}), so the posterior is skewed "
+                f"on the parameters' log scale. Refit with importance=True, "
+                f"which corrects it, or use {other}.",
+                stacklevel=caller_stacklevel(),
+            )
 
     @classmethod
     def _from_conjugate(
@@ -498,6 +618,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             fam = post._exact(post.exact["name"]) if post.exact else None
             if fam is not None:
                 post.log_density_fn = lambda p, f=fam: f.logpdf(p[:, 0])
+            return
+        if post.kind == "laplace" and post.normal is not None:
+            post.log_density_fn = _normal_density(post)
             return
         if post.kind != "grid":
             return
@@ -1744,6 +1867,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         m = method or ("auto" if self.method == "conjugate" else self.method)
         if m == "draws":
             m = "auto"
+        importance = m == "laplace" and bool(
+            self.diagnostics.get("importance_requested", False)
+        )
         model = fit_bayes(
             self.dist,
             data,
@@ -1755,6 +1881,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 k: v for k, v in fixed.items() if k not in self.priors.fixed()
             },
             method=m,
+            importance=importance,
         )
         model.unit = self.unit
         return model
@@ -2773,11 +2900,49 @@ def _how_computed(model: BayesianParametric) -> str:
             f"error < {max(float(err), 1e-4):.2%})."
         )
     if model.method == "laplace":
+        k = d.get("pareto_k")
+        if k is None:
+            return (
+                "Approximated by a normal at the posterior's peak "
+                "(Laplace); with few failures this can be poor: check it "
+                "with the grid."
+            )
+        how = (
+            f"{d.get('draws')} draws reweighted towards the exact posterior "
+            "(importance sampling)"
+            if d.get("importance")
+            else f"{d.get('draws')} draws"
+        )
         return (
-            "Approximated by a normal at the posterior's peak (Laplace); "
-            "with few failures this can be poor: check it with the grid."
+            "Approximated by a normal at the posterior's peak (Laplace), "
+            f"{how}; checked against the exact posterior: Pareto k "
+            f"{float(k):.2f} (below 0.5 good, above 0.7 poor), and "
+            f"reweighting moves {d.get('shift_at')} by "
+            f"{float(d.get('shift', 0.0)):.1%} of its interval's width: "
+            f"{d.get('approximation')}."
         )
     return f"From {d.get('draws', len(model.posterior.weights))} draws."
+
+
+def _normal_density(post: Posterior) -> Any:
+    """The log density of a Laplace posterior's normal at points on the
+    free parameters' own scales."""
+    from surpyval.bayes.engines.laplace import normal_logpdf
+
+    assert post.normal is not None
+    mean = np.asarray(post.normal["mean"], dtype=float)
+    cov = np.asarray(post.normal["cov"], dtype=float)
+
+    def log_density(points: npt.NDArray) -> npt.NDArray:
+        ts = post.transforms or []
+        phi = np.stack(
+            [t.to_phi(points[:, j]) for j, t in enumerate(ts)], axis=1
+        )
+        jac = sum(t.log_jacobian(phi[:, j]) for j, t in enumerate(ts))
+        out: npt.NDArray = normal_logpdf(phi, mean, cov) - jac
+        return out
+
+    return log_density
 
 
 def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:

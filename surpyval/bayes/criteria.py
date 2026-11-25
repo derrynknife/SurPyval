@@ -195,9 +195,9 @@ class PredictiveCriterion:
     n : numpy.ndarray
         Each row's count.
     method : str
-        ``"closed form"`` (a conjugate fit), ``"quadrature"`` (a grid or
-        Laplace fit), ``"psis"`` (LOO from draws) or ``"draws"`` (WAIC
-        from draws).
+        ``"closed form"`` (a conjugate fit), ``"quadrature"`` (a grid
+        fit), ``"psis"`` (LOO from draws, including a Laplace fit's) or
+        ``"draws"`` (WAIC from draws).
     pareto_k : numpy.ndarray or None
         LOO from draws: each row's Pareto ``k``; above ``good_k`` the row's
         estimate is unreliable.
@@ -420,7 +420,11 @@ def waic(model: Any) -> PredictiveCriterion:
         for rows, ll in _row_blocks(model, points):
             lppd[rows] = logsumexp(log_w[:, None] + ll, axis=0)
             var[rows] = _weighted_moments(ll, w)[1]
-        method = "draws" if model.posterior.kind == "draws" else "quadrature"
+        method = (
+            "draws"
+            if model.posterior.kind in ("draws", "laplace")
+            else "quadrature"
+        )
     res = PredictiveCriterion(
         "waic", lppd - var, lppd, n, method, p_pointwise=var
     )
@@ -447,7 +451,7 @@ def loo(model: Any) -> PredictiveCriterion:
     points, log_w = _points(model)
     lppd = np.empty(len(n))
     elpd = np.empty(len(n))
-    if post.kind != "draws":
+    if post.kind not in ("draws", "laplace"):
         faces = _faces(post)
         edge = None if faces is None else np.empty(len(n))
         for rows, ll in _row_blocks(model, points):

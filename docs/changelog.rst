@@ -3,7 +3,35 @@ Changelog
 v0.30 (unreleased)
 ------------------
 
+**Changed numbers.**
+
+- ``method="laplace"`` results move slightly: the approximation was laid
+  on a lattice of up to three dimensions and is now drawn by quasi-Monte
+  Carlo (parameter intervals are the normal's exact quantiles, as
+  before; intervals on ``sf``, ``qf`` and the other functions move by
+  Monte Carlo error, under 0.5% of an interval's width). The curvature
+  is now measured again at the peak, and a peak at which the posterior
+  does not curve down in every direction is refused instead of patched.
+  A Laplace fit's ``log_evidence`` is now Laplace's estimate (``nan``
+  before), and its ``loo()`` is Pareto-smoothed (``method "psis"``).
+
 **Added.**
+
+- **The Laplace engine for Bayesian fits of any number of parameters.**
+  ``fit_bayes(..., method="laplace")`` is now a normal approximation at
+  the posterior's peak (on the parameters' log and logit scales) for any
+  number of free parameters, where the grid takes one to three, and
+  ``method="auto"`` uses it past three (it refused before). Each fit
+  checks itself against the exact posterior by importance sampling over
+  4,096 quasi-random draws (fixed seed, so reproducible) and reports the
+  Pareto k (``diagnostics["pareto_k"]``, the summary, ``diagnose()``),
+  warning above 0.7, and how far reweighting would move each parameter's
+  interval (``diagnostics["shift"]``), warning past 10% of its width;
+  the grid or PyMC through ``surpyval.pymc`` is then the way. ``importance=True`` reweights the draws towards the exact
+  posterior. Checked against the Exponential-Gamma closed form (the
+  Laplace interval exactly; within 1% of the conjugate posterior's at
+  1,000 lives) and the grid (within 0.2 sd at 100 Weibull lives; 0.01 sd
+  reweighted), with a coverage study of its 90% intervals.
 
 - **A Wald bound on a Fine-Gray model's cumulative incidence.**
   ``FineGrayModel.cb(..., method="wald")`` gives the delta-method bound on

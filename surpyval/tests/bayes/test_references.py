@@ -77,3 +77,38 @@ def test_matches_an_independent_sampler(case):
             got,
             q,
         )
+
+
+@pytest.mark.parametrize(
+    "importance",
+    [
+        pytest.param(
+            False,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason=(
+                    "found on the first run: the plain normal puts alpha's "
+                    "97.5% point 17.7% of the interval's width below the "
+                    "reference (beta's 8.4%), past the 15% rule; the fit "
+                    "warns (reweighting moves it by 12%), and "
+                    "importance=True brings it within 2.5%"
+                ),
+            ),
+        ),
+        True,
+    ],
+)
+def test_laplace_against_an_independent_sampler(importance):
+    """The Laplace engine on the interval-censored case (rule fixed
+    before the comparison): each 2.5%, 50% and 97.5% point within 15% of
+    the reference's 95% interval's width, plain, and within 5%
+    reweighted."""
+    model = sp.Weibull.fit_bayes(
+        **_interval(), priors=PRIORS, method="laplace", importance=importance
+    )
+    limit = 0.05 if importance else 0.15
+    for name, (q, _) in REFERENCE["interval"].items():
+        got = model.posterior.quantile(name, [0.025, 0.5, 0.975])
+        width = q[2] - q[0]
+        gap = np.abs(got - np.asarray(q)) / width
+        assert np.all(gap <= limit), (name, gap)

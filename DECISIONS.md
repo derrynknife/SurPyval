@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-25
 
+### The Laplace engine (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| SurPyval has no sampler of its own: exact posteriors of more than three free parameters go through PyMC (`surpyval.pymc`); SurPyval keeps the conjugate and grid engines and adds the Laplace approximation. | maintainer | A general MCMC sampler is specialist software that PyMC, Stan and NumPyro already do robustly. | done |
+| `method="laplace"` is a normal at the posterior mode on the unconstrained scale, covariance the inverse of minus the Hessian there, drawn by a scrambled Sobol sequence (4,096 draws, fixed seed). A plain fit's parameter quantiles are the normal's exact ones; functions are averaged over the draws. | proposed | Deterministic as the grid is; quasi-random draws spread evenly; exact marginals keep the parameter intervals free of Monte Carlo error. | done |
+| Every Laplace fit reports the Pareto k of the exact posterior against the normal (Yao et al. 2018) and warns above 0.7; `importance=True` (default False) reweights the draws by Pareto-smoothed importance sampling where k is at most 0.7. | proposed | The check costs the same evaluations as the correction; the default stays the plain, well-understood approximation, and a poor one is never silent. | done |
+| `method="auto"` uses the Laplace engine past three free parameters (it refused before), labelled approximate. | proposed | A labelled, self-checked approximation is more useful than a refusal; the grid stays the default where it can run. | done |
+
 ### One name per bound scale and per bound (25 Nov 2026)
 
 | Decision | By | Reason | Status |

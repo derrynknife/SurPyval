@@ -280,11 +280,12 @@ term over the probability of its window), and a row with count ``n`` is
 refitting, by :math:`p(y_i \mid y_{-i}) = 1 / E[1 / p(y_i \mid \theta)]`:
 
 - a conjugate fit in closed form, exactly;
-- a grid or Laplace fit by the grid's quadrature. ``edge`` is each row's
+- a grid fit by the grid's quadrature. ``edge`` is each row's
   share of its leave-one-out posterior in the grid's outermost cells, and
   ``loo()`` warns above 0.001: without that row the data say much less,
   and the grid, laid for the full posterior, may not hold it;
-- draws from another sampler (``from_draws``) by Pareto-smoothed
+- a Laplace fit's draws, and draws from another sampler
+  (``from_draws``), by Pareto-smoothed
   importance sampling (Vehtari, Gelman and Gabry, 2017; Vehtari, Simpson,
   Gelman, Yao and Gabry, 2024), as R's ``loo`` and ArviZ do, taking the
   draws as independent. ``pareto_k`` is each row's diagnostic, and
@@ -297,6 +298,91 @@ log-likelihood; it warns when a row's term is above 0.4, where it is
 unreliable and ``loo()`` is the better estimate. The standard errors are
 :math:`\sqrt{N}` times the standard deviation of the units' values (with
 divisor :math:`N - 1`, as R's ``loo``).
+
+Many parameters: the Laplace approximation
+------------------------------------------
+
+The grid computes the posterior exactly, but only for one to three free
+parameters: a grid in more dimensions needs too many points. Past three
+(an offset and a limited-failure proportion on a Weibull, say), and
+whenever ``method="laplace"`` is asked for, SurPyval uses the *Laplace
+approximation*.
+
+**What it is, in words.** Find the single most probable set of parameter
+values (the peak of the posterior), measure how quickly the posterior
+falls away from that peak in every direction, and take the posterior to
+be the bell-shaped (normal) distribution with that centre and that
+spread. It is done where posteriors are closest to bell-shaped: on the
+log of a positive parameter and the logit of a proportion. Every
+interval and prediction is then carried back to the parameters' own
+scales, so a shape's interval is still above zero and a proportion's is
+still between 0 and 1.
+
+**When it is good.** With a moderate or large amount of data, a
+posterior is close to normal on that scale, and the approximation is
+then close to the exact answer: in SurPyval's tests, 100 Weibull lives
+(30% censored) give means and 90% interval ends within 0.2 standard
+deviations of the grid's exact ones, and an Exponential's interval moves
+to within 1% of the exact (conjugate) one by 1,000 lives.
+
+**When it is not.** With very few failures, or a parameter pressed
+against a bound (an offset near the first failure, a proportion near 1),
+the posterior is skewed, and a symmetric bell misses one of its tails.
+Then use the grid (up to three free parameters, exact), or sample the
+exact posterior with PyMC through :mod:`surpyval.pymc`.
+
+**How it checks itself.** Every Laplace fit compares the exact posterior
+with its normal at 4,096 points drawn from the normal: where the ratio
+of the two has a heavy tail, the normal is missing mass. The heaviness of
+that tail is the *Pareto k* (``model.diagnostics["pareto_k"]``, also in
+the summary and in ``diagnose()``): below 0.5 the approximation is good,
+up to 0.7 usable, and above 0.7 poor, and the fit warns. A skewed
+posterior can still give a moderate k, so there is a second check: how
+far reweighting the draws towards the exact posterior (below) would move
+each parameter's 2.5%, 50% and 97.5% points. Past 10% of the 95%
+interval's width (``diagnostics["shift"]``) the fit warns and names the
+point. The draws come from a scrambled Sobol sequence with a fixed seed,
+so a fit gives the same numbers on every run.
+
+.. jupyter-execute::
+
+    x4 = sp.Weibull.random(150, 100, 2, random_state=5) + 50
+    c4 = (x4 > 170).astype(int)
+    four = sp.Weibull.fit_bayes(
+        np.minimum(x4, 170), c4, offset=True, lfp=True,
+        priors={"beta": sp.prior.between(1, 4),
+                "lfp_p": sp.prior.between(0.5, 0.99)})
+    print(four.method, round(four.diagnostics["pareto_k"], 2))
+    print(four.param_cri("gamma").round(1))
+
+**A correction.** ``importance=True`` reweights the normal's draws
+towards the exact posterior (Pareto-smoothed importance sampling: each
+draw weighted by the ratio of the exact density to the normal's, the
+largest ratios smoothed). It costs nothing more than the check, and in
+the tests it brings a two-parameter fit's means and interval ends to
+within 0.01 standard deviations of the grid's. It is used only where the
+Pareto k is at most 0.7; above that the weights cannot be trusted
+either, and the fit says so.
+
+**The formulas.** With :math:`\phi` the free parameters on the
+unconstrained scale and :math:`\ell(\phi) = \log p(\phi) + \log
+L(\phi)` the log posterior there (the prior including the change of
+scale), the approximation is
+
+.. math::
+
+    p(\phi \mid D) \approx \mathcal{N}\left(\hat\phi,\,
+    \left[-\nabla^2 \ell(\hat\phi)\right]^{-1}\right),
+    \qquad \hat\phi = \arg\max \ell(\phi),
+
+the Hessian by central differences. A plain Laplace fit's parameter
+quantiles are the normal's own, exactly; functions of the parameters
+(``sf``, a B-life) are averaged over the draws. The log evidence is
+:math:`\ell(\hat\phi) + \tfrac{d}{2}\log 2\pi + \tfrac12 \log
+|\Sigma|`, or, reweighted, the importance-sampling estimate
+:math:`\log \tfrac1S \sum_s e^{\ell(\phi_s)} / q(\phi_s)`. The
+Pareto k is that of Yao, Vehtari, Simpson and Gelman (2018), "Yes, but
+did it work?: evaluating variational inference".
 
 Priors: the helpers, and their dangers
 --------------------------------------
@@ -372,8 +458,9 @@ the two grids' summaries is the integration error the summary reports; it
 must be below 0.1% of the 95% interval's width (0.5% with three free
 parameters), or the grid is refined, and past its budget the fit refuses
 with the numbers. No random numbers are involved: the same data and
-prior give the same answer on every machine. ``method="laplace"`` is a
-normal approximation at the peak instead, labelled approximate.
+prior give the same answer on every machine. Past three free parameters,
+or with ``method="laplace"``, the Laplace approximation is used instead
+(next section).
 
 **Very small and very large probabilities.** A chance of failure of one
 in a million million is as much a number as one of a half, and it is

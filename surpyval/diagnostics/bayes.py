@@ -842,6 +842,30 @@ def _grid_rows(ctx: Context) -> list[dict]:
         )
         method = "grid"
     else:
+        from surpyval.bayes.engines.laplace import K_BAD, K_GOOD
+
+        k = model.diagnostics.get("pareto_k")
+        if k is not None:
+            k = float(k)
+            rows.append(
+                {
+                    "test": "Laplace approximation: Pareto k",
+                    "statistic": k,
+                    "verdict": (
+                        "ok"
+                        if k <= K_GOOD
+                        else "warn" if k <= K_BAD else "fail"
+                    ),
+                    "detail": "the exact posterior against the normal, by "
+                    "importance sampling over {} draws: k = {:.2f} (below "
+                    "{} good, above {} poor)".format(
+                        model.diagnostics.get("draws"), k, K_GOOD, K_BAD
+                    ),
+                    "_kind": "laplace",
+                }
+            )
+        if d not in START_POINTS:
+            return rows
         points = None
         test = "Laplace approximation against the grid"
         against = "the grid posterior"
@@ -1023,6 +1047,23 @@ def _grid_message(row: dict, ctx: Context) -> str:
 
 
 def _laplace_message(row: dict, ctx: Context) -> str:
+    if row["test"] == "Laplace approximation: Pareto k":
+        many = len(ctx.model.posterior.free_names) > 3
+        return (
+            "The Laplace approximation's normal misses the exact posterior "
+            "(Pareto k {k:.2f}): the posterior is skewed or long-tailed on "
+            "the parameters' log scale. {fix}".format(
+                k=row["statistic"],
+                fix=(
+                    "Sample the exact posterior with PyMC through "
+                    "surpyval.pymc, or give the parameters priors."
+                    if many
+                    else "Refit with {}.fit_bayes(..., method='grid').".format(
+                        ctx.model.dist.name
+                    )
+                ),
+            )
+        )
     return (
         "The Laplace approximation is off from the grid posterior by "
         "{change:.2%} of an interval's width: the posterior is not normal "
