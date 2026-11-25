@@ -117,3 +117,28 @@ futility while keeping their level.
    :members: decide, update, p_value, estimate, repeated_interval, crossing_probabilities, max_information, to_dict, from_dict
 
 .. autofunction:: surpyval.test_planning.boundary_crossing
+
+Reliability growth planning
+---------------------------
+
+The curve a reliability growth test is planned against (MIL-HDBK-189C):
+see :doc:`Reliability Growth Planning`.
+
+.. autofunction:: surpyval.test_planning.idealised_growth_curve
+
+.. autoclass:: surpyval.test_planning.IdealisedGrowthCurve
+   :members: mtbf, expected_failures, cumulative_mtbf, phase_mtbf, demonstration_probability, oc_curve, plot, to_dict
+
+.. autofunction:: surpyval.test_planning.growth_demonstration_probability
+
+.. autofunction:: surpyval.test_planning.growth_test_time
+
+.. autofunction:: surpyval.test_planning.pm2_continuous
+
+.. autoclass:: surpyval.test_planning.PM2ContinuousPlan
+   :members: goal_to_potential, lambda_a, lambda_b, mtbf, intensity, new_mode_rate, expected_modes, fraction_surfaced, targets, demonstration_probability, plot, to_dict
+
+.. autofunction:: surpyval.test_planning.pm2_discrete
+
+.. autoclass:: surpyval.test_planning.PM2DiscretePlan
+   :members: r_a, r_b, reliability, expected_modes, fraction_surfaced, new_mode_probability, targets, plot, to_dict

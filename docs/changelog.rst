@@ -59,6 +59,23 @@ v0.30 (unreleased)
   beta 2.4928 (published 6.6951, 2.4928) and the next month's forecast
   28.6 returns (published 29). See "Warranty returns from a Nevada table"
   in :doc:`Parametric SurPyval Modelling`.
+- **Reliability growth planning** (MIL-HDBK-189C), in
+  ``surpyval.test_planning``. ``idealised_growth_curve`` is the
+  AMSAA-Crow planning curve: give two of the growth rate, the final MTBF
+  and the test time and it solves for the third (the growth rate exactly,
+  not by the handbook's approximation), with the planned MTBF of each test
+  phase and an operating characteristic. ``growth_demonstration_probability``
+  is the exact chance that a growth test's own Crow-AMSAA analysis
+  demonstrates a requirement (Crow's exact lower bound), and
+  ``growth_test_time`` the test time that makes it a given value; they
+  agree with the handbook's SPLAN tables within 0.035 (the handbook
+  interpolated printed tables) and with a simulation of the test within
+  0.01. ``pm2_continuous`` and ``pm2_discrete`` plan from the management
+  strategy and the average fix effectiveness: the idealised MTBF (or
+  reliability), the growth potential, the expected modes, the share of
+  the correctable intensity seen, the rate of new modes, and the steps
+  after each corrective action period with their lags. Each plan plots
+  against a fitted growth model. See :doc:`Reliability Growth Planning`.
 
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a

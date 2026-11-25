@@ -262,10 +262,11 @@ order of how often it is asked for within each group; not a plan.
 
 **Recurrent, parametric (reliability growth).**
 
-- A growth planning curve (the idealised curve a test programme is
-  planned against) and growth models for success/fail (discrete) data:
-  Lloyd-Lipow, Gompertz and the discrete AMSAA model. Duane, Crow-AMSAA,
-  Crow Extended and the AMSAA-Crow projection are built.
+- Growth models for success/fail (discrete) data: Lloyd-Lipow, Gompertz
+  and the discrete AMSAA model. Duane, Crow-AMSAA, Crow Extended and the
+  AMSAA-Crow projection are built, and so are the planning curves
+  (`surpyval.test_planning`: the idealised curve, PM2-Continuous and
+  PM2-Discrete).
 
 **Semi-parametric, with covariates.**
 

@@ -184,6 +184,13 @@ so on.
        of a log-rank comparison, and the power of a comparison of failure
        rates before and after a change.
      - :doc:`Test Planning with SurPyval`
+   * - Reliability growth planning
+     - The curve a growth test is planned against (MIL-HDBK-189C): the
+       idealised curve (test time, growth rate or final MTBF), the chance
+       the test demonstrates a requirement, and PM2-Continuous and
+       PM2-Discrete plans with their steps after each corrective action
+       period.
+     - :doc:`Reliability Growth Planning`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
@@ -365,6 +372,7 @@ Contents:
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
+   Reliability Growth Planning
    PyMC with SurPyval
    Torch with SurPyval
 

@@ -46,6 +46,15 @@ Test planning: designing reliability tests before they are run.
   :func:`logrank_group_sequential` (the events and units of a log-rank
   test) and :func:`boundary_crossing` (the chances of crossing given
   boundaries).
+- **Reliability growth planning** (MIL-HDBK-189C): the curve a growth
+  test is planned against. :func:`idealised_growth_curve` (the
+  AMSAA-Crow planning curve: solve for the test time, the growth rate or
+  the final MTBF), with the chance that the test's own data demonstrate
+  a requirement (:func:`growth_demonstration_probability`) and the test
+  time that makes that chance a given value (:func:`growth_test_time`);
+  :func:`pm2_continuous` and :func:`pm2_discrete`, planned from the
+  management strategy and the fix effectiveness, with the MTBF (or
+  reliability) step after each corrective action period.
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -73,17 +82,6 @@ from surpyval.test_planning.accelerated import (
     accelerated_test_plan,
     accelerated_test_precision,
 )
-from surpyval.test_planning.designs import (
-    PowerCalculation,
-    cox_design,
-    cure_logrank_design,
-    equivalence_design,
-    logrank_design,
-    mean_ratio_design,
-    noninferiority_design,
-    rate_ratio_design,
-    rmst_design,
-)
 from surpyval.test_planning.demonstration import (
     DemonstrationPlan,
     demonstrated_mtbf,
@@ -96,6 +94,17 @@ from surpyval.test_planning.demonstration import (
     mtbf_demonstration_plan,
     mtbf_pass_probability,
     mtbf_test_time,
+)
+from surpyval.test_planning.designs import (
+    PowerCalculation,
+    cox_design,
+    cure_logrank_design,
+    equivalence_design,
+    logrank_design,
+    mean_ratio_design,
+    noninferiority_design,
+    rate_ratio_design,
+    rmst_design,
 )
 from surpyval.test_planning.estimation import (
     LifeTestPlan,
@@ -110,6 +119,16 @@ from surpyval.test_planning.group_sequential import (
     boundary_crossing,
     group_sequential_design,
     logrank_group_sequential,
+)
+from surpyval.test_planning.growth import (
+    IdealisedGrowthCurve,
+    PM2ContinuousPlan,
+    PM2DiscretePlan,
+    growth_demonstration_probability,
+    growth_test_time,
+    idealised_growth_curve,
+    pm2_continuous,
+    pm2_discrete,
 )
 from surpyval.test_planning.sequential import (
     SequentialDemonstrationTest,
@@ -162,6 +181,15 @@ __all__ = [
     "boundary_crossing",
     "group_sequential_design",
     "logrank_group_sequential",
+    # Reliability growth planning
+    "IdealisedGrowthCurve",
+    "PM2ContinuousPlan",
+    "PM2DiscretePlan",
+    "growth_demonstration_probability",
+    "growth_test_time",
+    "idealised_growth_curve",
+    "pm2_continuous",
+    "pm2_discrete",
 ]
 
 # The power and sample-size functions of one design each, replaced in
