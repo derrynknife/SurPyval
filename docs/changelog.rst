@@ -180,8 +180,10 @@ v0.30 (unreleased)
   Checked: a one-marker dict equals ``WeibullJointPH`` to 2e-15; an
   unlinked, uncorrelated second marker equals ``nlme::lme(method =
   "ML")`` (3e-10); on PBC (bilirubin and albumin) the associations agree
-  with ``JMbayes2`` and ``joineRML`` within their standard errors. Not
-  yet: failure modes with several markers,
+  with ``JMbayes2`` and ``joineRML`` within their standard errors; over
+  200 simulated fleets every fit was verified and every 95% interval
+  covered the truth 92% to 97% of the time (vibration's effect biased
+  +3.3%, Monte Carlo se 1.0%). Not yet: failure modes with several markers,
   ``compare_links``, a lag or weight per marker. A single-marker fit
   given several named measurements still refuses them, now saying how to
   fit them together. No number of a one-marker fit changes.

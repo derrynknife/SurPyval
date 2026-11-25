@@ -1944,6 +1944,22 @@ refused for a model of several.
   ``nlme::lme(..., method = "ML")`` gives the same fixed effects, spread
   and noise to 3e-10 and the same log-likelihood to 1e-9
   (``scripts/reference/reference_r_joint_markers.R``).
+- A recovery study (``scripts/studies/joint_recovery/markers_study.py``,
+  its design and seeds fixed before it ran; run 2026-11-25): 200 fleets
+  of 200 items read for vibration every 30 days and temperature every
+  60, the four path parameters correlated across the markers (the
+  starts 0.5), both markers in the hazard (0.8 and 0.08 a unit), every
+  parameter varying and every correlation estimated on the full grid.
+  All 200 fits reached a verified maximum (55 s each, the median). The
+  95% intervals of all 20 parameters covered the truth 92.0% to 97.0% of
+  the time (Monte Carlo se 1.5%): the effects 92.5% (vibration) and
+  95.5% (temperature), the cross-correlations 92.0% to 95.0%. Biases
+  are within two Monte Carlo errors but vibration's effect, +3.3% (Monte
+  Carlo se 1.0%), and ``alpha``, +1.0% (0.5%); temperature's effect
+  -0.9% (1.5%), the noise sds and the paths' spreads within 0.3%. The
+  marker effect's small-sample bias is of the size the one-marker
+  studies found for the log-link path at 300 items (+2.0%), which
+  shrank with more items there; not run at a larger size here.
 - On the Mayo PBC trial (``pbc2``: 312 patients, 140 deaths; log
   bilirubin and albumin, each a line in years with a level and a rate of
   each patient's own, the four correlated; the hazard in both current
