@@ -653,6 +653,17 @@ OUT_OF_SCOPE["surpyval.recurrent.bayes.BayesianRecurrence"] = (
     "surpyval/tests/calibration/test_sbc_recurrent_bayes.py; no "
     "conformance case yet)"
 )
+OUT_OF_SCOPE["surpyval.recurrent.bayes.BayesianProportionalIntensity"] = (
+    "a Bayesian fit of a proportional intensity model, built by fit_bayes "
+    "(checked in surpyval/tests/bayes/test_recurrent_bayes_more.py and "
+    "surpyval/tests/calibration/test_sbc_recurrent_bayes.py; no "
+    "conformance case yet)"
+)
+OUT_OF_SCOPE["surpyval.recurrent.bayes.BayesianCauseSpecific"] = (
+    "a Bayesian fit of cause-specific intensities, built by fit_bayes "
+    "(checked in surpyval/tests/bayes/test_recurrent_bayes_more.py; no "
+    "conformance case yet)"
+)
 OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
     _FUNCTION + " (the engine rule behind every family's fit_bayes; "

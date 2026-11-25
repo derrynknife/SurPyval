@@ -11,6 +11,7 @@ from scipy.special import gammaln
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent.parametric._bayes_fit import BayesFitMixin
 from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -133,7 +134,7 @@ def poisson_count_sums(
     return n.sum(), (n * np.log(delta)).sum(), gammaln(n + 1).sum()
 
 
-class NHPPFitter(IntensityModel):
+class NHPPFitter(BayesFitMixin, IntensityModel):
 
     #: The ``repr`` (#614)
     fitter_kind = "non-homogeneous Poisson process fitter"

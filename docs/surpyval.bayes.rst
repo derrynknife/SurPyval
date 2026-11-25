@@ -63,6 +63,22 @@ and repairable systems" in :doc:`Bayesian Fitting with SurPyval`.
 .. autoclass:: surpyval.recurrent.bayes.CountPrediction
    :members:
 
+Every NHPP intensity (``Duane``, ``CoxLewis``, the software reliability
+growth models) has the same ``fit_bayes``. With covariates, and by
+failure cause:
+
+.. automethod:: surpyval.recurrent.ProportionalIntensityNHPP.fit_bayes
+
+.. automethod:: surpyval.recurrent.ProportionalIntensityHPP.fit_bayes
+
+.. autoclass:: surpyval.recurrent.bayes.BayesianProportionalIntensity
+   :members:
+
+.. automethod:: surpyval.recurrent.CauseSpecificNHPP.fit_bayes
+
+.. autoclass:: surpyval.recurrent.bayes.BayesianCauseSpecific
+   :members:
+
 Comparing fits
 --------------
 

@@ -9,7 +9,6 @@ from scipy.optimize import brentq
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
 
-from ._bayes_fit import BayesFitMixin
 from .nhpp_fitter import NHPPFitter
 
 if TYPE_CHECKING:
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @singleton_fitter
-class CrowAMSAA(BayesFitMixin, NHPPFitter):
+class CrowAMSAA(NHPPFitter):
     """
     The Crow-AMSAA (power-law) non-homogeneous Poisson process, with
     cumulative intensity and intensity

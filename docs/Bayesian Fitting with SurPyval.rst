@@ -654,7 +654,62 @@ priors), PyMC (two frozen references: every posterior point within 2.3
 of the sampler's own Monte Carlo standard errors), and simulation-based
 calibration (300 repetitions each: the 90% intervals held the truth in
 0.93 and 0.91 of them for ``alpha`` and ``beta``, 0.86 and 0.89 for the
-HPP's rate, all inside three standard errors of 0.90).
+HPP's rate, all inside three standard errors of 0.90; 0.90 and 0.91 for
+a proportional intensity's rate and coefficient on the grid, and 0.87 to
+0.92 for one of four parameters by the Laplace approximation).
+
+Other intensities, covariates and failure causes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every NHPP intensity has ``fit_bayes``, with the same priors and
+results: ``Duane``, ``CoxLewis`` and the software reliability growth
+models. Each has two or three parameters, so each posterior is computed
+on the grid. A model with a finite number of faults (``GoelOkumoto`` and
+the like) fitted to data that show no levelling off has no posterior
+without priors, and says so: give its parameters priors.
+
+**Covariates.** ``ProportionalIntensityHPP.fit_bayes(x, Z, i, c)`` and
+``ProportionalIntensityNHPP.fit_bayes(x, Z, i, c, baseline=CrowAMSAA)``
+put priors on the baseline's parameters and on the covariates'
+coefficients. A coefficient with no prior gets the regressions' default,
+``Normal(0, 2.5 / sd)`` with ``sd`` its covariate's standard deviation
+over the systems, stated in ``default_priors`` and the summary. Results
+are given for a covariate set (one kind of system):
+
+.. code-block:: python
+
+    from surpyval.recurrent import CrowAMSAA, ProportionalIntensityNHPP
+
+    model = ProportionalIntensityNHPP.fit_bayes(
+        x, Z, i, c, baseline=CrowAMSAA)
+    harsh = [1.0]
+    model.mtbf_cri(harsh)                     # the MTBF now, harsh duty
+    model.count(harsh, duration=100.0)        # failures in the next 100
+    model.mtbf_probability(40.0, harsh)       # P(MTBF >= 40)
+
+With up to three free parameters (a baseline with one covariate) the
+posterior is on the grid; beyond, it is the Laplace approximation, with
+its checks in ``diagnostics`` and ``importance=True`` to correct it. In
+the tests the Laplace intervals are within 3% to 6% of the exact (grid)
+interval's width on twelve systems, and within 0.2% once reweighted.
+
+**Failure causes.** ``CauseSpecificNHPP.fit_bayes(x, i, c, e=causes)``
+fits one process a cause. The causes' likelihoods are separate, so each
+cause has its own posterior (``model.models[cause]``, the process's own
+Bayesian fit of that cause's events). Priors are one set for every
+cause or a set a cause (``priors={"seal": {"beta": ...}}``). Each result
+takes the cause, or ``event=None`` for all causes together, whose
+intervals combine the causes' posteriors by 4,000 joint draws with a
+fixed seed:
+
+.. code-block:: python
+
+    from surpyval.recurrent import CauseSpecificNHPP
+
+    model = CauseSpecificNHPP.fit_bayes(x, i, c, e=causes)
+    model.cri(400.0, "seal", on="mtbf")       # counting seal failures
+    model.cri(400.0, on="mtbf")               # counting every failure
+    model.mtbf_probability(30.0)              # the system requirement
 
 What every Bayesian fit reports
 -------------------------------

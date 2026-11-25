@@ -90,6 +90,8 @@ _TAGGED_MODELS: dict[str, str] = {
     "BayesianRegression": "surpyval.bayes.regression",
     "BayesianResult": "surpyval.bayes.result",
     "BayesianRecurrence": "surpyval.recurrent.bayes",
+    "BayesianProportionalIntensity": "surpyval.recurrent.bayes",
+    "BayesianCauseSpecific": "surpyval.recurrent.bayes",
     "JointModel": "surpyval.univariate.joint.joint_model",
     "EquivalenceModel": "surpyval.univariate.equivalence",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),

@@ -507,6 +507,84 @@ class CauseSpecificNHPP(SerialisableMixin):
         return out
 
     @classmethod
+    @takes_unit
+    def fit_bayes(
+        cls,
+        x: ArrayLike,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        e: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        *,
+        dist: Any = CrowAMSAA,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+        points: int | None = None,
+    ) -> Any:
+        """
+        Fit each cause's intensity by Bayes' rule: priors on its
+        parameters times the likelihood ``fit`` uses.
+
+        The causes' likelihoods are separate, so each cause has its own
+        posterior, computed as the process's ``fit_bayes`` computes it
+        (the grid for a Crow-AMSAA intensity: exact).
+
+        Parameters
+        ----------
+        x, i, c, n, e, tl, tr, dist
+            The data and the intensity model, as for ``fit``.
+        priors : optional
+            One set of priors for every cause (as the process's
+            ``fit_bayes`` takes: ``{"beta": ...}``), or a set a cause,
+            ``{cause: {"beta": ...}}`` (a cause left out has none).
+        method, importance, points
+            As for the process's ``fit_bayes``.
+
+        Returns
+        -------
+        surpyval.recurrent.bayes.BayesianCauseSpecific
+            ``models`` (each cause's fit), and ``cif``, ``iif``,
+            ``mtbf``, ``cri(x, event, on=...)``, ``count(event, ...)``
+            and ``mtbf_probability(requirement, event)`` for a cause or,
+            with ``event=None``, for all causes together.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+        >>> e = ["seal", "pump", "seal", "pump", "seal", "seal", "pump",
+        ...      "seal", "pump", "seal", "seal", None]
+        >>> model = CauseSpecificNHPP.fit_bayes(
+        ...     x, c=[0] * 11 + [1], e=e,
+        ...     priors={"beta": sp.prior.around(0.8, between=(0.4, 1.6))})
+        >>> sorted(model.models)
+        ['pump', 'seal']
+        >>> model.param_cri("seal", "beta").shape
+        (2,)
+        """
+        from surpyval.recurrent.bayes import fit_cause_specific
+
+        return fit_cause_specific(
+            cls,
+            x,
+            i,
+            c,
+            n,
+            e,
+            tl,
+            tr,
+            dist=dist,
+            priors=priors,
+            method=method,
+            importance=importance,
+            points=points,
+        )
+
+    @classmethod
     @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_recurrent_surpyval_data

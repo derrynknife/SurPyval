@@ -214,6 +214,28 @@ v0.30 (unreleased)
   "Regression models" and "Groups sharing a population" in
   :doc:`PyMC with SurPyval`.
 
+- **Bayesian fits of the other NHPP intensities, proportional intensity
+  and cause-specific intensities.** Every NHPP intensity has
+  ``fit_bayes`` (``Duane``, ``CoxLewis``, the software reliability
+  growth models), on the grid. ``ProportionalIntensityHPP.fit_bayes``
+  and ``ProportionalIntensityNHPP.fit_bayes`` put priors on the
+  baseline's parameters and the covariates' coefficients (a coefficient
+  with none gets the regressions' default, ``Normal(0, 2.5 / sd)``,
+  stated in the result), on the grid up to three free parameters and by
+  the Laplace approximation with its checks beyond; the result
+  (``surpyval.recurrent.bayes.BayesianProportionalIntensity``) gives
+  ``cif``, ``iif``, ``mtbf``, ``cri``, ``mtbf_cri``, ``count`` and
+  ``mtbf_probability`` for a covariate set. ``CauseSpecificNHPP
+  .fit_bayes`` fits one process a cause, each with its own posterior
+  (``surpyval.recurrent.bayes.BayesianCauseSpecific``): results for a
+  cause, or for all causes together (``event=None``). Checked against a
+  two-level covariate's two gamma rates (0.3%), Gamma posteriors of
+  cause-specific rates (1e-12) and of their total, the
+  maximum-likelihood estimate at the peak, the grid against Laplace
+  (within 3% to 6% of the interval's width; 0.2% reweighted) and
+  coverage studies (300 repetitions a scenario). See "Other intensities,
+  covariates and failure causes" in :doc:`Bayesian Fitting with
+  SurPyval`.
 - **Bayesian reliability growth: ``CrowAMSAA.fit_bayes`` and
   ``HPP.fit_bayes``.** Priors on a recurrent-event process's parameters
   times the likelihood ``fit`` uses, for any data ``fit`` takes. A
