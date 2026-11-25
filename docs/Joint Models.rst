@@ -1016,6 +1016,32 @@ and 0.737): each fit's baseline hazard has absorbed its own picture of
 the fleet's path, so the line's error shows first in the marker it
 forecasts.
 
+**How well it recovers the truth.** A simulation study (run on
+2026-11-25 with ``scripts/studies/joint_recovery/knee_study.py``, whose
+summary is beside it; this page does not re-run it) drew 200 fleets of
+300 pumps on a knee at 365 days: level 3 (sd 0.5), rate 0 (sd 0.3 a
+year), a common bend ``s1`` of 3, readings every 30 days to 730 with
+noise sd 0.4, and the hazard above (``alpha`` 800, ``beta`` 2, marker
+effect 0.9). Each fleet was fitted with the spline and with a line.
+
+- All 200 spline fits reached a verified maximum, and ``aic()``
+  preferred the spline in all 200.
+- The spline recovered every parameter. The largest bias was the marker
+  effect's, +1.7% (Monte Carlo se 0.8%), then ``alpha``'s, +0.5% (0.3%).
+  The 95% intervals covered the truth 93.5% to 98% of the time, and the
+  spread of the estimates was 0.91 to 1.08 times their standard errors.
+- The line is wrong about the risk itself. It takes the marker effect
+  as 0.63, not 0.9 (-30%), ``beta`` as 2.61, not 2 (+31%), and ``alpha``
+  as 750, not 800 (-6%). Its intervals cover the true values only 31%
+  to 44% of the time.
+- Predicting from the readings to 450 days, for the first 40 pumps still
+  running then (8,000 predictions), the spline's marker at 450 days was
+  off by 0.16 (root mean square) with no bias (-0.0002, se 0.002). The
+  line's was off by 0.17, and read 0.056 low on average (se 0.002).
+  Survival to 540 days (on average 0.87) was off by 0.025 with the
+  spline and 0.035 with the line, unbiased in both: the line's baseline
+  hazard absorbs its picture of the path, as above.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:
@@ -1078,10 +1104,36 @@ model's.) On such data the larger fit can stop short of the common-bend
 fit's likelihood, and says so (its maximum is unverified, #1334): take
 the common-bend fit.
 
-How often a bend's spread can be told at a fleet's size is the question
-of a simulation study (``scripts/studies/joint_recovery/shape_study.py``:
-200 fleets of 150 pumps read monthly, the bend's sd 1.0 about 3.0, fitted
-both ways), written and not yet run; its results will be quoted here.
+**How well it recovers the truth.** A simulation study (run on
+2026-11-25 with ``scripts/studies/joint_recovery/shape_study.py``, whose
+summary is beside it; this page does not re-run it) drew 200 fleets of
+150 pumps. Each pump turned up at its own pace after a year: level 3
+(sd 0.5), rate 0 (sd 0.3 a year), bend ``s1`` 3 with sd 1.0, all
+independent, read every 30 days to 730 with noise sd 0.4, and the hazard
+above. Each fleet was fitted with the bend common and with it varying.
+
+- 198 of the 200 fleets were fitted both ways; in the other two a fit
+  ended with no covariance. Refitted with the current code, one of the
+  two fits both ways. In the other the varying fit stops short, with
+  ``sd_rate`` run to 0 and an AIC 3.2 worse than the common fit's: the
+  stall described above (#1334). It is flagged unverified.
+- All 198 varying fits reached a verified maximum, and ``aic()``
+  preferred the varying bend in all 198 (by 48.5 at the median, 9.8 at
+  the least). The bend's spread was never warned of as 0: here it is
+  real.
+- The varying fit recovered every parameter. ``sd_s1`` averaged 0.996
+  against 1.0, with 96% coverage. The marker effect's bias was +1.5%
+  (se 1.2%), and the intervals covered 91% to 97% of the time.
+- The common-bend fit, missing the bend's spread, moves it elsewhere.
+  ``sd_rate`` comes out 44% too high and its interval never covers the
+  truth. The level-rate correlation reads -0.16, not 0 (60% coverage),
+  and the bend 4% low (71% coverage). Its survival part holds up: the
+  marker effect +2.7% (se 1.2%), 97% coverage.
+
+So where the items' knees differ, let them vary and compare by
+``aic()``. The study had no fleet where the bends are alike, so it does
+not test how often the 1%-of-noise warning fires when they are: that,
+and the readings rule, are kept as they are.
 
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
