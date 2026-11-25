@@ -7,6 +7,25 @@ v0.30 (unreleased)
 
 - ``fit_best`` also tries the new ``GeneralizedGamma``, ``Gompertz`` and
   ``InverseGaussian``. On
+- **The case bootstrap of grouped weighted data draws differently (same
+  distribution).** A fit with sampling weights ``w`` is bootstrapped by
+  resampling its units. Grouped data (any row with ``n`` above 1; a
+  univariate fit groups rows with the same ``x``, ``c`` and weight itself)
+  are now resampled by row, each row drawn a multinomial number of times
+  with probability ``n_i / N``, instead of the ``N`` units one by one, so
+  a refit is of the grouped rows. The resamples are the same in
+  distribution, but a seed draws different ones, so seeded bounds of such
+  fits change (by Monte Carlo noise). Over 100 seeds of 50 refits of a
+  weighted Weibull (400 units in 151 rows), the refits' scale had mean
+  102.43 and sd 3.29 against 102.54 and 3.24 drawn unit by unit, the
+  shape 2.214 / 0.103 against 2.216 / 0.106 (two-sample KS p = 0.24 and
+  0.44), and the 90% bounds on ``sf(80)`` had means 0.516 and 0.604
+  against 0.517 and 0.601 (KS p = 0.91 and 0.47); for a weighted Weibull
+  PH (128 rows) the KS p-values were 0.91, 0.27 and 0.54. Weighted data
+  with one unit per row, and every unweighted (parametric) bootstrap,
+  draw exactly as before.
+
+- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
   50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
   Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
@@ -691,6 +710,25 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
+
+- **Bootstrap bounds on large data sets are about ten times faster.**
+  The set-up of ``method="bootstrap"`` (on ``cb``, ``param_cb``,
+  ``quantile_cb`` and ``bootstrap()``, univariate and regression, and the
+  bootstrap goodness-of-fit diagnostics) estimates the censoring
+  distribution, and it counted every unit at risk afresh at every
+  censoring time: rows times censoring times, 7.7 s at 100,000 rows and
+  most of the 22 minutes that 50 samples took at a million. It is now one
+  sort and running counts (0.015 s and 0.17 s), and gives the same
+  estimate to the last bit, so every seeded bootstrap result is
+  unchanged. A Weibull ``cb`` with 50 bootstrap samples at a million rows
+  takes 126 s (from 1,300 s), and with 200 at 100,000 rows 39 s (from
+  62 s).
+- **Fits of ungrouped data without unit ids skip indexing their rows.**
+  Every fit checked its terminal flags by building a table of units row
+  by row, even with no ids and no flags, where each row is its own unit
+  and there is nothing to check: about a second per million rows, twice
+  per fit. A Weibull fit of a million rows takes 1.3 s (from 2.2 s). No
+  result changes.
 
 - **One natural cubic spline basis.** ``surpyval.utils.splines`` holds
   the natural (restricted) cubic spline basis, with its first and second
