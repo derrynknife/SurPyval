@@ -138,6 +138,7 @@ NAMED = (
     "Gompertz",
     "Gumbel",
     "GumbelLEV",
+    "InverseGaussian",
     "Logistic",
     "LogLogistic",
     "LogNormal",

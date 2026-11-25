@@ -39,6 +39,7 @@ from .distributions import (
     GumbelLEV,
     Hypoexponential,
     InstantlyOccurs,
+    InverseGaussian,
     Logistic,
     LogLogistic,
     LogNormal,

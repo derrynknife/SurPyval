@@ -18,6 +18,7 @@ from .gompertz import Gompertz
 from .gumbel import Gumbel
 from .gumbel_lev import GumbelLEV
 from .hypoexponential import Hypoexponential
+from .inverse_gaussian import InverseGaussian
 from .logistic import Logistic
 from .loglogistic import LogLogistic
 from .lognormal import Galton, LogNormal

@@ -36,6 +36,7 @@ PARAMS = {
     "Logistic": [11.0, 3.5],
     "Rayleigh": [9.0],
     "Gompertz": [0.1, 0.02],
+    "InverseGaussian": [12.0, 20.0],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -297,6 +298,7 @@ TAILS = {
     "Logistic": dict(x=[5e3, -5e3, -5e3, 5e3], c=[0, 0, 1, -1]),
     "Rayleigh": dict(x=[300.0, 1e-200, 1e-200, 300.0], c=[0, 0, 1, -1]),
     "Gompertz": dict(x=[400.0, 1e-300, 1e-300, 400.0], c=[0, 0, 1, -1]),
+    "InverseGaussian": dict(x=[5e3, 1e-2, 1e-2, 5e3], c=[0, 0, 1, -1]),
 }
 
 

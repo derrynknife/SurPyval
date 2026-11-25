@@ -134,6 +134,7 @@ LIFE = {
     "ExpoWeibull": "alpha",
     "GeneralizedGamma": "mu",
     "Gompertz": "rate",
+    "InverseGaussian": "mu",
 }
 
 

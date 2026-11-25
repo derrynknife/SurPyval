@@ -62,6 +62,7 @@ Continuous lifetime distributions.
    univariate/gamma
    univariate/generalized_gamma
    univariate/gompertz
+   univariate/inverse_gaussian
    univariate/normal
    univariate/lognormal
    univariate/logistic

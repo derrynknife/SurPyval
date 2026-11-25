@@ -106,6 +106,7 @@ surpyval.InstantlyOccurs
 surpyval.IntervalCoxPH
 surpyval.IntervalCoxPHModel
 surpyval.IntervalLogRankResult
+surpyval.InverseGaussian
 surpyval.ItemHistory
 surpyval.ItemLifetime
 surpyval.JelinskiMoranda
@@ -652,6 +653,7 @@ surpyval.univariate.parametric.Gumbel
 surpyval.univariate.parametric.GumbelLEV
 surpyval.univariate.parametric.Hypoexponential
 surpyval.univariate.parametric.InstantlyOccurs
+surpyval.univariate.parametric.InverseGaussian
 surpyval.univariate.parametric.LikelihoodContour
 surpyval.univariate.parametric.LikelihoodContourPlot
 surpyval.univariate.parametric.LogLogistic

@@ -108,6 +108,7 @@ SUPPORTED = (
     "ExpoWeibull",
     "GeneralizedGamma",
     "Gompertz",
+    "InverseGaussian",
 )
 
 #: The advice of a refusal of the parameters at Z = 0.

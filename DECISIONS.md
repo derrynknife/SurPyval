@@ -2662,3 +2662,13 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `H = b x (1 + y/2 + ... + y^5/720)` for `\|y\| = \|a x\| < 1e-3`, `(b/a) expm1(a x)` above: exact through `a = 0`, value and derivative in the shape. The mean `(1/b) z e^z E_1(z)`, `z = b/a`, an autograd primitive with its derivative, and the asymptotic series in `a/b` below 0.02; higher moments by quadrature on a log axis. | proposed | The direct form's derivative in the shape cancels as `a -> 0`. | done |
 | `PH(Gompertz)` and `AFT(Gompertz)` in the origin maps (rate times `e^{-s}`; both parameters times `e^{-s}`); `Distributional(Gompertz)` with both parameters "shorter". PyMC and torch families written as the class's own `H`. | proposed | Each is an exact reparameterisation, checked against flexsurv's PH fit on `lung`. | done |
 | No probability-plot fit (`how="MPP"` refused). | proposed | The linearising axis needs `shape / rate`. | done |
+
+### The inverse Gaussian, built in (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `InverseGaussian(mu, lam)`: mean and shape, as statmod and SuppDists (variance `mu^3 / lam`). | maintainer (build it), proposed (names) | The common parameterisation; `mu` is the mean, the most readable life parameter. | done |
+| `F` as `logaddexp(log Phi(a), 2 lam / mu + log Phi(-b))`; above the mean `S = phi(a) (M(a) - M(b))` with `M` Mills' ratio (`erfcx`), and where `b - a < a / 2` the gap as twelve-point Gauss-Legendre of `1 - t M(t)` (its asymptotic series past `t = 20`), with `b - a = 2 sqrt(lam / x)` carried on its own; the hazard `sqrt(lam / x^3) / (M(a) - M(b))`. | proposed | The textbook form overflows from `lam / mu = 355` (SuppDists returns a cdf of 0.5 at the mean of IG(1, 500), where it is 0.5089), and the Mills difference cancels completely by `x / mu = 1e16`; far-tail log sf agrees with mpmath to 1e-13. | done |
+| `qf` / `isf`: Newton's method in `ln x` on the log of the smaller tail, from scipy's quantile or a tail asymptote, then bisection where it did not converge. | proposed | scipy's `invgauss.isf(1e-300)` fails (Boost "unable to locate solution"); every quantile now inverts `ff`/`sf` to 1e-12. | done |
+| A closed-form MLE (`_closed_form_mle`) for exact, untruncated data. | proposed | The textbook estimator; checked to have a zero gradient. | done |
+| AFT origin map (both parameters times `e^s`), distributional regression (`mu` longer), PyMC and torch families. No PH (not a closed form under a change of origin). No MPP fit. | proposed | As the other scale families. | done |
