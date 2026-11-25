@@ -5,6 +5,35 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **The gamma, Poisson, binomial, negative binomial, Beta-Geometric and
+  discrete Weibull functions at large shapes: a correctness change.** A
+  log mass such as :math:`k \ln \mu - \mu - \ln k!` is a sum of terms of
+  size :math:`k \ln k` that cancel to the size of the answer, and their
+  rounding was left in it: the Poisson mass at a mean of 1e6 was 7e-10
+  off, a binomial of 1e6 trials 2e-10, a negative binomial tail with
+  ``r = 1e3`` and ``p = 1e-6`` 2.2e-9, and the gamma density at shape 1e3
+  5.7e-12. The masses, the gamma density and the front factors of the
+  incomplete gamma and beta functions are now taken from Catherine
+  Loader's saddle-point form (the one R's ``dpois`` and ``dbinom`` use;
+  ``surpyval.utils.saddle_point``), which has no such cancellation. The
+  gamma tails at a shape of 100 or more (``Gamma``'s ``sf``, ``ff``,
+  ``Hf``, ``log_sf``, ``log_ff``, and the Poisson tails through them) are
+  Temme's uniform expansion near the mean and a series or continued
+  fraction after the saddle-point front further out: at shape 1e3 and a
+  survival of 1e-30 the survival function is 114 ulps from the 50-digit
+  value, where SciPy's ``gammaincc`` was 3,100 to 5,500 ulps off (500 for
+  1,400 at 1e-300), and ``Gamma.qf``/``isf`` are polished on these by
+  Newton steps, so ``isf(sf(t))`` gives back ``t`` there. A negative
+  binomial tail where the incomplete beta's continued fraction cancels in
+  every step is summed down its second shape (or, below ``r = 1``,
+  expanded in incomplete gammas), and so is its hazard. The
+  Beta-Geometric survival function at a small whole ``k`` is its product
+  form, and its and the discrete Weibull's log mass lose no digits at a
+  log hazard near 0 (1e-10 and 3e-11 before). Every group of the 50-digit
+  tails reference now meets 1e-12 (the 90 groups that did not are no
+  longer expected failures). Values move by the error that was there,
+  and the likelihood of a fit at such shapes by as little.
+
 - **The case bootstrap of grouped weighted data draws differently (same
   distribution).** A fit with sampling weights ``w`` is bootstrapped by
   resampling its units. Grouped data (any row with ``n`` above 1; a
