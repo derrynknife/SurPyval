@@ -112,6 +112,7 @@ from surpyval.utils.event_history_data import (  # isort: skip
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
+from surpyval.utils.nevada import NevadaTable  # isort: skip
 from surpyval.utils.measurements import Measurements  # isort: skip
 from surpyval.utils.item_history import ItemHistory  # isort: skip
 from surpyval.utils.item_lifetime import ItemLifetime  # isort: skip
@@ -468,6 +469,7 @@ __all__ = [
     "ItemLifetime",
     "Measurements",
     "SurpyvalData",
+    "NevadaTable",
     "handle_xicn",
     # Model selection, forecasting and serialisation
     "fit_best",

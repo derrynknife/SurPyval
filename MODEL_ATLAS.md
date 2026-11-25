@@ -315,8 +315,6 @@ order of how often it is asked for within each group; not a plan.
 **Test planning and data.**
 
 - Sensitivity (go/no-go) test designs, such as the up-and-down method.
-- A reader for a warranty table of shipments by return period (the
-  forecast of returns from shipment cohorts is built).
 - Durations from a pair of date columns (dates are refused with a
   message); DataFrames other than pandas.
 

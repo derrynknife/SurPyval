@@ -369,7 +369,10 @@ def forecast(
     Examples
     --------
     A warranty: three monthly shipment cohorts, in service for 3, 2 and 1
-    months, with 12-month cover:
+    months, with 12-month cover (a warranty table of shipments by return
+    period gives the fit's data and the cohorts' ages and survivors:
+    :class:`~surpyval.utils.nevada.NevadaTable`, whose ``forecast`` calls
+    this):
 
     >>> import surpyval as surv
     >>> model = surv.Weibull.from_params([60.0, 1.5])

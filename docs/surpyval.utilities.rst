@@ -49,6 +49,14 @@ the same histories as a ``SurpyvalData``.
 .. autoclass:: surpyval.utils.item_lifetime.ItemLifetime
    :members:
 
+``NevadaTable`` reads a warranty table of shipments by return period (a
+Nevada chart) into lifetime data, writes it back from a list of returns,
+and forecasts the survivors' returns (see "Warranty returns from a Nevada
+table" in :doc:`Parametric SurPyval Modelling`).
+
+.. autoclass:: surpyval.utils.nevada.NevadaTable
+   :members:
+
 Data Wrangling Utilities
 ------------------------
 

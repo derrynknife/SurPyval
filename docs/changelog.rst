@@ -43,6 +43,23 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Warranty Nevada tables.** ``surpyval.NevadaTable`` reads the
+  warranty triangle of shipments by return period (each row a shipment
+  period with its units shipped, each column a later period with that
+  shipment's returns), in the calendar (staircase) or age layout, with
+  per-period or cumulative counts. ``to_data()`` gives the returns as
+  failures in their period of service (interval censored by default, or
+  exact at the end or middle of the period with ``ages=``) and each
+  shipment's survivors right censored at its age, ready for any ``fit``;
+  ``forecast(model, horizon, limit)`` forecasts the survivors' returns
+  with ``surpyval.forecast``. ``from_returns`` writes the table from a
+  list of returns (shipment period and period of service), and
+  ``to_returns`` and ``to_array`` read it back. On ReliaSoft's documented
+  Nevada chart the Weibull fit with ages at the period ends is eta 6.6950,
+  beta 2.4928 (published 6.6951, 2.4928) and the next month's forecast
+  28.6 returns (published 29). See "Warranty returns from a Nevada table"
+  in :doc:`Parametric SurPyval Modelling`.
+
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a
   proportional hazards, accelerated failure time or accelerated life
