@@ -21,7 +21,8 @@ class PowerExponential_(LifeModel):
     - ``c`` (> 0): a scale constant, the life at unit ``V`` as the
       temperature grows without bound.
     - ``a``: the activation energy over Boltzmann's constant, in kelvin,
-      as for :class:`Exponential`.
+      as for :class:`Exponential`; ``activation_energy()`` gives it in
+      electronvolts, with its interval.
     - ``n``: the power of ``V``: doubling ``V`` multiplies the life by
       :math:`2^{n}`.
 
@@ -39,6 +40,7 @@ class PowerExponential_(LifeModel):
     kelvin_stress_columns = (0,)
     phi_takes_rows = True
     log_scale_parameters = ("c",)
+    activation_parameter = ("a", 1.0)
 
     def __init__(self) -> None:
         super().__init__(

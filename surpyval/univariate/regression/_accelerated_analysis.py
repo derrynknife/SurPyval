@@ -61,8 +61,9 @@ class AcceleratedLifeAnalysisMixin:
         r"""
         The activation energy :math:`E_a` of a thermally activated life
         model (Arrhenius, ``life_models.Arrhenius`` or ``Exponential``;
-        ``Eyring``; and their inverses), in electronvolts, with its
-        two-sided ``1 - alpha_ci`` interval.
+        ``Eyring``; and their inverses; and the temperature term of
+        ``PowerExponential``, temperature with a non-thermal stress), in
+        electronvolts, with its two-sided ``1 - alpha_ci`` interval.
 
         The life model's parameter is :math:`E_a / k_B` in kelvin (the
         temperatures in kelvin); :math:`E_a` is it times Boltzmann's
@@ -121,8 +122,8 @@ class AcceleratedLifeAnalysisMixin:
             raise ValueError(
                 f"The {name} life model has no activation energy: it is "
                 "for a thermally activated life model, Arrhenius "
-                "(life_models.Arrhenius), Eyring or their inverses, with "
-                "the temperatures in kelvin."
+                "(life_models.Arrhenius), Eyring or their inverses, or "
+                "PowerExponential, with the temperatures in kelvin."
             )
         name, sign = found
         value = sign * float(self.params[self._parameter_index(name)])

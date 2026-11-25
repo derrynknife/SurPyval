@@ -806,6 +806,52 @@ def test_activation_energy_of_the_inverse_models_takes_the_sign():
     )
 
 
+def test_power_exponential_activation_energy_is_arrhenius_at_constant_v():
+    # With the non-thermal stress held constant its power is aliased and
+    # the fit is the Arrhenius fit: the same activation energy and
+    # intervals.
+    x, T, arrhenius = _arrhenius_fit()
+    Z = np.column_stack([T, np.full(T.size, 5.0)])
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        power_exp = surpyval.AcceleratedLife(
+            surpyval.Weibull, surpyval.life_models.PowerExponential
+        ).fit(x, Z=Z)
+    for method in ("wald", "lr"):
+        expected = arrhenius.activation_energy(method=method)
+        found = power_exp.activation_energy(method=method)
+        assert found["parameter"] == "a"
+        for key in ("activation_energy", "lower", "upper"):
+            assert found[key] == pytest.approx(expected[key], rel=1e-6)
+    assert "Activation energy   : 0.6178 eV" in repr(power_exp)
+
+
+def test_power_exponential_recovers_a_known_activation_energy():
+    from surpyval.univariate.regression._accelerated_analysis import (
+        BOLTZMANN_EV,
+    )
+
+    rng = np.random.default_rng(11)
+    T = np.repeat([358.15, 378.15, 398.15], 30)
+    V = np.tile(np.repeat([2.0, 4.0, 8.0], 10), 3)
+    life = 1e-6 * np.exp(0.7 / 8.617333262e-5 / T) * V**-1.5
+    x = life * rng.weibull(2.0, T.size)
+    model = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.PowerExponential
+    ).fit(x, Z=np.column_stack([T, V]))
+    energy = model.activation_energy()
+    a = model.params[model.parameter_names.index("a")]
+    assert energy["activation_energy"] == a * BOLTZMANN_EV
+    np.testing.assert_allclose(
+        [energy["kelvin_lower"], energy["kelvin_upper"]],
+        model.param_cb("a"),
+    )
+    assert energy["activation_energy"] == pytest.approx(0.7225, abs=1e-4)
+    assert energy["lower"] < 0.7 < energy["upper"]
+    lr = model.activation_energy(method="lr")
+    assert lr["lower"] < 0.7 < lr["upper"]
+    assert "Activation energy   : 0.7225 eV" in repr(model)
+
+
 def test_common_shape_test_against_its_likelihoods_written_out():
     from scipy import optimize, stats
 
