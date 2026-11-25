@@ -1,3 +1,8 @@
+from .bayes import (
+    BayesianCauseSpecific,
+    BayesianProportionalIntensity,
+    BayesianRecurrence,
+)
 from .competing_risks import (
     CauseSpecificMCF,
     CauseSpecificNHPP,

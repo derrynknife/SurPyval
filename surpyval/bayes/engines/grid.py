@@ -387,7 +387,7 @@ def find_mode(
         if not np.all(np.isfinite(H)):
             H = np.eye(d)
         vals, vecs = np.linalg.eigh(H)
-        vals = np.where(vals > 1e-8, vals, 1.0 / 16.0)
+        vals = np.where(vals > 0, vals, 1.0 / 16.0)
         cov = (vecs / vals) @ vecs.T
         h = np.clip(0.2 * np.sqrt(np.diag(cov)), 1e-5, 1.0)
     return x, cov, -best[0]

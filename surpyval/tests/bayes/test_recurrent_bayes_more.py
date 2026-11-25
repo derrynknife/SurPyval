@@ -397,3 +397,61 @@ def test_cause_specific_priors_by_cause_and_the_power_law():
         rc.CauseSpecificNHPP.fit_bayes(
             x, i, c, e=e, priors={"seal": {"beta": belief}, "beta": belief}
         )
+
+
+def _three_systems(with_Z=False, with_e=False):
+    from surpyval.tests.conformance.registry_fixtures import recurrent_data
+
+    return recurrent_data(with_Z, with_e)
+
+
+def test_a_point_of_no_weight_adds_nothing_to_a_mean():
+    """The grid's outer cells reach a scale whose cumulative intensity is
+    infinite; with no weight there, the means are numbers (they were NaN:
+    0 times inf)."""
+    d = _three_systems(with_e=True)
+    model = rc.CauseSpecificNHPP.fit_bayes(
+        d["x"], d["i"], d["c"], d["n"], e=d["e"]
+    )
+    total = model.cif(55.0)
+    assert np.isfinite(total)
+    assert total == pytest.approx(4.0927, abs=1e-3)
+    assert np.isfinite(model.cif(55.0, event="a"))
+    assert np.isfinite(model.iif(30.0, event="b"))
+
+
+def test_a_covariate_in_very_small_units_gives_the_same_fit():
+    """A direction curving less than 1e-8 at the peak is still given its
+    own width, so the coefficient's very wide posterior is reached."""
+    d = _three_systems(with_Z=True)
+    base = rc.ProportionalIntensityHPP.fit_bayes(
+        d["x"], d["Z"], d["i"], d["c"], d["n"]
+    )
+    small = rc.ProportionalIntensityHPP.fit_bayes(
+        d["x"], d["Z"] * 1e-7, d["i"], d["c"], d["n"]
+    )
+    assert small.cif(30.0, [0.5e-7]) == pytest.approx(
+        base.cif(30.0, [0.5]), rel=1e-5
+    )
+    assert small.params[1] * 1e-7 == pytest.approx(base.params[1], rel=1e-4)
+
+
+def test_a_missing_time_or_covariate_gives_nan():
+    d = _three_systems()
+    model = rc.CrowAMSAA.fit_bayes(d["x"], d["i"], d["c"])
+    out = model.mtbf(np.array([np.nan, 30.0]))
+    assert np.isnan(out[0]) and np.isfinite(out[1])
+    lower, upper = model.cri(np.array([np.nan, 30.0]), on="cif")
+    assert np.isnan(lower[0]) and np.isfinite(upper[1])
+    hpp = rc.HPP.fit_bayes(
+        d["x"],
+        d["i"],
+        d["c"],
+        priors={"lambda": sp.Gamma.from_params([2, 20])},
+    )
+    assert np.isnan(hpp.iif(np.array([np.nan]))[0])
+    dz = _three_systems(with_Z=True)
+    pi = rc.ProportionalIntensityHPP.fit_bayes(
+        dz["x"], dz["Z"], dz["i"], dz["c"], dz["n"]
+    )
+    assert np.all(np.isnan(pi.cri(np.array([10.0, 30.0]), [np.nan])))

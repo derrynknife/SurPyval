@@ -143,6 +143,36 @@ v0.30 (unreleased)
   A Laplace fit's ``log_evidence`` is now Laplace's estimate (``nan``
   before), and its ``loo()`` is Pareto-smoothed (``method "psis"``).
 
+- **Bayesian recurrent-event fits: NaN means where a grid reaches a
+  scale of 0, a correctness change.** A grid's outer cells can reach a
+  scale so small that the cumulative intensity there is infinite; their
+  weight is 0, but 0 times infinity made the posterior mean ``nan``. On
+  the cause-specific fit of a three-system test with two causes (eight
+  and five failures, flat priors), ``cif``, ``iif`` and the total over
+  the causes were ``nan`` at every time; they are now numbers (the
+  total expected failures by 55 is 4.09 a system, against 13 failures over the
+  three systems). A point of no weight now adds nothing to a mean.
+  Means that were numbers are unchanged, bit for bit.
+
+- **The grid engine's starting covariance on a very wide posterior, a
+  correctness change.** The curvature at the peak sets the grid's
+  extent; a direction curving less than 1e-8 was treated as not curving
+  and given a standard deviation of 4 on the unconstrained scale. A
+  coefficient of a covariate measured in very small units (a standard
+  deviation of 4e-7, so the coefficient's posterior is about 2e5 wide)
+  then got a grid far too narrow, and the fit was refused, saying the
+  data did not determine the baseline rate. Only a direction that does
+  not curve down at all now gets the fallback; the proportional
+  intensity fit with the covariate in those units now gives the same
+  answer as in the original units (to 1e-5). Fits whose curvature was
+  above 1e-8 in every direction are unchanged.
+
+- **Bayesian recurrent-event fits give NaN at a missing time or
+  covariate.** ``mtbf``, ``cri`` and an HPP's ``iif`` gave a number
+  (``inf``, or the posterior's rate) at a ``nan`` time, and a
+  proportional intensity fit at a ``nan`` covariate; they now give
+  ``nan`` there, as every other model does.
+
 **Added.**
 
 - **The MCF's two-sided bounds name their columns.**
@@ -194,6 +224,16 @@ v0.30 (unreleased)
   and p-value). With censoring the spread test is conservative (1% of
   400 right-model data sets rejected at 5% with 30% censored); the
   randomised one holds its level (3.75-5.25%). Nothing existing changes.
+- **``BayesianRecurrence``, ``BayesianProportionalIntensity`` and
+  ``BayesianCauseSpecific`` are importable from ``surpyval.recurrent``**
+  (they were reachable only from ``surpyval.recurrent.bayes``, which
+  still has them), and each has a case of its own in the conformance
+  suite: Crow-AMSAA on the grid, the HPP in closed form, a proportional
+  intensity HPP and cause-specific Crow-AMSAA processes, with the sweeps
+  of ``cri`` (``cif``, ``iif``, ``mtbf``), ``param_cri`` and
+  ``mtbf_cri``, saving and the metamorphic checks. A cause-specific
+  fit with tuple causes now saves and loads (its causes were written as
+  numbers, which a tuple is not).
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each

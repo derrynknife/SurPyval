@@ -230,6 +230,15 @@ def _parameters(model):
         k = len(model.dist.parameter_names)
         supports = list(model.dist.bounds) + [(None, None)] * (len(names) - k)
         return names, np.asarray(model.params, float), supports
+    if type(model).__name__ in (
+        "BayesianRecurrence",
+        "BayesianProportionalIntensity",
+    ):
+        # the posterior medians of the process's parameters (then of the
+        # coefficients), each in its target's range
+        names = list(model.parameter_names)
+        supports = [tuple(b) for b in model.target.bounds]
+        return names, np.asarray(model.params, float), supports
     if hasattr(model, "_parameter_bounds"):
         names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
@@ -413,6 +422,16 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method.removesuffix("_cb"))())
         elif spec.method == "mtbf_cb":
             out.append(model.mtbf())
+        elif spec.method == "mtbf_cri":
+            # (a Bayesian fit's instantaneous MTBF, its posterior median:
+            # now, at the latest time observed, or at a later time; for
+            # one covariate set first where the model has covariates)
+            out.append(_bayes_mtbf(model, args))
+        elif spec.method == "param_cri":
+            # (one cause's parameter, by its name: its posterior median)
+            event, name = args
+            fit = model.models[event]
+            out.append(fit.params[fit.parameter_names.index(name)])
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)
@@ -421,6 +440,13 @@ def _estimate(case, spec, fname, event):
             # (a regression's mean_cb is at the covariates of its query)
             out.append(model.mean(*args))
     return np.asarray(out, float)
+
+
+def _bayes_mtbf(model, args):
+    if type(model).__name__ == "BayesianProportionalIntensity":
+        Z, *at = args
+        return float(model.mtbf(at[0] if at else model.end, Z))
+    return float(model.mtbf(args[0] if args else model.end))
 
 
 def value_range(case, spec, fname):

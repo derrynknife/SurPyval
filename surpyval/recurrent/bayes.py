@@ -578,6 +578,15 @@ class RecurrenceTarget(Target):
         return cls(_fitter_from_spec(d["fitter"]), data, mle)
 
 
+def _missing_query(x: npt.NDArray, values: Any) -> npt.NDArray:
+    """``values`` with NaN where the query time ``x`` is missing (a
+    quantile or a constant of the posterior would otherwise give a
+    number there)."""
+    out = np.array(values, dtype=float)
+    out[np.isnan(np.broadcast_to(x, out.shape))] = np.nan
+    return out
+
+
 def _is_recurrence_fit(model: Any) -> bool:
     from surpyval.recurrent.parametric.parametric_recurrence import (
         ParametricRecurrenceModel,
@@ -790,7 +799,9 @@ class BayesianRecurrence(BayesianResult):
         exact = self._exact_rate()
         if exact is not None:
             return np.asarray(exact.mean() * x)
-        return self.posterior.expectation(self._values("cif", x))
+        return _missing_query(
+            x, self.posterior.expectation(self._values("cif", x))
+        )
 
     mcf = cif
 
@@ -801,8 +812,10 @@ class BayesianRecurrence(BayesianResult):
         x = np.asarray(x, dtype=float)
         exact = self._exact_rate()
         if exact is not None:
-            return np.asarray(exact.mean() * np.ones_like(x))
-        return self.posterior.expectation(self._values("iif", x))
+            return _missing_query(x, exact.mean() * np.ones_like(x))
+        return _missing_query(
+            x, self.posterior.expectation(self._values("iif", x))
+        )
 
     @keeps_query_shape
     def mtbf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -831,13 +844,19 @@ class BayesianRecurrence(BayesianResult):
         if exact is not None and scale is None:
             # every function is monotone in the rate
             if on == "mtbf":
-                return np.full(x.shape, 1.0 / float(exact.ppf(1.0 - level)))
-            rate = float(exact.ppf(level))
-            return rate * x if on == "cif" else np.full(x.shape, rate)
-        return np.asarray(
+                value = np.full(x.shape, 1.0 / float(exact.ppf(1.0 - level)))
+            else:
+                rate = float(exact.ppf(level))
+                value = rate * x if on == "cif" else np.full(x.shape, rate)
+            return _missing_query(x, value)
+        out = np.asarray(
             self.posterior.wquantile(self._values(on, x, scale), level),
             dtype=float,
         ).reshape(x.shape)
+        if scale is not None and np.isnan(scale).any():
+            # a missing covariate: no answer at any time
+            return np.full(x.shape, np.nan)
+        return _missing_query(x, out)
 
     def cri(
         self,
@@ -998,7 +1017,10 @@ class BayesianRecurrence(BayesianResult):
         if not float(systems) > 0:
             raise ValueError(f"systems must be positive; got {systems!r}.")
         values = self._values("cif", np.array([start, end]))
-        means = float(systems) * (values[:, 1] - values[:, 0])
+        # (inf - inf at a grid's edge, a point of no weight, which
+        # CountPrediction leaves out)
+        with np.errstate(invalid="ignore"):
+            means = float(systems) * (values[:, 1] - values[:, 0])
         gamma = None
         if self.posterior.exact is not None:
             # an HPP's rate is Gamma(a, b): the period's mean is
@@ -1474,7 +1496,10 @@ class BayesianProportionalIntensity(BayesianRecurrence):
         if not float(systems) > 0:
             raise ValueError(f"systems must be positive; got {systems!r}.")
         values = self._values("cif", np.array([start, end]), self._scale(Z))
-        means = float(systems) * (values[:, 1] - values[:, 0])
+        # (inf - inf at a grid's edge, a point of no weight, which
+        # CountPrediction leaves out)
+        with np.errstate(invalid="ignore"):
+            means = float(systems) * (values[:, 1] - values[:, 0])
         return CountPrediction(
             means, self.posterior.weights, start, end, float(systems)
         )
@@ -1781,15 +1806,13 @@ class BayesianCauseSpecific(SerialisableMixin):
         cause's position in ``event_types`` (which is saved with
         them)."""
         import surpyval
-        from surpyval.serialisation import stamp_schema
+        from surpyval.serialisation import stamp_schema, to_native
 
         return stamp_schema(
             {
                 "model": self.model_tag,
-                "event_types": [
-                    k if isinstance(k, (str, bool)) or k is None else float(k)
-                    for k in self.event_types
-                ],
+                # (a tuple label is saved as a list, and read back)
+                "event_types": to_native(list(self.event_types)),
                 "models": [m.to_dict() for m in self.models.values()],
                 "surpyval_version": surpyval.__version__,
             }
@@ -1799,12 +1822,15 @@ class BayesianCauseSpecific(SerialisableMixin):
     def from_dict(cls, model_dict: dict) -> BayesianCauseSpecific:
         """Rebuild a fit from :meth:`to_dict`."""
         from surpyval.serialisation import require_model_tag
+        from surpyval.univariate.competing_risks.labels import (
+            label_from_native,
+        )
 
         require_model_tag(
             model_dict, cls.model_tag, "a Bayesian cause-specific fit"
         )
         models = {
-            cause: BayesianRecurrence.from_dict(d)
+            label_from_native(cause): BayesianRecurrence.from_dict(d)
             for cause, d in zip(
                 model_dict["event_types"], model_dict["models"]
             )

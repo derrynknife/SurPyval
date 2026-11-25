@@ -241,7 +241,11 @@ class Posterior:
         """
         v = np.asarray(values, dtype=float)
         w = self.weights
-        rows = (v.reshape(len(w), -1) * w[:, None]).T
+        # A point of no weight adds nothing, even where the function is
+        # infinite there (a grid's edge can reach a scale of 0, whose
+        # cumulative intensity is inf): inf * 0 would make the mean NaN.
+        flat = np.where(w[:, None] > 0, v.reshape(len(w), -1), 0.0)
+        rows = (flat * w[:, None]).T
         out = np.ascontiguousarray(rows).sum(axis=1)
         return out.reshape(v.shape[1:])
 
