@@ -24,6 +24,13 @@ Design decisions made while working on the open issues, with the reason for each
 | `centred=False` stays the default; `centred=True` draws each group's value from `Normal(mu, tau)` directly. | maintainer (#671 default) | Non-centred samples well with little data a group, the usual pooling case. | done |
 | `shrinkage(trace, pooling)` returns a DataFrame: each group's own maximum-likelihood estimate (all its parameters free), pooled posterior median, population median and `pulled` on the unconstrained scale. With shared parameters `pulled` can fall a little outside 0 to 1, said in the docs. | maintainer (#671 default) | The table the template's users ask for. | done |
 | The template's calibration study (200 repetitions, seeds and rules fixed before the first run) runs with the calibration studies where PyMC is installed, skipped otherwise. | maintainer (#671 default) | As the other studies. | done |
+### Varying spline bends: a second search, and the null study (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A varying-bend fit whose search ends unverified, or with a bend's spread at 0, searches once more from the common-bend fit (each bend's spread at 5% of the noise sd over its reach) and keeps the better maximum. Only spline paths, so no other model's numbers move. | proposed | The common-bend model is the varying one with the spread at 0, so the varying fit should never be worse. The #1334 fixture now reaches it (480.41 to 479.75), and the shape study's stalled fleet moves 20.0 in log-likelihood. A verified fit with every spread clear of 0 is not searched again, so it costs nothing more. | done |
+| The 1%-of-noise warning and the readings rule are kept, although the reduced null study (10 fleets a cell) is past the plan's limits: the warning missed 6 of 10 fleets with no spread and fired in 5 of 10 at sd 0.1. | proposed | No threshold fixes either. A variance whose truth is 0 is estimated above 0 in about half of fleets, and spreads of 0.1 to 0.3 are not told from 0 by these data (`aic()` preferred the varying fit in 3 and 1 of 10). The docs now say to read the warning with `aic()`. Whether to reword or drop the warning is the maintainer's call. | open |
+| The readings rule never refuses the one-knot design, even cut at 450 days: `s1` acts from the boundary's start, so every reading counts. | proposed | The rule follows where each bend's basis function is non-zero; it was not changed. | done |
 
 ### Conformal lower bounds on a survival time (26 Nov 2026)
 

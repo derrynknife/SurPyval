@@ -2078,28 +2078,71 @@ def _fit(
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_markers(fitter, theta["mu"], "the readings put")
     total = float(np.sum(counts))
+    bends = [] if several else _varying_bends(path_model, fitter.varying)
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
     else:
-        try:
-            u, value, cov_u, maximum = _maximise(
-                model, arrays, survival_start(model, arrays, theta)
-            )
-        except _NoStart:
-            if given_start:
-                raise
-            # the likelihood is not finite at the start from the items'
-            # own fits: one more, from the settled start
-            if several:
-                from ._multi import marker_part_start
-
-                theta = marker_part_start(
-                    model, arrays, readings, Z - zbar, counts, settled=True
+        with warnings.catch_warnings(record=True) as first_warnings:
+            warnings.simplefilter("always")
+            try:
+                u, value, cov_u, maximum = _maximise(
+                    model, arrays, survival_start(model, arrays, theta)
                 )
-            else:
-                theta = settled_marker_start(model, arrays, ages, values)
-            u, value, cov_u, maximum = _maximise(
-                model, arrays, survival_start(model, arrays, theta)
+            except _NoStart:
+                if given_start:
+                    raise
+                # the likelihood is not finite at the start from the
+                # items' own fits: one more, from the settled start
+                if several:
+                    from ._multi import marker_part_start
+
+                    theta = marker_part_start(
+                        model,
+                        arrays,
+                        readings,
+                        Z - zbar,
+                        counts,
+                        settled=True,
+                    )
+                else:
+                    theta = settled_marker_start(model, arrays, ages, values)
+                u, value, cov_u, maximum = _maximise(
+                    model, arrays, survival_start(model, arrays, theta)
+                )
+        kept_warnings = list(first_warnings)
+        if (
+            bends
+            and len(bends) < len(fitter.varying)
+            and (
+                maximum != "verified"
+                or _bends_at_zero(model, path_model, u, ages, bends)
+            )
+        ):
+            # A varying bend's spread can stall at 0 short of the
+            # common-bend fit the model contains: where the search is
+            # unverified or a bend's spread is at 0, a second start from
+            # that fit, the better maximum kept (#1334). A verified fit
+            # with every spread clear of 0 is left as it is.
+            second = _from_common_bends(
+                model,
+                path_model,
+                arrays,
+                ages,
+                values,
+                Z - zbar,
+                counts,
+                bends,
+            )
+            if second is not None and second[0][1] < value - _ROUND_TOL * max(
+                1.0, abs(value)
+            ):
+                (u, value, cov_u, maximum), kept_warnings = second
+        for caught in kept_warnings:
+            warnings.warn_explicit(
+                caught.message,
+                caught.category,
+                caught.filename,
+                caught.lineno,
             )
         _check_markers(fitter, layout.unpack(u)["mu"], "the fit puts")
     estimated = np.asarray(
@@ -2203,6 +2246,102 @@ def _fit(
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
     return out
+
+
+def _varying_bends(path_model: Any, varying: Any) -> list:
+    """The bends of a spline path (``s1``, ...) among ``varying``."""
+    names = list(getattr(path_model, "parameter_names", []))
+    if not hasattr(path_model, "default_random_effects"):
+        return []
+    return [v for v in varying if v in names[2:]]
+
+
+def _bends_at_zero(
+    model: Model, path_model: Any, u: npt.NDArray, ages: list, bends: list
+) -> bool:
+    """Whether any of the varying ``bends`` has its spread between items
+    at its lower bound, 0, at the internal parameters ``u`` (by the rule
+    of :func:`_warn_bends_without_spread`, :data:`_NO_SPREAD`)."""
+    layout = model.layout
+    found = layout.unpack(u)
+    L = np.asarray(found["L"], dtype=float)
+    noise = float(np.ravel(found["sigma"])[0])
+    names = list(path_model.parameter_names)
+    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
+    with np.errstate(all="ignore"):
+        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
+    for k, j in enumerate(layout.varying):
+        if names[j] not in bends:
+            continue
+        sd = float(np.sqrt(np.sum(L[k] ** 2)))
+        reach = sd * (float(np.max(basis[:, j])) if basis.size else 0.0)
+        if not reach >= _NO_SPREAD * noise:
+            return True
+    return False
+
+
+#: The spread of a bend at the second start, as a share of the readings'
+#: noise sd that it moves an item's marker by at most (above the 1% at
+#: which it is taken as 0, :data:`_NO_SPREAD`).
+_BEND_START = 0.05
+
+
+def _from_common_bends(
+    model: Model,
+    path_model: Any,
+    arrays: JointArrays,
+    ages: list,
+    values: list,
+    Zc: npt.NDArray,
+    counts: npt.NDArray,
+    bends: list,
+) -> tuple | None:
+    """The joint fit from a second start (#1334): the fit with the
+    ``bends`` common to all items, and their spread small
+    (:data:`_BEND_START`): ``(_maximise's answer, its warnings)``, or
+    ``None`` where the common-bend fit or the second search cannot
+    start."""
+    import dataclasses
+
+    layout = model.layout
+    names = list(path_model.parameter_names)
+    keep = [k for k, j in enumerate(layout.varying) if names[j] not in bends]
+    nested_layout = dataclasses.replace(
+        layout,
+        varying=tuple(layout.varying[k] for k in keep),
+        blocks=tuple(layout.blocks[k] for k in keep),
+    )
+    nested = dataclasses.replace(model, layout=nested_layout)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            start = marker_start(nested, ages, values, Zc, counts)
+            u_n = _maximise(
+                nested, arrays, survival_start(nested, arrays, start)
+            )[0]
+        except (_NoStart, np.linalg.LinAlgError, ValueError):
+            return None
+    found = nested_layout.unpack(u_n)
+    theta = {key: np.array(value, dtype=float) for key, value in found.items()}
+    L = np.zeros((layout.q, layout.q))
+    L[np.ix_(keep, keep)] = theta["L"]
+    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
+    with np.errstate(all="ignore"):
+        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
+    sigma = float(np.ravel(theta["sigma"])[0])
+    for k, j in enumerate(layout.varying):
+        if k in keep:
+            continue
+        reach = float(np.max(basis[:, j])) if basis.size else 0.0
+        L[k, k] = _BEND_START * sigma / reach if reach > 0 else 1e-3
+    theta["L"] = L
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            answer = _maximise(model, arrays, theta)
+        except (_NoStart, np.linalg.LinAlgError, ValueError):
+            return None
+    return answer, list(caught)
 
 
 #: A varying bend of a spline whose spread between items moves an item's

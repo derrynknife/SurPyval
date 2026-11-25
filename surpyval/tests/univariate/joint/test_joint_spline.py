@@ -495,14 +495,12 @@ def test_the_two_spline_fits_compare_by_aic(placed, bend_varying):
     assert np.array_equal(restored.params, model.params)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1334: the fit with the bend varying stops short of the "
-    "common-bend fit it contains where the bend has no spread "
-    "(neg_ll 480.41 against 479.75, unverified)",
-)
 def test_the_varying_bend_fit_is_no_worse_than_the_common_bend_fit(
     placed, bend_varying
 ):
+    """#1334: the fit with the bend varying stopped short of the
+    common-bend fit it contains where the bend has no spread (neg_ll
+    480.41 against 479.75, unverified); a second start from the
+    common-bend fit, the better maximum kept, reaches it."""
     model, _ = bend_varying
     assert model.neg_ll() <= placed.neg_ll() + 1e-6
