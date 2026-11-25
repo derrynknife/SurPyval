@@ -3623,10 +3623,9 @@ _QUANTILE_REGRESSION_BOUNDS = (
         slow=True,
     ),
     Bound(
-        "bootstrap_ci",
+        "param_cb",
         kind="coef",
         kwargs={**_BOOT, "tau": 0.5},
-        sides=False,
         wald=False,
         slow=True,
     ),
@@ -4291,10 +4290,9 @@ def _bounds(case):
     if cls == "BuckleyJamesModel":
         return (
             Bound(
-                "bootstrap_ci",
+                "param_cb",
                 kind="coef",
                 kwargs=_BOOT,
-                sides=False,
                 wald=False,
             ),
         )

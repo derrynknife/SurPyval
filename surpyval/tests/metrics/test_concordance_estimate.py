@@ -262,7 +262,7 @@ def test_refusals_and_missing_values():
         concordance_estimate(x, c, s, ci_method="wald")
     with pytest.raises(ValueError, match="'tau' must be a positive"):
         concordance_estimate(x, c, s, tau=0.0)
-    with pytest.raises(ValueError, match="'alpha'"):
+    with pytest.raises(ValueError, match="'alpha_ci'"):
         concordance_estimate(x, c, s, alpha=1.5)
     with pytest.raises(ValueError, match="same length"):
         concordance_estimate(x, c, s[:2])

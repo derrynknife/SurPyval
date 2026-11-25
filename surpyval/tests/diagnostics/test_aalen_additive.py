@@ -265,7 +265,7 @@ def test_falls_are_drawdowns_below_the_running_maximum():
 
 def test_columns_and_alpha():
     model = _veteran()
-    d = model.diagnose(columns=["karno"], alpha=0.01, random_state=0)
+    d = model.diagnose(columns=["karno"], alpha_ci=0.01, random_state=0)
     rows = d.table[d.table["check"] == "constant_effects"]
     assert list(rows["covariates"]) == [("karno",)]
     assert d.columns == ["karno"]

@@ -442,7 +442,7 @@ class _IntervalCompetingRisks(CompetingRisks):
         on: str = "cif",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         n_boot: int | None = None,
         random_state: Any = None,
     ) -> npt.NDArray:
@@ -475,7 +475,7 @@ class _IntervalCompetingRisks(CompetingRisks):
             ``"two-sided"`` (default, ``(n, 2)``), ``"lower"`` or
             ``"upper"`` (one-sided at ``1 - alpha_ci``, ``(n,)``).
         bound_type : str, optional
-            Only ``"exp"`` (the default) is taken: the percentile bounds
+            Only ``"log-log"`` (the default) is taken: the percentile bounds
             have no scale to choose.
         n_boot : int, optional
             The bootstrap samples. Defaults to 500.
@@ -502,7 +502,8 @@ class _IntervalCompetingRisks(CompetingRisks):
         check_option("on", on, _CB_ON)
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
-        if bound_type != "exp":
+        bound_type = self._scale_name("cb", bound_type)
+        if bound_type != "log-log":
             raise ValueError(
                 f"bound_type={bound_type!r} is not taken by a CompetingRisks "
                 "fitted to left- or interval-censored rows (estimator "
@@ -556,7 +557,7 @@ class _IntervalCompetingRisks(CompetingRisks):
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         n_boot: int | None = None,
         random_state: Any = None,
     ) -> Any:
@@ -579,7 +580,7 @@ class _IntervalCompetingRisks(CompetingRisks):
             Passed to :meth:`cb` (the seed defaults to 0, so the plot is
             reproducible).
         bound, bound_type : optional
-            Only the defaults, ``"two-sided"`` and ``"exp"``, are taken.
+            Only the defaults, ``"two-sided"`` and ``"log-log"``, are taken.
 
         Returns
         -------
@@ -610,7 +611,8 @@ class _IntervalCompetingRisks(CompetingRisks):
                 "Plot the causes unstacked (the default), or the all-cause "
                 "ff(x) for the total.",
             )
-        if bound != "two-sided" or bound_type != "exp":
+        bound_type = self._scale_name("plot", bound_type)
+        if bound != "two-sided" or bound_type != "log-log":
             raise ValueError(
                 "plot draws the two-sided bootstrap bounds only for a "
                 "CompetingRisks fitted to left- or interval-censored rows; "

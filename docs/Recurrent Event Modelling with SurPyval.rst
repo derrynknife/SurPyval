@@ -381,7 +381,7 @@ observed time; either may be infinite. ``set_support`` returns the model, and
 
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
 bounds, returned as ``[lower, upper]`` columns and computed on the log scale
-so they cannot go negative (``bound_type="normal"`` gives the symmetric
+so they cannot go negative (``bound_type="plain"`` gives the symmetric
 estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
 ``"upper"`` gives a one-sided bound and ``alpha_ci`` sets the level
 (the default 0.05 gives 95% bounds). The
@@ -394,7 +394,7 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 
     print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
     print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", alpha_ci=0.1).round(2))
-    print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="normal").round(2))
+    print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="plain").round(2))
     print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
 
 The ``NonParametricCounting`` model also supports **left truncation** (delayed

@@ -20,7 +20,7 @@ The appeal is that it makes no parametric assumption about the baseline
 -- it is the AFT counterpart of what Cox regression is for proportional
 hazards. The cost is that the iteration is not guaranteed to converge,
 and standard errors come from resampling rather than a likelihood
-(``bootstrap_ci``). Only observed and right-censored data are supported.
+(``param_cb``). Only observed and right-censored data are supported.
 
 The fitted ``beta`` uses the package's AFT sign convention: a positive
 coefficient *shortens* life, so it is the negative of the slope of the

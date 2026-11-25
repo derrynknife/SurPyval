@@ -360,7 +360,7 @@ class NonParametricCounting(
         interp: str = "step",
         *,
         alpha_ci: float = 0.05,
-        bound_type: str = "exp",
+        bound_type: str = "log",
         dist: str = "z",
     ) -> npt.NDArray:
         """
@@ -390,10 +390,11 @@ class NonParametricCounting(
             probability ``alpha_ci``. Defaults to 0.05. Keyword only, as
             are the arguments after it.
         bound_type : str, optional
-            ``"exp"`` (the default) for bounds on the log scale,
+            ``"log"`` (the default) for bounds on the log scale,
             :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
-            positive; or ``"normal"`` for Wald bounds
-            :math:`\\hat{M} \\pm z \\sqrt{V}`.
+            positive; or ``"plain"`` for Wald bounds
+            :math:`\\hat{M} \\pm z \\sqrt{V}`. (``"exp"`` and ``"normal"``
+            until v0.30, still accepted with a warning.)
         dist : str, optional
             Only ``"z"``, the normal critical value.
 
@@ -415,6 +416,14 @@ class NonParametricCounting(
         check_option("bound", bound, BOUNDS)
         check_option("interp", interp, _MCF_INTERP)
         check_alpha_ci(alpha_ci)
+        from surpyval.utils.deprecation import renamed_value
+
+        bound_type = renamed_value(
+            f"{type(self).__name__}.mcf_cb",
+            "bound_type",
+            bound_type,
+            {"exp": "log", "normal": "plain"},
+        )
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
@@ -434,7 +443,7 @@ class NonParametricCounting(
         # ``mcf_cb`` without the bounds (see ``set_support``).
         # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
         # per-step one for ``from_xrd``) with a normal (z) critical value.
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        check_option("bound_type", bound_type, ("log", "plain"))
         check_option(
             "dist",
             dist,
@@ -464,7 +473,7 @@ class NonParametricCounting(
                 "This model carries no variance (a simulated MCF), so "
                 "confidence bounds are unavailable."
             )
-        if bound_type == "exp":
+        if bound_type == "log":
             # Log-scale (exponential) bounds
             # Before the first event (possible for one cause of a
             # cause-specific MCF) the estimate and its variance are both

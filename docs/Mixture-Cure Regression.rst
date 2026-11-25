@@ -211,7 +211,7 @@ it does not change when a defective unit fails. A covariate on the shape
 is possible too (``covariates={"beta": [...]}``), as in a
 :doc:`distributional regression <Distributional Regression>`, of which
 this model is a member: the fits, checks, bounds (``cb``, ``param_cb``
-and ``parameter_cb`` with Wald, likelihood-ratio and bootstrap methods),
+and ``param_cb`` with ``Z``, with Wald, likelihood-ratio and bootstrap methods),
 weights, ``to_dict`` and ``from_dict`` are that family's.
 
 One bound behaves differently. A quantile, the age by which a fraction

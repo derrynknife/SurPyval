@@ -543,7 +543,7 @@ class MultiState(SerialisableMixin):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         variance: str = "greenwood",
     ) -> npt.NDArray:
         r"""
@@ -561,11 +561,13 @@ class MultiState(SerialisableMixin):
             The two-sided interval (the default), with one row per ``x``
             and the columns ``[lower, upper]``, or one side, which puts
             all of ``alpha_ci`` on that side.
-        bound_type : ('exp', 'normal'), str, optional
-            ``'exp'`` (the default) forms the interval on the log(-log)
+        bound_type : ('log-log', 'plain'), str, optional
+            ``'log-log'`` (the default) forms the interval on the log(-log)
             scale, :math:`\hat{p}^{\exp(\pm z\,\hat{\sigma} / (\hat{p}
-            \log \hat{p}))}`, which keeps it within [0, 1]; ``'normal'``
+            \log \hat{p}))}`, which keeps it within [0, 1]; ``'plain'``
             is :math:`\hat{p} \pm z\,\hat{\sigma}`, which can leave it.
+            (``'exp'`` and ``'normal'`` until v0.30, still accepted with
+            a warning.)
         variance : ('greenwood', 'aalen', 'robust'), str, optional
             The variance; see :meth:`occupancy_se`.
 
@@ -589,7 +591,7 @@ class MultiState(SerialisableMixin):
         >>> model.cb(3.5, "b").round(4)
         array([0.009 , 0.7741])
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         check_option("variance", variance, _VARIANCES)
         x = np.asarray(x, dtype=float)
         p = self.occupancy(x, state, s, from_state)

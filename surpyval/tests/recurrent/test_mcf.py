@@ -70,7 +70,7 @@ def test_mcf_normal_bounds_are_estimate_plus_minus_z_se():
     t = np.array([5.0])
     k = np.searchsorted(model.x, 5.0, side="right") - 1
     se = np.sqrt(model.var[k])
-    lower, upper = model.mcf_cb(t, bound_type="normal")[0]
+    lower, upper = model.mcf_cb(t, bound_type="plain")[0]
     assert lower == pytest.approx(model.mcf_hat[k] - 1.959964 * se)
     assert upper == pytest.approx(model.mcf_hat[k] + 1.959964 * se)
 

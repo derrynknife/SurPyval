@@ -531,24 +531,24 @@ def test_parameter_bounds_at_rows():
     Z = np.array([[0.0], [0.5], [1.0]])
     est = model.parameters_at(Z)[:, 1]
     for method in ("wald", "lr"):
-        band = model.parameter_cb("beta", Z, method=method)
+        band = model.param_cb("beta", Z=Z, method=method)
         assert band.shape == (3, 2)
         assert np.all((band[:, 0] < est) & (est < band[:, 1]))
         # At Z = 0 it is the bound on the parameter itself
         np.testing.assert_allclose(
             band[0], model.param_cb("beta", method=method), rtol=1e-6
         )
-    lower = model.parameter_cb("beta", Z, bound="lower")
+    lower = model.param_cb("beta", Z=Z, bound="lower")
     assert lower.shape == (3,) and np.all(lower < est)
-    boot = model.parameter_cb(
-        "beta", Z, method="bootstrap", n_boot=40, random_state=2
+    boot = model.param_cb(
+        "beta", Z=Z, method="bootstrap", n_boot=40, random_state=2
     )
     assert np.all((boot[:, 0] < est) & (est < boot[:, 1]))
     # A higher confidence gives a wider band
-    wide = model.parameter_cb("beta", Z, alpha_ci=0.01)
-    assert np.all(wide[:, 0] < model.parameter_cb("beta", Z)[:, 0])
+    wide = model.param_cb("beta", Z=Z, alpha_ci=0.01)
+    assert np.all(wide[:, 0] < model.param_cb("beta", Z=Z)[:, 0])
     with pytest.raises(ValueError, match="Unknown parameter"):
-        model.parameter_cb("shape", Z)
+        model.param_cb("shape", Z=Z)
 
 
 def test_plot_parameter():
@@ -637,7 +637,7 @@ def test_held_intercept_with_covariates_on_it():
     np.testing.assert_array_equal(cov[1], 0.0)
     np.testing.assert_array_equal(cov[:, 1], 0.0)
     assert np.all(np.diag(cov)[[0, 2]] > 0)
-    band = model.parameter_cb("beta", Z[:3])
+    band = model.param_cb("beta", Z=Z[:3])
     point = model.parameters_at(Z[:3])[:, 1]
     assert np.all(np.isfinite(band))
     assert np.all(band[:, 0] < point) and np.all(point < band[:, 1])

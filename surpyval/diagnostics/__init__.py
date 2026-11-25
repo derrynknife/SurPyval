@@ -1,7 +1,7 @@
 """
 Model diagnostics: ``model.diagnose()`` (#867).
 
-Every fitted regression model has one method, ``diagnose(alpha=0.05,
+Every fitted regression model has one method, ``diagnose(alpha_ci=0.05,
 columns=None)``. It runs the checks its family's assumptions call for and
 returns a :class:`Diagnosis`:
 

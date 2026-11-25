@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+
 if TYPE_CHECKING:  # pragma: no cover
     from .report import Diagnosis
 
@@ -17,9 +19,10 @@ if TYPE_CHECKING:  # pragma: no cover
 class DiagnoseMixin:
     """Gives a fitted model :meth:`diagnose`."""
 
+    @renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
     def diagnose(
         self,
-        alpha: float = 0.05,
+        alpha_ci: float = 0.05,
         columns: Sequence[str] | None = None,
         *,
         n_boot: int | None = None,
@@ -41,14 +44,14 @@ class DiagnoseMixin:
         imported then); ``d.ok``, True if nothing failed;
         ``d.raise_if_failed()`` for pipelines; and ``d.to_dict()``.
 
-        A test fails when its p-value is below ``alpha``, and warns when
-        it is below ``2 * alpha`` (borderline) or could not be computed.
-        Each row is judged at ``alpha`` on its own, so with many rows
+        A test fails when its p-value is below ``alpha_ci``, and warns when
+        it is below ``2 * alpha_ci`` (borderline) or could not be computed.
+        Each row is judged at ``alpha_ci`` on its own, so with many rows
         some fail by chance even when every assumption holds.
 
         Parameters
         ----------
-        alpha : float, optional
+        alpha_ci : float, optional
             The level each test is judged at. Default 0.05.
         columns : str or list of str, optional
             The covariates to check, named as ``summary()`` names them
@@ -111,7 +114,7 @@ class DiagnoseMixin:
 
         return diagnose(
             self,
-            alpha=alpha,
+            alpha_ci=alpha_ci,
             columns=columns,
             n_boot=n_boot,
             random_state=random_state,

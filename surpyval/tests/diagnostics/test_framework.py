@@ -173,8 +173,8 @@ def test_columns_must_name_covariates(failing, bad):
 
 
 def test_alpha_sets_the_threshold(failing):
-    strict = failing.diagnose(alpha=0.01)
-    loose = failing.diagnose(alpha=0.05)
+    strict = failing.diagnose(alpha_ci=0.01)
+    loose = failing.diagnose(alpha_ci=0.05)
     p = loose.table["p"]
     assert ((loose.table["verdict"] == "fail") == (p < 0.05)).all()
     tests = strict.table[strict.table["p"].notna()]
@@ -190,8 +190,8 @@ def test_alpha_sets_the_threshold(failing):
 
 @pytest.mark.parametrize("bad", [0, 1, -0.1, 1.5, "0.05x", None, np.nan])
 def test_alpha_must_be_a_probability(failing, bad):
-    with pytest.raises(ValueError, match="'alpha'"):
-        failing.diagnose(alpha=bad)
+    with pytest.raises(ValueError, match="'alpha_ci'"):
+        failing.diagnose(alpha_ci=bad)
 
 
 # -- plots --------------------------------------------------------------------

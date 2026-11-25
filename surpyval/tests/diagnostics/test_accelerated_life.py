@@ -318,7 +318,7 @@ def test_a_better_life_model_warns_and_is_advised():
         * np.exp(-0.6 * S)
     )
     # lack of fit p = 0.012: a warning at alpha = 0.01, not a failure
-    d = _fit(sp.Weibull, t, S).diagnose(alpha=0.01)
+    d = _fit(sp.Weibull, t, S).diagnose(alpha_ci=0.01)
     assert _row(d, "life_stress")["verdict"] == "warn"
     rows = d.table[d.table["verdict"] == "warn"]
     better = rows[rows["check"] == "life_model_comparison"]

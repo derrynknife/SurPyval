@@ -612,7 +612,7 @@ def test_columns_and_alpha(gamma_weibull, gamma_weibull_d):
     )
     assert d.columns == ["age"]
     # theta's p-value is 0.0016: not significant at 0.001
-    strict = gamma_weibull.diagnose(alpha=0.001)
+    strict = gamma_weibull.diagnose(alpha_ci=0.001)
     assert _row(strict, "frailty_variance")["verdict"] == "warn"
     assert ("WeibullPH.fit", "WeibullPH.fit_from_df") in _features(strict)
 

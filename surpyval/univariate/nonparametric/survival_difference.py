@@ -14,15 +14,11 @@ if TYPE_CHECKING:
     from .nonparametric import NonParametric
 
 #: The ``transform`` values of :func:`sf_diff`.
-TRANSFORMS = ("log-log", "log", "linear", "arcsine-sqrt", "logit")
-#: Each transform's scale, by the name ``cb``'s ``bound_type`` gives it.
-_SCALE_OF = {
-    "log-log": "exp",
-    "log": "log",
-    "linear": "normal",
-    "arcsine-sqrt": "arcsine",
-    "logit": "logit",
-}
+#: The same names as ``cb``'s ``bound_type`` (v0.30; "linear" and
+#: "arcsine-sqrt" until then).
+TRANSFORMS = ("log-log", "log", "plain", "arcsine", "logit")
+#: The names of the transforms until v0.30.
+_RENAMED = {"linear": "plain", "arcsine-sqrt": "arcsine"}
 
 
 def _at(model: NonParametric, name: str, x: float) -> tuple[float, float]:
@@ -62,12 +58,12 @@ def _contrast(
     """The transformed survival ``g(s)`` and the delta-method variance of
     ``g(S)`` from ``v``, the variance of ``log S``; ``None`` where ``g`` is
     not defined at ``s``."""
-    if transform != "linear" and s <= 0:
+    if transform != "plain" and s <= 0:
         return None
-    if transform not in ("linear", "log") and s >= 1:
+    if transform not in ("plain", "log") and s >= 1:
         return None
     # The scales of the bounds (cb's names for them).
-    return transformed_survival(_SCALE_OF[transform], s, v)
+    return transformed_survival(transform, s, v)
 
 
 def sf_diff(
@@ -111,8 +107,10 @@ def sf_diff(
         The time at which to compare the survival.
     transform : str, optional
         The scale of the test: "log-log" (the default;
-        :math:`\log(-\log S)`), "log", "linear" (the plain difference),
-        "arcsine-sqrt" (:math:`\arcsin\sqrt{S}`) or "logit".
+        :math:`\log(-\log S)`), "log", "plain" (the plain difference),
+        "arcsine" (:math:`\arcsin\sqrt{S}`) or "logit": the names of
+        ``cb``'s ``bound_type``. "linear" and "arcsine-sqrt", the names
+        until v0.30, still work, with a warning.
     alpha_ci : scalar, optional
         Significance level for the interval on the difference (default
         0.05).
@@ -170,6 +168,9 @@ def sf_diff(
     """
     from scipy.stats import chi2, norm
 
+    from surpyval.utils.deprecation import renamed_value
+
+    transform = renamed_value("sf_diff", "transform", transform, _RENAMED)
     check_option("transform", transform, TRANSFORMS)
     check_alpha_ci(alpha_ci)
     try:
@@ -190,7 +191,7 @@ def sf_diff(
                 "The {} transform is not defined at {}'s survival "
                 "estimate at x = {:g}, {:g}. Compare at a time where both "
                 "estimates are between 0 and 1, or use transform="
-                "'linear'.".format(transform, name, x, s)
+                "'plain'.".format(transform, name, x, s)
             )
         parts.append((s, v, g))
     (s_a, v_a, (g_a, var_a)), (s_b, v_b, (g_b, var_b)) = parts

@@ -305,8 +305,8 @@ def test_the_report_is_reproducible_with_a_seed():
 def test_alpha_sets_the_verdicts():
     x = sp.LogNormal.random(100, 2, 0.8, random_state=6)
     model = _fit(sp.Weibull, x)
-    loose = model.diagnose(alpha=0.05, n_boot=20, random_state=1)
-    strict = model.diagnose(alpha=0.01, n_boot=20, random_state=1)
+    loose = model.diagnose(alpha_ci=0.05, n_boot=20, random_state=1)
+    strict = model.diagnose(alpha_ci=0.01, n_boot=20, random_state=1)
     gof = _rows(loose, "goodness_of_fit")
     assert ((gof["verdict"] == "fail") == (gof["p"] < 0.05)).all()
     # with 20 refits no p-value is below 1/21: nothing fails at 0.01

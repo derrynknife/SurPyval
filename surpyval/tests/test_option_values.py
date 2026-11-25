@@ -49,7 +49,7 @@ def test_mcf_cb_refuses_an_unknown_interp():
         with pytest.raises(ValueError, match=r"'interp' must be one of"):
             mcf_cb([10.0, 30.0], interp="cubic", **kw)
         with pytest.raises(ValueError, match="'bound_type' must be one of"):
-            mcf_cb([10.0, 30.0], bound_type="log", **kw)
+            mcf_cb([10.0, 30.0], bound_type="logit", **kw)
 
 
 def test_mcf_refuses_an_unknown_interp_outside_the_support():

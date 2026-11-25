@@ -158,7 +158,7 @@ class TestCIFBounds:
         # Three units failing from a, b, a: the variance of F_a, by hand
         # (cmprsk's formula), is 1/9, 1/9 and 1/4 at times 1, 2, 3.
         model = CompetingRisks.fit([1, 2, 3], ["a", "b", "a"])
-        b = model.cb([1, 2, 3], "a", bound_type="normal")
+        b = model.cb([1, 2, 3], "a", bound_type="plain")
         F = np.array([1, 1, 2]) / 3
         sd = np.sqrt([1 / 9, 1 / 9, 1 / 4])
         np.testing.assert_allclose(b[:, 0], F - Z95 * sd, rtol=1e-12)
@@ -169,7 +169,7 @@ class TestCIFBounds:
         F = model.cif(5, "a")
         # (One side at 0.025 is the two-sided 95% end.)
         upper = model.cb(
-            5, "a", alpha_ci=0.025, bound="upper", bound_type="normal"
+            5, "a", alpha_ci=0.025, bound="upper", bound_type="plain"
         )
         sd = (upper - F) / Z95
         s = Z95 * sd / (F * abs(np.log(F)))

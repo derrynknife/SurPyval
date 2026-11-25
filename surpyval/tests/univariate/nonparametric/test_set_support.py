@@ -213,11 +213,11 @@ def test_R_cb_and_bootstrap_cb_follow_the_bounds():
     model = _fit("KaplanMeier")
     bounded = _bounded(model, 0, 20)
     q = np.array([-1.0, 1.0, 3.0, 9.5, 14.0, 17.0, 21.0, np.nan])
-    r = bounded.R_cb(q)
+    r = bounded._survival_cb(q)
     assert np.isnan(r[[0, -2, -1]]).all()
     np.testing.assert_array_equal(r[1], [1.0, 1.0])
-    np.testing.assert_array_equal(r[2:5], model.R_cb(q[2:5]))
-    np.testing.assert_array_equal(r[5], model.R_cb([14.0])[0])
+    np.testing.assert_array_equal(r[2:5], model._survival_cb(q[2:5]))
+    np.testing.assert_array_equal(r[5], model._survival_cb([14.0])[0])
 
     boot = bounded.bootstrap_cb(q, n_boot=30, random_state=2)
     unbounded = model.bootstrap_cb(q[2:5], n_boot=30, random_state=2)
@@ -390,7 +390,7 @@ def test_cubic_sf_at_the_last_knot_is_not_below_zero():
     [
         lambda m: m.cb([1.5, 2.5], bound_type="bogus"),
         lambda m: m.cb([1.5, 2.5], interp="bogus"),
-        lambda m: m.R_cb([1.5, 2.5], interp="bogus"),
+        lambda m: m._survival_cb([1.5, 2.5], interp="bogus"),
         lambda m: m.band(alpha_ci=2.0),
     ],
 )

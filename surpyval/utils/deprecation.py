@@ -68,6 +68,8 @@ __all__ = [
     "fit_entry",
     "renamed_arguments",
     "renamed_name",
+    "renamed_value",
+    "SURVIVAL_SCALE_RENAMES",
     "positional_option",
     "ambiguous_item_ids",
 ]
@@ -255,8 +257,62 @@ def renamed_name(
     return value
 
 
+def renamed_value(
+    where: str,
+    argument: str,
+    value: Any,
+    renames: dict[str, str],
+    removed_in: str = REMOVED_IN_NEXT,
+) -> Any:
+    """
+    ``value`` of the option ``argument``, with an old spelling (a key of
+    ``renames``) replaced by its new one and a ``FutureWarning`` that names
+    it, pointing at the user's line. Any other value is returned as it is,
+    for the option's own check.
+
+    Written for the scales of the confidence bounds, which had two names
+    each (``bound_type="exp"`` on the Kaplan-Meier, ``"log-log"`` on the
+    Cox curve, for the same log(-log) scale): one name per scale now, in
+    v0.30, the old ones accepted until ``removed_in``.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import renamed_value
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     renamed_value("KaplanMeier.cb", "bound_type", "exp",
+    ...                   {"exp": "log-log"})
+    'log-log'
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    KaplanMeier.cb: bound_type='exp' is deprecated and will be removed in
+    v0.31; use bound_type='log-log' (the same scale; the result is
+    unchanged).
+    """
+    if not isinstance(value, str) or value not in renames:
+        return value
+    from surpyval.utils.warnings import caller_stacklevel
+
+    new = renames[value]
+    warnings.warn(
+        f"{where}: {argument}={value!r} is deprecated and will be removed in "
+        f"v{removed_in}; use {argument}={new!r} (the same scale; the result "
+        "is unchanged).",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+    return new
+
+
+#: The old names of the survival-scale bounds (log(-log) and the
+#: estimate itself), deprecated in v0.30 for R's names.
+SURVIVAL_SCALE_RENAMES: dict[str, str] = {"exp": "log-log", "normal": "plain"}
+
+
 def renamed_arguments(
-    removed_in: str = REMOVED_IN, **renames: str
+    removed_in: str = REMOVED_IN,
+    category: type[Warning] = DeprecationWarning,
+    **renames: str,
 ) -> Callable[[F], F]:
     """
     Decorate a function so that it accepts its arguments' old names.
@@ -267,6 +323,9 @@ def renamed_arguments(
         The release in which the old names stop being accepted:
         :data:`REMOVED_IN` (the default) for the names renamed in v0.29,
         :data:`REMOVED_IN_NEXT` for those renamed in v0.30.
+    category : Warning subclass, optional
+        ``DeprecationWarning`` (the default), or ``FutureWarning`` where
+        the warning must be shown wherever the call is made.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -314,7 +373,7 @@ def renamed_arguments(
                     )
                 warnings.warn(
                     _message(where, old, new, removed_in),
-                    DeprecationWarning,
+                    category,
                     stacklevel=2,
                 )
                 kwargs[new] = kwargs.pop(old)

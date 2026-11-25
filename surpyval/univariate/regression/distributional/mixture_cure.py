@@ -626,8 +626,8 @@ class MixtureCureModel(DistributionalRegressionModel):
             return sup(probs, rows, alpha_ci, bound, method, *args, **kwargs)
         side = "two-sided" if bound == "two-sided" else "lower"
         lfp = onp.asarray(
-            self.parameter_cb(
-                "lfp_p", rows, alpha_ci=alpha_ci, bound=side, method="lr"
+            self._parameter_at_rows_cb(
+                "lfp_p", rows, alpha_ci, side, "lr", 200, None
             ),
             dtype=float,
         )

@@ -443,7 +443,7 @@ state, including one occupied 1% to 5% of the time: 95% bounds covered
 hazard out of the rare state rested on some 10 to 35 observed moves, the
 bounds that involve the rare state were two to four points short (as low
 as 91.2% for 95% and 86.0% for 90%), the band lying below the truth more
-often than above it; ``bound_type="normal"`` was further short (85.0%).
+often than above it; ``bound_type="plain"`` was further short (85.0%).
 With few moves between two states, read the bounds as somewhat
 optimistic.
 

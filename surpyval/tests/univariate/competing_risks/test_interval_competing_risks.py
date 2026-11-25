@@ -285,7 +285,7 @@ def test_refusals():
     with pytest.raises(ValueError, match="n_boot"):
         model.cb([1], "a", n_boot=1)
     with pytest.raises(ValueError, match="bound_type"):
-        model.cb([1], "a", bound_type="normal")
+        model.cb([1], "a", bound_type="plain")
     # What needs each failure's time is refused in plain words.
     for call in (
         lambda: model.hf([1]),

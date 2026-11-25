@@ -7,7 +7,7 @@ import inspect
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 from scipy.stats import norm
 
 import surpyval as sp
@@ -121,15 +121,13 @@ def test_one_sided_and_transformed(model):
     assert_allclose(ff, 1 - two[:, ::-1], atol=1e-15)
     Hf = model.cb(TIMES, ROW, on="Hf", alpha_ci=0.1)
     assert_allclose(Hf, -np.log(two[:, ::-1]), atol=1e-12)
-    # The non-parametric estimates' names are accepted too
-    assert_allclose(
-        model.cb(TIMES, ROW, bound_type="exp"),
-        model.cb(TIMES, ROW, bound_type="log-log"),
-    )
-    assert_allclose(
-        model.cb(TIMES, ROW, bound_type="normal"),
-        model.cb(TIMES, ROW, bound_type="plain"),
-    )
+    # The names used until v0.30 are accepted, with a warning
+    with pytest.warns(FutureWarning, match="bound_type='exp' is deprecated"):
+        old = model.cb(TIMES, ROW, bound_type="exp")
+    assert_array_equal(old, model.cb(TIMES, ROW, bound_type="log-log"))
+    with pytest.warns(FutureWarning, match="use bound_type='plain'"):
+        old = model.cb(TIMES, ROW, bound_type="normal")
+    assert_array_equal(old, model.cb(TIMES, ROW, bound_type="plain"))
 
 
 def test_rows_pair_with_times_and_missing_values_give_nan(model):
@@ -219,13 +217,13 @@ def test_the_default_scale_is_log_log_as_the_non_parametric_estimates(
 ):
     # One default everywhere (the maintainer, 2026-11-05): the Cox
     # curve's bounds are on the log-log scale, as the Kaplan-Meier,
-    # Nelson-Aalen and Fleming-Harrington bounds ("exp", the same scale)
+    # Nelson-Aalen and Fleming-Harrington bounds (the same scale)
     # and Aalen's model are.
     assert _default(SemiParametricRegressionModel.cb) == "log-log"
     x, c, _ = rossi
     for estimator in (sp.KaplanMeier, sp.NelsonAalen, sp.FlemingHarrington):
         fitted = estimator.fit(x, c=c)
-        assert _default(type(fitted).cb) == "exp", estimator
+        assert _default(type(fitted).cb) == "log-log", estimator
     assert_allclose(
         model.cb(TIMES, ROW), model.cb(TIMES, ROW, bound_type="log-log")
     )

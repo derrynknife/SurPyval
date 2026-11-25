@@ -358,7 +358,7 @@ row's term counted ``n * w`` times, and the covariance is the robust
 (sandwich) one. ``fit_from_df`` takes ``w_col``; a row dropped for a
 missing covariate drops its weight with it. The Wald bounds
 (``cb``, ``param_cb``, ``quantile_cb`` and a distributional model's
-``parameter_cb``) use the robust covariance, ``method="bootstrap"`` is
+``param_cb`` with ``Z``) use the robust covariance, ``method="bootstrap"`` is
 the case bootstrap, and the likelihood-ratio bounds, the
 ``likelihood_ratio_test()`` and the information criteria refuse.
 

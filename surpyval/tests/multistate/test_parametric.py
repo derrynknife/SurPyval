@@ -330,7 +330,7 @@ def test_bounds_conventions(fitted):
     # a one-sided bound at alpha is a side of the two-sided at 2 alpha
     two = fitted.cb([4.0, 9.0], "ill", alpha_ci=0.1)
     assert_allclose(fitted.cb([4.0, 9.0], "ill", bound="lower"), two[:, 0])
-    normal = fitted.cb([4.0, 9.0], "ill", bound_type="normal")
+    normal = fitted.cb([4.0, 9.0], "ill", bound_type="plain")
     se = fitted.occupancy_se([4.0, 9.0], "ill")
     assert_allclose(normal[:, 1] - p, 1.959963984540054 * se)
     # an absorbing state reached by nobody at s has no uncertainty there

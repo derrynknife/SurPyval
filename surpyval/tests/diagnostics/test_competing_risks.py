@@ -338,7 +338,7 @@ def test_a_global_only_failure_is_advised():
     )
     # GLOBAL p is 1.5e-4 on both scales, every single covariate's above
     # 5e-4.
-    d = _fit(df, ["z1", "z2"]).diagnose(alpha=3e-4)
+    d = _fit(df, ["z1", "z2"]).diagnose(alpha_ci=3e-4)
     failed = _rows(d, "proportional_hazards", verdict="fail")
     assert set(failed["covariates"].map(len)) == {2}
     advice = [a for a in d.advice if "GLOBAL" in a]
@@ -384,7 +384,7 @@ def test_an_influential_outlying_row_warns():
 
 
 def test_columns_and_alpha(crossing):
-    d = crossing.diagnose(columns=["w"], alpha=0.01)
+    d = crossing.diagnose(columns=["w"], alpha_ci=0.01)
     assert d.columns == ["w"]
     single = d.table[d.table["covariates"].map(len) == 1]
     assert set(single["covariates"]) == {("w",)}
@@ -452,7 +452,7 @@ def test_a_fine_gray_global_only_failure_is_advised():
         z2=z2,
     )
     # GLOBAL p about 1.2e-4 on both scales, each covariate's above 1.3e-3
-    d = _fit(df, ["z1", "z2"], model="Fine-Gray").diagnose(alpha=5e-4)
+    d = _fit(df, ["z1", "z2"], model="Fine-Gray").diagnose(alpha_ci=5e-4)
     failed = _rows(d, "proportional_hazards", verdict="fail")
     assert set(failed["covariates"].map(len)) == {2}
     advice = [a for a in d.advice if "GLOBAL" in a]

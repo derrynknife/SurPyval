@@ -18,6 +18,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+
 from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 
 #: The modules that define and register a family, imported (once) the
@@ -389,7 +391,7 @@ def _check_alpha(alpha: Any) -> float:
         value = float("nan")
     if not 0 < value < 1:
         raise ValueError(
-            "'alpha' must be strictly between 0 and 1 (the level each "
+            "'alpha_ci' must be strictly between 0 and 1 (the level each "
             "check's test is judged at, e.g. 0.05); got {!r}.".format(alpha)
         )
     return value
@@ -432,9 +434,10 @@ def _covariate_names(model: Any) -> list[str]:
     return list(coefficient_names(model, len(params)))
 
 
+@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
 def diagnose(
     model: Any,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
     columns: Sequence[str] | None = None,
     *,
     n_boot: int | None = None,
@@ -459,7 +462,7 @@ def diagnose(
     >>> diagnose(CoxPH.fit(x, df[["fin", "prio"]].values, c=c)).ok
     True
     """
-    alpha = _check_alpha(alpha)
+    alpha_ci = _check_alpha(alpha_ci)
     family = family_for(model)
     unknown = sorted(set(options) - set(family.options))
     if unknown:
@@ -471,7 +474,7 @@ def diagnose(
                     "its options are "
                     + ", ".join(repr(k) for k in family.options)
                     if family.options
-                    else "it takes only alpha and columns"
+                    else "it takes only alpha_ci and columns"
                 ),
             )
         )
@@ -480,7 +483,7 @@ def diagnose(
     names = (family.covariates or _covariate_names)(model)
     ctx = Context(
         model,
-        alpha,
+        alpha_ci,
         names,
         _resolve_columns(columns, names),
         n_boot=n_boot,
@@ -496,7 +499,7 @@ def diagnose(
             row = dict(row, check=check.name)
             row["covariates"] = tuple(row.get("covariates") or ())
             if row.get("verdict") is None:
-                row["verdict"] = verdict(row.get("p"), alpha)
+                row["verdict"] = verdict(row.get("p"), alpha_ci)
             elif row["verdict"] not in VERDICTS:
                 raise ValueError(
                     "Check {!r} gave the verdict {!r}; a verdict is one of "
@@ -542,7 +545,7 @@ def diagnose(
         make_table(rows, family.columns),
         advice,
         notes,
-        alpha,
+        alpha_ci,
         family.name,
         model_label(model),
         [names[j] for j in ctx.columns],

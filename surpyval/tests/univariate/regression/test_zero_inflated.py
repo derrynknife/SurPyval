@@ -393,7 +393,7 @@ def test_bounds_and_serialisation(fitted):
     wald = model.cb(t, row)
     assert np.all(wald[:, 0] < model.sf(t, row))
     assert np.all(model.sf(t, row) < wald[:, 1])
-    cb = model.parameter_cb("f0", [row])
+    cb = model.param_cb("f0", Z=[row])
     assert cb[0, 0] < model.doa_probability(row) < cb[0, 1]
     lower, upper = model.param_cb("f0_coef_0", method="lr")
     assert lower < model.params[5] < upper
