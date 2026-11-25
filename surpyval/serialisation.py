@@ -135,6 +135,7 @@ _TAGGED_MODELS: dict[str, str] = {
         ".cause_specific_proportional_intensity"
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "DiscreteGrowthModel": "surpyval.recurrent.discrete_growth",
     "JelinskiMorandaModel": "surpyval.recurrent.software.jelinski_moranda",
     "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
     "LittlewoodVerrallModel": (

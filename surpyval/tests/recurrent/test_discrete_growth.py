@@ -12,6 +12,7 @@ squares, all to the four figures printed.)
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 from autograd import grad
 
@@ -316,3 +317,163 @@ def test_repr_and_plot():
     assert len(ax.lines) == 1
     CrowAMSAADiscrete.fit(HANDBOOK_FAILURES, HANDBOOK_TRIALS).plot()
     plt.close("all")
+
+
+# -- bootstrap bounds ---------------------------------------------------------
+
+
+def _ll_least_squares(failures, trials):
+    """Lloyd-Lipow's closed-form least squares fit, written out again."""
+    y = 1 - np.asarray(failures, float) / trials
+    x = 1 / np.arange(1, len(y) + 1, dtype=float)
+    K = len(y)
+    alpha = (x.sum() * y.sum() - K * (x * y).sum()) / (
+        K * (x**2).sum() - x.sum() ** 2
+    )
+    return (y.sum() + alpha * x.sum()) / K, alpha
+
+
+def test_bootstrap_is_the_percentiles_of_refits():
+    # Least squares Lloyd-Lipow refits in closed form, so the bootstrap
+    # can be repeated by hand, draw for draw.
+    trials = np.array(LL_TRIALS)
+    model = LloydLipow.fit(LL_FAILURES, LL_TRIALS, method="least_squares")
+    cb = model.reliability_cb(
+        [3, 6], alpha_ci=0.1, method="bootstrap", n_boot=400, random_state=5
+    )
+    rng = np.random.default_rng(5)
+    chance = 1 - model.reliability(np.arange(1, len(trials) + 1))
+    draws = []
+    for _ in range(400):
+        r_inf, alpha = _ll_least_squares(rng.binomial(trials, chance), trials)
+        draws.append([r_inf - alpha / 3, r_inf - alpha / 6])
+    draws = np.array(draws)
+    expected = np.column_stack(
+        [np.quantile(draws, 0.05, axis=0), np.quantile(draws, 0.95, axis=0)]
+    )
+    np.testing.assert_allclose(cb, expected, rtol=1e-12)
+    lower = model.reliability_cb(
+        6,
+        alpha_ci=0.05,
+        bound="lower",
+        method="bootstrap",
+        n_boot=400,
+        random_state=5,
+    )
+    assert lower == pytest.approx(expected[1, 0], rel=1e-12)
+
+
+def test_bootstrap_is_seeded_and_agrees_with_wald_for_large_samples():
+    fitter, truth, curve = CASES["crow-amsaa-discrete"]
+    rng = np.random.default_rng(11)
+    n = np.full(10, 2000)
+    model = fitter.fit(
+        rng.binomial(n, 1 - curve(truth, np.arange(1, 11.0), n)), n
+    )
+    kw = dict(alpha_ci=0.1, method="bootstrap", n_boot=300, random_state=3)
+    boot = model.reliability_cb(10, **kw)
+    np.testing.assert_array_equal(boot, model.reliability_cb(10, **kw))
+    wald = model.reliability_cb(10, alpha_ci=0.1)
+    assert boot[0] < model.reliability(10) < boot[1]
+    np.testing.assert_allclose(boot, wald, atol=0.15 * (wald[1] - wald[0]))
+    nxt = model.next_reliability_cb(**kw)
+    assert nxt[0] < model.next_reliability() < nxt[1]
+
+
+@pytest.mark.parametrize("name", list(CASES))
+def test_bootstrap_starts_from_the_fit(name):
+    # Each replicate's search starts at the fit's parameters, so the map
+    # back to the search's coordinates must invert the forward map.
+    from surpyval.recurrent.discrete_growth import _Data
+
+    fitter, truth, _ = CASES[name]
+    stage = np.arange(1, 11.0)
+    frame = pd.DataFrame(
+        {
+            "stage": stage,
+            "trials": np.full(10, 50.0),
+            "failures": np.full(10, 5.0),
+            "reliability": np.full(10, 0.9),
+        }
+    )
+    data = _Data(frame)
+    u = fitter._from_params(truth, data)
+    np.testing.assert_allclose(fitter._to_params(u, data), truth, rtol=1e-12)
+
+
+def test_bootstrap_refusals():
+    model = GompertzGrowth.fit(
+        reliability=[0.58, 0.66, 0.725, 0.78, 0.82, 0.85],
+        stage=[0, 1, 2, 3, 4, 5],
+    )
+    with pytest.raises(ValueError, match="reliabilities alone"):
+        model.reliability_cb(3, method="bootstrap")
+    amsaa = CrowAMSAADiscrete.fit(HANDBOOK_FAILURES, HANDBOOK_TRIALS)
+    with pytest.raises(ValueError, match="n_boot"):
+        amsaa.reliability_cb(4, method="bootstrap", n_boot=1)
+    with pytest.raises(ValueError, match="fitted configuration"):
+        amsaa.reliability_cb(9, method="bootstrap", n_boot=10)
+    with pytest.raises(ValueError, match="method must be"):
+        amsaa.reliability_cb(4, method="profile")
+    with pytest.raises(ValueError, match="'wald' or 'bootstrap'"):
+        amsaa.next_reliability_cb(method="lr")
+
+
+# -- saving -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: CrowAMSAADiscrete.fit(HANDBOOK_FAILURES, HANDBOOK_TRIALS),
+        lambda: LloydLipow.fit(LL_FAILURES, LL_TRIALS),
+        lambda: LloydLipow.fit(LL_FAILURES, LL_TRIALS, method="least_squares"),
+        lambda: GompertzGrowth.fit(
+            reliability=[0.58, 0.66, 0.725, 0.78, 0.82, 0.85],
+            stage=[0, 1, 2, 3, 4, 5],
+        ),
+        lambda: ModifiedGompertzGrowth.fit(
+            reliability=[0.42, 0.5683, 0.7012, 0.7907, 0.8426, 0.8706, 0.8851],
+            stage=[0, 1, 2, 3, 4, 5, 6],
+        ),
+    ],
+)
+def test_round_trip(make):
+    import surpyval
+
+    model = make()
+    back = surpyval.from_json(model.to_json())
+    assert isinstance(back, DiscreteGrowthModel)
+    assert (back.name, back.method, back.param_names) == (
+        model.name,
+        model.method,
+        model.param_names,
+    )
+    np.testing.assert_array_equal(back.params, model.params)
+    np.testing.assert_array_equal(back.cov, model.cov)
+    np.testing.assert_array_equal(back.data.to_numpy(), model.data.to_numpy())
+    stage = back.data["stage"].iloc[-1]
+    assert back.reliability(stage) == model.reliability(stage)
+    np.testing.assert_array_equal(
+        back.reliability_cb(stage), model.reliability_cb(stage)
+    )
+    assert back.next_reliability() == model.next_reliability()
+    ll = model.log_likelihood
+    assert back.log_likelihood == ll or (
+        np.isnan(ll) and np.isnan(back.log_likelihood)
+    )
+    assert DiscreteGrowthModel.from_dict(model.to_dict()).name == model.name
+
+
+def test_from_dict_refusals():
+    d = LloydLipow.fit(LL_FAILURES, LL_TRIALS).to_dict()
+    with pytest.raises(ValueError, match="Unknown discrete growth model"):
+        DiscreteGrowthModel.from_dict({**d, "growth_model": "Duane"})
+    with pytest.raises(ValueError, match="2 parameters"):
+        DiscreteGrowthModel.from_dict({**d, "params": [0.5]})
+    with pytest.raises(ValueError, match="'method'|method"):
+        DiscreteGrowthModel.from_dict({**d, "method": "bayes"})
+    bad = dict(d)
+    del bad["cov"]
+    with pytest.raises(ValueError, match="'cov'"):
+        DiscreteGrowthModel.from_dict(bad)

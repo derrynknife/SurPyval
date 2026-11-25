@@ -201,8 +201,8 @@ so on.
      - :doc:`Reliability Growth Planning`
    * - Discrete reliability growth
      - Growth of one-shot items from successes and trials by stage: the
-       AMSAA discrete model, Lloyd-Lipow and Gompertz, with Wald and
-       likelihood-ratio bounds and the next stage projected.
+       AMSAA discrete model, Lloyd-Lipow and Gompertz, with Wald,
+       likelihood-ratio and bootstrap bounds and the next stage projected.
      - :doc:`Discrete Reliability Growth`
    * - Maturity projection
      - The reliability once the fixes are in, allowing for the failure
