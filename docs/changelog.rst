@@ -333,8 +333,14 @@ v0.30 (unreleased)
   ``to_returns`` and ``to_array`` read it back. On ReliaSoft's documented
   Nevada chart the Weibull fit with ages at the period ends is eta 6.6950,
   beta 2.4928 (published 6.6951, 2.4928) and the next month's forecast
-  28.6 returns (published 29). See "Warranty returns from a Nevada table"
-  in :doc:`Parametric SurPyval Modelling`.
+  28.6 returns (published 29). ``shipping="spread"`` reads a table whose
+  units went into service evenly through their shipment period (every
+  age half a period younger: in a simulation of uniform ship times the
+  Weibull fit is within 1% of the truth, where the default reading's
+  ages run old by 9% in the scale and 13% in the shape), and ``totals=``
+  takes shipments whose returns are known only as a total to date (left
+  censored at the shipment's age). See "Warranty returns from a Nevada
+  table" in :doc:`Parametric SurPyval Modelling`.
 - **Reliability growth planning** (MIL-HDBK-189C), in
   ``surpyval.test_planning``. ``idealised_growth_curve`` is the
   AMSAA-Crow planning curve: give two of the growth rate, the final MTBF

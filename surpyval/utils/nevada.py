@@ -26,6 +26,7 @@ __all__ = ["NevadaTable"]
 
 _AGES = ("interval", "end", "middle")
 _LAYOUTS = ("calendar", "age")
+_SHIPPING = ("start", "spread")
 
 
 def _counts(values: Any, name: str, allow_nan: bool = False) -> npt.NDArray:
@@ -107,6 +108,23 @@ class NevadaTable:
     labels : sequence, optional
         A label for each shipment period (``"Jun 2010"``), shown by
         ``print``. Keyword only.
+    shipping : {"start", "spread"}, optional
+        When in its period a shipment went into service. ``"start"`` (the
+        default, the warranty tools' reading): every unit at the start of
+        its shipment period, so a return in its :math:`k`-th period in
+        service is between :math:`k - 1` and :math:`k` periods old.
+        ``"spread"``: the units went into service evenly through their
+        shipment period, so on average half a period later; every age
+        (returns, survivors and totals) is read half a period younger
+        (see Notes). Keyword only.
+    totals : array_like, optional
+        For shipments whose returns are known only as a total to date, with
+        no breakdown by period: the number returned by the analysis date,
+        one value per shipment, ``None`` or ``nan`` for a shipment whose
+        returns are in its row. A shipment with a total has no returns in
+        its row (blank or 0 cells, as many as its periods in service). Each
+        such return is a failure at some age up to the shipment's age on the
+        analysis date (left censored). Keyword only.
 
     Attributes
     ----------
@@ -118,6 +136,11 @@ class NevadaTable:
         observed period.
     observed : numpy.ndarray
         The number of periods each shipment has been in service.
+    totals : numpy.ndarray
+        The total returns to date of each shipment given by ``totals``,
+        ``nan`` for the others.
+    shipping : str
+        ``"start"`` or ``"spread"``.
 
     Raises
     ------
@@ -138,9 +161,19 @@ class NevadaTable:
     :math:`((k - 1) \Delta, k \Delta]` (interval censored, the default,
     which assumes nothing about when in the period it failed), or at the
     end of it (``ages="end"``, Weibull++'s convention) or at its middle.
-    Within a period every shipment is taken to start at the same time; a
-    unit shipped late in its period has been in service a little less
-    than its shipment's age.
+    By default every unit of a shipment is taken to start at the start of
+    its shipment period; a unit shipped late in its period has been in
+    service a little less than its shipment's age, so the ages run a
+    little old. With ``shipping="spread"`` the units start evenly through
+    the period: a unit shipped a fraction :math:`u` into it and returned in
+    its shipment's :math:`k`-th period has an age between
+    :math:`(k - 1 - u) \Delta` and :math:`(k - u) \Delta`. Taking each
+    unit at the middle of its period (:math:`u = 1/2`) reads the return as
+    failed in :math:`((k - 3/2) \Delta, (k - 1/2) \Delta]` (from 0 for
+    :math:`k = 1`) and the survivors as :math:`(m - 1/2) \Delta` old. This
+    is the half-period offset; it removes the reading's bias in the ages
+    (on average half a period), though not the extra spread of each
+    return's age, which the interval does not widen to carry.
 
     Examples
     --------
@@ -181,7 +214,16 @@ class NevadaTable:
         observed: npt.ArrayLike | None = None,
         period: float = 1.0,
         labels: Any = None,
+        shipping: str = "start",
+        totals: npt.ArrayLike | None = None,
     ) -> None:
+        if shipping not in _SHIPPING:
+            raise ValueError(
+                f"'shipping' must be one of {_SHIPPING}, not {shipping!r}: "
+                "'start' when every unit of a shipment went into service at "
+                "the start of its period, 'spread' when they went in evenly "
+                "through it."
+            )
         if layout not in _LAYOUTS:
             raise ValueError(
                 f"'layout' must be one of {_LAYOUTS}, not {layout!r}: "
@@ -213,7 +255,8 @@ class NevadaTable:
             ages, m = _age_rows(rows, observed)
         if cumulative:
             ages = _uncumulate(ages, m)
-        returned = np.nansum(ages, axis=1)
+        total_arr = _totals(totals, len(shipped_arr), ages, m)
+        returned = np.nansum(ages, axis=1) + np.nan_to_num(total_arr)
         over = np.flatnonzero(returned > shipped_arr)
         if over.size:
             i = int(over[0])
@@ -235,6 +278,8 @@ class NevadaTable:
         self.period = period
         self.labels = labels
         self.layout = layout
+        self.shipping = shipping
+        self.totals = total_arr
 
     # ------------------------------------------------------------------
     # Reading the table
@@ -242,14 +287,22 @@ class NevadaTable:
     @property
     def survivors(self) -> npt.NDArray:
         """The units of each shipment not returned by the analysis date."""
-        return self.shipped - np.nansum(self.returns, axis=1).astype(int)
+        returned = np.nansum(self.returns, axis=1) + np.nan_to_num(self.totals)
+        return self.shipped - returned.astype(int)
 
     @property
     def age(self) -> npt.NDArray:
         """Each shipment's age on the analysis date, in the fit's time
-        unit (``observed * period``): the age at which its survivors are
+        unit (``observed * period``, or half a period less with
+        ``shipping="spread"``): the age at which its survivors are
         censored, and from which :meth:`forecast` looks ahead."""
-        return self.observed * self.period
+        return (self.observed - self._offset) * self.period
+
+    @property
+    def _offset(self) -> float:
+        """How much younger, in periods, the spread reading takes each
+        age."""
+        return 0.5 if self.shipping == "spread" else 0.0
 
     def to_xcnt(
         self, ages: str = "interval"
@@ -258,8 +311,11 @@ class NevadaTable:
         The table as lifetime data, ``x``, ``c`` and ``n``, pooled over
         the shipments.
 
-        Each return is a failure in its period of service, and each
-        shipment's survivors are right censored (``c = 1``) at its age.
+        Each return is a failure in its period of service, each
+        shipment's survivors are right censored (``c = 1``) at its age, and
+        the returns given only as a total (``totals``) are left censored
+        (``c = -1``) at it. With ``shipping="spread"`` every age is half a
+        period younger (see :class:`NevadaTable`).
 
         Parameters
         ----------
@@ -274,7 +330,8 @@ class NevadaTable:
         -------
         x : numpy.ndarray
             Shape ``(N,)`` for exact ages, ``(N, 2)`` (``[lower, upper]``,
-            the right-censored rows ``[age, age]``) for ``"interval"``.
+            the right- and left-censored rows ``[age, age]``) for
+            ``"interval"``.
         c, n : numpy.ndarray
             The censoring flags and counts.
         """
@@ -285,32 +342,49 @@ class NevadaTable:
                 "'middle' to take it as failed at that point of it."
             )
         S, K = self.returns.shape
-        k = np.arange(1, K + 1) * self.period
         width = self.period
+        k = (np.arange(1, K + 1) - self._offset) * width
         fail = np.zeros(K)
         for row in self.returns:
             fail += np.nan_to_num(row)
         keep = fail > 0
         k, fail = k[keep], fail[keep]
-        surv_age, surv_n = self.age.astype(float), self.survivors
-        # Pool the survivors of shipments of the same age
-        u_age, inv = np.unique(surv_age, return_inverse=True)
-        u_n = np.bincount(inv, weights=surv_n, minlength=len(u_age))
-        has = u_n > 0
-        u_age, u_n = u_age[has], u_n[has]
+        lower = np.maximum(k - width, 0.0)
+        surv_age = self.age.astype(float)
+        # Pool the survivors (and the totals) of shipments of the same age
+        u_age, u_n = _pool(surv_age, self.survivors)
+        t_age, t_n = _pool(surv_age, np.nan_to_num(self.totals))
         if ages == "interval":
             x = np.vstack(
                 [
-                    np.column_stack([k - width, k]),
+                    np.column_stack([lower, k]),
                     np.column_stack([u_age, u_age]),
+                    np.column_stack([t_age, t_age]),
                 ]
             )
-            c = np.concatenate([np.full(len(k), 2), np.ones(len(u_age))])
+            c = np.concatenate(
+                [
+                    np.full(len(k), 2),
+                    np.ones(len(u_age)),
+                    np.full(len(t_age), -1),
+                ]
+            )
         else:
-            at = k if ages == "end" else k - width / 2
-            x = np.concatenate([at, u_age])
-            c = np.concatenate([np.zeros(len(k)), np.ones(len(u_age))])
-        n = np.concatenate([fail, u_n])
+            if ages == "end":
+                at = k
+            elif self._offset:
+                at = (lower + k) / 2
+            else:
+                at = k - width / 2
+            x = np.concatenate([at, u_age, t_age])
+            c = np.concatenate(
+                [
+                    np.zeros(len(k)),
+                    np.ones(len(u_age)),
+                    np.full(len(t_age), -1),
+                ]
+            )
+        n = np.concatenate([fail, u_n, t_n])
         return x, c.astype(int), n.astype(int)
 
     def to_data(self, ages: str = "interval") -> Any:
@@ -360,6 +434,7 @@ class NevadaTable:
         observed: npt.ArrayLike | None = None,
         period: float = 1.0,
         labels: Any = None,
+        shipping: str = "start",
     ) -> NevadaTable:
         """
         The table from a list of returns: each return's shipment period
@@ -384,7 +459,7 @@ class NevadaTable:
             in service for its latest return's period (or for as many
             periods as there are shipments, if longer), and each later one
             for one period less.
-        period, labels
+        period, labels, shipping
             As for :class:`NevadaTable`.
 
         Returns
@@ -469,6 +544,7 @@ class NevadaTable:
             observed=m,
             period=period,
             labels=labels,
+            shipping=shipping,
         )
         if staircase:
             table.layout = "calendar"
@@ -497,7 +573,8 @@ class NevadaTable:
         """
         The returns still to come from each shipment's survivors:
         :func:`surpyval.forecast` with the shipments' ages
-        (:attr:`age`) and survivors (:attr:`survivors`).
+        (:attr:`age`) and survivors (:attr:`survivors`). The returns given
+        only as totals have already happened, so they are not forecast.
 
         Parameters
         ----------
@@ -532,9 +609,12 @@ class NevadaTable:
     def __repr__(self) -> str:
         S = len(self.shipped)
         grid = self.to_array(self.layout)
+        n_returns = int(np.nansum(self.returns) + np.nansum(self.totals))
         head = (
             f"Nevada table: {S} shipments, {int(self.shipped.sum())} units, "
-            f"{int(np.nansum(self.returns))} returns ({self.layout} layout)"
+            f"{n_returns} returns ({self.layout} layout"
+            + (", shipments spread" if self.shipping == "spread" else "")
+            + ")"
         )
         word = "period" if self.layout == "calendar" else "age"
         names = ["shipment", "shipped"]
@@ -548,6 +628,11 @@ class NevadaTable:
         cells = []
         for i in range(S):
             vals = ["" if np.isnan(v) else f"{v:g}" for v in grid[i]]
+            if not np.isnan(self.totals[i]):
+                # A total with no breakdown: say so in its first cell
+                first = i if self.layout == "calendar" else 0
+                vals = [""] * len(vals)
+                vals[first] = f"total {self.totals[i]:g}"
             cells.append(
                 [labels[i], f"{self.shipped[i]:d}"]
                 + vals
@@ -561,6 +646,53 @@ class NevadaTable:
                 "  ".join(col[r].rjust(w) for col, w in zip(cols, widths))
             )
         return "\n".join(lines)
+
+
+def _pool(ages: npt.NDArray, n: npt.NDArray) -> tuple[Any, Any]:
+    """The distinct ages with a count, and the counts at each."""
+    u_age, inv = np.unique(ages, return_inverse=True)
+    u_n = np.bincount(inv, weights=n, minlength=len(u_age))
+    has = u_n > 0
+    return u_age[has], u_n[has]
+
+
+def _totals(
+    totals: Any, S: int, ages: npt.NDArray, m: npt.NDArray
+) -> npt.NDArray:
+    """``totals`` as a float array, one per shipment (``nan`` where the
+    returns are in the row), checked against the rows."""
+    if totals is None:
+        return np.full(S, np.nan)
+    try:
+        arr = np.array(
+            [np.nan if v is None else v for v in np.ravel(totals)],
+            dtype=float,
+        )
+    except (TypeError, ValueError):
+        raise ValueError(
+            "'totals' must hold numbers of units, None or nan for a "
+            "shipment whose returns are in its row."
+        )
+    if arr.size != S:
+        raise ValueError(
+            f"'totals' has {arr.size} values; give one per shipment ({S}), "
+            "None for a shipment whose returns are in its row."
+        )
+    arr = _counts(arr, "totals", allow_nan=True)
+    for i in np.flatnonzero(~np.isnan(arr)):
+        if np.nansum(ages[i]) > 0:
+            raise ValueError(
+                f"Shipment {i} has a total in 'totals' and returns in its "
+                "row: give its returns one way, by period in the row or as "
+                "a total (its row blank or 0)."
+            )
+        if m[i] < 1:
+            raise ValueError(
+                f"Shipment {i} has a total in 'totals' but no periods in "
+                "service: give its row as 0 cells for each period it has "
+                "been in service, or pass 'observed'."
+            )
+    return arr
 
 
 def _ragged(returns: Any) -> npt.NDArray:
