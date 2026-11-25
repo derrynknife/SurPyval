@@ -178,6 +178,14 @@ SurPyval` page):
 .. automodule:: surpyval.metrics.pit
    :members: d_calibration, pit_values, DCalibration
 
+Lower bounds on new units' lives that at least ``1 - alpha`` of them
+outlive, from any fitted model, calibrated on held-out units by split
+conformal prediction, with right censoring (see "'At least this long',
+with a guarantee" on the :doc:`Regression Modelling with SurPyval` page):
+
+.. automodule:: surpyval.metrics.conformal
+   :members: conformal_lower_bound, ConformalLowerBound
+
 Harrell's or Uno's concordance index of any risk score, with Therneau's
 treatment of tied event times by default, as R and lifelines: a number
 that carries its standard error and confidence interval (every regression

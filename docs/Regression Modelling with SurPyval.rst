@@ -5719,6 +5719,122 @@ Three things to know:
 Mapping predictions through the observed PIT distribution to correct them
 (recalibration) is not offered.
 
+"At least this long", with a guarantee: conformal lower bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model's own 10% quantile for a unit says "90% of units like this one
+last at least this long", but only if the model is right. A conformal
+lower bound makes the same promise whether the model is right or not, by
+checking the model on units it was not fitted to.
+
+The idea in words. Split the data once: fit the model on one part, and
+keep the other part, the *calibration* units, aside. For each calibration
+unit, read the model's own predicted CDF at its time, :math:`u_i =
+F_i(x_i)`. If the model were right, a tenth of these would fall below
+0.1. Whatever the model, the calibration units show how many actually
+do, so take the level :math:`\eta` that only a share :math:`\alpha` of
+them fall below. Each new unit's bound is the time at which *its own*
+predicted CDF reaches :math:`\eta`, :math:`L = Q(\eta \mid Z)`. A model
+that is too optimistic gets a lower :math:`\eta`, and so lower bounds; a
+good one gets :math:`\eta` close to :math:`\alpha`, and bounds close to
+its own quantiles. With :math:`n` calibration units, :math:`\eta` is the
+:math:`\lfloor \alpha (n + 1) \rfloor`-th smallest :math:`u_i`: plain
+split conformal prediction (Vovk, Gammerman and Shafer, 2005; Lei et al.,
+2018).
+
+**What is guaranteed, and what is not.** *Marginal* coverage: over new
+units drawn like the calibration units, at least :math:`1 - \alpha` of
+them outlive their bounds, in finite samples and whatever the model. It
+is not a promise for each kind of unit: one group may be covered more
+often and another less, averaging to :math:`1 - \alpha`. It needs the new
+units and the calibration units to come from the same population; it
+breaks if the population drifts.
+
+**Censoring.** A unit censored at :math:`x_i` lasted at least
+:math:`x_i`, so :math:`F_i(x_i)` is at most what its :math:`u` would have
+been at its failure. The default, ``method="observed"``, uses those values
+as they are. That can only lower :math:`\eta`, so the guarantee still
+holds exactly, but the bounds are lower than they need be when many units
+are censored before their :math:`\alpha` quantile (the conservative bound
+of Candès, Lei and Ren, 2023, with the observed times). Censoring after
+that point makes no difference. ``method="ipcw"`` instead weights each
+failure by the inverse of its chance of being seen, :math:`1 / G(x_i-)`
+from the Kaplan-Meier of the censoring times: tighter bounds, but coverage
+only close to :math:`1 - \alpha`, and only if censoring does not depend on
+the covariates or the life.
+
+Below, the true lives are Weibull with a shape of 0.7 (an early-failure
+pattern) and one covariate. An Exponential proportional hazards model, the
+wrong family, is too optimistic early in life: its own 10% quantiles are
+outlived by far fewer than 90% of new units. Calibrated on 300 held-out
+units, a quarter of them censored, the conformal bounds are outlived by
+90%:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import ExponentialPH, WeibullPH
+    from surpyval.metrics import conformal_lower_bound
+
+    def units(seed, n):
+        r = np.random.default_rng(seed)
+        Z = r.normal(0, 1, (n, 1))
+        t = 1000 * r.weibull(0.7, n) * np.exp(-0.4 * Z[:, 0])
+        return Z, t
+
+    def censor(t, seed):
+        cens = np.random.default_rng(seed).uniform(0, 4000, len(t))
+        return np.minimum(t, cens), (cens < t).astype(int)
+
+    Z_fit, t_fit = units(1, 300)    # fit on these
+    Z_cal, t_cal = units(2, 300)    # calibrate on these
+    x_fit, c_fit = censor(t_fit, 4)
+    x_cal, c_cal = censor(t_cal, 3)
+    Z_new, t_new = units(5, 10000)  # new units, lives known
+
+    wrong = ExponentialPH.fit(x=x_fit, Z=Z_fit, c=c_fit)
+    own = wrong.qf(np.full(len(t_new), 0.1), Z_new)
+    bound = conformal_lower_bound(wrong, x_cal, c_cal, Z=Z_cal, alpha=0.1)
+    print(bound)
+    print(f"outlive the model's own 10% quantiles: {np.mean(t_new >= own):.3f}")
+    print(f"outlive the conformal bounds:          "
+          f"{np.mean(t_new >= bound.lower(Z_new)):.3f}")
+
+    right = WeibullPH.fit(x=x_fit, Z=Z_fit, c=c_fit)
+    print(f"right model's level: "
+          f"{conformal_lower_bound(right, x_cal, c_cal, Z=Z_cal).level:.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.mean(t_new >= own) < 0.85
+    assert 0.88 < np.mean(t_new >= bound.lower(Z_new)) < 0.93
+
+The wrong model's level drops to about 0.035, so each unit's bound is
+its own predicted 3.5% quantile, and the bounds become honest. The right
+model needs almost no correction: its level is close to 0.1.
+
+It takes any fitted model with a CDF: ``ff(x)`` for a model without
+covariates, or ``sf(x, Z)`` paired with rows for one with them (the
+regression families, ``CoxPH``, the survival trees and forests, joint
+models). Bounds come from the model's ``qf`` where it has one and are
+found from its CDF otherwise. Three things to know:
+
+- **The calibration units must be new to the model.** Calibrating on the
+  data the model was fitted to makes it look better than it is, and the
+  guarantee is lost.
+- **Enough units.** :math:`\alpha = 0.1` needs at least 9 calibration
+  units (:math:`1/\alpha - 1`), or every bound is 0, with a warning.
+- **Where the model's CDF never reaches the level**, for example a Cox
+  model beyond its last failure, the bound is ``inf``: the model has
+  nothing to say there. The guarantee counts such units as not covered,
+  so it still holds, but those bounds are not usable.
+
+Right censoring only: left and interval-censored calibration units are
+refused, since a lower bound needs a time each unit is known to have
+lasted.
+
 Concordance
 ~~~~~~~~~~~
 

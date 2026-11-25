@@ -6,6 +6,7 @@ from .concordance import (
     compare_concordance,
     concordance_index,
 )
+from .conformal import ConformalLowerBound, conformal_lower_bound
 from .dynamic import (
     DynamicAccuracy,
     DynamicCalibration,
@@ -28,6 +29,7 @@ from .validation import (
 __all__ = [
     "ConcordanceComparison",
     "ConcordanceResult",
+    "ConformalLowerBound",
     "DCalibration",
     "DynamicAccuracy",
     "DynamicCalibration",
@@ -38,6 +40,7 @@ __all__ = [
     "brier_score",
     "compare_concordance",
     "concordance_index",
+    "conformal_lower_bound",
     "d_calibration",
     "dynamic_auc",
     "dynamic_brier",
