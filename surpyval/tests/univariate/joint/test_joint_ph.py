@@ -1040,3 +1040,43 @@ def test_qf_inverts_ff_and_takes_the_edges():
     assert model.qf(0.5, item).shape == ()
     with pytest.raises(ValueError, match="tau"):
         model.mean(item, tau=100.0)
+
+
+def test_the_printout_gives_alpha_at_the_covariates_means_first():
+    # A covariate far from 0 (a load near 90): alpha at Z = 0 is far
+    # outside the data (about 1e11, its standard error larger). The
+    # printout leads with alpha at the covariates' means, which is the
+    # reported alpha of the same fleet with the covariate centred: a
+    # refit, by another route, of the same number and standard error.
+    import re
+
+    from surpyval.tests.univariate.joint._fleet import simulate
+
+    items, _ = simulate(n=80, seed=4, gamma=0.5)
+    zbar = np.mean([float(np.ravel(i.covariates)[0]) for i in items])
+
+    def shifted(by):
+        return SurpyvalData.from_items(
+            [
+                i.clone(covariates=np.asarray(i.covariates, float) + by)
+                for i in items
+            ]
+        )
+
+    far = WeibullJointPH.fit(shifted(90.0))
+    centred = WeibullJointPH.fit(shifted(-zbar))
+    text = repr(far)
+    heading = re.search(r"Survival: .*", text).group(0)
+    assert "the covariates' means" in heading
+    assert f"= {zbar + 90:.6g}" in heading
+    row = re.search(r"\n\s+alpha\s+(\S+)\s+(\S+)", text)
+    p = dict(zip(centred.parameter_names, centred.params))
+    se = dict(zip(centred.parameter_names, centred.standard_errors()))
+    assert float(row.group(1)) == pytest.approx(p["alpha"], rel=2e-3)
+    assert float(row.group(2)) == pytest.approx(se["alpha"], rel=2e-2)
+    assert "alpha (Z = 0)" in text
+    # The parameters themselves are unchanged: alpha is at Z = 0
+    far_p = dict(zip(far.parameter_names, far.params))
+    assert far_p["alpha"] > 100 * p["alpha"]
+    # Covariates whose means are 0 print as before
+    assert "means" not in repr(centred)

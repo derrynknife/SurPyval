@@ -1337,11 +1337,71 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 continue
             rows = table.loc[heading].rename(columns=columns)
             rows.index.name = None
+            if heading.startswith("survival:") and self.causes is None:
+                rows, heading = self._alpha_at_means(rows, heading, positions)
             out += "\n{}\n{}".format(
                 heading[0].upper() + heading[1:],
                 format_table(rows, list(columns.values())),
             )
         return out
+
+    def _alpha_at_means(
+        self, rows: pd.DataFrame, heading: str, positions: list[int]
+    ) -> tuple[pd.DataFrame, str]:
+        """The printout's survival part with ``alpha`` at the hazard
+        covariates' means first (the readable value: at the covariates'
+        0, which can be far from the data, ``alpha`` can be 1e11 with a
+        larger standard error), and the parameter itself, at 0, after
+        it as ``alpha (Z = 0)``; unchanged where the means are 0. Its
+        interval is the Wald interval on the log scale, from the delta
+        method on ``log alpha - (gamma . zbar) / beta`` (``/ 1`` for an
+        accelerated model), as the table's other positive parameters'."""
+        import pandas as pd
+
+        names = self.parameter_names
+        kept = [self.feature_names[k] for k in self._kept]
+        means = dict(zip(kept, np.asarray(self._zbar, dtype=float)))
+        hazard = [j for j in positions[2:] if names[j] in means]
+        shift = {names[j]: means[names[j]] for j in hazard}
+        # (a mean within round-off of 0, a centred covariate, is 0)
+        if not hazard or all(abs(v) < 1e-12 for v in shift.values()):
+            return rows, heading
+        params = np.asarray(self.params, dtype=float)
+        i_alpha, i_beta = positions[0], positions[1]
+        alpha, beta = params[i_alpha], params[i_beta]
+        per = 1.0 if self.survival == "AFT" else beta
+        moved = float(sum(params[j] * shift[names[j]] for j in hazard))
+        value = alpha * np.exp(-moved / per)
+        grad = np.zeros(params.size)
+        grad[i_alpha] = 1.0 / alpha
+        if self.survival != "AFT":
+            grad[i_beta] = moved / beta**2
+        for j in hazard:
+            grad[j] = -shift[names[j]] / per
+        try:
+            cov = self.covariance()
+        except ValueError:
+            cov = np.full((params.size, params.size), np.nan)
+        with np.errstate(all="ignore"):
+            se_log = float(np.sqrt(grad @ cov @ grad))
+        half = norm.ppf(0.975) * se_log
+        first = pd.DataFrame(
+            {
+                "estimate": [value],
+                "se": [value * se_log],
+                "lower 95%": [value * np.exp(-half)],
+                "upper 95%": [value * np.exp(half)],
+            },
+            index=["alpha"],
+        )
+        rest = rows.rename(index={"alpha": "alpha (Z = 0)"})
+        at = ", ".join(f"{k} = {v:.6g}" for k, v in shift.items())
+        heading = heading.replace(
+            "alpha at ",
+            f"alpha at the covariates' means ({at}) and ",
+            1,
+        )
+        return pd.concat([first, rest[list(first.columns)]]), heading
 
     def _cause_line(self) -> str:
         """The printout's line of the failure modes (none for a model
