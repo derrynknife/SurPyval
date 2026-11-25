@@ -2913,6 +2913,211 @@ class Parametric(
         cs = np.where(cs > 1.0, 1.0, cs)
         return cs[()]
 
+    def cs_cb(
+        self,
+        x: npt.ArrayLike,
+        given: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        on: str = "sf",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the conditional survival :meth:`cs`, or on
+        the chance of failing in the next window: for an item that has
+        survived to ``given``, the chance it survives (``on="sf"``) or
+        fails (``on="ff"``) within a further ``x``.
+
+        In words: an item aged ``given`` has come through the risk it met
+        so far; what is left is the risk between ``given`` and
+        ``given + x``. That risk is the cumulative hazard over the window,
+
+        .. math::
+            \Delta H = H(given + x) - H(given), \qquad
+            R(x \mid given) = e^{-\Delta H}, \qquad
+            F(x \mid given) = 1 - e^{-\Delta H},
+
+        and the bounds are bounds on :math:`\Delta H`, carried through
+        those maps. At ``given = 0`` they are :meth:`cb`'s at ``x``.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The window lengths, at or above 0.
+        given : array like or scalar
+            The ages already survived, broadcast against ``x``.
+        alpha_ci : scalar, optional
+            The level of significance. Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        on : ('sf', 'ff', 'Hf'), str, optional
+            ``'sf'`` (the default) bounds the conditional survival,
+            ``'ff'`` the conditional failure probability ``1 - cs``,
+            ``'Hf'`` the cumulative hazard over the window.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) is the delta method on the log of
+            :math:`\Delta H`, from its gradient in the parameters (with a
+            limited failure population's and zero inflation's) and their
+            covariance, as :meth:`cb`'s on the log of the cumulative
+            hazard; an offset is held at its estimate, with a warning, as
+            there. ``"lr"`` is the likelihood-ratio bound: the extreme of
+            :math:`\Delta H` over the parameters' likelihood region (an
+            offset's included). There is no bootstrap of it: use
+            ``method='lr'``, or ``bootstrap()`` and each refit's ``cs``.
+
+        Returns
+        -------
+
+        cb : scalar or numpy array
+            The bound(s), shaped as the broadcast of ``x`` and ``given``.
+            Where nothing can happen in the window (it is empty, or ends
+            before the support starts) the bound is the value itself;
+            where :meth:`cs` is ``nan`` (the model says no item survives
+            to ``given``), so is the bound.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+
+        The chance an item aged 8 fails in the next 2, and its bounds:
+
+        >>> round(1 - float(model.cs(2, 8)), 4)
+        0.4177
+        >>> model.cs_cb(2, 8, on="ff").round(4)
+        array([0.3043, 0.5533])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_summary_cb(alpha_ci, bound, "cs_cb")
+        check_option("on", on, ("sf", "ff", "Hf"))
+        if isinstance(method, str) and method.lower() == "bootstrap":
+            raise ValueError(
+                "cs_cb has no bootstrap bound: use method='wald' (the "
+                "default) or method='lr', or bound(...) the refits of "
+                "bootstrap() and take each one's cs(x, given)."
+            )
+        self._refuse_hr_bound("cs_cb", method)
+        self._refuse_weighted_method(method)
+        xs, gs = np.broadcast_arrays(
+            np.asarray(x, dtype=float), np.asarray(given, dtype=float)
+        )
+        shape = xs.shape
+        xs, gs = xs.reshape(-1), gs.reshape(-1)
+        if np.any(xs < 0):
+            raise ValueError(
+                "cs_cb: a window x must be at or above 0 (the time after "
+                f"given); got {xs[xs < 0].tolist()}."
+            )
+        with np.errstate(all="ignore"):
+            H_end = np.asarray(self.Hf(xs + gs), dtype=float).reshape(-1)
+            H_start = np.asarray(self.Hf(gs), dtype=float).reshape(-1)
+        H_hat = np.where(np.isinf(H_start), np.nan, H_end - H_start)
+        inside = np.isfinite(H_hat) & (H_hat > 0)
+        n_out = 2 if bound == "two-sided" else 1
+        Hd = np.repeat(H_hat[:, None], n_out, axis=1)
+        # sf falls as the hazard rises: its one-sided bound is the
+        # hazard's other side
+        side = bound
+        if on == "sf" and bound != "two-sided":
+            side = "upper" if bound == "lower" else "lower"
+        if inside.any():
+            xi, gi = xs[inside], gs[inside]
+            if self._is_lr(method):
+                found = self._cs_cb_lr(xi, gi, alpha_ci, side)
+            else:
+                found = self._cs_cb_wald(xi, gi, alpha_ci, side)
+            Hd[inside] = np.reshape(found, (-1, n_out))
+        with np.errstate(over="ignore", invalid="ignore"):
+            if on == "Hf":
+                out = Hd
+            elif on == "ff":
+                out = -np.expm1(-Hd)
+            else:
+                out = np.exp(-Hd)
+                if bound == "two-sided":
+                    out = out[:, ::-1]
+        if bound != "two-sided":
+            return out[:, 0].reshape(shape)[()]
+        return out.reshape(shape + (2,))
+
+    def _cs_cb_wald(
+        self, xs: npt.NDArray, gs: npt.NDArray, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """The delta-method bound on the cumulative hazard over each
+        window (all inside the support, with a positive hazard), on its
+        log: ``[lower, upper]`` rows, or one column."""
+        self._warn_offset_wald("cs_cb")
+        ctx = self._cb_context()
+
+        def dH(phi: npt.NDArray) -> Any:
+            return self._cb_full_Hf(xs + gs, phi, ctx) - self._cb_full_Hf(
+                gs, phi, ctx
+            )
+
+        with np.errstate(all="ignore"):
+            value = np.atleast_1d(np.asarray(dH(ctx.phi_hat), dtype=float))
+            jac = np.atleast_2d(
+                np.asarray(
+                    _parameter_jacobian(
+                        dH, ctx.phi_hat, (type(self.dist), "window")
+                    ),
+                    dtype=float,
+                )
+            )
+            var = np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        scale = (
+            np.log,
+            np.exp,
+            lambda v: 1.0 / v,
+            (_LN_TINY, _LN_MAX),
+        )
+        out = self._summary_wald(value, var, scale, alpha_ci, bound, "cs")
+        return np.reshape(out, (value.size, -1))
+
+    def _cs_cb_lr(
+        self, xs: npt.NDArray, gs: npt.NDArray, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """The likelihood-ratio bound on the cumulative hazard over each
+        window: its extreme over the likelihood region (every fitted
+        parameter of an offset, limited-failure or zero-inflated model),
+        searched on its log."""
+        self._ensure_surv_data()
+        extended = self._lr_extended()
+        fns: list[Callable[..., Any]]
+        if extended is None:
+            s0 = float(getattr(self.dist, "support", (-np.inf, np.inf))[0])
+
+            def H0(t: float, theta: npt.NDArray) -> float:
+                tg = t - self.gamma
+                if tg <= s0:
+                    return 0.0
+                return float(np.ravel(self.dist.Hf(np.array([tg]), *theta))[0])
+
+            fns = [
+                lambda theta, a=a, g=g: H0(a + g, theta) - H0(g, theta)
+                for a, g in zip(xs, gs)
+            ]
+        else:
+
+            def at(phi: npt.NDArray, a: float, g: float) -> float:
+                model = extended._at(phi)
+                with np.errstate(all="ignore"):
+                    H = np.asarray(model.Hf(np.array([g, a + g])), float)
+                return float(H[1] - H[0])
+
+            fns = [lambda phi, a=a, g=g: at(phi, a, g) for a, g in zip(xs, gs)]
+        scale = (
+            np.log,
+            np.exp,
+            lambda v: 1.0 / v,
+            (_LN_TINY, _LN_MAX),
+        )
+        out = self._summary_cb_lr(fns, alpha_ci, bound, "cs", scale)
+        return np.reshape(out, (len(fns), -1))
+
     @positional_option(
         "a",
         "the lower truncation bound of the draws",

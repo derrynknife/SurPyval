@@ -3323,6 +3323,16 @@ def _parametric_bounds(case):
                     label="rmst_cb[wald]",
                 )
             )
+        # The next window's survival, given an age (cs_cb)
+        out.append(
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=_window_query(case),
+                label="cs_cb[wald]",
+            )
+        )
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
@@ -3416,7 +3426,28 @@ def _parametric_bounds(case):
                 **lr,
             )
         )
+        out.append(
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "lr"},
+                query=_window_query(case),
+                label="cs_cb[lr]",
+                **lr,
+            )
+        )
     return tuple(out)
+
+
+def _window_query(case, Z=None):
+    """The windows ``cs_cb`` is swept at: from the case's first query time
+    to its second, and from its second to its last (with the first
+    covariate row of a regression case)."""
+    x = np.sort(np.asarray(case.x, dtype=float))
+    pairs = ((x[1] - x[0], x[0]), (x[-1] - x[1], x[1]))
+    if Z is None:
+        return pairs
+    return tuple((w, g, Z) for w, g in pairs)
 
 
 def _rmst_tau(case):
@@ -4166,6 +4197,13 @@ def _bounds(case):
                 query=((np.asarray(case.Z, float)[:1],),),
                 label="mean_cb[wald]",
             ),
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=_window_query(case, np.asarray(case.Z, float)[:1]),
+                label="cs_cb[wald]",
+            ),
         )
         if case.name not in _REGRESSION_LR_X:
             return wald
@@ -4192,6 +4230,13 @@ def _bounds(case):
             ),
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
+            Bound(
+                "cs_cb",
+                kind="summary",
+                query=_window_query(case, np.asarray(case.Z, float)[:1]),
+                label="cs_cb[lr]",
+                **lr,
+            ),
             # The parametric bootstrap (#617): the calls with the same
             # n_boot and seed share one set of refits.
             Bound(

@@ -5,6 +5,17 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Bounds on the chance of failing in the next window, given the age
+  now.** ``cs_cb(x, given, alpha_ci, bound, on, method)`` on the
+  parametric models, and ``cs_cb(x, given, Z, ...)`` on the parametric
+  regression models, bound the conditional survival :meth:`cs` (``on="sf"``)
+  or the conditional failure probability ``1 - cs`` (``on="ff"``) or the
+  cumulative hazard over the window (``on="Hf"``): the delta method on its
+  log (``"wald"``), the likelihood-ratio extreme (``"lr"``), and for the
+  regression models the parametric bootstrap. At ``given = 0`` they are
+  ``cb``'s, and the likelihood-ratio bound of a Weibull's window agrees with
+  its profile-likelihood interval to 1e-5.
+
 - **The median's confidence interval on every non-parametric model.**
   ``median_cb(alpha_ci, bound, bound_type)`` on the Kaplan-Meier,
   Nelson-Aalen, Fleming-Harrington and Turnbull estimates gives the
