@@ -286,6 +286,14 @@ v0.30 (unreleased)
   estimated spread is at 0 is warned of, naming it and saying to leave it
   out of ``varying``. See "Items that bend differently" in
   :doc:`Joint Models`.
+- **Spline paths: two recovery studies.** :doc:`Joint Models` quotes
+  them. On a knee (200 fleets of 300 pumps), every spline fit was
+  verified and recovered every parameter: the marker effect +1.7%
+  (se 0.8%), 95% intervals covering 93.5% to 98%. A straight line on the
+  same data took the marker effect as 0.63, not 0.9. With bends that
+  vary (200 fleets of 150), the varying fit recovered the bend's spread
+  (0.996 against 1.0) and ``aic()`` preferred it in all 198 fleets
+  fitted both ways.
 
 **Fixed.**
 
