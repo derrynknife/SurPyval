@@ -5,6 +5,18 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **A likelihood-ratio bound on a parametric regression model's mean.**
+  ``mean_cb(Z, method="lr")`` gives the smallest and largest mean life at
+  ``Z`` over the parameters' likelihood region (searched on the log of the
+  mean above the support's start), where it raised before. It agrees with
+  an independent profile-likelihood interval of an accelerated life
+  model's MTTF to 1e-9. An infinite mean (a cured fraction) has infinite
+  bounds, as the Wald bound's. The mean of a baseline on the whole line
+  (Normal, Gumbel, Logistic) is now integrated below 0 to an absolute
+  tolerance of 1e-13 of the mean as well as a relative one: where that
+  part was 0 the quadrature ran to its limit (1.5 s a mean); means move by
+  less than 1e-13 of themselves.
+
 - **Bounds on the chance of failing in the next window, given the age
   now.** ``cs_cb(x, given, alpha_ci, bound, on, method)`` on the
   parametric models, and ``cs_cb(x, given, Z, ...)`` on the parametric

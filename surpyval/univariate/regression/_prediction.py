@@ -476,6 +476,7 @@ class RestrictedMeanMixin:
     _wald_state: Callable[..., Any]
     _check_inference: Callable[..., None]
     _refuse_weighted_method: Callable[..., None]
+    _is_additive: Callable[..., bool]
 
     def _rmst_tau(self, tau: Any, what: str) -> npt.NDArray:
         """The horizons as a flat array: the largest observed time where
@@ -856,12 +857,17 @@ class RestrictedMeanMixin:
                         )
                     return m_fin * F / (1.0 - s) ** 2
 
+                # Absolute to 1e-13 of the part above 0: the part below is
+                # often 0 to double precision (a Normal far from 0), where
+                # a purely relative tolerance cannot be met and the
+                # quadrature ran to its limit (21,000 evaluations).
+                scale = float(np.max(np.abs(value))) if value.size else 0.0
                 with np.errstate(all="ignore"):
                     negative, _ = quad_vec(
                         below,
                         0.0,
                         1.0,
-                        epsabs=0.0,
+                        epsabs=1e-13 * scale,
                         epsrel=1e-10,
                         norm="max",
                         limit=500,
@@ -923,10 +929,13 @@ class RestrictedMeanMixin:
             (central differences of the mean, the integral of
             :meth:`sf`) and their covariance, as the univariate models'
             ``mean_cb``. ``'bootstrap'`` is the BCa interval of the mean
-            over the parametric bootstrap refits of :meth:`cb`. There is
-            no likelihood-ratio bound on the mean of a regression model:
-            ``'lr'`` is refused (bound a quantile with ``quantile_cb(...,
-            method='lr')`` instead).
+            over the parametric bootstrap refits of :meth:`cb`. ``'lr'``
+            is the likelihood-ratio bound: the smallest and largest mean
+            over the parameters whose likelihood is within the critical
+            value of the best (all the model's free parameters, as
+            :meth:`cb` with ``method='lr'``), searched on the log of the
+            mean above the support's start; it is slower, and needs the
+            data.
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.
@@ -973,13 +982,6 @@ class RestrictedMeanMixin:
 
         check_alpha_ci(alpha_ci)
         method = bound_method(method)
-        if method == "lr":
-            raise ValueError(
-                "mean_cb has no likelihood-ratio bound for a regression "
-                "model: use method='wald' (the default) or "
-                "method='bootstrap', or bound a quantile with "
-                "quantile_cb(p, Z, method='lr')."
-            )
         check_robust_request(robust, cluster, method)
         self._refuse_weighted_method(method)
         self._check_inference()
@@ -989,7 +991,18 @@ class RestrictedMeanMixin:
             dtype=float,
         )
         lower = float(self.distribution.support[0])
-        if method == "bootstrap":
+        if method == "lr":
+            if self._is_additive() and not np.isfinite(lower):
+                raise ValueError(
+                    "mean_cb has no likelihood-ratio bound for an additive "
+                    "hazards model with a baseline on the whole line (its "
+                    "mean needs a schedule, mean_tvc): use method='wald' "
+                    "or method='bootstrap'."
+                )
+            from ._likelihood_ratio import mean_cb_lr
+
+            out = mean_cb_lr(self, rows, alpha_ci, bound)
+        elif method == "bootstrap":
             from ._bootstrap import function_bounds, refits
 
             fits = refits(self, n_boot, random_state)
