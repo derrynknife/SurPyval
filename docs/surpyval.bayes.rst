@@ -49,6 +49,20 @@ the Laplace approximation beyond) and returns a
 .. autoclass:: surpyval.bayes.Target
    :members:
 
+Recurrent-event processes
+-------------------------
+
+``CrowAMSAA.fit_bayes`` and ``HPP.fit_bayes``; see "Reliability growth
+and repairable systems" in :doc:`Bayesian Fitting with SurPyval`.
+
+.. automethod:: surpyval.recurrent.parametric._bayes_fit.BayesFitMixin.fit_bayes
+
+.. autoclass:: surpyval.recurrent.bayes.BayesianRecurrence
+   :members:
+
+.. autoclass:: surpyval.recurrent.bayes.CountPrediction
+   :members:
+
 Comparing fits
 --------------
 

@@ -11,6 +11,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import root
 
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent.parametric._bayes_fit import BayesFitMixin
 from surpyval.recurrent.parametric.counting_process import (
     Boxable,
     CountingProcess,
@@ -44,7 +45,7 @@ def _in_rate_space(neg_ll: Callable, params: ArrayLike) -> Any:
 
 
 @singleton_fitter
-class HPP(CountingProcess):
+class HPP(BayesFitMixin, CountingProcess):
     """
     The homogeneous Poisson process: events at the constant rate
     ``lambda``, so :math:`\\Lambda(t) = \\lambda t`. Its maximum-likelihood

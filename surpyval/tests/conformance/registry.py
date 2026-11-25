@@ -641,6 +641,18 @@ OUT_OF_SCOPE["surpyval.bayes.BayesianResult"] = (
     "(checked in surpyval/tests/bayes/test_shared_layer.py); the "
     "families' own results are registered"
 )
+# The recurrent-event processes' Bayesian fit: not yet a conformance case
+# of its own (its data are a process's, its functions a process's). It is
+# checked against closed forms, the maximum-likelihood fit and frozen PyMC
+# references in surpyval/tests/bayes/test_recurrent_bayes.py, and by
+# simulation-based calibration in
+# surpyval/tests/calibration/test_sbc_recurrent_bayes.py.
+OUT_OF_SCOPE["surpyval.recurrent.bayes.BayesianRecurrence"] = (
+    "a Bayesian fit of a recurrent-event process, built by fit_bayes "
+    "(checked in surpyval/tests/bayes/test_recurrent_bayes.py and "
+    "surpyval/tests/calibration/test_sbc_recurrent_bayes.py; no "
+    "conformance case yet)"
+)
 OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
     _FUNCTION + " (the engine rule behind every family's fit_bayes; "

@@ -55,6 +55,7 @@ def register_adapter(
 def _load_families() -> None:
     """Import the modules that register targets and adapters."""
     import surpyval.bayes.regression  # noqa: F401
+    import surpyval.recurrent.bayes  # noqa: F401
 
 
 def target_for_model(model: Any) -> Any | None:
@@ -77,6 +78,45 @@ def target_from_dict(d: dict) -> Any:
             f"{', '.join(sorted(TARGETS))}."
         )
     return TARGETS[tag].from_dict(d)
+
+
+class Reparameterisation:
+    """Working coordinates for the engines: a one-to-one map of the free
+    parameters' unconstrained values ``phi`` to coordinates ``u`` in
+    which the posterior is closer to a normal with independent axes (a
+    power-law process's expected number of events and its shape, in
+    place of its scale and its shape, whose posterior is a curved
+    ridge). The priors, the results and every summary stay in the
+    model's own parameters; only the grid's lattice and the Laplace
+    normal are laid in ``u``.
+
+    Parameters
+    ----------
+    names : list of str
+        What each working coordinate is, for the diagnostics.
+    forward, inverse : callable
+        ``u = forward(phi)`` and ``phi = inverse(u)``, on rows.
+    log_det : callable
+        ``log |det d phi / d u|`` at rows of ``u``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.bayes.target import Reparameterisation
+    >>> swap = Reparameterisation(
+    ...     ["b", "a"], lambda phi: phi[:, ::-1], lambda u: u[:, ::-1],
+    ...     lambda u: np.zeros(len(u)))
+    >>> swap.inverse(swap.forward(np.array([[1.0, 2.0]])))
+    array([[1., 2.]])
+    """
+
+    def __init__(
+        self, names: list[str], forward: Any, inverse: Any, log_det: Any
+    ) -> None:
+        self.names = list(names)
+        self.forward = forward
+        self.inverse = inverse
+        self.log_det = log_det
 
 
 class Target:
@@ -250,6 +290,12 @@ class Target:
         else ``None``."""
         return None
 
+    def reparam(self, bound: Any) -> Any | None:
+        """Working coordinates for the engines (a
+        :class:`Reparameterisation`) where the posterior is far from
+        normal in the parameters' own, else ``None``."""
+        return None
+
     def quantities(self) -> dict[str, Any]:
         """The family's named quantities for ``prior.on_quantities``:
         ``{keyword: build(key) -> (label, function of the parameters'
@@ -280,6 +326,7 @@ class Target:
 
 
 __all__ = [
+    "Reparameterisation",
     "TARGETS",
     "Target",
     "register_adapter",

@@ -536,6 +536,126 @@ posterior predictive checks on the number of failures, the total time
 on test and the shortest time, each simulated for the same units at the
 same covariates and censored as the data were.
 
+Reliability growth and repairable systems: Crow-AMSAA and the HPP
+-----------------------------------------------------------------
+
+A reliability growth test has few failures, and the question asked of it
+is rarely "what is ``beta``?". It is "what is the MTBF now, what will it
+be after another 400 hours, how many failures should we plan for, and
+have we met the requirement?". Each has a plain Bayesian answer.
+
+In words: the failures say how the failure intensity is changing (for
+the Crow-AMSAA power law, a shape ``beta`` below 1 is growth). A prior
+says what was believed before the test: about the growth rate, about the
+MTBF the system should have reached, or the previous test phase's
+result. The posterior combines them, and every answer above is read from
+it.
+
+.. code-block:: python
+
+    import surpyval as sp
+    from surpyval.recurrent import CrowAMSAA
+
+    # one prototype, tested to 400 hours: 11 failures
+    x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    c = [0] * 11 + [1]
+
+    model = CrowAMSAA.fit_bayes(
+        x, c=c,
+        priors={"beta": sp.prior.around(0.7, between=(0.4, 1.2))},
+    )
+    model.mtbf_cri()                    # the MTBF now: 25 to 113 hours
+    model.mtbf_cri(800.0)               # projected to 800 hours: 24 to 154
+    model.count(duration=100.0)         # failures in the next 100 hours
+    model.mtbf_probability(30.0)        # P(MTBF now >= 30 hours) = 0.92
+
+The posterior median of the MTBF now is 51 hours (the maximum-likelihood
+estimate is 41), with a 95% credible interval of 25 to 113; with no
+prior at all it is 22 to 125. The next 100 hours are expected to bring
+2.0 failures, and with 90% probability between 0 and 5:
+``model.count`` is the *predictive* distribution, a Poisson count whose
+mean is itself uncertain, so it is wider than a Poisson at the fitted
+values. The probability that the MTBF now is at least 30 hours is 0.92.
+
+The posterior of a Crow-AMSAA fit has two parameters, so it is computed
+on the grid: exact, with a stated integration error, and no
+approximation to check. (The grid is laid on the expected number of
+failures by the end of the test and the shape, not on ``alpha`` and
+``beta`` directly, whose posterior is a curved ridge with few failures.)
+
+**A belief about the MTBF, not a parameter.** ``alpha`` means little to
+most people; the MTBF at the end of the test means a lot. State the
+belief there, in place of a prior on ``alpha``:
+
+.. code-block:: python
+
+    belief = sp.prior.on_quantities(
+        CrowAMSAA,
+        mtbf_at={400.0: sp.prior.between(40, 80)},
+        instead_of="alpha",
+    )
+    model = CrowAMSAA.fit_bayes(
+        x, c=c,
+        priors=[belief,
+                {"beta": sp.prior.around(0.7, between=(0.4, 1.2))}],
+    )
+
+``intensity_at`` and ``cif_at`` (the expected number of failures by a
+time) are stated the same way, and ``sp.prior.on_function`` takes any
+other function of the model.
+
+**The previous test phase as the prior.** With the earlier phase's
+fitted model ``phase1`` at hand:
+
+.. code-block:: python
+
+    model = CrowAMSAA.fit_bayes(
+        x2, c=c2, priors=sp.prior.from_fit(phase1, weight=0.5))
+
+``from_fit`` uses the earlier phase's data themselves, their likelihood
+raised to ``weight``: 1 says the design did not change between the
+phases (the fit is then that of both phases' systems together), and a
+lower weight discounts the old evidence because fixes were made. The
+weight is a judgement; try two and compare.
+``sp.prior.from_model(phase1)`` uses the earlier estimates and their
+covariance instead, and takes an earlier Bayesian fit exactly.
+
+**A constant rate, and no failures.** ``HPP.fit_bayes`` with a Gamma
+prior on the rate is the gamma-Poisson pair, in closed form: a prior
+``Gamma(a, b)`` (worth ``a`` failures in ``b`` hours) and ``r`` failures
+in ``T`` hours give ``Gamma(a + r, b + T)``. It answers the question a
+maximum-likelihood fit cannot: after 100 hours with **no** failures,
+
+.. code-block:: python
+
+    from surpyval.recurrent import HPP
+
+    model = HPP.fit_bayes(
+        [100.0], c=[1],
+        priors={"lambda": sp.Gamma.from_params([2.0, 100.0])})
+    model.mtbf_probability(50.0)        # 0.908
+
+the rate is ``Gamma(2, 200)``, and the probability that the MTBF is at
+least 50 hours is 0.908.
+
+``model.loo()`` and ``model.waic()`` take **one system as the unit**
+(its whole history is one observation of the process), so
+``sp.bayes.compare`` between a Crow-AMSAA and an HPP fit asks which
+predicts a new system better; with one system there is nothing to leave
+out. ``model.diagnose()`` runs posterior predictive checks on the number
+of events, the share of them in the later half of each system's
+observation (which a wrong trend gets wrong) and the most events on one
+system (which a fleet of unlike systems gets wrong).
+
+Checked against: the closed form for the shape (with no priors and a
+common end ``T``, ``beta`` is Gamma(N - 1, rate ``sum log(T / t)``), to
+0.2%), the maximum-likelihood estimate (the posterior's peak with no
+priors), PyMC (two frozen references: every posterior point within 2.3
+of the sampler's own Monte Carlo standard errors), and simulation-based
+calibration (300 repetitions each: the 90% intervals held the truth in
+0.93 and 0.91 of them for ``alpha`` and ``beta``, 0.86 and 0.89 for the
+HPP's rate, all inside three standard errors of 0.90).
+
 What every Bayesian fit reports
 -------------------------------
 
