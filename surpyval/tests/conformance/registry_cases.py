@@ -3885,14 +3885,30 @@ def _bounds(case):
             ),
         ),
         # Fine-Gray's cumulative incidence: the case bootstrap
-        # (percentiles); Wald and likelihood-ratio bounds refuse, saying
-        # why.
+        # (percentiles), and on an unstratified, unclustered fit the
+        # delta method on log Lambda(t | Z); the likelihood-ratio bound
+        # refuses, saying why (and the Wald bound on the stratified and
+        # clustered fits).
         "FineGrayModel": (
             Bound(
                 "cb",
                 on=("cif", "sf"),
                 kwargs={"n_boot": 40, "random_state": 0},
                 wald=False,
+            ),
+        ),
+        "FineGray": (
+            Bound(
+                "cb",
+                on=("cif", "sf"),
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+            Bound(
+                "cb",
+                on=("cif", "sf"),
+                kwargs={"method": "wald"},
+                label="cb[wald]",
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),

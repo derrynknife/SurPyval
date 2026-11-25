@@ -424,3 +424,29 @@ def test_fine_gray_cif_bootstrap_coverage():
             bounds = model.cb(times, z, n_boot=n_boot, random_state=r)
         lo[r], hi[r] = bounds[:, 0], bounds[:, 1]
     check_coverage(lo, hi, truth, 0.95, "FineGray cif bootstrap")
+
+
+def test_fine_gray_cif_wald_coverage():
+    # The delta-method bounds of FineGray.cb(method="wald") on the
+    # cumulative incidence at three times, at the covariates (1, 0.5): the
+    # bootstrap study's design (n = 150, about half censored), 400
+    # replicates, seed 342 (fixed before the first run).
+    rng = np.random.default_rng(342)
+    beta = np.array([0.7, -0.5])
+    reps, p, n = 400, 0.5, 150
+    times = np.array([0.25, 0.75, 1.5])
+    z = np.array([1.0, 0.5])
+    truth = 1 - (1 - p * (1 - np.exp(-times))) ** np.exp(z @ beta)
+    lo, hi = np.empty((reps, 3)), np.empty((reps, 3))
+    for r in range(reps):
+        Z = _covariates(rng, n)
+        t, cause = _fine_gray_times(rng, Z, beta, p)
+        cens = rng.exponential(1.0, n)
+        e = cause.astype(object)
+        e[cens < t] = None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = sp.FineGray.fit(np.minimum(t, cens), Z, e, event=1)
+            bounds = model.cb(times, z, method="wald")
+        lo[r], hi[r] = bounds[:, 0], bounds[:, 1]
+    check_coverage(lo, hi, truth, 0.95, "FineGray cif wald")

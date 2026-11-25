@@ -1116,6 +1116,135 @@ def _censoring_q(
     return before_Z * after[:, None] - before[:, None] * after_mean
 
 
+def _cif_log_hazard_influence(
+    fit_data: dict,
+    beta: npt.NDArray,
+    times: npt.NDArray,
+    z0: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Each unit's influence on the log of the cumulative subdistribution
+    hazard ``log Lambda(t | z0)`` at each time of ``times`` (no strata, no
+    clusters), for the Wald bound on the cumulative incidence: ``(log
+    Lambda, influence, units)``, the influence one row per data row and
+    one column per time, and ``units`` the rows' ``n w^2``, so that the
+    variance is ``sum_i units_i influence_it^2``.
+
+    ``Lambda(t | z0) = Lambda0(t) exp(beta'(z0 - zbar))``, ``Lambda0`` the
+    Breslow baseline at the covariate means. A unit moves ``Lambda0(t)``
+    three ways, each linearised:
+
+    * directly, through its event and its place in the risk sets: the
+      jump ``delta_i / S0(x_i)`` (an event at or before ``t``) less its
+      share of the baseline's increments, ``exp(beta'Z_i) sum_{t_k <= t}
+      W_ik dLambda0_k / S0_k``;
+    * through ``beta``: ``-h(t)' psi_i``, ``h(t) = sum_{t_k <= t}
+      dLambda0_k Zbar_k`` (the baseline's derivative in ``beta``, with a
+      minus) and ``psi_i = bread r_i`` the unit's influence on ``beta``
+      (the robust covariance's, its censoring term included);
+    * through the estimated censoring distribution in the weights ``W``,
+      ``G(t_k-) / G(x_j-)`` for a competing failure ``j`` before
+      ``t_k``: the integral of ``q(u) / Y(u)`` against the unit's
+      censoring martingale (as :func:`_censoring_martingale` takes it for
+      the score), with ``q(u) = before(u) sum_{u <= t_k <= t} dLambda0_k
+      G(t_k-) / S0_k`` and ``before(u)`` the risk set's competing
+      failures before ``u``, ``sum_{x_j < u} exp(beta'Z_j) / G(x_j-)``.
+
+    The influence on the log of ``Lambda(t | z0)`` is that on
+    ``Lambda0(t)`` over ``Lambda0(t)``, plus ``(z0 - zbar)' psi_i``.
+    Where ``Lambda0(t)`` is 0 (before the first event) the log is
+    ``-inf`` and its influence 0.
+    """
+    x = np.asarray(fit_data["x"], dtype=float)
+    Z_raw = np.asarray(fit_data["Z"], dtype=float)
+    c = np.asarray(fit_data["c"])
+    counts = np.asarray(fit_data["n"], dtype=float)
+    w = fit_data["w"]
+    w_arr = np.ones(counts.size) if w is None else np.asarray(w, float)
+    is_event = np.asarray(fit_data["is_event"], dtype=bool)
+    is_competing = np.asarray(fit_data["is_competing"], dtype=bool)
+    omega = counts * w_arr
+    (part,) = _strata_parts(x, c, omega, is_event, is_competing, None, False)
+    sets = part.sets
+    at = part.rows
+    kept = np.flatnonzero(np.isfinite(beta))
+    b = np.asarray(beta, dtype=float)[kept]
+    zbar = (omega @ Z_raw) / omega.sum()
+    Z = (Z_raw - zbar)[at][:, kept]
+    xs, om = x[at], omega[at]
+    event_s, cens_s = is_event[at], (c == 1)[at]
+    # The unit's influence on the score, and so on beta
+    with np.errstate(over="ignore", under="ignore"):
+        risk, _, dH, mean, resid = _event_residuals(
+            Z,
+            b,
+            sets,
+            counts[at],
+            None if w is None else w_arr[at],
+            event_s,
+            xs,
+        )
+    resid = resid + _censoring_residuals(
+        Z, risk, sets, om, cens_s, xs, dH, mean
+    )
+    # (``risk`` is exp(beta'Z) less its largest value, and the sums and
+    # increments on its scale: the baseline is exp(shift) times dH's)
+    shift = float(np.max(Z @ b)) if Z.size else 0.0
+    S0 = _risk_set_sums(om * risk, sets)
+    # The information of the weighted partial likelihood, the bread
+    ZZ = np.stack(
+        [
+            _risk_set_sums((om * risk) * Z[:, a] * Z[:, b_], sets)
+            for a in range(Z.shape[1])
+            for b_ in range(Z.shape[1])
+        ],
+        axis=-1,
+    ).reshape(sets.times.size, Z.shape[1], Z.shape[1])
+    info = np.einsum(
+        "k,kab->ab",
+        sets.d,
+        ZZ / S0[:, None, None] - mean[:, :, None] * mean[:, None, :],
+    )
+    bread = safe_inv(info)
+    psi = resid @ bread
+    zc0 = (np.asarray(z0, dtype=float) - zbar)[kept]
+    events = np.flatnonzero(event_s)
+    event_at = np.searchsorted(sets.times, xs[events])
+    cens_times = np.unique(xs[cens_s])
+    if cens_times.size:
+        first = np.searchsorted(xs, cens_times, side="left")
+        carried = sets.competing_over_G * om * risk
+        before = np.concatenate([[0.0], _cumsum(carried)])[first]
+        later = np.searchsorted(sets.times, cens_times, side="left")
+    t_q = np.atleast_1d(np.asarray(times, dtype=float))
+    log_H = np.full(t_q.size, -np.inf)
+    infl = np.zeros((xs.size, t_q.size))
+    for j, t in enumerate(t_q):
+        upto = sets.times <= t
+        H0 = float(np.sum(dH[upto]))
+        if not H0 > 0:
+            continue
+        # directly: the events' jumps less the risk sets' shares
+        L = -risk * _risk_set_weights(np.where(upto, dH / S0, 0.0), sets)
+        jump = np.where(upto[event_at], 1.0 / S0[event_at], 0.0)
+        L[events] += jump
+        # through beta
+        h = (np.where(upto, dH, 0.0)[:, None] * mean).sum(axis=0)
+        L -= psi @ h
+        # through the censoring distribution
+        if cens_times.size:
+            step = np.where(upto, dH * sets.G_t / S0, 0.0)
+            after = np.concatenate([_cumsum(step[::-1])[::-1], [0.0]])
+            q = (before * after[later])[:, None]
+            L += _censoring_martingale(q, cens_times, om, cens_s, xs)[:, 0]
+        log_H[j] = np.log(H0) - shift + float(zc0 @ b)
+        infl[:, j] = L / H0 + psi @ zc0
+    # back to the rows' own order
+    out = np.zeros_like(infl)
+    out[at] = infl
+    return log_H, out, counts * w_arr**2
+
+
 def _runoff_of_cause(
     res: Any,
     maximum: str,
@@ -2183,11 +2312,15 @@ class FineGrayModel(
         quantiles are the ``(n + 1) p``-th smallest refits, as every
         SurPyval bootstrap reads them.
 
-        ``method="wald"`` refuses: a delta-method bound needs the
-        variance of the baseline subdistribution hazard with the
-        influence of the estimated censoring weights on it, which is not
-        built. ``method="lr"`` refuses: the baseline has no likelihood
-        to profile.
+        ``method="wald"``: the delta method on ``log Lambda(t | Z)``, the
+        log of the cumulative subdistribution hazard (so the bounds stay
+        in (0, 1)), its variance the sum of the units' squared influence
+        on it (:func:`_cif_log_hazard_influence`): through their events
+        and risk sets, through the coefficients (Fine and Gray's robust
+        variance) and through the estimated censoring weights. It needs
+        the data rows, and is not built for a stratified, clustered or
+        penalised fit (it refuses, naming the bootstrap). ``method="lr"``
+        refuses: the baseline has no likelihood to profile.
 
         Parameters
         ----------
@@ -2204,9 +2337,9 @@ class FineGrayModel(
             By default ``"two-sided"``, which adds a last axis
             ``[lower, upper]``.
         method : str, optional
-            ``"bootstrap"``, the default.
+            ``"bootstrap"`` (the default) or ``"wald"``.
         n_boot : int, optional
-            The number of refits, by default 200.
+            The number of refits, by default 200 (bootstrap only).
         random_state : optional
             The seed of the resamples, as every SurPyval draw takes it.
         stratum : optional
@@ -2221,8 +2354,9 @@ class FineGrayModel(
         Raises
         ------
         ValueError
-            For ``method="wald"`` or ``"lr"`` (saying why, and to use the
-            bootstrap), an option out of range, or a model that cannot be
+            For ``method="lr"`` (saying why, and to use the bootstrap), a
+            Wald bound on a stratified, clustered or penalised fit, an
+            option out of range, or a model that cannot be
             refitted: one restored with ``from_dict`` (it keeps no rows)
             or a penalised fit (refit and bound it yourself).
 
@@ -2252,13 +2386,7 @@ class FineGrayModel(
         check_option("bound", bound, ("two-sided", "lower", "upper"))
         check_alpha_ci(alpha_ci)
         if method == "wald":
-            raise ValueError(
-                "FineGray has no Wald bound on its cumulative incidence: "
-                "the delta method needs the variance of the baseline "
-                "subdistribution hazard, with the influence of the "
-                "estimated censoring weights on it, which is not built. "
-                "Use method='bootstrap' (the default)."
-            )
+            return self._cb_wald(x, Z, on, alpha_ci, bound, stratum)
         if method == "lr":
             raise ValueError(
                 "FineGray has no likelihood-ratio bound on its cumulative "
@@ -2276,6 +2404,77 @@ class FineGrayModel(
         nan = np.isnan(point.ravel())
         out = np.where(nan[:, None] if out.ndim == 2 else nan, np.nan, out)
         result = out.reshape(point.shape + out.shape[1:])
+        return result[()] if result.ndim == 0 else result
+
+    def _cb_wald(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        on: str,
+        alpha_ci: float,
+        bound: str,
+        stratum: Any,
+    ) -> npt.NDArray:
+        """``cb(method="wald")``: the delta method on ``log Lambda(t |
+        Z)``, from :func:`_cif_log_hazard_influence`."""
+        from surpyval.utils.linalg import bound_signs
+
+        why = None
+        if self._fit_data is None:
+            why = "it was restored with from_dict, which keeps no data rows"
+        elif self.penalty is not None:
+            why = "it is penalised, and its penalty's influence is not built"
+        elif self.is_stratified:
+            why = "it is stratified (the influence is built for one stratum)"
+        elif self.n_clusters is not None:
+            why = "it is clustered (the influence is built for units)"
+        if why is not None:
+            raise ValueError(
+                f"FineGray has no Wald bound for this model: {why}. Use "
+                "method='bootstrap' (the default), refitting where needed."
+            )
+        self._baseline(stratum)  # refuses a stratum on a plain model
+        fit_data = self._fit_data
+        assert fit_data is not None
+        x_arr = np.asarray(x, dtype=float)
+        flat = np.atleast_1d(x_arr).ravel()
+        rows = paired_covariate_rows(
+            named_covariates(Z, self.feature_names),
+            flat.size,
+            np.size(self.beta),
+        )
+        rows = np.broadcast_to(rows, (flat.size, rows.shape[-1]))
+        log_H = np.full(flat.size, np.nan)
+        se = np.full(flat.size, np.nan)
+        ok = ~np.isnan(flat) & np.all(np.isfinite(rows), axis=1)
+        groups: dict = {}
+        for i in np.flatnonzero(ok):
+            groups.setdefault(rows[i].tobytes(), []).append(i)
+        for idx in groups.values():
+            at = np.asarray(idx)
+            with np.errstate(all="ignore"):
+                value, infl, units = _cif_log_hazard_influence(
+                    fit_data, self.beta, flat[at], rows[at[0]]
+                )
+            log_H[at] = value
+            se[at] = np.sqrt(units @ infl**2)
+        # sf falls as the incidence rises: its one-sided bound is the
+        # incidence's other side
+        side = bound
+        if on == "sf" and bound != "two-sided":
+            side = "upper" if bound == "lower" else "lower"
+        alpha, signs = bound_signs(alpha_ci, side)
+        k = norm.ppf(1.0 - alpha) * signs
+        with np.errstate(all="ignore"):
+            cif = -np.expm1(-np.exp(log_H[:, None] + k[None, :] * se[:, None]))
+        # Before the first event the incidence is 0, its own bound
+        cif = np.where(np.isneginf(log_H)[:, None], 0.0, cif)
+        if on == "sf":
+            cif = 1.0 - cif
+            if bound == "two-sided":
+                cif = cif[:, ::-1]
+        out = cif if bound == "two-sided" else cif[:, 0]
+        result = out.reshape(x_arr.shape + out.shape[1:])
         return result[()] if result.ndim == 0 else result
 
     def _bootstrap_cif(

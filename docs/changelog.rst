@@ -5,6 +5,17 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **A Wald bound on a Fine-Gray model's cumulative incidence.**
+  ``FineGrayModel.cb(..., method="wald")`` gives the delta-method bound on
+  ``log Lambda(t | Z)``, from each unit's influence through its events and
+  risk sets, the coefficients and the estimated censoring weights; it
+  raised before. Each influence is the derivative of the estimate in the
+  unit's case weight (exactly without censoring; the standard errors to
+  1e-4 with it), and the 95% bound covers 94.5% to 95.5% in a 400-data-set
+  study. It needs the data rows and is not built for stratified or
+  clustered fits (refused, naming the bootstrap). The default stays
+  ``method="bootstrap"``, so no existing call changes.
+
 - **A likelihood-ratio bound on a parametric regression model's mean.**
   ``mean_cb(Z, method="lr")`` gives the smallest and largest mean life at
   ``Z`` over the parameters' likelihood region (searched on the log of the
