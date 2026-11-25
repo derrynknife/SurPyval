@@ -952,3 +952,91 @@ def test_a_repeated_covariate_is_aliased():
         ref.sf([300.0, 500.0], item),
         rtol=1e-8,
     )
+
+
+# -- quantiles and the mean ---------------------------------------------------
+
+
+def _flat_item(model, level=3.5, now=300.0):
+    item = ItemLifetime(
+        "flat",
+        right_censored=now,
+        markers={float(a): level for a in np.arange(0, now + 1, 10)},
+    )
+    p = dict(zip(model.parameter_names, model.params))
+    hr = np.exp(p["marker_effect"] * (level - model.marker_reference))
+    # The Weibull PH the item is: scale alpha hr^(-1/beta)
+    return item, p["alpha"] * hr ** (-1 / p["beta"]), p["beta"]
+
+
+def test_mean_and_qf_of_a_known_constant_marker_are_a_weibull_phs():
+    # As test_a_constant_known_marker_is_a_weibull_ph: the survival is a
+    # Weibull's with scale a, so E[T | T > u] = u + (a / beta)
+    # Gamma(1 / beta, (u / a)^beta) e^((u / a)^beta) (the upper incomplete
+    # gamma function), and qf(p) = a ((u / a)^beta - log(1 - p))^(1 / beta).
+    from scipy.special import gamma, gammaincc
+
+    model = _with_params(_small(), sd_noise=1e-3)
+    now = 300.0
+    item, a, beta = _flat_item(model, now=now)
+    z = (now / a) ** beta
+    closed = now + a / beta * gamma(1 / beta) * gammaincc(1 / beta, z) * (
+        np.exp(z)
+    )
+    # (781.33; the readings' noise is 1e-3, not 0: agreement to 1e-5)
+    assert model.mean(item) == pytest.approx(closed, rel=1e-5)
+    p = np.array([0.1, 0.5, 0.9])
+    np.testing.assert_allclose(
+        model.qf(p, item), a * (z - np.log1p(-p)) ** (1 / beta), rtol=1e-4
+    )
+
+
+def test_mean_is_the_area_under_the_prediction():
+    # The restricted mean against adaptive quadrature of sf itself.
+    from scipy.integrate import quad
+
+    model = _small()
+    item = _item(markers={0: 3.0, 90: 3.9, 180: 4.4})
+    pred = model.predict(item)
+    a = model._scale()
+    for tau in (400.0, 800.0, 2000.0):
+        points = [
+            q for q in (200 + 0.1 * a, 200 + 0.3 * a, 200 + a) if q < tau
+        ]
+        area = quad(
+            lambda t: float(pred.sf(t)),
+            200.0,
+            tau,
+            limit=400,
+            epsabs=0.0,
+            epsrel=1e-12,
+            points=points,
+        )[0]
+        assert pred.mean(tau) == pytest.approx(200.0 + area, rel=1e-7)
+    assert model.mean(item, tau=800.0) == pred.mean(800.0)
+    assert pred.mean(200.0) == 200.0
+
+
+def test_a_survival_that_levels_off_has_an_infinite_mean():
+    # A line whose slope may be negative carries some items' markers away
+    # from failure: the survival levels off (at about 5e-6 here), and the
+    # mean is infinite, with a warning that says so and what to use.
+    model = _small()
+    item = _item(markers={0: 3.0, 90: 3.9, 180: 4.4})
+    with pytest.warns(UserWarning, match="levels off"):
+        assert np.isinf(model.mean(item))
+    assert np.isfinite(model.mean(item, tau=1e4))
+
+
+def test_qf_inverts_ff_and_takes_the_edges():
+    model = _small()
+    item = _item()
+    p = np.array([0.05, 0.5, 0.95])
+    t = model.qf(p, item)
+    assert np.all(np.diff(t) > 0) and t[0] > 200
+    np.testing.assert_allclose(model.ff(t, item), p, rtol=1e-8)
+    np.testing.assert_array_equal(model.qf(p, item), model.predict(item).qf(p))
+    np.testing.assert_array_equal(model.qf([0.0, 1.0], item), [200.0, np.inf])
+    assert model.qf(0.5, item).shape == ()
+    with pytest.raises(ValueError, match="tau"):
+        model.mean(item, tau=100.0)
