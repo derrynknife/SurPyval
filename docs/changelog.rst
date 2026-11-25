@@ -5,6 +5,32 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **Three censored series in a Gaussian or Student-t copula, with nearly
+  singular correlations: a wrong-number fix.** The likelihood of a row
+  with three censored series (and the copula's CDF, survival function and
+  truncation mass of three series) integrates one series numerically and
+  the other two in closed form. When the correlation matrix was nearly
+  singular, the other two series given the first were almost perfectly
+  correlated, their joint probability changed sharply where their limits
+  meet, and the rule stepped over that change, where the documentation
+  said it was accurate to 1e-9. Against R's ``mvtnorm`` it was off by up
+  to 1e-5 (3.7e-4 of the probability, for a Student-t copula whose
+  correlation matrix has smallest eigenvalue 1e-3); against a rule ten
+  times finer, by up to 1.3e-4 (10% of a probability above 1e-8) at a
+  smallest eigenvalue of 1e-4, 2e-5 (4%) at 1e-3 and 7e-8 at 1e-2. The
+  integral is now split where those limits meet, with a finer step (1/12
+  in place of 1/8): it agrees with ``mvtnorm`` within the reference's own
+  error in all 48 cases of a new reference set
+  (``scripts/reference/reference_r_mvtnorm_rectangle3.R``, half of them
+  nearly singular, down to a smallest eigenvalue of 7e-4), and is within
+  4e-10 (5e-6 of a probability above 1e-8) of the ten-times-finer rule
+  down to a smallest eigenvalue of 1e-4. Well-conditioned results (a
+  smallest eigenvalue of 0.1 or more) move by under 1e-11. Fits move by
+  the error that was there: two Gaussian fits of 400 rows with every
+  series censored in 44 and 83 of them (smallest eigenvalue 0.45 and
+  0.01) move their correlations by under 6e-8. Rows with three censored
+  series take about twice as long.
+
 - ``method="laplace"`` results move slightly: the approximation was laid
   on a lattice of up to three dimensions and is now drawn by quasi-Monte
   Carlo (parameter intervals are the normal's exact quantiles, as

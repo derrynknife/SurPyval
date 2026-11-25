@@ -358,3 +358,48 @@ def test_too_many_coordinates_are_refused():
         rectangle(
             np.full((1, k - 1), -INF), np.zeros((1, k - 1)), np.eye(k - 1), 4.0
         )
+
+
+def _nearly_singular(rng, smallest):
+    """A random correlation matrix of three coordinates whose smallest
+    eigenvalue is ``smallest``."""
+    a = rng.normal(size=(3, 3))
+    s = a @ a.T
+    for _ in range(50):
+        d = np.sqrt(np.diag(s))
+        s = s / np.outer(d, d)
+        w, v = np.linalg.eigh(s)
+        w[0] = smallest
+        s = v @ np.diag(w) @ v.T
+    d = np.sqrt(np.diag(s))
+    s = s / np.outer(d, d)
+    return (s + s.T) / 2
+
+
+@pytest.mark.parametrize("nu", [None, 4.0])
+def test_three_coordinates_of_a_nearly_singular_matrix(monkeypatch, nu):
+    """With a smallest eigenvalue of 1e-4 or 1e-3 the other two
+    coordinates given the first are almost perfectly correlated, and their
+    rectangle changes sharply where their standardised limits meet. The
+    quadrature agrees with one of a ten times finer step (measured: within
+    4e-10; the rule before it split its panels at those points was off
+    by up to 1.3e-4, and 10% of the probability)."""
+    from surpyval.multivariate.parametric.copula import _rectangle
+    from surpyval.multivariate.parametric.copula.elliptical import (
+        _tanh_sinh,
+    )
+
+    rng = np.random.default_rng(675)
+    cases = [
+        (_nearly_singular(rng, smallest), *_censored_limits(rng, 8, 3))
+        for smallest in (1e-4, 1e-4, 1e-3, 1e-3)
+    ]
+    ours = [rectangle(lo, hi, corr, nu) for corr, lo, hi in cases]
+    fine = _tanh_sinh(step=1.0 / 128.0, reach=4.5)
+    monkeypatch.setattr(_rectangle, "_Z", fine[0])
+    monkeypatch.setattr(_rectangle, "_ZC", fine[1])
+    monkeypatch.setattr(_rectangle, "_W", fine[2])
+    for (corr, lo, hi), got in zip(cases, ours):
+        assert np.linalg.eigvalsh(corr)[0] < 2e-3
+        ref = rectangle(lo, hi, corr, nu)
+        np.testing.assert_allclose(got, ref, rtol=1e-5, atol=2e-9)
