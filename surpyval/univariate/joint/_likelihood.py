@@ -790,8 +790,10 @@ class MarkerPaths:
         centres: Any = None,
     ) -> None:
         self.model = model
+        from ._multi import lag_of, weight_of
+
         self.links = tuple(tuple(pair) for pair in links)
-        self.lag = float(lag)
+        self.lag = lag
         self.weight = weight
         names = list(model.names)
         P = len(model.parameter_names)
@@ -802,7 +804,9 @@ class MarkerPaths:
         cuts: set = set()
         for name, path_model in zip(names, model.models):
             own = tuple(link for marker, link in self.links if marker == name)
-            part = PathFunction(path_model, own, lag, weight)
+            part = PathFunction(
+                path_model, own, lag_of(lag, name), weight_of(weight, name)
+            )
             self.parts.append(part)
             if own:
                 cuts.update(part.cuts)

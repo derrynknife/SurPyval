@@ -21,6 +21,16 @@ Carlo error) and the interval's coverage over the verified fits.
 Writes ``results_markers.jsonl`` (one fit a line; a rerun skips the seeds
 there) and ``summary_markers.json`` here. ``PROCS=<n>`` sets the worker
 processes (default 2).
+
+The rerun at 800 items (``ITEMS=800``; design fixed 26 Nov 2026, before
+it ran): the same fleets four times the size, 200 of them (seeds 3200 to
+3399, so none is a fleet of the first run grown), the same fit, written
+to ``results_markers_n800.jsonl`` and ``summary_markers_n800.json``. It
+asks whether the vibration effect's bias at 200 items (+3.3%, Monte
+Carlo se 1.0%) shrinks as 1/n, to about +0.8% (se about 0.5%), as the
+one-marker log-link bias did. Each fit takes about four times as long
+as at 200 items (about four minutes), so the run is about seven hours
+on two processes.
 """
 
 import json
@@ -33,11 +43,15 @@ from multiprocessing import Pool
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SEED0 = 3000
+ITEMS = int(os.environ.get("ITEMS", "200"))
+if ITEMS not in (200, 800):
+    raise SystemExit("ITEMS is 200 (the first run) or 800 (the rerun).")
+SEED0 = 3000 if ITEMS == 200 else 3200
 REPS = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 PROCS = int(os.environ.get("PROCS", "2"))
-RESULTS = os.path.join(HERE, "results_markers.jsonl")
-SUMMARY = os.path.join(HERE, "summary_markers.json")
+TAG = "" if ITEMS == 200 else f"_n{ITEMS}"
+RESULTS = os.path.join(HERE, f"results_markers{TAG}.jsonl")
+SUMMARY = os.path.join(HERE, f"summary_markers{TAG}.json")
 
 
 def truth() -> dict:
@@ -57,7 +71,7 @@ def one(seed: int) -> dict:
     from surpyval.degradation import LinearPath
     from surpyval.tests.univariate.joint._multi_fleet import simulate
 
-    x, c, m, _ = simulate(n=200, seed=seed)
+    x, c, m, _ = simulate(n=ITEMS, seed=seed)
     start = time.time()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -89,7 +103,8 @@ def summarise(rows: list) -> dict:
     true = truth()
     good = [r for r in rows if r.get("maximum") == "verified"]
     out: dict = {
-        "design": __doc__.split("\n\n")[1],
+        "design": __doc__.split("\n\n")[1 if ITEMS == 200 else 4],
+        "items": ITEMS,
         "fits": len(rows),
         "verified": len(good),
         "failed": sum(1 for r in rows if "error" in r),

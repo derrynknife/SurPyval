@@ -21,6 +21,7 @@ The checks:
 
 import json
 import pickle
+import warnings
 
 import numpy as np
 import pytest
@@ -358,3 +359,182 @@ def test_the_accelerated_part_takes_several_markers():
     assert effects["vibration.marker_effect"] > 0
     assert effects["temperature.marker_effect"] > 0
     assert "accelerated failure time" in repr(model)
+
+
+# -- a lag and a weight of each marker's own -------------------------------
+
+
+def _reduced_fit(**kw):
+    x, c, m, _ = simulate(n=80, seed=7)
+    fitter = JointPH(
+        Weibull,
+        {"vibration": LinearPath, "temperature": LinearPath},
+        varying={"temperature": ["a"]},
+        link=kw.pop("link", {"vibration": "value", "temperature": []}),
+        random_effects="by_marker",
+        **kw,
+    )
+    return fitter, fitter.fit(x, c=c, markers=m)
+
+
+@pytest.fixture(scope="module")
+def lagged():
+    """A lag on the vibration only (the temperature not in the hazard),
+    given once as one lag for all and once by marker."""
+    return _reduced_fit(lag=30.0), _reduced_fit(lag={"vibration": 30.0})
+
+
+def test_a_lag_by_marker_of_the_one_followed_is_the_lag_for_all(lagged):
+    (_, every), (fitter, by_marker) = lagged
+    assert fitter.lag == {"vibration": 30.0, "temperature": 0.0}
+    assert np.array_equal(by_marker.params, every.params)
+    assert by_marker.neg_ll() == every.neg_ll()
+    assert "lags vibration 30" in repr(by_marker)
+    assert "lag: vibration 30" in repr(fitter)
+    restored = surpyval.from_dict(json.loads(json.dumps(by_marker.to_dict())))
+    assert restored.lag == {"vibration": 30.0, "temperature": 0.0}
+    question = dict(markers={"vibration": {0.0: 3.0, 60.0: 3.4}}, given=60)
+    assert np.array_equal(
+        restored.sf([100.0, 300.0], **question),
+        by_marker.sf([100.0, 300.0], **question),
+    )
+
+
+def test_each_marker_follows_its_own_lag_and_weight():
+    from surpyval.univariate.joint._likelihood import MarkerPaths
+    from surpyval.univariate.joint._multi import MarkerSet
+
+    paths = MarkerPaths(
+        MarkerSet(["vibration", "temperature"], [LinearPath, LinearPath]),
+        (("vibration", "value"), ("temperature", "cumulative")),
+        {"vibration": 30.0, "temperature": 0.0},
+        {"vibration": None, "temperature": ("window", 90.0)},
+    )
+    vibration, temperature = paths.parts
+    assert (vibration.lag, vibration.weight) == (30.0, None)
+    assert (temperature.lag, temperature.weight) == (0.0, ("window", 90.0))
+    # the integrals split at each marker's lag and window
+    assert paths.cuts == (30.0, 90.0)
+    ages = np.array([10.0, 50.0, 200.0])
+    params = np.broadcast_to([1.0, 0.1, 2.0, 0.05], (3, 4))
+    value = paths.terms[0][2](params, ages)
+    # the vibration's value 30 later, its age-0 value before
+    np.testing.assert_allclose(value, [1.0, 3.0, 18.0])
+    area = paths.terms[1][2](params, ages)
+    window = lambda t: (  # noqa: E731
+        2.0 * (t - max(t - 90, 0)) + 0.025 * (t**2 - max(t - 90, 0) ** 2)
+    )
+    np.testing.assert_allclose(area, [window(t) for t in ages])
+
+
+def test_a_lag_or_weight_by_marker_is_checked():
+    paths = {"vibration": LinearPath, "temperature": LinearPath}
+    with pytest.raises(ValueError, match="not markers"):
+        JointPH(Weibull, paths, lag={"pressure": 3.0})
+    with pytest.raises(ValueError, match="'lag' is how long"):
+        JointPH(Weibull, paths, lag={"vibration": -1.0})
+    with pytest.raises(ValueError, match="'temperature' has no such link"):
+        JointPH(
+            Weibull,
+            paths,
+            link={
+                "vibration": ["value", "cumulative"],
+                "temperature": "value",
+            },
+            weight={"temperature": ("window", 30.0)},
+        )
+    fitter = JointPH(
+        Weibull,
+        paths,
+        link={"vibration": ["value", "cumulative"], "temperature": "value"},
+        weight={"vibration": ("exponential", 50.0)},
+        lag={"temperature": 7.0},
+    )
+    assert fitter.weight == {
+        "vibration": ("exponential", 50.0),
+        "temperature": None,
+    }
+    assert "weight: vibration exponential 50" in repr(fitter)
+    assert "lag: temperature 7" in repr(fitter)
+
+
+# -- compare_links of one marker ---------------------------------------------
+
+
+def test_compare_links_of_one_marker_the_others_as_given(reduced):
+    """Each candidate is the fit with the named marker's link and the
+    other's as the fitter has them: the value candidate is the reduced
+    fit itself."""
+    (x, c, m), two, _ = reduced
+    fitter = JointPH(
+        Weibull,
+        {"vibration": LinearPath, "temperature": LinearPath},
+        varying={"temperature": ["a"]},
+        link={"vibration": "value", "temperature": []},
+        random_effects="by_marker",
+    )
+    comparison = fitter.compare_links(
+        x, c=c, markers=m, links=["value", "slope"], marker="vibration"
+    )
+    assert comparison.marker == "vibration"
+    assert sorted(comparison.models) == ["slope", "value"]
+    value = comparison.models["value"]
+    assert value.link == two.link
+    np.testing.assert_allclose(value.params, two.params, rtol=1e-6)
+    slope = comparison.models["slope"]
+    assert slope.link == (("vibration", "slope"),)
+    assert comparison.best_link in (("value",), ("slope",))
+    assert "vibration" in comparison.verdict
+    assert "the marker's" not in comparison.verdict
+    tests = comparison.likelihood_ratio_tests()
+    assert len(tests) == 0  # neither link nested in the other
+
+
+def test_compare_links_of_several_markers_names_the_marker():
+    paths = {"vibration": LinearPath, "temperature": LinearPath}
+    fitter = JointPH(Weibull, paths)
+    with pytest.raises(ValueError, match="marker='vibration'"):
+        fitter.compare_links([1.0], markers=[{}])
+    with pytest.raises(ValueError, match="marker='vibration'"):
+        fitter.compare_links([1.0], markers=[{}], marker="pressure")
+    with pytest.raises(ValueError, match="leave marker out"):
+        JointPH(Weibull, LinearPath).compare_links([1.0], marker="vibration")
+
+
+# -- a spline marker's bends without spread ---------------------------------
+
+
+@pytest.mark.parametrize("sd_bend, warned", [(1e-6, True), (0.5, False)])
+def test_the_bends_without_spread_warning_is_per_marker(sd_bend, warned):
+    """Each marker's varying bends are checked against its own noise and
+    its own reading ages, and named with the marker."""
+    from types import SimpleNamespace
+
+    from surpyval.degradation import SplinePath
+    from surpyval.univariate.joint._multi import MarkerSet
+    from surpyval.univariate.joint.joint_ph import _warn_bends_without_spread
+
+    knee = SplinePath(knots=[365.0], boundary=(0.0, 730.0))
+    paths = MarkerSet(["vibration", "temperature"], [knee, knee])
+    params = {
+        "sd_vibration.s1": sd_bend,
+        "vibration.sd_noise": 0.4,
+        # the temperature's bend has spread for its noise
+        "sd_temperature.s1": 1e-3,
+        "temperature.sd_noise": 0.01,
+    }
+    model = SimpleNamespace(
+        parameter_names=list(params), params=np.array(list(params.values()))
+    )
+    ages = [np.array([0.0, 300.0, 700.0, 0.0, 700.0])] * 3
+    channels = [np.array([0, 0, 0, 1, 1])] * 3
+    varying = ("vibration.level", "vibration.s1", "temperature.s1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _warn_bends_without_spread(paths, varying, model, ages, channels)
+    said = [str(w.message) for w in caught]
+    assert len(said) == int(warned)
+    if warned:
+        assert "'vibration.s1' (sd 1e-06" in said[0]
+        assert "its noise sd 0.4" in said[0]
+        assert "temperature" not in said[0]

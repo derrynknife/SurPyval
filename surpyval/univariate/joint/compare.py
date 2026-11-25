@@ -128,15 +128,22 @@ def _has_cumulative(link: Any) -> bool:
     return "cumulative" in ([link] if isinstance(link, str) else list(link))
 
 
-def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
-    """The fitters to compare, one per link; the default links left out
-    because the path cannot take them, and why."""
+def _candidates(
+    fitter: JointPHFitter, links: Any, marker: str | None = None
+) -> tuple[list, list, list]:
+    """The fitters to compare, one per link (of ``marker``, with several
+    markers); the default links left out because the path cannot take
+    them, and why."""
     from .joint_ph import JointPH, cannot_follow
 
     left_out: list[str] = []
     reasons: list[str] = []
     if links is None:
-        path = fitter.path_model
+        path = (
+            fitter.path_model
+            if marker is None
+            else fitter.path_model.of(marker)
+        )
         chosen: list[Any] = []
         for link in DEFAULT_LINKS:
             why = cannot_follow(path, link)
@@ -172,29 +179,72 @@ def _candidates(fitter: JointPHFitter, links: Any) -> tuple[list, list, list]:
                 "such as ['value', 'slope', ['value', 'slope']]; got "
                 f"{links!r}."
             )
-    # a weight is on the accumulated exposure: the links that follow it
-    fitters = [
-        JointPH(
-            fitter.dist,
-            fitter.path_model,
-            fitter.varying,
-            link,
-            fitter.lag,
-            fitter.weight if _has_cumulative(link) else None,
-            random_effects=fitter.random_effects,
-        )
-        for link in chosen
-    ]
+    if marker is not None:
+        fitters = [_marker_candidate(fitter, marker, link) for link in chosen]
+    else:
+        # a weight is on the accumulated exposure: the links that follow it
+        fitters = [
+            JointPH(
+                fitter.dist,
+                fitter.path_model,
+                fitter.varying,
+                link,
+                fitter.lag,
+                fitter.weight if _has_cumulative(link) else None,
+                random_effects=fitter.random_effects,
+            )
+            for link in chosen
+        ]
     seen: dict[tuple, int] = {}
     for k, candidate in enumerate(fitters):
-        if candidate.link in seen:
+        compared = tuple(
+            candidate.link
+            if marker is None
+            else [term for m, term in candidate.link if m == marker]
+        )
+        if compared in seen:
             raise ValueError(
-                f"'links' names the link {link_label(candidate.link)!r} "
-                f"twice (entries {seen[candidate.link]} and {k}): give "
+                f"'links' names the link {link_label(compared)!r} "
+                f"twice (entries {seen[compared]} and {k}): give "
                 "each once."
             )
-        seen[candidate.link] = k
+        seen[compared] = k
     return fitters, left_out, reasons
+
+
+def _marker_candidate(fitter: JointPHFitter, marker: str, link: Any) -> Any:
+    """The fitter of several markers with ``marker``'s link ``link`` and
+    every other marker's as ``fitter`` has it; ``fitter``'s weight kept
+    where a marker it weights still follows its area."""
+    from collections.abc import Mapping
+
+    from .joint_ph import JointPH
+
+    names = list(fitter.markers or [])
+    own = [link] if isinstance(link, str) else list(link)
+    links = {
+        name: (
+            own if name == marker else [k for m, k in fitter.link if m == name]
+        )
+        for name in names
+    }
+    weight = fitter.weight
+    follows_area = [n for n in names if "cumulative" in links[n]]
+    if isinstance(weight, Mapping):
+        weight = {
+            n: w for n, w in weight.items() if w and n in follows_area
+        } or None
+    elif weight is not None and not follows_area:
+        weight = None
+    return JointPH(
+        fitter.dist,
+        dict(zip(names, fitter.path_model.models)),
+        list(fitter.varying),
+        links,
+        fitter.lag,
+        weight,
+        random_effects=fitter.random_effects,
+    )
 
 
 def _reason(error: Exception) -> str:
@@ -235,6 +285,7 @@ def compare_links(
     kwargs: dict,
     links: Any = None,
     metric: str = "aic",
+    marker: str | None = None,
 ) -> LinkComparison:
     """The work of :meth:`JointPHFitter.compare_links`: each candidate
     fitted to the same data, then ranked."""
@@ -244,7 +295,13 @@ def compare_links(
         METRICS,
         "It is the criterion the links are ranked by (lower is better).",
     )
-    fitters, left_out, reasons = _candidates(fitter, links)
+    fitters, left_out, reasons = _candidates(fitter, links, marker)
+
+    def label_of(candidate: Any) -> str:
+        if marker is None:
+            return link_label(candidate.link)
+        return link_label([k for m, k in candidate.link if m == marker])
+
     if left_out:
         warnings.warn(
             "; ".join(reasons)
@@ -260,12 +317,23 @@ def compare_links(
     # The value link first: its path estimates start the other fits (the
     # path part changes little from link to link), or, without it, the
     # first fit's.
-    queue = sorted(fitters, key=lambda f: f.link != ("value",))
+    queue = sorted(fitters, key=lambda f: label_of(f) != "value")
     start = None
     for candidate in queue:
-        label = link_label(candidate.link)
+        label = label_of(candidate)
         own = dict(kwargs)
-        if reference is not None and "value" not in candidate.link:
+        if reference is not None and marker is not None:
+            # With several markers the reference is by marker: the
+            # compared marker's goes to the candidates that follow its
+            # value
+            mine = [k for m, k in candidate.link if m == marker]
+            if "value" not in mine and marker in reference:
+                kept = {k: v for k, v in reference.items() if k != marker}
+                if kept:
+                    own["marker_reference"] = kept
+                else:
+                    del own["marker_reference"]
+        elif reference is not None and "value" not in candidate.link:
             # The value's reference moves alpha only, and only where the
             # hazard follows the value: the other links are fitted
             # without it.
@@ -295,10 +363,10 @@ def compare_links(
             kept.message, kept.category, kept.filename, kept.lineno
         )
     # in the order the links were given
-    order = [link_label(f.link) for f in fitters]
+    order = [label_of(f) for f in fitters]
     models = {label: fitted[label] for label in order if label in fitted}
     failed = {label: failed[label] for label in order if label in failed}
-    out = LinkComparison(models, failed, metric)
+    out = LinkComparison(models, failed, metric, marker)
     if failed:
         warnings.warn(
             f"compare_links could not fit {len(failed)} of "
@@ -389,12 +457,36 @@ class LinkComparison:
     """
 
     def __init__(
-        self, models: dict, failed: dict, metric: str = "aic"
+        self,
+        models: dict,
+        failed: dict,
+        metric: str = "aic",
+        marker: str | None = None,
     ) -> None:
         self.models: dict[str, JointModel] = dict(models)
         self.failed: dict[str, str] = dict(failed)
         self.metric = metric
+        #: With several markers, the one whose links are compared (the
+        #: others' as the fitter has them in every candidate).
+        self.marker = marker
         self.best: JointModel | None = self._choose()
+
+    def _link(self, model: JointModel) -> tuple:
+        """The candidate's link compared: its own, or with several
+        markers the compared marker's."""
+        if self.marker is None:
+            return tuple(model.link)
+        return tuple(k for m, k in model.link if m == self.marker)
+
+    def _follows(self, model: JointModel) -> str:
+        """What the candidate's hazard follows, in words (of the
+        compared marker, by name, with several)."""
+        said = _follows(self._link(model))
+        if self.marker is None:
+            return said
+        return said.replace("the marker's", f"{self.marker}'s").replace(
+            "the marker is", f"{self.marker} is"
+        )
 
     def _measure(self, model: JointModel) -> float:
         return float(getattr(model, self.metric)())
@@ -424,19 +516,19 @@ class LinkComparison:
         ]
         return min(
             close,
-            key=lambda m: (int(m.k), _order(m.link), self._measure(m)),
+            key=lambda m: (int(m.k), _order(self._link(m)), self._measure(m)),
         )
 
     @property
     def best_link(self) -> tuple | None:
         """The link of the best fit, as its ``link`` (``("value",
         "slope")``, ...); ``None`` where no fit is ranked."""
-        return None if self.best is None else tuple(self.best.link)
+        return None if self.best is None else tuple(self._link(self.best))
 
     @property
     def best_label(self) -> str | None:
         """The name of the best fit's link (``"value + slope"``, ...)."""
-        return None if self.best is None else link_label(self.best.link)
+        return None if self.best is None else link_label(self._link(self.best))
 
     def _nested(self) -> dict[str, tuple[str, float]]:
         """``{richer: (simpler, p_value)}``: for each ranked link with a
@@ -461,9 +553,11 @@ class LinkComparison:
     def _test_words(self, richer: str, simpler: str, p: float) -> str:
         """What a likelihood-ratio test says, in words: ``"the level adds
         nothing (test p = 0.53)"``."""
-        small = self.models[simpler].link
+        small = self._link(self.models[simpler])
         extra = [
-            term for term in self.models[richer].link if term not in small
+            term
+            for term in self._link(self.models[richer])
+            if term not in small
         ]
         verb = "adds" if len(extra) == 1 else "add"
         said = "to the fit" if p < _TEST_LEVEL else "nothing"
@@ -606,10 +700,12 @@ class LinkComparison:
             if self._measure(m) - best_value < NO_REAL_PREFERENCE
         ]
         worse = others[len(close) :]
-        sentences = [f"Risk follows {_follows(best.link)}."]
+        sentences = [f"Risk follows {self._follows(best)}."]
         for model in close:
-            if set(best.link) < set(model.link):
-                extra = [t for t in model.link if t not in best.link]
+            if set(self._link(best)) < set(self._link(model)):
+                extra = [
+                    t for t in self._link(model) if t not in self._link(best)
+                ]
                 # a little lower, but not enough to prefer it
                 how = "clearly " if self._measure(model) < best_value else ""
                 sentences.append(
@@ -619,14 +715,14 @@ class LinkComparison:
                 gap = abs(self._measure(model) - best_value)
                 sentences.append(
                     "The data cannot tell this from a risk that follows "
-                    f"{_follows(model.link)} ({name} differs by "
+                    f"{self._follows(model)} ({name} differs by "
                     f"{gap:.1f}: no real preference)."
                 )
-        test = self._nested().get(link_label(best.link))
+        test = self._nested().get(link_label(self._link(best)))
         if test is not None:
             simpler, p = test
-            small = self.models[simpler].link
-            extra = [t for t in best.link if t not in small]
+            small = self._link(self.models[simpler])
+            extra = [t for t in self._link(best) if t not in small]
             verb = "adds" if len(extra) == 1 else "add"
             said = "to" if p < _TEST_LEVEL else "little to"
             text = (
@@ -639,7 +735,7 @@ class LinkComparison:
             how = "clearly worse" if min(gaps) >= CLEARLY_WORSE else "worse"
             if len(worse) == 1:
                 sentences.append(
-                    f"A risk that follows {_follows(worse[0].link)} fits "
+                    f"A risk that follows {self._follows(worse[0])} fits "
                     f"{how} ({name} {gaps[0]:.1f} higher)."
                 )
             else:
@@ -683,7 +779,7 @@ class LinkComparison:
         rows = []
         for small_label, small in ranked.items():
             for big_label, big in ranked.items():
-                if not set(small.link) < set(big.link):
+                if not set(self._link(small)) < set(self._link(big)):
                     continue
                 df = int(big.k - small.k)
                 ll_small = float(small.log_likelihood)
@@ -736,7 +832,9 @@ class LinkComparison:
         return {
             "metric": self.metric,
             "best": self.best_label,
-            "best_link": None if self.best is None else list(self.best.link),
+            "best_link": (
+                None if self.best is None else list(self._link(self.best))
+            ),
             "verdict": self.verdict,
             "table": [
                 {key: _plain(value) for key, value in row.items()}

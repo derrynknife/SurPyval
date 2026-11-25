@@ -877,7 +877,11 @@ def _is_schema_5_joint(d: dict) -> bool:
     return (
         d.get("survival") == "AFT"
         or d.get("how") == "two-stage"
-        or (d.get("lag") or 0) > 0
+        or (
+            any(v > 0 for v in d["lag"].values())
+            if isinstance(d.get("lag"), dict)
+            else (d.get("lag") or 0) > 0
+        )
         or d.get("weight") is not None
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
         or (d.get("random_effects") or "full") != "full"

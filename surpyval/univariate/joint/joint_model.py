@@ -53,6 +53,14 @@ from ._likelihood import (
     log_integrand,
     scatter,
 )
+from ._multi import (
+    lag_to_dict,
+    lag_words,
+    marker_lags,
+    marker_weights,
+    weight_to_dict,
+    weight_words,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -1336,8 +1344,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             (
                 "links: "
                 + ", ".join(link_words(link) for link in self.link)
-                + (f", lag {self.lag:g}" if self.lag > 0 else "")
-                + _weight_words(self.weight)
+                + lag_words(self.lag, heading=True)
+                + weight_words(self.weight)
                 + two,
                 list(range(j + 2 + p, j + 2 + p + len(self.link))),
             ),
@@ -1554,9 +1562,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.univariate.regression._summary import format_table
 
         followed = ", ".join(link_words(link) for link in self.link)
-        followed += _weight_words(self.weight)
-        if self.lag > 0:
-            followed += f", {self.lag:g} earlier (lag)"
+        followed += weight_words(self.weight)
+        followed += lag_words(self.lag)
         if self.survival == "AFT":
             survival = (
                 f"{self.dist.name} accelerated failure time, ageing sped "
@@ -2483,12 +2490,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 list(link) if isinstance(link, tuple) else link
                 for link in self.link
             ],
-            **({} if self.lag == 0 else {"lag": float(self.lag)}),
-            **(
-                {}
-                if self.weight is None
-                else {"weight": [self.weight[0], float(self.weight[1])]}
-            ),
+            **lag_to_dict(self.lag),
+            **weight_to_dict(self.weight),
             "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -2638,14 +2641,26 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             for link in (model_dict.get("link") or ("value",))
         )
         # saved before the lag, or with none: at once
-        out.lag = check_lag(model_dict.get("lag", 0.0))
-        # saved before the weights, or with none: all the exposure
+        saved_lag = model_dict.get("lag", 0.0)
         saved_weight = model_dict.get("weight")
-        out.weight = check_weight(
-            None if saved_weight is None else tuple(saved_weight)
-        )
+        if out.markers is not None and isinstance(saved_lag, Mapping):
+            # a lag by marker
+            out.lag = marker_lags(out.markers, saved_lag)
+        else:
+            out.lag = check_lag(saved_lag)
+        if out.markers is not None and isinstance(saved_weight, Mapping):
+            out.weight = marker_weights(
+                out.markers,
+                {k: tuple(v) for k, v in saved_weight.items()},
+                out.link,
+            )
+        else:
+            # saved before the weights, or with none: all the exposure
+            out.weight = check_weight(
+                None if saved_weight is None else tuple(saved_weight)
+            )
         plain = [k[1] if isinstance(k, tuple) else k for k in out.link]
-        if out.weight is not None and "cumulative" not in plain:
+        if isinstance(out.weight, tuple) and "cumulative" not in plain:
             raise ValueError(
                 "A joint model's weight is on its accumulated exposure "
                 "(the 'cumulative' link); the dict has the weight "

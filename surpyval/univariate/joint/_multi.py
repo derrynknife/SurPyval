@@ -237,6 +237,114 @@ def marker_links(names: list, link: Any) -> tuple:
     return tuple(out)
 
 
+def marker_lags(names: list, lag: Any) -> Any:
+    """The lag of each marker: one number for every marker (a float, as
+    with one marker), or a dict ``{marker: lag}`` (a marker left out at
+    once, 0), each checked by :func:`~._likelihood.check_lag`."""
+    from ._likelihood import check_lag
+
+    if not isinstance(lag, Mapping):
+        return check_lag(lag)
+    given = _per_marker(lag, names, "lag")
+    return {
+        name: 0.0 if value is None else check_lag(value)
+        for name, value in given.items()
+    }
+
+
+def marker_weights(names: list, weight: Any, links: tuple) -> Any:
+    """The weight on each marker's accumulated exposure: one weight for
+    every marker that has the 'cumulative' link (a tuple or ``None``, as
+    with one marker), or a dict ``{marker: weight}`` (a marker left out
+    unweighted), each checked by :func:`~._likelihood.check_weight` and
+    refused for a marker whose area the hazard does not follow."""
+    from ._likelihood import check_weight
+
+    if not isinstance(weight, Mapping):
+        checked = check_weight(weight)
+        if checked is not None and not any(
+            k == "cumulative" for _, k in links
+        ):
+            raise ValueError(
+                "'weight' weights the accumulated exposure, the area "
+                "under a marker's path that the 'cumulative' link "
+                "follows, and no marker here has that link. Add it "
+                "(link={marker: ['value', 'cumulative']}), or leave "
+                "weight out."
+            )
+        return checked
+    given = _per_marker(weight, names, "weight")
+    out: dict = {}
+    for name, value in given.items():
+        checked = None if value is None else check_weight(value)
+        if checked is not None and (name, "cumulative") not in links:
+            raise ValueError(
+                f"'weight' for marker {name!r} weights the accumulated "
+                "exposure, the area under its path that the 'cumulative' "
+                f"link follows, and {name!r} has no such link. Add it "
+                f"(link={{{name!r}: ['value', 'cumulative']}}), or leave "
+                f"{name!r} out of weight."
+            )
+        out[name] = checked
+    return out
+
+
+def lag_of(lag: Any, name: str) -> float:
+    """Marker ``name``'s lag (``lag`` one for all, or by marker)."""
+    return float(lag.get(name, 0.0)) if isinstance(lag, Mapping) else lag
+
+
+def weight_of(weight: Any, name: str) -> Any:
+    """Marker ``name``'s weight (``weight`` one for all, or by marker)."""
+    return weight.get(name) if isinstance(weight, Mapping) else weight
+
+
+def lag_words(lag: Any, heading: bool = False) -> str:
+    """The lag in words, to follow the links' (empty with none): ``",
+    30 earlier (lag)"``, or with ``heading`` the summary's ``", lag
+    30"``; by marker ``", lags vibration 30, temperature 7"``."""
+    if not isinstance(lag, Mapping):
+        if not lag > 0:
+            return ""
+        return f", lag {lag:g}" if heading else f", {lag:g} earlier (lag)"
+    said = [f"{name} {value:g}" for name, value in lag.items() if value > 0]
+    return f", lags {', '.join(said)}" if said else ""
+
+
+def weight_words(weight: Any) -> str:
+    """The weights by marker in words (empty with none); one weight for
+    all is the one marker's words (``joint_model._weight_words``)."""
+    from .joint_model import _weight_words
+
+    if not isinstance(weight, Mapping):
+        return _weight_words(weight)
+    said = [
+        f"{name}{_weight_words(value)[1:]}"
+        for name, value in weight.items()
+        if value is not None
+    ]
+    return f", weights: {'; '.join(said)}" if said else ""
+
+
+def lag_to_dict(lag: Any) -> dict:
+    """The lag as a saved model holds it (nothing for none)."""
+    if isinstance(lag, Mapping):
+        if not any(v > 0 for v in lag.values()):
+            return {}
+        return {"lag": {k: float(v) for k, v in lag.items()}}
+    return {} if lag == 0 else {"lag": float(lag)}
+
+
+def weight_to_dict(weight: Any) -> dict:
+    """The weight as a saved model holds it (nothing for none)."""
+    if weight is None:
+        return {}
+    if isinstance(weight, Mapping):
+        kept = {k: [v[0], float(v[1])] for k, v in weight.items() if v}
+        return {"weight": kept} if kept else {}
+    return {"weight": [weight[0], float(weight[1])]}
+
+
 def marker_random_effects(random_effects: Any, varying: tuple) -> Any:
     """``random_effects`` with ``"by_marker"`` (each marker's varying
     parameters correlated with each other, uncorrelated with another

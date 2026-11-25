@@ -239,6 +239,18 @@ v0.30 (unreleased)
   points asked about are in, not the whole grid: 200 resamples of 400
   pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
   to the last digit.
+- **Joint models of several markers: a lag and a weight for each
+  marker, ``compare_links`` of one marker, and the spline-bend warning
+  for each marker.** ``JointPH(Weibull, {...}, lag={"vibration": 30},
+  weight={"vibration": ("window", 90)})`` gives each marker its own
+  delay and its own weight on its accumulated exposure. A marker left
+  out of the dict has no lag and no weight, and one number or one
+  weight still applies to every marker. ``fitter.compare_links(data,
+  marker="vibration")`` compares that marker's links, with each other
+  marker's links as the fitter has them. A spline marker's varying
+  bends whose spread is estimated at 0 are now warned of, as with one
+  marker, each against its own marker's noise; the warning names them
+  ``"vibration.s1"``. Saved models keep a lag or weight by marker.
 
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
