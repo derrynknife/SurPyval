@@ -357,6 +357,30 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
 
         return Normal
 
+    def _runaway_advice(
+        self, runaway: list[str], values: dict, offset: bool = False
+    ) -> str:
+        """The GeneralizedGamma's limits as Q runs off. The gamma variable
+        of shape q = 1/Q^2 -> 0 has G^q tending to a uniform, so x tends
+        to c U^(sigma Q): for Q -> inf the power law F = (x/c)^(1/(sigma
+        Q)) up to c, which ends at the largest observation, and for Q ->
+        -inf its mirror, a support that starts at c."""
+        if "Q" in runaway and values["Q"] > 0:
+            return (
+                "as Q grows the GeneralizedGamma approaches a power law "
+                "F(x) = (x/c)**(1/(sigma*Q)) up to x = c, which ends at the "
+                "largest observation: the data look bounded above, which no "
+                "GeneralizedGamma is; compare a family with an upper limit, "
+                "or the Gompertz and Weibull (surpyval.fit_best)"
+            )
+        if "Q" in runaway and values["Q"] < 0:
+            return (
+                "as Q falls the GeneralizedGamma approaches a distribution "
+                "whose support starts at the smallest observation: the data "
+                "look bounded below; compare an offset fit (offset=True)"
+            )
+        return super()._runaway_advice(runaway, values, offset)
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:

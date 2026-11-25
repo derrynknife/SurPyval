@@ -5,7 +5,9 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
-- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. Where it has the
+- ``fit_best`` also tries the new ``GeneralizedGamma`` and ``Gompertz``. On
+  50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
+  Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
   lognormal fits, its extra parameter usually costs it the AIC and BIC
   comparison, and ``metric="neg_ll"`` (which has no penalty) will now
@@ -168,6 +170,11 @@ v0.30 (unreleased)
   fits (right censored, left truncated, PH on ``sex``) to 1e-6 in
   log-likelihood and a hundredth of a standard error in the estimates.
   See :doc:`univariate/gompertz`.
+
+- A ``GeneralizedGamma`` fit whose ``Q`` runs off says where it is going:
+  for ``Q`` growing, a power law up to the largest observation (data that
+  look bounded above); for ``Q`` falling, a support that starts at the
+  smallest one (compare an offset fit).
 
 - **The PyMC bridge takes regression models and groups.**
   ``surpyval.pymc.censored_likelihood`` and ``log_likelihood`` take a
