@@ -91,7 +91,7 @@ def test_cb_normal_bounds_match_manual_formula():
     z = norm.ppf(0.975)
     R = model.R
     se = np.sqrt(model.greenwood * R**2)
-    cb = model.cb(model.x, bound_type="normal")
+    cb = model.cb(model.x, bound_type="plain")
     assert np.allclose(cb[:, 0], R - z * se, atol=1e-12)
     assert np.allclose(cb[:, 1], R + z * se, atol=1e-12)
 
@@ -165,7 +165,7 @@ def test_cb_dist_t_removed():
     with pytest.raises(ValueError, match="bootstrap_cb"):
         model.cb([2.0, 3.0], dist="t")
     with pytest.raises(ValueError, match="'dist' must be 'z'"):
-        model.R_cb([2.0, 3.0], dist="t")
+        model._survival_cb([2.0, 3.0], dist="t")
     # 'z' (the default) is unaffected.
     assert model.cb([2.0, 3.0], dist="z").shape == (2, 2)
     assert np.allclose(model.cb([2.0, 3.0]), model.cb([2.0, 3.0], dist="z"))
@@ -324,7 +324,7 @@ def test_cb_and_friends_reject_unknown_bound():
     with pytest.raises(ValueError, match="'bound'"):
         model.cb(2, bound="both")
     with pytest.raises(ValueError, match="'bound'"):
-        model.R_cb(2, bound="both")
+        model._survival_cb(2, bound="both")
     with pytest.raises(ValueError, match="'bound'"):
         model.plot(bound="both")
     with pytest.raises(ValueError, match="'bound'"):

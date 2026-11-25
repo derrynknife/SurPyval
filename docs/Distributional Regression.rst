@@ -88,12 +88,12 @@ shape at each load is one call away:
     model.parameters_at(loads).round(2)
 
 At 1 kN the shape is 1.25, close to random failures; at 4 kN it is 2.8,
-clear wear-out. ``parameter_cb`` bounds a parameter at each row, and
+clear wear-out. ``param_cb(name, Z=...)`` bounds a parameter at each row, and
 ``plot_parameter`` draws it against one covariate with its band:
 
 .. jupyter-execute::
 
-    print(model.parameter_cb("beta", loads).round(2))
+    print(model.param_cb("beta", Z=loads).round(2))
     ax = model.plot_parameter("beta", "load")
 
 The likelihood-ratio test of "the shape does not depend on load"
@@ -139,7 +139,7 @@ start early.
                        atol=0.05)
     assert np.allclose(model.quantile_cb(0.1, loads)[3], [237.1, 347.3],
                        atol=0.05)
-    _b = model.parameter_cb("beta", loads)
+    _b = model.param_cb("beta", Z=loads)
     assert np.all(_b[:, 0] < model.parameters_at(loads).iloc[:, 1])
 
 Choosing each parameter's covariates
@@ -307,7 +307,7 @@ tests check each of these gives the same fit.
 ``method="lr"`` gives likelihood-ratio bounds and ``method="bootstrap"``
 parametric bootstrap bounds, for the parameters (``param_cb``), the
 functions (``cb``), the quantiles (``quantile_cb``) and each row's
-parameters (``parameter_cb``, computed on the link's scale, so a shape's
+parameters (``param_cb`` with ``Z``, computed on the link's scale, so a shape's
 bound stays above 0). A calibration study (in the test suite) checks
 their coverage. ``parameters_at(Z)`` gives each row's parameters and
 ``distribution_at(row)`` the univariate distribution of one unit, with

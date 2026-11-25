@@ -143,7 +143,7 @@ events, the increments of the observed and expected cumulative hazards,
 the cumulative excess hazard ``Hf``, its standard error and net survival.
 ``cb`` gives pointwise bounds on ``sf``, ``ff`` or ``Hf``, on the log
 scale (``bound_type="log"``, the default, as R's relsurv) or the plain
-one (``"normal"``); neither is cut at 1.
+one (``"plain"``); neither is cut at 1.
 
 .. jupyter-execute::
 

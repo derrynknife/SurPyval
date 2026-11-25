@@ -43,7 +43,13 @@ The interval level is always `alpha_ci` (0.05 gives a 95% interval), seeds are
 always `random_state`, bootstrap sizes `n_boot`, times `x` and probabilities
 `p`. **0.22:** the old 0.21 spellings (`alpha=`, `confidence=`, `seed=`, `B=`,
 `t=`, Cox `method=`, `cause=`, `id_col=`, `time_col=`) are removed and raise
-`TypeError`.
+`TypeError`. **0.30:** the scale of a pointwise bound, `bound_type=`, has R's
+`conf.type` names everywhere: `"log-log"` (the default of the non-parametric,
+Cox, competing-risks and multi-state curves), `"log"` (the MCF's default),
+`"plain"`, `"logit"`, `"arcsine"`; `"exp"` and `"normal"` warn until 0.31. A
+model's coefficient bounds are `param_cb` (Buckley-James and quantile
+regression too; `bootstrap_ci` warns), and `diagnose`, `compare_concordance`,
+`compare_predictions` and `calibration_curve` take `alpha_ci`.
 
 `sp.fit_best(x, ...)` fits the continuous candidates and returns the best by
 AIC (or `metric="bic"`, `"aic_c"`, `"neg_ll"`). **0.23:** a mixture is a
@@ -499,7 +505,7 @@ eh.summary(); eh.sf(5, [1]); eh.observed_sf(5, [1], age=70, stratum="F")
   odds coefficients are ours negated). A `ParametricRegressionModel`, so
   every bound works.
 - **Distributional:** `covariates={"beta": ["load"]}` or
-  `formulas={"alpha": ..., "beta": ...}` per parameter; `parameter_cb`,
+  `formulas={"alpha": ..., "beta": ...}` per parameter; `param_cb(name, Z=)`,
   `plot_parameter`; log link for positive parameters. Signs as AFT (since
   0.27): a positive scale/location coefficient = shorter life
   (`alpha(z) = alpha e^{-b'z}`, the AFT coefficient); shape/sigma

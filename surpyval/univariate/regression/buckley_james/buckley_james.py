@@ -59,7 +59,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.validation import check_alpha_ci
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
 from .._concordance import ConcordanceMixin
@@ -271,7 +271,7 @@ class BuckleyJamesModel(
     #: applicable"`` (one of ``MAXIMUM_STATES``,
     #: ``surpyval.utils.no_maximum``); ``converged`` says how it ended.
     maximum: str = "not applicable"
-    #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
+    #: The fitted ``(Y, delta, Z, w)``, for ``param_cb`` and
     #: ``concordance``; ``None`` when not kept.
     _data: tuple | None
 
@@ -350,7 +350,7 @@ class BuckleyJamesModel(
         S_eps(log t + beta'Z)``, so what is stored is the coefficients ``beta``
         and the residual survival step arrays (``_resid`` and ``_resid_surv``).
         The fit data ``(Y, delta, Z, w)`` is stored too, so the restored model
-        can still run :meth:`bootstrap_ci`.
+        can still run :meth:`param_cb`.
 
         See Also
         --------
@@ -523,7 +523,7 @@ class BuckleyJamesModel(
         which a unit of the covariate shortens the life. Buckley-James has
         no closed-form standard error, so ``se(coef)``, ``z`` and ``p``
         are ``nan``; with ``n_boot`` the intervals are the percentile
-        bootstrap intervals of :meth:`bootstrap_ci` (``n_boot`` refits,
+        bootstrap intervals of :meth:`param_cb` (``n_boot`` refits,
         seeded by ``random_state``), else ``nan``.
 
         Parameters
@@ -561,7 +561,9 @@ class BuckleyJamesModel(
             self.parameter_names, beta, nan, alpha_ci, p=nan
         )
         if n_boot is not None:
-            bounds = self.bootstrap_ci(alpha_ci, n_boot, random_state)
+            bounds = self.param_cb(
+                None, alpha_ci, n_boot=n_boot, random_state=random_state
+            )
             level = f"{100 * (1 - alpha_ci):g}%"
             lower, upper = bounds[:, 0], bounds[:, 1]
             table["coef lower " + level] = lower
@@ -570,26 +572,35 @@ class BuckleyJamesModel(
             table["exp(coef) upper " + level] = np.exp(upper)
         return table
 
-    def bootstrap_ci(
+    def param_cb(
         self,
+        name: str | None = None,
         alpha_ci: float = 0.05,
+        bound: str = "two-sided",
         n_boot: int = 200,
         random_state: Any = None,
     ) -> npt.NDArray:
         """
-        Percentile bootstrap confidence intervals for the coefficients.
+        Percentile bootstrap confidence bounds on the coefficients.
 
-        Buckley-James has no simple closed-form standard error, so uncertainty
-        is obtained by resampling observations with replacement, refitting, and
-        taking percentiles of the coefficient distribution. Counts ``n`` are
-        frequency weights, so the observations resampled are the rows
-        expanded by their counts: the bounds are those of the data written
-        out one row per observation.
+        Buckley-James has no simple closed-form standard error, so the
+        uncertainty is found by resampling the observations with
+        replacement, refitting, and taking percentiles of the refitted
+        coefficients. Counts ``n`` are frequency weights, so the
+        observations resampled are the rows expanded by their counts: the
+        bounds are those of the data written out one row per observation.
+        (This was ``bootstrap_ci`` until v0.30.)
 
         Parameters
         ----------
+        name : str, optional
+            A coefficient, one of :attr:`parameter_names`. ``None`` (the
+            default) bounds every coefficient.
         alpha_ci : float, optional
             One minus the confidence level of the intervals. Default 0.05.
+        bound : ('two-sided', 'lower', 'upper'), optional
+            A one-sided bound puts all of ``alpha_ci`` on one side, so it
+            is that end of the two-sided interval at ``2 * alpha_ci``.
         n_boot : int, optional
             The number of bootstrap resamples. Default 200.
         random_state : None, int or numpy.random.Generator, optional
@@ -599,13 +610,49 @@ class BuckleyJamesModel(
         Returns
         -------
         numpy.ndarray
-            An ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
+            For every coefficient, an ``(n_coef, 2)`` array of ``[lower,
+            upper]`` bounds (``(n_coef,)`` one-sided); for one, its
+            ``[lower, upper]`` (or the one bound).
         """
         check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        names = list(self.parameter_names)
+        if name is not None and name not in names:
+            raise ValueError(
+                f"Unknown coefficient {name!r}; this model's coefficients "
+                f"are {names}."
+            )
+        boot = self._bootstrap_draws(n_boot, random_state)
+        out = np.asarray(percentile_bounds(boot, alpha_ci, bound))
+        return out if name is None else out[names.index(name)]
+
+    def bootstrap_ci(
+        self,
+        alpha_ci: float = 0.05,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Deprecated in v0.30, removed in v0.31: call
+        ``param_cb(alpha_ci=..., n_boot=..., random_state=...)``, which
+        gives the same bounds."""
+        from surpyval.utils.deprecation import REMOVED_IN_NEXT
+        from surpyval.utils.warnings import caller_stacklevel
+
+        warnings.warn(
+            "BuckleyJamesModel.bootstrap_ci is deprecated and will be "
+            f"removed in v{REMOVED_IN_NEXT}; call param_cb(alpha_ci=..., "
+            "n_boot=..., random_state=...), which gives the same bounds.",
+            FutureWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        return self.param_cb(None, alpha_ci, "two-sided", n_boot, random_state)
+
+    def _bootstrap_draws(self, n_boot: int, random_state: Any) -> list:
+        """The coefficients of ``n_boot`` refits to resampled data."""
         if self._data is None:
             raise ValueError(
-                "bootstrap_ci needs the fit data, which this model does not "
-                "carry"
+                "param_cb needs the fit data, which this model does not "
+                "carry: its bounds are the bootstrap's, from refits to it."
             )
         Y, delta, Z, w = self._data
         p = self.beta.size
@@ -638,7 +685,7 @@ class BuckleyJamesModel(
                 boot.append(expand(-g, kept, p))
             except np.linalg.LinAlgError:
                 continue
-        return percentile_bounds(boot, alpha_ci)
+        return boot
 
     def __repr__(self) -> str:
         lines = [
@@ -746,7 +793,7 @@ class BuckleyJames_(FitterRepr):
         >>> model = BuckleyJames.fit(x, Z, c=c)
         >>> model.beta.round(3)
         array([0.435])
-        >>> model.bootstrap_ci(random_state=1).round(3)
+        >>> model.param_cb(random_state=1).round(3)
         array([[0.342, 0.532]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])

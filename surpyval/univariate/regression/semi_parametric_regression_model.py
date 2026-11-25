@@ -1347,13 +1347,15 @@ class SemiParametricRegressionModel(
         - ``"log-log"`` (the default): on :math:`\log H`, :math:`H
           e^{\pm z\,\mathrm{se} / H}`, which keeps both bounds inside
           (0, 1). It is the scale of the Kaplan-Meier, Nelson-Aalen and
-          Aalen bounds (their ``bound_type="exp"``, also accepted), so
+          Aalen bounds (``bound_type="exp"`` until v0.30, still
+          accepted with a warning), so
           curves drawn together get bounds by the same rule;
         - ``"log"`` (R's default ``conf.type``, to match R's
           ``survfit`` printout): on :math:`\log S = -H`,
           :math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1;
         - ``"plain"``: on :math:`S` itself, :math:`S \pm z S\,
-          \mathrm{se}`, cut to [0, 1] (``"normal"`` is also accepted).
+          \mathrm{se}`, cut to [0, 1] (``"normal"`` until v0.30,
+          still accepted with a warning).
 
         The bounds on ``ff`` are one minus those on ``sf``, and those on
         ``Hf`` are minus their logarithm. Before the first event time the
@@ -1429,14 +1431,10 @@ class SemiParametricRegressionModel(
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, ("two-sided", "lower", "upper"))
-        check_option(
-            "bound_type",
-            bound_type,
-            ("log", "log-log", "plain", "exp", "normal"),
-        )
-        bound_type = {"exp": "log-log", "normal": "plain"}.get(
-            bound_type, bound_type
-        )
+        from surpyval.univariate.nonparametric._scales import scale_name
+
+        bound_type = scale_name(f"{type(self).__name__}.cb", bound_type)
+        check_option("bound_type", bound_type, ("log", "log-log", "plain"))
         if method != "wald":
             raise ValueError(
                 "The Cox model's predicted curves have Wald bounds only "

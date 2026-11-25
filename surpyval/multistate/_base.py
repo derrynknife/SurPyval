@@ -3,16 +3,37 @@ prediction, and the bounds."""
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 
-def check_bound_args(alpha_ci: float, bound: str, bound_type: str) -> None:
+def check_bound_args(
+    alpha_ci: float, bound: str, bound_type: str, owner: Any = None
+) -> str:
+    """Check a bound's arguments and return ``bound_type`` by its name
+    since v0.30: ``"log-log"`` or ``"plain"`` (``"exp"`` and ``"normal"``
+    until then, still accepted with a warning naming ``owner``'s method,
+    the caller)."""
+    import sys
+
+    from surpyval.utils.deprecation import (
+        SURVIVAL_SCALE_RENAMES,
+        renamed_value,
+    )
+
     check_alpha_ci(alpha_ci)
     check_option("bound", bound, BOUNDS)
-    check_option("bound_type", bound_type, ("exp", "normal"))
+    method = sys._getframe(1).f_code.co_name
+    where = method if owner is None else f"{type(owner).__name__}.{method}"
+    bound_type = renamed_value(
+        where, "bound_type", bound_type, SURVIVAL_SCALE_RENAMES
+    )
+    check_option("bound_type", bound_type, ("log-log", "plain"))
+    return bound_type
 
 
 def probability_bounds(
@@ -25,16 +46,16 @@ def probability_bounds(
     r"""Pointwise bounds on probabilities ``p`` with standard errors
     ``se``: ``[lower, upper]`` rows, or one side.
 
-    ``'exp'`` works on the log(-log) scale, :math:`p^{\exp(\pm z\,
+    ``'log-log'`` works on the log(-log) scale, :math:`p^{\exp(\pm z\,
     \sigma / (p \log p))}`, which keeps the bounds in (0, 1); where ``p``
-    is 0 or 1, or ``se`` is 0, the bounds are ``p``. ``'normal'`` is
+    is 0 or 1, or ``se`` is 0, the bounds are ``p``. ``'plain'`` is
     :math:`p \pm z \sigma`."""
     from scipy.stats import norm
 
     z = norm.ppf(1.0 - alpha_ci / (2.0 if bound == "two-sided" else 1.0))
     p = np.asarray(p, dtype=float)
     se = np.asarray(se, dtype=float)
-    if bound_type == "normal":
+    if bound_type == "plain":
         lower, upper = p - z * se, p + z * se
     else:
         inside = (se > 0) & (p > 0) & (p < 1)

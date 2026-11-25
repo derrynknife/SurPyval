@@ -34,7 +34,7 @@ The process stops at the last level the data determine,
 Each unit's predicted distribution (``ff``, ``sf``, ``Hf``, ``qf``) is read
 from its quantiles at the fitted levels, rearranged into order where they
 cross; ``ff`` rises in steps to ``tau_max`` and holds it, and ``qf`` is
-``nan`` above it. There is no closed-form standard error: ``bootstrap_ci``,
+``nan`` above it. There is no closed-form standard error: ``param_cb(tau=...)``,
 ``summary(n_boot=...)``, ``quantile_cb`` and ``cb`` give percentile bootstrap
 intervals, resampling the units. Only observed and right-censored data with
 positive times are accepted.

@@ -98,7 +98,7 @@ METHODS = ("pohar-perme", "ederer2")
 _NAMES = {"pohar-perme": "Pohar Perme", "ederer2": "Ederer II"}
 
 #: The scales a pointwise bound is formed on.
-BOUND_TYPES = ("log", "normal")
+BOUND_TYPES = ("log", "plain")
 
 #: The functions a bound is on.
 _CB_ON = ("sf", "R", "ff", "F", "Hf")
@@ -466,12 +466,13 @@ class RelativeSurvival(SerialisableMixin):
         bound : {"two-sided", "lower", "upper"}, optional
             Defaults to ``"two-sided"`` (``[lower, upper]`` on the last
             axis). A one-sided bound puts all of ``alpha_ci`` on one side.
-        bound_type : {"log", "normal"}, optional
+        bound_type : {"log", "plain"}, optional
             ``"log"`` (the default, as R's relsurv): a normal interval for
             the cumulative excess hazard, :math:`\hat\Lambda_E \pm z
             \hat\sigma`, so :math:`\hat S_E e^{\pm z \hat\sigma}` on net
-            survival. ``"normal"``: :math:`\hat S_E \pm z \hat S_E
-            \hat\sigma` on net survival itself. Neither is cut at 1: net
+            survival. ``"plain"`` (``"normal"`` until v0.30):
+            :math:`\hat S_E \pm z \hat S_E \hat\sigma` on net survival
+            itself. Neither is cut at 1: net
             survival can exceed it. (The log(-log) scale of the
             Kaplan-Meier bounds is not offered: the cumulative excess
             hazard can be 0 or below.) The bounds on ``ff`` are one
@@ -498,6 +499,14 @@ class RelativeSurvival(SerialisableMixin):
         check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
+        from surpyval.utils.deprecation import renamed_value
+
+        bound_type = renamed_value(
+            "RelativeSurvival.cb",
+            "bound_type",
+            bound_type,
+            {"normal": "plain"},
+        )
         check_option("bound_type", bound_type, BOUND_TYPES)
         on = {"R": "sf", "F": "ff"}.get(on, on)
         H, variance, _ = self._parts(np.asarray(x, dtype=float))

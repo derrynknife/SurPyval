@@ -250,7 +250,7 @@ def test_refusals():
     with pytest.raises(ValueError, match="x has 9 failures"):
         compare_predictions(TIMES[:9], HPP)  # the default start is 10
     with pytest.raises(ValueError, match="alpha"):
-        compare_predictions(TIMES, HPP, alpha=5)
+        compare_predictions(TIMES, HPP, alpha_ci=5)
 
 
 @pytest.mark.calibration

@@ -589,6 +589,77 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         value = self.model._dist_params_at(rows, params)[k]
         return _links.link(self.links[k], value)
 
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+        Z: npt.ArrayLike | pd.DataFrame | None = None,
+    ) -> npt.NDArray:
+        """
+        Confidence bounds on one fitted parameter, or, with ``Z``, on the
+        distribution's parameter ``name`` at each covariate row of ``Z``.
+
+        Without ``Z``, ``name`` is a fitted parameter (a coefficient such
+        as ``"beta_0"``), bounded as every regression's ``param_cb``
+        bounds it (see
+        :meth:`~surpyval.univariate.regression.ParametricRegressionModel.param_cb`).
+
+        With ``Z``, ``name`` is one of the distribution's parameters
+        (``"alpha"``, ``"beta"``, ...), and the result has a row per row of
+        ``Z``, ``[lower, upper]`` for a two-sided bound. The bounds are
+        computed on the parameter's link scale, so they stay inside its
+        range (a shape's above 0). ``method="wald"`` (the default) is the
+        delta method from the observed information; ``"lr"`` the extremes
+        of the parameter over the likelihood-ratio region,
+        ``2 [l_hat - l] <= chi2_1``, as :meth:`cb` with ``method="lr"``
+        takes them; ``"bootstrap"`` the BCa interval from ``n_boot``
+        parametric bootstrap refits (``random_state`` seeds them). For a
+        fit with weights ``w`` the Wald bound uses the robust covariance,
+        the bootstrap is the case bootstrap (the units resampled with
+        their weights) and ``"lr"`` is refused; ``robust`` and ``cluster``
+        are not taken. (This was ``parameter_cb(name, Z, ...)`` until
+        v0.30.)
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> model = WeibullDistributional.fit(x, load)
+        >>> model.param_cb("beta", Z=[[0.0], [1.0]]).round(2)
+        array([[1.15, 1.67],
+               [2.36, 3.39]])
+        """
+        if Z is None:
+            return super().param_cb(
+                name,
+                alpha_ci=alpha_ci,
+                bound=bound,
+                method=method,
+                n_boot=n_boot,
+                random_state=random_state,
+                robust=robust,
+                cluster=cluster,
+            )
+        if robust or cluster is not None:
+            raise ValueError(
+                "param_cb with Z bounds the distribution's parameter at "
+                "covariate rows, which takes no robust or cluster "
+                "covariance: a weighted fit's bound already uses the "
+                "robust one. Leave robust and cluster out."
+            )
+        return self._parameter_at_rows_cb(
+            name, Z, alpha_ci, bound, method, n_boot, random_state
+        )
+
     def parameter_cb(
         self,
         name: str,
@@ -599,34 +670,34 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         n_boot: int = 200,
         random_state: Any = None,
     ) -> npt.NDArray:
-        """
-        Confidence bounds on the distribution's parameter ``name`` at each
-        covariate row of ``Z``: a row per row, ``[lower, upper]`` for a
-        two-sided bound. Computed on the parameter's link scale, so they
-        stay inside its range (a shape's above 0).
+        """Deprecated in v0.30, removed in v0.31: call
+        ``param_cb(name, Z=Z, ...)``, which gives the same bounds."""
+        from surpyval.utils.deprecation import REMOVED_IN_NEXT
+        from surpyval.utils.warnings import caller_stacklevel
 
-        ``method="wald"`` (the default) is the delta method from the
-        observed information; ``"lr"`` the extremes of the parameter over
-        the likelihood-ratio region, ``2 [l_hat - l] <= chi2_1``, as
-        :meth:`cb` with ``method="lr"`` takes them; ``"bootstrap"`` the
-        BCa interval from ``n_boot`` parametric bootstrap refits
-        (``random_state`` seeds them). For a fit with weights ``w`` the
-        Wald bound uses the robust covariance, the bootstrap is the case
-        bootstrap (the units resampled with their weights) and ``"lr"`` is
-        refused.
+        warnings.warn(
+            f"{type(self).__name__}.parameter_cb is deprecated and will be "
+            f"removed in v{REMOVED_IN_NEXT}; call param_cb(name, Z=Z, ...), "
+            "which gives the same bounds.",
+            FutureWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        return self._parameter_at_rows_cb(
+            name, Z, alpha_ci, bound, method, n_boot, random_state
+        )
 
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import WeibullDistributional
-        >>> rng = np.random.default_rng(3)
-        >>> load = rng.uniform(0, 1, 300)
-        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
-        >>> model = WeibullDistributional.fit(x, load)
-        >>> model.parameter_cb("beta", [[0.0], [1.0]]).round(2)
-        array([[1.15, 1.67],
-               [2.36, 3.39]])
-        """
+    def _parameter_at_rows_cb(
+        self,
+        name: str,
+        Z: Any,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: int,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The bounds on the distribution's parameter ``name`` at the rows
+        of ``Z`` (see :meth:`param_cb`)."""
         from surpyval.utils.validation import check_alpha_ci, check_option
 
         from . import _links
@@ -759,7 +830,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         """
         Plot the distribution's parameter ``name`` against one covariate
         (a column name, or its number), the other covariates at their
-        means, with its Wald confidence band (:meth:`parameter_cb`).
+        means, with its Wald confidence band (:meth:`param_cb` with ``Z``).
         ``values`` are the covariate's values to draw at, by default its
         fitted range. It needs the fitted data unless ``values`` is given.
 
@@ -824,7 +895,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
 
             ax = plt.gca()
         if plot_bounds:
-            band = self.parameter_cb(name, rows, alpha_ci=alpha_ci)
+            band = self._parameter_at_rows_cb(
+                name, rows, alpha_ci, "two-sided", "wald", 200, None
+            )
             ax.fill_between(
                 grid,
                 band[:, 0],

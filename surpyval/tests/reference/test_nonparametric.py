@@ -191,6 +191,6 @@ def test_mcf_matches_survfit_with_id():
     t = ref["time"]
     assert_allclose(model.mcf(t), ref["cumhaz"], **EXACT)
     # Normal bounds are M +- z sd, so their half-width gives sd.
-    bounds = model.mcf_cb(t, bound_type="normal")
+    bounds = model.mcf_cb(t, bound_type="plain")
     sd = (bounds[:, 1] - bounds[:, 0]) / (2 * norm.ppf(0.975))
     assert_allclose(sd, ref["std_chaz"], **EXACT)

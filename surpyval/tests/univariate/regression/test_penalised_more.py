@@ -622,8 +622,8 @@ def test_distributional_penalizer_forms_and_refusals():
     for call in (
         model.covariance,
         model.standard_errors,
-        lambda: model.parameter_cb("beta", Z[:1]),
-        lambda: model.parameter_cb("beta", Z[:1], method="lr"),
+        lambda: model.param_cb("beta", Z=Z[:1]),
+        lambda: model.param_cb("beta", Z=Z[:1], method="lr"),
         lambda: model.cb(5.0, Z[:1]),
     ):
         with pytest.raises(ValueError, match="fitted with a penalty"):

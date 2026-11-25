@@ -996,7 +996,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         variance: str = "aalen",
     ) -> npt.NDArray:
         """
@@ -1023,7 +1023,7 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> model.cb(240, [1], "death").round(4)
         array([0.8079, 0.8707])
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         x = np.asarray(x, dtype=float)
         p = self.occupancy(x, Z, state, s, from_state)
         from surpyval.utils.warnings import ignoring_warnings

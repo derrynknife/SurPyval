@@ -126,7 +126,7 @@ def _check_predictions(model, case):
         model.parameters_at(rows), case["parameters_at"], rtol=1e-12
     )
     np.testing.assert_allclose(
-        model.parameter_cb(case["parameter"], rows),
+        model.param_cb(case["parameter"], Z=rows),
         case["parameter_cb"],
         rtol=BOUND_RTOL,
     )

@@ -1044,7 +1044,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
     ) -> npt.NDArray:
         """
         Pointwise confidence bounds on the state occupation probability
@@ -1059,10 +1059,11 @@ class ParametricMultiState(_ParametricMultiStateBase):
             One minus the confidence level (default 0.05).
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Which bounds.
-        bound_type : ('exp', 'normal'), str, optional
-            ``'exp'`` (the default) works on the log(-log) scale and
-            keeps the bounds in (0, 1); ``'normal'`` is the estimate plus
-            and minus ``z`` standard errors.
+        bound_type : ('log-log', 'plain'), str, optional
+            ``'log-log'`` (the default) works on the log(-log) scale and
+            keeps the bounds in (0, 1); ``'plain'`` is the estimate plus
+            and minus ``z`` standard errors. (``'exp'`` and ``'normal'``
+            until v0.30, still accepted with a warning.)
 
         Notes
         -----
@@ -1086,7 +1087,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         >>> model.cb(240, "death").round(3)
         array([0.785, 0.829])
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         p = self.occupancy(x, state, s, from_state)
         se = self.occupancy_se(x, state, s, from_state)
         return probability_bounds(
@@ -1184,7 +1185,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         >>> model.length_of_stay_cb(240, "mgus").round(1)
         array([105.7, 115. ])
         """
-        check_bound_args(alpha_ci, bound, "exp")
+        check_bound_args(alpha_ci, bound, "log-log")
         x_arr = np.ravel(np.asarray(x, dtype=float))
         start = self._start(s)
         value = np.ravel(self.length_of_stay(x_arr, state, s, from_state))
@@ -1672,7 +1673,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
     ) -> npt.NDArray:
         """
         Pointwise confidence bounds on the predicted state occupation
@@ -1691,7 +1692,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         >>> model.cb(240, [1], "death").round(3)
         array([0.807, 0.86 ])
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         p = self.occupancy(x, Z, state, s, from_state)
         se = self.occupancy_se(x, Z, state, s, from_state)
         return probability_bounds(
@@ -1768,7 +1769,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         """Pointwise confidence bounds on :meth:`length_of_stay`, as
         :meth:`ParametricMultiState.length_of_stay_cb` (the Wald bound on
         the logit of the fraction of ``x - s`` spent in the state)."""
-        check_bound_args(alpha_ci, bound, "exp")
+        check_bound_args(alpha_ci, bound, "log-log")
         x_arr = np.ravel(np.asarray(x, dtype=float))
         start = self._start(s)
         value = np.ravel(self.length_of_stay(x_arr, Z, state, s, from_state))

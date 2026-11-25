@@ -97,7 +97,7 @@ hours:
     a, b = df[df["supplier"] == "A"], df[df["supplier"] == "B"]
     km_a = sp.KaplanMeier.fit(a["hours"], c=a["c"])
     km_b = sp.KaplanMeier.fit(b["hours"], c=b["c"])
-    naive = sp.sf_diff(km_b, km_a, 800, transform="linear")
+    naive = sp.sf_diff(km_b, km_a, 800, transform="plain")
     print(round(naive["difference"], 3))
 
 .. jupyter-execute::
@@ -244,7 +244,7 @@ is empty. The weighted comparison:
     a, b = df[df["supplier"] == "A"], df[df["supplier"] == "B"]
     kw_a = sp.KaplanMeier.fit(a["hours"], c=a["c"], w=a["w"])
     kw_b = sp.KaplanMeier.fit(b["hours"], c=b["c"], w=b["w"])
-    weighted = sp.sf_diff(kw_b, kw_a, 800, transform="linear")
+    weighted = sp.sf_diff(kw_b, kw_a, 800, transform="plain")
     print(
         "difference at 800 h: {:.3f} ({:.3f} to {:.3f})".format(
             weighted["difference"], weighted["lower"], weighted["upper"]

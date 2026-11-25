@@ -162,7 +162,7 @@ def test_turnbull_truncated_confidence_bounds_match_kaplan_meier():
         x, tl=tl, turnbull_estimator="Kaplan-Meier", max_iter=20_000
     )
     grid = np.array([6.0, 8.0, 10.0, 12.0])
-    assert np.allclose(tb.R_cb(grid), km.R_cb(grid), atol=2e-3)
+    assert np.allclose(tb._survival_cb(grid), km._survival_cb(grid), atol=2e-3)
 
     # Untruncated fits keep using the estimation ladder for the variance
     # (no separate attributes appear).

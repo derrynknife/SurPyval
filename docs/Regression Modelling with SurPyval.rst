@@ -1565,7 +1565,7 @@ percentiles:
 
 .. jupyter-execute::
 
-    model.bootstrap_ci(n_boot=200, random_state=1)
+    model.param_cb(n_boot=200, random_state=1)
 
 Predictions use the fitted residual distribution directly,
 :math:`S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)`, so the survival curves
@@ -2718,7 +2718,7 @@ likelihood-ratio bounds).
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
 sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
-``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
+``param_cb`` (a bootstrap); and the frailty model (below) through ``standard_errors()``
 and ``param_cb`` (Wald, or the profile-likelihood interval with
 ``method='lr'``).
 
@@ -6191,7 +6191,7 @@ survival), so the reloaded model predicts identically:
     print("match:", np.allclose(cox.sf(t, Z_use), cox_reloaded.sf(t, Z_use)))
 
 Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
-covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
+covariance, and Buckley-James's ``param_cb`` (which keeps a copy of the fit
 data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
 Cox model (a stratified one included). Be aware that

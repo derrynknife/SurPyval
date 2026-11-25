@@ -32,6 +32,7 @@ from numpy.typing import ArrayLike
 from scipy.stats import kstwo
 
 from surpyval import plotting
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import ignoring_warnings
 
@@ -502,12 +503,13 @@ class PredictionComparison:
         return ax
 
 
+@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
 def compare_predictions(
     x: ArrayLike,
     models: Any,
     start: int | None = None,
     *,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
 ) -> PredictionComparison:
     """
     Compare models of one system's failures by how well each would have
@@ -537,7 +539,7 @@ def compare_predictions(
         The number of failures the first prediction is made from.
         Default 10; at least two more than the parameters of the
         largest model, and fewer than the failures.
-    alpha : float, optional
+    alpha_ci : float, optional
         The level of the Kolmogorov tests behind ``biased`` and
         ``drifting``. Default 0.05. Keyword only.
 
@@ -601,9 +603,10 @@ def compare_predictions(
         raise ValueError(
             f"models has a fitter more than once ({names}); give each once."
         )
-    if not (isinstance(alpha, float) and 0 < alpha < 1):
+    if not (isinstance(alpha_ci, float) and 0 < alpha_ci < 1):
         raise ValueError(
-            f"alpha is a level between 0 and 1, such as 0.05; got {alpha!r}"
+            "alpha_ci is a level between 0 and 1, such as 0.05; got "
+            f"{alpha_ci!r}"
         )
     least = max(_parameter_count(f) for f in fitters) + 2
     first = DEFAULT_START if start is None else start
@@ -638,5 +641,5 @@ def compare_predictions(
             )
             status[name].append("ok")
     return PredictionComparison(
-        names, steps, gaps, u, log_density, status, alpha
+        names, steps, gaps, u, log_density, status, alpha_ci
     )

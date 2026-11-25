@@ -145,6 +145,37 @@ v0.30 (unreleased)
   silence; the result is unchanged. From v0.31 the call is refused. To
   migrate: drop the option, or fit with ``how="MPP"``.
 
+- **One name per bound scale.** The scale a pointwise bound is formed on
+  had two names for one thing: ``bound_type="exp"`` on the
+  non-parametric, competing-risks and multi-state models and ``"log-log"``
+  on the Cox and landmark curves for the log(-log) scale, ``"normal"`` and
+  ``"plain"`` for the estimate itself. The names are now R's
+  ``conf.type`` ones everywhere: ``"log-log"``, ``"log"``, ``"plain"``,
+  ``"logit"``, ``"arcsine"``. ``"exp"`` and ``"normal"`` still work, with
+  a ``FutureWarning`` naming the new value, until v0.31, and give the
+  same bounds. On ``NonParametricCounting.mcf_cb``, whose ``"exp"`` was
+  the log scale, it is now ``"log"`` (the default) and ``"normal"`` is
+  ``"plain"``; on ``RelativeSurvival.cb`` ``"normal"`` is ``"plain"``.
+  ``sf_diff``'s ``transform="linear"`` and ``"arcsine-sqrt"`` are
+  ``"plain"`` and ``"arcsine"`` (its result's ``"transform"`` is the new
+  name). To migrate: replace the value.
+- ``NonParametric.R_cb(x, ...)``: call ``cb(x, on="sf", ...)``, which
+  takes the same arguments; its two-sided columns are ``[lower,
+  upper]``, where ``R_cb``'s were ``[upper, lower]``.
+- ``parameter_cb(name, Z, ...)`` of the distributional, mixture-cure and
+  zero-inflated regressions: call ``param_cb(name, Z=Z, ...)``. Without
+  ``Z``, ``param_cb`` bounds a fitted coefficient as before.
+- ``bootstrap_ci`` of ``BuckleyJamesModel`` and
+  ``QuantileRegressionModel``: call ``param_cb(...)`` (with ``tau=`` for
+  quantile regression), which gives the same bounds to the last digit and
+  also takes ``name=`` (one coefficient) and ``bound="lower"`` or
+  ``"upper"``.
+- ``alpha=`` on ``diagnose``, ``compare_concordance``,
+  ``compare_predictions``, ``calibration_curve`` and
+  ``surpyval.diagnostics.aalen_additive.falls``: pass ``alpha_ci=``, the
+  level's name in the rest of the package. Each old spelling warns with a
+  ``FutureWarning`` and is removed in v0.31.
+
 **Removed.**
 
 - ``surpyval.utils.recurrent_event_data``, kept since v0.26 only to raise

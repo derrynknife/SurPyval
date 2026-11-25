@@ -417,7 +417,7 @@ incidence: two-sided ``[lower, upper]`` rows by default, or one side with
 ``bound="lower"`` or ``"upper"``, at the level ``alpha_ci`` (0.05, a 95%
 interval). The variance is Aalen's, the ``var`` that R's ``cmprsk::cuminc``
 reports, and the interval is formed on the log(-log) scale so that it stays in
-[0, 1] (``bound_type="normal"`` gives the plain estimate :math:`\pm` z
+[0, 1] (``bound_type="plain"`` gives the plain estimate :math:`\pm` z
 standard errors); see :doc:`Competing Risks Analysis` for the formula. With
 ``on="sf"``, ``"ff"`` or ``"Hf"`` it bounds the all-cause functions
 (``event=None``) or a cause's net ones instead, as ``KaplanMeier`` or

@@ -109,9 +109,9 @@ def test_refusals_say_what_to_do(aml):
         sp.sf_diff(a, b, 23, transform="probit")
     # Before any failure there is nothing to compare.
     with pytest.raises(ValueError, match="later time"):
-        sp.sf_diff(a, b, 1, transform="linear")
+        sp.sf_diff(a, b, 1, transform="plain")
     # log(-log(1)) is not defined.
-    with pytest.raises(ValueError, match="transform='linear'"):
+    with pytest.raises(ValueError, match="transform='plain'"):
         sp.sf_diff(a, b, 1)
     # Past b's last time it is 0 there, where log-log is not defined
     with pytest.raises(ValueError, match="model_b"):

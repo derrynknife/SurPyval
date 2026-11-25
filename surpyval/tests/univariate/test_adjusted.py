@@ -161,7 +161,7 @@ def test_recovers_the_population_curves(fitter):
         sp.KaplanMeier.fit(x[g == k], c=c[g == k], w=w[g == k]) for k in (0, 1)
     ]
     for s, target in zip(t, truth):
-        weighted = sp.sf_diff(ipw[1], ipw[0], s, transform="linear")
+        weighted = sp.sf_diff(ipw[1], ipw[0], s, transform="plain")
         assert weighted["lower"] < target < weighted["upper"]
 
 

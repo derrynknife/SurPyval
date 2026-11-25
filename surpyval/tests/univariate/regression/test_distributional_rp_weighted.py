@@ -109,7 +109,7 @@ def test_distributional_refusals(data):
     with pytest.raises(WeightedRefusal, match="likelihood_ratio_test"):
         model.likelihood_ratio_test(parameter="beta")
     with pytest.raises(WeightedRefusal, match="likelihood-ratio"):
-        model.parameter_cb("alpha", [[0.0, 0.0]], method="lr")
+        model.param_cb("alpha", Z=[[0.0, 0.0]], method="lr")
     with pytest.raises(WeightedRefusal, match="pseudo-likelihood"):
         model.bic()
     with pytest.raises(ValueError, match="w"):

@@ -358,7 +358,7 @@ moves it through the survival :math:`\hat{S}` that weights the later
 increments. By default the interval is formed on the :math:`\log(-\log)`
 scale, :math:`\hat{F}_k^{\exp(\pm z \hat\sigma / (\hat{F}_k \log \hat{F}_k))}`,
 which keeps it inside :math:`[0, 1]` and covers better in small samples than
-the plain :math:`\hat{F}_k \pm z\hat\sigma` (``bound_type="normal"``)
+the plain :math:`\hat{F}_k \pm z\hat\sigma` (``bound_type="plain"``)
 [Choudhury2002cr]_. Before the cause's first failure the estimate is exactly 0
 with no variance, and so are both bounds.
 

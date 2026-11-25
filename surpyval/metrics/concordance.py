@@ -26,6 +26,7 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from surpyval.utils import validate_1d as _as_1d
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 from surpyval.utils.validation import check_option
 
@@ -439,7 +440,7 @@ def _prepare(
     check_option("weighting", weighting, WEIGHTINGS)
     if not 0 < alpha < 1:
         raise ValueError(
-            f"'alpha' must be between 0 and 1 (0.05 for a 95% interval); "
+            f"'alpha_ci' must be between 0 and 1 (0.05 for a 95% interval); "
             f"got {alpha}"
         )
     if tau is not None and not tau > 0:
@@ -913,6 +914,7 @@ def _restore_result(value: float, state: dict) -> ConcordanceResult:
     return result
 
 
+@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
 def compare_concordance(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
@@ -920,7 +922,7 @@ def compare_concordance(
     risk_b: npt.ArrayLike,
     weighting: str = "harrell",
     tau: float | None = None,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
     tie_tol: float = 1e-8,
     ties: str = "therneau",
 ) -> ConcordanceComparison:
@@ -949,7 +951,7 @@ def compare_concordance(
         ``"harrell"``.
     tau : float, optional
         The horizon of the pairs counted, as in :func:`concordance_index`.
-    alpha : float, optional
+    alpha_ci : float, optional
         Significance level of the interval. Default ``0.05``.
     tie_tol : float, optional
         Scores within this of each other are tied. Default ``1e-8``.
@@ -983,9 +985,13 @@ def compare_concordance(
             "'x' has missing (NaN) times: drop those subjects (from 'c', "
             "'risk_a' and 'risk_b' too) to compare the scores"
         )
-    a = concordance_with_se(x, c, risk_a, weighting, tau, alpha, tie_tol, ties)
-    b = concordance_with_se(x, c, risk_b, weighting, tau, alpha, tie_tol, ties)
-    return ConcordanceComparison(a, b, alpha)
+    a = concordance_with_se(
+        x, c, risk_a, weighting, tau, alpha_ci, tie_tol, ties
+    )
+    b = concordance_with_se(
+        x, c, risk_b, weighting, tau, alpha_ci, tie_tol, ties
+    )
+    return ConcordanceComparison(a, b, alpha_ci)
 
 
 def concordance_index(

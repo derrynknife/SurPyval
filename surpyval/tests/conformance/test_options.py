@@ -99,8 +99,13 @@ NOT_SWEPT = {
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
     "get_plot_data": "collects the bounds of a swept method for plot",
-    "R_cb": "the survival bounds behind cb in [upper, lower] order "
-    "(documented); cb(on='sf') is the method to call",
+    "R_cb": "deprecated in v0.30 for cb(on='sf') (swept), which it calls "
+    "with the columns in [upper, lower] order",
+    "bootstrap_ci": "deprecated in v0.30 for param_cb (swept), which it "
+    "calls",
+    "diagnose": "checks of the model's assumptions: alpha_ci is the level "
+    "each check's test is judged at, not an interval's; checked in "
+    "tests/diagnostics",
     "life_parameter_covariance": "a covariance, not an interval",
     "frailties": "a table of each cluster's predicted frailty with the "
     "interval of its distribution given the cluster's history (not a "

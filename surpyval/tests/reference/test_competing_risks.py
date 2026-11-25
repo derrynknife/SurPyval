@@ -92,7 +92,7 @@ def test_cumulative_incidence_variance_matches_cuminc(ref_id):
         idx = np.searchsorted(model.x, times[known], side="right") - 1
         got = np.where(idx < 0, 0.0, var[np.maximum(idx, 0)])
         assert_allclose(got, ref["var"][row][known], **EXACT)
-        b = model.cb(times[known], cause, bound_type="normal")
+        b = model.cb(times[known], cause, bound_type="plain")
         half = norm.ppf(0.975) * np.sqrt(ref["var"][row][known])
         est = ref["est"][row][known]
         assert_allclose(b, np.column_stack([est - half, est + half]), **EXACT)

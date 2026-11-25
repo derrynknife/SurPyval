@@ -11,8 +11,9 @@ difference in survival at one time (``sf_diff``), and the bound of a
 non-parametric cumulative incidence all take their scales from here.
 
 The scales are keyed by the names ``cb``'s ``bound_type`` gives them:
-``"exp"`` (log(-log)), ``"logit"``, ``"arcsine"`` (arcsine square root),
-``"log"`` and ``"normal"`` (the survival itself).
+``"log-log"``, ``"logit"``, ``"arcsine"`` (arcsine square root),
+``"log"`` and ``"plain"`` (the survival itself), R's ``conf.type``
+names (``"exp"`` and ``"normal"`` until v0.30).
 """
 
 from __future__ import annotations
@@ -96,11 +97,11 @@ def _plain_shift(R: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 #: The scales, by ``cb``'s name for each.
 SCALES: dict[str, SurvivalScale] = {
-    "exp": SurvivalScale(_loglog, _loglog_shift, _loglog_inverse),
+    "log-log": SurvivalScale(_loglog, _loglog_shift, _loglog_inverse),
     "logit": SurvivalScale(_logit, _logit_shift, _logit_inverse),
     "arcsine": SurvivalScale(_arcsine, _arcsine_shift, _arcsine_inverse),
     "log": SurvivalScale(_log, _log_shift, _exp),
-    "normal": SurvivalScale(_identity, _plain_shift, _identity),
+    "plain": SurvivalScale(_identity, _plain_shift, _identity),
 }
 
 
@@ -116,7 +117,7 @@ def survival_bound(scale: str, R: Any, d: Any) -> npt.NDArray:
     >>> import numpy as np
     >>> from surpyval.univariate.nonparametric._scales import survival_bound
     >>> R = np.array([0.8, 0.8])
-    >>> survival_bound("exp", R, np.array([-0.2, 0.2])).round(4)
+    >>> survival_bound("log-log", R, np.array([-0.2, 0.2])).round(4)
     array([0.5788, 0.913 ])
     >>> survival_bound("arcsine", R, np.array([-0.2, 0.2])).round(4)
     array([0.6206, 0.9321])
@@ -142,3 +143,31 @@ def transformed_survival(scale: str, R: float, var_log: float) -> tuple:
     """
     s = SCALES[scale]
     return s.g(R), var_log * s.shift(R, 1.0) ** 2
+
+
+def scale_name(where: str, bound_type: Any) -> Any:
+    """``bound_type`` with the scale names used until v0.30 (``"exp"`` for
+    log(-log), ``"normal"`` for the estimate itself) replaced by R's
+    (``"log-log"``, ``"plain"``), with a ``FutureWarning`` naming
+    ``where``, the method called. Any other value is returned unchanged,
+    for the method's own check.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.univariate.nonparametric._scales import scale_name
+    >>> with warnings.catch_warnings():
+    ...     warnings.simplefilter("ignore")
+    ...     scale_name("KaplanMeier.cb", "normal")
+    'plain'
+    >>> scale_name("KaplanMeier.cb", "logit")
+    'logit'
+    """
+    from surpyval.utils.deprecation import (
+        SURVIVAL_SCALE_RENAMES,
+        renamed_value,
+    )
+
+    return renamed_value(
+        where, "bound_type", bound_type, SURVIVAL_SCALE_RENAMES
+    )

@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-25
 
+### One name per bound scale and per bound (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `bound_type` takes R's `conf.type` names everywhere: `"log-log"`, `"log"`, `"plain"`, `"logit"`, `"arcsine"` (R's `"arcsin"` is spelt out, as the package already did). `"exp"` and `"normal"` are deprecated (FutureWarning, removed in v0.31; `deprecation.renamed_value`). On the MCF, whose `"exp"` was the log scale, `"exp"` maps to `"log"`; everywhere else to `"log-log"`. `sf_diff`'s `"linear"` and `"arcsine-sqrt"` become `"plain"` and `"arcsine"`. | proposed (the issue's rule: the names most used in the package, matching R) | `"log-log"` and `"plain"` were already the Cox and landmark curves' names, `"log"`, `"logit"` and `"arcsine"` were shared, and they are R's. `"plain"` over `"identity"`: R calls it that and the Cox curve already did. | done |
+| `R_cb` is deprecated for `cb(on="sf")`; `parameter_cb(name, Z)` for `param_cb(name, Z=Z)`; `bootstrap_ci` on Buckley-James and quantile regression for `param_cb` (which adds `name=` and one-sided bounds). `alpha` is deprecated for `alpha_ci` on `diagnose`, `compare_concordance`, `compare_predictions`, `calibration_curve` and `falls` (not on the internal `concordance_with_se`, the function behind the deprecated `concordance_estimate` names, which go in v0.30). | proposed | Principle 21: one name per thing. | done |
+| `LandmarkCox.beta_cb` and `JointFrailtyModel.sf_cb` keep their names. | proposed (the issue listed both) | Each follows its family's `<point>_cb` rule: `beta_cb` bounds the method `beta(s)`, as `mean_cb` bounds `mean`, and the recurrent models bound their curves by `cif_cb`, `iif_cb`, `mcf_cb`, and the joint frailty model's terminal survival by `sf_cb`. Renaming them would break the rule they keep. | done |
+| The result objects' `alpha` attribute and `to_dict` key (`ConcordanceResult`, `ConcordanceComparison`, `CalibrationCurve`) are unchanged. | proposed | A serialised key; renaming it is a schema change for another part. | open |
+
 ### Clearing dated code before 1.0 (25 Nov 2026)
 
 | Decision | By | Reason | Status |

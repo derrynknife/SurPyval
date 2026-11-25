@@ -90,6 +90,6 @@ def test_cumulative_incidence_and_robust_se_match_survfit(case):
         # The normal bounds are the estimate plus or minus z times it
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            cb = model.cb(times, cause, bound_type="normal")
+            cb = model.cb(times, cause, bound_type="plain")
         half = 1.959963984540054 * np.asarray(R[case][f"se{cause}"][:k])
         assert_allclose(cb[:, 1] - cb[:, 0], 2 * half, rtol=1e-9, atol=1e-14)

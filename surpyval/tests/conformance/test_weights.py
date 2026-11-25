@@ -90,7 +90,7 @@ def _np(fitter):
         offered={
             "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
             "cb(Hf)": lambda m: m.cb(QUERY, on="Hf"),
-            "cb(normal)": lambda m: m.cb(QUERY, bound_type="normal"),
+            "cb(normal)": lambda m: m.cb(QUERY, bound_type="plain"),
             "quantile_cb": lambda m: m.quantile_cb(0.3),
             "rmst": lambda m: np.array(
                 [m.rmst(6.0)["lower"], m.rmst(6.0)["upper"]]
@@ -362,14 +362,14 @@ WEIGHTED = [
         offered={
             "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
             "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
-            "parameter_cb": lambda m: m.parameter_cb("beta", np.eye(2)),
+            "parameter_cb": lambda m: m.param_cb("beta", Z=np.eye(2)),
         },
         refused={
             "param_cb(lr)": lambda m: m.param_cb(
                 m.parameter_names[-1], method="lr"
             ),
-            "parameter_cb(lr)": lambda m: m.parameter_cb(
-                "beta", np.eye(2), method="lr"
+            "parameter_cb(lr)": lambda m: m.param_cb(
+                "beta", Z=np.eye(2), method="lr"
             ),
             "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
             "diagnose": lambda m: m.diagnose(),
@@ -378,8 +378,8 @@ WEIGHTED = [
             "param_cb(bootstrap)": lambda m: m.param_cb(
                 m.parameter_names[-1], **BOOT
             ),
-            "parameter_cb(bootstrap)": lambda m: m.parameter_cb(
-                "beta", np.eye(2), **BOOT
+            "parameter_cb(bootstrap)": lambda m: m.param_cb(
+                "beta", Z=np.eye(2), **BOOT
             ),
         },
         covariates=True,
@@ -407,7 +407,7 @@ WEIGHTED = [
         lambda m: np.concatenate([m.cif(QUERY, "a"), m.cif(QUERY, "b")]),
         offered={
             "cb(cif)": lambda m: m.cb(QUERY, "a"),
-            "cb(cif, normal)": lambda m: m.cb(QUERY, "b", bound_type="normal"),
+            "cb(cif, normal)": lambda m: m.cb(QUERY, "b", bound_type="plain"),
             "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
             "cb(Hf, cause)": lambda m: m.cb(QUERY, "a", on="Hf"),
         },

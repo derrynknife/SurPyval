@@ -732,7 +732,7 @@ class ParametricRecurrenceModel(
         The variance of the fitted CIF is propagated from the parameter
         covariance (the inverse observed information) through the CIF's
         gradient, and the bounds are computed on the log scale -- the same
-        construction as the default (``bound_type="exp"``) bounds on the
+        construction as the default (``bound_type="log"``) bounds on the
         nonparametric MCF -- so they cannot go negative.
 
         Parameters

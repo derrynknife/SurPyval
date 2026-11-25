@@ -66,7 +66,7 @@ def _km_ending_at_zero():
     return fitted(CASE_BY_NAME["KaplanMeier"])
 
 
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 def test_cubic_bounds_close_onto_sf(bound_type):
     model = _km_ending_at_zero()
     x = np.array([2.0, 6.0, 10.0, 13.0])
@@ -85,14 +85,14 @@ def test_cubic_bounds_close_onto_sf(bound_type):
     np.testing.assert_allclose(cb[:, 1], sf, rtol=1e-5)
 
 
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 def test_cubic_bounds_hold_sf_between_them(bound_type):
     model = _km_ending_at_zero()
     x = np.linspace(model.x[0], model.x[-1], 201)
     sf = model.sf(x, interp="cubic")
     cb = model.cb(x, interp="cubic", bound_type=bound_type)
     assert np.all(cb[:, 0] <= sf + 1e-12) and np.all(sf <= cb[:, 1] + 1e-12)
-    if bound_type == "exp":
+    if bound_type == "log-log":
         assert np.all((cb >= 0) & (cb <= 1))
 
 
@@ -101,7 +101,7 @@ def test_linear_bounds_are_unchanged():
     # the interpolated bound itself.
     model = _km_ending_at_zero()
     x = np.linspace(model.x[0], model.x[-2], 50)
-    got = model.R_cb(x, interp="linear")
-    knots = model.R_cb(model.x)
+    got = model._survival_cb(x, interp="linear")
+    knots = model._survival_cb(model.x)
     np.testing.assert_allclose(got[:, 0], np.interp(x, model.x, knots[:, 0]))
     np.testing.assert_allclose(got[:, 1], np.interp(x, model.x, knots[:, 1]))

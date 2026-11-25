@@ -107,12 +107,12 @@ def test_shaded_bounds_span_the_models_cb():
 def test_bound_type_and_one_sided_bound_are_passed_to_cb():
     km = sp.KaplanMeier.fit(X, c=C)
     out = sp.plot_nonparametric(
-        km, bound="lower", bound_type="normal", at_risk=False
+        km, bound="lower", bound_type="plain", at_risk=False
     )
     (dashed,) = (ln for ln in out.ax.lines if ln.get_linestyle() == "--")
     q = np.asarray(dashed.get_xdata())
     np.testing.assert_allclose(
-        dashed.get_ydata(), km.cb(q, bound="lower", bound_type="normal")
+        dashed.get_ydata(), km.cb(q, bound="lower", bound_type="plain")
     )
 
 
