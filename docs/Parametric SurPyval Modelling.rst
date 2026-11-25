@@ -248,6 +248,28 @@ the summary statistics:
     print("mean, variance :", model.mean(), model.var())
     print("E[X^2], entropy:", model.moment(2), model.entropy())
 
+The chance of failing in the next window, given the age now, is
+``1 - cs(x, given)``. ``cs_cb(x, given, on="ff")`` puts bounds on it (and
+``on="sf"``, the default, on the conditional survival). In words: the item
+has come through the risk it met up to ``given``, so what is left is the
+cumulative hazard between ``given`` and ``given + x``; the bound is a bound on
+that hazard, :math:`\Delta H = H(given + x) - H(given)`, carried to
+:math:`1 - e^{-\Delta H}`. ``method="wald"`` (the delta method on
+:math:`\log \Delta H`) and ``method="lr"`` (its extreme over the likelihood
+region) are given; at ``given = 0`` they are ``cb``'s:
+
+.. jupyter-execute::
+
+    print("P(fail in next 5 | survived 25):", 1 - model.cs(5, given=25))
+    print("95% bounds                     :", model.cs_cb(5, 25, on="ff"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = model.cs_cb(5, 25, on="ff")
+    assert _c[0] < 1 - model.cs(5, given=25) < _c[1]
+
 The model also records how it was made: the estimation method, the optimiser
 that converged (see :doc:`Parametric Estimation`), whether a maximum
 likelihood fit reached a verified maximum (``maximum``: ``'verified'``,

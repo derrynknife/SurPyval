@@ -951,6 +951,53 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
             want,
         )
 
+    def windows(
+        self,
+        xs: npt.NDArray,
+        gs: npt.NDArray,
+        rows: npt.NDArray,
+        crit: float,
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on the cumulative hazard over the
+        window from ``gs[i]`` to ``gs[i] + xs[i]`` at each covariate row
+        ``rows[i]`` (centred as the searches' are): its extreme over the
+        region, searched on its log (on itself for an additive hazards
+        model, whose hazard can be negative). Returned as ``band``
+        returns its bounds."""
+        fitted = self.fitted
+        additive = fitted._is_additive()
+
+        def psi_of(i: int, theta: npt.NDArray) -> float:
+            H = fitted._window_H(
+                xs[i : i + 1], gs[i : i + 1], rows[i : i + 1], theta
+            )
+            v = float(np.asarray(H, dtype=float).reshape(-1)[0])
+            return v if additive else float(np.log(v))
+
+        value: Callable[[Any], Any]
+        if additive:
+            ends, value = (-_FLOAT_MAX, _FLOAT_MAX), (lambda v: v)
+        else:
+            ends, value = (_LN_TINY, _LN_MAX), np.exp
+        n = len(xs)
+        free = self._free()
+        if not free:
+            at = np.array([value(psi_of(i, self.params)) for i in range(n)])
+            return at, at, [], []
+        return self._lr_band(
+            np.arange(n),
+            np.arange(n),
+            psi_of,
+            lambda i: (float(xs[i]), float(gs[i]), rows[i].tobytes()),
+            "window",
+            free,
+            crit,
+            ends,
+            value,
+            want,
+        )
+
 
 def _survival_scale(
     on: str, additive: bool
@@ -1263,6 +1310,55 @@ def quantile_cb_lr(
             f"The likelihood-ratio bound on qf could not be found at p = {at} "
             "(the constrained optimiser failed from every start); nan is "
             "returned there. method='wald' gives a bound in its place.",
+            RuntimeWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    if bound == "two-sided":
+        return np.column_stack([lower, upper])
+    return lower if bound == "lower" else upper
+
+
+def window_cb_lr(
+    model: Any,
+    xs: npt.NDArray,
+    gs: npt.NDArray,
+    rows: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
+    """``cs_cb(method="lr")``: the likelihood-ratio bounds on the
+    cumulative hazard over each window (``[lower, upper]`` for a
+    two-sided bound), ``RegressionLikelihoodRatio.windows``. Where it is
+    0 at the estimate (an empty window, or one before the support) or
+    undefined, the bound is that value."""
+    search = lr_search(model, reported=False)
+    rows_c = np.asarray(model._centred(rows, search.center), dtype=float)
+    rows_c = np.ascontiguousarray(rows_c)
+    want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
+    crit = critical_value(alpha_ci, bound)
+    H_hat = np.asarray(
+        model._window_H(xs, gs, rows_c, search.params), dtype=float
+    )
+    lower = np.where(want[0], H_hat, np.nan)
+    upper = np.where(want[1], H_hat, np.nan)
+    inside = np.flatnonzero(np.isfinite(H_hat) & (H_hat != 0))
+    failed: list[int] = []
+    unsettled: list[int] = []
+    if inside.size:
+        lo, hi, bad, unsure = search.windows(
+            xs[inside], gs[inside], rows_c[inside], crit, want
+        )
+        lower[inside], upper[inside] = lo, hi
+        failed = [int(inside[i]) for i in bad]
+        unsettled = [int(inside[i]) for i in unsure]
+    if unsettled:
+        warn_unsettled(f"on the window's hazard at positions {unsettled}")
+    if failed:
+        warnings.warn(
+            "The likelihood-ratio bound on the conditional survival could "
+            f"not be found at positions {failed} (the constrained optimiser "
+            "failed from every start); nan is returned there. "
+            "method='wald' gives a bound in its place.",
             RuntimeWarning,
             stacklevel=caller_stacklevel(),
         )

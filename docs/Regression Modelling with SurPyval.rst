@@ -466,6 +466,26 @@ cumulative hazard, so it stays exact far in the tail, where the ratio of
     assert np.allclose(demo.cs(1.0, ages[:2], Z=[1.0]), _ratio[:2])
     assert np.isnan(_ratio[2]) and 0 < demo.cs(1.0, 250.0, Z=[1.0]) < 1
 
+The parametric regression models also bound it: ``cs_cb(x, given, Z)``
+gives bounds on the conditional survival, and with ``on="ff"`` on the chance
+of failing in the next ``x`` (for example, a motor that has run 12,000 h at its
+load failing in the next 2,160 h). The bound is on the cumulative hazard over
+the window, :math:`H(given + x \mid Z) - H(given \mid Z)`, carried to the
+probability, by the delta method (``method="wald"``), the likelihood-ratio
+search (``"lr"``) or the parametric bootstrap (``"bootstrap"``):
+
+.. jupyter-execute::
+
+    print('P(fail in next 1 | age 2, Z=1):', 1 - demo.cs(1.0, 2.0, Z=[1.0]))
+    print('95% bounds                    :', demo.cs_cb(1.0, 2.0, [1.0], on='ff'))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = demo.cs_cb(1.0, 2.0, [1.0], on='ff')
+    assert _c[0] < 1 - demo.cs(1.0, 2.0, Z=[1.0]) < _c[1]
+
 Summed over a fleet, this is the forecast of how many units will fail over the
 next period, which :func:`surpyval.forecast` gives with a prediction interval
 (see `Forecasting a fleet from its current ages`_).

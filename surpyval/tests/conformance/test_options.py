@@ -379,6 +379,8 @@ def _estimate(case, spec, fname, event):
                 out.append(model.mean(tau=args[0]))
             else:
                 out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "cs_cb":
+            out.append(model.cs(*args))
         elif spec.method == "cb_at_usage":
             out.append(model.sf_at_usage(*args))
         elif spec.method == "quantile_cb_at_usage":

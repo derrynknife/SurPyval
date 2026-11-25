@@ -39,6 +39,7 @@ from ._inference import InferenceMixin
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
 from ._prediction import (
+    ConditionalBoundsMixin,
     ConditionalSurvivalMixin,
     RestrictedMeanMixin,
     times_at_probability,
@@ -100,6 +101,7 @@ class ParametricRegressionModel(
     AtCovariatesMixin,
     PenalisedModelMixin,
     ConditionalSurvivalMixin,
+    ConditionalBoundsMixin,
     RestrictedMeanMixin,
     PartialEffectsMixin,
     TVCEvaluationMixin,
