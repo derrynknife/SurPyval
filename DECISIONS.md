@@ -21,6 +21,14 @@ Design decisions made while working on the open issues, with the reason for each
 |---|---|---|---|
 | `NonParametricCounting.mcf_cb` returns its two-sided bounds as `ConfidenceBounds`, an `ndarray` subclass with `.lower`, `.upper` and a labelled printout; one-sided bounds stay plain arrays. Anything computed from it (arithmetic, a column, a reduction) is a plain array. | proposed | The package's two-sided bounds are `[lower, upper]` on the last axis (Conventions), so a subclass labels them without changing any caller: a new return type (a named tuple, a dict) would break every `b[:, 0]`. One-sided bounds are what `bound=` asked for; wrapping a scalar would turn an `np.float64` into a 0-d array. | done |
 | Only the MCF's bounds are labelled for now; the other `*_cb` methods keep plain arrays. | proposed | The user finding was on `mcf_cb`. `labels_two_sided` is one decorator, so every two-sided `*_cb` can take it in one pass if wanted. | open |
+### Survival tree and forest read-outs (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Importance by horizon scores the out-of-bag Brier score (default) or time-dependent AUC at each horizon; the default importance stays the out-of-bag log-likelihood one. | proposed | The log-likelihood has no horizon. So "by horizon at one horizon equals today's importance" can't hold literally. Instead, a horizon's value is the same whatever other horizons are asked for (the shuffles don't depend on them), and `times=None` is bit-identical to before. | done |
+| Importance by horizon needs observed and right-censored data without truncation, and refuses anything else with the reason. | proposed | The IPCW Brier score and AUC it reuses take only right censoring. | done |
+| Minimal depth: the root is depth 0, and a tree that never splits on a covariate gives it the tree's depth (its deepest leaf). Reported as the mean over the trees, with the share of trees that split on it. | proposed | Ishwaran et al. (2010), as in randomForestSRC's `max.subtree`. Not checked against randomForestSRC: it isn't installed here. A hand-worked two-tree example is tested. The null-distribution threshold for selection isn't built. | done |
+| Partial dependence averages the ICE curves weighted by the rows' counts `n` when it runs on the training rows, and equally for a `Z` passed in. For a formula fit, the covariate is a design-matrix column. | proposed | A grouped row stands for `n` units. | done |
 
 ## 2026-11-25
 
