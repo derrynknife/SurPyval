@@ -324,7 +324,331 @@ def test_refusals_say_what_to_do(fitted):
         )
     with pytest.raises(ValueError, match="use cri"):
         fitted.cb(10.0, [[0.0]])
-    with pytest.raises(ValueError, match="model.mle.diagnose"):
-        fitted.diagnose()
+    assert fitted.diagnose().ok
     with pytest.raises(ValueError, match="on must be one of"):
         fitted.cri(10.0, [[0.0]], on="mean")
+
+
+# -- per-row criteria, predictive checks and priors from quantities and fits --
+
+#: Boltzmann's constant in eV per kelvin: an Arrhenius life model's ``a``
+#: is the activation energy over it, in kelvin.
+K_B = 8.617333262e-5
+
+
+def _censored_groups(seed=11, per_group=15):
+    """Exponential lives in two groups, censored at 80: with flat priors
+    each group's rate has a Gamma(failures, time on test) posterior."""
+    rng = np.random.default_rng(seed)
+    z = np.repeat([0.0, 1.0], per_group)
+    life = rng.exponential(1 / (0.02 * np.exp(0.7 * z)))
+    return np.minimum(life, 80.0), z[:, None], (life > 80).astype(int)
+
+
+def _data(n, seed):
+    """Weibull lives with one covariate, censored at 70."""
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 1))
+    life = sp.Weibull.random(n, 50.0, 2.0, random_state=seed + 1)
+    life = life * np.exp(-0.3 * Z[:, 0])
+    return np.minimum(life, 70.0), Z, (life > 70.0).astype(int)
+
+
+#: A prior on the coefficient wide enough to be flat over the posterior.
+WIDE = {"coef_0": sp.Normal.from_params([0.0, 1000.0])}
+
+
+def test_row_log_likelihoods_sum_to_the_likelihood():
+    from surpyval.univariate.regression._likelihood import regression_row_ll
+
+    rng = np.random.default_rng(3)
+    Z = rng.normal(size=(40, 2))
+    life = sp.Weibull.random(40, 50.0, 2.0, random_state=4)
+    x = np.column_stack([life, life])
+    c = np.zeros(40, dtype=int)
+    c[:8], x[:8] = 1, 30.0
+    c[8:14], x[8:14, 0], x[8:14, 1] = 2, 20.0, 45.0
+    c[14:18] = -1
+    n = np.r_[np.full(20, 2), np.ones(20)].astype(int)
+    tl = np.r_[np.full(10, 5.0), np.zeros(30)]
+    keep = (x[:, 1] > tl) | (c == -1)
+    fit = sp.WeibullPH.fit(x[keep], Z[keep], c[keep], n[keep], tl=tl[keep])
+    for theta in (fit.params, fit.params * np.array([1.1, 0.9, 1.3, 0.7])):
+        rows = regression_row_ll(fit.model, fit.data, *theta)
+        assert -(fit.data.n * rows).sum() == pytest.approx(
+            float(fit.model.neg_ll(fit.data, *theta)), rel=1e-12
+        )
+
+
+def test_loo_and_waic_against_leaving_each_row_out_exactly():
+    x, Z, c = _censored_groups()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.ExponentialPH.fit_bayes(
+            x, Z, c, priors=WIDE, importance=True
+        )
+        loo, waic = model.loo(), model.waic()
+    assert loo.method == "psis" and loo.units == 30
+    # without row i its group's rate is Gamma(r, T) less the row: a
+    # failure at y has predictive density (r - 1)(T - y)^(r - 1) / T^r,
+    # a unit censored at y survives it with ((T - y) / T)^r
+    d = model.data
+    xs, cs, zs = d.x, d.c, np.asarray(d.Z)[:, 0]
+    exact = np.empty(len(xs))
+    for i in range(len(xs)):
+        g = zs == zs[i]
+        r, T, y = np.sum(cs[g] == 0), xs[g].sum(), xs[i]
+        if cs[i] == 0:
+            exact[i] = np.log(r - 1) + (r - 1) * np.log(T - y) - r * np.log(T)
+        else:
+            exact[i] = r * (np.log(T - y) - np.log(T))
+    np.testing.assert_allclose(loo.pointwise, exact, atol=0.02)
+    assert loo.elpd == pytest.approx(exact.sum(), abs=0.05)
+    assert waic.elpd == pytest.approx(exact.sum(), abs=0.2)
+
+
+def test_compare_ranks_regressions_fitted_to_the_same_rows():
+    rng = np.random.default_rng(21)
+    Z = rng.normal(size=(80, 1))
+    x = sp.Weibull.random(80, 50.0, 2.0, random_state=22)
+    x = x * np.exp(-0.6 * Z[:, 0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with_z = sp.WeibullPH.fit_bayes(x, Z)
+        without = sp.WeibullPH.fit_bayes(
+            x, Z, priors={"coef_0": sp.prior.fixed(0.0)}
+        )
+        table = sp.bayes.compare({"with": with_z, "without": without})
+        other = sp.WeibullPH.fit_bayes(x[:60], Z[:60])
+    assert table.best == "with"
+    row = table.table["without"]
+    assert row["elpd_diff"] < -2 * row["se_diff"]
+    with pytest.raises(ValueError, match="different data"):
+        sp.bayes.compare({"a": with_z, "b": other})
+
+
+def test_diagnose_reports_the_predictive_checks():
+    x, Z, c = _data(n=60, seed=5)
+    model = sp.WeibullPH.fit_bayes(x, Z, c)
+    report = model.diagnose()
+    names = [name for name, _, _ in report.checks]
+    assert names == [
+        "posterior",
+        "priors against the data",
+        "predictive check, number of failures",
+        "predictive check, total time on test",
+        "predictive check, shortest time",
+    ]
+    assert report.ok
+    again = model.diagnose()
+    assert repr(again) == repr(report)
+    check = model.ppc("number of failures", random_state=1)
+    assert check.observed == np.sum(np.asarray(c) == 0)
+
+
+def test_the_predictive_check_flags_what_the_model_cannot_make():
+    # one unit fails at a thousandth of the others' lives: a Weibull
+    # regression puts no such life among sixty
+    rng = np.random.default_rng(31)
+    Z = rng.normal(size=(60, 1))
+    x = sp.Weibull.random(60, 50.0, 4.0, random_state=32)
+    x[0] = 0.05
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.LogNormalAFT.fit_bayes(x, Z)
+    check = model.ppc("shortest time", random_state=2)
+    assert not check.ok and check.p_value > 0.975
+    assert not model.diagnose().ok
+
+
+def test_the_predictive_check_refuses_designs_it_cannot_simulate():
+    x, Z, c = _data(n=40, seed=6)
+    xi = np.column_stack([x, x])
+    ci = np.asarray(c).copy()
+    ci[:5], xi[:5, 0], xi[:5, 1] = 2, 10.0, 60.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.WeibullPH.fit_bayes(xi, Z, ci)
+    with pytest.raises(ValueError, match="inspection scheme"):
+        model.ppc()
+    with pytest.raises(ValueError, match="inspection scheme"):
+        model.diagnose()
+    # ... while its criteria, which need no simulation, are given
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert np.isfinite(model.loo().elpd)
+
+
+def test_a_left_truncated_replicate_enters_at_its_truncation_time():
+    rng = np.random.default_rng(41)
+    Z = rng.normal(size=(50, 1))
+    life = sp.Weibull.random(400, 50.0, 2.0, random_state=42)
+    life = life[life > 30.0][:50]
+    model = sp.WeibullPH.fit_bayes(life, Z, tl=30.0)
+    replicate = model.target.simulate(model.params, np.random.default_rng(1))
+    assert np.all(replicate["x"] > 30.0)
+    assert model.ppc("shortest time", random_state=3).ok
+
+
+def test_a_belief_about_a_life_at_given_covariates():
+    x, Z, c = _censored_groups()
+    # the mean life at Z = 0 is 1 / rate: the same belief stated on the
+    # rate itself gives the same posterior
+    belief = sp.prior.on_quantities(
+        sp.ExponentialPH,
+        sp.prior.on_function(
+            lambda m: m.mean([[0.0]]),
+            sp.prior.between(30.0, 60.0),
+            name="mean life at Z = 0",
+        ),
+        instead_of="failure_rate",
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        on_life = sp.ExponentialPH.fit_bayes(x, Z, c, priors=[belief, WIDE])
+        on_rate = sp.ExponentialPH.fit_bayes(
+            x,
+            Z,
+            c,
+            priors={
+                "failure_rate": sp.prior.between(1 / 60.0, 1 / 30.0),
+                **WIDE,
+            },
+        )
+    for name in ("failure_rate", "coef_0"):
+        np.testing.assert_allclose(
+            on_life.param_cri(name), on_rate.param_cri(name), rtol=1e-4
+        )
+    assert "mean life at Z = 0 90% between 30 and 60" in on_life.summary()
+    # the default prior stays on the coefficient the belief does not cover
+    partly = sp.ExponentialPH.fit_bayes(x, Z, c, priors=belief)
+    assert list(partly.default_priors) == ["coef_0"]
+
+
+def test_a_tight_belief_about_a_b_life_at_use_pulls_it():
+    rng = np.random.default_rng(51)
+    Z = rng.uniform(1.0, 3.0, size=(40, 1))
+    x = sp.Weibull.random(40, 50.0, 2.0, random_state=52)
+    x = x * np.exp(-0.5 * Z[:, 0])
+    use = [[0.0]]
+    plain = sp.WeibullAFT.fit_bayes(x, Z)
+    b10 = float(plain.mle.qf(0.1, use))
+    belief = sp.prior.on_quantities(
+        sp.WeibullAFT,
+        sp.prior.on_function(
+            lambda m: m.qf(0.1, use),
+            sp.prior.between(1.9 * b10, 2.1 * b10),
+            name="B10 at use",
+        ),
+        instead_of="alpha",
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.WeibullAFT.fit_bayes(x, Z, priors=belief)
+    lo, hi = model.quantile_cri(0.1, use)
+    wide_lo, wide_hi = plain.quantile_cri(0.1, use)
+    assert hi - lo < 0.5 * (wide_hi - wide_lo)
+    assert lo > float(plain.qf(0.1, use))
+    with pytest.raises(ValueError, match="one statement"):
+        sp.WeibullAFT.fit_bayes(
+            x,
+            Z,
+            priors=sp.prior.on_quantities(
+                sp.WeibullAFT,
+                sp.prior.on_function(
+                    lambda m: m.qf(0.1, use), sp.prior.between(1, 2)
+                ),
+                instead_of=["alpha", "beta"],
+            ),
+        )
+
+
+def test_an_earlier_regression_as_the_prior():
+    rng = np.random.default_rng(61)
+    Z = rng.normal(size=(120, 1))
+    x = sp.Weibull.random(120, 50.0, 2.0, random_state=62)
+    x = x * np.exp(-0.4 * Z[:, 0])
+    old, new = slice(0, 80), slice(80, 120)
+    slope = {"coef_0": sp.Normal.from_params([0.0, 2.0])}
+    earlier = sp.WeibullPH.fit(x[old], Z[old])
+    # its data as a power prior at weight 1: the fit of all the rows
+    pooled = sp.WeibullPH.fit_bayes(x, Z, priors=slope)
+    power = sp.WeibullPH.fit_bayes(
+        x[new], Z[new], priors=[sp.prior.from_fit(earlier), slope]
+    )
+    np.testing.assert_allclose(power.params, pooled.params, rtol=2e-5)
+    for name in pooled.parameter_names:
+        np.testing.assert_allclose(
+            power.param_cri(name), pooled.param_cri(name), rtol=1e-3
+        )
+    # its estimates and covariance as a normal prior: close to the pooled
+    # fit with 80 earlier rows, and wider as the weight falls
+    normal = sp.WeibullPH.fit_bayes(
+        x[new], Z[new], priors=sp.prior.from_model(earlier)
+    )
+    assert normal.default_priors == {}
+    width = np.diff(pooled.param_cri("coef_0"))[0]
+    assert abs(normal.params[2] - pooled.params[2]) < 0.25 * width
+    half = sp.WeibullPH.fit_bayes(
+        x[new], Z[new], priors=sp.prior.from_model(earlier, weight=0.25)
+    )
+    assert np.diff(half.param_cri("coef_0")) > np.diff(
+        normal.param_cri("coef_0")
+    )
+    # one parameter's summary only: the others keep their own priors
+    one = sp.prior.from_model(earlier, param="beta")
+    partly = sp.WeibullPH.fit_bayes(x[new], Z[new], priors={"beta": one})
+    assert list(partly.default_priors) == ["coef_0"]
+    # an earlier Bayesian regression: its priors and its data, exactly
+    first = sp.WeibullPH.fit_bayes(x[old], Z[old], priors=slope)
+    second = sp.WeibullPH.fit_bayes(
+        x[new], Z[new], priors=sp.prior.from_model(first)
+    )
+    np.testing.assert_allclose(second.params, pooled.params, rtol=2e-5)
+    assert "the earlier fit's data at weight 1" in second.summary()
+    again = sp.from_dict(second.to_dict())
+    assert again.summary() == second.summary()
+    with pytest.raises(ValueError, match="prior.from_fit"):
+        sp.WeibullPH.fit_bayes(
+            x[new], Z[new], priors=sp.prior.from_data(x[old])
+        )
+    with pytest.raises(ValueError, match="same model for the old"):
+        sp.WeibullAFT.fit_bayes(
+            x[new],
+            np.c_[Z[new], Z[new] ** 2],
+            priors=sp.prior.from_fit(earlier),
+        )
+
+
+def test_an_activation_energy_prior_is_written_in_kelvin():
+    # An Arrhenius life model's a is the activation energy over
+    # Boltzmann's constant, in kelvin (L = b exp(a / T)), not in eV: a
+    # belief "0.7 eV, 90% between 0.6 and 0.8" is divided by K_B.
+    T = np.repeat(np.array([85.0, 105.0, 125.0]) + 273.15, 12)
+    scale = 2e-6 * np.exp((0.7 / K_B) / T)
+    x = sp.Weibull.random(36, 1.0, 2.5, random_state=3) * scale
+    c = (x > 6000.0).astype(int)
+    x = np.minimum(x, 6000.0)
+    fitter = sp.AcceleratedLife(sp.Weibull, sp.life_models.Arrhenius)
+    belief = {"a": sp.prior.around(0.7 / K_B, between=(0.6 / K_B, 0.8 / K_B))}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        flat = fitter.fit_bayes(x, T[:, None], c, importance=True)
+        informed = fitter.fit_bayes(
+            x, T[:, None], c, priors=belief, importance=True
+        )
+    assert informed.diagnostics["approximation"] != "poor"
+    lo, hi = informed.param_cri("a") * K_B
+    flat_lo, flat_hi = flat.param_cri("a") * K_B
+    assert 0.55 < lo < 0.7 < hi < 0.85
+    assert hi - lo < flat_hi - flat_lo
+    # a prior written in eV on a is refused by its own check: it puts a
+    # where the data's estimate (thousands of kelvin) cannot be
+    with pytest.warns(UserWarning, match="disagree with the prior"):
+        wrong = fitter.fit_bayes(
+            x, T[:, None], c, priors={"a": sp.prior.between(0.6, 0.8)}
+        )
+    assert wrong.diagnostics["prior_conflict"]
+    use = [[55.0 + 273.15]]
+    b10 = informed.quantile_cri(0.1, use)
+    assert b10[0] < float(informed.qf(0.1, use)) < b10[1]

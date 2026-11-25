@@ -442,6 +442,100 @@ covered, and refused with what to use: weights, penalties (a prior on a
 coefficient is the Bayesian penalty), time-varying covariates, the
 semi-parametric Cox model and the other regression families.
 
+
+An activation energy from the literature
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A temperature-accelerated test at three temperatures seldom pins down
+the activation energy on its own, and it is the number the extrapolation
+to the use temperature hangs on. The failure mechanism's activation
+energy is often known roughly from the literature, say about 0.7 eV,
+fairly surely between 0.6 and 0.8.
+
+**Check the unit before writing the prior.** SurPyval's ``Arrhenius``
+life model is :math:`L(T) = b\,e^{a / T}` with ``T`` in kelvin, so its
+parameter ``a`` is the activation energy *divided by Boltzmann's
+constant*, in kelvin: 0.7 eV is ``a`` = 8,123 K, not 0.7. The prior is
+written on ``a``, so the belief in eV is divided by the constant:
+
+.. code-block:: python
+
+    import numpy as np
+    import surpyval as sp
+    from surpyval.life_models import Arrhenius
+
+    K_B = 8.617333262e-5                     # Boltzmann's constant, eV / K
+
+    # 36 units, 12 at each of 85, 105 and 125 C; the test stops at 6,000 h
+    T = np.repeat(np.array([85.0, 105.0, 125.0]) + 273.15, 12)
+    scale = 2e-6 * np.exp((0.7 / K_B) / T)
+    x = sp.Weibull.random(36, 1.0, 2.5, random_state=3) * scale
+    c = (x > 6000.0).astype(int)
+    x = np.minimum(x, 6000.0)
+
+    fitter = sp.AcceleratedLife(sp.Weibull, Arrhenius)
+    model = fitter.fit_bayes(
+        x, T[:, None], c,
+        priors={"a": sp.prior.around(0.7 / K_B,
+                                     between=(0.6 / K_B, 0.8 / K_B))},
+        importance=True,
+    )
+    model.param_cri("a") * K_B           # the activation energy, in eV
+    use = [[55.0 + 273.15]]
+    model.quantile_cri(0.1, use)         # the B10 life at 55 C
+
+With the data alone (no prior on ``a``) the activation energy's 95%
+credible interval is 0.53 to 0.92 eV; with the prior it is 0.60 to 0.80
+eV, and the B10 life at 55 C, an extrapolation 30 C below the lowest
+test temperature, narrows from 17,000-125,600 hours to 23,300-79,200.
+A prior mistakenly written in eV (``sp.prior.between(0.6, 0.8)`` on
+``a``) is caught: the fit warns that the data disagree with it, since
+their own estimate of ``a`` is in the thousands.
+
+Beliefs about a life, earlier fits, and checks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A belief is often about a life at some condition rather than about a
+parameter: "the B10 at the use stress is between 20,000 and 40,000
+hours". ``sp.prior.on_function`` states it on any function of the
+regression model, and ``sp.prior.on_quantities`` carries it to the
+parameters; ``instead_of`` names the parameter whose prior the
+statement stands in place of (here the scale), and the others keep
+theirs:
+
+.. code-block:: python
+
+    belief = sp.prior.on_quantities(
+        fitter,
+        sp.prior.on_function(lambda m: m.qf(0.1, use),
+                             sp.prior.between(20_000, 40_000),
+                             name="B10 at 55 C"),
+        instead_of="b",
+    )
+    model = fitter.fit_bayes(x, T[:, None], c, priors=belief)
+
+An earlier regression is a prior in two ways.
+``sp.prior.from_model(earlier)`` takes its estimates and their
+covariance as a joint normal (``weight=`` counts the old evidence for
+less; an earlier *Bayesian* regression is taken exactly, its priors and
+its data). ``sp.prior.from_fit(earlier, weight=)`` takes its data
+themselves as a power prior: at ``weight=1`` it is the fit of the old
+and new rows together (to 2e-5 in the tests).
+
+``model.loo()`` and ``model.waic()`` estimate how well the regression
+predicts a row it has not seen (a row is the unit), and
+``sp.bayes.compare`` ranks regressions fitted to the same rows by them:
+a model with a covariate against the same model without it, say. In the
+tests the leave-one-out values match leaving each row out exactly (an
+exponential model in two groups, where that has a closed form) within
+0.02 a row.
+
+``model.diagnose()`` gathers the checks in one report: the Laplace
+approximation's, any disagreement between the data and the priors, and
+posterior predictive checks on the number of failures, the total time
+on test and the shortest time, each simulated for the same units at the
+same covariates and censored as the data were.
+
 What every Bayesian fit reports
 -------------------------------
 

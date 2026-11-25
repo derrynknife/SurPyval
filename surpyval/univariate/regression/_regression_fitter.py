@@ -107,8 +107,14 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         x, Z, c, n, t, tl, tr
             The data, as for ``fit``: any censoring and truncation, and
             one row of covariates per row of ``x``.
-        priors : dict, optional
-            A prior for each parameter it names: a coefficient by its
+        priors : dict, joint prior or list, optional
+            A dict gives a prior for each parameter it names; a joint
+            prior is a belief about quantities of the regression
+            (``surpyval.prior.on_quantities`` with
+            ``surpyval.prior.on_function``: a B10 life at a use stress),
+            an earlier fit (``surpyval.prior.from_model``) or an earlier
+            fit's data (``surpyval.prior.from_fit``); a list combines
+            them. In a dict: a coefficient by its
             name (``coef_0``, or the covariate's column for
             ``fit_bayes_from_df``), a baseline parameter by its own
             (``beta``), or an accelerated life model's parameter
@@ -138,9 +144,10 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         -------
         surpyval.bayes.BayesianRegression
             ``param_cri(name)``, ``sf``/``ff``/``qf`` and ``cri`` at
-            covariates ``Z``, ``compare()``, and the approximation's
-            checks in ``diagnostics`` (``pareto_k``, ``shift``,
-            ``approximation``; a poor one warns).
+            covariates ``Z``, ``compare()``, ``waic()`` and ``loo()``,
+            ``diagnose()`` (with posterior predictive checks), and the
+            approximation's checks in ``diagnostics`` (``pareto_k``,
+            ``shift``, ``approximation``; a poor one warns).
 
         Not taken, each refused with what to use: weights ``w``, a
         penalty, time-varying covariates, and the other regression

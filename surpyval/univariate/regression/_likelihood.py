@@ -31,7 +31,18 @@ def truncation_correction(
     model: Any, data: SurpyvalData, *params: Boxable
 ) -> Boxable:
     """Log of the probability mass within each observation's truncation
-    interval, summed over the truncated rows.
+    interval, summed over the truncated rows (see
+    :func:`truncation_log_mass`)."""
+    if data.x_tl.size == 0:
+        return 0.0
+    return (data.n_t * truncation_log_mass(model, data, *params)).sum()
+
+
+def truncation_log_mass(
+    model: Any, data: SurpyvalData, *params: Boxable
+) -> Boxable:
+    """Log of the probability mass within the truncation interval of
+    each truncated row (in the order of ``data.x_tl``).
 
     The likelihood of a truncated observation is divided by
     ``P(tl < X < tr | Z)`` to account for the fact that it could only have
@@ -57,9 +68,6 @@ def truncation_correction(
     there both bounds are finite and the mass is not driven to zero by
     the scale alone.
     """
-    if data.x_tl.size == 0:
-        return 0.0
-
     tl, tr, Z = data.x_tl, data.x_tr, data.Z_t
     lo_finite = np.isfinite(tl)
     hi_finite = np.isfinite(tr)
@@ -90,7 +98,7 @@ def truncation_correction(
     if right.any():
         log_right = model.log_ff(stand_in(tr, right), Z, *params)
         log_mass = np.where(right, log_right, log_mass)
-    return (data.n_t * log_mass).sum()
+    return log_mass
 
 
 def regression_neg_ll(
@@ -129,3 +137,45 @@ def regression_neg_ll(
     ll = ll - truncation_correction(model, data, *params)
 
     return -ll
+
+
+def regression_row_ll(model: Any, data: SurpyvalData, *params: Boxable) -> Any:
+    """The log-likelihood of one unit of each row of ``data``, in the
+    data's row order: the terms of :func:`regression_neg_ll` before they
+    are multiplied by the rows' counts and summed, so that
+    ``-(data.n * rows).sum()`` is ``regression_neg_ll`` (unweighted
+    data). For the per-row criteria of a Bayesian fit (WAIC and
+    leave-one-out cross-validation).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import surpyval as sp
+    >>> from surpyval.univariate.regression._likelihood import (
+    ...     regression_row_ll)
+    >>> Z = np.random.default_rng(1).normal(size=(20, 1))
+    >>> x = sp.Weibull.random(20, 50.0, 2.0, random_state=2)
+    >>> fit = sp.WeibullPH.fit(x, Z, c=(x > 60).astype(int))
+    >>> rows = regression_row_ll(fit.model, fit.data, *fit.params)
+    >>> bool(np.isclose(-(fit.data.n * rows).sum(),
+    ...                 fit.model.neg_ll(fit.data, *fit.params)))
+    True
+    """
+    import numpy as onp
+
+    out = onp.zeros(len(data.c))
+    if data.x_o.size > 0:
+        out[data.mask_o] = model.log_df(data.x_o, data.Z_o, *params)
+    if data.x_r.size > 0:
+        out[data.mask_r] = model.log_sf(data.x_r, data.Z_r, *params)
+    if data.x_l.size > 0:
+        out[data.mask_l] = model.log_ff(data.x_l, data.Z_l, *params)
+    if data.x_il.size > 0:
+        right = model.ff(data.x_ir, data.Z_i, *params)
+        left = model.ff(data.x_il, data.Z_i, *params)
+        out[data.mask_i] = onp.log(onp.maximum(right - left, _TINY))
+    if data.x_tl.size > 0:
+        out[data.truncated_mask] -= onp.asarray(
+            truncation_log_mass(model, data, *params), dtype=float
+        )
+    return out

@@ -43,8 +43,8 @@ from surpyval.bayes.engines.grid import weighted_quantile
 from surpyval.bayes.posterior import Posterior
 from surpyval.bayes.prior import (
     BoundPriors,
-    MultivariateNormal,
     NormalOnScale,
+    PowerPrior,
     PriorSpec,
 )
 from surpyval.bayes.result import BayesianResult, _levels, fit_target
@@ -133,7 +133,13 @@ def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
     """``Normal(0, 2.5 / sd)`` for each coefficient with no prior."""
     covered = set(spec.single) | set(fixed)
     for j in spec.joint:
-        covered |= set(j.names or [])
+        if j.is_likelihood:
+            continue
+        if j.names is None:
+            # a joint prior on every free parameter (on_quantities with a
+            # statement for each)
+            return {}
+        covered |= set(j.names)
     Z = np.asarray(mle.data.Z, dtype=float)
     n = np.asarray(mle.data.n, dtype=float)
     out = {}
@@ -295,14 +301,121 @@ class RegressionTarget(Target):
 
     def check(self, bound: BoundPriors) -> None:
         for j in bound.spec.joint:
-            if not isinstance(j, MultivariateNormal):
+            if isinstance(j, PowerPrior):
                 raise ValueError(
-                    "A regression's priors are given on its parameters by "
-                    "name (priors={'coef_0': ..., 'beta': ...}) or jointly "
-                    "as a MultivariateNormal; priors on quantities, from "
-                    "data and from a model are for the distributions' "
-                    "fit_bayes."
+                    "prior.from_data holds the lives of a life "
+                    "distribution, without covariates. For an earlier "
+                    "regression's data use prior.from_fit(earlier_model, "
+                    "weight=...), or prior.from_model(earlier_model) for "
+                    "its estimates and their covariance."
                 )
+
+    # -- units: one row -------------------------------------------------------
+    def unit_log_lik(self, theta: npt.NDArray) -> npt.NDArray:
+        from surpyval.univariate.regression._likelihood import (
+            regression_row_ll,
+        )
+
+        theta = np.atleast_2d(theta)
+        out = np.empty((len(theta), len(self.data.c)))
+        with ignoring_warnings(), np.errstate(all="ignore"):
+            for k, row in enumerate(theta):
+                out[k] = regression_row_ll(self.fitter, self.data, *row)
+        return out
+
+    def unit_counts(self) -> npt.NDArray:
+        return np.asarray(self.data.n, dtype=float)
+
+    # -- replicates under the observed design ---------------------------------
+    def _design(self) -> dict:
+        """What a replicate keeps from the data: each unit's covariates,
+        its entry time (left truncation) and when it would be censored.
+
+        A unit that was right-censored keeps its own censoring time. A
+        unit that failed was never seen censored, so its censoring time
+        is not in the data: it is taken to be the latest time in the
+        data where the data have any censoring (exact for a test ended
+        at one time, the usual case), and none otherwise.
+        """
+        d = self.data
+        c = np.asarray(d.c)
+        if np.any(np.isin(c, (-1, 2))):
+            raise ValueError(
+                "A posterior predictive check simulates lives and censors "
+                "them as the data were; left- and interval-censored rows "
+                "come from an inspection scheme the data do not record, so "
+                "it is not available for them. The Laplace checks are in "
+                "model.diagnostics, and the family's residual checks on "
+                "the maximum-likelihood fit: model.mle.diagnose()."
+            )
+        t = np.asarray(d.t, dtype=float)
+        if np.isfinite(t[:, 1]).any():
+            raise ValueError(
+                "A posterior predictive check is not available for "
+                "right-truncated data: a unit is in them because it "
+                "failed early, which a replicate cannot be made to do. "
+                "Use model.mle.diagnose()."
+            )
+        n = np.asarray(d.n)
+        if np.any(n != np.round(n)):
+            raise ValueError(
+                "A posterior predictive check simulates each unit, so the "
+                "counts n must be whole numbers."
+            )
+        x = np.asarray(d.x, dtype=float)
+        x = x if x.ndim == 1 else x[:, 0]
+        latest = float(np.max(x)) if np.any(c == 1) else np.inf
+        rep = n.astype(int)
+        return {
+            "Z": np.repeat(np.asarray(d.Z, dtype=float), rep, axis=0),
+            "censor": np.repeat(np.where(c == 1, x, latest), rep),
+            "entry": np.repeat(
+                np.where(np.isfinite(t[:, 0]), t[:, 0], 0.0), rep
+            ),
+            "x": np.repeat(x, rep),
+            "c": np.repeat(c, rep),
+        }
+
+    def simulate(self, theta: npt.NDArray, rng: Any) -> dict:
+        """Lives for every unit at its covariates, from the regression
+        at ``theta``, each entering at its truncation time and censored
+        as :meth:`_design` says: ``{"x", "c"}``."""
+        design = self._design()
+        model = self.mle.with_params(theta)
+        Z = design["Z"]
+        entry = design["entry"]
+        lo = np.zeros(len(Z))
+        late = entry > 0
+        if late.any():
+            lo[late] = np.asarray(model.ff(entry[late], Z[late]), dtype=float)
+        u = lo + (1.0 - lo) * rng.random(len(Z))
+        life = np.asarray(model.qf(u, Z), dtype=float)
+        censored = life > design["censor"]
+        return {
+            "x": np.where(censored, design["censor"], life),
+            "c": censored.astype(int),
+        }
+
+    def observed(self) -> dict:
+        design = self._design()
+        return {"x": design["x"], "c": design["c"]}
+
+    def statistics(self) -> dict:
+        def failures(d: dict) -> float:
+            return float(np.sum(d["c"] == 0))
+
+        def time_on_test(d: dict) -> float:
+            return float(np.sum(d["x"]))
+
+        def shortest(d: dict) -> float:
+            return float(np.min(d["x"]))
+
+        out = {}
+        if np.any(np.asarray(self.data.c) == 1):
+            out["number of failures"] = failures
+        out["total time on test"] = time_on_test
+        out["shortest time"] = shortest
+        return out
 
     def check_flat(self, bound: BoundPriors) -> None:
         _check_flat(self.mle, self.data, bound)
@@ -929,18 +1042,101 @@ class BayesianRegression(BayesianResult):
         """Refuses: use :meth:`param_cri`."""
         return self._refuse_cb("param_cb", "param_cri(name)")
 
-    def diagnose(self, *args: Any, **kwargs: Any) -> Any:
-        """Refuses, saying where each check is: the Laplace
-        approximation's in ``diagnostics`` (and the warning the fit
-        gives), and the family's residual checks on the
-        maximum-likelihood fit, ``model.mle.diagnose()``."""
-        raise ValueError(
-            "diagnose() has no report for a Bayesian regression yet. The "
-            "Laplace approximation's checks against the exact posterior "
-            "are in model.diagnostics (pareto_k, shift, approximation), "
-            "and the family's checks of the data against the model are "
-            "those of the maximum-likelihood fit: model.mle.diagnose()."
-        )
+    def diagnose(self, replicates: int = 200, random_state: Any = 0) -> Any:
+        """
+        The fit's checks in one report: the Laplace approximation's
+        checks against the exact posterior, where the data disagree with
+        the priors, and posterior predictive checks.
+
+        A predictive check, in words: simulate ``replicates`` data sets
+        from the fitted regression, each from one posterior draw, for
+        the same units at the same covariates and censored as the data
+        were, and see whether the data's number of failures, total time
+        on test and shortest time sit among the simulated ones. A value
+        in the extreme 2.5% at either end is flagged: the model does not
+        reproduce that feature of the data. (A unit that was censored
+        keeps its censoring time; one that failed is censored at the
+        latest time in the data, which is exact for a test ended at one
+        time. Left- and interval-censored and right-truncated data are
+        refused, saying so.)
+
+        The family's residual checks are those of the maximum-likelihood
+        fit, ``model.mle.diagnose()``.
+
+        Parameters
+        ----------
+        replicates : int, optional
+            The data sets simulated for each check. Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed. Default 0, so the report is the same on each call.
+
+        Returns
+        -------
+        surpyval.bayes.BayesianDiagnosis
+            Printable; ``checks`` holds ``(name, ok, detail)`` rows,
+            ``predictive`` each check by its statistic, and ``ok``
+            whether all passed.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+        >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+        >>> model = sp.WeibullPH.fit_bayes(
+        ...     x, Z)
+        >>> report = model.diagnose()
+        >>> [name for name, ok, detail in report.checks]  # doctest: +ELLIPSIS
+        ['posterior', 'priors against the data', 'predictive check, ...]
+        >>> report.ok
+        True
+        """
+        return super().diagnose(replicates, random_state)
+
+    def waic(self) -> Any:
+        """
+        WAIC of the regression: the expected log predictive density of a
+        new unit, summed over the data's rows (see
+        :class:`~surpyval.bayes.PredictiveCriterion`). Compare two
+        regressions fitted to the same data with
+        :func:`surpyval.bayes.compare`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+        >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+        >>> model = sp.WeibullPH.fit_bayes(
+        ...     x, Z)
+        >>> res = model.waic()
+        >>> res.method, bool(res.p > 0)
+        ('draws', True)
+        """
+        return super().waic()
+
+    def loo(self) -> Any:
+        """
+        Leave-one-out cross-validation of the regression, by
+        Pareto-smoothed importance sampling over the posterior's draws:
+        each row's log predictive density from the posterior of the
+        others, summed (see
+        :class:`~surpyval.bayes.PredictiveCriterion`; a row whose Pareto
+        k is high is flagged).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> Z = np.random.default_rng(1).normal(size=(30, 1))
+        >>> x = sp.Weibull.random(30, 50.0, 2.0, random_state=2)
+        >>> model = sp.WeibullPH.fit_bayes(
+        ...     x, Z)
+        >>> res = model.loo()
+        >>> res.method, int(res.units)
+        ('psis', 30)
+        """
+        return super().loo()
 
     # ------------------------------------------------------------------
     # Comparison and summary
