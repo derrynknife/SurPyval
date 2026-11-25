@@ -3008,6 +3008,101 @@ recurrent-event models, where a repaired unit can fail again and every
 failure is counted (see :doc:`Recurrent Event Modelling with SurPyval`).
 
 
+Warranty returns from a Nevada table
+------------------------------------
+
+Warranty returns are often kept as a triangle: one row per shipment (or
+sales, or build) period with the number of units shipped, and one column per
+later period with how many of that shipment came back in it. The newest
+shipment has been in service for the least time, so its row is the shortest
+and the table is a staircase, the "Nevada chart". It is lifetime data in
+disguise: a unit that came back in its third month in service failed at about
+three months, and the units of a shipment that have not come back are still
+working at their shipment's age today (right censored).
+
+:class:`~surpyval.utils.nevada.NevadaTable` does that reading. Here are three
+monthly shipments and their returns in the months that followed (the Nevada
+chart of ReliaSoft's warranty documentation):
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    table = surv.NevadaTable(
+        shipped=[100, 140, 150],
+        returns=[[3, 3, 5],             # Jul, Aug, Sep returns of June's units
+                 [None, 2, 4],          # July's units, from August
+                 [None, None, 4]],      # August's units, in September
+        labels=["Jun", "Jul", "Aug"],
+    )
+    print(table)
+
+Each row starts one column to the right of the one before (the ``"calendar"``
+layout, as the chart is drawn). If your table has the columns as periods in
+service instead, every row starting in the first column, pass
+``layout="age"``; if the cells are returns to date rather than in the period,
+pass ``cumulative=True``. ``period=30.44`` puts the ages in days.
+
+When a return is known only by its period, the honest reading is that it
+failed somewhere in that period: :meth:`~surpyval.utils.nevada.NevadaTable.to_data`
+gives each one as interval censored, between :math:`k - 1` and :math:`k`
+periods. The warranty tools often take a return as failed at the end of its
+period instead (``ages="end"``), which adds up to a period to every age.
+On a table this small the two readings give quite different fits, so it is
+worth fitting both:
+
+.. jupyter-execute::
+
+    by_period = surv.Weibull.fit(table.to_data())
+    at_end = surv.Weibull.fit(table.to_data(ages="end"))
+    print('interval ages  :', by_period.params.round(4))
+    print('ages at the end:', at_end.params.round(4))
+
+The fit with ages at the ends of the periods matches the documented one
+(:math:`\eta = 6.6951`, :math:`\beta = 2.4928`). The table's
+:meth:`~surpyval.utils.nevada.NevadaTable.forecast` then gives the returns
+still to come from the units in service, each shipment at its own age (it is
+:func:`surpyval.forecast` with the table's ages and survivors):
+
+.. jupyter-execute::
+
+    ahead = table.forecast(at_end, horizon=[1, 2, 3], limit=12)
+    print(ahead)
+    print('next month, by shipment:', ahead.unit_expected[:, 0].round(2))
+
+The documentation forecasts 11.75, 11.04 and 5.80 returns from the three
+shipments next month, 29 in all; the small differences come from its
+probabilities rounded to three figures.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import numpy as _np
+    assert _np.allclose(at_end.params, [6.6951, 2.4928], atol=5e-4)
+    assert _np.allclose(ahead.unit_expected[:, 0], [11.748, 11.035, 5.796],
+                        atol=0.06)
+    assert round(float(ahead.expected[0])) == 29
+
+To go the other way, from a returns database to the table,
+:meth:`~surpyval.utils.nevada.NevadaTable.from_returns` takes each return's
+shipment period (the row, from 0) and the period of service it came back in
+(from 1), with an optional count each:
+
+.. jupyter-execute::
+
+    rebuilt = surv.NevadaTable.from_returns(
+        shipped=[100, 140, 150],
+        shipment=[0, 0, 0, 1, 1, 2],
+        age=[1, 2, 3, 1, 2, 1],
+        n=[3, 3, 5, 2, 4, 4],
+    )
+    print(rebuilt.to_array())
+
+``to_returns()`` gives that list back from a table, and ``to_array()`` the
+triangle, in either layout.
+
+
 Creating a custom Distribution
 ------------------------------
 

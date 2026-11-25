@@ -153,6 +153,7 @@ surpyval.MultivariateDistribution
 surpyval.MusaOkumoto
 surpyval.NegativeBinomial
 surpyval.NelsonAalen
+surpyval.NevadaTable
 surpyval.NeverOccurs
 surpyval.NonParametric
 surpyval.NonParametricCounting
