@@ -4,6 +4,13 @@ from .competing_risks import (
     CauseSpecificProportionalIntensity,
 )
 from .diagnostics import GoodnessOfFitResult
+from .discrete_growth import (
+    CrowAMSAADiscrete,
+    DiscreteGrowthModel,
+    GompertzGrowth,
+    LloydLipow,
+    ModifiedGompertzGrowth,
+)
 from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff

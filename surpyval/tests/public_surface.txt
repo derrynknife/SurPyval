@@ -429,12 +429,15 @@ surpyval.recurrent.ChangePoint
 surpyval.recurrent.CountingProcess
 surpyval.recurrent.CoxLewis
 surpyval.recurrent.CrowAMSAA
+surpyval.recurrent.CrowAMSAADiscrete
+surpyval.recurrent.DiscreteGrowthModel
 surpyval.recurrent.Duane
 surpyval.recurrent.EffortClock
 surpyval.recurrent.EffortTable
 surpyval.recurrent.GeneralizedOneRenewal
 surpyval.recurrent.GeneralizedRenewal
 surpyval.recurrent.GoelOkumoto
+surpyval.recurrent.GompertzGrowth
 surpyval.recurrent.GoodnessOfFitResult
 surpyval.recurrent.HPP
 surpyval.recurrent.InflectionS
@@ -445,7 +448,9 @@ surpyval.recurrent.JointFrailty
 surpyval.recurrent.JointFrailtyModel
 surpyval.recurrent.LittlewoodVerrall
 surpyval.recurrent.LittlewoodVerrallModel
+surpyval.recurrent.LloydLipow
 surpyval.recurrent.MCFDiffResult
+surpyval.recurrent.ModifiedGompertzGrowth
 surpyval.recurrent.MusaOkumoto
 surpyval.recurrent.NonParametricCounting
 surpyval.recurrent.PanelCountMCF

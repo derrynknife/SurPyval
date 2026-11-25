@@ -9,7 +9,8 @@ requirement at the end. Those are planning questions, answered before any
 failure is seen; once the test is running, the growth models
 (:class:`surpyval.CrowAMSAA`, :class:`surpyval.Duane` and
 ``CrowAMSAA.projection``) measure what it is actually achieving, and the
-two go on one chart.
+two go on one chart. For one-shot items, the growth models of success/fail data
+are in :doc:`Discrete Reliability Growth`.
 
 ``surpyval.test_planning`` has the three planning models of MIL-HDBK-189C
 (the US Department of Defense handbook on reliability growth management,

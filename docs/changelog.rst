@@ -43,6 +43,16 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Discrete (success/fail) reliability growth models**, in
+  ``surpyval.recurrent``: ``CrowAMSAADiscrete`` (the AMSAA discrete
+  tracking model of MIL-HDBK-189C, matching its worked example),
+  ``LloydLipow``, ``GompertzGrowth`` and ``ModifiedGompertzGrowth``,
+  fitted to the failures and trials of each stage by maximum likelihood
+  or, for Lloyd-Lipow and Gompertz, by least squares on observed
+  reliabilities. Each gives the reliability at any stage, the projected
+  next stage, its ceiling, Wald (logit) and likelihood-ratio bounds, and
+  a plot. See :doc:`Discrete Reliability Growth`.
+
 - **Warranty Nevada tables.** ``surpyval.NevadaTable`` reads the
   warranty triangle of shipments by return period (each row a shipment
   period with its units shipped, each column a later period with that
