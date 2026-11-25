@@ -3282,10 +3282,12 @@ The same analysis runs in the browser in
 Recipes: more distributions from their cumulative hazard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Several distributions that are popular in survival analysis are not built
-into SurPyval, but each is a few lines as a ``CustomDistribution``: the
-generalised gamma, the Gompertz (above), the generalised F and the inverse
-Gaussian. Each recipe below is checked against ``scipy.stats`` when the
+Several distributions that are popular in survival analysis are a few
+lines as a ``CustomDistribution``: the generalised gamma, the Gompertz
+(above), the generalised F and the inverse Gaussian. The generalised gamma
+is now built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
+with care near the lognormal that the recipe does not take; the recipe
+stays as an example of building one from the incomplete gamma function. Each recipe below is checked against ``scipy.stats`` when the
 documentation is built. Write the cumulative hazard with autograd's numpy
 (and autograd's ``scipy``), so that the hazard, the density and the
 confidence bounds can be differentiated from it.

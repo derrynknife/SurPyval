@@ -134,6 +134,7 @@ NAMED = (
     "Exponential",
     "ExpoWeibull",
     "Gamma",
+    "GeneralizedGamma",
     "Gumbel",
     "GumbelLEV",
     "Logistic",

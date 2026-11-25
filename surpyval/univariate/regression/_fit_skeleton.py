@@ -459,6 +459,10 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
         (0,),
         lambda p, s: [p[0] + s, p[1]],
     ),
+    (ACCELERATED_FAILURE_TIME, "GeneralizedGamma"): (
+        (0,),
+        lambda p, s: [p[0] + s, *p[1:]],
+    ),
     (ACCELERATED_FAILURE_TIME, "Normal"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "Logistic"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "Gumbel"): ((0, 1), _both_scale_up),
