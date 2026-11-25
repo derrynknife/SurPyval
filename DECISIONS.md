@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-25
 
+### Scope: not a machine-learning, sampling or deep-learning framework (25 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| SurPyval is a statistics package for time-to-event data. It is not a machine-learning framework, a Bayesian sampler or a deep-learning framework. Survival trees and forests, penalised fits and prediction scores are in, as statistical models and measures; tuning, pipeline and cross-validation tooling, and boosting, are out. | maintainer (25 Nov 2026) | A package for estimators and their uncertainty; workflow tooling belongs to other frameworks. Recorded in the README's scope section too. | done |
+| `cross_validate=` on `dynamic_auc` / `dynamic_brier` stays, as the named exception to "no cross-validation tooling". | maintainer (25 Nov 2026) | It scores one model out of sample and tunes nothing. | done |
+| Bayesian fits are closed form, grid and the Laplace approximation; there is no sampler of SurPyval's own, and sampling goes through PyMC (`surpyval.pymc`). | maintainer (25 Nov 2026) | A general MCMC sampler is specialist software that PyMC, Stan and NumPyro already do robustly. | done |
+| No networks, training loops, tuning or GPU management; `surpyval.torch` gives SurPyval's likelihoods as losses to people who train their own models. | maintainer (20 Nov 2026) | As decided for the torch helpers; recorded here with the rest of the scope. | done |
+
 ### Dabrowska's bivariate survival estimator (25 Nov 2026)
 
 | Decision | By | Reason | Status |
