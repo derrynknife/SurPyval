@@ -384,6 +384,64 @@ quantiles are the normal's own, exactly; functions of the parameters
 Pareto k is that of Yao, Vehtari, Simpson and Gelman (2018), "Yes, but
 did it work?: evaluating variational inference".
 
+Regression: a prior on an effect
+--------------------------------
+
+Small accelerated tests are where a prior on an effect matters most. A
+power-law life model says the life falls as the voltage to a power
+``n``; past tests of the same insulation put ``n`` near -2, give or take
+0.5. Fifteen units at three voltages, and the life at the use voltage of
+10 with its credible interval:
+
+.. code-block:: python
+
+    from surpyval.life_models import Power
+
+    fitter = sp.AcceleratedLife(sp.Weibull, Power)
+    model = fitter.fit_bayes(
+        x, Z=voltage,
+        priors={"n": sp.Normal.from_params([-2.0, 0.5]),
+                "beta": sp.prior.around(2, between=(1.2, 4))},
+    )
+    model.param_cri("n")                 # the exponent's credible interval
+    model.sf(100.0, [[10.0]])            # reliability at use, predictive
+    model.quantile_cri(0.1, [[10.0]])    # the B10 at use, with its interval
+
+The proportional hazards and accelerated failure time fitters take the
+same: ``sp.WeibullPH.fit_bayes(x, Z, c, priors={"coef_0": ...})``, a
+coefficient by its name (``coef_0``, or its column's with
+``fit_bayes_from_df``). The result is a
+:class:`~surpyval.bayes.BayesianRegression`: ``sf``, ``ff``, ``df``,
+``hf``, ``Hf`` and ``qf`` at covariates are the posterior predictive
+(the uncertainty in the parameters averaged in), ``cri(x, Z, on=...)``,
+``quantile_cri`` and ``param_cri`` the credible intervals, and
+``compare()`` sets each prior, the maximum-likelihood estimate and the
+posterior side by side.
+
+A regression has at least three parameters (the baseline's and one per
+covariate), so it is computed by the Laplace approximation of the
+section above, with the same checks (``diagnostics["pareto_k"]`` and
+``["shift"]``, a warning where it is poor) and the same
+``importance=True`` correction. With a few dozen failures it is close to
+exact: in the tests, an exponential model's reweighted posterior is
+within 0.6% of the exact interval's width, and with flat priors and 400
+units the posterior medians are the maximum-likelihood estimates and the
+posterior spreads their standard errors (within 0.01%). For the exact
+posterior of a small or awkward regression, sample it with PyMC through
+:mod:`surpyval.pymc`.
+
+A coefficient of ``exp(beta'Z)`` that is given no prior gets
+``Normal(0, 2.5 / sd)``, ``sd`` its covariate's standard deviation in the
+data: a change of 2.5 in the log hazard (or the log life) for one
+standard deviation of the covariate is one prior standard deviation,
+which is weak, and the same whatever the covariate's unit. The summary
+and ``model.default_priors`` say which priors were chosen this way. Any
+other parameter with no prior is flat on its unconstrained scale, as for
+a distribution, and refused where the data do not determine it. Not
+covered, and refused with what to use: weights, penalties (a prior on a
+coefficient is the Bayesian penalty), time-varying covariates, the
+semi-parametric Cox model and the other regression families.
+
 Priors: the helpers, and their dangers
 --------------------------------------
 
