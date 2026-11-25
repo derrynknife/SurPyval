@@ -122,6 +122,33 @@ def _fitters(dist: Any, tm: TransitionMatrix, regression: bool) -> list:
     return out
 
 
+def _x_column(df: Any, x_col: Any) -> Any:
+    """The exit times of a DataFrame: one column, or two (``[xl_col,
+    xr_col]``) for moves known only to lie between two times."""
+    from surpyval.utils.dataframe import frame_column
+
+    if isinstance(x_col, (list, tuple)):
+        if len(x_col) != 2:
+            raise ValueError(
+                "'x_col' is one column name, or two ([xl_col, xr_col]) "
+                f"for interval-censored moves; got {x_col!r}."
+            )
+        return np.column_stack(
+            [
+                np.asarray(frame_column(df, c, "x_col"), dtype=float)
+                for c in x_col
+            ]
+        )
+    return frame_column(df, x_col, "x_col")
+
+
+def _lows(fitters: list) -> list:
+    """The start of each transition's support."""
+    return [
+        float(np.ravel(getattr(f, "support", [-np.inf]))[0]) for f in fitters
+    ]
+
+
 class _ParametricMultiStateBase(SerialisableMixin):
     """What the parametric multi-state models share; the subclasses set
     how a transition is fitted and how its hazard is evaluated."""
@@ -143,6 +170,10 @@ class _ParametricMultiStateBase(SerialisableMixin):
     _data: SpellData
     _Z: npt.NDArray
     _cache: dict
+    #: The joint fit of every transition, where some moves are interval
+    #: censored (the likelihood is then not a product of one factor per
+    #: transition); ``None`` otherwise.
+    _joint: Any = None
 
     # -- fitting ------------------------------------------------------------
 
@@ -150,6 +181,43 @@ class _ParametricMultiStateBase(SerialisableMixin):
     def _fit(
         cls, data: SpellData, Z: npt.NDArray, fitters: list, clock: str
     ) -> Any:
+        joint = None
+        if data.has_intervals:
+            from surpyval.multistate import _interval, _joint
+
+            if clock == "reset":
+                _check_reset(
+                    fitters, data.tm, "model" if cls._regression else "dist"
+                )
+            lik = _interval.IntervalLikelihood(
+                data, clock, cls._row_hazard(Z), _lows(fitters)
+            )
+            start = _interval.midpoint_data(data, lik.succ)
+            models = cls._fit_transitions(start, Z, fitters, clock)
+            joint = _joint.fit(
+                [models[k] for k in data.tm.transitions],
+                lik.neg_ll,
+                f"The fit of {cls.__name__} to interval-censored moves",
+            )
+            models = dict(zip(data.tm.transitions, joint.models))
+        else:
+            models = cls._fit_transitions(data, Z, fitters, clock)
+        out = cls()
+        out.transitions = data.tm
+        out.models = models
+        out.clock = clock
+        out._data = data
+        out._Z = Z
+        out._joint = joint
+        out._setup()
+        return out
+
+    @classmethod
+    def _fit_transitions(
+        cls, data: SpellData, Z: Any, fitters: list, clock: str
+    ) -> dict:
+        """Each transition's model fitted to its own factor of the
+        likelihood (the whole fit, where every move's time is known)."""
         tm = data.tm
         frm, to = tm.from_index(), tm.to_index()
         counts = np.array(
@@ -198,14 +266,13 @@ class _ParametricMultiStateBase(SerialisableMixin):
                 found,
             )
         cls._warn_found(found)
-        out = cls()
-        out.transitions = tm
-        out.models = models
-        out.clock = clock
-        out._data = data
-        out._Z = Z
-        out._setup()
-        return out
+        return models
+
+    @classmethod
+    def _row_hazard(cls, Z: Any) -> Any:
+        """``hazard(model, t, rows, rate)``: a transition's cumulative
+        hazard (hazard with ``rate``) at ``t`` for the spells ``rows``."""
+        raise NotImplementedError
 
     @staticmethod
     def _fit_one(
@@ -307,7 +374,13 @@ class _ParametricMultiStateBase(SerialisableMixin):
         is a product of one factor per transition (its hazard where it
         happened, its survival over each spell at risk of it), so the
         transitions' parameters are estimated from their own factors.
+        Where some moves are interval censored the likelihood does not
+        factor, the transitions are fitted together, and this is the
+        inverse of the whole likelihood's curvature, with terms between
+        transitions.
         """
+        if self._joint is not None:
+            return self._joint.cov.copy()
         from surpyval.univariate.competing_risks._assembly import (
             block_diagonal,
         )
@@ -329,6 +402,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
         (``surpyval.utils.no_maximum``): the worst of their own
         ``maximum``, since the likelihood is maximised a transition at a
         time."""
+        if self._joint is not None:
+            return self._joint.maximum
         from surpyval.utils.no_maximum import combined_maximum
 
         return combined_maximum(
@@ -336,7 +411,10 @@ class _ParametricMultiStateBase(SerialisableMixin):
         )
 
     def neg_ll(self) -> float:
-        """The negative log-likelihood: the sum of the transitions'."""
+        """The negative log-likelihood: the sum of the transitions' (with
+        interval-censored moves, that of the joint fit)."""
+        if self._joint is not None:
+            return float(self._joint.neg_ll)
         return float(sum(m.neg_ll() for m in self._models()))
 
     @property
@@ -345,6 +423,9 @@ class _ParametricMultiStateBase(SerialisableMixin):
         return -self.neg_ll()
 
     def _ic_terms(self) -> tuple[int, float]:
+        if self._joint is not None:
+            d = self._data
+            return self._joint.k, float(d.n[d.h >= 0].sum())
         from surpyval.univariate.competing_risks._assembly import (
             summed_ic_terms,
         )
@@ -647,9 +728,14 @@ class _ParametricMultiStateBase(SerialisableMixin):
     def _data_dict(self) -> dict:
         d = self._data
         tm = self.transitions
-        return {
+        x: list = (
+            d.x.tolist()
+            if d.xl is None
+            else np.column_stack([d.xl, d.x]).tolist()
+        )
+        out = {
             "transitions": tm.to_dict(),
-            "x": d.x.tolist(),
+            "x": x,
             "tl": [None if not np.isfinite(v) else float(v) for v in d.tl],
             "state": [to_native(tm.states[g]) for g in d.g],
             "e": [None if h < 0 else to_native(tm.states[h]) for h in d.h],
@@ -658,6 +744,9 @@ class _ParametricMultiStateBase(SerialisableMixin):
             "clock": self.clock,
             "models": [m.to_dict() for m in self._models()],
         }
+        if self._joint is not None:
+            out["joint"] = self._joint.to_dict()
+        return out
 
     @classmethod
     def _from_data_dict(cls, model_dict: dict, model_cls: Any) -> Any:
@@ -675,6 +764,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
             model_dict.get("i"),
             model_dict["n"],
             tm,
+            intervals=True,
         )
         out = cls()
         out.transitions = tm
@@ -683,6 +773,11 @@ class _ParametricMultiStateBase(SerialisableMixin):
             for pair, sub in zip(tm.transitions, model_dict["models"])
         }
         out.clock = model_dict.get("clock", "forward")
+        out._joint = None
+        if "joint" in model_dict:
+            from surpyval.multistate._joint import JointFit
+
+            out._joint = JointFit.from_dict(model_dict["joint"], out._models())
         out._data = data
         out._setup()
         return out
@@ -742,6 +837,12 @@ class ParametricMultiState(_ParametricMultiStateBase):
     it. The bounds on the state occupation probabilities come
     from the delta method over every transition's parameters.
 
+    A move found only at an inspection (``x`` as ``[xl, xr]``) is
+    interval censored: the likelihood integrates over its unknown time
+    (taking the move to be direct), which ties the transitions together,
+    so they are then fitted at once (BFGS from their one-at-a-time fits)
+    with a covariance from the whole likelihood's Hessian.
+
     Unlike the non-parametric :class:`~surpyval.multistate.MultiState`,
     its curves are smooth and can be extended past the data, as far as
     the distributions can be trusted there.
@@ -790,6 +891,13 @@ class ParametricMultiState(_ParametricMultiStateBase):
             (``tl``), the unit (``i``), counts (``n``) and the allowed
             transitions. ``x`` may be a :class:`~surpyval.SurpyvalData`
             holding them all, and ``s`` is another name for ``state``.
+            ``x`` may also be two columns, ``[xl, xr]`` per spell: a move
+            out of the state known only to lie in ``(xl, xr]`` (the last
+            time the unit was seen in the state and the first it was seen
+            in the next; ``xl = xr`` where the time is known). The spell
+            it began is the unit's next one, whose ``tl`` lies in the
+            interval; the likelihood integrates over the move's time, and
+            every transition is then fitted at once.
         dist : ParametricFitter or dict, optional
             The distribution of every transition (default ``Weibull``),
             or a ``{(from, to): distribution}`` dict with one for each.
@@ -836,7 +944,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         from surpyval import Weibull
 
         _check_clock(clock)
-        data = check_spells(x, e, state, tl, i, n, transitions)
+        data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
         fitters = _fitters(Weibull if dist is None else dist, data.tm, False)
         Z = np.zeros((data.x.size, 0))
         return cls._fit(data, Z, fitters, clock)
@@ -847,7 +955,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
     def fit_from_df(
         cls,
         df: Any,
-        x_col: str,
+        x_col: str | list,
         e_col: str,
         state_col: str,
         tl_col: str | None = None,
@@ -880,7 +988,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
             return None if name is None else frame_column(df, name, arg)
 
         return cls.fit(
-            col(x_col, "x_col"),
+            _x_column(df, x_col),
             col(e_col, "e_col"),
             col(state_col, "state_col"),
             tl=col(tl_col, "tl_col"),
@@ -990,6 +1098,16 @@ class ParametricMultiState(_ParametricMultiStateBase):
         found: list,
     ) -> Any:
         return fitter.fit(x=x, c=c, n=n, **extra)
+
+    @classmethod
+    def _row_hazard(cls, Z: Any) -> Any:
+        def hazard(
+            model: Any, t: npt.NDArray, rows: npt.NDArray, rate: bool
+        ) -> npt.NDArray:
+            f = model.hf if rate else model.Hf
+            return np.asarray(f(t), dtype=float)
+
+        return hazard
 
     @staticmethod
     def _Hf(
@@ -1442,7 +1560,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         from surpyval import WeibullPH
 
         _check_clock(clock)
-        data = check_spells(x, e, state, tl, i, n, transitions)
+        data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
         Z_arr, names = _covariates(Z, data.x.size)
         fitters = _fitters(
             WeibullPH if model is None else model, data.tm, True
@@ -1473,7 +1591,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
     def fit_from_df(
         cls,
         df: Any,
-        x_col: str,
+        x_col: str | list,
         Z_cols: Any,
         e_col: str,
         state_col: str,
@@ -1511,13 +1629,14 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         Z = np.column_stack([frame_column(df, c, "Z_cols") for c in cols])
         _check_clock(clock)
         data = check_spells(
-            col(x_col, "x_col"),
+            _x_column(df, x_col),
             col(e_col, "e_col"),
             col(state_col, "state_col"),
             col(tl_col, "tl_col"),
             col(i_col, "i_col"),
             col(n_col, "n_col"),
             transitions,
+            intervals=True,
         )
         Z_arr, _ = _covariates(Z, data.x.size)
         from surpyval import WeibullPH
@@ -1551,6 +1670,18 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         from surpyval.univariate.regression._aliasing import warn_collected
 
         warn_collected(found, "in the fit of each transition")
+
+    @classmethod
+    def _row_hazard(cls, Z: Any) -> Any:
+        Z_arr = np.asarray(Z, dtype=float)
+
+        def hazard(
+            model: Any, t: npt.NDArray, rows: npt.NDArray, rate: bool
+        ) -> npt.NDArray:
+            f = model.hf if rate else model.Hf
+            return np.asarray(f(t, Z_arr[rows]), dtype=float)
+
+        return hazard
 
     @staticmethod
     def _Hf(
@@ -1598,10 +1729,54 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
         check_alpha_ci(alpha_ci)
         names = self.transitions.transition_names()
-        return pd.concat(
+        table = pd.concat(
             {t: m.summary(alpha_ci) for t, m in zip(names, self._models())},
             names=["transition"],
         )
+        if self._joint is not None:
+            table = self._joint_summary(table, alpha_ci)
+        return table
+
+    def _joint_summary(self, table: Any, alpha_ci: float) -> Any:
+        """The table of :meth:`summary` with the standard errors, bounds
+        and tests of the joint fit (where moves are interval censored):
+        a positive parameter's bounds on the log scale, a coefficient's
+        on its own."""
+        from scipy.stats import norm
+
+        from surpyval.multistate._joint import Packer
+
+        pack = Packer.of(self._models())
+        se = self.standard_errors()
+        z = norm.ppf(1 - alpha_ci / 2)
+        coef = table["coef"].to_numpy(dtype=float)
+        if coef.size != se.size:
+            return table
+        cols = list(table.columns)
+        lo_col = [c for c in cols if c.startswith("coef lower")][0]
+        hi_col = [c for c in cols if c.startswith("coef upper")][0]
+        elo = [c for c in cols if c.startswith("exp(coef) lower")][0]
+        ehi = [c for c in cols if c.startswith("exp(coef) upper")][0]
+        is_coef = table.index.get_level_values("part") == "coefficients"
+        out = table.copy()
+        positive = (pack.lower == 0) & ~np.isfinite(pack.upper)
+        with np.errstate(all="ignore"):
+            w = z * se / np.abs(coef)
+            lower = np.where(
+                positive & ~is_coef, coef * np.exp(-w), coef - z * se
+            )
+            upper = np.where(
+                positive & ~is_coef, coef * np.exp(w), coef + z * se
+            )
+            stat = coef / se
+        out["se(coef)"] = se
+        out[lo_col] = lower
+        out[hi_col] = upper
+        out[elo] = np.where(is_coef, np.exp(lower), np.nan)
+        out[ehi] = np.where(is_coef, np.exp(upper), np.nan)
+        out["z"] = np.where(is_coef, stat, np.nan)
+        out["p"] = np.where(is_coef, 2 * norm.sf(np.abs(stat)), np.nan)
+        return out
 
     # -- predictions --------------------------------------------------------
 

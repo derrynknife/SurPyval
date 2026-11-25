@@ -536,6 +536,70 @@ only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
 
+Moves known only to lie between two times
+-----------------------------------------
+
+Sometimes a move is not seen when it happens but is found at an
+inspection: a pump last seen working at one inspection is found degraded
+at the next; a patient well at one visit is ill at the next. The move
+happened at some unknown time between the two looks. Give such a spell's
+``x`` as two times, ``[xl, xr]``: the last time the unit was seen in its
+state and the first time it was seen in the next (``xl = xr`` for a
+spell whose end is known, and for a censored one). The spell that the
+move began starts somewhere in that interval; give its ``tl`` as either
+end of it (the time the unit was first seen there, say), and the unit
+``i``, which ties the two together.
+
+.. jupyter-execute::
+
+    from surpyval import Exponential
+
+    inspected = ParametricMultiState.fit(
+        x=[[2, 4], [7, 7], [3, 3], [1, 2], [6, 6]],
+        e=["degraded", "failed", "failed", "degraded", None],
+        state=["working", "degraded", "working", "working", "degraded"],
+        tl=[0, 4, 0, 0, 2],
+        i=[1, 1, 2, 3, 3],
+        transitions=[
+            ("working", "degraded"), ("working", "failed"),
+            ("degraded", "failed"),
+        ],
+        dist=Exponential,
+    )
+    inspected.params.round(4)
+
+Unit 1 was found degraded at 4 after working at 2, and failed at 7;
+unit 3 was found degraded at 2 and was still degraded at 6.
+
+The likelihood then averages over the unknown time of the move: the
+chance of staying in the old state until then, times the rate of the
+move then, times the chance of what was seen of the unit afterwards had
+it entered the new state then, added up over every time in the interval.
+That ties the transitions together (the moves out of the old state
+share the integral, and so do the old and new states' hazards), so they
+are no longer fitted one at a time but all at once, from their one-at-a-
+time fits to the middles of the intervals, and the covariance is the
+inverse of the whole likelihood's curvature, with terms between
+transitions. On the clock reset the next spell's hazard runs from the
+unknown entry, so its density is averaged over the interval too (and
+over the next interval, where that move was found at an inspection as
+well). The integrals use tanh-sinh quadrature, which stays accurate
+where a hazard is infinite at the start of an interval (a Weibull with a
+shape below 1).
+
+The model takes each move to be direct: in the interval the unit went
+from one state to the next with nothing in between. Where it might have
+passed through another state unseen (fallen ill and recovered between
+visits), the data are panel data, below. With a single transition the
+fit is the univariate interval-censored fit (``Weibull.fit`` with ``c =
+2``), and as an interval narrows to a point the fit becomes the one with
+the move's time known; both are tested. With constant hazards and no way
+back, the model's likelihood is R ``msm``'s for the same visits with
+exactly timed deaths (``obstype = 2``), and the fit agrees with msm's
+to :math:`10^{-6}` (``scripts/reference/reference_r_multistate_interval.R``);
+simulated inspections recover Weibull hazards, and their bounds cover at
+their nominal level (``surpyval/tests/calibration/test_coverage_multistate_interval.py``).
+
 States seen only at visits (panel data)
 ---------------------------------------
 
@@ -702,9 +766,11 @@ script is ``scripts/reference/reference_r_multistate_panel.R``.
 What is not here yet
 --------------------
 
-The spell models refuse interval-censored changes of state: for states
-seen only at visits use ``PanelMultiState``, which has no hidden Markov
-(misclassification) model yet. The parametric models have no
+The non-parametric and Cox spell models refuse interval-censored
+changes of state (the parametric ones take them); for states seen only
+at visits use ``PanelMultiState``, which has no hidden Markov
+(misclassification) model yet. A ``SurpyvalData`` cannot yet carry an
+interval-censored move into the multi-state models: give the arrays. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
 parametric spell models only: a Cox model per transition on the time in
 the state would need its probabilities simulated over step hazards, and
