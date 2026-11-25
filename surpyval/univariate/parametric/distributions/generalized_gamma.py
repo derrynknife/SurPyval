@@ -158,6 +158,72 @@ def _log_tails(w: Boxable, Q: Boxable) -> tuple[Boxable, Boxable]:
     )
 
 
+#: The series of the reverse hazard ``gamma(q, u) e^u / u^q`` (below)
+#: is summed to this many terms, for ``u`` below ``_SERIES_U``.
+_SERIES_TERMS = 60
+_SERIES_U = 0.5
+
+
+def _log_hazard(w: Boxable, Q: Boxable) -> Boxable:
+    r"""The log hazard of the standardised log time, :math:`\ln g(w) -
+    \ln S(w)`, which in the far upper tail is a difference of two logs
+    that both underflow to -inf. There it is taken from the gamma
+    variable :math:`u = q e^{Qw}` directly:
+
+    - :math:`Q > 0`, :math:`u > q + 1`: :math:`h = Q\,u\,r(q, u)`, with
+      :math:`r` the standard gamma's hazard (``Gamma``'s continued
+      fraction), and :math:`\ln u = \ln q + Qw` even where :math:`u`
+      overflows (:math:`r` is 1 there);
+    - :math:`Q < 0`, :math:`u < 1/2`: :math:`h = |Q| q / \sum_{n \ge 0}
+      u^n / ((q + 1) \cdots (q + n))`, from the series of the lower
+      incomplete gamma.
+
+    Elsewhere (and near the lognormal, where Temme's tails do not
+    underflow) the difference of logs.
+    """
+    from .gamma import _hazard_over_rate
+
+    w = w + np.zeros_like(Q)
+    Q = Q + np.zeros_like(w)
+    w_v = onp.asarray(getval(w), dtype=float)
+    Q_v = onp.asarray(getval(Q), dtype=float)
+    with onp.errstate(all="ignore"):
+        temme = (onp.abs(Q_v) < _temme.Q_MAX) & (
+            onp.abs(_temme.eta_of(w_v, Q_v)) <= _temme.ETA_MAX
+        )
+        q_v = 1.0 / (Q_v * Q_v)
+        log_u_v = onp.log(q_v) + Q_v * w_v
+        upper = ~temme & (Q_v > 0) & (log_u_v > onp.log(q_v + 1.0))
+        lower = ~temme & (Q_v < 0) & (log_u_v < onp.log(_SERIES_U))
+    plain = ~(upper | lower)
+    out: Any = None
+    if onp.any(plain) or plain.size == 0:
+        w_p = np.where(plain, w, 0.0)
+        Q_p = np.where(plain, Q, 0.5)
+        out = _log_g(w_p, Q_p) - _log_tails(w_p, Q_p)[0]
+        if onp.all(plain):
+            return out
+    if onp.any(upper):
+        Q_u = np.where(upper, Q, 1.0)
+        q_u = 1.0 / (Q_u * Q_u)
+        log_u = np.log(q_u) + Q_u * np.where(upper, w, 3.0)
+        u = np.exp(np.minimum(log_u, 690.0))
+        tail = np.log(Q_u) + log_u + np.log(_hazard_over_rate(q_u, u))
+        out = tail if out is None else np.where(upper, tail, out)
+    if onp.any(lower):
+        Q_l = np.where(lower, Q, -1.0)
+        q_l = 1.0 / (Q_l * Q_l)
+        u = np.exp(np.log(q_l) + Q_l * np.where(lower, w, 2.0))
+        total: Any = 1.0
+        term: Any = 1.0
+        for k in range(1, _SERIES_TERMS):
+            term = term * u / (q_l + k)
+            total = total + term
+        tail = np.log(-Q_l * q_l) - np.log(total)
+        out = tail if out is None else np.where(lower, tail, out)
+    return out
+
+
 def _std_quantile(p: npt.NDArray, s: npt.NDArray, Q: float) -> npt.NDArray:
     r"""The standardised log time :math:`w` at which :math:`F = p` (and
     :math:`S = s = 1 - p`, given separately so that neither rounds):
@@ -335,9 +401,22 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
     @staticmethod
     def _w(x: Numeric, mu: Boxable, sigma: Boxable) -> tuple:
         """The standardised log time ``(ln x - mu) / sigma`` and ``x``
-        with the points at and below 0 replaced by 1."""
+        with the points at and below 0, and at infinity, replaced by 1
+        (for :meth:`_edges` to overwrite)."""
         x_pos = positive_or_one(x)
+        if onp.any(onp.isposinf(getval(x_pos))):
+            x_pos = np.where(np.isinf(x_pos), 1.0, x_pos)
         return (np.log(x_pos) - mu) / sigma, x_pos
+
+    @staticmethod
+    def _edges(x: Numeric, inside: Boxable, at_zero: Any, at_inf: Any) -> Any:
+        """``inside`` in the support, its limits at x = 0 and x = inf."""
+        out = on_support(x, inside, at_zero)
+        if onp.any(onp.isposinf(onp.asarray(getval(x), dtype=float))):
+            if callable(at_inf):
+                at_inf = at_inf()
+            out = np.where(np.isposinf(x), at_inf + np.zeros_like(out), out)
+        return out
 
     @staticmethod
     def _at_zero(mu: Boxable, sigma: Boxable, Q: Boxable) -> tuple:
@@ -365,19 +444,21 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
         # ln g(w) - ln sigma - ln x; g is exact through Q = 0 (_log_g)
         w, x_pos = self._w(x, mu, sigma)
         inside = _log_g(w, Q) - np.log(sigma) - np.log(x_pos)
-        return on_support(x, inside, lambda: self._at_zero(mu, sigma, Q)[1])
+        return self._edges(
+            x, inside, lambda: self._at_zero(mu, sigma, Q)[1], -np.inf
+        )
 
     def log_sf(
         self, x: Numeric, mu: Boxable, sigma: Boxable, Q: Boxable
     ) -> Boxable:
         w, _ = self._w(x, mu, sigma)
-        return on_support(x, _log_tails(w, Q)[0], 0.0)
+        return self._edges(x, _log_tails(w, Q)[0], 0.0, -np.inf)
 
     def log_ff(
         self, x: Numeric, mu: Boxable, sigma: Boxable, Q: Boxable
     ) -> Boxable:
         w, _ = self._w(x, mu, sigma)
-        return on_support(x, _log_tails(w, Q)[1], -np.inf)
+        return self._edges(x, _log_tails(w, Q)[1], -np.inf, 0.0)
 
     def sf(
         self, x: Numeric, mu: Boxable, sigma: Boxable, Q: Boxable
@@ -536,8 +617,27 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
         >>> GeneralizedGamma.hf(x, 1.5, 0.6, 0.5)
         array([0.07845657, 0.18444707, 0.35308409, 0.43513705])
         """
-        return np.exp(
-            self.log_df(x, mu, sigma, Q) - self.log_sf(x, mu, sigma, Q)
+        # From the hazard of the standardised log time (_log_hazard): the
+        # difference ln f - ln S is -inf - -inf once both underflow.
+        w, x_pos = self._w(x, mu, sigma)
+        inside = np.exp(_log_hazard(w, Q) - np.log(sigma) - np.log(x_pos))
+        return self._edges(
+            x,
+            inside,
+            lambda: self._at_zero(mu, sigma, Q)[0],
+            lambda: self._hf_at_inf(mu, sigma, Q),
+        )
+
+    @staticmethod
+    def _hf_at_inf(mu: Boxable, sigma: Boxable, Q: Boxable) -> Boxable:
+        r"""The hazard's limit as :math:`x \to \infty`: it behaves like
+        :math:`x^{Q/\sigma - 1}` for :math:`Q > 0`, so it is infinite for
+        :math:`Q > \sigma`, the gamma's rate :math:`e^{-\mu}/\sigma^2` at
+        :math:`Q = \sigma`, and 0 below (and for :math:`Q \le 0`)."""
+        return np.where(
+            Q > sigma,
+            np.inf,
+            np.where(Q == sigma, np.exp(-mu) / sigma**2, 0.0),
         )
 
     def Hf(

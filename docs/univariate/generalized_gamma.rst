@@ -125,8 +125,10 @@ What it does not do
   draws on the fitted ``Q``, where the axis is the right one; fit by
   ``"MLE"`` (the default), ``"MPS"``, ``"MSE"`` or ``"MOM"``.
 - **Covariates** go on ``mu`` through ``AFT(GeneralizedGamma)`` (as
-  flexsurv's ``gengamma`` with covariates); the proportional hazards and
-  odds families take it as any baseline, but are not closed-form
+  flexsurv's ``gengamma`` with covariates), or on any parameter through
+  ``Distributional(GeneralizedGamma)`` (flexsurv's ``anc=``; see
+  :doc:`../Distributional Regression`); the proportional hazards and odds
+  families take it as any baseline, but are not closed-form
   reparameterisations of it, so they fit at the covariates as given (see
   :doc:`../regression analysis`).
 
