@@ -657,6 +657,14 @@ def _build(name):
         "bayesian_process": lambda: GammaProcess.fit_bayes(
             *_process_data(1, monotone=True), threshold=15.0
         ),
+        "bayesian_competing_risks": lambda: (
+            ParametricCompetingRisks.fit_bayes(
+                _cr_data()[0], _cr_data()[2], c=_cr_data()[3]
+            )
+        ),
+        "bayesian_multistate": lambda: ParametricMultiState.fit_bayes(
+            **{**ms_data(), "dist": surpyval.Exponential}
+        ),
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -750,6 +758,8 @@ CASES = [
     "bayesian_proportional_intensity",
     "bayesian_cause_specific",
     "bayesian_process",
+    "bayesian_competing_risks",
+    "bayesian_multistate",
 ]
 
 
