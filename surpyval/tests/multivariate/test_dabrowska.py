@@ -288,3 +288,65 @@ def test_fit_from_df():
     )
     got = Dabrowska.fit_from_df(df, ["a", "b"], ["ca", "cb"], "n")
     np.testing.assert_array_equal(got.sf(Q), Dabrowska.fit(x, c=c, n=n).sf(Q))
+
+
+@pytest.mark.parametrize(
+    "corner", [(1.5, 2.5), (0.5, 0.5), (0.01, 3.0), (np.inf, np.inf)]
+)
+def test_the_grid_cut_to_a_corner_is_the_estimate_there(corner):
+    """A bootstrap resample builds only the corner of the grid its points
+    are in: the estimate there is the full grid's, bit for bit."""
+    from surpyval.multivariate.nonparametric.dabrowska import _evaluate
+
+    x, c, n = _data()
+    model = Dabrowska.fit(x, c=c, n=n)
+    grid = model._grid
+    cut = grid.upto(*corner)
+    rng = np.random.default_rng(721)
+    pts = np.column_stack(
+        [
+            np.linspace(0, min(corner[0], 10.0), 7),
+            np.linspace(0, min(corner[1], 10.0), 7),
+        ]
+    )
+    for _ in range(10):
+        w = rng.multinomial(int(n.sum()), n / n.sum()).astype(float)
+        full = _evaluate(grid, grid.counts(w), pts)
+        part = _evaluate(cut, cut.counts(w), pts)
+        for a, b in zip(full, part):
+            np.testing.assert_array_equal(a, b)
+
+
+def test_the_bootstrap_bound_is_the_full_grid_percentile():
+    from surpyval.multivariate.nonparametric.dabrowska import _evaluate
+
+    x, c, n = _data()
+    model = Dabrowska.fit(x, c=c, n=n)
+    pts = np.array([[1.0, 1.5], [2.0, 0.5]])
+    got = model.cb(pts, method="bootstrap", n_boot=50, random_state=7)
+    rng = np.random.default_rng(7)
+    total = int(n.sum())
+    draws = []
+    for _ in range(50):
+        w = rng.multinomial(total, n / total).astype(float)
+        draws.append(_evaluate(model._grid, model._grid.counts(w), pts)[0])
+    want = np.quantile(np.array(draws), [0.025, 0.975], axis=0).T
+    np.testing.assert_array_equal(got, want)
+
+
+def test_a_series_with_no_failures_leaves_the_other_margin():
+    """With every unit of the first series censored, its margin is 1 and
+    the joint survival is the second series' Kaplan-Meier estimate (this
+    raised an IndexError)."""
+    x = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]])
+    c = np.array([[1, 0], [1, 0], [1, 0], [1, 1]])
+    model = Dabrowska.fit(x, c=c)
+    pts = np.array([[2.0, 0.5], [2.0, 2.0], [5.0, 3.5]])
+    np.testing.assert_allclose(model.sf(pts), [1.0, 0.5, 0.5])
+    np.testing.assert_allclose(model.sf(pts), model.margins[1].sf(pts[:, 1]))
+    assert model.cb(
+        pts, method="bootstrap", n_boot=20, random_state=1
+    ).shape == (
+        3,
+        2,
+    )

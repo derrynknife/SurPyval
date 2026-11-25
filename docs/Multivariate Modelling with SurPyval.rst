@@ -1476,7 +1476,11 @@ truth is known), each censored by its own random time:
 The bound uses the estimator's influence function (the infinitesimal
 jackknife: how much each unit moves the estimate), on the logit scale so it
 stays between 0 and 1; ``cb(pts, method="bootstrap")`` resamples the pairs
-instead. ``sf_grid(t1, t2)`` gives the estimate on a grid, and ``plot()`` a
+instead. Both cover as they say: in a simulation study (pairs from a
+Clayton copula with Weibull margins, each series about 30% censored, 100
+and 400 pairs), the 95% bounds on the joint survival covered the truth in
+94% to 96% of data sets and the 90% bounds in 86.5% to 92%
+(``surpyval/tests/calibration/test_coverage_dabrowska.py``). ``sf_grid(t1, t2)`` gives the estimate on a grid, and ``plot()`` a
 contour map of it:
 
 .. jupyter-execute::

@@ -89,6 +89,25 @@ class _Grid:
         self.r1 = np.searchsorted(self.U, x[:, 0], side="right") - 1
         self.r2 = np.searchsorted(self.V, x[:, 1], side="right") - 1
 
+    def upto(self, s: float, t: float) -> _Grid:
+        """The grid cut to the failure times up to ``s`` and ``t``: the
+        estimate on it is the full grid's wherever both coordinates are at
+        most ``s`` and ``t``, so a bootstrap asked about points there
+        builds only that corner. A row whose time is past the cut is at
+        risk at every time kept, and its failure is past them."""
+        K = int(np.searchsorted(self.U, s, side="right"))
+        L = int(np.searchsorted(self.V, t, side="right"))
+        if K == len(self.U) and L == len(self.V):
+            return self
+        cut = object.__new__(_Grid)
+        cut.x = self.x
+        cut.U, cut.V = self.U[:K], self.V[:L]
+        cut.f1 = self.f1 & (self.r1 < K)
+        cut.f2 = self.f2 & (self.r2 < L)
+        cut.r1 = np.minimum(self.r1, K - 1)
+        cut.r2 = np.minimum(self.r2, L - 1)
+        return cut
+
     def counts(self, w: npt.NDArray) -> dict:
         K, L = len(self.U), len(self.V)
         r1, r2, f1, f2 = self.r1, self.r2, self.f1, self.f2
@@ -161,8 +180,9 @@ def _evaluate(
     """The joint survival and the two margins at the points ``x``."""
     k = np.searchsorted(grid.U, x[:, 0], side="right") - 1
     l_ = np.searchsorted(grid.V, x[:, 1], side="right") - 1
-    S1 = np.where(k >= 0, est["S1"][np.maximum(k, 0)], 1.0)
-    S2 = np.where(l_ >= 0, est["S2"][np.maximum(l_, 0)], 1.0)
+    # 1 before a series' first failure (an index of -1)
+    S1 = np.concatenate([[1.0], est["S1"]])[k + 1]
+    S2 = np.concatenate([[1.0], est["S2"]])[l_ + 1]
     if est["P"].size:
         P = np.where(
             (k >= 0) & (l_ >= 0),
@@ -467,10 +487,16 @@ class BivariateNonParametric(SerialisableMixin):
             total = int(np.sum(self.n))
             prob = self.n / total
             draws = np.empty((int(n_boot), len(flat)))
+            # Each resample builds only the corner of the grid the points
+            # are in
+            grid = self._grid
+            seen = flat[~np.isnan(flat).any(axis=1)]
+            if len(seen):
+                grid = grid.upto(*np.max(seen, axis=0))
             for b in range(int(n_boot)):
                 w = rng.multinomial(total, prob).astype(float)
-                est = self._grid.counts(w)
-                S, S1, S2 = _evaluate(self._grid, est, flat)
+                est = grid.counts(w)
+                S, S1, S2 = _evaluate(grid, est, flat)
                 draws[b] = S if on == "sf" else 1 - S1 - S2 + S
             out = np.quantile(draws, sides, axis=0).T
         if bound != "two-sided":
