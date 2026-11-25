@@ -817,7 +817,7 @@ the covariates as fixed:
 - A covariate that changes continuously (a
   :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`) is
   refused by the three ``_tvc`` methods; approximate it by steps.
-- ``fit_penalised`` has no time-varying form, and the ``_from_df`` forms
+- ``fit(..., penalizer=...)`` has no time-varying form, and the ``_from_df`` forms
   take ``Z_cols`` only (no ``formula``), as this model's ``fit_from_df``
   does.
 

@@ -44,6 +44,10 @@ from scipy.special import gammaln
 
 from surpyval.univariate.parametric.fitters import at_boundary_maximum
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
@@ -461,6 +465,7 @@ class FrailtyFitter(FitterRepr):
 
     # -- fit ---------------------------------------------------------------
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -762,10 +767,15 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: Any,
         Z: Any,
@@ -851,7 +861,7 @@ class FrailtyFitter(FitterRepr):
         >>> u = rng.gamma(2.0, 0.5, 30)[groups]
         >>> Z = rng.normal(size=(180, 4))
         >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
-        >>> model = WeibullFrailty.fit_penalised(
+        >>> model = WeibullFrailty.fit(
         ...     10 * H**0.5, Z, groups=groups, penalizer=0.1, l1_ratio=1
         ... )
         >>> model.beta.round(3), round(model.theta, 3)

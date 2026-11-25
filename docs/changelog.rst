@@ -155,6 +155,22 @@ v0.30 (unreleased)
   probability plotting reads them, so the other methods ignored them in
   silence; the result is unchanged. From v0.31 the call is refused. To
   migrate: drop the option, or fit with ``how="MPP"``.
+- **A penalty is an argument of the fit.** ``fit``, ``fit_tvc`` and
+  ``fit_tvc_timeline`` of every regression with a penalised fit take
+  ``penalizer``, ``l1_ratio`` and ``standardise`` (``CoxPH``, the
+  parametric PH, AFT and PO families, Royston-Parmar, distributional and
+  zero-inflated regressions, frailty models, ``AdditiveHazards``,
+  ``ProportionalOdds``, ``FineGray``, ``CompetingRisksProportionalHazards``
+  and ``ProportionalIntensityHPP``), and ``CoxPH.fit`` takes
+  ``firth=True``. ``fit(..., penalizer=p)`` gives the model
+  ``fit_penalised(..., penalizer=p)`` gave, to the last digit, for every
+  ``p`` (0 included); without ``penalizer`` (its default, ``None``) the
+  fit is unchanged. ``fit_penalised``, ``fit_tvc_penalised``,
+  ``fit_tvc_timeline_penalised`` and ``fit_firth`` still work, with a
+  ``FutureWarning``, until v0.31. To migrate: call ``fit`` (or
+  ``fit_tvc``, ``fit_tvc_timeline``) with ``penalizer=`` (the old
+  methods' default was 0.1), or ``CoxPH.fit(..., firth=True)``;
+  ``penalty_path`` takes ``CoxPH.fit`` and the other fits directly.
 
 - **One name per bound scale.** The scale a pointwise bound is formed on
   had two names for one thing: ``bound_type="exp"`` on the

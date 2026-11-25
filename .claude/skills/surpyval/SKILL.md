@@ -369,6 +369,15 @@ d.tables["proportional_hazards"]      # cox.zph table: per covariate + GLOBAL
 Regression predictions take the covariate vector as the second argument:
 `model.sf(x, Z)`, `model.ff(x, Z)`, `model.hf(x, Z)`, etc.
 
+A penalty is an argument of the fit (since 0.30): `fit(x, Z, penalizer=0.1,
+l1_ratio=0.5)` for ridge/lasso/elastic net on any PH, AFT, PO, Cox,
+Fine-Gray, frailty, distributional or recurrent regression (and `fit_tvc`,
+`fit_tvc_timeline`), `CoxPH.fit(x, Z, firth=True)` for Firth's penalty.
+The `fit_penalised`, `fit_tvc_penalised`, `fit_tvc_timeline_penalised` and
+`fit_firth` methods warn until 0.31. A penalised model has no standard
+errors or bounds; `penalty_path(CoxPH.fit, x, Z, ...)` picks the penalty by
+AIC/BIC.
+
 ## More models and options
 
 ```python

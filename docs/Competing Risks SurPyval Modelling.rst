@@ -1577,7 +1577,7 @@ Things to watch:
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.
-- For many covariates, or correlated ones, ``FineGray.fit_penalised`` adds a
+- For many covariates, or correlated ones, ``FineGray.fit(..., penalizer=...)`` adds a
   ridge, lasso or elastic-net penalty (the objective of R's
   ``fastcmprsk::fastCrrp``; see the penalised regression section of
   :doc:`Regression Modelling with SurPyval`). The penalised model predicts

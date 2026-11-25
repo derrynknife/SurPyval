@@ -90,6 +90,10 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
@@ -1378,6 +1382,7 @@ class ProportionalOdds_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric proportional odds fitter"
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1527,10 +1532,15 @@ class ProportionalOdds_(FitterRepr):
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1610,7 +1620,7 @@ class ProportionalOdds_(FitterRepr):
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
         >>> cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
-        >>> model = ProportionalOdds.fit_penalised(
+        >>> model = ProportionalOdds.fit(
         ...     df["week"], df[cols], c=1 - df["arrest"], penalizer=0.02,
         ...     l1_ratio=1,
         ... )

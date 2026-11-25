@@ -77,7 +77,7 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
                 "standard errors need the rows the model was fitted to, "
                 "which this stratified model does not keep (it was "
                 "restored with from_dict / from_json, or fitted with "
-                "fit_penalised). Call them on a model fitted with "
+                "a penalizer). Call them on a model fitted with "
                 "CoxPH.fit(..., strata=) or fit_tvc(..., strata=)."
             )
         raise ValueError(

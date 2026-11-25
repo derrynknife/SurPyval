@@ -85,6 +85,10 @@ from surpyval.univariate.regression._partial_effects import (
     CompetingRisksPartialEffectsMixin,
 )
 from surpyval.univariate.regression._penalised import PenalisedModelMixin
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_table,
@@ -2505,7 +2509,7 @@ class FineGrayModel(
                 "cb does not bound a penalised FineGray fit: the bootstrap "
                 "would have to choose the penalty again on each resample. "
                 "Bound the unpenalised fit, or resample and refit with "
-                "fit_penalised yourself."
+                "fit(..., penalizer=...) yourself."
             )
         data = self._fit_data
         rows = named_covariates(Z, self.feature_names)
@@ -2680,7 +2684,7 @@ def _warn_few_events_per_coefficient(model: FineGrayModel) -> None:
         "coefficient: the coefficients, their p-values and the cumulative "
         "incidence rest on few events and may be unstable, and Wald "
         "intervals undercover. Use fewer covariates, a penalised fit "
-        "(FineGray.fit_penalised), or read them as rough.",
+        "(FineGray.fit(..., penalizer=...)), or read them as rough.",
         UserWarning,
         stacklevel=caller_stacklevel(),
     )
@@ -2816,6 +2820,7 @@ class FineGray_(FitterRepr):
         model.feature_names = [str(column) for column in columns]
         return model
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -2980,10 +2985,15 @@ class FineGray_(FitterRepr):
         _warn_few_events_per_coefficient(model)
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -3077,7 +3087,7 @@ class FineGray_(FitterRepr):
         >>> t_b = rng.exponential(1 / 0.05, 300)
         >>> x = np.minimum(t_a, t_b).round(3)
         >>> e = np.where(t_a < t_b, "a", "b")
-        >>> model = FineGray.fit_penalised(
+        >>> model = FineGray.fit(
         ...     x, Z, e, event="a", penalizer=0.1, l1_ratio=1
         ... )
         >>> model.beta.round(3)

@@ -736,7 +736,8 @@ class SemiParametricRegressionModel(
                 raise ValueError(
                     "This Firth fit's intervals are at alpha_ci={:g}; the "
                     "profile penalised-likelihood bounds at another level "
-                    "need a refit: CoxPH.fit_firth(..., alpha_ci={:g})."
+                    "need a refit: CoxPH.fit(..., firth=True, "
+                    "alpha_ci={:g})."
                     "".format(firth.alpha_ci, alpha_ci)
                 )
             return firth_table(names, beta, self.standard_errors(), firth)

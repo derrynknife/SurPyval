@@ -30,6 +30,10 @@ from surpyval.univariate.nonparametric import (
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
@@ -455,7 +459,7 @@ def _diverged_columns(
 
 
 #: The fix the monotone-likelihood warning names for a fit that
-#: ``CoxPH.fit_firth`` does not take (Fine-Gray, weights).
+#: ``CoxPH.fit(..., firth=True)`` does not take (Fine-Gray, weights).
 PENALISED_ADVICE = (
     "consider removing or coarsening the covariate, or a penalised fit"
 )
@@ -471,8 +475,8 @@ def warn_monotone(
     shared with the Fine-Gray fit, a weighted partial likelihood (#392).
     With ``proportion``, they run off together, in that proportion to
     each other, and no one of them does alone (#728). ``advice`` is the
-    fix named: ``CoxPH.fit_firth`` by default, ``PENALISED_ADVICE`` for a
-    fit it does not take."""
+    fix named: ``CoxPH.fit(..., firth=True)`` by default,
+    ``PENALISED_ADVICE`` for a fit it does not take."""
     if proportion is None:
         what = (
             "the partial likelihood keeps increasing as coefficient(s) {} "
@@ -810,6 +814,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                     h0[t] = np.exp(-log_r[t]) * np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
+    @penalty_argument("_fit_penalised", firth="_fit_firth")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1371,10 +1376,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1500,7 +1510,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
-        >>> lasso = CoxPH.fit_penalised(
+        >>> lasso = CoxPH.fit(
         ...     x, Z.values, c=c, penalizer=0.05, l1_ratio=1.0
         ... )
         >>> lasso.params.round(4)
@@ -1527,10 +1537,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             t,
         )
 
+    fit_firth = penalised_entry(
+        "_fit_firth",
+        "call fit(..., firth=True)",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_firth(
+    def _fit_firth(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1642,7 +1657,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8],
         ...               [0, -0.4], [1, 1.1], [1, -0.6], [0, 0.9],
         ...               [0, 0.2], [1, -0.1]])
-        >>> model = CoxPH.fit_firth(x, Z, c=c)
+        >>> model = CoxPH.fit(x, Z, c=c, firth=True)
         >>> model.params.round(3)
         array([ 1.924, -0.246])
         >>> model.firth.lower.round(3), model.firth.upper.round(3)
@@ -1896,6 +1911,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             time_interaction=time_interaction,
         )
 
+    @penalty_argument("_fit_tvc_penalised")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -2070,6 +2086,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
         )
 
+    @penalty_argument("_fit_tvc_timeline_penalised")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -2138,7 +2155,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
         )
 
-    def fit_tvc_penalised(
+    fit_tvc_penalised = penalised_entry(
+        "_fit_tvc_penalised",
+        "call fit_tvc(..., penalizer=...); its default was penalizer=0.1",
+    )
+
+    def _fit_tvc_penalised(
         self,
         i: npt.ArrayLike,
         xl: npt.ArrayLike,
@@ -2207,7 +2229,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8]
         >>> c  = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1]
         >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
-        >>> model = CoxPH.fit_tvc_penalised(i, xl, xr, c, Z, penalizer=0.1)
+        >>> model = CoxPH.fit_tvc(i, xl, xr, c, Z, penalizer=0.1)
         >>> model.beta.round(4)
         array([1.5068])
         """
@@ -2236,7 +2258,13 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         )
         return _as_tvc(model, ident, row_order)
 
-    def fit_tvc_timeline_penalised(
+    fit_tvc_timeline_penalised = penalised_entry(
+        "_fit_tvc_timeline_penalised",
+        "call fit_tvc_timeline(..., penalizer=...); its default was "
+        "penalizer=0.1",
+    )
+
+    def _fit_tvc_timeline_penalised(
         self,
         i: npt.ArrayLike,
         x: npt.ArrayLike,
@@ -2276,7 +2304,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         refuse_weights(w)
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
-        return self.fit_tvc_penalised(
+        return self._fit_tvc_penalised(
             i_ss,
             xl,
             xr,
