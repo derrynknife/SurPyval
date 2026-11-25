@@ -394,6 +394,33 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         self.__dict__["_lr_sides"][key] = float(hi)
         return float(hi)
 
+    def _lr_limit_nll(self) -> float | None:
+        """The negative log-likelihood of the family's limit as the offset
+        runs to -inf (``fitters.mle._offset_limit``), fitted to the data,
+        kept; ``None`` where there is no such limit (see
+        ``_limit_deviance``)."""
+        if "_lr_limit_nll_kept" not in self.__dict__:
+            nll = None
+            if self._gamma_idx is not None and not self._held:
+                from .fitters.mle import _offset_limit
+
+                nll = _offset_limit(self.model)()
+                if nll is not None and not onp.isfinite(nll):
+                    nll = None
+            self.__dict__["_lr_limit_nll_kept"] = nll
+        return self.__dict__["_lr_limit_nll_kept"]
+
+    def _lr_supremum_nll(self) -> float | None:
+        """The family's limit as the offset runs to -inf
+        (``_lr_limit_nll``) where it fits the data better than the fit:
+        the likelihood's supremum is then there, not at the fit (which
+        has run off towards it, or stopped at a lower local maximum), and
+        the deviances of the likelihood-ratio bounds are measured from it
+        (``_lr_reference_nll``). An offset LogNormal of 40 near-Normal
+        values stopped at gamma = -68.1, its deviance from the Normal
+        0.375: its bounds were measured from that point, and too wide."""
+        return self._lr_limit_nll()
+
     def _limit_deviance(self) -> float | None:
         """The deviance of the family's limit as the offset runs to -inf
         (the Normal for a Gamma or a LogNormal, the Logistic for a
@@ -406,9 +433,7 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         if "_lr_limit_dev" not in self.__dict__:
             dev = None
             if self._gamma_idx is not None and not self._held:
-                from .fitters.mle import _offset_limit
-
-                nll = _offset_limit(self.model)()
+                nll = self._lr_limit_nll()
                 if nll is not None:
                     nll_hat = self._lr_neg_ll(
                         onp.asarray(self.params, dtype=float)

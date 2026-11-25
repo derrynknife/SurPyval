@@ -633,3 +633,119 @@ def test_a_model_pickles_after_its_searches():
     again = pickle.loads(pickle.dumps(model))
     assert not any(k.startswith("_lr_") for k in again.__dict__)
     np.testing.assert_allclose(again.cb(8.0, method="lr"), band, rtol=1e-6)
+
+
+_LIMIT = {
+    "LogNormal": sp.Normal,
+    "Gamma": sp.Normal,
+    "LogLogistic": sp.Logistic,
+}
+
+
+@pytest.mark.parametrize("family", ["LogNormal", "Gamma", "LogLogistic"])
+def test_an_offset_fit_beaten_by_its_limit_says_so_at_fit_time(family):
+    # The fit stops at a point that is not a maximum (a LogNormal at
+    # gamma = -68.1): it warns that the data do not support an offset,
+    # names the limit to fit instead, and says the likelihood-ratio
+    # bounds are measured from that limit's fit.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        getattr(sp, family).fit(_near_normal(1), offset=True)
+    limit = _LIMIT[family].name
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1
+    assert messages[0].startswith("No finite maximum")
+    assert "the data do not support an offset" in messages[0]
+    assert f"fit surpyval.{limit} instead" in messages[0]
+    assert f"measured from the {limit} fit" in messages[0]
+
+
+@pytest.mark.parametrize(
+    "family, seed, upper, d_hat",
+    [
+        # (before: 3.233, 8.469, 14.58, measured from the fit itself)
+        ("LogNormal", 1, 1.7068, 0.3748),
+        ("Gamma", 1, 7.1814, 0.4984),
+        ("LogLogistic", 1, 7.3489, 0.00262),
+    ],
+)
+def test_an_offset_fit_beaten_by_its_limit_is_bounded_from_the_limit(
+    family, seed, upper, d_hat
+):
+    # A likelihood-ratio region is the parameters whose likelihood is
+    # within crit / 2 of the best the family can do. Where the fit is
+    # not the maximum, the best is its limit (the Normal, the Logistic),
+    # and the offset's upper bound is where the profile deviance from
+    # the limit's fit, not from the fit, is the critical value.
+    x = _near_normal(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(sp, family).fit(x, offset=True)
+        limit = _LIMIT[family].fit(x)
+    searches = model._lr_extended()
+    assert searches._lr_reference_nll() == pytest.approx(limit.neg_ll())
+    assert searches._lr_reference_deviance() == pytest.approx(d_hat, rel=1e-2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bound = model.param_cb(
+            "gamma", alpha_ci=0.05, bound="upper", method="lr"
+        )[-1]
+        nll = searches._profile_neg_ll(searches._gamma_idx, bound)
+    assert [str(w.message) for w in caught] == []
+    assert bound == pytest.approx(upper, abs=2e-3)
+    assert 2.0 * (nll - limit.neg_ll()) == pytest.approx(
+        ndtri(0.95) ** 2, abs=1e-3
+    )
+
+
+def test_an_offset_lognormal_beaten_by_the_normal_has_its_bounds():
+    # Measured from the fit (not a maximum), mu's upper and sigma's lower
+    # bounds were nan with a warning, the profile too flat out along the
+    # valley to the Normal. From the Normal's fit they are the ends the
+    # region reaches, mu running to inf and sigma to 0 as gamma runs to
+    # -inf; and a function's bound is the Normal's own (the region holds
+    # LogNormals as close to that Normal as you like): sf(18) at 90%,
+    # 0.7745 to 0.9204, was 0.7680 to 0.9232.
+    x = _near_normal(1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.LogNormal.fit(x, offset=True)
+        normal = sp.Normal.fit(x)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        mu = model.param_cb("mu", alpha_ci=0.1, method="lr")
+        sigma = model.param_cb("sigma", alpha_ci=0.1, method="lr")
+        band = model.cb(18.0, on="sf", alpha_ci=0.1, method="lr")
+    assert [str(w.message) for w in caught] == []
+    assert mu[0] == pytest.approx(2.9011, abs=1e-3)
+    assert mu[1] == np.inf
+    assert sigma[0] == 0.0
+    assert sigma[1] == pytest.approx(0.10696, abs=1e-4)
+    np.testing.assert_allclose(
+        band, normal.cb(18.0, on="sf", alpha_ci=0.1, method="lr"), atol=1e-4
+    )
+
+
+def test_a_supported_offset_is_bounded_from_its_own_fit():
+    # Where the offset fit beats its limit (a Weibull's Gumbel, 4.164
+    # worse), the deviances are measured from the fit as before.
+    x, c, n = _small_offset_data()
+    model, _ = _limit_deviance("Weibull", x, c, n)
+    searches = model._lr_extended()
+    nll_hat = searches._lr_neg_ll(np.asarray(searches.params, dtype=float))
+    assert searches._lr_reference_nll() == nll_hat
+    assert searches._lr_reference_deviance() == 0.0
+
+
+def test_a_bound_whose_level_excludes_the_fit_is_nan_with_a_warning():
+    # At 60% one-sided (critical value 0.064) the LogNormal fit, 0.375
+    # from the Normal's, is outside the region itself: there is no
+    # stretch around it to bound, and the bound is nan with a warning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.LogNormal.fit(_near_normal(1), offset=True)
+    with pytest.warns(RuntimeWarning, match="not the maximum"):
+        bound = model.param_cb(
+            "gamma", alpha_ci=0.4, bound="upper", method="lr"
+        )[-1]
+    assert np.isnan(bound)

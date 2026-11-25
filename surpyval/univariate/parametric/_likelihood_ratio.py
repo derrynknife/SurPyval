@@ -720,7 +720,7 @@ class _PsiBoundSearch:
         self.ends = ends
         self.box = box
         self.theta_hat = np.array(model.params, dtype=float)
-        self.nll_hat = model._lr_neg_ll(self.theta_hat)
+        self.nll_hat = model._lr_reference_nll()
         self.coords, _ = model._lr_coords()
         self.free_coords = [self.coords[j] for j in free]
         self.bounds = box if any(b != (None, None) for b in box) else None
@@ -870,6 +870,12 @@ class _PsiBoundSearch:
         # The search is checked where its answer is known, at the
         # estimate: if it fails there, it cannot be trusted anywhere.
         _, u_start = self.solve(psi_hat, [self.u_hat])
+        if u_start is None and 0.0 < self.dev_u(self.u_hat) <= self.crit:
+            # The fit is not the maximum (``_lr_reference_nll``): the
+            # search at psi_hat runs off from it along the valley to the
+            # family's limit, which it only approaches. The fit is itself
+            # a point of the region with psi at psi_hat.
+            u_start = np.array(self.u_hat, dtype=float)
         if u_start is None:
             return np.nan, np.nan
         self.u_start = u_start
@@ -2087,10 +2093,40 @@ class LikelihoodRatioMixin:
         if kept is None or kept[0] != params.tobytes():
             kept = (params.tobytes(), self._lr_raw_neg_ll(params))
             self.__dict__["_lr_nll_hat"] = kept
-        slack = max(_LR_NOISE, 2e-8 * abs(kept[1]))
-        if 2.0 * (nll - kept[1]) < -slack:
+        floor = kept[1]
+        supremum = self._lr_supremum_nll()
+        if supremum is not None and supremum < floor:
+            floor = supremum
+        slack = max(_LR_NOISE, 2e-8 * abs(floor))
+        if 2.0 * (nll - floor) < -slack:
             return np.nan
         return nll
+
+    def _lr_supremum_nll(self) -> float | None:
+        """The negative log-likelihood of a model the family only tends
+        to, where it fits the data better than the fit (``None`` here):
+        the fit is then not the maximum, and the likelihood's supremum is
+        there. See ``ExtendedLikelihoodRatio._lr_supremum_nll``."""
+        return None
+
+    def _lr_reference_nll(self) -> float:
+        """The negative log-likelihood every deviance is measured from:
+        the fit's, or the supremum's where the fit is not the maximum
+        (``_lr_supremum_nll``). A likelihood-ratio region is the set of
+        parameters whose likelihood is within ``crit / 2`` of the best the
+        family can do; measured from a point below that best, it is too
+        wide."""
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        supremum = self._lr_supremum_nll()
+        if supremum is not None and supremum < nll_hat:
+            return supremum
+        return nll_hat
+
+    def _lr_reference_deviance(self) -> float:
+        """The deviance of the fit itself from the reference
+        (``_lr_reference_nll``): 0 where the fit is the maximum."""
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        return float(max(2.0 * (nll_hat - self._lr_reference_nll()), 0.0))
 
     def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
         # Kept by the parameters' bytes: the searches ask for the same
@@ -2479,6 +2515,20 @@ class LikelihoodRatioMixin:
                 side = "upper" if direction > 0 else "lower"
                 key = searches._lr_key(idx, crit, direction)
                 beyond = searches.__dict__.get("_lr_unresolved", {}).get(key)
+                if key in searches.__dict__.get("_lr_outside", set()):
+                    warnings.warn(
+                        f"The likelihood-ratio {side} bound on '{name}' "
+                        "could not be found: the fit is not the maximum of "
+                        "the likelihood, and is outside the region at this "
+                        "level (its deviance from the best fit, "
+                        f"{searches._lr_reference_deviance():.4g}, is above "
+                        f"the critical value {crit:.4g}). A simpler model "
+                        "the family tends to fits the data better (see the "
+                        "fit's warning); fit it instead. nan is returned.",
+                        RuntimeWarning,
+                        stacklevel=caller_stacklevel(),
+                    )
+                    return value
                 if beyond is not None:
                     warnings.warn(
                         f"The likelihood-ratio {side} bound on '{name}' "
@@ -2537,7 +2587,7 @@ class LikelihoodRatioMixin:
         cache = self.__dict__.setdefault("_lr_sides", {})
         if key in cache:
             return cache[key]
-        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        nll_hat = self._lr_reference_nll()
 
         hess_inv = getattr(self, "hess_inv", None)
         if (
@@ -2588,6 +2638,16 @@ class LikelihoodRatioMixin:
                 solved[at] = (nll, kept)
             return 2.0 * (nll - nll_hat)
 
+        # The fit's own deviance: 0, but where the fit is not the maximum
+        # the deviance there from the supremum (``_lr_reference_nll``)
+        d_hat = self._lr_reference_deviance()
+        if d_hat >= crit:
+            # The fit is outside the region: the walk out from it finds no
+            # piece of the region around it (``_param_cb_lr`` warns)
+            self.__dict__.setdefault("_lr_outside", set()).add(key)
+            cache[key] = np.nan
+            self.__dict__.setdefault("_lr_points", {})[key] = []
+            return np.nan
         status, w = _lr_walk(
             deviance,
             w_hat,
@@ -2596,6 +2656,7 @@ class LikelihoodRatioMixin:
             crit,
             end=coord.ends[1] if direction > 0 else coord.ends[0],
             stop=limits[idx][1] if direction > 0 else limits[idx][0],
+            d_hat=d_hat,
         )
         if status in ("root", "stop"):
             value = coord.from_u(w)
@@ -3188,7 +3249,7 @@ class LikelihoodRatioMixin:
         path = _LRPath()
         for u in walk:
             path.add(u[k], u[others])
-        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        nll_hat = self._lr_reference_nll()
         w = coord.to_u(float(self.params[j]))
         dev = 0.0
         if path.w:
@@ -3335,7 +3396,7 @@ class LikelihoodRatioMixin:
         right, see ``_lr_neg_ll``), the estimate in those coordinates and
         the negative log-likelihood there."""
         theta_hat = np.array(self.params, dtype=float)
-        nll_hat = self._lr_neg_ll(theta_hat)
+        nll_hat = self._lr_reference_nll()
         coords, _ = self._lr_coords()
         free_coords = [coords[j] for j in free]
         u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
