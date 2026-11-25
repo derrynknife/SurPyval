@@ -613,3 +613,31 @@ def test_discrete_moments_by_summing_the_survival():
     np.testing.assert_allclose(
         poisson.moment(2), np.sum(k**2 * pk), rtol=1e-12
     )
+
+
+def test_mixtures_and_non_parametric_fits_refuse_hr():
+    # They take hr= so that the refusal can say what to use; 1 is no
+    # hazard ratio, and an invalid one is refused as for any model
+    x, c = _censored_sample()
+    calls = [
+        lambda hr: sp.KaplanMeier.fit(x, c, hr=hr),
+        lambda hr: sp.NelsonAalen.fit(x, c, hr=hr),
+        lambda hr: sp.Turnbull.fit(x, c, hr=hr),
+        lambda hr: sp.MixtureModel.fit(x, c, dist=sp.Weibull, hr=hr),
+        lambda hr: sp.MixtureModel(sp.Weibull, 2).fit(x, c, hr=hr),
+        lambda hr: sp.MixtureModel.from_params(
+            sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7], hr=hr
+        ),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match=r"model.sf\(t\) \*\* hr"):
+            call(2.0)
+        with pytest.raises(ValueError, match="hr, the hazard ratio"):
+            call(0)
+    np.testing.assert_array_equal(
+        sp.KaplanMeier.fit(x, c, hr=1).R, sp.KaplanMeier.fit(x, c).R
+    )
+    mm = sp.MixtureModel.from_params(
+        sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7], hr=1
+    )
+    np.testing.assert_allclose(mm.sf([5.0, 40.0]), [0.9336, 0.4647], atol=1e-4)

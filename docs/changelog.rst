@@ -159,6 +159,12 @@ v0.30 (unreleased)
 - The agent skill's "New in 0.26" section is now "More models and
   options". No result changes.
 
+- **Mixtures and non-parametric fits refuse a hazard ratio, saying what to
+  use.** ``MixtureModel.fit``, ``MixtureModel.from_params`` and the
+  non-parametric fits take ``hr=`` (keyword only) and refuse anything but
+  1, naming ``model.sf(t) ** hr`` and ``Dist.fit(..., hr=hr)``. They
+  raised a ``TypeError`` for the unknown argument before.
+
 v0.29 (22 November 2026)
 ------------------------
 

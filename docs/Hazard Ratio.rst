@@ -116,6 +116,18 @@ The bounds hold ``hr`` fixed, as a known constant:
   probability-plotting fit (``fit(..., hr=)`` is maximum likelihood
   only).
 
+Mixtures and non-parametric fits
+--------------------------------
+
+``MixtureModel`` (``fit`` and ``from_params``) and the non-parametric
+fits (``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington``,
+``Turnbull``) take ``hr=`` only to refuse anything but 1. A
+non-parametric estimate comes from the data, with no model to scale, and
+a mixture does not carry a hazard ratio. The curve with one is
+``model.sf(t) ** hr`` (a hazard ``hr`` times the model's), and data from
+an environment with a known hazard ratio are fitted by one distribution,
+``Dist.fit(..., hr=hr)``.
+
 Saving
 ------
 

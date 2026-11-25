@@ -119,19 +119,31 @@ class _FitMethod:
             dist: Any = None,
             m: int = 2,
             em: str = "plain",
+            hr: float | None = None,
         ) -> Any:
             if isinstance(x, objtype):
                 # ``MixtureModel.fit(model, x, ...)``: the unbound call of
                 # the instance method, which worked before #482.
-                return func(x, c, n, t, tl, tr, xl, xr, em=em)
+                return func(x, c, n, t, tl, tr, xl, xr, em=em, hr=hr)
             if dist is None:
                 raise ValueError(
                     "MixtureModel.fit needs `dist`, the distribution of "
                     "every component, e.g. "
                     "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
                 )
+            _refuse_hr(hr)
             return func(
-                objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr, em=em
+                objtype(dist=dist, m=m),
+                x,
+                c,
+                n,
+                t,
+                tl,
+                tr,
+                xl,
+                xr,
+                em=em,
+                hr=hr,
             )
 
         # Keep the docstring but show this signature (with ``dist`` and
@@ -141,6 +153,20 @@ class _FitMethod:
         fit.__dict__.pop("__signature__", None)
         fit.__dict__.pop("_takes_unit", None)
         return takes_unit(accepts_surpyval_data(fit))
+
+
+def _refuse_hr(hr: Any) -> None:
+    """Refuse a hazard ratio other than 1: a mixture does not carry one."""
+    from . import _hazard_ratio
+
+    _hazard_ratio.refuse_unless_one(
+        hr,
+        "A MixtureModel",
+        "the mixture with a hazard ratio over its whole survival is "
+        "model.sf(t) ** hr (its hazard hr * model.hf(t)); to fit data "
+        "with a known hazard ratio, fit one distribution with "
+        "Dist.fit(..., hr=hr).",
+    )
 
 
 def _stack(values: list, n: int) -> npt.NDArray:
@@ -382,6 +408,7 @@ class MixtureModel(
         w: npt.ArrayLike | None = None,
         *,
         w_logits: npt.ArrayLike | None = None,
+        hr: float | None = None,
     ) -> MixtureModel:
         """
         A mixture of ``dist`` built from its components' parameters and
@@ -401,6 +428,10 @@ class MixtureModel(
             The weights as ``m - 1`` log-ratios to the last one,
             ``log(w_j / w_{m-1})`` (or ``m`` logits of any origin), the
             coordinates the covariance is fitted in; in place of ``w``.
+        hr : float, optional
+            Refused unless 1: a mixture does not carry a hazard ratio.
+            The mixture with one over its whole survival is
+            ``model.sf(t) ** hr``.
 
         Returns
         -------
@@ -417,6 +448,7 @@ class MixtureModel(
         >>> mm.sf([5, 40]).round(4)
         array([0.9336, 0.4647])
         """
+        _refuse_hr(hr)
         rows = np.atleast_2d(np.asarray(params, dtype=float))
         if rows.ndim != 2 or rows.shape[1] != dist.k:
             raise ValueError(
@@ -1345,6 +1377,7 @@ class MixtureModel(
         xr: npt.ArrayLike | None = None,
         *,
         em: str = "plain",
+        hr: float | None = None,
     ) -> Any:
         """
         Fit the mixture to data.
@@ -1417,6 +1450,10 @@ class MixtureModel(
             both reach one, to the precision of its verification; it may,
             like any change of path, reach a different local maximum.
             Truncated data is fitted directly, not by EM, and ignores it.
+        hr : float, optional
+            Refused unless 1 (keyword only): a mixture does not carry a
+            hazard ratio. To fit data with a known one, fit a single
+            distribution, ``Dist.fit(..., hr=hr)``.
 
         Returns
         -------
@@ -1453,6 +1490,7 @@ class MixtureModel(
               beta: [ 1.83105154 12.01392721]
         """
 
+        _refuse_hr(hr)
         check_option("em", em, EM_METHODS)
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
