@@ -370,6 +370,8 @@ _LAZY = {
             "brier_score",
             "compare_concordance",
             "concordance_index",
+            "conformal_lower_bound",
+            "ConformalLowerBound",
             "d_calibration",
             "DCalibration",
             "dynamic_auc",
@@ -510,6 +512,7 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        ConformalLowerBound,
         DCalibration,
         DynamicAccuracy,
         DynamicCalibration,
@@ -518,6 +521,7 @@ if TYPE_CHECKING:
         brier_score,
         compare_concordance,
         concordance_index,
+        conformal_lower_bound,
         d_calibration,
         dynamic_auc,
         dynamic_brier,

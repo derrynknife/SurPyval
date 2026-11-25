@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-26
 
+### Conformal lower bounds on a survival time (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.metrics.conformal_lower_bound(model, x, c, n, Z=, alpha=0.1, method=)`, in `surpyval/metrics/conformal.py`, returning `ConformalLowerBound` with `lower(Z)`. Any model with a CDF (`ff(x)`, or `sf(x, Z)` paired with rows), the same entry as `d_calibration`. The score is the predicted CDF at the time; the bound is the model's quantile at the calibrated level (its `qf`, else bisection of its CDF). | proposed | A quantile-level score works for every model with a CDF and needs no tuning or second model; one split, not a resampling helper. | done |
+| Default `method="observed"`: censored units count at their censoring time, which can only lower the level, so coverage is exact in finite samples (conservative when many are censored before the `alpha` quantile). `method="ipcw"` weights failures by `1 / G(x-)` (Kaplan-Meier of the censoring): tighter, approximate, assumes censoring independent of covariates and life. | proposed | A guaranteed "at least this long" is the point; the tighter option is offered with its assumption stated. Candès, Lei and Ren's (2023) thresholded version needs every unit's censoring time, which usual survival data lack. | done |
+| Right censoring only (left and interval refused). Marginal coverage only; no per-covariate (conditional) or Mondrian variant. A bound where the model's CDF never reaches the level is `inf` (for example Cox past its last failure). | proposed | A lower bound needs a time each unit is known to have lasted; conditional coverage is not attainable distribution-free. | done |
+
 ### Labelled MCF bounds (26 Nov 2026)
 
 | Decision | By | Reason | Status |

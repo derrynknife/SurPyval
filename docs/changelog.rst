@@ -175,6 +175,25 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Conformal lower bounds on a survival time, for any model**:
+  ``surpyval.metrics.conformal_lower_bound``. "At least 90% of new units
+  outlive this bound", from any fitted model with a CDF (with ``Z=`` for
+  regression models, Cox, the forests and joint models), made honest by
+  split conformal prediction on held-out units: the level is set from
+  each calibration unit's predicted CDF at its time, and each new unit's
+  bound is the time its own predicted CDF reaches that level. The
+  coverage is marginal (over units), holds in finite samples and whether
+  the model is right or wrong. Right-censored units count at their
+  censoring time by default (``method="observed"``: exact coverage,
+  conservative with heavy early censoring); ``method="ipcw"`` weights
+  failures by the inverse Kaplan-Meier chance of being seen (tighter,
+  approximate coverage under independent censoring). With no censoring it
+  is plain split conformal (the ``floor(alpha (n + 1))``-th smallest
+  calibration score). In 200 seeded simulations of 200 calibration units
+  for each of a right model, a wrong family and a model without the
+  covariates, coverage was 0.900-0.901 with no censoring; with 34%
+  censored 0.94-0.95 (observed) and 0.909 (ipcw); with 71% censored
+  0.98-0.99 (observed) and 0.945 (ipcw). Nothing existing changes.
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
   returns its two-sided bounds as a

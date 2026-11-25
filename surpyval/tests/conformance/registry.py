@@ -374,6 +374,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.DynamicAccuracy": _RESULT,
     "surpyval.DynamicCalibration": _RESULT,
     "surpyval.DCalibration": _RESULT,
+    "surpyval.ConformalLowerBound": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -490,6 +491,7 @@ for _fn in (
     "dynamic_calibration",
     "d_calibration",
     "pit_values",
+    "conformal_lower_bound",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",

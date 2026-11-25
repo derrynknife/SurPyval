@@ -25,6 +25,7 @@ surpyval.ChangePoint
 surpyval.CoefficientPlot
 surpyval.CompetingRisks
 surpyval.CompetingRisksProportionalHazards
+surpyval.ConformalLowerBound
 surpyval.CovariatePath
 surpyval.CoxFrailty
 surpyval.CoxFrailtyFitter
@@ -283,6 +284,7 @@ surpyval.brier_score
 surpyval.compare_concordance
 surpyval.concordance_estimate
 surpyval.concordance_index
+surpyval.conformal_lower_bound
 surpyval.d_calibration
 surpyval.datasets.load_bearing_failures
 surpyval.datasets.load_bofors_steel
@@ -370,6 +372,7 @@ surpyval.maxcombo_logrank
 surpyval.maxstat_logrank
 surpyval.metrics.ConcordanceComparison
 surpyval.metrics.ConcordanceResult
+surpyval.metrics.ConformalLowerBound
 surpyval.metrics.DCalibration
 surpyval.metrics.DynamicAccuracy
 surpyval.metrics.DynamicCalibration
@@ -381,6 +384,7 @@ surpyval.metrics.brier_score
 surpyval.metrics.compare_concordance
 surpyval.metrics.concordance_estimate
 surpyval.metrics.concordance_index
+surpyval.metrics.conformal_lower_bound
 surpyval.metrics.d_calibration
 surpyval.metrics.dynamic_auc
 surpyval.metrics.dynamic_brier
