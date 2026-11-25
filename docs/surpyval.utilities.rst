@@ -28,11 +28,14 @@ every recurrent ``fit`` takes. Build it from the rows
 (``SurpyvalData.from_dataframe``); ``to_first_events`` and ``to_gaps``
 give lifetime data from it.
 
-``EventHistoryData`` is the older class for the same data, and is being
-phased out. It still works: the recurrent models keep their data in one
-(``model.data``), the simulations return one, and :func:`handle_xicn
-<surpyval.utils.recurrent_utils.handle_xicn>` builds one from arrays. Its
-``to_surpyval_data()`` gives the same histories as a ``SurpyvalData``.
+``EventHistoryData`` is the older class for the same data. It is
+deprecated in v0.30 and removed in v0.31: building one yourself (its
+constructor, ``from_items``, ``from_histories``, ``from_dataframe``,
+``from_dict`` and ``from_json``, :func:`handle_xicn
+<surpyval.utils.recurrent_utils.handle_xicn>` and
+``Items.event_history_data()``) warns (``FutureWarning``) and names the
+``SurpyvalData`` call that does the same. Its ``to_surpyval_data()`` gives
+the same histories as a ``SurpyvalData``.
 
 .. autoclass:: surpyval.utils.surpyval_data.SurpyvalData
    :members:

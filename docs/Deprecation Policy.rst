@@ -66,8 +66,9 @@ How a name is retired
    .. code-block:: text
 
        AttributeError: module 'surpyval' has no attribute
-       'RecurrentEventData': it was removed in v0.26; it is
-       surpyval.EventHistoryData (from surpyval import EventHistoryData)
+       'RecurrentEventData': it was removed in v0.26; it became
+       surpyval.EventHistoryData, itself deprecated in v0.30: use
+       surpyval.SurpyvalData with each row's unit i
 
    After that, the hint is retired and the old name gets Python's plain
    error.
