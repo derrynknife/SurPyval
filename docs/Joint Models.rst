@@ -353,6 +353,57 @@ than the full one saves as schema 5, which SurPyval 0.28 refuses rather
 than read its parameters as a full one's; a model saved before the
 choice existed reads as ``"full"``.
 
+A spread at 0: a parameter that does not vary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes a parameter named in ``varying`` does not, in these data, vary
+between items: every item's rate looks the same, say. Its spread is then
+estimated at 0, the lower edge of what a spread can be, and the model is
+the same as the one with that parameter common to all items. Two things
+follow, and SurPyval handles both.
+
+First, the search. It works on the log of each sd, so an sd of 0 sits at
+minus infinity, where the likelihood is flat: the search can wander
+towards it and stall before the other parameters reach their best
+values, ending (unverified) below the fit with the parameter common. A
+fit of the larger model should never be worse than the smaller model it
+contains. So, where a fit puts a spread at 0 (it moves no item's marker
+by as much as 1% of the readings' noise at any reading age), or ends
+unverified with a spread whose removal costs the log-likelihood less
+than 1.92 (the data cannot tell it from 0 at the 5% level), the fit is
+made again with those parameters common to all items, and then the full
+model is searched once more from there, with their spreads small. If
+that search rises off the edge (by more than one part in a million of
+the log-likelihood), its answer is kept. Otherwise the fit is held on
+the edge. A verified fit with every spread clear of 0 is not searched
+again, so ordinary fits cost nothing more. A small spread just off 0 (above
+the 1% rule, with the likelihood rising a little off the edge) is not
+held, and its fit can still end unverified, with the warning; ask
+whether the parameter varies by comparing it with the fit where it is
+common, by ``aic()`` or ``likelihood_ratio_test`` (below).
+
+Second, what is reported. A fit held on the edge says so:
+
+- ``model.spreads_at_zero`` names the parameters, and the printout's
+  ``Fit`` line says ``with sd_rate at the lower bound, 0``.
+- ``sd_<name>`` is exactly 0, and its correlations with the other varying
+  parameters are 0. None of them has a standard error (``nan``): a Wald
+  interval needs the likelihood to curve on both sides of the estimate,
+  and at an edge there is only one side.
+- Everything else (the other parameters, their standard errors and
+  bounds, ``neg_ll()``, predictions) is that of the fit with the
+  parameter common to all items. ``aic()`` still counts the spread's
+  parameters, so it is that fit's AIC plus 2 for each.
+- ``maximum`` is that fit's, usually ``"verified"``, with no warning.
+
+To ask whether the parameter varies at all, compare the two fits:
+``aic()``, or the likelihood-ratio test, ``varying_fit.likelihood_ratio_test(common_fit)``.
+The test knows the null value is on an edge: with one parameter left
+out, its p-value is half that of chi-squared on the correlations left
+out and half on those and the sd (Self and Liang, 1987; Stram and Lee,
+1994), smaller than the plain chi-squared p-value. For a spread held at 0
+the statistic is 0 and the p-value 1.
+
 The data: readings on the item records
 --------------------------------------
 
@@ -1106,14 +1157,11 @@ parameter more. No warning is given where a bend's spread is estimated
 at 0: the study below shows the readings usually cannot tell a small
 spread from none, so a warning on the estimate alone misled. On such
 data the search for the larger fit could stop short of the common-bend
-fit's likelihood, with a spread run to 0 (#1334). So where the search
-ends unverified, or with a bend's spread at 0 (it moves no item's marker
-by as much as 1% of the readings' noise at any reading age), the fit
-searches once more. The second search starts from the common-bend fit, with each
-bend's spread small, and the better of the two maxima is kept. A verified
-fit with every spread clear of 0 is not searched again, so it costs
-nothing more. A varying fit therefore reaches at least the likelihood of
-the common-bend fit it contains.
+fit's likelihood, with a spread run to 0 (#1334). A spread at 0 is now
+held on its edge, as for any varying parameter (`A spread at 0: a
+parameter that does not vary`_): the fit is then the common-bend fit,
+with ``sd_s1`` exactly 0 and named in ``spreads_at_zero``, so a varying
+fit reaches at least the likelihood of the common-bend fit it contains.
 
 **How well it recovers the truth.** A simulation study (run on
 2026-11-25 with ``scripts/studies/joint_recovery/shape_study.py``, whose
@@ -1162,7 +1210,8 @@ by about 15 points; the design has 200.
   3 and 1. Spreads this small are not told from none by 150 pumps read
   monthly for two years.
 - No varying fit fell short of the common-bend fit's likelihood (30 of
-  30, with the second search above).
+  30, with the second search from the common-bend fit that this run
+  had, which the boundary fit above has since replaced).
 - The readings rule refused none of the fleets, even cut at 450 or 540
   days. The bend ``s1`` of a one-knot spline acts from the start of the
   boundary, so every reading counts (a median of 15 or 18 per pump), and
@@ -2631,6 +2680,12 @@ References
   longitudinal data measured with error. *Biometrics*, 53, 330--339.
 - Tsiatis, A. A. and Davidian, M. (2004). Joint modeling of longitudinal and
   time-to-event data: an overview. *Statistica Sinica*, 14, 809--834.
+- Self, S. G. and Liang, K.-Y. (1987). Asymptotic properties of maximum
+  likelihood estimators and likelihood ratio tests under nonstandard
+  conditions. *Journal of the American Statistical Association*, 82,
+  605--610.
+- Stram, D. O. and Lee, J. W. (1994). Variance components testing in the
+  longitudinal mixed effects model. *Biometrics*, 50, 1171--1177.
 
 API reference
 -------------

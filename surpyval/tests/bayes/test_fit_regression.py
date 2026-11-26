@@ -652,3 +652,136 @@ def test_an_activation_energy_prior_is_written_in_kelvin():
     use = [[55.0 + 273.15]]
     b10 = informed.quantile_cri(0.1, use)
     assert b10[0] < float(informed.qf(0.1, use)) < b10[1]
+
+
+def _binary_covariate_data():
+    """24 Weibull lives (scale 10, shape 1.5 at their quantiles), a
+    quarter right censored, a covariate of 0 or 1 that does little: the
+    coefficient's peak is near 0 and its gradient at the
+    maximum-likelihood start is small."""
+    size = 24
+    p = (np.arange(1, size + 1) - 0.5) / size
+    x = np.round(10.0 * (-np.log(1 - p)) ** (1 / 1.5), 3)
+    order = np.random.default_rng(460100).permutation(size)
+    c = np.tile([0, 0, 0, 1], size // 4)[order]
+    z = np.tile([0.0, 1.0, 1.0], size // 3)[order[::-1]]
+    n = np.ones(size, int)
+    n[[2, 5]] = 2
+    return x, z[:, None], c, n
+
+
+@pytest.mark.parametrize("k", [1 / 731.0, 731.0, 1e-6])
+@pytest.mark.parametrize("fitter", [sp.WeibullPH, sp.LogNormalAFT])
+def test_a_covariates_unit_does_not_change_the_posterior(fitter, k):
+    """A covariate's unit is a reparameterisation: multiplied by ``k``,
+    its coefficient is divided by ``k``, the default prior with it (it is
+    2.5 over the covariate's standard deviation), and every prediction
+    is the same. Rule fixed before the run: the survival function, its
+    credible interval and every parameter's interval (the coefficient's
+    times ``k``) within 1e-6 of the unscaled fit's, relative. Before the
+    peak search worked in units of the covariate's spread, a covariate
+    in micro-units left the coefficient at its start (sf off by 3e-4)."""
+    x, Z, c, n = _binary_covariate_data()
+    ref = quietly(fitter.fit_bayes, x, Z, c, n)
+    got = quietly(fitter.fit_bayes, x, Z * k, c, n)
+    t = np.array([0.5, 2.0, 7.0, 14.0, 30.0])
+    for z in (0.0, 0.5, 1.0):
+        np.testing.assert_allclose(
+            got.sf(t, [[z * k]]), ref.sf(t, [[z]]), rtol=1e-6
+        )
+        np.testing.assert_allclose(
+            got.cri(t, [[z * k]], on="sf"),
+            ref.cri(t, [[z]], on="sf"),
+            rtol=1e-6,
+        )
+    for name in ref.parameter_names:
+        unit = k if name == "coef_0" else 1.0
+        np.testing.assert_allclose(
+            np.ravel(got.param_cri(name)) * unit,
+            np.ravel(ref.param_cri(name)),
+            rtol=1e-6,
+        )
+
+
+def test_a_prior_on_a_coefficient_is_per_unit_of_the_users_covariate():
+    """The peak search's units are not the prior's: a prior stated on
+    the coefficient of a covariate in micro-units means what it says
+    in those units. ``Normal(0.3, 0.05)`` per unit, and the same belief
+    in micro-units, ``Normal(3e5, 5e4)`` per micro-unit, give the same
+    posterior (rule: every interval within 1e-6, relative); and the
+    tight prior pulls the posterior median to within 0.1 of 0.3."""
+    x, Z, c, n = _binary_covariate_data()
+    k = 1e-6
+    ref = quietly(
+        sp.WeibullPH.fit_bayes,
+        x,
+        Z,
+        c,
+        n,
+        priors={"coef_0": sp.Normal.from_params([0.3, 0.05])},
+    )
+    got = quietly(
+        sp.WeibullPH.fit_bayes,
+        x,
+        Z * k,
+        c,
+        n,
+        priors={"coef_0": sp.Normal.from_params([0.3 / k, 0.05 / k])},
+    )
+    assert abs(ref.params[2] - 0.3) < 0.1
+    for name, unit in (("alpha", 1.0), ("beta", 1.0), ("coef_0", k)):
+        np.testing.assert_allclose(
+            np.ravel(got.param_cri(name)) * unit,
+            np.ravel(ref.param_cri(name)),
+            rtol=1e-6,
+        )
+
+
+def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
+    """Where the posterior is not normal (a covariate near 50 with a
+    spread of 1, the approximation's check "poor"), the Laplace normal's
+    curvature is a secant along the axes the peak search found, so a new
+    search moves it. This design is the one of six (seeds 460210 to
+    460215, characterised before this test was written) where the
+    search before the coefficients' units were standardised was furthest
+    off: its standard deviation of log alpha was 20% above the exact
+    Hessian's. Rule: every parameter's standard deviation within 3% of
+    the exact Hessian's (Richardson-extrapolated central differences at
+    1e-3 and 5e-4 standard deviations); observed 1.3% at most."""
+    from surpyval.bayes.regression import RegressionTarget
+    from surpyval.bayes.result import bind, log_posterior
+
+    seed = 460215
+    rng = np.random.default_rng(seed)
+    n = 40
+    z1 = rng.normal(50.0, 1.0, n)
+    z0 = np.tile([0.0, 1.0], n // 2)
+    Z = np.column_stack([z1, z0])
+    x = sp.Weibull.random(n, 10.0, 1.5, random_state=seed + 1)
+    x = x * np.exp(-0.3 * (z1 - 50) - 0.4 * z0)
+    model = quietly(sp.WeibullPH.fit_bayes, x, Z)
+    cov = np.asarray(model.posterior.normal["cov"])
+    sd = np.sqrt(np.diag(cov))
+    target = RegressionTarget(model.mle)
+    bound, _ = bind(target, None)
+    log_post = log_posterior(target, bound)
+    mode = bound.to_phi(np.asarray(model.diagnostics["mode"])[None, :])[0]
+    d = mode.size
+
+    def hessian(h):
+        out = np.empty((d, d))
+        for i in range(d):
+            for j in range(d):
+                ei, ej = np.zeros(d), np.zeros(d)
+                ei[i], ej[j] = h[i], h[j]
+                out[i, j] = (
+                    log_post((mode + ei + ej)[None])[0]
+                    - log_post((mode + ei - ej)[None])[0]
+                    - log_post((mode - ei + ej)[None])[0]
+                    + log_post((mode - ei - ej)[None])[0]
+                ) / (4 * h[i] * h[j])
+        return out
+
+    exact = (4 * hessian(5e-4 * sd) - hessian(1e-3 * sd)) / 3
+    exact_sd = np.sqrt(np.diag(np.linalg.inv(-exact)))
+    np.testing.assert_allclose(sd, exact_sd, rtol=0.03)

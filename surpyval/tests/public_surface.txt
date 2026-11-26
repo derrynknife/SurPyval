@@ -15,6 +15,7 @@ surpyval.Bernoulli
 surpyval.Beta
 surpyval.Beta4
 surpyval.BetaGeometric
+surpyval.BirnbaumSaunders
 surpyval.Binomial
 surpyval.BuckleyJames
 surpyval.BuckleyJamesModel
@@ -662,6 +663,7 @@ surpyval.univariate.parametric.Bernoulli
 surpyval.univariate.parametric.Beta
 surpyval.univariate.parametric.Beta4
 surpyval.univariate.parametric.BetaGeometric
+surpyval.univariate.parametric.BirnbaumSaunders
 surpyval.univariate.parametric.Binomial
 surpyval.univariate.parametric.CustomDistribution
 surpyval.univariate.parametric.DiscreteParametricFitter

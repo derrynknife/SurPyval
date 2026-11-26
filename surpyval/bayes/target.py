@@ -297,6 +297,15 @@ class Target:
         normal in the parameters' own, else ``None``."""
         return None
 
+    def coordinate_scales(self, bound: Any) -> npt.NDArray | None:
+        """The typical size of each free parameter on its unconstrained
+        scale (in ``bound.free_names`` order), which the peak search
+        divides its coordinates by (``find_mode``'s ``scale``), else
+        ``None`` (all of order 1). Only the search's steps and
+        tolerances use it: the priors, the posterior and every summary
+        are the parameters' own."""
+        return None
+
     def quantities(self) -> dict[str, Any]:
         """The family's named quantities for ``prior.on_quantities``:
         ``{keyword: build(key) -> (label, function of the parameters'
