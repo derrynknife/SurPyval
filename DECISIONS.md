@@ -15,6 +15,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Case-cohort and nested case-control Cox fits (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Two fit methods on `CoxPH`: `fit_case_cohort(x, Z, subcohort, cohort_size, c=, tl=, method=, sampling_strata=, robust=, tie_method=)` and `fit_nested_case_control(Z, case, sets, tie_method=)`, returning `CaseCohortModel` and `NestedCaseControlModel` (subclasses of the Cox model, not new top-level fitters). | proposed | They are Cox fits to sampled data; a method on the existing fitter is where a user looks, and the models keep every Cox prediction and summary. | done |
+| Methods `"prentice"` (default, as `cch`), `"self-prentice"`, `"lin-ying"`, `"barlow"`, `"borgan-i"`, `"borgan-ii"`; the sampling strata of the Borgan methods are `sampling_strata` (not `strata`, which in `CoxPH.fit` means separate baselines). | proposed | `cch`'s names and default; the stratified sampling does not stratify the model. | done |
+| Every variance is R's `cch`'s to the letter, including Prentice's taken from the Self-Prentice estimating equation at its own estimate; Barlow's (not in `cch`) is the robust variance of `coxph` with Barlow's weights clustered on the unit (Therneau and Li 1999). | proposed | The reference matches to about 1e-9; the two estimators share their asymptotic variance (Self and Prentice 1988). | done |
+| A case-cohort model has a baseline: Breslow's on risk sets weighted by the inverse of each member's sampling probability (subcohort `N / n`, per stratum for Borgan I; a case 1 at its event; Lin-Ying and Borgan II their own weights), so the curves are offered; their `cb` refuses. | proposed | The sampling fraction is known, so the baseline is estimable; with the whole cohort it is the ordinary Breslow baseline (tested), and a seeded 10% subcohort is within 15% of the cohort's. The variance of the weighted baseline under sampling is not built. | done (bounds: gap) |
+| A case-cohort model refuses `neg_ll`, the information criteria, the likelihood-ratio test, residuals, `diagnose`, `robust_covariance`, concordance and `to_dict`; a nested case-control model refuses every curve (no baseline) but gives the log-likelihood, LRT and criteria (a true conditional likelihood). | proposed | A pseudo-likelihood is not the data's likelihood; the saved form has no field for a design. | done |
+| Nested case-control default `tie_method="exact"` (the conditional likelihood, `clogit`'s default), fitted as a Cox model stratified by set at one time with the Kalbfleisch-Prentice likelihood; a set with no case or no control is dropped with a warning. No baseline (Langholz-Borgan) estimator. | proposed | It needs the cohort's risk-set sizes, which the usual sample does not hold. | gap |
+| No missing covariates in a case-cohort fit (refused, saying to drop or impute), as `cch`. | proposed | Dropping a row changes the sample design silently. | done |
+
 ### The Birnbaum-Saunders, built in (27 Nov 2026)
 
 | Decision | By | Reason | Status |
