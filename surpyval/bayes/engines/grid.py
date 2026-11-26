@@ -335,11 +335,49 @@ def hessian(f: LogPost, x: npt.NDArray, h: npt.NDArray) -> npt.NDArray:
 
 
 def find_mode(
-    log_post: LogPost, starts: list[npt.NDArray]
+    log_post: LogPost,
+    starts: list[npt.NDArray],
+    scale: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float]:
     """The peak of ``log_post`` from the best of ``starts``, with the
     covariance of the normal approximation there (the inverse of minus
-    the Hessian, made positive definite where it is not)."""
+    the Hessian, made positive definite where it is not).
+
+    ``scale`` is the typical size of each coordinate (by default 1 for
+    every one). The search, its convergence test and its
+    finite-difference steps work in the coordinates divided by it, so
+    that a coordinate on a scale of millions (the coefficient of a
+    covariate in micro-units) is searched as one of order 1: the
+    gradient and step tolerances below are absolute, and in the
+    coordinates' own units such a coordinate's gradient is below them
+    long before its peak. The peak and the covariance are returned in
+    the coordinates' own units.
+
+    Examples
+    --------
+    A normal log density whose second coordinate is a million times the
+    first's spread: with ``scale`` its peak is found from a start 0.5
+    standard deviations away.
+
+    >>> import numpy as np
+    >>> from surpyval.bayes.engines.grid import find_mode
+    >>> sd = np.array([1.0, 1e6])
+    >>> def log_post(x):
+    ...     return -0.5 * np.sum((np.atleast_2d(x) / sd) ** 2, axis=1)
+    >>> mode, cov, _ = find_mode(log_post, [np.array([0.5, 5e5])], sd)
+    >>> bool(np.all(np.abs(mode / sd) < 1e-6))
+    True
+    >>> np.round(np.sqrt(np.diag(cov)) / sd, 6)
+    array([1., 1.])
+    """
+    unit = None if scale is None else np.asarray(scale, dtype=float).ravel()
+    if unit is not None:
+        u_mode, u_cov, value = find_mode(
+            lambda u: log_post(np.atleast_2d(u) * unit),
+            [np.asarray(s, dtype=float) / unit for s in starts],
+        )
+        cov_out: npt.NDArray = u_cov * unit[:, None] * unit[None, :]
+        return u_mode * unit, cov_out, value
 
     def neg(x: npt.NDArray) -> float:
         v = float(log_post(x[None, :])[0])

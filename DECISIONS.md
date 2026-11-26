@@ -32,6 +32,12 @@ Design decisions made while working on the open issues, with the reason for each
 | The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
 | The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
 | A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
+### A Bayesian regression's peak search in standardised units (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The peak search (`find_mode`) takes a `scale` per coordinate and works in the coordinates divided by it; a target says its scales (`Target.coordinate_scales`, default none). The regressions give a coefficient of `exp(beta'Z)` the scale one over its covariate's standard deviation (count-weighted, as the default prior's) and every other parameter 1. The Laplace curvature and the grid already measure along the found covariance, so they follow. | proposed | The search's gradient tolerance and steps are absolute: a coefficient in micro-units stopped at its start. Scaling the search, not the target, keeps the priors on the user's coefficient (a prior per unit of the covariate means the same) and changes no stored posterior form. | done |
+| An accelerated life model's life-model parameters, a custom `phi`'s coefficients and the recurrent and process targets keep scale 1. | proposed | Their parameters are not one per covariate column, and their conformance cases pass the covariate-unit check already. | done |
 
 ## 2026-11-26
 

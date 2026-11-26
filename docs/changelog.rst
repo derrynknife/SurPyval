@@ -5,6 +5,26 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A Bayesian regression's posterior no longer depends on a covariate's
+  unit.** The regressions' ``fit_bayes`` (proportional hazards,
+  accelerated failure time, and each cause's or transition's fit in
+  ``ParametricCompetingRisksRegression.fit_bayes`` and
+  ``ParametricMultiStateRegression.fit_bayes``) found the posterior's
+  peak with steps and a stopping rule in the coefficients' own units, so
+  a coefficient on a scale of millions (a covariate in micro-units)
+  could stop at its maximum-likelihood start: ``WeibullPH.fit_bayes`` on
+  24 lives with a binary covariate multiplied by 1e-6 moved ``sf`` by
+  2.7e-4 (5e-3 relative). The search now measures each coefficient in
+  units of one over its covariate's standard deviation, as if the
+  covariate were standardised; the priors are unchanged and still mean
+  what they say per unit of the user's covariate. With the covariate
+  multiplied by 1/731, 731 or 1e-6 every prediction and interval now
+  agrees with the unscaled fit to 1e-6 relative (about 3e-9 in ``sf``).
+  On covariates of ordinary scale the posteriors move by the search's
+  tolerance only: on the package's regression test fixtures the
+  posterior medians and intervals move by at most 1e-7 (2e-8 relative),
+  ``sf`` by at most 2e-9.
+
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in

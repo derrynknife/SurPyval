@@ -3414,13 +3414,6 @@ def _bayes_competing_risks():
             rtol=1e-6,
             exclude={
                 **_BAYES_COMPOSITION_EXCLUDE,
-                "covariate_scale": "each cause's (transition's) "
-                "BayesianRegression is not equivariant to 1e-4 under a "
-                "covariate scaled by 1e-6: the Laplace engine's peak "
-                "search and Hessian steps are not scaled with the "
-                "coefficient (the plain WeibullPH.fit_bayes on these data "
-                "moves sf by up to 5e-4 too); a known gap of the shared "
-                "regression engine, not of the composition",
                 **{
                     key: "a column the data do not determine is refused "
                     "by each cause's regression fit_bayes, naming its "
@@ -3498,13 +3491,6 @@ def _bayes_multistate():
                 **common,
                 "exclude": {
                     **_BAYES_COMPOSITION_EXCLUDE,
-                    "covariate_scale": "each cause's (transition's) "
-                    "BayesianRegression is not equivariant to 1e-4 under a "
-                    "covariate scaled by 1e-6: the Laplace engine's peak "
-                    "search and Hessian steps are not scaled with the "
-                    "coefficient (the plain WeibullPH.fit_bayes on these data "
-                    "moves sf by up to 5e-4 too); a known gap of the shared "
-                    "regression engine, not of the composition",
                     **{
                         key: "a column the data do not determine is "
                         "refused by each transition's regression "
