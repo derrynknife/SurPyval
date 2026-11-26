@@ -17,6 +17,7 @@ from surpyval.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.ml.forest.log_rank_split import log_rank_split
+from surpyval.ml.forest.random_cut import random_cuts
 from surpyval.ml.forest.turnbull_score_split import turnbull_score_split
 from surpyval.serialisation import to_native
 from surpyval.univariate.competing_risks.labels import label_from_native
@@ -79,6 +80,7 @@ class IntermediateNode(Node):
         p_value: float | None = None,
         min_split_gain: float | str = 0.0,
         competing: CauseSplit | None = None,
+        splitrule: str = "searched",
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -107,6 +109,7 @@ class IntermediateNode(Node):
             alpha_split=alpha_split,
             min_split_gain=min_split_gain,
             competing=competing,
+            splitrule=splitrule,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -122,6 +125,7 @@ class IntermediateNode(Node):
             alpha_split=alpha_split,
             min_split_gain=min_split_gain,
             competing=competing,
+            splitrule=splitrule,
         )
 
     def apply_model_function(
@@ -674,6 +678,7 @@ def build_tree(
     alpha_split: float = 0.05,
     min_split_gain: float | str = 0.0,
     competing: CauseSplit | None = None,
+    splitrule: str = "searched",
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -698,6 +703,11 @@ def build_tree(
     :mod:`~surpyval.ml.forest.conditional_inference`), stops if its
     Bonferroni-adjusted p-value is not below ``alpha_split``, and
     otherwise cuts that feature by the kind's criterion.
+
+    ``splitrule="searched"`` tries every value of a feature as a cut;
+    ``"random"`` draws one cut a drawn feature, uniformly between its
+    smallest and largest value at the node, and the split rule takes the
+    best of those (see :mod:`~surpyval.ml.forest.random_cut`).
 
     ``min_split_gain`` is the least log-likelihood gain a deviance split
     must make (see
@@ -744,26 +754,31 @@ def build_tree(
             return leaf()
         candidates = np.array([chosen])
 
-    # Figure out best feature-value split
+    # Figure out best feature-value split. With random cuts each candidate
+    # feature is its one cut's indicator, and the rule scores those.
+    cuts: dict[int, float] | None = None
+    Z_split = Z
+    if splitrule == "random":
+        Z_split, cuts = random_cuts(Z, candidates, rng)
     if competing is not None:
         split_feature_index, split_feature_value = competing.best_cut(
-            data, Z, min_leaf_samples, min_leaf_failures, candidates
+            data, Z_split, min_leaf_samples, min_leaf_failures, candidates
         )
     elif kind == "non-parametric" and needs_full_likelihood_split(data):
         # Left or interval censoring, or right truncation: the log-rank
         # scores of the pooled Turnbull estimate, less each truncated
         # row's window score.
         split_feature_index, split_feature_value = turnbull_score_split(
-            data, Z, min_leaf_samples, min_leaf_failures, candidates
+            data, Z_split, min_leaf_samples, min_leaf_failures, candidates
         )
     elif kind == "non-parametric":
         split_feature_index, split_feature_value = log_rank_split(
-            data, Z, min_leaf_samples, min_leaf_failures, candidates
+            data, Z_split, min_leaf_samples, min_leaf_failures, candidates
         )
     else:
         split_feature_index, split_feature_value = deviance_split(
             data,
-            Z,
+            Z_split,
             min_leaf_samples,
             min_leaf_failures,
             candidates,
@@ -775,6 +790,9 @@ def build_tree(
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
         return leaf()
+    if cuts is not None:
+        # The rule saw an indicator; the split is the feature's random cut
+        split_feature_value = cuts[int(split_feature_index)]
 
     # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(
@@ -795,4 +813,5 @@ def build_tree(
         p_value=p_value,
         min_split_gain=min_split_gain,
         competing=competing,
+        splitrule=splitrule,
     )

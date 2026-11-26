@@ -450,6 +450,9 @@ class CauseSpecificMCF(SerialisableMixin):
         -------
         CauseSpecificMCF
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
 
         model = cls.fit(
             x=df[x_col].to_numpy(),

@@ -16,6 +16,7 @@ from surpyval.ml.forest.oob import (
     time_origin,
     weighted_mean,
 )
+from surpyval.ml.forest.random_cut import parse_splitrule
 from surpyval.ml.forest.readouts import (
     PartialDependence,
     horizon_importance,
@@ -185,9 +186,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         n_jobs: int = 1,
         split: str | None = None,
         event: Any = None,
+        splitrule: str = "searched",
     ) -> None:
         _check_n_jobs(n_jobs)
         self.selection = parse_selection(selection, alpha_split)
+        self.splitrule = parse_splitrule(splitrule)
         self.alpha_split = float(alpha_split)
         Z, self.feature_names = covariate_matrix(Z, feature_names)
         # Set by ``fit_from_df(formula=...)``: the formula and its
@@ -269,6 +272,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 n_features_split=n_features_split,
                 kind=kind,
                 selection=selection,
+                splitrule=splitrule,
                 alpha_split=alpha_split,
                 random_state=tree_states[i],
                 feature_names=self.feature_names,
@@ -308,6 +312,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         e: ArrayLike | None = None,
         split: str | None = None,
         event: Any = None,
+        splitrule: str = "searched",
     ) -> "RandomSurvivalForest":
         """
         Fit a random survival forest.
@@ -363,6 +368,15 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             With ``selection="ctree"``, a node splits only if the
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``. Defaults to 0.05.
+        splitrule : str, optional
+            Which cuts of a feature each tree tries: ``"searched"`` (the
+            default), every value, or ``"random"``, one cut drawn
+            uniformly between the feature's smallest and largest value at
+            the node (an extremely randomised forest, Geurts, Ernst and
+            Wehenkel, 2006). The forest keeps its own resampling
+            (``bootstrap``), so out-of-bag scores exist as before; pass
+            ``bootstrap=False`` for the original Extra-Trees, each tree
+            seeing the whole sample.
         min_split_gain : float, "aic" or "bic", optional
             The least gain in log-likelihood a split of a ``"weibull"`` or
             ``"exponential"`` tree must make: a node splits only if its
@@ -518,6 +532,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             n_jobs,
             split=split,
             event=event,
+            splitrule=splitrule,
         )
 
     def sf(
@@ -1357,6 +1372,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         return (
             f"RandomSurvivalForest(kind={self.kind!r}, "
             f"n_trees={self.n_trees}, selection={self.selection!r}, "
+            f"splitrule={self.splitrule!r}, "
             + (
                 ""
                 if self.causes is None
@@ -1376,6 +1392,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             "n_trees": int(self.n_trees),
             "bootstrap": bool(self.bootstrap),
             "selection": self.selection,
+            "splitrule": self.splitrule,
             "alpha_split": float(self.alpha_split),
             "min_split_gain": self.min_split_gain,
             "trees": [tree.to_dict() for tree in self.trees],
@@ -1401,6 +1418,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         forest.bootstrap = model_dict["bootstrap"]
         # Forests saved before selection existed were grown greedily.
         forest.selection = model_dict.get("selection", "greedy")
+        forest.splitrule = model_dict.get("splitrule", "searched")
         forest.alpha_split = model_dict.get("alpha_split", 0.05)
         forest.min_split_gain = model_dict.get("min_split_gain", 0.0)
         if "causes" in model_dict:

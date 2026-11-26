@@ -600,6 +600,9 @@ class TVCFitMixin:
         >>> model.feature_names
         ['dose[T.low]']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc,
             df,
@@ -632,6 +635,9 @@ class TVCFitMixin:
         ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
         ``ParametricRegressionModel``.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc_timeline,
             df,

@@ -1199,6 +1199,9 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         >>> data.i, data.c.tolist()
         (['M1', 'M1', 'M1', 'M2', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if end_col is not None or ends is not None:
             return _event_log_from_frame(
                 df,

@@ -2303,6 +2303,9 @@ class ParametricCompetingRisks(
         ParametricCompetingRisks
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         df, x_col, xl_col, xr_col = exact_or_range_frame(
             df, x_col, xl_col, xr_col, c_col, blank_is_infinite=True
         )

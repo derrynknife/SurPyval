@@ -172,7 +172,7 @@ Readings taken on an item over its life go in ``readings``: ``{name: {age: value
 
 ``SurpyvalData`` with ``i`` is the form for several rows per unit; ``EventHistoryData`` is deprecated in v0.30 and removed in v0.31, with ``fleet.event_history_data()`` (``to_surpyval_data()`` turns one back into rows).
 
-Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
+Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`). A Polars ``DataFrame`` (or ``LazyFrame``) or a PyArrow ``Table`` is taken in its place, by ``fit_from_df`` and ``SurpyvalData.from_dataframe`` alike: it is converted to pandas once, on the way in, with its own ``to_pandas``, so the fit is the one the same data in pandas gives (a null is a missing value, as in pandas). Neither library is a dependency of SurPyval, and neither is imported unless the table you pass is theirs; Polars' ``to_pandas`` itself needs PyArrow.
 
 .. jupyter-execute::
 
@@ -612,6 +612,19 @@ Field data often arrives as a table of dates: when each unit was installed, when
     print(log[["unit", "x", "c"]])
 
     surv.Weibull.fit_from_df(log, x_col="x", c_col="c")
+
+``surpyval.utils.dates_to_durations`` does both steps. Give it the start dates, the end dates (a blank where the unit is still running), the ``cutoff`` if the records stop on a known date, and, in ``event``, which end dates are failures. A unit with no end date, or one that ended after the cutoff, is right censored at the cutoff (the latest date in the records, if you give none). ``unit`` is ``"D"`` (days) unless you say ``"h"``, ``"W"``, ``"Y"`` and so on: all are fixed lengths, a year is 365.25 days, a month has no fixed length so it is not offered, and the durations are not rounded. Dates with a time zone are compared as the elapsed time between them, and a mix of dates with and without a time zone is refused. lifelines' ``datetimes_to_durations`` gives the same durations and flags (its ``E`` is ``1 - c``), in whole units.
+
+.. jupyter-execute::
+
+    from surpyval.utils import dates_to_durations
+
+    x, c = dates_to_durations(
+        log["installed"], log["removed"], cutoff=study_end,
+        event=log["reason"] == "failure",
+    )
+    assert (x == log["x"]).all() and (c == log["c"]).all()
+    print(pd.DataFrame({"unit": log["unit"], "x": x, "c": c}))
 
 A common mistake is to count the preventive replacement of unit E as a failure. It was not one, and counting it as one makes the item look less reliable than it is. Another is to leave units B and D out because they "have no failure date": they are the survivors, and they carry most of the information about how long the units last.
 

@@ -629,6 +629,9 @@ class ExcessHazard(InformationCriteriaMixin, SerialisableMixin):
         >>> model.parameter_names
         ['rate_0', 'treated']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import (
             check_columns,
             frame_column,

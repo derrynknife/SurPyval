@@ -549,7 +549,14 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             "be fitted to these data: " + "; ".join(failed),
             stacklevel=caller_stacklevel(),
         )
-    if set_aside:
+    # Among the default candidates, one set aside while a regular fit was
+    # chosen is not news: a four-parameter family such as the
+    # GeneralizedF has no finite maximum on much ordinary data, so naming
+    # it each time would be a warning on every call. It stays in the table
+    # (``return_table=True``). A candidate the caller named, or a choice
+    # among set-aside fits only, is still said.
+    named = bool(include_set or mixtures)
+    if set_aside and (named or best[True][1] is None):
         chosen = "none" if model is None else labels[id(model)]
         warnings.warn(
             f"fit_best set aside {', '.join(set_aside)}: without a "

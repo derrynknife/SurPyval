@@ -913,7 +913,9 @@ def _not_a_date(item: Any, name: str, value: Any) -> None:
                 f"Item {item!r}: '{name}' is a date; ages are numbers, "
                 "measured from when the item was new (or first observed). "
                 "Subtract its start date and convert, e.g. "
-                "(date - installed) / pd.Timedelta(days=1) for days."
+                "(date - installed) / pd.Timedelta(days=1) for days (or "
+                "surpyval.utils.dates_to_durations for start and end "
+                "dates)."
             )
 
 

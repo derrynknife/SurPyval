@@ -55,12 +55,38 @@ class fitter_method:
         return types.MethodType(self.func, objtype if obj is None else obj)
 
 
+def as_pandas(df: Any) -> Any:
+    """A Polars or Arrow table as a :class:`pandas.DataFrame`; anything
+    else as it is.
+
+    Every DataFrame entry point (``fit_from_df``, ``from_dataframe``)
+    reads its frame through :func:`require_frame`, which calls this, so a
+    Polars ``DataFrame`` (or ``LazyFrame``) and a PyArrow ``Table`` or
+    ``RecordBatch`` are taken wherever a pandas frame is, and give the
+    same fit: the table is converted once, on entry, with its own
+    ``to_pandas``. Neither library is imported here: the object's own
+    module says what it is, so a pandas user never loads them (and
+    neither is a dependency). A null reads as a missing value, as pandas
+    reads one.
+    """
+    module = type(df).__module__.partition(".")[0]
+    if module == "polars":
+        if hasattr(df, "collect"):  # a LazyFrame
+            df = df.collect()
+        return df.to_pandas()
+    if module == "pyarrow" and hasattr(df, "to_pandas"):
+        return df.to_pandas()
+    return df
+
+
 def require_frame(df: Any) -> pd.DataFrame:
     import pandas as pd
 
+    df = as_pandas(df)
     if not isinstance(df, pd.DataFrame):
         raise ValueError(
-            f"df must be a pandas DataFrame, got {type(df).__name__}"
+            "df must be a pandas DataFrame (a Polars DataFrame or a "
+            f"PyArrow Table is converted), got {type(df).__name__}"
         )
     return df
 
@@ -794,6 +820,9 @@ class RecurrentRegressionDataFrameMixin:
         >>> model.coeffs.round(4)
         array([0.5849])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         refuse_recurrent_column_names(fit_options, "Z")
         columns = {
             "i": i_col,
@@ -885,6 +914,9 @@ class RecurrentRegressionDataFrameMixin:
         >>> model.method
         'grid'
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         refuse_recurrent_column_names(fit_options, "Z")
         columns = {
             "i": i_col,

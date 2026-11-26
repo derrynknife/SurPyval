@@ -1898,6 +1898,9 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.method
         'conjugate'
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if w_col is not None:
             raise self._bayes_weights_refusal("fit_bayes_from_df", "w_col")
         from surpyval.bayes.fitting import fit_from_df as _fit_from_df

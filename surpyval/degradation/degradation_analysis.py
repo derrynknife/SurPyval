@@ -1513,6 +1513,9 @@ class DegradationAnalysis_(FitterRepr):
         DegradationModel
             The fitted degradation model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         refuse_column_names(fit_kwargs, "x", "y", "i")
         y_col = readings_column(m_col, y_col)
         cols = None
