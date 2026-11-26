@@ -17,6 +17,18 @@ from surpyval import (
     SurpyvalData,
 )
 
+# These tests check EventHistoryData itself, reading its ids and tl as
+# they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 READ_ONLY = "read-only"
 
 
