@@ -1397,3 +1397,66 @@ class ParametricCompetingRisksRegression(
             model=model,
             init=init,
         )
+
+    @classmethod
+    @takes_unit
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        formula: str | None = None,
+        *,
+        model: Any = WeibullPH,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on the columns of a :class:`pandas.DataFrame`,
+        named as :meth:`fit_from_df` names them (``Z_cols`` or
+        ``formula`` for the covariates; a row with a missing covariate
+        is left out, with a warning). ``model``, ``priors``, ``method``
+        and ``importance`` are :meth:`fit_bayes`'s, passed to it
+        unchanged; a coefficient is named in ``priors`` as
+        :meth:`fit_bayes` names it (``coef_0`` for the first column).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisksRegression,
+        ... )
+        >>> rng = np.random.default_rng(3)
+        >>> df = pd.DataFrame({
+        ...     "hours": rng.weibull(1.5, 40) * 10,
+        ...     "cause": rng.choice(["a", "b"], 40).astype(object),
+        ...     "load": rng.normal(size=40),
+        ... })
+        >>> model = ParametricCompetingRisksRegression.fit_bayes_from_df(
+        ...     df, "hours", "cause", Z_cols=["load"])
+        >>> model.causes
+        ['a', 'b']
+        """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit_bayes,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            model=model,
+            priors=priors,
+            method=method,
+            importance=importance,
+        )

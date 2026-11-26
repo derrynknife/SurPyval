@@ -4035,6 +4035,7 @@ def _df_paths():
             estimator=e,
             common_censoring=e == "lin-ying",
         )
+    paths.update(_bayes_cr_ms_df_paths())
     # (its fixture has no counts: the rows alone)
     paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
         mv.Clayton.fit_from_df(
@@ -4044,6 +4045,93 @@ def _df_paths():
         )
     )
     return paths
+
+
+def _bayes_cr_ms_df_paths():
+    """fit_bayes_from_df of the competing-risks and multi-state fitters,
+    with the options each case's fit passes."""
+
+    def pcr(d):
+        df = pd.DataFrame({"x": d["x"], "e": d["e"], "n": d["n"]})
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df, "x", "e", n_col="n", dist=sp.Exponential
+        )
+
+    def pcr_interval(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df,
+            None,
+            "e",
+            c_col="c",
+            n_col="n",
+            xl_col="lo",
+            xr_col="hi",
+            dist=sp.Exponential,
+        )
+
+    def pcrr(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
+        )
+        return cr.ParametricCompetingRisksRegression.fit_bayes_from_df(
+            df, "x", "e", Z_cols=["z0"], n_col="n"
+        )
+
+    def spells(d):
+        df = pd.DataFrame(
+            {
+                "x": d["x"],
+                "e": d["e"],
+                "state": d["state"],
+                "tl": d["tl"],
+                "n": d["n"],
+            }
+        )
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def pms(d):
+        return ms.ParametricMultiState.fit_bayes_from_df(
+            spells(d),
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            dist=sp.Exponential,
+        )
+
+    def pmsr(d):
+        return ms.ParametricMultiStateRegression.fit_bayes_from_df(
+            spells(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            model=sp.ExponentialPH,
+        )
+
+    return {
+        "ParametricCompetingRisks[bayes]": pcr,
+        "ParametricCompetingRisks[interval, bayes]": pcr_interval,
+        "ParametricCompetingRisksRegression[bayes]": pcrr,
+        "ParametricMultiState[bayes]": pms,
+        "ParametricMultiStateRegression[bayes]": pmsr,
+    }
 
 
 def _add_df_path(case, paths=_df_paths()):
@@ -4060,17 +4148,6 @@ NO_DF_PATH: dict[str, str] = {
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
-    **{
-        name: "fit_bayes takes arrays; the competing-risks and multi-state "
-        "fitters have no fit_bayes_from_df yet"
-        for name in (
-            "ParametricCompetingRisks[bayes]",
-            "ParametricCompetingRisks[interval, bayes]",
-            "ParametricCompetingRisksRegression[bayes]",
-            "ParametricMultiState[bayes]",
-            "ParametricMultiStateRegression[bayes]",
-        )
-    },
 }
 
 

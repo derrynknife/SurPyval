@@ -1023,6 +1023,75 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
     @classmethod
     @takes_unit
+    @other_name("s_col", "state_col")
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str | list,
+        e_col: str,
+        state_col: str,
+        tl_col: str | None = None,
+        i_col: str | None = None,
+        n_col: str | None = None,
+        transitions: Any = None,
+        dist: Any = None,
+        clock: str = "forward",
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on a DataFrame of spells, one row each, the
+        columns named as :meth:`fit_from_df` names them (``s_col`` is
+        another name for ``state_col``). ``priors``, ``method``,
+        ``points`` and ``importance`` are :meth:`fit_bayes`'s, passed to
+        it unchanged.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Exponential
+        >>> from surpyval.multistate import ParametricMultiState
+        >>> spells = pd.DataFrame({
+        ...     "t": [2.0, 5.0, 3.0, 7.0, 4.0, 6.0, 1.0, 8.0],
+        ...     "to": ["ill", "dead", "dead", None, "ill", "dead", "ill",
+        ...            None],
+        ...     "from": ["well", "ill", "well", "well", "well", "ill",
+        ...              "well", "ill"],
+        ... })
+        >>> model = ParametricMultiState.fit_bayes_from_df(
+        ...     spells, "t", "to", "from", dist=Exponential)
+        >>> sorted(model.models)
+        [('ill', 'dead'), ('well', 'dead'), ('well', 'ill')]
+        """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+        from surpyval.utils.dataframe import frame_column
+
+        df = _as_pandas(df)
+
+        def col(name: str | None, arg: str) -> Any:
+            return None if name is None else frame_column(df, name, arg)
+
+        return cls.fit_bayes(
+            _x_column(df, x_col),
+            col(e_col, "e_col"),
+            col(state_col, "state_col"),
+            tl=col(tl_col, "tl_col"),
+            i=col(i_col, "i_col"),
+            n=col(n_col, "n_col"),
+            transitions=transitions,
+            dist=dist,
+            clock=clock,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
+    @classmethod
+    @takes_unit
     @other_name("s", "state")
     @multistate_data
     @accepts_surpyval_data
@@ -1760,6 +1829,82 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         )
         return cls._fit_named(
             data, Z_arr, [str(c) for c in cols], fitters, clock
+        )
+
+    @classmethod
+    @takes_unit
+    @other_name("s_col", "state_col")
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str | list,
+        Z_cols: Any,
+        e_col: str,
+        state_col: str,
+        tl_col: str | None = None,
+        i_col: str | None = None,
+        n_col: str | None = None,
+        transitions: Any = None,
+        model: Any = None,
+        clock: str = "forward",
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on a DataFrame of spells, one row each, the
+        columns named as :meth:`fit_from_df` names them (``Z_cols`` the
+        covariate columns; ``s_col`` is another name for
+        ``state_col``). ``priors``, ``method`` and ``importance`` are
+        :meth:`fit_bayes`'s, passed to it unchanged; a coefficient is
+        named in ``priors`` as :meth:`fit_bayes` names it (``coef_0``
+        for the first column).
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import ExponentialPH
+        >>> from surpyval.multistate import ParametricMultiStateRegression
+        >>> spells = pd.DataFrame({
+        ...     "t": [2.0, 5.0, 3.0, 7.0, 4.0, 6.0, 1.0, 8.0, 3.5, 2.5],
+        ...     "to": ["ill", "dead", "ill", None, "ill", "dead", "ill",
+        ...            None, "ill", "dead"],
+        ...     "from": ["well", "ill", "well", "well", "well", "ill",
+        ...              "well", "ill", "well", "ill"],
+        ...     "age": [50, 62, 55, 48, 70, 66, 59, 61, 53, 68],
+        ... })
+        >>> model = ParametricMultiStateRegression.fit_bayes_from_df(
+        ...     spells, "t", ["age"], "to", "from", model=ExponentialPH)
+        >>> sorted(model.models)
+        [('ill', 'dead'), ('well', 'ill')]
+        """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+        from surpyval.utils.dataframe import frame_column
+
+        df = _as_pandas(df)
+
+        def col(name: str | None, arg: str) -> Any:
+            return None if name is None else frame_column(df, name, arg)
+
+        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        Z = np.column_stack(
+            [np.asarray(frame_column(df, c, "Z_cols"), float) for c in cols]
+        )
+        return cls.fit_bayes(
+            _x_column(df, x_col),
+            Z,
+            col(e_col, "e_col"),
+            col(state_col, "state_col"),
+            tl=col(tl_col, "tl_col"),
+            i=col(i_col, "i_col"),
+            n=col(n_col, "n_col"),
+            transitions=transitions,
+            model=model,
+            clock=clock,
+            priors=priors,
+            method=method,
+            importance=importance,
         )
 
     @staticmethod
