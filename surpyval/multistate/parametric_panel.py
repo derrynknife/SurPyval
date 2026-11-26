@@ -5,6 +5,7 @@ time in the state (a semi-Markov model)."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,29 @@ from surpyval.utils.units import takes_unit
 #: The accuracy of each row of the transition probabilities on the
 #: forward clock's grid (see ``surpyval.multistate._forward``).
 PANEL_TOL = 1e-9
+#: On the reset clock in a model with cycles: the most moves counted
+#: between two visits, and the share of a gap's chance that may be left
+#: out of it without a warning.
+MAX_MOVES = 3
+TRUNCATION_TOL = 1e-8
+
+
+def _check_truncation_options(max_moves: Any, truncation_tol: Any) -> None:
+    if (
+        isinstance(max_moves, bool)
+        or not isinstance(max_moves, (int, np.integer))
+        or max_moves < 1
+    ):
+        raise ValueError(
+            "'max_moves', the most moves counted between two visits, must "
+            f"be a whole number of at least 1; got {max_moves!r}."
+        )
+    tol = float(truncation_tol)
+    if not (np.isfinite(tol) and tol > 0):
+        raise ValueError(
+            "'truncation_tol' must be a positive number (a share of a "
+            f"gap's chance, such as 1e-8); got {truncation_tol!r}."
+        )
 
 
 def _exponential_starts(pdata: Any, fitters: list) -> list:
@@ -120,8 +144,23 @@ class _PanelFit:
     _regression: bool
     _joint: Any
 
+    #: On the reset clock in a model with cycles: the most moves counted
+    #: between two visits, the tolerance on what that leaves out, and the
+    #: largest share left out of any gap at the estimate (0 without
+    #: cycles or on the forward clock, where nothing is left out).
+    max_moves: int = MAX_MOVES
+    truncation_tol: float = TRUNCATION_TOL
+    truncation_error: float = 0.0
+    _omitted: list
+
     @classmethod
-    def _likelihood(cls, pdata: Any, fitters: list, clock: str) -> Any:
+    def _likelihood(
+        cls,
+        pdata: Any,
+        fitters: list,
+        clock: str,
+        max_moves: int = MAX_MOVES,
+    ) -> Any:
         from surpyval.multistate import _panel_likelihood as pl
 
         pattern, rows = _patterns(pdata)
@@ -132,20 +171,11 @@ class _PanelFit:
             return np.asarray(Hf(m, t.ravel(), rows[p], rate)).reshape(t.shape)
 
         if clock == "reset":
-            if pl.has_cycle(pdata.tm):
-                raise ValueError(
-                    "With clock='reset' the panel model is for progressive "
-                    "models only (no state can be come back to): with a way "
-                    "back, a unit could pass through any number of states "
-                    "unseen between two visits, each entered at an unknown "
-                    "time. Use clock='forward' (a Markov model, which takes "
-                    "cycles), or PanelMultiState."
-                )
             _check_reset(
                 fitters, pdata.tm, "model" if cls._regression else "dist"
             )
             return pl.ResetPanelLikelihood(
-                pdata, hazard, pattern, cls._batched(rows)
+                pdata, hazard, pattern, cls._batched(rows), max_moves
             )
 
         def hazards(models: list, p: int) -> Any:
@@ -196,12 +226,17 @@ class _PanelFit:
 
     @classmethod
     def _search(
-        cls, pdata: Any, fitters: list, clock: str, models: list
+        cls,
+        pdata: Any,
+        fitters: list,
+        clock: str,
+        models: list,
+        max_moves: int = MAX_MOVES,
     ) -> Any:
         """The joint fit from the starting ``models``."""
         from surpyval.multistate import _joint
 
-        lik = cls._likelihood(pdata, fitters, clock)
+        lik = cls._likelihood(pdata, fitters, clock, max_moves)
         what = f"The fit of {cls.__name__}"
         units = None
         if cls._regression:
@@ -244,10 +279,89 @@ class _PanelFit:
             self._panel,
             [m.dist for m in models],
             self.clock,  # type: ignore[attr-defined]
+            self.max_moves,
         )
         if self.clock == "forward":  # type: ignore[attr-defined]
             lik.plan(models)
         return lik
+
+    def _check_truncation(self) -> None:
+        """At the estimate: what counting at most ``max_moves`` moves
+        between two visits leaves out of each gap (reset clock, cycles),
+        with a warning where it is above ``truncation_tol``."""
+        self._omitted = []
+        self.truncation_error = 0.0
+        if self.clock != "reset":  # type: ignore[attr-defined]
+            return
+        lik = self._panel_likelihood()
+        if not lik.cyclic:
+            return
+        self._omitted = lik.omitted(self._models())  # type: ignore
+        if not self._omitted:
+            return
+        values = np.array([v for _, v in self._omitted])
+        self.truncation_error = float(np.max(values))
+        over = values > self.truncation_tol
+        if np.any(over):
+            from surpyval.utils.warnings import caller_stacklevel
+
+            p = self._panel
+            row, worst = self._omitted[int(np.argmax(values))]
+            warnings.warn(
+                f"Counting at most {self.max_moves} moves between two "
+                f"visits leaves out more than {self.truncation_tol:g} of "
+                f"the chance of {int(over.sum())} of the "
+                f"{values.size} gaps: the most, {worst:.3g}, for unit "
+                f"{p.ids[p.unit[row]]!r} between {p.x[row - 1]:g} and "
+                f"{p.x[row]:g}. Those gaps' factors may be short by up to "
+                "that: refit with a larger max_moves (such as "
+                f"{self.max_moves + 1}); model.truncation_errors lists "
+                "every gap.",
+                UserWarning,
+                stacklevel=caller_stacklevel(),
+            )
+
+    @property
+    def truncation_errors(self) -> Any:
+        """A table of the gaps between visits (``unit``, ``start``,
+        ``end``) and, for each, ``omitted``: the chance, given what was
+        seen before the gap and at the estimate, of more than
+        ``max_moves`` moves in it, which the likelihood leaves out (on
+        the reset clock in a model with a way back; empty otherwise).
+        Largest first."""
+        import pandas as pd
+
+        p = self._panel
+        rows = np.array([r for r, _ in self._omitted], dtype=int)
+        table = pd.DataFrame(
+            {
+                "unit": [p.ids[p.unit[r]] for r in rows],
+                "start": p.x[rows - 1] if rows.size else [],
+                "end": p.x[rows] if rows.size else [],
+                "omitted": [v for _, v in self._omitted],
+            }
+        )
+        return table.sort_values(
+            "omitted", ascending=False, kind="stable"
+        ).reset_index(drop=True)
+
+    def _truncation_dict(self) -> dict:
+        return {
+            "max_moves": int(self.max_moves),
+            "truncation_tol": float(self.truncation_tol),
+            "truncation_error": float(self.truncation_error),
+            "omitted": [[int(r), float(v)] for r, v in self._omitted],
+        }
+
+    def _truncation_from_dict(self, model_dict: dict) -> None:
+        self.max_moves = int(model_dict.get("max_moves", MAX_MOVES))
+        self.truncation_tol = float(
+            model_dict.get("truncation_tol", TRUNCATION_TOL)
+        )
+        self.truncation_error = float(model_dict.get("truncation_error", 0))
+        self._omitted = [
+            (int(r), float(v)) for r, v in model_dict.get("omitted", [])
+        ]
 
     @property
     def n_obs(self) -> int:
@@ -337,10 +451,13 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
     the current state (a semi-Markov model). The time a state was entered
     is then not seen either, so the likelihood integrates over it (and
     over the entry into every state the unit may have passed through
-    unseen between two visits). This is offered for progressive models
-    only (no state can be come back to), where those paths are finite;
-    each unit is taken to have entered its first state at its first
-    visit.
+    unseen between two visits). Each unit is taken to have entered its
+    first state at its first visit. In a progressive model (no state can
+    be come back to) every path between two visits is counted; with a
+    way back (recovery) their number is unbounded, and the paths of at
+    most ``max_moves`` moves (default 3) are counted, what the others
+    would add checked gap by gap at the estimate (``truncation_errors``)
+    with a warning where it is above ``truncation_tol``.
 
     Every transition is fitted at once (BFGS on the log of positive
     parameters, from each distribution fitted to the exponential of a
@@ -375,6 +492,8 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
         clock: str = "forward",
         censored: dict | None = None,
         exact_entry: Any = None,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiState:
         """
         Fit a parametric distribution to each transition of states seen
@@ -395,8 +514,18 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
         clock : ('forward', 'reset'), str, optional
             The time scale of the hazards: the time since the start
             (``'forward'``, the default; a Markov model) or the time in
-            the current state (``'reset'``; a semi-Markov model, for
-            progressive models only).
+            the current state (``'reset'``; a semi-Markov model).
+        max_moves : int, optional
+            On the reset clock in a model with a way back to a state (an
+            illness-death model with recovery, say), the most moves
+            counted between two visits (default 3): the paths with more
+            are left out of the likelihood. What they would add is
+            checked at the estimate, gap by gap (``truncation_errors``,
+            the largest as ``truncation_error``). Ignored otherwise,
+            where every path is counted.
+        truncation_tol : float, optional
+            The share of a gap's chance that ``max_moves`` may leave out
+            without a warning (default 1e-8).
 
         Returns
         -------
@@ -434,7 +563,10 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
             x, s, i, None, obstype, transitions, censored, exact_entry, None
         )
         fitters = _fitters(Weibull if dist is None else dist, pdata.tm, False)
-        return cls._fit_panel(pdata, fitters, clock)
+        _check_truncation_options(max_moves, truncation_tol)
+        return cls._fit_panel(
+            pdata, fitters, clock, int(max_moves), float(truncation_tol)
+        )
 
     @classmethod
     @takes_unit
@@ -450,6 +582,8 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
         clock: str = "forward",
         censored: dict | None = None,
         exact_entry: Any = None,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiState:
         """
         Fit the model to a DataFrame of visits, one row each; the columns
@@ -490,20 +624,31 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
             clock=clock,
             censored=censored,
             exact_entry=exact_entry,
+            max_moves=max_moves,
+            truncation_tol=truncation_tol,
         )
 
     # -- fitting ------------------------------------------------------------
 
     @classmethod
     def _fit_panel(
-        cls, pdata: Any, fitters: list, clock: str
+        cls,
+        pdata: Any,
+        fitters: list,
+        clock: str,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiState:
         from surpyval.multistate import _panel_likelihood as pl
 
         spells = pl.midpoint_spells(pdata)
         cls._likelihood(pdata, fitters, clock)  # (its refusals first)
         joint = cls._search(
-            pdata, fitters, clock, _exponential_starts(pdata, fitters)
+            pdata,
+            fitters,
+            clock,
+            _exponential_starts(pdata, fitters),
+            max_moves,
         )
         out = cls()
         out.transitions = pdata.tm
@@ -513,7 +658,10 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
         out._Z = np.zeros((spells.x.size, 0))
         out._joint = joint
         out._panel = pdata
+        out.max_moves = max_moves
+        out.truncation_tol = truncation_tol
         out._setup()
+        out._check_truncation()
         return out
 
     # -- serialisation ------------------------------------------------------
@@ -533,6 +681,7 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
                 "clock": self.clock,
                 "models": [m.to_dict() for m in self._models()],
                 "joint": self._joint.to_dict(),
+                **self._truncation_dict(),
             }
         )
 
@@ -562,6 +711,7 @@ class ParametricPanelMultiState(_PanelFit, ParametricMultiState):
         out._panel = pdata
         out._data = pl.midpoint_spells(pdata)
         out._Z = np.zeros((out._data.x.size, 0))
+        out._truncation_from_dict(model_dict)
         out._setup()
         return out
 
@@ -596,11 +746,11 @@ class ParametricPanelMultiStateRegression(
     transition probabilities for the gap's covariates :math:`z`, by
     product integration on a grid of their own for each distinct row of
     covariates (refined at the starting values, again at the estimate).
-    On the reset clock (a semi-Markov model, progressive models only) the
-    unit is carried over its unknown entry times as in
-    :class:`ParametricPanelMultiState`, each gap's hazards those of its
-    covariates. With ``ExponentialPH`` regressions both are
-    ``PanelMultiStateRegression``'s fit.
+    On the reset clock (a semi-Markov model) the unit is carried over its
+    unknown entry times as in :class:`ParametricPanelMultiState` (with a
+    way back, up to ``max_moves`` moves between two visits), each gap's
+    hazards those of its covariates. With ``ExponentialPH`` regressions
+    both are ``PanelMultiStateRegression``'s fit.
 
     Every transition is fitted at once (BFGS on central differences, each
     coefficient searched in its covariate's units, and a Newton step at
@@ -635,6 +785,8 @@ class ParametricPanelMultiStateRegression(
         clock: str = "forward",
         censored: dict | None = None,
         exact_entry: Any = None,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiStateRegression:
         """
         Fit a parametric regression to each transition of states seen at
@@ -659,7 +811,18 @@ class ParametricPanelMultiStateRegression(
         clock : ('forward', 'reset'), str, optional
             The time scale of the hazards: the time since the start
             (``'forward'``, the default) or the time in the current state
-            (``'reset'``, for progressive models only).
+            (``'reset'``).
+        max_moves : int, optional
+            On the reset clock in a model with a way back to a state (an
+            illness-death model with recovery, say), the most moves
+            counted between two visits (default 3): the paths with more
+            are left out of the likelihood. What they would add is
+            checked at the estimate, gap by gap (``truncation_errors``,
+            the largest as ``truncation_error``). Ignored otherwise,
+            where every path is counted.
+        truncation_tol : float, optional
+            The share of a gap's chance that ``max_moves`` may leave out
+            without a warning (default 1e-8).
 
         Returns
         -------
@@ -710,7 +873,15 @@ class ParametricPanelMultiStateRegression(
         fitters = _fitters(
             WeibullPH if model is None else model, pdata.tm, True
         )
-        return cls._fit_panel(pdata, fitters, clock, names)
+        _check_truncation_options(max_moves, truncation_tol)
+        return cls._fit_panel(
+            pdata,
+            fitters,
+            clock,
+            names,
+            int(max_moves),
+            float(truncation_tol),
+        )
 
     @classmethod
     @takes_unit
@@ -727,6 +898,8 @@ class ParametricPanelMultiStateRegression(
         clock: str = "forward",
         censored: dict | None = None,
         exact_entry: Any = None,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiStateRegression:
         """
         Fit the model to a DataFrame of visits, one row each; ``Z_cols``
@@ -776,20 +949,28 @@ class ParametricPanelMultiStateRegression(
             clock=clock,
             censored=censored,
             exact_entry=exact_entry,
+            max_moves=max_moves,
+            truncation_tol=truncation_tol,
         )
 
     # -- fitting ------------------------------------------------------------
 
     @classmethod
     def _fit_panel(
-        cls, pdata: Any, fitters: list, clock: str, names: list
+        cls,
+        pdata: Any,
+        fitters: list,
+        clock: str,
+        names: list,
+        max_moves: int = MAX_MOVES,
+        truncation_tol: float = TRUNCATION_TOL,
     ) -> ParametricPanelMultiStateRegression:
         from surpyval.multistate import _panel_likelihood as pl
 
         spells = pl.midpoint_spells(pdata)
         cls._likelihood(pdata, fitters, clock)  # (its refusals first)
         starts = _regression_starts(pdata, fitters, names)
-        joint = cls._search(pdata, fitters, clock, starts)
+        joint = cls._search(pdata, fitters, clock, starts, max_moves)
         out = cls()
         out.transitions = pdata.tm
         out.models = dict(zip(pdata.tm.transitions, joint.models))
@@ -799,7 +980,10 @@ class ParametricPanelMultiStateRegression(
         out._Z = np.zeros((spells.x.size, len(names)))
         out._joint = joint
         out._panel = pdata
+        out.max_moves = max_moves
+        out.truncation_tol = truncation_tol
         out._setup()
+        out._check_truncation()
         return out
 
     # -- serialisation ------------------------------------------------------
@@ -821,6 +1005,7 @@ class ParametricPanelMultiStateRegression(
                 "clock": self.clock,
                 "models": [m.to_dict() for m in self._models()],
                 "joint": self._joint.to_dict(),
+                **self._truncation_dict(),
             }
         )
 
@@ -859,6 +1044,7 @@ class ParametricPanelMultiStateRegression(
         out._panel = pdata
         out._data = pl.midpoint_spells(pdata)
         out._Z = np.zeros((out._data.x.size, len(names)))
+        out._truncation_from_dict(model_dict)
         out._setup()
         return out
 

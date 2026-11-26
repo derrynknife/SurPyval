@@ -398,11 +398,11 @@ with its own ``schema``.
      - ``maximum``
    * - ``ParametricPanelMultiState``
      - ``"model": "ParametricPanelMultiState"``
-     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``clock``, ``models``, ``joint``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``
      - --
    * - ``ParametricPanelMultiStateRegression``
      - ``"model": "ParametricPanelMultiStateRegression"``
-     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``
      - --
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``

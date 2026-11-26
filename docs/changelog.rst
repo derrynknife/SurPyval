@@ -294,6 +294,15 @@ v0.30 (unreleased)
 
 **Added.**
 
+- ``ParametricPanelMultiState`` and ``ParametricPanelMultiStateRegression``
+  on the reset clock take a model with a way back (an illness-death
+  model with recovery): the paths of at most ``max_moves`` moves between
+  two visits are counted (default 3), and what the others would add is
+  reported gap by gap at the estimate (``truncation_errors``, the
+  largest as ``truncation_error``), with a warning where it is above
+  ``truncation_tol`` (default 1e-8). Such a model was refused. The
+  nested integrals make large bounds slow; see the guide.
+
 - ``ParametricPanelMultiStateRegression`` (in ``surpyval.multistate``
   and at the top level): a parametric regression per transition
   (``WeibullPH`` by default) fitted to states seen only at visits, the

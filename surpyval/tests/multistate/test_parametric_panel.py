@@ -322,14 +322,16 @@ def test_fit_from_df(small):
 
 
 def test_refusals(small):
-    cyc = TransitionMatrix.illness_death(recovery=True)
-    with pytest.raises(ValueError, match="progressive models only"):
+    # (a model with a way back is taken on the reset clock:
+    # test_parametric_panel_cycles.py)
+    for bad in (0, 1.5, True):
+        with pytest.raises(ValueError, match="max_moves"):
+            ParametricPanelMultiState.fit(
+                transitions=TM, clock="reset", max_moves=bad, **small
+            )
+    with pytest.raises(ValueError, match="truncation_tol"):
         ParametricPanelMultiState.fit(
-            x=[0, 1, 2],
-            s=["healthy", "ill", "healthy"],
-            i=[1, 1, 1],
-            transitions=cyc,
-            clock="reset",
+            transitions=TM, clock="reset", truncation_tol=0.0, **small
         )
     with pytest.raises(ValueError, match="no allowed transitions lead"):
         ParametricPanelMultiState.fit(
