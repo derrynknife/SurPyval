@@ -58,7 +58,7 @@ Design decisions made while working on the open issues, with the reason for each
 
 | Decision | By | Reason | Status |
 |---|---|---|---|
-| The regressions' `fit_bayes_from_df` (competing risks and multi-state) name a coefficient in `priors` as `fit_bayes` does (`coef_0`), not by its column as `WeibullPH.fit_bayes_from_df` does; their `fit_from_df` columns and the Bayesian options are passed through unchanged. The Bayesian options after the columns are keyword-only on `ParametricCompetingRisks.fit_bayes_from_df` (`dist`, `tl_col`, `xl_col`, `xr_col` too). | proposed | Naming by column needs each cause's (transition's) regression fitted from the frame, a change to how the composition fits; the plumbing the issue asked for is the columns. Keyword-only avoids the positional mismatch with `fit_from_df`'s `how`. | done |
+| The regressions' `fit_bayes_from_df` (competing risks and multi-state) name a coefficient in `priors` and in the result by its column, as `WeibullPH.fit_bayes_from_df` and their `fit_from_df` do; arrays keep their names (`coef_0` for a cause's regression, `z0` for a transition's). The Bayesian options after the columns are keyword-only on `ParametricCompetingRisks.fit_bayes_from_df` (`dist`, `tl_col`, `xl_col`, `xr_col` too). | proposed | One name for a covariate's coefficient across a data frame's fits. Keyword-only avoids the positional mismatch with `fit_from_df`'s `how`. | done |
 
 ### Competing risks on the joint (window) path: unknown causes, joint priors, WAIC with entry (27 Nov 2026)
 

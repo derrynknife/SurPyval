@@ -331,7 +331,7 @@ v0.30 (unreleased)
   (pandas, or polars and Arrow as their ``fit_from_df`` take) named as
   their ``fit_from_df`` names them, and pass the Bayesian options to
   ``fit_bayes`` unchanged. A coefficient of a regression is named in
-  ``priors`` as ``fit_bayes`` names it (``coef_0``). The same fits as
+  ``priors`` by its column, as ``fit_from_df`` names it. The same fits as
   ``fit_bayes`` on the arrays (the conformance suite's data-frame path).
 
 - **Extremely randomised survival trees and forests:

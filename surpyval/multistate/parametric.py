@@ -1858,8 +1858,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         covariate columns; ``s_col`` is another name for
         ``state_col``). ``priors``, ``method`` and ``importance`` are
         :meth:`fit_bayes`'s, passed to it unchanged; a coefficient is
-        named in ``priors`` as :meth:`fit_bayes` names it (``coef_0``
-        for the first column).
+        named in ``priors`` by its column (``{"age": ...}``), as
+        :meth:`fit_from_df` names the covariates.
 
         Examples
         --------
@@ -1878,6 +1878,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         ...     spells, "t", ["age"], "to", "from", model=ExponentialPH)
         >>> sorted(model.models)
         [('ill', 'dead'), ('well', 'ill')]
+        >>> model.models[("well", "ill")].parameter_names
+        ['failure_rate', 'age']
         """
         from surpyval.utils.dataframe import as_pandas as _as_pandas
         from surpyval.utils.dataframe import frame_column
@@ -1887,9 +1889,16 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         def col(name: str | None, arg: str) -> Any:
             return None if name is None else frame_column(df, name, arg)
 
+        import pandas as pd
+
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        Z = np.column_stack(
-            [np.asarray(frame_column(df, c, "Z_cols"), float) for c in cols]
+        # (a frame with the columns' names: each transition's coefficients
+        # are named by them, as fit_from_df names the covariates)
+        Z = pd.DataFrame(
+            {
+                str(c): np.asarray(frame_column(df, c, "Z_cols"), float)
+                for c in cols
+            }
         )
         return cls.fit_bayes(
             _x_column(df, x_col),

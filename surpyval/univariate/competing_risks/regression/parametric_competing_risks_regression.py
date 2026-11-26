@@ -1422,8 +1422,8 @@ class ParametricCompetingRisksRegression(
         ``formula`` for the covariates; a row with a missing covariate
         is left out, with a warning). ``model``, ``priors``, ``method``
         and ``importance`` are :meth:`fit_bayes`'s, passed to it
-        unchanged; a coefficient is named in ``priors`` as
-        :meth:`fit_bayes` names it (``coef_0`` for the first column).
+        unchanged; a coefficient is named in ``priors`` by its column
+        (``{"load": ...}``), as :meth:`fit_from_df` names it.
 
         Examples
         --------
@@ -1442,6 +1442,8 @@ class ParametricCompetingRisksRegression(
         ...     df, "hours", "cause", Z_cols=["load"])
         >>> model.causes
         ['a', 'b']
+        >>> model.models["a"].parameter_names
+        ['alpha', 'beta', 'load']
         """
         from surpyval.utils.dataframe import as_pandas as _as_pandas
 
