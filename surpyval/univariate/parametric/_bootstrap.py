@@ -66,6 +66,7 @@ from surpyval.univariate.regression._bootstrap import (
 )
 from surpyval.utils.no_maximum import (
     NoFiniteMaximumError,
+    estimates_only,
     quiet_maximum_warnings,
     warn_bootstrap_refits,
 )
@@ -144,7 +145,11 @@ def jackknife(model: Any, fits: Refits) -> Jackknife:
             kwargs["tl"] = t[keep, 0]
             kwargs["tr"] = t[keep, 1]
         try:
-            with ignoring_warnings(), quiet_maximum_warnings():
+            with (
+                ignoring_warnings(),
+                quiet_maximum_warnings(),
+                estimates_only(),
+            ):
                 refit = model.dist.fit(
                     x[keep],
                     offset=model.offset,
@@ -616,7 +621,11 @@ def _draw(
                 kwargs["tl"] = design.tl
                 kwargs["tr"] = design.tr
         try:
-            with ignoring_warnings(), quiet_maximum_warnings():
+            with (
+                ignoring_warnings(),
+                quiet_maximum_warnings(),
+                estimates_only(),
+            ):
                 refit = model.dist.fit(
                     x,
                     offset=model.offset,

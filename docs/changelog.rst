@@ -5,6 +5,34 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **``GeneralizedF.fit`` warns when its limit as ``P`` runs to infinity
+  fits better.** As ``P`` grows while ``sigma`` falls to 0 the log time
+  tends to an asymmetric Laplace distribution about ``mu``, which no
+  member reaches; on some samples it is more likely than any member, and
+  the fit stopped short of it in silence, at a local maximum (``P =
+  1.8``, 0.29 below the limit in log-likelihood, on one sample of 200
+  from ``GeneralizedF(2, 0.5, 0.5, 1)``) or out on the ridge towards it.
+  The fit now compares itself with the best member of that limit and,
+  where the limit is at least as likely, warns "No finite maximum",
+  naming the limit's ``mu`` and its rates ``a`` and ``b`` below and above
+  ``mu``, saying that the Wald standard errors and bounds mean nothing and
+  that the likelihood-ratio bounds allow for it; ``model.maximum`` is then
+  ``"no finite maximum"`` (so ``fit_best`` sets it aside). Where both
+  edges are at least as likely as the fit, the warning names this limit
+  rather than the generalised gamma, since it is the better. With a known
+  hazard ratio (``hr=``) the limit, and the generalised gamma the edge
+  check refits, are now taken under the same hazard ratio as the fit
+  (they were taken without it). No estimate changes, but results that
+  read ``maximum`` do, on such fits: ``fit_best`` sets the GeneralizedF
+  aside (on the sample above it was chosen with AIC 839.67; the Gamma,
+  840.09, is now chosen), and ``diagnose()``, ``prior.from_model`` and a
+  Bayesian fit with every prior flat refuse it, as they refuse every fit
+  with no finite maximum. The comparison costs more than the fit: at
+  n = 200 a fit took about 1 to 1.5 s more in our timings (0.3-0.5 s
+  became 1.0-1.7 s), and ``fit_best`` about 1.4 s more. A bootstrap's
+  refits skip it (they use only the estimates), so bootstrap bounds and
+  their time are as before.
+
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
@@ -1507,23 +1535,6 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
-
-- **``GeneralizedF.fit`` warns when its limit as ``P`` runs to infinity
-  fits better.** As ``P`` grows while ``sigma`` falls to 0 the log time
-  tends to an asymmetric Laplace distribution about ``mu``, which no
-  member reaches; on some samples it is more likely than any member, and
-  the fit stopped short of it in silence, at a local maximum (``P =
-  1.8``, 0.29 below the limit in log-likelihood, on one sample of 200
-  from ``GeneralizedF(2, 0.5, 0.5, 1)``) or out on the ridge towards it.
-  The fit now compares itself with the best member of that limit and,
-  where the limit is at least as likely, warns "No finite maximum",
-  naming the limit's ``mu`` and its rates ``a`` and ``b`` below and above
-  ``mu``, saying that the Wald standard errors and bounds mean nothing and
-  that the likelihood-ratio bounds allow for it; ``model.maximum`` is then
-  ``"no finite maximum"`` (so ``fit_best`` sets it aside). Where both
-  edges are at least as likely as the fit, the warning names this limit
-  rather than the generalised gamma, since it is the better. No estimate
-  changes; a fit takes about 0.35 s longer at n = 200.
 
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned

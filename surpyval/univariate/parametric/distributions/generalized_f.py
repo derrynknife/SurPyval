@@ -16,7 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 from surpyval.utils.autograd_gamma_compat import betaln_accurate
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import estimates_only_active, warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
 
@@ -217,7 +217,11 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         try:
             with ignoring_warnings(), onp.errstate(all="ignore"):
                 limit = GeneralizedGamma._fit_from_surpyval_data(
-                    surv_data, how="MLE", zi=zi, lfp=lfp
+                    surv_data,
+                    how="MLE",
+                    zi=zi,
+                    lfp=lfp,
+                    hr=results.get("hr", 1.0),
                 )
         except (ValueError, RuntimeError):
             return False
@@ -260,6 +264,11 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         gamma edge, since where both are at least as likely as the fit
         this one is the better (an edge fit is within that margin of the
         generalised gamma, and the limit above it)."""
+        if estimates_only_active():
+            # a bootstrap's refit: the check changes only the warning and
+            # ``maximum``, which it does not use, and costs more than the
+            # fit
+            return False
         neg_ll = results.get("_neg_ll")
         params = onp.asarray(results.get("params", []), dtype=float)
         gamma = results.get("gamma") or 0.0
@@ -273,9 +282,12 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
             return False
         f0 = results.get("f0", 0.0)
         p = results.get("lfp_p", 1.0)
+        hr = results.get("hr", 1.0)
 
         def fit_neg_ll(theta: Any) -> float:
-            return float(self._neg_ll_func(surv_data, *theta, 0.0, f0, p))
+            return float(
+                self._neg_ll_func(surv_data, *theta, 0.0, f0, p, hr=hr)
+            )
 
         with ignoring_warnings(), onp.errstate(all="ignore"):
             found = self._ridge_limits(fit_neg_ll, params)
