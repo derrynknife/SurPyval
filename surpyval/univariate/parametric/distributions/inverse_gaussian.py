@@ -17,6 +17,7 @@ from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.warnings import ignoring_warnings
 
+from ._quantile import broadcast_values
 from ._stable import _erfcx, log1mexp, on_support, positive_or_one
 
 _LOG_2PI = float(onp.log(2.0 * onp.pi))
@@ -480,7 +481,7 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
         """
         return -self.log_sf(x, mu, lam)
 
-    def _solve(self, p: Any, s: Any, mu: float, lam: float) -> Any:
+    def _solve(self, p: Any, s: Any, mu: Any, lam: Any) -> Any:
         """The time with ``F = p`` (``S = s``): scipy's quantile for a
         start, then Newton's method in ``ln x`` on the log of the smaller
         tail."""
@@ -524,8 +525,8 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
                 <= 1e-12 * onp.maximum(1.0, onp.abs(target))
             )
             if onp.any(missed):
-                lo = onp.full(y.shape, onp.log(mu) - 700.0)
-                hi = onp.full(y.shape, onp.log(mu) + 700.0)
+                lo = onp.log(mu) - 700.0 + onp.zeros(y.shape)
+                hi = onp.log(mu) + 700.0 + onp.zeros(y.shape)
                 for _ in range(80):
                     mid = 0.5 * (lo + hi)
                     xm = onp.exp(mid)
@@ -548,8 +549,8 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
         y: Any,
         lower: Any,
         target: Any,
-        mu: float,
-        lam: float,
+        mu: Any,
+        lam: Any,
         steps: int,
     ) -> Any:
         """Newton's method in ``y = ln x`` on the log of the smaller tail
@@ -584,8 +585,8 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
         >>> InverseGaussian.qf(np.array([.1, .5, .9]), 10, 20)
         array([ 3.56985117,  8.04339041, 18.85995336])
         """
-        u = onp.asarray(u, dtype=float)
-        return self._solve(u, 1.0 - u, float(getval(mu)), float(getval(lam)))
+        u, mu_, lam_ = broadcast_values(u, mu, lam)
+        return self._solve(u, 1.0 - u, mu_, lam_)
 
     def isf(self, s: Numeric, mu: Boxable, lam: Boxable) -> Boxable:
         r"""The inverse survival function: the time at which the survival
@@ -598,8 +599,8 @@ class InverseGaussian_(OptimisedFitMixin, ParametricFitter):
         >>> InverseGaussian.isf([0.5, 1e-300], 10, 20)
         array([   8.04339041, 6824.11058918])
         """
-        s = onp.asarray(s, dtype=float)
-        return self._solve(1.0 - s, s, float(getval(mu)), float(getval(lam)))
+        s, mu_, lam_ = broadcast_values(s, mu, lam)
+        return self._solve(1.0 - s, s, mu_, lam_)
 
     def mean(self, mu: Boxable, lam: Boxable) -> Boxable:
         r"""The mean of the InverseGaussian distribution, :math:`\mu`.

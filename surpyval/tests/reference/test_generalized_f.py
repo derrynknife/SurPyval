@@ -15,6 +15,8 @@ invert ``ff`` to 1e-13. The fits as for the generalised gamma
 (``test_generalized_gamma.py``).
 """
 
+import warnings
+
 import mpmath as mp
 import numpy as np
 import pytest
@@ -191,3 +193,26 @@ def test_in_fit_best():
     from surpyval.fit_best import distributions
 
     assert GF in distributions
+
+
+def test_a_fit_at_the_generalised_gamma_edge_says_so():
+    # 300 lives from a Weibull, which the generalised gamma holds: the
+    # likelihood rises as P falls to 0 and the fit stops there. It says
+    # so and names the GeneralizedGamma, whose fit reaches the limit.
+    rng = np.random.default_rng(2)
+    x = 10.0 * rng.weibull(2.0, 300)
+    with pytest.warns(UserWarning, match="GeneralizedGamma"):
+        model = GF.fit(x)
+    assert model.maximum == "no finite maximum"
+    assert model.params[3] < GF._GG_EDGE_P
+    gg = surv.GeneralizedGamma.fit(x)
+    assert model._neg_ll >= gg._neg_ll - 1e-9 * abs(gg._neg_ll)
+
+
+def test_an_interior_fit_is_not_flagged():
+    rng = np.random.default_rng(1)
+    x = GF.from_params([2.0, 0.5, 0.5, 1.0]).qf(rng.uniform(size=300))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = GF.fit(x)
+    assert model.maximum == "verified"

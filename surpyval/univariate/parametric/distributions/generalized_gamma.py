@@ -21,6 +21,7 @@ from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from . import _temme
+from ._quantile import broadcast_values
 from ._stable import log1mexp, on_support, positive_or_one, power_at_zero
 
 _LOG_SQRT_2PI = float(0.5 * onp.log(2.0 * onp.pi))
@@ -230,39 +231,47 @@ def _log_hazard(w: Boxable, Q: Boxable) -> Boxable:
     return out
 
 
-def _std_quantile(p: npt.NDArray, s: npt.NDArray, Q: float) -> npt.NDArray:
+def _std_quantile(p: Any, s: Any, Q: Any) -> npt.NDArray:
     r"""The standardised log time :math:`w` at which :math:`F = p` (and
     :math:`S = s = 1 - p`, given separately so that neither rounds):
     the inverse incomplete gamma function for a start, or the normal
     quantile with its first correction in :math:`Q` near the lognormal,
     then Newton's method on the log of the smaller tail, whose accuracy
     is that of :func:`_log_tails`."""
-    p = onp.asarray(p, dtype=float)
-    s = onp.asarray(s, dtype=float)
+    p, s, Q = (
+        onp.array(v)
+        for v in onp.broadcast_arrays(
+            onp.asarray(p, dtype=float),
+            onp.asarray(s, dtype=float),
+            onp.asarray(Q, dtype=float),
+        )
+    )
     lower = p <= s
     target = onp.log(onp.where(lower, p, s))
     with onp.errstate(all="ignore"):
-        if abs(Q) < _temme.Q_MAX:
-            z = onp.where(lower, norm.ppf(p), norm.isf(s))
-            w = z - Q * (z * z + 2.0) / 6.0
-        else:
-            q = 1.0 / Q**2
-            small = onp.where(lower, p, s)
-            # the gamma variable's lower tail is F for Q > 0, S for Q < 0
-            gamma_lower = lower == (Q > 0)
-            u = onp.where(
-                gamma_lower,
-                gammaincinv(q, small),
-                gammainccinv(q, small),
-            )
-            # where the gamma variable's lower tail underflows, its
-            # asymptote P(q, u) ~ u^q / Gamma(q + 1)
-            log_u = onp.where(
-                gamma_lower & ~(u > 0),
-                (onp.log(small) + gammaln(q + 1.0)) / q,
-                onp.log(u),
-            )
-            w = (log_u - onp.log(q)) / Q
+        # Q may vary from point to point (a posterior's quantile at each
+        # of its parameter points): both starts, each where it belongs
+        near = onp.abs(Q) < _temme.Q_MAX
+        z = onp.where(lower, norm.ppf(p), norm.isf(s))
+        w_near = z - Q * (z * z + 2.0) / 6.0
+        Q_far = onp.where(near, 1.0, Q)
+        q = 1.0 / Q_far**2
+        small = onp.where(lower, p, s)
+        # the gamma variable's lower tail is F for Q > 0, S for Q < 0
+        gamma_lower = lower == (Q_far > 0)
+        u = onp.where(
+            gamma_lower,
+            gammaincinv(q, small),
+            gammainccinv(q, small),
+        )
+        # where the gamma variable's lower tail underflows, its
+        # asymptote P(q, u) ~ u^q / Gamma(q + 1)
+        log_u = onp.where(
+            gamma_lower & ~(u > 0),
+            (onp.log(small) + gammaln(q + 1.0)) / q,
+            onp.log(u),
+        )
+        w = onp.where(near, w_near, (log_u - onp.log(q)) / Q_far)
         w = onp.where(onp.isfinite(w), w, 0.0)
         for _ in range(60):
             log_s, log_f = _log_tails(w, Q)
@@ -750,10 +759,10 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
         >>> GeneralizedGamma.qf(u, 1.5, 0.6, 0.5)
         array([1.65598129, 4.04446948, 8.29397224])
         """
-        u = onp.asarray(u, dtype=float)
-        w = _std_quantile(u, 1.0 - u, float(getval(Q)))
+        u, mu_, sigma_, Q_ = broadcast_values(u, mu, sigma, Q)
+        w = _std_quantile(u, 1.0 - u, Q_)
         with onp.errstate(over="ignore"):
-            return onp.exp(float(getval(mu)) + float(getval(sigma)) * w)
+            return onp.exp(mu_ + sigma_ * w)
 
     def isf(
         self, s: Numeric, mu: Boxable, sigma: Boxable, Q: Boxable
@@ -768,10 +777,10 @@ class GeneralizedGamma_(OptimisedFitMixin, ParametricFitter):
         >>> GeneralizedGamma.isf([0.5, 1e-300], 1.5, 0.6, 0.5)
         array([   4.04446948, 2236.18962511])
         """
-        s = onp.asarray(s, dtype=float)
-        w = _std_quantile(1.0 - s, s, float(getval(Q)))
+        s, mu_, sigma_, Q_ = broadcast_values(s, mu, sigma, Q)
+        w = _std_quantile(1.0 - s, s, Q_)
         with onp.errstate(over="ignore"):
-            return onp.exp(float(getval(mu)) + float(getval(sigma)) * w)
+            return onp.exp(mu_ + sigma_ * w)
 
     def moment(
         self, m: int, mu: Boxable, sigma: Boxable, Q: Boxable

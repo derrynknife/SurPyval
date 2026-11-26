@@ -69,6 +69,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `on_quantities` takes B-lives, `R_at` and `mean` for a process (at the reference stress, from `y0`), through a target's `life_quantity`; a fitted process works with `prior.from_model` (the drift from an earlier fleet). | proposed | The priors the plan names: drift from a previous fleet, threshold-crossing life. | done |
 | Not yet: gauge readings (the quantised likelihood) and a stress profile (StepSchedule) in the results; the latter is reached by `function_cri(lambda m: m.sf(t, schedule))`. | proposed | Follow-up. | gap |
 | `WienerProcessModel.mean()` with a non-positive drift returns `threshold - y0` over `mu` (negative), where the life is defective and the mean infinite; the Bayesian fit's mean is `inf` there. Left for the maintainer. | proposed | Outside this change. | open |
+### New distributions: PyMC, torch, priors, the GeneralizedF edge (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralizedGamma` is in the PyMC and torch likelihood lists, with Temme's expansion ported to both under SurPyval's own branch rule (`abs(Q) < 0.1`, `abs(eta) <= 1`); elsewhere the libraries' incomplete gamma functions at shape `1 / Q^2`. Supersedes the "not in the PyMC or torch lists yet" part of the 2026 GeneralizedGamma row. | proposed | Near Q = 0 those functions lose digits at shapes of 1e4 and more; outside Temme's region the shape is at most 100, where they hold (torch's own near-mode quadrature covers shapes above 19.5). | done |
+| `GeneralizedF` stays out of both lists: torch has no incomplete beta function, and the two lists are kept the same. | proposed | One list for both bridges keeps `SUPPORTED` one statement. Revisit when torch has an incomplete beta, or if the lists may differ. | gap |
+| `fit_bayes` on `GeneralizedGamma` / `GeneralizedF` with flat priors keeps its refusal; the Bayesian docs show a weakly informative prior on Q (`Normal(0, 1)`) and a range on P. | proposed | With every parameter flat the posterior has no finite mass along Q (or P); a default prior would choose the family for the user. | done |
+| A `GeneralizedF` maximum-likelihood fit with P below 0.01 whose likelihood is no higher than the `GeneralizedGamma` fit to the same data (within 1e-9 relative) warns "No finite maximum" and names `GeneralizedGamma`. | proposed | The generalised gamma is the P -> 0 limit, not a member; an interior maximum is strictly better than the limit it contains, so ordinary fits are never flagged. On six samples of 300 Weibull lives, three end at that edge; they stopped there silently before. | done |
+| Coverage studies for Gompertz, InverseGaussian and GeneralizedF in `calibration/test_coverage_new_families.py`: n = 200, 1000 Wald and 300 likelihood-ratio replicates each. | proposed | The issue's defaults, the same shape as the GeneralizedGamma study. | done |
 
 ### Labelled MCF bounds (26 Nov 2026)
 

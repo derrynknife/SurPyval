@@ -34,6 +34,7 @@ PARAMS = {
     "Rayleigh": [9.0],
     "Gompertz": [0.1, 0.02],
     "InverseGaussian": [12.0, 20.0],
+    "GeneralizedGamma": [2.2, 0.6, 0.5],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -189,6 +190,7 @@ FAR = {
     "Rayleigh": (1e-200, 1e200),
     "Gompertz": (1e-300, 1e4),
     "InverseGaussian": (1e-3, 1e6),
+    "GeneralizedGamma": (1e-300, 1e6),
 }
 
 
@@ -303,3 +305,33 @@ def test_data_given_twice_is_refused():
     data = sp.SurpyvalData(x=[1.0, 2.0])
     with pytest.raises(TypeError, match="leave out 'c'"):
         log_likelihood(sp.Weibull, data, c=[0, 1], alpha=1.0, beta=1.0)
+
+
+def test_generalized_gamma_through_the_lognormal():
+    # Near Q = 0 (Temme's expansion), at it and away from it (the
+    # incomplete gamma at shape 1 / Q^2): the likelihood and its gradient
+    # against SurPyval's own. One compiled function for every Q (the
+    # generalised gamma's graph takes about a minute to compile).
+    dist = sp.GeneralizedGamma
+    arrays = _arrays("mixed", "both")
+    theta = [pt.dscalar(p) for p in dist.parameter_names]
+    ll = log_likelihood(
+        dist, **arrays, **dict(zip(dist.parameter_names, theta))
+    )
+    f = pytensor.function(theta, [ll, *pt.grad(ll, theta)])
+    for Q in (0.0, 1e-4, 0.03, -0.05, -0.5, 2.0):
+        params = np.array([2.2, 0.6, Q])
+        value, *grad = (float(v) for v in f(*params))
+        assert value == pytest.approx(
+            _surpyval_ll(dist, arrays, params), rel=1e-10, abs=1e-10
+        )
+        for i in range(len(params)):
+            h = 1e-6
+            up, down = params.copy(), params.copy()
+            up[i] += h
+            down[i] -= h
+            fd = (
+                _surpyval_ll(dist, arrays, up)
+                - _surpyval_ll(dist, arrays, down)
+            ) / (2 * h)
+            assert grad[i] == pytest.approx(fd, rel=1e-5, abs=1e-6)

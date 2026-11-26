@@ -17,6 +17,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._quantile import broadcast_values
 from ._stable import log1mexp, on_support, positive_or_one
 
 #: Below this ``|a x|`` the cumulative hazard ``(b / a)(e^{a x} - 1)`` is
@@ -388,7 +389,7 @@ class Gompertz_(OptimisedFitMixin, ParametricFitter):
         inside, _ = log1mexp(H, np.log(H))
         return on_support(x, inside, -np.inf)
 
-    def _time_at_H(self, H: npt.NDArray, shape: float, rate: float) -> Any:
+    def _time_at_H(self, H: npt.NDArray, shape: Any, rate: Any) -> Any:
         r"""The time at which the cumulative hazard is ``H``:
         :math:`\ln(1 + a H / b) / a`, as :math:`(H/b) \ln(1+y)/y` with
         :math:`y = a H / b`; infinite past the plateau :math:`-b/a` of a
@@ -441,9 +442,9 @@ class Gompertz_(OptimisedFitMixin, ParametricFitter):
         >>> Gompertz.qf(u, 0.1, 0.01)
         array([ 7.19596862, 20.70838618, 31.79130373])
         """
-        u = onp.asarray(u, dtype=float)
+        u, a, b = broadcast_values(u, shape, rate)
         H = -onp.log1p(-u)
-        return self._time_at_H(H, float(getval(shape)), float(getval(rate)))
+        return self._time_at_H(H, a, b)
 
     def isf(self, s: Numeric, shape: Boxable, rate: Boxable) -> Boxable:
         r"""The inverse survival function: the time at which the survival
@@ -455,10 +456,10 @@ class Gompertz_(OptimisedFitMixin, ParametricFitter):
         >>> Gompertz.isf([0.5, 1e-300], 0.1, 0.01)
         array([20.70838618, 88.40544767])
         """
-        s = onp.asarray(s, dtype=float)
+        s, a, b = broadcast_values(s, shape, rate)
         with onp.errstate(divide="ignore"):
             H = -onp.log(s)
-        return self._time_at_H(H, float(getval(shape)), float(getval(rate)))
+        return self._time_at_H(H, a, b)
 
     def mean(self, shape: Boxable, rate: Boxable) -> Boxable:
         r"""

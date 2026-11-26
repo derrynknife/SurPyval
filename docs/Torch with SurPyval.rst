@@ -41,8 +41,8 @@ The helpers are:
   model.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
-Normal, Gumbel, Logistic, Rayleigh, Gompertz and InverseGaussian
-distributions
+Normal, Gumbel, Logistic, Rayleigh, Gompertz, InverseGaussian and
+GeneralizedGamma distributions
 (``surpyval.torch.SUPPORTED``, the same as the PyMC helpers'); any other is
 refused with that list.
 
