@@ -415,6 +415,20 @@ v0.30 (unreleased)
   allowing for the modes not seen yet, in the many-modes form the
   handbook recommends for complex systems. See
   :doc:`counting/maturity_projection`.
+- **Bounds on the maturity projections**: parametric bootstrap bounds
+  ``projected_intensity_cb`` and ``projected_mtbf_cb`` (AMPM and
+  AMPM-Stein; the AMPM also ``intensity_cb(t)`` and ``mtbf_cb(t)``) and
+  ``projected_reliability_cb`` (discrete). Each simulated test is drawn
+  from the fitted mode population (which modes surface, how often and
+  when, with factors drawn from the assessed ones, which are held fixed)
+  and projected again. ``target="realised"`` (the default) bounds this
+  system's value once its seen modes are fixed, a prediction interval;
+  ``target="expected"`` bounds the model's expected projection. In 100
+  seeded simulated tests the two-sided 90% bounds covered 87% to 92%.
+  The AMPM's projection is also checked against the handbook's analysis
+  of its Crow-extended example data (growth potential MTBF 15.24, as
+  printed). See :doc:`counting/maturity_projection`. Nothing existing
+  changes.
 - **A coverage study of Dabrowska's bounds**
   (``tests/calibration/test_coverage_dabrowska.py``). Pairs from a
   Clayton copula (Kendall's tau 0.5) with Weibull margins, each series
