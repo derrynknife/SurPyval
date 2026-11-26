@@ -46,6 +46,7 @@ _POINT_MASS_FAMILIES = frozenset(
         "Logistic",
         "Beta",
         "Beta4",
+        "BirnbaumSaunders",
         "Uniform",
     }
 )

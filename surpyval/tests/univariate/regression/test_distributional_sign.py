@@ -50,6 +50,7 @@ BASE = {
     "GeneralizedGamma": [1.0, 0.6, 0.5],
     "Gompertz": [0.2, 0.05],
     "InverseGaussian": [10.0, 20.0],
+    "BirnbaumSaunders": [0.5, 10.0],
 }
 
 

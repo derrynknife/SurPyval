@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### The Birnbaum-Saunders, built in (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `BirnbaumSaunders(alpha, beta)`: shape `alpha` and scale `beta` (the median), in that order, as `scipy.stats.fatiguelife(alpha, scale=beta)` and VGAM's `bisa` (`scale = beta, shape = alpha`). The names are the reverse of SurPyval's Weibull (`alpha` scale, `beta` shape); the docs say so. | maintainer (build it), proposed (parameterisation) | The common statistical form; anyone comparing with the literature, scipy or R reads the same numbers. | done |
+| `xi = (x - beta) / (alpha sqrt(x) sqrt(beta))`; both tails from the normal's log tails; the quantile below the median as `beta / (sqrt(w^2 + 1) - w)^2` (`w = alpha z / 2`, `hypot`), `isf` from the survival probability; raw moments exact, from the Chebyshev polynomial `T_2m` (a polynomial in `alpha^2` with integer coefficients). | proposed | scipy's own quantile cancels below the median; these hold to mpmath's 60 digits to 1e-10 down to probabilities of 1e-300. | done |
+| Started from the lognormal fit (`alpha = sigma`, `beta = exp(mu)`); no closed-form MLE. Added to the point-mass families (it concentrates as `alpha -> 0`). | proposed | The lognormal is its small-shape limit; the MLE of `beta` solves a non-linear equation even on exact data. | done |
+| AFT origin map (`beta` times `e^s`), distributional regression (`beta` "longer", `alpha` no direction), PyMC and torch families, `fit_best`. `PH(BirnbaumSaunders)` fits (a legitimate proportional hazards model on this baseline), but has no origin map: a constant multiple of the hazard leaves the family. No MPP fit (the straight line `x = beta + alpha sqrt(beta) z sqrt(x)` mixes the time and the probability). | proposed | As the other scale families added on 25 Nov. | done |
+| Validated against scipy and mpmath and an independently written likelihood; the VGAM check named by the request is committed as `scripts/reference/reference_r_birnbaum_saunders.R` with a test that skips until its output exists (VGAM is not installed here). | proposed | No R package is installed without the maintainer's OK; the base-R likelihood on `lung` agreed to 1e-10 in log-likelihood in the meantime. | open |
 ### fit_best: warning about candidates set aside (27 Nov 2026)
 
 | Decision | By | Reason | Status |

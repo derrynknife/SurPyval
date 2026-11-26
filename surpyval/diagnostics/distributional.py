@@ -135,6 +135,7 @@ LIFE = {
     "GeneralizedF": "mu",
     "GeneralizedGamma": "mu",
     "Gompertz": "rate",
+    "BirnbaumSaunders": "beta",
     "InverseGaussian": "mu",
 }
 
