@@ -255,3 +255,102 @@ def test_multistate_flat_priors_and_predictions(ms_fit):
 
 def test_draws_constant():
     assert crb.DRAWS == 1024
+
+
+# -- fit_bayes_from_df: coefficients named by their columns -----------------
+def _cr_frame():
+    import pandas as pd
+
+    rng = np.random.default_rng(461000)
+    return pd.DataFrame(
+        {
+            "hours": rng.weibull(1.5, 60) * 10,
+            "cause": rng.choice(["a", "b"], 60).astype(object),
+            "load": rng.normal(size=60),
+        }
+    )
+
+
+def _ms_frame():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "t": [2.0, 5.0, 3.0, 7.0, 4.0, 6.0, 1.0, 8.0, 3.5, 2.5] * 3,
+            "to": [
+                "ill",
+                "dead",
+                "ill",
+                None,
+                "ill",
+                "dead",
+                "ill",
+                None,
+                "ill",
+                "dead",
+            ]
+            * 3,
+            "from": [
+                "well",
+                "ill",
+                "well",
+                "well",
+                "well",
+                "ill",
+                "well",
+                "ill",
+                "well",
+                "ill",
+            ]
+            * 3,
+            "age": np.linspace(45, 75, 30),
+        }
+    )
+
+
+def test_cr_regression_from_df_names_coefficients_by_column():
+    from surpyval.univariate.competing_risks import (
+        ParametricCompetingRisksRegression as PCRR,
+    )
+
+    df = _cr_frame()
+    # (a prior the data are 0 against: it is read under the column's name)
+    tight = {"load": sp.Normal.from_params([0.7, 0.1])}
+    model = PCRR.fit_bayes_from_df(
+        df, "hours", "cause", Z_cols=["load"], priors=tight
+    )
+    for k in model.causes:
+        assert model.models[k].parameter_names == ["alpha", "beta", "load"]
+        assert model.models[k].params[2] > 0.4
+    with pytest.raises(ValueError, match="No parameter 'coef_0'.*load"):
+        PCRR.fit_bayes_from_df(
+            df,
+            "hours",
+            "cause",
+            Z_cols=["load"],
+            priors={"coef_0": sp.Normal.from_params([0.0, 1.0])},
+        )
+
+
+def test_ms_regression_from_df_names_coefficients_by_column():
+    from surpyval.multistate import ParametricMultiStateRegression as PMSR
+
+    df = _ms_frame()
+    tight = {"age": sp.Normal.from_params([0.02, 0.001])}
+    model = PMSR.fit_bayes_from_df(
+        df, "t", ["age"], "to", "from", model=sp.ExponentialPH, priors=tight
+    )
+    for fit in model.models.values():
+        assert fit.parameter_names == ["failure_rate", "age"]
+        assert abs(fit.params[1] - 0.02) < 0.005
+    for wrong in ("coef_0", "z0"):
+        with pytest.raises(ValueError, match=f"No parameter '{wrong}'.*age"):
+            PMSR.fit_bayes_from_df(
+                df,
+                "t",
+                ["age"],
+                "to",
+                "from",
+                model=sp.ExponentialPH,
+                priors={wrong: sp.Normal.from_params([0.0, 1.0])},
+            )

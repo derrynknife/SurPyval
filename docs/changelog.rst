@@ -417,6 +417,16 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **``fit_bayes_from_df`` for the competing-risks and multi-state
+  fitters.** ``ParametricCompetingRisks``,
+  ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` read the columns of a DataFrame
+  (pandas, or polars and Arrow as their ``fit_from_df`` take) named as
+  their ``fit_from_df`` names them, and pass the Bayesian options to
+  ``fit_bayes`` unchanged. A coefficient of a regression is named in
+  ``priors`` by its column, as ``fit_from_df`` names it. The same fits as
+  ``fit_bayes`` on the arrays (the conformance suite's data-frame path).
+
 - **The chance of each failure mode for a running item in a joint
   model.** ``JointModel.predict(...).cif(x, mode)`` is the chance that
   the item fails by ``mode`` by age ``x``, given its readings and that
