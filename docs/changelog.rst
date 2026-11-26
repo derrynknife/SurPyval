@@ -352,7 +352,12 @@ v0.30 (unreleased)
 - **Coverage studies** of the Wald and likelihood-ratio bounds for the
   Gompertz, the InverseGaussian and the GeneralizedF
   (``calibration/test_coverage_new_families.py``, run with
-  ``--run-calibration``).
+  ``--run-calibration``; n = 200). The Gompertz and the InverseGaussian
+  cover 0.93-0.97 throughout. The GeneralizedF's Wald bounds on ``sf``
+  and B10 do too, but those on ``mu``, ``sigma`` and the mean cover only
+  0.912, 0.865 and 0.838 at this sample size, and its likelihood-ratio
+  bounds on the parameters 0.900-0.927: a known shortfall (#1444), with
+  its fourth parameter weakly identified at n = 200.
 - **Bayesian docs: a prior on the shape** of the GeneralizedGamma and
   GeneralizedF, which ``fit_bayes`` needs (with every parameter flat it
   refuses, as before).

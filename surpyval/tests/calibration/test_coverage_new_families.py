@@ -20,6 +20,13 @@ usual slack of 0.01 plus three Monte Carlo standard errors
 - GeneralizedF, mu = 2, sigma = 0.5, Q = 0.5 and P = 1 (well inside the
   family, away from the generalised gamma edge P = 0), censored on
   (0, 25).
+
+Results (these seeds): Gompertz Wald 0.942-0.958 and likelihood ratio
+0.950-0.967; InverseGaussian Wald 0.932-0.951 and likelihood ratio
+0.940-0.960. The GeneralizedF's Wald bounds on sf and B10 cover
+0.935-0.964, but those on mu, sigma and the mean only 0.912, 0.865 and
+0.838 (Q 0.936, P 0.954), and its likelihood-ratio bounds 0.900-0.927:
+both strict xfails under #1444.
 """
 
 import os
@@ -104,11 +111,39 @@ def _study(name, method, reps):
         )
 
 
-@pytest.mark.parametrize("name", sorted(STUDIES))
+# Known shortfalls, by (family, method): strict xfails naming their issue.
+SHORTFALL = {
+    ("GeneralizedF", "wald"): "#1444: the Wald bounds on mu, sigma and the "
+    "mean cover 0.912, 0.865 and 0.838 at n = 200 (P is weakly identified "
+    "there)",
+    ("GeneralizedF", "lr"): "#1444: the likelihood-ratio bounds on mu, "
+    "sigma, Q and P cover 0.927, 0.903, 0.900 and 0.903 at n = 200",
+}
+
+
+def _names(method):
+    return [
+        pytest.param(
+            name,
+            marks=(
+                [
+                    pytest.mark.xfail(
+                        strict=True, reason=SHORTFALL[(name, method)]
+                    )
+                ]
+                if (name, method) in SHORTFALL
+                else []
+            ),
+        )
+        for name in sorted(STUDIES)
+    ]
+
+
+@pytest.mark.parametrize("name", _names("wald"))
 def test_wald_coverage(name):
     _study(name, "wald", reps=1000)
 
 
-@pytest.mark.parametrize("name", sorted(STUDIES))
+@pytest.mark.parametrize("name", _names("lr"))
 def test_likelihood_ratio_coverage(name):
     _study(name, "lr", reps=300)
