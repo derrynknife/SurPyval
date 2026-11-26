@@ -5,6 +5,43 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **``fit_best`` also tries the new ``BirnbaumSaunders``.** Where it has
+  the best value of the metric the answer changes: on 100 draws from
+  ``LogNormal(2, 0.8)`` (the diagnostics' example) it now wins with AIC
+  673.37 against the LogNormal's 673.58, so ``diagnose()`` on a Weibull
+  fitted to those data now names ``BirnbaumSaunders`` as the better
+  family. The two are close for a shape below 1 (as the shape falls to
+  0, the log time of a Birnbaum-Saunders is normal). Expect it to win
+  often among the right-skewed candidates: it also won on draws from a
+  ``Gamma(3, 0.5)`` and from an inverse Gaussian.
+- **``GeneralizedF.fit`` warns when its limit as ``P`` runs to infinity
+  fits better.** As ``P`` grows while ``sigma`` falls to 0 the log time
+  tends to an asymmetric Laplace distribution about ``mu``, which no
+  member reaches; on some samples it is more likely than any member, and
+  the fit stopped short of it in silence, at a local maximum (``P =
+  1.8``, 0.29 below the limit in log-likelihood, on one sample of 200
+  from ``GeneralizedF(2, 0.5, 0.5, 1)``) or out on the ridge towards it.
+  The fit now compares itself with the best member of that limit and,
+  where the limit is at least as likely, warns "No finite maximum",
+  naming the limit's ``mu`` and its rates ``a`` and ``b`` below and above
+  ``mu``, saying that the Wald standard errors and bounds mean nothing and
+  that the likelihood-ratio bounds allow for it; ``model.maximum`` is then
+  ``"no finite maximum"`` (so ``fit_best`` sets it aside). Where both
+  edges are at least as likely as the fit, the warning names this limit
+  rather than the generalised gamma, since it is the better. With a known
+  hazard ratio (``hr=``) the limit, and the generalised gamma the edge
+  check refits, are now taken under the same hazard ratio as the fit
+  (they were taken without it). No estimate changes, but results that
+  read ``maximum`` do, on such fits: ``fit_best`` sets the GeneralizedF
+  aside (on the sample above it was chosen with AIC 839.67; the Gamma,
+  840.09, is now chosen), and ``diagnose()``, ``prior.from_model`` and a
+  Bayesian fit with every prior flat refuse it, as they refuse every fit
+  with no finite maximum. The comparison costs more than the fit: at
+  n = 200 a fit took about 1 to 1.5 s more in our timings (0.3-0.5 s
+  became 1.0-1.7 s), and ``fit_best`` about 1.4 s more. A bootstrap's
+  refits skip it (they use only the estimates), so bootstrap bounds and
+  their time are as before.
+
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
@@ -947,6 +984,22 @@ v0.30 (unreleased)
   the functions to 1e-10, and the ``lung`` fits (right censored, AFT on
   ``sex``) to 1e-6 in log-likelihood; the left-truncated likelihood to
   1e-8. See :doc:`univariate/generalized_f`.
+
+- **The Birnbaum-Saunders distribution, built in:**
+  ``surpyval.BirnbaumSaunders`` (``alpha``, the shape, and ``beta``, the
+  scale and median), as ``scipy.stats.fatiguelife(alpha, scale=beta)`` and
+  R's ``VGAM`` (``bisa``): a right-skewed lifetime whose log is close to
+  normal for a small shape, with a hazard that rises and then falls to a
+  constant. Closed-form quantiles (without the cancellation below the
+  median) and raw moments; both tails held in logs. Every fit option of a
+  built-in distribution (probability-plot fitting refused), Wald,
+  likelihood-ratio and bootstrap bounds, ``qf``/``isf``, moments, saving,
+  ``fit_best``, ``AFT(BirnbaumSaunders)``,
+  ``Distributional(BirnbaumSaunders)`` and the PyMC and torch helpers.
+  Against scipy the functions agree to 1e-10, and the fits with right,
+  left and interval censoring and truncation agree with an independently
+  written likelihood to 1e-8 in log-likelihood. See
+  :doc:`univariate/birnbaum_saunders`.
 
 - **The inverse Gaussian distribution, built in:**
   ``surpyval.InverseGaussian`` (``mu``, the mean, and ``lam``, the shape),

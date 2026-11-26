@@ -40,8 +40,8 @@ The helpers are:
   and for a new group.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
-Normal, Gumbel, Logistic, Rayleigh, Gompertz, InverseGaussian and
-GeneralizedGamma distributions
+Normal, Gumbel, Logistic, Rayleigh, Gompertz, InverseGaussian,
+GeneralizedGamma and BirnbaumSaunders distributions
 (``surpyval.pymc.SUPPORTED``); any other is refused with that list. (The
 generalised gamma's likelihood, with Temme's expansion for small ``Q``,
 is a larger graph than the others': pytensor takes about a minute to

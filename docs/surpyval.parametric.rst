@@ -64,6 +64,7 @@ Continuous lifetime distributions.
    univariate/generalized_f
    univariate/gompertz
    univariate/inverse_gaussian
+   univariate/birnbaum_saunders
    univariate/normal
    univariate/lognormal
    univariate/logistic

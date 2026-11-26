@@ -185,6 +185,7 @@ def _univariate():
         "GeneralizedGamma",
         "Gompertz",
         "InverseGaussian",
+        "BirnbaumSaunders",
         "Rayleigh",
         "Normal",
         "Gumbel",
@@ -5474,6 +5475,7 @@ _PLAIN_CONTINUOUS: tuple[str, ...] = (
 )
 _PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
 _PLAIN_CONTINUOUS += ("GeneralizedGamma", "Gompertz", "InverseGaussian")
+_PLAIN_CONTINUOUS += ("BirnbaumSaunders",)
 _PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
 _PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
 _PLAIN_DISCRETE += ("DiscreteWeibull",)
