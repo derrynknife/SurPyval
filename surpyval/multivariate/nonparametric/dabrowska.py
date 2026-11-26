@@ -35,6 +35,11 @@ single and double hazards :math:`\Lambda_{10} = a / Y`,
 censoring the product telescopes and the estimate is exactly the empirical
 joint survival function, as Kaplan-Meier is the empirical survival
 function.
+
+``Dabrowska.fit(..., estimator="prentice-cai")`` gives Prentice and Cai's
+(1992) estimate on the same grid (see ``_VolterraGrid``), and
+``estimator="lin-ying"`` Lin and Ying's (1993) for common censoring (see
+``surpyval.multivariate.nonparametric.lin_ying``).
 """
 
 from __future__ import annotations
@@ -46,6 +51,10 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.multivariate.nonparametric.lin_ying import (
+    _LinYingGrid,
+    check_common_censoring,
+)
 from surpyval.serialisation import SerialisableMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -99,7 +108,7 @@ class _Grid:
         L = int(np.searchsorted(self.V, t, side="right"))
         if K == len(self.U) and L == len(self.V):
             return self
-        cut = object.__new__(_Grid)
+        cut = object.__new__(type(self))
         cut.x = self.x
         cut.U, cut.V = self.U[:K], self.V[:L]
         cut.f1 = self.f1 & (self.r1 < K)
@@ -160,6 +169,7 @@ class _Grid:
             Y=Y,
             A=A,
             B=B,
+            C=C,
             M=M,
             YA=YA,
             YB=YB,
@@ -171,7 +181,69 @@ class _Grid:
             D2=D2,
             S1=S1,
             S2=S2,
+            J=S1[:, None] * S2[None, :] * P,
         )
+
+
+class _VolterraGrid(_Grid):
+    r"""Prentice and Cai's (1992) estimate on Dabrowska's grid: the same
+    counts, then the joint survival from the Volterra equation
+
+    .. math::
+        S(s, t) = S_1(s) S_2(t) \Big[1 + \int_0^s\!\!\int_0^t
+        \frac{S(u^-, v^-)}{S_1(u) S_2(v)}\, \big(\Lambda_{11}(du, dv)
+        - \Lambda_{10}(du, v^-) \Lambda_2(dv)
+        - \Lambda_1(du) \Lambda_{01}(u^-, dv)
+        + \Lambda_1(du) \Lambda_2(dv)\big)\Big],
+
+    solved one anti-diagonal of the grid at a time through its
+    double difference (which divides by nothing):
+
+    .. math::
+        S_{ij} = (1 - \lambda_{1i}) S_{i-1,j} + (1 - \lambda_{2j}) S_{i,j-1}
+        - (1 - \lambda_{1i})(1 - \lambda_{2j}) S_{i-1,j-1}
+        + Q_{ij} S_{i-1,j-1},
+
+    :math:`Q = (c - a \lambda_2 - b \lambda_1) / Y + \lambda_1 \lambda_2`,
+    with :math:`\lambda_1 = d_1 / Y_1` and :math:`\lambda_2` the
+    margins' Nelson-Aalen increments."""
+
+    def counts(self, w: npt.NDArray) -> dict:
+        e = super().counts(w)
+        e["J"] = _volterra(e)
+        return e
+
+
+def _volterra(e: dict) -> npt.NDArray:
+    S1, S2 = e["S1"], e["S2"]
+    K, L = len(S1), len(S2)
+    if not (K and L):
+        return np.zeros((K, L))
+    lam1 = e["D1"] * _inv(e["Y1"])
+    lam2 = e["D2"] * _inv(e["Y2"])
+    # The local hazards a/Y, b/Y, c/Y; 0 where nobody is at risk in both
+    # (then a = b = c = 0 too)
+    iY = _inv(e["Y"])
+    Q = (e["C"] - e["A"] * lam2[None, :] - e["B"] * lam1[:, None]) * iY + lam1[
+        :, None
+    ] * lam2[None, :]
+    a1, a2 = 1 - lam1, 1 - lam2
+    P = np.empty((K + 1, L + 1))
+    P[0, 0] = 1.0
+    P[1:, 0] = S1
+    P[0, 1:] = S2
+    for d in range(2, K + L + 1):
+        i = np.arange(max(1, d - L), min(K, d - 1) + 1)
+        j = d - i
+        b1, b2 = a1[i - 1], a2[j - 1]
+        prev = P[i - 1, j - 1]
+        P[i, j] = (
+            b1 * P[i - 1, j]
+            + b2 * P[i, j - 1]
+            - b1 * b2 * prev
+            + Q[i - 1, j - 1] * prev
+        )
+    return P[1:, 1:]
 
 
 def _evaluate(
@@ -183,15 +255,14 @@ def _evaluate(
     # 1 before a series' first failure (an index of -1)
     S1 = np.concatenate([[1.0], est["S1"]])[k + 1]
     S2 = np.concatenate([[1.0], est["S2"]])[l_ + 1]
-    if est["P"].size:
-        P = np.where(
+    if est["J"].size:
+        S = np.where(
             (k >= 0) & (l_ >= 0),
-            est["P"][np.maximum(k, 0), np.maximum(l_, 0)],
-            1.0,
+            est["J"][np.maximum(k, 0), np.maximum(l_, 0)],
+            S1 * S2,
         )
     else:
-        P = np.ones(len(x))
-    S = S1 * S2 * P
+        S = S1 * S2
     missing = np.isnan(x).any(axis=1)
     if missing.any():
         S, S1, S2 = (np.where(missing, np.nan, a) for a in (S, S1, S2))
@@ -206,13 +277,18 @@ class BivariateNonParametric(SerialisableMixin):
     Attributes
     ----------
     estimator : str
-        ``"Dabrowska"``.
+        ``"Dabrowska"``, ``"Prentice-Cai"`` or ``"Lin-Ying"`` (the
+        ``estimator`` given to :meth:`Dabrowska.fit`).
+    common_censoring : bool
+        Whether the data were declared to have one censoring time shared
+        by both lifetimes of each unit (required by Lin-Ying).
     x, c, n : numpy.ndarray
         The data: ``x`` and ``c`` of shape ``(N, 2)``, ``n`` the count of
         each row.
     t1, t2 : numpy.ndarray
-        The failure times of each series, the grid on which the estimate
-        steps.
+        The failure times of each series, the grid on which the
+        Dabrowska and Prentice-Cai estimates step (Lin-Ying's steps at
+        censoring times too).
     names : tuple of str or None
         The names of the two series, if the data had them.
 
@@ -230,23 +306,42 @@ class BivariateNonParametric(SerialisableMixin):
     array([0.5])
     """
 
-    estimator = "Dabrowska"
-
     def __init__(
         self,
         x: npt.NDArray,
         c: npt.NDArray,
         n: npt.NDArray,
         names: Any = None,
+        estimator: str = "dabrowska",
+        common_censoring: bool = False,
     ) -> None:
+        self.estimator = _check_estimator(estimator)
+        self.common_censoring = bool(common_censoring)
+        if self.estimator == "Lin-Ying" and not self.common_censoring:
+            raise ValueError(
+                "Lin and Ying's estimator is right only when both lifetimes "
+                "of each unit share one censoring time (common censoring: "
+                "for example both followed until the unit leaves the "
+                "study). Declare it with common_censoring=True if the data "
+                "were collected that way; otherwise use "
+                "estimator='dabrowska', which allows each lifetime its own "
+                "censoring time."
+            )
+        if self.common_censoring:
+            check_common_censoring(x, c)
         self.x = x
         self.c = c
         self.n = n
         self.names = names
-        self._grid = _Grid(x, c)
+        kind: Any = {
+            "Dabrowska": _Grid,
+            "Prentice-Cai": _VolterraGrid,
+            "Lin-Ying": _LinYingGrid,
+        }[self.estimator]
+        self._grid: Any = kind(x, c)
         self._est = self._grid.counts(n.astype(float))
-        self.t1 = self._grid.U
-        self.t2 = self._grid.V
+        self.t1 = np.unique(x[c[:, 0] == 0, 0])
+        self.t2 = np.unique(x[c[:, 1] == 0, 1])
 
     # ------------------------------------------------------------------
     # The estimate
@@ -257,7 +352,8 @@ class BivariateNonParametric(SerialisableMixin):
         The joint survival :math:`P(T_1 > x_1, T_2 > x_2)` at the points
         ``x``: a pair, or one pair per row. A coordinate before the first
         failure of its series leaves the other's margin (``sf([[s, 0]])``
-        is the first series' Kaplan-Meier estimate at ``s``).
+        is the first series' Kaplan-Meier estimate at ``s``; for Lin-Ying
+        it is that estimator's own margin, see :meth:`Dabrowska.fit`).
         """
         pts = _points(x)
         return _evaluate(self._grid, self._est, pts)[0]
@@ -291,8 +387,11 @@ class BivariateNonParametric(SerialisableMixin):
 
     @property
     def margins(self) -> list:
-        """The two margins as fitted ``KaplanMeier`` models: the joint
-        survival at ``(s, 0)`` and ``(0, t)`` is exactly theirs."""
+        """The two margins as fitted ``KaplanMeier`` models. For the
+        Dabrowska and Prentice-Cai estimates the joint survival at ``(s,
+        0)`` and ``(0, t)`` is exactly theirs; Lin-Ying's own margin
+        (``sf([[s, 0]])``) is a weighted empirical one that differs from
+        Kaplan-Meier's a little where there is censoring."""
         from surpyval import KaplanMeier
 
         return [
@@ -314,7 +413,12 @@ class BivariateNonParametric(SerialisableMixin):
         finite differences). The infinitesimal-jackknife variance
         :math:`\sum_i n_i\, \text{out}[i, j]^2` is the variance of the
         estimator's influence function, which :meth:`cb` uses.
+
+        Only for Dabrowska's estimator: the derivatives are worked out for
+        its product form. The other estimators refuse, naming the
+        bootstrap.
         """
+        self._check_wald("influence")
         on = _check_on(on)
         pts = _points(x)
         if pts.ndim != 2:
@@ -387,6 +491,7 @@ class BivariateNonParametric(SerialisableMixin):
         influence function (the infinitesimal jackknife,
         :math:`\sqrt{\sum_i n_i\, \text{IF}_i^2}`; see :meth:`influence`).
         """
+        self._check_wald("standard_errors")
         single = np.ndim(x) == 1
         pts = _points(x)
         shape = np.shape(pts)[:-1]
@@ -401,7 +506,7 @@ class BivariateNonParametric(SerialisableMixin):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: str = "wald",
+        method: str | None = None,
         n_boot: int = 200,
         random_state: Any = None,
     ) -> npt.NDArray:
@@ -409,15 +514,17 @@ class BivariateNonParametric(SerialisableMixin):
         Confidence bounds on the joint survival ``sf`` or the joint
         distribution function ``ff`` at the points ``x``.
 
-        ``method="wald"`` (the default) uses the standard error from the
-        estimator's influence function (:meth:`standard_errors`) on the
-        logit scale of the probability, so the bound stays in (0, 1), as
-        the copula models' bounds do. At a point where the estimate is 0
-        or 1 the bound is that value.
+        ``method="wald"`` (the default for Dabrowska's estimator) uses
+        the standard error from the estimator's influence function
+        (:meth:`standard_errors`) on the logit scale of the probability,
+        so the bound stays in (0, 1), as the copula models' bounds do. At
+        a point where the estimate is 0 or 1 the bound is that value.
 
         ``method="bootstrap"`` gives the percentile interval of the
         estimate over ``n_boot`` resamples of the units (the case
         bootstrap: pairs resampled together, keeping their dependence).
+        It is the default, and the only method, for the Prentice-Cai and
+        Lin-Ying estimators, whose influence functions are not built.
 
         Parameters
         ----------
@@ -431,6 +538,8 @@ class BivariateNonParametric(SerialisableMixin):
         bound : {'two-sided', 'upper', 'lower'}, optional
             Defaults to two-sided.
         method : {'wald', 'bootstrap'}, optional
+            ``'wald'`` for Dabrowska's estimator, ``'bootstrap'`` for the
+            others, by default.
         n_boot : int, optional
             The number of bootstrap resamples. Default 200.
         random_state : int or numpy Generator, optional
@@ -444,6 +553,8 @@ class BivariateNonParametric(SerialisableMixin):
         """
         check_alpha_ci(alpha_ci)
         on = _check_on(on)
+        if method is None:
+            method = "wald" if self.estimator == "Dabrowska" else "bootstrap"
         if bound not in ("two-sided", "upper", "lower"):
             raise ValueError(
                 "'bound' must be 'two-sided', 'upper' or 'lower', not "
@@ -467,6 +578,7 @@ class BivariateNonParametric(SerialisableMixin):
             else [alpha_ci if bound == "lower" else 1 - alpha_ci]
         )
         if method == "wald":
+            self._check_wald("cb(method='wald')")
             se = np.atleast_1d(self.standard_errors(flat, on))
             inside = (value > 0) & (value < 1)
             p = np.where(inside, value, 0.5)
@@ -483,26 +595,192 @@ class BivariateNonParametric(SerialisableMixin):
                 raise ValueError(
                     f"'n_boot' must be a positive whole number; got {n_boot}."
                 )
-            rng = as_generator(random_state)
-            total = int(np.sum(self.n))
-            prob = self.n / total
-            draws = np.empty((int(n_boot), len(flat)))
             # Each resample builds only the corner of the grid the points
             # are in
             grid = self._grid
             seen = flat[~np.isnan(flat).any(axis=1)]
             if len(seen):
                 grid = grid.upto(*np.max(seen, axis=0))
-            for b in range(int(n_boot)):
-                w = rng.multinomial(total, prob).astype(float)
-                est = grid.counts(w)
+
+            def stat(est: dict) -> npt.NDArray:
                 S, S1, S2 = _evaluate(grid, est, flat)
-                draws[b] = S if on == "sf" else 1 - S1 - S2 + S
+                return S if on == "sf" else 1 - S1 - S2 + S
+
+            draws = self._bootstrap(grid, stat, n_boot, random_state)
             out = np.quantile(draws, sides, axis=0).T
         if bound != "two-sided":
             out = out[:, 0]
             return out[0] if single else out.reshape(shape)
         return out[0] if single else out.reshape(shape + (2,))
+
+    def _check_wald(self, what: str) -> None:
+        if self.estimator != "Dabrowska":
+            raise ValueError(
+                f"{what} needs the estimator's influence function, which is "
+                f"worked out only for Dabrowska's estimator, not "
+                f"{self.estimator}'s. Use cb(..., method='bootstrap') (the "
+                "case bootstrap), or estimator='dabrowska'."
+            )
+
+    def _bootstrap(
+        self, grid: Any, stat: Any, n_boot: int, random_state: Any
+    ) -> npt.NDArray:
+        """``stat`` of the estimate over ``n_boot`` case resamples."""
+        if int(n_boot) < 1:
+            raise ValueError(
+                f"'n_boot' must be a positive whole number; got {n_boot}."
+            )
+        rng = as_generator(random_state)
+        total = int(np.sum(self.n))
+        prob = self.n / total
+        draws = []
+        for _ in range(int(n_boot)):
+            w = rng.multinomial(total, prob).astype(float)
+            draws.append(stat(grid.counts(w)))
+        return np.array(draws)
+
+    # ------------------------------------------------------------------
+    # Dependence
+
+    def _region(self, t1_max: Any, t2_max: Any) -> tuple[float, float]:
+        out = []
+        for d, (given, t) in enumerate(
+            zip((t1_max, t2_max), (self.t1, self.t2))
+        ):
+            if given is None:
+                if not len(t):
+                    raise ValueError(
+                        f"Series {d} has no failures, so no region of the "
+                        "joint distribution is seen; Kendall's tau cannot "
+                        "be estimated from these data."
+                    )
+                out.append(float(t[-1]))
+            else:
+                out.append(float(given))
+        return out[0], out[1]
+
+    def _tau(self, grid: Any, est: dict, a: float, b: float) -> float:
+        g1 = grid.U[grid.U <= a]
+        g2 = grid.V[grid.V <= b]
+        if not (len(g1) and len(g2)):
+            return float("nan")
+        p1 = np.concatenate([[-np.inf], g1])
+        p2 = np.concatenate([[-np.inf], g2])
+        A, B = np.meshgrid(p1, p2, indexing="ij")
+        flat = np.column_stack([A.ravel(), B.ravel()])
+        S = _evaluate(grid, est, flat)[0].reshape(len(p1), len(p2))
+        # The mass at each grid point: the double difference of S
+        p = S[:-1, :-1] - S[1:, :-1] - S[:-1, 1:] + S[1:, 1:]
+        mass = float(np.sum(p))
+        count = mass * float(np.sum(self.n))
+        if not mass > 0 or count <= 1:
+            return float("nan")
+        q = p / mass
+        # Mass strictly below-left, and strictly above-left, of each point
+        cum = np.cumsum(np.cumsum(q, axis=0), axis=1)
+        below = np.zeros_like(q)
+        below[1:, 1:] = cum[:-1, :-1]
+        col = np.cumsum(q, axis=0)  # rows <= i
+        above_left = np.zeros_like(q)
+        # rows < i, columns > j
+        rows_before = np.zeros_like(q)
+        rows_before[1:, :] = col[:-1, :]
+        right = rows_before[:, ::-1].cumsum(axis=1)[:, ::-1]
+        above_left[:, :-1] = right[:, 1:]
+        concordant = 2 * float(np.sum(q * below))
+        discordant = 2 * float(np.sum(q * above_left))
+        return (concordant - discordant) * count / (count - 1)
+
+    def kendall_tau(
+        self, t1_max: float | None = None, t2_max: float | None = None
+    ) -> float:
+        r"""
+        Kendall's tau of the two lifetimes from the estimated joint
+        distribution, within the region the data support.
+
+        Kendall's tau is the chance that two units are concordant (the one
+        that fails first in one series fails first in the other too) less
+        the chance they are discordant: 0 for unrelated lifetimes, up to 1
+        (or down to -1) for lifetimes that always fall in the same (the
+        opposite) order.
+
+        Censoring hides the joint distribution past the last failures, so
+        this is the tau of the lifetimes *given that both fail by*
+        ``t1_max`` and ``t2_max`` (by default the last failure time of
+        each series): the estimate's probability mass on the grid points
+        in that rectangle, normalised to 1, and
+
+        .. math::
+            \hat\tau = \frac{\hat n}{\hat n - 1}
+            \sum_{(i, j)} \sum_{(k, l)} q_{ij} q_{kl}
+            \operatorname{sign}(u_i - u_k) \operatorname{sign}(v_j - v_l),
+
+        with :math:`q` the normalised masses and :math:`\hat n` the
+        estimated number of units in the rectangle (the total count times
+        its mass). With no censoring the masses are the units' shares,
+        :math:`\hat n` is the count in the rectangle, and this is exactly
+        the sample's Kendall's tau-a (ties in either series count as
+        neither concordant nor discordant); it is scipy's
+        ``kendalltau`` (tau-b) when neither series has ties. With
+        censoring it differs from the whole population's tau, which the
+        data do not reach; a copula's ``kendall_tau()`` gives that by
+        assuming a family. The estimate's negative masses (see the
+        estimator's notes) are used as they are.
+
+        Parameters
+        ----------
+        t1_max, t2_max : float, optional
+            The corner of the region. Default: each series' last failure
+            time.
+
+        Returns
+        -------
+        float
+            ``nan`` if the region holds no mass or about one unit.
+        """
+        a, b = self._region(t1_max, t2_max)
+        return self._tau(self._grid, self._est, a, b)
+
+    def kendall_tau_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        t1_max: float | None = None,
+        t2_max: float | None = None,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> Any:
+        """
+        The case-bootstrap percentile bound on :meth:`kendall_tau` (pairs
+        resampled together), over the same region in every resample.
+
+        Returns
+        -------
+        numpy array or float
+            ``[lower, upper]`` for a two-sided bound, else the one bound.
+        """
+        check_alpha_ci(alpha_ci)
+        if bound not in ("two-sided", "upper", "lower"):
+            raise ValueError(
+                "'bound' must be 'two-sided', 'upper' or 'lower', not "
+                f"{bound!r}."
+            )
+        a, b = self._region(t1_max, t2_max)
+        grid = self._grid.upto(a, b)
+        draws = self._bootstrap(
+            grid, lambda e: self._tau(grid, e, a, b), n_boot, random_state
+        )
+        draws = draws[np.isfinite(draws)]
+        if not len(draws):
+            return (
+                np.array([np.nan, np.nan])
+                if bound == "two-sided"
+                else float("nan")
+            )
+        if bound == "two-sided":
+            return np.quantile(draws, [alpha_ci / 2, 1 - alpha_ci / 2])
+        q = alpha_ci if bound == "lower" else 1 - alpha_ci
+        return float(np.quantile(draws, q))
 
     # ------------------------------------------------------------------
     # Plotting and saving
@@ -556,7 +834,7 @@ class BivariateNonParametric(SerialisableMixin):
         names = self.names or ("series 0", "series 1")
         ax.set_xlabel(str(names[0]))
         ax.set_ylabel(str(names[1]))
-        ax.set_title("Joint survival (Dabrowska)")
+        ax.set_title(f"Joint survival ({self.estimator})")
         return ax
 
     def to_dict(self) -> dict:
@@ -575,6 +853,8 @@ class BivariateNonParametric(SerialisableMixin):
             "c": self.c.tolist(),
             "n": self.n.tolist(),
         }
+        if self.common_censoring:
+            out["common_censoring"] = True
         if self.names is not None:
             out["names"] = list(self.names)
         return stamp_schema(out)
@@ -588,6 +868,8 @@ class BivariateNonParametric(SerialisableMixin):
             np.asarray(model_dict["c"], dtype=int),
             np.asarray(model_dict["n"], dtype=int),
             names=tuple(names) if names is not None else None,
+            estimator=model_dict.get("estimator", "Dabrowska"),
+            common_censoring=bool(model_dict.get("common_censoring", False)),
         )
 
     def __repr__(self) -> str:
@@ -614,6 +896,24 @@ def _points(x: npt.ArrayLike) -> npt.NDArray:
             f"and a column per series: got shape {pts.shape}."
         )
     return pts
+
+
+_ESTIMATORS = {
+    "dabrowska": "Dabrowska",
+    "prentice-cai": "Prentice-Cai",
+    "volterra": "Prentice-Cai",
+    "lin-ying": "Lin-Ying",
+}
+
+
+def _check_estimator(estimator: str) -> str:
+    key = str(estimator).lower().replace("_", "-").replace(" ", "-")
+    if key not in _ESTIMATORS:
+        raise ValueError(
+            "'estimator' must be 'dabrowska' (the default), 'prentice-cai' "
+            f"(or 'volterra') or 'lin-ying', not {estimator!r}."
+        )
+    return _ESTIMATORS[key]
 
 
 def _check_on(on: str) -> str:
@@ -702,13 +1002,16 @@ class Dabrowska:
         x_cols: list[str],
         c_cols: list[str] | None = None,
         n_col: str | None = None,
+        estimator: str = "dabrowska",
+        common_censoring: bool = False,
     ) -> BivariateNonParametric:
         """
         Estimate the joint survival from the columns of a
         :class:`pandas.DataFrame`, one row per unit: ``x_cols`` names the
         column of each series' times, ``c_cols`` of each series'
         censoring flags (all failures by default) and ``n_col`` the
-        counts, as the copulas' ``fit_from_df`` does.
+        counts, as the copulas' ``fit_from_df`` does. ``estimator`` and
+        ``common_censoring`` are as for :meth:`fit`.
 
         Examples
         --------
@@ -737,7 +1040,11 @@ class Dabrowska:
         if n_col is not None:
             arrays["n"] = frame_column(df, n_col, "n_col")
         names = {"x": "x_cols", "c": "c_cols", "n": "n_col"}
-        return call_fit(cls, arrays, names, {})
+        options = {
+            "estimator": estimator,
+            "common_censoring": common_censoring,
+        }
+        return call_fit(cls, arrays, names, options)
 
     @classmethod
     def fit(
@@ -745,8 +1052,10 @@ class Dabrowska:
         x: Any,
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
+        estimator: str = "dabrowska",
+        common_censoring: bool = False,
     ) -> BivariateNonParametric:
-        """
+        r"""
         Estimate the joint survival of two right-censored lifetimes.
 
         Parameters
@@ -763,6 +1072,36 @@ class Dabrowska:
             default.
         n : array_like, shape (N,), optional
             The count of each row (1 each by default).
+        estimator : {'dabrowska', 'prentice-cai', 'lin-ying'}, optional
+            Which estimate (all three are the empirical joint survival
+            when nothing is censored):
+
+            - ``'dabrowska'`` (the default; Dabrowska 1988): the two
+              Kaplan-Meier margins times a cross-ratio factor at each
+              pair of failure times. Bounds: Wald (influence function)
+              and bootstrap.
+            - ``'prentice-cai'`` (or ``'volterra'``; Prentice and Cai
+              1992): the two Kaplan-Meier margins and the covariance of
+              the two series' failure counts, accumulated through a
+              Volterra integral equation. Same data as Dabrowska's (each
+              lifetime its own censoring time). Bounds: bootstrap.
+            - ``'lin-ying'`` (Lin and Ying 1993): the fraction of units
+              seen past both times, divided by the chance follow-up lasts
+              past the later one. Only for *common* censoring (one
+              censoring time shared by both lifetimes of a unit), which
+              must be declared with ``common_censoring=True``. Bounds:
+              bootstrap. Its margins are not the Kaplan-Meier estimates
+              but a weighted empirical estimate, :math:`\#\{X_1 > s\} /
+              (N \hat G(s))`, which agrees with them where nothing is
+              censored before ``s``.
+        common_censoring : bool, optional
+            Declare that both lifetimes of each unit were followed until
+            the same time, so a unit's censored lifetimes share one
+            censoring time and a failure was seen no later than it.
+            Required by ``'lin-ying'`` (the data cannot show it: two
+            failures say nothing of the follow-up). When ``True``, data
+            that contradict it (a pair censored at two different times, or
+            censored before the other lifetime's failure) are refused.
 
         Truncation and left or interval censoring are not taken: a
         ``MultivariateSurpyvalData`` holding them is refused, naming the
@@ -779,7 +1118,8 @@ class Dabrowska:
         ValueError
             If the data do not have exactly two series, or have left or
             interval censoring or truncation, or the data's own checks
-            fail (see ``MultivariateSurpyvalData``).
+            fail (see ``MultivariateSurpyvalData``); for ``'lin-ying'``,
+            if common censoring is not declared or the data contradict it.
         """
         from surpyval.multivariate.parametric.data import (
             MultivariateSurpyvalData,
@@ -834,4 +1174,6 @@ class Dabrowska:
             data.c.astype(int),
             np.asarray(data.n).astype(int),
             names=data.names,
+            estimator=estimator,
+            common_censoring=common_censoring,
         )

@@ -2296,6 +2296,18 @@ def _dabrowska():
         c[np.argsort(d["x"][:, 1])[-4:], 1] = 1
         return {**d, "c": c}
 
+    def common():
+        # The same pairs with one follow-up time per unit: the four with
+        # the longest second lives are followed only until the first of
+        # their two times, both censored there (Lin-Ying needs this)
+        d = copula_data()
+        x = d["x"].copy()
+        c = np.zeros(x.shape, int)
+        rows = np.argsort(x[:, 1])[-4:]
+        x[rows] = np.min(x[rows], axis=1, keepdims=True)
+        c[rows] = 1
+        return {**d, "x": x, "c": c}
+
     return [
         Case(
             name="Dabrowska",
@@ -2314,6 +2326,31 @@ def _dabrowska():
                 "maximum": "a closed-form estimate, not a search for a "
                 "maximum",
             },
+        )
+    ] + [
+        Case(
+            name=f"Dabrowska[{estimator}]",
+            fitters=("surpyval.multivariate.Dabrowska",),
+            model_class="surpyval.multivariate.BivariateNonParametric",
+            interface=BIVARIATE,
+            data=data_for,
+            fit=lambda d, e=estimator: mv.Dabrowska.fit(
+                **d, estimator=e, common_censoring=e == "lin-ying"
+            ),
+            functions=("sf", "ff", "cdf"),
+            x=X_COP,
+            rows=("x", "c", "n"),
+            rtol=1e-12,
+            starve=None,
+            exclude={
+                "convergence": "a closed-form estimate: nothing to starve",
+                "maximum": "a closed-form estimate, not a search for a "
+                "maximum",
+            },
+        )
+        for estimator, data_for in (
+            ("prentice-cai", data),
+            ("lin-ying", common),
         )
     ]
 
@@ -3723,12 +3760,20 @@ def _df_paths():
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
-    paths["Dabrowska"] = lambda d: mv.Dabrowska.fit_from_df(
-        _frame(d, ("x", "c", "n"))[0],
-        x_cols=["x0", "x1"],
-        c_cols=["c0", "c1"],
-        n_col="n",
-    )
+    for estimator in ("dabrowska", "prentice-cai", "lin-ying"):
+        name = (
+            "Dabrowska"
+            if estimator == "dabrowska"
+            else f"Dabrowska[{estimator}]"
+        )
+        paths[name] = lambda d, e=estimator: mv.Dabrowska.fit_from_df(
+            _frame(d, ("x", "c", "n"))[0],
+            x_cols=["x0", "x1"],
+            c_cols=["c0", "c1"],
+            n_col="n",
+            estimator=e,
+            common_censoring=e == "lin-ying",
+        )
     # (its fixture has no counts: the rows alone)
     paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
         mv.Clayton.fit_from_df(
@@ -4433,6 +4478,33 @@ def _copula_bounds(case):
     )
 
 
+# The case bootstrap of a non-parametric joint survival, on the joint sf
+# and CDF and on Kendall's tau from the estimate
+_BIVARIATE_NP_BOOT = (
+    Bound(
+        "cb",
+        on=("sf",),
+        label="cb[bootstrap]",
+        kwargs={"method": "bootstrap", **_BOOT},
+        wald=False,
+    ),
+    Bound(
+        "cb",
+        on=("ff",),
+        label="cb[ff, bootstrap]",
+        kwargs={"method": "bootstrap", **_BOOT},
+        wald=False,
+    ),
+    Bound(
+        "kendall_tau_cb",
+        kind="summary",
+        query=((),),
+        kwargs=_BOOT,
+        wald=False,
+    ),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
@@ -4446,21 +4518,12 @@ def _bounds(case):
         "BivariateNonParametric": (
             Bound("cb", on=("sf",)),
             Bound("cb", on=("ff",), label="cb[ff]"),
-            Bound(
-                "cb",
-                on=("sf",),
-                label="cb[bootstrap]",
-                kwargs={"method": "bootstrap", **_BOOT},
-                wald=False,
-            ),
-            Bound(
-                "cb",
-                on=("ff",),
-                label="cb[ff, bootstrap]",
-                kwargs={"method": "bootstrap", **_BOOT},
-                wald=False,
-            ),
-        ),
+        )
+        + _BIVARIATE_NP_BOOT,
+        # The Prentice-Cai and Lin-Ying estimates: the bootstrap only
+        # (their Wald bound is refused, naming it)
+        "Dabrowska[prentice-cai]": _BIVARIATE_NP_BOOT,
+        "Dabrowska[lin-ying]": _BIVARIATE_NP_BOOT,
         "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
         "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
         "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,

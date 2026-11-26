@@ -294,6 +294,29 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Two more bivariate survival estimators, and Kendall's tau from
+  them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
+  estimator="prentice-cai")`` gives Prentice and Cai's (1992) estimate
+  (the Volterra equation; R's ``mhazard`` "volterra"), and
+  ``estimator="lin-ying", common_censoring=True`` Lin and Ying's (1993)
+  for data where both lifetimes of a unit share one censoring time.
+  Lin-Ying's is refused unless the common censoring is declared, and data
+  that contradict it are refused, naming Dabrowska's. Both have the case
+  bootstrap (``cb`` uses it by default for them); their Wald bound is
+  refused. ``kendall_tau()`` and ``kendall_tau_cb()`` on any of the
+  three estimates give Kendall's tau of the lifetimes given both fail by
+  a corner (by default each series' last failure), with no family
+  assumed. Checked: with no censoring every estimator is the empirical
+  joint survival (to 1e-13) and the tau is the sample's tau-a (to
+  1e-12); against brute-force implementations from the papers (1e-13);
+  under independence all agree with the product of the Kaplan-Meier
+  margins (3,000 pairs: within 1.03 standard errors); in a seeded
+  simulation (100 data sets of 200 pairs) each estimator's mean error is
+  within Monte Carlo error of 0 under its assumptions (at most 0.0056),
+  and Lin-Ying's forced on separately censored data is off by 0.05 and
+  0.13. The check against ``mhazard`` for the two new estimators is not
+  run yet (``scripts/reference/reference_r_mhazard_bivariate.R``). The
+  Dabrowska estimate's numbers do not change.
 - ``ParametricPanelMultiState`` and ``ParametricPanelMultiStateRegression``
   on the reset clock take a model with a way back (an illness-death
   model with recovery): the paths of at most ``max_moves`` moves between

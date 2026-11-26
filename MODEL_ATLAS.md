@@ -147,7 +147,10 @@ model exist:
   correlated random slopes.
 - **Non-parametric joint survival** (`Dabrowska`): the joint survival of
   two right-censored lifetimes with no dependence family chosen, the
-  two-dimensional Kaplan-Meier (Dabrowska, 1988); right censoring only.
+  two-dimensional Kaplan-Meier (Dabrowska, 1988), with Prentice and Cai's
+  (1992) and, for common censoring, Lin and Ying's (1993) estimators as
+  `estimator=` options, and Kendall's tau from the estimate; right
+  censoring only.
 - **Joint frailty of recurrent and terminal events** (`JointFrailty`):
   each item's own frailty acts on its recurrent intensity and, raised to
   a power `alpha`, on the hazard of a terminal event that ends its
@@ -164,7 +167,7 @@ model exist:
 | JointFrailty (recurrent events and a dependent terminal event, a frailty per item, Weibull baselines) | multivariate (two series per item) | recurrent | single | recurrent + terminal | with | continuous | parametric |
 | Shared-frailty Poisson process (`frailty=` on CrowAMSAA, Duane, CoxLewis, ProportionalIntensityNHPP; a frailty per item or cluster of items) | multivariate (clustered) | recurrent | single | recurrent | none / with | continuous | parametric |
 | CoxMixedEffects (nested, crossed, random slopes) | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
-| Dabrowska (non-parametric joint survival of two right-censored lifetimes, no copula chosen) | multivariate (two series) | single_event | single | terminal | none | continuous | nonparametric |
+| Dabrowska (non-parametric joint survival of two right-censored lifetimes, no copula chosen; also Prentice-Cai and Lin-Ying) | multivariate (two series) | single_event | single | terminal | none | continuous | nonparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
