@@ -106,6 +106,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `centred=False` stays the default; `centred=True` draws each group's value from `Normal(mu, tau)` directly. | maintainer (#671 default) | Non-centred samples well with little data a group, the usual pooling case. | done |
 | `shrinkage(trace, pooling)` returns a DataFrame: each group's own maximum-likelihood estimate (all its parameters free), pooled posterior median, population median and `pulled` on the unconstrained scale. With shared parameters `pulled` can fall a little outside 0 to 1, said in the docs. | maintainer (#671 default) | The table the template's users ask for. | done |
 | The template's calibration study (200 repetitions, seeds and rules fixed before the first run) runs with the calibration studies where PyMC is installed, skipped otherwise. | maintainer (#671 default) | As the other studies. | done |
+### Joint models: the chance of each failure mode for a running item (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `cif_k(x) = ff(x) * share_k(x)`: the chance of failing at all as `sf` computes it (nodes placed at each age), times the mode's share over the item's posterior given its readings and survival to now (nodes placed there): `E[F(b) G_k(b) / sum_j G_j(b)] / E[F(b)]`, `F` exact, `G_k` by the cumulative hazard's 15-point Gauss-Legendre rule. | proposed | The modes' chances then add to `ff` to rounding (2.4e-13 on the test model), whatever the rule's error, which moves only the split (1.3e-5 at 1100 days beyond now against a brute-force integral, 1e-8 or less within 500). The share is taken per node, inside the integrals, so the result is `E[G_k]`. Averaging `G_k` directly misses the identity by the rule's error. | done |
+| Bounds: delta method on `log(-log(1 - cif_k))`, nodes held, pointwise per mode; no likelihood-ratio or bootstrap bound (as `ff`'s on a prediction). `mode=None` is `ff`; a model with no modes refuses a mode, saying to fit with `e=`. An infinite age is `nan`. More varying parameters than the prediction grid takes (Laplace stencils) is refused naming what to use. | proposed | The same route and scale as `DynamicPrediction.cb` on `ff`; bounds that stay in (0, 1). | done |
+| R `JM` (CompRisk) is not installed: the reference script is committed (`scripts/reference/reference_r_jm_cif.R`, not run) and `test_against_r_jm` skips until its JSON exists; the check moves to a follow-up. | proposed | R packages are not installed on the machine these checks ran on without the maintainer's agreement, so the comparison waits for it. | gap |
+| RePyability's `JointNode` follows the overall `sf`; per-mode nodes are not part of this. | proposed | A node in a reliability block diagram has one way of failing: one survival curve per item. Nodes for each mode would need a structure of their own there. | done |
+
 ### Joint models: a spread at 0 held on its lower bound (27 Nov 2026)
 
 | Decision | By | Reason | Status |
