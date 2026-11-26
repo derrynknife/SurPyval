@@ -735,3 +735,53 @@ def test_a_prior_on_a_coefficient_is_per_unit_of_the_users_covariate():
             np.ravel(ref.param_cri(name)),
             rtol=1e-6,
         )
+
+
+def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
+    """Where the posterior is not normal (a covariate near 50 with a
+    spread of 1, the approximation's check "poor"), the Laplace normal's
+    curvature is a secant along the axes the peak search found, so a new
+    search moves it. This design is the one of six (seeds 460210 to
+    460215, characterised before this test was written) where the
+    search before the coefficients' units were standardised was furthest
+    off: its standard deviation of log alpha was 20% above the exact
+    Hessian's. Rule: every parameter's standard deviation within 3% of
+    the exact Hessian's (Richardson-extrapolated central differences at
+    1e-3 and 5e-4 standard deviations); observed 1.3% at most."""
+    from surpyval.bayes.regression import RegressionTarget
+    from surpyval.bayes.result import bind, log_posterior
+
+    seed = 460215
+    rng = np.random.default_rng(seed)
+    n = 40
+    z1 = rng.normal(50.0, 1.0, n)
+    z0 = np.tile([0.0, 1.0], n // 2)
+    Z = np.column_stack([z1, z0])
+    x = sp.Weibull.random(n, 10.0, 1.5, random_state=seed + 1)
+    x = x * np.exp(-0.3 * (z1 - 50) - 0.4 * z0)
+    model = quietly(sp.WeibullPH.fit_bayes, x, Z)
+    cov = np.asarray(model.posterior.normal["cov"])
+    sd = np.sqrt(np.diag(cov))
+    target = RegressionTarget(model.mle)
+    bound, _ = bind(target, None)
+    log_post = log_posterior(target, bound)
+    mode = bound.to_phi(np.asarray(model.diagnostics["mode"])[None, :])[0]
+    d = mode.size
+
+    def hessian(h):
+        out = np.empty((d, d))
+        for i in range(d):
+            for j in range(d):
+                ei, ej = np.zeros(d), np.zeros(d)
+                ei[i], ej[j] = h[i], h[j]
+                out[i, j] = (
+                    log_post((mode + ei + ej)[None])[0]
+                    - log_post((mode + ei - ej)[None])[0]
+                    - log_post((mode - ei + ej)[None])[0]
+                    + log_post((mode - ei - ej)[None])[0]
+                ) / (4 * h[i] * h[j])
+        return out
+
+    exact = (4 * hessian(5e-4 * sd) - hessian(1e-3 * sd)) / 3
+    exact_sd = np.sqrt(np.diag(np.linalg.inv(-exact)))
+    np.testing.assert_allclose(sd, exact_sd, rtol=0.03)

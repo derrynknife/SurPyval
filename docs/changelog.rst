@@ -20,10 +20,20 @@ v0.30 (unreleased)
   what they say per unit of the user's covariate. With the covariate
   multiplied by 1/731, 731 or 1e-6 every prediction and interval now
   agrees with the unscaled fit to 1e-6 relative (about 3e-9 in ``sf``).
-  On covariates of ordinary scale the posteriors move by the search's
-  tolerance only: on the package's regression test fixtures the
-  posterior medians and intervals move by at most 1e-7 (2e-8 relative),
-  ``sf`` by at most 2e-9.
+  Where the posterior is close to normal the new search moves the
+  posteriors by its tolerance only: on the package's regression test
+  fixtures the posterior medians and intervals move by at most 1e-7
+  (2e-8 relative), ``sf`` by at most 2e-9. Where it is not (the
+  approximation's check says "poor"; for example a covariate far from
+  0, such as one near 50 with a spread of 1) the Laplace normal's
+  curvature is a secant along the axes the search found, so the
+  posterior can move by a few per cent, not always towards the exact
+  curvature but on the whole closer to it: on six such seeded designs
+  (40 rows, ``WeibullPH``) every standard deviation is now within 2.5%
+  of the exact Hessian's (the old were up to 20% off, on one design,
+  where ``sf`` at the covariate mean moved by 0.11; on the other five
+  by 0.001 to 0.013). A test pins that design to 3% of the exact
+  curvature.
 - **``fit_best`` also tries the new ``BirnbaumSaunders``.** Where it has
   the best value of the metric the answer changes: on 100 draws from
   ``LogNormal(2, 0.8)`` (the diagnostics' example) it now wins with AIC
