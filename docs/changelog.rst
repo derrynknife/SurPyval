@@ -1319,6 +1319,14 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **``fit_best`` no longer warns that a default candidate was set aside
+  when a regular fit was chosen.** With the GeneralizedF among the
+  default candidates, ordinary Weibull samples of 40 to 50 observations
+  gave "fit_best set aside GeneralizedF (its likelihood has no finite
+  maximum)" on every call. A candidate you name (``include=``), or a
+  choice among set-aside fits only, is still warned about; the default
+  candidates set aside stay in the table (``return_table=True``).
+
 - **``param_cb(method="lr")`` of the joint frailty, shared frailty and
   semi-parametric proportional odds models, and of the frailty and
   interval Cox models, raised ``AttributeError: 'LikelihoodRegion' object
