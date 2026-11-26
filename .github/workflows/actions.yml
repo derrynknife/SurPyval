@@ -500,6 +500,15 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_joint_causes.py
+          # Several markers with failure modes: 200 fits of one to two
+          # minutes each (the full model, 250 items) on every core of one
+          # worker, so a group of its own; not yet timed in CI.
+          - group: joint-marker-causes
+            workers: '1'
+            test-timeout: 9000
+            job-timeout: 180
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_marker_causes.py
           - group: joint-lag-links
             workers: auto
             job-timeout: 120
@@ -571,6 +580,7 @@ jobs:
               --ignore=surpyval/tests/calibration/test_coverage_mixture_cure.py
               --ignore=surpyval/tests/calibration/test_coverage_equivalence.py
               --ignore=surpyval/tests/calibration/test_coverage_joint_causes.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_marker_causes.py
               --ignore=surpyval/tests/calibration/test_coverage_joint_lag.py
               --ignore=surpyval/tests/calibration/test_link_selection_joint.py
               --ignore=surpyval/tests/calibration/test_coverage_copula_nd.py

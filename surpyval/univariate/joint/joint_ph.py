@@ -36,7 +36,6 @@ from surpyval.utils.warnings import (
 )
 
 from ._likelihood import (
-    EFFECTS,
     LINKS,
     MAX_VARYING,
     JointArrays,
@@ -63,6 +62,7 @@ from .joint_model import (
     HOWS,
     JointModel,
     covariate_parts,
+    effect_name,
     parameter_names,
     path_formula,
     reported_params,
@@ -651,17 +651,22 @@ class JointPHFitter(FitterRepr):
             for all. The model's ``sf`` is the survival of every mode
             together. An item found failed (left or interval censored)
             needs its mode too. With one mode, or none given, the model
-            is that of one kind of failure. Proportional hazards and
-            ``how="MLE"`` only: a ``JointAFT`` fitter and the two-stage
-            estimate refuse event types.
+            is that of one kind of failure. With several markers each
+            mode has an effect of each marker's link of its own
+            (``"<mode>: vibration.marker_effect"``, ...), so one marker
+            may warn of a mode and another marker of another.
+            Proportional hazards and ``how="MLE"`` only: a ``JointAFT``
+            fitter and the two-stage estimate refuse event types.
         shared : list of str, optional
             With failure modes: the survival parameters the modes have
             in common, one parameter each under its plain name:
             ``"beta"`` (the baselines' shape), a hazard covariate, or a
             link's effect (``"marker_effect"``, ``"slope_effect"``,
-            ``"cumulative_effect"``). Default none: every mode has its
-            own. The fit with an effect shared is nested in the fit
-            without, so the likelihood-ratio test of the two
+            ``"cumulative_effect"``; with several markers a marker's
+            link's, ``"vibration.marker_effect"``, one marker's at a
+            time). Default none: every mode has its own. The fit with
+            an effect shared is nested in the fit without, so the
+            likelihood-ratio test of the two
             (``model.likelihood_ratio_test(shared_model)``) asks whether
             the reading speaks to the modes differently.
 
@@ -822,12 +827,6 @@ class JointPHFitter(FitterRepr):
         from ._multi import checked_readings, rows_by_marker
 
         names = list(self.markers or [])
-        if e is not None or shared is not None:
-            raise ValueError(
-                "A joint model of several markers takes no failure modes "
-                "(e, shared) yet: fit one marker with its modes, or the "
-                "markers together without them."
-            )
         valued = [m for m, k in self.link if k == "value"]
         references = {}
         if marker_reference is not None:
@@ -869,6 +868,7 @@ class JointPHFitter(FitterRepr):
             path_covariates,
             hazard_covariates,
         )
+        causes = _causes(self, e, records, counts, how)
         model = _fit(
             self,
             records,
@@ -878,8 +878,8 @@ class JointPHFitter(FitterRepr):
             parts,
             integration,
             how,
-            None,
-            (),
+            causes,
+            _check_shared(shared, causes, parts[1], self.link),
             readings=readings,
         )
         model.marker_unit = units
@@ -2035,7 +2035,7 @@ def _fit(
             "n_causes": len(cause_names),
             "shared_beta": "beta" in shared,
             "shared_hazard": [cov in shared for cov in kept_names],
-            "shared_links": [EFFECTS[k] in shared for k in fitter.link],
+            "shared_links": [effect_name(k) in shared for k in fitter.link],
         }
     layout = Layout(
         len(path_names),
@@ -2848,6 +2848,7 @@ def _marker_likelihood_parts(
     )
     Z = Z_all[:, model._kept] - model._zbar
     each = [joined(item) for item in readings]
+    causes = _causes(fitter, data.get("e"), records, counts, "MLE")
     arrays = JointArrays.build(
         counts,
         T,
@@ -2858,6 +2859,7 @@ def _marker_likelihood_parts(
         [v for _, v, _ in each],
         U=U,
         Rt=Rt,
+        e=None if causes is None else causes[1],
         channels=[ch for _, _, ch in each],
         n_markers=len(names),
     )

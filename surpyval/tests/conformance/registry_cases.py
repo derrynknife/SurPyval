@@ -86,6 +86,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     joint_causes_data,
     joint_data,
     joint_frailty_data,
+    joint_marker_causes_data,
     joint_markers_data,
     lfp_count_data,
     lfp_data,
@@ -2568,7 +2569,10 @@ def _joint_markers():
     each a line with its level varying between items (correlated across
     the markers) and a common rate, the hazard following both markers'
     values; predicting for one item read with both and still running at
-    400 (``JOINT_MARKERS_ITEM``)."""
+    400 (``JOINT_MARKERS_ITEM``). ``[markers+causes]`` is the same model
+    of :func:`joint_marker_causes_data`'s items, failing by one of two
+    modes, each with a baseline, a coefficient and an effect of each
+    marker of its own (``e``)."""
     fitter = sp.JointPH(
         sp.Weibull,
         {"vibration": dg.LinearPath, "temperature": dg.LinearPath},
@@ -2586,63 +2590,86 @@ def _joint_markers():
 
     def from_arrays(d):
         ids, m = measurements(d)
-        return fitter.fit(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+        return fitter.fit(
+            d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m, e=d.get("e")
+        )
 
     def from_data(d):
         ids, m = measurements(d)
         return fitter.fit(
-            sp.SurpyvalData(d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m)
+            sp.SurpyvalData(
+                d["x"],
+                c=d["c"],
+                n=d["n"],
+                Z=d["Z"],
+                i=ids,
+                m=m,
+                e=d.get("e"),
+            )
         )
 
-    case = regression(
-        "WeibullJointPH[markers]",
-        fitter,
-        fitters=(),
-        model_class="surpyval.univariate.joint.JointModel",
-        data=joint_markers_data,
-        x=X_JOINT,
-        Z=np.ones((X_JOINT.size, 1)),
-        functions=("sf", "ff"),
-        z_style="single",
-        paths={
-            "fit_from_df": lambda d: fitter.fit_from_df(
-                pd.DataFrame(
-                    {
-                        "x": d["x"],
-                        "c": d["c"],
-                        "n": d["n"],
-                        "z0": np.asarray(d["Z"])[:, 0],
-                        "markers": list(d["markers"]),
-                    }
-                ),
-                x_col="x",
-                markers_col="markers",
-                c_col="c",
-                n_col="n",
-                Z_cols=["z0"],
+    def from_df(d):
+        return fitter.fit_from_df(
+            pd.DataFrame(
+                {
+                    "x": d["x"],
+                    "c": d["c"],
+                    "n": d["n"],
+                    "z0": np.asarray(d["Z"])[:, 0],
+                    "markers": list(d["markers"]),
+                    **({"e": d["e"]} if "e" in d else {}),
+                }
             ),
-            "fit(measurements)": from_arrays,
-            "fit(data)": from_data,
-        },
-        rows=("x", "Z", "c", "n", "markers"),
-        coefficients=_joint_coefficients,
-        intercept=True,
-        draw=None,
-        exclude={
-            "random_sf": "an item's draws depend on its readings: "
-            "JointModel.predict(...).random(size) draws for one item",
-            "row_independence": "one item a call (Z is its covariate "
-            "vector), so there are no rows to mix up",
-        },
-    )
-    return [
-        replace(
-            case,
-            times=("x", "markers"),
-            call_kwargs=dict(JOINT_MARKERS_ITEM),
-            call_times=("markers", "given"),
+            x_col="x",
+            markers_col="markers",
+            c_col="c",
+            n_col="n",
+            Z_cols=["z0"],
+            e_col="e" if "e" in d else None,
         )
-    ]
+
+    out = []
+    for name, data in (
+        ("WeibullJointPH[markers]", joint_markers_data),
+        ("WeibullJointPH[markers+causes]", joint_marker_causes_data),
+    ):
+        causes = name.endswith("causes]")
+        case = regression(
+            name,
+            fitter,
+            fitters=(),
+            model_class="surpyval.univariate.joint.JointModel",
+            data=data,
+            x=X_JOINT,
+            Z=np.ones((X_JOINT.size, 1)),
+            functions=("sf", "ff"),
+            z_style="single",
+            paths={
+                "fit_from_df": from_df,
+                "fit(measurements)": from_arrays,
+                "fit(data)": from_data,
+            },
+            rows=("x", "Z", "c", "n", "markers") + (("e",) if causes else ()),
+            coefficients=_joint_coefficients,
+            intercept=True,
+            draw=None,
+            exclude={
+                "random_sf": "an item's draws depend on its readings: "
+                "JointModel.predict(...).random(size) draws for one item",
+                "row_independence": "one item a call (Z is its covariate "
+                "vector), so there are no rows to mix up",
+            },
+        )
+        out.append(
+            replace(
+                case,
+                times=("x", "markers"),
+                call_kwargs=dict(JOINT_MARKERS_ITEM),
+                call_times=("markers", "given"),
+                events=("a", "b") if causes else (),
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -599,6 +599,37 @@ def joint_markers_data():
     return dict(d, markers=markers)
 
 
+def _with_temperature(d):
+    """``d``'s items read with :func:`joint_markers_data`'s second marker
+    as well (a temperature with a level of each item's own, read every
+    90 days); each row's readings ``{marker: {age: value}}``."""
+    from scipy.special import ndtri
+
+    size = len(d["x"])
+    u = (scramble(size) + 0.5) / size
+    w = np.argsort(np.argsort(u + 0.3 * np.sin(5.1 * np.arange(size)))) + 0.5
+    level = 60.0 + 4.0 * ndtri(w / size)
+    markers = []
+    for k, (end, vibration) in enumerate(zip(d["x"], d["markers"])):
+        ages = np.arange(0.0, end, 90.0)
+        y = level[k] + 0.01 * ages + 1.5 * np.cos(0.9 * k + 0.4 * ages)
+        markers.append(
+            {
+                "vibration": dict(vibration),
+                "temperature": dict(
+                    zip(ages.tolist(), np.round(y, 3).tolist())
+                ),
+            }
+        )
+    return dict(d, markers=markers)
+
+
+def joint_marker_causes_data():
+    """:func:`joint_causes_data`'s items (two failure modes, ``e``) read
+    with the temperature of :func:`joint_markers_data` as well."""
+    return _with_temperature(joint_causes_data())
+
+
 def joint_causes_data():
     """80 items of a joint model with two failure modes: the marker and
     covariate of :func:`joint_data`'s items, each failing by the first of

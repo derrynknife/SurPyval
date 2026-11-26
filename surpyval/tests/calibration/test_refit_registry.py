@@ -1835,6 +1835,12 @@ EXCLUDED: dict[str, str] = {
     "which a model draw does not give: recovery of a fleet simulated with "
     "the line's start and rate uncorrelated is in "
     "univariate/joint/test_joint_random_effects.py",
+    "WeibullJointPH[markers+causes]": "lifetimes with two markers' "
+    "readings along them and a failure mode, which a model draw does not "
+    "give: recovery of a fleet simulated with two markers and two modes "
+    "is in univariate/joint/test_joint_marker_causes.py, and the "
+    "parameters' bias and coverage in "
+    "calibration/test_coverage_joint_marker_causes.py",
     "WeibullJointPH[causes]": "a lifetime with marker readings along it "
     "and a failure mode, which a model draw does not give: recovery of a "
     "fleet simulated with two modes is in "

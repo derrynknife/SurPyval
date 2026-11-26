@@ -110,3 +110,92 @@ def simulate(
         c.append(flag)
         markers.append(readings)
     return x, c, markers, b
+
+
+#: Two failure modes for :func:`simulate_causes`: bearing failures that
+#: follow vibration, seal failures that follow temperature (each mode's
+#: Weibull ``alpha`` and ``beta`` at the markers' :data:`CENTRES`, and its
+#: effect of each marker's current value).
+CAUSES = {
+    "bearing": {
+        "alpha": 1100.0,
+        "beta": 2.0,
+        "vibration.marker_effect": 0.8,
+        "temperature.marker_effect": 0.0,
+    },
+    "seal": {
+        "alpha": 1400.0,
+        "beta": 1.5,
+        "vibration.marker_effect": 0.0,
+        "temperature.marker_effect": 0.08,
+    },
+}
+
+
+def simulate_causes(
+    n: int = 200,
+    seed: int = 0,
+    follow: float = 730.0,
+    every: tuple = (30.0, 60.0),
+    truth: dict | None = None,
+    causes: dict | None = None,
+    centres: tuple = CENTRES,
+) -> tuple[list, list, list, list, np.ndarray]:
+    """``(x, c, e, markers, b)``: :func:`simulate`'s fleet failing by the
+    first of several failure modes (``causes``, :data:`CAUSES`), each
+    with its own Weibull hazard in both markers' current values; ``e``
+    is each failure's mode (``None`` for an item still running). Each
+    mode's latent age is drawn by inverting its own cumulative hazard
+    on a quarter-day grid. The generator's draws are in a fixed order:
+    the path parameters, then for each item every mode's target in the
+    order of ``causes``, then its readings' noise."""
+    truth = dict(TRUTH if truth is None else truth)
+    causes = dict(CAUSES if causes is None else causes)
+    rng = np.random.default_rng(seed)
+    mean = np.array(
+        [
+            truth["vibration.a"],
+            truth["vibration.b"],
+            truth["temperature.a"],
+            truth["temperature.b"],
+        ]
+    )
+    b = rng.multivariate_normal(mean, covariance(truth), size=n)
+    grid = np.linspace(0.0, follow, int(follow) * 4 + 1)
+    x, c, e, markers = [], [], [], []
+    for i in range(n):
+        m1 = b[i, 0] + b[i, 1] * grid
+        m2 = b[i, 2] + b[i, 3] * grid
+        end, flag, mode = follow, 1, None
+        for name, cause in causes.items():
+            alpha, beta = cause["alpha"], cause["beta"]
+            h = (
+                beta
+                / alpha
+                * (np.maximum(grid, 1e-12) / alpha) ** (beta - 1)
+                * np.exp(
+                    cause["vibration.marker_effect"] * (m1 - centres[0])
+                    + cause["temperature.marker_effect"] * (m2 - centres[1])
+                )
+            )
+            H = np.concatenate(
+                [[0.0], np.cumsum(0.5 * (h[1:] + h[:-1]) * np.diff(grid))]
+            )
+            target = rng.exponential()
+            if target < H[-1]:
+                life = float(np.interp(target, H, grid))
+                if life < end:
+                    end, flag, mode = life, 0, name
+        readings = {}
+        for name, step, (k0, k1), sd in (
+            ("vibration", every[0], (0, 1), truth["vibration.sd_noise"]),
+            ("temperature", every[1], (2, 3), truth["temperature.sd_noise"]),
+        ):
+            ages = np.arange(0.0, end, step)
+            y = b[i, k0] + b[i, k1] * ages + rng.normal(0, sd, ages.size)
+            readings[name] = dict(zip(ages.tolist(), y.tolist()))
+        x.append(end)
+        c.append(flag)
+        e.append(mode)
+        markers.append(readings)
+    return x, c, e, markers, b

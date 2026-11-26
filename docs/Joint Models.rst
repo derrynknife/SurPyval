@@ -2038,8 +2038,76 @@ marker's bends vary between items (``varying=("vibration.s1",)``) is,
 as with one marker, a comparison by ``aic()`` of the fits with and
 without them in ``varying``.
 
-Not yet: failure modes with several markers (``e=``), and a shared
-health index (one hidden condition behind every reading).
+**Failure modes with several markers.** Each marker may warn of a
+different way of failing: vibration of a bearing failure, temperature of
+a seal leak. Give each failure its mode (``e=``, ``e_col=``, or the
+records' ``event_type``), as with one marker (:ref:`failure modes
+<joint-failure-modes>`), and each mode gets a Weibull baseline, hazard
+coefficients and an effect of each marker's link of its own, named
+``"bearing: vibration.marker_effect"``, ``"seal:
+temperature.marker_effect"`` and so on; the markers' part is one for
+every mode. For mode :math:`k`,
+
+.. math::
+
+    h_{ik}(t) = \frac{\beta_k}{\alpha_k}\left(\frac{t}{\alpha_k}
+    \right)^{\beta_k - 1} \exp\Big(\gamma_k' z_i + \sum_{(j, l)}
+    \zeta_{kjl}\, g_l\big(m_j(\cdot; \theta_i)\big)(t)\Big),
+
+one effect :math:`\zeta_{kjl}` for each mode, marker :math:`j` and link
+:math:`l` (each followed marker's value measured from its reference).
+``shared=`` holds what the modes have in common: ``"beta"``, a hazard
+covariate, or one marker's link effect by its full name
+(``shared=["temperature.marker_effect"]``: the temperature warns of
+both modes alike, the vibration of each its own way); the fit with an
+effect shared is nested in the fit without, so
+``model.likelihood_ratio_test(shared_model)`` tests it. ``alpha`` is
+never shared (it depends on where the covariates are centred). Lags,
+weights, ``compare_links(..., marker=)``, predictions, bounds and saving
+work as without modes; the survival is that of every mode together.
+``JointAFT`` and the two-stage estimate do not take modes yet, as with
+one marker.
+
+The modes are not fitted one at a time. Each item's path is uncertain,
+and it is integrated over once with every mode's hazard in the
+integrand, so a fit of one mode with the others' failures treated as
+still running is not this fit's answer. It is usually close, because
+the readings, not the failures, mostly settle an item's path: on a
+seeded fleet of 150 items the censored fits' survival parameters were
+within 0.014 standard errors of the joint fit's. Where a mode follows
+no marker the likelihood does factor exactly: that mode is a plain
+Weibull.
+
+Checked by:
+
+- one mode is the model without modes, bit for bit;
+- one marker given as a dict, with modes, equals ``WeibullJointPH``
+  with modes: parameters to 3e-15, standard errors to 6e-15, the same
+  log-likelihood;
+- two modes with the same hazard are the model without modes at twice
+  the hazard, less :math:`\log 2` a failure, and a mode with every
+  effect 0 factors out as a plain Weibull (both to 1e-10 in the
+  log-likelihood);
+- a seeded fleet of 300 (``tests/univariate/joint/_multi_fleet.py``:
+  bearing failures that follow vibration with 0.8 a unit, seal failures
+  that follow temperature with 0.08) recovers every parameter but the
+  correlations within 3.5 standard errors, each marker's effect on its
+  own mode clear of 0 (p below 0.001);
+- a recovery study of 200 fleets of 250 items
+  (``calibration/test_coverage_joint_marker_causes.py``, its design and
+  seeds fixed beforehand) is committed and not yet run in full. A
+  reduced run of 12 fleets of 200 (seeds 46000 to 46011; about 76
+  bearing and 53 seal failures a fleet; two minutes a fit) reached a
+  verified maximum every time. The four effects averaged 0.865 (Monte
+  Carlo se 0.032; truth 0.8) and 0.002 (0.006; 0) for the bearing, 0.058
+  (0.042; 0) and 0.069 (0.008; 0.08) for the seal, each within two Monte
+  Carlo errors of the truth. The largest standardised departure was the
+  vibration's rate, 2.2% low (2.3 Monte Carlo errors), reported as
+  found; twelve fleets cannot say more, which is what the full study is
+  for.
+
+Not yet: a shared health index (one hidden condition behind every
+reading).
 
 Prediction: survival given the readings so far
 ----------------------------------------------
@@ -2523,7 +2591,8 @@ The joint model (#891) is the standard one. It has:
   truncation;
 - competing failure modes with the proportional hazards part (the
   failures' event types): a baseline, coefficients and effects for each
-  mode, any of them shared (``shared=``), see :ref:`failure modes
+  mode (with several markers an effect of each marker's link), any of
+  them shared (``shared=``), see :ref:`failure modes
   <joint-failure-modes>`;
 - predictions for one item given its readings, with Wald (delta method)
   bounds, as arrays (``sf``, ``ff``, ``cb``) or as one item's dynamic
@@ -2537,8 +2606,8 @@ The joint model (#891) is the standard one. It has:
 
 Not yet (see #891's roadmap): other baselines (a
 log-normal or log-logistic one for the accelerated part, whose risk can
-rise and then fall, and spline baselines); several markers with failure modes, and a shared
-health index (see :ref:`several markers <joint-several-markers>`). The
+rise and then fall, and spline baselines); a shared health index of
+several markers (see :ref:`several markers <joint-several-markers>`). The
 accelerated part has not yet been compared with R's ``JM``
 (``method = "weibull-AFT-aGH"``, the same model) on reference data, nor
 had its prediction band put through a calibration study. The two-stage fit
