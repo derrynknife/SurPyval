@@ -195,7 +195,9 @@ def _wiener_partial_life(
     ``u -> inf`` the bracket tends to 1 and ``u S(u)`` to 0 (``mu > 0``),
     so ``I(inf) = m``. The identity holds for any ``mu != 0``; the
     second term is computed as ``exp(2 mu D / sigma^2 + log Phi(-b))``,
-    which does not overflow.
+    which does not overflow. At ``mu = 0`` the limit is Levy's partial
+    mean (:func:`_levy_partial_mean`); close to it the two are joined
+    (see the code).
 
     Examples
     --------
@@ -212,15 +214,63 @@ def _wiener_partial_life(
     """
     u, mu, sigma = np.broadcast_arrays(np.asarray(u, dtype=float), mu, sigma)
     out = np.zeros(u.shape)
-    pos = (u > 0) & np.isfinite(u) & (mu != 0)
+    pos = (u > 0) & np.isfinite(u)
     t, m, s = u[pos], mu[pos], sigma[pos]
-    root = s * np.sqrt(t)
-    a = (m * t - D) / root
-    b = (m * t + D) / root
-    partial = (D / m) * (ndtr(a) - np.exp(2 * m * D / s**2 + log_ndtr(-b)))
+    # Near mu = 0 the bracket is a difference of nearly equal terms and m
+    # is large: where |2 mu D / sigma^2| < _KAPPA_SMALL the partial mean
+    # is interpolated, linearly in mu, between its limit at mu = 0 (the
+    # Levy passage's) and its value at the edge of that band.
+    edge = _KAPPA_SMALL * s**2 / (2 * D)
+    small = np.abs(m) < edge
+    partial = np.empty(t.shape)
+    big = ~small
+    partial[big] = _wiener_partial_mean(t[big], m[big], s[big], D)
+    if small.any():
+        ts, ms, ss = t[small], m[small], s[small]
+        at = np.where(ms < 0, -edge[small], edge[small])
+        zero = _levy_partial_mean(ts, ss, D)
+        partial[small] = zero + (ms / at) * (
+            _wiener_partial_mean(ts, at, ss, D) - zero
+        )
     out[pos] = t * _wiener_sf(t, m, s, D) + partial
     inf = np.isposinf(u)
     out[inf] = np.where(mu[inf] > 0, D / mu[inf], np.inf)
+    return out
+
+
+#: The band of ``2 mu D / sigma^2`` about 0 in which the Wiener partial
+#: mean is interpolated from its limit at ``mu = 0``.
+_KAPPA_SMALL = 1e-5
+
+
+def _wiener_partial_mean(
+    t: npt.NDArray, m: npt.NDArray, s: npt.NDArray, D: float
+) -> npt.NDArray:
+    """``int_0^t tau f(tau) dtau`` for a drift ``m != 0`` (see
+    :func:`_wiener_partial_life`)."""
+    root = s * np.sqrt(t)
+    a = (m * t - D) / root
+    b = (m * t + D) / root
+    out: npt.NDArray = (D / m) * (
+        ndtr(a) - np.exp(2 * m * D / s**2 + log_ndtr(-b))
+    )
+    return out
+
+
+def _levy_partial_mean(
+    t: npt.NDArray, s: npt.NDArray, D: float
+) -> npt.NDArray:
+    """``int_0^t tau f(tau) dtau`` at ``mu = 0``, where the passage time
+    is Levy's: ``tau f(tau) = c (2 pi tau)^{-1/2} exp(-c^2 / (2 tau))``
+    with ``c = D / sigma``, and its integral is
+    ``c [sqrt(2 t / pi) exp(-c^2 / (2 t)) - 2 c Phi(-c / sqrt(t))]``
+    (differentiated, the first term gives ``(2 pi t)^{-1/2} e (1 + c^2 /
+    t)`` times ``c`` and the second takes the ``c^2 / t`` part away)."""
+    c = D / s
+    out: npt.NDArray = c * (
+        np.sqrt(2 * t / np.pi) * np.exp(-(c**2) / (2 * t))
+        - 2 * c * ndtr(-c / np.sqrt(t))
+    )
     return out
 
 
@@ -231,6 +281,10 @@ _GL_U, _GL_W = np.polynomial.legendre.leggauss(12)
 _GL_U = 0.5 * (_GL_U + 1.0)
 _GL_W = 0.5 * _GL_W
 _GAMMA_PANELS = 48
+#: A step of a stress profile whose stretch of clock is below this share
+#: of the clock time is integrated in calendar time, not as a difference
+#: of the clock survival's integral (which loses its digits there).
+_SHORT_STEP = 1e-3
 
 
 def _gamma_partial_integral(c: npt.NDArray, v: npt.NDArray) -> npt.NDArray:
@@ -1048,6 +1102,43 @@ class ProcessLife:
                 / alpha[:, None]
             )
 
+    def _clock_sf(self, tau: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+        """The reference-clock survival of the points ``rows`` at their
+        clock times ``tau`` (a row each)."""
+        f = _wiener_sf if self.kind == "wiener" else _gamma_sf
+        a = self.a[rows][:, None]
+        b = self.b[rows][:, None]
+        with np.errstate(all="ignore"):
+            out: npt.NDArray = f(tau, a, b, self.distance)
+        return out
+
+    def _steps(
+        self,
+        I: npt.NDArray,
+        knots_tau: npt.NDArray,
+        knots_t: npt.NDArray,
+        af: npt.NDArray,
+        rows: npt.NDArray,
+    ) -> npt.NDArray:
+        """``(n, K)``: each step's share of the mean life, the calendar
+        integral of the survival over it, ``(I(tau_{k+1}) - I(tau_k)) /
+        AF_k``. Where the step moves the clock little against where the
+        clock is (``Delta tau`` below ``_SHORT_STEP`` of ``tau_{k+1}``: a
+        step at a low stress, the clock all but stopped) that difference
+        loses its digits, so the step is its calendar length times the
+        survival's mean over it instead, by a 12-point Gauss-Legendre rule
+        on its stretch of clock."""
+        out: npt.NDArray = np.diff(I, axis=1) / af
+        dtau = np.diff(knots_tau, axis=1)
+        short = dtau < _SHORT_STEP * np.abs(knots_tau[:, 1:])
+        if short.any():
+            r, k = np.nonzero(short)
+            nodes = knots_tau[r, k][:, None] + dtau[r, k][:, None] * _GL_U
+            S = self._clock_sf(nodes, rows[r])
+            length = np.diff(knots_t)[k]
+            out[r, k] = length * np.sum(S * _GL_W, axis=1)
+        return out
+
     def _profile_mean(self, rtol: float = 1e-12) -> npt.NDArray:
         """
         ``(N,)``: the mean calendar life under the stress profile, at
@@ -1100,9 +1191,10 @@ class ProcessLife:
                     ],
                     axis=1,
                 )
-                total = acc[rows] + np.sum(
-                    np.diff(I, axis=1) / af[:, j0:], axis=1
+                steps = self._steps(
+                    I, knots_tau[:, j0:], knots_t[j0:], af[:, j0:], rows
                 )
+                total = acc[rows] + np.sum(steps, axis=1)
                 rest = np.maximum(whole[rows] - I[:, -1], 0.0)
                 done = np.logical_or(not cyclic, rest <= rtol * whole[rows])
                 out[rows[done]] = (total + rest / af[:, -1])[done]

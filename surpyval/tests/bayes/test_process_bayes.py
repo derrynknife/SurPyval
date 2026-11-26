@@ -674,3 +674,94 @@ def test_a_constant_profile_has_the_constant_stress_mean(stressed):
 def test_a_wrong_profile_is_refused(stressed):
     with pytest.raises(ValueError, match="covariate"):
         stressed.sf(10.0, sp.StepSchedule.from_changepoints([0], [[1.0, 2.0]]))
+
+
+def _calendar_mean(target, point, profile, horizon):
+    """An independent mean life at one point: its calendar survival
+    (through the clock, sf) integrated over each step of the profile, cut
+    into pieces of at most 5, by a 20-point Gauss-Legendre rule, to
+    ``horizon`` (past which the survival is below 1e-15)."""
+    from surpyval.univariate.regression.tvc_schedule import (
+        segments_from_origin,
+    )
+
+    starts, ends, _ = segments_from_origin(profile, horizon)
+    cuts = [0.0]
+    for a, b in zip(starts, ends):
+        pieces = max(1, int(np.ceil((b - a) / 5.0)))
+        cuts += list(np.linspace(a, b, pieces + 1)[1:])
+    cuts = np.array(cuts)
+    v, w = np.polynomial.legendre.leggauss(20)
+    lo, hi = cuts[:-1], cuts[1:]
+    t = (lo[:, None] + (hi - lo)[:, None] * 0.5 * (v + 1)).ravel()
+    life = ProcessLife(target, point[None, :], profile, None)
+    S = life.sf(t)[0].reshape(len(lo), 20)
+    assert S[-1, -1] < 1e-15
+    return float(np.sum((hi - lo) * 0.5 * (S @ w)))
+
+
+IDLE = sp.StepSchedule.from_changepoints([0, 60, 70], [1.0, -30.0, 1.0])
+IDLE_CYCLIC = sp.StepSchedule.cyclic([0.0, 5.0], [[1.0], [-30.0]], period=10.0)
+
+
+@pytest.mark.parametrize("profile", ["fixed", "cyclic"])
+def test_a_step_with_the_clock_all_but_stopped(stressed, profile):
+    """A step at a stress so low that the clock barely moves (an idle or
+    storage period): the step's calendar length counts in full. At the
+    posterior point with the largest stress coefficient (the tail, where
+    the clock is slowest there) the mean equals an independent
+    integration of the calendar survival to 1e-9; the difference of the
+    clock survival's integral over the step would lose the step (10 of
+    1432 for the Wiener fixture, a 7e-3 error)."""
+    prof = IDLE if profile == "fixed" else IDLE_CYCLIC
+    points = stressed.posterior.points
+    point = points[np.argmax(points[:, -1])]
+    got = float(
+        ProcessLife(stressed.target, point[None], prof, None).mean()[0]
+    )
+    horizon = 100.0 * float(stressed.target.with_params(point).mean([1.0]))
+    ref = _calendar_mean(stressed.target, point, prof, horizon)
+    assert got == pytest.approx(ref, rel=1e-9)
+
+
+def test_the_wiener_partial_life_at_and_near_no_drift():
+    D = 10.0
+    s = np.array([1.2])
+    for mu in (0.0, 1e-12, 1e-9, -1e-9, 1e-7, 1e-6, 1e-4):
+        m = np.array([mu])
+
+        def sf(t, m=m):
+            return float(_wiener_sf(np.array([t]), m, s, D)[0])
+
+        for u in (5.0, 80.0):
+            ref = sum(
+                quad(sf, a, b, epsabs=0, epsrel=1e-13, limit=500)[0]
+                for a, b in ((0.0, 1.0), (1.0, u))
+            )
+            got = float(_wiener_partial_life(np.array([u]), m, s, D)[0])
+            assert got == pytest.approx(ref, rel=1e-9), (mu, u)
+
+
+def test_the_cyclic_summaries_over_the_whole_grid(stressed):
+    """mean(CYCLIC) and mean_cri(CYCLIC) are the posterior's median and
+    quantiles of the per-point means over every point of the grid (no
+    subset: the per-point means are what the other tests check)."""
+    if stressed.kind == "gamma":
+        pytest.skip(
+            "the gamma grid through a cyclic profile takes about two "
+            "minutes; the Wiener grid checks the same summaries"
+        )
+    life = ProcessLife(
+        stressed.target, stressed.posterior.points, CYCLIC, None
+    ).mean()
+    assert stressed.mean(CYCLIC) == pytest.approx(
+        float(stressed.posterior.wquantile(life, 0.5)), rel=1e-14
+    )
+    lo, hi = stressed.mean_cri(CYCLIC)
+    assert lo == pytest.approx(
+        float(stressed.posterior.wquantile(life, 0.025)), rel=1e-14
+    )
+    assert hi == pytest.approx(
+        float(stressed.posterior.wquantile(life, 0.975)), rel=1e-14
+    )
+    assert lo < stressed.mean(CYCLIC) < hi

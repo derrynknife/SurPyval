@@ -914,8 +914,13 @@ reference-clock survival's integral and :math:`AF_k` the pace of step
     E[T] = \sum_k \frac{I(\tau_{k+1}) - I(\tau_k)}{AF_k},
 
 the last step running on for ever (a cyclic profile is laid out until
-what is left is below 1e-12 of the whole). It agrees with the fitted
-model's mean under the profile, point by point, to about 1e-9.
+what is left is below 1e-12 of the whole). A step at a stress so low
+that the clock all but stops (storage, or an idle spell) is integrated
+in calendar time instead, since its stretch of clock is too short for
+the difference of :math:`I`: its calendar length then counts in full.
+It agrees with the fitted model's mean under the profile, point by
+point, to about 1e-9, and with a direct integration of the calendar
+survival through an idle step to 1e-9.
 
 With no priors the Wiener posterior is the textbook one: flat on ``mu``
 and on ``log sigma`` is :math:`p(\mu, \sigma^2) \propto 1/\sigma^2`, so

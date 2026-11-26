@@ -452,8 +452,10 @@ v0.30 (unreleased)
   mean, derived in ``_wiener_partial_life``), the gamma process's one
   integral on a fixed Gauss-Legendre rule. Checked against adaptive
   quadrature (1e-9), against the fitted model's own mean through the
-  profile at each posterior point (1e-7, fixed and cyclic profiles), and
-  a constant profile against the constant stress (1e-8).
+  profile at each posterior point (1e-7, fixed and cyclic profiles), a
+  step with the clock all but stopped against a direct integration of
+  the calendar survival (1e-9), and a constant profile against the
+  constant stress (1e-8).
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
