@@ -701,6 +701,68 @@ class CauseSpecificNHPP(SerialisableMixin):
         model.df = df
         return model
 
+    @classmethod
+    @ambiguous_item_ids(
+        "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
+    )
+    @takes_unit
+    @takes_terminal_column
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        *,
+        dist: Any = CrowAMSAA,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+        points: int | None = None,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on a :class:`pandas.DataFrame`, naming the
+        columns to read as :meth:`fit_from_df` names them. ``dist``,
+        ``priors``, ``method``, ``importance`` and ``points`` are
+        :meth:`fit_bayes`'s, passed to it unchanged.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> log = pd.DataFrame({
+        ...     "hours": [15, 42, 60, 98, 130, 171, 205, 260, 310, 345,
+        ...               390, 400],
+        ...     "cause": ["seal", "pump", "seal", "pump", "seal", "seal",
+        ...               "pump", "seal", "pump", "seal", "seal", None],
+        ...     "c": [0] * 11 + [1],
+        ... })
+        >>> model = CauseSpecificNHPP.fit_bayes_from_df(
+        ...     log, x_col="hours", e_col="cause", c_col="c",
+        ...     priors={"beta": sp.prior.around(0.8, between=(0.4, 1.6))})
+        >>> sorted(model.models)
+        ['pump', 'seal']
+        """
+        return cls.fit_bayes(
+            x=df[x_col].to_numpy(),
+            i=optional_column(df, i_col),
+            c=optional_column(df, c_col),
+            n=optional_column(df, n_col),
+            e=optional_column(df, e_col),
+            tl=optional_column(df, tl_col),
+            tr=optional_column(df, tr_col),
+            dist=dist,
+            priors=priors,
+            method=method,
+            importance=importance,
+            points=points,
+        )
+
     # --- evaluation ------------------------------------------------------
 
     def _check_cause(self, cause: Any) -> None:

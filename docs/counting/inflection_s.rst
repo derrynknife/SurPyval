@@ -14,6 +14,7 @@ that show no reliability growth are refused.
 
    .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.fit
    .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.fit_from_df
+   .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.fit_bayes_from_df
    .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.from_params
    .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.cif
    .. automethod:: surpyval.recurrent.parametric.inflection_s.InflectionS.iif

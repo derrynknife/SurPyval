@@ -3425,6 +3425,23 @@ def _col_df(fitter, keys=("x", "i", "c", "n", "e"), **fixed):
     return run
 
 
+def _bayes_col_df(fitter, keys, priors=None, **fixed):
+    """The ``<key>_col`` names of a recurrent fitter's fit_bayes_from_df
+    (the Bayesian options as the case's ``fit`` passes them)."""
+
+    def run(d):
+        df, _ = _frame(d, keys + ("Z",))
+        names = {f"{k}_col": k for k in keys if k in df}
+        if "Z" in d:
+            names["Z_cols"] = _column_names(df, "Z")
+        options = dict(fixed)
+        if priors is not None:
+            options["priors"] = priors(d)
+        return fitter.fit_bayes_from_df(df, **names, **options)
+
+    return run
+
+
 def _copula_df(fitter, **fixed):
     def run(d):
         df, rest = _frame(d, ("x", "n"))
@@ -3490,6 +3507,18 @@ def _df_paths():
     paths["ARI"] = _col_df(rc.ARI, m=1)
     paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    paths["CrowAMSAA[bayes]"] = _bayes_col_df(
+        rc.CrowAMSAA, ("x", "i", "c", "n")
+    )
+    paths["HPP[bayes]"] = _bayes_col_df(
+        rc.HPP, ("x", "i", "c", "n"), _bayes_hpp_priors
+    )
+    paths["ProportionalIntensityHPP[bayes]"] = _bayes_col_df(
+        rc.ProportionalIntensityHPP, ("x", "i", "c", "n")
+    )
+    paths["CauseSpecificNHPP[bayes]"] = _bayes_col_df(
+        rc.CauseSpecificNHPP, ("x", "i", "c", "n", "e")
+    )
     for label, name, kw in (
         ("AndersenGill", "AndersenGill", {}),
         ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}),
@@ -3557,16 +3586,6 @@ NO_DF_PATH: dict[str, str] = {
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
-    **{
-        name: "fit_bayes takes arrays or an event-history container; the "
-        "recurrent-event fitters have no fit_bayes_from_df yet"
-        for name in (
-            "CrowAMSAA[bayes]",
-            "HPP[bayes]",
-            "ProportionalIntensityHPP[bayes]",
-            "CauseSpecificNHPP[bayes]",
-        )
-    },
 }
 
 
