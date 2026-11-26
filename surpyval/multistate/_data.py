@@ -39,6 +39,12 @@ class SpellData:
     #: state is known only to lie in ``(xl, x]``. ``None``: every end is
     #: known.
     xl: npt.NDArray | None = None
+    #: Right truncation: each row's cut-off (its unit's; ``inf`` where
+    #: the unit was not truncated), the unit having been seen only
+    #: because it reached the state ``reached`` (an index) by then.
+    #: ``None``: no truncation.
+    tr: npt.NDArray | None = None
+    reached: int | None = None
 
     @property
     def interval(self) -> npt.NDArray:
@@ -103,15 +109,39 @@ def _exit_times(
     return xl, x
 
 
+def _left_censored(
+    xl: npt.NDArray, censored: npt.NDArray, tl: npt.NDArray | None
+) -> npt.NDArray:
+    """The left ends of the moves with a left-censored one (``xl =
+    -inf``: a move at some time before ``xr``) read as the start of its
+    spell (``tl``, or 0 for a spell from the start of the clock)."""
+    left = np.isneginf(xl)
+    if np.any(left & censored):
+        k = int(np.flatnonzero(left & censored)[0])
+        raise ValueError(
+            f"Row {k} is left censored (xl = -inf, a move at some time "
+            "before xr) with no state moved into ('e' is missing): give "
+            "the state the unit was found in."
+        )
+    if not np.any(left):
+        return xl
+    begin = (
+        np.zeros(xl.size) if tl is None else np.where(np.isfinite(tl), tl, 0.0)
+    )
+    return np.where(left, begin, xl)
+
+
 def _check_intervals(
     xl: npt.NDArray, x: npt.NDArray, censored: npt.NDArray
 ) -> None:
-    """Refuse an interval-censored move's ends that cannot be."""
+    """Refuse an interval-censored move's ends that cannot be (``-inf``,
+    a left-censored move, is read before this)."""
     if np.any(~np.isfinite(xl)):
         raise ValueError(
             "'x' has a missing or infinite left end 'xl': give the "
             "last time each unit was seen in its state (xl = xr where "
-            "the move's time is known)."
+            "the move's time is known, -inf for a move at some time "
+            "before xr: left censored)."
         )
     if np.any(xl > x):
         k = int(np.flatnonzero(xl > x)[0])
@@ -161,6 +191,9 @@ def check_spells(
     state = _object_array(state, "state", size)
     censored = missing_events(e)
     if xl is not None:
+        xl = _left_censored(
+            xl, censored, None if tl is None else _times(tl, "tl", size)
+        )
         _check_intervals(xl, x, censored)
         if not np.any(xl < x):
             xl = None

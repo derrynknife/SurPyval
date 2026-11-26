@@ -1773,6 +1773,11 @@ EXCLUDED: dict[str, str] = {
     "the Laplace engine checks its normal against the exact posterior "
     "(tests/bayes/test_laplace.py) and the fit is tested in "
     "tests/bayes/test_fit_regression.py",
+    "ParametricMultiState[truncated]": "a history of moves between "
+    "states kept only where the unit reached a state by its cut-off, "
+    "which a model draw does not give (no simulator of paths): recovery "
+    "under simulated truncation, and the bias of ignoring it, is in "
+    "tests/multistate/test_parametric_truncation.py",
     **dict.fromkeys(
         (
             "ParametricMultiState[interval]",

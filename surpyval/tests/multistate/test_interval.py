@@ -366,12 +366,12 @@ def test_surpyval_data_interval_refusals():
     import surpyval as sp
 
     s = ["healthy", "ill", "healthy"]
-    # a left-censored move: no stay it ended
+    # a left-censored move: taken by the fit, refused by the Bayesian one
     data = sp.SurpyvalData(
         x=[2.0, 5, 3], c=[-1, 0, 1], e=["ill", "dead", None], s=s
     )
     with pytest.raises(ValueError, match="no stay it ended"):
-        ParametricMultiState.fit(data, transitions=TM)
+        ParametricMultiState.fit_bayes(data, transitions=TM)
     # the Bayesian fit takes no intervals
     data = sp.SurpyvalData(
         x=[[1.0, 2.0], [5, 5], [3, 3]], c=[2, 0, 1],

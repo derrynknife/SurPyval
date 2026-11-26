@@ -15,6 +15,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Multi-state: left censoring and right truncation in the parametric spell models (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A left-censored move is `x = [-inf, xr]` in the arrays (`c = -1` with `e` in a `SurpyvalData`), read as an interval-censored move from the start of its spell (`tl`, or 0) to `xr`, through the existing interval likelihood, on both clocks. A left-censored row with no `e` is refused. | proposed | "Found already moved, with no earlier look in the old state" is exactly a move in (spell start, xr]; one likelihood serves both, and with two states it is the univariate `c = -1` factor. | done |
+| Right truncation is per unit: `tr` on each of its rows (the same value), `reached=` the state it had to enter by then (default the one absorbing state; required otherwise). The denominator is the chance of first entering `reached` by `tr` from the unit's first spell (state and `tl`, or 0), by the product integral of the model with the ways out of `reached` removed, on grids planned at the start and again at the estimate (tolerance 1e-10 a row). | proposed | Mirrors univariate `tr` (seen only if the event is by `tr`); "reach a state" generalises "the event", and making it absorbing gives the first passage exactly. | done |
+| Right truncation is refused on the reset clock, with time-varying covariates, and for a unit whose covariate rows differ. | proposed | Each would need a different first-passage computation (the renewal equations inside the likelihood, or a path), not offered yet; refused rather than approximated. | gap |
+| A unit right truncated whose spells do not reach the state by its cut-off is refused. | proposed | The data contradict the truncation; a silent fit would divide by the wrong event. | done |
+
 ### Multi-state: time-varying covariates in the parametric regression (27 Nov 2026)
 
 | Decision | By | Reason | Status |

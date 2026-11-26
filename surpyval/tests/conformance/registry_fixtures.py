@@ -813,6 +813,26 @@ def ms_interval_data(with_Z=False):
     return d
 
 
+def ms_truncated_data():
+    """``ms_data`` with its units (``i``) and right truncation: units 0
+    and 5, which died, came from a register of deaths closing at 15, so
+    were seen only because they were dead by then (``tr``, the state
+    ``reached`` the absorbing "dead"); the others not truncated (``tr =
+    inf``). (With every unit that died truncated, the deaths carry no
+    information on the level of their hazards, which the units seen
+    alive push to 0: the truncated likelihood keeps a finite limit there,
+    and the fixture would test nothing.)"""
+    d = ms_data()
+    i, tr = [], []
+    for u, (spells, _, _) in enumerate(_MS_UNITS):
+        assert u not in (0, 5) or spells[-1][3] == "dead"
+        i += [u] * len(spells)
+        tr += [15.0 if u in (0, 5) else np.inf] * len(spells)
+    d["i"] = np.array(i)
+    d["tr"] = np.array(tr, dtype=float)
+    return d
+
+
 X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
 # The Cox model's predictions: from 7.5 on, the one unit left at risk in
 # "ill" makes the predicted hazards of leaving it add up to more than 1

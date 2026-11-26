@@ -118,6 +118,7 @@ def _checked(
     transitions: Any,
     intervals: bool = False,
     varying: bool = False,
+    truncated: bool = False,
 ) -> Any:
     """``data`` as the multi-state fits take it, or a refusal saying why
     not and what to do: a shallow copy with ``s`` filled where it has
@@ -134,7 +135,7 @@ def _checked(
             "distribution's fit takes it as it is."
         )
     left = data.c == -1
-    if left.any():
+    if left.any() and not intervals:
         raise ValueError(
             f"Rows {_rows(left)} are left censored (c = -1): the move "
             "happened at some time before x, with no last time the unit "
@@ -151,7 +152,7 @@ def _checked(
             + ", or leave those rows out "
             "(data[(data.c == 0) | (data.c == 1)])."
         )
-    interval = data.c == 2
+    interval = (data.c == 2) | left
     if interval.any() and not intervals:
         raise ValueError(
             f"Rows {_rows(interval)} are interval censored (c = 2): a "
@@ -161,20 +162,23 @@ def _checked(
             "each move at the time it was seen, or leave those rows out "
             "(data[(data.c == 0) | (data.c == 1)])."
         )
-    odd = ~np.isin(data.c, (0, 1, 2))
+    odd = ~np.isin(data.c, (-1, 0, 1, 2))
     if odd.any():
         raise ValueError(
-            f"Rows {_rows(odd)} have censoring flags other than 0, 1 and "
-            "2, which a multi-state model cannot read."
+            f"Rows {_rows(odd)} have censoring flags other than -1, 0, 1 "
+            "and 2, which a multi-state model cannot read."
         )
     out = data
     if interval.any():
         # Each interval-censored row's move lies in (xl, xr], read as the
         # two-column x of the arrays; every other row's time is its lower
-        # end (xl = xr), and the move is carried by e as for c = 0.
+        # end (xl = xr), and the move is carried by e as for c = 0. A
+        # left-censored row's move (c = -1) was at some time before x:
+        # xl = -inf, read as the start of its spell.
         x2 = np.asarray(data.x, dtype=float)
         lower = x2[:, 0] if x2.ndim == 2 else x2
         upper = x2[:, 1] if x2.ndim == 2 else x2
+        lower = np.where(left, -np.inf, lower)
         out = copy.copy(data)
         out.x = np.column_stack([lower, np.where(interval, upper, lower)])
         out.c = np.where(interval, 0, data.c)
@@ -184,11 +188,13 @@ def _checked(
         # left, each row's time is its lower end.
         out = copy.copy(data)
         out.x = np.asarray(data.x)[:, 0]
-    if bool(np.isfinite(data.tr).any()):
+    if bool(np.isfinite(data.tr).any()) and not truncated:
         raise ValueError(
             "The SurpyvalData has right truncation (tr), which this model "
-            "does not take (it takes each row's entry, tl). Leave it out "
-            "of the data."
+            "does not take (it takes each row's entry, tl): "
+            "ParametricMultiState and ParametricMultiStateRegression take "
+            "it, with the state that had to be reached by then "
+            "(reached=). Leave it out of the data here."
         )
     if data.time_varying_covariates is not None and not varying:
         raise ValueError(
@@ -275,6 +281,7 @@ def multistate_data(
     signature = inspect.signature(method)
     regression = "Z" in signature.parameters
     varying = "time_varying_covariates" in signature.parameters
+    truncated = "tr" in signature.parameters
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -294,6 +301,7 @@ def multistate_data(
             bound.arguments.get("transitions"),
             intervals,
             varying,
+            truncated,
         )
         return method(*bound.args, **bound.kwargs)
 

@@ -133,11 +133,13 @@ A row with ``c = 2`` is a move known only to lie between two times (see
 ``ParametricMultiStateRegression`` read its ``[xl, xr]`` as the two
 columns of their ``x``, with the same fit as from the arrays; the
 non-parametric and Cox models refuse it. A left-censored row (``c =
--1``, a move at some time before ``x``) is refused by every model: with
-no last time the unit was seen in its state, it has no stay it ended;
-give that time as the lower end of an interval. The models take neither
-weights, right truncation nor measurements (``m``); data holding any of
-them is refused, saying what to do. A ``SurpyvalData`` whose
+-1``, a move into ``e`` at some time before ``x``) is read by the same
+two as a move between the start of its spell and ``x`` (see
+:ref:`multistate-left-censored`), and refused by the others. Right
+truncation (``tr``) is taken by the same two, with ``reached=`` (see
+:ref:`multistate-right-truncated`). The models take neither weights nor
+measurements (``m``); data holding either is refused, saying what to
+do. A ``SurpyvalData`` whose
 ``time_varying_covariates`` hold each unit's path (keyed by its ``i``) is
 taken by ``ParametricMultiStateRegression`` (see
 :ref:`multistate-time-varying`) and refused by the others. ``s`` is also another name for ``state`` in
@@ -721,6 +723,66 @@ to :math:`10^{-6}` (``scripts/reference/reference_r_multistate_interval.R``);
 simulated inspections recover Weibull hazards, and their bounds cover at
 their nominal level (``surpyval/tests/calibration/test_coverage_multistate_interval.py``).
 
+.. _multistate-left-censored:
+
+Moves found after the fact: left censoring
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes all that is known is that a move had happened by a time: a
+unit first looked at is found already failed, a patient is first seen
+already ill, with no earlier look that saw it in its old state. The
+move is *left censored*: at some time between the start of the spell
+(its ``tl``, or 0) and the look. Give it as ``x = [-inf, xr]`` (or, in a
+``SurpyvalData``, ``c = -1`` with the state found in ``e``):
+``ParametricMultiState`` and ``ParametricMultiStateRegression`` read it
+as a move in the interval from the spell's start to ``xr``, on either
+clock, and integrate over its time as above. With two states it is the
+univariate left-censored observation: ``Weibull.fit`` with ``c = -1``
+(divided by :math:`S(t_l)` where the spell starts late), checked to
+:math:`10^{-8}` in the log-likelihood on both clocks.
+
+.. _multistate-right-truncated:
+
+Units seen only because they reached a state: right truncation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some data hold only the units that reached a state by a cut-off: a
+register of deaths up to a date, the returned units of a fleet, patients
+found through a diagnosis. Units that had not got there by then are
+missing altogether, so the ones seen are those that moved early, and a
+fit that ignores this overstates every hazard on the way. Give each
+unit's cut-off in ``tr`` (on each of its rows, ``inf`` for a unit not
+truncated) and the state it had to reach in ``reached`` (by default the
+one absorbing state). Each truncated unit's likelihood is then divided
+by its chance of reaching that state by its cut-off from where its first
+spell starts:
+
+.. math::
+    \frac{L(\text{history})}{P(\text{enter } r \text{ by } \tau \mid
+    g_0 \text{ at } t_0)},
+
+the chance on the right being the occupation probability of :math:`r`
+in the model with every way out of :math:`r` removed (so a unit that got
+there stays), from the product integral of the forward equations. Every
+transition is then fitted at once, as with interval-censored moves.
+With two states it is the univariate right-truncated fit
+(``Weibull.fit(x, tl=tl, tr=tr)``, :math:`f(x) / (F(\tau) - F(t_l))`),
+checked to :math:`10^{-8}`, with and without covariates.
+
+In a simulated register (an illness-death model with Weibull hazards,
+1,200 units healthy at 0 with cut-offs uniform on 2 to 12 years, the 488
+dead by their cut-off kept) the fit with ``tr`` recovered all six
+parameters within one standard error of the truth; the fit that ignores
+the truncation put the scales of healthy to ill, healthy to dead and ill
+to dead at 4.6, 9.8 and 6.0 (truth 6, 25 and 8), 9 to 18 standard
+errors off.
+
+Right truncation is taken on the forward clock only (the reset clock's
+chance of reaching the state would need the renewal equations solved
+inside the likelihood), with a unit's covariates the same on each of its
+rows, and not with time-varying covariates; each is refused, saying
+what to do.
+
 States seen only at visits (panel data)
 ---------------------------------------
 
@@ -1083,8 +1145,9 @@ bounds at their nominal coverage
 What is not here yet
 --------------------
 
-The non-parametric and Cox spell models refuse interval-censored
-changes of state (the parametric ones take them); for states seen only
+The non-parametric and Cox spell models refuse interval-censored and
+left-censored changes of state and right truncation (the parametric ones
+take them; right truncation on the forward clock only); for states seen only
 at visits use ``PanelMultiState``, which has no hidden Markov
 (misclassification) model yet.
 On the clock reset with a way back, ``ParametricPanelMultiState`` and
