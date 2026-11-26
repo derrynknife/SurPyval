@@ -21,6 +21,7 @@ from .distributions import (
     Beta4,
     BetaGeometric,
     Binomial,
+    BirnbaumSaunders,
     CustomDistribution,
     DiscreteWeibull,
     Discretize,

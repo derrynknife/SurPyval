@@ -185,6 +185,7 @@ def _univariate():
         "GeneralizedGamma",
         "Gompertz",
         "InverseGaussian",
+        "BirnbaumSaunders",
         "Rayleigh",
         "Normal",
         "Gumbel",
@@ -3414,13 +3415,6 @@ def _bayes_competing_risks():
             rtol=1e-6,
             exclude={
                 **_BAYES_COMPOSITION_EXCLUDE,
-                "covariate_scale": "each cause's (transition's) "
-                "BayesianRegression is not equivariant to 1e-4 under a "
-                "covariate scaled by 1e-6: the Laplace engine's peak "
-                "search and Hessian steps are not scaled with the "
-                "coefficient (the plain WeibullPH.fit_bayes on these data "
-                "moves sf by up to 5e-4 too); a known gap of the shared "
-                "regression engine, not of the composition",
                 **{
                     key: "a column the data do not determine is refused "
                     "by each cause's regression fit_bayes, naming its "
@@ -3498,13 +3492,6 @@ def _bayes_multistate():
                 **common,
                 "exclude": {
                     **_BAYES_COMPOSITION_EXCLUDE,
-                    "covariate_scale": "each cause's (transition's) "
-                    "BayesianRegression is not equivariant to 1e-4 under a "
-                    "covariate scaled by 1e-6: the Laplace engine's peak "
-                    "search and Hessian steps are not scaled with the "
-                    "coefficient (the plain WeibullPH.fit_bayes on these data "
-                    "moves sf by up to 5e-4 too); a known gap of the shared "
-                    "regression engine, not of the composition",
                     **{
                         key: "a column the data do not determine is "
                         "refused by each transition's regression "
@@ -5551,6 +5538,7 @@ _PLAIN_CONTINUOUS: tuple[str, ...] = (
 )
 _PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
 _PLAIN_CONTINUOUS += ("GeneralizedGamma", "Gompertz", "InverseGaussian")
+_PLAIN_CONTINUOUS += ("BirnbaumSaunders",)
 _PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
 _PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
 _PLAIN_DISCRETE += ("DiscreteWeibull",)

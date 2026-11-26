@@ -34,6 +34,7 @@ PARAMS = {
     "Rayleigh": [9.0],
     "Gompertz": [0.1, 0.02],
     "InverseGaussian": [12.0, 20.0],
+    "BirnbaumSaunders": [0.6, 12.0],
     "GeneralizedGamma": [2.2, 0.6, 0.5],
 }
 
@@ -190,6 +191,7 @@ FAR = {
     "Rayleigh": (1e-200, 1e200),
     "Gompertz": (1e-300, 1e4),
     "InverseGaussian": (1e-3, 1e6),
+    "BirnbaumSaunders": (1e-3, 1e5),
     "GeneralizedGamma": (1e-300, 1e6),
 }
 

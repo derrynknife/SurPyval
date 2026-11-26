@@ -136,6 +136,7 @@ NAMED = (
     "Gamma",
     "GeneralizedF",
     "GeneralizedGamma",
+    "BirnbaumSaunders",
     "Gompertz",
     "Gumbel",
     "GumbelLEV",
