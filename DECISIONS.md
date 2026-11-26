@@ -20,6 +20,14 @@ Design decisions made while working on the open issues, with the reason for each
 | Decision | By | Reason | Status |
 |---|---|---|---|
 | A default candidate set aside (no finite maximum, not a verified maximum, or a non-regular family) while a regular fit is chosen is not warned about; it is shown in the table (`return_table=True`). A candidate the caller named (`include=`), or a choice among set-aside fits only, still warns. The alternative considered was dropping the GeneralizedF from the default candidates. | proposed | The GeneralizedF has no finite maximum on much ordinary data (Weibull samples of 40 to 50), so the warning appeared on every default call. Dropping it would change which models `fit_best` can choose. | done |
+### Extremely randomised survival trees (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `splitrule="random"` (default `"searched"`) on `SurvivalTree` and `RandomSurvivalForest`: one cut for each drawn feature, uniform between the node's minimum and maximum of that feature, read as the largest observed value at or below the draw; the best of those by the kind's existing split statistic. | proposed | Geurts, Ernst and Wehenkel's Extra-Trees; the planned default. | done |
+| It is implemented by giving the split rule each candidate feature as the indicator of being above its cut, so one code path serves every kind, `selection`, interval data and competing risks, and the statistics are untouched. | proposed | One place to change, and the statistic cannot differ from the searched one's. | done |
+| The forest keeps its bootstrap under the random rule; `bootstrap=False` gives the original Extra-Trees. | proposed | Out-of-bag scores (and the importances built on them) still exist. | done |
+| The done-check's seeds, noise band and data were fixed before the first run (`scripts/studies/extra_trees_oob.py`): Rossi and lung, 100 Weibull trees, seeds 0 to 9, within two standard deviations of the searched forest's seed-to-seed spread. Both passed; fit time was 0.55 of the searched forest's. | proposed | The issue's "within noise, and faster, measured". | done |
 
 ### Dates to durations (27 Nov 2026)
 
