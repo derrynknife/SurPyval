@@ -904,6 +904,9 @@ class BuckleyJames_(FitterRepr):
             The fitted model, which keeps the covariate names (or formula)
             so it predicts from DataFrame rows.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(

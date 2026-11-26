@@ -1277,6 +1277,9 @@ class PanelCountMCF(SerialisableMixin):
         >>> model.mcf([1000, 1500]).round(4)
         array([1., 2.])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         return cls.fit(
@@ -1680,6 +1683,9 @@ class PanelCountRegression(SerialisableMixin):
         >>> model.params.round(4)
         array([0.1823])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column, frame_columns
 
         names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

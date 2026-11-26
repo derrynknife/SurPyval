@@ -1163,6 +1163,7 @@ for _name in (
     "Logistic",
     "Beta",
     "ConformanceGompertz",
+    "BirnbaumSaunders",
     "Poisson",
     "Geometric",
     "NegativeBinomial",
@@ -1173,6 +1174,16 @@ for _name in (
 PLANS["ConformanceGompertz"] = Plan(
     _uni_censored, 300, 40, params=_parametric_params
 )
+# Models added with a simulator of their own (``random``) and a fixture
+# fitted to censored data: planned like the other univariate models, 40
+# refits (as ConformanceGompertz) because their fits are slower.
+for _name in (
+    "GeneralizedGamma",
+    "Gompertz",
+    "InverseGaussian",
+    "GeneralizedF",
+):
+    PLANS[_name] = Plan(_uni_censored, 300, 40, params=_parametric_params)
 PLANS["Uniform"] = Plan(
     _uni_plain,
     300,
@@ -1726,6 +1737,77 @@ EXCLUDED: dict[str, str] = {
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
+    **dict.fromkeys(
+        ("CrowAMSAA[bayes]", "HPP[bayes]", "ProportionalIntensityHPP[bayes]"),
+        "a posterior, whose calibration is the simulation-based "
+        "calibration study (calibration/test_sbc_recurrent_bayes.py)",
+    ),
+    "CauseSpecificNHPP[bayes]": "a posterior, not a point estimate to "
+    "recover: each cause's process is fitted by its own fit_bayes, "
+    "checked in tests/bayes/test_recurrent_bayes_more.py (no "
+    "simulation-based calibration study of the joint posterior yet)",
+    **dict.fromkeys(
+        (
+            "ParametricCompetingRisks[bayes]",
+            "ParametricCompetingRisks[interval, bayes]",
+            "ParametricCompetingRisksRegression[bayes]",
+        ),
+        "a posterior, not a point estimate to recover: each cause is "
+        "its distribution's (or regression's) own fit_bayes. The "
+        "calibration of the incidence's credible intervals is "
+        "calibration/test_sbc_competing_risks_bayes.py (exact times, "
+        "no regression); recovery with inspection windows is "
+        "tests/bayes/test_competing_risks_bayes_windows.py",
+    ),
+    **dict.fromkeys(
+        (
+            "ParametricMultiState[bayes]",
+            "ParametricMultiStateRegression[bayes]",
+        ),
+        "a posterior, not a point estimate to recover, and a history of "
+        "moves between states, which a model draw does not give (no "
+        "simulator of paths): each transition is its own fit_bayes, "
+        "checked in tests/bayes/test_multistate_bayes.py and "
+        "tests/bayes/test_regression_cr_ms_bayes.py",
+    ),
+    "WeibullPH[bayes]": "a posterior, not a point estimate to recover: "
+    "the Laplace engine checks its normal against the exact posterior "
+    "(tests/bayes/test_laplace.py) and the fit is tested in "
+    "tests/bayes/test_fit_regression.py",
+    **dict.fromkeys(
+        (
+            "ParametricMultiState[interval]",
+            "ParametricMultiStateRegression[interval]",
+        ),
+        "a history of moves between states, with the move into a state "
+        "known only to lie between two visits, which a model draw does not "
+        "give (no simulator of paths): recovery of the Weibull hazards from "
+        "simulated interval-censored paths is in "
+        "tests/multistate/test_interval.py, and of the parameters' bias and "
+        "bounds' coverage in calibration/test_coverage_multistate_interval.py",
+    ),
+    "ParametricPanelMultiState": "states seen only at visits, a history "
+    "which a model draw does not give (no simulator of visit schedules or "
+    "paths): its own study, "
+    "calibration/test_coverage_multistate_panel_parametric.py, simulates "
+    "panels and checks the parameters' bias and the bounds' coverage",
+    "ParametricPanelMultiStateRegression": "states seen only at visits, a "
+    "history which a model draw does not give (no simulator of visit "
+    "schedules or paths): its own study, "
+    "calibration/test_coverage_multistate_panel_regression.py, simulates "
+    "panels and checks the coefficients' bias and the bounds' coverage",
+    **dict.fromkeys(
+        ("Dabrowska", "Dabrowska[prentice-cai]", "Dabrowska[lin-ying]"),
+        "no simulation from the model: the estimate is a step surface "
+        "over the observed pairs and has no random(). Its own study, "
+        "calibration/test_coverage_dabrowska.py, draws pairs from a copula "
+        "with known margins and checks the coverage of the bounds on the "
+        "joint survival against the copula's closed form",
+    ),
+    "WeibullJointPH[markers]": "a lifetime with readings of two markers "
+    "along it, which a model draw does not give: recovery of fleets "
+    "simulated with two markers is in "
+    "univariate/joint/test_joint_markers.py",
     **dict.fromkeys(
         ("QuantileRegression", "QuantileRegression[portnoy]"),
         "the quantile process fitted to the fixture's 30 rows is constant "

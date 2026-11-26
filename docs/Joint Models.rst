@@ -376,7 +376,11 @@ model is searched once more from there, with their spreads small. If
 that search rises off the edge (by more than one part in a million of
 the log-likelihood), its answer is kept. Otherwise the fit is held on
 the edge. A verified fit with every spread clear of 0 is not searched
-again, so ordinary fits cost nothing more.
+again, so ordinary fits cost nothing more. A small spread just off 0 (above
+the 1% rule, with the likelihood rising a little off the edge) is not
+held, and its fit can still end unverified, with the warning; ask
+whether the parameter varies by comparing it with the fit where it is
+common, by ``aic()`` or ``likelihood_ratio_test`` (below).
 
 Second, what is reported. A fit held on the edge says so:
 

@@ -645,6 +645,9 @@ class ProportionalIntensityTVCFitMixin:
         >>> model.coeffs.round(4)
         array([0.6931])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return self._fit_tvc_frame(
             self.fit_tvc,
             df,
@@ -690,6 +693,9 @@ class ProportionalIntensityTVCFitMixin:
         >>> model.coeffs.round(4)
         array([0.6931])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return self._fit_tvc_frame(
             self.fit_tvc_timeline,
             df,

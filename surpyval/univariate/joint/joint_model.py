@@ -942,6 +942,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         and correlations (0) have no standard errors. Compare this fit
         with the one where they are common by ``aic()``, or by
         :meth:`likelihood_ratio_test`."""
+        # Only the fit's holding on the boundary (joint_ph's
+        # _held_on_the_boundary) writes an sd of exactly 0; a search
+        # ends at an sd above 0 (exp of its log), so an exact 0 marks it,
+        # in a fitted model and in one loaded from its dict.
         names = list(self.parameter_names)
         params = np.asarray(self.params, dtype=float)
         return [

@@ -101,6 +101,11 @@ deprecated and removed in the first release on or after 2027-04-12 (see
 
 .. autofunction:: surpyval.utils.round_sig
 
+Dates to durations: start and end dates (a blank end date meaning the unit is
+still running) to durations in a unit you choose and the censoring flags.
+
+.. autofunction:: surpyval.utils.dates_to_durations
+
 Unit labels (see :doc:`Conventions`): how a model stores the ``unit=`` it
 was given, and whether two labels name the same unit.
 

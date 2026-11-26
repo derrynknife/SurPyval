@@ -242,6 +242,9 @@ class MultiState(SerialisableMixin):
         >>> model.transitions.transitions
         (('healthy', 'dead'), ('healthy', 'ill'), ('ill', 'dead'))
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         def col(name: str | None, arg: str) -> Any:

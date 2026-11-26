@@ -275,6 +275,9 @@ def _fit_from_df(
     """The shared body of the process fitters' ``fit_from_df``: fit from
     the columns of ``df`` and record the covariate names on the model.
     The readings' column is ``m_col`` or its other name ``y_col``."""
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     refuse_column_names(fit_kwargs, "x", "y", "i")
     y_col = readings_column(m_col, y_col)
     cols = None
@@ -3161,6 +3164,9 @@ class WienerProcess:
         WienerProcessModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _fit_from_df(
             cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
         )
@@ -3912,6 +3918,9 @@ class GammaProcess:
         GammaProcessModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _fit_from_df(
             cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
         )

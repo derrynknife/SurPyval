@@ -110,6 +110,7 @@ SUPPORTED = (
     "GeneralizedGamma",
     "Gompertz",
     "InverseGaussian",
+    "BirnbaumSaunders",
 )
 
 #: The advice of a refusal of the parameters at Z = 0.
@@ -999,6 +1000,9 @@ class DistributionalFitter(
         >>> model.parameter_names
         ['alpha', 'beta', 'beta_load']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if formulas is not None:
             if formula is not None or Z_cols is not None:
                 raise ValueError(
