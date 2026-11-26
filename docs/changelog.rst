@@ -5,6 +5,29 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **The mean life of a Wiener process whose drift is not positive is
+  infinite: a correctness change.** (``WienerProcess.fit`` refuses
+  such a drift; this is a model built from its parameters.)
+  ``WienerProcessModel.mean()``
+  returned ``(threshold - y0) / mu``, which is negative for a negative
+  drift (-50 at ``mu = -0.2``, ``sigma = 1``, a distance of 10) and a
+  ``ZeroDivisionError`` at zero drift. Without a positive drift a unit
+  either may never reach the threshold (below zero it does so only with
+  probability ``exp(2 mu D / sigma**2)``) or, at zero, always does but
+  with an infinite mean (the Levy law), so the mean life is now ``inf``,
+  at any stress and from any ``y0``. At zero drift every method used to
+  fail on the same division (``sf``, ``ff``, ``df``, ``qf``,
+  ``predict_rul``, the repr): they now give the Levy law (``ff(t) = 2
+  Phi(-D / (sigma sqrt(t)))``, median ``D**2 / (sigma**2 z_0.75**2)``,
+  219.8 at ``D = 10``, ``sigma = 1``). ``random`` with a negative drift
+  raised ``ValueError`` and now draws ``inf`` for the units that never
+  cross (a fraction ``1 - exp(2 mu D / sigma**2)``) and the |mu|
+  Inverse-Gaussian time for the rest. Quantiles (B-lives) and remaining
+  lives past the probability of ever crossing were already ``inf`` and
+  are unchanged, as is every number at a positive drift. The gamma
+  process needs a positive ``alpha`` and its mean is always finite; the
+  Bayesian process fit already gave ``inf`` here.
+
 - **GeneralizedGamma, GeneralizedF, Gompertz and InverseGaussian in the
   far tails: a correctness change.** The four are now checked against
   50-digit mpmath values on the tails grid (``test_tails.py``), as every

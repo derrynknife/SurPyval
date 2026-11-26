@@ -2532,8 +2532,14 @@ class WienerProcessModel(FirstPassageProcessModel):
     failure ``threshold`` is Inverse-Gaussian distributed with mean ``D /
     mu`` and shape ``D**2 / sigma**2``, where ``D = threshold - y0`` is the
     distance to failure, and the failure-time methods below evaluate that
-    distribution. A positive drift ``mu`` is required for a proper
-    (non-defective) life distribution.
+    distribution. With a drift ``mu`` at or below zero the life is still
+    described exactly, but it is no longer a proper distribution of a
+    finite time: at zero drift every unit crosses eventually (``ff(inf)
+    = 1``, the Levy law) but the mean life is infinite, and with a
+    negative drift a unit crosses only with probability ``exp(2 mu D /
+    sigma**2)`` (``ff(inf)``), so the mean life is infinite, quantiles
+    past that probability are ``inf``, and :meth:`random` draws ``inf``
+    for the units that never cross.
 
     Parameters
     ----------
@@ -2608,31 +2614,30 @@ class WienerProcessModel(FirstPassageProcessModel):
         self._init_stress(gamma, stress_ref)
         self._init_y0(y0)
 
-    def _ig(self, distance: float) -> tuple[float, float]:
-        # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
-        # over ``distance`` at drift mu / diffusion sigma.
-        nu = distance / self.mu
-        lam = distance**2 / self.sigma**2
-        return nu, lam
-
     def _ig_terms(
         self, t: npt.NDArray, distance: float
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         The two pieces of the Inverse-Gaussian CDF at ``t > 0``,
-        ``F = Phi(a) + exp(2 lam / nu) Phi(-b)``: returns ``a`` and the log
-        of the second term, ``2 lam / nu + log Phi(-b)``.
+        ``F = Phi(a) + exp(2 mu D / sigma**2) Phi(-b)`` with ``a = (mu t -
+        D) / (sigma sqrt(t))`` and ``b = (mu t + D) / (sigma sqrt(t))``:
+        returns ``a`` and the log of the second term, ``2 mu D / sigma**2
+        + log Phi(-b)``.
 
-        The second term is formed in log space because ``exp(2 lam / nu)``
-        overflows once ``2 D mu / sigma**2`` passes ~709 (a low-noise or
-        high-threshold process), which made ``sf``/``ff`` nan. The log is
-        always at most about ``-log(b)``: ``b**2 / 2 >= 2 lam / nu``.
+        It is written in the drift itself, not the Inverse-Gaussian mean
+        ``D / mu``, so it holds for any drift: at zero it is the Levy law
+        ``2 Phi(-D / (sigma sqrt(t)))`` (the mean form divided by zero),
+        and with a negative drift it is the defective law that tends to
+        ``exp(2 mu D / sigma**2)``. The second term is formed in log space
+        because ``exp(2 mu D / sigma**2)`` overflows once it passes ~709 (a
+        low-noise or high-threshold process), which made ``sf``/``ff``
+        nan. The log is always at most about ``-log(b)``.
         """
-        nu, lam = self._ig(distance)
-        root = np.sqrt(lam / t)
-        a = root * (t / nu - 1.0)
-        b = root * (t / nu + 1.0)
-        return a, 2.0 * lam / nu + log_ndtr(-b)
+        root = self.sigma * np.sqrt(t)
+        a = (self.mu * t - distance) / root
+        b = (self.mu * t + distance) / root
+        log_second = 2.0 * self.mu * distance / self.sigma**2 + log_ndtr(-b)
+        return a, log_second
 
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # Inverse-Gaussian first-passage CDF over ``distance``.
@@ -2675,14 +2680,19 @@ class WienerProcessModel(FirstPassageProcessModel):
         return np.exp(self._log_sf_distance(t, distance))
 
     def _log_df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
-        # Log density of the first-passage (Inverse-Gaussian) time.
-        nu, lam = self._ig(distance)
+        # Log density of the first-passage time, ``D / (sigma sqrt(2 pi
+        # t**3)) exp(-(D - mu t)**2 / (2 sigma**2 t))``: the
+        # Inverse-Gaussian density for a positive drift, and the same
+        # formula (the Levy density at zero, a defective one below) for
+        # any other.
         out = np.full_like(t, -np.inf, dtype=float)
         pos = (t > 0) & np.isfinite(t)
         tp = t[pos]
-        out[pos] = 0.5 * np.log(lam / (2.0 * np.pi * tp**3)) - lam * (
-            tp - nu
-        ) ** 2 / (2.0 * nu**2 * tp)
+        out[pos] = (
+            np.log(distance / self.sigma)
+            - 0.5 * np.log(2.0 * np.pi * tp**3)
+            - (distance - self.mu * tp) ** 2 / (2.0 * self.sigma**2 * tp)
+        )
         return out
 
     def _df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
@@ -2690,18 +2700,40 @@ class WienerProcessModel(FirstPassageProcessModel):
         return np.exp(self._log_df0(t, distance))
 
     def _mean0(self, distance: float) -> float:
-        # Mean time to failure, ``distance / mu``.
-        return distance / self.mu
+        # Mean time to failure, ``distance / mu`` for a positive drift.
+        # At zero drift every unit crosses but the mean of the Levy law is
+        # infinite, and below zero some units never cross: infinite both
+        # ways. ``distance / mu`` divided by zero, or was negative.
+        if self.mu > 0:
+            return distance / self.mu
+        return np.inf
 
     def _quantile_hi0(self, distance: float) -> float:
-        # bracket around the first-passage mean
-        return distance / self.mu
+        # bracket around the first-passage mean, or around the time scale
+        # ``D**2 / sigma**2`` of the diffusion when there is no mean
+        if self.mu > 0:
+            return distance / self.mu
+        return distance**2 / self.sigma**2
 
     def _random0(
         self, size: int, rng: np.random.Generator, distance: float
     ) -> npt.NDArray:
-        nu, lam = self._ig(distance)
-        return rng.wald(nu, lam, size=size)
+        lam = distance**2 / self.sigma**2
+        if self.mu > 0:
+            return rng.wald(distance / self.mu, lam, size=size)
+        if self.mu == 0:
+            # the Levy law: D**2 / (sigma**2 Z**2), Z standard normal
+            return lam / rng.standard_normal(size) ** 2
+        # Below zero a unit crosses with probability exp(2 mu D /
+        # sigma**2), and given that it crosses its time is the
+        # Inverse-Gaussian of drift |mu| (the density with drift mu is
+        # that one times the probability); the rest never cross: inf.
+        crosses = rng.uniform(size=size) < self._ff_at_infinity(distance)
+        draws = np.full(size, np.inf)
+        draws[crosses] = rng.wald(
+            distance / -self.mu, lam, size=int(crosses.sum())
+        )
+        return draws
 
     def _level(
         self, t: float, t0: float, start: float, exposure: float
