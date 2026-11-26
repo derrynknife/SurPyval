@@ -274,10 +274,11 @@ order of how often it is asked for within each group; not a plan.
 **Recurrent, parametric (reliability growth).**
 
 - The maturity projection models' finite-number-of-modes forms and
-  bounds on the projections. Built: Duane, Crow-AMSAA, Crow
+  method-of-moments estimates. Built: Duane, Crow-AMSAA, Crow
   Extended, the AMSAA-Crow projection, the maturity projections (AMPM,
   AMPM-Stein and ADPM-Stein in their many-modes forms,
-  MIL-HDBK-189C section 6.3.4 to 6.3.6), the discrete growth models
+  MIL-HDBK-189C section 6.3.4 to 6.3.6, with parametric bootstrap
+  bounds), the discrete growth models
   (Crow-AMSAA discrete, Lloyd-Lipow, Gompertz, modified Gompertz) and the
   planning curves (`surpyval.test_planning`: the idealised curve,
   PM2-Continuous and PM2-Discrete).

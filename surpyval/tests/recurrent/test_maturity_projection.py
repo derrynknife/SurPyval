@@ -317,3 +317,247 @@ def test_adpm_refusals():
         adpm_stein_projection([4, 2], 40)
     with pytest.raises(ValueError, match="no failures"):
         adpm_stein_projection(COUNTS, 40, fef={"wing": 0.5})
+
+
+# -- the bootstrap bounds -----------------------------------------------------
+
+
+def _fits():
+    return (
+        ampm_projection(X, MODES, FEF, c=C),
+        ampm_stein_projection(X, MODES, FEF, c=C),
+        adpm_stein_projection(COUNTS, trials=40, fef=DFEF),
+    )
+
+
+def _cb(fit, **kw):
+    if isinstance(fit, DiscreteSteinProjection):
+        return fit.projected_reliability_cb(**kw)
+    return fit.projected_intensity_cb(**kw)
+
+
+def _point(fit):
+    if isinstance(fit, DiscreteSteinProjection):
+        return fit.projected_reliability
+    return fit.projected_intensity
+
+
+@pytest.mark.parametrize("target", ["realised", "expected"])
+@pytest.mark.parametrize("which", [0, 1, 2])
+def test_bootstrap_bounds_are_seeded_and_consistent(which, target):
+    fit = _fits()[which]
+    kw = dict(target=target, n_boot=300, random_state=7)
+    two = _cb(fit, alpha_ci=0.1, **kw)
+    assert two.shape == (2,) and two[0] < _point(fit) < two[1]
+    np.testing.assert_array_equal(two, _cb(fit, alpha_ci=0.1, **kw))
+    # A one-sided bound at alpha is the two-sided one at 2 alpha.
+    lower = _cb(fit, alpha_ci=0.05, bound="lower", **kw)
+    upper = _cb(fit, alpha_ci=0.05, bound="upper", **kw)
+    assert np.ndim(lower) == 0
+    assert lower == pytest.approx(two[0], rel=1e-14)
+    assert upper == pytest.approx(two[1], rel=1e-14)
+    if not isinstance(fit, DiscreteSteinProjection):
+        mtbf = fit.projected_mtbf_cb(alpha_ci=0.1, **kw)
+        np.testing.assert_allclose(mtbf, 1 / two[::-1], rtol=1e-15)
+        low = fit.projected_mtbf_cb(alpha_ci=0.05, bound="lower", **kw)
+        assert low == pytest.approx(1 / two[1], rel=1e-14)
+
+
+def test_ampm_bounds_over_time():
+    fit = _fits()[0]
+    t = np.array([200.0, 400.0, 800.0, np.inf])
+    for target in ("realised", "expected"):
+        b = fit.intensity_cb(t, target=target, n_boot=300, random_state=3)
+        assert b.shape == (4, 2)
+        point = fit.intensity(t)
+        assert np.all(b[:, 0] < point) and np.all(point < b[:, 1])
+    assert fit.intensity(np.inf) == pytest.approx(
+        fit.growth_potential_intensity
+    )
+    b = fit.intensity_cb(400.0, n_boot=300, random_state=3)
+    np.testing.assert_array_equal(
+        b, fit.projected_intensity_cb(n_boot=300, random_state=3)
+    )
+    one = fit.mtbf_cb(t, bound="lower", n_boot=300, random_state=3)
+    assert one.shape == (4,)
+
+
+@pytest.mark.parametrize("which", [0, 1, 2])
+def test_bootstrap_bounds_refusals(which):
+    fit = _fits()[which]
+    with pytest.raises(ValueError, match="only bootstrap bounds"):
+        _cb(fit, method="wald")
+    with pytest.raises(ValueError, match="'bound' must be"):
+        _cb(fit, bound="both")
+    with pytest.raises(ValueError, match="'target' must be"):
+        _cb(fit, target="true")
+    with pytest.raises(ValueError, match="n_boot must be"):
+        _cb(fit, n_boot=1)
+    with pytest.raises(ValueError, match="alpha_ci"):
+        _cb(fit, alpha_ci=1.5)
+    if which == 0:
+        with pytest.raises(ValueError, match="times from 0"):
+            fit.intensity_cb(-1.0)
+
+
+def test_discrete_bootstrap_population_matches_the_fit():
+    # The simulated population's expected modes seen is the number seen,
+    # m, and its expected failures a trial the fitted total chance c.
+    fit = _fits()[2]
+    T, n = fit.trials, fit.pseudo_trials
+    j = np.arange(1, T + 1, dtype=float)
+    c = 4 / (n * np.sum(1 / (n + np.arange(T))))
+    mean_j = c * n * special.comb(T, j) * np.exp(special.betaln(j, n + T - j))
+    assert mean_j.sum() == pytest.approx(4, rel=1e-12)
+    assert np.sum(j * mean_j) / T == pytest.approx(c, rel=1e-12)
+
+
+def test_the_unseen_modes_draws_have_their_exact_moments():
+    from surpyval.recurrent.maturity_projection import (
+        _beta_unseen,
+        _gamma_realised,
+    )
+
+    rng = np.random.default_rng(1)
+    # Beta population: -sum ln(1 - p) over the unseen modes has mean
+    # c n psi'(n + T) and variance -c n psi''(n + T).
+    c, n, T = 0.5, 30.0, 40
+    draws = np.array([_beta_unseen(rng, c * n, n + T) for _ in range(40000)])
+    mean = c * n * special.polygamma(1, n + T)
+    var = -c * n * special.polygamma(2, n + T)
+    assert draws.mean() == pytest.approx(mean, rel=0.01)
+    assert draws.var() == pytest.approx(var, rel=0.03)
+    # Gamma population (shape a, scale s): the unseen modes' intensity
+    # once those surfacing in u more are fixed has mean
+    # a s_u + (1 - mu) (a s - a s_u), s_u = s / (1 + s u).
+    a, s, pool = 8.0, 0.004, np.array([0.5, 0.9])
+    for u in (0.0, 300.0, np.inf):
+        draws = np.array(
+            [_gamma_realised(rng, a, s, pool, u) for _ in range(40000)]
+        )
+        s_u = 0.0 if np.isinf(u) else s / (1 + s * u)
+        mean = a * s_u + 0.3 * (a * s - a * s_u)
+        assert draws.mean() == pytest.approx(mean, rel=0.01), u
+
+
+def _coverage(reps, n_boot, seed):
+    """Two-sided 90% bounds of each model and target on ``reps``
+    simulated tests: the share covering each target's truth."""
+    from surpyval.tests.recurrent import _maturity_sims as sims
+
+    rng = np.random.default_rng(seed)
+    alpha = 0.1
+    hits: dict = {}
+
+    def record(name, target, bounds, truth):
+        hits.setdefault((name, target), []).append(
+            bounds[0] <= truth <= bounds[1]
+        )
+
+    expected = sims.continuous_truth()
+    for rep in range(reps):
+        x, modes, c, fef, a_modes, real = sims.continuous_test(rng)
+        for name in ("ampm", "stein"):
+            for target, truth in (("realised", real), ("expected", expected)):
+                try:
+                    if name == "ampm":
+                        fit = ampm_projection(x, modes, fef, c=c)
+                    else:
+                        fit = ampm_stein_projection(
+                            x, modes, fef, c=c, a_modes=a_modes
+                        )
+                    b = fit.projected_intensity_cb(
+                        alpha, target=target, n_boot=n_boot, random_state=rep
+                    )
+                except ValueError:  # the fit refused: a miss
+                    b = np.array([np.nan, np.nan])
+                record(name, target, b, truth)
+    expected = sims.discrete_truth()
+    for rep in range(reps):
+        failures, fef, real = sims.discrete_test(rng)
+        for target, truth in (("realised", real), ("expected", expected)):
+            try:
+                b = adpm_stein_projection(
+                    failures, 40, fef=fef
+                ).projected_reliability_cb(
+                    alpha, target=target, n_boot=n_boot, random_state=rep
+                )
+            except ValueError:
+                b = np.array([np.nan, np.nan])
+            record("discrete", target, b, truth)
+    return {k: float(np.mean(v)) for k, v in hits.items()}
+
+
+def test_bootstrap_coverage_reduced():
+    # A reduced, seeded version of the calibration study (sizes fixed in
+    # advance): 100 simulated tests of 20,000 modes each, 200 replicates,
+    # two-sided 90% bounds, each target against its own truth.
+    cover = _coverage(reps=100, n_boot=200, seed=1126)
+    print(cover)
+    for key, value in cover.items():
+        assert abs(value - 0.9) <= 0.09, (key, value)
+
+
+def test_stein_bounds_narrow_as_the_test_lengthens():
+    # The realised projection is learnt ever better from the repeats; the
+    # AMPM, which reads only first occurrences, does not narrow (see its
+    # notes), so it is not checked here.
+    from surpyval.tests.recurrent import _maturity_sims as sims
+
+    widths: dict = {"stein": [], "discrete": []}
+    for end in (300.0, 3000.0, 30000.0):
+        rng = np.random.default_rng(1127)
+        x, modes, c, fef, a_modes, _ = sims.continuous_test(rng, end=end)
+        s = ampm_stein_projection(
+            x, modes, fef, c=c, a_modes=a_modes
+        ).projected_intensity_cb(n_boot=400, random_state=1)
+        widths["stein"].append((s[1] - s[0]) / s.mean())
+    for trials in (40, 400, 4000):
+        rng = np.random.default_rng(1127)
+        failures, fef, _ = sims.discrete_test(rng, trials=trials)
+        d = adpm_stein_projection(
+            failures, trials, fef=fef
+        ).projected_reliability_cb(n_boot=400, random_state=1)
+        widths["discrete"].append(d[1] - d[0])
+    print(widths)
+    for name, w in widths.items():
+        assert w[0] > w[1] > w[2], (name, w)
+    assert widths["stein"][2] < 0.1 and widths["discrete"][2] < 0.05
+
+
+# -- the handbook's worked example --------------------------------------------
+
+
+def test_ampm_handbook_crow_extended_example():
+    # MIL-HDBK-189C TABLE XV (56 failures in 400 hours; 10 A, 12 BC and 16
+    # BD modes), analysed by the AMPM with every BC and BD mode a B mode
+    # at the BD modes' average FEF, 0.72 (MIL-HDBK-00189A section 7.6.8,
+    # TABLE XIX): growth potential MTBF 15.24, projected MTBF 10.75.
+    rows = (
+        "0.7 BC1, 3.7 BC1, 13.2 BC1, 15 BD1, 17.6 BC2, 25.3 BD2, 47.5 BD3, "
+        "54.0 BD4, 54.5 BC3, 56.4 BD5, 63.6 A, 72.2 BD5, 99.2 BC4, "
+        "99.6 BD6, 100.3 BD7, 102.5 A, 112.0 BD8, 112.2 BC5, 120.9 BD2, "
+        "121.9 BC6, 125.5 BD9, 133.4 BD10, 151.0 BC7, 163.0 BC8, 164.7 BD9, "
+        "174.5 BC9, 177.4 BD10, 191.6 BC10, 192.7 BD11, 213.0 A, 244.8 A, "
+        "249.0 BD12, 250.8 A, 260.1 BD1, 263.5 BD8, 273.1 A, 274.7 BD6, "
+        "282.8 BC11, 285.0 BD13, 304.0 BD9, 315.4 BD4, 317.1 A, 320.6 A, "
+        "324.5 BD12, 324.9 BD10, 342.0 BD5, 350.2 BD3, 355.2 BC12, "
+        "364.6 BD10, 364.9 A, 366.3 BD2, 373.0 BD8, 379.4 BD14, 389.0 BD15, "
+        "394.9 A, 395.2 BD16"
+    )
+    x, modes = [], []
+    for k, row in enumerate(rows.split(", ")):
+        t, mode = row.split()
+        x.append(float(t))
+        modes.append(f"A{k}" if mode == "A" else mode)
+    assert len(x) == 56
+    fef = {m: 0.72 for m in set(modes) if m.startswith("B")}
+    result = ampm_projection(x + [400], modes + [None], fef, c=[0] * 56 + [1])
+    assert result.failures == {"A": 10, "B": 46} and len(result.modes) == 28
+    assert round(result.growth_potential_mtbf, 2) == 15.24
+    # The handbook's projected MTBF, 10.75, came from a program option for
+    # fixes made during the test whose formula is not given; the model's
+    # own formula gives 10.68 (0.7% lower), with the same lambda_A,
+    # lambda_B and mean FEF (the growth potential agrees).
+    assert result.projected_mtbf == pytest.approx(10.75, rel=0.01)
+    assert round(result.projected_mtbf, 2) == 10.68

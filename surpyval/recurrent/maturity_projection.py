@@ -39,6 +39,12 @@ Each refuses data with no repeated mode, where that cannot be judged.
 These are the many-modes (``k`` to infinity) forms, the ones the handbook
 recommends for complex systems; the finite-``k`` forms and the
 method-of-moments estimates are not built.
+
+Each record's ``*_cb`` methods give parametric bootstrap bounds: the whole
+test is simulated again from the fitted mode population (which modes
+surface, how often and, for the AMPM, when), each surfaced mode is given a
+fix-effectiveness factor drawn from the assessed ones, and the projection
+is estimated again from each simulated test.
 """
 
 from __future__ import annotations
@@ -50,6 +56,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from scipy import optimize, special
+
+from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 __all__ = [
     "AMPMProjection",
@@ -196,6 +205,17 @@ class AMPMProjection:
     mean_fef : float
         The mean fix-effectiveness factor of the B modes seen,
         :math:`\\mu_d`.
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import ampm_projection
+    >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    >>> modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1",
+    ...          "a1", "b5", None]
+    >>> fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6, "b5": 0.7}
+    >>> result = ampm_projection(x, modes, fef, c=[0] * 11 + [1])
+    >>> type(result).__name__, round(result.projected_mtbf, 2)
+    ('AMPMProjection', 50.12)
     """
 
     T: float
@@ -260,6 +280,187 @@ class AMPMProjection:
     @property
     def growth_potential_mtbf(self) -> float:
         return _reciprocal(self.growth_potential_intensity)
+
+    # -- bounds ------------------------------------------------------------
+
+    def intensity_cb(
+        self,
+        t: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Parametric bootstrap bounds on :meth:`intensity` at ``t``
+        (``None``, the default, is the end of the test, ``T``; ``inf`` is
+        the growth potential).
+
+        In plain words: each of ``n_boot`` replicates runs the test again
+        on a system drawn from the fitted model, estimates the projection
+        from it the same way, and compares. The model is the many-modes
+        gamma population at the fitted ``lambda_B`` and ``beta``: the B
+        modes a test shows are a Poisson number (mean the number seen),
+        each with a logarithmic-series count of failures
+        (:math:`p = \\beta T / (1 + \\beta T)`) spread uniformly over the
+        test (so its first occurrence is ``T`` times the least of that many
+        uniforms), and a fix-effectiveness factor drawn from those assessed
+        for the B modes seen, independently of its rate (so the mean factor
+        varies with which modes surface, as it would); the A failures are
+        a Poisson count of ``lambda_A T``.
+
+        ``target="realised"`` (the default) bounds the intensity this
+        system will have once the B modes seen by ``t`` are fixed: a
+        prediction interval, since that intensity is itself uncertain
+        (how large the modes not seen are, and the seen ones' true rates).
+        Each replicate also draws its system's realised value (a seen
+        mode's rate, given ``N`` failures, is gamma with shape ``N`` and
+        scale :math:`\\beta / (1 + \\beta T)`; the modes not seen total a
+        gamma of shape :math:`\\lambda_B / \\beta` and the same scale), and
+        the bounds are the estimate less the percentiles of the replicates'
+        errors, on the log of the intensity. ``target="expected"`` bounds
+        the model's projected intensity, its expected value over tests like
+        this one: the percentiles of the replicates' estimates. The AMPM
+        reads only first occurrences, so neither interval closes up as the
+        test lengthens (the total B-mode intensity is read from how fast
+        new modes appear, not from the repeats); AMPM-Stein's realised
+        interval does.
+
+        Held fixed: the assessed factors themselves (an engineering
+        judgement, not a result of the test, so they are not perturbed),
+        which modes are B modes, and ``T``. A replicate whose first
+        occurrences do not thin out is estimated at its limit (no growth,
+        :math:`\\beta \\to 0`) and one with no B mode at ``lambda_A``,
+        rather than dropped. The percentiles are ``alpha_ci / 2`` and
+        ``1 - alpha_ci / 2`` two-sided, ``alpha_ci`` one-sided.
+
+        Parameters
+        ----------
+        t : array_like, optional
+            As :meth:`intensity` takes it; ``T`` by default.
+        alpha_ci : float, optional
+            One minus the confidence level, by default 0.05.
+        bound : str, optional
+            ``"two-sided"`` (rows of lower and upper), ``"lower"`` or
+            ``"upper"``.
+        method : str, optional
+            ``"bootstrap"``, the only bound built: the projection combines
+            a fitted population with assessed factors, and its estimates
+            sit on the edge of their range for tests a little smaller than
+            the one seen, where Wald and likelihood-ratio approximations
+            fail.
+        target : str, optional
+            Keyword only: ``"realised"`` (this system's intensity once
+            fixed, the default) or ``"expected"`` (the model's expected
+            projected intensity).
+        n_boot : int, optional
+            Keyword only: the bootstrap's replicates, by default 1000.
+        random_state : None, int or numpy.random.Generator, optional
+            Keyword only: the bootstrap's seed (see the conventions on
+            random draws); ``None`` draws from numpy's global generator.
+
+        Returns
+        -------
+        numpy.ndarray or float
+            ``(..., 2)`` for two-sided bounds, else the shape of ``t``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import ampm_projection
+        >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+        >>> modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1",
+        ...          "a1", "b5", None]
+        >>> fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6, "b5": 0.7}
+        >>> result = ampm_projection(x, modes, fef, c=[0] * 11 + [1])
+        >>> result.projected_mtbf_cb(bound="lower", random_state=1).round(1)
+        np.float64(27.6)
+        """
+        tail = _boot_tail(alpha_ci, bound, method, target, n_boot)
+        times = np.asarray(self.T if t is None else t, dtype=float)
+        if np.any(np.isnan(times)) or np.any(times < 0):
+            raise ValueError("t must be times from 0 (inf for the limit).")
+        flat = times.reshape(-1)
+        est, real = _ampm_draws(
+            self,
+            flat,
+            int(n_boot),
+            as_generator(random_state),
+            target == "realised",
+        )
+        point = np.asarray(self.intensity(flat), dtype=float)
+        return _boot_bounds(point, est, real, tail, bound, times.shape, "log")
+
+    def mtbf_cb(
+        self,
+        t: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Bounds on :meth:`mtbf`: the reciprocals of
+        :meth:`intensity_cb`'s (the same replicates for the same seed), so
+        a lower bound here is an upper bound on the intensity. See
+        :meth:`intensity_cb` for the arguments."""
+        return _reciprocal_bounds(
+            lambda b: self.intensity_cb(
+                t,
+                alpha_ci,
+                b,
+                method,
+                target=target,
+                n_boot=n_boot,
+                random_state=random_state,
+            ),
+            bound,
+        )
+
+    def projected_intensity_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Bounds on :attr:`projected_intensity`, ``intensity_cb(T)``."""
+        return self.intensity_cb(
+            None,
+            alpha_ci,
+            bound,
+            method,
+            target=target,
+            n_boot=n_boot,
+            random_state=random_state,
+        )
+
+    def projected_mtbf_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Bounds on :attr:`projected_mtbf`, ``mtbf_cb(T)``."""
+        return self.mtbf_cb(
+            None,
+            alpha_ci,
+            bound,
+            method,
+            target=target,
+            n_boot=n_boot,
+            random_state=random_state,
+        )
 
     def __repr__(self) -> str:
         title = "Maturity projection (AMPM)"
@@ -475,6 +676,17 @@ class SteinProjection:
     projected_intensity : float
     initial_intensity : float
         The intensity before any fix, ``N / T`` over every mode.
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import ampm_stein_projection
+    >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    >>> modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1",
+    ...          "a1", "b5", None]
+    >>> fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6, "b5": 0.7}
+    >>> result = ampm_stein_projection(x, modes, fef, c=[0] * 11 + [1])
+    >>> type(result).__name__, round(result.projected_mtbf, 2)
+    ('SteinProjection', 52.2)
     """
 
     T: float
@@ -494,6 +706,96 @@ class SteinProjection:
     @property
     def initial_mtbf(self) -> float:
         return _reciprocal(self.initial_intensity)
+
+    # -- bounds ------------------------------------------------------------
+
+    def projected_intensity_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Parametric bootstrap bounds on :attr:`projected_intensity`.
+
+        In plain words: each of ``n_boot`` replicates runs the test again
+        on a system drawn from the fitted model, estimates the projection
+        from it the same way, and compares. The model is the many-modes
+        gamma population at the fitted ``beta`` and :math:`\\lambda_B =
+        N_B / T`: the B modes a test shows are a Poisson number (mean the
+        number seen), each with a logarithmic-series count of failures
+        (:math:`p = \\theta`) and a fix-effectiveness factor drawn from
+        those of the B modes seen (0 for a mode not to be fixed),
+        independently of its rate; with ``a_modes``, the A failures are a
+        Poisson count of ``lambda_A T``.
+
+        ``target="realised"`` (the default) bounds the intensity this
+        system will have once its seen modes are fixed, the quantity the
+        Stein projection estimates: a prediction interval. Each replicate
+        also draws its system's realised value (a seen mode's rate, given
+        ``N`` failures, is gamma with shape ``N`` and scale
+        :math:`\\beta / (1 + \\beta T)`; the modes not seen total a gamma of
+        shape :math:`\\lambda_B / \\beta` and the same scale), and the bounds
+        are the estimate less the percentiles of the replicates' errors, on
+        the log of the intensity. It closes up as the test lengthens.
+        ``target="expected"`` bounds the model's expected projected
+        intensity over tests like this one (the percentiles of the
+        replicates' estimates), which stays as wide as the spread of the
+        mode population's total.
+
+        Held fixed: the assessed factors themselves (not perturbed: they
+        are a judgement, not a result of the test), the A-mode list and the
+        total test time. A replicate with no mode seen more than once is
+        estimated at its limit, :math:`\\theta = 0` (no credit for the
+        fixes), rather than dropped.
+
+        See :meth:`AMPMProjection.intensity_cb` for the arguments.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import ampm_stein_projection
+        >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+        >>> modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1",
+        ...          "a1", "b5", None]
+        >>> fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6, "b5": 0.7}
+        >>> result = ampm_stein_projection(x, modes, fef, c=[0] * 11 + [1])
+        >>> result.projected_mtbf_cb(bound="lower", random_state=1).round(1)
+        np.float64(24.4)
+        """
+        tail = _boot_tail(alpha_ci, bound, method, target, n_boot)
+        est, real = _stein_draws(
+            self, int(n_boot), as_generator(random_state), target == "realised"
+        )
+        point = np.array([self.projected_intensity])
+        return _boot_bounds(point, est, real, tail, bound, (), "log")
+
+    def projected_mtbf_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Bounds on :attr:`projected_mtbf`: the reciprocals of
+        :meth:`projected_intensity_cb`'s (the same replicates for the same
+        seed)."""
+        return _reciprocal_bounds(
+            lambda b: self.projected_intensity_cb(
+                alpha_ci,
+                b,
+                method,
+                target=target,
+                n_boot=n_boot,
+                random_state=random_state,
+            ),
+            bound,
+        )
 
     def __repr__(self) -> str:
         title = "Maturity projection (AMPM-Stein)"
@@ -672,6 +974,16 @@ class DiscreteSteinProjection:
         :math:`\\exp[-(1 - \\theta) N / T]`.
     projected_reliability : float
         The chance a trial succeeds once the seen modes are fixed.
+
+    Examples
+    --------
+    >>> from surpyval.recurrent import adpm_stein_projection
+    >>> result = adpm_stein_projection(
+    ...     {"seal": 4, "igniter": 2, "fin": 1, "fuze": 1}, trials=40,
+    ...     fef={"seal": 0.8, "igniter": 0.7, "fin": 0.6},
+    ... )
+    >>> type(result).__name__, round(result.projected_reliability, 3)
+    ('DiscreteSteinProjection', 0.899)
     """
 
     trials: int
@@ -681,6 +993,67 @@ class DiscreteSteinProjection:
     initial_reliability: float
     unseen_reliability: float
     projected_reliability: float
+
+    # -- bounds ------------------------------------------------------------
+
+    def projected_reliability_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "bootstrap",
+        *,
+        target: str = "realised",
+        n_boot: int = 1000,
+        random_state: Any = None,
+    ) -> Any:
+        """Parametric bootstrap bounds on :attr:`projected_reliability`.
+
+        In plain words: each of ``n_boot`` replicates runs the trials again
+        on a design drawn from the fitted model, estimates the projection
+        from it the same way, and compares. The model is the many-modes
+        beta population at the fitted ``pseudo_trials`` :math:`n` and total
+        chance :math:`c = m / \\sum_{j=0}^{T-1} n / (n + j)`: the number of
+        modes that fail exactly ``j`` of the ``T`` trials is a Poisson
+        count of mean :math:`c\\, n \\binom{T}{j} B(j, n + T - j)`, for
+        ``j`` from 1 to ``T``, and each seen mode gets a fix-effectiveness
+        factor drawn from those assessed (0 for a mode not to be fixed).
+
+        ``target="realised"`` (the default) bounds the chance that this
+        design's trial succeeds once its seen modes are fixed: a prediction
+        interval. Each replicate also draws its design's realised value (a
+        mode seen ``j`` times has the chance :math:`\\mathrm{Beta}(j, n + T
+        - j)`; the modes not seen are drawn exactly as a Poisson process),
+        and the bounds are the estimate less the percentiles of the
+        replicates' errors, on :math:`\\ln(-\\ln r)`. It closes up as the
+        trials grow. ``target="expected"`` bounds the model's expected
+        projected reliability over tests like this one (the percentiles of
+        the replicates' estimates).
+
+        Held fixed: the assessed factors themselves and the number of
+        trials. A replicate with no mode seen more than once is estimated
+        at its limit, :math:`\\theta = 0` (no credit for the fixes), rather
+        than dropped.
+
+        See :meth:`AMPMProjection.intensity_cb` for the arguments.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import adpm_stein_projection
+        >>> result = adpm_stein_projection(
+        ...     {"seal": 4, "igniter": 2, "fin": 1, "fuze": 1}, trials=40,
+        ...     fef={"seal": 0.8, "igniter": 0.7, "fin": 0.6},
+        ... )
+        >>> result.projected_reliability_cb(
+        ...     bound="lower", random_state=1
+        ... ).round(3)
+        np.float64(0.736)
+        """
+        tail = _boot_tail(alpha_ci, bound, method, target, n_boot)
+        est, real = _adpm_draws(
+            self, int(n_boot), as_generator(random_state), target == "realised"
+        )
+        point = np.array([self.projected_reliability])
+        return _boot_bounds(point, est, real, tail, bound, (), "cloglog")
 
     def __repr__(self) -> str:
         title = "Maturity projection (discrete AMPM-Stein)"
@@ -708,6 +1081,36 @@ def _adpm_profile(n: float, counts: np.ndarray, T: int) -> float:
     harmonic = float(np.sum(1.0 / (n + np.arange(T))))
     beta_terms = np.sum(special.betaln(counts, n + T - counts))
     return float(-m * np.log(harmonic) + beta_terms)
+
+
+def _adpm_n(counts: np.ndarray, T: int) -> float:
+    """The maximum likelihood pseudo trials ``n`` of the many-modes
+    beta-binomial profile, or ``inf`` where the profile rises to the edge
+    of the search (no mode repeats, or so few that the shrinkage is 0)."""
+    if counts.size == 0 or counts.sum() <= counts.size:
+        return float(np.inf)
+
+    def nll(log_n: float) -> float:
+        return -_adpm_profile(float(np.exp(log_n)), counts, T)
+
+    # The profile has one maximum in n > 0 when some mode repeats; search
+    # its log over a wide bracket. The grid only brackets the maximum, so
+    # it uses the digamma form of the harmonic sum, all points at once.
+    grid = np.linspace(np.log(1e-6), np.log(1e9 * T), 200)
+    n_grid = np.exp(grid)
+    harmonic = special.digamma(n_grid + T) - special.digamma(n_grid)
+    values = counts.size * np.log(harmonic) - np.sum(
+        special.betaln(counts[None, :], n_grid[:, None] + T - counts),
+        axis=1,
+    )
+    k = int(np.argmin(values))
+    if k == grid.size - 1:
+        return float(np.inf)
+    lo, hi = grid[max(k - 1, 0)], grid[min(k + 1, grid.size - 1)]
+    res = optimize.minimize_scalar(
+        nll, bounds=(lo, hi), method="bounded", options={"xatol": 1e-12}
+    )
+    return float(np.exp(res.x))
 
 
 def adpm_stein_projection(
@@ -805,20 +1208,8 @@ def adpm_stein_projection(
             "(CrowAMSAADiscrete)."
         )
 
-    def nll(log_n: float) -> float:
-        return -_adpm_profile(float(np.exp(log_n)), counts, T)
-
-    # The profile has one maximum in n > 0 when some mode repeats; search
-    # its log over a wide bracket.
-    grid = np.linspace(np.log(1e-6), np.log(1e9 * T), 200)
-    values = [nll(g) for g in grid]
-    k = int(np.argmin(values))
-    lo, hi = grid[max(k - 1, 0)], grid[min(k + 1, grid.size - 1)]
-    res = optimize.minimize_scalar(
-        nll, bounds=(lo, hi), method="bounded", options={"xatol": 1e-12}
-    )
-    n = float(np.exp(res.x))
-    if k == grid.size - 1:
+    n = _adpm_n(counts, T)
+    if not np.isfinite(n):
         raise ValueError(
             "The modes' counts give no finite pseudo trials (the shrinkage "
             "is 0): they look like a test that has seen almost nothing of "
@@ -848,3 +1239,331 @@ def adpm_stein_projection(
         unseen_reliability=unseen,
         projected_reliability=float(np.prod(1 - projected_i) * unseen),
     )
+
+
+# -- the bootstrap bounds -----------------------------------------------------
+
+
+_NO_OTHER_BOUND = (
+    "A maturity projection has only bootstrap bounds: it combines a fitted "
+    "mode population with assessed fix-effectiveness factors, and its "
+    "estimates sit on the edge of their range (no shrinkage, or no growth) "
+    "for tests a little smaller than this one, where Wald and "
+    "likelihood-ratio approximations fail. Use method='bootstrap'."
+)
+_TARGETS = ("realised", "expected")
+
+
+def _boot_tail(
+    alpha_ci: float, bound: str, method: str, target: str, n_boot: Any
+) -> float:
+    """Check a ``*_cb`` call's arguments; the tail of each percentile."""
+    check_alpha_ci(alpha_ci)
+    check_option("bound", bound, BOUNDS)
+    check_option("method", method, ("bootstrap",), _NO_OTHER_BOUND)
+    check_option(
+        "target",
+        target,
+        _TARGETS,
+        "'realised' bounds this system's value once the fixes are in; "
+        "'expected' bounds the model's expected value over tests like it.",
+    )
+    if (
+        isinstance(n_boot, bool)
+        or not isinstance(n_boot, (int, np.integer))
+        or n_boot < 2
+    ):
+        raise ValueError(
+            f"n_boot must be a whole number, 2 or more; got {n_boot!r}."
+        )
+    return alpha_ci / 2 if bound == "two-sided" else alpha_ci
+
+
+def _defined_rows(values: np.ndarray) -> np.ndarray:
+    """``values`` without rows holding ``nan`` (warned of, with counts)."""
+    keep = ~np.any(np.isnan(values), axis=1)
+    if not np.all(keep):
+        import warnings
+
+        warnings.warn(
+            f"{int(np.sum(~keep))} of {len(values)} bootstrap replicates "
+            "gave no estimate and were left out of the percentiles. Use "
+            "more replicates.",
+            stacklevel=4,
+        )
+    return values[keep]
+
+
+def _boot_bounds(
+    point: np.ndarray,
+    est: np.ndarray,
+    real: np.ndarray | None,
+    tail: float,
+    bound: str,
+    shape: tuple,
+    scale: str,
+) -> Any:
+    """Bounds from the replicates' estimates ``est`` (one row a replicate,
+    one column a quantity).
+
+    ``real is None`` (``target="expected"``): the percentiles of ``est``.
+    Otherwise (``target="realised"``) the bootstrap of the prediction
+    error: on ``z``, the log of an intensity (``scale="log"``) or the
+    log of minus the log of a reliability (``scale="cloglog"``), the
+    replicates' errors ``z(est) - z(real)`` give ``z(point) - error``
+    quantiles, mapped back.
+    """
+    if real is None:
+        draws = _defined_rows(est)
+        lo = np.quantile(draws, tail, axis=0)
+        hi = np.quantile(draws, 1 - tail, axis=0)
+    else:
+
+        def z(v: Any) -> Any:
+            v = np.asarray(v, dtype=float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return np.log(v) if scale == "log" else np.log(-np.log(v))
+
+        # A replicate test with no failures estimates 0 (an intensity) or
+        # 1 (a reliability): an error of -inf on z, kept, since it is a
+        # real outcome of such a test.
+        error = _defined_rows(z(est) - z(real))
+        z_low = z(point) - np.quantile(error, 1 - tail, axis=0)
+        z_high = z(point) - np.quantile(error, tail, axis=0)
+        if scale == "log":
+            lo, hi = np.exp(z_low), np.exp(z_high)
+        else:  # the reliability falls as z rises
+            lo, hi = np.exp(-np.exp(z_high)), np.exp(-np.exp(z_low))
+    if bound == "two-sided":
+        return np.column_stack([lo, hi]).reshape(shape + (2,))
+    out = np.asarray(lo if bound == "lower" else hi).reshape(shape)
+    return out[()] if out.ndim == 0 else out
+
+
+def _reciprocal_bounds(rate_cb: Any, bound: str) -> Any:
+    """Bounds on ``1 / rate`` from ``rate_cb(bound)``, the rate's bounds:
+    the opposite one-sided bound, or the two-sided pair reversed."""
+    check_option("bound", bound, BOUNDS)
+    opposite = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
+    rate = np.asarray(rate_cb(opposite[bound]), dtype=float)
+    with np.errstate(divide="ignore"):
+        out = 1.0 / rate
+    if bound == "two-sided":
+        return out[..., ::-1]
+    return out[()] if out.ndim == 0 else out
+
+
+def _choice(rng: np.random.Generator, pool: np.ndarray, size: int) -> Any:
+    return rng.choice(pool, size) if size else pool[:0]
+
+
+def _seen_counts(
+    rng: np.random.Generator, modes_mean: float, p: float
+) -> np.ndarray:
+    """The failure counts of the modes a many-modes gamma population
+    shows in a test: a Poisson number of modes, each count a
+    logarithmic-series variate with ``p = beta T / (1 + beta T)``."""
+    m = int(rng.poisson(modes_mean))
+    return rng.logseries(p, m).astype(float) if m else np.empty(0)
+
+
+def _ampm_estimates(first: np.ndarray, T: float) -> tuple[float, float]:
+    """The AMPM's ``beta`` and ``lambda_B`` from first occurrences, with
+    the limits where the maximum is on the edge: no B mode (``lambda_B =
+    0``), or first occurrences that do not thin out (``beta -> 0``, new
+    modes at the constant rate ``m / T``)."""
+    m = first.size
+    if m == 0:
+        return 0.0, 0.0
+    if np.sum(first) >= m * T / 2:
+        return 0.0, m / T
+    try:
+        beta = _ampm_beta(first, T)
+    except ValueError:  # bunched at the start: beta at its search limit
+        beta = 1e12 / T
+    return beta, float(m * beta / np.log1p(beta * T))
+
+
+def _ampm_rho(params: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """The AMPM intensity for ``params`` rows ``(beta, lambda_A,
+    lambda_B, mu_d)`` (rows) at each ``t`` (columns); ``h(inf) = 0``."""
+    beta, lam_a, lam_b, mu = (params[:, k, None] for k in range(4))
+    with np.errstate(invalid="ignore"):
+        h = np.where(np.isinf(t), 0.0, lam_b / (1 + beta * t))
+    return lam_a + (1 - mu) * lam_b + mu * h
+
+
+def _gamma_realised(
+    rng: np.random.Generator,
+    a: float,
+    s: float,
+    pool: np.ndarray,
+    u: float,
+) -> float:
+    """For the B modes a gamma population has not shown by ``T`` (a gamma
+    process of shape ``a`` and scale ``s``): their intensity once those
+    surfacing in the next ``u`` of test are fixed, each with a factor
+    drawn from ``pool``. ``u = 0``: their whole intensity; ``u = inf``:
+    every one fixed."""
+    if u == 0:
+        return float(rng.gamma(a, s))
+    if np.isinf(u):
+        shares = rng.gamma(a / pool.size, s, pool.size)
+        return float(np.sum((1 - pool) * shares))
+    s_u = s / (1 + s * u)
+    counts = _seen_counts(rng, a * np.log1p(s * u), s * u / (1 + s * u))
+    rates = rng.gamma(counts, s_u) if counts.size else counts
+    d = _choice(rng, pool, counts.size)
+    return float(np.sum((1 - d) * rates) + rng.gamma(a, s_u))
+
+
+def _ampm_draws(
+    fit: AMPMProjection,
+    t: np.ndarray,
+    n_boot: int,
+    rng: np.random.Generator,
+    realised: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Each replicate test's AMPM intensity at ``t`` (rows replicates),
+    and, with ``realised``, that replicate system's realised intensity
+    once the B modes seen by each ``t`` are fixed."""
+    T, beta = fit.T, fit.beta
+    p, s = beta * T / (1 + beta * T), beta / (1 + beta * T)
+    a = fit.lambda_B / beta  # the population's shape in the limit
+    pool = fit.modes["fef"].to_numpy(dtype=float)
+    est = np.empty((n_boot, t.size))
+    real = np.empty((n_boot, t.size)) if realised else None
+    for b in range(n_boot):
+        counts = _seen_counts(rng, a * np.log1p(beta * T), p)
+        # a mode's failures are uniform over the test, so its first
+        # occurrence is T times the least of N uniforms
+        first = T * rng.beta(1.0, counts) if counts.size else counts
+        d = _choice(rng, pool, counts.size)
+        n_a = rng.poisson(fit.lambda_A * T)
+        b_hat, lam_b = _ampm_estimates(first, T)
+        mu = float(d.mean()) if counts.size else 0.0
+        est[b] = _ampm_rho(np.array([[b_hat, n_a / T, lam_b, mu]]), t)[0]
+        if real is None:
+            continue
+        rates = rng.gamma(counts, s) if counts.size else counts
+        for k, tk in enumerate(t):
+            if tk <= T:  # the modes first seen after tk are not fixed
+                fixed = first <= tk
+                seen = np.sum(np.where(fixed, 1 - d, 1.0) * rates)
+                rest = _gamma_realised(rng, a, s, pool, 0.0)
+            else:
+                seen = np.sum((1 - d) * rates)
+                rest = _gamma_realised(rng, a, s, pool, tk - T)
+            real[b, k] = fit.lambda_A + seen + rest
+    return est, real
+
+
+def _stein_rho(
+    counts: np.ndarray, d: np.ndarray, n_a: float, T: float
+) -> float:
+    """The AMPM-Stein projection from the B modes' counts and factors and
+    the A failures, with ``theta = 0`` where no B mode repeats."""
+    N, m = float(counts.sum()), counts.size
+    theta = 0.0
+    if m and N > m:
+        y = _stein_y(N, m)
+        theta = y / (1 + y)
+    seen = float(np.sum((1 - d) * theta * counts / T))
+    return n_a / T + seen + (1 - theta) * N / T
+
+
+def _stein_draws(
+    fit: SteinProjection,
+    n_boot: int,
+    rng: np.random.Generator,
+    realised: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Each replicate test's AMPM-Stein projection, and, with
+    ``realised``, that replicate system's realised intensity once its
+    seen B modes are fixed."""
+    T, theta = fit.T, fit.theta
+    b = (fit.modes["kind"] == "B").to_numpy()
+    pool = fit.modes["fef"].to_numpy(dtype=float)[b]
+    N_b = float(fit.modes["failures"].to_numpy()[b].sum())
+    y = theta / (1 - theta)  # beta T
+    s = y / T / (1 + y)
+    a = N_b / y  # lambda_B / beta, lambda_B = N_B / T
+    est = np.empty((n_boot, 1))
+    real = np.empty((n_boot, 1)) if realised else None
+    for k in range(n_boot):
+        # (lambda_B / beta) ln(1 + beta T) = m_B, the modes seen
+        counts = _seen_counts(rng, float(b.sum()), theta)
+        d = _choice(rng, pool, counts.size)
+        n_a = rng.poisson(fit.lambda_A * T)
+        est[k] = _stein_rho(counts, d, n_a, T)
+        if real is not None:
+            rates = rng.gamma(counts, s) if counts.size else counts
+            real[k] = (
+                fit.lambda_A
+                + np.sum((1 - d) * rates)
+                + _gamma_realised(rng, a, s, pool, 0.0)
+            )
+    return est, real
+
+
+def _adpm_reliability(counts: np.ndarray, d: np.ndarray, T: int) -> float:
+    """The discrete AMPM-Stein projection, with ``theta = 0`` where the
+    pseudo trials are infinite (no mode repeats)."""
+    n = _adpm_n(counts, T)
+    theta = T / (n + T) if np.isfinite(n) else 0.0
+    N = float(counts.sum())
+    return float(
+        np.prod(1 - (1 - d) * theta * counts / T)
+        * np.exp(-(1 - theta) * N / T)
+    )
+
+
+def _beta_unseen(rng: np.random.Generator, mass: float, rate: float) -> float:
+    """``-sum ln(1 - p)`` over the modes a many-modes beta population has
+    not shown in ``T`` trials. On ``q = -ln(1 - p)`` those modes are a
+    Poisson process of intensity ``mass e^{-rate q} / (1 - e^{-q})``
+    (``mass = c n``, ``rate = n + T``): a gamma process (the ``1 / q``
+    part, a gamma of shape ``mass`` and rate ``rate``) plus a compound
+    Poisson rest, drawn exactly by thinning ``Exp(rate)`` jumps with the
+    chance ``1 / (1 - e^{-q}) - 1 / q``."""
+    jumps = rng.exponential(1 / rate, rng.poisson(mass / rate))
+    keep = rng.random(jumps.size) < -1 / np.expm1(-jumps) - 1 / jumps
+    return float(rng.gamma(mass, 1 / rate) + np.sum(jumps[keep]))
+
+
+def _adpm_draws(
+    fit: DiscreteSteinProjection,
+    n_boot: int,
+    rng: np.random.Generator,
+    realised: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Each replicate test's discrete projection, and, with ``realised``,
+    that replicate design's realised reliability once its seen modes are
+    fixed."""
+    T, n = fit.trials, fit.pseudo_trials
+    m = len(fit.modes)
+    j = np.arange(1, T + 1, dtype=float)
+    harmonic = float(np.sum(1.0 / (n + np.arange(T))))
+    total = m / (n * harmonic)  # the population's total chance, c
+    # the expected number of modes failing exactly j of the T trials
+    mean_j = np.exp(
+        np.log(total * n)
+        + special.gammaln(T + 1)
+        - special.gammaln(j + 1)
+        - special.gammaln(T - j + 1)
+        + special.betaln(j, n + T - j)
+    )
+    pool = fit.modes["fef"].to_numpy(dtype=float)
+    est = np.empty((n_boot, 1))
+    real = np.empty((n_boot, 1)) if realised else None
+    for k in range(n_boot):
+        counts = np.repeat(j, rng.poisson(mean_j))
+        d = _choice(rng, pool, counts.size)
+        est[k] = _adpm_reliability(counts, d, T)
+        if real is not None:
+            # a mode seen j times has the chance Beta(j, n + T - j)
+            p = rng.beta(counts, n + T - counts) if counts.size else counts
+            real[k] = np.prod(1 - (1 - d) * p) * np.exp(
+                -_beta_unseen(rng, total * n, n + T)
+            )
+    return est, real
