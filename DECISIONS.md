@@ -28,6 +28,14 @@ Design decisions made while working on the open issues, with the reason for each
 | It is implemented by giving the split rule each candidate feature as the indicator of being above its cut, so one code path serves every kind, `selection`, interval data and competing risks, and the statistics are untouched. | proposed | One place to change, and the statistic cannot differ from the searched one's. | done |
 | The forest keeps its bootstrap under the random rule; `bootstrap=False` gives the original Extra-Trees. | proposed | Out-of-bag scores (and the importances built on them) still exist. | done |
 | The done-check's seeds, noise band and data were fixed before the first run (`scripts/studies/extra_trees_oob.py`): Rossi and lung, 100 Weibull trees, seeds 0 to 9, within two standard deviations of the searched forest's seed-to-seed spread. Both passed; fit time was 0.55 of the searched forest's. | proposed | The issue's "within noise, and faster, measured". | done |
+### Torch losses: Cox partial likelihood and discrete-time hazard (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `cox_nll(risk, target, ties="efron", reduction="mean")` takes the network's log relative hazard and a `Targets`; Efron (default, as `CoxPH`) and Breslow ties. The exact and Kalbfleisch-Prentice methods are refused, saying why. | proposed | They sum over orderings of the ties, with no cheap differentiable form; the other two match `CoxPH` exactly. | done |
+| `reduction="mean"` divides by the number of failures (the sum of `n` over failed rows); `"sum"` is `CoxPH`'s negative log partial likelihood. No `"none"`. | proposed | The partial likelihood has no per-row terms. DeepSurv divides by the number of events. | done |
+| `discrete_time_nll(logits, index, c, n)`: intervals counted from 0, a unit censored in interval k survived through it (pycox's logistic hazard convention), so interval k is the discrete time k + 1. Only failed and right-censored rows. | proposed | Matches `DiscreteWeibull` and `Geometric` (support from 1) and the usual training convention. | done |
+| The Stan or NumPyro likelihood bridge (part b) is not built. | proposed | Left for a follow-up. | open |
 
 ### Dates to durations (27 Nov 2026)
 

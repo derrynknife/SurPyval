@@ -340,6 +340,15 @@ v0.30 (unreleased)
   band on the Rossi data (-1.6037 against -1.6038) and on the lung data
   (-2.155 against -2.169, 1.5 standard deviations better), and the fit
   took 0.55 of the time on both.
+- **Torch losses for the Cox partial likelihood and the discrete-time
+  hazard: ``surpyval.torch.cox_nll`` and ``discrete_time_nll``.** Losses
+  only, for a network's outputs. ``cox_nll`` (Efron or Breslow ties,
+  counts and left truncation) equals ``CoxPH``'s negative log partial
+  likelihood to 1e-8 at its fitted coefficients and at others (140.687,
+  138.509 and 157.785 on the test data for the first two methods and a
+  third coefficient vector), and ``discrete_time_nll`` equals the negative
+  log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
+  hazards; gradients agree with finite differences.
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
