@@ -20,6 +20,7 @@ from surpyval.ml.forest.readouts import (
     PartialDependence,
     horizon_importance,
     minimal_depth,
+    minimal_depth_threshold,
     partial_dependence,
 )
 from surpyval.ml.forest.tree import (
@@ -1289,7 +1290,36 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             One row per covariate (:attr:`feature_labels`):
             ``minimal_depth``, the mean over the trees, and
             ``split_fraction``, the share of the trees that split on it at
-            all.
+            all, and ``selected``, whether the mean is below the
+            threshold. The threshold itself is ``result.attrs["threshold"]``
+            and :meth:`minimal_depth_threshold`.
+
+        Notes
+        -----
+        **Which covariates to keep.** A covariate with no effect is split
+        on by chance, and the more nodes a tree has near the root, the
+        sooner chance alone reaches it. The *threshold* is the minimal
+        depth you would expect on average from such a covariate in these
+        trees; a covariate whose mean minimal depth is below it is split on
+        earlier than chance explains and is ``selected`` (Ishwaran et al.,
+        2010).
+
+        At a node, a given covariate is the one split on with chance
+        ``1/p`` when none is better than another, whatever ``n_features_split``
+        is (it is a candidate with chance ``m/p`` and then chosen with
+        chance ``1/m``); ``p`` is the number of covariates
+        (:attr:`feature_labels`, one per column of ``Z``). With ``l_d``
+        the number of split nodes at depth ``d`` of a tree, ``D`` its
+        depth and ``L_d = l_0 + ... + l_(d-1)``, the minimal depth ``D_v``
+        of such a covariate has
+
+        ``P(D_v = d) = (1 - 1/p)**L_d * (1 - (1 - 1/p)**l_d)``,
+        ``d = 0, ..., D - 1``, and ``P(D_v = D)`` the rest,
+
+        the last being a covariate never split on, which is counted at
+        depth ``D`` as in the table. The threshold is the mean of this
+        distribution, found tree by tree and averaged over the trees, so it
+        is on the same footing as the table's mean over the trees.
 
         Examples
         --------
@@ -1306,6 +1336,12 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         [0.0, 1.0]
         """
         return minimal_depth(self)
+
+    def minimal_depth_threshold(self) -> float:
+        """The cut-off for :meth:`minimal_depth`: the mean minimal depth of
+        a covariate with no effect in these trees (Ishwaran et al., 2010).
+        Covariates whose mean minimal depth is below it are selected."""
+        return minimal_depth_threshold(self)
 
     @property
     def feature_labels(self) -> list[str]:

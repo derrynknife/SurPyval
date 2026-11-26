@@ -546,7 +546,11 @@ v0.30 (unreleased)
   ``minimal_depth()`` gives how near the root each covariate first splits
   the trees (the root at depth 0, an unused covariate at the tree's depth,
   as randomForestSRC's ``max.subtree``) and the share of trees that use
-  it. ``feature_importances(times=[...])`` gives permutation importance by
+  it. It also gives ``selected`` (the mean minimal depth below
+  the Ishwaran et al. (2010) threshold, the mean minimal depth of a
+  covariate with no effect in these trees, also ``minimal_depth_threshold()``
+  and ``result.attrs["threshold"]``); the existing columns are unchanged.
+  ``feature_importances(times=[...])`` gives permutation importance by
   horizon: the rise in the out-of-bag Brier score (or, with
   ``metric="auc"``, the fall in the time-dependent AUC) at each time when
   a covariate is shuffled. Without ``times`` the importance is the

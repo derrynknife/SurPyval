@@ -21,7 +21,11 @@ from surpyval.ml.forest.node import (
     route_to_leaves,
     tree_lines,
 )
-from surpyval.ml.forest.readouts import minimal_depth, partial_dependence
+from surpyval.ml.forest.readouts import (
+    minimal_depth,
+    minimal_depth_threshold,
+    partial_dependence,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -1078,8 +1082,14 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         depth 0; a covariate the tree never splits on gets the tree's
         depth (its deepest leaf). As for the forest's
         :meth:`~surpyval.ml.forest.forest.RandomSurvivalForest.minimal_depth`
-        with one tree, so ``split_fraction`` is 1 or 0."""
+        with one tree, so ``split_fraction`` is 1 or 0; ``selected`` and the
+        threshold (``result.attrs["threshold"]``) are those of one tree."""
         return minimal_depth(self)
+
+    def minimal_depth_threshold(self) -> float:
+        """The mean minimal depth of a covariate with no effect in this
+        tree (see the forest's ``minimal_depth``)."""
+        return minimal_depth_threshold(self)
 
     @property
     def feature_labels(self) -> list[str]:

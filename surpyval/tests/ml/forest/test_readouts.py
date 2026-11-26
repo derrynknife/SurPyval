@@ -1,6 +1,7 @@
 """Forest and tree read-outs: ICE and partial dependence, minimal depth,
 and permutation importance by horizon."""
 
+from fractions import Fraction
 from types import SimpleNamespace
 
 import numpy as np
@@ -166,8 +167,14 @@ def test_minimal_depth_hand_worked():
 def test_minimal_depth_of_fitted_models(forest):
     out = forest.minimal_depth()
     # Every stump splits at the root on the feature with the effect
-    assert out.loc["Z0"].tolist() == [0.0, 1.0]
-    assert out.loc["Z1"].tolist() == [1.0, 0.0]
+    assert out.loc["Z0", ["minimal_depth", "split_fraction"]].tolist() == [
+        0.0,
+        1.0,
+    ]
+    assert out.loc["Z1", ["minimal_depth", "split_fraction"]].tolist() == [
+        1.0,
+        0.0,
+    ]
     # Kept by serialisation: no training data needed
     restored = RandomSurvivalForest.from_dict(forest.to_dict())
     pd.testing.assert_frame_equal(restored.minimal_depth(), out)
@@ -257,3 +264,131 @@ def test_horizon_importance_refusals(forest):
     )
     with pytest.raises(ValueError, match="right-censored"):
         interval.feature_importances(times=[2.0])
+
+
+# --------------------------------------- minimal-depth selection threshold
+
+
+def _hand_threshold(split_nodes, depth, p):
+    """The paper's formula written out with exact fractions."""
+    q = 1 - Fraction(1, p)
+    probs = []
+    for d in range(depth):
+        big_l = sum(split_nodes[:d])
+        probs.append(q**big_l * (1 - q ** split_nodes[d]))
+    probs.append(1 - sum(probs))
+    return probs, sum(d * pr for d, pr in enumerate(probs))
+
+
+def test_null_minimal_depth_hand_worked_exactly():
+    from surpyval.ml.forest.readouts import (
+        null_minimal_depth_distribution,
+        null_minimal_depth_mean,
+    )
+
+    # A tree with 1, 2 and 1 split nodes at depths 0, 1, 2 (leaves at
+    # depth 3), and p = 3 covariates: q = 2/3.
+    #   P(0) = 1 - 2/3                  = 1/3
+    #   P(1) = 2/3 * (1 - 4/9)          = 10/27
+    #   P(2) = (2/3)**3 * (1 - 2/3)     = 8/81
+    #   P(3) = the rest                 = 81/81 - 27/81 - 30/81 - 8/81
+    #                                   = 16/81
+    # mean = 10/27 + 16/81 + 48/81 = 30/81 + 16/81 + 48/81 = 94/81
+    expected = [
+        Fraction(1, 3),
+        Fraction(10, 27),
+        Fraction(8, 81),
+        Fraction(16, 81),
+    ]
+    probs = null_minimal_depth_distribution([1, 2, 1], 3, Fraction(3))
+    assert probs == expected
+    assert null_minimal_depth_mean([1, 2, 1], 3, Fraction(3)) == Fraction(
+        94, 81
+    )
+    assert _hand_threshold([1, 2, 1], 3, 3) == (expected, Fraction(94, 81))
+    # In floating point, with p an int
+    assert np.allclose(
+        null_minimal_depth_distribution([1, 2, 1], 3, 3),
+        [float(e) for e in expected],
+        rtol=0,
+        atol=1e-15,
+    )
+
+
+def test_threshold_of_a_hand_built_forest_is_the_mean_over_trees():
+    from surpyval.ml.forest.readouts import (
+        minimal_depth,
+        minimal_depth_threshold,
+    )
+
+    # Tree 1: splits 1, 2, 1 as above (depth 3).
+    t1 = _split(
+        0,
+        _split(1, _split(2, LEAF, LEAF), LEAF),
+        _split(1, LEAF, LEAF),
+    )
+    # Tree 2: a stump (1 split, depth 1): P(0) = 1/3, P(1) = 2/3, mean 2/3.
+    t2 = _split(1, LEAF, LEAF)
+    model = SimpleNamespace(
+        trees=[SimpleNamespace(_root=t1), SimpleNamespace(_root=t2)],
+        feature_labels=["Z0", "Z1", "Z2"],
+    )
+    # t1: 1, 2, 1 split nodes at depths 0, 1, 2? Depth 1 has 2 nodes
+    # (left child, right child), depth 2 has the left child's child.
+    expected = (94 / 81 + 2 / 3) / 2
+    assert minimal_depth_threshold(model) == pytest.approx(expected, abs=1e-15)
+    out = minimal_depth(model)
+    assert out.attrs["threshold"] == minimal_depth_threshold(model)
+    # Existing columns unchanged; selected is mean depth below threshold
+    assert out["minimal_depth"].tolist() == [0.5, 0.5, 1.5]
+    assert out["selected"].tolist() == [True, True, False]
+
+
+def _noise_forest(seed, n_cov, n_trees):
+    rng = np.random.default_rng(seed)
+    n = 300
+    Z = rng.uniform(0, 1, (n, n_cov))
+    x = rng.weibull(1.5, n) * 10.0
+    return x, Z, n_trees
+
+
+@pytest.mark.parametrize("n_cov", [5, 10])
+def test_noise_covariates_sit_at_the_threshold(n_cov):
+    # Fixed before running: with pure noise covariates the mean minimal
+    # depth over the covariates is within 10% of the threshold.
+    x, Z, n_trees = _noise_forest(seed=11, n_cov=n_cov, n_trees=60)
+    forest = RandomSurvivalForest.fit(
+        x,
+        Z,
+        n_trees=n_trees,
+        kind="exponential",
+        n_features_split=2,
+        random_state=11,
+    )
+    out = forest.minimal_depth()
+    threshold = out.attrs["threshold"]
+    assert threshold == forest.minimal_depth_threshold()
+    average = out["minimal_depth"].mean()
+    print("noise: mean minimal depth", average, "threshold", threshold)
+    assert abs(average - threshold) < 0.10 * threshold
+
+
+def test_a_strong_covariate_is_selected_among_noise():
+    rng = np.random.default_rng(5)
+    n = 300
+    Z = rng.uniform(0, 1, (n, 5))
+    x = rng.weibull(2.0, n) * np.exp(2.0 - 3.0 * Z[:, 0])
+    forest = RandomSurvivalForest.fit(
+        x,
+        Z,
+        n_trees=60,
+        kind="exponential",
+        n_features_split=5,
+        random_state=5,
+    )
+    out = forest.minimal_depth()
+    threshold = out.attrs["threshold"]
+    print(out, threshold)
+    assert out.loc["Z0", "selected"]
+    assert out.loc["Z0", "minimal_depth"] < 0.5 * threshold
+    assert not out.loc[["Z1", "Z2", "Z3", "Z4"], "selected"].any()
